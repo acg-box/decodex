@@ -222,7 +222,7 @@ Initial generic signal kinds:
 | `protocol_drift` | App-server, MCP, CLI, telemetry, tracker, or external protocol changes drift from local support. |
 | `metric_regression` | Objective metric moves the wrong way or fails to improve after accepted work. |
 | `execution_friction` | Manual attention, loop churn, validation retries, review churn, or orchestration overhead repeats beyond objective tolerance. |
-| `docs_skill_drift` | Skills, plugins, docs routing, or OKF concepts no longer match project behavior. |
+| `docs_plugin_drift` | Decodex docs routing or plugin instructions no longer match project behavior. |
 
 Each signal must carry provenance:
 
@@ -340,9 +340,9 @@ Proposal acceptance creates a normal `decodex.decision_contract/1` payload with
 ids and summaries, contradictions, gaps, validation gates, review requirements,
 rejected alternatives, rollback path, and proposal acceptance provenance in the
 Decision Contract readback. It must not create tracker issues, Program Intake rows,
-queue labels, worktrees, or execution lanes. Later execution still requires the
-existing Decision Contract promotion path, such as `research_promote`, to record
-promotion authority and move the contract to `accepted_promoted`.
+queue labels, worktrees, or execution lanes. Later execution still requires an
+accepted Decision Contract authority record before the contract can move to
+`accepted_promoted`.
 
 Re-accepting the same proposal is idempotent only while the derived Decision Contract
 is still an unpromoted `draft_latent` candidate with no generated execution links. The
@@ -476,8 +476,8 @@ explicit authority fields and still stop before normal Decision Contract promoti
 Program Intake, review, PR handoff, landing, install, restart, closeout, or cleanup
 authority. `autonomy_request_promotion`
 may create only a latent Decision Contract candidate from an accepted proposal; the
-result still requires normal `research_promote` and later Program Intake before
-execution work exists. MCP callers cannot prove accepted project policy authority by
+result still requires accepted Decision Contract authority and later Program Intake
+before execution work exists. MCP callers cannot prove accepted project policy authority by
 supplying an `acceptedProjectPolicy` body or by self-asserting `runtime_policy`
 Objective Contract acceptance. Policy-backed runtime or external-agent acceptance must
 be resolved from trusted Decodex authority state; until that resolver exists, MCP
@@ -497,7 +497,7 @@ Allowed inputs:
 - GitHub check, PR, and review readbacks
 - repo-native validation summaries
 - checked-in docs, specs, runbooks, and decisions
-- optional read-only memory, OKF, vector, log, or MCP adapters
+- optional read-only memory, vector, log, or MCP adapters
 
 Not allowed by default:
 
@@ -577,6 +577,6 @@ Autonomy must not:
 - [`../runbook/autonomy-implementation-roadmap.md`](../runbook/autonomy-implementation-roadmap.md)
   owns the implementation sequence.
 - [`../decisions/project-autonomy-control-plane.md`](../decisions/project-autonomy-control-plane.md)
-  records the rationale and research evidence.
+  records the rationale and evidence ledger.
 
 Autonomy may read those surfaces. It must not bypass their mutation rules.

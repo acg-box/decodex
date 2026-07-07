@@ -37,10 +37,10 @@ Terminal status: `decision_ready`
 Promotion targets:
 
 - `docs/decisions`: this rationale record.
-- `docs/spec/loop-runtime.md`: research method and Decision Contract authority rules.
-- `plugins/decodex/skills/research/`, `challenge/`, and `research-promote/`: slim,
-  contract-first research routing, generic skeptic review, and promotion.
-- Future runtime issue: MCP server implementation, only after explicit promotion.
+- `docs/spec/loop-runtime.md`: Decision Contract and Program Intake authority rules.
+- `plugins/decodex/skills/planning/`, `decodex-ops/`, `commit/`, and `land/`: slim
+  Decodex runtime/operator routing.
+- Future runtime issue: MCP server implementation, only after explicit acceptance.
 
 Selected option: Hybrid Decodex MCP capability gateway plus thin skills.
 
@@ -61,11 +61,11 @@ Non-goals:
 | `external_source` | MCP separates server features into resources for context/data, prompts for templated workflows, and tools for executable functions. That maps cleanly to Decodex docs, reusable workflows, and state-changing runtime operations. | [MCP specification 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25) |
 | `external_source` | Resources are application-driven and addressed by URI; servers can list, read, template, subscribe, and notify resource changes. Decodex docs, Decision Contracts, status snapshots, and skill references fit this model better than skill-embedded text. | [MCP resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources) |
 | `external_source` | Tools are model-invoked executable functions and can return structured content with output schemas; MCP guidance expects user consent and visible authorization for tool invocations. Decodex mutating operations belong here, with authority checks. | [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) |
-| `external_source` | Prompts are user-controlled templates discoverable from the server. Decodex research, promotion, validation, and handoff workflows can become prompts instead of large skill bodies. | [MCP prompts](https://modelcontextprotocol.io/specification/2025-11-25/server/prompts) |
+| `external_source` | Prompts are user-controlled templates discoverable from the server. Decodex validation, handoff, planning, and operator workflows can become prompts instead of large skill bodies. | [MCP prompts](https://modelcontextprotocol.io/specification/2025-11-25/server/prompts) |
 | `external_source` | MCP standard transports are stdio and Streamable HTTP. Local Decodex should start with stdio for desktop/CLI use and add Streamable HTTP only when the local daemon or app needs multi-client access. | [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) |
 | `external_source` | MCP authorization is optional, but HTTP transports that support authorization should follow the spec; stdio should retrieve credentials from environment rather than the HTTP auth flow. | [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) |
-| `repo_source` | Decodex already treats runtime-local `decodex.decision_contract/1` payloads as research authority and keeps research latent until promotion. | [`docs/spec/loop-runtime.md`](../spec/loop-runtime.md) |
-| `repo_source` | The repository documentation policy requires durable guidance to live in `docs/spec`, `docs/runbook`, `docs/reference`, or `docs/decisions`; `docs/research/` contains Markdown OKF research concepts and remains non-authoritative until promoted. | [`docs/policy.md`](../policy.md) |
+| `repo_source` | Decodex treats runtime-local `decodex.decision_contract/1` payloads as accepted runtime planning authority only after explicit acceptance. | [`docs/spec/loop-runtime.md`](../spec/loop-runtime.md) |
+| `repo_source` | The repository documentation policy requires durable Decodex guidance to live in `docs/spec`, `docs/runbook`, `docs/reference`, or `docs/decisions`; generic team knowledge and research workflows live in external installed plugins. | [`docs/policy.md`](../policy.md) |
 | `inference` | Because MCP resources can expose docs/current state on demand, skills should not duplicate long reference bodies. Because MCP tools can mutate external state, skills must still carry authority routing and safety triggers. | Derived from MCP resource/tool controls plus Decodex authority model. |
 
 ## Options
@@ -82,9 +82,9 @@ Non-goals:
 ```mermaid
 flowchart TD
     U["User / Codex thread"] --> S["Thin Decodex skills"]
-    S --> P["MCP prompts: research, promote, validate, handoff"]
+    S --> P["MCP prompts: validate, handoff, lane control"]
     S --> R["MCP resources: docs, contracts, status, skill refs"]
-    S --> T["MCP tools: compile, promote, status, intake, lane controls"]
+    S --> T["MCP tools: status, intake, lane controls"]
     R --> D["Checked-in docs"]
     R --> DB["Runtime SQLite"]
     T --> C["Decodex Rust runtime"]
@@ -138,7 +138,6 @@ Resources:
 - `decodex://docs/runbook/{topic}`
 - `decodex://docs/reference/{topic}`
 - `decodex://docs/decisions/{topic}`
-- `decodex://research/{artifact}`
 - `decodex://decision-contracts/{contract_id}`
 - `decodex://projects/{service_id}/status`
 - `decodex://projects/{service_id}/status_live`
@@ -161,8 +160,7 @@ Resources:
 
 Prompts:
 
-- `decodex_research`: starts contract-first bounded research.
-- `decodex_arrange_accepted_research`: promotes accepted research into planning.
+- `decodex_arrange_accepted_work`: arranges accepted decisions into planning.
 - `decodex_validation_ready`: runs a validation-ready lane to its native gate and
   stops.
 - `decodex_handoff`: produces a human-readable handoff after verification.
@@ -173,14 +171,7 @@ Tools:
   readback without exposing hidden reasoning, private evidence payloads, or local path
   fields.
 - `decodex_plan(intent, issue, contractId)`: returns static Decodex workflow routing
-  for research, validation-ready, handoff, and lane-control intents.
-- `research_compile(mode, input|intent)`: validates evidence kinds, options,
-  objections, promotion targets, and validation expectations. `dry_run` validates
-  without persistence; `apply` persists a latent Decision Contract only with explicit
-  authority.
-- `research_promote(mode, contractId, authority)`: `dry_run` inspects promotion
-  readiness; `apply` records explicit acceptance only with authority fields such as
-  accepted actor and acceptance source, and refuses unresolved gaps.
+  for validation-ready, handoff, lane-control, and accepted-goal-intake intents.
 - `intake_goal(mode, contractId, authority)`: `dry_run` previews public-safe
   generated issue rows without tracker or Program Intake mutation; `apply` mutates
   only after accepted contract authority and explicit MCP authority exist.
@@ -251,8 +242,8 @@ Move out of skills:
 Target shape:
 
 - One router skill for Decodex.
-- Thin phase skills for research, planning, Decodex ops, commit, and land; generic
-  challenge lives in the companion `deliberation` plugin.
+- Thin phase skills for planning, Decodex ops, commit, and land; generic research and
+  challenge workflows live in external installed team plugins.
 - Shared method references either checked into docs or exposed as MCP resources.
 - Eval gate for every slimming pass to catch broken trigger coverage, missing safety
   boundaries, stale links, and token bloat.

@@ -14,8 +14,6 @@ pub(super) use self::{
 	foundation::{
 		intake_goal_tool_input_schema, intake_goal_tool_output_schema, observe_tool_input_schema,
 		observe_tool_output_schema, plan_tool_input_schema, plan_tool_output_schema,
-		research_compile_tool_input_schema, research_compile_tool_output_schema,
-		research_promote_tool_input_schema, research_promote_tool_output_schema,
 	},
 	operator::{
 		lane_control_tool_input_schema, lane_control_tool_output_schema,
@@ -37,18 +35,6 @@ fn planning_authority_input_schema() -> Value {
 			"reason": {
 				"type": "string",
 				"description": "Explicit reason authorizing an apply-style call."
-			},
-			"acceptedBy": {
-				"type": "string",
-				"description": "Actor accepting a Decision Contract promotion."
-			},
-			"acceptedAt": {
-				"type": "string",
-				"description": "Optional RFC3339 acceptance timestamp."
-			},
-			"acceptanceSource": {
-				"type": "string",
-				"description": "Conversation, issue, or policy source for explicit promotion authority."
 			},
 			"runId": {
 				"type": "string",

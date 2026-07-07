@@ -54,8 +54,5 @@ Question this index answers: "which sequence should I execute?"
   from historical review config keys to `[codex].review` levels.
 - [`release-readiness.md`](./release-readiness.md) for the v0.2.0 Loop Engineering
   release-candidate gate, dogfood evidence checklist, tag contract, and release note.
-- [`research-to-execution-loop.md`](./research-to-execution-loop.md) for compiling
-  latent research contracts, promoting accepted results, inspecting Execution Program
-  dispatch readiness, and following validation, review, guardrail, and harness feedback.
 - [`self-dogfood-pilot.md`](./self-dogfood-pilot.md) for the retained-lane pilot run
   against `decodex` itself and the bounded live-operation sequence.

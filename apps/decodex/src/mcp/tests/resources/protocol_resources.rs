@@ -40,7 +40,7 @@ fn logging_set_level_is_stdio_compatible() {
 }
 
 #[test]
-fn resources_list_includes_docs_decisions_and_research_concepts() {
+fn resources_list_includes_docs_and_decisions() {
 	let repo = support::test_repo();
 	let responses = support::run_stdio(
 		repo.path(),
@@ -57,7 +57,6 @@ fn resources_list_includes_docs_decisions_and_research_concepts() {
 	assert!(uris.contains(&"decodex://docs/index"));
 	assert!(uris.contains(&"decodex://docs/spec/runtime"));
 	assert!(uris.contains(&"decodex://docs/decisions/mcp-gateway"));
-	assert!(uris.contains(&"decodex://research/sample-report"));
 }
 
 #[test]
@@ -90,7 +89,7 @@ fn resources_list_includes_runtime_decision_contracts() {
 		.filter_map(|resource| resource.get("uri").and_then(Value::as_str))
 		.collect::<Vec<_>>();
 
-	assert!(uris.contains(&"decodex://decision-contracts/research-x-loop-contract"));
+	assert!(uris.contains(&"decodex://decision-contracts/decision-x-loop-contract"));
 }
 
 #[test]
@@ -113,7 +112,7 @@ fn resources_read_returns_runtime_decision_contract() {
 			project_id: Some(String::from("decodex")),
 			state_store: Some(state_store),
 		},
-		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://decision-contracts/research-x-loop-contract"}}"#,
+		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://decision-contracts/decision-x-loop-contract"}}"#,
 	);
 	let contents = support::response_at(&responses, 0)["result"]["contents"]
 		.as_array()
@@ -122,10 +121,10 @@ fn resources_read_returns_runtime_decision_contract() {
 	let content: Value = serde_json::from_str(text).expect("decision contract should be json");
 
 	assert_eq!(content["project_id"], "decodex");
-	assert_eq!(content["decision_contract"]["contract_id"], "research-x-loop-contract");
+	assert_eq!(content["decision_contract"]["contract_id"], "decision-x-loop-contract");
 	assert!(content["decision_contract"]["evidence_boundary"]["private_evidence_refs"].is_null());
 	assert!(content["decision_contract"]["links"]["execution_program_node_ids"].is_null());
-	assert!(!text.contains("research-x-run"));
+	assert!(!text.contains("decision-x-run"));
 }
 
 #[test]
@@ -141,22 +140,6 @@ fn resources_read_returns_checked_in_doc_text() {
 	let text = contents[0]["text"].as_str().expect("text content");
 
 	assert_eq!(text, "# Runtime\n\nSpec body.\n");
-}
-
-#[test]
-fn resources_read_returns_checked_in_research_markdown() {
-	let repo = support::test_repo();
-	let responses = support::run_stdio(
-		repo.path(),
-		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://research/sample-report"}}"#,
-	);
-	let contents = support::response_at(&responses, 0)["result"]["contents"]
-		.as_array()
-		.expect("contents array");
-	let text = contents[0]["text"].as_str().expect("text content");
-
-	assert_eq!(contents[0]["mimeType"], "text/markdown");
-	assert_eq!(text, "# Sample Research\n");
 }
 
 #[test]

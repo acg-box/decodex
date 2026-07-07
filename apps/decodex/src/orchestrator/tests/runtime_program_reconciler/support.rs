@@ -106,7 +106,7 @@ pub(in crate::orchestrator::tests::runtime_program_reconciler) fn program_reconc
 -> DecisionContract {
 	let mut contract: DecisionContract = serde_json::from_str(include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/fixtures/decision_contract/research_x_latent_contract.json"
+		"/fixtures/decision_contract/decision_x_latent_contract.json"
 	)))
 	.expect("decision contract fixture should deserialize");
 

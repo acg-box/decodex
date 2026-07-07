@@ -10,9 +10,9 @@ use crate::{
 pub(crate) fn latent_decision_contract_fixture() -> DecisionContract {
 	serde_json::from_str(include_str!(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/fixtures/decision_contract/research_x_latent_contract.json"
+		"/fixtures/decision_contract/decision_x_latent_contract.json"
 	)))
-	.expect("research X latent contract fixture should deserialize")
+	.expect("decision X latent contract fixture should deserialize")
 }
 
 pub(crate) fn sample_decision_promotion() -> DecisionPromotion {

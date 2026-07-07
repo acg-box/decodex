@@ -10,7 +10,7 @@ use crate::{
 	prelude::{Result, eyre},
 };
 
-/// Versioned research-to-execution contract payload.
+/// Versioned accepted-decision execution contract payload.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct DecisionContract {
 	#[serde(default = "super::schema::decision_contract_schema")]
