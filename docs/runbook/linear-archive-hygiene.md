@@ -1,7 +1,7 @@
 ---
 type: "Runbook"
 title: "Linear Archive Hygiene"
-description: "OKF concept for Linear Archive Hygiene."
+description: "Procedure for archiving old terminal Linear issues without disturbing active Decodex lanes."
 status: active
 authority: procedural
 owner: automation

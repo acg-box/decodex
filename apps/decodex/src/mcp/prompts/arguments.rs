@@ -6,7 +6,6 @@ pub(super) fn prompt_argument<'a>(arguments: &'a Value, key: &str) -> Option<&'a
 
 pub(super) fn prompt_required_arguments_are_present(name: &str, arguments: &Value) -> bool {
 	let required: &[&str] = match name {
-		"decodex_research" => &["intent"],
 		"decodex_validation_ready" | "decodex_handoff" | "decodex_lane_control" => &["issue"],
 		_ => return true,
 	};

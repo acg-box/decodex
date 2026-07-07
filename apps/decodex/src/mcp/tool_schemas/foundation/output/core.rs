@@ -43,7 +43,7 @@ pub(in crate::mcp) fn plan_tool_output_schema() -> Value {
 			},
 			"intent": {
 				"type": "string",
-				"enum": ["research", "validation_ready", "handoff", "lane_control"]
+				"enum": ["validation_ready", "handoff", "lane_control", "intake_goal"]
 			},
 			"prompt": {
 				"type": "string"

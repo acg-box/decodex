@@ -1,4 +1,5 @@
 use rusqlite::{Error, Row};
+use serde_json::Value;
 
 use crate::{
 	autonomy_signal::AutonomySignal,
@@ -31,7 +32,35 @@ pub(in crate::state) fn autonomy_signal_runtime_row_parts(
 pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 	parts: AutonomySignalRuntimeRowParts,
 ) -> crate::prelude::Result<AutonomySignalRuntimeRecord> {
-	let signal = serde_json::from_str::<AutonomySignal>(&parts.payload_json)?;
+	let payload = serde_json::from_str::<Value>(&parts.payload_json)?;
+	let payload_kind = payload.get("kind").and_then(Value::as_str);
+	let legacy_docs_skill_drift = parts.kind == "docs_skill_drift";
+
+	if legacy_docs_skill_drift && payload_kind != Some("docs_skill_drift") {
+		eyre::bail!("Legacy autonomy signal row `{}` kind did not match payload.", parts.signal_id);
+	}
+
+	let mut signal = serde_json::from_value::<AutonomySignal>(payload)?;
+
+	if legacy_docs_skill_drift {
+		let (legacy_id, legacy_fingerprint) = signal.legacy_docs_skill_drift_identity()?;
+
+		if signal.id() != legacy_id || parts.signal_id != legacy_id {
+			eyre::bail!(
+				"Legacy autonomy signal row `{}` identity did not match payload.",
+				parts.signal_id
+			);
+		}
+		if signal.fingerprint() != legacy_fingerprint || parts.fingerprint != legacy_fingerprint {
+			eyre::bail!(
+				"Legacy autonomy signal row `{}` fingerprint did not match payload.",
+				parts.signal_id
+			);
+		}
+
+		signal.recompute_canonical_identity()?;
+	}
+
 	let version = u64::try_from(parts.objective_version).map_err(|_| {
 		eyre::eyre!("Autonomy signal row objective_version must be greater than zero.")
 	})?;
@@ -45,7 +74,7 @@ pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 			signal.project_id()
 		);
 	}
-	if parts.signal_id != signal.id() {
+	if parts.signal_id != signal.id() && !legacy_docs_skill_drift {
 		eyre::bail!(
 			"Autonomy signal row `{}` contained payload `{}`.",
 			parts.signal_id,
@@ -67,8 +96,8 @@ pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 			signal.objective_version()
 		);
 	}
-	if parts.kind != signal.kind().as_str()
-		|| parts.fingerprint != signal.fingerprint()
+	if !signal.kind().matches_stored_kind(&parts.kind)
+		|| (parts.fingerprint != signal.fingerprint() && !legacy_docs_skill_drift)
 		|| parts.freshness != signal.freshness().as_str()
 		|| parts.evidence_class != signal.evidence_class().as_str()
 		|| parts.confidence != signal.confidence().as_str()

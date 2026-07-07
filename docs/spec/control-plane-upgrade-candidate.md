@@ -153,7 +153,6 @@ interpretations.
 
 It may later support:
 
-- a latent research contract
 - an accepted Decision Contract
 - Program Intake
 - normal executable Decodex lanes

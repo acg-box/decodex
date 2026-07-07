@@ -1,7 +1,7 @@
 ---
 type: "Runbook"
 title: "GitHub Pages Deploy"
-description: "OKF concept for GitHub Pages Deploy."
+description: "Procedure for publishing the Decodex static site to GitHub Pages."
 status: active
 authority: procedural
 owner: automation

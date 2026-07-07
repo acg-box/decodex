@@ -1,48 +1,11 @@
-use std::path::Path;
-
 use clap::Parser;
 
 use crate::cli::{
-	Cli, Command, ProjectConfigArgs,
+	Cli, Command,
 	research_intake_commands::{
-		IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand, ResearchCommand,
-		ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
+		IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand,
 	},
 };
-
-#[test]
-fn parses_research_compile_with_intent_and_project_config() {
-	let cli = Cli::parse_from([
-		"decodex",
-		"research",
-		"--config",
-		"./project.toml",
-		"compile",
-		"--intent",
-		"research X",
-		"--source-issue",
-		"XY-860",
-		"--outcome",
-		"needs-human-decision",
-		"--json",
-	]);
-
-	assert!(matches!(
-		cli.command,
-		Command::Research(ResearchCommand {
-			project_config: ProjectConfigArgs { config: Some(config) },
-			command: ResearchSubcommand::Compile(ResearchCompileCommand {
-				intent: Some(intent),
-				source_issue: Some(source_issue),
-				outcome: ResearchOutcomeArg::NeedsHumanDecision,
-				json: true,
-				..
-			})
-		}) if config == Path::new("./project.toml")
-			&& intent == "research X"
-			&& source_issue == "XY-860"
-	));
-}
 
 #[test]
 fn parses_intake_issues_dry_run_with_project() {
@@ -139,45 +102,4 @@ fn rejects_intake_issues_without_explicit_mode() {
 		.expect_err("intake issues requires dry-run or apply");
 
 	assert!(error.to_string().contains("--dry-run") || error.to_string().contains("--apply"));
-}
-
-#[test]
-fn parses_research_promote_with_acceptance_metadata() {
-	let cli = Cli::parse_from([
-		"decodex",
-		"research",
-		"--config",
-		"./project.toml",
-		"promote",
-		"research-design-contract",
-		"--accepted-by",
-		"operator",
-		"--accepted-at",
-		"2026-06-10T00:00:00Z",
-		"--acceptance-source",
-		"conversation",
-		"--reason",
-		"push this forward",
-		"--json",
-	]);
-
-	assert!(matches!(
-		cli.command,
-		Command::Research(ResearchCommand {
-			project_config: ProjectConfigArgs { config: Some(config) },
-			command: ResearchSubcommand::Promote(ResearchPromoteCommand {
-				contract_id,
-				accepted_by,
-				accepted_at: Some(accepted_at),
-				acceptance_source,
-				reason: Some(reason),
-				json: true,
-			})
-		}) if config == Path::new("./project.toml")
-			&& contract_id == "research-design-contract"
-			&& accepted_by == "operator"
-			&& accepted_at == "2026-06-10T00:00:00Z"
-			&& acceptance_source == "conversation"
-			&& reason == "push this forward"
-	));
 }

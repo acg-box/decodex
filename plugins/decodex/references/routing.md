@@ -1,26 +1,22 @@
 # Decodex Routing Reference
 
-Use when Decodex work crosses research, planning, ops, commit, or landing.
+Use when Decodex work crosses runtime planning, ops, commit, or landing.
 
 ## Mode Map
 
-- Context: use `$knowledge:docs`, `$knowledge:okf`, or `$knowledge:repo-memory`
-  before non-trivial repo claims.
-- Repo work: use `$codebase:work` for commands, config, dependencies, debugging,
-  validation, completion claims, and subagent boundaries.
-- Drift/writeback: use `$knowledge:docs-drift` or `$knowledge:writeback`.
-- Research/design: use `research`; output is latent until promoted.
-- Skeptic: use `$deliberation:skeptic`; it can block claims but creates no
-  authority.
-- Promotion: use `research-promote` only after explicit acceptance.
-- Planning: use `planning` after promotion or explicit execution instruction.
+- Generic repo work: use the external installed `codebase` plugin.
+- Repo knowledge: use the external installed `knowledge` plugin.
+- Research, frame, scout, and skeptic work: use the external installed `research`
+  plugin.
+- Decodex planning: use `planning` after explicit Decodex execution instruction
+  or accepted project-policy authority.
 - Ops: use `decodex-ops` for retained automation, manual CLI, tracker intake, labels,
   lane control, recovery, operator readback, and missing handoff diagnosis.
 - Commit/land: use `commit` or `land` only for their narrow high-risk surfaces.
 
 ## First Reads
 
-- This repo: `README.md`, `docs/index.md`, `docs/policy.md`, `Makefile.toml`.
+- This repo: `README.md`, `Makefile.toml`, and the relevant Decodex product docs.
 - Projects: `project.toml` and `WORKFLOW.md`.
 - Runtime: `docs/spec/` and `docs/runbook/`.
 - Orchestration lifecycle: `docs/runbook/orchestration-kernel-cutover.md`,
@@ -29,9 +25,6 @@ Use when Decodex work crosses research, planning, ops, commit, or landing.
 
 ## Boundaries
 
-- Research never queues work, mutates Linear, implements, sets goals, or dispatches
-  runtime Program nodes; read-only scout/skeptic subagents are allowed by the
-  research skill. Research is not runtime `compact_current_head_review`.
 - Program Intake dispatches persisted Program nodes; queue labels are not scheduling.
 - Ordinary intake starts from `decodex:queued:<service-id>` and still must pass
   workflow, terminal-state, dependency, opt-out, and active-lease checks.
