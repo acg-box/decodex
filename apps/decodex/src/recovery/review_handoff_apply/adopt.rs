@@ -6,10 +6,10 @@ mod rollback;
 use crate::{
 	prelude::Result,
 	recovery::{
-		self, AdoptValidation, REBOUND_ORCHESTRATION_PHASE, RecoveryContext,
+		self, AdoptValidation, REBOUND_LIFECYCLE_PHASE, RecoveryContext,
 		review_handoff_apply::audit,
 	},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::{ReviewLifecycleHandoffInput, ReviewLifecycleTransitionInput},
 	tracker::IssueTracker,
 };
 
@@ -17,44 +17,44 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 	context: &RecoveryContext,
 	validation: &AdoptValidation,
 ) -> Result<()> {
-	let handoff_marker = ReviewHandoffMarker::new(
-		validation.run_id.clone(),
-		validation.attempt_number,
-		validation.branch_name.clone(),
-		recovery::landing_url(&validation.landing_state),
-		validation.landing_state.base_ref_name.clone(),
-		validation.landing_state.head_ref_name.clone(),
-		validation.local_head_oid.clone(),
-	);
-	let orchestration_marker = ReviewOrchestrationMarker::new(
-		validation.run_id.clone(),
-		validation.attempt_number,
-		validation.branch_name.clone(),
-		recovery::landing_url(&validation.landing_state),
-		validation.local_head_oid.clone(),
-		REBOUND_ORCHESTRATION_PHASE,
-		None,
-		None,
-		None,
-		0,
-		0,
-		None,
-	);
+	let handoff_input = ReviewLifecycleHandoffInput {
+		run_id: &validation.run_id,
+		attempt_number: validation.attempt_number,
+		branch_name: &validation.branch_name,
+		pr_url: recovery::landing_url(&validation.landing_state),
+		base_ref_name: &validation.landing_state.base_ref_name,
+		head_ref_name: &validation.landing_state.head_ref_name,
+		head_sha: &validation.local_head_oid,
+	};
 	let local_state_write = local_state::write_adopt_local_state(
 		context,
 		validation,
-		&handoff_marker,
-		&orchestration_marker,
+		handoff_input,
+		ReviewLifecycleTransitionInput {
+			run_id: &validation.run_id,
+			attempt_number: validation.attempt_number,
+			branch_name: &validation.branch_name,
+			pr_url: recovery::landing_url(&validation.landing_state),
+			head_sha: &validation.local_head_oid,
+			phase: REBOUND_LIFECYCLE_PHASE,
+			request_comment_database_id: None,
+			request_created_at_unix_epoch: None,
+			request_description_thumbs_up_count: None,
+			request_retry_count: 0,
+			external_round_count: 0,
+			auto_merge_enabled_at_unix_epoch: None,
+		},
 	);
 
 	if let Err(error) = local_state_write {
 		failure::mark_adopt_attempt_failed(context, validation);
 
-		context.state_store.clear_review_lifecycle_for_handoff(
+		context.state_store.clear_review_lifecycle_for_identity(
 			context.config.service_id(),
 			&validation.issue.id,
-			&handoff_marker,
-			&orchestration_marker,
+			handoff_input.branch_name,
+			handoff_input.run_id,
+			handoff_input.attempt_number,
 		)?;
 
 		rollback::rollback_adopt_worktree_mapping(context, validation)?;
@@ -67,11 +67,12 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 		Err(error) => {
 			failure::mark_adopt_attempt_failed(context, validation);
 
-			context.state_store.clear_review_lifecycle_for_handoff(
+			context.state_store.clear_review_lifecycle_for_identity(
 				context.config.service_id(),
 				&validation.issue.id,
-				&handoff_marker,
-				&orchestration_marker,
+				handoff_input.branch_name,
+				handoff_input.run_id,
+				handoff_input.attempt_number,
 			)?;
 
 			rollback::rollback_adopt_worktree_mapping(context, validation)?;
@@ -86,11 +87,12 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 	{
 		failure::mark_adopt_attempt_failed(context, validation);
 
-		context.state_store.clear_review_lifecycle_for_handoff(
+		context.state_store.clear_review_lifecycle_for_identity(
 			context.config.service_id(),
 			&validation.issue.id,
-			&handoff_marker,
-			&orchestration_marker,
+			handoff_input.branch_name,
+			handoff_input.run_id,
+			handoff_input.attempt_number,
 		)?;
 
 		labels::rollback_adopt_active_label_restoration(

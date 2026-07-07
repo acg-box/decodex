@@ -138,19 +138,19 @@ fn retained_review_command_builder_preserves_idempotency_key_and_contract() {
 }
 
 #[test]
-fn retained_review_marker_sync_builder_preserves_kernel_contract() {
+fn retained_review_lifecycle_authority_sync_builder_preserves_kernel_contract() {
 	let intent = post_review::build_post_review_command_intent(
 		"PUB-101",
 		Some("run-1"),
-		"review_orchestration_marker_rebound",
-		CommandIntentKind::SyncReviewOrchestrationMarker,
+		"review_lifecycle_authority_rebound",
+		CommandIntentKind::SyncReviewLifecycleAuthority,
 	);
 
-	assert_eq!(intent.kind, CommandIntentKind::SyncReviewOrchestrationMarker);
+	assert_eq!(intent.kind, CommandIntentKind::SyncReviewLifecycleAuthority);
 	assert_eq!(
 		intent.idempotency_key,
-		"PUB-101:run-1:sync_review_orchestration_marker:review_orchestration_marker_rebound",
+		"PUB-101:run-1:sync_review_lifecycle_authority:review_lifecycle_authority_rebound",
 	);
 	assert!(intent.preconditions.contains(&CommandFact::PostReviewLifecyclePresent));
-	assert_eq!(intent.expected_postconditions, vec![CommandFact::ReviewOrchestrationMarkerCurrent],);
+	assert_eq!(intent.expected_postconditions, vec![CommandFact::ReviewLifecycleAuthorityCurrent],);
 }

@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{
-		self, ReviewOrchestrationMarker, StateStore,
+		self, ReviewLifecycleTransitionFixture, StateStore,
 		tests::{
 			self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
 		},
@@ -34,17 +34,17 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"run-1",
 			1,
 			"main",
@@ -80,7 +80,7 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 	)
 	.expect("post-review orchestration should succeed");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
@@ -119,17 +119,17 @@ fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&tests::sample_review_handoff_marker("main", pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"run-1",
 			1,
 			"main",
@@ -155,7 +155,7 @@ fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
 	)
 	.expect("post-review orchestration should tolerate degraded PR readback");
 
-	let marker = tests::persisted_review_orchestration_marker_for_path(
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,

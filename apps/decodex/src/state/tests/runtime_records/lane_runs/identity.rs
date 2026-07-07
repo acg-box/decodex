@@ -44,10 +44,10 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 		)
 		.expect("decision contract should persist");
 	writer
-		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("handoff projection should persist");
 	writer
-		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
+		.upsert_review_lifecycle_transition_fixture("pubfi", "PUB-101", &orchestration)
 		.expect("orchestration projection should persist");
 
 	tests::upsert_handoff_review_policy_checkpoint(
@@ -95,20 +95,20 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 			.list_private_execution_events("pubfi", "linear-id-101", "run-1", 1)
 			.expect("canonical private evidence should read")
 			.len(),
-		1
+		3
 	);
 
 	tests::assert_decision_contract_retargeted(&reopened);
 
 	assert_eq!(
 		reopened
-			.review_handoff_marker("pubfi", "linear-id-101", "x/decodex-pub-101")
+			.review_lifecycle_handoff_fixture("pubfi", "linear-id-101", "x/decodex-pub-101")
 			.expect("canonical handoff should read"),
 		Some(handoff.clone())
 	);
 	assert_eq!(
 		reopened
-			.review_orchestration_marker("pubfi", "linear-id-101", &handoff)
+			.review_lifecycle_transition_fixture("pubfi", "linear-id-101", &handoff)
 			.expect("canonical orchestration should read"),
 		Some(orchestration)
 	);

@@ -5,9 +5,9 @@ mod worktree;
 
 pub(crate) use self::{
 	classification::{
-		blocked_post_review_lane, blocked_post_review_lane_from_handoff,
+		blocked_post_review_lane, blocked_post_review_lane_from_lifecycle,
 		blocked_post_review_lane_from_state, blocked_post_review_lane_status,
-		initial_post_review_lane_classification, readback_degraded_post_review_lane_from_handoff,
+		initial_post_review_lane_classification, readback_degraded_post_review_lane_from_lifecycle,
 	},
 	env::resolve_configured_env_var,
 	gates::{
@@ -17,7 +17,7 @@ pub(crate) use self::{
 	},
 	worktree::{
 		retained_closeout_pr_merge_gate_with_inspector, validate_post_review_lane_worktree,
-		worktree_checkout_branch_name, worktree_head_descends_from_review_handoff,
+		worktree_checkout_branch_name, worktree_head_descends_from_lifecycle_record,
 		worktree_head_oid,
 	},
 };

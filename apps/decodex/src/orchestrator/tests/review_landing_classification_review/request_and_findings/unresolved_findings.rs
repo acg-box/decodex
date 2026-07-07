@@ -35,7 +35,7 @@ fn classify_post_review_lane_requires_review_repair_for_unresolved_threads() {
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -94,7 +94,7 @@ fn classify_post_review_lane_requires_review_repair_for_non_thread_review_summar
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -103,11 +103,11 @@ fn classify_post_review_lane_requires_review_repair_for_non_thread_review_summar
 		local_head_oid: Some(head_oid.clone()),
 	};
 
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		&state_store,
 		TEST_SERVICE_ID,
 		&snapshot.issue.id,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,

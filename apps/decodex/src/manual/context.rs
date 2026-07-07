@@ -4,7 +4,7 @@ mod unregistered;
 #[cfg(test)]
 pub(super) use self::{
 	closeout::{
-		ensure_cli_repo_context, read_manual_land_handoff, resolve_manual_config_path,
+		ensure_cli_repo_context, read_manual_land_lifecycle, resolve_manual_config_path,
 		resolve_pr_url,
 	},
 	unregistered::prepare_unregistered_manual_land_context,
@@ -88,13 +88,13 @@ pub(super) fn prepare_configured_manual_land_context(
 		workflow.clone(),
 		&authority,
 	)?;
-	let handoff = match prepared_closeout.as_ref() {
+	let lifecycle_record = match prepared_closeout.as_ref() {
 		Some(prepared_closeout) => {
 			let state_store = runtime::open_runtime_store()?;
 
 			runtime::register_project_config(&state_store, resolved_config_path, true)?;
 
-			closeout::read_manual_land_handoff(
+			closeout::read_manual_land_lifecycle(
 				&state_store,
 				config.service_id(),
 				&prepared_closeout.issue.id,
@@ -105,12 +105,12 @@ pub(super) fn prepare_configured_manual_land_context(
 	};
 	let pr_url = closeout::resolve_pr_url(
 		request.pr_url.as_deref(),
-		handoff.as_ref(),
+		lifecycle_record.as_ref(),
 		authority.is_manual(),
 	)?;
-	let review_branch = handoff
+	let review_branch = lifecycle_record
 		.as_ref()
-		.map(|marker| marker.branch_name().to_owned())
+		.map(|record| record.branch_name().to_owned())
 		.unwrap_or_else(|| current_branch.clone());
 
 	Ok(ManualLandContext {
@@ -127,7 +127,7 @@ pub(super) fn prepare_configured_manual_land_context(
 		github_command_path,
 		repository,
 		prepared_closeout,
-		review_handoff: handoff,
+		review_lifecycle: lifecycle_record,
 		pr_url,
 		review_branch,
 		public_projection_privacy_classifier,

@@ -40,7 +40,7 @@ fn classify_post_review_lane_with_github_token_env_var(
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,

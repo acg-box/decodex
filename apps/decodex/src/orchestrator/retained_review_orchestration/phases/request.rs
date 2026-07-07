@@ -3,8 +3,8 @@ use crate::{
 	orchestrator::retained_review_orchestration::{
 		self, CommandIntentKind, EXTERNAL_REVIEW_ACK_TIMEOUT_SECS, EXTERNAL_REVIEW_REQUEST_BODY,
 		ExternalReviewRequestCiGate, IssueTracker, PassiveRetainedAttentionRuntime, Result,
-		RetainedReviewLane, RetainedReviewOrchestrationMarkerFields, ReviewOrchestrationPhase,
-		ServiceConfig, StateStore, WorkflowDocument, admin_merge, github, markers,
+		RetainedReviewLane, RetainedReviewLifecycleAuthorityFields, ServiceConfig, StateStore,
+		WorkflowDocument, admin_merge, github, lifecycle_authority,
 	},
 };
 
@@ -18,13 +18,15 @@ pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_req
 		ExternalReviewRequestCiGate::Ready => {},
 		ExternalReviewRequestCiGate::WaitForGreenChecks => return Ok(()),
 		ExternalReviewRequestCiGate::RepairRequired => {
-			return markers::write_retained_review_orchestration_marker_for_command(
+			return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 				state_store,
 				lane,
 				CommandIntentKind::StartReviewRepair,
 				"external_review_request_ci_red_repair_required",
-				ReviewOrchestrationPhase::RepairRequired,
-				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
+				"repair_required",
+				RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(
+					lane.lifecycle_record(),
+				),
 			);
 		},
 	}
@@ -37,17 +39,17 @@ pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_req
 		"external_review_request_pending",
 	)?;
 
-	markers::write_retained_review_orchestration_marker_for_command(
+	lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 		state_store,
 		lane,
 		CommandIntentKind::RequestExternalReview,
 		"external_review_request_pending",
-		ReviewOrchestrationPhase::WaitingForAck,
-		RetainedReviewOrchestrationMarkerFields {
+		"waiting_for_ack",
+		RetainedReviewLifecycleAuthorityFields {
 			request_comment_database_id: Some(comment_id),
 			request_created_at_unix_epoch: Some(created_at_unix_epoch),
 			request_retry_count: 0,
-			..RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker)
+			..RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(lane.lifecycle_record())
 		},
 	)
 }
@@ -66,23 +68,25 @@ pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_wai
 where
 	T: IssueTracker,
 {
-	if orchestrator::request_comment_has_eyes(&lane.review_state, &lane.orchestration_marker)
+	if orchestrator::request_comment_has_eyes(&lane.review_state, lane.lifecycle_record())
 		.unwrap_or(false)
 	{
-		return markers::write_retained_review_orchestration_marker_for_command(
+		return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 			state_store,
 			lane,
 			CommandIntentKind::ProbeExternalReviewAcknowledgement,
 			"external_review_acknowledged",
-			ReviewOrchestrationPhase::WaitingForResult,
-			RetainedReviewOrchestrationMarkerFields {
-				..RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker)
+			"waiting_for_result",
+			RetainedReviewLifecycleAuthorityFields {
+				..RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(
+					lane.lifecycle_record(),
+				)
 			},
 		);
 	}
 
 	let Some(request_created_at_unix_epoch) =
-		lane.orchestration_marker.request_created_at_unix_epoch()
+		lane.lifecycle_record().request_created_at_unix_epoch()
 	else {
 		return Ok(());
 	};
@@ -90,7 +94,7 @@ where
 	if now_unix_epoch - request_created_at_unix_epoch <= EXTERNAL_REVIEW_ACK_TIMEOUT_SECS {
 		return Ok(());
 	}
-	if lane.orchestration_marker.request_retry_count() == 0 {
+	if lane.lifecycle_record().request_retry_count() == 0 {
 		let (comment_id, created_at_unix_epoch) = post_external_review_request_for_command(
 			project,
 			lane,
@@ -99,17 +103,19 @@ where
 			"external_review_ack_pending",
 		)?;
 
-		return markers::write_retained_review_orchestration_marker_for_command(
+		return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 			state_store,
 			lane,
 			CommandIntentKind::ResendExternalReviewRequest,
 			"external_review_ack_pending",
-			ReviewOrchestrationPhase::WaitingForAck,
-			RetainedReviewOrchestrationMarkerFields {
+			"waiting_for_ack",
+			RetainedReviewLifecycleAuthorityFields {
 				request_comment_database_id: Some(comment_id),
 				request_created_at_unix_epoch: Some(created_at_unix_epoch),
 				request_retry_count: 1,
-				..RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker)
+				..RetainedReviewLifecycleAuthorityFields::from_lifecycle_record(
+					lane.lifecycle_record(),
+				)
 			},
 		);
 	}
@@ -118,7 +124,7 @@ where
 		PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
-		&lane.orchestration_marker,
+		lane.lifecycle_record(),
 		"external_review_ack_timeout",
 	)
 }

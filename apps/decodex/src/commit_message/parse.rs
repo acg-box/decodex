@@ -20,7 +20,7 @@ pub(super) fn parse_commit_message_record(
 		);
 	}
 
-	record.summary = normalize::normalize_single_line_field("summary", &record.summary)?;
+	record.change = normalize::normalize_single_line_field("change", &record.change)?;
 
 	let authority = normalize::normalize_commit_authority("authority", &record.authority)?;
 
@@ -35,8 +35,11 @@ pub(super) fn parse_commit_message_record(
 		}
 	}
 
-	for related in &mut record.related {
-		*related = normalize::normalize_issue_identifier("related", related)?;
+	if !matches!(record.impact.as_str(), "compatible" | "breaking") {
+		eyre::bail!(
+			"`commit_message.impact` must be `compatible` or `breaking`, not `{}`.",
+			record.impact
+		);
 	}
 
 	Ok(record)

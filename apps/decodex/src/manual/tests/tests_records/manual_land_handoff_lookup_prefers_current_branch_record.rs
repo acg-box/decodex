@@ -1,6 +1,6 @@
 #[rustfmt::skip]
 use crate::manual::{self, tests};
-use crate::state::{ReviewHandoffMarker, StateStore};
+use crate::state::{ReviewLifecycleHandoffFixture, StateStore};
 
 #[test]
 fn manual_land_handoff_lookup_prefers_current_branch_record() {
@@ -8,10 +8,10 @@ fn manual_land_handoff_lookup_prefers_current_branch_record() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			"decodex",
 			&issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				String::from("run-current"),
 				2,
 				String::from("xy-225"),
@@ -23,10 +23,10 @@ fn manual_land_handoff_lookup_prefers_current_branch_record() {
 		)
 		.expect("runtime handoff should persist");
 	state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			"decodex",
 			&issue.id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				String::from("run-other"),
 				3,
 				String::from("xy-225-next"),
@@ -38,10 +38,11 @@ fn manual_land_handoff_lookup_prefers_current_branch_record() {
 		)
 		.expect("unrelated runtime handoff should persist");
 
-	let handoff = manual::read_manual_land_handoff(&state_store, "decodex", &issue.id, "xy-225")
-		.expect("manual land handoff should read")
-		.expect("current branch handoff should be found");
+	let lifecycle_record =
+		manual::read_manual_land_lifecycle(&state_store, "decodex", &issue.id, "xy-225")
+			.expect("manual land lifecycle should read")
+			.expect("current branch lifecycle should be found");
 
-	assert_eq!(handoff.branch_name(), "xy-225");
-	assert_eq!(handoff.pr_url(), "https://github.com/hack-ink/decodex/pull/67");
+	assert_eq!(lifecycle_record.branch_name(), "xy-225");
+	assert_eq!(lifecycle_record.pr_url(), "https://github.com/hack-ink/decodex/pull/67");
 }

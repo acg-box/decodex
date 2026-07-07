@@ -54,4 +54,5 @@ pub(crate) fn run(config_path: Option<&Path>, request: &ArchiveHygieneRequest) -
 	Ok(())
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

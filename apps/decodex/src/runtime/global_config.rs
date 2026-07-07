@@ -1,6 +1,7 @@
 //! Global Decodex operator config accessors.
 
-#[cfg(test)] use std::process;
+#[cfg(test)]
+use std::process;
 use std::{fs, io::ErrorKind};
 
 use toml::Value;

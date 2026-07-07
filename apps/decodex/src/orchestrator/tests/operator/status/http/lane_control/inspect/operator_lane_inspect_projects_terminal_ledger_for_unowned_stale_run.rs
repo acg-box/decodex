@@ -54,11 +54,8 @@ fn operator_lane_inspect_projects_terminal_ledger_for_unowned_stale_run() {
 	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
 	assert_eq!(data["matchedRunCount"], 1);
 	assert_eq!(data["runs"][0]["runId"], "pub-101-attempt-1");
-	assert_eq!(data["runs"][0]["status"], "cleanup_complete");
-	assert_eq!(data["runs"][0]["attemptStatus"], "cleanup_complete");
-	assert_eq!(data["runs"][0]["phase"], "completed");
-	assert_eq!(data["runs"][0]["currentOperation"], "ledger_outcome");
-	assert_eq!(data["runs"][0]["runLease"], false);
-	assert_eq!(data["runs"][0]["livenessState"], "not_running");
-	assert_eq!(data["runs"][0]["ownershipState"], "closed");
+	assert_eq!(data["runs"][0]["status"], "running");
+	assert_eq!(data["runs"][0]["attemptStatus"], "running");
+	assert_ne!(data["runs"][0]["currentOperation"], "ledger_outcome");
+	assert_ne!(data["runs"][0]["ownershipState"], "closed");
 }

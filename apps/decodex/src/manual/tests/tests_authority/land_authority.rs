@@ -79,7 +79,7 @@ fn manual_land_manual_authority_without_config_prepares_unregistered_context() {
 	assert_eq!(context.project_worktree_root, context.canonical_repo_root.join(".worktrees"));
 	assert!(context.workflow.is_none());
 	assert!(context.prepared_closeout.is_none());
-	assert!(context.review_handoff.is_none());
+	assert!(context.review_lifecycle.is_none());
 	assert_eq!(context.github_token_env_var, "GH_TOKEN");
 	assert_eq!(context.github_token, "ghp_test");
 }

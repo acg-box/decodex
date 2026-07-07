@@ -10,17 +10,22 @@ code_refs:
   - apps/decodex/src/orchestrator/kernel/post_review.rs
   - apps/decodex/src/orchestrator/kernel/command.rs
   - apps/decodex/src/orchestrator/status/post_review/classification.rs
+  - apps/decodex/src/orchestrator/post_review_facts.rs
+  - apps/decodex/src/orchestrator/kernel/lifecycle.rs
   - apps/decodex/src/orchestrator/retained_review_orchestration.rs
   - apps/decodex/src/orchestrator/retained_review_orchestration/phases.rs
   - apps/decodex/src/orchestrator/retained_review_orchestration/admin_merge.rs
-  - apps/decodex/src/orchestrator/retained_review_orchestration/markers.rs
+  - apps/decodex/src/orchestrator/retained_review_orchestration/lifecycle_authority.rs
   - apps/decodex/src/orchestrator/execution_failure/review_handoff_drift.rs
   - apps/decodex/src/orchestrator/dispatch_policy.rs
   - apps/decodex/src/orchestrator/run_cycle_post_review.rs
   - apps/decodex/src/orchestrator/status/post_review.rs
   - apps/decodex/src/pull_request.rs
   - apps/decodex/src/state/review_records/lifecycle.rs
+  - apps/decodex/src/state/review_records/lifecycle/authority.rs
 drift_watch:
+  - decodex/lifecycle-authority-record/1
+  - decodex/lifecycle-event/1
   - decodex land --manual-authority --pr
   - review_handoff_state_transition_pending
   - review_lifecycle_records
@@ -58,11 +63,11 @@ Defines: Post-`In Review` lane phases, phase-to-action-class mapping, authoritat
   Linear comment event-ledger schema used by post-review handoff, repair, landing,
   closeout, and cleanup records.
 - [`owned-lane-policy.md`](./owned-lane-policy.md) defines the allowed action classes and the fallback policy for waiting, repair re-entry, landing readiness, automatic recovery, and manual intervention.
-- [`review-orchestration.md`](./review-orchestration.md) defines the shared Self
-  Check, Decodex Review, and GitHub Review loop, strict GitHub Review request and
-  pass signals when that level is enabled, round accounting, and the rule that
-  GitHub Review pass flows into Decodex-directed admin merge instead of a separate
-  manual landing request.
+- [`review-orchestration.md`](./review-orchestration.md) defines the runtime-owned
+  Decodex Review and GitHub Review loop, strict GitHub Review request and pass
+  signals when that level is enabled, round accounting, and the rule that GitHub
+  Review pass flows into Decodex-directed admin merge instead of a separate manual
+  landing request.
 - This document narrows those action classes into the specific post-`In Review` lane phases and transitions that Decodex must honor after review handoff succeeds.
 
 ## Core invariants
@@ -82,8 +87,7 @@ Post-`In Review` classification may use only these signal groups:
   - issue workflow state
   - labels
   - blocker state
-  - authoritative Linear execution ledger comments written during handoff, repair,
-    landing, closeout, or cleanup
+  - public Linear lifecycle comments as team-visible projections only
 - Retained-lane state:
   - worktree existence
   - lane markers such as activity and guarded markers
@@ -101,19 +105,43 @@ Post-`In Review` classification may use only these signal groups:
   - whether deterministic local cleanup remains pending
 
 In the current runtime, the retained lane persists one `review_lifecycle_records` row
-in the Decodex runtime database and uses that row as the authoritative post-review
-lineage record for repair, landing, closeout, and cleanup. The record stores the PR
-URL, base/head branch, validated PR head OID, run id, attempt number, current
-post-review phase, review-request metadata, landing/closeout/repair state, evidence,
-and next action. Handoff and orchestration tool-boundary shapes are projections of this
-record; they are not separate durable authority. When that exact lifecycle record is
-missing, post-review ownership must
+in the Decodex runtime database as the projection of a canonical lifecycle authority
+record. Final lifecycle states are decided by the pure lifecycle kernel and written
+only by the runtime state adapter. Linear execution ledger comments, tracker comments,
+manual closeout receipts, and recovery audits are public projections or execution logs;
+they must not answer whether a lane is finally `landed`, `closed`, or cleanup-final.
+
+The authority record schema is `decodex/lifecycle-authority-record/1`. Its append-only
+event envelope schema is `decodex/lifecycle-event/1`. The persisted record covers:
+`schema_version`, `project_id`/`service_id`, `issue_id`, `subject_id`, `sequence`,
+`phase`, `transition`, `previous_state`, `next_state`, `next_action`, `review_level`,
+`review_gate_state`, `pr_url`, `base_branch`, `head_branch`, `validated_head_sha`,
+`worktree_path`, `merge_commit`, `cleanup_state`, `authority`, `actor`,
+`source_evidence_refs`, `idempotency_key`, `correlation_id`, `causation_id`, and
+`decided_at`.
+
+The lifecycle kernel is a pure decision function: it receives normalized facts and
+evidence classification, then returns a `LifecycleDecision` plus authority-record
+envelope. It must not read or write `StateStore`, SQLite, tracker, GitHub, Linear, or
+worktree state. Runtime adapters collect facts, perform side effects such as GitHub
+merge or tracker closeout, submit intent/readback evidence to the kernel, and
+transactionally persist the authority projection plus lifecycle event.
+
+When that exact lifecycle authority projection is missing, post-review ownership must
 block as unresolved instead of rebinding from branch-name, current-head-only
 heuristics, or Linear comments.
 Historical `review_handoffs` and `review_orchestrations` tables are dropped during
 runtime bootstrap without copying their rows, and must not be used as readback
 authority. Operators must use explicit diagnose, rebind, or adopt recovery to create or
 refresh a current lifecycle record.
+
+Manual development remains supported. Humans may edit, test, commit, open PRs, run
+issue-authority `decodex land`, and run explicit recovery. Issue-authority landing and
+already-merged recovery still submit landing and closeout evidence through the
+lifecycle kernel before the runtime projection becomes final. The non-issue
+`decodex land --manual-authority --pr <URL>` path is the local receipt exception: it
+does not require project registry or issue closeout and therefore does not create an
+issue-authority final lifecycle record.
 
 If these signals disagree and the disagreement cannot be resolved without guessing operator intent, the runtime must use `manual_intervention_required`.
 
@@ -126,7 +154,7 @@ and `decodex run` must not repair this state automatically.
 If operator status sees private `review_completion_intent` plus
 `issue_terminal_finalize(path = "review_handoff")` but no matching
 `review_lifecycle_records` row, it must expose a deterministic pending writeback
-reason such as `review_handoff_writeback_missing_lifecycle_marker`. That readback is
+reason such as `review_handoff_writeback_missing_lifecycle_authority`. That readback is
 only a fail-closed recovery contract: recovery may proceed automatically only when the
 exact private intent, PR URL, retained branch, local `HEAD`, and PR head still match.
 Otherwise operators must use explicit diagnose, rebind, or adopt recovery.
@@ -330,13 +358,13 @@ While in `review_repair`:
 - the runtime must reuse the retained lane when it is still valid
 - repair work must stay bound to the same issue, branch lineage, and PR
 - the runtime must validate each GitHub Review claim against the codebase, tests, and requirements before changing code
-- when a fresh-context `issue_review_checkpoint` exists for the repair phase, repair
-  work must operate on accepted findings from that checkpoint; rejected or
-  non-actionable comments remain evidence, not repair scope
+- when a fresh-context runtime-owned `issue_review_checkpoint` artifact exists for
+  the repair phase, repair work must operate on accepted findings from that
+  checkpoint; rejected or non-actionable comments remain evidence, not repair scope
 - the repaired head must pass the local pre-review gate before being pushed
-- when `[codex].review` is `"standard"` or `"strict"`, every repaired-head
-  bounded Decodex Review result must first be recorded through
-  `issue_review_checkpoint`
+- when `[codex].review` is `"standard"` or `"strict"`, the runtime records every
+  repaired-head bounded Decodex Review result through `issue_review_checkpoint`
+  after retained repair completion
 - every addressed review thread must receive an in-thread reply for the repaired head
 - only threads whose landed fix is verified on that repaired head may be resolved; pushback or clarification threads stay open
 - once a new head is pushed and fresh review is requested on the same PR, the lane returns to `review_wait` for that new head
@@ -355,23 +383,24 @@ refresh the local runtime handoff row to the repaired PR head while keeping the
 tracker issue in `In Review`; it does not re-run the original
 `issue_review_handoff` state transition.
 When `[codex].review` is `"standard"` or `"strict"`,
-`issue_review_repair_complete` is valid only when the latest retained repair
-checkpoint is `clean` for the current repaired head. If repeated repair checkpoints
-stay in `findings` for three consecutive rounds, the runtime must stop the current
-patch-on-patch strategy and run the architecture recovery boundary check before
-either retrying with a materially different implementation strategy or routing to
-human intervention. If the checkpoint reports `needs_architecture_review` /
-`blocked`, the runtime must stop for human intervention. When `[codex].review` is
-`"off"` or `"basic"`, retained repair completion skips that Decodex Review checkpoint
-requirement but still requires the repaired head to be pushed and the configured
-repository validation gate to pass.
+`issue_review_repair_complete` records the pushed repaired-head fact and then the
+runtime-owned repair review gate must record a latest retained repair checkpoint that
+is `clean` for the current repaired head before the lane may proceed on the clean
+path. If repeated repair checkpoints stay in `findings` for three consecutive rounds,
+the runtime must stop the current patch-on-patch strategy and run the architecture
+recovery boundary check before either retrying with a materially different
+implementation strategy or routing to human intervention. If the checkpoint reports
+`needs_architecture_review` / `blocked`, the runtime must stop for human
+intervention. When `[codex].review` is `"off"`, retained repair completion skips that
+Decodex Review checkpoint requirement but still requires the repaired head to be
+pushed and the configured repository validation gate to pass.
 During the narrow interval after `issue_review_repair_complete` and
 `issue_terminal_finalize(path = "review_repair")` are recorded but before the retained
 `review_lifecycle_records` row has been refreshed to the repaired PR head, operator
 status must treat the exact private completion intent plus current-head clean repair
 checkpoint artifact as transitional writeback evidence. That transition may surface
-`review_repair_writeback_missing_lifecycle_marker` or
-`review_repair_writeback_stale_lifecycle_marker`, but it must not revive stale repair
+`review_repair_writeback_missing_lifecycle_authority` or
+`review_repair_writeback_stale_lifecycle_authority`, but it must not revive stale repair
 findings, request a duplicate review checkpoint, or classify the repaired lane as a
 new ordinary implementation run. The transition is valid only when the issue, branch,
 run attempt, PR URL, PR head ref, PR head OID, local `HEAD`, and clean repair

@@ -1,10 +1,13 @@
-use crate::orchestrator::execution_failure::{
-	self, IssueRunPlan, IssueTracker, LoopGuardrailReason, LoopGuardrailWorktreeFingerprint,
-	ManualAttentionRequested, Report, Result, ReviewHandoffMarker, ServiceConfig, StateStore,
-	TERMINAL_GUARDED_RUN_STATUS, TerminalFailureWritebackRuntime, WorkflowDocument,
-	review_handoff_drift::{
-		lineage, recovery::transition, types::REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE,
+use crate::{
+	orchestrator::execution_failure::{
+		self, IssueRunPlan, IssueTracker, LoopGuardrailReason, LoopGuardrailWorktreeFingerprint,
+		ManualAttentionRequested, Report, Result, ServiceConfig, StateStore,
+		TERMINAL_GUARDED_RUN_STATUS, TerminalFailureWritebackRuntime, WorkflowDocument,
+		review_handoff_drift::{
+			lineage, recovery::transition, types::REVIEW_HANDOFF_STATE_DRIFT_DETECTED_EVENT_TYPE,
+		},
 	},
+	state::ReviewLifecycleRecord,
 };
 
 pub(super) fn review_handoff_state_drift_attention_error(
@@ -35,16 +38,16 @@ pub(super) fn review_handoff_state_drift_attention_error(
 		issue_run.attempt_number,
 		"handoff",
 	)?;
-	let drift_reason = match state_store.review_handoff_marker(
+	let drift_reason = match state_store.review_lifecycle_record(
 		project.service_id(),
 		&issue_run.issue.id,
 		&issue_run.worktree.branch_name,
 	)? {
-		Some(review_handoff) => review_handoff_marker_drift_reason(
+		Some(lifecycle_record) => review_lifecycle_record_drift_reason(
 			workflow,
 			issue_run,
 			&worktree_fingerprint,
-			&review_handoff,
+			&lifecycle_record,
 		)?,
 		None => {
 			let Some(checkpoint) = checkpoint.as_ref() else {
@@ -57,7 +60,7 @@ pub(super) fn review_handoff_state_drift_attention_error(
 				return Ok(None);
 			}
 
-			Some(String::from("missing_review_handoff_marker"))
+			Some(String::from("missing_review_lifecycle_record"))
 		},
 	};
 	let Some(drift_reason) = drift_reason else {
@@ -79,7 +82,7 @@ pub(super) fn review_handoff_state_drift_attention_error(
 				"checkpoint_status": checkpoint.as_ref().map(|checkpoint| checkpoint.status()),
 				"checkpoint_head_sha": checkpoint.as_ref().map(|checkpoint| checkpoint.head_sha()),
 				"local_head_sha": worktree_fingerprint.head_sha,
-				"next_action": "restore or rebind the retained review handoff marker before retrying execution",
+				"next_action": "restore or rebind the retained review lifecycle authority before retrying execution",
 			}),
 		)
 		.map(|_| ())?;
@@ -134,31 +137,31 @@ where
 	Ok(())
 }
 
-fn review_handoff_marker_drift_reason(
+fn review_lifecycle_record_drift_reason(
 	workflow: &WorkflowDocument,
 	issue_run: &IssueRunPlan,
 	worktree_fingerprint: &LoopGuardrailWorktreeFingerprint,
-	review_handoff: &ReviewHandoffMarker,
+	lifecycle_record: &ReviewLifecycleRecord,
 ) -> Result<Option<String>> {
-	if review_handoff.branch_name() != issue_run.worktree.branch_name {
-		return Ok(Some(String::from("review_handoff_marker_branch_mismatch")));
+	if lifecycle_record.branch_name() != issue_run.worktree.branch_name {
+		return Ok(Some(String::from("review_lifecycle_authority_branch_mismatch")));
 	}
-	if review_handoff.pr_head_ref_name() != issue_run.worktree.branch_name {
-		return Ok(Some(String::from("review_handoff_marker_pr_head_ref_mismatch")));
+	if lifecycle_record.pr_head_ref_name() != issue_run.worktree.branch_name {
+		return Ok(Some(String::from("review_lifecycle_authority_pr_head_ref_mismatch")));
 	}
 
 	let lineage = lineage::review_handoff_failure_drift_lineage(
 		&issue_run.worktree.path,
-		review_handoff.pr_head_oid(),
+		lifecycle_record.pr_head_oid(),
 		&worktree_fingerprint.head_sha,
 	);
 
 	if !lineage.allows_lifecycle_recovery() {
-		return Ok(Some(format!("review_handoff_marker_{}", lineage.as_str())));
+		return Ok(Some(format!("review_lifecycle_authority_{}", lineage.as_str())));
 	}
 	if transition::review_handoff_state_drift_success_transition(workflow, issue_run)?.is_some() {
 		return Ok(None);
 	}
 
-	Ok(Some(String::from("review_handoff_marker_issue_state_unsupported")))
+	Ok(Some(String::from("review_lifecycle_authority_issue_state_unsupported")))
 }

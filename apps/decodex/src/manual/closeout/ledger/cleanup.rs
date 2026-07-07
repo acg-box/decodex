@@ -45,6 +45,13 @@ pub(in crate::manual) fn clear_manual_closeout_runtime_state(
 	state_store.clear_worktree(issue_id).wrap_err_with(|| {
 		format!("Failed to clear runtime worktree state for issue `{issue_id}`.")
 	})?;
+	state_store.clear_review_lifecycle_for_issue_run(issue_id, handoff_run_id).wrap_err_with(
+		|| {
+			format!(
+				"Failed to clear retained review lifecycle state for issue `{issue_id}` run `{handoff_run_id}`."
+			)
+		},
+	)?;
 
 	Ok(())
 }

@@ -3,6 +3,7 @@ use crate::{
 		self, StateStore, tests,
 		tests::{FakePullRequestReviewStateInspector, FakeTracker},
 	},
+	state::ReviewPolicyCheckpointInput,
 	worktree::WorktreeManager,
 };
 
@@ -31,17 +32,21 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 		)
 		.expect("worktree should record");
 
-	tests::seed_review_handoff_marker_for_path(
+	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &marker_head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(
+			&worktree.branch_name,
+			pr_url,
+			&marker_head_oid,
+		),
 	);
-	tests::seed_review_orchestration_marker_for_path(
+	tests::seed_review_lifecycle_transition_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&worktree.path,
-		&tests::sample_review_orchestration_marker(
+		&tests::sample_review_lifecycle_transition_fixture(
 			&worktree.branch_name,
 			pr_url,
 			&current_head_oid,
@@ -63,6 +68,20 @@ fn build_post_review_lane_statuses_allows_descendant_review_handoff_head_after_r
 
 	tests::add_external_review_ack(&mut review_state);
 	tests::add_external_review_pass(&mut review_state);
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: config.service_id(),
+			issue_id: &issue.id,
+			run_id: "runtime-review",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "strict",
+			status: "clean",
+			head_sha: &current_head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime review checkpoint should persist");
 
 	let lanes = orchestrator::build_post_review_lane_statuses(
 		&tracker,

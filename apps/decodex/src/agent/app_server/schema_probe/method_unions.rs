@@ -41,8 +41,9 @@ fn validate_generated_method_union(
 	let missing_or_mismatched = required_methods
 		.iter()
 		.filter_map(|(method, expected_ref)| match method_refs.get(*method) {
-			Some(actual_ref) if actual_ref.as_deref() == expected_ref_to_option(expected_ref) =>
-				None,
+			Some(actual_ref) if actual_ref.as_deref() == expected_ref_to_option(expected_ref) => {
+				None
+			},
 			Some(actual_ref) => Some(format!(
 				"{method} expected {} got {}",
 				expected_ref_display(expected_ref),

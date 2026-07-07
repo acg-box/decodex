@@ -12,6 +12,9 @@ use crate::{
 		retained_review_orchestration::{
 			attention, load, model::PassiveRetainedAttentionRuntime, phases, stale_worktree,
 		},
+		runtime_standard_review::{
+			AppServerRuntimeStandardReviewRunner, RuntimeStandardReviewRunner,
+		},
 		status,
 	},
 	prelude::Result,
@@ -53,6 +56,35 @@ pub(crate) fn reconcile_post_review_orchestration_with_inspector<T, I>(
 where
 	T: IssueTracker,
 	I: PullRequestReviewStateInspector,
+{
+	let runtime_review_runner = AppServerRuntimeStandardReviewRunner::new(state_store);
+
+	reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		review_state_inspector,
+		&runtime_review_runner,
+	)
+}
+
+pub(crate) fn reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner<
+	T,
+	I,
+	R,
+>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	review_state_inspector: &I,
+	runtime_review_runner: &R,
+) -> Result<()>
+where
+	T: IssueTracker,
+	I: PullRequestReviewStateInspector,
+	R: RuntimeStandardReviewRunner,
 {
 	let active_issue_ids = state_store
 		.list_active_shared_leases(project.service_id())?
@@ -142,16 +174,16 @@ where
 			RetainedReviewLaneLoad::Ready(lane) => *lane,
 		};
 
-		if let Some(reason) = status::validate_review_orchestration_marker(
+		if let Some(reason) = status::validate_post_review_lifecycle_record(
 			&lane.snapshot,
 			&lane.review_state,
-			&lane.orchestration_marker,
+			lane.lifecycle_record(),
 		) {
 			attention::apply_passive_retained_manual_attention(
 				PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 				&lane.snapshot.issue,
 				&lane.snapshot.worktree,
-				&lane.orchestration_marker,
+				lane.lifecycle_record(),
 				reason,
 			)?;
 
@@ -166,6 +198,7 @@ where
 			&lane,
 			&mut github_token,
 			now_unix_epoch,
+			runtime_review_runner,
 		)?;
 	}
 

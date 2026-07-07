@@ -44,16 +44,20 @@ fn validate_social_post_decision_counts(
 	match social_validation::string_field(entry, "status") {
 		Some("published")
 			if before.zip(after).is_none_or(|(before, after)| after != before + 1) =>
+		{
 			errors.push(
 				"decision.daily_count_after must equal daily_count_before + 1 for published posts"
 					.into(),
-			),
+			)
+		},
 		Some("blocked" | "failed" | "skipped")
 			if before.zip(after).is_none_or(|(before, after)| after != before) =>
+		{
 			errors.push(
 				"decision.daily_count_after must equal daily_count_before for non-published posts"
 					.into(),
-			),
+			)
+		},
 		_ => {},
 	}
 }

@@ -109,15 +109,18 @@ pub(crate) fn operator_queued_issue_attention_summary(
 	}
 
 	match marker.and_then(RunActivityMarker::current_operation) {
-		Some(RUN_OPERATION_GIT_CREDENTIALS) =>
-			String::from("Git credential preflight failed; operator recovery required."),
-		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) =>
-			String::from("Codex app-server preflight failed; operator recovery required."),
+		Some(RUN_OPERATION_GIT_CREDENTIALS) => {
+			String::from("Git credential preflight failed; operator recovery required.")
+		},
+		Some(RUN_OPERATION_APP_SERVER_PREFLIGHT) => {
+			String::from("Codex app-server preflight failed; operator recovery required.")
+		},
 		Some(RUN_OPERATION_RECONCILIATION) => String::from(
 			"Stopped during reconciliation or tracker handoff; operator recovery required.",
 		),
-		Some(RUN_OPERATION_AGENT_RUN) =>
-			String::from("Stopped during agent execution; operator recovery required."),
+		Some(RUN_OPERATION_AGENT_RUN) => {
+			String::from("Stopped during agent execution; operator recovery required.")
+		},
 		Some(operation) => format!("Stopped during `{operation}`; operator recovery required."),
 		None => String::from("Needs operator recovery; no local run marker was found."),
 	}

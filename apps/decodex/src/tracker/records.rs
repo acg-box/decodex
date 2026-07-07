@@ -27,4 +27,5 @@ pub(crate) use self::{
 	validation::validate_linear_execution_event_record,
 };
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

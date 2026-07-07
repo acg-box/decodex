@@ -1,4 +1,5 @@
-#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{env, fs, path::PathBuf};
 
 use tempfile::TempDir;

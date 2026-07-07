@@ -10,7 +10,8 @@ mod research_intake_commands;
 
 pub(crate) use self::attempt_command::AttemptRequest;
 
-#[cfg(test)] use std::ffi::OsString;
+#[cfg(test)]
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::{
@@ -101,7 +102,7 @@ impl ProjectConfigArgs {
 enum Command {
 	/// Open the native Decodex App.
 	App(AppCommand),
-	/// Create a signed local commit with a `decodex/commit/1` message.
+	/// Create a signed local commit with a `decodex/commit/2` message.
 	Commit(CommitCommand),
 	/// Validate Git hook inputs with Decodex-owned policy.
 	GitHook(GitHookCommand),
@@ -153,4 +154,5 @@ fn decodex_app_open_args(bundle: Option<&Path>, new: bool) -> Vec<OsString> {
 	app_command::decodex_app_open_args(bundle, new)
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

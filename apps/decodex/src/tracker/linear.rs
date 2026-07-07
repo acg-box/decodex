@@ -8,4 +8,5 @@ mod client;
 
 pub(crate) use self::client::LinearClient;
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

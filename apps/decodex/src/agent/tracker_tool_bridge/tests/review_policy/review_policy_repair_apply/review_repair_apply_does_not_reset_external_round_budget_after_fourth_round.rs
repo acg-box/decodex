@@ -61,10 +61,15 @@ fn review_repair_apply_does_not_reset_external_round_budget_after_fourth_round()
 
 	bridge.apply_review_repair().expect("review repair should apply");
 
-	let marker = tests::persisted_review_handoff_marker(&bridge, &issue, &review_context);
-	let orchestration_marker =
-		tests::persisted_review_orchestration_marker(&bridge, &issue, &review_context, &marker);
+	let marker =
+		tests::persisted_review_lifecycle_handoff_fixture(&bridge, &issue, &review_context);
+	let transition_fixture = tests::persisted_review_lifecycle_transition_fixture(
+		&bridge,
+		&issue,
+		&review_context,
+		&marker,
+	);
 
-	assert_eq!(orchestration_marker.phase(), "request_pending");
-	assert_eq!(orchestration_marker.external_round_count(), 4);
+	assert_eq!(transition_fixture.phase(), "request_pending");
+	assert_eq!(transition_fixture.external_round_count(), 4);
 }

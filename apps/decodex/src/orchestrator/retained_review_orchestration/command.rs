@@ -16,7 +16,7 @@ pub(super) fn retained_review_command_intent(
 ) -> CommandIntent {
 	post_review::build_post_review_command_intent(
 		&lane.snapshot.issue.id,
-		Some(lane.orchestration_marker.run_id()),
+		Some(lane.lifecycle_record().run_id()),
 		reason,
 		kind,
 	)
@@ -81,24 +81,24 @@ mod tests {
 	};
 
 	#[test]
-	fn retained_review_command_adapter_accepts_kernel_built_marker_sync_intent() {
+	fn retained_review_command_adapter_accepts_kernel_built_lifecycle_authority_sync_intent() {
 		let intent = command::retained_review_command_intent_for_issue(
 			"PUB-101",
 			Some("run-1"),
-			CommandIntentKind::SyncReviewOrchestrationMarker,
-			"review_orchestration_marker_created",
+			CommandIntentKind::SyncReviewLifecycleAuthority,
+			"review_lifecycle_authority_created",
 		);
 		let accepted = command::retained_review_command_adapter(
 			intent,
-			CommandIntentKind::SyncReviewOrchestrationMarker,
+			CommandIntentKind::SyncReviewLifecycleAuthority,
 		)
-		.expect("kernel-built marker sync intent should pass retained adapter");
+		.expect("kernel-built lifecycle authority sync intent should pass retained adapter");
 
-		assert_eq!(accepted.kind, CommandIntentKind::SyncReviewOrchestrationMarker);
+		assert_eq!(accepted.kind, CommandIntentKind::SyncReviewLifecycleAuthority);
 		assert!(
 			accepted
 				.expected_postconditions
-				.contains(&CommandFact::ReviewOrchestrationMarkerCurrent)
+				.contains(&CommandFact::ReviewLifecycleAuthorityCurrent)
 		);
 	}
 

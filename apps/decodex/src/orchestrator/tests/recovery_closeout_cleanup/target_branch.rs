@@ -29,11 +29,11 @@ fn cleanup_completed_post_review_lane_fails_closed_when_pr_target_branch_drifted
 		"release/1.x",
 	);
 
-	tests::seed_review_handoff_marker_value(
+	tests::seed_review_lifecycle_handoff_fixture_value(
 		&state_store,
 		config.service_id(),
 		&issue.id,
-		&tests::sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
 
 	state_store

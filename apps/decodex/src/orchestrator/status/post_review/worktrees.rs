@@ -1,14 +1,16 @@
+use crate::state::ReviewLifecycleRecord;
+
 use crate::{
 	orchestrator::status::{
 		post_review,
 		post_review::{
 			HashMap, IssueTracker, OperatorPostReviewLaneStatus, OperatorStatusSnapshot,
 			PostReviewLaneClassification, PostReviewReadbackDegradation,
-			PullRequestReviewStateInspector, ReviewHandoffMarker, ServiceConfig, StateStore,
-			TrackerIssue, WorkflowDocument, WorktreeMapping,
+			PullRequestReviewStateInspector, ServiceConfig, StateStore, TrackerIssue,
+			WorkflowDocument, WorktreeMapping,
 		},
 	},
-	prelude::Result,
+	prelude::{Result, eyre},
 };
 
 pub(crate) fn build_post_review_lane_statuses<T, I>(
@@ -113,7 +115,7 @@ where
 	let mut lanes = Vec::new();
 
 	for worktree in state_store.list_worktrees(project.service_id())? {
-		let Some(review_handoff) = state_store.review_handoff_marker(
+		let Some(lifecycle_record) = state_store.review_lifecycle_record(
 			project.service_id(),
 			worktree.issue_id(),
 			worktree.branch_name(),
@@ -121,19 +123,26 @@ where
 		else {
 			continue;
 		};
+		if lifecycle_record.target_base_ref_name().is_none() {
+			return Err(eyre::eyre!(
+				"Degraded post-review status requires lifecycle authority for `{}` on branch `{}` to include the PR base branch.",
+				worktree.issue_id(),
+				worktree.branch_name()
+			));
+		}
 		let issue_identifier = retained_issue_identifier_from_worktree(&worktree);
 		let review_state = review_state_inspector
-			.inspect_review_state(worktree.worktree_path(), review_handoff.pr_url())
+			.inspect_review_state(worktree.worktree_path(), lifecycle_record.pr_url())
 			.ok();
 		let classification =
-			PostReviewReadbackDegradation::tracker_issue_from_handoff(&review_handoff)
+			PostReviewReadbackDegradation::tracker_issue_from_lifecycle(&lifecycle_record)
 				.wait_for_review_classification(review_state);
 
 		lanes.push(degraded_post_review_lane_status_from_classification(
 			project,
 			state_store,
 			&worktree,
-			&review_handoff,
+			&lifecycle_record,
 			issue_identifier,
 			classification,
 		)?);
@@ -148,7 +157,7 @@ pub(crate) fn degraded_post_review_lane_status_from_classification(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	worktree: &WorktreeMapping,
-	review_handoff: &ReviewHandoffMarker,
+	lifecycle_record: &ReviewLifecycleRecord,
 	issue_identifier: String,
 	classification: PostReviewLaneClassification,
 ) -> Result<OperatorPostReviewLaneStatus> {
@@ -156,8 +165,8 @@ pub(crate) fn degraded_post_review_lane_status_from_classification(
 		project,
 		state_store,
 		worktree.issue_id(),
-		review_handoff.run_id(),
-		review_handoff.attempt_number(),
+		lifecycle_record.run_id(),
+		lifecycle_record.attempt_number(),
 		Some("repair"),
 		None,
 	)?;

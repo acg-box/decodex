@@ -43,29 +43,32 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 	let lane = snapshot.history_lanes.first().expect("history lane should exist");
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
 
-	assert!(snapshot.recent_runs.is_empty());
-	assert_eq!(lane.latest_run.status, "closeout");
-	assert_eq!(lane.latest_run.attempt_status, "closeout");
-	assert_eq!(lane.latest_run.phase, "completed");
+	assert!(!snapshot.recent_runs.is_empty());
+	assert_eq!(lane.latest_run.status, "failed");
+	assert_eq!(lane.latest_run.attempt_status, "failed");
 	assert_eq!(
 		lane.latest_run
 			.loop_status
 			.as_ref()
 			.expect("terminal history should keep loop readback")
 			.summary,
-		"terminal lifecycle: closeout"
+		"terminal lifecycle: failed"
 	);
-	assert_eq!(lane.ledger_outcome.final_outcome, "closeout");
+	assert_eq!(lane.ledger_outcome.ledger_status, "partial");
+	assert_eq!(lane.ledger_outcome.final_outcome, "execution_log");
+	assert_eq!(lane.ledger_outcome.final_event_type.as_deref(), Some("closeout"));
 	assert_eq!(lane.attempts.len(), 1);
 	assert_eq!(lane.attempts[0].status, "failed");
-	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "closeout");
+	assert_eq!(snapshot_json["history_lanes"][0]["latest_run"]["status"], "failed");
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["latest_run"]["loop_status"]["summary"],
-		"terminal lifecycle: closeout"
+		"terminal lifecycle: failed"
 	);
 	assert_eq!(snapshot_json["history_lanes"][0]["attempts"][0]["status"], "failed");
-	assert_eq!(
-		snapshot_json["recent_runs"].as_array().expect("recent runs should be an array").len(),
-		0
+	assert!(
+		!snapshot_json["recent_runs"]
+			.as_array()
+			.expect("recent runs should be an array")
+			.is_empty()
 	);
 }

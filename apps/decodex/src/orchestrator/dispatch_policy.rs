@@ -71,13 +71,13 @@ pub(crate) fn ordinary_dispatch_blocked_by_retained_review_handoff(
 		return Ok(false);
 	}
 
-	let Some(review_handoff) =
-		state_store.review_handoff_marker(project_id, &issue.id, worktree.branch_name())?
+	let Some(lifecycle_record) =
+		state_store.review_lifecycle_record(project_id, &issue.id, worktree.branch_name())?
 	else {
 		return Ok(false);
 	};
 
-	Ok(review_handoff.branch_name() == worktree.branch_name())
+	Ok(lifecycle_record.branch_name() == worktree.branch_name())
 }
 
 pub(crate) fn issue_passes_dispatch_policy<T>(
@@ -164,14 +164,16 @@ where
 			state_store,
 			hint,
 		),
-		IssueDispatchMode::ReviewRepair =>
+		IssueDispatchMode::ReviewRepair => {
 			Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
 				&& !self::retry_budget::issue_retry_budget_exhausted(
 					workflow,
 					state_store,
 					&issue.id,
-				)?),
-		IssueDispatchMode::Closeout =>
-			issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store),
+				)?)
+		},
+		IssueDispatchMode::Closeout => {
+			issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store)
+		},
 	}
 }

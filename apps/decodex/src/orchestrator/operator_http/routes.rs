@@ -18,8 +18,9 @@ pub(super) fn build_operator_state_http_response_for_route(route: OperatorReques
 			"text/html; charset=utf-8",
 			OPERATOR_DASHBOARD_HTML.as_bytes(),
 		),
-		OperatorRequestRoute::DashboardIconPng =>
-			operator_http::http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG),
+		OperatorRequestRoute::DashboardIconPng => {
+			operator_http::http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG)
+		},
 		OperatorRequestRoute::DashboardLogoIco => operator_http::http_response_bytes(
 			"200 OK",
 			"image/x-icon",
@@ -31,8 +32,9 @@ pub(super) fn build_operator_state_http_response_for_route(route: OperatorReques
 			OPERATOR_DASHBOARD_LOGO_TOUCH_PNG,
 		),
 		OperatorRequestRoute::DashboardWs => operator_http::websocket_upgrade_required_response(),
-		OperatorRequestRoute::AppSnapshot =>
-			operator_http::http_response_bytes("200 OK", "application/json", b"{}"),
+		OperatorRequestRoute::AppSnapshot => {
+			operator_http::http_response_bytes("200 OK", "application/json", b"{}")
+		},
 		OperatorRequestRoute::LinearScan => operator_http::http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
@@ -45,8 +47,9 @@ pub(super) fn build_operator_state_http_response_for_route(route: OperatorReques
 			"text/plain; charset=utf-8",
 			b"method not allowed",
 		),
-		OperatorRequestRoute::Live =>
-			operator_http::http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok"),
+		OperatorRequestRoute::Live => {
+			operator_http::http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
+		},
 		OperatorRequestRoute::AccountList { .. }
 		| OperatorRequestRoute::AccountSelect
 		| OperatorRequestRoute::AccountClear
@@ -96,8 +99,9 @@ pub(super) fn parse_operator_state_request_route(
 		.map_or(path_without_query, |(path_without_fragment, _)| path_without_fragment);
 
 	match (method, normalized_path) {
-		("GET", OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH) =>
-			Ok(OperatorRequestRoute::Dashboard),
+		("GET", OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH) => {
+			Ok(OperatorRequestRoute::Dashboard)
+		},
 		("GET", "/assets/icon.png") => Ok(OperatorRequestRoute::DashboardIconPng),
 		("GET", "/assets/logo.ico") => Ok(OperatorRequestRoute::DashboardLogoIco),
 		("GET", "/assets/logo-touch.png") => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
@@ -110,8 +114,9 @@ pub(super) fn parse_operator_state_request_route(
 		("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
 		("GET", OPERATOR_LANE_INSPECT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInspect),
 		("POST", OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInterrupt),
-		("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH | OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH) =>
-			Ok(OperatorRequestRoute::LaneSteer),
+		("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH | OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH) => {
+			Ok(OperatorRequestRoute::LaneSteer)
+		},
 		("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
 		("POST", "/api/accounts/clear") => Ok(OperatorRequestRoute::AccountClear),
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),

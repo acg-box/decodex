@@ -3,11 +3,38 @@ use std::cell::RefCell;
 use crate::agent::{
 	app_server::tests::{
 		AppServerTurnFailure, EmptyToolResponseHandler, FailingToolHandler,
-		NamespacedDynamicToolHandler,
+		HiddenCheckpointToolHandler, NamespacedDynamicToolHandler,
 	},
 	json_rpc::{JsonRpcNotification, JsonRpcRequest},
 	tracker_tool_bridge::DynamicToolContentItem,
 };
+
+#[test]
+fn dynamic_tool_call_rejects_hidden_review_checkpoint_tool() {
+	let handler = HiddenCheckpointToolHandler { called: RefCell::new(false) };
+	let request = JsonRpcRequest {
+		id: serde_json::json!(1),
+		method: String::from("item/tool/call"),
+		params: serde_json::json!({
+			"arguments": {},
+			"callId": "call-1",
+			"threadId": "thread-1",
+			"tool": "issue_review_checkpoint",
+			"turnId": "turn-1"
+		}),
+	};
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
+
+	assert!(!dispatch.response.success);
+	assert_eq!(*handler.called.borrow(), false);
+	assert!(matches!(
+		dispatch.response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("Dynamic tool `issue_review_checkpoint` is not declared for this run attempt.")
+	));
+}
+
 #[test]
 fn dynamic_tool_call_accepts_thread_bound_request_when_payload_turn_id_differs() {
 	let handler = NamespacedDynamicToolHandler { seen_namespace: RefCell::new(None) };

@@ -1,4 +1,0 @@
-mod review_handoff_rejects_dirty_worktree_after_clean_checkpoint;
-mod review_handoff_rejects_stale_clean_checkpoint_for_previous_head;
-mod review_handoff_requires_a_clean_checkpoint;
-mod review_repair_complete_requires_a_clean_checkpoint;

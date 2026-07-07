@@ -29,8 +29,9 @@ pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is
 	event: &PrivateExecutionEvent,
 ) -> bool {
 	match event.event_type() {
-		"lane_control/interrupt/requested" =>
-			event.payload().get("method").and_then(Value::as_str) == Some("turn/interrupt"),
+		"lane_control/interrupt/requested" => {
+			event.payload().get("method").and_then(Value::as_str) == Some("turn/interrupt")
+		},
 		"control_action" => {
 			let payload = event.payload();
 

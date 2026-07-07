@@ -4,7 +4,8 @@ use crate::orchestrator::{
 	WorkflowDocument,
 	reconciliation::{idle, stalled},
 };
-#[cfg(test)] use crate::orchestrator::{HashMap, dispatch_policy::lifecycle};
+#[cfg(test)]
+use crate::orchestrator::{HashMap, dispatch_policy::lifecycle};
 
 #[cfg(test)]
 pub(crate) fn inspect_run_lease_reconciliation_at<T>(
@@ -190,7 +191,9 @@ pub(crate) fn run_lease_reconciliation_workflow<'a>(
 		Some(override_context)
 			if override_context.child.issue_id == issue.id
 				&& override_context.child.run_id == run_attempt.run_id() =>
-			override_context.workflow,
+		{
+			override_context.workflow
+		},
 		_ => current_workflow,
 	}
 }

@@ -8,9 +8,8 @@ use crate::{
 	workflow::WorkflowDocument,
 };
 
-pub(super) const PUB_704_RETAINED_HEAD_SUBJECT: &str =
-	r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-704"}"#;
-pub(super) const PUB_704_RETAINED_LANDED_SUBJECT: &str = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-704"}"#;
+pub(super) const PUB_704_RETAINED_HEAD_SUBJECT: &str = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-704","impact":"compatible"}"#;
+pub(super) const PUB_704_RETAINED_LANDED_SUBJECT: &str = r#"{"schema":"decodex/commit/2","change":"Land current retained handoff","authority":"PUB-704","impact":"compatible"}"#;
 
 pub(super) fn sample_approved_clean_review_state(
 	pr_url: &str,

@@ -4,7 +4,8 @@ use crate::{
 		ExecutionProgramNode, ExecutionProgramNodeStage, ExecutionQueueIntent,
 	},
 	orchestrator::tests::operator::status::{
-		self, FakeTracker, ReviewHandoffMarker, StateStore, orchestrator, text::program_readback,
+		self, FakeTracker, ReviewLifecycleHandoffFixture, StateStore, orchestrator,
+		text::program_readback,
 	},
 };
 
@@ -102,10 +103,10 @@ fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_
 		.upsert_execution_program(config.service_id(), program)
 		.expect("program should persist");
 	state_store
-		.upsert_review_handoff_marker(
+		.upsert_review_lifecycle_handoff_fixture(
 			config.service_id(),
 			issue_id,
-			&ReviewHandoffMarker::new(
+			&ReviewLifecycleHandoffFixture::new(
 				"pub-946-attempt-1",
 				1,
 				branch_name,

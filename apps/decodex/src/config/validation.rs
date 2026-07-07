@@ -1,4 +1,5 @@
-#[cfg(target_os = "macos")] use std::process::Command;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::{env, path::Path};
 
 use crate::prelude::{Result, eyre};
@@ -102,22 +103,24 @@ pub(super) fn resolve_secret_env_var(field_name: &str, env_var: &str) -> Result<
 
 	let value = match env::var(env_var) {
 		Ok(value) if !value.trim().is_empty() => value,
-		Ok(_) =>
+		Ok(_) => {
 			if let Some(value) = resolve_secret_launchd_env_var(env_var) {
 				value
 			} else {
 				eyre::bail!(
 					"Environment variable `{env_var}` referenced by `{field_name}` must not be blank."
 				);
-			},
-		Err(error) =>
+			}
+		},
+		Err(error) => {
 			if let Some(value) = resolve_secret_launchd_env_var(env_var) {
 				value
 			} else {
 				return Err(eyre::eyre!(
 					"Failed to read environment variable `{env_var}` referenced by `{field_name}`: {error}"
 				));
-			},
+			}
+		},
 	};
 
 	if value.trim().is_empty() {

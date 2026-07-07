@@ -19,20 +19,23 @@ impl PhaseGoalController for TestPhaseGoalController {
 
 	fn phase_goal_completed(&self, phase: PhaseGoalKind) -> Result<PhaseGoalTransition> {
 		Ok(match phase {
-			PhaseGoalKind::RepairAcceptedReviewFindings =>
+			PhaseGoalKind::RepairAcceptedReviewFindings => {
 				PhaseGoalTransition::Continue(PhaseGoalSpec::new(
 					PhaseGoalKind::ReviewRepairEvidence,
 					"prepare review repair evidence",
 					None,
-				)),
-			PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures =>
+				))
+			},
+			PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures => {
 				PhaseGoalTransition::Continue(PhaseGoalSpec::new(
 					PhaseGoalKind::HandoffEvidence,
 					"prepare handoff evidence",
 					None,
-				)),
-			PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence =>
-				PhaseGoalTransition::CompleteRun,
+				))
+			},
+			PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence => {
+				PhaseGoalTransition::CompleteRun
+			},
 		})
 	}
 }

@@ -3,7 +3,9 @@ use crate::{
 		HandoffDiagnosticRequest, REVIEW_HANDOFF_BOUND_CLASSIFICATION,
 		REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION, tests, tests::review_handoff,
 	},
-	state::{ReviewHandoffMarker, ReviewOrchestrationMarker},
+	state::{
+		ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, ReviewLifecycleTransitionFixture,
+	},
 };
 
 #[test]
@@ -12,7 +14,7 @@ fn diagnostic_treats_descendant_handoff_head_as_bound() {
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let (temp_dir, original_head, current_head) = tests::temp_git_worktree(branch_name);
 	let worktree = tests::sample_worktree_at(branch_name, temp_dir.path());
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"pub-718-attempt-1",
 		1,
 		branch_name,
@@ -30,8 +32,9 @@ fn diagnostic_treats_descendant_handoff_head_as_bound() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: None,
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
+			&handoff, None,
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(&current_head),
 		worktree_clean: Some(true),
@@ -40,7 +43,7 @@ fn diagnostic_treats_descendant_handoff_head_as_bound() {
 	});
 
 	assert_eq!(diagnostic.classification, REVIEW_HANDOFF_BOUND_CLASSIFICATION);
-	assert_eq!(diagnostic.reason, "review_handoff_record_present");
+	assert_eq!(diagnostic.reason, "review_lifecycle_authority_present");
 	assert_eq!(diagnostic.mismatched_field, None);
 }
 
@@ -50,7 +53,7 @@ fn diagnostic_requires_rebind_when_current_marker_state_transition_pending() {
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
 	let worktree = tests::sample_worktree(branch_name);
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"pub-718-attempt-1",
 		1,
 		branch_name,
@@ -59,7 +62,7 @@ fn diagnostic_requires_rebind_when_current_marker_state_transition_pending() {
 		branch_name,
 		head_oid,
 	);
-	let orchestration = ReviewOrchestrationMarker::new(
+	let orchestration = ReviewLifecycleTransitionFixture::new(
 		"pub-718-attempt-1",
 		1,
 		branch_name,
@@ -82,8 +85,10 @@ fn diagnostic_requires_rebind_when_current_marker_state_transition_pending() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: Some(&orchestration),
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
+			&handoff,
+			Some(&orchestration),
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(head_oid),
 		worktree_clean: Some(true),
@@ -104,7 +109,7 @@ fn diagnostic_requires_refresh_when_handoff_head_is_stale() {
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let (temp_dir, original_head, rebased_head) = tests::temp_rebased_git_worktree(branch_name);
 	let worktree = tests::sample_worktree_at(branch_name, temp_dir.path());
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"pub-718-attempt-1",
 		1,
 		branch_name,
@@ -122,8 +127,9 @@ fn diagnostic_requires_refresh_when_handoff_head_is_stale() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: None,
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
+			&handoff, None,
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(&rebased_head),
 		worktree_clean: Some(true),
@@ -132,9 +138,9 @@ fn diagnostic_requires_refresh_when_handoff_head_is_stale() {
 	});
 
 	assert_eq!(diagnostic.classification, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION);
-	assert_eq!(diagnostic.reason, "review_handoff_lineage_mismatch");
+	assert_eq!(diagnostic.reason, "review_lifecycle_lineage_mismatch");
 	assert_eq!(diagnostic.pr_head_oid.as_deref(), Some(rebased_head.as_str()));
-	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_handoff.pr_head_oid"));
+	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_lifecycle.pr_head_oid"));
 	assert!(diagnostic.next_action.contains("rebind PUB-718"));
 	assert!(diagnostic.next_action.contains("--dry-run"));
 }
@@ -145,7 +151,7 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 	let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
 	let head_oid = "1123456789abcdef0123456789abcdef01234567";
 	let worktree = tests::sample_worktree(branch_name);
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"pub-718-attempt-1",
 		1,
 		branch_name,
@@ -154,7 +160,7 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 		branch_name,
 		head_oid,
 	);
-	let orchestration = ReviewOrchestrationMarker::new(
+	let orchestration = ReviewLifecycleTransitionFixture::new(
 		"pub-718-attempt-1",
 		1,
 		branch_name,
@@ -177,8 +183,10 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 		in_progress_state: "In Progress",
 		failure_state: "Todo",
 		worktree: &worktree,
-		existing_handoff: Some(&handoff),
-		existing_orchestration: Some(&orchestration),
+		existing_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
+			&handoff,
+			Some(&orchestration),
+		)),
 		local_branch_name: Some(branch_name),
 		local_head_oid: Some(head_oid),
 		worktree_clean: Some(true),
@@ -187,6 +195,6 @@ fn diagnostic_requires_refresh_when_orchestration_head_is_stale() {
 	});
 
 	assert_eq!(diagnostic.classification, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION);
-	assert_eq!(diagnostic.reason, "review_orchestration_head_mismatch");
-	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_orchestration.head_sha"));
+	assert_eq!(diagnostic.reason, "review_lifecycle_head_mismatch");
+	assert_eq!(diagnostic.mismatched_field.as_deref(), Some("review_lifecycle.head_sha"));
 }

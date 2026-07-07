@@ -1,6 +1,6 @@
 use crate::{
 	manual::{self, tests},
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewLifecycleHandoffFixture, StateStore},
 };
 
 #[test]
@@ -8,7 +8,7 @@ fn manual_closeout_runtime_clear_removes_lane_state() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("issue-1", "XY-225", true, &["decodex:active:pubfi"]);
 	let other_issue = tests::sample_issue("issue-2", "XY-226", true, &["decodex:active:pubfi"]);
-	let handoff = ReviewHandoffMarker::new(
+	let handoff = ReviewLifecycleHandoffFixture::new(
 		"run-1-failed",
 		1,
 		"y/decodex-xy-225",
@@ -34,7 +34,7 @@ fn manual_closeout_runtime_clear_removes_lane_state() {
 		.upsert_worktree("decodex", &issue.id, "y/decodex-xy-225", "/tmp/worktrees/xy-225")
 		.expect("issue worktree should persist");
 	state_store
-		.upsert_review_handoff_marker("decodex", &issue.id, &handoff)
+		.upsert_review_lifecycle_handoff_fixture("decodex", &issue.id, &handoff)
 		.expect("issue handoff should persist");
 	state_store
 		.upsert_lease("decodex", &other_issue.id, "run-2", "In Progress")
@@ -68,7 +68,7 @@ fn manual_closeout_runtime_clear_removes_lane_state() {
 	);
 	assert!(
 		state_store
-			.review_handoff_marker("decodex", &issue.id, "y/decodex-xy-225")
+			.review_lifecycle_handoff_fixture("decodex", &issue.id, "y/decodex-xy-225")
 			.expect("handoff lookup should succeed")
 			.is_none()
 	);

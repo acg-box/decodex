@@ -163,8 +163,9 @@ fn review_checkpoint_next_action(status: &str) -> String {
 			"Repair accepted findings, rerun validation, and checkpoint the repaired head.",
 		),
 		"blocked" => String::from("Resolve the blocking review condition before continuing."),
-		"needs_architecture_review" =>
-			String::from("Escalate for an architecture decision before further repair churn."),
+		"needs_architecture_review" => {
+			String::from("Escalate for an architecture decision before further repair churn.")
+		},
 		_ => String::from("Inspect the Decodex Review checkpoint summary before continuing."),
 	}
 }

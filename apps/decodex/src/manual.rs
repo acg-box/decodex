@@ -13,7 +13,8 @@ pub(crate) use self::{
 	model::{ManualCommitRequest, ManualLandRequest},
 };
 
-#[cfg(test)] use std::path::Path;
+#[cfg(test)]
+use std::path::Path;
 
 use self::{
 	authority::resolve_land_authority,
@@ -23,10 +24,10 @@ use self::{
 		paths_match_for_manual_commit_guard, run_git_capture,
 	},
 	model::{
-		LandExecutionMode, MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH,
+		LandExecutionMode, MANUAL_LAND_CLOSEOUT_RECEIPT_GIT_PATH,
 		MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT, MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS,
 		MANUAL_LAND_MERGEABILITY_RETRY_DELAY, ManualAuthority, ManualCommitActiveLaneBlocker,
-		ManualLandCloseoutMarkerRecord, ManualLandContext, ManualLandLedgerContext,
+		ManualLandCloseoutReceiptRecord, ManualLandContext, ManualLandLedgerContext,
 		ManualLandRecoveryOutcome, PreparedCloseout,
 	},
 };
@@ -36,20 +37,23 @@ use self::{
 	closeout::{
 		apply_closeout, cleanup_manual_land_lane_checkout, clear_manual_closeout_issue_scope,
 		clear_manual_closeout_runtime_state, ensure_manual_closeout_issue_scope,
-		manual_land_closeout_matches, read_manual_land_closeout_marker,
-		write_manual_land_cleanup_complete_event, write_manual_land_closeout_marker,
+		manual_land_closeout_receipt_matches, read_manual_land_closeout_receipt,
+		write_manual_land_cleanup_complete_event, write_manual_land_closeout_receipt,
 	},
 	commit_guard::manual_commit_active_lane_blocker,
 	context::{
 		ensure_cli_repo_context, prepare_configured_manual_land_context,
-		prepare_unregistered_manual_land_context, read_manual_land_handoff,
+		prepare_unregistered_manual_land_context, read_manual_land_lifecycle,
 		resolve_manual_config_path, resolve_pr_url,
 	},
 	recovery::ensure_already_merged_manual_land_recovery_ready,
 };
-#[cfg(test)] use crate::github::RepositoryContext;
-#[cfg(test)] use crate::prelude::Result;
-#[cfg(test)] use crate::pull_request::PullRequestLandingState;
+#[cfg(test)]
+use crate::github::RepositoryContext;
+#[cfg(test)]
+use crate::prelude::Result;
+#[cfg(test)]
+use crate::pull_request::PullRequestLandingState;
 
 #[cfg(test)]
 fn resolve_authority(
@@ -113,4 +117,5 @@ fn finalize_already_merged_manual_land_recovery(
 	recovery::finalize_already_merged_manual_land_recovery(context, request)
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

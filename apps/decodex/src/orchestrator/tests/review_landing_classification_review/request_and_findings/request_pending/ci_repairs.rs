@@ -3,7 +3,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::orchestrator::{
-	self, PostReviewLaneDecision, PostReviewLaneSnapshot, ReviewOrchestrationMarker, StateStore,
+	self, PostReviewLaneDecision, PostReviewLaneSnapshot, ReviewLifecycleTransitionFixture,
+	StateStore,
 	tests::{self, FakePullRequestReviewStateInspector, TEST_SERVICE_ID},
 };
 
@@ -35,7 +36,7 @@ fn classify_post_review_lane_request_pending_routes_fixable_ci_red_to_repair() {
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -44,11 +45,11 @@ fn classify_post_review_lane_request_pending_routes_fixable_ci_red_to_repair() {
 		local_head_oid: Some(head_oid.clone()),
 	};
 
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		&state_store,
 		TEST_SERVICE_ID,
 		&snapshot.issue.id,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"run-1",
 			1,
 			"x/pubfi-pub-101",
@@ -115,7 +116,7 @@ fn classify_post_review_lane_request_pending_repairs_unhandled_ci_red() {
 	let snapshot = PostReviewLaneSnapshot {
 		issue,
 		worktree,
-		review_handoff: Some(tests::sample_review_handoff_marker(
+		lifecycle_record: Some(tests::sample_review_lifecycle_record(
 			"x/pubfi-pub-101",
 			"https://github.com/hack-ink/decodex/pull/174",
 			&head_oid,
@@ -124,11 +125,11 @@ fn classify_post_review_lane_request_pending_repairs_unhandled_ci_red() {
 		local_head_oid: Some(head_oid.clone()),
 	};
 
-	tests::seed_review_orchestration_marker(
+	tests::seed_review_lifecycle_transition_fixture(
 		&state_store,
 		TEST_SERVICE_ID,
 		&snapshot.issue.id,
-		&ReviewOrchestrationMarker::new(
+		&ReviewLifecycleTransitionFixture::new(
 			"run-1",
 			1,
 			"x/pubfi-pub-101",

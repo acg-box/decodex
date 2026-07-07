@@ -1,7 +1,9 @@
+use crate::state::ReviewLifecycleRecord;
+
 use crate::orchestrator::status::post_review::{
 	self, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
-	PullRequestMergeViewResponse, PullRequestReadbackRootCause, ReviewHandoffMarker, ServiceConfig,
-	github, retry_budget,
+	PullRequestMergeViewResponse, PullRequestReadbackRootCause, ServiceConfig, github,
+	retry_budget,
 };
 
 pub(crate) fn confirm_status_visible_merged_closeout(
@@ -19,9 +21,9 @@ pub(crate) fn confirm_status_visible_merged_closeout(
 		return;
 	};
 	let expected_head_sha = snapshot
-		.review_handoff
+		.lifecycle_record
 		.as_ref()
-		.map(ReviewHandoffMarker::pr_head_oid)
+		.map(ReviewLifecycleRecord::pr_head_oid)
 		.or(classification.pr_head_sha.as_deref());
 	let Some(expected_head_sha) = expected_head_sha else {
 		mark_merged_closeout_confirmation_conflict(classification, None, None);

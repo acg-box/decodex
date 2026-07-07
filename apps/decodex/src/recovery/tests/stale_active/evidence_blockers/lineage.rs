@@ -7,7 +7,7 @@ use crate::{
 		RecoveryRuntimeMutationPolicy,
 		tests::{self, GhostLaneTestTracker},
 	},
-	state::{RUN_ACTIVITY_MARKER_FILE, ReviewHandoffMarker, StateStore},
+	state::{RUN_ACTIVITY_MARKER_FILE, ReviewLifecycleHandoffFixture, StateStore},
 	tracker::{
 		self, TrackerComment, records,
 		records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
@@ -157,7 +157,7 @@ fn stale_active_diagnose_blocks_identifier_keyed_review_lifecycle() {
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let workflow = tests::sample_workflow();
 	let active_label = tracker::automation_active_label("pubfi");
-	let marker = ReviewHandoffMarker::new(
+	let marker = ReviewLifecycleHandoffFixture::new(
 		"run-1626",
 		1,
 		"x/pubfi-pub-1626",
@@ -183,7 +183,7 @@ fn stale_active_diagnose_blocks_identifier_keyed_review_lifecycle() {
 		)
 		.expect("worktree mapping should record");
 	store
-		.upsert_review_handoff_marker("pubfi", "PUB-1626", &marker)
+		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-1626", &marker)
 		.expect("identifier-keyed review lifecycle should record");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);

@@ -45,7 +45,7 @@ fn live_operator_status_snapshot_routes_retained_success_state_lane_out_of_queue
 		snapshot.queued_candidates.iter().all(|candidate| candidate.issue_identifier != "PUB-106"),
 		"post-review retained lanes must not also appear as queue intake blockers"
 	);
-	assert_eq!(lane.reason, "missing_review_handoff_record");
+	assert_eq!(lane.reason, "missing_review_lifecycle_record");
 	assert_eq!(
 		project.queued_candidate_count, 0,
 		"post-review retained lanes must not inflate intake backlog"

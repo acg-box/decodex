@@ -5,7 +5,7 @@ use crate::{
 	manual::{self, ManualAuthority, PreparedCloseout, git},
 	prelude::{Result, eyre},
 	runtime,
-	state::{ReviewHandoffMarker, StateStore},
+	state::{ReviewLifecycleRecord, StateStore},
 	workflow::WorkflowDocument,
 };
 
@@ -70,14 +70,14 @@ pub(in crate::manual) fn ensure_cli_repo_context(
 
 pub(in crate::manual) fn resolve_pr_url(
 	explicit: Option<&str>,
-	handoff: Option<&ReviewHandoffMarker>,
+	lifecycle_record: Option<&ReviewLifecycleRecord>,
 	manual_authority: bool,
 ) -> Result<String> {
 	if let Some(explicit) = explicit {
 		return Ok(explicit.trim().to_owned());
 	}
-	if let Some(handoff) = handoff {
-		return Ok(handoff.pr_url().to_owned());
+	if let Some(lifecycle_record) = lifecycle_record {
+		return Ok(lifecycle_record.pr_url().to_owned());
 	}
 
 	if manual_authority {
@@ -89,11 +89,22 @@ pub(in crate::manual) fn resolve_pr_url(
 	);
 }
 
-pub(in crate::manual) fn read_manual_land_handoff(
+pub(in crate::manual) fn read_manual_land_lifecycle(
 	state_store: &StateStore,
 	service_id: &str,
 	issue_id: &str,
 	current_branch: &str,
-) -> Result<Option<ReviewHandoffMarker>> {
-	state_store.review_handoff_marker(service_id, issue_id, current_branch)
+) -> Result<Option<ReviewLifecycleRecord>> {
+	let Some(lifecycle_record) =
+		state_store.review_lifecycle_record(service_id, issue_id, current_branch)?
+	else {
+		return Ok(None);
+	};
+	if lifecycle_record.target_base_ref_name().is_none() {
+		eyre::bail!(
+			"Manual land found incomplete review lifecycle authority for issue `{issue_id}` branch `{current_branch}`."
+		);
+	}
+
+	Ok(Some(lifecycle_record))
 }

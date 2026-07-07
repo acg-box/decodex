@@ -102,14 +102,22 @@ impl SqliteStateStore {
 					request_comment_database_id, request_created_at_unix_epoch,
 					request_description_thumbs_up_count, request_retry_count, external_round_count,
 					auto_merge_enabled_at_unix_epoch, landing_state, closeout_state,
-					repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix
+					repair_attempt_count, evidence_json, next_action, schema_version, subject_id,
+					sequence, transition, previous_state, next_state, review_level,
+					review_gate_state, base_branch, validated_head_sha, worktree_path, merge_commit,
+					cleanup_state, authority, actor, source_evidence_refs_json, idempotency_key,
+					correlation_id, causation_id, decided_at, updated_at, updated_at_unix
 				)
 			 SELECT project_id, ?2, branch_name, run_id, attempt_number, pr_url,
 					target_base_ref_name, pr_head_ref_name, pr_head_oid, head_sha, phase,
 					request_comment_database_id, request_created_at_unix_epoch,
 					request_description_thumbs_up_count, request_retry_count, external_round_count,
 					auto_merge_enabled_at_unix_epoch, landing_state, closeout_state,
-					repair_attempt_count, evidence_json, next_action, updated_at, updated_at_unix
+					repair_attempt_count, evidence_json, next_action, schema_version, subject_id,
+					sequence, transition, previous_state, next_state, review_level,
+					review_gate_state, base_branch, validated_head_sha, worktree_path, merge_commit,
+					cleanup_state, authority, actor, source_evidence_refs_json, idempotency_key,
+					correlation_id, causation_id, decided_at, updated_at, updated_at_unix
 			 FROM review_lifecycle_records WHERE issue_id = ?1",
 			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
@@ -150,7 +158,7 @@ impl SqliteStateStore {
 		Ok(())
 	}
 
-	pub(in crate::state) fn delete_worktree_and_review_lifecycle(
+	pub(in crate::state) fn delete_worktree_and_review_ephemera(
 		&mut self,
 		issue_id: &str,
 	) -> Result<()> {
@@ -159,7 +167,7 @@ impl SqliteStateStore {
 		transaction
 			.execute("DELETE FROM worktrees WHERE issue_id = ?1", mutations::params![issue_id])?;
 		transaction.execute(
-			"DELETE FROM review_lifecycle_records WHERE issue_id = ?1",
+			"DELETE FROM review_lifecycle_records WHERE issue_id = ?1 AND sequence <= 0",
 			mutations::params![issue_id],
 		)?;
 		transaction.execute(

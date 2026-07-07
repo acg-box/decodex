@@ -14,7 +14,9 @@ pub(in crate::orchestrator) use self::{
 		OperatorIssueDisplayMetadata, OperatorLaneTerminalProjection, OperatorLifecycleMetricPhase,
 		OperatorReviewCheckpointSummaryFields, WorktreeOwnership,
 	},
-	post_review::{PostReviewOrchestrationStatus, PostReviewReadbackDegradation},
+	post_review::{
+		PostReviewLifecycleAction, PostReviewOrchestrationStatus, PostReviewReadbackDegradation,
+	},
 	run::{
 		MarkerProcessLiveness, OperatorLaneControlProjection, OperatorRunAppServerState,
 		OperatorRunLifecycleProjection, OperatorRunProtocolSummary, OperatorRunTiming,
