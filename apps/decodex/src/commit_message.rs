@@ -12,5 +12,4 @@ pub(crate) use self::{
 	normalize::{looks_like_issue_identifier, normalize_issue_identifier},
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

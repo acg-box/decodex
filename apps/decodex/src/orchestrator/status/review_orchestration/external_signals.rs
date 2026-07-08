@@ -1,8 +1,10 @@
-use crate::orchestrator::status::{
-	EXTERNAL_REVIEW_ACK_TIMEOUT_SECS, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE,
-	PullRequestReviewState,
+use crate::{
+	orchestrator::status::{
+		EXTERNAL_REVIEW_ACK_TIMEOUT_SECS, EXTERNAL_REVIEW_ACTOR_LOGIN, EXTERNAL_REVIEW_PASS_PHRASE,
+		PullRequestReviewState,
+	},
+	state::ReviewLifecycleReadback,
 };
-use crate::state::ReviewLifecycleReadback;
 
 pub(crate) fn request_comment_has_eyes(
 	review_state: &PullRequestReviewState,

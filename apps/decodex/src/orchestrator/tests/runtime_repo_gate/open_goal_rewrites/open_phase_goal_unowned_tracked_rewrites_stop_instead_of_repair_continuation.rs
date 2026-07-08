@@ -81,10 +81,7 @@ fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation(
 		.downcast_ref::<RepoGateFailure>()
 		.expect("phase goal recovery should preserve repo-gate failure");
 
-	assert_eq!(
-		repo_gate_failure.error_class(),
-		"repo_gate_lane_external_tracked_rewrite"
-	);
+	assert_eq!(repo_gate_failure.error_class(), "repo_gate_lane_external_tracked_rewrite");
 	assert_eq!(
 		repo_gate_failure.disposition(),
 		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention

@@ -34,9 +34,8 @@ pub(crate) fn inspect_pull_request_landing_state(
 				gh_command_path,
 			})?;
 		let next_cursor = match &mut landing_state {
-			Some(landing_state) => {
-				merge::merge_pull_request_landing_state_page(landing_state, &pull_request)?
-			},
+			Some(landing_state) =>
+				merge::merge_pull_request_landing_state_page(landing_state, &pull_request)?,
 			None => {
 				let next_cursor =
 					merge::next_pull_request_review_threads_cursor(&pull_request, pr_url)?;

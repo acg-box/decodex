@@ -3,8 +3,7 @@ mod server;
 mod templates;
 mod types;
 
-#[cfg(test)]
-pub(super) use types::ResourceContent;
+#[cfg(test)] pub(super) use types::ResourceContent;
 
 const DOCS_HOST: &str = "docs";
 const DECISION_CONTRACTS_HOST: &str = "decision-contracts";

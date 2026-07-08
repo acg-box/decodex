@@ -46,17 +46,13 @@ pub(super) fn architecture_recovery_policy_recovery_guidance(
 	policy_decision: AuthorityBoundaryPolicyDecision,
 ) -> &'static str {
 	match policy_decision {
-		AuthorityBoundaryPolicyDecision::AutoContinue => {
-			"request human attention only if the next viable action would change product behavior, public API/config contract, security, data, credential, billing, validation standards, or accepted authority"
-		},
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
-			"preserve enhanced evidence for the changed high-risk surfaces before review handoff or landing"
-		},
-		AuthorityBoundaryPolicyDecision::BlockLanding => {
-			"keep landing blocked until validation or review-policy evidence is restored"
-		},
-		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => {
-			"request human attention before continuing recovery"
-		},
+		AuthorityBoundaryPolicyDecision::AutoContinue =>
+			"request human attention only if the next viable action would change product behavior, public API/config contract, security, data, credential, billing, validation standards, or accepted authority",
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
+			"preserve enhanced evidence for the changed high-risk surfaces before review handoff or landing",
+		AuthorityBoundaryPolicyDecision::BlockLanding =>
+			"keep landing blocked until validation or review-policy evidence is restored",
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision =>
+			"request human attention before continuing recovery",
 	}
 }

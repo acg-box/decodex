@@ -3,11 +3,13 @@ mod non_github;
 mod request;
 mod result;
 
-use crate::orchestrator::retained_review_orchestration::{
-	IssueTracker, Result, RetainedReviewLane, RetainedReviewRuntime, ServiceConfig, StateStore,
-	WorkflowDocument, eyre,
+use crate::orchestrator::{
+	retained_review_orchestration::{
+		IssueTracker, Result, RetainedReviewLane, RetainedReviewRuntime, ServiceConfig, StateStore,
+		WorkflowDocument, eyre,
+	},
+	runtime_standard_review::RuntimeStandardReviewRunner,
 };
-use crate::orchestrator::runtime_standard_review::RuntimeStandardReviewRunner;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum RetainedReviewLifecycleAction {
@@ -24,9 +26,8 @@ pub(super) enum RetainedReviewLifecycleAction {
 impl RetainedReviewLifecycleAction {
 	fn parse(value: &str) -> Result<Self> {
 		Ok(match value {
-			"wait_for_runtime_review_gate_or_external_review" => {
-				Self::StartReviewGateOrExternalReview
-			},
+			"wait_for_runtime_review_gate_or_external_review" =>
+				Self::StartReviewGateOrExternalReview,
 			"request_external_review" => Self::RequestExternalReview,
 			"wait_for_external_review_ack" => Self::WaitForExternalReviewAck,
 			"wait_for_external_review_result" => Self::WaitForExternalReviewResult,
@@ -70,10 +71,9 @@ where
 
 	match action {
 		RetainedReviewLifecycleAction::StartReviewGateOrExternalReview
-		| RetainedReviewLifecycleAction::RequestExternalReview => {
-			request::handle_request_pending_phase(project, state_store, lane, github_token)
-		},
-		RetainedReviewLifecycleAction::WaitForExternalReviewAck => {
+		| RetainedReviewLifecycleAction::RequestExternalReview =>
+			request::handle_request_pending_phase(project, state_store, lane, github_token),
+		RetainedReviewLifecycleAction::WaitForExternalReviewAck =>
 			request::handle_waiting_for_ack_phase(
 				tracker,
 				project,
@@ -82,8 +82,7 @@ where
 				lane,
 				github_token,
 				now_unix_epoch,
-			)
-		},
+			),
 		RetainedReviewLifecycleAction::WaitForExternalReviewResult
 		| RetainedReviewLifecycleAction::WaitForLandingGates => {
 			let mut runtime =

@@ -75,9 +75,8 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<PathBuf>
 			};
 
 			match promoted_pr {
-				Some(pr_number) => {
-					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?
-				},
+				Some(pr_number) =>
+					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
 				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
 			}
 		},

@@ -97,9 +97,8 @@ impl CommandFact {
 			Self::TerminalCleanupPending => "terminal_cleanup_pending",
 			Self::ExternalReviewRequested => "external_review_requested",
 			Self::ExternalReviewRequestPresent => "external_review_request_present",
-			Self::ExternalReviewAcknowledgementObserved => {
-				"external_review_acknowledgement_observed"
-			},
+			Self::ExternalReviewAcknowledgementObserved =>
+				"external_review_acknowledgement_observed",
 			Self::ExternalReviewAcknowledgementPending => "external_review_acknowledgement_pending",
 			Self::ExternalReviewRequestRetryAvailable => "external_review_request_retry_available",
 			Self::ReviewRepairStarted => "review_repair_started",

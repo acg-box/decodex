@@ -22,12 +22,10 @@ pub(in crate::recovery) fn lifecycle_authority_head_binding_mismatch(
 			local_head_oid,
 		) {
 			ReviewHandoffLineage::Descends => None,
-			ReviewHandoffLineage::Diverged => {
-				Some(("review_lifecycle_lineage_mismatch", "review_lifecycle.pr_head_oid"))
-			},
-			ReviewHandoffLineage::Unknown => {
-				Some(("review_lifecycle_lineage_check_failed", "review_lifecycle.pr_head_oid"))
-			},
+			ReviewHandoffLineage::Diverged =>
+				Some(("review_lifecycle_lineage_mismatch", "review_lifecycle.pr_head_oid")),
+			ReviewHandoffLineage::Unknown =>
+				Some(("review_lifecycle_lineage_check_failed", "review_lifecycle.pr_head_oid")),
 		}
 	} else {
 		lifecycle_authority_binding_mismatch(context, context.existing_lifecycle, local_head_oid)

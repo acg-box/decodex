@@ -8,5 +8,4 @@ pub(crate) use self::{
 	projection::{decide_post_review_lane, project_post_review_lane_decision},
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

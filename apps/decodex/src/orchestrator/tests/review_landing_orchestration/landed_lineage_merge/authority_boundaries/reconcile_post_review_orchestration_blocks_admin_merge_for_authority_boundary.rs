@@ -1,11 +1,13 @@
-use crate::orchestrator::{
-	self, StateStore,
-	tests::{
-		self, FakePullRequestReviewStateInspector, FakeTracker,
-		review_landing_classification_review, review_landing_status_support,
+use crate::{
+	orchestrator::{
+		self, StateStore,
+		tests::{
+			self, FakePullRequestReviewStateInspector, FakeTracker,
+			review_landing_classification_review, review_landing_status_support,
+		},
 	},
+	state::ReviewPolicyCheckpointInput,
 };
-use crate::state::ReviewPolicyCheckpointInput;
 
 #[test]
 fn reconcile_post_review_orchestration_blocks_admin_merge_for_authority_boundary() {

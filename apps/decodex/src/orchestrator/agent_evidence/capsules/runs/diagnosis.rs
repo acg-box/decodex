@@ -42,11 +42,10 @@ pub(crate) fn agent_run_next_action(run: &OperatorRunStatus) -> Option<String> {
 	}
 
 	match agent_run_blocker_reason(run) {
-		Some("suspected_stall" | "run_stalled" | "stale_execution_without_known_process") => {
+		Some("suspected_stall" | "run_stalled" | "stale_execution_without_known_process") =>
 			Some(String::from(
 				"Inspect the run capsule, retained worktree, protocol activity, and process state before retrying.",
-			))
-		},
+			)),
 		Some("process_exited_without_terminal_status") => Some(String::from(
 			"Inspect the retained worktree and runtime markers; reconcile or retry only after preserving useful local changes.",
 		)),

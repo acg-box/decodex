@@ -9,8 +9,7 @@ mod retry;
 mod storage;
 mod write;
 
-#[cfg(test)]
-pub(crate) use self::identity::current_process_start_identity;
+#[cfg(test)] pub(crate) use self::identity::current_process_start_identity;
 pub(crate) use self::{
 	identity::{current_host_boot_id, process_start_identity},
 	progress::protocol_event_counts_as_work_progress,

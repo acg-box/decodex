@@ -24,12 +24,10 @@ impl AppServerHomePreflightFailure {
 
 	pub(crate) fn error_class(&self) -> &'static str {
 		match self.kind {
-			AppServerHomePreflightFailureKind::ResolutionFailed => {
-				"app_server_codex_home_preflight_failed"
-			},
-			AppServerHomePreflightFailureKind::InitializeMismatch => {
-				"app_server_codex_home_mismatch"
-			},
+			AppServerHomePreflightFailureKind::ResolutionFailed =>
+				"app_server_codex_home_preflight_failed",
+			AppServerHomePreflightFailureKind::InitializeMismatch =>
+				"app_server_codex_home_mismatch",
 		}
 	}
 

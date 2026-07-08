@@ -141,8 +141,7 @@ fn resume_existing_thread_session(
 
 			start_fresh_thread_session(client, recorder, request)
 		},
-		Err(error) => {
-			Err(transport::transport_failure_at_phase(error, RequestWaitPhase::ThreadResume))
-		},
+		Err(error) =>
+			Err(transport::transport_failure_at_phase(error, RequestWaitPhase::ThreadResume)),
 	}
 }

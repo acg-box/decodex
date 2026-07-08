@@ -100,5 +100,4 @@ pub(crate) fn validate_generated_social_artifact(payload: &Value) -> Result<()> 
 	Ok(())
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

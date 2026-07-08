@@ -21,9 +21,8 @@ pub(crate) fn build_operator_lane_interrupt_http_response(
 	request: &[u8],
 ) -> Vec<u8> {
 	match operator_lane_interrupt_http_response_body(state_store, request) {
-		Ok((status_line, body)) => {
-			operator_http::http_response_bytes(status_line, "application/json", &body)
-		},
+		Ok((status_line, body)) =>
+			operator_http::http_response_bytes(status_line, "application/json", &body),
 		Err(error) => operator_lane_error_http_response(error),
 	}
 }
@@ -33,9 +32,8 @@ pub(crate) fn build_operator_lane_steer_http_response(
 	request: &[u8],
 ) -> Vec<u8> {
 	match operator_lane_steer_http_response_body(state_store, request) {
-		Ok((status_line, body)) => {
-			operator_http::http_response_bytes(status_line, "application/json", &body)
-		},
+		Ok((status_line, body)) =>
+			operator_http::http_response_bytes(status_line, "application/json", &body),
 		Err(error) => operator_lane_error_http_response(error),
 	}
 }
