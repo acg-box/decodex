@@ -152,7 +152,7 @@ pub(crate) fn recover_and_reconcile_idle_daemon_state<T>(
 where
 	T: IssueTracker,
 {
-	let _ = orchestrator::recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
+	let _ = orchestrator::recover_runtime_state_with_skip_cache(
 		tracker,
 		project,
 		workflow,

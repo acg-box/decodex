@@ -65,7 +65,7 @@ fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
 }
 
 #[test]
-fn post_review_worktree_refresh_splits_invalid_local_id_batch_without_losing_valid_issue() {
+fn splits_invalid_local_id_batch_without_losing_valid() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let mut issue = recovery_terminal_support::sample_active_issue("In Review");
 

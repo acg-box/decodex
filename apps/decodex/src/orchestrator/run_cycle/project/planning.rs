@@ -115,7 +115,7 @@ where
 			return Ok(None);
 		}
 
-		return replan_project_issue_run_with_program_dispatch_after_excluding(
+		return replan_program_dispatch_after_excluding(
 			tracker,
 			project,
 			workflow,
@@ -164,7 +164,7 @@ where
 	Ok(Some(PlannedProjectIssueRun { issue_run, program_dispatch }))
 }
 
-fn replan_project_issue_run_with_program_dispatch_after_excluding<T>(
+fn replan_program_dispatch_after_excluding<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,

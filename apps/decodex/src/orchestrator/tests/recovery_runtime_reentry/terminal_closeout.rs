@@ -161,7 +161,7 @@ fn run_project_once_preserves_fresh_completed_closeout_lease() {
 }
 
 #[test]
-fn run_project_once_skips_recovered_terminal_guarded_worktree_after_empty_state_startup() {
+fn skips_recovered_terminal_guarded_worktree() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = recovery_terminal_support::sample_active_issue_without_needs_attention_team_label(
 		"In Progress",
@@ -198,8 +198,7 @@ fn run_project_once_skips_recovered_terminal_guarded_worktree_after_empty_state_
 }
 
 #[test]
-fn run_project_once_preserves_terminal_recovered_worktree_without_prior_state_when_review_handoff_is_missing()
- {
+fn preserves_recovered_worktree_when_handoff_missing() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = recovery_terminal_support::sample_active_issue("Done");
 	let tracker =

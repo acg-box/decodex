@@ -102,7 +102,7 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 }
 
 #[test]
-fn schedule_retry_after_child_exit_respects_terminal_finalize_before_phase_goal_recovery() {
+fn respects_terminal_finalize_before_phase_goal_recovery() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = support::sample_service_owned_issue("In Progress");
 	let tracker =

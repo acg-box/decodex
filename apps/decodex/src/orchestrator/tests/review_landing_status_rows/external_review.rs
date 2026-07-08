@@ -177,7 +177,7 @@ fn build_post_review_lane_statuses_waits_for_runtime_checkpoint_after_strict_pas
 }
 
 #[test]
-fn build_post_review_lane_statuses_waits_when_clean_repair_head_outruns_lifecycle_authority() {
+fn waits_when_clean_repair_head_outruns_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue("In Review", &[]);
 	let tracker =

@@ -78,7 +78,7 @@ fn live_operator_status_drops_cleanup_audited_mcp_test_fixture_ghost_lane() {
 }
 
 #[test]
-fn live_operator_status_keeps_cleanup_audited_mcp_fixture_blocked_when_worktree_exists() {
+fn keeps_audited_mcp_fixture_blocked_with_worktree() {
 	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());

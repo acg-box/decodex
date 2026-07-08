@@ -23,12 +23,12 @@ pub(in crate::recovery) fn ghost_lane_has_mcp_test_fixture_identity(
 		&& ghost_lane_optional_fixture_value(run.turn_id(), MCP_TEST_FIXTURE_TURN_ID)
 }
 
-pub(in crate::recovery) fn ghost_lane_private_events_are_mcp_test_recovery_evidence(
+pub(in crate::recovery) fn ghost_lane_events_are_mcp_test_recovery_evidence(
 	events: &[PrivateExecutionEvent],
 ) -> bool {
 	!events.is_empty()
 		&& events.iter().all(|event| {
-			ghost_lane_private_event_is_mcp_test_control_evidence(event)
+			ghost_lane_event_is_mcp_test_control_evidence(event)
 				|| ghost_lane_private_event_is_cleanup_audit(event)
 		})
 }
@@ -108,11 +108,11 @@ fn ghost_lane_optional_fixture_value(value: Option<&str>, expected: &str) -> boo
 	}
 }
 
-fn ghost_lane_private_event_is_mcp_test_control_evidence(event: &PrivateExecutionEvent) -> bool {
+fn ghost_lane_event_is_mcp_test_control_evidence(event: &PrivateExecutionEvent) -> bool {
 	match event.event_type() {
 		"control_action" =>
 			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE)
-				|| ghost_lane_cli_control_action_matches_mcp_test_fixture(event.payload()),
+				|| cli_control_action_matches_mcp_fixture(event.payload()),
 		"lane_control/steer/requested" | "lane_control/interrupt/requested" =>
 			ghost_lane_private_event_source(event.payload()) == Some(MCP_TEST_FIXTURE_SOURCE),
 		_ => false,
@@ -126,7 +126,7 @@ fn ghost_lane_private_event_source(payload: &serde_json::Value) -> Option<&str> 
 		.or_else(|| payload.pointer("/authority/source").and_then(serde_json::Value::as_str))
 }
 
-fn ghost_lane_cli_control_action_matches_mcp_test_fixture(payload: &serde_json::Value) -> bool {
+fn cli_control_action_matches_mcp_fixture(payload: &serde_json::Value) -> bool {
 	ghost_lane_private_event_source(payload) == Some("cli")
 		&& matches!(
 			payload.get("action").and_then(serde_json::Value::as_str),

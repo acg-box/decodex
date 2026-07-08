@@ -6,7 +6,7 @@ use crate::orchestrator::{
 	},
 };
 
-pub(super) fn review_handoff_drift_lifecycle_authority_rebind_command_intent(
+pub(super) fn rebind_lifecycle_authority_command_intent(
 	issue_id: &str,
 	run_id: &str,
 ) -> CommandIntent {

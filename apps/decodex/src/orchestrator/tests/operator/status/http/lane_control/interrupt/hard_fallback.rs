@@ -65,7 +65,7 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_run_lease_missing() {
 
 #[cfg(unix)]
 #[test]
-fn operator_lane_interrupt_api_force_hard_fallbacks_terminal_live_process_without_soft_owner() {
+fn force_hard_fallbacks_terminal_process_without_owner() {
 	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(

@@ -135,7 +135,7 @@ fn closeout_dispatch_policy_rejects_open_pull_request() {
 }
 
 #[test]
-fn closeout_dispatch_policy_blocks_completed_issue_with_missing_review_handoff_record() {
+fn blocks_completed_issue_with_missing_handoff() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let closeout_issue = support::candidate_selection_service_owned_issue("Done");
 	let tracker = FakeTracker::new(vec![closeout_issue.clone()]);

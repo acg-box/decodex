@@ -1,6 +1,6 @@
 use crate::{recovery::evidence::json, state::PrivateExecutionEvent};
 
-pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is_no_progress_harness_outcome(
+pub(in crate::recovery::evidence::stale_active) fn stale_active_event_is_no_progress_harness(
 	event: &PrivateExecutionEvent,
 ) -> bool {
 	if event.event_type() != "harness_outcome" {

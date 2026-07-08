@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[test]
-fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visibility() {
+fn handles_same_issue_closeout_after_merge_visibility() {
 	for closeout_available in [true, false] {
 		let (temp_dir, config, workflow) = tests::temp_project_layout();
 		let repo_root = config.repo_root().to_path_buf();

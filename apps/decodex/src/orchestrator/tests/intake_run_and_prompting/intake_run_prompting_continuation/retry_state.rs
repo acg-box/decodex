@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[test]
-fn continuation_guard_preserves_original_startable_state_across_continuation_retries() {
+fn preserves_startable_state_across_retries() {
 	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let issue = intake_run_and_prompting::run_and_prompting_service_owned_issue("In Progress");
 	let stale_issue = intake_run_and_prompting::run_and_prompting_service_owned_issue("Todo");

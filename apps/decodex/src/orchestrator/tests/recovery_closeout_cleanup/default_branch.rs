@@ -13,8 +13,7 @@ use crate::{
 };
 
 #[test]
-fn merged_closeout_retry_exhaustion_reports_cleanup_blocker_with_pr_url_after_default_branch_dirty()
-{
+fn reports_cleanup_blocker_after_dirty_default_branch() {
 	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let issue = tests::sample_issue("Done", &[]);

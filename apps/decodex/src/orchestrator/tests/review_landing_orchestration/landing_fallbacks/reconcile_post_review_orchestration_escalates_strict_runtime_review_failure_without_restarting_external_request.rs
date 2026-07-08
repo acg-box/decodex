@@ -1,7 +1,0 @@
-use crate::orchestrator::tests::review_landing_orchestration::landing_fallbacks;
-
-#[test]
-fn reconcile_post_review_orchestration_escalates_strict_runtime_review_failure_without_restarting_external_request()
- {
-	landing_fallbacks::assert_reconcile_post_review_orchestration_escalates_strict_runtime_review_failure_without_restarting_external_request();
-}

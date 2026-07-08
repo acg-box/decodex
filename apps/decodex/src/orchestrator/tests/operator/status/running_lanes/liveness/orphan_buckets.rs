@@ -3,7 +3,7 @@ use crate::orchestrator::tests::operator::status::running_lanes::{
 };
 
 #[test]
-fn operator_status_snapshot_keeps_terminal_status_live_process_in_recent_orphan_bucket() {
+fn keeps_terminal_process_in_recent_orphan_bucket() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = running_lanes::sample_issue("Todo", &[]);
@@ -89,7 +89,7 @@ fn operator_status_snapshot_excludes_terminal_thread_archive_from_running_lanes(
 }
 
 #[test]
-fn operator_status_snapshot_projects_terminal_run_with_active_thread_as_retained_attention() {
+fn projects_terminal_run_with_active_thread_as_attention() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = running_lanes::sample_issue("Todo", &[]);
@@ -145,7 +145,7 @@ fn operator_status_snapshot_projects_terminal_run_with_active_thread_as_retained
 }
 
 #[test]
-fn operator_status_snapshot_keeps_succeeded_status_live_process_in_recent_orphan_bucket() {
+fn keeps_succeeded_process_in_recent_orphan_bucket() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = running_lanes::sample_issue("Todo", &[]);

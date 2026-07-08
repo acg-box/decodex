@@ -23,7 +23,7 @@ impl RepoGatePhaseGoalController<'_> {
 			RUN_OPERATION_REPO_GATE,
 		);
 
-		match orchestrator::run_repo_gate_commands_allow_owned_tracked_rewrites(
+		match orchestrator::run_repo_gate_commands_with_owned_rewrites(
 			selected_repo_gate.canonicalize_commands(),
 			selected_repo_gate.verify_commands(),
 			&self.issue_run.worktree.path,

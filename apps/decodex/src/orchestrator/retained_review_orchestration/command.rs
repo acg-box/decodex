@@ -81,7 +81,7 @@ mod tests {
 	};
 
 	#[test]
-	fn retained_review_command_adapter_accepts_kernel_built_lifecycle_authority_sync_intent() {
+	fn adapter_accepts_kernel_built_authority_sync_intent() {
 		let intent = command::retained_review_command_intent_for_issue(
 			"PUB-101",
 			Some("run-1"),
