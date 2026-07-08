@@ -1,5 +1,9 @@
 # Documentation Log
 
+## 2026-07-08
+
+- Ran the baseline guard latest-main dispatch E2E canary through Decodex.
+
 ## 2026-07-07
 
 - Promoted the post-review lifecycle hard-cutover into the runtime specs and
