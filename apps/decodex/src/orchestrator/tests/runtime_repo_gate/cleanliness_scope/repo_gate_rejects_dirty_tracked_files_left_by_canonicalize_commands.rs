@@ -24,10 +24,7 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 		.expect("repo gate failures should preserve structured classification");
 
 	assert!(error.to_string().contains("verification"));
-	assert_eq!(
-		repo_gate_failure.error_class(),
-		"repo_gate_lane_external_tracked_rewrite"
-	);
+	assert_eq!(repo_gate_failure.error_class(), "repo_gate_lane_external_tracked_rewrite");
 	assert_eq!(
 		repo_gate_failure.disposition(),
 		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention

@@ -230,10 +230,12 @@ pub(crate) fn worktree_has_review_blocking_changes(worktree_path: &Path) -> Resu
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::orchestrator::PullRequestReviewState;
-	use crate::state::{
-		ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, ReviewPolicyCheckpointInput,
-		StateStore,
+	use crate::{
+		orchestrator::PullRequestReviewState,
+		state::{
+			ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, ReviewPolicyCheckpointInput,
+			StateStore,
+		},
 	};
 
 	#[test]

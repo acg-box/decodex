@@ -129,11 +129,10 @@ pub(crate) fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
 				strip_dashboard_run_activity_volatile_fields(child);
 			}
 		},
-		Value::Array(values) => {
+		Value::Array(values) =>
 			for child in values {
 				strip_dashboard_run_activity_volatile_fields(child);
-			}
-		},
+			},
 		_ => {},
 	}
 }

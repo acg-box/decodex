@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::{fd::AsRawFd, unix::process::CommandExt as _};
+#[cfg(unix)] use std::os::{fd::AsRawFd, unix::process::CommandExt as _};
 use std::{
 	env,
 	ffi::OsString,

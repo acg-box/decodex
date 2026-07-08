@@ -1,5 +1,4 @@
-#[cfg(test)]
-use crate::state::ReviewLifecycleHandoffFixture;
+#[cfg(test)] use crate::state::ReviewLifecycleHandoffFixture;
 use crate::state::ReviewLifecycleRecord;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

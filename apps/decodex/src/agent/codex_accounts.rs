@@ -13,11 +13,9 @@ pub(crate) use self::{
 	login::CodexAccountLogin,
 	pool::{CodexAccountPool, CodexAccountProvider},
 };
-#[cfg(test)]
-pub(crate) use crate::state::CodexAccountActivitySummary;
+#[cfg(test)] pub(crate) use crate::state::CodexAccountActivitySummary;
 
-#[cfg(test)]
-use std::path::Path;
+#[cfg(test)] use std::path::Path;
 use std::time::Duration;
 
 use self::record::AccountPoolRecord;
@@ -40,5 +38,4 @@ const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const TOKEN_REFRESH_INTERVAL_SECONDS: i64 = 8 * 24 * 60 * 60;
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

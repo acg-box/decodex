@@ -27,10 +27,9 @@ pub(crate) fn run_review_handoff_diagnose(
 	}
 
 	let diagnostics = match match request.issue.as_deref() {
-		Some(issue_identifier) => {
+		Some(issue_identifier) =>
 			review_handoff_diagnosis::diagnose_issue(&context, issue_identifier)
-				.map(|diagnostic| vec![diagnostic])
-		},
+				.map(|diagnostic| vec![diagnostic]),
 		None => review_handoff_diagnosis::diagnose_all_retained_review_worktrees(&context),
 	} {
 		Ok(diagnostics) => diagnostics,

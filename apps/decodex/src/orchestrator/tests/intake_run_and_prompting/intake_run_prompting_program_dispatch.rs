@@ -1,6 +1,5 @@
 mod targeted_program_dispatch_tests {
-	#[cfg(unix)]
-	use std::os::unix::fs::PermissionsExt;
+	#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
 	use std::{env, fs};
 
 	use crate::{

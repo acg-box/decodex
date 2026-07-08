@@ -32,15 +32,14 @@ pub(crate) fn execute_app_server_run(
 	let result = self::execute_app_server_run_inner(request, state_store);
 
 	match &result {
-		Ok(_result) => {
+		Ok(_result) =>
 			if control_channel.is_some() {
 				state_store.retire_run_control_channel_for_attempt(
 					&request.run_id,
 					request.attempt_number,
 					RUN_CONTROL_CHANNEL_STATUS_COMPLETED,
 				)?;
-			}
-		},
+			},
 		Err(_error) => {
 			state_store.record_run_attempt(
 				&request.run_id,

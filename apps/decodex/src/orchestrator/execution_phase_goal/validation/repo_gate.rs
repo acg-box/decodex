@@ -1,7 +1,7 @@
 use crate::orchestrator::{
 	self, LaneDecisionSnapshot, LoopGuardrailRecoveryDecision, PhaseGoalKind, PhaseGoalTransition,
-	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDisposition,
-	RepoGateFailureSignal, RepoGateTrackedRewriteDecision, Report, ResolvedRepoGate, Result,
+	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDisposition, RepoGateFailureSignal,
+	RepoGateTrackedRewriteDecision, Report, ResolvedRepoGate, Result,
 	execution_phase_goal::{
 		acceptance::{self, ValidationDecision},
 		controller::RepoGatePhaseGoalController,

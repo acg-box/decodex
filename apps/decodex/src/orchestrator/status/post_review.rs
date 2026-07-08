@@ -4,8 +4,7 @@ mod lanes;
 mod retry_budget;
 mod worktrees;
 
-#[cfg(test)]
-pub(crate) use self::classification::classify_post_review_lane;
+#[cfg(test)] pub(crate) use self::classification::classify_post_review_lane;
 pub(crate) use self::{
 	authority_boundary::{
 		apply_authority_boundary_landing_policy, authority_boundary_landing_requirement,

@@ -32,5 +32,4 @@ pub(crate) fn open_runtime_store_lazy() -> Result<StateStore> {
 	StateStore::open_lazy(runtime_db_path()?)
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

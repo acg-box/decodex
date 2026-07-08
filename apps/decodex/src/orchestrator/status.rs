@@ -23,8 +23,7 @@ mod runtime_recovery;
 mod snapshot;
 mod worktrees;
 
-#[cfg(test)]
-pub(crate) use self::post_review::classify_post_review_lane;
+#[cfg(test)] pub(crate) use self::post_review::classify_post_review_lane;
 pub(crate) use self::{
 	post_review::{
 		authority_boundary_landing_requirement, build_degraded_post_review_lane_statuses,
@@ -74,8 +73,7 @@ pub(crate) use self::{
 };
 pub(crate) use review_state::{worktree_checkout_branch_name, worktree_head_oid};
 
-#[allow(unused_imports)]
-use crate::github::PullRequestMergeViewResponse;
+#[allow(unused_imports)] use crate::github::PullRequestMergeViewResponse;
 use crate::orchestrator::kernel::state::{OwnershipState, PolicyState};
 #[allow(unused_imports)]
 use crate::orchestrator::{
@@ -126,8 +124,7 @@ use crate::orchestrator::{
 use crate::state::{
 	ProjectLoopEvidenceSnapshot, ProtocolActivityEventSummary, ReviewCheckpointArtifactLookup,
 };
-#[allow(unused_imports)]
-use crate::tracker::records::LinearExecutionEventRecord;
+#[allow(unused_imports)] use crate::tracker::records::LinearExecutionEventRecord;
 #[allow(unused_imports)]
 use crate::{
 	agent::REVIEW_POLICY_CONVERGENCE_BUDGET, pull_request::PullRequestLandingGateView,

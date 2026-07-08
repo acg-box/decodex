@@ -44,9 +44,7 @@ pub(in crate::agent::app_server::turn_loop::wait) fn next_turn_wire_message(
 			if control_enabled
 				&& recv_timeout < wait_timeout
 				&& timeout::is_app_server_output_timeout(&error) =>
-		{
-			Ok(None)
-		},
+			Ok(None),
 		Err(error) => Err(error),
 	}
 }

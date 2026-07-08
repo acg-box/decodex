@@ -88,9 +88,8 @@ fn normalize_review_class(review_class: String) -> Result<String, String> {
 	};
 
 	match review_class {
-		REVIEW_CLASS_COMPACT_CURRENT_HEAD | REVIEW_CLASS_FULL_CURRENT_HEAD => {
-			Ok(review_class.to_owned())
-		},
+		REVIEW_CLASS_COMPACT_CURRENT_HEAD | REVIEW_CLASS_FULL_CURRENT_HEAD =>
+			Ok(review_class.to_owned()),
 		other => {
 			let compact = REVIEW_CLASS_COMPACT_CURRENT_HEAD;
 			let full = REVIEW_CLASS_FULL_CURRENT_HEAD;

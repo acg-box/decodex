@@ -122,11 +122,10 @@ where
 	T: IssueTracker + ?Sized,
 {
 	match dispatch_mode {
-		IssueDispatchMode::ReviewRepair => {
+		IssueDispatchMode::ReviewRepair =>
 			Ok(!dispatch_policy::issue_passes_review_repair_dispatch_policy(
 				tracker, issue, project, workflow,
-			)?)
-		},
+			)?),
 		IssueDispatchMode::Normal
 		| IssueDispatchMode::Program
 		| IssueDispatchMode::Retry

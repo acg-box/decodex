@@ -23,5 +23,4 @@ pub(crate) fn validate_public_text_items(
 	Ok(())
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

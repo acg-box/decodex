@@ -1,6 +1,5 @@
 use std::fs::File;
-#[cfg(unix)]
-use std::os::fd::FromRawFd;
+#[cfg(unix)] use std::os::fd::FromRawFd;
 
 use crate::{
 	prelude::{Result, eyre},
@@ -22,9 +21,8 @@ impl StateStore {
 			state.dispatch_slot_guards.get(issue_id),
 		) {
 			(Some(guard), _) => Some(store::acquire_shared_lock_coordinator(guard.lock_root()?)?),
-			(None, Some(guard)) => {
-				Some(store::acquire_shared_lock_coordinator(guard.lock_root()?)?)
-			},
+			(None, Some(guard)) =>
+				Some(store::acquire_shared_lock_coordinator(guard.lock_root()?)?),
 			(None, None) => None,
 		};
 		let removed_lease = state.leases.remove(issue_id).is_some();

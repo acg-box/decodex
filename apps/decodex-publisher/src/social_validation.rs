@@ -57,9 +57,8 @@ pub(crate) fn validate_social_artifact(payload: &Value) -> SocialArtifactValidat
 	match string_field(entry, "schema") {
 		Some(SOCIAL_CANDIDATE_SCHEMA) => candidate::validate_social_candidate(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => post::validate_social_post(entry, &mut errors),
-		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) => {
-			reservation::validate_social_publish_reservation(entry, &mut errors)
-		},
+		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
+			reservation::validate_social_publish_reservation(entry, &mut errors),
 		Some(_) | None => errors.push(format!(
 			"schema must be one of {}",
 			choices(&[

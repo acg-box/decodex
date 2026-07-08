@@ -1,5 +1,4 @@
-#[cfg(test)]
-use crate::agent::app_server::preflight::BTreeMap;
+#[cfg(test)] use crate::agent::app_server::preflight::BTreeMap;
 use crate::agent::app_server::preflight::{
 	Display, Error, Formatter,
 	fmt::Result,
@@ -94,15 +93,12 @@ impl AppServerCapabilityPreflightFailure {
 				timed_out: true,
 				..
 			} => "app_server_plugin_list_timeout",
-			AppServerCapabilityPreflightFailureKind::MethodFailed { timed_out: true, .. } => {
-				"app_server_preflight_timeout"
-			},
-			AppServerCapabilityPreflightFailureKind::MethodFailed { .. } => {
-				"app_server_introspection_method_failed"
-			},
-			AppServerCapabilityPreflightFailureKind::BlockedState => {
-				"app_server_runtime_preflight_failed"
-			},
+			AppServerCapabilityPreflightFailureKind::MethodFailed { timed_out: true, .. } =>
+				"app_server_preflight_timeout",
+			AppServerCapabilityPreflightFailureKind::MethodFailed { .. } =>
+				"app_server_introspection_method_failed",
+			AppServerCapabilityPreflightFailureKind::BlockedState =>
+				"app_server_runtime_preflight_failed",
 		}
 	}
 
@@ -130,9 +126,8 @@ impl AppServerCapabilityPreflightFailure {
 				"decodex will retry app-server preflight automatically; inspect local app_server_preflight_failed evidence for the `{method}` timeout and restart `decodex serve` if the retry budget exhausts"
 			),
 			AppServerCapabilityPreflightFailureKind::MethodFailed { .. }
-			| AppServerCapabilityPreflightFailureKind::BlockedState => {
-				String::from("app-server preflight requires operator recovery")
-			},
+			| AppServerCapabilityPreflightFailureKind::BlockedState =>
+				String::from("app-server preflight requires operator recovery"),
 		}
 	}
 
