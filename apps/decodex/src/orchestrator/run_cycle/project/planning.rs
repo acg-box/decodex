@@ -1,5 +1,5 @@
 use crate::orchestrator::{
-	ProgramDispatchSelection,
+	BaselineGuardDispatchOutcome, ProgramDispatchSelection, ensure_clean_baseline_before_dispatch,
 	run_cycle::{
 		self, IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
 		PrepareIssueRunContext, Result, RetryIssueStateHint, ServiceConfig, StateStore,
@@ -124,6 +124,16 @@ where
 			excluded_issue_ids,
 			issue.id.as_str(),
 		);
+	}
+	if ensure_clean_baseline_before_dispatch(
+		project,
+		workflow,
+		state_store,
+		dispatch_mode,
+		dry_run,
+	)? == BaselineGuardDispatchOutcome::NormalizedMain
+	{
+		return Ok(None);
 	}
 
 	let Some(issue_run) = run_cycle::prepare_issue_run(

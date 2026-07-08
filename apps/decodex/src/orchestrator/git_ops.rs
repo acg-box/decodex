@@ -18,6 +18,9 @@ pub(crate) use self::{
 	failure::{RepoGateFailure, RepoGateFailureDisposition, RepoGateFailureKind},
 	paths::{relative_worktree_path, relative_worktree_path_for_path},
 	rewrite::{RepoGateCommandOutcome, RepoGateTrackedRewriteDecision},
-	runner::{run_repo_gate_commands, run_repo_gate_commands_with_owned_rewrites},
+	runner::{
+		run_canonicalize_commands, run_repo_gate_commands,
+		run_repo_gate_commands_with_owned_rewrites,
+	},
 	selection::select_repo_gate_for_worktree,
 };

@@ -301,6 +301,11 @@ Current runtime note:
 
 - Decodex does not enforce a project-level concurrent-agent cap.
 - Active leases are the service-local claim set for running lanes, and shared lock files coordinate cross-process issue ownership and child lease handoff.
+- Before ordinary issue dispatch, Decodex runs the project baseline
+  canonicalization guard in an isolated clean default-branch worktree. The guard
+  executes the default `[execution].canonicalize_commands`; if they leave a
+  tracked diff, Decodex pauses ordinary dispatch and completes a runtime-owned
+  baseline normalization PR before rechecking and starting the issue lane.
 
 ## Lane model
 

@@ -1,4 +1,5 @@
 mod agent_evidence;
+mod baseline_guard;
 mod constants;
 mod daemon;
 mod daemon_retry;
@@ -36,6 +37,10 @@ mod selection;
 mod status;
 mod types;
 pub(crate) use self::{
+	baseline_guard::{
+		BaselineGuardDispatchOutcome, ensure_clean_baseline_before_dispatch,
+		push_baseline_status_projection,
+	},
 	constants::{
 		CONTINUATION_PENDING_RUN_STATUS, CONTINUATION_RETRY_DELAY_MS,
 		DASHBOARD_WS_MESSAGE_MAX_BYTES, DEFAULT_CONTROL_PLANE_POLL_INTERVAL,
