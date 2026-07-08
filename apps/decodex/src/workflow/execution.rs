@@ -8,7 +8,7 @@ pub use self::{
 	workspace_hooks::WorkflowWorkspaceHooks,
 };
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +26,7 @@ pub struct WorkflowExecution {
 	max_retry_backoff_ms: u64,
 	canonicalize_commands: Vec<String>,
 	verify_commands: Vec<String>,
-	gate_profiles: HashMap<String, WorkflowGateProfile>,
+	gate_profiles: BTreeMap<String, WorkflowGateProfile>,
 	workspace_hooks: WorkflowWorkspaceHooks,
 }
 impl WorkflowExecution {
@@ -56,7 +56,7 @@ impl WorkflowExecution {
 	}
 
 	/// Repo-owned named gate profiles for narrow path-scoped validation.
-	pub fn gate_profiles(&self) -> &HashMap<String, WorkflowGateProfile> {
+	pub fn gate_profiles(&self) -> &BTreeMap<String, WorkflowGateProfile> {
 		&self.gate_profiles
 	}
 

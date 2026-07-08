@@ -41,6 +41,10 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	.expect("developer instructions should build");
 
 	assert!(instructions.contains("Workflow policy\nFollow the repository policy.\n"));
+	assert!(instructions.contains("Registered repo gate"));
+	assert!(instructions.contains("`canonicalize_commands`: []"));
+	assert!(instructions.contains("`verify_commands`: []"));
+	assert!(instructions.contains("Do not substitute broader repo-documentation examples"));
 	assert!(instructions.contains("Keep pre-edit discovery bounded"));
 	assert!(instructions.contains("Do not browse upstream references"));
 	assert!(instructions.contains("Docs impact contract"));
@@ -72,6 +76,46 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains("treat `issue_progress_checkpoint` as terminal completion"));
 	assert!(!instructions.contains("you may end the turn without"));
 	assert!(!instructions.contains("WORKFLOW.md\n"));
+}
+
+#[test]
+fn developer_instructions_render_registered_repo_gate_commands() {
+	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_workflow_markdown(
+		&tests::sample_workflow_markdown("pubfi", &[], "Follow the repository policy.\n", 1)
+			.replace("canonicalize_commands = []", r#"canonicalize_commands = ["cargo make fmt"]"#)
+			.replace("verify_commands = []", r#"verify_commands = ["cargo make test"]"#),
+	);
+	let issue = tests::sample_issue("Todo", &[]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let issue_run = IssueRunPlan {
+		issue,
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: String::from("PUB-101"),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+
+	let instructions = orchestrator::build_developer_instructions(
+		&tracker,
+		&config,
+		&workflow,
+		&issue_run,
+		&StateStore::open_in_memory().expect("state store should open"),
+		None,
+	)
+	.expect("developer instructions should build");
+
+	assert!(instructions.contains("`canonicalize_commands`: `cargo make fmt`"));
+	assert!(instructions.contains("`verify_commands`: `cargo make test`"));
 }
 
 #[test]

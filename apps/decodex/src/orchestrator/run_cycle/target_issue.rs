@@ -13,10 +13,13 @@ pub(crate) use self::{
 };
 #[cfg(test)] pub(crate) use program::select_target_status_visible_program_candidate;
 
-use crate::orchestrator::run_cycle::{
-	self, IssueDispatchMode, IssueRunPlan, IssueTracker, PrepareIssueRunContext, Result,
-	RetryIssueStateHint, RunSummary, ServiceConfig, StateStore, TargetIssueRunContext,
-	TrackerIssue, WorktreeManager, eyre,
+use crate::orchestrator::{
+	BaselineGuardDispatchOutcome, ensure_clean_baseline_before_dispatch,
+	run_cycle::{
+		self, IssueDispatchMode, IssueRunPlan, IssueTracker, PrepareIssueRunContext, Result,
+		RetryIssueStateHint, RunSummary, ServiceConfig, StateStore, TargetIssueRunContext,
+		TrackerIssue, WorktreeManager, eyre,
+	},
 };
 
 pub(crate) fn run_target_issue_once<T>(
@@ -163,6 +166,16 @@ where
 	}
 	if !context.dry_run && context.dispatch_mode != IssueDispatchMode::Closeout {
 		run_cycle::ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
+	}
+	if ensure_clean_baseline_before_dispatch(
+		context.project,
+		context.workflow,
+		context.state_store,
+		context.dispatch_mode,
+		context.dry_run,
+	)? == BaselineGuardDispatchOutcome::NormalizedMain
+	{
+		return Ok(None);
 	}
 
 	let Some(issue_run) = run_cycle::prepare_issue_run(
