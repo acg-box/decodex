@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import shutil
 import sys
 import tempfile
@@ -47,6 +49,20 @@ class SyncInstallablePluginsTests(unittest.TestCase):
                     / "plugins/cache/hack-ink/decodex/0.2.0/.codex-plugin/plugin.json"
                 ).is_file()
             )
+            hooks_path = codex_home / "plugins/cache/hack-ink/decodex/0.2.0/hooks/hooks.json"
+            hook_script = codex_home / "plugins/cache/hack-ink/decodex/0.2.0/scripts/decodex_lifecycle_hook"
+            self.assertTrue(hooks_path.is_file())
+            self.assertTrue(hook_script.is_file())
+            self.assertTrue(os.access(hook_script, os.X_OK))
+            hooks = json.loads(hooks_path.read_text(encoding="utf-8"))["hooks"]
+            self.assertEqual({"PreToolUse"}, set(hooks))
+            commands = [
+                hook["command"]
+                for entry in hooks["PreToolUse"]
+                for hook in entry["hooks"]
+            ]
+            self.assertEqual(1, len(commands))
+            self.assertIn("scripts/decodex_lifecycle_hook", commands[0])
             self.assertFalse(global_skill.exists())
 
     def test_clean_refuses_modified_global_repo_local_skill(self):
