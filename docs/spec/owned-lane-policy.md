@@ -148,7 +148,9 @@ This action requires:
 - the lane already completed PR-backed review handoff
 - required approvals are satisfied
 - actionable review repair is no longer pending
-- required checks are green
+- configured landing status contexts are green and bound to the current PR base
+  SHA, or legacy required checks are green when no landing status contexts are
+  configured
 - the PR is mergeable under repository policy
 
 `ready_to_land` is a decision boundary, not a guarantee that landing and closeout are already complete.
@@ -165,9 +167,9 @@ This action requires:
 | Retry exhausted, explicit human-attention signal, or retained stalled partial progress | Retry budget exhausted, or `decodex:needs-attention`, or stalled-run evidence with retained tracked changes | `manual_intervention_required` | No |
 | Human-attention label is unavailable but the failure path still must block redispatch | Failure path is human-required; label application failed; guarded retained marker recorded | `manual_intervention_required` | No |
 | Retained non-terminal lane still matches issue, branch, and owned recovery intent | Retained worktree exists; issue still belongs to the owned lane; recovery signals are consistent | `resume_retained_lane` | Yes |
-| `In Review` lane has no actionable review yet | PR still belongs to lane; no requested changes that require repair; checks or review are still pending | `wait_for_external_signal` | Yes, when new signal arrives |
+| `In Review` lane has no actionable review yet | PR still belongs to lane; no requested changes that require repair; configured landing status contexts, legacy checks, or review are still pending | `wait_for_external_signal` | Yes, when new signal arrives |
 | `In Review` lane now has actionable review repair work | PR still belongs to lane; actionable review feedback is present; retained lane remains reusable | `resume_retained_lane` | Yes |
-| `In Review` lane has green checks, satisfied review, and is mergeable | PR still belongs to lane; approvals satisfied; unresolved blocking review work absent; checks green; mergeable | `ready_to_land` | Yes |
+| `In Review` lane has green landing checks, satisfied review, and is mergeable | PR still belongs to lane; approvals satisfied; unresolved blocking review work absent; configured landing status contexts are green and bound to the current PR base SHA, or legacy checks are green when no landing status contexts are configured; mergeable | `ready_to_land` | Yes |
 | Pre-PR independent review or post-review repair churn exceeded the configured convergence budget | Runtime-owned review checkpoints show repeated `findings` in the same phase crossed the configured limit; the current repair strategy no longer has a bounded low-risk patch path | `manual_intervention_required`, or `retry_automatically` only when an Architecture Recovery Packet plus Authority Boundary Check authorizes a materially different recovery strategy | Yes, only through the authorized Architecture Recovery Packet path while recovery budget remains. Review-policy churn may continue with `block_landing` while preserving the landing block. |
 | Review-policy stop cannot recover autonomously | Runtime-owned review checkpoints identify `needs_architecture_review`, an Authority Boundary Check result outside the lane authority, insufficient recovery evidence, or exhausted recovery budget for the current head, phase, evidence, and stop class | `manual_intervention_required` | No direct retry; future decision follow-up may run only through a separate structured adapter contract |
 | Merge already happened but closeout or cleanup is incomplete | Merged PR is authoritative; closeout or cleanup evidence is still missing | `continue` | Yes |

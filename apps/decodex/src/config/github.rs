@@ -13,6 +13,10 @@ use crate::{
 pub struct ProjectGitHubConfig {
 	token_env_var: String,
 	command_path: Option<PathBuf>,
+	#[serde(default)]
+	landing_required_status_contexts: Vec<String>,
+	#[serde(default)]
+	landing_required_status_creators: Vec<String>,
 }
 impl ProjectGitHubConfig {
 	/// Name of the environment variable that stores the GitHub token.
@@ -23,6 +27,16 @@ impl ProjectGitHubConfig {
 	/// Optional configured GitHub CLI command path.
 	pub fn command_path(&self) -> Option<&Path> {
 		self.command_path.as_deref()
+	}
+
+	/// Commit status contexts that can satisfy Decodex landing checks.
+	pub fn landing_required_status_contexts(&self) -> &[String] {
+		&self.landing_required_status_contexts
+	}
+
+	/// Optional allowed GitHub status creators for Decodex landing checks.
+	pub fn landing_required_status_creators(&self) -> &[String] {
+		&self.landing_required_status_creators
 	}
 
 	/// Resolve the configured GitHub token env-var name into a concrete token string.
@@ -46,6 +60,18 @@ impl ProjectGitHubConfig {
 
 		if let Some(command_path) = self.command_path.as_deref() {
 			validation::validate_nonempty_path("github.command_path", command_path)?;
+		}
+		for context in &self.landing_required_status_contexts {
+			validation::validate_required_config_string(
+				"github.landing_required_status_contexts",
+				context,
+			)?;
+		}
+		for creator in &self.landing_required_status_creators {
+			validation::validate_required_config_string(
+				"github.landing_required_status_creators",
+				creator,
+			)?;
 		}
 
 		Ok(())

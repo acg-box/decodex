@@ -17,6 +17,7 @@ pub(crate) fn merge_pull_request_review_state_page(
 		|| review_state.pending_review_requests != pull_request.review_requests.total_count
 		|| review_state.mergeable != pull_request.mergeable
 		|| review_state.merge_state_status != pull_request.merge_state_status
+		|| review_state.base_ref_oid != pull_request.base_ref_oid
 		|| review_state.head_ref_name != pull_request.head_ref_name
 		|| review_state.head_ref_oid != pull_request.head_ref_oid
 		|| review_state.merge_commit_oid

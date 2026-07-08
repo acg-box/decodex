@@ -18,6 +18,7 @@ pub(crate) fn pull_request_review_state_from_page(
 		pending_review_requests: pull_request.review_requests.total_count,
 		mergeable: pull_request.mergeable.clone(),
 		merge_state_status: pull_request.merge_state_status.clone(),
+		base_ref_oid: pull_request.base_ref_oid.clone(),
 		head_ref_name: pull_request.head_ref_name.clone(),
 		head_ref_oid: pull_request.head_ref_oid.clone(),
 		merge_commit_oid: pull_request.merge_commit.as_ref().map(|commit| commit.oid.clone()),
@@ -30,6 +31,7 @@ pub(crate) fn pull_request_review_state_from_page(
 			.as_ref()
 			.map(|owner| owner.login.clone()),
 		status_check_rollup_state: pull_request_status_check_rollup_state(pull_request),
+		required_status_contexts: Vec::new(),
 		unresolved_review_threads: count_unresolved_review_threads(&pull_request.review_threads),
 		issue_description_external_review_thumbs_up_count: reaction_group_actor_count(
 			&pull_request.reaction_groups,

@@ -15,7 +15,6 @@ pub(crate) use self::{
 };
 
 use std::{
-	path::Path,
 	process::ExitStatus,
 	time::{Duration, Instant},
 };

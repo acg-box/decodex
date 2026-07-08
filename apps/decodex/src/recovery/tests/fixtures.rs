@@ -43,12 +43,14 @@ pub(in crate::recovery::tests) fn sample_landing_state(
 		is_draft: false,
 		review_decision: Some(String::from("APPROVED")),
 		base_ref_name: String::from("main"),
+		base_ref_oid: Some(String::from("base-sha")),
 		pending_review_requests: 0,
 		mergeable: String::from("MERGEABLE"),
 		merge_state_status: String::from("CLEAN"),
 		head_ref_name: branch_name.to_owned(),
 		head_ref_oid: head_oid.to_owned(),
 		status_check_rollup_state: Some(String::from("SUCCESS")),
+		required_status_contexts: Vec::new(),
 		unresolved_review_threads: 0,
 	}
 }

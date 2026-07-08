@@ -5,6 +5,7 @@ mod landing_state;
 mod locator;
 mod merge_readback;
 mod repository;
+mod status;
 
 #[cfg(test)]
 pub(crate) use self::{
@@ -23,6 +24,10 @@ pub(crate) use self::{
 		inspect_pull_request_merge_readback, pull_request_is_merged_at_head,
 		wait_for_commit_subject, wait_for_pull_request_merge_commit,
 	},
+	status::{
+		CommitStatusPublishRequest, CommitStatusState, commit_status_description_with_base_ref_oid,
+		inspect_required_commit_status_contexts, publish_commit_status,
+	},
 };
 pub(crate) use branch::delete_pull_request_head_branch_if_present;
 #[cfg(test)]
@@ -33,5 +38,4 @@ pub(crate) use merge_readback::{
 pub(crate) use repository::{
 	RepositoryContext, inspect_repository_context, pull_request_matches_repository,
 };
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

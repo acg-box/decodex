@@ -230,10 +230,12 @@ pub(crate) fn worktree_has_review_blocking_changes(worktree_path: &Path) -> Resu
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::orchestrator::PullRequestReviewState;
-	use crate::state::{
-		ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, ReviewPolicyCheckpointInput,
-		StateStore,
+	use crate::{
+		orchestrator::PullRequestReviewState,
+		state::{
+			ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, ReviewPolicyCheckpointInput,
+			StateStore,
+		},
 	};
 
 	#[test]
@@ -247,12 +249,14 @@ mod tests {
 			pending_review_requests: 0,
 			mergeable: String::from("MERGEABLE"),
 			merge_state_status: String::from("CLEAN"),
+			base_ref_oid: Some(String::from("base-sha")),
 			head_ref_name: String::from("x/pub-101"),
 			head_ref_oid: String::from("head-sha"),
 			merge_commit_oid: None,
 			head_repository_name: None,
 			head_repository_owner: None,
 			status_check_rollup_state: Some(String::from("SUCCESS")),
+			required_status_contexts: Vec::new(),
 			unresolved_review_threads: 0,
 			issue_description_external_review_thumbs_up_count: 0,
 			issue_comments: Vec::new(),

@@ -49,6 +49,7 @@ query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: Strin
       state
       isDraft
       reviewDecision
+      baseRefOid
       mergeable
       mergeStateStatus
       headRefName

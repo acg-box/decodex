@@ -59,6 +59,8 @@ pub(super) fn inspect_project_pull_request(
 		pr_url,
 		&github_token,
 		context.config.github().command_path(),
+		context.config.github().landing_required_status_contexts(),
+		context.config.github().landing_required_status_creators(),
 	)?;
 
 	Ok((landing_state, repository.default_branch))

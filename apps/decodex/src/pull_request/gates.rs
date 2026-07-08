@@ -33,11 +33,18 @@ pub(crate) fn classify_landing_gate(
 		return LandingGateDecision::Repair(reason);
 	}
 
-	if failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status) {
+	if let Some(decision) = required_status_context_gate(view) {
+		return decision;
+	}
+
+	if !has_required_status_contexts(view)
+		&& failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status)
+	{
 		return LandingGateDecision::Repair("required_checks_failed");
 	}
 
-	if let Some(check_state) = view.status_check_rollup_state
+	if !has_required_status_contexts(view)
+		&& let Some(check_state) = view.status_check_rollup_state
 		&& checks_require_wait(Some(check_state))
 	{
 		return LandingGateDecision::Wait("checks_waiting");
@@ -53,6 +60,7 @@ pub(crate) fn classify_landing_gate(
 		return LandingGateDecision::Block("not_mergeable");
 	}
 	if mode.requires_green_status_rollup()
+		&& !has_required_status_contexts(view)
 		&& !matches!(view.status_check_rollup_state, None | Some("SUCCESS"))
 	{
 		return LandingGateDecision::Wait("checks_non_green");
@@ -74,18 +82,23 @@ pub(crate) fn retained_clean_path_landing_gates_satisfied(
 ) -> bool {
 	retained_landing_gates_satisfied(view)
 		&& view.merge_state_status == "CLEAN"
-		&& matches!(view.status_check_rollup_state, None | Some("SUCCESS"))
+		&& (has_required_status_contexts(view)
+			|| matches!(view.status_check_rollup_state, None | Some("SUCCESS")))
 }
 
 pub(crate) fn retained_landing_requires_agent_fallback(
 	view: PullRequestLandingGateView<'_>,
 ) -> bool {
+	let configured_status_contexts_ready =
+		has_required_status_contexts(view) && required_status_context_gate(view).is_none();
+	let legacy_rollup_ready = !has_required_status_contexts(view)
+		&& !checks_require_wait(view.status_check_rollup_state)
+		&& !failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status);
 	let review_and_check_gates_ready = view.state == "OPEN"
 		&& !view.is_draft
 		&& view.review_decision != Some("CHANGES_REQUESTED")
 		&& view.unresolved_review_threads == 0
-		&& !checks_require_wait(view.status_check_rollup_state)
-		&& !failed_checks_require_repair(view.status_check_rollup_state, view.merge_state_status);
+		&& (configured_status_contexts_ready || legacy_rollup_ready);
 
 	review_and_check_gates_ready
 		&& ((retained_landing_gates_satisfied(view)
@@ -121,6 +134,41 @@ pub(crate) fn merge_state_requires_review_repair(
 	}
 	if merge_state_status == "BEHIND" {
 		return Some("pull_request_branch_behind_base");
+	}
+
+	None
+}
+
+fn has_required_status_contexts(view: PullRequestLandingGateView<'_>) -> bool {
+	!view.required_status_contexts.is_empty()
+}
+
+fn required_status_context_gate(
+	view: PullRequestLandingGateView<'_>,
+) -> Option<LandingGateDecision> {
+	if !has_required_status_contexts(view) {
+		return None;
+	}
+	if view.required_status_contexts.iter().any(|context| context.state.is_none()) {
+		return Some(LandingGateDecision::Wait("required_status_context_missing"));
+	}
+	if view.required_status_contexts.iter().any(|context| !context.allowed_creator) {
+		return Some(LandingGateDecision::Block("required_status_context_creator_mismatch"));
+	}
+	if view.required_status_contexts.iter().any(|context| {
+		matches!(context.state.as_deref(), Some("failure" | "FAILURE" | "error" | "ERROR"))
+	}) {
+		return Some(LandingGateDecision::Repair("required_status_context_failed"));
+	}
+	if view
+		.required_status_contexts
+		.iter()
+		.any(|context| !matches!(context.state.as_deref(), Some("success" | "SUCCESS")))
+	{
+		return Some(LandingGateDecision::Wait("required_status_context_waiting"));
+	}
+	if view.required_status_contexts.iter().any(|context| !context.base_ref_matches) {
+		return Some(LandingGateDecision::Wait("required_status_context_base_stale"));
 	}
 
 	None
