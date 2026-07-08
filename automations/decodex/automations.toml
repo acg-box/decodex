@@ -24,7 +24,7 @@ forbidden_prompt_fragments = [
 ]
 kind = "cron"
 model = "gpt-5.5"
-reasoning_effort = "xhigh"
+reasoning_effort = "high"
 source_root = "automations/decodex"
 status = "ACTIVE"
 
