@@ -1,4 +1,4 @@
-use crate::orchestrator::{OperatorContinuationRecoveryStatus, OperatorPhaseAcceptanceStatus};
+use crate::orchestrator::{OperatorContinuationRecoveryStatus, OperatorValidationEvidenceStatus};
 
 pub(in crate::orchestrator::status::render::run_rows::run) fn render_continuation_recovery_summary(
 	recovery: Option<&OperatorContinuationRecoveryStatus>,
@@ -29,8 +29,8 @@ pub(in crate::orchestrator::status::render::run_rows::run) fn render_continuatio
 	)
 }
 
-pub(in crate::orchestrator::status::render::run_rows::run) fn render_phase_acceptance_summary(
-	acceptance: Option<&OperatorPhaseAcceptanceStatus>,
+pub(in crate::orchestrator::status::render::run_rows::run) fn render_validation_evidence_summary(
+	acceptance: Option<&OperatorValidationEvidenceStatus>,
 ) -> String {
 	let Some(acceptance) = acceptance else {
 		return String::from("none");

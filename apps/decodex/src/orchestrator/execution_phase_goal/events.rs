@@ -1,10 +1,10 @@
 use serde_json::Value;
 
 use crate::orchestrator::{
-	self, LaneDecisionSnapshot, LaneNextAction, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PhaseGoalKind,
-	PhaseGoalSpec, RepoGateTrackedRewriteDecision, Result,
+	self, LaneDecisionSnapshot, LaneNextAction, PhaseGoalKind, PhaseGoalSpec,
+	RepoGateTrackedRewriteDecision, Result, VALIDATION_EVIDENCE_EVENT_TYPE,
 	execution_phase_goal::{
-		acceptance::PhaseAcceptanceCheck, controller::RepoGatePhaseGoalController,
+		acceptance::ValidationEvidence, controller::RepoGatePhaseGoalController,
 	},
 };
 
@@ -67,15 +67,15 @@ impl RepoGatePhaseGoalController<'_> {
 		Ok(())
 	}
 
-	pub(super) fn record_phase_acceptance_check(&self, check: &PhaseAcceptanceCheck) -> Result<()> {
+	pub(super) fn record_validation_evidence(&self, check: &ValidationEvidence) -> Result<()> {
 		self.state_store.append_private_execution_event(
 			self.project.service_id(),
 			&self.issue_run.issue.id,
 			&self.issue_run.run_id,
 			self.issue_run.attempt_number,
-			PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+			VALIDATION_EVIDENCE_EVENT_TYPE,
 			orchestrator::json!({
-				"schema": "decodex.phase_acceptance_check/1",
+				"schema": "decodex.validation_evidence/1",
 				"phase": check.phase.as_str(),
 				"decision": check.decision.as_str(),
 				"reason_code": check.reason_code,

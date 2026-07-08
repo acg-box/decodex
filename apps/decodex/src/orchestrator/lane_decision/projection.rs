@@ -19,22 +19,20 @@ fn project_lane_next_action(
 	decision: &OwnedLaneDecision,
 ) -> LaneNextAction {
 	match decision.decision_class {
-		OwnedLaneAction::ManualInterventionRequired => {
+		OwnedLaneAction::ManualInterventionRequired =>
 			if snapshot.ambiguous_lineage {
 				LaneNextAction::ForbiddenStaleOrAmbiguous
 			} else {
 				LaneNextAction::NeedsAttention
-			}
-		},
-		OwnedLaneAction::Continue => {
+			},
+		OwnedLaneAction::Continue =>
 			if snapshot.terminal_evidence_present {
 				LaneNextAction::CleanupTerminal
-			} else if snapshot.active_phase.is_some() && !snapshot.phase_acceptance_failure {
+			} else if snapshot.active_phase.is_some() && !snapshot.validation_evidence_failure {
 				LaneNextAction::RunRepoGate
 			} else {
 				LaneNextAction::ContinueCurrentPhase
-			}
-		},
+			},
 		OwnedLaneAction::RetryAutomatically => LaneNextAction::RetryFailure,
 		OwnedLaneAction::ResumeRetainedLane => LaneNextAction::ResumeContinuation,
 		OwnedLaneAction::WaitForExternalSignal => LaneNextAction::WaitExternal,
@@ -59,21 +57,21 @@ fn project_lane_reason(
 	if snapshot.scope_envelope_violation {
 		return "repo-gate write-set crossed the lane scope envelope";
 	}
-	if snapshot.phase_acceptance_failure {
-		return "phase acceptance failure remains an issue-local repair";
+	if snapshot.validation_evidence_failure {
+		return "validation evidence failure remains an issue-local repair";
 	}
 
 	if let Some(disposition) = snapshot.repo_gate_disposition {
+		if snapshot.repo_gate_error_class == Some("repo_gate_lane_external_tracked_rewrite") {
+			return "repo-gate lane-external tracked rewrite requires project cleanup or explicit scoped-gate authority";
+		}
 		return match disposition {
-			RepoGateFailureDisposition::ContinueRepair => {
-				"repo-gate failure remains an issue-local repair"
-			},
-			RepoGateFailureDisposition::RetryAfterBackoff => {
-				"repo-gate failure requires backoff before retry"
-			},
-			RepoGateFailureDisposition::NeedsHumanAttention => {
-				"repo-gate failure crossed an authority boundary"
-			},
+			RepoGateFailureDisposition::ContinueRepair =>
+				"repo-gate failure remains an issue-local repair",
+			RepoGateFailureDisposition::RetryAfterBackoff =>
+				"repo-gate failure requires backoff before retry",
+			RepoGateFailureDisposition::NeedsHumanAttention =>
+				"repo-gate failure crossed an authority boundary",
 		};
 	}
 

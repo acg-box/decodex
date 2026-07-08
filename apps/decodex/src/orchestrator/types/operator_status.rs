@@ -37,8 +37,8 @@ pub(crate) use self::{
 		OperatorQueuedIssueStatus,
 	},
 	run::{
-		OperatorContinuationRecoveryStatus, OperatorPhaseAcceptanceStatus,
-		OperatorRunControlCapability, OperatorRunStatus,
+		OperatorContinuationRecoveryStatus, OperatorRunControlCapability, OperatorRunStatus,
+		OperatorValidationEvidenceStatus,
 	},
 	snapshot::{OperatorSnapshotWarningDetail, OperatorStatusSnapshot},
 	worktree::{

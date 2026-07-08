@@ -1,7 +1,10 @@
-use crate::orchestrator::execution::{
-	self, IssueRunPlan, LaneDecisionSnapshot, PhaseGoalKind, RUN_OPERATION_REPO_GATE,
-	RUN_OPERATION_REVIEW_WRITEBACK, RepoGateFailure, RepoGateTrackedRewriteDecision, Result,
-	ServiceConfig, StateStore, WorkflowDocument,
+use crate::orchestrator::{
+	RepoGateFailureSignal,
+	execution::{
+		self, IssueRunPlan, LaneDecisionSnapshot, PhaseGoalKind, RUN_OPERATION_REPO_GATE,
+		RUN_OPERATION_REVIEW_WRITEBACK, RepoGateFailure, RepoGateTrackedRewriteDecision, Result,
+		ServiceConfig, StateStore, WorkflowDocument,
+	},
 };
 
 pub(crate) fn run_completion_repo_gate(
@@ -38,8 +41,11 @@ pub(crate) fn run_completion_repo_gate(
 				issue_run.attempt_number,
 				issue_run.dispatch_mode,
 				phase,
-				repo_gate_failure.disposition(),
-				scope_envelope_violation,
+				RepoGateFailureSignal::new(
+					repo_gate_failure.disposition(),
+					repo_gate_failure.error_class(),
+					scope_envelope_violation,
+				),
 			);
 			let lane_decision = execution::decide_lane_next_action(&lane_snapshot);
 

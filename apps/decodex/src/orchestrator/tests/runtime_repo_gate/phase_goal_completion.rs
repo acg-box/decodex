@@ -39,7 +39,6 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 
 	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
-	support::record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	let controller = RepoGatePhaseGoalController {
 		project: &config,
@@ -63,6 +62,12 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 	assert!(events.iter().any(|event| {
 		event.event_type() == "phase_goal_transition"
 			&& event.payload()["signal"] == "validation_pass"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == orchestrator::VALIDATION_EVIDENCE_EVENT_TYPE
+			&& event.payload()["decision"] == "pass"
+			&& event.payload()["objective_coverage"]["covered"] == true
+			&& event.payload()["objective_coverage"]["checkpoint_record_id"].is_null()
 	}));
 	assert!(events.iter().any(|event| {
 		event.event_type() == "phase_goal_next" && event.payload()["phase"] == "handoff_evidence"

@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/lane_decision.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/execution_phase_goal.rs, apps/decodex/src/orchestrator/prompting.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/loop_contract.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/program_intake.rs]
-drift_watch: [lane_decision, continuation_lineage, phase_goal, phase_acceptance_check, docs_impact, review_contract, issue_review_checkpoint, decodex.autonomy_proposal/1, decodex.decision_contract/1, execution_program, decodex intake goal]
+drift_watch: [lane_decision, continuation_lineage, phase_goal, validation_evidence, docs_impact, review_contract, issue_review_checkpoint, decodex.autonomy_proposal/1, decodex.decision_contract/1, execution_program, decodex intake goal]
 last_verified: 2026-07-07
 ---
 

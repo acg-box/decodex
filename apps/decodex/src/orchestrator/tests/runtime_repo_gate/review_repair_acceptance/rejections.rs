@@ -3,9 +3,9 @@ use std::fs;
 use crate::{
 	agent::PhaseGoalController,
 	orchestrator::{
-		IssueDispatchMode, IssueRunPlan, ManualAttentionRequested,
-		PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition,
-		RepoGatePhaseGoalController, StateStore, tests,
+		IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, PhaseGoalKind, PhaseGoalSpec,
+		PhaseGoalTransition, RepoGatePhaseGoalController, StateStore,
+		VALIDATION_EVIDENCE_EVENT_TYPE, tests,
 		tests::{TEST_SERVICE_ID, runtime_repo_gate::support},
 	},
 	tracker,
@@ -37,7 +37,7 @@ fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 		retry_budget_base: 0,
 	};
 
-	support::record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+	support::record_validation_evidence_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	let transition = RepoGatePhaseGoalController {
 		project: &config,
@@ -59,20 +59,20 @@ fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 		})
 	));
 	assert!(events.iter().any(|event| {
-		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+		event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE
 			&& event.payload()["decision"] == "fail"
 			&& event.payload()["reason_code"] == "no_effective_delta"
 	}));
 	assert!(events.iter().any(|event| {
 		event.event_type() == "phase_goal_transition"
 			&& event.payload()["signal"] == "validation_fail"
-			&& event.payload()["payload"]["errorClass"] == "phase_acceptance_check_failed"
+			&& event.payload()["payload"]["errorClass"] == "validation_evidence_failed"
 			&& event.payload()["payload"]["laneDecision"] == "retry_failure"
 	}));
 	assert!(events.iter().any(|event| {
 		event.event_type() == "lane_decision"
 			&& event.payload()["next_action"] == "retry_failure"
-			&& event.payload()["phase_acceptance_failure"] == true
+			&& event.payload()["validation_evidence_failure"] == true
 	}));
 	assert!(events.iter().all(|event| {
 		event.event_type() != "phase_goal_next" || event.payload()["phase"] != "handoff_evidence"
@@ -106,7 +106,7 @@ fn phase_goal_acceptance_non_goal_violation_requests_manual_attention() {
 
 	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
-	support::record_phase_acceptance_progress_checkpoint(
+	support::record_validation_evidence_progress_checkpoint(
 		&config,
 		&state_store,
 		&issue_run,
@@ -128,9 +128,9 @@ fn phase_goal_acceptance_non_goal_violation_requests_manual_attention() {
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
 		.expect("private phase goal events should load");
 
-	assert_eq!(manual_attention.error_class.as_deref(), Some("phase_acceptance_check_failed"));
+	assert_eq!(manual_attention.error_class.as_deref(), Some("validation_evidence_failed"));
 	assert!(events.iter().any(|event| {
-		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+		event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE
 			&& event.payload()["decision"] == "fail"
 			&& event.payload()["reason_code"] == "non_goal_violation"
 			&& event.payload()["non_goal_check"]["passed"] == false

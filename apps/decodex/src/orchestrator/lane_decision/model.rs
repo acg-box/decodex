@@ -44,15 +44,33 @@ pub(in crate::orchestrator) struct LaneDecisionSnapshot {
 	pub(in crate::orchestrator) retry_budget_consumed: bool,
 	pub(in crate::orchestrator) progress_blocker_count: usize,
 	pub(in crate::orchestrator) non_goal_violation: bool,
-	pub(in crate::orchestrator) phase_acceptance_failure: bool,
+	pub(in crate::orchestrator) validation_evidence_failure: bool,
 	pub(in crate::orchestrator) repo_gate_disposition: Option<RepoGateFailureDisposition>,
+	pub(in crate::orchestrator) repo_gate_error_class: Option<&'static str>,
 	pub(in crate::orchestrator) scope_envelope_violation: bool,
 	pub(in crate::orchestrator) ambiguous_lineage: bool,
 	pub(in crate::orchestrator) terminal_evidence_present: bool,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::orchestrator) struct RepoGateFailureSignal {
+	pub(in crate::orchestrator) disposition: RepoGateFailureDisposition,
+	pub(in crate::orchestrator) error_class: &'static str,
+	pub(in crate::orchestrator) scope_envelope_violation: bool,
+}
+impl RepoGateFailureSignal {
+	pub(in crate::orchestrator) const fn new(
+		disposition: RepoGateFailureDisposition,
+		error_class: &'static str,
+		scope_envelope_violation: bool,
+	) -> Self {
+		Self { disposition, error_class, scope_envelope_violation }
+	}
+}
+
 impl LaneDecisionSnapshot {
 	#[allow(clippy::too_many_arguments)]
-	pub(in crate::orchestrator) fn phase_acceptance(
+	pub(in crate::orchestrator) fn validation_evidence(
 		issue_identifier: impl Into<String>,
 		run_id: impl Into<String>,
 		attempt_number: i64,
@@ -73,8 +91,9 @@ impl LaneDecisionSnapshot {
 			retry_budget_consumed: false,
 			progress_blocker_count,
 			non_goal_violation,
-			phase_acceptance_failure: true,
+			validation_evidence_failure: true,
 			repo_gate_disposition: None,
+			repo_gate_error_class: None,
 			scope_envelope_violation,
 			ambiguous_lineage: false,
 			terminal_evidence_present: false,
@@ -104,8 +123,9 @@ impl LaneDecisionSnapshot {
 			retry_budget_consumed: retry_kind.is_some_and(|kind| kind != RetryKind::Continuation),
 			progress_blocker_count,
 			non_goal_violation,
-			phase_acceptance_failure: false,
+			validation_evidence_failure: false,
 			repo_gate_disposition: None,
+			repo_gate_error_class: None,
 			scope_envelope_violation: false,
 			ambiguous_lineage: false,
 			terminal_evidence_present,
@@ -118,8 +138,7 @@ impl LaneDecisionSnapshot {
 		attempt_number: i64,
 		dispatch_mode: IssueDispatchMode,
 		active_phase: PhaseGoalKind,
-		repo_gate_disposition: RepoGateFailureDisposition,
-		scope_envelope_violation: bool,
+		repo_gate_failure: RepoGateFailureSignal,
 	) -> Self {
 		Self {
 			issue_identifier: issue_identifier.into(),
@@ -132,9 +151,10 @@ impl LaneDecisionSnapshot {
 			retry_budget_consumed: false,
 			progress_blocker_count: 0,
 			non_goal_violation: false,
-			phase_acceptance_failure: false,
-			repo_gate_disposition: Some(repo_gate_disposition),
-			scope_envelope_violation,
+			validation_evidence_failure: false,
+			repo_gate_disposition: Some(repo_gate_failure.disposition),
+			repo_gate_error_class: Some(repo_gate_failure.error_class),
+			scope_envelope_violation: repo_gate_failure.scope_envelope_violation,
 			ambiguous_lineage: false,
 			terminal_evidence_present: false,
 		}

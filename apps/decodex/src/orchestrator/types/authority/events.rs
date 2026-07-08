@@ -16,7 +16,7 @@ pub(crate) const ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE: &str = "architecture
 pub(crate) const PHASE_GOAL_RECOVERY_EVENT_TYPE: &str = "phase_goal_recovery";
 pub(crate) const PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE: &str = "phase_goal_recovery_blocked";
 pub(crate) const PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT: i64 = 1;
-pub(crate) const PHASE_ACCEPTANCE_CHECK_EVENT_TYPE: &str = "phase_acceptance_check";
+pub(crate) const VALIDATION_EVIDENCE_EVENT_TYPE: &str = "validation_evidence";
 #[allow(dead_code)]
 pub(crate) const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
 pub(crate) const ARCHITECTURE_RECOVERY_PACKET_SCHEMA: &str =
