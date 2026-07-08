@@ -20,7 +20,7 @@ pub(in crate::orchestrator::execution_failure::review_handoff_drift::recovery) f
 		|| lifecycle_record.phase() != REVIEW_HANDOFF_REBOUND_LIFECYCLE_PHASE;
 
 	command::review_handoff_drift_command_adapter(
-		command::review_handoff_drift_lifecycle_authority_rebind_command_intent(
+		command::rebind_lifecycle_authority_command_intent(
 			&issue_run.issue.id,
 			lifecycle_record.run_id(),
 		),

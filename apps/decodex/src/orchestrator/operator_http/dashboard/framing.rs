@@ -6,7 +6,7 @@ use std::{
 use serde_json::Value;
 
 use crate::orchestrator::operator_http::{
-	self, DashboardClientFrame, OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES, Result, eyre,
+	self, DASHBOARD_WS_MESSAGE_MAX_BYTES, DashboardClientFrame, Result, eyre,
 };
 
 pub(crate) fn write_dashboard_websocket_event(
@@ -130,7 +130,7 @@ pub(crate) fn parse_dashboard_websocket_client_frame(
 		_ => unreachable!("websocket payload length marker is masked to seven bits"),
 	};
 
-	if payload_length > OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES {
+	if payload_length > DASHBOARD_WS_MESSAGE_MAX_BYTES {
 		eyre::bail!("WebSocket client frame exceeded the dashboard message limit.");
 	}
 	if !fin {

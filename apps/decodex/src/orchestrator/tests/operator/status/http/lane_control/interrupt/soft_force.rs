@@ -4,7 +4,7 @@ use crate::orchestrator::tests::operator::status::http::{
 };
 
 #[test]
-fn operator_lane_interrupt_api_force_reports_hard_fallback_after_pending_soft_interrupt() {
+fn reports_hard_fallback_after_pending_soft_interrupt() {
 	let (_temp_dir, config, _workflow) = http::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(

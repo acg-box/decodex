@@ -6,7 +6,7 @@ use crate::orchestrator::{
 };
 
 #[test]
-fn schedule_retry_after_child_exit_records_failure_retries_for_active_dispatch_modes() {
+fn records_failure_retries_for_active_dispatch() {
 	for (issue_state, dispatch_mode, expected_dispatch_mode, run_id) in [
 		("In Progress", IssueDispatchMode::Retry, IssueDispatchMode::Retry, "run-1"),
 		(

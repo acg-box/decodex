@@ -27,7 +27,7 @@ fn operator_status_snapshot_surfaces_program_intake_and_node_readbacks() {
 }
 
 #[test]
-fn operator_status_program_readback_marks_retained_worktree_node_active_without_conflict_domain() {
+fn marks_retained_worktree_active_without_conflict_domain() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_id = "issue-retained-no-conflict";
@@ -74,7 +74,7 @@ fn operator_status_program_readback_marks_retained_worktree_node_active_without_
 }
 
 #[test]
-fn operator_status_program_readback_prefers_post_review_owner_over_stale_active_label() {
+fn prefers_post_review_owner_over_stale_active_label() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue_id = "issue-post-review";

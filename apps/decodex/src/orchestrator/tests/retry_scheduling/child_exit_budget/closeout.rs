@@ -12,8 +12,7 @@ use crate::{
 };
 
 #[test]
-fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_after_tracker_completion()
- {
+fn records_closeout_retry_after_tracker_completion() {
 	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let issue = support::sample_service_owned_issue("Done");
@@ -100,7 +99,7 @@ fn schedule_retry_after_child_exit_records_failure_retry_for_closeout_issue_afte
 }
 
 #[test]
-fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_issue_with_open_pr() {
+fn keeps_blocked_closeout_retry_for_completed_issue() {
 	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let issue = support::sample_service_owned_issue("Done");

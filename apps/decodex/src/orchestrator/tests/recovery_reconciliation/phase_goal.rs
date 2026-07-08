@@ -184,7 +184,7 @@ fn apply_stalled_phase_goal_reconciliation(
 }
 
 #[test]
-fn stalled_retained_phase_goal_reconciliation_schedules_continuation_without_attention() {
+fn schedules_continuation_without_attention() {
 	let outcome = apply_stalled_phase_goal_reconciliation("verifying", serde_json::json!([]));
 
 	assert_eq!(outcome.run_status, CONTINUATION_PENDING_RUN_STATUS);

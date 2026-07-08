@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[test]
-fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manual_attention() {
+fn skips_merged_landed_lineage_without_attention() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");
 	let tracker =

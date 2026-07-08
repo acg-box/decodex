@@ -20,7 +20,7 @@ use crate::orchestrator::{
 	worktree_has_review_blocking_changes,
 };
 
-const RUNTIME_STANDARD_REVIEW_PRODUCER_FAILURE_BUDGET: i64 = 3;
+const PRODUCER_FAILURE_BUDGET: i64 = 3;
 
 pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_non_github_review_lane<
 	T,
@@ -221,7 +221,7 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 						lane,
 						retry_count,
 					)?;
-					if retry_count >= RUNTIME_STANDARD_REVIEW_PRODUCER_FAILURE_BUDGET {
+					if retry_count >= PRODUCER_FAILURE_BUDGET {
 						apply_runtime_standard_review_manual_attention(
 							tracker,
 							project,
@@ -284,7 +284,7 @@ fn write_runtime_standard_review_producer_retry_count(
 	lane: &RetainedReviewLane,
 	retry_count: i64,
 ) -> Result<()> {
-	lifecycle_authority::write_retained_review_lifecycle_authority_for_current_action(
+	lifecycle_authority::write_lifecycle_authority_for_current_action(
 		state_store,
 		lane,
 		CommandIntentKind::SyncReviewLifecycleAuthority,

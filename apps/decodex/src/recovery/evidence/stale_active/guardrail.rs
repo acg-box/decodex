@@ -11,14 +11,12 @@ pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is
 
 	payload.get("schema").and_then(serde_json::Value::as_str)
 		== Some("decodex.loop_guardrail_checkpoint/1")
-		&& stale_active_no_diff_guardrail_source_is_startup_or_turn_failure(payload)
+		&& no_diff_guardrail_source_is_startup_or_turn_failure(payload)
 		&& payload.get("reason").and_then(serde_json::Value::as_str) == Some("no_effective_diff")
 		&& stale_active_guardrail_details_have_no_delta(payload)
 }
 
-fn stale_active_no_diff_guardrail_source_is_startup_or_turn_failure(
-	payload: &serde_json::Value,
-) -> bool {
+fn no_diff_guardrail_source_is_startup_or_turn_failure(payload: &serde_json::Value) -> bool {
 	let source_error_class = payload.get("source_error_class").and_then(serde_json::Value::as_str);
 
 	matches!(

@@ -44,8 +44,7 @@ use crate::{
 	tracker,
 };
 
-pub(crate) const ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON: &str =
-	"review_handoff_state_transition_pending";
+pub(crate) const REVIEW_HANDOFF_BLOCK_REASON: &str = "review_handoff_state_transition_pending";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CloseoutDispatchEligibility {

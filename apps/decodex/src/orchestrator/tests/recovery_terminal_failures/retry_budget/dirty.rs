@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[test]
-fn dirty_retryable_runtime_failures_keep_automatic_recovery_before_budget_exhaustion() {
+fn keeps_automatic_recovery_before_budget_exhaustion() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 
 	support::assert_dirty_retryable_failure_writeback_does_not_require_attention(

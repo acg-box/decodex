@@ -71,7 +71,7 @@ fn classify_post_review_lane_blocks_stale_review_handoff_head_without_lineage_pr
 }
 
 #[test]
-fn classify_post_review_lane_blocks_when_pull_request_head_differs_from_worktree_head() {
+fn blocks_when_pr_head_differs_from_worktree_head() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Review", &[]);

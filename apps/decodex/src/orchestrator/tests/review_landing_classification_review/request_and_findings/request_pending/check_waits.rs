@@ -9,8 +9,7 @@ use crate::orchestrator::{
 };
 
 #[test]
-fn classify_post_review_lane_request_pending_waits_for_green_checks_before_external_review_request()
-{
+fn waits_for_green_checks_before_review_request() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Review", &[]);

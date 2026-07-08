@@ -5,7 +5,7 @@ use crate::{
 };
 
 #[test]
-fn autonomy_decision_bridge_accepts_candidate_as_latent_contract_with_lineage_readback() {
+fn accepts_candidate_contract_with_lineage_readback() {
 	let (store, proposal_id, candidate) = tests::store_challenged_autonomy_candidate();
 
 	tests::assert_autonomy_candidate_shape(&store, &candidate);

@@ -10,8 +10,8 @@ mod types;
 
 pub(crate) use self::{
 	comments::{
-		create_prepared_linear_execution_event_comment,
-		create_prepared_linear_execution_event_comment_without_remote_scan, create_public_comment,
+		create_linear_execution_event_comment_direct,
+		create_prepared_linear_execution_event_comment, create_public_comment,
 		prepare_linear_execution_event_comment,
 	},
 	errors::issue_lookup_missing_error_for_candidate,

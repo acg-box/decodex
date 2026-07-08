@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[test]
-fn progress_checkpoint_retries_preserve_private_events_without_duplicate_public_projection() {
+fn preserves_private_events_without_duplicate_projection() {
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
 	let workflow = tests::sample_workflow();
