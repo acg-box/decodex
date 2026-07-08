@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::orchestrator::{
 	self, GhPullRequestReviewStateInspector, IssueDispatchMode, IssueTracker, PreferredRunIdentity,
 	Result, RunSummary, TargetIssueRunContext, run_cycle::target_issue,
@@ -12,10 +10,7 @@ where
 	T: IssueTracker,
 {
 	let target_issue_id = target_issue::resolve_target_issue_id(context.tracker, context.issue_id)?;
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
-		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(context.project);
 
 	Ok(orchestrator::build_post_review_lane_statuses(
 		context.tracker,
@@ -38,10 +33,7 @@ where
 	T: IssueTracker,
 {
 	let target_issue_id = target_issue::resolve_target_issue_id(context.tracker, context.issue_id)?;
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
-		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(context.project);
 	let Some(_issue) =
 		orchestrator::select_target_post_review_repair_issue_candidate_with_inspector(
 			context.tracker,
@@ -70,10 +62,7 @@ where
 {
 	let target_issue_id = target_issue::resolve_target_issue_id(context.tracker, context.issue_id)?;
 	let completed_state = context.workflow.frontmatter().tracker().resolved_completed_state();
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
-		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(context.project);
 
 	Ok(orchestrator::build_post_review_lane_statuses(
 		context.tracker,
@@ -96,10 +85,7 @@ where
 	T: IssueTracker,
 {
 	let target_issue_id = target_issue::resolve_target_issue_id(context.tracker, context.issue_id)?;
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
-		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(context.project);
 	let Some(candidate) =
 		orchestrator::select_target_post_review_closeout_issue_candidate_with_inspector(
 			context.tracker,

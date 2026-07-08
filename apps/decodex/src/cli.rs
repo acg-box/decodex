@@ -7,6 +7,7 @@ mod manual_commands;
 mod probe_command;
 mod recovery_commands;
 mod research_intake_commands;
+mod verify_commands;
 
 pub(crate) use self::attempt_command::AttemptRequest;
 
@@ -34,6 +35,7 @@ use self::{
 	probe_command::ProbeCommand,
 	recovery_commands::RecoverCommand,
 	research_intake_commands::{ArchiveLinearCommand, IntakeCommand, MaintenanceCommand},
+	verify_commands::VerifyCommand,
 };
 use crate::prelude::Result;
 
@@ -78,6 +80,7 @@ impl Cli {
 			Command::Maintenance(args) => args.run(),
 			Command::Account(args) => args.run(),
 			Command::Probe(args) => args.run(),
+			Command::Verify(args) => args.run(),
 			Command::Attempt(args) => args.run(),
 		}
 	}
@@ -135,6 +138,8 @@ enum Command {
 	Account(AccountCommand),
 	/// Validate the local app-server integration boundary.
 	Probe(ProbeCommand),
+	/// Publish or inspect Decodex validation evidence.
+	Verify(VerifyCommand),
 	/// Run one daemon-planned attempt from a structured request.
 	#[command(name = "_attempt", hide = true)]
 	Attempt(AttemptCommand),

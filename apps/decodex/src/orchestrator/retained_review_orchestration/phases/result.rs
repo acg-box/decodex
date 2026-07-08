@@ -40,14 +40,12 @@ where
 			},
 		);
 	}
-	if orchestrator::failed_checks_require_repair(
-		lane.review_state.status_check_rollup_state.as_deref(),
-		&lane.review_state.merge_state_status,
-	) || orchestrator::merge_state_requires_review_repair(
-		&lane.review_state.mergeable,
-		&lane.review_state.merge_state_status,
-	)
-	.is_some()
+	if orchestrator::review_state_checks_require_repair(&lane.review_state)
+		|| orchestrator::merge_state_requires_review_repair(
+			&lane.review_state.mergeable,
+			&lane.review_state.merge_state_status,
+		)
+		.is_some()
 	{
 		return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 			runtime.state_store,

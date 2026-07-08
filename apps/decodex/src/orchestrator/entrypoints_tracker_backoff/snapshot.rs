@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::{
 	orchestrator::{
 		self, AccountActivityMode, GhPullRequestReviewStateInspector,
@@ -14,10 +12,7 @@ pub(crate) fn build_operator_status_snapshot_for_tracker_backoff(
 	limit: usize,
 	status: &OperatorConnectorBackoffStatus,
 ) -> Result<OperatorStatusSnapshot> {
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(project.github().token_env_var().to_owned()),
-		github_command_path: project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(project);
 	let mut snapshot = orchestrator::build_operator_status_snapshot_with_account_mode(
 		project,
 		state_store,

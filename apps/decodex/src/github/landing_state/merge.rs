@@ -15,6 +15,7 @@ pub(in crate::github::landing_state) fn pull_request_landing_state_from_page(
 		is_draft: pull_request.is_draft,
 		review_decision: pull_request.review_decision.clone(),
 		base_ref_name: pull_request.base_ref_name.clone(),
+		base_ref_oid: pull_request.base_ref_oid.clone(),
 		pending_review_requests: pull_request.review_requests.total_count,
 		mergeable: pull_request.mergeable.clone(),
 		merge_state_status: pull_request.merge_state_status.clone(),
@@ -26,6 +27,7 @@ pub(in crate::github::landing_state) fn pull_request_landing_state_from_page(
 			.first()
 			.and_then(|node| node.commit.status_check_rollup.as_ref())
 			.map(|rollup| rollup.state.clone()),
+		required_status_contexts: Vec::new(),
 		unresolved_review_threads: count_unresolved_review_threads(&pull_request.review_threads),
 	}
 }
@@ -41,6 +43,7 @@ pub(in crate::github::landing_state) fn merge_pull_request_landing_state_page(
 		|| landing_state.is_draft != page_state.is_draft
 		|| landing_state.review_decision != page_state.review_decision
 		|| landing_state.base_ref_name != page_state.base_ref_name
+		|| landing_state.base_ref_oid != page_state.base_ref_oid
 		|| landing_state.pending_review_requests != page_state.pending_review_requests
 		|| landing_state.mergeable != page_state.mergeable
 		|| landing_state.merge_state_status != page_state.merge_state_status

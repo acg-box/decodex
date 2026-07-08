@@ -35,6 +35,8 @@ fn manual_land_issue_closeout_removes_managed_lane_worktree_and_branch() {
 		github_token_env_var: String::from("GITHUB_TOKEN"),
 		github_token: String::from("test-token"),
 		github_command_path: None,
+		landing_required_status_contexts: Vec::new(),
+		landing_required_status_creators: Vec::new(),
 		repository: RepositoryContext {
 			owner: String::from("hack-ink"),
 			name: String::from("decodex"),
@@ -95,6 +97,8 @@ fn manual_land_manual_authority_removes_managed_lane_worktree_and_branch() {
 		github_token_env_var: String::from("GITHUB_TOKEN"),
 		github_token: String::from("test-token"),
 		github_command_path: None,
+		landing_required_status_contexts: Vec::new(),
+		landing_required_status_creators: Vec::new(),
 		repository: RepositoryContext {
 			owner: String::from("hack-ink"),
 			name: String::from("decodex"),

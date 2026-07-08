@@ -88,6 +88,8 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 		&context.pr_url,
 		&context.github_token,
 		context.github_command_path.as_deref(),
+		&context.landing_required_status_contexts,
+		&context.landing_required_status_creators,
 	)?;
 	let current_head = git::current_head_oid(&context.cwd)?;
 	let execution_mode = landing::validate_landing_state(
