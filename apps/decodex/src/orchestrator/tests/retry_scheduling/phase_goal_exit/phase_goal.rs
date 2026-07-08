@@ -97,7 +97,9 @@ fn schedule_retry_after_child_exit_terminalizes_open_phase_goal_tracked_rewrites
 	assert!(comments.iter().any(|comment| {
 		comment.contains("decodex retained partial progress and needs attention")
 			&& comment.contains("partial_progress_retained")
-			&& comment.contains("Source failure class `repo_gate_tracked_rewrites_left`")
+			&& comment.contains(
+				"Source failure class `repo_gate_lane_external_tracked_rewrite`"
+			)
 	}));
 }
 

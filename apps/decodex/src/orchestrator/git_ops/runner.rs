@@ -34,6 +34,8 @@ pub(crate) fn run_repo_gate_commands_with_rewrite_policy(
 	cwd: &Path,
 	allow_owned_rewrites: bool,
 ) -> Result<RepoGateCommandOutcome> {
+	command::preflight_repo_gate_command_runtime(cwd)?;
+
 	let baseline_tracked_diff = rewrite::read_repo_gate_tracked_diff_snapshot(cwd, "baseline")?;
 
 	if let Err(error) = run_canonicalize_commands(canonicalize_commands, cwd) {

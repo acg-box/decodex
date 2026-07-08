@@ -8,9 +8,8 @@ use crate::{
 		self, PhaseGoalKind, RepoGateCommandOutcome, ResolvedRepoGate, Result,
 		execution_phase_goal::{
 			acceptance::{
-				self, PhaseAcceptanceCheck, PhaseAcceptanceDecision,
-				phase_acceptance_blocker_count, phase_acceptance_docs_impact_valid,
-				phase_acceptance_has_non_goal_violation,
+				self, ValidationDecision, ValidationEvidence, validation_evidence_blocker_count,
+				validation_evidence_docs_impact_valid, validation_evidence_has_non_goal_violation,
 			},
 			controller::RepoGatePhaseGoalController,
 		},
@@ -19,17 +18,17 @@ use crate::{
 };
 
 impl RepoGatePhaseGoalController<'_> {
-	pub(in crate::orchestrator::execution_phase_goal) fn evaluate_phase_acceptance(
+	pub(in crate::orchestrator::execution_phase_goal) fn evaluate_validation_evidence(
 		&self,
 		phase: PhaseGoalKind,
 		repo_gate: &ResolvedRepoGate<'_>,
 		repo_gate_outcome: &RepoGateCommandOutcome,
-	) -> Result<PhaseAcceptanceCheck> {
+	) -> Result<ValidationEvidence> {
 		let fingerprint =
 			orchestrator::loop_guardrail_worktree_fingerprint(&self.issue_run.worktree.path)?;
 		let head_sha = fingerprint.as_ref().map(|value| value.head_sha.clone());
 		let changed_surfaces =
-			acceptance::phase_acceptance_changed_surfaces(&self.issue_run.worktree.path);
+			acceptance::validation_evidence_changed_surfaces(&self.issue_run.worktree.path);
 		let effective_delta_present =
 			fingerprint.as_ref().is_some_and(|value| value.effective_delta_present)
 				|| !changed_surfaces.is_empty();
@@ -43,21 +42,22 @@ impl RepoGatePhaseGoalController<'_> {
 			.as_deref()
 			.zip(checkpoint_head_sha.as_deref())
 			.is_some_and(|(head, checkpoint_head)| head == checkpoint_head);
+		let checkpoint_present = checkpoint.is_some();
 		let docs_impact_valid = checkpoint_payload
 			.and_then(|payload| payload.get("docs_impact"))
 			.and_then(Value::as_str)
-			.is_some_and(phase_acceptance_docs_impact_valid);
-		let blocker_count = checkpoint_payload.map_or(0, phase_acceptance_blocker_count);
+			.is_none_or(validation_evidence_docs_impact_valid);
+		let blocker_count = checkpoint_payload.map_or(0, validation_evidence_blocker_count);
 		let non_goal_violation =
-			checkpoint_payload.is_some_and(phase_acceptance_has_non_goal_violation);
-		let objective_covered = checkpoint.is_some()
-			&& checkpoint_matches_head
+			checkpoint_payload.is_some_and(validation_evidence_has_non_goal_violation);
+		let objective_covered = (!checkpoint_present || checkpoint_matches_head)
 			&& docs_impact_valid
+			&& effective_delta_present
 			&& blocker_count == 0;
 		let non_goal_passed = !non_goal_violation;
 		let validation_passed = true;
-		let reason_code = acceptance::phase_acceptance_reason_code(
-			checkpoint.is_some(),
+		let reason_code = acceptance::validation_evidence_reason_code(
+			checkpoint_present,
 			checkpoint_matches_head,
 			docs_impact_valid,
 			effective_delta_present,
@@ -65,12 +65,12 @@ impl RepoGatePhaseGoalController<'_> {
 			blocker_count,
 		);
 		let decision = if reason_code == "accepted" {
-			PhaseAcceptanceDecision::Pass
+			ValidationDecision::Pass
 		} else {
-			PhaseAcceptanceDecision::Fail
+			ValidationDecision::Fail
 		};
 
-		Ok(PhaseAcceptanceCheck {
+		Ok(ValidationEvidence {
 			phase,
 			decision,
 			reason_code,

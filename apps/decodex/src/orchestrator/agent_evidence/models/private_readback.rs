@@ -21,7 +21,7 @@ pub(crate) struct PrivateEvidenceReadback {
 	pub(crate) latest_event_at: Option<String>,
 	pub(crate) review_checkpoints: Vec<PrivateEvidenceReviewCheckpointSummary>,
 	pub(crate) repo_gate_failures: Vec<PrivateEvidenceRepoGateFailureSummary>,
-	pub(crate) phase_acceptance_checks: Vec<PrivateEvidencePhaseAcceptanceSummary>,
+	pub(crate) validation_evidence: Vec<PrivateEvidenceValidationSummary>,
 	pub(crate) boundary_checks: Vec<PrivateEvidenceBoundaryCheckSummary>,
 	pub(crate) decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
 	pub(crate) architecture_recoveries: Vec<PrivateEvidenceArchitectureRecoverySummary>,
@@ -82,7 +82,7 @@ pub(crate) struct PrivateEvidenceRepoGateFailureSummary {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct PrivateEvidencePhaseAcceptanceSummary {
+pub(crate) struct PrivateEvidenceValidationSummary {
 	pub(crate) phase: String,
 	pub(crate) decision: String,
 	pub(crate) reason_code: String,

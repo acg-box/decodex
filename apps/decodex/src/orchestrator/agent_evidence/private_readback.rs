@@ -78,7 +78,7 @@ pub(crate) fn build_private_evidence_readback(
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
 		review_checkpoints: self::review::review_checkpoints_from_private_events(&events),
 		repo_gate_failures: self::repo_gate::repo_gate_failures_from_private_events(&events),
-		phase_acceptance_checks: self::phase::phase_acceptance_checks_from_private_events(&events),
+		validation_evidence: self::phase::validation_evidence_from_private_events(&events),
 		boundary_checks: self::boundary::boundary_checks_from_private_events(&events),
 		decision_requests: self::boundary::authority_decision_requests_from_private_events(&events),
 		architecture_recoveries: self::architecture::architecture_recoveries_from_private_events(

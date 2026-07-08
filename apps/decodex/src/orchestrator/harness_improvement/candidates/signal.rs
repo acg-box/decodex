@@ -11,26 +11,6 @@ pub(in crate::orchestrator::harness_improvement) fn push_signal_candidates(
 	signals: &HarnessOutcomeSignals,
 	linear_projection: &HarnessLinearProjectionSummary,
 ) {
-	if signals.validation_failure_count > 0 {
-		util::insert_candidate(
-			candidates,
-			"weak_prompt",
-			"validation_failed_after_generation",
-			&format!("issue:{}", input.issue_identifier),
-			signals.validation_failure_count,
-			"Tighten phase prompts or preflight checks around the failing validation class.",
-		);
-	}
-	if signals.accepted_finding_count > 0 {
-		util::insert_candidate(
-			candidates,
-			"weak_prompt",
-			"accepted_review_findings",
-			&format!("issue:{}", input.issue_identifier),
-			signals.accepted_finding_count,
-			"Convert accepted reviewer findings into prompt, skill, or validator hardening.",
-		);
-	}
 	if signals.accepted_finding_count > 0 && signals.guardrail_reasons.contains("no_effective_diff")
 	{
 		util::insert_candidate(
@@ -104,8 +84,9 @@ fn guardrail_candidate_kind(reason: &str) -> (&'static str, &'static str) {
 			"missing_validator",
 			"Promote the repeated failure into an earlier deterministic validator or fixture.",
 		),
-		_ => {
-			("weak_prompt", "Tighten loop instructions so future attempts stop or repair earlier.")
-		},
+		_ => (
+			"harness_contract_gap",
+			"Record a durable harness gap only after the repeated failure class has concrete evidence.",
+		),
 	}
 }

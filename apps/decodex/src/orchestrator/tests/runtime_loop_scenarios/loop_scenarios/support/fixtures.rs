@@ -125,13 +125,6 @@ pub(crate) fn loop_scenario_assert_harness_candidates(
 		}),
 		"uncovered direction should recommend a contract improvement"
 	);
-	assert!(
-		candidates.iter().any(|candidate| {
-			candidate["kind"] == "weak_prompt"
-				&& candidate["reason_code"] == "accepted_review_findings"
-		}),
-		"accepted review findings should recommend a prompt or fixture improvement"
-	);
 	assert_eq!(payload["authority_boundary"]["failed_check_count"], 1);
 	assert_eq!(payload["authority_boundary"]["improvement_signal_count"], 3);
 	assert!(

@@ -53,12 +53,18 @@ pub(crate) fn repo_gate_diff_rewrite_outcome(
 
 	let output_text = git_ops::repo_gate_output_text(&output);
 	let dirty_entries = output_text.trim();
+	let failure_kind = if decision.is_lane_external_tracked_rewrite() {
+		RepoGateFailureKind::LaneExternalTrackedRewrite
+	} else {
+		RepoGateFailureKind::TrackedRewritesLeft
+	};
 
 	Err(Report::new(RepoGateFailure::new(
-		RepoGateFailureKind::TrackedRewritesLeft,
+		failure_kind,
 		format!(
-			"Repo gate {phase} rewrote tracked files in `{}`; owned={}; decision={}; reason={}; files={}; commit or revert these changes before continuing:\n{}",
+			"Repo gate {phase} rewrote tracked files in `{}`; classification={}; owned={}; decision={}; reason={}; files={}; commit or revert lane-owned changes, or add explicit scoped authority for lane-external tracked rewrites before continuing:\n{}",
 			cwd.display(),
+			decision.classification,
 			decision.owned,
 			decision.decision,
 			decision.reason,
@@ -100,7 +106,7 @@ pub(crate) fn repo_gate_scope_envelope_failure_or_source(
 		return source_error;
 	}
 
-	let decision = RepoGateTrackedRewriteDecision::scope_envelope_violation(
+	let decision = RepoGateTrackedRewriteDecision::ambiguous_scope(
 		scope_violation_files,
 		source_error_class,
 		source_diagnostic,
@@ -140,11 +146,9 @@ fn repo_gate_tracked_rewrite_decision(
 		));
 	}
 
-	let reason = if owned {
-		"all rewritten files were pre-gate implementation paths, but this lifecycle boundary requires a clean committed worktree"
+	if owned {
+		Some(RepoGateTrackedRewriteDecision::lane_owned_requires_clean_boundary(rewritten_files))
 	} else {
-		"one or more rewritten files were not present in the pre-gate implementation diff"
-	};
-
-	Some(RepoGateTrackedRewriteDecision::require_attention(rewritten_files, owned, reason))
+		Some(RepoGateTrackedRewriteDecision::lane_external_tracked_rewrite(rewritten_files))
+	}
 }

@@ -6,30 +6,30 @@ use std::{
 use crate::{agent::PhaseGoalKind, orchestrator::RepoGateTrackedRewriteDecision};
 
 #[derive(Debug)]
-pub(crate) struct PhaseAcceptanceCheckFailure {
+pub(crate) struct ValidationEvidenceFailure {
 	reason_code: String,
 }
-impl PhaseAcceptanceCheckFailure {
+impl ValidationEvidenceFailure {
 	pub(crate) fn new(reason_code: impl Into<String>) -> Self {
 		Self { reason_code: reason_code.into() }
 	}
 
 	pub(crate) fn error_class(&self) -> &'static str {
-		"phase_acceptance_check_failed"
+		"validation_evidence_failed"
 	}
 }
 
-impl Display for PhaseAcceptanceCheckFailure {
+impl Display for ValidationEvidenceFailure {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "Phase acceptance check failed: {}", self.reason_code)
+		write!(formatter, "Validation evidence failed: {}", self.reason_code)
 	}
 }
 
-impl Error for PhaseAcceptanceCheckFailure {}
+impl Error for ValidationEvidenceFailure {}
 
-pub(crate) struct PhaseAcceptanceCheck {
+pub(crate) struct ValidationEvidence {
 	pub(crate) phase: PhaseGoalKind,
-	pub(crate) decision: PhaseAcceptanceDecision,
+	pub(crate) decision: ValidationDecision,
 	pub(crate) reason_code: &'static str,
 	pub(crate) objective_covered: bool,
 	pub(crate) effective_delta_present: bool,
@@ -45,39 +45,32 @@ pub(crate) struct PhaseAcceptanceCheck {
 	pub(crate) worktree_head_sha: Option<String>,
 	pub(crate) blocker_count: usize,
 }
-impl PhaseAcceptanceCheck {
+impl ValidationEvidence {
 	pub(crate) fn next_action(&self) -> &'static str {
 		match self.reason_code {
 			"accepted" => "continue to handoff evidence",
-			"missing_progress_checkpoint" => {
-				"record a current-HEAD issue_progress_checkpoint with docs_impact before completing the phase goal again"
-			},
-			"stale_progress_checkpoint" => {
-				"record a fresh issue_progress_checkpoint for the current worktree HEAD before completing the phase goal again"
-			},
-			"docs_impact_missing" => {
-				"record parseable docs_impact in the current-HEAD issue_progress_checkpoint"
-			},
-			"no_effective_delta" => {
-				"produce an issue-scoped effective delta before completing the phase goal again"
-			},
-			"non_goal_violation" => {
-				"remove or explicitly resolve the non-goal or scope violation before handoff"
-			},
-			"progress_blockers_present" => {
-				"clear recorded progress blockers or route to manual attention before handoff"
-			},
-			_ => "inspect phase_acceptance_check evidence before selecting the next phase",
+			"missing_progress_checkpoint" =>
+				"continue validation; progress checkpoint evidence is optional until terminal finalize",
+			"stale_progress_checkpoint" =>
+				"ignore stale progress evidence or record current docs impact before terminal finalize",
+			"docs_impact_missing" => "record parseable docs_impact before terminal finalize",
+			"no_effective_delta" =>
+				"produce an issue-scoped effective delta before completing the phase goal again",
+			"non_goal_violation" =>
+				"remove or explicitly resolve the non-goal or scope violation before handoff",
+			"progress_blockers_present" =>
+				"clear recorded progress blockers or route to manual attention before handoff",
+			_ => "inspect validation evidence before selecting the next phase",
 		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PhaseAcceptanceDecision {
+pub(crate) enum ValidationDecision {
 	Pass,
 	Fail,
 }
-impl PhaseAcceptanceDecision {
+impl ValidationDecision {
 	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::Pass => "pass",

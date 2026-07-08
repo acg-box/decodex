@@ -4,8 +4,7 @@ use color_eyre::Report;
 
 use crate::{
 	orchestrator::{
-		self, IssueDispatchMode, IssueRunPlan, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, StateStore,
-		tests,
+		self, IssueDispatchMode, IssueRunPlan, StateStore, VALIDATION_EVIDENCE_EVENT_TYPE, tests,
 		tests::{TEST_SERVICE_ID, runtime_repo_gate::support},
 	},
 	tracker,
@@ -46,7 +45,7 @@ fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
 
 	tests::commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
 	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
-	support::record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+	support::record_validation_evidence_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	state_store
 		.append_private_execution_event(
@@ -92,7 +91,7 @@ fn open_phase_goal_owned_tracked_rewrites_continue_to_handoff_recovery() {
 				.is_some_and(|files| files.iter().any(|file| file.as_str() == Some("ready.txt")))
 	}));
 	assert!(events.iter().any(|event| {
-		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+		event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE
 			&& event.payload()["decision"] == "pass"
 			&& event.payload()["validation_evidence"]["tracked_rewrites"]["owned"] == true
 	}));

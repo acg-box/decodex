@@ -7,7 +7,7 @@ authority: current_state
 owner: docs
 tags: [reference]
 code_refs: [apps/decodex/src/cli.rs, apps/decodex/src/recovery.rs, apps/decodex/src/recovery/stale_active_guidance.rs, apps/decodex/src/recovery/review_handoff/issue.rs, apps/decodex/src/recovery/review_handoff/labels.rs, apps/decodex/src/recovery/review_handoff_diagnosis.rs, apps/decodex/src/recovery/reports.rs, apps/decodex/src/recovery/tests/review_handoff/rebind_validation.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/orchestrator/status/operator_worktrees/ownership.rs, apps/decodex/src/orchestrator/types.rs, apps/decodex/src/orchestrator/operator_http.rs, apps/decodex/src/orchestrator/operator_http/api/account.rs, apps/decodex/src/orchestrator/operator_dashboard/body.html, apps/decodex/src/orchestrator/operator_dashboard/app/accounts/pool/rows.js, apps/decodex/src/orchestrator/operator_dashboard/app/accounts/profile/credits.js, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/agent_evidence.rs, apps/decodex/src/orchestrator/tests/operator/status/http.rs, apps/decodex/src/orchestrator/tests/operator/status/history/attention/terminal_attention.rs, apps/decodex/src/agent/codex_accounts/pool/usage_probe.rs, apps/decodex/src/accounts/types.rs, apps/decodex-app/Sources/DecodexApp/CodexAccount.swift, apps/decodex-app/Sources/DecodexApp/AccountUsageSummaryViews.swift, apps/decodex/src/mcp.rs]
-drift_watch: [decodex serve, decodex status, decodex status --live, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, review_handoff_writeback_failed, retained_attention, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, phase_acceptance_check, control_plane_snapshot, operator dashboard, /api/accounts, /wham/rate-limit-reset-credits, reset_credits_available_count, reset_credits, runtime.sqlite3, project.toml, WORKFLOW.md]
+drift_watch: [decodex serve, decodex status, decodex status --live, decodex lane inspect, decodex recover review-handoff, decodex recover ghost-lane, decodex recover stale-active, review_handoff_writeback_failed, retained_attention, stale_active_release, stale_active_state_restore_pending, run_stale_active_recovery, linear_active_label_present, ghost_lane_cleanup_audit_present, mcp_test_fixture_ghost_lane, decodex evidence, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, validation_evidence, control_plane_snapshot, operator dashboard, /api/accounts, /wham/rate-limit-reset-credits, reset_credits_available_count, reset_credits, runtime.sqlite3, project.toml, WORKFLOW.md]
 last_verified: 2026-07-04
 ---
 # Operator Control Plane
@@ -230,11 +230,11 @@ candidate improvements by kind, reason code, target, source-event count, and
 recommendation. These summaries are local operator guidance; they are not Linear
 ledger records and do not automatically edit prompts, skills, validators, issue
 templates, or loop policy.
-The same private-evidence readback exposes compact review checkpoint, phase
-acceptance, architecture recovery, and authority-boundary summaries for the selected
+The same private-evidence readback exposes compact review checkpoint, validation
+evidence, architecture recovery, and authority-boundary summaries for the selected
 run/attempt: review phase, status, head, compatibility round, review cost class, risk
 class, compact eligibility, fallback reason, active/stop finding fingerprints,
-finding counts; phase acceptance decision, reason, objective coverage, effective
+finding counts; validation decision, reason, objective coverage, effective
 delta, changed surfaces, non-goal result, validation result, and next action;
 recovery reason, boundary disposition, budget; and boundary disposition, reason,
 attempted recovery, changed-surface count, and improvement-signal count. These
@@ -250,10 +250,10 @@ runtime recovery handoff, not final issue success; the later `handoff_evidence` 
 still owns ordinary review, push, PR creation, and terminal finalize, while
 `review_repair_evidence` owns retained repaired-head push, PR readback, repair
 completion intent, and `review_repair` terminal finalize.
-Private phase-goal evidence may also include `phase_acceptance_check`. That event
+Private phase-goal evidence may also include `validation_evidence`. That event
 records why Decodex allowed an implementation or repair goal to advance after repo
 gate validation, or why it kept the lane in repair even though validation passed. The
-operator status summary may show the latest acceptance decision and next action; the
+operator status summary may show the latest validation decision and next action; the
 runtime SQLite row remains the authoritative local evidence.
 Retry comments with `phase_goal_terminal_path_missing` mean a phase goal reached
 `complete` before the required Decodex terminal tool path was recorded. The lane is
