@@ -63,7 +63,7 @@ pub(crate) fn run_repo_gate_commands_with_rewrite_policy(
 	)
 }
 
-fn run_canonicalize_commands(commands: &[String], cwd: &Path) -> Result<()> {
+pub(crate) fn run_canonicalize_commands(commands: &[String], cwd: &Path) -> Result<()> {
 	for command in commands {
 		let output = command::run_repo_gate_shell_command(command, cwd)?;
 
