@@ -188,7 +188,7 @@ fn classify_post_review_lane_waits_for_review_before_optional_failed_checks() {
 }
 
 #[test]
-fn classify_post_review_lane_requires_review_repair_before_review_when_required_checks_fail() {
+fn requires_repair_before_review_when_checks_fail() {
 	let (_temp_dir, state_store, snapshot) =
 		support::snapshot_for_issue_state("In Review", BRANCH_NAME);
 	let classification = support::classify(

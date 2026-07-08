@@ -66,7 +66,7 @@ fn legacy_cleanup_only_worktree_requires_audited_manual_closeout() {
 }
 
 #[test]
-fn runtime_recovery_preserves_legacy_cleanup_only_provenance_without_recoverable_owner() {
+fn preserves_cleanup_only_provenance_without_owner() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let db_path = temp_dir.path().join("runtime.sqlite3");
 	let (_layout_dir, config, workflow) = running_lanes::temp_project_layout();

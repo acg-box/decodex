@@ -101,7 +101,7 @@ where
 	if context.issue_run.dispatch_mode != IssueDispatchMode::Program {
 		return Ok(false);
 	}
-	if !validation::retryable_failure_happened_before_effective_agent_execution(error) {
+	if !validation::failure_precedes_effective_agent_execution(error) {
 		return Ok(false);
 	}
 	if context.state_store.lease_for_issue(&context.issue_run.issue.id)?.is_some() {

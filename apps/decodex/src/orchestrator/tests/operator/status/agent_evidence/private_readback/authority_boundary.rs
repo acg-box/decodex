@@ -5,7 +5,7 @@ use crate::orchestrator::tests::operator::status::{
 };
 
 #[test]
-fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payload_leakage() {
+fn recommends_authority_candidates_without_payload_leakage() {
 	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let private_marker = "PRIVATE_AUTHORITY_READBACK_PAYLOAD";
@@ -84,7 +84,7 @@ fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payl
 }
 
 #[test]
-fn agent_evidence_private_readback_summarizes_authority_decision_request_without_payload_leakage() {
+fn summarizes_authority_request_without_payload_leakage() {
 	let (_temp_dir, config, _workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let private_diff_evidence = "PRIVATE_DECISION_REQUEST_DIFF_PAYLOAD";

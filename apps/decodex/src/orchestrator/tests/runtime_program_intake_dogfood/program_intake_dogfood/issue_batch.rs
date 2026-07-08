@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[test]
-fn issue_batch_intake_apply_direct_dispatch_unlock_and_status_readback_is_end_to_end() {
+fn issue_batch_apply_direct_dispatch_is_end_to_end() {
 	let (_temp_dir, config, workflow) = super::temp_project_layout();
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let dependency_todo =

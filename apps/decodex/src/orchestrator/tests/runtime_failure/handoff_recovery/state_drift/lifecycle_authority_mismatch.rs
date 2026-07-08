@@ -6,8 +6,7 @@ use crate::orchestrator::tests::{
 };
 
 #[test]
-fn handle_failure_requires_rebind_when_lifecycle_authority_head_ref_mismatches_without_checkpoint()
-{
+fn requires_rebind_on_authority_head_ref_mismatch() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Progress", &[]);
@@ -81,7 +80,7 @@ fn handle_failure_requires_rebind_when_lifecycle_authority_head_ref_mismatches_w
 }
 
 #[test]
-fn handle_failure_requires_rebind_when_lifecycle_authority_issue_state_is_unsupported() {
+fn requires_rebind_when_authority_issue_state_unsupported() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("Backlog", &[]);

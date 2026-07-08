@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[test]
-fn accepts_authority_boundary_decision_request_without_public_private_evidence_leakage() {
+fn accepts_authority_request_without_evidence_leakage() {
 	let issue = tests::sample_issue();
 	let tracker = tests::tracker_with_current_issue_snapshot(&issue);
 	let workflow = tests::sample_workflow();

@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[test]
-fn build_post_review_lane_statuses_accepts_existing_description_thumbs_up_for_later_pass_rounds() {
+fn accepts_existing_thumbs_up_for_later_pass_rounds() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = tests::sample_issue("In Review", &[]);

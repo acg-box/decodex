@@ -108,7 +108,7 @@ fn autonomy_compile_proposal_tool_accepts_issue_candidates_from_mcp_shape() {
 }
 
 #[test]
-fn autonomy_plan_tools_record_signal_compile_challenge_and_refuse_external_self_accept() {
+fn records_compile_challenge_and_refuses_self_accept() {
 	let (repo, db_path, proposal_id) = support::seed_autonomy_challenged_proposal();
 	let self_accept_call = format!(
 		r#"{{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{{"name":"autonomy_request_promotion","arguments":{{"mode":"apply","proposalId":"{proposal_id}","authority":{{"acceptedBy":"agent-a","acceptedByKind":"external_agent","acceptanceSource":"mcp-agent","reason":"self accept","proposalActor":"agent-a","proposalActorKind":"external_agent"}}}}}}}}"#

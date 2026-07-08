@@ -3,7 +3,7 @@ use crate::orchestrator::tests::operator::status::{
 };
 
 #[test]
-fn live_operator_status_snapshot_blocks_active_plus_queued_label_without_local_claim() {
+fn blocks_active_plus_queued_label_without_claim() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -92,7 +92,7 @@ fn live_operator_status_snapshot_blocks_active_plus_queued_label_without_local_c
 }
 
 #[test]
-fn live_operator_status_snapshot_distinguishes_clean_failed_start_active_cleanup_debt() {
+fn distinguishes_clean_failed_start_cleanup_debt() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let state_store = StateStore::open_in_memory().expect("state store should open");

@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[test]
-fn stale_active_release_allows_final_reentry_when_control_channel_was_never_published() {
+fn allows_final_reentry_without_control_channel() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context = tests::sample_recovery_context(
 		&temp_dir,
@@ -82,7 +82,7 @@ fn stale_active_release_allows_final_reentry_when_control_channel_was_never_publ
 }
 
 #[test]
-fn stale_active_release_terminal_guards_terminal_looking_run_before_final_safety_check() {
+fn guards_terminal_looking_run_before_final_check() {
 	for status in ["failed", "interrupted"] {
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let context = tests::sample_recovery_context(

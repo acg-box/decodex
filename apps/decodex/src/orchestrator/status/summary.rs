@@ -73,8 +73,8 @@ pub(in crate::orchestrator) fn operator_run_has_recent_app_server_execution(
 	run_state::operator_run_has_recent_app_server_execution(run)
 }
 
-pub(in crate::orchestrator) fn operator_run_has_stale_execution_without_known_process(
+pub(in crate::orchestrator) fn operator_run_has_stale_execution_without_process(
 	run: &OperatorRunStatus,
 ) -> bool {
-	run_state::operator_run_has_stale_execution_without_known_process(run)
+	run_state::operator_run_has_stale_execution_without_process(run)
 }

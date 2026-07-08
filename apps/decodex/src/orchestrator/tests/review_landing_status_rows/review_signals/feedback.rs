@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[test]
-fn build_post_review_lane_statuses_routes_mixed_external_pass_and_feedback_to_repair() {
+fn routes_mixed_external_pass_and_feedback_to_repair() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = tests::sample_issue("In Review", &[]);

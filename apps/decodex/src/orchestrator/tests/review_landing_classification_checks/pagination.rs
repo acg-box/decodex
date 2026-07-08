@@ -122,7 +122,7 @@ fn pull_request_review_state_query_requests_required_fields() {
 }
 
 #[test]
-fn next_pull_request_review_threads_cursor_requires_end_cursor_when_pagination_continues() {
+fn review_threads_cursor_requires_end_cursor() {
 	let page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
@@ -138,7 +138,7 @@ fn next_pull_request_review_threads_cursor_requires_end_cursor_when_pagination_c
 }
 
 #[test]
-fn next_pull_request_issue_comments_cursor_requires_end_cursor_when_pagination_continues() {
+fn issue_comments_cursor_requires_end_cursor() {
 	let comments = PullRequestIssueCommentConnection {
 		nodes: Vec::new(),
 		page_info: PullRequestPageInfo { has_next_page: true, end_cursor: None },

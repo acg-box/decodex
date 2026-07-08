@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[test]
-fn schedule_retry_after_child_exit_preserves_specific_retry_schedule_kind_for_failure_retry() {
+fn preserves_retry_schedule_kind_for_failure_retry() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = support::sample_service_owned_issue("In Progress");
 	let tracker =

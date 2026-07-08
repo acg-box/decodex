@@ -3,7 +3,7 @@ use crate::orchestrator::tests::operator::status::{
 };
 
 #[test]
-fn live_operator_status_snapshot_preserves_recorded_active_label_attention_next_action() {
+fn preserves_active_label_attention_next_action() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 	let state_store = StateStore::open_in_memory().expect("state store should open");

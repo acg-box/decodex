@@ -53,7 +53,7 @@ where
 {
 	let runtime_review_runner = AppServerRuntimeStandardReviewRunner::new(state_store);
 
-	reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	reconcile_post_review_orchestration_with_runners(
 		tracker,
 		project,
 		workflow,
@@ -63,11 +63,7 @@ where
 	)
 }
 
-pub(crate) fn reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner<
-	T,
-	I,
-	R,
->(
+pub(crate) fn reconcile_post_review_orchestration_with_runners<T, I, R>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,

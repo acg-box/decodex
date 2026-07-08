@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[test]
-fn direct_closeout_dispatch_reuses_completed_handoff_run_identity_for_record_and_summary() {
+fn reuses_completed_handoff_run_identity() {
 	let fixture = recovery_terminal_support::closeout_identity_fixture();
 	let _keep_fixture_alive = (&fixture._temp_dir, &fixture._path_guard);
 

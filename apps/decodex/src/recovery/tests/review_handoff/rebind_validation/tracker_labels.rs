@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[test]
-fn rebind_label_validation_restores_active_and_clears_attention_for_missing_writeback_failure() {
+fn restores_labels_for_missing_writeback_failure() {
 	let workflow = tests::sample_workflow();
 	let mut issue =
 		tests::sample_issue_with_labels("Todo", &[String::from("decodex:needs-attention")]);

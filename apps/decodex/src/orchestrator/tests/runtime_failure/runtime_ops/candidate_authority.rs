@@ -18,8 +18,7 @@ fn live_run_without_candidate_does_not_require_github_token_authority() {
 }
 
 #[test]
-fn prepare_issue_run_with_candidate_does_not_require_github_token_authority_before_agent_execution()
-{
+fn does_not_require_github_token_before_agent_execution() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let listed_issue = tests::sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(

@@ -5,7 +5,7 @@ use crate::agent::tracker_tool_bridge::tests::{
 };
 
 #[test]
-fn compact_review_checkpoint_fails_closed_without_current_validation_or_with_high_risk_surface() {
+fn fails_closed_without_current_validation() {
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
 	let workflow = tests::sample_workflow();

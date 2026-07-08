@@ -47,7 +47,7 @@ pub(crate) fn apply_missing_issue_ghost_lane_projection(
 		}
 
 		if cleanup_safe && conditions::missing_issue_ghost_lane_cleanup_audit_present(run) {
-			conditions::apply_missing_issue_ghost_lane_cleanup_complete_run_projection(run);
+			conditions::apply_missing_issue_cleanup_projection(run);
 
 			cleanup_complete_run_ids.insert(run.run_id.clone());
 		} else if cleanup_safe {
@@ -72,7 +72,7 @@ pub(crate) fn apply_missing_issue_ghost_lane_projection(
 	for run in &mut snapshot.recent_runs {
 		if cleanup_complete_run_ids.contains(&run.run_id) {
 			conditions::append_lane_control_condition(run, "ghost_lane_cleanup_audit_present");
-			conditions::apply_missing_issue_ghost_lane_cleanup_complete_run_projection(run);
+			conditions::apply_missing_issue_cleanup_projection(run);
 		}
 	}
 
@@ -102,7 +102,7 @@ pub(crate) fn apply_missing_issue_ghost_lane_status_projection(
 	}
 
 	if cleanup_safe && conditions::missing_issue_ghost_lane_cleanup_audit_present(run) {
-		conditions::apply_missing_issue_ghost_lane_cleanup_complete_run_projection(run);
+		conditions::apply_missing_issue_cleanup_projection(run);
 	} else if cleanup_safe {
 		run.ownership_state = String::from(GHOST_LANE_OWNERSHIP_STATE);
 		run.policy_state = String::from(GHOST_LANE_POLICY_STATE);

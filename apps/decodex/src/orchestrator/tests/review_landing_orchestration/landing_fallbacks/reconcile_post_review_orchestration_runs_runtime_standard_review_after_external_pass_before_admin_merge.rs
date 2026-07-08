@@ -1,7 +1,0 @@
-use crate::orchestrator::tests::review_landing_orchestration::landing_fallbacks;
-
-#[test]
-fn reconcile_post_review_orchestration_runs_runtime_standard_review_after_external_pass_before_admin_merge()
- {
-	landing_fallbacks::assert_reconcile_post_review_orchestration_runs_runtime_standard_review_after_external_pass_before_admin_merge();
-}
