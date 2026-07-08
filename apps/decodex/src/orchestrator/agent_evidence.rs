@@ -11,10 +11,9 @@ pub(crate) use self::{
 		AgentEvidenceSource, AgentEvidenceSummary, AgentEvidenceWriteResult,
 		AgentPrivateEvidenceRef, PrivateEvidenceArchitectureRecoverySummary,
 		PrivateEvidenceBoundaryCheckSummary, PrivateEvidenceDecisionRequestSummary,
-		PrivateEvidencePayloadSummary, PrivateEvidencePhaseAcceptanceSummary,
-		PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
+		PrivateEvidencePayloadSummary, PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
 		PrivateEvidenceRepoGateFailureSummary, PrivateEvidenceReviewCheckpointSummary,
-		PrivateEvidenceReviewRouteCount,
+		PrivateEvidenceReviewRouteCount, PrivateEvidenceValidationSummary,
 	},
 	paths::{
 		blocker_evidence_ref, blocker_snapshot_path, current_month_bucket, issue_key,
@@ -48,9 +47,9 @@ use self::{
 use crate::{
 	orchestrator::{
 		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-		EvidenceRequest, OperatorRunStatus, OperatorStatusSnapshot,
-		PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, ProjectRunStatus, ServiceConfig, StateStore,
-		current_timestamp, harness_improvement::harness_improvement_candidates_from_private_events,
+		EvidenceRequest, OperatorRunStatus, OperatorStatusSnapshot, ProjectRunStatus,
+		ServiceConfig, StateStore, VALIDATION_EVIDENCE_EVENT_TYPE, current_timestamp,
+		harness_improvement::harness_improvement_candidates_from_private_events,
 		operator_run_issue_identifier_from_fields, relative_worktree_path_for_path,
 	},
 	prelude::{Result, eyre},

@@ -55,7 +55,7 @@ pub(crate) struct OperatorRunStatus {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(crate) continuation_recovery: Option<OperatorContinuationRecoveryStatus>,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub(crate) phase_acceptance: Option<OperatorPhaseAcceptanceStatus>,
+	pub(crate) validation_evidence: Option<OperatorValidationEvidenceStatus>,
 	pub(crate) run_lease: bool,
 	pub(crate) queue_lease_state: String,
 	pub(crate) execution_liveness: String,
@@ -120,7 +120,7 @@ pub(crate) struct OperatorContinuationRecoveryStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub(crate) struct OperatorPhaseAcceptanceStatus {
+pub(crate) struct OperatorValidationEvidenceStatus {
 	pub(crate) phase: String,
 	pub(crate) decision: String,
 	pub(crate) reason_code: String,

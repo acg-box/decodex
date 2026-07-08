@@ -2,21 +2,21 @@ use crate::orchestrator::{
 	self, LaneDecisionSnapshot, LoopGuardrailRecoveryDecision, ManualAttentionRequested,
 	PhaseGoalKind, PhaseGoalTransition, RepoGateFailureDisposition, Report, Result,
 	execution_phase_goal::{
-		acceptance::{self, PhaseAcceptanceCheck, PhaseAcceptanceCheckFailure},
+		acceptance::{self, ValidationEvidence, ValidationEvidenceFailure},
 		controller::RepoGatePhaseGoalController,
 	},
 };
 
 impl RepoGatePhaseGoalController<'_> {
-	pub(in crate::orchestrator::execution_phase_goal) fn continue_after_phase_acceptance_failure(
+	pub(in crate::orchestrator::execution_phase_goal) fn continue_after_validation_evidence_failure(
 		&self,
 		phase: PhaseGoalKind,
-		acceptance_check: &PhaseAcceptanceCheck,
+		acceptance_check: &ValidationEvidence,
 	) -> Result<PhaseGoalTransition> {
-		let failure = PhaseAcceptanceCheckFailure::new(acceptance_check.reason_code);
+		let failure = ValidationEvidenceFailure::new(acceptance_check.reason_code);
 		let error_class = failure.error_class();
 		let error = Report::new(failure);
-		let lane_snapshot = LaneDecisionSnapshot::phase_acceptance(
+		let lane_snapshot = LaneDecisionSnapshot::validation_evidence(
 			self.issue_run.issue.identifier.clone(),
 			self.issue_run.run_id.clone(),
 			self.issue_run.attempt_number,
@@ -82,15 +82,15 @@ impl RepoGatePhaseGoalController<'_> {
 			return self.manual_attention_requested(error_class, error);
 		}
 
-		let next_phase = acceptance::phase_acceptance_repair_phase(phase);
+		let next_phase = acceptance::validation_evidence_repair_phase(phase);
 		let detail = format!(
-			"Phase acceptance check failed after repo gate pass with `{}`. {}",
+			"Validation evidence failed after repo gate pass with `{}`. {}",
 			acceptance_check.reason_code,
 			acceptance_check.next_action()
 		);
 		let next_goal = self.phase_goal_spec(next_phase, Some(&detail));
 
-		self.persist_next_phase_goal(&next_goal, "phase_acceptance_fail")?;
+		self.persist_next_phase_goal(&next_goal, "validation_evidence_fail")?;
 
 		Ok(PhaseGoalTransition::Continue(next_goal))
 	}
