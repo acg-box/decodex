@@ -8,6 +8,26 @@ use crate::{
 pub(crate) fn external_review_request_ci_gate(
 	review_state: &PullRequestReviewState,
 ) -> ExternalReviewRequestCiGate {
+	if !review_state.required_status_contexts.is_empty() {
+		return match pull_request::classify_landing_gate(
+			review_state_landing_gate_view(review_state),
+			pull_request::LandingGateMode::Retained,
+		) {
+			pull_request::LandingGateDecision::Repair(
+				"required_status_context_failed" | "required_checks_failed",
+			) => ExternalReviewRequestCiGate::RepairRequired,
+			pull_request::LandingGateDecision::Wait(
+				"required_status_context_missing"
+				| "required_status_context_waiting"
+				| "required_status_context_base_stale",
+			)
+			| pull_request::LandingGateDecision::Block(
+				"required_status_context_creator_mismatch",
+			) => ExternalReviewRequestCiGate::WaitForGreenChecks,
+			_ => ExternalReviewRequestCiGate::Ready,
+		};
+	}
+
 	match review_state.status_check_rollup_state.as_deref() {
 		None | Some("SUCCESS") => ExternalReviewRequestCiGate::Ready,
 		Some("EXPECTED" | "PENDING") => ExternalReviewRequestCiGate::WaitForGreenChecks,
@@ -21,6 +41,23 @@ pub(crate) fn failed_checks_require_repair(
 	merge_state_status: &str,
 ) -> bool {
 	pull_request::failed_checks_require_repair(check_state, merge_state_status)
+}
+
+pub(crate) fn review_state_checks_require_repair(review_state: &PullRequestReviewState) -> bool {
+	if !review_state.required_status_contexts.is_empty() {
+		return matches!(
+			pull_request::classify_landing_gate(
+				review_state_landing_gate_view(review_state),
+				pull_request::LandingGateMode::Retained,
+			),
+			pull_request::LandingGateDecision::Repair(_)
+		);
+	}
+
+	failed_checks_require_repair(
+		review_state.status_check_rollup_state.as_deref(),
+		&review_state.merge_state_status,
+	)
 }
 
 pub(crate) fn merge_state_requires_review_repair(
@@ -61,6 +98,7 @@ fn review_state_landing_gate_view(
 		mergeable: review_state.mergeable.as_str(),
 		merge_state_status: review_state.merge_state_status.as_str(),
 		status_check_rollup_state: review_state.status_check_rollup_state.as_deref(),
+		required_status_contexts: &review_state.required_status_contexts,
 		unresolved_review_threads: review_state.unresolved_review_threads,
 	}
 }

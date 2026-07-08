@@ -12,12 +12,20 @@ pub(in crate::manual) fn inspect_pull_request_landing_state_for_manual_land(
 	pr_url: &str,
 	github_token: &str,
 	gh_command_path: Option<&Path>,
+	required_status_contexts: &[String],
+	allowed_status_creators: &[String],
 ) -> Result<PullRequestLandingState> {
 	let mut last_landing_state = None;
 
 	for attempt in 1..=MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS {
-		let landing_state =
-			github::inspect_pull_request_landing_state(cwd, pr_url, github_token, gh_command_path)?;
+		let landing_state = github::inspect_pull_request_landing_state(
+			cwd,
+			pr_url,
+			github_token,
+			gh_command_path,
+			required_status_contexts,
+			allowed_status_creators,
+		)?;
 
 		if landing_state.state == "MERGED"
 			|| !pull_request::mergeability_unknown(landing_state.gate_view())

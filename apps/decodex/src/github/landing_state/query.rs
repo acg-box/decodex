@@ -15,6 +15,7 @@ query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: Strin
       isDraft
       reviewDecision
       baseRefName
+      baseRefOid
       mergeable
       mergeStateStatus
       headRefName

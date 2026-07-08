@@ -77,12 +77,14 @@ pub(in crate::manual::tests) fn sample_landing_state() -> PullRequestLandingStat
 		is_draft: false,
 		review_decision: Some(String::from("APPROVED")),
 		base_ref_name: String::from("release/1.x"),
+		base_ref_oid: Some(String::from("base-sha")),
 		pending_review_requests: 0,
 		mergeable: String::from("MERGEABLE"),
 		merge_state_status: String::from("CLEAN"),
 		head_ref_name: String::from("XY-225"),
 		head_ref_oid: String::from("deadbeef"),
 		status_check_rollup_state: Some(String::from("SUCCESS")),
+		required_status_contexts: Vec::new(),
 		unresolved_review_threads: 0,
 	}
 }

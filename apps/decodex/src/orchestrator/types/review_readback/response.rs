@@ -48,6 +48,8 @@ pub(crate) struct PullRequestReviewStateNode {
 	pub(crate) is_draft: bool,
 	#[serde(rename = "reviewDecision")]
 	pub(crate) review_decision: Option<String>,
+	#[serde(rename = "baseRefOid")]
+	pub(crate) base_ref_oid: Option<String>,
 	#[serde(rename = "reviewRequests")]
 	pub(crate) review_requests: PullRequestReviewRequestConnection,
 	pub(crate) mergeable: String,

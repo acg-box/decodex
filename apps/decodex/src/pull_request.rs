@@ -10,6 +10,7 @@ pub(crate) use self::{
 	},
 	model::{
 		LandingGateDecision, LandingGateMode, PullRequestLandingGateView, PullRequestLandingState,
+		PullRequestRequiredStatusContext,
 	},
 };
 

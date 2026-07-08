@@ -91,6 +91,8 @@ pub(crate) fn cleanup_completed_post_review_lane(
 		lifecycle_record.pr_url(),
 		&github_token,
 		project.github().command_path(),
+		project.github().landing_required_status_contexts(),
+		project.github().landing_required_status_creators(),
 	)?;
 
 	if landing_state.state != "MERGED" {

@@ -16,6 +16,8 @@ pub(crate) fn inspect_pull_request_landing_state(
 	pr_url: &str,
 	github_token: &str,
 	gh_command_path: Option<&Path>,
+	required_status_contexts: &[String],
+	allowed_status_creators: &[String],
 ) -> Result<PullRequestLandingState> {
 	let locator = github::parse_pull_request_url(pr_url)?;
 	let mut review_threads_after: Option<String> = None;
@@ -52,7 +54,20 @@ pub(crate) fn inspect_pull_request_landing_state(
 		review_threads_after = Some(next_cursor);
 	}
 
-	landing_state.ok_or_else(|| {
+	let mut landing_state = landing_state.ok_or_else(|| {
 		eyre::eyre!("GitHub GraphQL response for `{pr_url}` did not include a pull request.")
-	})
+	})?;
+	landing_state.required_status_contexts = github::inspect_required_commit_status_contexts(
+		cwd,
+		&locator.owner,
+		&locator.repo,
+		&landing_state.head_ref_oid,
+		landing_state.base_ref_oid.as_deref(),
+		required_status_contexts,
+		allowed_status_creators,
+		github_token,
+		gh_command_path,
+	)?;
+
+	Ok(landing_state)
 }

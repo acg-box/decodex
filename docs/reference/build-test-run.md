@@ -65,6 +65,40 @@ The SwiftPM macOS app under `apps/decodex-app/` is excluded from the root Cargo
 workspace. Validate it with SwiftPM from that directory when a change touches the
 native app surface.
 
+## Local Validation Commit Status
+
+Projects may configure `[github].landing_required_status_contexts` to let Decodex use
+a local full validation status as the landing gate. The default context is
+`decodex/local-full-check`.
+
+The durable sequence is:
+
+```sh
+cargo make check
+HEAD_SHA="$(git rev-parse HEAD)"
+BASE_REF=main
+git fetch origin "$BASE_REF"
+BASE_SHA="$(git rev-parse "origin/$BASE_REF")"
+decodex verify publish-status \
+  --config /path/to/project.toml \
+  --pr https://github.com/OWNER/REPO/pull/NUMBER \
+  --context decodex/local-full-check \
+  --state success \
+  --expected-head "$HEAD_SHA" \
+  --expected-base-ref "$BASE_REF" \
+  --expected-base-oid "$BASE_SHA" \
+  --description "cargo make check passed"
+```
+
+`--state success` requires `--expected-head`, `--expected-base-ref`, and
+`--expected-base-oid`, so a stale local test run cannot publish green after the PR
+head or target branch tip has changed. Decodex embeds the base SHA in the commit
+status description and refuses to land if the current PR base no longer matches
+that receipt. The landing gate then checks that configured context and configured
+creator allow-list instead of treating unrelated slow or advisory GitHub checks as
+blockers. The creator allow-list is part of the recommended long-term setup;
+leaving it empty is a migration or development mode.
+
 ## Targeted Commands
 
 Use these commands when a change does not need the full aggregate gate:

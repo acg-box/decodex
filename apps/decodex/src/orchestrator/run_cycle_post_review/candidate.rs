@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
 
 use crate::{
 	orchestrator::{
@@ -20,10 +20,7 @@ pub(crate) fn select_post_review_issue_candidate<T>(
 where
 	T: IssueTracker,
 {
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(project.github().token_env_var().to_owned()),
-		github_command_path: project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(project);
 
 	select_post_review_issue_candidate_with_inspector(
 		tracker,
