@@ -23,9 +23,7 @@ pub(crate) fn missing_issue_ghost_lane_cleanup_audit_present(run: &OperatorRunSt
 		.any(|condition| condition == "ghost_lane_cleanup_audit_present")
 }
 
-pub(crate) fn apply_missing_issue_ghost_lane_cleanup_complete_run_projection(
-	run: &mut OperatorRunStatus,
-) {
+pub(crate) fn apply_missing_issue_cleanup_projection(run: &mut OperatorRunStatus) {
 	run.status = String::from(GHOST_LANE_TERMINAL_STATUS);
 	run.attempt_status = String::from(GHOST_LANE_TERMINAL_STATUS);
 	run.status_projection_reason = None;

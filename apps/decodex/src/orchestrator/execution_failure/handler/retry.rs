@@ -8,7 +8,7 @@ use crate::{
 	tracker,
 };
 
-pub(crate) fn retryable_failure_loop_guardrail_stop_unless_terminal_attention(
+pub(crate) fn loop_guardrail_stop_unless_terminal_attention(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,

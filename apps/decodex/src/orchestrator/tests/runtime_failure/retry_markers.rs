@@ -158,8 +158,7 @@ fn repo_gate_terminal_failures_preserve_specific_error_class_after_retry_exhaust
 }
 
 #[test]
-fn repo_gate_lock_contention_terminal_failures_preserve_specific_error_class_after_retry_exhaustion()
- {
+fn preserves_error_class_after_repo_gate_retry_exhaustion() {
 	let error = Report::new(RepoGateFailure::new(
 		RepoGateFailureKind::GitLockContention,
 		String::from(

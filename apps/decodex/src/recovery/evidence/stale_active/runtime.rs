@@ -22,7 +22,7 @@ pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is
 		&& json::array_is_missing_or_empty(payload.get("verification"))
 }
 
-pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is_phase_goal_runtime_failure_telemetry(
+pub(in crate::recovery::evidence::stale_active) fn stale_active_event_is_phase_goal_failure_telemetry(
 	event: &PrivateExecutionEvent,
 ) -> bool {
 	if !matches!(event.event_type(), "phase_goal_recovery" | "phase_goal_recovery_blocked") {

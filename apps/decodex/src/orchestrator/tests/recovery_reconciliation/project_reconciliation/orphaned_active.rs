@@ -78,7 +78,7 @@ fn project_reconciliation_schedules_retry_for_orphaned_active_worktree_run() {
 }
 
 #[test]
-fn project_reconciliation_marks_orphaned_attention_worktree_run_stalled_without_tracker_writes() {
+fn marks_orphaned_attention_worktree_stalled() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue("Todo", &["decodex:needs-attention"]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);

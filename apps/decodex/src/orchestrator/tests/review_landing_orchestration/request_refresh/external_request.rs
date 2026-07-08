@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[test]
-fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_up_baseline() {
+fn requests_external_review_without_thumbs_up_baseline() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&config, "PATH");
 	let _path_guard = tests::install_fake_post_issue_comment_gh_response(
@@ -98,7 +98,7 @@ fn reconcile_post_review_orchestration_requests_external_review_without_thumbs_u
 }
 
 #[test]
-fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_branch() {
+fn uses_matching_handoff_record_for_current_branch() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&config, "PATH");
 	let _path_guard = tests::install_fake_post_issue_comment_gh_response(

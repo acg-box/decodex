@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[test]
-fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_review_checkpoint_exists() {
+fn blocks_cleanup_when_review_checkpoint_exists() {
 	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());

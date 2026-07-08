@@ -29,7 +29,7 @@ pub(crate) fn agent_run_blocker_reason(run: &OperatorRunStatus) -> Option<&'stat
 	if run.process_alive == Some(false) && matches!(run.status.as_str(), "starting" | "running") {
 		return Some("process_exited_without_terminal_status");
 	}
-	if status_summary::operator_run_has_stale_execution_without_known_process(run) {
+	if status_summary::operator_run_has_stale_execution_without_process(run) {
 		return Some("stale_execution_without_known_process");
 	}
 

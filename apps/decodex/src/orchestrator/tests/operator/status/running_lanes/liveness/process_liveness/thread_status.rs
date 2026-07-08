@@ -3,7 +3,7 @@ use crate::orchestrator::tests::operator::status::running_lanes::{
 };
 
 #[test]
-fn operator_status_snapshot_treats_dead_leased_app_server_run_as_attention_not_running() {
+fn treats_dead_leased_app_server_as_attention() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = running_lanes::sample_issue("Todo", &[]);

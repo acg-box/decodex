@@ -8,7 +8,7 @@ const LEASE_IN_PROGRESS_STATE: &str = "In Progress";
 
 #[cfg(unix)]
 #[test]
-fn adopted_dispatch_slot_handoff_does_not_block_other_issues_after_parent_releases_local_guard() {
+fn does_not_block_other_issues_after_parent_release() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let parent_store = StateStore::open_in_memory().expect("parent store should open");
 	let child_store = StateStore::open_in_memory().expect("child store should open");

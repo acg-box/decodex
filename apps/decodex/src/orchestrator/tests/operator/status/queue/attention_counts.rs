@@ -3,7 +3,7 @@ use crate::orchestrator::tests::operator::status::{
 };
 
 #[test]
-fn live_operator_status_snapshot_excludes_claimed_candidates_from_waiting_intake_count() {
+fn excludes_claimed_candidates_from_waiting_count() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let claimed_issue = status::sample_issue_with_sort_fields(
@@ -102,7 +102,7 @@ fn live_operator_status_snapshot_prioritizes_needs_attention_over_shared_claim()
 }
 
 #[test]
-fn live_operator_status_snapshot_deduplicates_terminal_retained_attention_queue_echo() {
+fn deduplicates_terminal_attention_queue_echo() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = status::sample_issue_with_sort_fields(

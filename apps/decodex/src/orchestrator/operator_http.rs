@@ -14,7 +14,7 @@ mod types;
 pub(crate) use self::api::{
 	build_operator_lane_inspect_http_response, build_operator_lane_interrupt_http_response,
 	build_operator_lane_steer_http_response, build_operator_state_http_response,
-	build_operator_state_http_response_with_control_requests,
+	build_operator_state_http_response_with_controls,
 };
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -50,7 +50,7 @@ use self::{
 		build_operator_account_http_response, build_operator_linear_scan_http_response,
 		operator_request_route_is_account_api,
 	},
-	assets::{DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS, OPERATOR_HTTP_READ_TIMEOUT},
+	assets::{OPERATOR_HTTP_READ_TIMEOUT, RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS},
 	dashboard::{
 		handle_operator_dashboard_websocket_connection, websocket_upgrade_required_response,
 	},
@@ -78,18 +78,17 @@ use crate::{
 	accounts::AccountUseRequest,
 	config::ServiceConfig,
 	orchestrator::{
-		DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneSteerReport, LaneSteerRequest,
-		OPERATOR_ACCOUNTS_ENDPOINT_PATH, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
+		DASHBOARD_WS_MESSAGE_MAX_BYTES, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneSteerReport,
+		LaneSteerRequest, OPERATOR_ACCOUNTS_ENDPOINT_PATH, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
 		OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH,
-		OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES, OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
-		OPERATOR_LANE_INSPECT_ENDPOINT_PATH, OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH,
-		OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH, OPERATOR_LANE_STEER_ENDPOINT_PATH,
-		OPERATOR_LINEAR_SCAN_ENDPOINT_PATH, OPERATOR_LIVE_ENDPOINT_PATH,
-		OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL, OPERATOR_STATE_HEADER_TERMINATOR,
-		OPERATOR_STATE_MAX_REQUEST_BYTES, OperatorCodexAccountControlStatus,
-		OperatorControlRequests, OperatorRunStatus, OperatorStatusSnapshot,
-		PublishedOperatorSnapshot, global_codex_account_control_status, lane_control,
-		operator_snapshot_presentation_value,
+		OPERATOR_DASHBOARD_WS_ENDPOINT_PATH, OPERATOR_LANE_INSPECT_ENDPOINT_PATH,
+		OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH, OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH,
+		OPERATOR_LANE_STEER_ENDPOINT_PATH, OPERATOR_LINEAR_SCAN_ENDPOINT_PATH,
+		OPERATOR_LIVE_ENDPOINT_PATH, OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL,
+		OPERATOR_STATE_HEADER_TERMINATOR, OPERATOR_STATE_MAX_REQUEST_BYTES,
+		OperatorCodexAccountControlStatus, OperatorControlRequests, OperatorRunStatus,
+		OperatorStatusSnapshot, PublishedOperatorSnapshot, global_codex_account_control_status,
+		lane_control, operator_snapshot_presentation_value,
 	},
 	prelude::{Result, eyre},
 	state::StateStore,

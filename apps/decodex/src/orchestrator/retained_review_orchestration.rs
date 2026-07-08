@@ -9,8 +9,7 @@ mod phases;
 mod reconcile;
 mod stale_worktree;
 
-#[cfg(test)]
-pub(crate) use self::reconcile::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner;
+#[cfg(test)] pub(crate) use self::reconcile::reconcile_post_review_orchestration_with_runners;
 pub(crate) use self::{
 	attention::apply_passive_retained_manual_attention,
 	model::{PassiveRetainedAttentionRuntime, RetainedReviewLane},

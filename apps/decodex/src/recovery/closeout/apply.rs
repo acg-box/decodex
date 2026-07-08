@@ -54,7 +54,7 @@ pub(super) fn write_legacy_closeout_audit(
 		return Ok(false);
 	}
 
-	if let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+	if let Err(error) = tracker::create_linear_execution_event_comment_direct(
 		&context.tracker,
 		&validation.issue.id,
 		&projection,
@@ -136,7 +136,7 @@ fn write_merged_closeout_event(
 		return Ok(false);
 	}
 
-	if let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+	if let Err(error) = tracker::create_linear_execution_event_comment_direct(
 		&context.tracker,
 		&validation.issue.id,
 		&projection,

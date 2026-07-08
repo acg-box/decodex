@@ -53,8 +53,9 @@ pub(in crate::orchestrator::status::run_projection::run::lane_control) fn operat
 		thread_terminal_failure: operator_run_thread_terminal_failure(run),
 		protocol_recent: operator_run_has_recent_app_server_execution(run),
 		suspected_stall: run.suspected_stall,
-		stale_execution_without_known_process:
-			operator_run_has_stale_execution_without_known_process(run),
+		stale_execution_without_known_process: operator_run_has_stale_execution_without_process(
+			run,
+		),
 		policy: operator_run_policy_state(run),
 		loop_next_action: run
 			.loop_status
@@ -128,7 +129,7 @@ fn operator_run_thread_terminal_failure(run: &OperatorRunStatus) -> bool {
 		&& run.phase == "executing"
 }
 
-fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatus) -> bool {
+fn operator_run_has_stale_execution_without_process(run: &OperatorRunStatus) -> bool {
 	matches!(run.status.as_str(), "starting" | "running")
 		&& run.phase == "executing"
 		&& run.wait_reason.is_none()

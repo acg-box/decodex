@@ -6,7 +6,7 @@ use crate::orchestrator::tests::{
 };
 
 #[test]
-fn handle_failure_recovers_review_handoff_state_drift_before_no_effective_diff_terminalization() {
+fn recovers_handoff_state_drift_before_terminalization() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let active_label = tracker::automation_active_label(config.service_id());

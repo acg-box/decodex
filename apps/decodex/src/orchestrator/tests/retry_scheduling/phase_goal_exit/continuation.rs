@@ -55,7 +55,7 @@ fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
 }
 
 #[test]
-fn schedule_retry_after_child_exit_retains_continuation_retry_for_stale_startable_issue() {
+fn retains_continuation_retry_for_stale_startable_issue() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = support::sample_service_owned_issue("Todo");
 	let tracker =

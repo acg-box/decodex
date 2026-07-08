@@ -94,7 +94,7 @@ fn prepare_issue_run_allows_preacquired_cross_process_slot() {
 
 #[cfg(unix)]
 #[test]
-fn prepare_issue_run_allows_preacquired_cross_process_slot_without_github_token_authority() {
+fn allows_preacquired_cross_process_slot_without_token() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue("Todo", &[]);
 	let tracker =

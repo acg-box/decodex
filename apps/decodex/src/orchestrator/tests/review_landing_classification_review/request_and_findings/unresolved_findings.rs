@@ -67,7 +67,7 @@ fn classify_post_review_lane_requires_review_repair_for_unresolved_threads() {
 }
 
 #[test]
-fn classify_post_review_lane_requires_review_repair_for_non_thread_review_summary_findings() {
+fn requires_repair_for_non_thread_summary_findings() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Review", &[]);

@@ -22,10 +22,7 @@ impl StateStore {
 			let mut state = self.lock_without_refresh()?;
 
 			self.refresh_project_run_metadata_state_locked(&mut state, request.project_id)?;
-			self.refresh_run_attempt_identities_from_worktree_markers_locked(
-				&mut state,
-				request.project_id,
-			)?;
+			self.refresh_run_identities_from_markers_locked(&mut state, request.project_id)?;
 
 			resolution::resolve_run_control_action_locked(&state, &request)
 		};

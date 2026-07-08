@@ -30,7 +30,7 @@ where
 	)?;
 
 	if runtime.state_store.is_some() {
-		tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+		tracker::create_linear_execution_event_comment_direct(
 			tracker,
 			&issue_run.issue.id,
 			&writeback.projection,

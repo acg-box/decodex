@@ -96,7 +96,7 @@ fn prepare_issue_run_uses_persisted_retry_budget_marker_for_recovered_retry() {
 }
 
 #[test]
-fn prepare_issue_run_keeps_persisted_retry_budget_when_preferred_retry_base_is_stale() {
+fn keeps_retry_budget_when_preferred_base_stale() {
 	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&base_config, "HOME");
 	let issue = tests::sample_issue(

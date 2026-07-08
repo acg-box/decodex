@@ -7,7 +7,7 @@ use crate::{
 	prelude::{Result, eyre},
 };
 
-pub(crate) fn select_target_post_review_repair_issue_candidate_with_inspector<T, I>(
+pub(crate) fn select_target_review_repair_candidate_with_inspector<T, I>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -64,7 +64,7 @@ where
 	Ok(Some(issue))
 }
 
-pub(crate) fn select_target_post_review_closeout_issue_candidate_with_inspector<T, I>(
+pub(crate) fn select_target_closeout_candidate_with_inspector<T, I>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,

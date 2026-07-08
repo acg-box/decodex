@@ -65,7 +65,7 @@ impl StateStore {
 		sqlite.load_run_activity_summaries_for_runs(state, run_ids)
 	}
 
-	pub(in crate::state) fn refresh_run_attempt_identities_from_worktree_markers_locked(
+	pub(in crate::state) fn refresh_run_identities_from_markers_locked(
 		&self,
 		state: &mut StateData,
 		project_id: &str,

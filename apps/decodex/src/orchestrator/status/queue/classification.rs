@@ -1,8 +1,8 @@
 use crate::{
 	orchestrator::status::{
 		self, IssueTracker, LOOP_GUARDRAIL_CONVERGENCE_BUDGET, LoopGuardrailReason,
-		ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON, QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT,
-		ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
+		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT, REVIEW_HANDOFF_BLOCK_REASON, ServiceConfig,
+		StateStore, TrackerIssue, WorkflowDocument,
 		queue::{guardrail, models::QueuedGuardrailCommand},
 	},
 	prelude::Result,
@@ -37,7 +37,7 @@ where
 			issue,
 			state_store,
 		)? {
-		return Ok(("blocked", ORDINARY_DISPATCH_REVIEW_HANDOFF_BLOCK_REASON, None));
+		return Ok(("blocked", REVIEW_HANDOFF_BLOCK_REASON, None));
 	}
 	if tracker::issue_has_label_with_server_confirmation(
 		tracker,

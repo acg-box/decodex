@@ -56,9 +56,7 @@ impl StateStore {
 			mode,
 			project_run_recovery::ProjectRunListingMode::AllowMarkerIdentityPersistence
 		) {
-			self.refresh_run_attempt_identities_from_worktree_markers_locked(
-				&mut state, project_id,
-			)?;
+			self.refresh_run_identities_from_markers_locked(&mut state, project_id)?;
 		}
 
 		self.refresh_project_loop_evidence_state_locked(&mut state, project_id)?;

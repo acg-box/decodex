@@ -56,7 +56,7 @@ fn compact_review_checkpoint_fails_closed_after_prior_nonclean_round() {
 }
 
 #[test]
-fn compact_review_checkpoint_fails_closed_after_prior_nonclean_round_on_repaired_head() {
+fn fails_closed_after_prior_nonclean_round() {
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
 	let workflow = tests::sample_workflow();

@@ -67,7 +67,7 @@ fn run_lease_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() 
 }
 
 #[test]
-fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_activity() {
+fn keeps_completed_closeout_lane_with_fresh_activity() {
 	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(
 		&base_config,
@@ -127,7 +127,7 @@ fn active_daemon_child_reconciliation_keeps_completed_closeout_lane_with_fresh_a
 }
 
 #[test]
-fn current_daemon_child_reconciliation_keeps_closeout_child_after_tracker_completion() {
+fn keeps_closeout_child_after_tracker_completion() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue("Done", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);

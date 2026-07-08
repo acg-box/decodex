@@ -62,7 +62,7 @@ fn operator_status_snapshot_shadows_stale_attempt_when_newer_leased_attempt_exis
 }
 
 #[test]
-fn operator_status_snapshot_shadows_stale_attempt_when_newer_attempt_has_released_lease() {
+fn shadows_stale_attempt_after_newer_released_lease() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = running_lanes::sample_issue("Todo", &[]);

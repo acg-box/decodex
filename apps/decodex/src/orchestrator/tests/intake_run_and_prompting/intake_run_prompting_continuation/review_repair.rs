@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[test]
-fn continuation_guard_allows_review_repair_continuation_while_issue_remains_in_review() {
+fn allows_review_repair_while_issue_in_review() {
 	let (_temp_dir, _config, workflow) = tests::temp_project_layout();
 	let issue = intake_run_and_prompting::run_and_prompting_service_owned_issue("In Review");
 	let tracker =
