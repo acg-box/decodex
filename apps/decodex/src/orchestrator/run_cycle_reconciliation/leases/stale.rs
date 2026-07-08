@@ -13,9 +13,8 @@ where
 	T: IssueTracker,
 {
 	let reconciled_status = match issues_by_id.get(lease.issue_id()) {
-		Some(issue) if run_cycle_reconciliation::is_terminal_issue(issue, context.workflow) => {
-			"terminated"
-		},
+		Some(issue) if run_cycle_reconciliation::is_terminal_issue(issue, context.workflow) =>
+			"terminated",
 		Some(_) | None => "interrupted",
 	};
 

@@ -10,8 +10,7 @@ mod research_intake_commands;
 
 pub(crate) use self::attempt_command::AttemptRequest;
 
-#[cfg(test)]
-use std::ffi::OsString;
+#[cfg(test)] use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::{
@@ -154,5 +153,4 @@ fn decodex_app_open_args(bundle: Option<&Path>, new: bool) -> Vec<OsString> {
 	app_command::decodex_app_open_args(bundle, new)
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

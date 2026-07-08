@@ -5,18 +5,15 @@ mod hook_runner;
 mod hooks;
 mod removal;
 
-#[allow(unused_imports)]
-pub(crate) use cleanup::MergedWorktreeCleanliness;
+#[allow(unused_imports)] pub(crate) use cleanup::MergedWorktreeCleanliness;
 pub(crate) use cleanup::{
 	MergedWorktreeCleanupDebt, infer_default_branch_name, merged_worktree_cleanup_debts,
 };
 
 use std::path::PathBuf;
 
-#[cfg(test)]
-use git::remote::is_relative_filesystem_remote;
-#[cfg(test)]
-use hooks::workspace_hook_shell_from_env;
+#[cfg(test)] use git::remote::is_relative_filesystem_remote;
+#[cfg(test)] use hooks::workspace_hook_shell_from_env;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorktreeSpec {
@@ -66,5 +63,4 @@ impl WorktreeManager {
 	}
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

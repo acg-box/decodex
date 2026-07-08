@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::unix::ffi::OsStrExt as _;
+#[cfg(unix)] use std::os::unix::ffi::OsStrExt as _;
 use std::{
 	env,
 	path::{Path, PathBuf},

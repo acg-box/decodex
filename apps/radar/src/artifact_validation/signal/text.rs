@@ -47,11 +47,10 @@ fn collect_json_strings(value: &Value, text: &mut String) {
 			text.push(' ');
 			text.push_str(value);
 		},
-		Value::Array(values) => {
+		Value::Array(values) =>
 			for value in values {
 				collect_json_strings(value, text);
-			}
-		},
+			},
 		Value::Object(object) => collect_json_strings_from_map(object, text),
 		Value::Bool(_) | Value::Null | Value::Number(_) => {},
 	}

@@ -41,9 +41,8 @@ impl<'a> TrackerToolBridge<'a> {
 			.content_items
 			.into_iter()
 			.map(|item| match item {
-				crate::agent::tracker_tool_bridge::DynamicToolContentItem::InputText { text } => {
-					text
-				},
+				crate::agent::tracker_tool_bridge::DynamicToolContentItem::InputText { text } =>
+					text,
 			})
 			.collect::<Vec<_>>()
 			.join("\n");

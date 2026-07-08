@@ -10,5 +10,4 @@ pub(super) use self::{
 	projection::decide_lane_next_action,
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

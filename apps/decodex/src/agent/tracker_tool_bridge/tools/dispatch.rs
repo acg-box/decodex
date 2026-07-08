@@ -32,9 +32,8 @@ impl<'a> TrackerToolBridge<'a> {
 			ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME => self.handle_closeout_complete(arguments),
 			ISSUE_LABEL_ADD_TOOL_NAME => self.handle_add_label(arguments),
 			ISSUE_TERMINAL_FINALIZE_TOOL_NAME => self.handle_terminal_finalize(arguments),
-			_ => {
-				DynamicToolCallResponse::failure(format!("Unsupported tracker tool `{tool_name}`."))
-			},
+			_ =>
+				DynamicToolCallResponse::failure(format!("Unsupported tracker tool `{tool_name}`.")),
 		}
 	}
 }

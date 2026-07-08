@@ -81,13 +81,12 @@ impl DecisionExecutionReadiness {
 					);
 				}
 			},
-			DecisionContractStatus::NeedsHumanDecision => {
+			DecisionContractStatus::NeedsHumanDecision =>
 				if self.missing_decisions.is_empty() {
 					eyre::bail!(
 						"Needs-human-decision contracts must include at least one missing decision."
 					);
-				}
-			},
+				},
 			DecisionContractStatus::DraftLatent | DecisionContractStatus::RejectedSuperseded => {},
 		}
 

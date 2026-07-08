@@ -9,8 +9,7 @@ mod model;
 mod readiness;
 mod render;
 
-#[cfg(test)]
-pub(crate) use self::render::validate_generated_issue_text;
+#[cfg(test)] pub(crate) use self::render::validate_generated_issue_text;
 pub(crate) use self::{
 	command::{run_goal_intake_command, run_issue_batch_intake_command},
 	goal_run::run_goal_intake,
@@ -24,5 +23,4 @@ pub(crate) use self::{
 	render::{render_goal_intake_report, render_issue_batch_intake_report},
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

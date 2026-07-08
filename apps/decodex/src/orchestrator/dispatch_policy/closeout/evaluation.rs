@@ -157,11 +157,9 @@ fn closeout_merge_gate_eligibility(
 ) -> CloseoutDispatchEligibility {
 	match merge_gate {
 		RetainedCloseoutPrMergeGate::Merged => CloseoutDispatchEligibility::Eligible,
-		RetainedCloseoutPrMergeGate::NotMerged => {
-			CloseoutDispatchEligibility::Blocked("pull_request_not_merged")
-		},
-		RetainedCloseoutPrMergeGate::PullRequestStateReadFailed => {
-			CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed")
-		},
+		RetainedCloseoutPrMergeGate::NotMerged =>
+			CloseoutDispatchEligibility::Blocked("pull_request_not_merged"),
+		RetainedCloseoutPrMergeGate::PullRequestStateReadFailed =>
+			CloseoutDispatchEligibility::Blocked("pull_request_state_read_failed"),
 	}
 }

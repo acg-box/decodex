@@ -1,7 +1,6 @@
 //! Full-program readiness summaries.
 
-#[cfg(test)]
-use crate::execution_program::model::ExecutionReadinessState;
+#[cfg(test)] use crate::execution_program::model::ExecutionReadinessState;
 use crate::execution_program::{
 	evaluation::node::ExecutionNodeEvaluation, model::ExecutionProgramNodeLifecycleState,
 };

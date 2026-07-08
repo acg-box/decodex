@@ -48,8 +48,7 @@ impl RepoGateFailureKind {
 				RepoGateFailureDisposition::ContinueRepair,
 			Self::TrackedRewritesLeft
 			| Self::LaneExternalTrackedRewrite
-			| Self::ScopeEnvelopeViolation =>
-				RepoGateFailureDisposition::NeedsHumanAttention,
+			| Self::ScopeEnvelopeViolation => RepoGateFailureDisposition::NeedsHumanAttention,
 			Self::GitLockContention => RepoGateFailureDisposition::RetryAfterBackoff,
 			Self::CommandSpawnFailed | Self::CleanlinessCheckFailed =>
 				RepoGateFailureDisposition::NeedsHumanAttention,

@@ -4,8 +4,7 @@ mod lineage;
 mod paths;
 mod status;
 
-#[cfg(test)]
-pub(in crate::recovery) use self::status::worktree_blocking_status_lines;
+#[cfg(test)] pub(in crate::recovery) use self::status::worktree_blocking_status_lines;
 pub(in crate::recovery) use self::{
 	lineage::{ReviewHandoffLineage, worktree_head_descends_from_review_handoff},
 	paths::{git_toplevel_path, repository_relative_path, worktree_checkout_branch_name},

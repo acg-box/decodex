@@ -163,9 +163,8 @@ impl<'a> TrackerToolBridge<'a> {
 				return None;
 			},
 			ReviewPolicyStatus::Findings => ReviewPolicyStopReason::Exhausted,
-			ReviewPolicyStatus::NeedsArchitectureReview => {
-				ReviewPolicyStopReason::ArchitectureReviewRequired
-			},
+			ReviewPolicyStatus::NeedsArchitectureReview =>
+				ReviewPolicyStopReason::ArchitectureReviewRequired,
 			ReviewPolicyStatus::Blocked => ReviewPolicyStopReason::Blocked,
 		};
 

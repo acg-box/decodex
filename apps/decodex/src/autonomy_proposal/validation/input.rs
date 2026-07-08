@@ -97,9 +97,8 @@ pub(super) fn validate_proposed_issue_stage(key: &str, stage: &str) -> Result<()
 
 pub(super) fn validate_proposed_issue_queue_intent(key: &str, queue_intent: &str) -> Result<()> {
 	match queue_intent {
-		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" => {
-			Ok(())
-		},
+		"not_ready" | "ready_to_queue" | "queued" | "active" | "paused" | "done" | "canceled" =>
+			Ok(()),
 		_ => eyre::bail!(
 			"Autonomy proposal issue candidate `{key}` has unsupported queue_intent `{queue_intent}`."
 		),

@@ -13,5 +13,4 @@ pub(crate) use self::{
 	},
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

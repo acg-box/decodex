@@ -23,17 +23,13 @@ pub(crate) fn architecture_recovery_retry_next_action(
 	policy_decision: AuthorityBoundaryPolicyDecision,
 ) -> &'static str {
 	match policy_decision {
-		AuthorityBoundaryPolicyDecision::AutoContinue => {
-			"decodex recorded authority policy `auto_continue` and will retry with a materially different architecture recovery strategy"
-		},
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
-			"decodex recorded authority policy `requires_enhanced_evidence` and will retry with a materially different architecture recovery strategy while preserving enhanced evidence before review handoff or landing"
-		},
-		AuthorityBoundaryPolicyDecision::BlockLanding => {
-			"decodex recorded authority policy `block_landing` and will retry with a materially different architecture recovery strategy while landing remains blocked until validation or review-policy evidence is restored"
-		},
-		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => {
-			"decodex recorded authority policy `requires_human_decision` and requires human attention before retrying"
-		},
+		AuthorityBoundaryPolicyDecision::AutoContinue =>
+			"decodex recorded authority policy `auto_continue` and will retry with a materially different architecture recovery strategy",
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
+			"decodex recorded authority policy `requires_enhanced_evidence` and will retry with a materially different architecture recovery strategy while preserving enhanced evidence before review handoff or landing",
+		AuthorityBoundaryPolicyDecision::BlockLanding =>
+			"decodex recorded authority policy `block_landing` and will retry with a materially different architecture recovery strategy while landing remains blocked until validation or review-policy evidence is restored",
+		AuthorityBoundaryPolicyDecision::RequiresHumanDecision =>
+			"decodex recorded authority policy `requires_human_decision` and requires human attention before retrying",
 	}
 }

@@ -22,7 +22,6 @@ pub(crate) use self::{
 		seed_dropped_review_marker_tables, upsert_handoff_review_policy_checkpoint,
 	},
 };
-#[cfg(unix)]
-pub(crate) use fd_helpers::fd_has_close_on_exec;
+#[cfg(unix)] pub(crate) use fd_helpers::fd_has_close_on_exec;
 
 pub(crate) const IN_PROGRESS_STATE: &str = "In Progress";

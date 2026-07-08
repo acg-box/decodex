@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
+#[cfg(unix)] use std::os::fd::AsRawFd;
 use std::{
 	env,
 	io::Write as _,

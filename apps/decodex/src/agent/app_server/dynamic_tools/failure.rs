@@ -68,12 +68,10 @@ impl AppServerDynamicToolFailure {
 		&self,
 	) -> &'static str {
 		match self.kind {
-			AppServerDynamicToolFailureKind::Protocol => {
-				"inspect the declared dynamic tool surface and item/tool/call payload before retrying the lane"
-			},
-			AppServerDynamicToolFailureKind::Tool => {
-				"inspect the tool response, correct the call arguments or backing state, and retry the tool call"
-			},
+			AppServerDynamicToolFailureKind::Protocol =>
+				"inspect the declared dynamic tool surface and item/tool/call payload before retrying the lane",
+			AppServerDynamicToolFailureKind::Tool =>
+				"inspect the tool response, correct the call arguments or backing state, and retry the tool call",
 		}
 	}
 
