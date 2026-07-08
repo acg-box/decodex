@@ -4,6 +4,12 @@
 
 - Ran the baseline guard latest-main dispatch E2E canary through Decodex.
 - Exercised the full-auto daemon takeover path for baseline-guard validation.
+- Restored `decodex docs check` as a lightweight repository docs gate and clarified
+  targeted dispatch reentry for queued continuation lanes, including interrupted
+  validation-repair attempts that already recorded local repair-goal evidence.
+- Treated repo-gate progress blockers as resolved after the validation-repair phase
+  reruns and passes the repository gate, so stale gate-tool blockers do not force
+  manual attention after the toolchain is repaired.
 
 ## 2026-07-07
 

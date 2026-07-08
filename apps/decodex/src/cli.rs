@@ -2,6 +2,7 @@ mod account_commands;
 mod app_command;
 mod attempt_command;
 mod control_commands;
+mod docs_commands;
 mod git_hook_commands;
 mod manual_commands;
 mod probe_command;
@@ -30,6 +31,7 @@ use self::{
 		DiagnoseCommand, EvidenceCommand, LaneCommand, McpCommand, ProjectCommand, RunCommand,
 		ServeCommand, StatusCommand,
 	},
+	docs_commands::DocsCommand,
 	git_hook_commands::GitHookCommand,
 	manual_commands::{CommitCommand, LandCommand},
 	probe_command::ProbeCommand,
@@ -74,6 +76,7 @@ impl Cli {
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
+			Command::Docs(args) => args.run(),
 			Command::Intake(args) => args.run(),
 			Command::Recover(args) => args.run(),
 			Command::ArchiveLinear(args) => args.run(),
@@ -126,6 +129,8 @@ enum Command {
 	Diagnose(DiagnoseCommand),
 	/// Inspect local-only private execution evidence for one issue or run.
 	Evidence(EvidenceCommand),
+	/// Validate repository docs compatibility checks.
+	Docs(DocsCommand),
 	/// Operator issue-batch intake into internal Execution Programs, not a graph editor.
 	Intake(IntakeCommand),
 	/// Diagnose or explicitly repair supported retained-lane recovery cases.

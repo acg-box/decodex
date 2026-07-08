@@ -3,9 +3,10 @@ use std::path::Path;
 use crate::{
 	orchestrator::{
 		self, IssueDispatchMode, RunSummary, TargetIssueRunContext,
-		tests::{self, FakeTracker, intake_run_and_prompting},
+		tests::{self, FakeTracker, TEST_SERVICE_ID, intake_run_and_prompting},
 	},
 	state::StateStore,
+	tracker,
 };
 
 #[test]
@@ -124,4 +125,118 @@ fn targeted_inferred_dispatch_keeps_retry_for_active_issue() {
 	assert_eq!(summary.issue_id, issue.id);
 	assert_eq!(summary.issue_identifier, issue.identifier);
 	assert_eq!(summary.dispatch_mode, IssueDispatchMode::Retry);
+}
+
+#[test]
+fn targeted_inferred_dispatch_reenters_continuation_pending_queued_issue() {
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let issue = tests::sample_issue("In Progress", &[queue_label.as_str()]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	state_store
+		.record_run_attempt("pub-101-attempt-3-123", &issue.id, 3, "continuation_pending")
+		.expect("continuation attempt should record");
+	state_store
+		.update_run_thread("pub-101-attempt-3-123", "thread-123")
+		.expect("thread id should record");
+
+	let summary =
+		orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
+			tracker: &tracker,
+			project: &config,
+			workflow: &workflow,
+			state_store: &state_store,
+			issue_id: &issue.identifier,
+			preferred_issue_state: None,
+			preferred_initial_issue_state: None,
+			dry_run: true,
+			lease_preacquired: false,
+			preferred_issue_claim_fd: None,
+			preferred_dispatch_slot_fd: None,
+			preferred_dispatch_slot_index: None,
+			dispatch_mode: IssueDispatchMode::Normal,
+			preferred_run_identity: None,
+			preferred_retry_budget_base: None,
+		})
+		.expect("targeted continuation run should succeed")
+		.expect("continuation-pending issue should dispatch");
+
+	assert_eq!(summary.issue_id, issue.id);
+	assert_eq!(summary.issue_identifier, issue.identifier);
+	assert_eq!(summary.dispatch_mode, IssueDispatchMode::Retry);
+	assert_eq!(summary.run_id, "pub-101-attempt-3-123");
+	assert_eq!(summary.attempt_number, 3);
+}
+
+#[test]
+fn targeted_inferred_dispatch_reenters_interrupted_validation_repair_continuation() {
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let issue = tests::sample_issue("In Progress", &[queue_label.as_str()]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let run_id = "pub-101-attempt-3-123";
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 3, "interrupted")
+		.expect("interrupted attempt should record");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			run_id,
+			3,
+			"progress_checkpoint",
+			serde_json::json!({"phase": "implementing"}),
+		)
+		.expect("progress event should record");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			run_id,
+			3,
+			"phase_goal_transition",
+			serde_json::json!({"phase": "implement_to_validation_ready", "signal": "validation_fail"}),
+		)
+		.expect("validation failure event should record");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			run_id,
+			3,
+			"phase_goal_set",
+			serde_json::json!({"phase": "repair_validation_failures"}),
+		)
+		.expect("repair goal event should record");
+
+	let summary =
+		orchestrator::run_target_issue_once_with_inferred_dispatch(TargetIssueRunContext {
+			tracker: &tracker,
+			project: &config,
+			workflow: &workflow,
+			state_store: &state_store,
+			issue_id: &issue.identifier,
+			preferred_issue_state: None,
+			preferred_initial_issue_state: None,
+			dry_run: true,
+			lease_preacquired: false,
+			preferred_issue_claim_fd: None,
+			preferred_dispatch_slot_fd: None,
+			preferred_dispatch_slot_index: None,
+			dispatch_mode: IssueDispatchMode::Normal,
+			preferred_run_identity: None,
+			preferred_retry_budget_base: None,
+		})
+		.expect("targeted continuation run should succeed")
+		.expect("interrupted validation-repair continuation should dispatch");
+
+	assert_eq!(summary.issue_id, issue.id);
+	assert_eq!(summary.issue_identifier, issue.identifier);
+	assert_eq!(summary.dispatch_mode, IssueDispatchMode::Retry);
+	assert_eq!(summary.run_id, run_id);
+	assert_eq!(summary.attempt_number, 3);
 }

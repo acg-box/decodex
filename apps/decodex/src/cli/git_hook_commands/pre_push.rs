@@ -93,18 +93,7 @@ fn rev_list_args(
 	remote_url: &str,
 	update: &PrePushUpdate,
 ) -> Result<Vec<String>> {
-	let args = if is_zero_oid(&update.remote_oid) {
-		let mut args = vec![String::from("rev-list"), update.local_oid.clone()];
-
-		if let Some(remotes_arg) = remote_exclusion_arg(remote_name, remote_url)? {
-			args.push(String::from("--not"));
-			args.push(remotes_arg);
-		}
-
-		args
-	} else {
-		vec![String::from("rev-list"), format!("{}..{}", update.remote_oid, update.local_oid)]
-	};
+	let args = rev_list_command_args(remote_name, remote_url, update)?;
 
 	git::run_git_lines(&args).map_err(|error| {
 		eyre::eyre!(
@@ -113,6 +102,35 @@ fn rev_list_args(
 			update.remote_ref
 		)
 	})
+}
+
+fn rev_list_command_args(
+	remote_name: &str,
+	remote_url: &str,
+	update: &PrePushUpdate,
+) -> Result<Vec<String>> {
+	Ok(rev_list_command_args_with_remote_exclusion(
+		update,
+		remote_exclusion_arg(remote_name, remote_url)?,
+	))
+}
+
+fn rev_list_command_args_with_remote_exclusion(
+	update: &PrePushUpdate,
+	remote_exclusion: Option<String>,
+) -> Vec<String> {
+	let mut args = if is_zero_oid(&update.remote_oid) {
+		vec![String::from("rev-list"), update.local_oid.clone()]
+	} else {
+		vec![String::from("rev-list"), format!("{}..{}", update.remote_oid, update.local_oid)]
+	};
+
+	if let Some(remotes_arg) = remote_exclusion {
+		args.push(String::from("--not"));
+		args.push(remotes_arg);
+	}
+
+	args
 }
 
 fn remote_exclusion_arg(remote_name: &str, remote_url: &str) -> Result<Option<String>> {
@@ -252,7 +270,11 @@ fn is_zero_oid(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::{RemoteConfig, remote_exclusion_arg_from_config, urls_match};
+	use super::{
+		RemoteConfig, remote_exclusion_arg_from_config,
+		rev_list_command_args_with_remote_exclusion, urls_match,
+	};
+	use crate::cli::git_hook_commands::model::PrePushUpdate;
 
 	fn remote(name: &str, urls: &[&str]) -> RemoteConfig {
 		RemoteConfig { name: name.to_owned(), urls: urls.iter().map(ToString::to_string).collect() }
@@ -325,5 +347,21 @@ mod tests {
 			"git@github.com:helixbox/pubfi-insight.git",
 			"https://github.com/hack-ink/decodex.git",
 		));
+	}
+
+	#[test]
+	fn pre_push_update_excludes_remote_reachable_commits_for_existing_branch() {
+		let update = PrePushUpdate::new(
+			String::from("refs/heads/topic"),
+			String::from("local"),
+			String::from("refs/heads/topic"),
+			String::from("remote"),
+		);
+		let args = rev_list_command_args_with_remote_exclusion(
+			&update,
+			Some(String::from("--remotes=origin")),
+		);
+
+		assert_eq!(args, ["rev-list", "remote..local", "--not", "--remotes=origin",]);
 	}
 }

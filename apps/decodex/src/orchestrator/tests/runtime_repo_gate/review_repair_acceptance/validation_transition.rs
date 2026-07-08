@@ -60,3 +60,45 @@ fn review_repair_phase_goal_validation_passes_to_review_repair_evidence() {
 		event.event_type() != "phase_goal_next" || event.payload()["phase"] != "handoff_evidence"
 	}));
 }
+
+#[test]
+fn validation_repair_phase_ignores_repo_gate_progress_blocker_after_gate_pass() {
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue("In Progress", &[]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = support::phase_goal_repo_gate_issue_run(&config, &issue);
+
+	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
+	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
+	support::record_validation_evidence_progress_checkpoint(
+		&config,
+		&state_store,
+		&issue_run,
+		&[
+			"cargo make check-docs could not run because the local Decodex CLI had no docs subcommand",
+		],
+	);
+
+	let transition = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::RepairValidationFailures)
+	.expect("repaired validation blocker should not require manual attention");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private phase goal events should load");
+
+	assert!(matches!(
+		transition,
+		PhaseGoalTransition::Continue(PhaseGoalSpec { phase: PhaseGoalKind::HandoffEvidence, .. })
+	));
+	assert!(events.iter().any(|event| {
+		event.event_type() == crate::orchestrator::VALIDATION_EVIDENCE_EVENT_TYPE
+			&& event.payload()["decision"] == "pass"
+			&& event.payload()["reason_code"] == "accepted"
+			&& event.payload()["non_goal_check"]["blocker_count"] == 0
+	}));
+}

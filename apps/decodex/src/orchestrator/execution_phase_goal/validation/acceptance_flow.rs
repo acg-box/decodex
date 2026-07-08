@@ -9,6 +9,7 @@ use crate::{
 		execution_phase_goal::{
 			acceptance::{
 				self, ValidationDecision, ValidationEvidence, validation_evidence_blocker_count,
+				validation_evidence_blockers_resolved_by_validation_repair,
 				validation_evidence_docs_impact_valid, validation_evidence_has_non_goal_violation,
 			},
 			controller::RepoGatePhaseGoalController,
@@ -47,7 +48,15 @@ impl RepoGatePhaseGoalController<'_> {
 			.and_then(|payload| payload.get("docs_impact"))
 			.and_then(Value::as_str)
 			.is_none_or(validation_evidence_docs_impact_valid);
-		let blocker_count = checkpoint_payload.map_or(0, validation_evidence_blocker_count);
+		let raw_blocker_count = checkpoint_payload.map_or(0, validation_evidence_blocker_count);
+		let blocker_count = if phase == PhaseGoalKind::RepairValidationFailures
+			&& checkpoint_payload
+				.is_some_and(validation_evidence_blockers_resolved_by_validation_repair)
+		{
+			0
+		} else {
+			raw_blocker_count
+		};
 		let non_goal_violation =
 			checkpoint_payload.is_some_and(validation_evidence_has_non_goal_violation);
 		let objective_covered = (!checkpoint_present || checkpoint_matches_head)

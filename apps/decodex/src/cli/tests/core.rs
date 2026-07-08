@@ -4,6 +4,7 @@ mod land_manual_authority_requires_pr;
 mod parses_app_bundle_and_new_instance;
 mod parses_app_command;
 mod parses_commit_with_authority_related_and_breaking;
+mod parses_docs_check_command;
 mod parses_git_hook_commands;
 mod parses_land_with_pr_override;
 mod parses_manual_authority_commands;

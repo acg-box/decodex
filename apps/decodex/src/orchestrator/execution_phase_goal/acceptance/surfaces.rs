@@ -33,6 +33,24 @@ pub(crate) fn validation_evidence_blocker_count(payload: &Value) -> usize {
 	payload.get("blockers").and_then(Value::as_array).map_or(0, Vec::len)
 }
 
+pub(crate) fn validation_evidence_blockers_resolved_by_validation_repair(payload: &Value) -> bool {
+	let Some(blockers) = payload.get("blockers").and_then(Value::as_array) else {
+		return false;
+	};
+	if blockers.is_empty() {
+		return false;
+	}
+
+	blockers.iter().filter_map(Value::as_str).all(|blocker| {
+		let normalized = blocker.to_ascii_lowercase();
+
+		normalized.contains("repo gate")
+			|| normalized.contains("cargo make")
+			|| normalized.contains("check-docs")
+			|| normalized.contains("validation")
+	})
+}
+
 pub(crate) fn validation_evidence_docs_impact_valid(value: &str) -> bool {
 	matches!(value, "none" | "update_required" | "research_required" | "drift_required")
 }

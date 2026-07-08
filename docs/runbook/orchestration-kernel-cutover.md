@@ -253,9 +253,7 @@ Current hard-cutover evidence:
 - [x] `cargo test -p decodex --all-features --no-run`
 - [ ] `cargo test -p decodex --lib --all-features -- --test-threads=1`
 - [ ] `cargo test -p decodex --all-features -- --test-threads=1`
-- [ ] `cargo run -p decodex --bin decodex -- docs check` currently unavailable:
-  the current CLI no longer exposes a `docs` subcommand, so this must either be
-  replaced by the current docs gate or explicitly removed from the acceptance set.
+- [x] `cargo run -p decodex --bin decodex -- docs check`
 - [x] `git diff --check`
 - [ ] Fresh read-only skeptic review reported PASS after blocker repair. The latest
   fresh skeptic review returned blockers for unresolved index state, stale broad

@@ -17,7 +17,8 @@ pub(crate) use self::{
 		issue_passes_retry_dispatch_policy, issue_passes_retry_retention_policy,
 		issue_retry_budget_exhausted, issue_retry_budget_exhausted_for_worktree,
 		retry_budget_base_for_dispatch_mode, retry_budget_base_for_issue_worktree,
-		write_retry_budget_marker, write_terminal_guard_marker,
+		run_attempt_allows_continuation_reentry, write_retry_budget_marker,
+		write_terminal_guard_marker,
 	},
 };
 pub(crate) use closeout::{

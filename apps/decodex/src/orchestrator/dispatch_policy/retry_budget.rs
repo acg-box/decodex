@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{
-		dispatch_policy,
+		CONTINUATION_PENDING_RUN_STATUS, dispatch_policy,
 		dispatch_policy::{
 			ErrorKind, IssueDispatchMode, IssueTracker, Path, PathBuf, Result, RetryIssueStateHint,
 			ServiceConfig, StateStore, TERMINAL_GUARD_MARKER_FILE, TERMINAL_GUARDED_RUN_STATUS,
@@ -42,7 +42,7 @@ where
 		&& hint.preferred_initial_issue_state.is_some_and(|state| state == issue.state.name)
 		&& tracker_policy.startable_states().iter().any(|candidate| candidate == &issue.state.name);
 
-	if !issue_has_service_ownership(tracker, issue, project.service_id())?
+	if !issue_has_retry_or_continuation_ownership(tracker, issue, project, state_store)?
 		|| (issue.state.name != tracker_policy.in_progress_state()
 			&& !continuation_startable_snapshot)
 		|| issue.has_label(tracker_policy.opt_out_label())
@@ -72,6 +72,71 @@ where
 		issue,
 		&tracker::automation_active_label(service_id),
 	)
+}
+
+fn issue_has_retry_or_continuation_ownership<T>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+	state_store: &StateStore,
+) -> Result<bool>
+where
+	T: IssueTracker + ?Sized,
+{
+	if issue_has_service_ownership(tracker, issue, project.service_id())? {
+		return Ok(true);
+	}
+
+	let latest_allows_continuation_reentry =
+		state_store.latest_run_attempt_for_issue(&issue.id)?.is_some_and(|attempt| {
+			run_attempt_allows_continuation_reentry(project, state_store, &issue.id, &attempt)
+				.unwrap_or(false)
+		});
+
+	if !latest_allows_continuation_reentry {
+		return Ok(false);
+	}
+
+	tracker::issue_has_label_with_server_confirmation(
+		tracker,
+		issue,
+		&tracker::automation_queue_label(project.service_id()),
+	)
+}
+
+pub(crate) fn run_attempt_allows_continuation_reentry(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_id: &str,
+	attempt: &state::RunAttempt,
+) -> Result<bool> {
+	if attempt.status() == CONTINUATION_PENDING_RUN_STATUS {
+		return Ok(true);
+	}
+	if attempt.status() != "interrupted" {
+		return Ok(false);
+	}
+
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		issue_id,
+		attempt.run_id(),
+		attempt.attempt_number(),
+	)?;
+	let has_progress_checkpoint =
+		events.iter().any(|event| event.event_type() == "progress_checkpoint");
+	let has_validation_fail = events.iter().any(|event| {
+		event.event_type() == "phase_goal_transition"
+			&& event.payload().get("signal").and_then(|signal| signal.as_str())
+				== Some("validation_fail")
+	});
+	let has_repair_goal = events.iter().any(|event| {
+		event.event_type() == "phase_goal_set"
+			&& event.payload().get("phase").and_then(|phase| phase.as_str())
+				== Some("repair_validation_failures")
+	});
+
+	Ok(has_progress_checkpoint && has_validation_fail && has_repair_goal)
 }
 
 pub(crate) fn issue_is_terminal_retry_guarded(
