@@ -49,6 +49,17 @@ where
 				context.project.worktree_root(),
 			)?;
 
+			if orchestrator::ensure_clean_baseline_before_dispatch(
+				context.project,
+				context.workflow,
+				state_store,
+				summary.dispatch_mode,
+				false,
+			)? == orchestrator::BaselineGuardDispatchOutcome::NormalizedMain
+			{
+				return Ok(false);
+			}
+
 			if !state_store.try_acquire_lease(
 				context.project.service_id(),
 				&summary.issue_id,

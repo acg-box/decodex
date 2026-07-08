@@ -141,6 +141,8 @@ fn push_developer_instruction_base_sections(
 		sections.push(format!("Workflow policy\n{}", workflow.body()));
 	}
 
+	sections.push(build_registered_repo_gate_section(workflow));
+
 	for relative_path in workflow.frontmatter().context().read_first() {
 		let contents =
 			prompting_workflow_context::read_workflow_read_first_file(project, relative_path)?;
@@ -159,4 +161,22 @@ fn push_developer_instruction_base_sections(
 	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));
 
 	Ok(())
+}
+
+fn build_registered_repo_gate_section(workflow: &WorkflowDocument) -> String {
+	let execution = workflow.frontmatter().execution();
+
+	format!(
+		"Registered repo gate\n- `canonicalize_commands`: {}\n- `verify_commands`: {}\n- When Decodex prompts say required validation or repo gate, run these registered command lists in order. Do not substitute broader repo-documentation examples for this lane.",
+		format_command_list(execution.canonicalize_commands()),
+		format_command_list(execution.verify_commands())
+	)
+}
+
+fn format_command_list(commands: &[String]) -> String {
+	if commands.is_empty() {
+		String::from("[]")
+	} else {
+		commands.iter().map(|command| format!("`{command}`")).collect::<Vec<_>>().join(", ")
+	}
 }

@@ -70,6 +70,22 @@ fn build_commit_message_accepts_manual_authority() {
 }
 
 #[test]
+fn build_commit_message_accepts_baseline_authority() {
+	let message = commit_message::build_commit_message(
+		"normalize repo gate baseline",
+		"baseline",
+		&[],
+		false,
+	)
+	.expect("baseline authority should build");
+
+	assert_eq!(
+		message,
+		r#"{"schema":"decodex/commit/2","change":"normalize repo gate baseline","authority":"baseline","impact":"compatible"}"#
+	);
+}
+
+#[test]
 fn looks_like_issue_identifier_requires_suffix_number() {
 	assert!(commit_message::looks_like_issue_identifier("XY-225"));
 	assert!(commit_message::looks_like_issue_identifier("A1-9"));
@@ -122,6 +138,10 @@ fn validate_commit_message_subject_accepts_schema_record_without_expected_author
 		r#"{"schema":"decodex/commit/2","change":"ship fix","authority":"manual","impact":"compatible"}"#,
 	)
 	.expect("manual schema subject should validate");
+	commit_message::validate_commit_message_subject(
+		r#"{"schema":"decodex/commit/2","change":"normalize baseline","authority":"baseline","impact":"compatible"}"#,
+	)
+	.expect("baseline schema subject should validate");
 }
 
 #[test]
