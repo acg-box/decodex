@@ -7,10 +7,8 @@ use std::path::Path;
 
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-#[cfg(test)]
-pub(super) use self::issue::ensure_manual_closeout_issue_scope;
-#[cfg(test)]
-pub(super) use self::receipt::read_manual_land_closeout_receipt;
+#[cfg(test)] pub(super) use self::issue::ensure_manual_closeout_issue_scope;
+#[cfg(test)] pub(super) use self::receipt::read_manual_land_closeout_receipt;
 pub(super) use self::{
 	cleanup::{
 		cleanup_manual_land_lane_checkout, ensure_manual_land_checkout_is_managed_lane,
@@ -262,12 +260,14 @@ fn manual_land_review_state(
 		pending_review_requests: 0,
 		mergeable: String::from("MERGEABLE"),
 		merge_state_status: String::from("CLEAN"),
+		base_ref_oid: None,
 		head_ref_name: ledger.lifecycle_record.pr_head_ref_name().to_owned(),
 		head_ref_oid: ledger.lifecycle_record.pr_head_oid().to_owned(),
 		merge_commit_oid: merge_commit.map(str::to_owned),
 		head_repository_name: None,
 		head_repository_owner: None,
 		status_check_rollup_state: Some(String::from("SUCCESS")),
+		required_status_contexts: Vec::new(),
 		unresolved_review_threads: 0,
 		issue_description_external_review_thumbs_up_count: 0,
 		issue_comments: Vec::new(),

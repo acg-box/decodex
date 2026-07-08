@@ -47,10 +47,7 @@ pub(crate) fn apply_pre_orchestration_post_review_classification(
 
 		return true;
 	}
-	if status::failed_checks_require_repair(
-		review_state.status_check_rollup_state.as_deref(),
-		&review_state.merge_state_status,
-	) {
+	if status::review_state_checks_require_repair(review_state) {
 		classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 		classification.reason = String::from("required_checks_failed");
 

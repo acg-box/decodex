@@ -10,8 +10,8 @@ pub(crate) use self::{
 	},
 	model::{
 		LandingGateDecision, LandingGateMode, PullRequestLandingGateView, PullRequestLandingState,
+		PullRequestRequiredStatusContext,
 	},
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

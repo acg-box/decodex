@@ -1,6 +1,5 @@
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::orchestrator::runtime_standard_review::RuntimeStandardReviewRunner;
 use crate::orchestrator::{
 	self, PostReviewLifecycleFacts, PostReviewLifecycleFactsInput, RuntimeReviewGateState,
 	build_post_review_lifecycle_facts,
@@ -17,7 +16,7 @@ use crate::orchestrator::{
 		phases::{merge, result},
 	},
 	runtime_review_checkpoint_status_for_head_phase,
-	runtime_standard_review::runtime_review_execution_mode,
+	runtime_standard_review::{RuntimeStandardReviewRunner, runtime_review_execution_mode},
 	worktree_has_review_blocking_changes,
 };
 
@@ -57,14 +56,12 @@ where
 		);
 	}
 	if result::external_review_requires_repair(&lane.review_state, lane.lifecycle_record())
-		|| orchestrator::failed_checks_require_repair(
-			lane.review_state.status_check_rollup_state.as_deref(),
+		|| orchestrator::review_state_checks_require_repair(&lane.review_state)
+		|| orchestrator::merge_state_requires_review_repair(
+			&lane.review_state.mergeable,
 			&lane.review_state.merge_state_status,
-		) || orchestrator::merge_state_requires_review_repair(
-		&lane.review_state.mergeable,
-		&lane.review_state.merge_state_status,
-	)
-	.is_some()
+		)
+		.is_some()
 	{
 		return lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 			state_store,
@@ -148,9 +145,8 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 
 	match facts.review_gate_state {
 		RuntimeReviewGateState::NotRequired => Ok(false),
-		RuntimeReviewGateState::Clean => {
-			Ok(worktree_has_review_blocking_changes(lane.snapshot.worktree.worktree_path())?)
-		},
+		RuntimeReviewGateState::Clean =>
+			Ok(worktree_has_review_blocking_changes(lane.snapshot.worktree.worktree_path())?),
 		RuntimeReviewGateState::Findings => {
 			lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 				state_store,

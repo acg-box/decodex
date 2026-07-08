@@ -276,7 +276,7 @@ The first two classes are explicit continued-repair outcomes in normal retained-
 
 Human-attention exits are reserved for repo-gate failures that the coding agent cannot reasonably repair from the worktree alone, such as command-spawn failures, missing runtime prerequisites, inability to inspect tracked-file cleanliness, ambiguous lane-external rewrites, or lane-external tracked rewrites that require explicit scoped authority. When the runtime takes that path, prompts and tracker comments should preserve the repo-gate source failure class instead of collapsing it into vague generic wording.
 
-Landing policy is no longer repository-configurable in the machine-readable workflow contract for this repo surface. For retained review landing, `decodex` applies a fixed strict policy: require green checks, require an up-to-date base branch, preserve commit-level history, use merge commits, and never squash or rebase.
+Landing policy is no longer repository-configurable in the machine-readable workflow contract for this repo surface. For retained review landing, `decodex` applies a fixed strict policy: require green configured landing status contexts bound to the current PR head and base tip, or legacy green checks when no landing contexts are configured, require an up-to-date base branch, preserve commit-level history, use merge commits, and never squash or rebase.
 
 ## `[context]`
 

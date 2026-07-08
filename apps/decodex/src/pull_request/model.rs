@@ -5,12 +5,14 @@ pub(crate) struct PullRequestLandingState {
 	pub(crate) is_draft: bool,
 	pub(crate) review_decision: Option<String>,
 	pub(crate) base_ref_name: String,
+	pub(crate) base_ref_oid: Option<String>,
 	pub(crate) pending_review_requests: usize,
 	pub(crate) mergeable: String,
 	pub(crate) merge_state_status: String,
 	pub(crate) head_ref_name: String,
 	pub(crate) head_ref_oid: String,
 	pub(crate) status_check_rollup_state: Option<String>,
+	pub(crate) required_status_contexts: Vec<PullRequestRequiredStatusContext>,
 	pub(crate) unresolved_review_threads: usize,
 }
 impl PullRequestLandingState {
@@ -23,9 +25,20 @@ impl PullRequestLandingState {
 			mergeable: self.mergeable.as_str(),
 			merge_state_status: self.merge_state_status.as_str(),
 			status_check_rollup_state: self.status_check_rollup_state.as_deref(),
+			required_status_contexts: &self.required_status_contexts,
 			unresolved_review_threads: self.unresolved_review_threads,
 		}
 	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PullRequestRequiredStatusContext {
+	pub(crate) context: String,
+	pub(crate) state: Option<String>,
+	pub(crate) creator_login: Option<String>,
+	pub(crate) allowed_creator: bool,
+	pub(crate) base_ref_oid: Option<String>,
+	pub(crate) base_ref_matches: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -37,6 +50,7 @@ pub(crate) struct PullRequestLandingGateView<'a> {
 	pub(crate) mergeable: &'a str,
 	pub(crate) merge_state_status: &'a str,
 	pub(crate) status_check_rollup_state: Option<&'a str>,
+	pub(crate) required_status_contexts: &'a [PullRequestRequiredStatusContext],
 	pub(crate) unresolved_review_threads: usize,
 }
 

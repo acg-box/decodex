@@ -26,6 +26,8 @@ pub(in crate::github::landing_state) struct PullRequestLandingStateNode {
 	pub(in crate::github::landing_state) review_decision: Option<String>,
 	#[serde(rename = "baseRefName")]
 	pub(in crate::github::landing_state) base_ref_name: String,
+	#[serde(rename = "baseRefOid")]
+	pub(in crate::github::landing_state) base_ref_oid: Option<String>,
 	#[serde(rename = "mergeable")]
 	pub(in crate::github::landing_state) mergeable: String,
 	#[serde(rename = "mergeStateStatus")]

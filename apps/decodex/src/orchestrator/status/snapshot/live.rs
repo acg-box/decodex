@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::{
 	orchestrator::status::{
 		self, AccountActivityMode, GhPullRequestReviewStateInspector, IssueTracker,
@@ -100,10 +98,7 @@ where
 		state_store.configure_dispatch_slot_root(project.service_id(), project.worktree_root())?;
 	}
 
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(project.github().token_env_var().to_owned()),
-		github_command_path: project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(project);
 	let execution_program_readback =
 		status::operator_execution_program_statuses(tracker, project, workflow, state_store)?;
 	let mut snapshot = status::build_operator_status_snapshot_with_account_mode(
