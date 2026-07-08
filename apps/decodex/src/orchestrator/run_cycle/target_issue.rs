@@ -11,8 +11,7 @@ pub(crate) use self::{
 	inferred::run_target_issue_once_with_inferred_dispatch,
 	program::run_target_status_visible_program_once,
 };
-#[cfg(test)]
-pub(crate) use program::select_target_status_visible_program_candidate;
+#[cfg(test)] pub(crate) use program::select_target_status_visible_program_candidate;
 
 use crate::orchestrator::run_cycle::{
 	self, IssueDispatchMode, IssueRunPlan, IssueTracker, PrepareIssueRunContext, Result,

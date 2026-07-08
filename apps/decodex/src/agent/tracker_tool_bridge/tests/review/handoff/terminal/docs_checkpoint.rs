@@ -1,12 +1,14 @@
 use tempfile::TempDir;
 
-use crate::agent::tracker_tool_bridge::{
-	DynamicToolContentItem, DynamicToolHandler, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-	ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, PullRequestDetails,
-	TrackerToolBridge,
-	tests::{self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker},
+use crate::{
+	agent::tracker_tool_bridge::{
+		DynamicToolContentItem, DynamicToolHandler, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, PullRequestDetails,
+		TrackerToolBridge,
+		tests::{self, FakeLocalRepoInspector, FakePullRequestInspector, FakeTracker},
+	},
+	orchestrator::VALIDATION_EVIDENCE_EVENT_TYPE,
 };
-use crate::orchestrator::VALIDATION_EVIDENCE_EVENT_TYPE;
 
 #[test]
 fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {

@@ -28,5 +28,4 @@ pub(crate) use self::{
 	source_intent::DecisionSourceIntent,
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

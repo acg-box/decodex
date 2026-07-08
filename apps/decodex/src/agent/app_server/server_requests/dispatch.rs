@@ -47,12 +47,10 @@ fn dispatch_server_request(
 	context: RequestDispatchContext<'_>,
 ) -> Result<()> {
 	match request.method.as_str() {
-		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution => {
-			app_server::dispatch_dynamic_tool_call(connection, recorder, request, context)
-		},
-		"account/chatgptAuthTokens/refresh" => {
-			dispatch_codex_account_refresh(connection, recorder, request, context)
-		},
+		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution =>
+			app_server::dispatch_dynamic_tool_call(connection, recorder, request, context),
+		"account/chatgptAuthTokens/refresh" =>
+			dispatch_codex_account_refresh(connection, recorder, request, context),
 		"item/tool/call" => app_server::respond_to_dynamic_tool_call_dispatch(
 			connection,
 			recorder,

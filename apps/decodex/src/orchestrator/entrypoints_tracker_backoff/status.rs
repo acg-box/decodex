@@ -100,9 +100,8 @@ pub(crate) fn operator_connector_backoff_status(
 
 pub(crate) fn connector_backoff_next_action(warning: &str) -> &'static str {
 	match warning {
-		TRACKER_TRANSIENT_TIMEOUT_WARNING => {
-			"Wait for the transient tracker timeout backoff; Decodex will retry tracker reads without changing lane ownership."
-		},
+		TRACKER_TRANSIENT_TIMEOUT_WARNING =>
+			"Wait for the transient tracker timeout backoff; Decodex will retry tracker reads without changing lane ownership.",
 		_ => "Wait for the reset window; keep monitoring local running lanes.",
 	}
 }

@@ -1,12 +1,9 @@
 mod checkpoints;
-#[cfg(test)]
-mod handoff;
+#[cfg(test)] mod handoff;
 mod records;
 
-#[cfg(test)]
-pub(crate) use self::handoff::ReviewLifecycleHandoffFixture;
-#[cfg(test)]
-pub(crate) use self::records::ReviewLifecycleTransitionFixture;
+#[cfg(test)] pub(crate) use self::handoff::ReviewLifecycleHandoffFixture;
+#[cfg(test)] pub(crate) use self::records::ReviewLifecycleTransitionFixture;
 pub(crate) use self::{
 	checkpoints::{LoopGuardrailCheckpoint, ReviewPolicyCheckpoint},
 	records::{ReviewLifecycleHandoffInput, ReviewLifecycleRecord, ReviewLifecycleTransitionInput},

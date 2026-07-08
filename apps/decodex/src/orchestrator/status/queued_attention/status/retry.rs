@@ -20,9 +20,8 @@ pub(crate) fn operator_queued_issue_retry_budget_attempts(
 pub(crate) fn operator_queued_issue_auto_retry_blocked_reason(reason: &str) -> Option<String> {
 	match reason {
 		"issue_needs_attention" => Some(String::from("needs_attention_label")),
-		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT => {
-			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT))
-		},
+		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT =>
+			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT)),
 		_ => None,
 	}
 }

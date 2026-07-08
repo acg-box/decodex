@@ -13,8 +13,7 @@ pub(crate) use self::{
 	model::{ManualCommitRequest, ManualLandRequest},
 };
 
-#[cfg(test)]
-use std::path::Path;
+#[cfg(test)] use std::path::Path;
 
 use self::{
 	authority::resolve_land_authority,
@@ -48,12 +47,9 @@ use self::{
 	},
 	recovery::ensure_already_merged_manual_land_recovery_ready,
 };
-#[cfg(test)]
-use crate::github::RepositoryContext;
-#[cfg(test)]
-use crate::prelude::Result;
-#[cfg(test)]
-use crate::pull_request::PullRequestLandingState;
+#[cfg(test)] use crate::github::RepositoryContext;
+#[cfg(test)] use crate::prelude::Result;
+#[cfg(test)] use crate::pull_request::PullRequestLandingState;
 
 #[cfg(test)]
 fn resolve_authority(
@@ -117,5 +113,4 @@ fn finalize_already_merged_manual_land_recovery(
 	recovery::finalize_already_merged_manual_land_recovery(context, request)
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

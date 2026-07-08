@@ -1,5 +1,4 @@
-#[cfg(not(test))]
-use crate::agent;
+#[cfg(not(test))] use crate::agent;
 use crate::{
 	agent::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest},
 	orchestrator::{

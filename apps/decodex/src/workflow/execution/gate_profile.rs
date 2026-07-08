@@ -74,9 +74,8 @@ impl WorkflowGateProfile {
 		let path_set = self.compile_path_set("runtime")?;
 
 		match self.match_mode {
-			WorkflowGateMatchMode::Only => {
-				Ok(changed_files.iter().all(|path| path_set.is_match(Path::new(path))))
-			},
+			WorkflowGateMatchMode::Only =>
+				Ok(changed_files.iter().all(|path| path_set.is_match(Path::new(path)))),
 		}
 	}
 

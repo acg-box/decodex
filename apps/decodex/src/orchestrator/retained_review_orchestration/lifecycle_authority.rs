@@ -1,8 +1,10 @@
-use crate::orchestrator::retained_review_orchestration::{
-	self, CommandIntent, CommandIntentKind, Result, RetainedReviewLane,
-	RetainedReviewLifecycleAuthorityFields, StateStore, TrackerIssue, eyre,
+use crate::{
+	orchestrator::retained_review_orchestration::{
+		self, CommandIntent, CommandIntentKind, Result, RetainedReviewLane,
+		RetainedReviewLifecycleAuthorityFields, StateStore, TrackerIssue, eyre,
+	},
+	state::{ReviewLifecycleRecord, ReviewLifecycleTransitionInput},
 };
-use crate::state::{ReviewLifecycleRecord, ReviewLifecycleTransitionInput};
 
 pub(super) fn write_retained_review_lifecycle_authority_for_command(
 	state_store: &StateStore,

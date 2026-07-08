@@ -1,7 +1,6 @@
 use crate::state::ReviewLifecycleRecord;
 
-#[cfg(test)]
-use crate::orchestrator::ReviewLevel;
+#[cfg(test)] use crate::orchestrator::ReviewLevel;
 use crate::{
 	orchestrator::{
 		PostReviewLifecycleFactsInput, RuntimeReviewGateState, build_post_review_lifecycle_facts,

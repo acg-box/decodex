@@ -3,5 +3,4 @@ mod projection;
 
 pub(crate) use self::{model::LaneControlKernelInput, projection::project_lane_control};
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;
