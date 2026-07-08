@@ -28,38 +28,15 @@ APP_ICON_SOURCE="$WORKTREE_ROOT/assets/app-icon/generated/app-icon.icns"
 APP_ICON_NAME="AppIcon.icns"
 STATUS_ICON_SOURCE="$WORKTREE_ROOT/assets/tray-icon/generated/tray-icon-template.png"
 STATUS_ICON_NAME="StatusBarIcon.png"
-SWIFT_BUILD_FLAGS=()
-RUST_BUILD_FLAGS=()
+SWIFT_BUILD_FLAGS=(-c release)
+RUST_BUILD_FLAGS=(--release)
 RUST_TARGET_DIR=""
 BUILD_ROOT=""
 BUILD_BINARY=""
 HELPER_BINARY=""
 SERVER_BINARY=""
 RESOLVED_SIGN_IDENTITY=""
-
-SWIFT_CONFIGURATION="${DECODEX_APP_SWIFT_CONFIGURATION:-debug}"
-RUST_PROFILE="${DECODEX_APP_RUST_PROFILE:-}"
-if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
-	SWIFT_BUILD_FLAGS=(-c release)
-	RUST_PROFILE="${RUST_PROFILE:-release}"
-elif [[ "$SWIFT_CONFIGURATION" != "debug" ]]; then
-	echo "error: DECODEX_APP_SWIFT_CONFIGURATION must be debug or release." >&2
-	exit 2
-else
-	RUST_PROFILE="${RUST_PROFILE:-debug}"
-fi
-
-case "$RUST_PROFILE" in
-	debug)
-		RUST_BUILD_FLAGS=()
-		;;
-	release)
-		RUST_BUILD_FLAGS=(--release)
-		;;
-	*)
-		RUST_BUILD_FLAGS=(--profile "$RUST_PROFILE")
-		;;
-esac
+RUST_PROFILE="release"
 
 if [[ "${DECODEX_APP_CARGO_LOCKED:-0}" == "1" ]]; then
 	RUST_BUILD_FLAGS+=(--locked)
@@ -73,6 +50,34 @@ if [[ -z "$APP_VERSION" ]]; then
 	)"
 fi
 APP_VERSION="${APP_VERSION:-0.2.0}"
+
+developer_dir_has_macos_swiftui_macros() {
+	local developer_dir="$1"
+
+	[[ -f "$developer_dir/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib" ]]
+}
+
+ensure_macos_swiftui_macro_toolchain() {
+	local active_developer_dir xcode_beta_developer_dir
+
+	active_developer_dir="${DEVELOPER_DIR:-}"
+	if [[ -z "$active_developer_dir" ]]; then
+		active_developer_dir="$(xcode-select -p 2>/dev/null || true)"
+	fi
+	if [[ -n "$active_developer_dir" ]] && developer_dir_has_macos_swiftui_macros "$active_developer_dir"; then
+		return 0
+	fi
+
+	xcode_beta_developer_dir="/Applications/Xcode-beta.app/Contents/Developer"
+	if developer_dir_has_macos_swiftui_macros "$xcode_beta_developer_dir"; then
+		export DEVELOPER_DIR="$xcode_beta_developer_dir"
+		return 0
+	fi
+
+	echo "error: the active developer directory is missing macOS SwiftUI macro support." >&2
+	echo "error: install Xcode beta at /Applications/Xcode-beta.app or set DEVELOPER_DIR to a full Xcode with libSwiftUIMacros.dylib." >&2
+	exit 1
+}
 
 terminate_running_app() {
 	pkill -x "$EXECUTABLE_NAME" >/dev/null 2>&1 || true
@@ -183,6 +188,7 @@ sign_staged_app_bundle() {
 }
 
 stage_app_bundle() {
+	ensure_macos_swiftui_macro_toolchain
 	BUILD_ROOT="$(swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
 	BUILD_BINARY="$BUILD_ROOT/$EXECUTABLE_NAME"
 	RUST_TARGET_DIR="$WORKTREE_ROOT/target"
@@ -229,9 +235,6 @@ case "$MODE" in
 	run)
 		open_app
 		;;
-	--debug|debug)
-		lldb -- "$APP_BINARY"
-		;;
 	--logs|logs)
 		open_app
 		/usr/bin/log stream --info --style compact --predicate "process == \"$EXECUTABLE_NAME\""
@@ -243,7 +246,7 @@ case "$MODE" in
 		codesign --verify --deep --strict "$APP_BUNDLE"
 		;;
 	*)
-		echo "usage: $0 [run|stage|--debug|--logs|--verify]" >&2
+		echo "usage: $0 [run|stage|--logs|--verify]" >&2
 		exit 2
 		;;
 esac
