@@ -1,5 +1,5 @@
 use crate::orchestrator::dispatch_policy::{
-	GhPullRequestReviewStateInspector, IssueTracker, Path, Result, ServiceConfig, StateStore,
+	GhPullRequestReviewStateInspector, IssueTracker, Result, ServiceConfig, StateStore,
 	TrackerIssue, WorkflowDocument, closeout,
 };
 
@@ -50,8 +50,5 @@ where
 fn review_state_inspector_for_project(
 	project: &ServiceConfig,
 ) -> GhPullRequestReviewStateInspector {
-	GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(project.github().token_env_var().to_owned()),
-		github_command_path: project.github().command_path().map(Path::to_path_buf),
-	}
+	GhPullRequestReviewStateInspector::for_project(project)
 }

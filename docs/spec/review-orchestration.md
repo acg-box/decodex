@@ -260,17 +260,30 @@ The GitHub Review request is made by posting `@codex review` on the current PR.
 
 The request is accepted only when that exact request comment receives an `eyes` reaction from the `codex` reviewer actor.
 
-Before every GitHub Review request, the current PR head must already have green required CI or
-required checks.
+Before every GitHub Review request, the current PR head must already have green
+configured landing status contexts bound to the current PR base SHA. If the
+project does not configure
+`[github].landing_required_status_contexts`, the legacy fallback remains green
+required CI or required checks from the GitHub status rollup.
 
 Rules:
 
-- If required CI or required checks are still pending, do not post a review request yet. Stay in
-  the retained lane and wait for green.
-- If required CI is red in a retained-repair class the runtime already knows how to handle, return
-  to retained repair first and request GitHub Review only after the repaired head becomes green.
-- If required CI is red in a way the runtime cannot classify or repair without guessing, stop for
-  `manual_intervention_required` instead of posting the review request anyway.
+- If a configured landing status context or legacy required check is still pending
+  or missing, do not post a review request yet. Stay in the retained lane and wait
+  for green.
+- If a configured landing status context is green but was published for an older
+  base SHA, wait for a fresh local validation status before requesting review or
+  landing.
+- If a configured landing status context or legacy required CI is red in a
+  retained-repair class the runtime already knows how to handle, return to
+  retained repair first and request GitHub Review only after the repaired head
+  becomes green.
+- If a configured landing status context was published by a creator outside the
+  configured allow-list, block rather than treating that status as trusted landing
+  evidence.
+- If required CI is red in a way the runtime cannot classify or repair without
+  guessing, stop for `manual_intervention_required` instead of posting the review
+  request anyway.
 - If no `eyes` reaction appears within one minute, resend the GitHub Review request exactly once.
 - That resend is a retry of the same request, not a new review round.
 - Treat the lane as having only one outstanding GitHub Review request at a time.
@@ -333,7 +346,9 @@ The next step after review pass depends on reviewer source.
   deterministic cleanup until the lane reaches a stable waiting state or finishes
   that tail work
 - direct runtime merge is limited to the clean path; if branch sync, conflict resolution, ambiguous mergeability, or repository-specific recovery is still required, re-enter the retained agent path first
-- if retained checks are still pending or merge visibility is not yet authoritative, stop the same run cleanly at that waiting boundary instead of busy-waiting indefinitely
+- if configured landing status contexts, legacy retained checks, or merge
+  visibility are still pending or not yet authoritative, stop the same run cleanly
+  at that waiting boundary instead of busy-waiting indefinitely
 
 ### After GitHub Review pass
 
@@ -346,7 +361,8 @@ Before starting landing, require all of these:
 - the PR is open
 - the PR is non-draft
 - the current lane head is the validated reviewed head
-- required checks are green
+- configured landing status contexts are green, or legacy required checks are
+  green when no landing status contexts are configured
 - the PR branch is up to date with base
 - the repository merge method preserves commit-level history and supports merge commits
 - no unresolved Authority Boundary `requires_human_decision`,

@@ -60,10 +60,7 @@ pub(crate) fn run_daemon_tick(
 	recoverable_worktree_skip_cache: &mut RecoverableWorktreeSkipCache,
 	context: &DaemonTickContext,
 ) -> Result<()> {
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(context.config.github().token_env_var().to_owned()),
-		github_command_path: context.config.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(&context.config);
 
 	run_daemon_tick_with_review_state_inspector(
 		config_path,

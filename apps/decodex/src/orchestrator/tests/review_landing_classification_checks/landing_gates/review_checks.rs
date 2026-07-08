@@ -1,11 +1,14 @@
-use crate::orchestrator::{
-	PostReviewLaneDecision,
-	tests::{
-		self, FakePullRequestReviewStateInspector,
-		review_landing_classification_checks::landing_gates::support::{
-			self, BRANCH_NAME, HEAD_OID, PR_URL,
+use crate::{
+	orchestrator::{
+		self, ExternalReviewRequestCiGate, PostReviewLaneDecision,
+		tests::{
+			self, FakePullRequestReviewStateInspector,
+			review_landing_classification_checks::landing_gates::support::{
+				self, BRANCH_NAME, HEAD_OID, PR_URL,
+			},
 		},
 	},
+	pull_request::PullRequestRequiredStatusContext,
 };
 
 #[test]
@@ -37,6 +40,86 @@ fn classify_post_review_lane_waits_for_pending_required_checks_before_ready_to_l
 
 	assert_eq!(classification.decision, PostReviewLaneDecision::WaitForReview);
 	assert_eq!(classification.reason, "external_review_passed_waiting_gates");
+}
+
+#[test]
+fn review_state_gates_allow_configured_status_context_when_rollup_pending() {
+	let mut review_state = tests::sample_pull_request_review_state(
+		PR_URL,
+		BRANCH_NAME,
+		HEAD_OID,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("PENDING"),
+		0,
+	);
+	review_state.required_status_contexts = vec![PullRequestRequiredStatusContext {
+		context: String::from("decodex/local-full-check"),
+		state: Some(String::from("success")),
+		creator_login: Some(String::from("decodex-bot")),
+		allowed_creator: true,
+		base_ref_oid: Some(String::from("base-sha")),
+		base_ref_matches: true,
+	}];
+
+	assert_eq!(
+		orchestrator::external_review_request_ci_gate(&review_state),
+		ExternalReviewRequestCiGate::Ready
+	);
+	assert!(orchestrator::review_state_clean_path_landing_gates_satisfied(&review_state));
+}
+
+#[test]
+fn review_state_gates_wait_for_configured_status_context_on_stale_base() {
+	let mut review_state = tests::sample_pull_request_review_state(
+		PR_URL,
+		BRANCH_NAME,
+		HEAD_OID,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+	review_state.required_status_contexts = vec![PullRequestRequiredStatusContext {
+		context: String::from("decodex/local-full-check"),
+		state: Some(String::from("success")),
+		creator_login: Some(String::from("decodex-bot")),
+		allowed_creator: true,
+		base_ref_oid: Some(String::from("old-base-sha")),
+		base_ref_matches: false,
+	}];
+
+	assert_eq!(
+		orchestrator::external_review_request_ci_gate(&review_state),
+		ExternalReviewRequestCiGate::WaitForGreenChecks
+	);
+	assert!(!orchestrator::review_state_clean_path_landing_gates_satisfied(&review_state));
+}
+
+#[test]
+fn configured_status_context_success_ignores_failed_global_rollup() {
+	let mut review_state = tests::sample_pull_request_review_state(
+		PR_URL,
+		BRANCH_NAME,
+		HEAD_OID,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"BLOCKED",
+		Some("FAILURE"),
+		0,
+	);
+	review_state.required_status_contexts = vec![PullRequestRequiredStatusContext {
+		context: String::from("decodex/local-full-check"),
+		state: Some(String::from("success")),
+		creator_login: Some(String::from("decodex-bot")),
+		allowed_creator: true,
+		base_ref_oid: Some(String::from("base-sha")),
+		base_ref_matches: true,
+	}];
+
+	assert!(!orchestrator::review_state_checks_require_repair(&review_state));
 }
 
 #[test]
