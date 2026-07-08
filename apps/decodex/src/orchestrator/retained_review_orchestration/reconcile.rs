@@ -1,7 +1,4 @@
-use std::{
-	collections::{HashMap, HashSet},
-	path::Path,
-};
+use std::collections::{HashMap, HashSet};
 
 use time::OffsetDateTime;
 
@@ -32,10 +29,7 @@ pub(crate) fn reconcile_post_review_orchestration<T>(
 where
 	T: IssueTracker,
 {
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(project.github().token_env_var().to_owned()),
-		github_command_path: project.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(project);
 
 	reconcile_post_review_orchestration_with_inspector(
 		tracker,

@@ -26,6 +26,8 @@ fn execute_land_merge_uses_admin_merge() {
 		github_token_env_var: String::from("GITHUB_TOKEN"),
 		github_token: String::from("test-token"),
 		github_command_path: None,
+		landing_required_status_contexts: Vec::new(),
+		landing_required_status_creators: Vec::new(),
 		repository: RepositoryContext {
 			owner: String::from("hack-ink"),
 			name: String::from("decodex"),
@@ -83,6 +85,8 @@ fn execute_land_merge_tolerates_already_merged_merge_race() {
 		github_token_env_var: String::from("GITHUB_TOKEN"),
 		github_token: String::from("test-token"),
 		github_command_path: None,
+		landing_required_status_contexts: Vec::new(),
+		landing_required_status_creators: Vec::new(),
 		repository: RepositoryContext {
 			owner: String::from("hack-ink"),
 			name: String::from("decodex"),

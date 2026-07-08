@@ -1,6 +1,6 @@
 use crate::orchestrator::types::{
 	self, Path, PathBuf, PullRequestIssueCommentsPageQuery, PullRequestReadbackFailure,
-	PullRequestReviewState, PullRequestReviewStatePageQuery, eyre, github,
+	PullRequestReviewState, PullRequestReviewStatePageQuery, ServiceConfig, eyre, github,
 };
 
 pub(crate) type PullRequestReadbackResult =
@@ -21,6 +21,28 @@ pub(crate) trait PullRequestReviewStateInspector {
 pub(crate) struct GhPullRequestReviewStateInspector {
 	pub(crate) github_token_env_var: Option<String>,
 	pub(crate) github_command_path: Option<PathBuf>,
+	pub(crate) required_status_contexts: Vec<String>,
+	pub(crate) allowed_status_creators: Vec<String>,
+}
+impl GhPullRequestReviewStateInspector {
+	pub(crate) fn for_project(project: &ServiceConfig) -> Self {
+		Self {
+			github_token_env_var: Some(project.github().token_env_var().to_owned()),
+			github_command_path: project.github().command_path().map(Path::to_path_buf),
+			required_status_contexts: project.github().landing_required_status_contexts().to_vec(),
+			allowed_status_creators: project.github().landing_required_status_creators().to_vec(),
+		}
+	}
+
+	#[cfg(test)]
+	pub(crate) fn legacy(github_token_env_var: Option<String>) -> Self {
+		Self {
+			github_token_env_var,
+			github_command_path: None,
+			required_status_contexts: Vec::new(),
+			allowed_status_creators: Vec::new(),
+		}
+	}
 }
 impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 	fn inspect_review_state(
@@ -107,6 +129,17 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 			comments_after =
 				types::merge_pull_request_issue_comment_page(&mut review_state, &pull_request)?;
 		}
+		review_state.required_status_contexts = github::inspect_required_commit_status_contexts(
+			cwd,
+			&locator.owner,
+			&locator.repo,
+			&review_state.head_ref_oid,
+			review_state.base_ref_oid.as_deref(),
+			&self.required_status_contexts,
+			&self.allowed_status_creators,
+			github_token.as_str(),
+			self.github_command_path.as_deref(),
+		)?;
 
 		Ok(review_state)
 	}

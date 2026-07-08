@@ -4,8 +4,7 @@ mod publish;
 mod retry_dispatch;
 mod spawn;
 
-#[cfg(test)]
-pub(crate) use self::context::load_daemon_tick_workflow;
+#[cfg(test)] pub(crate) use self::context::load_daemon_tick_workflow;
 pub(crate) use self::{
 	active_children::{clear_orphaned_daemon_child_state, resolve_child_exit_run_attempt},
 	context::load_daemon_tick_context,
@@ -42,8 +41,7 @@ use crate::orchestrator::{
 	stalled_run_has_retained_partial_progress, superseded_run_disposition,
 	terminal_issue_keeps_retained_closeout,
 };
-#[cfg(not(test))]
-use retry_dispatch::plan_due_retry_run;
+#[cfg(not(test))] use retry_dispatch::plan_due_retry_run;
 
 pub(crate) struct DaemonTickRuntimeContext<'a, T, I> {
 	pub(crate) tracker: &'a T,
@@ -62,10 +60,7 @@ pub(crate) fn run_daemon_tick(
 	recoverable_worktree_skip_cache: &mut RecoverableWorktreeSkipCache,
 	context: &DaemonTickContext,
 ) -> Result<()> {
-	let review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(context.config.github().token_env_var().to_owned()),
-		github_command_path: context.config.github().command_path().map(Path::to_path_buf),
-	};
+	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(&context.config);
 
 	run_daemon_tick_with_review_state_inspector(
 		config_path,

@@ -53,7 +53,7 @@ fn classify_post_review_lane_with_github_token_env_var(
 		&snapshot,
 		&state_store,
 		&tests::sample_workflow(),
-		&GhPullRequestReviewStateInspector { github_token_env_var, github_command_path: None },
+		&GhPullRequestReviewStateInspector::legacy(github_token_env_var),
 	)
 	.expect("classification should degrade to blocked")
 }

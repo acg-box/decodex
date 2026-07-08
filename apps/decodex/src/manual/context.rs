@@ -125,6 +125,14 @@ pub(super) fn prepare_configured_manual_land_context(
 		github_token_env_var: config.github().token_env_var().to_owned(),
 		github_token,
 		github_command_path,
+		landing_required_status_contexts: config
+			.github()
+			.landing_required_status_contexts()
+			.to_vec(),
+		landing_required_status_creators: config
+			.github()
+			.landing_required_status_creators()
+			.to_vec(),
 		repository,
 		prepared_closeout,
 		review_lifecycle: lifecycle_record,

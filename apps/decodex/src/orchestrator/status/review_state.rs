@@ -12,8 +12,9 @@ pub(crate) use self::{
 	env::resolve_configured_env_var,
 	gates::{
 		external_review_request_ci_gate, failed_checks_require_repair,
-		merge_state_requires_review_repair, review_state_clean_path_landing_gates_satisfied,
-		review_state_landing_gates_satisfied, review_state_landing_requires_agent_fallback,
+		merge_state_requires_review_repair, review_state_checks_require_repair,
+		review_state_clean_path_landing_gates_satisfied, review_state_landing_gates_satisfied,
+		review_state_landing_requires_agent_fallback,
 	},
 	worktree::{
 		retained_closeout_pr_merge_gate_with_inspector, validate_post_review_lane_worktree,

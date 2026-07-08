@@ -308,8 +308,8 @@ stateDiagram-v2
     [*] --> review_wait: review_handoff accepted
     review_wait --> review_repair: actionable review feedback
     review_repair --> review_wait: repaired head pushed\nfresh review requested
-    review_wait --> ready_to_land: approvals + checks + mergeability satisfied
-    ready_to_land --> review_wait: review or checks regress
+    review_wait --> ready_to_land: approvals + landing checks + mergeability satisfied
+    ready_to_land --> review_wait: review or landing checks regress
     ready_to_land --> review_repair: actionable repair reappears
     ready_to_land --> landing: runtime starts clean-path merge
     ready_to_land --> review_repair: merge stops being a deterministic clean path
@@ -324,7 +324,7 @@ At any phase, contradictory state or a non-self-healing merge failure must stop 
 | --- | --- | --- | --- |
 | `review_wait` | `wait_for_external_signal` | PR-backed `In Review` handoff succeeded for the current owned lane | Actionable review repair appears, landing becomes ready, human intervention becomes required, or cancellation is explicit |
 | `review_repair` | `resume_retained_lane` | Actionable review feedback exists and the retained lane still belongs to the same issue and PR lineage | A new repaired head is pushed and review is re-requested for that head, human intervention becomes required, or cancellation is explicit |
-| `ready_to_land` | `ready_to_land` | Required approvals are satisfied, blocking review work is absent, checks are green, the branch is up to date with base, the PR is cleanly mergeable, no unresolved Authority Boundary `requires_human_decision` or authority decision request remains, and no unresolved `requires_enhanced_evidence` or `block_landing` policy remains for the current head | Clean-path landing begins, signals fall back to wait or repair, or human intervention becomes required |
+| `ready_to_land` | `ready_to_land` | Required approvals are satisfied, blocking review work is absent, configured landing status contexts are green, or legacy required checks are green when no landing status contexts are configured, the branch is up to date with base, the PR is cleanly mergeable, no unresolved Authority Boundary `requires_human_decision` or authority decision request remains, and no unresolved `requires_enhanced_evidence` or `block_landing` policy remains for the current head | Clean-path landing begins, signals fall back to wait or repair, or human intervention becomes required |
 | `landing` | `continue` | The runtime has committed to executing the clean merge for the current lane | Merge is recorded, landing fails into a resumable deterministic tail step, or human intervention becomes required |
 | `closeout` | `continue` | Merge already happened for the lane's authoritative anchor and tracker closeout has not yet completed | Tracker closeout succeeds, the lane blocks on contradictory closeout state, or human intervention becomes required |
 | `cleanup` | `continue` | Either (a) merge and closeout are authoritative and only worktree or branch cleanup remains, or (b) explicit pre-merge cancellation is authoritative and only deterministic retained-lane cleanup remains | The retained worktree and lane branch state are clean, or cleanup blocks on conflicting local evidence |
@@ -435,7 +435,8 @@ already deterministic:
 - the PR still belongs to the owned lane
 - required approvals are satisfied
 - actionable blocking review work is absent
-- required checks are green
+- configured landing status contexts are green, or legacy required checks are
+  green when no landing status contexts are configured
 - the branch is already up to date with the base branch
 - mergeability is affirmative and `mergeStateStatus` is `CLEAN`
 - any earlier Authority Boundary `requires_human_decision` or authority decision
@@ -450,6 +451,16 @@ clean tail work, including branch sync, conflict resolution, ambiguous mergeabil
 repository-specific recovery, pre-receive-hook ambiguity, or red/unstable check interpretation,
 must use the retained agent path before another runtime merge attempt.
 
+When `[github].landing_required_status_contexts` is configured, those exact commit
+status contexts are the authoritative landing check set. The local validation status
+must be attached to the exact PR head SHA and carry the current PR base SHA; Decodex
+waits for a fresh local gate if the base tip changes after publication. Status
+creators may be restricted by `[github].landing_required_status_creators`; unrelated
+pending GitHub checks remain visible on the PR but do not block Decodex landing.
+When no landing contexts are configured, Decodex preserves the legacy behavior and
+uses the GitHub status rollup. Long-lived fast-landing projects should configure the
+creator allow-list; an empty allow-list is a migration or development mode.
+
 ### `landing`
 
 `landing` begins only after `ready_to_land` was true and the runtime committed to the merge step.
@@ -457,7 +468,7 @@ must use the retained agent path before another runtime merge attempt.
 While in `landing`:
 
 - the runtime executes the repo-approved merge path
-- merge policy for retained review landing is the fixed Decodex policy: require green checks, require an up-to-date base branch, preserve commit-level history, use merge commits, and never squash or rebase
+- merge policy for retained review landing is the fixed Decodex policy: require green configured landing status contexts or legacy green checks, require an up-to-date base branch, preserve commit-level history, use merge commits, and never squash or rebase
 - direct runtime execution is limited to the clean path; if the merge would require
   implementation-shaped work, the runtime re-enters the retained lane agent path instead of asking
   the agent to author the merge side effect

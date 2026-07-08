@@ -1,7 +1,7 @@
 use crate::orchestrator::{
 	self, AccountActivityMode, GhPullRequestReviewStateInspector, IssueTracker,
-	OperatorConnectorBackoffStatus, OperatorStatusSnapshot, Path, Result, ServiceConfig,
-	StateStore, WorkflowDocument,
+	OperatorConnectorBackoffStatus, OperatorStatusSnapshot, Result, ServiceConfig, StateStore,
+	WorkflowDocument,
 };
 
 pub(crate) fn build_operator_state_snapshot_for_publish<T>(
@@ -40,10 +40,7 @@ where
 	orchestrator::apply_terminal_history_ledger_outcomes(&mut snapshot);
 
 	if orchestrator::warnings_include_tracker_backoff(warnings) {
-		let review_state_inspector = GhPullRequestReviewStateInspector {
-			github_token_env_var: Some(project.github().token_env_var().to_owned()),
-			github_command_path: project.github().command_path().map(Path::to_path_buf),
-		};
+		let review_state_inspector = GhPullRequestReviewStateInspector::for_project(project);
 
 		snapshot.post_review_lanes = orchestrator::build_degraded_post_review_lane_statuses(
 			project,
