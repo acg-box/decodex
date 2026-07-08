@@ -1,9 +1,9 @@
 use crate::orchestrator::{
 	self, LaneDecisionSnapshot, LoopGuardrailRecoveryDecision, PhaseGoalKind, PhaseGoalTransition,
 	RepoGateCommandOutcome, RepoGateFailure, RepoGateFailureDisposition,
-	RepoGateTrackedRewriteDecision, Report, ResolvedRepoGate, Result,
+	RepoGateFailureSignal, RepoGateTrackedRewriteDecision, Report, ResolvedRepoGate, Result,
 	execution_phase_goal::{
-		acceptance::{self, PhaseAcceptanceDecision},
+		acceptance::{self, ValidationDecision},
 		controller::RepoGatePhaseGoalController,
 	},
 };
@@ -16,12 +16,12 @@ impl RepoGatePhaseGoalController<'_> {
 		repo_gate_outcome: &RepoGateCommandOutcome,
 	) -> Result<PhaseGoalTransition> {
 		let acceptance_check =
-			self.evaluate_phase_acceptance(phase, selected_repo_gate, repo_gate_outcome)?;
+			self.evaluate_validation_evidence(phase, selected_repo_gate, repo_gate_outcome)?;
 
-		self.record_phase_acceptance_check(&acceptance_check)?;
+		self.record_validation_evidence(&acceptance_check)?;
 
-		if acceptance_check.decision == PhaseAcceptanceDecision::Fail {
-			return self.continue_after_phase_acceptance_failure(phase, &acceptance_check);
+		if acceptance_check.decision == ValidationDecision::Fail {
+			return self.continue_after_validation_evidence_failure(phase, &acceptance_check);
 		}
 
 		self.state_store.clear_loop_guardrail_checkpoints_for_issue(
@@ -65,8 +65,11 @@ impl RepoGatePhaseGoalController<'_> {
 			self.issue_run.attempt_number,
 			self.issue_run.dispatch_mode,
 			phase,
-			repo_gate_failure.disposition(),
-			scope_envelope_violation,
+			RepoGateFailureSignal::new(
+				repo_gate_failure.disposition(),
+				repo_gate_failure.error_class(),
+				scope_envelope_violation,
+			),
 		);
 		let lane_decision = orchestrator::decide_lane_next_action(&lane_snapshot);
 		let mut transition_payload = orchestrator::json!({

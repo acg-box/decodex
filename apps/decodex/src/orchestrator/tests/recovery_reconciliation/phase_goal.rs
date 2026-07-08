@@ -6,8 +6,7 @@ use time::OffsetDateTime;
 use crate::{
 	agent::RUN_LEASE_IDLE_TIMEOUT,
 	orchestrator::{
-		self, CONTINUATION_PENDING_RUN_STATUS, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
-		RunLeaseDisposition,
+		self, CONTINUATION_PENDING_RUN_STATUS, RunLeaseDisposition, VALIDATION_EVIDENCE_EVENT_TYPE,
 		tests::{self, FakeTracker, TEST_SERVICE_ID},
 	},
 	state::{self, StateStore},
@@ -21,7 +20,7 @@ struct StalledPhaseGoalOutcome {
 	comments: Vec<String>,
 	label_additions_empty: bool,
 	event_types: Vec<String>,
-	phase_acceptance_reason: Option<String>,
+	validation_evidence_reason: Option<String>,
 	handoff_next_recorded: bool,
 }
 
@@ -172,10 +171,10 @@ fn apply_stalled_phase_goal_reconciliation(
 		comments: tracker.comments.borrow().clone(),
 		label_additions_empty: tracker.label_additions.borrow().is_empty(),
 		event_types: events.iter().map(|event| event.event_type().to_owned()).collect(),
-		phase_acceptance_reason: events
+		validation_evidence_reason: events
 			.iter()
 			.rev()
-			.find(|event| event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE)
+			.find(|event| event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE)
 			.and_then(|event| event.payload()["reason_code"].as_str().map(str::to_owned)),
 		handoff_next_recorded: events.iter().any(|event| {
 			event.event_type() == "phase_goal_next"
@@ -194,7 +193,7 @@ fn stalled_retained_phase_goal_reconciliation_schedules_continuation_without_att
 	assert!(outcome.comments.is_empty());
 	assert!(outcome.label_additions_empty);
 	assert!(outcome.event_types.iter().any(|event| event == "phase_goal_recovery"));
-	assert_eq!(outcome.phase_acceptance_reason.as_deref(), Some("accepted"));
+	assert_eq!(outcome.validation_evidence_reason.as_deref(), Some("accepted"));
 	assert!(outcome.handoff_next_recorded);
 }
 

@@ -1,6 +1,6 @@
 use serde_json::{self, Value};
 
-pub(super) fn mcp_public_phase_acceptance_status(acceptance: &Value) -> Value {
+pub(super) fn mcp_public_validation_evidence_status(acceptance: &Value) -> Value {
 	serde_json::json!({
 		"phase": acceptance.get("phase").cloned().unwrap_or(Value::Null),
 		"decision": acceptance.get("decision").cloned().unwrap_or(Value::Null),

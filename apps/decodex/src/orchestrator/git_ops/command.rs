@@ -89,6 +89,61 @@ pub(super) fn run_repo_gate_shell_command(command: &str, cwd: &Path) -> Result<O
 	})
 }
 
+pub(super) fn preflight_repo_gate_command_runtime(cwd: &Path) -> Result<()> {
+	if !cwd.is_dir() {
+		return Err(Report::new(RepoGateFailure::new(
+			RepoGateFailureKind::CommandSpawnFailed,
+			format!(
+				"Repo gate command preflight failed because cwd `{}` is not a directory.",
+				cwd.display()
+			),
+		)));
+	}
+
+	let (shell, shell_flag) = repo_gate_shell();
+	let output = Command::new(&shell).arg(shell_flag).arg(":").current_dir(cwd).output().map_err(
+		|error| {
+			let diagnostic = RepoGateFailureDiagnostic::from_spawn_error("preflight", ":", &error);
+
+			Report::new(
+				RepoGateFailure::new(
+					RepoGateFailureKind::CommandSpawnFailed,
+					format!(
+						"Failed to spawn repo gate command preflight in `{}` via `{}` `{}`: {}",
+						cwd.display(),
+						shell.to_string_lossy(),
+						shell_flag,
+						error
+					),
+				)
+				.with_diagnostic(diagnostic),
+			)
+		},
+	)?;
+
+	if !output.status.success() {
+		let output_text = git_ops::repo_gate_output_text(&output);
+		let diagnostic =
+			RepoGateFailureDiagnostic::from_output("preflight", ":", &output, &output_text);
+
+		return Err(Report::new(
+			RepoGateFailure::new(
+				RepoGateFailureKind::CommandSpawnFailed,
+				format!(
+					"Repo gate command preflight failed in `{}` via `{}` `{}`: {}",
+					cwd.display(),
+					shell.to_string_lossy(),
+					shell_flag,
+					output_text
+				),
+			)
+			.with_diagnostic(diagnostic),
+		));
+	}
+
+	Ok(())
+}
+
 fn repo_gate_shell() -> (OsString, &'static str) {
 	repo_gate_shell_from_env(env::var_os("SHELL"))
 }

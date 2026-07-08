@@ -24,11 +24,20 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 		.expect("repo gate failures should preserve structured classification");
 
 	assert!(error.to_string().contains("verification"));
-	assert_eq!(repo_gate_failure.error_class(), "repo_gate_tracked_rewrites_left");
+	assert_eq!(
+		repo_gate_failure.error_class(),
+		"repo_gate_lane_external_tracked_rewrite"
+	);
 	assert_eq!(
 		repo_gate_failure.disposition(),
 		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention
 	);
+	let decision = repo_gate_failure
+		.tracked_rewrite_decision()
+		.expect("lane-external tracked rewrite should include rewrite evidence");
+	assert_eq!(decision.to_json()["classification"], "lane_external_tracked_rewrite");
+	assert_eq!(decision.to_json()["decision"], "require_scoped_authority");
+	assert_eq!(decision.to_json()["fileCount"], 1);
 	assert_eq!(tracked_contents, "after\n");
 	assert!(tracked_status.contains("tracked.txt"));
 }

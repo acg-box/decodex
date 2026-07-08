@@ -46,7 +46,7 @@ fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation(
 	tests::commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
 	tests::commit_worktree_change(repo_root, "other.txt", "before\n", "add other file");
 	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
-	support::record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+	support::record_validation_evidence_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	state_store
 		.append_private_execution_event(
@@ -81,7 +81,10 @@ fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation(
 		.downcast_ref::<RepoGateFailure>()
 		.expect("phase goal recovery should preserve repo-gate failure");
 
-	assert_eq!(repo_gate_failure.error_class(), "repo_gate_tracked_rewrites_left");
+	assert_eq!(
+		repo_gate_failure.error_class(),
+		"repo_gate_lane_external_tracked_rewrite"
+	);
 	assert_eq!(
 		repo_gate_failure.disposition(),
 		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention
@@ -90,11 +93,25 @@ fn open_phase_goal_unowned_tracked_rewrites_stop_instead_of_repair_continuation(
 		event.event_type() == "phase_goal_transition"
 			&& event.payload()["signal"] == "validation_fail"
 			&& event.payload()["payload"]["disposition"] == "needs_human_attention"
+			&& event.payload()["payload"]["trackedRewrites"]["classification"]
+				== "lane_external_tracked_rewrite"
+			&& event.payload()["payload"]["trackedRewrites"]["decision"]
+				== "require_scoped_authority"
 			&& event.payload()["payload"]["trackedRewrites"]["owned"] == false
+			&& event.payload()["payload"]["trackedRewrites"]["rewriteSetHash"]
+				.as_str()
+				.is_some_and(|hash| hash.len() == 64)
 			&& event.payload()["payload"]["trackedRewrites"]["files"]
 				.as_array()
 				.is_some_and(|files| files.iter().any(|file| file.as_str() == Some("other.txt")))
 	}));
 	assert!(events.iter().all(|event| event.event_type() != "phase_goal_next"));
 	assert!(events.iter().all(|event| event.event_type() != "phase_goal_recovery"));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "lane_decision"
+			&& event.payload()["repo_gate_error_class"]
+				== "repo_gate_lane_external_tracked_rewrite"
+			&& event.payload()["reason"]
+				== "repo-gate lane-external tracked rewrite requires project cleanup or explicit scoped-gate authority"
+	}));
 }

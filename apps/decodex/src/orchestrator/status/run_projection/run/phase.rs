@@ -1,8 +1,8 @@
 use serde_json::Value;
 
 use crate::orchestrator::{
-	OperatorPhaseAcceptanceStatus, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PrivateExecutionEvent,
-	ProtocolActivitySummary, RUN_OPERATION_REVIEW_WRITEBACK, TERMINAL_GUARDED_RUN_STATUS,
+	OperatorValidationEvidenceStatus, PrivateExecutionEvent, ProtocolActivitySummary,
+	RUN_OPERATION_REVIEW_WRITEBACK, TERMINAL_GUARDED_RUN_STATUS, VALIDATION_EVIDENCE_EVENT_TYPE,
 };
 
 pub(super) fn operator_run_active_goal_phase(events: &[PrivateExecutionEvent]) -> Option<String> {
@@ -44,13 +44,11 @@ pub(super) fn operator_run_public_progress_phase(
 	})
 }
 
-pub(super) fn operator_run_phase_acceptance_status(
+pub(super) fn operator_run_validation_evidence_status(
 	events: &[PrivateExecutionEvent],
-) -> Option<OperatorPhaseAcceptanceStatus> {
-	let event = events
-		.iter()
-		.rev()
-		.find(|event| event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE)?;
+) -> Option<OperatorValidationEvidenceStatus> {
+	let event =
+		events.iter().rev().find(|event| event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE)?;
 	let payload = event.payload();
 	let phase = payload.get("phase")?.as_str()?.to_owned();
 	let decision = payload.get("decision")?.as_str()?.to_owned();
@@ -85,7 +83,7 @@ pub(super) fn operator_run_phase_acceptance_status(
 		.and_then(Value::as_bool)
 		.unwrap_or(false);
 
-	Some(OperatorPhaseAcceptanceStatus {
+	Some(OperatorValidationEvidenceStatus {
 		phase,
 		decision,
 		reason_code,
@@ -100,7 +98,7 @@ pub(super) fn operator_run_phase_acceptance_status(
 		next_action: payload
 			.get("next_action")
 			.and_then(Value::as_str)
-			.unwrap_or("inspect_phase_acceptance_check")
+			.unwrap_or("inspect_validation_evidence")
 			.to_owned(),
 	})
 }

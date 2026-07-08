@@ -1,6 +1,6 @@
 use crate::{agent::PhaseGoalKind, orchestrator::RepoGateTrackedRewriteDecision};
 
-pub(crate) fn phase_acceptance_reason_code(
+pub(crate) fn validation_evidence_reason_code(
 	checkpoint_present: bool,
 	checkpoint_matches_head: bool,
 	docs_impact_valid: bool,
@@ -8,10 +8,7 @@ pub(crate) fn phase_acceptance_reason_code(
 	non_goal_passed: bool,
 	blocker_count: usize,
 ) -> &'static str {
-	if !checkpoint_present {
-		return "missing_progress_checkpoint";
-	}
-	if !checkpoint_matches_head {
+	if checkpoint_present && !checkpoint_matches_head {
 		return "stale_progress_checkpoint";
 	}
 	if !docs_impact_valid {
@@ -30,7 +27,7 @@ pub(crate) fn phase_acceptance_reason_code(
 	"accepted"
 }
 
-pub(crate) fn phase_acceptance_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
+pub(crate) fn validation_evidence_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 	match phase {
 		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::RepairAcceptedReviewFindings,
 		PhaseGoalKind::ImplementToValidationReady
@@ -43,9 +40,8 @@ pub(crate) fn phase_acceptance_repair_phase(phase: PhaseGoalKind) -> PhaseGoalKi
 pub(crate) fn phase_validation_pass_next_phase(phase: PhaseGoalKind) -> PhaseGoalKind {
 	match phase {
 		PhaseGoalKind::RepairAcceptedReviewFindings => PhaseGoalKind::ReviewRepairEvidence,
-		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures => {
-			PhaseGoalKind::HandoffEvidence
-		},
+		PhaseGoalKind::ImplementToValidationReady | PhaseGoalKind::RepairValidationFailures =>
+			PhaseGoalKind::HandoffEvidence,
 		PhaseGoalKind::ReviewRepairEvidence | PhaseGoalKind::HandoffEvidence => phase,
 	}
 }

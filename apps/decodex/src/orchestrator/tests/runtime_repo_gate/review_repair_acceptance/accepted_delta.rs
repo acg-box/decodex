@@ -3,8 +3,8 @@ use std::fs;
 use crate::{
 	agent::PhaseGoalController,
 	orchestrator::{
-		IssueDispatchMode, IssueRunPlan, PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PhaseGoalKind,
-		PhaseGoalSpec, PhaseGoalTransition, RepoGatePhaseGoalController, StateStore, tests,
+		IssueDispatchMode, IssueRunPlan, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition,
+		RepoGatePhaseGoalController, StateStore, VALIDATION_EVIDENCE_EVENT_TYPE, tests,
 		tests::{TEST_SERVICE_ID, runtime_repo_gate::support},
 	},
 	tracker,
@@ -48,7 +48,7 @@ fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation(
 
 	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
-	support::record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+	support::record_validation_evidence_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	let transition = RepoGatePhaseGoalController {
 		project: &config,
@@ -82,7 +82,7 @@ fn phase_goal_completion_continues_with_owned_tracked_rewrites_after_validation(
 				== "continue_to_commit_capable_phase"
 	}));
 	assert!(events.iter().any(|event| {
-		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+		event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE
 			&& event.payload()["decision"] == "pass"
 			&& event.payload()["validation_evidence"]["tracked_rewrites"]["files"]
 				.as_array()
@@ -127,7 +127,7 @@ fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 
 	assert_eq!(tests::git_output(config.repo_root(), &["status", "--porcelain"]), "");
 
-	support::record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+	support::record_validation_evidence_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	let transition = RepoGatePhaseGoalController {
 		project: &config,
@@ -136,7 +136,7 @@ fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 		issue_run: &issue_run,
 	}
 	.phase_goal_completed(PhaseGoalKind::ImplementToValidationReady)
-	.expect("clean committed branch delta should satisfy phase acceptance");
+	.expect("clean committed branch delta should satisfy validation evidence");
 	let events = state_store
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
 		.expect("private phase goal events should load");
@@ -146,7 +146,7 @@ fn phase_goal_acceptance_accepts_committed_branch_delta_with_clean_worktree() {
 		PhaseGoalTransition::Continue(PhaseGoalSpec { phase: PhaseGoalKind::HandoffEvidence, .. })
 	));
 	assert!(events.iter().any(|event| {
-		event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE
+		event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE
 			&& event.payload()["decision"] == "pass"
 			&& event.payload()["reason_code"] == "accepted"
 			&& event.payload()["effective_delta"]["present"] == true

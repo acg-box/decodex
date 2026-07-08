@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[test]
-fn implementation_phase_goal_contract_requires_explicit_goal_completion() {
+fn implementation_phase_goal_contract_avoids_checkpoint_ceremony() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue(
 		"In Progress",
@@ -46,12 +46,10 @@ fn implementation_phase_goal_contract_requires_explicit_goal_completion() {
 		.expect("normal dispatch should set an implementation phase goal");
 
 	assert_eq!(goal.phase, PhaseGoalKind::ImplementToValidationReady);
-	assert!(goal.objective.contains(
-		"explicitly mark the active phase goal complete with the Codex goal completion mechanism"
-	));
-	assert!(goal.objective.contains("Decodex can run its repo gate and select the next phase"));
-	assert!(goal.objective.contains("Do not end with only an `issue_progress_checkpoint`"));
-	assert!(goal.objective.contains("while the phase goal is still active"));
+	assert!(goal.objective.contains("Decodex step: implementation"));
+	assert!(goal.objective.contains("mark the active phase goal complete"));
+	assert!(goal.objective.contains("Decodex owns repository validation"));
+	assert!(!goal.objective.contains("issue_progress_checkpoint"));
 }
 
 #[test]

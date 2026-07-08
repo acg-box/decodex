@@ -47,9 +47,9 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains(
 		"classify docs impact as `none`, `update_required`, `research_required`, or `drift_required`"
 	));
+	assert!(instructions.contains("Before any terminal finalize path"));
 	assert!(
-		instructions
-			.contains("record it in a current-HEAD `issue_progress_checkpoint` as `docs_impact`")
+		instructions.contains("Decodex records internal validation evidence for phase transitions")
 	);
 	assert!(instructions.contains("Tracker tool contract"));
 	assert!(instructions.contains("Linear tracker text is public/team-visible"));
@@ -64,17 +64,11 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains(ISSUE_REVIEW_HANDOFF_TOOL_NAME));
 	assert!(instructions.contains(ISSUE_TERMINAL_FINALIZE_TOOL_NAME));
 	assert!(instructions.contains("Phase goal runtime contract"));
-	assert!(
-		instructions.contains("Treat the active phase goal as the authoritative current contract")
-	);
 	assert!(instructions.contains(
-		"explicitly complete the active phase goal with the Codex goal completion mechanism"
+		"Treat the active phase goal as the authoritative current step, not as a checklist ceremony"
 	));
-	assert!(
-		instructions.contains(
-			"Do not use `issue_progress_checkpoint`, final chat text, or an \"await next phase\" statement as a substitute"
-		)
-	);
+	assert!(instructions.contains("Decodex can run its repo gate, record validation evidence"));
+	assert!(!instructions.contains("Do not use `issue_progress_checkpoint`, final chat text"));
 	assert!(instructions.contains("treat `issue_progress_checkpoint` as terminal completion"));
 	assert!(!instructions.contains("you may end the turn without"));
 	assert!(!instructions.contains("WORKFLOW.md\n"));

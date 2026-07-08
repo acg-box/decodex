@@ -1,8 +1,8 @@
 use crate::orchestrator::{
 	AgentPrivateEvidenceRef, ChildAgentActivitySummary, CodexAccountActivitySummary,
 	OperatorContinuationRecoveryStatus, OperatorLaneLifecycleMetrics, OperatorLoopStatus,
-	OperatorPhaseAcceptanceStatus, OperatorRunAppServerState, OperatorRunLifecycleProjection,
-	OperatorRunProtocolSummary, OperatorRunStatus, OperatorRunTiming, ProjectRunStatus,
+	OperatorRunAppServerState, OperatorRunLifecycleProjection, OperatorRunProtocolSummary,
+	OperatorRunStatus, OperatorRunTiming, OperatorValidationEvidenceStatus, ProjectRunStatus,
 	ProtocolActivitySummary, ServiceConfig, status_run_projection::runtime,
 };
 
@@ -25,7 +25,7 @@ pub(crate) struct OperatorRunStatusParts<'a> {
 	pub(crate) issue_identifier: Option<String>,
 	pub(crate) private_evidence: AgentPrivateEvidenceRef,
 	pub(crate) continuation_recovery: Option<OperatorContinuationRecoveryStatus>,
-	pub(crate) phase_acceptance: Option<OperatorPhaseAcceptanceStatus>,
+	pub(crate) validation_evidence: Option<OperatorValidationEvidenceStatus>,
 	pub(crate) active_goal_phase: Option<String>,
 	pub(crate) public_progress_phase: Option<String>,
 	pub(crate) loop_status: OperatorLoopStatus,
@@ -74,7 +74,7 @@ pub(crate) fn operator_run_status_from_parts(
 		interactive_requested: parts.app_server_state.interactive_requested,
 		continuation_pending: parts.app_server_state.continuation_pending,
 		continuation_recovery: parts.continuation_recovery,
-		phase_acceptance: parts.phase_acceptance,
+		validation_evidence: parts.validation_evidence,
 		run_lease: parts.lifecycle.run_lease,
 		queue_lease_state: runtime::operator_run_queue_lease_state(parts.lifecycle.run_lease),
 		execution_liveness: parts.lifecycle.execution_liveness,

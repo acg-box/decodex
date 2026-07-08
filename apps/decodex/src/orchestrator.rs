@@ -16,8 +16,7 @@ mod execution_phase_goal;
 mod execution_thread_archive;
 mod git_ops;
 mod harness_improvement;
-#[allow(dead_code)]
-pub(crate) mod kernel;
+#[allow(dead_code)] pub(crate) mod kernel;
 mod lane_control;
 mod lane_decision;
 mod operator_http;
@@ -290,8 +289,7 @@ pub(crate) use self::{
 		select_post_review_repair_issue_candidate_with_inspector,
 	},
 };
-#[cfg(test)]
-pub(crate) use crate::agent::ISSUE_REVIEW_CHECKPOINT_TOOL_NAME;
+#[cfg(test)] pub(crate) use crate::agent::ISSUE_REVIEW_CHECKPOINT_TOOL_NAME;
 #[cfg(test)]
 pub(crate) use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture};
 pub(crate) use crate::workflow::ResolvedRepoGate;
@@ -307,11 +305,9 @@ pub(crate) use daemon::{
 	build_operator_state_snapshot_for_publish, clear_orphaned_daemon_child_state,
 	load_daemon_tick_context, resolve_child_exit_run_attempt, run_daemon_tick,
 };
-#[cfg(test)]
-pub(crate) use daemon_retry::schedule_retry_after_child_exit;
+#[cfg(test)] pub(crate) use daemon_retry::schedule_retry_after_child_exit;
 pub(crate) use daemon_retry::{retry_delay, write_retry_schedule_for_run};
-#[allow(unused_imports)]
-pub(crate) use execution::prepare_agent_git_credentials;
+#[allow(unused_imports)] pub(crate) use execution::prepare_agent_git_credentials;
 #[cfg(test)]
 pub(crate) use execution::{
 	AgentGitCredentialEnvironment, push_retained_review_repair_head, run_completion_repo_gate,
@@ -339,16 +335,15 @@ pub(crate) use types::{
 	OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus, OperatorGitHubCliAuthority,
 	OperatorHistoryLaneStatus, OperatorHistoryLedgerOutcome, OperatorLaneLifecycleAttemptEvidence,
 	OperatorLaneLifecycleMetrics, OperatorLaneLifecyclePhaseMetrics, OperatorLinearScanRequest,
-	OperatorLoopStatus, OperatorPhaseAcceptanceStatus, OperatorPostReviewLaneStatus,
-	OperatorProjectStatus, OperatorQueuedIssueAttentionStatus, OperatorQueuedIssueStatus,
-	OperatorRecoveryBudgetStatus, OperatorReviewCheckpointStatus, OperatorReviewLoopStatus,
-	OperatorReviewRouteCount, OperatorRunControlCapability, OperatorRunStatus,
-	OperatorSnapshotWarningDetail, OperatorStateEndpoint, OperatorStatusSnapshot,
+	OperatorLoopStatus, OperatorPostReviewLaneStatus, OperatorProjectStatus,
+	OperatorQueuedIssueAttentionStatus, OperatorQueuedIssueStatus, OperatorRecoveryBudgetStatus,
+	OperatorReviewCheckpointStatus, OperatorReviewLoopStatus, OperatorReviewRouteCount,
+	OperatorRunControlCapability, OperatorRunStatus, OperatorSnapshotWarningDetail,
+	OperatorStateEndpoint, OperatorStatusSnapshot, OperatorValidationEvidenceStatus,
 	OperatorWorktreeHygieneStatus, OperatorWorktreeProvenanceStatus, OperatorWorktreeStatus,
-	PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT,
-	PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE,
-	PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
-	PostReviewLaneStateLoad, PreferredRunIdentity, PrepareIssueRunContext,
+	PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE,
+	PHASE_GOAL_RECOVERY_EVENT_TYPE, PostReviewLaneClassification, PostReviewLaneDecision,
+	PostReviewLaneSnapshot, PostReviewLaneStateLoad, PreferredRunIdentity, PrepareIssueRunContext,
 	ProgramDispatchSelection, ProjectDaemonRuntime, PublishedOperatorSnapshot, PullRequestActor,
 	PullRequestCommitConnection, PullRequestCommitNode, PullRequestCommitPayload,
 	PullRequestIssueCommentConnection, PullRequestIssueCommentNode, PullRequestIssueCommentState,
@@ -367,8 +362,8 @@ pub(crate) use types::{
 	RunCycleRequest, RunLeaseDisposition, RunLeaseReconciliation, RunOnceRequest, RunSummary,
 	SelectedIssueRunCandidate, ServeRequest, SpawnRunOnceChildRequest, StalledRunNeedsAttention,
 	TargetIssueRunContext, TerminalFailureOutcome, TrackerConnectorBackoff,
-	classify_pull_request_readback_report, record_authority_boundary_check_private_event,
-	record_authority_decision_request_private_event,
+	VALIDATION_EVIDENCE_EVENT_TYPE, classify_pull_request_readback_report,
+	record_authority_boundary_check_private_event, record_authority_decision_request_private_event,
 };
 
 use std::{
@@ -405,8 +400,7 @@ use crate::{
 #[allow(unused_imports)]
 #[rustfmt::skip]
 use crate::{agent::{RUN_LEASE_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure, AppServerProcessEnv, AppServerRunRequest, AppServerRunResult, AppServerTransportFailure, AppServerTurnFailure, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, DecodexRunContext, DecodexToolBridge, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition, ReviewHandoffContext, ReviewHandoffWritebackFailed, ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge, TurnContinuationGuard}, config::{ReviewLevel, ServiceConfig}, execution_program::{ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary, ExecutionProgramReadinessContext, ExecutionWorkflowPolicy}, git_credentials::GitCredentialSource, github, prelude::{Result, eyre}, state::{ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary, ExecutionProgramRecord, LoopGuardrailCheckpoint, LoopGuardrailCheckpointInput, ProjectRegistration, ProjectRunStatus, ProtocolActivitySummary, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS, RUN_OPERATION_IDLE, RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, RUN_OPERATION_REVIEW_WRITEBACK, RUN_OPERATION_WAITING_EXTERNAL, ReviewLifecycleReadback, RunActivityMarker, RunAttempt, StateStore, WorktreeMapping}, tracker::{IssueTracker, TrackerIssue, linear::LinearClient, records}, workflow::WorkflowDocument, worktree::{WorktreeManager, WorktreeSpec}};
-#[cfg(test)]
-use self::status::classify_post_review_lane;
+#[cfg(test)] use self::status::classify_post_review_lane;
 #[allow(unused_imports)]
 use self::status::{
 	ATTENTION_ERROR_EVIDENCE_MISSING, EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH,
@@ -432,7 +426,9 @@ use self::status::{
 	worktree_has_tracked_changes, worktree_tracked_change_state,
 };
 use self::{
-	lane_decision::{LaneDecisionSnapshot, LaneNextAction, decide_lane_next_action},
+	lane_decision::{
+		LaneDecisionSnapshot, LaneNextAction, RepoGateFailureSignal, decide_lane_next_action,
+	},
 	status_autonomy::{
 		operator_autonomy_lineage_statuses, operator_autonomy_objective_status,
 		operator_autonomy_proposal_statuses, operator_autonomy_report_status,
@@ -505,8 +501,7 @@ use self::{
 	},
 };
 use crate::tracker::records::LinearExecutionEventRecord;
-#[cfg(test)]
-use agent_evidence::PrivateEvidenceReadback;
+#[cfg(test)] use agent_evidence::PrivateEvidenceReadback;
 use agent_evidence::{
 	AgentEvidenceSource, AgentPrivateEvidenceRef, build_private_evidence_readback,
 	render_agent_evidence_write_result, render_private_evidence_readback,
@@ -519,8 +514,7 @@ use entrypoints_status_cache::{
 use execution_architecture_recovery::{
 	architecture_recovery_retry_next_action, loop_guardrail_architecture_recovery_decision,
 };
-#[cfg(test)]
-use execution_closeout::ensure_closeout_issue_completed_state;
+#[cfg(test)] use execution_closeout::ensure_closeout_issue_completed_state;
 use execution_closeout::execute_deterministic_closeout;
 use execution_failure::{
 	ARCHITECTURE_RECOVERY_BUDGET, ARCHITECTURE_RECOVERY_RETRY_KIND,
@@ -541,10 +535,9 @@ use execution_failure::{
 	promote_zero_evidence_app_server_start_failure, retry_budget_attempts_for_current_failure,
 	write_retry_schedule_marker_for_runtime_retry,
 };
-#[cfg(test)]
-use execution_phase_goal::RepoGatePhaseGoalController;
+#[cfg(test)] use execution_phase_goal::RepoGatePhaseGoalController;
 use execution_phase_goal::{
-	PhaseAcceptanceCheckFailure, PhaseGoalRecoveryContinuation, build_phase_goal_controller,
+	PhaseGoalRecoveryContinuation, ValidationEvidenceFailure, build_phase_goal_controller,
 	issue_has_blocking_lane_decision_evidence, latest_open_issue_phase_goal_before_attempt,
 	maybe_continue_after_phase_goal_recovery, recover_phase_goal_continuation,
 };
@@ -560,5 +553,4 @@ use harness_improvement::{HarnessOutcomeKind, record_harness_outcome_best_effort
 #[cfg(test)]
 use harness_improvement::{HarnessOutcomeRecordInput, record_harness_outcome_for_issue_run};
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;
