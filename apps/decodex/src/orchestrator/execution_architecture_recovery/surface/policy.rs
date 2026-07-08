@@ -22,12 +22,10 @@ pub(in crate::orchestrator::execution_architecture_recovery) fn architecture_rec
 
 	match policy_decision {
 		AuthorityBoundaryPolicyDecision::AutoContinue => boundary.final_reason,
-		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence => {
-			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing."
-		},
-		AuthorityBoundaryPolicyDecision::BlockLanding => {
-			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored."
-		},
+		AuthorityBoundaryPolicyDecision::RequiresEnhancedEvidence =>
+			"Changed high-risk surfaces can continue recovery autonomously, but require enhanced evidence before review handoff or landing.",
+		AuthorityBoundaryPolicyDecision::BlockLanding =>
+			"Changed validation or review-policy surfaces can continue recovery autonomously, but block landing until the required evidence is restored.",
 		AuthorityBoundaryPolicyDecision::RequiresHumanDecision => boundary.final_reason,
 	}
 }
@@ -47,12 +45,7 @@ pub(in crate::orchestrator::execution_architecture_recovery) fn architecture_rec
 					recommendation: "Promote the repeated repo-gate failure into an earlier deterministic validator or fixture.",
 				}]
 			},
-			_ => vec![AuthorityBoundaryImprovementSignal {
-				kind: "weak_prompt",
-				reason_code: "architecture_recovery_strategy_needed",
-				target: "prompt:phase_goal_repair",
-				recommendation: "Prompt recovery agents to replace the ineffective strategy instead of repeating patch-only repair.",
-			}],
+			_ => Vec::new(),
 		},
 		AuthorityBoundaryDisposition::RequiresHuman => vec![AuthorityBoundaryImprovementSignal {
 			kind: "underspecified_decision_contract",

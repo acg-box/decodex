@@ -4,7 +4,7 @@ use crate::{
 	worktree::WorktreeSpec,
 };
 
-pub(in crate::orchestrator::tests) fn record_phase_acceptance_progress_checkpoint(
+pub(in crate::orchestrator::tests) fn record_validation_evidence_progress_checkpoint(
 	config: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -33,7 +33,7 @@ pub(in crate::orchestrator::tests) fn record_phase_acceptance_progress_checkpoin
 				"worktree_path": issue_run.worktree.path.display().to_string(),
 			}),
 		)
-		.expect("phase acceptance progress checkpoint should record");
+		.expect("validation evidence progress checkpoint should record");
 }
 
 pub(super) fn phase_goal_repo_gate_issue_run(

@@ -1,6 +1,6 @@
 use crate::orchestrator::{
 	self, IssueDispatchMode, LaneDecisionSnapshot, LaneNextAction, PhaseGoalKind,
-	RepoGateFailureDisposition, RetryKind, kernel::action::OwnedLaneAction,
+	RepoGateFailureDisposition, RepoGateFailureSignal, RetryKind, kernel::action::OwnedLaneAction,
 };
 
 fn repo_gate_snapshot(disposition: RepoGateFailureDisposition) -> LaneDecisionSnapshot {
@@ -10,14 +10,13 @@ fn repo_gate_snapshot(disposition: RepoGateFailureDisposition) -> LaneDecisionSn
 		1,
 		IssueDispatchMode::Normal,
 		PhaseGoalKind::ImplementToValidationReady,
-		disposition,
-		false,
+		RepoGateFailureSignal::new(disposition, "repo_gate_verify_failed", false),
 	)
 }
 
 #[test]
-fn phase_acceptance_failure_projects_kernel_retry_to_legacy_retry_failure() {
-	let snapshot = LaneDecisionSnapshot::phase_acceptance(
+fn validation_evidence_failure_projects_kernel_retry_to_legacy_retry_failure() {
+	let snapshot = LaneDecisionSnapshot::validation_evidence(
 		"PUB-101",
 		"run-1",
 		1,

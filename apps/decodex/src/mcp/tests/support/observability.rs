@@ -67,7 +67,7 @@ pub(in crate::mcp::tests) fn observability_current_lane_fixture() -> Value {
 			"current_bucket": "protocol_activity",
 			"path": "/private/activity-marker"
 		},
-		"phase_acceptance": observability_phase_acceptance_fixture(),
+		"validation_evidence": observability_validation_evidence_fixture(),
 		"private_evidence": {
 			"raw": "hidden"
 		},
@@ -123,7 +123,7 @@ pub(in crate::mcp::tests) fn observability_protocol_activity_fixture() -> Value 
 	})
 }
 
-pub(in crate::mcp::tests) fn observability_phase_acceptance_fixture() -> Value {
+pub(in crate::mcp::tests) fn observability_validation_evidence_fixture() -> Value {
 	serde_json::json!({
 		"phase": "handoff_evidence",
 		"decision": "accepted",

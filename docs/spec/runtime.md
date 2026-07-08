@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/orchestrator/lane_decision.rs, apps/decodex/src/agent/tracker_tool_bridge.rs, apps/decodex/src/agent/tracker_tool_bridge/tools.rs, apps/decodex/src/autonomy_signal.rs, apps/decodex/src/autonomy_proposal.rs, apps/decodex/src/orchestrator/execution.rs, apps/decodex/src/orchestrator/execution_phase_goal.rs, apps/decodex/src/orchestrator/git_ops.rs, apps/decodex/src/orchestrator/run_cycle.rs, apps/decodex/src/orchestrator/status.rs, apps/decodex/src/mcp.rs, apps/decodex/src/state/store.rs, apps/decodex/src/state/internal.rs, apps/decodex/src/program_intake.rs, apps/decodex/src/execution_program.rs, apps/decodex/src/config.rs, decodex.example.toml]
-drift_watch: [lane_decision, continuation_lineage, issue_progress_checkpoint, phase_acceptance_check, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, repo_gate_tracked_rewrites_left, repo_gate_scope_envelope_violation, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_authority, review_repair_writeback_stale_lifecycle_authority, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
+drift_watch: [lane_decision, continuation_lineage, issue_progress_checkpoint, validation_evidence, issue_terminal_finalize, docs_impact, manual_attention, review_handoff, review_repair, closeout, phase_goal, repo_gate_tracked_rewrites_left, repo_gate_scope_envelope_violation, protocol_events, review_policy_checkpoints, review_checkpoint, review_lifecycle_records, lane_control_next_action, review_handoff_pending, review_repair_pending, review_repair_writeback_missing_lifecycle_authority, review_repair_writeback_stale_lifecycle_authority, decodex mcp serve --transport stdio, decodex mcp serve --transport streamable-http, resources/templates/list, prompts/list, prompts/get, tools/list, tools/call, decodex intake goal, program_issue_mappings, autonomy_proposals, decodex.autonomy_proposal/1, "[autonomy]", auto_promote, auto_intake, "[autonomy.runtime_policy]", accepted_objective_id, accepted_objective_version, accepted_policy_id, accepted_policy_version, policy_authority_ref]
 last_verified: 2026-06-30
 ---
 # Runtime Specification
@@ -362,20 +362,20 @@ without a phase goal, and project config does not expose a mode to disable the g
 contract.
 
 After a turn completes with an active phase goal, Decodex reads the goal status and
-uses it only as a phase signal:
+uses it only as a step signal:
 
 - `complete` on implementation or repair phases triggers Decodex-owned repository
-  validation, then a private `phase_acceptance_check`. Validation pass alone is not
-  enough to leave implementation or repair: the acceptance check must prove a current
-  objective-covering progress checkpoint, a real effective delta, no non-goal
-  violation, docs-impact readiness, and repo-gate evidence. A passing acceptance check
-  records `validation_pass` and sets the terminal-evidence goal appropriate to the
-  lane: `handoff_evidence` for ordinary implementation or validation repair, and
-  `review_repair_evidence` for accepted-review repair. A failing acceptance check
-  records a `phase_acceptance_check` failure reason, emits `validation_fail` with
-  acceptance metadata, keeps accepted-review repair in that phase, or sends
-  implementation and validation repair to `repair_validation_failures` for continued
-  repair.
+  validation, then a private validation-evidence record. Validation must still prove a
+  real effective delta, no non-goal violation, docs-impact readiness when the agent
+  supplied a progress checkpoint, repo-gate evidence, changed surfaces, and the
+  current worktree head. The progress checkpoint is execution memory, not required
+  phase ceremony. Passing validation records `validation_pass` and sets the
+  terminal-evidence goal appropriate to the lane: `handoff_evidence` for ordinary
+  implementation or validation repair, and `review_repair_evidence` for
+  accepted-review repair. Failing validation records a structured failure reason,
+  emits `validation_fail` with validation metadata, keeps accepted-review repair in
+  that phase, or sends implementation and validation repair to
+  `repair_validation_failures` for continued repair.
 - `active`, `paused`, `blocked`, `usageLimited`, or `budgetLimited` do not bypass
   `execution.max_turns`, continuation guard checks, retry backoff, or manual-attention
   policy. If the bounded turn budget is exhausted, the run exits at a continuation
@@ -389,19 +389,16 @@ uses it only as a phase signal:
   Otherwise the turn is invalid and must fail rather than treating goal completion as
   success.
 
-The active phase goal is the authoritative current contract. Before an implementation,
-repair, handoff, closeout, or manual-attention path claims completion, the agent must
-record a current-HEAD `issue_progress_checkpoint` with `docs_impact` set to `none`,
-`update_required`, `research_required`, or `drift_required`. For implementation and
-repair phase transitions, Decodex treats that checkpoint as one input to
-`phase_acceptance_check`, not as authority by itself. The check records objective
+The active phase goal is the authoritative current step, not an agent-facing checklist.
+Before terminal finalization, the agent must record a current-HEAD
+`issue_progress_checkpoint` with `docs_impact` set to `none`, `update_required`,
+`research_required`, or `drift_required`. For implementation and repair transitions,
+Decodex records structured validation evidence directly from the worktree, repo gate,
+changed surfaces, and any current progress checkpoint. The evidence records objective
 coverage, effective delta, changed surfaces, non-goal status, validation evidence,
-decision, reason code, and next action. When an implementation or repair phase has
-satisfied its local validation-ready objective, the agent must complete that phase
-goal with the Codex goal completion mechanism so Decodex can run the repo gate,
-evaluate phase acceptance, and select the next phase. An `issue_progress_checkpoint`,
-final chat text, or "await next phase" statement is evidence only; it is not a phase
-exit and must not be treated as a substitute for goal completion.
+decision, reason code, and next action. When an implementation or repair step has
+satisfied its local validation-ready objective, the agent completes that phase goal so
+Decodex can run the repo gate, record validation evidence, and select the next step.
 
 If an app-server run fails, a supervised child exits unsuccessfully, or current-lane
 reconciliation finds a stalled retained lane while the latest private phase-goal signal
@@ -437,7 +434,7 @@ Phase-goal telemetry is local runtime evidence. It must distinguish
 `goal_complete`, `validation_pass`, `validation_fail`, `active_goal_recovered`,
 review `clean`, review `findings`, terminal `review_handoff`, and terminal
 `manual_attention`. Private status and evidence readback may expose the latest
-`phase_acceptance_check` summary so an operator can distinguish a repo-gate failure
+`validation_evidence` summary so an operator can distinguish a repo-gate failure
 from a post-gate acceptance failure and see why a phase advanced or stayed in repair.
 These signals may appear in private execution events and operator protocol activity,
 but Linear receives only the existing low-frequency lifecycle projections.
@@ -559,13 +556,16 @@ When `decodex` runs the repo-native gate during `validating`, it must preserve t
   implementation diff during phase-goal validation, after the canonicalize and verify
   commands pass: continue to the commit-capable handoff phase and record private
   evidence listing the rewritten files, ownership decision, and continuation reason
-- repo gate changes tracked files outside the pre-gate implementation diff, or changes
-  tracked files at a lifecycle boundary that requires a clean committed worktree:
-  retained partial progress that preserves `repo_gate_tracked_rewrites_left` and
-  requires operator attention
+- repo gate changes tracked files outside the pre-gate implementation diff after the
+  commands pass: record `repo_gate_lane_external_tracked_rewrite` evidence with file count, sample,
+  and rewrite-set hash, do not schedule another issue-local repair turn, and require
+  explicit scoped-gate authority before continuing
+- repo gate changes lane-owned tracked files at a lifecycle boundary that requires a
+  clean committed worktree: retained partial progress that preserves
+  `repo_gate_tracked_rewrites_left` and requires operator attention
 - repo-gate command spawn failures or tracked-file cleanliness inspection failures: human-attention failure path immediately
 
-The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. A tracked-rewrite residue after the gate commands have changed the pre-gate implementation diff is different unless every rewritten file was already in the pre-gate implementation diff and the active phase can continue to a commit-capable handoff. Decodex must not infer repository file meaning, generated-artifact ownership, or fixture policy; ownership here is only same tracked path membership in the pre-gate implementation diff. Unsafe or strict-boundary tracked rewrites must preserve the retained worktree, write the retained-progress or scope-envelope class with the repo-gate source class in evidence, and stop until an operator decides whether to finish validation and handoff, expand scope, isolate baseline debt, or reset the patch. Human-attention exits also remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
+The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. A tracked-rewrite residue after the gate commands have changed the pre-gate implementation diff is different unless every rewritten file was already in the pre-gate implementation diff and the active phase can continue to a commit-capable handoff. Lane-external passing rewrites require explicit scoped authority rather than issue-local repair. Decodex must not infer repository file meaning, generated-artifact ownership, or fixture policy; ownership here is only same tracked path membership in the pre-gate implementation diff. Unsafe or strict-boundary tracked rewrites must preserve the retained worktree, write the retained-progress or scope-envelope class with the repo-gate source class in evidence, and stop until an operator decides whether to finish validation and handoff, expand scope, isolate project cleanup, or reset the patch. Human-attention exits also remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
 
 Continued repair is still bounded by loop guardrails. For each retryable failure,
 Decodex records local `loop_guardrail_checkpoint` evidence and updates the

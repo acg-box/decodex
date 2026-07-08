@@ -6,7 +6,7 @@ mod snapshot_json;
 mod snapshot_observation;
 
 pub(super) use self::{
-	model::{LaneDecisionSnapshot, LaneNextAction},
+	model::{LaneDecisionSnapshot, LaneNextAction, RepoGateFailureSignal},
 	projection::decide_lane_next_action,
 };
 

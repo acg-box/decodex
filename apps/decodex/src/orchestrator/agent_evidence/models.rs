@@ -11,9 +11,9 @@ pub(crate) use self::{
 	private_readback::{
 		PrivateEvidenceArchitectureRecoverySummary, PrivateEvidenceBoundaryCheckSummary,
 		PrivateEvidenceDecisionRequestSummary, PrivateEvidencePayloadSummary,
-		PrivateEvidencePhaseAcceptanceSummary, PrivateEvidenceReadback,
-		PrivateEvidenceReadbackEvent, PrivateEvidenceRepoGateFailureSummary,
-		PrivateEvidenceReviewCheckpointSummary, PrivateEvidenceReviewRouteCount,
+		PrivateEvidenceReadback, PrivateEvidenceReadbackEvent,
+		PrivateEvidenceRepoGateFailureSummary, PrivateEvidenceReviewCheckpointSummary,
+		PrivateEvidenceReviewRouteCount, PrivateEvidenceValidationSummary,
 	},
 	run_capsule::{AgentRunCapsule, AgentRunCapsuleRef, AgentRunDiagnosis, AgentRunLedgerOutcome},
 };

@@ -2,8 +2,8 @@ use crate::orchestrator::{
 	self, PrivateEvidenceReadback,
 	tests::operator::status::{
 		AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition,
-		AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
-		PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, StateStore, TEST_SERVICE_ID, Value,
+		AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, StateStore, TEST_SERVICE_ID,
+		VALIDATION_EVIDENCE_EVENT_TYPE, Value,
 	},
 };
 
@@ -20,7 +20,6 @@ pub(in crate::orchestrator::tests) fn assert_harness_outcome_payload(payload: &V
 	assert_eq!(payload["authority_boundary"]["failed_check_count"], 1);
 	assert_eq!(payload["authority_boundary"]["improvement_signal_count"], 1);
 
-	assert_harness_payload_candidate(payload, "accepted_review_findings");
 	assert_harness_payload_candidate(payload, "authority_underspecified");
 	assert_harness_payload_candidate(payload, "architecture_recovery_exhausted");
 }
@@ -41,12 +40,6 @@ pub(in crate::orchestrator::tests) fn assert_harness_payload_candidate(
 pub(in crate::orchestrator::tests) fn assert_harness_private_readback(
 	readback: &PrivateEvidenceReadback,
 ) {
-	assert!(
-		readback
-			.improvement_candidates
-			.iter()
-			.any(|candidate| candidate.reason_code == "accepted_review_findings")
-	);
 	assert!(
 		readback
 			.improvement_candidates
@@ -82,7 +75,7 @@ pub(in crate::orchestrator::tests) fn assert_harness_private_readback(
 				.any(|count| count.route == "current_blocker" && count.count == 1)
 			&& checkpoint.route_next_action.as_deref() == Some("Repair the accepted finding.")
 	}));
-	assert!(readback.phase_acceptance_checks.iter().any(|check| {
+	assert!(readback.validation_evidence.iter().any(|check| {
 		check.phase == "implement_to_validation_ready"
 			&& check.decision == "fail"
 			&& check.reason_code == "no_effective_delta"
@@ -103,7 +96,7 @@ pub(in crate::orchestrator::tests) fn assert_harness_private_readback(
 	assert!(rendered.contains("review_fallback_reason: accepted_findings_present"));
 	assert!(rendered.contains("route_counts: current_blocker=1"));
 	assert!(rendered.contains("route_next_action: Repair the accepted finding."));
-	assert!(rendered.contains("Phase Acceptance Checks"));
+	assert!(rendered.contains("Validation Evidences"));
 	assert!(rendered.contains("Architecture Recoveries"));
 	assert!(rendered.contains("Boundary Checks"));
 	assert!(rendered.contains("status: findings"));
@@ -181,7 +174,7 @@ pub(in crate::orchestrator::tests) fn record_harness_signal_fixture_events(
 		)
 		.expect("progress evidence should append");
 
-	record_harness_phase_acceptance_event(state_store);
+	record_harness_validation_evidence_event(state_store);
 
 	orchestrator::record_authority_boundary_check_private_event(
 		state_store,
@@ -234,7 +227,7 @@ pub(in crate::orchestrator::tests) fn record_harness_signal_fixture_events(
 		.expect("architecture recovery evidence should append");
 }
 
-pub(in crate::orchestrator::tests) fn record_harness_phase_acceptance_event(
+pub(in crate::orchestrator::tests) fn record_harness_validation_evidence_event(
 	state_store: &StateStore,
 ) {
 	state_store
@@ -243,9 +236,9 @@ pub(in crate::orchestrator::tests) fn record_harness_phase_acceptance_event(
 			"issue-harness",
 			"run-harness",
 			2,
-			PHASE_ACCEPTANCE_CHECK_EVENT_TYPE,
+			VALIDATION_EVIDENCE_EVENT_TYPE,
 			serde_json::json!({
-				"schema": "decodex.phase_acceptance_check/1",
+				"schema": "decodex.validation_evidence/1",
 				"phase": "implement_to_validation_ready",
 				"decision": "fail",
 				"reason_code": "no_effective_delta",
@@ -264,5 +257,5 @@ pub(in crate::orchestrator::tests) fn record_harness_phase_acceptance_event(
 				"next_action": "produce an issue-scoped effective delta before completing the phase goal again",
 			}),
 		)
-		.expect("phase acceptance evidence should append");
+		.expect("validation evidence should append");
 }

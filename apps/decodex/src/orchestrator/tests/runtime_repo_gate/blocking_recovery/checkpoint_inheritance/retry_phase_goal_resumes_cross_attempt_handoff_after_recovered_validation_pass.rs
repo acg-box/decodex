@@ -38,7 +38,7 @@ fn retry_phase_goal_resumes_cross_attempt_handoff_after_recovered_validation_pas
 
 	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
-	support::record_phase_acceptance_progress_checkpoint(
+	support::record_validation_evidence_progress_checkpoint(
 		&config,
 		&state_store,
 		&first_issue_run,

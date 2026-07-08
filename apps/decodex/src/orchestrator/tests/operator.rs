@@ -16,9 +16,9 @@ pub(super) use crate::{
 		OperatorExecutionProgramNodeStatus, OperatorExecutionProgramStatus,
 		OperatorGitHubCliAuthority, OperatorPostReviewLaneStatus, OperatorProjectStatus,
 		OperatorQueuedIssueStatus, OperatorRunStatus, OperatorStatusSnapshot,
-		PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PHASE_GOAL_RECOVERY_EVENT_TYPE,
-		PublishedOperatorSnapshot, RecoveredRuntimeState, TERMINAL_GUARDED_RUN_STATUS,
-		TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING,
+		PHASE_GOAL_RECOVERY_EVENT_TYPE, PublishedOperatorSnapshot, RecoveredRuntimeState,
+		TERMINAL_GUARDED_RUN_STATUS, TRACKER_RATE_LIMIT_WARNING, TRACKER_TRANSIENT_TIMEOUT_WARNING,
+		VALIDATION_EVIDENCE_EVENT_TYPE,
 		tests::{
 			FakePullRequestReviewStateInspector, FakeTracker,
 			TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT, TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,

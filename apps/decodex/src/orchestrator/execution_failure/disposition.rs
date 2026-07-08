@@ -3,10 +3,10 @@ use crate::orchestrator::execution_failure::{
 	AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
 	AppServerTransportFailure, AppServerTurnFailure, AppServerZeroEvidenceStartFailure,
 	CodexAccountAuthFailure, IssueRunPlan, LoopGuardrailStopRequested, ManualAttentionRequested,
-	PhaseAcceptanceCheckFailure, RepoGateFailure, RepoGateFailureDisposition, Report, Result,
-	RetainedPartialProgress, RetainedReviewNeedsAttention, RetainedReviewRepairPushFailed,
-	ReviewHandoffNeedsAttention, ReviewPolicyStopRequested, RunCompletionDisposition,
-	RunFailureWritebackDisposition, ServiceConfig, StalledRunNeedsAttention, StateStore,
+	RepoGateFailure, RepoGateFailureDisposition, Report, Result, RetainedPartialProgress,
+	RetainedReviewNeedsAttention, RetainedReviewRepairPushFailed, ReviewHandoffNeedsAttention,
+	ReviewPolicyStopRequested, RunCompletionDisposition, RunFailureWritebackDisposition,
+	ServiceConfig, StalledRunNeedsAttention, StateStore, ValidationEvidenceFailure,
 	WorkflowDocument,
 };
 
@@ -127,7 +127,7 @@ pub(crate) fn retained_progress_source_error_class(error: &Report) -> Option<&'s
 		Some(app_server_failure.error_class())
 	} else if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
 		Some(repo_gate_failure.error_class())
-	} else if let Some(acceptance_failure) = error.downcast_ref::<PhaseAcceptanceCheckFailure>() {
+	} else if let Some(acceptance_failure) = error.downcast_ref::<ValidationEvidenceFailure>() {
 		Some(acceptance_failure.error_class())
 	} else {
 		None
