@@ -171,6 +171,17 @@ Supported keys:
 
 `canonicalize_commands` are the repo-native canonicalization gate surface. They may rewrite the worktree to bring it into repo-standard form before verification.
 
+Before Decodex starts an ordinary issue lane, the runtime also uses the default
+`[execution].canonicalize_commands` as the project baseline guard. The guard runs
+those commands in an isolated clean worktree at the current remote default-branch
+OID and requires no tracked diff. If canonicalization would rewrite the baseline,
+Decodex does not lease or start the ordinary issue yet; it runs a Decodex-owned
+baseline normalization path that commits exactly the canonicalization diff, opens
+and lands a normalization PR, refreshes the default branch, reruns the baseline
+guard, and only then resumes ordinary dispatch. This does not introduce another
+workflow field or command runner; the default `canonicalize_commands` remain the
+single authority for mutating canonicalization.
+
 `verify_commands` are the repo-native read-only verification surface. They run after `canonicalize_commands` and must pass before review handoff, review repair completion, or landing-related push can proceed.
 
 Together, `canonicalize_commands` and `verify_commands` are the default full repo-native gate. They run after agent execution and before the success writeback is committed, and they are also the required pre-push gate for PR-head refreshes, review handoff, review repair pushes, and landing-related sync unless a narrower named gate profile is selected. Local commits use the separate `decodex/commit/2` contract; they do not require any additional lifecycle-specific commit contract.

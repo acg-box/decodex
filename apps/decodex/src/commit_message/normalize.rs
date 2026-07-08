@@ -1,5 +1,5 @@
 use crate::{
-	commit_message::model::MANUAL_AUTHORITY,
+	commit_message::model::{BASELINE_AUTHORITY, MANUAL_AUTHORITY},
 	prelude::{Result, eyre},
 };
 
@@ -43,11 +43,13 @@ pub(crate) fn normalize_issue_identifier(field_name: &str, value: &str) -> Resul
 pub(crate) fn normalize_commit_authority(field_name: &str, value: &str) -> Result<String> {
 	let normalized = normalize_single_line_field(field_name, value)?;
 
-	if normalized == MANUAL_AUTHORITY || looks_like_issue_identifier(&normalized) {
+	if matches!(normalized.as_str(), MANUAL_AUTHORITY | BASELINE_AUTHORITY)
+		|| looks_like_issue_identifier(&normalized)
+	{
 		return Ok(normalized);
 	}
 
 	eyre::bail!(
-		"`{field_name}` must look like an issue identifier such as `XY-123` or be exactly `{MANUAL_AUTHORITY}`."
+		"`{field_name}` must look like an issue identifier such as `XY-123` or be exactly `{MANUAL_AUTHORITY}` or `{BASELINE_AUTHORITY}`."
 	);
 }

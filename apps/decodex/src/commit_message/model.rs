@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub(crate) const COMMIT_MESSAGE_SCHEMA: &str = "decodex/commit/2";
+pub(crate) const BASELINE_AUTHORITY: &str = "baseline";
 pub(crate) const MANUAL_AUTHORITY: &str = "manual";
 
 #[derive(Serialize)]
