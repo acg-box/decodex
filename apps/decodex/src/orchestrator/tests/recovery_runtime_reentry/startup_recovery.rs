@@ -85,7 +85,7 @@ fn recover_runtime_state_recovers_fresh_review_repair_activity_marker() {
 }
 
 #[test]
-fn run_project_once_prefers_recovered_in_progress_worktree_after_empty_state_startup() {
+fn prefers_recovered_in_progress_worktree() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker =

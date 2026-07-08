@@ -12,7 +12,7 @@ use crate::orchestrator::{
 };
 
 #[test]
-fn classify_post_review_lane_ignores_stale_review_orchestration_record_from_prior_handoff() {
+fn ignores_stale_orchestration_record_from_prior_handoff() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Review", &[]);

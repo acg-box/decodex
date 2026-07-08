@@ -13,7 +13,7 @@ fn operator_state_endpoint_queues_linear_scan_request() {
 		String::from_utf8_lossy(body)
 	);
 	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response_with_control_requests(
+		orchestrator::build_operator_state_http_response_with_controls(
 			request.as_bytes(),
 			&control_requests,
 		)

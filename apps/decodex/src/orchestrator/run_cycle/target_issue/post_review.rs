@@ -34,16 +34,15 @@ where
 {
 	let target_issue_id = target_issue::resolve_target_issue_id(context.tracker, context.issue_id)?;
 	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(context.project);
-	let Some(_issue) =
-		orchestrator::select_target_post_review_repair_issue_candidate_with_inspector(
-			context.tracker,
-			context.project,
-			context.workflow,
-			context.state_store,
-			&target_issue_id,
-			context.issue_id,
-			&review_state_inspector,
-		)?
+	let Some(_issue) = orchestrator::select_target_review_repair_candidate_with_inspector(
+		context.tracker,
+		context.project,
+		context.workflow,
+		context.state_store,
+		&target_issue_id,
+		context.issue_id,
+		&review_state_inspector,
+	)?
 	else {
 		return Ok(None);
 	};
@@ -86,16 +85,15 @@ where
 {
 	let target_issue_id = target_issue::resolve_target_issue_id(context.tracker, context.issue_id)?;
 	let review_state_inspector = GhPullRequestReviewStateInspector::for_project(context.project);
-	let Some(candidate) =
-		orchestrator::select_target_post_review_closeout_issue_candidate_with_inspector(
-			context.tracker,
-			context.project,
-			context.workflow,
-			context.state_store,
-			&target_issue_id,
-			context.issue_id,
-			&review_state_inspector,
-		)?
+	let Some(candidate) = orchestrator::select_target_closeout_candidate_with_inspector(
+		context.tracker,
+		context.project,
+		context.workflow,
+		context.state_store,
+		&target_issue_id,
+		context.issue_id,
+		&review_state_inspector,
+	)?
 	else {
 		return Ok(None);
 	};

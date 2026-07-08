@@ -24,7 +24,7 @@ pub(super) fn write_retained_review_lifecycle_authority_for_command(
 	)
 }
 
-pub(super) fn write_retained_review_lifecycle_authority_for_current_action(
+pub(super) fn write_lifecycle_authority_for_current_action(
 	state_store: &StateStore,
 	lane: &RetainedReviewLane,
 	kind: CommandIntentKind,

@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[test]
-fn goal_intake_rejects_latent_then_apply_direct_dispatch_and_status_readback_is_end_to_end() {
+fn goal_intake_apply_direct_dispatch_is_end_to_end() {
 	let (_temp_dir, config, workflow) = super::temp_project_layout();
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let source_issue =

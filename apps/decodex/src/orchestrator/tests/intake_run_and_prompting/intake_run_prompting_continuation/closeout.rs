@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[test]
-fn continuation_guard_allows_closeout_continuation_after_issue_reaches_completed_state() {
+fn allows_closeout_after_issue_completed() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = intake_run_and_prompting::run_and_prompting_service_owned_issue("Done");
 	let tracker =

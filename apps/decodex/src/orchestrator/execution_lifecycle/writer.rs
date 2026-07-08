@@ -26,11 +26,8 @@ where
 
 	if state_store.record_linear_execution_event(&projection.record)?
 		&& let Err(error) =
-			tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
-				tracker,
-				issue_id,
-				&projection,
-			) {
+			tracker::create_linear_execution_event_comment_direct(tracker, issue_id, &projection)
+	{
 		state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
 
 		return Err(error);

@@ -70,7 +70,7 @@ fn pull_request_review_state_from_page_scopes_signals_to_external_review_actor()
 }
 
 #[test]
-fn pull_request_review_state_from_page_skips_pending_reviews_without_submitted_timestamp() {
+fn skips_pending_reviews_without_submitted_timestamp() {
 	let mut page = tests::sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/173",
 		"main",

@@ -26,16 +26,10 @@ pub(crate) fn recover_runtime_state_from_tracker_and_worktrees<T>(
 where
 	T: IssueTracker,
 {
-	recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		None,
-	)
+	recover_runtime_state_with_skip_cache(tracker, project, workflow, state_store, None)
 }
 
-pub(crate) fn recover_runtime_state_from_tracker_and_worktrees_with_skip_cache<T>(
+pub(crate) fn recover_runtime_state_with_skip_cache<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,

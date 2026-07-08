@@ -19,11 +19,11 @@ use crate::orchestrator::operator_http::{
 pub(crate) fn build_operator_state_http_response(request: &[u8]) -> Result<Vec<u8>> {
 	let control_requests = OperatorControlRequests::default();
 
-	build_operator_state_http_response_with_control_requests(request, &control_requests)
+	build_operator_state_http_response_with_controls(request, &control_requests)
 }
 
 #[cfg(test)]
-pub(crate) fn build_operator_state_http_response_with_control_requests(
+pub(crate) fn build_operator_state_http_response_with_controls(
 	request: &[u8],
 	control_requests: &OperatorControlRequests,
 ) -> Result<Vec<u8>> {

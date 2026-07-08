@@ -114,7 +114,7 @@ fn materialize_daemon_spawn_state_starts_fresh_budget_for_normal_queue_intake() 
 }
 
 #[test]
-fn materialize_daemon_spawn_state_uses_retained_retry_budget_marker_for_recovered_retry() {
+fn uses_retained_retry_budget_marker_for_recovery() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let tracker = FakeTracker::with_refresh_snapshots(

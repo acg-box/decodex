@@ -62,7 +62,7 @@ where
 	tracker.create_comment(issue_id, body)
 }
 
-pub(crate) fn create_prepared_linear_execution_event_comment_without_remote_scan<T>(
+pub(crate) fn create_linear_execution_event_comment_direct<T>(
 	tracker: &T,
 	issue_id: &str,
 	projection: &LinearExecutionEventPublicProjection,

@@ -51,14 +51,13 @@ where
 		return Ok(());
 	}
 
-	let loop_guardrail_stop =
-		retry::retryable_failure_loop_guardrail_stop_unless_terminal_attention(
-			project,
-			state_store,
-			issue_run,
-			error,
-			requires_terminal_attention,
-		)?;
+	let loop_guardrail_stop = retry::loop_guardrail_stop_unless_terminal_attention(
+		project,
+		state_store,
+		issue_run,
+		error,
+		requires_terminal_attention,
+	)?;
 	let retained_partial_progress =
 		disposition::retained_partial_progress_error(error, issue_run, &worktree_path);
 

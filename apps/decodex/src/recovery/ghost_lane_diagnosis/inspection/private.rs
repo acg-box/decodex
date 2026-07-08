@@ -53,5 +53,5 @@ pub(super) fn ghost_lane_mcp_test_fixture_control_evidence(
 		run.attempt_number(),
 	)?;
 
-	Ok(evidence::ghost_lane_private_events_are_mcp_test_recovery_evidence(&events))
+	Ok(evidence::ghost_lane_events_are_mcp_test_recovery_evidence(&events))
 }

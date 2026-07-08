@@ -17,12 +17,12 @@ pub(in crate::recovery) fn stale_active_private_event_allows_release(
 	release_audit::stale_active_private_event_is_release_audit(event)
 		|| control::stale_active_private_event_is_failed_control_attempt(event)
 		|| ((marker_liveness == StaleActiveProcessLiveness::NotAlive || release_audit_present)
-			&& control::stale_active_private_event_is_dead_process_control_telemetry(event))
+			&& control::stale_active_event_is_dead_process_telemetry(event))
 		|| runtime::stale_active_private_event_is_stale_runtime_marker(event)
 		|| runtime::stale_active_private_event_is_probing_checkpoint(event)
 		|| guardrail::stale_active_private_event_is_no_diff_guardrail(event)
-		|| runtime::stale_active_private_event_is_phase_goal_runtime_failure_telemetry(event)
-		|| harness::stale_active_private_event_is_no_progress_harness_outcome(event)
+		|| runtime::stale_active_event_is_phase_goal_failure_telemetry(event)
+		|| harness::stale_active_event_is_no_progress_harness(event)
 }
 
 pub(in crate::recovery) fn stale_active_private_event_is_release_audit_for_run(

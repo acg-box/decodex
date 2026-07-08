@@ -6,7 +6,7 @@ use crate::{
 };
 
 #[test]
-fn autonomy_proposal_id_ignores_timestamps_signal_order_warning_order_and_challenges() {
+fn ignores_timestamps_order_and_challenges() {
 	let objective = tests::objective_fixture();
 	let signal = tests::runtime_signal();
 	let mut second_input = tests::signal_input();

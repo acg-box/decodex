@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[test]
-fn autonomy_decision_bridge_rejected_and_needs_human_proposals_remain_non_executable() {
+fn rejected_and_needs_human_remain_non_executable() {
 	let store = StateStore::open_in_memory().expect("store should open");
 	let objective = tests::store_accepted_objective(&store);
 	let signal = store

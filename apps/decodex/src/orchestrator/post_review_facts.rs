@@ -307,7 +307,7 @@ mod tests {
 	}
 
 	#[test]
-	fn runtime_review_checkpoint_status_for_head_prefers_current_same_head_handoff_artifact() {
+	fn prefers_current_same_head_handoff_checkpoint() {
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 
 		state_store
