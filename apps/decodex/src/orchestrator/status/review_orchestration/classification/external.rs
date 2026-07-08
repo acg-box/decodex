@@ -1,9 +1,11 @@
-use crate::orchestrator::status::{
-	self, EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS, ExternalReviewRequestCiGate,
-	PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLifecycleAction,
-	PostReviewOrchestrationStatus, PullRequestReviewState,
+use crate::{
+	orchestrator::status::{
+		self, EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS, ExternalReviewRequestCiGate,
+		PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLifecycleAction,
+		PostReviewOrchestrationStatus, PullRequestReviewState,
+	},
+	state::ReviewLifecycleRecord,
 };
-use crate::state::ReviewLifecycleRecord;
 
 pub(crate) fn apply_review_lifecycle_action_classification(
 	classification: &mut PostReviewLaneClassification,
@@ -14,7 +16,7 @@ pub(crate) fn apply_review_lifecycle_action_classification(
 ) {
 	match orchestration_status.action {
 		PostReviewLifecycleAction::StartReviewGateOrExternalReview
-		| PostReviewLifecycleAction::RequestExternalReview => {
+		| PostReviewLifecycleAction::RequestExternalReview =>
 			match status::external_review_request_ci_gate(review_state) {
 				ExternalReviewRequestCiGate::Ready => {
 					classification.reason = String::from("external_review_request_pending");
@@ -28,8 +30,7 @@ pub(crate) fn apply_review_lifecycle_action_classification(
 					classification.reason =
 						String::from("external_review_request_ci_red_repair_required");
 				},
-			}
-		},
+			},
 		PostReviewLifecycleAction::WaitForExternalReviewAck => {
 			if orchestration_status.request_acknowledged {
 				classification.reason = String::from("external_review_result_pending");
@@ -80,7 +81,7 @@ pub(crate) fn apply_review_lifecycle_action_classification(
 				String::from("external_review_feedback_pending_repair")
 			};
 		},
-		PostReviewLifecycleAction::WaitForLandingGates => {
+		PostReviewLifecycleAction::WaitForLandingGates =>
 			if status::external_review_has_actionable_feedback(review_state, lifecycle_record) {
 				classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 				classification.reason = String::from("external_review_feedback_pending_repair");
@@ -101,8 +102,7 @@ pub(crate) fn apply_review_lifecycle_action_classification(
 					review_state,
 					"external_review_pass_signal_missing",
 				);
-			}
-		},
+			},
 		PostReviewLifecycleAction::PollLandingReadback
 		| PostReviewLifecycleAction::RunCloseoutAdapter => {
 			if let Some(auto_merge_enabled_at) = lifecycle_record.auto_merge_enabled_at_unix_epoch()

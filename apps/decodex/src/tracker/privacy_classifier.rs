@@ -59,9 +59,8 @@ impl PublicProjectionPrivacyClassifier for ConfiguredPublicProjectionPrivacyClas
 		match self {
 			Self::Disabled => DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER
 				.classify_public_projection_text(field_name, text),
-			Self::LocalHttp(classifier) => {
-				classifier.classify_public_projection_text(field_name, text)
-			},
+			Self::LocalHttp(classifier) =>
+				classifier.classify_public_projection_text(field_name, text),
 		}
 	}
 }
@@ -148,12 +147,10 @@ impl LocalClassifierResponse {
 
 		match self.verdict.trim().to_ascii_lowercase().as_str() {
 			"allow" => PublicProjectionPrivacyClassification::Allow,
-			"suspicious" | "block" | "blocked" => {
-				PublicProjectionPrivacyClassification::Suspicious { reason: reason() }
-			},
-			"unavailable" => {
-				PublicProjectionPrivacyClassification::Unavailable { reason: reason() }
-			},
+			"suspicious" | "block" | "blocked" =>
+				PublicProjectionPrivacyClassification::Suspicious { reason: reason() },
+			"unavailable" =>
+				PublicProjectionPrivacyClassification::Unavailable { reason: reason() },
 			other => PublicProjectionPrivacyClassification::Unavailable {
 				reason: format!("local classifier returned unsupported verdict `{other}`"),
 			},

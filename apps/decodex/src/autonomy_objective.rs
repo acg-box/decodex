@@ -13,5 +13,4 @@ pub(crate) use lifecycle::{
 	AutonomyObjectiveState, AutonomyObjectiveSupersession,
 };
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

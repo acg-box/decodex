@@ -163,5 +163,4 @@ pub(crate) fn current_timestamp() -> String {
 	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

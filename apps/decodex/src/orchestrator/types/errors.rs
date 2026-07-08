@@ -102,9 +102,8 @@ impl LoopGuardrailStopRequested {
 			Some("external_dependency_required") => format!(
 				"inspect the dependency or Execution Program readiness blocker and resolve that external dependency before retrying, {recovery_gate}"
 			),
-			Some("architecture_recovery_started") | None => {
-				self.reason.terminal_next_action(recovery_gate)
-			},
+			Some("architecture_recovery_started") | None =>
+				self.reason.terminal_next_action(recovery_gate),
 			Some(_) => self.reason.terminal_next_action(recovery_gate),
 		}
 	}

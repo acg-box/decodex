@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::fd::IntoRawFd;
+#[cfg(unix)] use std::os::fd::IntoRawFd;
 
 use crate::{
 	orchestrator::{

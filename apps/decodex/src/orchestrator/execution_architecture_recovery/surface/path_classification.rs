@@ -54,47 +54,35 @@ pub(super) fn architecture_recovery_surface_summary(
 	surface: AuthorityBoundarySurface,
 ) -> &'static str {
 	match surface {
-		AuthorityBoundarySurface::ImplementationStrategy => {
-			"Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy."
-		},
-		AuthorityBoundarySurface::Runtime => {
-			"Runtime implementation files changed during recovery."
-		},
+		AuthorityBoundarySurface::ImplementationStrategy =>
+			"Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy.",
+		AuthorityBoundarySurface::Runtime =>
+			"Runtime implementation files changed during recovery.",
 		AuthorityBoundarySurface::Tests => "Test files changed during recovery.",
 		AuthorityBoundarySurface::Docs => "Documentation files changed during recovery.",
-		AuthorityBoundarySurface::PublicApi => {
-			"Public API or command surface files changed during recovery."
-		},
+		AuthorityBoundarySurface::PublicApi =>
+			"Public API or command surface files changed during recovery.",
 		AuthorityBoundarySurface::Config => "Configuration files changed during recovery.",
-		AuthorityBoundarySurface::Security => {
-			"Security-sensitive implementation files changed during recovery."
-		},
-		AuthorityBoundarySurface::Data => {
-			"Data or state persistence files changed during recovery."
-		},
+		AuthorityBoundarySurface::Security =>
+			"Security-sensitive implementation files changed during recovery.",
+		AuthorityBoundarySurface::Data =>
+			"Data or state persistence files changed during recovery.",
 		AuthorityBoundarySurface::Billing => "Billing or usage files changed during recovery.",
 		AuthorityBoundarySurface::Privacy => "Privacy-sensitive files changed during recovery.",
-		AuthorityBoundarySurface::Validation => {
-			"Validation or repository-gate files changed during recovery."
-		},
-		AuthorityBoundarySurface::ReviewPolicy => {
-			"Review policy or landing policy files changed during recovery."
-		},
-		AuthorityBoundarySurface::Objective => {
-			"Objective-changing recovery requires an explicit human decision."
-		},
-		AuthorityBoundarySurface::NonGoal => {
-			"Non-goal-changing recovery requires an explicit human decision."
-		},
-		AuthorityBoundarySurface::ExternalDependency => {
-			"External dependency recovery requires accepted authority."
-		},
-		AuthorityBoundarySurface::RetainedOwnership => {
-			"Retained ownership evidence changed during recovery."
-		},
-		AuthorityBoundarySurface::AuthorityEvidence => {
-			"Authority evidence changed or is insufficient during recovery."
-		},
+		AuthorityBoundarySurface::Validation =>
+			"Validation or repository-gate files changed during recovery.",
+		AuthorityBoundarySurface::ReviewPolicy =>
+			"Review policy or landing policy files changed during recovery.",
+		AuthorityBoundarySurface::Objective =>
+			"Objective-changing recovery requires an explicit human decision.",
+		AuthorityBoundarySurface::NonGoal =>
+			"Non-goal-changing recovery requires an explicit human decision.",
+		AuthorityBoundarySurface::ExternalDependency =>
+			"External dependency recovery requires accepted authority.",
+		AuthorityBoundarySurface::RetainedOwnership =>
+			"Retained ownership evidence changed during recovery.",
+		AuthorityBoundarySurface::AuthorityEvidence =>
+			"Authority evidence changed or is insufficient during recovery.",
 	}
 }
 

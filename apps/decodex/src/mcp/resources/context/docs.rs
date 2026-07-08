@@ -21,9 +21,8 @@ impl McpContext {
 		let path = match uri.segments.as_slice() {
 			[segment] if segment == "index" => self.repo_root.join("docs/index.md"),
 			[segment] if segment == "policy" => self.repo_root.join("docs/policy.md"),
-			[lane, topic] if files::docs_lane_allowed(lane) && files::safe_resource_stem(topic) => {
-				self.repo_root.join("docs").join(lane).join(format!("{topic}.md"))
-			},
+			[lane, topic] if files::docs_lane_allowed(lane) && files::safe_resource_stem(topic) =>
+				self.repo_root.join("docs").join(lane).join(format!("{topic}.md")),
 			_ => return Err(McpError::resource_not_found()),
 		};
 

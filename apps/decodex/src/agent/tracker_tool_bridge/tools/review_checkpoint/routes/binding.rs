@@ -75,12 +75,10 @@ pub(in crate::agent::tracker_tool_bridge::tools::review_checkpoint::routes) fn r
 	let index = usize::try_from(index?).ok()?;
 
 	match source {
-		REVIEW_ROUTE_SOURCE_ACCEPTED => {
-			accepted_findings.get(index).map(|finding| finding.severity.as_str())
-		},
-		REVIEW_ROUTE_SOURCE_REJECTED => {
-			rejected_findings.get(index).map(|finding| finding.severity.as_str())
-		},
+		REVIEW_ROUTE_SOURCE_ACCEPTED =>
+			accepted_findings.get(index).map(|finding| finding.severity.as_str()),
+		REVIEW_ROUTE_SOURCE_REJECTED =>
+			rejected_findings.get(index).map(|finding| finding.severity.as_str()),
 		_ => None,
 	}
 }

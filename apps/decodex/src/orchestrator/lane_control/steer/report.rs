@@ -51,9 +51,8 @@ pub(super) fn lane_steer_report_from_response(
 ) -> LaneSteerReport {
 	let outcome = match &response.status {
 		LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
-		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected => {
-			RUN_CONTROL_ACTION_FAILED
-		},
+		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected =>
+			RUN_CONTROL_ACTION_FAILED,
 	};
 
 	LaneSteerReport {

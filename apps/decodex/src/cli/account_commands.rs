@@ -18,19 +18,16 @@ impl AccountCommand {
 	pub(super) fn run(&self) -> Result<()> {
 		match &self.command {
 			AccountSubcommand::List(args) => accounts::run_account_list(args.json),
-			AccountSubcommand::Select(args) => {
-				accounts::run_account_select(&args.selector, args.json)
-			},
+			AccountSubcommand::Select(args) =>
+				accounts::run_account_select(&args.selector, args.json),
 			AccountSubcommand::Clear(args) => accounts::run_account_clear(args.json),
-			AccountSubcommand::Logout(args) => {
-				accounts::run_account_logout(&args.selector, args.json)
-			},
-			AccountSubcommand::ImportAuth(args) => {
+			AccountSubcommand::Logout(args) =>
+				accounts::run_account_logout(&args.selector, args.json),
+			AccountSubcommand::ImportAuth(args) =>
 				accounts::run_account_import(&AccountImportRequest {
 					auth_json_path: args.auth_json.clone(),
 					json: args.json,
-				})
-			},
+				}),
 			AccountSubcommand::Use(args) => accounts::run_account_use(&AccountUseRequest {
 				selector: args.selector.clone(),
 				auth_json_path: args.auth_json.clone(),

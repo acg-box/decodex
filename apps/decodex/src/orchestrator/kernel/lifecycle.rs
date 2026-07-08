@@ -190,12 +190,10 @@ fn lifecycle_transition(kind: LifecycleEvidenceKind, outcome: LifecycleOutcome) 
 		(LifecycleEvidenceKind::LandingIntent, _) => "landing_started",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Succeeded) => "landed",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed) => "landing_failed",
-		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) => {
-			"manual_attention_required"
-		},
-		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded) => {
-			"closeout_completed"
-		},
+		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) =>
+			"manual_attention_required",
+		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded) =>
+			"closeout_completed",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Failed) => "closeout_failed",
 		(_, LifecycleOutcome::NeedsManualAttention) => "manual_attention_required",
 		(_, LifecycleOutcome::Intent) => "intent_recorded",
@@ -213,9 +211,8 @@ fn lifecycle_next_state(kind: LifecycleEvidenceKind, outcome: LifecycleOutcome) 
 		(LifecycleEvidenceKind::LandingIntent, _) => "landing_started",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Succeeded) => "landed",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed) => "landing_failed",
-		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) => {
-			"manual_attention_required"
-		},
+		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) =>
+			"manual_attention_required",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded) => "closed",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Failed) => "closeout_failed",
 		(_, LifecycleOutcome::NeedsManualAttention) => "manual_attention_required",
@@ -238,9 +235,8 @@ fn lifecycle_phase(
 		(LifecycleEvidenceKind::LandingIntent, _) => "waiting_for_merge",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Succeeded) => "landed",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed) => "landing_failed",
-		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) => {
-			"manual_attention_required"
-		},
+		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) =>
+			"manual_attention_required",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded) => "closed",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Failed) => "closeout_failed",
 		(_, LifecycleOutcome::NeedsManualAttention) => "manual_attention_required",
@@ -267,17 +263,14 @@ fn lifecycle_next_action(
 	}
 
 	match (kind, outcome, next_state) {
-		(LifecycleEvidenceKind::Handoff, _, "review_pending") => {
-			"wait_for_runtime_review_gate_or_external_review"
-		},
+		(LifecycleEvidenceKind::Handoff, _, "review_pending") =>
+			"wait_for_runtime_review_gate_or_external_review",
 		(LifecycleEvidenceKind::ReviewRepair, _, _) => "run_retained_review_repair_adapter",
 		(LifecycleEvidenceKind::LandingIntent, _, _) => "poll_landing_readback",
-		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Succeeded, _) => {
-			"run_retained_closeout_adapter"
-		},
-		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed, _) => {
-			"repair_landing_failure_or_request_manual_attention"
-		},
+		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Succeeded, _) =>
+			"run_retained_closeout_adapter",
+		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed, _) =>
+			"repair_landing_failure_or_request_manual_attention",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded, _) => "no_action",
 		(_, LifecycleOutcome::NeedsManualAttention, _) => "request_manual_attention",
 		_ => "continue_lifecycle",

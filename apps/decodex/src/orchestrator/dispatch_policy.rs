@@ -164,16 +164,14 @@ where
 			state_store,
 			hint,
 		),
-		IssueDispatchMode::ReviewRepair => {
+		IssueDispatchMode::ReviewRepair =>
 			Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
 				&& !self::retry_budget::issue_retry_budget_exhausted(
 					workflow,
 					state_store,
 					&issue.id,
-				)?)
-		},
-		IssueDispatchMode::Closeout => {
-			issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store)
-		},
+				)?),
+		IssueDispatchMode::Closeout =>
+			issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store),
 	}
 }

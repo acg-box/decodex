@@ -73,9 +73,7 @@ where
 		Ok(issue) => issue,
 		Err(error)
 			if tracker::issue_lookup_missing_error_for_candidate(&error, issue_identifier) =>
-		{
-			None
-		},
+			None,
 		Err(error) => return Err(error),
 	};
 	let Some(issue) = issue else {

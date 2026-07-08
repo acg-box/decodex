@@ -36,8 +36,7 @@ mod runtime_thread_archive;
 // Operator status plus retained post-review review/landing behavior.
 mod operator;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
 use std::{
 	cell::RefCell,
 	collections::{BTreeSet, HashMap},
