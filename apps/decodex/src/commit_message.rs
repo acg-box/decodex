@@ -8,7 +8,7 @@ pub(crate) use self::{
 		build_commit_message, build_landed_merge_commit_message, build_landing_commit_message,
 		validate_commit_message_subject,
 	},
-	model::MANUAL_AUTHORITY,
+	model::{BASELINE_AUTHORITY, MANUAL_AUTHORITY},
 	normalize::{looks_like_issue_identifier, normalize_issue_identifier},
 };
 

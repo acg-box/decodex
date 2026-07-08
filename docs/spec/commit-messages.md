@@ -55,6 +55,8 @@ Commit messages should be a single-line JSON object with this shape:
   - required
   - allowed values:
     - a Linear issue identifier such as `XY-180`
+    - reserved literal `"baseline"` for Decodex-owned baseline normalization commits
+      and merge subjects that are intentionally not backed by a Linear issue
     - reserved literal `"manual"` when the commit or land was created through explicit manual-authority mode
   - meaning: the primary work item that authorizes the change, or an explicit manual lane with no authoritative Linear issue
 - `impact`

@@ -28,6 +28,12 @@ pub(super) fn expected_developer_instructions(
 		sections.push(format!("Workflow policy\n{}", workflow.body()));
 	}
 
+	sections.push(format!(
+		"Registered repo gate\n- `canonicalize_commands`: {}\n- `verify_commands`: {}\n- When Decodex prompts say required validation or repo gate, run these registered command lists in order. Do not substitute broader repo-documentation examples for this lane.",
+		format_command_list(workflow.frontmatter().execution().canonicalize_commands()),
+		format_command_list(workflow.frontmatter().execution().verify_commands())
+	));
+
 	sections.extend(
 		read_first_files
 			.iter()
@@ -80,4 +86,12 @@ pub(super) fn expected_developer_instructions(
 	));
 
 	sections.join("\n\n")
+}
+
+fn format_command_list(commands: &[String]) -> String {
+	if commands.is_empty() {
+		String::from("[]")
+	} else {
+		commands.iter().map(|command| format!("`{command}`")).collect::<Vec<_>>().join(", ")
+	}
 }
