@@ -7,7 +7,7 @@ use crate::orchestrator::{
 };
 
 #[test]
-fn ensure_review_lifecycle_authority_ignores_stale_marker_projection_from_prior_handoff() {
+fn ignores_stale_marker_projection_from_prior_handoff() {
 	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue("In Review", &[]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");

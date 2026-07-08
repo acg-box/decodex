@@ -35,7 +35,7 @@ fn candidate_selection_allows_dispatch_when_another_issue_has_active_lease() {
 }
 
 #[test]
-fn candidate_selection_blocks_ordinary_dispatch_for_retained_review_lifecycle_authority() {
+fn blocks_ordinary_dispatch_for_retained_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("Todo", &[]);

@@ -46,7 +46,7 @@ fn autonomy_proposal_dry_run_candidate_shows_lineage_signals_gates_and_gaps() {
 }
 
 #[test]
-fn autonomy_proposal_can_carry_explicit_dependent_issue_candidates_into_decision_contract() {
+fn carries_dependent_candidates_into_contract() {
 	let objective = tests::objective_fixture();
 	let signal = tests::runtime_signal();
 	let mut input = tests::compile_input();

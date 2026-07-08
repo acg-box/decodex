@@ -63,7 +63,7 @@ fn operator_status_snapshot_surfaces_reconciliation_operation_for_stalled_runs()
 }
 
 #[test]
-fn operator_status_snapshot_preserves_stalled_run_activity_when_tagging_reconciliation() {
+fn preserves_stalled_activity_when_tagging() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = running_lanes::sample_issue("Todo", &[]);

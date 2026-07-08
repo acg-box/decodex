@@ -113,7 +113,7 @@ fn recovery_skip_cache_suppresses_repeated_unowned_worktree_lookup() {
 
 	fs::create_dir_all(&worktree_path).expect("stale worktree directory should exist");
 
-	let first = orchestrator::recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
+	let first = orchestrator::recover_runtime_state_with_skip_cache(
 		&tracker,
 		&config,
 		&workflow,
@@ -121,7 +121,7 @@ fn recovery_skip_cache_suppresses_repeated_unowned_worktree_lookup() {
 		Some(&mut skip_cache),
 	)
 	.expect("first recovery probe should succeed");
-	let second = orchestrator::recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
+	let second = orchestrator::recover_runtime_state_with_skip_cache(
 		&tracker,
 		&config,
 		&workflow,

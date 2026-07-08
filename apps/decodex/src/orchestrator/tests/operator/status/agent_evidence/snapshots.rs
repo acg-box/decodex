@@ -112,7 +112,7 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 }
 
 #[test]
-fn agent_evidence_snapshot_does_not_turn_waiting_running_lane_into_attention_blocker() {
+fn does_not_turn_waiting_lane_into_attention() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be utf-8"));

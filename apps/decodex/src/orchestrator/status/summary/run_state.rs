@@ -49,9 +49,7 @@ pub(super) fn operator_run_has_recent_app_server_execution(run: &OperatorRunStat
 		})
 }
 
-pub(super) fn operator_run_has_stale_execution_without_known_process(
-	run: &OperatorRunStatus,
-) -> bool {
+pub(super) fn operator_run_has_stale_execution_without_process(run: &OperatorRunStatus) -> bool {
 	matches!(run.status.as_str(), "starting" | "running")
 		&& run.phase == "executing"
 		&& run.wait_reason.is_none()

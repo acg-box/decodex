@@ -54,12 +54,11 @@ where
 		tracker::prepare_linear_execution_event_comment(&body, record, ledger.privacy_classifier)?;
 
 	if ledger.state_store.record_linear_execution_event(&projection.record)?
-		&& let Err(error) =
-			tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
-				tracker,
-				&ledger.issue.id,
-				&projection,
-			) {
+		&& let Err(error) = tracker::create_linear_execution_event_comment_direct(
+			tracker,
+			&ledger.issue.id,
+			&projection,
+		) {
 		ledger.state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
 
 		return Err(error);

@@ -20,7 +20,7 @@ pub(crate) fn run_repo_gate_commands(
 		.map(|_| ())
 }
 
-pub(crate) fn run_repo_gate_commands_allow_owned_tracked_rewrites(
+pub(crate) fn run_repo_gate_commands_with_owned_rewrites(
 	canonicalize_commands: &[String],
 	verify_commands: &[String],
 	cwd: &Path,

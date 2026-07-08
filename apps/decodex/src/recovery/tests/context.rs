@@ -67,7 +67,7 @@ fn recovery_read_only_backoff_recorder_does_not_persist_new_backoff() {
 }
 
 #[test]
-fn review_handoff_diagnose_skips_terminal_identifier_worktree_before_tracker_refresh() {
+fn skips_terminal_identifier_worktree_before_refresh() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
 		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
@@ -95,10 +95,7 @@ fn review_handoff_diagnose_skips_terminal_identifier_worktree_before_tracker_ref
 	let diagnostic = diagnostics.first().expect("local residue diagnostic should render");
 
 	assert_eq!(diagnostics.len(), 1);
-	assert_eq!(
-		diagnostic.classification,
-		super::super::REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION
-	);
+	assert_eq!(diagnostic.classification, super::super::STALE_TERMINAL_RESIDUE_CLASSIFICATION);
 	assert_eq!(diagnostic.issue_id, stale_issue_id);
 	assert_eq!(diagnostic.issue_state, "local_terminal_residue");
 	assert!(
@@ -108,7 +105,7 @@ fn review_handoff_diagnose_skips_terminal_identifier_worktree_before_tracker_ref
 }
 
 #[test]
-fn review_handoff_diagnose_targeted_terminal_identifier_worktree_before_tracker_lookup() {
+fn diagnose_terminal_identifier_worktree_before_lookup() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let context =
 		tests::sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
@@ -135,10 +132,7 @@ fn review_handoff_diagnose_targeted_terminal_identifier_worktree_before_tracker_
 	let diagnostic = super::diagnose_issue_with_tracker(&context, &tracker, stale_issue_id)
 		.expect("targeted retained review diagnostic should classify local residue");
 
-	assert_eq!(
-		diagnostic.classification,
-		super::super::REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION
-	);
+	assert_eq!(diagnostic.classification, super::super::STALE_TERMINAL_RESIDUE_CLASSIFICATION);
 	assert_eq!(diagnostic.issue_id, stale_issue_id);
 	assert_eq!(diagnostic.issue_state, "local_terminal_residue");
 	assert!(

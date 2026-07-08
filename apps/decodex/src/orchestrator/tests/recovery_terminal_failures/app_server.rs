@@ -122,7 +122,7 @@ fn app_server_preflight_timeouts_retry_before_attention_budget_is_exhausted() {
 }
 
 #[test]
-fn exhausted_app_server_preflight_timeout_retry_budget_requires_attention_with_timeout_class() {
+fn exhausted_timeout_budget_requires_attention() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");

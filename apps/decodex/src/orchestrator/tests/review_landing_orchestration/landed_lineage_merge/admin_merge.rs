@@ -127,7 +127,7 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 }
 
 #[test]
-fn reconcile_post_review_orchestration_records_lifecycle_attention_when_admin_merge_unavailable() {
+fn records_lifecycle_attention_when_admin_merge_unavailable() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");

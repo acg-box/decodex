@@ -4,7 +4,7 @@ use crate::{
 	orchestrator,
 	prelude::Result,
 	recovery::{
-		REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION, context::RecoveryContext,
+		STALE_TERMINAL_RESIDUE_CLASSIFICATION, context::RecoveryContext,
 		reports::ReviewHandoffDiagnostic,
 	},
 	state::WorktreeMapping,
@@ -38,7 +38,7 @@ pub(in crate::recovery::review_handoff_diagnosis) fn stale_terminal_residue_revi
 		issue_id: worktree.issue_id().to_owned(),
 		issue_identifier: worktree.issue_id().to_owned(),
 		issue_state: String::from("local_terminal_residue"),
-		classification: String::from(REVIEW_HANDOFF_STALE_TERMINAL_RESIDUE_CLASSIFICATION),
+		classification: String::from(STALE_TERMINAL_RESIDUE_CLASSIFICATION),
 		reason: String::from(
 			"terminal_unleased_runtime_recorded_identifier_mapping_with_missing_path",
 		),

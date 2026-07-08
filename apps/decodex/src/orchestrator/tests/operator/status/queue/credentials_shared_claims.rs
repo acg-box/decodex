@@ -55,7 +55,7 @@ fn live_operator_status_snapshot_surfaces_git_credential_failures() {
 }
 
 #[test]
-fn live_operator_status_snapshot_recovers_shared_claims_for_fresh_status_store_instances() {
+fn recovers_shared_claims_for_fresh_stores() {
 	let workflow_markdown =
 		status::sample_workflow_markdown("pubfi", &[], "Follow the repository policy.", 1);
 	let (_temp_dir, config, workflow) =
@@ -124,7 +124,7 @@ fn live_operator_status_snapshot_recovers_shared_claims_for_fresh_status_store_i
 }
 
 #[test]
-fn live_operator_status_snapshot_reconstructs_same_shared_view_for_fresh_state_stores() {
+fn reconstructs_shared_view_for_fresh_stores() {
 	let (_temp_dir, config, workflow) = status::temp_project_layout();
 	let active_issue = recovery_terminal_support::sample_active_issue("In Progress");
 	let closed_issue = status::sample_issue_with_sort_fields(

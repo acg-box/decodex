@@ -9,10 +9,11 @@ use time::OffsetDateTime;
 use crate::orchestrator::{
 	self, DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
 	operator_http::{
-		self, DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS, DashboardBroadcastEvent,
-		DashboardEventHub, DashboardRunActivityEvent, OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL,
-		OperatorCodexAccountControlStatus, OperatorRunStatus, Result, ServiceConfig, StateStore,
-		TcpStream, WorkflowDocument, dashboard::framing, types::DashboardClientSubscription,
+		self, DashboardBroadcastEvent, DashboardEventHub, DashboardRunActivityEvent,
+		OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL, OperatorCodexAccountControlStatus,
+		OperatorRunStatus, RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS, Result, ServiceConfig,
+		StateStore, TcpStream, WorkflowDocument, dashboard::framing,
+		types::DashboardClientSubscription,
 	},
 };
 
@@ -122,7 +123,7 @@ pub(crate) fn build_operator_run_activity_event(
 pub(crate) fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
 	match value {
 		Value::Object(object) => {
-			for field in DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS {
+			for field in RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS {
 				object.remove(*field);
 			}
 			for child in object.values_mut() {

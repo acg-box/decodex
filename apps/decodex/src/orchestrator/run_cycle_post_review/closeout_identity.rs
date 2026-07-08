@@ -28,7 +28,7 @@ pub(crate) fn retained_closeout_preferred_run_identity(
 	};
 
 	if retained_closeout_run_identity_is_reusable(state_store, &issue.id, &identity)?
-		|| retained_closeout_handoff_identity_is_reusable_after_parent_reconciliation(
+		|| retained_closeout_handoff_identity_can_reuse(
 			state_store,
 			&issue.id,
 			&identity,
@@ -62,7 +62,7 @@ pub(crate) fn retained_closeout_run_identity_is_reusable(
 	Ok(!matches!(existing_attempt.status(), "failed" | "interrupted" | TERMINAL_GUARDED_RUN_STATUS))
 }
 
-fn retained_closeout_handoff_identity_is_reusable_after_parent_reconciliation(
+fn retained_closeout_handoff_identity_can_reuse(
 	state_store: &StateStore,
 	issue_id: &str,
 	identity: &RetainedReviewRunIdentity,

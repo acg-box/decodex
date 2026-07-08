@@ -3,7 +3,7 @@ use crate::orchestrator::execution_failure::{
 	AppServerZeroEvidenceStartFailure, RepoGateFailure, Report,
 };
 
-pub(in crate::orchestrator::execution_failure::retryable_writeback) fn retryable_failure_happened_before_effective_agent_execution(
+pub(in crate::orchestrator::execution_failure::retryable_writeback) fn failure_precedes_effective_agent_execution(
 	error: &Report,
 ) -> bool {
 	error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()

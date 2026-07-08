@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[test]
-fn exited_child_reconciliation_detects_retained_partial_progress_from_dirty_worktree() {
+fn detects_partial_progress_from_dirty_worktree() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue_with_sort_fields(

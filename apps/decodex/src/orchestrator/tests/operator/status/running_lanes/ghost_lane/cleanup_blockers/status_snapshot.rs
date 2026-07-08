@@ -43,7 +43,7 @@ fn live_operator_status_allows_ghost_recovery_when_worktree_mapping_path_is_miss
 }
 
 #[test]
-fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_retained_worktree_exists() {
+fn blocks_cleanup_when_retained_worktree_exists() {
 	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());
@@ -77,7 +77,7 @@ fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_retained_worktre
 }
 
 #[test]
-fn live_operator_status_blocks_missing_issue_ghost_cleanup_when_control_channel_row_exists() {
+fn blocks_cleanup_when_control_channel_row_exists() {
 	let (temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::new(Vec::new());

@@ -32,7 +32,7 @@ fn ghost_lane_cleanup_status_blockers_treat_invalid_local_issue_id_as_missing_is
 }
 
 #[test]
-fn ghost_lane_cleanup_status_blockers_preserve_live_blockers_after_invalid_issue_id_lookup() {
+fn preserves_live_blockers_after_invalid_issue_lookup() {
 	let (temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::with_refresh_error(
@@ -66,7 +66,7 @@ fn ghost_lane_cleanup_status_blockers_preserve_live_blockers_after_invalid_issue
 }
 
 #[test]
-fn ghost_lane_cleanup_status_blockers_do_not_hide_validation_error_for_server_issue_id() {
+fn does_not_hide_validation_error_for_server_issue() {
 	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let tracker = FakeTracker::with_refresh_error(

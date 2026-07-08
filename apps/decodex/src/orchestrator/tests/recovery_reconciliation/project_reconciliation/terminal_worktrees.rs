@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[test]
-fn project_reconciliation_clears_terminal_identifier_worktree_before_tracker_refresh() {
+fn clears_terminal_identifier_worktree_before_refresh() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let tracker = FakeTracker::new(Vec::new());
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -57,7 +57,7 @@ fn project_reconciliation_clears_terminal_identifier_worktree_before_tracker_ref
 }
 
 #[test]
-fn project_reconciliation_preserves_terminal_identifier_worktree_with_review_authority() {
+fn preserves_terminal_identifier_worktree_with_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let stale_issue_id = "PUB-001";
 	let branch_name = "x/pubfi-pub-001";

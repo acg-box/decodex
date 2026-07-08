@@ -4,7 +4,7 @@ use crate::orchestrator::tests::operator::status::running_lanes::{
 };
 
 #[test]
-fn operator_status_current_lane_lifecycle_recovers_from_local_evidence_after_restart() {
+fn recovers_current_lane_from_local_evidence() {
 	let (_temp_dir, config, _workflow) = running_lanes::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = running_lanes::sample_issue(

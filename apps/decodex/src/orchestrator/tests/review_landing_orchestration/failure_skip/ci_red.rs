@@ -9,8 +9,7 @@ use crate::{
 };
 
 #[test]
-fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requesting_external_review()
-{
+fn repairs_unhandled_ci_red_before_review() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = review_landing_status_support::post_review_sample_service_owned_issue("In Review");

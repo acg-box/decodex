@@ -7,7 +7,7 @@ use crate::orchestrator::{
 };
 
 #[test]
-fn reconcile_post_review_orchestration_rebinds_stale_head_lifecycle_authority_after_repair_push() {
+fn rebinds_stale_head_authority_after_repair_push() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let config = tests::service_config_with_github_token_env_var(&config, "PATH");
 	let _path_guard = tests::install_fake_post_issue_comment_gh_response(

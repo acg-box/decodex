@@ -25,7 +25,7 @@ pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is
 	)
 }
 
-pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is_dead_process_control_telemetry(
+pub(in crate::recovery::evidence::stale_active) fn stale_active_event_is_dead_process_telemetry(
 	event: &PrivateExecutionEvent,
 ) -> bool {
 	match event.event_type() {

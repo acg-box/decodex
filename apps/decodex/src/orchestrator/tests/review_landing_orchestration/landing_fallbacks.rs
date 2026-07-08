@@ -1,15 +1,15 @@
-mod reconcile_post_review_orchestration_escalates_runtime_standard_review_checkpoint_failure_after_budget;
-mod reconcile_post_review_orchestration_escalates_strict_runtime_review_failure_without_restarting_external_request;
-mod reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallback;
-mod reconcile_post_review_orchestration_routes_non_github_review_non_clean_landing_to_agent_fallback;
-mod reconcile_post_review_orchestration_routes_runtime_standard_review_terminal_status_to_attention;
-mod reconcile_post_review_orchestration_routes_unknown_runtime_standard_review_status_to_attention;
-mod reconcile_post_review_orchestration_runs_admin_merge_without_external_review_when_disabled;
-mod reconcile_post_review_orchestration_runs_runtime_standard_repair_checkpoint_after_findings;
-mod reconcile_post_review_orchestration_runs_runtime_standard_review_after_external_pass_before_admin_merge;
-mod reconcile_post_review_orchestration_runs_runtime_standard_review_checkpoint_before_admin_merge;
-mod reconcile_post_review_orchestration_skips_runtime_standard_review_while_landing_gates_pending;
-mod reconcile_post_review_orchestration_waits_for_runtime_standard_review_checkpoint;
+mod admin_merge_without_external_review;
+mod checkpoint_before_admin_merge;
+mod checkpoint_failure_after_budget;
+mod non_clean_landing_agent_fallback;
+mod non_github_non_clean_agent_fallback;
+mod repair_checkpoint_after_findings;
+mod runtime_review_after_external_pass;
+mod skips_review_while_gates_pending;
+mod strict_failure_no_external_restart;
+mod terminal_review_status_attention;
+mod unknown_review_status_attention;
+mod waits_for_checkpoint;
 
 use std::{
 	cell::{Cell, RefCell},
@@ -181,9 +181,7 @@ fn configure_cached_github_origin(repo_root: &Path) {
 	);
 }
 
-fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
-	review_level: ReviewLevel,
-) {
+fn assert_admin_merge_without_external_review(review_level: ReviewLevel) {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -276,7 +274,7 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 	);
 }
 
-fn assert_reconcile_post_review_orchestration_waits_for_runtime_standard_review_checkpoint() {
+fn assert_waits_for_checkpoint() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -322,7 +320,7 @@ fn assert_reconcile_post_review_orchestration_waits_for_runtime_standard_review_
 	);
 
 	let runtime_review_runner = FailingRuntimeReviewRunner::new();
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -349,8 +347,7 @@ fn assert_reconcile_post_review_orchestration_waits_for_runtime_standard_review_
 	assert!(tracker.label_additions.borrow().is_empty());
 }
 
-fn assert_reconcile_post_review_orchestration_escalates_runtime_standard_review_checkpoint_failure_after_budget()
- {
+fn assert_checkpoint_failure_after_budget() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -400,7 +397,7 @@ fn assert_reconcile_post_review_orchestration_escalates_runtime_standard_review_
 	let runtime_review_runner = FailingRuntimeReviewRunner::new();
 
 	for _ in 0..3 {
-		orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+		orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 			&tracker,
 			&config,
 			&workflow,
@@ -439,10 +436,7 @@ fn assert_reconcile_post_review_orchestration_escalates_runtime_standard_review_
 	);
 }
 
-fn assert_reconcile_post_review_orchestration_routes_runtime_standard_review_terminal_status_to_attention(
-	status: &'static str,
-	expected_reason: &str,
-) {
+fn assert_terminal_review_status_attention(status: &'static str, expected_reason: &str) {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -489,7 +483,7 @@ fn assert_reconcile_post_review_orchestration_routes_runtime_standard_review_ter
 	};
 	let runtime_review_runner = TerminalRuntimeReviewRunner::new(status);
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -512,7 +506,7 @@ fn assert_reconcile_post_review_orchestration_routes_runtime_standard_review_ter
 	assert_eq!(checkpoint.status(), status);
 	assert!(tracker.comments.borrow().is_empty());
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -538,8 +532,7 @@ fn assert_reconcile_post_review_orchestration_routes_runtime_standard_review_ter
 	);
 }
 
-fn assert_reconcile_post_review_orchestration_routes_unknown_runtime_standard_review_status_to_attention()
- {
+fn assert_unknown_review_status_attention() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -598,7 +591,7 @@ fn assert_reconcile_post_review_orchestration_routes_unknown_runtime_standard_re
 	);
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -645,8 +638,7 @@ fn assert_standard_review_attention_lifecycle_authority(
 	assert_eq!(lifecycle.next_action(), "request_manual_attention");
 }
 
-fn assert_reconcile_post_review_orchestration_skips_runtime_standard_review_while_landing_gates_pending()
- {
+fn assert_skips_review_while_gates_pending() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -691,7 +683,7 @@ fn assert_reconcile_post_review_orchestration_skips_runtime_standard_review_whil
 	);
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -706,8 +698,7 @@ fn assert_reconcile_post_review_orchestration_skips_runtime_standard_review_whil
 	assert!(tracker.comments.borrow().is_empty());
 }
 
-fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_after_external_pass_before_admin_merge()
- {
+fn assert_runtime_review_after_external_pass() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -771,7 +762,7 @@ fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_after
 	};
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -788,7 +779,7 @@ fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_after
 		"strict review must not land in the same tick that records runtime review evidence",
 	);
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -809,8 +800,7 @@ fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_after
 	);
 }
 
-fn assert_reconcile_post_review_orchestration_escalates_strict_runtime_review_failure_without_restarting_external_request()
- {
+fn assert_strict_failure_no_external_restart() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -875,7 +865,7 @@ fn assert_reconcile_post_review_orchestration_escalates_strict_runtime_review_fa
 	let runtime_review_runner = FailingRuntimeReviewRunner::new();
 
 	for _ in 0..3 {
-		orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+		orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 			&tracker,
 			&config,
 			&workflow,
@@ -909,8 +899,7 @@ fn assert_reconcile_post_review_orchestration_escalates_strict_runtime_review_fa
 	);
 }
 
-fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_checkpoint_before_admin_merge()
- {
+fn assert_checkpoint_before_admin_merge() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -958,7 +947,7 @@ fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_check
 	};
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -988,7 +977,7 @@ fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_check
 		.expect("runtime-owned review checkpoint should persist");
 	assert_eq!(checkpoint.status(), "clean");
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -1015,8 +1004,7 @@ fn assert_reconcile_post_review_orchestration_runs_runtime_standard_review_check
 	);
 }
 
-fn assert_reconcile_post_review_orchestration_runs_runtime_standard_repair_checkpoint_after_findings()
- {
+fn assert_repair_checkpoint_after_findings() {
 	let (temp_dir, config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
 		tests::install_fake_admin_merge_gh_response(&temp_dir);
@@ -1084,7 +1072,7 @@ fn assert_reconcile_post_review_orchestration_runs_runtime_standard_repair_check
 	);
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_inspector_and_runtime_review_runner(
+	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
