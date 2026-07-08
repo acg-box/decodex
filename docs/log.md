@@ -3,6 +3,7 @@
 ## 2026-07-08
 
 - Ran the baseline guard latest-main dispatch E2E canary through Decodex.
+- Exercised the full-auto daemon takeover path for baseline-guard validation.
 
 ## 2026-07-07
 
