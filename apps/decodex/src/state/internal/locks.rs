@@ -1,12 +1,10 @@
 mod cleanup;
 mod coordinator;
-#[cfg(unix)]
-mod fd_flags;
+#[cfg(unix)] mod fd_flags;
 mod paths;
 mod record;
 
-#[cfg(unix)]
-pub(in crate::state) use self::fd_flags::{clear_close_on_exec, set_close_on_exec};
+#[cfg(unix)] pub(in crate::state) use self::fd_flags::{clear_close_on_exec, set_close_on_exec};
 pub(in crate::state) use self::{
 	cleanup::{prune_unlocked_shared_lock_files, remove_lock_file_if_exists},
 	coordinator::{acquire_shared_lock_coordinator, lock_root_from_lock_path},

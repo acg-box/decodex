@@ -1,12 +1,14 @@
 use std::fs;
 
-use crate::orchestrator::{
-	self, StateStore,
-	tests::{
-		self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
+use crate::{
+	orchestrator::{
+		self, StateStore,
+		tests::{
+			self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
+		},
 	},
+	state::ReviewPolicyCheckpointInput,
 };
-use crate::state::ReviewPolicyCheckpointInput;
 
 #[test]
 fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {

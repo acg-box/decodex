@@ -21,8 +21,7 @@ pub(crate) use crate::agent::{
 	ReviewHandoffContext, ReviewHandoffWritebackFailed, RunCompletionDisposition,
 };
 pub(crate) use context::write_run_operation_marker_best_effort;
-#[cfg(test)]
-pub(crate) use credentials::AgentGitCredentialEnvironment;
+#[cfg(test)] pub(crate) use credentials::AgentGitCredentialEnvironment;
 pub(crate) use credentials::prepare_agent_git_credentials;
 
 use crate::orchestrator::{

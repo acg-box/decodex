@@ -30,12 +30,9 @@ pub(in crate::orchestrator::status::render::run_rows::run) fn operator_run_queue
 		"process_stopped" => String::from("not_held (process_stopped needs attention)"),
 		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH
 			if orchestrator::operator_run_has_recent_app_server_execution(run) =>
-		{
-			String::from("not_held (app_server_activity keeps lane visible)")
-		},
-		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH => {
-			String::from("not_held (process_identity_mismatch needs attention)")
-		},
+			String::from("not_held (app_server_activity keeps lane visible)"),
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH =>
+			String::from("not_held (process_identity_mismatch needs attention)"),
 		_ => String::from("not_held"),
 	}
 }

@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::unix::ffi::OsStringExt as _;
+#[cfg(unix)] use std::os::unix::ffi::OsStringExt as _;
 use std::{ffi::OsString, path::PathBuf};
 
 use crate::prelude::Result;

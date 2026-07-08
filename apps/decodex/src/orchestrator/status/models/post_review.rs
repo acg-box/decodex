@@ -100,9 +100,8 @@ pub(in crate::orchestrator) enum PostReviewLifecycleAction {
 impl PostReviewLifecycleAction {
 	pub(in crate::orchestrator) fn parse(value: &str) -> Result<Self> {
 		Ok(match value {
-			"wait_for_runtime_review_gate_or_external_review" => {
-				Self::StartReviewGateOrExternalReview
-			},
+			"wait_for_runtime_review_gate_or_external_review" =>
+				Self::StartReviewGateOrExternalReview,
 			"request_external_review" => Self::RequestExternalReview,
 			"wait_for_external_review_ack" => Self::WaitForExternalReviewAck,
 			"wait_for_external_review_result" => Self::WaitForExternalReviewResult,

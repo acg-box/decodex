@@ -34,14 +34,12 @@ impl LoopGuardrailReason {
 			"no_effective_diff" => Some(Self::NoEffectiveDiff),
 			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
 			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
-			"review_handoff_state_drift" | "review_handoff_rebind_required" => {
-				Some(Self::ReviewHandoffStateDrift)
-			},
+			"review_handoff_state_drift" | "review_handoff_rebind_required" =>
+				Some(Self::ReviewHandoffStateDrift),
 			"dependency_program_stale" | "dependency_blocked" => Some(Self::DependencyProgramStale),
 			"uncovered_direction" | "research_contract_required" => Some(Self::UncoveredDirection),
-			"ambiguous_retained_progress" | "ownership_ambiguous" => {
-				Some(Self::AmbiguousRetainedProgress)
-			},
+			"ambiguous_retained_progress" | "ownership_ambiguous" =>
+				Some(Self::AmbiguousRetainedProgress),
 			_ => None,
 		}
 	}

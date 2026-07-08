@@ -1,5 +1,4 @@
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
+#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 use std::{fs, io::ErrorKind, path::Path, process};
 
 use toml_edit::DocumentMut;

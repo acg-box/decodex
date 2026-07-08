@@ -15,9 +15,8 @@ pub(crate) fn archive_app_server_thread_after_success(
 ) -> crate::prelude::Result<AppServerThreadArchiveOutcome> {
 	let result = match archive_app_server_thread_after_success_inner(request) {
 		Ok(()) => Ok(AppServerThreadArchiveOutcome::Archived),
-		Err(error) if thread_archive_error_allows_discard(&error) => {
-			Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread)
-		},
+		Err(error) if thread_archive_error_allows_discard(&error) =>
+			Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread),
 		Err(error) => Err(error),
 	};
 

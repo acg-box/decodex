@@ -109,9 +109,8 @@ fn post_review_readback_root_cause_for_reason(
 	reason: &str,
 ) -> Option<PullRequestReadbackRootCause> {
 	match reason {
-		"pull_request_repository_parse_failed" => {
-			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed)
-		},
+		"pull_request_repository_parse_failed" =>
+			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed),
 		"pull_request_branch_mismatch"
 		| "pull_request_head_mismatch"
 		| "pull_request_head_repository_name_mismatch"
@@ -121,9 +120,8 @@ fn post_review_readback_root_cause_for_reason(
 		| "lifecycle_record_lineage_mismatch"
 		| "review_lifecycle_authority_branch_mismatch"
 		| "review_lifecycle_authority_head_mismatch"
-		| "review_lifecycle_authority_pr_mismatch" => {
-			Some(PullRequestReadbackRootCause::LineageValidationFailed)
-		},
+		| "review_lifecycle_authority_pr_mismatch" =>
+			Some(PullRequestReadbackRootCause::LineageValidationFailed),
 		_ => None,
 	}
 }

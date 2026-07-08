@@ -33,5 +33,4 @@ pub(crate) use merge_readback::{
 pub(crate) use repository::{
 	RepositoryContext, inspect_repository_context, pull_request_matches_repository,
 };
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

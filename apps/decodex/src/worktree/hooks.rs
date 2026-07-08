@@ -10,5 +10,4 @@ pub(super) use self::{
 	output::append_output_details,
 	shell::run_workspace_hook_shell_command,
 };
-#[cfg(test)]
-pub(super) use marker::workspace_hook_shell_from_env;
+#[cfg(test)] pub(super) use marker::workspace_hook_shell_from_env;

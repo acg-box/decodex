@@ -28,8 +28,6 @@ pub use git_paths::{
 	canonical_repo_root_for_checkout, checkouts_share_repository, git_dir_for_checkout,
 };
 
-#[cfg(test)]
-use git_paths::path_buf_from_git_line_output;
+#[cfg(test)] use git_paths::path_buf_from_git_line_output;
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

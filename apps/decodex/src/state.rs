@@ -46,12 +46,9 @@ pub(crate) use self::{
 	},
 };
 pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
-#[cfg(test)]
-pub(crate) use models::ReviewLifecycleHandoffFixture;
-#[cfg(test)]
-pub(crate) use models::ReviewLifecycleTransitionFixture;
-#[allow(unused_imports)]
-pub(crate) use models::WorktreeProvenance;
+#[cfg(test)] pub(crate) use models::ReviewLifecycleHandoffFixture;
+#[cfg(test)] pub(crate) use models::ReviewLifecycleTransitionFixture;
+#[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
 #[cfg(test)]
 pub(crate) use run_activity_marker::{
 	current_process_start_identity, read_run_activity_marker_record, write_run_activity_marker,
@@ -157,5 +154,4 @@ pub(crate) fn is_decodex_runtime_artifact_relative_path(path: &Path) -> bool {
 		|| path.starts_with(RUN_CONTROL_CHANNEL_DIR)
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;

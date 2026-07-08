@@ -139,12 +139,10 @@ impl CodexAccountPool {
 						records_changed = true;
 
 						match self.probe_record_usage(&record) {
-							Ok(usage) => {
-								self.activity_summary_from_usage_probe(&record, usage, "succeeded")?
-							},
-							Err(retry_error) => {
-								record.probe_failed_activity_summary(now, "failed", &retry_error)
-							},
+							Ok(usage) =>
+								self.activity_summary_from_usage_probe(&record, usage, "succeeded")?,
+							Err(retry_error) =>
+								record.probe_failed_activity_summary(now, "failed", &retry_error),
 						}
 					},
 					Err(refresh_error) => {

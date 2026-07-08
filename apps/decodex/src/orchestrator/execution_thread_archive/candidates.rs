@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
-#[cfg(test)]
-use crate::orchestrator::{AppServerRunResult, IssueRunPlan};
+#[cfg(test)] use crate::orchestrator::{AppServerRunResult, IssueRunPlan};
 use crate::orchestrator::{
 	Result, StateStore, TERMINAL_GUARDED_RUN_STATUS,
 	execution_thread_archive::model::{ThreadArchiveCandidate, ThreadArchiveCandidateSource},

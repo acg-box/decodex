@@ -7,10 +7,8 @@ use std::path::Path;
 
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-#[cfg(test)]
-pub(super) use self::issue::ensure_manual_closeout_issue_scope;
-#[cfg(test)]
-pub(super) use self::receipt::read_manual_land_closeout_receipt;
+#[cfg(test)] pub(super) use self::issue::ensure_manual_closeout_issue_scope;
+#[cfg(test)] pub(super) use self::receipt::read_manual_land_closeout_receipt;
 pub(super) use self::{
 	cleanup::{
 		cleanup_manual_land_lane_checkout, ensure_manual_land_checkout_is_managed_lane,
