@@ -2,22 +2,22 @@ use serde_json::Value;
 
 use crate::orchestrator::{
 	PrivateExecutionEvent,
-	agent_evidence::{PHASE_ACCEPTANCE_CHECK_EVENT_TYPE, PrivateEvidencePhaseAcceptanceSummary},
+	agent_evidence::{PrivateEvidenceValidationSummary, VALIDATION_EVIDENCE_EVENT_TYPE},
 };
 
-pub(super) fn phase_acceptance_checks_from_private_events(
+pub(super) fn validation_evidence_from_private_events(
 	events: &[PrivateExecutionEvent],
-) -> Vec<PrivateEvidencePhaseAcceptanceSummary> {
+) -> Vec<PrivateEvidenceValidationSummary> {
 	events
 		.iter()
-		.filter(|event| event.event_type() == PHASE_ACCEPTANCE_CHECK_EVENT_TYPE)
-		.filter_map(phase_acceptance_check_from_private_event)
+		.filter(|event| event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE)
+		.filter_map(validation_evidence_from_private_event)
 		.collect()
 }
 
-fn phase_acceptance_check_from_private_event(
+fn validation_evidence_from_private_event(
 	event: &PrivateExecutionEvent,
-) -> Option<PrivateEvidencePhaseAcceptanceSummary> {
+) -> Option<PrivateEvidenceValidationSummary> {
 	let payload = event.payload();
 	let phase = payload.get("phase")?.as_str()?.to_owned();
 	let decision = payload.get("decision")?.as_str()?.to_owned();
@@ -52,7 +52,7 @@ fn phase_acceptance_check_from_private_event(
 		.and_then(Value::as_bool)
 		.unwrap_or(false);
 
-	Some(PrivateEvidencePhaseAcceptanceSummary {
+	Some(PrivateEvidenceValidationSummary {
 		phase,
 		decision,
 		reason_code,
@@ -64,7 +64,7 @@ fn phase_acceptance_check_from_private_event(
 		next_action: payload
 			.get("next_action")
 			.and_then(Value::as_str)
-			.unwrap_or("inspect_phase_acceptance_check")
+			.unwrap_or("inspect_validation_evidence")
 			.to_owned(),
 	})
 }

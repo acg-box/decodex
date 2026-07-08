@@ -7,10 +7,9 @@ mod goal_spec;
 mod recovery;
 mod validation;
 
-#[cfg(test)]
-pub(super) use self::recovery::latest_phase_goal_recovery_candidate;
+#[cfg(test)] pub(super) use self::recovery::latest_phase_goal_recovery_candidate;
 pub(super) use self::{
-	acceptance::PhaseAcceptanceCheckFailure,
+	acceptance::ValidationEvidenceFailure,
 	controller::{RepoGatePhaseGoalController, build_phase_goal_controller},
 	recovery::{
 		PhaseGoalRecoveryContinuation, issue_has_blocking_lane_decision_evidence,

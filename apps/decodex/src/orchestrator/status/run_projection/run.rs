@@ -8,9 +8,9 @@ mod status;
 use crate::{
 	orchestrator::{
 		AgentPrivateEvidenceRef, CodexAccountActivitySummary, OperatorLoopStatus,
-		OperatorPhaseAcceptanceStatus, OperatorRunAppServerState, OperatorRunLifecycleProjection,
-		OperatorRunProtocolSummary, OperatorRunStatus, OperatorRunTiming,
-		OperatorTerminalFinalizeProjection, PrivateExecutionEvent, ProjectLoopEvidenceSnapshot,
+		OperatorRunAppServerState, OperatorRunLifecycleProjection, OperatorRunProtocolSummary,
+		OperatorRunStatus, OperatorRunTiming, OperatorTerminalFinalizeProjection,
+		OperatorValidationEvidenceStatus, PrivateExecutionEvent, ProjectLoopEvidenceSnapshot,
 		ProjectRunStatus, ProtocolActivitySummary, RunActivityMarker, ServiceConfig,
 	},
 	prelude::Result,
@@ -37,10 +37,10 @@ pub(crate) fn operator_run_public_progress_phase(
 	phase::operator_run_public_progress_phase(events)
 }
 
-pub(crate) fn operator_run_phase_acceptance_status(
+pub(crate) fn operator_run_validation_evidence_status(
 	events: &[PrivateExecutionEvent],
-) -> Option<OperatorPhaseAcceptanceStatus> {
-	phase::operator_run_phase_acceptance_status(events)
+) -> Option<OperatorValidationEvidenceStatus> {
+	phase::operator_run_validation_evidence_status(events)
 }
 
 pub(crate) fn hydrate_operator_run_derived_status(status: OperatorRunStatus) -> OperatorRunStatus {

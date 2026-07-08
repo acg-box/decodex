@@ -7,7 +7,7 @@ authority: normative
 owner: runtime
 tags: [spec]
 code_refs: [apps/decodex/src/workflow.rs, apps/decodex/src/orchestrator/git_ops.rs, apps/decodex/src/orchestrator/execution.rs]
-drift_watch: [canonicalize_commands, verify_commands, repo_gate_tracked_rewrites_left, phase_acceptance_check, phase_goal_next]
+drift_watch: [canonicalize_commands, verify_commands, repo_gate_lane_external_tracked_rewrite, repo_gate_tracked_rewrites_left, validation_evidence, phase_goal_next]
 last_verified: 2026-06-23
 ---
 # Workflow File Specification
@@ -269,11 +269,12 @@ The runtime-owned failure model for this repo gate must distinguish at least the
 - a repo-gate command failed after writing tracked files outside the pre-gate lane
   diff, which is a scope-envelope violation requiring operator attention and
   structured source repo-gate evidence
-- the repo gate completed its commands but left tracked-file rewrites behind
+- the repo gate completed its commands but left tracked-file rewrites behind,
+  classified as lane-owned rewrites or lane-external tracked rewrites
 
-The first two classes are explicit continued-repair outcomes in normal retained-lane policy: the retained lane stays in implementation or review-repair flow until the coding agent repairs the worktree and reruns the gate, or until retry policy is exhausted. The tracked-rewrite residue class remains available for unsafe rewrites and for lifecycle boundaries that require a clean committed worktree. During phase-goal validation only, if the repo gate commands pass and every rewritten tracked file was already present in the pre-gate implementation diff, Decodex may continue to the commit-capable handoff phase instead of terminalizing. That continuation must record private readback with the file list, same-path ownership decision, selected continue/attention action, and reason. Decodex must preserve the source repo-gate class and diagnostic as structured evidence for unsafe cases, but it must not add project-specific artifact, generated-file, fixture, or snapshot semantics to decide which tracked rewrites are acceptable.
+The first two classes are explicit continued-repair outcomes in normal retained-lane policy: the retained lane stays in implementation or review-repair flow until the coding agent repairs the worktree and reruns the gate, or until retry policy is exhausted. The tracked-rewrite residue class remains available for lane-owned rewrites at strict lifecycle boundaries, while `repo_gate_lane_external_tracked_rewrite` identifies lane-external rewrites produced after a passing gate. During phase-goal validation only, if the repo gate commands pass and every rewritten tracked file was already present in the pre-gate implementation diff, Decodex may continue to the commit-capable handoff phase instead of terminalizing. If rewritten files are outside the pre-gate lane diff, Decodex records `lane_external_tracked_rewrite` evidence with file count, sample, and rewrite-set hash instead of scheduling another issue-local repair turn. Decodex must preserve the source repo-gate class and diagnostic as structured evidence for unsafe cases, but it must not add project-specific artifact, generated-file, fixture, or snapshot semantics to decide which tracked rewrites are acceptable.
 
-Human-attention exits are reserved for repo-gate failures that the coding agent cannot reasonably repair from the worktree alone, such as command-spawn failures, missing runtime prerequisites, inability to inspect tracked-file cleanliness, or unsafe tracked rewrites left after the gate completed. When the runtime takes that path, prompts and tracker comments should preserve the repo-gate source failure class instead of collapsing it into vague generic wording.
+Human-attention exits are reserved for repo-gate failures that the coding agent cannot reasonably repair from the worktree alone, such as command-spawn failures, missing runtime prerequisites, inability to inspect tracked-file cleanliness, ambiguous lane-external rewrites, or lane-external tracked rewrites that require explicit scoped authority. When the runtime takes that path, prompts and tracker comments should preserve the repo-gate source failure class instead of collapsing it into vague generic wording.
 
 Landing policy is no longer repository-configurable in the machine-readable workflow contract for this repo surface. For retained review landing, `decodex` applies a fixed strict policy: require green checks, require an up-to-date base branch, preserve commit-level history, use merge commits, and never squash or rebase.
 

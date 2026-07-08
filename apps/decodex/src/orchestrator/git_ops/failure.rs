@@ -22,6 +22,7 @@ pub(crate) enum RepoGateFailureKind {
 	CanonicalizeCommandFailed,
 	VerifyCommandFailed,
 	TrackedRewritesLeft,
+	LaneExternalTrackedRewrite,
 	ScopeEnvelopeViolation,
 	GitLockContention,
 	CommandSpawnFailed,
@@ -33,6 +34,7 @@ impl RepoGateFailureKind {
 			Self::CanonicalizeCommandFailed => "repo_gate_canonicalize_failed",
 			Self::VerifyCommandFailed => "repo_gate_verify_failed",
 			Self::TrackedRewritesLeft => "repo_gate_tracked_rewrites_left",
+			Self::LaneExternalTrackedRewrite => "repo_gate_lane_external_tracked_rewrite",
 			Self::ScopeEnvelopeViolation => "repo_gate_scope_envelope_violation",
 			Self::GitLockContention => "repo_gate_git_lock_contention",
 			Self::CommandSpawnFailed => "repo_gate_command_spawn_failed",
@@ -42,42 +44,36 @@ impl RepoGateFailureKind {
 
 	fn disposition(self) -> RepoGateFailureDisposition {
 		match self {
-			Self::CanonicalizeCommandFailed | Self::VerifyCommandFailed => {
-				RepoGateFailureDisposition::ContinueRepair
-			},
-			Self::TrackedRewritesLeft | Self::ScopeEnvelopeViolation => {
-				RepoGateFailureDisposition::NeedsHumanAttention
-			},
+			Self::CanonicalizeCommandFailed | Self::VerifyCommandFailed =>
+				RepoGateFailureDisposition::ContinueRepair,
+			Self::TrackedRewritesLeft
+			| Self::LaneExternalTrackedRewrite
+			| Self::ScopeEnvelopeViolation =>
+				RepoGateFailureDisposition::NeedsHumanAttention,
 			Self::GitLockContention => RepoGateFailureDisposition::RetryAfterBackoff,
-			Self::CommandSpawnFailed | Self::CleanlinessCheckFailed => {
-				RepoGateFailureDisposition::NeedsHumanAttention
-			},
+			Self::CommandSpawnFailed | Self::CleanlinessCheckFailed =>
+				RepoGateFailureDisposition::NeedsHumanAttention,
 		}
 	}
 
 	fn retry_next_action(self) -> &'static str {
 		match self {
-			Self::CanonicalizeCommandFailed => {
-				"additional agent repair is required before repo canonicalization can pass; decodex will retry automatically"
-			},
-			Self::VerifyCommandFailed => {
-				"additional agent repair is required before repo verification can pass; decodex will retry automatically"
-			},
-			Self::TrackedRewritesLeft => {
-				"automatic retry is stopped because the repo gate left tracked rewrites after completing; inspect the retained worktree manually"
-			},
-			Self::ScopeEnvelopeViolation => {
-				"automatic retry is stopped because the repo gate wrote files outside the lane scope envelope"
-			},
-			Self::GitLockContention => {
-				"another Git process appears to hold `.git/index.lock`; decodex will wait briefly, refresh lane state, and retry automatically"
-			},
-			Self::CommandSpawnFailed => {
-				"manual repair is required to restore repo-gate command execution"
-			},
-			Self::CleanlinessCheckFailed => {
-				"manual repair is required to restore repo-gate tracked-file inspection"
-			},
+			Self::CanonicalizeCommandFailed =>
+				"additional agent repair is required before repo canonicalization can pass; decodex will retry automatically",
+			Self::VerifyCommandFailed =>
+				"additional agent repair is required before repo verification can pass; decodex will retry automatically",
+			Self::TrackedRewritesLeft =>
+				"automatic retry is stopped because the repo gate left tracked rewrites after completing; inspect the retained worktree manually",
+			Self::LaneExternalTrackedRewrite =>
+				"automatic retry is stopped because the repo gate produced lane-external tracked rewrites; add scoped authority or isolate project cleanup instead of widening the issue lane implicitly",
+			Self::ScopeEnvelopeViolation =>
+				"automatic retry is stopped because the repo gate wrote files outside the lane scope envelope",
+			Self::GitLockContention =>
+				"another Git process appears to hold `.git/index.lock`; decodex will wait briefly, refresh lane state, and retry automatically",
+			Self::CommandSpawnFailed =>
+				"manual repair is required to restore repo-gate command execution",
+			Self::CleanlinessCheckFailed =>
+				"manual repair is required to restore repo-gate tracked-file inspection",
 		}
 	}
 
@@ -91,6 +87,9 @@ impl RepoGateFailureKind {
 			),
 			Self::TrackedRewritesLeft => format!(
 				"inspect the retained worktree, decide whether the tracked rewrites are in scope, then finish validation and PR handoff or reset the patch manually, {recovery_gate}"
+			),
+			Self::LaneExternalTrackedRewrite => format!(
+				"inspect the lane-external tracked rewrite evidence, clean project-level residue separately or use an explicit scoped-gate policy before retrying, {recovery_gate}"
 			),
 			Self::ScopeEnvelopeViolation => format!(
 				"inspect the retained worktree and explicitly decide whether to expand lane scope or isolate repo-wide baseline cleanup before retrying, {recovery_gate}"

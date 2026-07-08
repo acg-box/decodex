@@ -6,4 +6,4 @@ mod review_repair_acceptance;
 mod shell;
 mod support;
 
-pub(super) use support::record_phase_acceptance_progress_checkpoint;
+pub(super) use support::record_validation_evidence_progress_checkpoint;

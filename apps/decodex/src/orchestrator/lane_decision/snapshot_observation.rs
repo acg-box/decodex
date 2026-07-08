@@ -26,7 +26,7 @@ impl LaneDecisionSnapshot {
 			|| self.non_goal_violation
 			|| self.scope_envelope_violation
 			|| self.repo_gate_disposition == Some(RepoGateFailureDisposition::NeedsHumanAttention);
-		observation.retry_budget_available = self.phase_acceptance_failure
+		observation.retry_budget_available = self.validation_evidence_failure
 			|| self.retry_kind.is_some()
 			|| self.repo_gate_disposition == Some(RepoGateFailureDisposition::ContinueRepair);
 		observation.retry_budget_exhausted = false;

@@ -80,8 +80,8 @@ pub(crate) fn operator_run_status(
 	let active_goal_phase = status_run_projection::operator_run_active_goal_phase(private_events);
 	let public_progress_phase =
 		status_run_projection::operator_run_public_progress_phase(private_events);
-	let phase_acceptance =
-		status_run_projection::operator_run_phase_acceptance_status(private_events);
+	let validation_evidence =
+		status_run_projection::operator_run_validation_evidence_status(private_events);
 	let loop_status = status_run_projection::operator_run_loop_status(
 		project,
 		loop_evidence,
@@ -111,7 +111,7 @@ pub(crate) fn operator_run_status(
 			issue_identifier,
 			private_evidence,
 			continuation_recovery,
-			phase_acceptance,
+			validation_evidence,
 			active_goal_phase,
 			public_progress_phase,
 			loop_status,

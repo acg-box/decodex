@@ -68,9 +68,9 @@ pub(in crate::mcp) fn mcp_run_activity_summary(run: &Value) -> Value {
 		"protocol_activity": protocol::mcp_public_protocol_activity(run),
 		"child_agent_activity": run.get("child_agent_activity").cloned().unwrap_or(Value::Null),
 		"progress_diagnostic": run.get("progress_diagnostic").cloned().unwrap_or(Value::Null),
-		"phase_acceptance": run
-			.get("phase_acceptance")
-			.map(review::mcp_public_phase_acceptance_status)
+		"validation_evidence": run
+			.get("validation_evidence")
+			.map(review::mcp_public_validation_evidence_status)
 			.unwrap_or(Value::Null),
 		"autonomy": autonomy::mcp_public_autonomy_status(run),
 		"loop_review": run

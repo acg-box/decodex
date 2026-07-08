@@ -122,8 +122,10 @@ fn observability_projection_resources_expose_activity_without_private_payloads()
 	);
 	assert_eq!(combined["child"]["child_agent_activity"]["event_count"], 2);
 	assert_eq!(combined["progress"]["progress_diagnostic"], "protocol_only_activity");
-	assert_eq!(combined["live"]["current_lanes"][0]["phase_acceptance"]["decision"], "accepted");
-	assert!(combined["live"]["current_lanes"][0]["phase_acceptance"]["changed_surfaces"].is_null());
+	assert_eq!(combined["live"]["current_lanes"][0]["validation_evidence"]["decision"], "accepted");
+	assert!(
+		combined["live"]["current_lanes"][0]["validation_evidence"]["changed_surfaces"].is_null()
+	);
 	assert!(combined["live"]["current_lanes"][0]["loop_review"].is_null());
 	assert_eq!(combined["review"]["post_review_lanes"][0]["pr_url"], "https://example/pr/1");
 	assert!(combined["review"]["post_review_lanes"][0]["branch_name"].is_null());

@@ -64,7 +64,7 @@ fn loop_scenario_assert_phase_goal_completion_runs_validation() {
 
 	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
-	runtime_repo_gate::record_phase_acceptance_progress_checkpoint(
+	runtime_repo_gate::record_validation_evidence_progress_checkpoint(
 		&config,
 		&state_store,
 		&issue_run,

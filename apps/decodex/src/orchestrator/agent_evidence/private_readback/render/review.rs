@@ -1,6 +1,6 @@
 use crate::orchestrator::agent_evidence::{
-	PrivateEvidenceDecisionRequestSummary, PrivateEvidencePhaseAcceptanceSummary,
-	PrivateEvidenceRepoGateFailureSummary, PrivateEvidenceReviewCheckpointSummary,
+	PrivateEvidenceDecisionRequestSummary, PrivateEvidenceRepoGateFailureSummary,
+	PrivateEvidenceReviewCheckpointSummary, PrivateEvidenceValidationSummary,
 };
 
 pub(in crate::orchestrator::agent_evidence::private_readback::render) fn append_private_evidence_decision_requests(
@@ -115,15 +115,15 @@ pub(in crate::orchestrator::agent_evidence::private_readback::render) fn append_
 	}
 }
 
-pub(in crate::orchestrator::agent_evidence::private_readback::render) fn append_private_evidence_phase_acceptance_checks(
+pub(in crate::orchestrator::agent_evidence::private_readback::render) fn append_private_evidence_validation_evidence(
 	output: &mut String,
-	checks: &[PrivateEvidencePhaseAcceptanceSummary],
+	checks: &[PrivateEvidenceValidationSummary],
 ) {
 	if checks.is_empty() {
 		return;
 	}
 
-	output.push_str("Phase Acceptance Checks\n");
+	output.push_str("Validation Evidences\n");
 
 	for check in checks {
 		let surfaces = if check.changed_surfaces.is_empty() {

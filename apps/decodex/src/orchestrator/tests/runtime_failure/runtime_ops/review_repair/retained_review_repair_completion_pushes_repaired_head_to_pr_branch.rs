@@ -23,7 +23,7 @@ fn retained_review_repair_completion_pushes_repaired_head_to_pr_branch() {
 		config.repo_root(),
 		"repair.txt",
 		"repair\n",
-		r#"{"schema":"decodex/commit/1","summary":"Retain review repair","authority":"XY-1115"}"#,
+		r#"{"schema":"decodex/commit/2","change":"Retain review repair","authority":"XY-1115","impact":"compatible"}"#,
 	);
 
 	orchestrator::push_retained_review_repair_head(

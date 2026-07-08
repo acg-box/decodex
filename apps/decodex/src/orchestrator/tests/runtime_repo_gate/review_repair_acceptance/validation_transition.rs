@@ -18,7 +18,7 @@ fn review_repair_phase_goal_validation_passes_to_review_repair_evidence() {
 
 	tests::commit_worktree_change(config.repo_root(), "ready.txt", "before\n", "add ready file");
 	fs::write(config.repo_root().join("ready.txt"), "after\n").expect("tracked diff should write");
-	support::record_phase_acceptance_progress_checkpoint(&config, &state_store, &issue_run, &[]);
+	support::record_validation_evidence_progress_checkpoint(&config, &state_store, &issue_run, &[]);
 
 	let transition = RepoGatePhaseGoalController {
 		project: &config,
