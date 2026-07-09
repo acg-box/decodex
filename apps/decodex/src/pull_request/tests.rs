@@ -11,6 +11,7 @@ fn sample_gate_view() -> PullRequestLandingGateView<'static> {
 		mergeable: "MERGEABLE",
 		merge_state_status: "CLEAN",
 		status_check_rollup_state: Some("SUCCESS"),
+		fast_landing: false,
 		required_status_contexts: &[],
 		unresolved_review_threads: 0,
 	}
@@ -53,6 +54,7 @@ fn configured_required_status_contexts_replace_global_rollup_for_landing() {
 
 	view.status_check_rollup_state = Some("PENDING");
 	view.required_status_contexts = &contexts;
+	view.fast_landing = true;
 
 	assert_eq!(
 		pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
@@ -62,12 +64,43 @@ fn configured_required_status_contexts_replace_global_rollup_for_landing() {
 }
 
 #[test]
+fn fast_landing_allows_blocked_ruleset_state_after_local_status_passes() {
+	let contexts = successful_decodex_status_context();
+	let mut view = sample_gate_view();
+
+	view.fast_landing = true;
+	view.required_status_contexts = &contexts;
+	view.merge_state_status = "BLOCKED";
+	view.status_check_rollup_state = Some("PENDING");
+
+	assert_eq!(
+		pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
+		pull_request::LandingGateDecision::Satisfied
+	);
+	assert!(pull_request::retained_clean_path_landing_gates_satisfied(view));
+}
+
+#[test]
+fn standard_landing_keeps_blocked_ruleset_state_as_not_ready() {
+	let mut view = sample_gate_view();
+
+	view.merge_state_status = "BLOCKED";
+
+	assert_eq!(
+		pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
+		pull_request::LandingGateDecision::Block("merge_state_not_ready")
+	);
+	assert!(!pull_request::retained_clean_path_landing_gates_satisfied(view));
+}
+
+#[test]
 fn configured_required_status_contexts_fail_closed_by_state_and_creator() {
 	let mut contexts = successful_decodex_status_context();
 	let mut view = sample_gate_view();
 
 	contexts[0].state = Some(String::from("pending"));
 	view.required_status_contexts = &contexts;
+	view.fast_landing = true;
 
 	assert_eq!(
 		pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
@@ -79,6 +112,7 @@ fn configured_required_status_contexts_fail_closed_by_state_and_creator() {
 
 	contexts[0].state = Some(String::from("failure"));
 	view.required_status_contexts = &contexts;
+	view.fast_landing = true;
 
 	assert_eq!(
 		pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
@@ -91,6 +125,7 @@ fn configured_required_status_contexts_fail_closed_by_state_and_creator() {
 	contexts[0].state = Some(String::from("success"));
 	contexts[0].allowed_creator = false;
 	view.required_status_contexts = &contexts;
+	view.fast_landing = true;
 
 	assert_eq!(
 		pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),
@@ -102,6 +137,7 @@ fn configured_required_status_contexts_fail_closed_by_state_and_creator() {
 
 	contexts[0].base_ref_matches = false;
 	view.required_status_contexts = &contexts;
+	view.fast_landing = true;
 
 	assert_eq!(
 		pull_request::classify_landing_gate(view, pull_request::LandingGateMode::ManualLand),

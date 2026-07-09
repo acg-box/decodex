@@ -40,16 +40,12 @@ pub(crate) struct CommitStatusPublishRequest<'a> {
 }
 
 #[derive(Debug, Deserialize)]
-struct CombinedStatusResponse {
-	statuses: Vec<CommitStatusResponse>,
-}
-
-#[derive(Debug, Deserialize)]
 struct CommitStatusResponse {
 	context: String,
 	state: String,
 	description: Option<String>,
 	creator: Option<CommitStatusCreator>,
+	updated_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,12 +68,12 @@ pub(crate) fn inspect_required_commit_status_contexts(
 		return Ok(Vec::new());
 	}
 
-	let response = query_combined_status(cwd, owner, repo, sha, github_token, gh_command_path)?;
+	let statuses = query_commit_statuses(cwd, owner, repo, sha, github_token, gh_command_path)?;
 
 	Ok(required_contexts
 		.iter()
 		.map(|context| {
-			let status = response.statuses.iter().find(|status| status.context == *context);
+			let status = latest_status_for_context(&statuses, context);
 			let creator_login = status
 				.and_then(|status| status.creator.as_ref())
 				.map(|creator| creator.login.clone());
@@ -106,6 +102,16 @@ pub(crate) fn inspect_required_commit_status_contexts(
 			}
 		})
 		.collect())
+}
+
+fn latest_status_for_context<'a>(
+	statuses: &'a [CommitStatusResponse],
+	context: &str,
+) -> Option<&'a CommitStatusResponse> {
+	statuses
+		.iter()
+		.filter(|status| status.context == context)
+		.max_by_key(|status| status.updated_at.as_deref().unwrap_or(""))
 }
 
 pub(crate) fn commit_status_description_with_base_ref_oid(
@@ -158,16 +164,16 @@ pub(crate) fn publish_commit_status(request: CommitStatusPublishRequest<'_>) -> 
 	Ok(())
 }
 
-fn query_combined_status(
+fn query_commit_statuses(
 	cwd: &Path,
 	owner: &str,
 	repo: &str,
 	sha: &str,
 	github_token: &str,
 	gh_command_path: Option<&Path>,
-) -> Result<CombinedStatusResponse> {
+) -> Result<Vec<CommitStatusResponse>> {
 	let mut command = github::gh_command_with_config(gh_command_path);
-	let endpoint = format!("repos/{owner}/{repo}/commits/{sha}/status");
+	let endpoint = format!("repos/{owner}/{repo}/commits/{sha}/statuses");
 
 	command.args(["api", &endpoint]);
 	command.current_dir(cwd);
@@ -184,7 +190,7 @@ fn query_combined_status(
 		);
 	}
 
-	Ok(serde_json::from_slice::<CombinedStatusResponse>(&output.stdout)?)
+	Ok(serde_json::from_slice::<Vec<CommitStatusResponse>>(&output.stdout)?)
 }
 
 #[cfg(test)]
@@ -200,7 +206,7 @@ mod tests {
 		let temp_dir = TempDir::new().expect("temp dir should exist");
 		let gh_path = fake_gh(
 			&temp_dir,
-			r#"{"statuses":[{"context":"decodex/local-full-check","state":"success","creator":{"login":"decodex-bot"}},{"context":"ci/slow","state":"pending","creator":{"login":"github-actions"}}]}"#,
+			r#"[{"context":"decodex/local-full-check","state":"success","creator":{"login":"decodex-bot"}},{"context":"ci/slow","state":"pending","creator":{"login":"github-actions"}}]"#,
 		);
 
 		let statuses = inspect_required_commit_status_contexts(
@@ -236,7 +242,7 @@ mod tests {
 		let temp_dir = TempDir::new().expect("temp dir should exist");
 		let gh_path = fake_gh(
 			&temp_dir,
-			r#"{"statuses":[{"context":"decodex/local-full-check","state":"success","description":"cargo make check passed; base_ref_oid=base-sha","creator":{"login":"decodex-bot"}}]}"#,
+			r#"[{"context":"decodex/local-full-check","state":"success","description":"cargo make check passed; base_ref_oid=base-sha","creator":{"login":"decodex-bot"}}]"#,
 		);
 
 		let statuses = inspect_required_commit_status_contexts(
@@ -254,6 +260,32 @@ mod tests {
 
 		assert_eq!(statuses[0].base_ref_oid.as_deref(), Some("base-sha"));
 		assert!(statuses[0].base_ref_matches);
+	}
+
+	#[test]
+	fn inspect_required_commit_status_contexts_uses_latest_context_status() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let gh_path = fake_gh(
+			&temp_dir,
+			r#"[{"context":"decodex/local-full-check","state":"failure","updated_at":"2026-07-09T01:00:00Z","creator":{"login":"decodex-bot"}},{"context":"decodex/local-full-check","state":"success","updated_at":"2026-07-09T02:00:00Z","creator":{"login":"yvette-carlisle"}}]"#,
+		);
+
+		let statuses = inspect_required_commit_status_contexts(
+			temp_dir.path(),
+			"hack-ink",
+			"decodex",
+			"head-sha",
+			Some("base-sha"),
+			&[String::from("decodex/local-full-check")],
+			&[String::from("yvette-carlisle")],
+			"ghp_test",
+			Some(&gh_path),
+		)
+		.expect("status read should succeed");
+
+		assert_eq!(statuses[0].state.as_deref(), Some("success"));
+		assert_eq!(statuses[0].creator_login.as_deref(), Some("yvette-carlisle"));
+		assert!(statuses[0].allowed_creator);
 	}
 
 	#[test]

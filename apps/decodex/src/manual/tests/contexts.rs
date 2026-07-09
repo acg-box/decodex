@@ -21,8 +21,8 @@ pub(in crate::manual::tests) fn repo_root_manual_land_context(
 		github_token_env_var: String::from("GITHUB_TOKEN"),
 		github_token: String::from("test-token"),
 		github_command_path: None,
-		landing_required_status_contexts: Vec::new(),
-		landing_required_status_creators: Vec::new(),
+		landing_status_contexts: Vec::new(),
+		landing_actors: Vec::new(),
 		repository: RepositoryContext {
 			owner: String::from("hack-ink"),
 			name: String::from("decodex"),

@@ -9,14 +9,13 @@ token_env_var = "GITHUB_TOKEN"
 # Decodex processes do not inherit the shell PATH that contains `gh`.
 # command_path = "/opt/homebrew/bin/gh"
 #
-# Optional fast landing gate. When set, Decodex requires these exact commit status
-# contexts on the PR head instead of waiting for the whole GitHub status rollup.
-# The context should be published only after the local full validation gate passes
-# for the exact head SHA.
-# Keep `landing_required_status_creators` set for long-lived fast landing; omitting
-# it is suitable only for migration or development.
-# landing_required_status_contexts = ["decodex/local-full-check"]
-# landing_required_status_creators = ["decodex-bot"]
+# Landing mode defaults to "standard", which waits for the GitHub status rollup and
+# ordinary merge gates. "fast" trusts Decodex's local full-check status
+# (`decodex/local-full-check`) and allows the listed GitHub actors to execute
+# ruleset bypass landing after local validation passes.
+# landing_mode = "standard"
+# landing_mode = "fast"
+# landing_actors = ["decodex-bot"]
 
 # Optional Codex-specific runtime policy.
 # Omit this block to use `review = "strict"`.
