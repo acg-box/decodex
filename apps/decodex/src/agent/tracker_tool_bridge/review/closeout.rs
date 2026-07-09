@@ -227,6 +227,7 @@ impl<'a> TrackerToolBridge<'a> {
 		)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn record_closeout_lifecycle_transition(
 		&self,
 		state_store: &crate::state::StateStore,

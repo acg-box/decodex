@@ -22,6 +22,7 @@ use crate::orchestrator::{
 
 const PRODUCER_FAILURE_BUDGET: i64 = 3;
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_non_github_review_lane<
 	T,
 >(
