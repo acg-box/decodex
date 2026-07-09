@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
+	active_run_env::ActiveRunCommitContext,
 	config::{self, ServiceConfig},
 	manual::{self, ManualCommitActiveLaneBlocker},
 	prelude::{Result, eyre},
@@ -90,6 +91,13 @@ pub(super) fn manual_commit_active_lane_blocker(
 		if !state_store.issue_has_active_shared_claim(service_id, mapping.issue_id())? {
 			continue;
 		}
+		if active_run_commit_context_allows_claimed_lane_commit(
+			&state_store,
+			service_id,
+			mapping.issue_id(),
+		)? {
+			continue;
+		}
 
 		return Ok(Some(ManualCommitActiveLaneBlocker {
 			issue_id: mapping.issue_id().to_owned(),
@@ -108,4 +116,30 @@ pub(super) fn manual_commit_matches_worktree_mapping(
 ) -> bool {
 	manual::paths_match_for_manual_commit_guard(worktree_root, mapping.worktree_path())
 		&& current_branch.is_none_or(|branch| branch == mapping.branch_name())
+}
+
+fn active_run_commit_context_allows_claimed_lane_commit(
+	state_store: &StateStore,
+	service_id: &str,
+	issue_id: &str,
+) -> Result<bool> {
+	let Some(context) = ActiveRunCommitContext::from_process_env() else {
+		return Ok(false);
+	};
+	if context.service_id() != service_id || context.issue_id() != issue_id {
+		return Ok(false);
+	}
+
+	let Some(lease) = state_store.lease_for_issue(issue_id)? else {
+		return Ok(false);
+	};
+	if lease.project_id() != service_id || lease.run_id() != context.run_id() {
+		return Ok(false);
+	}
+
+	let Some(attempt) = state_store.run_attempt(context.run_id())? else {
+		return Ok(false);
+	};
+
+	Ok(attempt.issue_id() == issue_id && matches!(attempt.status(), "starting" | "running"))
 }
