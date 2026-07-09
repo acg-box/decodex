@@ -23,6 +23,7 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) project_id: String,
 	pub(crate) run_id: String,
 	pub(crate) issue_id: String,
+	pub(crate) issue_identifier: String,
 	pub(crate) attempt_number: i64,
 	pub(crate) listen: String,
 	pub(crate) cwd: String,

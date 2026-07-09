@@ -60,6 +60,7 @@ impl RuntimeStandardReviewRunner for AppServerRuntimeStandardReviewRunner<'_> {
 				project_id: request.project.service_id().to_owned(),
 				run_id: request.review_run_id.to_owned(),
 				issue_id: snapshot.issue.id.clone(),
+				issue_identifier: snapshot.issue.identifier.clone(),
 				attempt_number: marker.attempt_number(),
 				listen: request.workflow.frontmatter().agent().transport().to_owned(),
 				cwd: snapshot.worktree.worktree_path().display().to_string(),
