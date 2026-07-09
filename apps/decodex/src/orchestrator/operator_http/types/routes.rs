@@ -1,9 +1,5 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::orchestrator::operator_http) enum OperatorRequestRoute {
-	Dashboard,
-	DashboardIconPng,
-	DashboardLogoIco,
-	DashboardLogoTouchPng,
 	DashboardWs,
 	Live,
 	AppSnapshot,

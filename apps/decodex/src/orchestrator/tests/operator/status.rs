@@ -1,6 +1,5 @@
 mod agent_evidence;
 mod control_plane;
-mod dashboard;
 mod history;
 mod http;
 mod publishing;
@@ -17,8 +16,7 @@ pub(super) use crate::orchestrator::tests::operator::{
 	DASHBOARD_MAX_WEBSOCKET_CLIENTS, DashboardClientSubscription, DashboardEventHub,
 	DecisionContract, Duration, EffectiveRuntimeMarker, ErrorKind, EvidenceRequest, FakeTracker,
 	HashMap, Instant, LinearExecutionEventIdentity, MODEL_EXECUTION_IDLE_TIMEOUT, Mutex,
-	OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH, OffsetDateTime,
-	OperatorCodexAccountControlStatus, OperatorControlRequests, OperatorExecutionProgramNodeStatus,
+	OffsetDateTime, OperatorCodexAccountControlStatus, OperatorControlRequests, OperatorExecutionProgramNodeStatus,
 	OperatorExecutionProgramStatus, OperatorGitHubCliAuthority, OperatorPostReviewLaneStatus,
 	OperatorProjectStatus, OperatorQueuedIssueStatus, OperatorRunStatus, OperatorStatusSnapshot,
 	PHASE_GOAL_RECOVERY_EVENT_TYPE, Path, PathBuf, ProjectRegistration,

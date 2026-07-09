@@ -1,8 +1,4 @@
-//! Static dashboard assets and HTTP constants.
-
-mod html;
-
-pub(super) use self::html::OPERATOR_DASHBOARD_HTML;
+//! Operator HTTP constants.
 
 use std::time::Duration;
 
@@ -13,9 +9,3 @@ pub(in crate::orchestrator::operator_http) const OPERATOR_HTTP_READ_TIMEOUT: Dur
 pub(in crate::orchestrator::operator_http) const RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS:
 	&[&str] =
 	&["idle_for_seconds", "protocol_idle_for_seconds", "current_elapsed_seconds", "wall_seconds"];
-pub(in crate::orchestrator::operator_http) const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/icon.png"));
-pub(in crate::orchestrator::operator_http) const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo.ico"));
-pub(in crate::orchestrator::operator_http) const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));

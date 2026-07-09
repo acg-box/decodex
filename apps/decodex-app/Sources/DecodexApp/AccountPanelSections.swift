@@ -53,18 +53,6 @@ extension AccountPanelView {
 				)
 
 				PanelIconButtonView(
-					symbol: "safari",
-					tint: PanelPalette.actionBlue(colorScheme),
-					isActive: false,
-					action: {
-						Task {
-							await store.openWebUI()
-						}
-					},
-					help: "Open Decodex WebUI"
-				)
-
-				PanelIconButtonView(
 					symbol: "plus",
 					tint: PanelPalette.actionBlue(colorScheme),
 					isActive: false,
