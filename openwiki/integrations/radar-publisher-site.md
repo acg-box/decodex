@@ -1,6 +1,6 @@
 # Radar, Publisher, And Site Contracts
 
-This page covers auxiliary artifact families and public surfaces that surround the Decodex runtime.
+This page covers auxiliary artifact families and public surfaces that surround the Decodex runtime. For the concise handoff contract and stop conditions, read [Radar Publisher contracts](radar-publisher-contracts.md); for why Radar, Publisher, and the static site are separated this way, read [Design rationale](../decisions/design-rationale.md).
 
 ## Radar scope
 
