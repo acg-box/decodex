@@ -86,13 +86,14 @@ pub(crate) fn cleanup_completed_post_review_lane(
 			)
 		})?;
 	let github_token = project.github().resolve_token()?;
+	let landing_status_contexts = project.github().landing_status_contexts();
 	let landing_state = github::inspect_pull_request_landing_state(
 		&issue_run.worktree.path,
 		lifecycle_record.pr_url(),
 		&github_token,
 		project.github().command_path(),
-		project.github().landing_required_status_contexts(),
-		project.github().landing_required_status_creators(),
+		&landing_status_contexts,
+		project.github().landing_actors(),
 	)?;
 
 	if landing_state.state != "MERGED" {
