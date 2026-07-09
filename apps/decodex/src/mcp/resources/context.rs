@@ -1,4 +1,4 @@
 mod decision_contracts;
-mod docs;
+mod openwiki;
 mod project;
 mod router;

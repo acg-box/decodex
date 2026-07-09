@@ -16,12 +16,13 @@ Use when Decodex work crosses runtime planning, ops, commit, or landing.
 
 ## First Reads
 
-- This repo: `README.md`, `Makefile.toml`, and the relevant Decodex product docs.
+- This repo: `AGENTS.md`, `openwiki/quickstart.md`, `README.md`, and `Makefile.toml`.
 - Projects: `project.toml` and `WORKFLOW.md`.
-- Runtime: `docs/spec/` and `docs/runbook/`.
-- Orchestration lifecycle: `docs/runbook/orchestration-kernel-cutover.md`,
-  `docs/spec/owned-lane-policy.md`, `docs/spec/lane-control-state.md`, and
-  `docs/spec/post-review-lifecycle.md`.
+- Runtime: `openwiki/architecture/runtime-architecture.md`,
+  `openwiki/workflows/runtime-operator-workflows.md`, and
+  `openwiki/specs/contracts-and-data.md`.
+- Orchestration lifecycle: `openwiki/workflows/runtime-operator-workflows.md` and
+  `openwiki/specs/contracts-and-data.md`.
 
 ## Boundaries
 
@@ -43,8 +44,7 @@ Use when Decodex work crosses runtime planning, ops, commit, or landing.
 - MCP is a typed facade, not a bypass. Non-loopback Streamable HTTP requires origin
   plus bearer auth; profiles above `observe` require bearer auth.
 - CORS is not authentication; typed plan tools and inspect-first operate/admin
-  preconditions live in `docs/runbook/mcp-remote-control.md` and
-  `docs/reference/operator-control-plane.md`.
+  preconditions live in `openwiki/workflows/runtime-operator-workflows.md`.
 - Do not use global `AGENTS.md` as Decodex runtime, tracker, identity, landing,
   closeout, or cleanup authority.
 - Do not hand-edit runtime DB rows, hidden children, Linear state, labels, graph ids,

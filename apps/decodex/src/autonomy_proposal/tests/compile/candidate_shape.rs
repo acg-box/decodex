@@ -11,7 +11,7 @@ fn autonomy_proposal_dry_run_candidate_shows_lineage_signals_gates_and_gaps() {
 	assert_eq!(proposal.state(), AutonomyProposalState::DecisionCandidate);
 	assert_eq!(proposal.objective_id(), "quality-autonomy");
 	assert_eq!(proposal.objective_version(), 1);
-	assert_eq!(proposal.allowed_surfaces(), ["apps/decodex/src", "docs/spec"]);
+	assert_eq!(proposal.allowed_surfaces(), ["apps/decodex/src", "openwiki/specs"]);
 	assert_eq!(proposal.validation_gates(), ["cargo test -p decodex autonomy_proposal --lib"]);
 	assert_eq!(proposal.source_signal_ids().len(), 1);
 	assert_eq!(proposal.gaps(), ["No dashboard comparison included."]);

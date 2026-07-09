@@ -5,7 +5,7 @@ fn accepts_public_collaboration_identifiers() {
 	for value in [
 		"PR https://github.com/hack-ink/decodex/pull/42 is ready.",
 		"Branch y/decodex-xy-519 reached commit 0123456789abcdef0123456789abcdef01234567.",
-		"Issue XY-519 updated docs/spec/runtime.md and .worktrees/XY-519.",
+		"Issue XY-519 updated openwiki/specs/contracts-and-data.md and .worktrees/XY-519.",
 	] {
 		public_text::validate_public_text_field("summary", value)
 			.unwrap_or_else(|error| panic!("public value should validate: {error}"));
