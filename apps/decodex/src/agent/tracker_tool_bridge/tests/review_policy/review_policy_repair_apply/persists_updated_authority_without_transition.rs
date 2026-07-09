@@ -39,7 +39,7 @@ fn persists_updated_authority_without_transition() {
 		}),
 	);
 
-	tests::seed_docs_impact_checkpoint(
+	tests::seed_openwiki_impact_checkpoint(
 		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,

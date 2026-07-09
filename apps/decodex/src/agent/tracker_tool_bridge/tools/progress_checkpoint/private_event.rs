@@ -31,7 +31,7 @@ impl<'a> TrackerToolBridge<'a> {
 		let branch = checkpoint.public_branch(review_context);
 		let private_payload = serde_json::json!({
 				"phase": checkpoint.phase.as_str(),
-				"docs_impact": checkpoint.docs_impact.as_str(),
+				"openwiki_impact": checkpoint.openwiki_impact.as_str(),
 				"focus": checkpoint.focus.as_str(),
 			"next_action": checkpoint.next_action.as_str(),
 			"blockers": &checkpoint.blockers,

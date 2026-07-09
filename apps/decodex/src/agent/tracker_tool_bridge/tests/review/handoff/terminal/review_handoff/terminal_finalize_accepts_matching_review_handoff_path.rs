@@ -53,7 +53,7 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "ready_for_review",
-			"docs_impact": "none",
+			"openwiki_impact": "none",
 			"focus": "Finalize review handoff.",
 			"next_action": "Record terminal finalize.",
 			"blockers": [],

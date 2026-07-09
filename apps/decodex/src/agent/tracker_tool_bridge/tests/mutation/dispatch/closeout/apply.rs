@@ -61,7 +61,7 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 		}),
 	);
 
-	tests::seed_docs_impact_checkpoint(
+	tests::seed_openwiki_impact_checkpoint(
 		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,
@@ -165,7 +165,7 @@ fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 		}),
 	);
 
-	tests::seed_docs_impact_checkpoint(
+	tests::seed_openwiki_impact_checkpoint(
 		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,

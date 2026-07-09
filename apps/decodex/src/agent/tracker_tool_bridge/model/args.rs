@@ -75,7 +75,7 @@ pub(crate) struct ProgressCheckpointArgs {
 	#[serde(flatten)]
 	pub(crate) scope: ScopeArgs,
 	pub(crate) phase: String,
-	pub(crate) docs_impact: String,
+	pub(crate) openwiki_impact: String,
 	pub(crate) focus: String,
 	pub(crate) next_action: String,
 	#[serde(default)]

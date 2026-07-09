@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[test]
-fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {
+fn terminal_finalize_requires_openwiki_impact_checkpoint_for_success_paths() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
@@ -58,12 +58,12 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_success_paths() {
 	assert!(matches!(
 		finalize_response.content_items.as_slice(),
 		[DynamicToolContentItem::InputText { text }]
-			if text.contains("requires a prior `issue_progress_checkpoint` with `docs_impact`")
+			if text.contains("requires a prior `issue_progress_checkpoint` with `openwiki_impact`")
 	));
 }
 
 #[test]
-fn terminal_finalize_still_requires_docs_impact_after_validation_evidence_pass() {
+fn terminal_finalize_still_requires_openwiki_impact_after_validation_evidence_pass() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
@@ -126,12 +126,12 @@ fn terminal_finalize_still_requires_docs_impact_after_validation_evidence_pass()
 	assert!(matches!(
 		finalize_response.content_items.as_slice(),
 		[DynamicToolContentItem::InputText { text }]
-			if text.contains("requires a prior `issue_progress_checkpoint` with `docs_impact`")
+			if text.contains("requires a prior `issue_progress_checkpoint` with `openwiki_impact`")
 	));
 }
 
 #[test]
-fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
+fn terminal_finalize_requires_openwiki_impact_checkpoint_for_current_head() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
 	let issue = tests::sample_issue();
@@ -173,7 +173,7 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "ready_for_review",
-			"docs_impact": "none",
+			"openwiki_impact": "none",
 			"focus": "Finalize review handoff.",
 			"next_action": "Record terminal finalize.",
 			"blockers": [],
@@ -200,6 +200,6 @@ fn terminal_finalize_requires_docs_impact_checkpoint_for_current_head() {
 	assert!(matches!(
 		finalize_response.content_items.as_slice(),
 		[DynamicToolContentItem::InputText { text }]
-			if text.contains("requires the latest `issue_progress_checkpoint` to record `docs_impact` for the current lane HEAD `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef`")
+			if text.contains("requires the latest `issue_progress_checkpoint` to record `openwiki_impact` for the current lane HEAD `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef`")
 	));
 }

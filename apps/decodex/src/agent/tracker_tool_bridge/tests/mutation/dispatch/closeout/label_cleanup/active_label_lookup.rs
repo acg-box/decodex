@@ -69,7 +69,7 @@ fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
 		}),
 	);
 
-	tests::seed_docs_impact_checkpoint(
+	tests::seed_openwiki_impact_checkpoint(
 		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,

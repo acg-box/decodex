@@ -63,7 +63,7 @@ fn closeout_apply_keeps_active_label_until_cleanup() {
 		}),
 	);
 
-	tests::seed_docs_impact_checkpoint(
+	tests::seed_openwiki_impact_checkpoint(
 		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,
