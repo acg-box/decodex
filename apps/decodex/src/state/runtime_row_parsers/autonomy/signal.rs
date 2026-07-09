@@ -1,11 +1,9 @@
-use rusqlite::{Error, Row};
-use serde_json::Value;
-
 use crate::{
 	autonomy_signal::AutonomySignal,
 	prelude::eyre,
 	state::{AutonomySignalRuntimeRecord, AutonomySignalRuntimeRowParts},
 };
+use rusqlite::{Error, Row};
 
 pub(in crate::state) fn autonomy_signal_runtime_row_parts(
 	row: &Row<'_>,
@@ -32,44 +30,7 @@ pub(in crate::state) fn autonomy_signal_runtime_row_parts(
 pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 	parts: AutonomySignalRuntimeRowParts,
 ) -> crate::prelude::Result<AutonomySignalRuntimeRecord> {
-	let payload = serde_json::from_str::<Value>(&parts.payload_json)?;
-	let payload_kind = payload.get("kind").and_then(Value::as_str).map(str::to_owned);
-	let payload_source_type =
-		payload.get("source_type").and_then(Value::as_str).map(str::to_owned);
-	let legacy_openwiki_drift_kind = legacy_openwiki_drift_kind(&parts.kind);
-
-	if legacy_openwiki_drift_kind.is_some() && payload_kind.as_deref() != Some(parts.kind.as_str())
-	{
-		eyre::bail!("Legacy autonomy signal row `{}` kind did not match payload.", parts.signal_id);
-	}
-
-	let mut signal = serde_json::from_value::<AutonomySignal>(payload)?;
-
-	if let Some(legacy_kind) = legacy_openwiki_drift_kind {
-		let Some(legacy_source_type) = payload_source_type else {
-			eyre::bail!(
-				"Legacy autonomy signal row `{}` source_type was missing.",
-				parts.signal_id
-			);
-		};
-		let (legacy_id, legacy_fingerprint) =
-			signal.legacy_material_identity(legacy_kind, &legacy_source_type)?;
-
-		if signal.id() != legacy_id || parts.signal_id != legacy_id {
-			eyre::bail!(
-				"Legacy autonomy signal row `{}` identity did not match payload.",
-				parts.signal_id
-			);
-		}
-		if signal.fingerprint() != legacy_fingerprint || parts.fingerprint != legacy_fingerprint {
-			eyre::bail!(
-				"Legacy autonomy signal row `{}` fingerprint did not match payload.",
-				parts.signal_id
-			);
-		}
-
-		signal.recompute_canonical_identity()?;
-	}
+	let signal = serde_json::from_str::<AutonomySignal>(&parts.payload_json)?;
 
 	let version = u64::try_from(parts.objective_version).map_err(|_| {
 		eyre::eyre!("Autonomy signal row objective_version must be greater than zero.")
@@ -84,7 +45,7 @@ pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 			signal.project_id()
 		);
 	}
-	if parts.signal_id != signal.id() && legacy_openwiki_drift_kind.is_none() {
+	if parts.signal_id != signal.id() {
 		eyre::bail!(
 			"Autonomy signal row `{}` contained payload `{}`.",
 			parts.signal_id,
@@ -106,8 +67,8 @@ pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 			signal.objective_version()
 		);
 	}
-	if !signal.kind().matches_stored_kind(&parts.kind)
-		|| (parts.fingerprint != signal.fingerprint() && legacy_openwiki_drift_kind.is_none())
+	if parts.kind != signal.kind().as_str()
+		|| parts.fingerprint != signal.fingerprint()
 		|| parts.freshness != signal.freshness().as_str()
 		|| parts.evidence_class != signal.evidence_class().as_str()
 		|| parts.confidence != signal.confidence().as_str()
@@ -127,11 +88,4 @@ pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 		updated_at: parts.updated_at,
 		updated_at_unix: parts.updated_at_unix,
 	})
-}
-
-fn legacy_openwiki_drift_kind(kind: &str) -> Option<&str> {
-	match kind {
-		"docs_plugin_drift" | "docs_skill_drift" => Some(kind),
-		_ => None,
-	}
 }

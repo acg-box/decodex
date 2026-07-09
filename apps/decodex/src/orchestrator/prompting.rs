@@ -15,7 +15,7 @@ use crate::orchestrator::{
 
 pub(crate) const TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION: &str =
 	prompting_contracts::TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION;
-pub(crate) const DOCS_IMPACT_CONTRACT: &str = prompting_contracts::DOCS_IMPACT_CONTRACT;
+pub(crate) const OPENWIKI_IMPACT_CONTRACT: &str = prompting_contracts::OPENWIKI_IMPACT_CONTRACT;
 
 pub(crate) fn build_review_run_context(
 	project: &ServiceConfig,

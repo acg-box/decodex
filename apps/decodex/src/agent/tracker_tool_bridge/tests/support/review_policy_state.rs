@@ -9,7 +9,7 @@ use crate::{
 	tracker::TrackerIssue,
 };
 
-pub(crate) fn seed_docs_impact_checkpoint(
+pub(crate) fn seed_openwiki_impact_checkpoint(
 	state_store: &StateStore,
 	review_context: &ReviewHandoffContext,
 	issue_id: &str,
@@ -25,7 +25,7 @@ pub(crate) fn seed_docs_impact_checkpoint(
 			"progress_checkpoint",
 			serde_json::json!({
 				"phase": phase,
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 				"head_sha": head_sha
 			}),
 		)

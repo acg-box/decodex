@@ -2,9 +2,9 @@ mod account_commands;
 mod app_command;
 mod attempt_command;
 mod control_commands;
-mod docs_commands;
 mod git_hook_commands;
 mod manual_commands;
+mod openwiki_commands;
 mod probe_command;
 mod recovery_commands;
 mod research_intake_commands;
@@ -31,9 +31,9 @@ use self::{
 		DiagnoseCommand, EvidenceCommand, LaneCommand, McpCommand, ProjectCommand, RunCommand,
 		ServeCommand, StatusCommand,
 	},
-	docs_commands::DocsCommand,
 	git_hook_commands::GitHookCommand,
 	manual_commands::{CommitCommand, LandCommand},
+	openwiki_commands::OpenWikiCommand,
 	probe_command::ProbeCommand,
 	recovery_commands::RecoverCommand,
 	research_intake_commands::{ArchiveLinearCommand, IntakeCommand, MaintenanceCommand},
@@ -75,7 +75,7 @@ impl Cli {
 			Command::Lane(args) => args.run(),
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
-			Command::Docs(args) => args.run(),
+			Command::OpenWiki(args) => args.run(),
 			Command::Evidence(args) => args.run(),
 			Command::Intake(args) => args.run(),
 			Command::Recover(args) => args.run(),
@@ -127,8 +127,9 @@ enum Command {
 	Status(StatusCommand),
 	/// Write and print the agent-readable local evidence index.
 	Diagnose(DiagnoseCommand),
-	/// Check repository documentation readiness.
-	Docs(DocsCommand),
+	/// Check repository OpenWiki readiness.
+	#[command(name = "openwiki")]
+	OpenWiki(OpenWikiCommand),
 	/// Inspect local-only private execution evidence for one issue or run.
 	Evidence(EvidenceCommand),
 	/// Operator issue-batch intake into internal Execution Programs, not a graph editor.

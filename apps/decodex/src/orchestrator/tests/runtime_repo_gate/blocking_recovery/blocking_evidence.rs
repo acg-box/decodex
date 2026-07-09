@@ -25,7 +25,7 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			"progress_checkpoint",
 			serde_json::json!({
 				"blockers": ["repo-wide baseline requires separate authority"],
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			}),
 		)
 		.expect("blocking checkpoint should record");
@@ -43,7 +43,7 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			1,
 			"progress_checkpoint",
 			serde_json::json!({
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			}),
 		)
 		.expect("ordinary checkpoint should record");
@@ -63,7 +63,7 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			"progress_checkpoint",
 			serde_json::json!({
 				"blockers": [],
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			}),
 		)
 		.expect("clearing checkpoint should record");

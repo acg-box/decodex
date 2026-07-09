@@ -27,7 +27,7 @@ fn progress_checkpoint_rejects_stale_head_sha() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			"focus": "Keep execution state tied to the current lane head.",
 			"next_action": "Reject stale checkpoint writes.",
 			"blockers": [],

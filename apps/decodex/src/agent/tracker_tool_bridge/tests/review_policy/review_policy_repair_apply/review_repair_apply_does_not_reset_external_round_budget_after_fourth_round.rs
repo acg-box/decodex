@@ -39,7 +39,7 @@ fn review_repair_apply_does_not_reset_external_round_budget_after_fourth_round()
 		}),
 	);
 
-	tests::seed_docs_impact_checkpoint(
+	tests::seed_openwiki_impact_checkpoint(
 		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,

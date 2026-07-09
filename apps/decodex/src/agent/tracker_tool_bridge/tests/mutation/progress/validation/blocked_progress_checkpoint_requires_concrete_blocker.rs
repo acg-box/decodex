@@ -15,7 +15,7 @@ fn blocked_progress_checkpoint_requires_concrete_blocker() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "blocked",
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			"focus": "Unblock closeout.",
 			"next_action": "Wait for a blocker to be clarified.",
 			"blockers": [],

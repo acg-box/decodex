@@ -127,7 +127,7 @@ impl<'a> TrackerToolBridge<'a> {
 							"closeout"
 						]
 					},
-					"docs_impact": {
+					"openwiki_impact": {
 						"type": "string",
 						"enum": [
 							"none",
@@ -154,7 +154,7 @@ impl<'a> TrackerToolBridge<'a> {
 				"branch": { "type": "string" },
 				"pr_url": { "type": "string" }
 			},
-				"required": ["phase", "docs_impact", "focus", "next_action", "blockers", "evidence"],
+				"required": ["phase", "openwiki_impact", "focus", "next_action", "blockers", "evidence"],
 				"additionalProperties": false
 			}),
 		)]

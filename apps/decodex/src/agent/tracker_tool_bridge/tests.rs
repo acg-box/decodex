@@ -29,7 +29,7 @@ pub(crate) use support::{
 	sample_issue, sample_local_repo, sample_pull_request, sample_review_context,
 	sample_review_context_in, sample_review_issue, sample_review_repair_context_in,
 	sample_workflow, sample_workflow_with_startable_states, sample_workflow_with_tracker_states,
-	seed_docs_impact_checkpoint, tracker_with_current_issue_snapshot,
+	seed_openwiki_impact_checkpoint, tracker_with_current_issue_snapshot,
 	write_clean_review_checkpoint, write_review_policy_checkpoint,
 };
 pub(crate) use tempfile::TempDir;
