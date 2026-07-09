@@ -1,9 +1,9 @@
 use tempfile::TempDir;
 
-use crate::config::{ServiceConfig, tests};
+use crate::config::{FAST_LANDING_STATUS_CONTEXT, ProjectGitHubLandingMode, ServiceConfig, tests};
 
 #[test]
-fn parses_github_landing_required_status_contexts() {
+fn github_landing_defaults_to_standard() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let config_path = tests::write_config_file(
 		temp_dir.path(),
@@ -15,15 +15,85 @@ fn parses_github_landing_required_status_contexts() {
 
 		[github]
 		token_env_var = "HOME"
-		landing_required_status_contexts = ["decodex/local-full-check"]
-		landing_required_status_creators = ["decodex-bot"]
 	"#,
 	);
 	let config = ServiceConfig::from_path(&config_path).expect("config should parse");
 
-	assert_eq!(
-		config.github().landing_required_status_contexts(),
-		&[String::from("decodex/local-full-check")]
+	assert_eq!(config.github().landing_mode(), ProjectGitHubLandingMode::Standard);
+	assert!(config.github().landing_actors().is_empty());
+	assert!(config.github().landing_status_contexts().is_empty());
+}
+
+#[test]
+fn parses_github_fast_landing_mode_and_actors() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let config_path = tests::write_config_file(
+		temp_dir.path(),
+		r#"
+		service_id = "pubfi"
+
+		[tracker]
+		api_key_env_var = "HOME"
+
+		[github]
+		token_env_var = "HOME"
+		landing_mode = "fast"
+		landing_actors = ["aurexav", "yvette-carlisle"]
+	"#,
 	);
-	assert_eq!(config.github().landing_required_status_creators(), &[String::from("decodex-bot")]);
+	let config = ServiceConfig::from_path(&config_path).expect("config should parse");
+
+	assert_eq!(config.github().landing_mode(), ProjectGitHubLandingMode::Fast);
+	assert_eq!(
+		config.github().landing_status_contexts(),
+		&[String::from(FAST_LANDING_STATUS_CONTEXT)]
+	);
+	assert_eq!(
+		config.github().landing_actors(),
+		&[String::from("aurexav"), String::from("yvette-carlisle")]
+	);
+}
+
+#[test]
+fn fast_landing_requires_at_least_one_actor() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let config_path = tests::write_config_file(
+		temp_dir.path(),
+		r#"
+		service_id = "pubfi"
+
+		[tracker]
+		api_key_env_var = "HOME"
+
+		[github]
+		token_env_var = "HOME"
+		landing_mode = "fast"
+	"#,
+	);
+	let error = ServiceConfig::from_path(&config_path)
+		.expect_err("fast landing without actors should fail");
+
+	assert!(error.to_string().contains("github.landing_actors"));
+}
+
+#[test]
+fn standard_landing_rejects_actors() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let config_path = tests::write_config_file(
+		temp_dir.path(),
+		r#"
+		service_id = "pubfi"
+
+		[tracker]
+		api_key_env_var = "HOME"
+
+		[github]
+		token_env_var = "HOME"
+		landing_actors = ["aurexav"]
+	"#,
+	);
+	let error = ServiceConfig::from_path(&config_path)
+		.expect_err("standard landing with actors should fail");
+
+	assert!(error.to_string().contains("github.landing_actors"));
 }

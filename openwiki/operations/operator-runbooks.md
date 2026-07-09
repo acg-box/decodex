@@ -7,6 +7,9 @@ This page is the operational map for Decodex recovery, GitHub/Linear handling, r
 Use `cargo make` when it has an equivalent task. The Decodex project workflow currently uses `cargo make fmt` followed by `cargo make test` as the full landing gate. Targeted checks are useful while editing, but landing-related refreshes need the workflow gate unless the task authority says otherwise.
 
 Local validation status publishing should use `decodex verify publish-status` with expected PR head, base ref, and base oid. This prevents a stale local green result from being attached after the PR or target branch moved.
+Registered projects use `landing_mode = "standard"` by default. `landing_mode = "fast"`
+trusts `decodex/local-full-check` from the configured `landing_actors` and permits
+ruleset bypass landing after the local gate passes.
 
 ## GitHub operations
 
@@ -21,7 +24,9 @@ decodex land "summary" --manual-authority --pr <URL>
 
 The commit subject must be a single-line `decodex/commit/2` JSON object. It describes the tree change only. Do not encode PR URL, branch, validation, CI, landing, or closeout state into the commit subject.
 
-If landing is blocked, inspect PR state, review state, merge state, required status contexts, branch freshness, and Decodex lifecycle records before using any manual GitHub fallback.
+If landing is blocked, inspect PR state, review state, merge state, landing mode,
+branch freshness, and Decodex lifecycle records before using any manual GitHub
+fallback.
 
 ## Lane-control recovery
 

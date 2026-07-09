@@ -187,6 +187,10 @@ The native App is a UI over this Rust-owned state. It is not a separate schedule
 
 ## Validation status publishing
 
+Fast landing uses `[github].landing_mode = "fast"` plus `landing_actors` in the
+registered project config. Standard landing is the default and waits for GitHub's
+full status rollup. The fixed fast status context is `decodex/local-full-check`.
+
 `decodex verify publish-status` publishes a GitHub commit status for a PR head (`apps/decodex/src/cli/verify_commands.rs`):
 
 ```sh
