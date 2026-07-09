@@ -68,6 +68,7 @@ impl AppServerProcessEnv {
 		let codex_home_env = self.resolve_codex_home_env()?;
 
 		codex_home_env.apply_to(command)?;
+
 		if let Some(context) = self.active_run_commit_context.as_ref() {
 			context.apply_to(command);
 		}
