@@ -11,6 +11,7 @@ use crate::{
 		requests::SupersededCloseoutRecoveryRequest,
 		review_handoff,
 	},
+	state,
 	tracker::{
 		self, IssueTracker, TrackerIssue,
 		records::{self, LinearExecutionEventRecord},
@@ -215,6 +216,8 @@ fn ensure_issue_has_no_live_runtime_ownership(
 	context: &RecoveryContext,
 	issue: &TrackerIssue,
 ) -> Result<()> {
+	let retained_worktree_mapping = issue::retained_worktree_mapping_for_issue(context, issue)?;
+
 	for issue_key in issue_keys(issue) {
 		if context
 			.state_store
@@ -225,16 +228,52 @@ fn ensure_issue_has_no_live_runtime_ownership(
 				issue.identifier
 			);
 		}
-		if let Some(attempt) = context.state_store.latest_run_attempt_for_issue(&issue_key)?
-			&& !orchestrator::local_run_attempt_status_is_terminal(attempt.status())
-		{
-			eyre::bail!(
-				"Issue `{}` still has non-terminal {} run `{}` for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
-				issue.identifier,
-				attempt.status(),
-				attempt.run_id()
-			);
+
+		if let Some(attempt) = context.state_store.latest_run_attempt_for_issue(&issue_key)? {
+			if !orchestrator::local_run_attempt_status_is_terminal(attempt.status()) {
+				eyre::bail!(
+					"Issue `{}` still has non-terminal {} run `{}` for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
+					issue.identifier,
+					attempt.status(),
+					attempt.run_id()
+				);
+			}
+			ensure_latest_attempt_has_no_retry_schedule(
+				issue,
+				&issue_key,
+				attempt.run_id(),
+				attempt.attempt_number(),
+				retained_worktree_mapping.as_ref(),
+			)?;
 		}
+	}
+
+	Ok(())
+}
+
+fn ensure_latest_attempt_has_no_retry_schedule(
+	issue: &TrackerIssue,
+	issue_key: &str,
+	run_id: &str,
+	attempt_number: i64,
+	retained_worktree_mapping: Option<&state::WorktreeMapping>,
+) -> Result<()> {
+	let Some(worktree_mapping) = retained_worktree_mapping else {
+		return Ok(());
+	};
+	let Some(marker) = state::read_run_activity_marker_snapshot(worktree_mapping.worktree_path())?
+	else {
+		return Ok(());
+	};
+
+	if marker.run_id() == run_id
+		&& marker.attempt_number() == attempt_number
+		&& let Some(retry_kind) = marker.retry_kind()
+	{
+		eyre::bail!(
+			"Issue `{}` still has retry-scheduled runtime ownership for `{issue_key}` run `{run_id}` attempt {attempt_number} ({retry_kind}); superseded closeout recovery requires live ownership to be absent.",
+			issue.identifier
+		);
 	}
 
 	Ok(())
@@ -488,6 +527,43 @@ mod tests {
 
 		assert!(error.to_string().contains("run-continuation"));
 		assert!(error.to_string().contains("continuation_pending"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_retry_scheduled_terminal_attempt() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		context
+			.state_store
+			.record_run_attempt("run-retry", &issue.id, 1, "failed")
+			.expect("terminal run should persist");
+		state::write_run_retry_schedule(
+			&worktree_path,
+			"run-retry",
+			1,
+			"failure",
+			OffsetDateTime::now_utc().unix_timestamp() + 300,
+		)
+		.expect("retry schedule should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject retry-scheduled attempts");
+
+		assert!(error.to_string().contains("run-retry"));
+		assert!(error.to_string().contains("retry-scheduled runtime ownership"));
 	}
 
 	#[test]
