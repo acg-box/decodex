@@ -4,8 +4,8 @@ Purpose: Native macOS app for the local Decodex account pool.
 
 Read this when: You are building or running the first Decodex desktop UI surface.
 
-Not this document: Runtime scheduling, retained-lane orchestration, public site behavior,
-or the full operator dashboard.
+Not this document: Runtime scheduling, retained-lane orchestration, or public site
+behavior.
 
 ## Scope
 
@@ -31,7 +31,7 @@ Rust control plane. It is a native UI over the shared Rust account-management se
 and uses the bundled `decodex` server only when no compatible local server is already
 running.
 
-The app and operator dashboard share account-pool state through the Rust account API:
+The app uses the Rust account API for shared account-pool state:
 stored accounts come from `~/.codex/decodex/accounts.jsonl`, run routing and account
 display-name offsets come from `~/.codex/decodex/config.toml`, and Codex CLI auth
 switching writes `auth.json`. Presentation-only choices such as local privacy
@@ -76,10 +76,10 @@ DECODEX_APP_HELPER="$(pwd)/target/release/decodex-app-helper" \
 swift run --package-path apps/decodex-app -c release DecodexApp
 ```
 
-Use hidden `decodex serve --dev` only when manually testing local account APIs, the app
-snapshot API, or dashboard routes while deliberately avoiding scheduler activity. The
-normal app fallback is `decodex serve --listen-address 127.0.0.1:8192`. Do not use
-`--dev` to validate project registration, Linear polling, queue intake, or retained-lane
+Use hidden `decodex serve --dev` only when manually testing local account APIs or the
+app snapshot API while deliberately avoiding scheduler activity. The normal app
+fallback is `decodex serve --listen-address 127.0.0.1:8192`. Do not use `--dev` to
+validate project registration, Linear polling, queue intake, or retained-lane
 execution; use ordinary `decodex serve` for those paths.
 
 The staging script follows the local Rsnap-style signing path: it writes

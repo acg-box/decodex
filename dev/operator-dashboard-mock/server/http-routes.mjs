@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-
 import {
 	accountsWithSelection,
 	usageEstimate,
@@ -14,11 +12,6 @@ export async function handleDashboardRequest(context, request, response) {
 			return;
 		}
 		const url = new URL(request.url || "/", `http://${options.listenAddress}`);
-		if (url.pathname === "/" || url.pathname === "/dashboard") {
-			const html = await fs.readFile(options.dashboardHtml, "utf8");
-			send(response, 200, "text/html; charset=utf-8", html);
-			return;
-		}
 		if (url.pathname === "/api/accounts") {
 			sendAccountPayload(context, response);
 			return;

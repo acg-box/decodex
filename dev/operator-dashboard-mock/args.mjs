@@ -2,10 +2,9 @@ import path from "node:path";
 
 export const DEFAULT_LISTEN_ADDRESS = "127.0.0.1:57399";
 
-export function parseArgs(argv, repoRoot) {
+export function parseArgs(argv) {
 	const options = {
 		authDir: null,
-		dashboardHtml: path.join(repoRoot, "apps/decodex/src/orchestrator/operator_dashboard.html"),
 		listenAddress: DEFAULT_LISTEN_ADDRESS,
 	};
 
@@ -17,10 +16,6 @@ export function parseArgs(argv, repoRoot) {
 		}
 		if (arg === "--listen-address") {
 			options.listenAddress = requiredValue(argv, (index += 1), arg);
-			continue;
-		}
-		if (arg === "--dashboard-html") {
-			options.dashboardHtml = path.resolve(requiredValue(argv, (index += 1), arg));
 			continue;
 		}
 		if (arg === "--codex-auth-dir") {
@@ -49,14 +44,11 @@ function requiredValue(argv, index, flag) {
 function printHelp() {
 	console.log(`Usage: node dev/operator-dashboard-mock.mjs [options]
 
-Serves the real operator dashboard HTML, /api/accounts, and mock dashboard WebSocket
-snapshot/activity events from one local base URL. Use the same mock base URL for the
-browser dashboard and Decodex App previews; do not start a second mock server for the
-App. The dashboard authority is ws://HOST:PORT/dashboard/control.
+Serves /api/accounts, /livez, and the mock operator WebSocket used by Decodex App
+previews. The operator stream is ws://HOST:PORT/dashboard/control.
 
 Options:
   --listen-address HOST:PORT   Bind address (default ${DEFAULT_LISTEN_ADDRESS})
-  --dashboard-html PATH        Dashboard HTML path
   --use-codex-auth             Load auth*.json accounts from ~/.codex
   --codex-auth-dir DIR         Load auth*.json accounts from DIR
   -h, --help                   Show this help
