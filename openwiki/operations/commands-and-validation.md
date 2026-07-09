@@ -132,6 +132,26 @@ decodex verify publish-status \
 
 Success requires head/base preconditions, preventing stale green statuses after PR or target branch movement. Publish only after the cited command has passed on the exact tree, and include a description that lets a later operator connect the GitHub status back to the local evidence packet. In fast landing mode, the local status is a merge authority boundary, so a moved PR head, moved base branch, wrong context, or unapproved status creator should stop landing rather than be worked around manually.
 
+## GitHub Actions
+
+The checked-in GitHub Actions workflows under `.github/workflows/` cover:
+
+- `language.yml`: Rust formatting, style, check, clippy, tests, docs check,
+  site build/check, and TOML formatting for pushes and pull requests targeting
+  `main`, plus merge queue groups.
+- `codeql.yml`: CodeQL code scanning on pushes to `main`, pull requests
+  targeting `main`, and a weekly schedule.
+- `deploy-pages.yml`: static Astro site build and GitHub Pages deployment from
+  `main`.
+- `release.yml`: tagged release packaging for the Rust CLI, macOS app, and
+  release assets.
+
+Dependabot configuration lives in `.github/dependabot.yml` for Cargo, GitHub
+Actions, and site npm dependency updates.
+
+Radar upstream review, release checkpoint curation, and artifact retention are
+Codex App automations sourced from `automations/radar/`, not GitHub Actions.
+
 ## Code scanning
 
 GitHub rulesets for this repository require CodeQL code scanning before merge.

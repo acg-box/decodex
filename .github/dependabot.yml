@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: 'cargo'
+    directory: '/'
+    schedule:
+      interval: 'daily'
+      time: '00:00'
+    labels: []
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'daily'
+      time: '00:00'
+    labels: []
+  - package-ecosystem: 'npm'
+    directory: '/site'
+    schedule:
+      interval: 'daily'
+      time: '00:00'
+    labels: []
