@@ -4,6 +4,7 @@ mod comments;
 mod landing_state;
 mod locator;
 mod merge_readback;
+mod pull_requests;
 mod repository;
 mod status;
 
@@ -35,6 +36,7 @@ pub(crate) use merge_readback::{
 	commit_subject_wait_error_is_retryable, configure_admin_merge_command,
 	merge_commit_wait_error_is_retryable,
 };
+pub(crate) use pull_requests::close_pull_request;
 pub(crate) use repository::{
 	RepositoryContext, inspect_repository_context, pull_request_matches_repository,
 };

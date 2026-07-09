@@ -41,6 +41,10 @@ service labels, recovery, or lane-control details matter.
 - If diagnosis shows a human-owned PR takeover from the current managed worktree,
   dry-run `decodex recover review-handoff adopt <ISSUE> --pr <URL> --dry-run`
   before any live adopt.
+- If a later issue and merged successor PR already landed the accepted repair, do
+  not rebind the obsolete PR. Dry-run
+  `decodex recover superseded-closeout <ISSUE> --pr <OLD_PR> --successor-issue <ISSUE> --successor-pr <MERGED_PR> --dry-run`
+  before live superseded closeout.
 - Do not infer PR lineage from branch names, PR titles, Linear comments, status
   summaries, or stale snapshots.
 

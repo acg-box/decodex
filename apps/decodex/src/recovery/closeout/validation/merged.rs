@@ -1,5 +1,5 @@
-mod issue;
-mod pull_request;
+pub(in crate::recovery::closeout::validation) mod issue;
+pub(in crate::recovery::closeout::validation) mod pull_request;
 mod worktree;
 
 use crate::{

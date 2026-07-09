@@ -118,6 +118,61 @@ fn merged_closeout_recovery_events_validate() {
 }
 
 #[test]
+fn superseded_closeout_recovery_events_validate() {
+	let mut closeout = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: "pubfi-mono",
+			issue_id: "issue-id",
+			issue_identifier: "PUB-1704",
+			run_id: "pub-1704-attempt-1",
+			attempt_number: 1,
+		},
+		LEGACY_MANUAL_CLOSEOUT_EVENT,
+		super::current_timestamp(),
+		"anchor-closeout",
+	);
+
+	closeout.branch = Some(String::from("y/pubfi-pub-1704"));
+	closeout.worktree_path = Some(String::from(".worktrees/PUB-1704"));
+	closeout.pr_url = Some(String::from("https://github.com/helixbox/pubfi-mono/pull/826"));
+	closeout.pr_head_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
+	closeout.pr_base_ref = Some(String::from("main"));
+	closeout.commit_sha = Some(String::from("1123456789abcdef0123456789abcdef01234567"));
+	closeout.validation_result = Some(String::from("passed"));
+	closeout.target_state = Some(String::from("Done"));
+	closeout.summary = Some(String::from("Superseded closeout recovery recorded."));
+
+	records::validate_linear_execution_event_record(&closeout)
+		.expect("superseded closeout event should validate");
+
+	let mut cleanup = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: "pubfi-mono",
+			issue_id: "issue-id",
+			issue_identifier: "PUB-1704",
+			run_id: "pub-1704-attempt-1",
+			attempt_number: 1,
+		},
+		"cleanup_complete",
+		super::timestamp_after_seconds(1),
+		"anchor-cleanup",
+	);
+
+	cleanup.branch = Some(String::from("y/pubfi-pub-1704"));
+	cleanup.worktree_path = Some(String::from(".worktrees/PUB-1704"));
+	cleanup.pr_url = Some(String::from("https://github.com/helixbox/pubfi-mono/pull/826"));
+	cleanup.pr_head_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
+	cleanup.pr_base_ref = Some(String::from("main"));
+	cleanup.commit_sha = Some(String::from("1123456789abcdef0123456789abcdef01234567"));
+	cleanup.cleanup_status = Some(String::from("superseded_closeout_reconciled"));
+	cleanup.target_state = Some(String::from("Done"));
+	cleanup.summary = Some(String::from("Superseded closeout recovery marked cleanup complete."));
+
+	records::validate_linear_execution_event_record(&cleanup)
+		.expect("superseded closeout cleanup event should validate");
+}
+
+#[test]
 fn review_handoff_rebind_event_requires_evidence() {
 	let mut record = LinearExecutionEventRecord::new(
 		LinearExecutionEventIdentity {

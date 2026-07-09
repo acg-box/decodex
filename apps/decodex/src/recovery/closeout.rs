@@ -11,7 +11,10 @@ use crate::{
 	pull_request::PullRequestLandingState,
 	recovery::{
 		pull_request_inspection,
-		requests::{LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest},
+		requests::{
+			LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest,
+			SupersededCloseoutRecoveryRequest,
+		},
 	},
 	state::WorktreeMapping,
 	tracker::TrackerIssue,
@@ -42,6 +45,19 @@ struct MergedCloseoutRetainedContext {
 	worktree_path: String,
 	run_id: String,
 	attempt_number: i64,
+}
+
+struct SupersededCloseoutValidation {
+	issue: TrackerIssue,
+	successor_issue: TrackerIssue,
+	branch_name: String,
+	worktree_path_for_event: String,
+	run_id: String,
+	attempt_number: i64,
+	obsolete_landing_state: PullRequestLandingState,
+	successor_landing_state: PullRequestLandingState,
+	successor_merge_commit: String,
+	completed_state_id: String,
 }
 
 /// Run an explicit audited legacy closeout fallback.
@@ -132,6 +148,60 @@ pub(crate) fn run_merged_closeout(
 		validation.merge_commit,
 		closeout_recorded,
 		cleanup_recorded
+	);
+
+	Ok(())
+}
+
+/// Run an explicit superseded PR closeout after a successor PR has landed.
+pub(crate) fn run_superseded_closeout(
+	config_path: Option<&Path>,
+	request: &SupersededCloseoutRecoveryRequest,
+) -> Result<()> {
+	let context = super::load_recovery_context_for_dry_run(config_path, request.dry_run)?;
+	let validation = validation::validate_superseded_closeout_request(&context, request)?;
+
+	if request.dry_run {
+		println!(
+			"dry run: superseded closeout validated for project={} issue={} branch={} worktree_path={} pr={} head={} successor_issue={} successor_pr={} successor_head={} successor_merge_commit={} run_id={} attempt={}",
+			context.config.service_id(),
+			validation.issue.identifier,
+			validation.branch_name,
+			validation.worktree_path_for_event,
+			pull_request_inspection::landing_url(&validation.obsolete_landing_state),
+			validation.obsolete_landing_state.head_ref_oid,
+			validation.successor_issue.identifier,
+			pull_request_inspection::landing_url(&validation.successor_landing_state),
+			validation.successor_landing_state.head_ref_oid,
+			validation.successor_merge_commit,
+			validation.run_id,
+			validation.attempt_number
+		);
+
+		return Ok(());
+	}
+	if !request.manual_authority {
+		eyre::bail!(
+			"`recover superseded-closeout` closes an obsolete PR and writes closeout ledger records, so it requires --manual-authority outside dry-run mode."
+		);
+	}
+
+	let (closeout_recorded, cleanup_recorded, pr_closed) =
+		apply::apply_superseded_closeout_recovery(&context, &validation)?;
+
+	println!(
+		"superseded closeout recovery ok: project={} issue={} branch={} worktree_path={} pr={} successor_issue={} successor_pr={} successor_merge_commit={} closeout_recorded={} cleanup_recorded={} pr_closed={}",
+		context.config.service_id(),
+		validation.issue.identifier,
+		validation.branch_name,
+		validation.worktree_path_for_event,
+		pull_request_inspection::landing_url(&validation.obsolete_landing_state),
+		validation.successor_issue.identifier,
+		pull_request_inspection::landing_url(&validation.successor_landing_state),
+		validation.successor_merge_commit,
+		closeout_recorded,
+		cleanup_recorded,
+		pr_closed
 	);
 
 	Ok(())

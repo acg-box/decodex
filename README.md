@@ -107,6 +107,7 @@ decodex intake goal --project decodex <CONTRACT_ID> --dry-run
 decodex intake goal --project decodex <CONTRACT_ID> --apply
 decodex intake issues --project decodex XY-1 XY-2 --dry-run
 decodex intake issues --project decodex XY-1 XY-2 --apply
+decodex recover superseded-closeout <ISSUE> --pr <OLD_PR> --successor-issue <ISSUE> --successor-pr <MERGED_PR> --dry-run
 decodex mcp serve --transport stdio
 decodex mcp serve --transport streamable-http --listen-address 127.0.0.1:8193
 decodex run --dry-run

@@ -2,7 +2,10 @@ use crate::{
 	recovery::{
 		LEGACY_MANUAL_CLOSEOUT_ANCHOR, LEGACY_MANUAL_CLOSEOUT_EVENT,
 		MERGED_CLOSEOUT_CLEANUP_ANCHOR, MERGED_CLOSEOUT_CLOSEOUT_ANCHOR,
-		closeout::{LegacyCloseoutValidation, MergedCloseoutValidation},
+		SUPERSEDED_CLOSEOUT_ANCHOR, SUPERSEDED_CLOSEOUT_CLEANUP_ANCHOR,
+		closeout::{
+			LegacyCloseoutValidation, MergedCloseoutValidation, SupersededCloseoutValidation,
+		},
 		context::RecoveryContext,
 		events::{self},
 		pull_request_inspection,
@@ -155,6 +158,116 @@ pub(super) fn merged_closeout_cleanup_event(
 		format!("branch={}", validation.branch_name),
 		format!("worktree_path={}", validation.worktree_path_for_event),
 		String::from("linear_queue_active_attention_labels_absent=true"),
+		String::from("retained_worktree_has_no_uncommitted_changes=true"),
+	]);
+	event.next_action = Some(String::from("No Decodex runtime action remains for this lane."));
+
+	event
+}
+
+pub(super) fn superseded_closeout_event(
+	context: &RecoveryContext,
+	validation: &SupersededCloseoutValidation,
+) -> LinearExecutionEventRecord {
+	let obsolete_pr_url = pull_request_inspection::landing_url(&validation.obsolete_landing_state);
+	let successor_pr_url =
+		pull_request_inspection::landing_url(&validation.successor_landing_state);
+	let stable_anchor = records::stable_event_anchor(&[
+		obsolete_pr_url,
+		successor_pr_url,
+		&validation.successor_merge_commit,
+		SUPERSEDED_CLOSEOUT_ANCHOR,
+	]);
+	let mut event = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: context.config.service_id(),
+			issue_id: &validation.issue.id,
+			issue_identifier: &validation.issue.identifier,
+			run_id: &validation.run_id,
+			attempt_number: validation.attempt_number,
+		},
+		LEGACY_MANUAL_CLOSEOUT_EVENT,
+		events::current_timestamp(),
+		&stable_anchor,
+	);
+
+	event.branch = Some(validation.branch_name.clone());
+	event.worktree_path = Some(validation.worktree_path_for_event.clone());
+	event.pr_url = Some(obsolete_pr_url.to_owned());
+	event.pr_head_sha = Some(validation.obsolete_landing_state.head_ref_oid.clone());
+	event.pr_base_ref = Some(validation.obsolete_landing_state.base_ref_name.clone());
+	event.commit_sha = Some(validation.successor_merge_commit.clone());
+	event.validation_result = Some(String::from("passed"));
+	event.target_state =
+		Some(context.workflow.frontmatter().tracker().resolved_completed_state().to_owned());
+	event.summary = Some(format!(
+		"Superseded closeout recorded for {} after successor issue {} landed PR {}.",
+		validation.issue.identifier, validation.successor_issue.identifier, successor_pr_url
+	));
+	event.evidence = Some(vec![
+		format!("issue_state={}", validation.issue.state.name),
+		format!("successor_issue={}", validation.successor_issue.identifier),
+		format!("successor_issue_state={}", validation.successor_issue.state.name),
+		format!("obsolete_pr_url={obsolete_pr_url}"),
+		format!("obsolete_pr_head_sha={}", validation.obsolete_landing_state.head_ref_oid),
+		format!("successor_pr_url={successor_pr_url}"),
+		format!("successor_pr_head_sha={}", validation.successor_landing_state.head_ref_oid),
+		format!("successor_merge_commit={}", validation.successor_merge_commit),
+		String::from("obsolete_pr_has_no_unique_unlanded_patch=true"),
+		String::from("retained_worktree_has_no_uncommitted_changes=true"),
+	]);
+	event.next_action = Some(String::from(
+		"Decodex will close the obsolete PR, mark the superseded issue complete, and clear retained lane cleanup state.",
+	));
+
+	event
+}
+
+pub(super) fn superseded_closeout_cleanup_event(
+	context: &RecoveryContext,
+	validation: &SupersededCloseoutValidation,
+) -> LinearExecutionEventRecord {
+	let obsolete_pr_url = pull_request_inspection::landing_url(&validation.obsolete_landing_state);
+	let successor_pr_url =
+		pull_request_inspection::landing_url(&validation.successor_landing_state);
+	let stable_anchor = records::stable_event_anchor(&[
+		&validation.branch_name,
+		&validation.worktree_path_for_event,
+		&validation.successor_merge_commit,
+		SUPERSEDED_CLOSEOUT_CLEANUP_ANCHOR,
+	]);
+	let mut event = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: context.config.service_id(),
+			issue_id: &validation.issue.id,
+			issue_identifier: &validation.issue.identifier,
+			run_id: &validation.run_id,
+			attempt_number: validation.attempt_number,
+		},
+		"cleanup_complete",
+		events::timestamp_after_seconds(1),
+		&stable_anchor,
+	);
+
+	event.branch = Some(validation.branch_name.clone());
+	event.worktree_path = Some(validation.worktree_path_for_event.clone());
+	event.pr_url = Some(obsolete_pr_url.to_owned());
+	event.pr_head_sha = Some(validation.obsolete_landing_state.head_ref_oid.clone());
+	event.pr_base_ref = Some(validation.obsolete_landing_state.base_ref_name.clone());
+	event.commit_sha = Some(validation.successor_merge_commit.clone());
+	event.cleanup_status = Some(String::from("superseded_closeout_reconciled"));
+	event.target_state =
+		Some(context.workflow.frontmatter().tracker().resolved_completed_state().to_owned());
+	event.summary = Some(format!(
+		"Superseded closeout marked retained lane {} cleanup complete after successor PR {}.",
+		validation.issue.identifier, successor_pr_url
+	));
+	event.evidence = Some(vec![
+		format!("issue_state={}", validation.issue.state.name),
+		format!("branch={}", validation.branch_name),
+		format!("worktree_path={}", validation.worktree_path_for_event),
+		format!("successor_issue={}", validation.successor_issue.identifier),
+		String::from("obsolete_pr_closed_or_already_closed=true"),
 		String::from("retained_worktree_has_no_uncommitted_changes=true"),
 	]);
 	event.next_action = Some(String::from("No Decodex runtime action remains for this lane."));

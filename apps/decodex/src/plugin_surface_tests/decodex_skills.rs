@@ -16,6 +16,7 @@ fn packaged_decodex_skills_are_runtime_operator_only() {
 	plugin_surface_tests::assert_contains(&skill_surface, "review-handoff diagnose");
 	plugin_surface_tests::assert_contains(&skill_surface, "review-handoff rebind");
 	plugin_surface_tests::assert_contains(&skill_surface, "review-handoff adopt");
+	plugin_surface_tests::assert_contains(&skill_surface, "superseded-closeout");
 	plugin_surface_tests::assert_contains(&skill_surface, "Only `decodex land` lands");
 	plugin_surface_tests::assert_contains(&skill_surface, "Do not bypass Decodex authority");
 	plugin_surface_tests::assert_contains(&skill_surface, "raw Git");

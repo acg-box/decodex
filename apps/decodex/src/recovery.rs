@@ -28,12 +28,13 @@ mod stale_active_runtime;
 mod stale_active_worktree;
 
 pub(crate) use self::{
-	closeout::{run_legacy_closeout, run_merged_closeout},
+	closeout::{run_legacy_closeout, run_merged_closeout, run_superseded_closeout},
 	ghost_lane::{run_ghost_lane_cleanup, run_ghost_lane_diagnose},
 	requests::{
 		GhostLaneCleanupRequest, GhostLaneDiagnoseRequest, LegacyCloseoutRecoveryRequest,
 		MergedCloseoutRecoveryRequest, ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest,
 		ReviewHandoffRebindRequest, StaleActiveDiagnoseRequest, StaleActiveReleaseRequest,
+		SupersededCloseoutRecoveryRequest,
 	},
 	review_handoff::commands::{
 		run_review_handoff_adopt, run_review_handoff_diagnose, run_review_handoff_rebind,
@@ -119,6 +120,8 @@ const LEGACY_MANUAL_CLOSEOUT_EVENT: &str = "closeout";
 const LEGACY_MANUAL_CLOSEOUT_ANCHOR: &str = "legacy_manual_closeout";
 const MERGED_CLOSEOUT_CLOSEOUT_ANCHOR: &str = "merged_closeout";
 const MERGED_CLOSEOUT_CLEANUP_ANCHOR: &str = "merged_closeout_cleanup";
+const SUPERSEDED_CLOSEOUT_ANCHOR: &str = "superseded_closeout";
+const SUPERSEDED_CLOSEOUT_CLEANUP_ANCHOR: &str = "superseded_closeout_cleanup";
 const GHOST_LANE_CLASSIFICATION: &str = "missing_issue_ghost_lane";
 const MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION: &str = "mcp_test_fixture_ghost_lane";
 const GHOST_LANE_BLOCKED_CLASSIFICATION: &str = "ghost_lane_recovery_blocked";

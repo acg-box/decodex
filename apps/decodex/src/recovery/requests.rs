@@ -92,3 +92,20 @@ pub(crate) struct MergedCloseoutRecoveryRequest {
 	/// Required for non-dry-run mutation.
 	pub(crate) manual_authority: bool,
 }
+
+/// Explicit superseded retained PR closeout after a successor PR landed the repair.
+#[derive(Debug)]
+pub(crate) struct SupersededCloseoutRecoveryRequest {
+	/// Superseded issue identifier to terminalize.
+	pub(crate) issue: String,
+	/// Obsolete retained pull request URL to close.
+	pub(crate) pr_url: String,
+	/// Successor issue identifier that carried the landed repair.
+	pub(crate) successor_issue: String,
+	/// Merged successor pull request URL that proves terminal code lineage.
+	pub(crate) successor_pr_url: String,
+	/// Validate without writing runtime, tracker, or GitHub state.
+	pub(crate) dry_run: bool,
+	/// Required for non-dry-run mutation.
+	pub(crate) manual_authority: bool,
+}

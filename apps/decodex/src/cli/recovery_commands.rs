@@ -8,7 +8,10 @@ pub(in crate::cli) mod stale_active;
 use clap::{Args, Subcommand};
 
 use self::{
-	closeout::{LegacyCloseoutRecoveryCommand, MergedCloseoutRecoveryCommand},
+	closeout::{
+		LegacyCloseoutRecoveryCommand, MergedCloseoutRecoveryCommand,
+		SupersededCloseoutRecoveryCommand,
+	},
 	ghost_lane::GhostLaneRecoveryCommand,
 	review_handoff::ReviewHandoffRecoveryCommand,
 	stale_active::StaleActiveRecoveryCommand,
@@ -16,7 +19,10 @@ use self::{
 use crate::{
 	cli::ProjectConfigArgs,
 	prelude::Result,
-	recovery::{self, LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest},
+	recovery::{
+		self, LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest,
+		SupersededCloseoutRecoveryRequest,
+	},
 };
 
 #[derive(Debug, Args)]
@@ -50,6 +56,17 @@ impl RecoverCommand {
 					manual_authority: args.manual_authority,
 				},
 			),
+			RecoverSubcommand::SupersededCloseout(args) => recovery::run_superseded_closeout(
+				self.project_config.as_path(),
+				&SupersededCloseoutRecoveryRequest {
+					issue: args.issue.clone(),
+					pr_url: args.pr.clone(),
+					successor_issue: args.successor_issue.clone(),
+					successor_pr_url: args.successor_pr.clone(),
+					dry_run: args.dry_run,
+					manual_authority: args.manual_authority,
+				},
+			),
 		}
 	}
 }
@@ -66,4 +83,6 @@ pub(super) enum RecoverSubcommand {
 	LegacyCloseout(LegacyCloseoutRecoveryCommand),
 	/// Reconcile stale retained attention after a PR is already merged and cleaned up.
 	MergedCloseout(MergedCloseoutRecoveryCommand),
+	/// Close an obsolete retained PR after a successor PR landed the repair lineage.
+	SupersededCloseout(SupersededCloseoutRecoveryCommand),
 }

@@ -31,3 +31,25 @@ pub(in crate::cli) struct MergedCloseoutRecoveryCommand {
 	#[arg(long)]
 	pub(in crate::cli) manual_authority: bool,
 }
+
+#[derive(Debug, Args)]
+pub(in crate::cli) struct SupersededCloseoutRecoveryCommand {
+	/// Issue identifier for the obsolete retained lane.
+	#[arg(value_name = "ISSUE")]
+	pub(in crate::cli) issue: String,
+	/// Obsolete retained pull request URL to close.
+	#[arg(long, value_name = "PR_URL")]
+	pub(in crate::cli) pr: String,
+	/// Successor issue identifier that landed the accepted repair.
+	#[arg(long, value_name = "ISSUE")]
+	pub(in crate::cli) successor_issue: String,
+	/// Merged successor pull request URL that proves terminal code lineage.
+	#[arg(long, value_name = "PR_URL")]
+	pub(in crate::cli) successor_pr: String,
+	/// Validate without writing runtime, tracker, or GitHub state.
+	#[arg(long)]
+	pub(in crate::cli) dry_run: bool,
+	/// Required for non-dry-run superseded closeout reconciliation.
+	#[arg(long)]
+	pub(in crate::cli) manual_authority: bool,
+}

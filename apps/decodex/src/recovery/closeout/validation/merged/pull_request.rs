@@ -86,3 +86,42 @@ pub(in crate::recovery) fn ensure_merge_commit_reachable_from_remote_default_bra
 		repo_root.display()
 	)
 }
+
+pub(in crate::recovery) fn ensure_head_has_no_unique_patch_from_remote_default_branch(
+	repo_root: &Path,
+	head_commit: &str,
+	default_branch: &str,
+	context: &str,
+) -> Result<()> {
+	let remote_ref = format!("refs/remotes/origin/{default_branch}");
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(repo_root)
+		.args(["cherry", remote_ref.as_str(), head_commit])
+		.output()?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+
+		eyre::bail!(
+			"`git cherry {remote_ref} {head_commit}` failed in `{}` while checking `{context}`: {}",
+			repo_root.display(),
+			stderr.trim()
+		);
+	}
+
+	let stdout = String::from_utf8_lossy(&output.stdout);
+	let unique_commits =
+		stdout.lines().filter_map(|line| line.strip_prefix("+ ")).collect::<Vec<_>>();
+
+	if unique_commits.is_empty() {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"Configured repo root `{}` found {} patch-unique obsolete PR commit(s) not present on `{remote_ref}` while checking `{context}`: {}",
+		repo_root.display(),
+		unique_commits.len(),
+		unique_commits.join(", ")
+	)
+}
