@@ -140,9 +140,11 @@ The checked-in GitHub Actions workflows under `.github/workflows/` cover:
   site build/check, and TOML formatting for pushes and pull requests targeting
   `main`, plus merge queue groups.
 - `codeql.yml`: CodeQL code scanning on pushes to `main`, pull requests
-  targeting `main`, and a weekly schedule.
+  targeting `main`, and a weekly schedule. Push and pull request runs skip
+  documentation, automation, and asset-only changes; the weekly schedule keeps a
+  periodic repository scan.
 - `deploy-pages.yml`: static Astro site build and GitHub Pages deployment from
-  `main`.
+  `main` when `site/` or the Pages workflow changes, plus manual dispatch.
 - `release.yml`: tagged release packaging for the Rust CLI, macOS app, and
   release assets.
 
@@ -154,12 +156,11 @@ Codex App automations sourced from `automations/radar/`, not GitHub Actions.
 
 ## Code scanning
 
-GitHub rulesets for this repository require CodeQL code scanning before merge.
-The checked-in workflow is `.github/workflows/codeql.yml` and runs on pushes to
-`main`, pull requests targeting `main`, and a weekly schedule. It
-analyzes Rust and JavaScript/TypeScript with no-build CodeQL mode so the
-required code-scanning tool is configured for PR heads without adding a second
-repository build gate.
+The checked-in CodeQL workflow is `.github/workflows/codeql.yml` and runs on
+pushes to `main`, pull requests targeting `main`, and a weekly schedule. Push
+and pull request triggers skip documentation, automation, and asset-only
+changes. It analyzes Rust and JavaScript/TypeScript with no-build CodeQL mode so
+code scanning stays available without adding a second repository build gate.
 
 ## App-server compatibility checks
 

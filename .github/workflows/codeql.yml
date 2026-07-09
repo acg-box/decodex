@@ -4,9 +4,23 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**/*.md"
+      - ".agents/**"
+      - ".github/dependabot.yml"
+      - "assets/**"
+      - "automations/**"
+      - "openwiki/**"
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - "**/*.md"
+      - ".agents/**"
+      - ".github/dependabot.yml"
+      - "assets/**"
+      - "automations/**"
+      - "openwiki/**"
   schedule:
     - cron: "24 6 * * 1"
 
