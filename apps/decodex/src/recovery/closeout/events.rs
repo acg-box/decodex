@@ -161,7 +161,7 @@ pub(super) fn merged_closeout_cleanup_event(
 		String::from("retained_worktree_has_no_uncommitted_changes=true"),
 	]);
 	event.next_action = Some(String::from(
-		"Decodex will close the obsolete PR, record lifecycle authority, and clear retained lane cleanup state.",
+		"Decodex will record lifecycle authority and clear retained lane cleanup state.",
 	));
 
 	event

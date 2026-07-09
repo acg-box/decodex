@@ -122,65 +122,258 @@ pub(super) fn apply_superseded_closeout_recovery(
 	context: &RecoveryContext,
 	validation: &SupersededCloseoutValidation,
 ) -> Result<(bool, bool, bool)> {
-	let obsolete_pr_url = pull_request_inspection::landing_url(&validation.obsolete_landing_state);
-	let successor_pr_url =
-		pull_request_inspection::landing_url(&validation.successor_landing_state);
-	super::validation::ensure_superseded_issue_terminalizable(context, &validation.issue)?;
-	context.tracker.update_issue_state(&validation.issue.id, &validation.completed_state_id)?;
+	let mut operations = SupersededCloseoutRecoveryOperations { context, validation };
 
-	let closeout_event = events::superseded_closeout_event(context, validation);
-	let cleanup_event = events::superseded_closeout_cleanup_event(context, validation);
-	let closeout_recorded = write_superseded_closeout_event(
-		context,
-		validation,
-		&closeout_event,
-		"Decodex superseded closeout recovery: verified a successor PR landed the retained repair lineage and authorized closure of the obsolete PR.",
-	)?;
-	let cleanup_recorded = match write_superseded_closeout_event(
-		context,
-		validation,
-		&cleanup_event,
-		"Decodex superseded closeout recovery: verified the obsolete retained lane has no remaining unique unlanded work and recorded cleanup_complete.",
-	) {
-		Ok(cleanup_recorded) => cleanup_recorded,
-		Err(error) => return Err(error),
-	};
+	apply_superseded_closeout_recovery_sequence(&mut operations)
+}
 
-	let github_token = context.config.github().resolve_token()?;
-	let pr_comment = format!(
-		"Decodex superseded closeout: closing this retained PR because successor PR {successor_pr_url} for issue {} landed the accepted repair. Original issue {} is terminalized as superseded and should not be landed from this PR.",
-		validation.successor_issue.identifier, validation.issue.identifier
-	);
+trait SupersededCloseoutRecoveryOperationsRunner {
+	fn ensure_terminalizable(&mut self) -> Result<()>;
+	fn update_issue_state(&mut self) -> Result<()>;
+	fn write_closeout_event(&mut self) -> Result<bool>;
+	fn write_cleanup_event(&mut self) -> Result<bool>;
+	fn record_lifecycle_authority(&mut self) -> Result<()>;
+	fn update_run_status(&mut self) -> Result<()>;
+	fn clear_worktree(&mut self) -> Result<()>;
+	fn post_pull_request_comment(&mut self) -> Result<()>;
+	fn close_pull_request_if_open(&mut self) -> Result<bool>;
+}
 
-	github::post_pull_request_issue_comment(
-		context.config.repo_root(),
-		obsolete_pr_url,
-		&pr_comment,
-		&github_token,
-		context.config.github().command_path(),
-	)?;
-
-	let pr_closed = if validation.obsolete_landing_state.state == "OPEN" {
-		github::close_pull_request(
-			context.config.repo_root(),
-			obsolete_pr_url,
-			&github_token,
-			context.config.github().command_path(),
-		)?;
-		true
-	} else {
-		false
-	};
-
-	record_superseded_closeout_lifecycle_authority(context, validation)?;
-	context.state_store.update_run_status(&validation.run_id, "succeeded")?;
-	context.state_store.clear_worktree(&validation.issue.id)?;
-
-	if validation.issue.identifier != validation.issue.id {
-		context.state_store.clear_worktree(&validation.issue.identifier)?;
-	}
+fn apply_superseded_closeout_recovery_sequence(
+	operations: &mut impl SupersededCloseoutRecoveryOperationsRunner,
+) -> Result<(bool, bool, bool)> {
+	operations.ensure_terminalizable()?;
+	operations.update_issue_state()?;
+	let closeout_recorded = operations.write_closeout_event()?;
+	let cleanup_recorded = operations.write_cleanup_event()?;
+	operations.record_lifecycle_authority()?;
+	operations.update_run_status()?;
+	operations.clear_worktree()?;
+	operations.post_pull_request_comment()?;
+	let pr_closed = operations.close_pull_request_if_open()?;
 
 	Ok((closeout_recorded, cleanup_recorded, pr_closed))
+}
+
+struct SupersededCloseoutRecoveryOperations<'a> {
+	context: &'a RecoveryContext,
+	validation: &'a SupersededCloseoutValidation,
+}
+
+impl SupersededCloseoutRecoveryOperationsRunner for SupersededCloseoutRecoveryOperations<'_> {
+	fn ensure_terminalizable(&mut self) -> Result<()> {
+		super::validation::ensure_superseded_issue_terminalizable(
+			self.context,
+			&self.validation.issue,
+		)
+	}
+
+	fn update_issue_state(&mut self) -> Result<()> {
+		self.context
+			.tracker
+			.update_issue_state(&self.validation.issue.id, &self.validation.completed_state_id)
+	}
+
+	fn write_closeout_event(&mut self) -> Result<bool> {
+		let closeout_event = events::superseded_closeout_event(self.context, self.validation);
+
+		write_superseded_closeout_event(
+			self.context,
+			self.validation,
+			&closeout_event,
+			"Decodex superseded closeout recovery: verified a successor PR landed the retained repair lineage and authorized closure of the obsolete PR.",
+		)
+	}
+
+	fn write_cleanup_event(&mut self) -> Result<bool> {
+		let cleanup_event =
+			events::superseded_closeout_cleanup_event(self.context, self.validation);
+
+		write_superseded_closeout_event(
+			self.context,
+			self.validation,
+			&cleanup_event,
+			"Decodex superseded closeout recovery: verified the obsolete retained lane has no remaining unique unlanded work and recorded cleanup_complete.",
+		)
+	}
+
+	fn record_lifecycle_authority(&mut self) -> Result<()> {
+		record_superseded_closeout_lifecycle_authority(self.context, self.validation)
+	}
+
+	fn update_run_status(&mut self) -> Result<()> {
+		self.context.state_store.update_run_status(&self.validation.run_id, "succeeded")
+	}
+
+	fn clear_worktree(&mut self) -> Result<()> {
+		self.context.state_store.clear_worktree(&self.validation.issue.id)?;
+
+		if self.validation.issue.identifier != self.validation.issue.id {
+			self.context.state_store.clear_worktree(&self.validation.issue.identifier)?;
+		}
+
+		Ok(())
+	}
+
+	fn post_pull_request_comment(&mut self) -> Result<()> {
+		let obsolete_pr_url =
+			pull_request_inspection::landing_url(&self.validation.obsolete_landing_state);
+		let successor_pr_url =
+			pull_request_inspection::landing_url(&self.validation.successor_landing_state);
+		let github_token = self.context.config.github().resolve_token()?;
+		let pr_comment = format!(
+			"Decodex superseded closeout: closing this retained PR because successor PR {successor_pr_url} for issue {} landed the accepted repair. Original issue {} is terminalized as superseded and should not be landed from this PR.",
+			self.validation.successor_issue.identifier, self.validation.issue.identifier
+		);
+
+		github::post_pull_request_issue_comment(
+			self.context.config.repo_root(),
+			obsolete_pr_url,
+			&pr_comment,
+			&github_token,
+			self.context.config.github().command_path(),
+		)?;
+
+		Ok(())
+	}
+
+	fn close_pull_request_if_open(&mut self) -> Result<bool> {
+		if self.validation.obsolete_landing_state.state != "OPEN" {
+			return Ok(false);
+		}
+
+		let obsolete_pr_url =
+			pull_request_inspection::landing_url(&self.validation.obsolete_landing_state);
+		let github_token = self.context.config.github().resolve_token()?;
+
+		github::close_pull_request(
+			self.context.config.repo_root(),
+			obsolete_pr_url,
+			&github_token,
+			self.context.config.github().command_path(),
+		)?;
+
+		Ok(true)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::cell::RefCell;
+
+	use crate::prelude::{Result, eyre};
+
+	use super::{
+		SupersededCloseoutRecoveryOperationsRunner, apply_superseded_closeout_recovery_sequence,
+	};
+
+	#[derive(Default)]
+	struct RecordingSupersededCloseoutOperations {
+		steps: RefCell<Vec<&'static str>>,
+		fail_at: Option<&'static str>,
+	}
+	impl RecordingSupersededCloseoutOperations {
+		fn record(&self, step: &'static str) -> Result<()> {
+			self.steps.borrow_mut().push(step);
+
+			if self.fail_at == Some(step) {
+				eyre::bail!("{step} failed");
+			}
+
+			Ok(())
+		}
+	}
+
+	impl SupersededCloseoutRecoveryOperationsRunner for RecordingSupersededCloseoutOperations {
+		fn ensure_terminalizable(&mut self) -> Result<()> {
+			self.record("ensure_terminalizable")
+		}
+
+		fn update_issue_state(&mut self) -> Result<()> {
+			self.record("update_issue_state")
+		}
+
+		fn write_closeout_event(&mut self) -> Result<bool> {
+			self.record("write_closeout_event")?;
+
+			Ok(true)
+		}
+
+		fn write_cleanup_event(&mut self) -> Result<bool> {
+			self.record("write_cleanup_event")?;
+
+			Ok(true)
+		}
+
+		fn record_lifecycle_authority(&mut self) -> Result<()> {
+			self.record("record_lifecycle_authority")
+		}
+
+		fn update_run_status(&mut self) -> Result<()> {
+			self.record("update_run_status")
+		}
+
+		fn clear_worktree(&mut self) -> Result<()> {
+			self.record("clear_worktree")
+		}
+
+		fn post_pull_request_comment(&mut self) -> Result<()> {
+			self.record("post_pull_request_comment")
+		}
+
+		fn close_pull_request_if_open(&mut self) -> Result<bool> {
+			self.record("close_pull_request_if_open")?;
+
+			Ok(true)
+		}
+	}
+
+	#[test]
+	fn superseded_closeout_records_durable_state_before_github_side_effects() {
+		let mut operations = RecordingSupersededCloseoutOperations::default();
+
+		let result = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect("superseded closeout sequence should succeed");
+
+		assert_eq!(result, (true, true, true));
+		assert_eq!(
+			operations.steps.into_inner(),
+			vec![
+				"ensure_terminalizable",
+				"update_issue_state",
+				"write_closeout_event",
+				"write_cleanup_event",
+				"record_lifecycle_authority",
+				"update_run_status",
+				"clear_worktree",
+				"post_pull_request_comment",
+				"close_pull_request_if_open",
+			]
+		);
+	}
+
+	#[test]
+	fn superseded_closeout_does_not_touch_github_when_lifecycle_authority_fails() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_at: Some("record_lifecycle_authority"),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("lifecycle authority failure should stop recovery");
+
+		assert!(error.to_string().contains("record_lifecycle_authority failed"));
+		assert_eq!(
+			operations.steps.into_inner(),
+			vec![
+				"ensure_terminalizable",
+				"update_issue_state",
+				"write_closeout_event",
+				"write_cleanup_event",
+				"record_lifecycle_authority",
+			]
+		);
+	}
 }
 
 fn write_merged_closeout_event(
