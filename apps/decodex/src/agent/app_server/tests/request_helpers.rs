@@ -22,6 +22,7 @@ pub(super) fn minimal_run_request<'a>() -> AppServerRunRequest<'a> {
 		project_id: String::from("test-project"),
 		run_id: String::from("run-1"),
 		issue_id: String::from("issue-1"),
+		issue_identifier: String::from("XY-1"),
 		attempt_number: 1,
 		listen: String::from("stdio://"),
 		cwd: String::from("/tmp/worktree"),
