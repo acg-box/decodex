@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
 	orchestrator::{
 		self, IssueDispatchMode,
@@ -116,13 +118,16 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 		.collect::<Vec<_>>();
 
 	assert_eq!(event_types, vec![String::from("closeout"), String::from("cleanup_complete")]);
+
 	let lifecycle_record = state_store
 		.review_lifecycle_record(config.service_id(), &issue.id, &worktree.branch_name)
 		.expect("lifecycle authority lookup should succeed")
 		.expect("deterministic closeout should preserve lifecycle authority");
+
 	assert_eq!(lifecycle_record.next_state(), "closed");
 	assert_eq!(lifecycle_record.transition(), "closeout_completed");
 	assert_eq!(lifecycle_record.cleanup_state(), "completed");
+
 	assert_stale_review_wait_sync_preserves_closed_lifecycle(
 		&state_store,
 		StaleReviewWaitSync {
@@ -135,16 +140,22 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 			head_oid: &head_oid,
 		},
 	);
-	assert!(!worktree.path.exists(), "deterministic closeout should remove the retained worktree");
+	assert_closeout_cleared_runtime_state(&state_store, &tracker, &issue.id, &worktree.path);
+}
+
+fn assert_closeout_cleared_runtime_state(
+	state_store: &StateStore,
+	tracker: &FakeTracker,
+	issue_id: &str,
+	worktree_path: &Path,
+) {
+	assert!(!worktree_path.exists(), "deterministic closeout should remove the retained worktree");
 	assert!(
-		state_store
-			.worktree_for_issue(&issue.id)
-			.expect("worktree lookup should succeed")
-			.is_none(),
+		state_store.worktree_for_issue(issue_id).expect("worktree lookup should succeed").is_none(),
 		"deterministic closeout should clear retained worktree state"
 	);
 	assert!(
-		state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none(),
+		state_store.lease_for_issue(issue_id).expect("lease lookup should succeed").is_none(),
 		"deterministic closeout should not leave an run lease"
 	);
 	assert_eq!(

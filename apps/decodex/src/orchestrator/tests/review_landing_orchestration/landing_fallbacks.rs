@@ -20,23 +20,33 @@ use std::{
 use crate::{
 	agent::ReviewExecutionMode,
 	orchestrator::{
-		self, ReviewLevel, StateStore,
+		self, ReviewLevel, StateStore, retained_review_orchestration,
 		runtime_standard_review::{RuntimeStandardReviewRunRequest, RuntimeStandardReviewRunner},
 		tests::{
 			self, FakePullRequestReviewStateInspector, FakeTracker, review_landing_status_support,
 		},
 	},
 	prelude::{Result, eyre},
-	state::ReviewPolicyCheckpointInput,
+	state::{ReviewCheckpointArtifactLookup, ReviewPolicyCheckpointInput},
 };
 
 struct FailingRuntimeReviewRunner {
 	calls: Cell<usize>,
 }
-
 impl FailingRuntimeReviewRunner {
 	fn new() -> Self {
 		Self { calls: Cell::new(0) }
+	}
+}
+
+impl RuntimeStandardReviewRunner for FailingRuntimeReviewRunner {
+	fn run_runtime_standard_review(
+		&self,
+		_request: RuntimeStandardReviewRunRequest<'_>,
+	) -> Result<String> {
+		self.calls.set(self.calls.get() + 1);
+
+		eyre::bail!("fake runtime review runner keeps checkpoint pending")
 	}
 }
 
@@ -45,7 +55,6 @@ struct CleanRuntimeReviewRunner {
 	last_review_mode: Cell<Option<ReviewExecutionMode>>,
 	last_head_sha: RefCell<Option<String>>,
 }
-
 impl CleanRuntimeReviewRunner {
 	fn new() -> Self {
 		Self {
@@ -56,10 +65,51 @@ impl CleanRuntimeReviewRunner {
 	}
 }
 
+impl RuntimeStandardReviewRunner for CleanRuntimeReviewRunner {
+	fn run_runtime_standard_review(
+		&self,
+		request: RuntimeStandardReviewRunRequest<'_>,
+	) -> Result<String> {
+		self.calls.set(self.calls.get() + 1);
+		self.last_review_mode.set(Some(request.review_mode()));
+
+		*self.last_head_sha.borrow_mut() = Some(request.head_sha().to_owned());
+
+		Ok(serde_json::json!({
+			"status": "clean",
+			"checks": {
+				"intended_behavior": "The retained PR head still satisfies the issue objective.",
+				"regression_risk": "No current-head regression was found.",
+				"missing_tests": "No additional required tests were identified.",
+				"openwiki_config_drift": "No OpenWiki or config drift was found.",
+				"migration_fallout": "No migration fallout was found.",
+				"operator_facing_fallout": "No operator-facing fallout was found.",
+				"loop_decision_contract": "The lifecycle can proceed after the runtime-owned checkpoint."
+			},
+			"evidence": [
+				"Independent reviewer inspected the current retained HEAD and PR lineage."
+			],
+			"review_cost_control": {
+				"review_class": "full_current_head_review",
+				"risk_class": "localized",
+				"changed_surface_count": 1,
+				"changed_surface_summary": ["retained.txt"],
+				"high_risk_surfaces": [],
+				"current_head_evidence": true,
+				"validation_backed": true,
+				"validation_current": true,
+				"evidence_sufficient": true,
+				"reviewer_judgment": "The current retained HEAD has enough evidence for landing.",
+				"fallback_reason": "runtime_full_review"
+			}
+		})
+		.to_string())
+	}
+}
+
 struct TerminalRuntimeReviewRunner {
 	status: &'static str,
 }
-
 impl TerminalRuntimeReviewRunner {
 	fn new(status: &'static str) -> Self {
 		Self { status }
@@ -114,58 +164,6 @@ impl RuntimeStandardReviewRunner for TerminalRuntimeReviewRunner {
 			}
 		})
 		.to_string())
-	}
-}
-
-impl RuntimeStandardReviewRunner for CleanRuntimeReviewRunner {
-	fn run_runtime_standard_review(
-		&self,
-		request: RuntimeStandardReviewRunRequest<'_>,
-	) -> Result<String> {
-		self.calls.set(self.calls.get() + 1);
-		self.last_review_mode.set(Some(request.review_mode()));
-		*self.last_head_sha.borrow_mut() = Some(request.head_sha().to_owned());
-
-		Ok(serde_json::json!({
-			"status": "clean",
-			"checks": {
-				"intended_behavior": "The retained PR head still satisfies the issue objective.",
-				"regression_risk": "No current-head regression was found.",
-				"missing_tests": "No additional required tests were identified.",
-				"openwiki_config_drift": "No OpenWiki or config drift was found.",
-				"migration_fallout": "No migration fallout was found.",
-				"operator_facing_fallout": "No operator-facing fallout was found.",
-				"loop_decision_contract": "The lifecycle can proceed after the runtime-owned checkpoint."
-			},
-			"evidence": [
-				"Independent reviewer inspected the current retained HEAD and PR lineage."
-			],
-			"review_cost_control": {
-				"review_class": "full_current_head_review",
-				"risk_class": "localized",
-				"changed_surface_count": 1,
-				"changed_surface_summary": ["retained.txt"],
-				"high_risk_surfaces": [],
-				"current_head_evidence": true,
-				"validation_backed": true,
-				"validation_current": true,
-				"evidence_sufficient": true,
-				"reviewer_judgment": "The current retained HEAD has enough evidence for landing.",
-				"fallback_reason": "runtime_full_review"
-			}
-		})
-		.to_string())
-	}
-}
-
-impl RuntimeStandardReviewRunner for FailingRuntimeReviewRunner {
-	fn run_runtime_standard_review(
-		&self,
-		_request: RuntimeStandardReviewRunRequest<'_>,
-	) -> Result<String> {
-		self.calls.set(self.calls.get() + 1);
-
-		eyre::bail!("fake runtime review runner keeps checkpoint pending")
 	}
 }
 
@@ -262,10 +260,12 @@ fn assert_admin_merge_without_external_review(review_level: ReviewLevel) {
 			String::from("state,headRefOid,mergeCommit"),
 		]
 	);
+
 	let lifecycle = state_store
 		.review_lifecycle_record(config.service_id(), &issue.id, "main")
 		.expect("lifecycle record should read")
 		.expect("landing authority should record");
+
 	assert_eq!(lifecycle.next_state(), "landed");
 	assert_eq!(lifecycle.merge_commit(), Some("cafebabe"));
 	assert!(
@@ -295,6 +295,7 @@ fn assert_waits_for_checkpoint() {
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
@@ -318,9 +319,9 @@ fn assert_waits_for_checkpoint() {
 		Some("SUCCESS"),
 		0,
 	);
-
 	let runtime_review_runner = FailingRuntimeReviewRunner::new();
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -370,11 +371,13 @@ fn assert_checkpoint_failure_after_budget() {
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
@@ -397,7 +400,7 @@ fn assert_checkpoint_failure_after_budget() {
 	let runtime_review_runner = FailingRuntimeReviewRunner::new();
 
 	for _ in 0..3 {
-		orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+		retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 			&tracker,
 			&config,
 			&workflow,
@@ -428,6 +431,7 @@ fn assert_checkpoint_failure_after_budget() {
 		!invocation_log_path.exists(),
 		"bounded producer failures must not fall through to admin merge",
 	);
+
 	assert_standard_review_attention_lifecycle_authority(
 		&state_store,
 		config.service_id(),
@@ -457,11 +461,13 @@ fn assert_terminal_review_status_attention(status: &'static str, expected_reason
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
@@ -483,7 +489,7 @@ fn assert_terminal_review_status_attention(status: &'static str, expected_reason
 	};
 	let runtime_review_runner = TerminalRuntimeReviewRunner::new(status);
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -494,7 +500,7 @@ fn assert_terminal_review_status_attention(status: &'static str, expected_reason
 	.expect("first pass should record terminal runtime review checkpoint");
 
 	let checkpoint = state_store
-		.review_checkpoint_artifact(crate::state::ReviewCheckpointArtifactLookup {
+		.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
 			project_id: config.service_id(),
 			issue_id: &issue.id,
 			phase: "handoff",
@@ -503,10 +509,11 @@ fn assert_terminal_review_status_attention(status: &'static str, expected_reason
 		})
 		.expect("checkpoint lookup should succeed")
 		.expect("terminal runtime review checkpoint should persist");
+
 	assert_eq!(checkpoint.status(), status);
 	assert!(tracker.comments.borrow().is_empty());
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -524,6 +531,7 @@ fn assert_terminal_review_status_attention(status: &'static str, expected_reason
 		!invocation_log_path.exists(),
 		"terminal Standard review status must not fall through to admin merge",
 	);
+
 	assert_standard_review_attention_lifecycle_authority(
 		&state_store,
 		config.service_id(),
@@ -553,17 +561,20 @@ fn assert_unknown_review_status_attention() {
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
 		&repo_root,
 		&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
@@ -591,7 +602,7 @@ fn assert_unknown_review_status_attention() {
 	);
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -614,6 +625,7 @@ fn assert_unknown_review_status_attention() {
 		!invocation_log_path.exists(),
 		"unknown Standard review status must not fall through to admin merge",
 	);
+
 	assert_standard_review_attention_lifecycle_authority(
 		&state_store,
 		config.service_id(),
@@ -659,11 +671,13 @@ fn assert_skips_review_while_gates_pending() {
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
@@ -683,7 +697,7 @@ fn assert_skips_review_while_gates_pending() {
 	);
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -721,11 +735,13 @@ fn assert_runtime_review_after_external_pass() {
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
@@ -756,13 +772,15 @@ fn assert_runtime_review_after_external_pass() {
 			Some("SUCCESS"),
 			0,
 		);
+
 		tests::add_external_review_ack(&mut review_state);
 		tests::add_external_review_pass(&mut review_state);
+
 		review_state
 	};
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -779,7 +797,7 @@ fn assert_runtime_review_after_external_pass() {
 		"strict review must not land in the same tick that records runtime review evidence",
 	);
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -823,11 +841,13 @@ fn assert_strict_failure_no_external_restart() {
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
@@ -858,14 +878,16 @@ fn assert_strict_failure_no_external_restart() {
 			Some("SUCCESS"),
 			0,
 		);
+
 		tests::add_external_review_ack(&mut review_state);
 		tests::add_external_review_pass(&mut review_state);
+
 		review_state
 	};
 	let runtime_review_runner = FailingRuntimeReviewRunner::new();
 
 	for _ in 0..3 {
-		orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+		retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 			&tracker,
 			&config,
 			&workflow,
@@ -920,6 +942,7 @@ fn assert_checkpoint_before_admin_merge() {
 	let merge_subject = r#"{"schema":"decodex/commit/2","change":"current retained handoff","authority":"PUB-101","impact":"compatible"}"#;
 	let head_oid =
 		tests::commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
@@ -947,7 +970,7 @@ fn assert_checkpoint_before_admin_merge() {
 	};
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -966,7 +989,7 @@ fn assert_checkpoint_before_admin_merge() {
 	);
 
 	let checkpoint = state_store
-		.review_checkpoint_artifact(crate::state::ReviewCheckpointArtifactLookup {
+		.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
 			project_id: config.service_id(),
 			issue_id: &issue.id,
 			phase: "handoff",
@@ -975,9 +998,10 @@ fn assert_checkpoint_before_admin_merge() {
 		})
 		.expect("checkpoint lookup should succeed")
 		.expect("runtime-owned review checkpoint should persist");
+
 	assert_eq!(checkpoint.status(), "clean");
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -992,6 +1016,7 @@ fn assert_checkpoint_before_admin_merge() {
 		1,
 		"existing current-head checkpoint must prevent duplicate runtime review"
 	);
+
 	let lifecycle = state_store
 		.review_lifecycle_record(config.service_id(), &issue.id, "main")
 		.expect("lifecycle record should read")
@@ -1034,6 +1059,7 @@ fn assert_repair_checkpoint_after_findings() {
 		"repaired\n",
 		r#"{"schema":"decodex/commit/2","change":"repair retained findings","authority":"PUB-101","impact":"compatible"}"#,
 	);
+
 	configure_cached_github_origin(&repo_root);
 
 	state_store
@@ -1053,6 +1079,7 @@ fn assert_repair_checkpoint_after_findings() {
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
@@ -1072,7 +1099,7 @@ fn assert_repair_checkpoint_after_findings() {
 	);
 	let runtime_review_runner = CleanRuntimeReviewRunner::new();
 
-	orchestrator::retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
+	retained_review_orchestration::reconcile_post_review_orchestration_with_runners(
 		&tracker,
 		&config,
 		&workflow,
@@ -1088,8 +1115,9 @@ fn assert_repair_checkpoint_after_findings() {
 		runtime_review_runner.last_head_sha.borrow().as_deref(),
 		Some(repaired_head_oid.as_str()),
 	);
+
 	let checkpoint = state_store
-		.review_checkpoint_artifact(crate::state::ReviewCheckpointArtifactLookup {
+		.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {
 			project_id: config.service_id(),
 			issue_id: &issue.id,
 			phase: "repair",

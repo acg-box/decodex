@@ -28,6 +28,24 @@ impl PrePushHookCommand {
 	}
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RemoteConfig {
+	name: String,
+	urls: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RemoteUrlIdentity {
+	host: String,
+	path: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RemoteUrlMode {
+	Fetch,
+	Push,
+}
+
 pub(in crate::cli::git_hook_commands) fn read_pre_push_updates(
 	reader: impl BufRead,
 ) -> Result<Vec<PrePushUpdate>> {
@@ -129,11 +147,9 @@ fn remote_exclusion_arg_from_config(
 	if remote_name.is_empty() {
 		return Some(String::from("--remotes"));
 	}
-
 	if remotes.iter().any(|candidate| candidate.name == remote_name) {
 		return Some(format!("--remotes={remote_name}"));
 	}
-
 	if !remote_url.is_empty()
 		&& let Some(remote) = remotes.iter().find(|candidate| {
 			candidate.urls.iter().any(|candidate_url| urls_match(candidate_url, remote_url))
@@ -146,6 +162,7 @@ fn remote_exclusion_arg_from_config(
 
 fn configured_remotes() -> Result<Vec<RemoteConfig>> {
 	let remote_names = git::run_git_lines(&[String::from("remote")])?;
+
 	remote_names
 		.into_iter()
 		.map(|name| Ok(RemoteConfig { urls: remote_urls(&name)?, name }))
@@ -157,30 +174,20 @@ fn remote_urls(remote: &str) -> Result<Vec<String>> {
 
 	for mode in [RemoteUrlMode::Fetch, RemoteUrlMode::Push] {
 		let mut args = vec![String::from("remote"), String::from("get-url")];
+
 		if mode == RemoteUrlMode::Push {
 			args.push(String::from("--push"));
 		}
+
 		args.push(String::from("--all"));
 		args.push(remote.to_owned());
-
 		urls.extend(git::run_git_lines(&args)?);
 	}
 
 	urls.sort();
 	urls.dedup();
+
 	Ok(urls)
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RemoteUrlMode {
-	Fetch,
-	Push,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RemoteConfig {
-	name: String,
-	urls: Vec<String>,
 }
 
 fn urls_match(candidate: &str, remote_url: &str) -> bool {
@@ -193,6 +200,7 @@ fn urls_match(candidate: &str, remote_url: &str) -> bool {
 
 fn remote_url_identity(value: &str) -> Option<RemoteUrlIdentity> {
 	let value = value.trim();
+
 	if value.is_empty() || value.starts_with('/') || value.starts_with('.') {
 		return None;
 	}
@@ -205,6 +213,7 @@ fn remote_url_identity(value: &str) -> Option<RemoteUrlIdentity> {
 	let path_separator = value[user_host_separator + 1..].find(':')? + user_host_separator + 1;
 	let host = &value[user_host_separator + 1..path_separator];
 	let path = &value[path_separator + 1..];
+
 	remote_url_identity_parts(host, path)
 }
 
@@ -213,12 +222,14 @@ fn url_identity_from_authority_path(value: &str) -> Option<RemoteUrlIdentity> {
 	let authority = &value[..path_separator];
 	let path = &value[path_separator + 1..];
 	let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+
 	remote_url_identity_parts(host, path)
 }
 
 fn remote_url_identity_parts(host: &str, path: &str) -> Option<RemoteUrlIdentity> {
 	let host = host.trim();
 	let path = path.trim().trim_start_matches('/').trim_end_matches('/');
+
 	if host.is_empty() || path.is_empty() {
 		return None;
 	}
@@ -227,12 +238,6 @@ fn remote_url_identity_parts(host: &str, path: &str) -> Option<RemoteUrlIdentity
 		host: host.to_ascii_lowercase(),
 		path: path.strip_suffix(".git").unwrap_or(path).to_owned(),
 	})
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RemoteUrlIdentity {
-	host: String,
-	path: String,
 }
 
 fn commit_message_text(oid: &str) -> Result<String> {
@@ -252,7 +257,7 @@ fn is_zero_oid(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::{RemoteConfig, remote_exclusion_arg_from_config, urls_match};
+	use crate::cli::git_hook_commands::pre_push::{self, RemoteConfig};
 
 	fn remote(name: &str, urls: &[&str]) -> RemoteConfig {
 		RemoteConfig { name: name.to_owned(), urls: urls.iter().map(ToString::to_string).collect() }
@@ -260,7 +265,7 @@ mod tests {
 
 	#[test]
 	fn remote_exclusion_uses_configured_remote_name() {
-		let exclusion = remote_exclusion_arg_from_config(
+		let exclusion = pre_push::remote_exclusion_arg_from_config(
 			"origin",
 			"https://github.com/hack-ink/decodex.git",
 			&[remote("origin", &["git@github.com-y:hack-ink/decodex.git"])],
@@ -271,7 +276,7 @@ mod tests {
 
 	#[test]
 	fn remote_exclusion_maps_exact_url_remote_name_to_configured_remote() {
-		let exclusion = remote_exclusion_arg_from_config(
+		let exclusion = pre_push::remote_exclusion_arg_from_config(
 			"https://github.com/helixbox/pubfi-insight.git",
 			"https://github.com/helixbox/pubfi-insight.git",
 			&[remote(
@@ -288,7 +293,7 @@ mod tests {
 
 	#[test]
 	fn remote_exclusion_maps_https_url_push_to_ssh_configured_remote() {
-		let exclusion = remote_exclusion_arg_from_config(
+		let exclusion = pre_push::remote_exclusion_arg_from_config(
 			"https://github.com/helixbox/pubfi-insight.git",
 			"https://github.com/helixbox/pubfi-insight.git",
 			&[remote("origin", &["git@github.com:helixbox/pubfi-insight.git"])],
@@ -299,7 +304,7 @@ mod tests {
 
 	#[test]
 	fn remote_exclusion_does_not_exclude_unmatched_url_remotes() {
-		let exclusion = remote_exclusion_arg_from_config(
+		let exclusion = pre_push::remote_exclusion_arg_from_config(
 			"https://github.com/example/other.git",
 			"https://github.com/example/other.git",
 			&[
@@ -313,15 +318,15 @@ mod tests {
 
 	#[test]
 	fn remote_url_matching_accepts_common_git_url_forms() {
-		assert!(urls_match(
+		assert!(pre_push::urls_match(
 			"git@github.com:helixbox/pubfi-insight.git",
 			"https://github.com/helixbox/pubfi-insight.git",
 		));
-		assert!(urls_match(
+		assert!(pre_push::urls_match(
 			"ssh://git@github.com/helixbox/pubfi-insight.git",
 			"https://github.com/helixbox/pubfi-insight",
 		));
-		assert!(!urls_match(
+		assert!(!pre_push::urls_match(
 			"git@github.com:helixbox/pubfi-insight.git",
 			"https://github.com/hack-ink/decodex.git",
 		));

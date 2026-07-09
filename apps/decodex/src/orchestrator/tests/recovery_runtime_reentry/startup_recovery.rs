@@ -151,6 +151,7 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 		&issue.id,
 		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),

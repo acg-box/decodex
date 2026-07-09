@@ -4,16 +4,21 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	orchestrator::{
-		PostReviewLifecycleFactsInput, PullRequestReviewState, build_post_review_lifecycle_facts,
-		kernel::lifecycle::{
-			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-			PreviousLifecycleAuthority, decide_lifecycle_transition,
+		self, PostReviewLifecycleFactsInput, PullRequestReviewState,
+		kernel::{
+			lifecycle,
+			lifecycle::{
+				LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
+				PreviousLifecycleAuthority,
+			},
 		},
-		runtime_review_checkpoint_status_for_head,
 	},
 	prelude::Result,
 	recovery::{
-		closeout::{LegacyCloseoutValidation, MergedCloseoutValidation, events},
+		closeout::{
+			LegacyCloseoutValidation, MergedCloseoutValidation,
+			apply::lifecycle::decide_lifecycle_transition, events,
+		},
 		context::RecoveryContext,
 		pull_request_inspection,
 	},
@@ -106,6 +111,7 @@ pub(super) fn apply_merged_closeout_recovery(
 	}
 
 	record_merged_closeout_lifecycle_authority(context, validation)?;
+
 	context.state_store.update_run_status(&validation.run_id, "succeeded")?;
 
 	Ok((closeout_recorded, cleanup_recorded))
@@ -163,6 +169,7 @@ fn record_merged_closeout_lifecycle_authority(
 		"not_started",
 		"merged_closeout_recovery_landed_readback",
 	)?;
+
 	record_merged_closeout_lifecycle_decision(
 		context,
 		validation,
@@ -187,7 +194,7 @@ fn record_merged_closeout_lifecycle_decision(
 	causation_id: &str,
 ) -> Result<()> {
 	let review_level = context.config.codex().review_level();
-	let checkpoint = runtime_review_checkpoint_status_for_head(
+	let checkpoint = orchestrator::runtime_review_checkpoint_status_for_head(
 		&context.state_store,
 		context.config.service_id(),
 		&validation.issue.id,
@@ -195,7 +202,7 @@ fn record_merged_closeout_lifecycle_decision(
 		&validation.landing_state.head_ref_oid,
 	)?;
 	let review_state = merged_closeout_review_state(validation);
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: context.config.service_id(),
 		issue_id: &validation.issue.id,
 		review_lifecycle: None,
@@ -227,7 +234,7 @@ fn record_merged_closeout_lifecycle_decision(
 		causation_id
 	);
 	let decided_at = current_timestamp();
-	let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let decision = self::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous,
 		evidence_kind,

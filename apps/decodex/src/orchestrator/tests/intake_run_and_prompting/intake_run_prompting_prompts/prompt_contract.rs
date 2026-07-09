@@ -103,7 +103,6 @@ fn developer_instructions_render_registered_repo_gate_commands() {
 		run_id: String::from("pub-101-attempt-1-123"),
 		retry_budget_base: 0,
 	};
-
 	let instructions = orchestrator::build_developer_instructions(
 		&tracker,
 		&config,

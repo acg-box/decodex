@@ -129,6 +129,7 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 			comments_after =
 				types::merge_pull_request_issue_comment_page(&mut review_state, &pull_request)?;
 		}
+
 		review_state.required_status_contexts = github::inspect_required_commit_status_contexts(
 			cwd,
 			&locator.owner,

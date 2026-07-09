@@ -51,23 +51,6 @@ pub(in crate::orchestrator) struct LaneDecisionSnapshot {
 	pub(in crate::orchestrator) ambiguous_lineage: bool,
 	pub(in crate::orchestrator) terminal_evidence_present: bool,
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) struct RepoGateFailureSignal {
-	pub(in crate::orchestrator) disposition: RepoGateFailureDisposition,
-	pub(in crate::orchestrator) error_class: &'static str,
-	pub(in crate::orchestrator) scope_envelope_violation: bool,
-}
-impl RepoGateFailureSignal {
-	pub(in crate::orchestrator) const fn new(
-		disposition: RepoGateFailureDisposition,
-		error_class: &'static str,
-		scope_envelope_violation: bool,
-	) -> Self {
-		Self { disposition, error_class, scope_envelope_violation }
-	}
-}
-
 impl LaneDecisionSnapshot {
 	#[allow(clippy::too_many_arguments)]
 	pub(in crate::orchestrator) fn validation_evidence(
@@ -158,6 +141,22 @@ impl LaneDecisionSnapshot {
 			ambiguous_lineage: false,
 			terminal_evidence_present: false,
 		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::orchestrator) struct RepoGateFailureSignal {
+	pub(in crate::orchestrator) disposition: RepoGateFailureDisposition,
+	pub(in crate::orchestrator) error_class: &'static str,
+	pub(in crate::orchestrator) scope_envelope_violation: bool,
+}
+impl RepoGateFailureSignal {
+	pub(in crate::orchestrator) const fn new(
+		disposition: RepoGateFailureDisposition,
+		error_class: &'static str,
+		scope_envelope_violation: bool,
+	) -> Self {
+		Self { disposition, error_class, scope_envelope_violation }
 	}
 }
 

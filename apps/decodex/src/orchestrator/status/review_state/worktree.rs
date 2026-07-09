@@ -1,8 +1,9 @@
-use crate::state::ReviewLifecycleRecord;
-
-use crate::orchestrator::status::{
-	self, Command, Path, PostReviewLaneSnapshot, PostReviewLaneStateLoad, PullRequestReviewState,
-	PullRequestReviewStateInspector, RetainedCloseoutPrMergeGate,
+use crate::{
+	orchestrator::status::{
+		self, Command, Path, PostReviewLaneSnapshot, PostReviewLaneStateLoad,
+		PullRequestReviewState, PullRequestReviewStateInspector, RetainedCloseoutPrMergeGate,
+	},
+	state::ReviewLifecycleRecord,
 };
 
 pub(crate) fn retained_closeout_pr_merge_gate_with_inspector<I>(

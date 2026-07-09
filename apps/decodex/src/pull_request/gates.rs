@@ -32,7 +32,6 @@ pub(crate) fn classify_landing_gate(
 	{
 		return LandingGateDecision::Repair(reason);
 	}
-
 	if let Some(decision) = required_status_context_gate(view) {
 		return decision;
 	}
@@ -42,14 +41,12 @@ pub(crate) fn classify_landing_gate(
 	{
 		return LandingGateDecision::Repair("required_checks_failed");
 	}
-
 	if !has_required_status_contexts(view)
 		&& let Some(check_state) = view.status_check_rollup_state
 		&& checks_require_wait(Some(check_state))
 	{
 		return LandingGateDecision::Wait("checks_waiting");
 	}
-
 	if mergeability_unknown(view) {
 		return LandingGateDecision::Wait("mergeability_unknown");
 	}
@@ -114,17 +111,6 @@ pub(crate) fn merge_state_allows_ready_to_land(merge_state_status: &str) -> bool
 	matches!(merge_state_status, "CLEAN" | "HAS_HOOKS" | "UNSTABLE")
 }
 
-fn merge_state_allows_ready_to_land_for_view(view: PullRequestLandingGateView<'_>) -> bool {
-	merge_state_allows_ready_to_land(view.merge_state_status)
-		|| (view.fast_landing && view.merge_state_status == "BLOCKED")
-}
-
-fn merge_state_allows_clean_path_landing(view: PullRequestLandingGateView<'_>) -> bool {
-	view.merge_state_status == "CLEAN"
-		|| (view.fast_landing
-			&& matches!(view.merge_state_status, "BLOCKED" | "HAS_HOOKS" | "UNSTABLE"))
-}
-
 pub(crate) fn checks_require_wait(check_state: Option<&str>) -> bool {
 	matches!(check_state, Some("EXPECTED" | "PENDING"))
 }
@@ -148,6 +134,17 @@ pub(crate) fn merge_state_requires_review_repair(
 	}
 
 	None
+}
+
+fn merge_state_allows_ready_to_land_for_view(view: PullRequestLandingGateView<'_>) -> bool {
+	merge_state_allows_ready_to_land(view.merge_state_status)
+		|| (view.fast_landing && view.merge_state_status == "BLOCKED")
+}
+
+fn merge_state_allows_clean_path_landing(view: PullRequestLandingGateView<'_>) -> bool {
+	view.merge_state_status == "CLEAN"
+		|| (view.fast_landing
+			&& matches!(view.merge_state_status, "BLOCKED" | "HAS_HOOKS" | "UNSTABLE"))
 }
 
 fn has_required_status_contexts(view: PullRequestLandingGateView<'_>) -> bool {

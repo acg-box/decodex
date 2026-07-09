@@ -7,13 +7,16 @@ use crate::{
 		ReviewHandoffContext, TrackerToolBridge, eyre, tracker_tool_bridge,
 	},
 	orchestrator::{
-		PostReviewLifecycleFactsInput, PullRequestReviewState, build_post_review_lifecycle_facts,
-		kernel::lifecycle::{
-			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-			PreviousLifecycleAuthority, decide_lifecycle_transition,
+		self, PostReviewLifecycleFactsInput, PullRequestReviewState,
+		kernel::{
+			lifecycle,
+			lifecycle::{
+				LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
+				PreviousLifecycleAuthority,
+			},
 		},
-		runtime_review_checkpoint_status_for_head,
 	},
+	state::StateStore,
 	tracker,
 };
 
@@ -205,6 +208,7 @@ impl<'a> TrackerToolBridge<'a> {
 		let Some(state_store) = self.state_store else {
 			return Ok(());
 		};
+
 		self.record_closeout_lifecycle_transition(
 			state_store,
 			review_context,
@@ -215,6 +219,7 @@ impl<'a> TrackerToolBridge<'a> {
 			"not_started",
 			"closeout_landing_readback",
 		)?;
+
 		self.record_closeout_lifecycle_transition(
 			state_store,
 			review_context,
@@ -230,7 +235,7 @@ impl<'a> TrackerToolBridge<'a> {
 	#[allow(clippy::too_many_arguments)]
 	fn record_closeout_lifecycle_transition(
 		&self,
-		state_store: &crate::state::StateStore,
+		state_store: &StateStore,
 		review_context: &ReviewHandoffContext,
 		pull_request: &PullRequestDetails,
 		evidence_kind: LifecycleEvidenceKind,
@@ -239,7 +244,7 @@ impl<'a> TrackerToolBridge<'a> {
 		cleanup_state: &str,
 		causation_id: &str,
 	) -> crate::prelude::Result<()> {
-		let checkpoint = runtime_review_checkpoint_status_for_head(
+		let checkpoint = orchestrator::runtime_review_checkpoint_status_for_head(
 			state_store,
 			&review_context.service_id,
 			&self.issue.id,
@@ -273,22 +278,23 @@ impl<'a> TrackerToolBridge<'a> {
 			&self.issue.id,
 			&review_context.branch_name,
 		)?;
-		let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
-			project_id: &review_context.service_id,
-			issue_id: &self.issue.id,
-			review_lifecycle: previous_record.as_ref(),
-			review_state: &review_state,
-			worktree_path: Path::new(&review_context.worktree_path),
-			review_level: review_context.review_level,
-			phase: "closeout",
-			landing_state: Some(landing_state),
-			closeout_state: Some(closeout_state),
-			validated_head_sha: Some(&pull_request.head_ref_oid),
-			review_checkpoint_phase: checkpoint.as_ref().map(|checkpoint| checkpoint.phase),
-			review_checkpoint_status: checkpoint
-				.as_ref()
-				.map(|checkpoint| checkpoint.status.as_str()),
-		});
+		let facts =
+			orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+				project_id: &review_context.service_id,
+				issue_id: &self.issue.id,
+				review_lifecycle: previous_record.as_ref(),
+				review_state: &review_state,
+				worktree_path: Path::new(&review_context.worktree_path),
+				review_level: review_context.review_level,
+				phase: "closeout",
+				landing_state: Some(landing_state),
+				closeout_state: Some(closeout_state),
+				validated_head_sha: Some(&pull_request.head_ref_oid),
+				review_checkpoint_phase: checkpoint.as_ref().map(|checkpoint| checkpoint.phase),
+				review_checkpoint_status: checkpoint
+					.as_ref()
+					.map(|checkpoint| checkpoint.status.as_str()),
+			});
 		let previous = previous_record.as_ref().map(|record| PreviousLifecycleAuthority {
 			sequence: record.sequence(),
 			next_state: record.next_state(),
@@ -302,7 +308,7 @@ impl<'a> TrackerToolBridge<'a> {
 			evidence_kind.as_str(),
 			causation_id
 		);
-		let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+		let decision = lifecycle::decide_lifecycle_transition(LifecycleDecisionInput {
 			facts: &facts,
 			previous,
 			evidence_kind,

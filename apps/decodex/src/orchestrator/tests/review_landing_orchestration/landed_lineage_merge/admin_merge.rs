@@ -53,6 +53,7 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 			1,
 		),
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
@@ -117,10 +118,12 @@ fn reconcile_post_review_orchestration_runs_admin_merge_after_external_pass() {
 			String::from("state,headRefOid,mergeCommit"),
 		]
 	);
+
 	let lifecycle = state_store
 		.review_lifecycle_record(config.service_id(), &issue.id, "main")
 		.expect("lifecycle record should read")
 		.expect("landing authority should record");
+
 	assert_eq!(lifecycle.next_state(), "landed");
 	assert_eq!(lifecycle.transition(), "landed");
 	assert_eq!(lifecycle.merge_commit(), Some("cafebabe"));
@@ -142,6 +145,7 @@ fn records_lifecycle_attention_when_admin_merge_unavailable() {
 	state_store
 		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
 		.expect("worktree should record");
+
 	tests::seed_review_lifecycle_handoff_fixture_for_path(
 		&state_store,
 		config.service_id(),
@@ -160,6 +164,7 @@ fn records_lifecycle_attention_when_admin_merge_unavailable() {
 			1,
 		),
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
@@ -185,8 +190,10 @@ fn records_lifecycle_attention_when_admin_merge_unavailable() {
 		Some("SUCCESS"),
 		0,
 	);
+
 	tests::add_external_review_ack(&mut review_state);
 	tests::add_external_review_pass(&mut review_state);
+
 	review_state.merge_commit_allowed = false;
 
 	orchestrator::reconcile_post_review_orchestration_with_inspector(
@@ -202,6 +209,7 @@ fn records_lifecycle_attention_when_admin_merge_unavailable() {
 		.review_lifecycle_record(config.service_id(), &issue.id, "main")
 		.expect("lifecycle record should read")
 		.expect("manual attention authority should record");
+
 	assert_eq!(lifecycle.next_state(), "manual_attention_required");
 	assert_eq!(lifecycle.transition(), "manual_attention_required");
 	assert_eq!(lifecycle.next_action(), "request_manual_attention");

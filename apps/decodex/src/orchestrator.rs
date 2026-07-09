@@ -1,3 +1,5 @@
+#[allow(dead_code)] pub(crate) mod kernel;
+
 mod agent_evidence;
 mod baseline_guard;
 mod constants;
@@ -17,7 +19,6 @@ mod execution_phase_goal;
 mod execution_thread_archive;
 mod git_ops;
 mod harness_improvement;
-#[allow(dead_code)] pub(crate) mod kernel;
 mod lane_control;
 mod lane_decision;
 mod operator_http;
@@ -36,6 +37,7 @@ mod runtime_validation;
 mod selection;
 mod status;
 mod types;
+
 pub(crate) use self::{
 	baseline_guard::{
 		BaselineGuardDispatchOutcome, ensure_clean_baseline_before_dispatch,

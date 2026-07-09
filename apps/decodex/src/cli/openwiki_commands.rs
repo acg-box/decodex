@@ -73,12 +73,14 @@ fn discover_repo_root(start: &Path) -> Result<PathBuf> {
 
 fn check_openwiki_surface(root: &Path) -> Result<OpenWikiCheckReport> {
 	let openwiki = root.join("openwiki");
+
 	if !openwiki.is_dir() {
 		eyre::bail!("No OpenWiki surface found under `{}`. Expected `openwiki/`.", root.display());
 	}
 
 	check_openwiki_router(&openwiki)?;
 	check_local_markdown_links(&openwiki)?;
+
 	let markdown_files = count_readable_markdown_files(&openwiki)?;
 
 	if markdown_files == 0 {
@@ -95,10 +97,10 @@ fn check_openwiki_router(path: &Path) -> Result<()> {
 	reject_openwiki_symlink(path)?;
 
 	let quickstart = path.join("quickstart.md");
+
 	if !quickstart.is_file() {
 		eyre::bail!("OpenWiki surface is missing `{}`.", quickstart.display());
 	}
-
 	if fs::read_to_string(&quickstart)?.trim().is_empty() {
 		eyre::bail!("OpenWiki router `{}` is empty.", quickstart.display());
 	}
@@ -108,12 +110,15 @@ fn check_openwiki_router(path: &Path) -> Result<()> {
 
 fn check_local_markdown_links(root: &Path) -> Result<()> {
 	let surface_root = root.canonicalize()?;
+
 	for path in markdown_files(root)? {
 		let text = fs::read_to_string(&path)?;
+
 		for raw_target in markdown_link_targets(&text) {
 			let Some(target) = local_markdown_link_target(&path, raw_target)? else {
 				continue;
 			};
+
 			if !target.starts_with(&surface_root) {
 				eyre::bail!(
 					"OpenWiki link in `{}` escapes `{}`: `{}`.",
@@ -122,6 +127,7 @@ fn check_local_markdown_links(root: &Path) -> Result<()> {
 					raw_target
 				);
 			}
+
 			let Ok(metadata) = fs::symlink_metadata(&target) else {
 				eyre::bail!(
 					"OpenWiki link in `{}` points to missing file `{}`.",
@@ -129,6 +135,7 @@ fn check_local_markdown_links(root: &Path) -> Result<()> {
 					raw_target
 				);
 			};
+
 			if metadata.file_type().is_symlink() {
 				eyre::bail!(
 					"OpenWiki link in `{}` points to symlink `{}`.",
@@ -159,6 +166,7 @@ fn reject_openwiki_symlink(path: &Path) -> Result<()> {
 
 fn count_readable_markdown_files(path: &Path) -> Result<usize> {
 	let files = markdown_files(path)?;
+
 	for file in &files {
 		if fs::read_to_string(file)?.trim().is_empty() {
 			eyre::bail!("OpenWiki file `{}` is empty.", file.display());
@@ -170,15 +178,18 @@ fn count_readable_markdown_files(path: &Path) -> Result<usize> {
 
 fn markdown_files(path: &Path) -> Result<Vec<PathBuf>> {
 	let mut files = Vec::new();
+
 	for entry in fs::read_dir(path)? {
 		let entry = entry?;
 		let path = entry.path();
 		let file_type = entry.file_type()?;
+
 		if file_type.is_symlink() {
 			eyre::bail!("OpenWiki tree must not contain symlink `{}`.", path.display());
 		}
 		if file_type.is_dir() {
 			files.extend(markdown_files(&path)?);
+
 			continue;
 		}
 		if !file_type.is_file() {
@@ -187,8 +198,10 @@ fn markdown_files(path: &Path) -> Result<Vec<PathBuf>> {
 		if !is_markdown_file(&path) {
 			continue;
 		}
+
 		files.push(path);
 	}
+
 	Ok(files)
 }
 
@@ -201,22 +214,31 @@ fn is_markdown_file(path: &Path) -> bool {
 fn markdown_link_targets(text: &str) -> Vec<&str> {
 	let mut targets = Vec::new();
 	let mut cursor = text;
+
 	while let Some(label_start) = cursor.find('[') {
 		cursor = &cursor[label_start + 1..];
+
 		let Some(label_end) = cursor.find(']') else {
 			break;
 		};
+
 		cursor = &cursor[label_end + 1..];
+
 		if !cursor.starts_with('(') {
 			continue;
 		}
+
 		cursor = &cursor[1..];
+
 		let Some(target_end) = cursor.find(')') else {
 			break;
 		};
+
 		targets.push(cursor[..target_end].trim());
+
 		cursor = &cursor[target_end + 1..];
 	}
+
 	targets
 }
 
@@ -230,14 +252,18 @@ fn local_markdown_link_target(path: &Path, raw_target: &str) -> Result<Option<Pa
 	{
 		return Ok(None);
 	}
+
 	let target = raw_target.split('#').next().unwrap_or_default();
+
 	if target.is_empty() || !target.ends_with(".md") {
 		return Ok(None);
 	}
+
 	let Some(parent) = path.parent() else {
 		return Ok(None);
 	};
 	let mut resolved = parent.canonicalize()?;
+
 	for component in Path::new(target).components() {
 		match component {
 			Component::CurDir => {},
@@ -248,6 +274,7 @@ fn local_markdown_link_target(path: &Path, raw_target: &str) -> Result<Option<Pa
 			Component::Prefix(_) | Component::RootDir => return Ok(None),
 		}
 	}
+
 	Ok(Some(resolved))
 }
 
@@ -258,13 +285,13 @@ mod tests {
 		time::{SystemTime, UNIX_EPOCH},
 	};
 
-	use super::*;
+	use crate::cli::openwiki_commands::{self, PathBuf, env};
 
 	#[test]
 	fn openwiki_check_rejects_missing_surface() {
 		let root = temp_root("missing_surface");
-
-		let error = check_openwiki_surface(&root).expect_err("missing surface should fail");
+		let error = openwiki_commands::check_openwiki_surface(&root)
+			.expect_err("missing surface should fail");
 
 		assert!(error.to_string().contains("No OpenWiki surface found"));
 	}
@@ -273,10 +300,12 @@ mod tests {
 	fn openwiki_check_rejects_missing_local_markdown_link() {
 		let root = temp_root("missing_link");
 		let openwiki = root.join("openwiki");
+
 		fs::create_dir_all(&openwiki).unwrap();
 		fs::write(openwiki.join("quickstart.md"), "[Missing](missing.md)\n").unwrap();
 
-		let error = check_openwiki_surface(&root).expect_err("missing link should fail");
+		let error =
+			openwiki_commands::check_openwiki_surface(&root).expect_err("missing link should fail");
 
 		assert!(error.to_string().contains("points to missing file"));
 	}
@@ -285,11 +314,13 @@ mod tests {
 	fn openwiki_check_rejects_empty_markdown_file() {
 		let root = temp_root("empty_markdown");
 		let openwiki = root.join("openwiki");
+
 		fs::create_dir_all(&openwiki).unwrap();
 		fs::write(openwiki.join("quickstart.md"), "# Quickstart\n").unwrap();
 		fs::write(openwiki.join("empty.md"), "\n").unwrap();
 
-		let error = check_openwiki_surface(&root).expect_err("empty file should fail");
+		let error =
+			openwiki_commands::check_openwiki_surface(&root).expect_err("empty file should fail");
 
 		assert!(error.to_string().contains("is empty"));
 	}
@@ -300,13 +331,15 @@ mod tests {
 		let root = temp_root("symlinked_entry");
 		let openwiki = root.join("openwiki");
 		let external = root.join("external");
+
 		fs::create_dir_all(&openwiki).unwrap();
 		fs::create_dir_all(&external).unwrap();
 		fs::write(openwiki.join("quickstart.md"), "# Quickstart\n").unwrap();
 		fs::write(external.join("outside.md"), "# Outside\n").unwrap();
 		std::os::unix::fs::symlink(&external, openwiki.join("linked")).unwrap();
 
-		let error = check_openwiki_surface(&root).expect_err("symlinked entry should fail");
+		let error = openwiki_commands::check_openwiki_surface(&root)
+			.expect_err("symlinked entry should fail");
 
 		assert!(error.to_string().contains("must not contain symlink"));
 	}
@@ -314,7 +347,9 @@ mod tests {
 	fn temp_root(name: &str) -> PathBuf {
 		let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
 		let root = env::temp_dir().join(format!("decodex_openwiki_check_{name}_{nonce}"));
+
 		fs::create_dir_all(&root).unwrap();
+
 		root
 	}
 }
