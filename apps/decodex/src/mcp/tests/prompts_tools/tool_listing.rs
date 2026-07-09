@@ -27,6 +27,10 @@ fn tools_list_exposes_schema_bound_tools() {
 		.iter()
 		.find(|tool| tool.get("name").and_then(Value::as_str) == Some("autonomy_compile_proposal"))
 		.expect("autonomy_compile_proposal tool should exist");
+	let autonomy_submit_signal = tools
+		.iter()
+		.find(|tool| tool.get("name").and_then(Value::as_str) == Some("autonomy_submit_signal"))
+		.expect("autonomy_submit_signal tool should exist");
 	let intake_goal = tools
 		.iter()
 		.find(|tool| tool.get("name").and_then(Value::as_str) == Some(intake_goal_tool_name))
@@ -46,6 +50,17 @@ fn tools_list_exposes_schema_bound_tools() {
 		autonomy_compile["inputSchema"]["properties"]["proposal"]["properties"]["issueCandidates"]
 			["items"]["properties"]["dependencies"]["description"],
 		"Candidate keys that must complete before this candidate."
+	);
+	let autonomy_signal_kind_schema =
+		&autonomy_submit_signal["inputSchema"]["properties"]["kind"]["enum"];
+
+	assert!(
+		autonomy_signal_kind_schema.as_array().is_some_and(|kinds| {
+			kinds.iter().any(|kind| kind.as_str() == Some("openwiki_drift"))
+				&& !kinds.iter().any(|kind| kind.as_str() == Some("docs_plugin_drift"))
+				&& !kinds.iter().any(|kind| kind.as_str() == Some("docs_skill_drift"))
+		}),
+		"autonomy_submit_signal should expose only the current OpenWiki drift kind"
 	);
 
 	support::assert_tool_output_schema_variant(

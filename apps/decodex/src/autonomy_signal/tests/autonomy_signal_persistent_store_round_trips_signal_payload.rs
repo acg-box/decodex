@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::{
 	autonomy_signal::{
-		AutonomySignal,
+		AutonomySignal, AutonomySignalSourceType,
 		tests::{self},
 	},
 	state::StateStore,
@@ -38,6 +38,20 @@ fn autonomy_signal_persistent_store_round_trips_signal_payload() {
 
 #[test]
 fn autonomy_signal_store_reads_and_migrates_legacy_docs_skill_drift_kind() {
+	for legacy_kind in ["docs_plugin_drift", "docs_skill_drift"] {
+		for legacy_source_type in ["runtime", "docs"] {
+			autonomy_signal_store_reads_and_migrates_legacy_openwiki_drift_kind(
+				legacy_kind,
+				legacy_source_type,
+			);
+		}
+	}
+}
+
+fn autonomy_signal_store_reads_and_migrates_legacy_openwiki_drift_kind(
+	legacy_kind: &str,
+	legacy_source_type: &str,
+) {
 	let tempdir = tempfile::tempdir().expect("tempdir should create");
 	let db_path = tempdir.path().join("runtime.sqlite3");
 	let signal = {
@@ -45,24 +59,28 @@ fn autonomy_signal_store_reads_and_migrates_legacy_docs_skill_drift_kind() {
 
 		tests::accept_objective(&store, 1);
 
-		let signal = AutonomySignal::docs_plugin_drift(tests::signal_input())
-			.expect("docs plugin signal should validate");
+		let signal = AutonomySignal::openwiki_drift(tests::signal_input())
+			.expect("OpenWiki signal should validate");
 
 		store.record_autonomy_signal("decodex", signal.clone()).expect("signal should store");
 
 		signal
 	};
-	let (legacy_id, legacy_fingerprint, legacy_payload) = legacy_docs_skill_drift_payload(&signal);
+	let (legacy_id, legacy_fingerprint, legacy_payload) =
+		legacy_openwiki_drift_payload(&signal, legacy_kind, legacy_source_type);
 	let connection = Connection::open(&db_path).expect("db should open");
+	let update_sql = format!(
+		"UPDATE autonomy_signals
+		 SET signal_id = ?3,
+		     kind = '{legacy_kind}',
+		     fingerprint = ?4,
+		     payload_json = ?5
+		 WHERE project_id = ?1 AND signal_id = ?2"
+	);
 
 	connection
 		.execute(
-			"UPDATE autonomy_signals
-			 SET signal_id = ?3,
-			     kind = 'docs_skill_drift',
-			     fingerprint = ?4,
-			     payload_json = ?5
-			 WHERE project_id = ?1 AND signal_id = ?2",
+			&update_sql,
 			rusqlite::params![
 				"decodex",
 				signal.id(),
@@ -73,18 +91,22 @@ fn autonomy_signal_store_reads_and_migrates_legacy_docs_skill_drift_kind() {
 		)
 		.expect("legacy row should update");
 
+	let canonical_signal = canonical_signal_for_legacy_source(legacy_source_type);
 	let reopened = StateStore::open(&db_path).expect("store should reopen");
 	let stored = reopened
-		.autonomy_signal("decodex", signal.id())
+		.autonomy_signal("decodex", canonical_signal.id())
 		.expect("legacy signal read should succeed")
 		.expect("legacy signal should exist");
 	let migrated_legacy_lookup = reopened
 		.autonomy_signal("decodex", &legacy_id)
 		.expect("migrated legacy lookup should succeed");
 
-	assert_eq!(stored.signal().kind().as_str(), "docs_plugin_drift");
-	assert_eq!(stored.signal().id(), signal.id());
-	assert_eq!(stored.signal().fingerprint(), signal.fingerprint());
+	assert_eq!(stored.signal().kind().as_str(), "openwiki_drift");
+	if legacy_source_type == "docs" {
+		assert_eq!(stored.signal().source_type().as_str(), "openwiki");
+	}
+	assert_eq!(stored.signal().id(), canonical_signal.id());
+	assert_eq!(stored.signal().fingerprint(), canonical_signal.fingerprint());
 	assert!(migrated_legacy_lookup.is_none());
 }
 
@@ -97,14 +119,15 @@ fn autonomy_signal_store_rejects_corrupted_legacy_docs_skill_drift_row() {
 
 		tests::accept_objective(&store, 1);
 
-		let signal = AutonomySignal::docs_plugin_drift(tests::signal_input())
-			.expect("docs plugin signal should validate");
+		let signal = AutonomySignal::openwiki_drift(tests::signal_input())
+			.expect("OpenWiki signal should validate");
 
 		store.record_autonomy_signal("decodex", signal.clone()).expect("signal should store");
 
 		signal
 	};
-	let (legacy_id, _legacy_fingerprint, legacy_payload) = legacy_docs_skill_drift_payload(&signal);
+	let (legacy_id, _legacy_fingerprint, legacy_payload) =
+		legacy_openwiki_drift_payload(&signal, "docs_skill_drift", "docs");
 	let connection = Connection::open(&db_path).expect("db should open");
 
 	connection
@@ -130,19 +153,35 @@ fn autonomy_signal_store_rejects_corrupted_legacy_docs_skill_drift_row() {
 	);
 }
 
-fn legacy_docs_skill_drift_payload(signal: &AutonomySignal) -> (String, String, String) {
-	let (legacy_id, legacy_fingerprint) =
-		signal.legacy_docs_skill_drift_identity().expect("legacy identity should compute");
+fn legacy_openwiki_drift_payload(
+	signal: &AutonomySignal,
+	legacy_kind: &str,
+	legacy_source_type: &str,
+) -> (String, String, String) {
+	let (legacy_id, legacy_fingerprint) = signal
+		.legacy_material_identity(legacy_kind, legacy_source_type)
+		.expect("legacy identity should compute");
 	let mut payload =
 		serde_json::to_value(signal).expect("signal should serialize to legacy payload");
 
 	payload["id"] = Value::String(legacy_id.clone());
 	payload["fingerprint"] = Value::String(legacy_fingerprint.clone());
-	payload["kind"] = Value::String(String::from("docs_skill_drift"));
+	payload["kind"] = Value::String(String::from(legacy_kind));
+	payload["source_type"] = Value::String(String::from(legacy_source_type));
 
 	(
 		legacy_id,
 		legacy_fingerprint,
 		serde_json::to_string(&payload).expect("legacy payload should serialize"),
 	)
+}
+
+fn canonical_signal_for_legacy_source(legacy_source_type: &str) -> AutonomySignal {
+	let mut input = tests::signal_input();
+
+	if legacy_source_type == "docs" {
+		input.source_type = AutonomySignalSourceType::OpenWiki;
+	}
+
+	AutonomySignal::openwiki_drift(input).expect("canonical OpenWiki signal should validate")
 }

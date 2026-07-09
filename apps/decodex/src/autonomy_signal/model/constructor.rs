@@ -43,8 +43,8 @@ impl AutonomySignal {
 		Self::from_input(AutonomySignalKind::ExecutionFriction, input)
 	}
 
-	pub(crate) fn docs_plugin_drift(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::DocsPluginDrift, input)
+	pub(crate) fn openwiki_drift(input: AutonomySignalInput) -> Result<Self> {
+		Self::from_input(AutonomySignalKind::OpenWikiDrift, input)
 	}
 
 	fn from_input(kind: AutonomySignalKind, input: AutonomySignalInput) -> Result<Self> {
@@ -94,8 +94,16 @@ impl AutonomySignal {
 		Ok(())
 	}
 
-	pub(crate) fn legacy_docs_skill_drift_identity(&self) -> Result<(String, String)> {
-		let fingerprint = fingerprint::legacy_docs_skill_drift_fingerprint(self)?;
+	pub(crate) fn legacy_material_identity(
+		&self,
+		kind: &str,
+		source_type: &str,
+	) -> Result<(String, String)> {
+		let fingerprint = fingerprint::legacy_signal_fingerprint_for_material(
+			self,
+			kind,
+			source_type,
+		)?;
 		let id = fingerprint::autonomy_signal_id(&fingerprint);
 
 		Ok((id, fingerprint))
