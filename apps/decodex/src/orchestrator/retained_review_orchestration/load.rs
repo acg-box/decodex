@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
 	orchestrator::{
 		PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
@@ -9,7 +11,7 @@ use crate::{
 		status,
 	},
 	prelude::{Result, eyre},
-	state::{ReviewLifecycleRecord, StateStore, WorktreeMapping},
+	state::{self, ReviewLifecycleRecord, StateStore, WorktreeMapping},
 	tracker::{self, IssueTracker, TrackerIssue},
 };
 
@@ -53,7 +55,9 @@ where
 			"missing_review_handoff_record",
 		));
 	};
+
 	ensure_lifecycle_record_has_base_branch(&lifecycle_record)?;
+
 	let local_branch_name = match status::worktree_checkout_branch_name(worktree.worktree_path()) {
 		Ok(local_branch_name) => local_branch_name,
 		Err(_error) => {
@@ -123,6 +127,7 @@ fn ensure_lifecycle_record_has_base_branch(record: &ReviewLifecycleRecord) -> Re
 	if record.target_base_ref_name().is_some() {
 		return Ok(());
 	}
+
 	Err(eyre::eyre!(
 		"Retained review lifecycle authority for `{}` on branch `{}` is missing the PR base branch.",
 		record.issue_id(),
@@ -186,13 +191,13 @@ fn blocked_retained_review_lane(
 }
 
 fn retained_review_run_identity(
-	worktree_path: &std::path::Path,
+	worktree_path: &Path,
 	lifecycle_record: Option<&ReviewLifecycleRecord>,
 ) -> (String, i64) {
 	if let Some(lifecycle_record) = lifecycle_record {
 		return (lifecycle_record.run_id().to_owned(), lifecycle_record.attempt_number());
 	}
-	if let Ok(Some(marker)) = crate::state::read_run_activity_marker_snapshot(worktree_path) {
+	if let Ok(Some(marker)) = state::read_run_activity_marker_snapshot(worktree_path) {
 		return (marker.run_id().to_owned(), marker.attempt_number());
 	}
 

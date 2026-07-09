@@ -19,7 +19,6 @@ fn review_checkpoint_tool_surface_respects_review_level() {
 		temp_dir.path(),
 		"https://github.com/hack-ink/decodex/pull/242",
 	);
-
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -44,12 +43,14 @@ fn review_checkpoint_tool_surface_respects_review_level() {
 		.into_iter()
 		.map(|tool| tool.name)
 		.collect::<Vec<_>>();
+
 	assert!(!tool_names.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
 	assert!(tool_names.contains(&String::from(ISSUE_REVIEW_HANDOFF_TOOL_NAME)));
 	assert!(!repair_tool_names.contains(&String::from(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME)));
 	assert!(repair_tool_names.contains(&String::from(ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME)));
 
 	review_context.review_level = ReviewLevel::Off;
+
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
 		&issue,
@@ -67,6 +68,7 @@ fn review_checkpoint_tool_surface_respects_review_level() {
 			"evidence": []
 		}),
 	);
+
 	assert!(!checkpoint_response.success);
 	assert!(matches!(
 		checkpoint_response.content_items.as_slice(),

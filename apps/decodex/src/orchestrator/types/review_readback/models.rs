@@ -1,3 +1,5 @@
+use crate::pull_request::PullRequestRequiredStatusContext;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PullRequestReviewState {
 	pub(crate) url: String,
@@ -15,7 +17,7 @@ pub(crate) struct PullRequestReviewState {
 	pub(crate) head_repository_name: Option<String>,
 	pub(crate) head_repository_owner: Option<String>,
 	pub(crate) status_check_rollup_state: Option<String>,
-	pub(crate) required_status_contexts: Vec<crate::pull_request::PullRequestRequiredStatusContext>,
+	pub(crate) required_status_contexts: Vec<PullRequestRequiredStatusContext>,
 	pub(crate) unresolved_review_threads: usize,
 	pub(crate) issue_description_external_review_thumbs_up_count: usize,
 	pub(crate) issue_comments: Vec<PullRequestIssueCommentState>,

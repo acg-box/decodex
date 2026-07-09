@@ -97,6 +97,7 @@ impl SqliteStateStore {
 			"details_json",
 			"ALTER TABLE review_policy_checkpoints ADD COLUMN details_json TEXT NOT NULL DEFAULT '{}'",
 		)?;
+
 		for (column, sql) in [
 			(
 				"schema_version",

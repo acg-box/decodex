@@ -1,9 +1,9 @@
 use crate::orchestrator::{
-	BaselineGuardDispatchOutcome, ProgramDispatchSelection, ensure_clean_baseline_before_dispatch,
+	self, BaselineGuardDispatchOutcome, ProgramDispatchSelection,
 	run_cycle::{
 		self, IssueDispatchMode, IssueRunPlan, IssueTracker, PreferredRunIdentity,
 		PrepareIssueRunContext, Result, RetryIssueStateHint, ServiceConfig, StateStore,
-		WorkflowDocument, WorktreeManager, eyre, project::candidate, slice,
+		TrackerIssue, WorkflowDocument, WorktreeManager, eyre, project::candidate, slice,
 	},
 };
 
@@ -80,8 +80,7 @@ where
 	else {
 		return Ok(None);
 	};
-	let mut refreshed_issues = tracker.refresh_issues(slice::from_ref(&selected_issue.issue.id))?;
-	let Some(issue) = refreshed_issues.pop() else {
+	let Some(issue) = refresh_selected_issue(tracker, &selected_issue.issue.id)? else {
 		return Ok(None);
 	};
 	let dispatch_mode = selected_issue.dispatch_mode;
@@ -91,41 +90,21 @@ where
 	if !dry_run && dispatch_mode != IssueDispatchMode::Closeout {
 		run_cycle::ensure_project_has_no_merged_worktree_cleanup_debt(project)?;
 	}
-	if !run_cycle::issue_passes_current_dispatch_policy(
+
+	if let Some(replanned) = replan_if_dispatch_policy_blocks(
 		tracker,
 		&issue,
 		project,
 		workflow,
 		state_store,
 		dispatch_mode,
-		RetryIssueStateHint::default(),
+		dry_run,
+		excluded_issue_ids,
 	)? {
-		if dispatch_mode == IssueDispatchMode::Closeout
-			&& let Some(reason) = run_cycle::closeout_dispatch_block_reason(
-				tracker,
-				&issue,
-				project,
-				workflow,
-				state_store,
-			)? {
-			if !dry_run {
-				eyre::bail!("retained closeout dispatch blocked: {reason}");
-			}
-
-			return Ok(None);
-		}
-
-		return replan_program_dispatch_after_excluding(
-			tracker,
-			project,
-			workflow,
-			state_store,
-			dry_run,
-			excluded_issue_ids,
-			issue.id.as_str(),
-		);
+		return Ok(replanned);
 	}
-	if ensure_clean_baseline_before_dispatch(
+
+	if orchestrator::ensure_clean_baseline_before_dispatch(
 		project,
 		workflow,
 		state_store,
@@ -172,6 +151,67 @@ where
 	}
 
 	Ok(Some(PlannedProjectIssueRun { issue_run, program_dispatch }))
+}
+
+fn refresh_selected_issue<T>(tracker: &T, issue_id: &str) -> Result<Option<TrackerIssue>>
+where
+	T: IssueTracker,
+{
+	let issue_id = issue_id.to_owned();
+	let mut refreshed_issues = tracker.refresh_issues(slice::from_ref(&issue_id))?;
+
+	Ok(refreshed_issues.pop())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn replan_if_dispatch_policy_blocks<T>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	dispatch_mode: IssueDispatchMode,
+	dry_run: bool,
+	excluded_issue_ids: &[&str],
+) -> Result<Option<Option<PlannedProjectIssueRun>>>
+where
+	T: IssueTracker,
+{
+	if run_cycle::issue_passes_current_dispatch_policy(
+		tracker,
+		issue,
+		project,
+		workflow,
+		state_store,
+		dispatch_mode,
+		RetryIssueStateHint::default(),
+	)? {
+		return Ok(None);
+	}
+	if dispatch_mode == IssueDispatchMode::Closeout
+		&& let Some(reason) = run_cycle::closeout_dispatch_block_reason(
+			tracker,
+			issue,
+			project,
+			workflow,
+			state_store,
+		)? {
+		if !dry_run {
+			eyre::bail!("retained closeout dispatch blocked: {reason}");
+		}
+
+		return Ok(Some(None));
+	}
+
+	Ok(Some(replan_program_dispatch_after_excluding(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		dry_run,
+		excluded_issue_ids,
+		issue.id.as_str(),
+	)?))
 }
 
 fn replan_program_dispatch_after_excluding<T>(

@@ -51,6 +51,7 @@ fn blocks_admin_merge_for_human_boundary() {
 			1,
 		),
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
@@ -65,6 +66,7 @@ fn blocks_admin_merge_for_human_boundary() {
 			details_json: "{}",
 		})
 		.expect("runtime review checkpoint should persist");
+
 	review_landing_classification_review::record_requires_human_authority_boundary(
 		&state_store,
 		&issue,

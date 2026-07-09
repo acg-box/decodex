@@ -68,6 +68,7 @@ fn allows_descendant_head_after_repair() {
 
 	tests::add_external_review_ack(&mut review_state);
 	tests::add_external_review_pass(&mut review_state);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),

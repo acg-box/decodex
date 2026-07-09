@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, path::Path};
 
 use crate::{
 	config::ReviewLevel,
@@ -11,6 +11,7 @@ use crate::{
 		},
 	},
 	state::{ReviewPolicyCheckpointInput, StateStore},
+	tracker::TrackerIssue,
 };
 
 #[test]
@@ -37,15 +38,7 @@ fn handles_same_issue_closeout_after_merge_visibility() {
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let issue = support::candidate_selection_service_owned_issue("In Review");
-		let tracker = FakeTracker::with_refresh_snapshots(
-			vec![issue.clone()],
-			vec![
-				vec![issue.clone()],
-				vec![issue.clone()],
-				vec![issue.clone()],
-				vec![issue.clone()],
-			],
-		);
+		let tracker = retained_drain_tracker(&issue);
 
 		state_store
 			.upsert_worktree(
@@ -62,6 +55,7 @@ fn handles_same_issue_closeout_after_merge_visibility() {
 			&repo_root,
 			&tests::sample_review_lifecycle_handoff_fixture("main", pr_url, &head_oid),
 		);
+
 		state_store
 			.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 				project_id: config.service_id(),
@@ -125,21 +119,48 @@ fn handles_same_issue_closeout_after_merge_visibility() {
 		assert_eq!(drained, closeout_available.then_some(closeout_summary.clone()));
 		assert_eq!(*closeout_dispatches.borrow(), vec![issue.id.clone()]);
 
-		let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
+		assert_retained_drain_landed(
 			&state_store,
 			config.service_id(),
 			&repo_root,
-		);
-
-		assert_eq!(marker.phase(), "landed");
-
-		support::assert_admin_merge_invocation(
 			&invocation_log_path,
 			&head_oid,
 			landed_merge_subject,
 			pr_url,
 		);
 	}
+}
+
+fn retained_drain_tracker(issue: &TrackerIssue) -> FakeTracker {
+	FakeTracker::with_refresh_snapshots(
+		vec![issue.clone()],
+		vec![vec![issue.clone()], vec![issue.clone()], vec![issue.clone()], vec![issue.clone()]],
+	)
+}
+
+fn assert_retained_drain_landed(
+	state_store: &StateStore,
+	service_id: &str,
+	repo_root: &Path,
+	invocation_log_path: &Path,
+	head_oid: &str,
+	landed_merge_subject: &str,
+	pr_url: &str,
+) {
+	let marker = tests::persisted_review_lifecycle_transition_fixture_for_path(
+		state_store,
+		service_id,
+		repo_root,
+	);
+
+	assert_eq!(marker.phase(), "landed");
+
+	support::assert_admin_merge_invocation(
+		invocation_log_path,
+		head_oid,
+		landed_merge_subject,
+		pr_url,
+	);
 }
 
 #[test]

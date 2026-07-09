@@ -65,6 +65,7 @@ fn project_lane_reason(
 		if snapshot.repo_gate_error_class == Some("repo_gate_lane_external_tracked_rewrite") {
 			return "repo-gate lane-external tracked rewrite requires project cleanup or explicit scoped-gate authority";
 		}
+
 		return match disposition {
 			RepoGateFailureDisposition::ContinueRepair =>
 				"repo-gate failure remains an issue-local repair",

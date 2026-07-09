@@ -100,6 +100,7 @@ pub(in crate::manual) fn read_manual_land_lifecycle(
 	else {
 		return Ok(None);
 	};
+
 	if lifecycle_record.target_base_ref_name().is_none() {
 		eyre::bail!(
 			"Manual land found incomplete review lifecycle authority for issue `{issue_id}` branch `{current_branch}`."

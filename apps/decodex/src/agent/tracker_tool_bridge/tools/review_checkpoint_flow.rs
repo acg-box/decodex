@@ -5,9 +5,13 @@ mod writeback;
 
 use serde_json::Value;
 
-use crate::agent::tracker_tool_bridge::{
-	DynamicToolCallResponse, NormalizedReviewCheckpointPayload, ReviewCheckpointArgs,
-	ReviewPolicyPhase, ReviewPolicyStatus, TrackerToolBridge, tools::review_checkpoint,
+use crate::{
+	agent::tracker_tool_bridge::{
+		DynamicToolCallResponse, DynamicToolContentItem, NormalizedReviewCheckpointPayload,
+		ReviewCheckpointArgs, ReviewPolicyPhase, ReviewPolicyStatus, TrackerToolBridge,
+		tools::review_checkpoint,
+	},
+	prelude::Result,
 };
 
 struct ReviewCheckpointPayloadCounts {
@@ -27,10 +31,7 @@ struct PreparedReviewCheckpoint {
 }
 
 impl<'a> TrackerToolBridge<'a> {
-	pub(crate) fn record_runtime_review_checkpoint(
-		&self,
-		arguments: Value,
-	) -> crate::prelude::Result<()> {
+	pub(crate) fn record_runtime_review_checkpoint(&self, arguments: Value) -> Result<()> {
 		let response = self.handle_review_checkpoint(arguments);
 
 		if response.success {
@@ -41,8 +42,7 @@ impl<'a> TrackerToolBridge<'a> {
 			.content_items
 			.into_iter()
 			.map(|item| match item {
-				crate::agent::tracker_tool_bridge::DynamicToolContentItem::InputText { text } =>
-					text,
+				DynamicToolContentItem::InputText { text } => text,
 			})
 			.collect::<Vec<_>>()
 			.join("\n");
