@@ -162,7 +162,7 @@ npm --prefix site run build
 npm --prefix site run dev
 ```
 
-`site/README.md` appears stale because it still describes route-shell scaffolding; prefer `site/src/`, `site/package.json`, and `openwiki/integrations/plugins-automations-and-auxiliary-tools.md` for current site behavior until that README is refreshed.
+Use `site/README.md`, `site/src/`, `site/package.json`, and `openwiki/integrations/plugins-automations-and-auxiliary-tools.md` for the current static-site boundary and validation commands.
 
 ## Native macOS app checks
 
