@@ -132,7 +132,7 @@ impl RuntimeStandardReviewRunner for CleanRuntimeReviewRunner {
 				"intended_behavior": "The retained PR head still satisfies the issue objective.",
 				"regression_risk": "No current-head regression was found.",
 				"missing_tests": "No additional required tests were identified.",
-				"docs_config_drift": "No docs or config drift was found.",
+				"docs_config_drift": "No OpenWiki or config drift was found.",
 				"migration_fallout": "No migration fallout was found.",
 				"operator_facing_fallout": "No operator-facing fallout was found.",
 				"loop_decision_contract": "The lifecycle can proceed after the runtime-owned checkpoint."

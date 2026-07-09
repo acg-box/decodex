@@ -7,7 +7,7 @@ use crate::mcp::{
 
 impl McpServer {
 	pub(in crate::mcp) fn list_resources(&self) -> Result<Value, McpError> {
-		let mut resources = self.context.docs_resources()?;
+		let mut resources = self.context.openwiki_resources()?;
 
 		resources.extend(self.context.decision_contract_resources()?);
 
@@ -48,7 +48,7 @@ impl McpServer {
 	}
 
 	pub(in crate::mcp) fn list_resource_templates(&self) -> Value {
-		let mut resource_templates = templates::docs_resource_templates();
+		let mut resource_templates = templates::openwiki_resource_templates();
 
 		resource_templates.extend(templates::runtime_resource_templates());
 

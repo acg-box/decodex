@@ -11,9 +11,7 @@ correctness to public-reader value and media quality.
 
 ## Read First
 
-- `docs/spec/social-candidate.md`
-- `docs/spec/social-publishing.md`
-- `docs/runbook/social-publishing-workflow.md`
+- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `../references/social-release-publisher-gates.md`
 
 ## Hard Boundaries

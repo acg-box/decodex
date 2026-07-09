@@ -1,6 +1,6 @@
 mod autonomy;
 mod builder;
-mod docs;
+mod openwiki;
 mod runtime;
 
-pub(super) use self::{docs::docs_resource_templates, runtime::runtime_resource_templates};
+pub(super) use self::{openwiki::openwiki_resource_templates, runtime::runtime_resource_templates};

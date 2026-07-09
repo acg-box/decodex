@@ -40,7 +40,7 @@ fn autonomy_objective_fixture(service_id: &str) -> AutonomyObjectiveContract {
 		"goals": ["Expose objective, signal, proposal, decision, and intake lineage."],
 		"non_goals": ["Do not expose raw private evidence payloads."],
 		"metrics": ["Operator can explain autonomy state without SQLite."],
-		"allowed_surfaces": ["apps/decodex/src/orchestrator", "docs/spec"],
+		"allowed_surfaces": ["apps/decodex/src/orchestrator", "openwiki/specs"],
 		"allowed_signal_kinds": ["runtime_health"],
 		"validation_gates": ["cargo test -p decodex operator --lib"],
 		"review_policy": "independent review before handoff",
