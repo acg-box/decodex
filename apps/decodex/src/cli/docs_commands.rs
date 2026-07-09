@@ -137,6 +137,7 @@ struct DocsSurface {
 }
 impl DocsSurface {
 	fn check(&self) -> Result<()> {
+		reject_docs_symlink(&self.path)?;
 		if self.name == "openwiki" {
 			self.check_openwiki_router()?;
 			self.check_local_markdown_links()?;
@@ -200,9 +201,23 @@ impl DocsSurface {
 						raw_target
 					);
 				}
-				if !target.is_file() {
+				let Ok(metadata) = fs::symlink_metadata(&target) else {
 					eyre::bail!(
 						"Documentation link in `{}` points to missing file `{}`.",
+						path.display(),
+						raw_target
+					);
+				};
+				if metadata.file_type().is_symlink() {
+					eyre::bail!(
+						"Documentation link in `{}` points to symlink `{}`.",
+						path.display(),
+						raw_target
+					);
+				}
+				if !metadata.is_file() {
+					eyre::bail!(
+						"Documentation link in `{}` points to non-file `{}`.",
 						path.display(),
 						raw_target
 					);
@@ -212,6 +227,14 @@ impl DocsSurface {
 
 		Ok(())
 	}
+}
+
+fn reject_docs_symlink(path: &Path) -> Result<()> {
+	if fs::symlink_metadata(path)?.file_type().is_symlink() {
+		eyre::bail!("Documentation path must not be a symlink: `{}`.", path.display());
+	}
+
+	Ok(())
 }
 
 fn count_readable_markdown_files(path: &Path) -> Result<usize> {
@@ -230,8 +253,15 @@ fn markdown_files(path: &Path) -> Result<Vec<PathBuf>> {
 	for entry in fs::read_dir(path)? {
 		let entry = entry?;
 		let path = entry.path();
-		if path.is_dir() {
+		let file_type = entry.file_type()?;
+		if file_type.is_symlink() {
+			eyre::bail!("Documentation tree must not contain symlink `{}`.", path.display());
+		}
+		if file_type.is_dir() {
 			files.extend(markdown_files(&path)?);
+			continue;
+		}
+		if !file_type.is_file() {
 			continue;
 		}
 		if !is_markdown_file(&path) {
@@ -345,6 +375,23 @@ mod tests {
 		let error = check_docs_surface(&root).expect_err("empty file should fail");
 
 		assert!(error.to_string().contains("is empty"));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn docs_check_rejects_symlinked_docs_entries() {
+		let root = temp_root("symlinked_docs_entry");
+		let openwiki = root.join("openwiki");
+		let external = root.join("external");
+		fs::create_dir_all(&openwiki).unwrap();
+		fs::create_dir_all(&external).unwrap();
+		fs::write(openwiki.join("quickstart.md"), "# Quickstart\n").unwrap();
+		fs::write(external.join("outside.md"), "# Outside\n").unwrap();
+		std::os::unix::fs::symlink(&external, openwiki.join("linked")).unwrap();
+
+		let error = check_docs_surface(&root).expect_err("symlinked entry should fail");
+
+		assert!(error.to_string().contains("must not contain symlink"));
 	}
 
 	fn temp_root(name: &str) -> PathBuf {
