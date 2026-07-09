@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =

@@ -21,6 +21,7 @@ use crate::{
 	},
 };
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn start_retained_admin_merge<T>(
 	runtime: &mut RetainedReviewRuntime<'_, T>,
 	lane: &RetainedReviewLane,
@@ -212,6 +213,7 @@ where
 	)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_retained_landing_decision<T>(
 	runtime: &RetainedReviewRuntime<'_, T>,
 	lane: &RetainedReviewLane,

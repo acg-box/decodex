@@ -52,18 +52,17 @@ impl<'a> TrackerToolBridge<'a> {
 			&review_context.service_id,
 			&self.issue.id,
 			&review_context.branch_name,
-		)? {
-			if !review::review_lifecycle_handoff_lineage_matches(&existing_record, &input) {
-				eyre::bail!(
-					"Existing review lifecycle record for issue `{}` branch `{}` points at PR `{}` head `{}`, but the current review handoff intent points at PR `{}` head `{}`. Use explicit review-handoff recovery before rebinding this lane.",
-					self.issue.identifier,
-					review_context.branch_name,
-					existing_record.pr_url(),
-					existing_record.pr_head_oid(),
-					input.pr_url,
-					input.head_sha
-				);
-			}
+		)? && !review::review_lifecycle_handoff_lineage_matches(&existing_record, &input)
+		{
+			eyre::bail!(
+				"Existing review lifecycle record for issue `{}` branch `{}` points at PR `{}` head `{}`, but the current review handoff intent points at PR `{}` head `{}`. Use explicit review-handoff recovery before rebinding this lane.",
+				self.issue.identifier,
+				review_context.branch_name,
+				existing_record.pr_url(),
+				existing_record.pr_head_oid(),
+				input.pr_url,
+				input.head_sha
+			);
 		}
 
 		self.persist_review_lifecycle_handoff(review_context, input)
