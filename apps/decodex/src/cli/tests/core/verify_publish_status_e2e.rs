@@ -132,13 +132,13 @@ JSON
 {{}}
 JSON
     ;;
-  *"repos/hack-ink/decodex/commits/head-sha/status"*)
+  *"repos/hack-ink/decodex/commits/head-sha/statuses"*)
     if ! grep -q 'base_ref_oid=base-sha' '{log_path}'; then
       echo 'expected publish call with base_ref_oid=base-sha before status read' >&2
       exit 1
     fi
     cat <<'JSON'
-{{"statuses":[{{"context":"decodex/local-full-check","state":"success","description":"cargo make check passed; base_ref_oid=base-sha","creator":{{"login":"decodex-bot"}}}}]}}
+[{{"context":"decodex/local-full-check","state":"success","description":"cargo make check passed; base_ref_oid=base-sha","creator":{{"login":"decodex-bot"}}}}]
 JSON
     ;;
   *)
