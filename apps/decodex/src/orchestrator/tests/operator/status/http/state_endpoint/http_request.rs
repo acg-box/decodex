@@ -5,7 +5,7 @@ use crate::orchestrator::tests::operator::status::http::{
 };
 
 #[test]
-fn operator_state_endpoint_reads_complete_headers_before_parsing() {
+fn operator_state_endpoint_does_not_serve_removed_web_dashboard() {
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
@@ -23,7 +23,7 @@ fn operator_state_endpoint_reads_complete_headers_before_parsing() {
 			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
-		.expect("handler should accept segmented headers");
+		.expect("handler should reject removed dashboard route");
 	});
 	let mut client = TcpStream::connect(address).expect("client should connect");
 	let mut response = String::new();
@@ -39,8 +39,8 @@ fn operator_state_endpoint_reads_complete_headers_before_parsing() {
 	client.read_to_string(&mut response).expect("client should read response");
 	server.join().expect("server thread should complete");
 
-	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
-	assert!(response.contains("<title>Decodex</title>"));
+	assert!(response.starts_with("HTTP/1.1 404 Not Found\r\n"));
+	assert!(response.ends_with("not found"));
 }
 
 #[test]

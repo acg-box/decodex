@@ -61,7 +61,7 @@ impl DashboardEventHub {
 
 		let Ok(mut clients) = self.clients.lock() else {
 			tracing::warn!(
-				"Skipped dashboard event broadcast because the client list lock is poisoned."
+				"Skipped operator event broadcast because the client list lock is poisoned."
 			);
 
 			return;

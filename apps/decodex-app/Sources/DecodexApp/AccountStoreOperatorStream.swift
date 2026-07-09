@@ -53,7 +53,7 @@ extension AccountStore {
 						let event = try JSONDecoder().decode(OperatorDashboardSocketEvent.self, from: data)
 						applyOperatorDashboardEvent(event)
 					} catch {
-						accountStoreLog.debug("Skipped dashboard WebSocket message bytes=\(data.count, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+						accountStoreLog.debug("Skipped operator WebSocket message bytes=\(data.count, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
 						continue
 					}
 				}

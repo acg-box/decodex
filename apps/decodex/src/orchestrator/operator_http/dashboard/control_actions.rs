@@ -29,7 +29,7 @@ pub(crate) fn handle_dashboard_control_action(
 			action,
 			true,
 			"acknowledged",
-			"Dashboard acknowledgement recorded for this browser session only.",
+				"Operator acknowledgement recorded for this WebSocket session only.",
 		),
 		_ => dashboard_unsupported_control_ack(session, message, action),
 	}
@@ -142,6 +142,6 @@ fn dashboard_unsupported_control_ack(
 		action,
 		false,
 		"unsupported_action",
-		"Unsupported dashboard control action.",
+		"Unsupported operator control action.",
 	)
 }
