@@ -14,11 +14,7 @@ Decodex plugin skill.
 
 ## Read Before Triage
 
-- `docs/spec/github-change-bundle.md`
-- `docs/spec/upstream-review.md`
-- `docs/spec/upstream-impact.md`
-- `docs/spec/control-plane-upgrade-candidate.md`
-- `docs/runbook/local-github-signal-workflow.md`
+- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `automations/radar/skills/codex-code-analysis/SKILL.md`
 - `automations/radar/skills/codex-release-analysis/SKILL.md`
 

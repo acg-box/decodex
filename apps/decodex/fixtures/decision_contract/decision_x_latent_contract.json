@@ -11,7 +11,7 @@
   "research_provenance": [
     {
       "kind": "spec",
-      "reference": "docs/spec/loop-runtime.md",
+      "reference": "openwiki/specs/contracts-and-data.md",
       "summary": "Decision input remains latent until accepted."
     },
     {
@@ -24,12 +24,12 @@
     {
       "claim": "A decision input can carry enough detail for later issue shaping.",
       "support": "The contract keeps objectives, constraints, assumptions, objections, and stop conditions together before acceptance.",
-      "source_ref": "docs/spec/loop-runtime.md"
+      "source_ref": "openwiki/specs/contracts-and-data.md"
     },
     {
       "claim": "A latent contract is not execution authority.",
       "support": "The status remains draft_latent and promotion metadata is absent.",
-      "source_ref": "docs/spec/loop-runtime.md"
+      "source_ref": "openwiki/specs/contracts-and-data.md"
     }
   ],
   "accepted_authority": {

@@ -14,7 +14,7 @@ pub(in crate::mcp::tests) fn accepted_mcp_goal_contract() -> DecisionContract {
 		"research_provenance": [
 			{
 				"kind": "spec",
-				"reference": "docs/spec/runtime.md",
+				"reference": "openwiki/specs/contracts-and-data.md",
 				"summary": "MCP planning tools are schema-bound."
 			}
 		],
@@ -22,7 +22,7 @@ pub(in crate::mcp::tests) fn accepted_mcp_goal_contract() -> DecisionContract {
 			{
 				"claim": "Goal intake can preview generated issue briefs.",
 				"support": "Program Intake dry-run renders public-safe issue plans.",
-				"source_ref": "docs/spec/loop-runtime.md"
+				"source_ref": "openwiki/specs/contracts-and-data.md"
 			}
 		],
 		"research_options": [

@@ -7,7 +7,7 @@ pub(super) fn architecture_recovery_surfaces_for_path(
 	let lower = normalized.to_ascii_lowercase();
 	let mut surfaces = Vec::new();
 
-	if lower.starts_with("docs/") {
+	if lower.starts_with("openwiki/") {
 		surfaces.push(AuthorityBoundarySurface::Docs);
 
 		return surfaces;
@@ -59,7 +59,7 @@ pub(super) fn architecture_recovery_surface_summary(
 		AuthorityBoundarySurface::Runtime =>
 			"Runtime implementation files changed during recovery.",
 		AuthorityBoundarySurface::Tests => "Test files changed during recovery.",
-		AuthorityBoundarySurface::Docs => "Documentation files changed during recovery.",
+		AuthorityBoundarySurface::Docs => "OpenWiki documentation files changed during recovery.",
 		AuthorityBoundarySurface::PublicApi =>
 			"Public API or command surface files changed during recovery.",
 		AuthorityBoundarySurface::Config => "Configuration files changed during recovery.",

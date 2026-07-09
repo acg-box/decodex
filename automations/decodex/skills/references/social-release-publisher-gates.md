@@ -8,7 +8,7 @@ Read this only when a Codex release, prerelease, app/mobile changelog entry, or
 - Use official OpenAI changelog, GitHub release metadata, GitHub compare metadata,
   PR-title metadata, and checked Radar artifacts as source evidence.
 - `@CodexReleases` and `@Codex_Changelog` are historical style references only when
-  already encoded in repo docs or supplied by the operator.
+  already encoded in OpenWiki or supplied by the operator.
 - Recurring automation must not browse or sample those accounts, must not treat their
   coverage as evidence, and must not decide publish/skip state from whether they posted.
 - Do not infer implementation behavior from sparse release notes, tag names, or social

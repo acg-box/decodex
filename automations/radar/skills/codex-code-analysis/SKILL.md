@@ -18,11 +18,7 @@ of redoing the source pass.
 
 ## Read Before Analysis
 
-- `docs/spec/github-change-bundle.md`
-- `docs/spec/upstream-review.md`
-- `docs/spec/upstream-impact.md`
-- `docs/spec/control-plane-upgrade-candidate.md`
-- `docs/spec/signal-entry.md`
+- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `automations/radar/skills/README.md`
 
 ## Inputs
