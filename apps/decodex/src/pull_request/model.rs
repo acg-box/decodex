@@ -25,6 +25,7 @@ impl PullRequestLandingState {
 			mergeable: self.mergeable.as_str(),
 			merge_state_status: self.merge_state_status.as_str(),
 			status_check_rollup_state: self.status_check_rollup_state.as_deref(),
+			fast_landing: !self.required_status_contexts.is_empty(),
 			required_status_contexts: &self.required_status_contexts,
 			unresolved_review_threads: self.unresolved_review_threads,
 		}
@@ -50,6 +51,7 @@ pub(crate) struct PullRequestLandingGateView<'a> {
 	pub(crate) mergeable: &'a str,
 	pub(crate) merge_state_status: &'a str,
 	pub(crate) status_check_rollup_state: Option<&'a str>,
+	pub(crate) fast_landing: bool,
 	pub(crate) required_status_contexts: &'a [PullRequestRequiredStatusContext],
 	pub(crate) unresolved_review_threads: usize,
 }

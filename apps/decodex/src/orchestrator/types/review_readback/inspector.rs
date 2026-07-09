@@ -29,8 +29,8 @@ impl GhPullRequestReviewStateInspector {
 		Self {
 			github_token_env_var: Some(project.github().token_env_var().to_owned()),
 			github_command_path: project.github().command_path().map(Path::to_path_buf),
-			required_status_contexts: project.github().landing_required_status_contexts().to_vec(),
-			allowed_status_creators: project.github().landing_required_status_creators().to_vec(),
+			required_status_contexts: project.github().landing_status_contexts(),
+			allowed_status_creators: project.github().landing_actors().to_vec(),
 		}
 	}
 
