@@ -7,13 +7,17 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 ## Start here
 
 - [Runtime architecture](architecture/runtime-architecture.md): process topology, CLI bootstrap, app-server runs, operator HTTP/MCP, and state ownership.
+- [Design rationale](decisions/design-rationale.md): why Decodex keeps loop graphs internal, autonomy authority typed, MCP/skills split, the site static, and Radar/Publisher bounded.
+- [Drift audits](evidence/drift-audits.md): public-safe evidence notes, current MCP remote-control watched claims, reverse checks, validation commands, and stop conditions.
 - [Runtime operator workflows](workflows/runtime-operator-workflows.md): project registry, run/serve/status, lane control, recovery, intake, commit/land, accounts, and MCP workflows.
 - [Contracts and data](specs/contracts-and-data.md): project config, `WORKFLOW.md`, SQLite state, Decision Contracts, Program Intake, tracker tools, review lifecycle, and commit messages.
+- [Runtime contracts](specs/runtime-contracts.md): runtime state ownership, project/`WORKFLOW.md` contracts, leases/attempts, app-server protocol, tracker writeback, evidence/privacy, and recovery boundaries.
 - [Runtime lifecycle](specs/runtime-lifecycle.md): lane authority, app-server protocol, tracker tools, evidence, loop runtime, review lifecycle, and autonomy control-plane boundaries.
 - [Commands and validation](operations/commands-and-validation.md): task runner, tests, targeted checks, status publishing, app/site/Radar/Publisher validation.
 - [Operator runbooks](operations/operator-runbooks.md): lane-control recovery, review handoff recovery, release readiness, GitHub operations, and control-plane workflows.
 - [Plugins, automations, and auxiliary tools](integrations/plugins-automations-and-auxiliary-tools.md): installable plugin lifecycle, hook guardrails, automation sync, Radar, Publisher, native App, and site boundaries.
 - [Radar, Publisher, and site contracts](integrations/radar-publisher-site.md): Radar artifacts, upstream review, release deltas, social publishing, site contract, and retention.
+- [Radar Publisher contracts](integrations/radar-publisher-contracts.md): artifact contracts, upstream handoff, control-plane candidates, Publisher reservations, static-site boundary, retention, and stop conditions.
 
 ## Repository map
 
