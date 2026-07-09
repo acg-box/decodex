@@ -47,8 +47,10 @@ service labels, recovery, or lane-control details matter.
   before live superseded closeout. The obsolete issue must have no queue, active,
   or needs-attention labels or live runtime ownership, including non-terminal
   attempts such as `continuation_pending` and retained retry schedules for a
-  terminal latest attempt. The successor issue must expose a Decodex ledger
-  record for the exact successor PR head and merge commit. Live superseded
+  terminal latest attempt, plus matching retained worktree markers that still
+  show live process, active thread, or live protocol/activity evidence. The
+  successor issue must expose a Decodex ledger record for the exact successor
+  PR head and merge commit. Live superseded
   closeout records close authorization plus retryable pending closeout authority
   before the obsolete issue/PR terminal mutation and records cleanup completion
   only after the PR comment/close path succeeds.
