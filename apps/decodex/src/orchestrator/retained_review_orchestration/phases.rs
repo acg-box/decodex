@@ -41,6 +41,7 @@ impl RetainedReviewLifecycleAction {
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn reconcile_retained_review_lane<T>(
 	tracker: &T,
 	project: &ServiceConfig,

@@ -175,6 +175,7 @@ fn record_merged_closeout_lifecycle_authority(
 	)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_merged_closeout_lifecycle_decision(
 	context: &RecoveryContext,
 	validation: &MergedCloseoutValidation,
