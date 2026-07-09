@@ -1,7 +1,14 @@
 use std::{collections::HashMap, ffi::OsString, fs, path::PathBuf, process::Command};
 
-use crate::agent::json_rpc::{
-	AppServerHomePreflightFailure, AppServerProcessEnv, ResolvedAppServerCodexHomeEnv, environment,
+use crate::{
+	active_run_env::{
+		ActiveRunCommitContext, DECODEX_ACTIVE_RUN_ID_ENV, DECODEX_ACTIVE_RUN_ISSUE_ID_ENV,
+		DECODEX_ACTIVE_RUN_SERVICE_ID_ENV,
+	},
+	agent::json_rpc::{
+		AppServerHomePreflightFailure, AppServerProcessEnv, ResolvedAppServerCodexHomeEnv,
+		environment,
+	},
 };
 
 #[test]
@@ -50,6 +57,26 @@ fn app_server_command_inherits_noninteractive_git_environment() {
 	assert_eq!(envs.get("GIT_CONFIG_VALUE_9").map(String::as_str), Some("false"));
 	assert_eq!(envs.get("GIT_CONFIG_KEY_10").map(String::as_str), Some("user.signingkey"));
 	assert_eq!(envs.get("GIT_CONFIG_VALUE_10").map(String::as_str), Some(""));
+}
+
+#[test]
+fn app_server_command_inherits_active_run_commit_context() {
+	let process_env =
+		AppServerProcessEnv::default().with_active_run_commit_context(ActiveRunCommitContext::new(
+			String::from("decodex"),
+			String::from("xy-1247-attempt-1"),
+			String::from("issue-1"),
+		));
+	let mut command = Command::new("codex");
+
+	environment::configure_app_server_command(&mut command, "stdio://", &process_env)
+		.expect("app-server command should configure");
+
+	let envs = command_envs(&command);
+
+	assert_eq!(envs.get(DECODEX_ACTIVE_RUN_SERVICE_ID_ENV).map(String::as_str), Some("decodex"));
+	assert_eq!(envs.get(DECODEX_ACTIVE_RUN_ID_ENV).map(String::as_str), Some("xy-1247-attempt-1"));
+	assert_eq!(envs.get(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV).map(String::as_str), Some("issue-1"));
 }
 
 #[test]

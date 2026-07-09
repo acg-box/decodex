@@ -1,6 +1,7 @@
 use std::process::Command;
 
 use crate::{
+	active_run_env::ActiveRunCommitContext,
 	agent::json_rpc::environment::codex_home::{self, ResolvedAppServerCodexHomeEnv},
 	git_credentials::{GitCredentialEnvironment, GitSigningConfig},
 	prelude::Result,
@@ -10,6 +11,7 @@ use crate::{
 pub(crate) struct AppServerProcessEnv {
 	git: GitCredentialEnvironment,
 	codex_home_policy: AppServerCodexHomePolicy,
+	active_run_commit_context: Option<ActiveRunCommitContext>,
 }
 impl AppServerProcessEnv {
 	#[cfg(test)]
@@ -23,6 +25,7 @@ impl AppServerProcessEnv {
 				github_token,
 			),
 			codex_home_policy: AppServerCodexHomePolicy::SharedDefault,
+			active_run_commit_context: None,
 		}
 	}
 
@@ -38,7 +41,17 @@ impl AppServerProcessEnv {
 				signing_config,
 			),
 			codex_home_policy: AppServerCodexHomePolicy::SharedDefault,
+			active_run_commit_context: None,
 		}
+	}
+
+	pub(crate) fn with_active_run_commit_context(
+		mut self,
+		context: ActiveRunCommitContext,
+	) -> Self {
+		self.active_run_commit_context = Some(context);
+
+		self
 	}
 
 	pub(crate) fn resolve_codex_home_env(&self) -> Result<ResolvedAppServerCodexHomeEnv> {
@@ -55,6 +68,9 @@ impl AppServerProcessEnv {
 		let codex_home_env = self.resolve_codex_home_env()?;
 
 		codex_home_env.apply_to(command)?;
+		if let Some(context) = self.active_run_commit_context.as_ref() {
+			context.apply_to(command);
+		}
 
 		Ok(codex_home_env)
 	}
@@ -64,6 +80,7 @@ impl AppServerProcessEnv {
 		Self {
 			git: GitCredentialEnvironment::default(),
 			codex_home_policy: AppServerCodexHomePolicy::Explicit(home_env),
+			active_run_commit_context: None,
 		}
 	}
 }
@@ -73,6 +90,7 @@ impl Default for AppServerProcessEnv {
 		Self {
 			git: GitCredentialEnvironment::default(),
 			codex_home_policy: AppServerCodexHomePolicy::SharedDefault,
+			active_run_commit_context: None,
 		}
 	}
 }

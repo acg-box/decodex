@@ -1,4 +1,5 @@
 use crate::{
+	active_run_env::ActiveRunCommitContext,
 	agent::app_server::{
 		markers, preflight,
 		protocol::AppServerClient,
@@ -81,8 +82,14 @@ fn execute_app_server_run_inner(
 		request.attempt_number,
 		request.activity_marker_path.as_ref(),
 	);
-	let expected_codex_home = request.process_env.resolve_codex_home_env()?;
-	let mut client = AppServerClient::spawn(&request.listen, &request.process_env)?;
+	let process_env =
+		request.process_env.clone().with_active_run_commit_context(ActiveRunCommitContext::new(
+			request.project_id.clone(),
+			request.run_id.clone(),
+			request.issue_id.clone(),
+		));
+	let expected_codex_home = process_env.resolve_codex_home_env()?;
+	let mut client = AppServerClient::spawn(&request.listen, &process_env)?;
 	let initialize_response = session::initialize_client_for_run(
 		&mut client,
 		&mut recorder,
