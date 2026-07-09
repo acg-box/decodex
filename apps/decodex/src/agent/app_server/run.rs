@@ -87,6 +87,7 @@ fn execute_app_server_run_inner(
 			request.project_id.clone(),
 			request.run_id.clone(),
 			request.issue_id.clone(),
+			request.issue_identifier.clone(),
 		));
 	let expected_codex_home = process_env.resolve_codex_home_env()?;
 	let mut client = AppServerClient::spawn(&request.listen, &process_env)?;
