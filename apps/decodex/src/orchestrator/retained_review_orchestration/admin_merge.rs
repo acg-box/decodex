@@ -6,10 +6,12 @@ use crate::{
 	commit_message,
 	orchestrator::{
 		self, EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS, PostReviewLifecycleFactsInput,
-		build_post_review_lifecycle_facts,
-		kernel::lifecycle::{
-			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-			PreviousLifecycleAuthority, decide_lifecycle_transition,
+		kernel::{
+			lifecycle,
+			lifecycle::{
+				LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
+				PreviousLifecycleAuthority,
+			},
 		},
 		retained_review_orchestration,
 		retained_review_orchestration::{
@@ -17,7 +19,6 @@ use crate::{
 			RetainedAdminMergeReasons, RetainedReviewLane, RetainedReviewRuntime, ServiceConfig,
 			attention, eyre, github,
 		},
-		runtime_review_checkpoint_status_for_head,
 	},
 };
 
@@ -39,77 +40,23 @@ where
 		CommandIntentKind::StartRetainedLanding,
 	)?;
 
-	if let Some(reason) = orchestrator::authority_boundary_landing_requirement(
-		&lane.snapshot,
-		Some(PostReviewRuntimeState {
-			state_store: runtime.state_store,
-			project_id: runtime.project.service_id(),
-			review_level: runtime.project.codex().review_level(),
-		}),
-	)? {
-		tracing::info!(
-			project_id = runtime.project.service_id(),
-			issue_id = lane.snapshot.issue.id,
-			issue = lane.snapshot.issue.identifier,
-			reason,
-			"Retained admin merge is waiting for authority-boundary landing clearance."
-		);
-
+	if retained_admin_merge_waits_for_authority_boundary(runtime, lane)? {
 		return Ok(());
-	}
-
+	};
 	if !lane.review_state.merge_commit_allowed {
-		record_retained_landing_decision(
+		return apply_retained_admin_merge_attention(
 			runtime,
 			lane,
-			LifecycleEvidenceKind::LandingReadback,
 			LifecycleOutcome::NeedsManualAttention,
-			None,
 			"manual_attention_required",
-			"not_started",
-			reasons.admin_merge_unavailable,
-		)?;
-
-		return retained_review_orchestration::apply_passive_retained_manual_attention(
-			attention::passive_attention_runtime(runtime),
-			&lane.snapshot.issue,
-			&lane.snapshot.worktree,
-			lane.lifecycle_record(),
 			reasons.admin_merge_unavailable,
 		);
 	}
 
-	let merge_subject = match retained_review_merge_subject(lane) {
-		Ok(subject) => subject,
-		Err(error) => {
-			tracing::warn!(
-				issue_id = lane.snapshot.issue.id,
-				issue = lane.snapshot.issue.identifier,
-				branch = lane.snapshot.worktree.branch_name(),
-				?error,
-				"Retained admin merge could not derive a compliant landed change record."
-			);
-
-			record_retained_landing_decision(
-				runtime,
-				lane,
-				LifecycleEvidenceKind::LandingReadback,
-				LifecycleOutcome::NeedsManualAttention,
-				None,
-				"manual_attention_required",
-				"not_started",
-				"retained_admin_merge_subject_unavailable",
-			)?;
-
-			return retained_review_orchestration::apply_passive_retained_manual_attention(
-				attention::passive_attention_runtime(runtime),
-				&lane.snapshot.issue,
-				&lane.snapshot.worktree,
-				lane.lifecycle_record(),
-				"retained_admin_merge_subject_unavailable",
-			);
-		},
+	let Some(merge_subject) = retained_admin_merge_subject_or_attention(runtime, lane)? else {
+		return Ok(());
 	};
+
 	record_retained_landing_decision(
 		runtime,
 		lane,
@@ -120,12 +67,114 @@ where
 		"not_started",
 		reasons.start_landing,
 	)?;
-	let github_token = retained_review_github_token(runtime.project, &mut *runtime.github_token)?;
-	let merge_succeeded = match github::admin_merge_pull_request(
+
+	let github_token =
+		retained_review_github_token(runtime.project, &mut *runtime.github_token)?.to_owned();
+
+	if retained_admin_merge_succeeded(runtime, lane, &merge_subject, &github_token) {
+		return record_retained_admin_merge_success(runtime, lane, &github_token);
+	}
+
+	apply_retained_admin_merge_attention(
+		runtime,
+		lane,
+		LifecycleOutcome::Failed,
+		"failed",
+		reasons.admin_merge_failed,
+	)
+}
+
+pub(super) fn retained_review_github_token<'a>(
+	project: &ServiceConfig,
+	github_token: &'a mut Option<String>,
+) -> Result<&'a str> {
+	if github_token.is_none() {
+		*github_token = Some(orchestrator::resolve_configured_env_var(
+			"github.token_env_var",
+			Some(project.github().token_env_var()),
+		)?);
+	}
+
+	github_token.as_deref().ok_or_else(|| {
+		eyre::eyre!("Retained review orchestration requires a configured GitHub token.")
+	})
+}
+
+fn retained_admin_merge_waits_for_authority_boundary<T>(
+	runtime: &RetainedReviewRuntime<'_, T>,
+	lane: &RetainedReviewLane,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	let Some(reason) = orchestrator::authority_boundary_landing_requirement(
+		&lane.snapshot,
+		Some(PostReviewRuntimeState {
+			state_store: runtime.state_store,
+			project_id: runtime.project.service_id(),
+			review_level: runtime.project.codex().review_level(),
+		}),
+	)?
+	else {
+		return Ok(false);
+	};
+
+	tracing::info!(
+		project_id = runtime.project.service_id(),
+		issue_id = lane.snapshot.issue.id,
+		issue = lane.snapshot.issue.identifier,
+		reason,
+		"Retained admin merge is waiting for authority-boundary landing clearance."
+	);
+
+	Ok(true)
+}
+
+fn retained_admin_merge_subject_or_attention<T>(
+	runtime: &RetainedReviewRuntime<'_, T>,
+	lane: &RetainedReviewLane,
+) -> Result<Option<String>>
+where
+	T: IssueTracker,
+{
+	match retained_review_merge_subject(lane) {
+		Ok(subject) => Ok(Some(subject)),
+		Err(error) => {
+			tracing::warn!(
+				issue_id = lane.snapshot.issue.id,
+				issue = lane.snapshot.issue.identifier,
+				branch = lane.snapshot.worktree.branch_name(),
+				?error,
+				"Retained admin merge could not derive a compliant landed change record."
+			);
+
+			apply_retained_admin_merge_attention(
+				runtime,
+				lane,
+				LifecycleOutcome::NeedsManualAttention,
+				"manual_attention_required",
+				"retained_admin_merge_subject_unavailable",
+			)?;
+
+			Ok(None)
+		},
+	}
+}
+
+fn retained_admin_merge_succeeded<T>(
+	runtime: &RetainedReviewRuntime<'_, T>,
+	lane: &RetainedReviewLane,
+	merge_subject: &str,
+	github_token: &str,
+) -> bool
+where
+	T: IssueTracker,
+{
+	match github::admin_merge_pull_request(
 		lane.snapshot.worktree.worktree_path(),
 		lane.review_state.url.as_str(),
 		lane.lifecycle_record().head_sha(),
-		Some(merge_subject.as_str()),
+		Some(merge_subject),
 		github_token,
 		runtime.project.github().command_path(),
 	) {
@@ -140,68 +189,75 @@ where
 			),
 			Ok(true)
 		),
-	};
-
-	if merge_succeeded {
-		let merge_commit = match github::wait_for_pull_request_merge_commit(
-			lane.snapshot.worktree.worktree_path(),
-			lane.review_state.url.as_str(),
-			github_token,
-			Duration::from_secs(EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS as u64),
-			runtime.project.github().command_path(),
-		) {
-			Ok(merge_commit) => merge_commit,
-			Err(error) => {
-				record_retained_landing_decision(
-					runtime,
-					lane,
-					LifecycleEvidenceKind::LandingReadback,
-					LifecycleOutcome::NeedsManualAttention,
-					None,
-					"readback_unavailable",
-					"not_started",
-					"retained_admin_merge_readback_unavailable",
-				)?;
-				tracing::warn!(
-					issue_id = lane.snapshot.issue.id,
-					issue = lane.snapshot.issue.identifier,
-					pr_url = lane.review_state.url,
-					?error,
-					"Retained admin merge succeeded, but merge commit readback is unavailable."
-				);
-
-				return retained_review_orchestration::apply_passive_retained_manual_attention(
-					attention::passive_attention_runtime(runtime),
-					&lane.snapshot.issue,
-					&lane.snapshot.worktree,
-					lane.lifecycle_record(),
-					"retained_admin_merge_readback_unavailable",
-				);
-			},
-		};
-		record_retained_landing_decision(
-			runtime,
-			lane,
-			LifecycleEvidenceKind::LandingReadback,
-			LifecycleOutcome::Succeeded,
-			Some(merge_commit.as_str()),
-			"landed",
-			"not_started",
-			"retained_admin_merge_readback",
-		)?;
-
-		return Ok(());
 	}
+}
+
+fn record_retained_admin_merge_success<T>(
+	runtime: &RetainedReviewRuntime<'_, T>,
+	lane: &RetainedReviewLane,
+	github_token: &str,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	let merge_commit = match github::wait_for_pull_request_merge_commit(
+		lane.snapshot.worktree.worktree_path(),
+		lane.review_state.url.as_str(),
+		github_token,
+		Duration::from_secs(EXTERNAL_REVIEW_MERGE_VISIBILITY_TIMEOUT_SECS as u64),
+		runtime.project.github().command_path(),
+	) {
+		Ok(merge_commit) => merge_commit,
+		Err(error) => {
+			tracing::warn!(
+				issue_id = lane.snapshot.issue.id,
+				issue = lane.snapshot.issue.identifier,
+				pr_url = lane.review_state.url,
+				?error,
+				"Retained admin merge succeeded, but merge commit readback is unavailable."
+			);
+
+			return apply_retained_admin_merge_attention(
+				runtime,
+				lane,
+				LifecycleOutcome::NeedsManualAttention,
+				"readback_unavailable",
+				"retained_admin_merge_readback_unavailable",
+			);
+		},
+	};
 
 	record_retained_landing_decision(
 		runtime,
 		lane,
 		LifecycleEvidenceKind::LandingReadback,
-		LifecycleOutcome::Failed,
-		None,
-		"failed",
+		LifecycleOutcome::Succeeded,
+		Some(merge_commit.as_str()),
+		"landed",
 		"not_started",
-		reasons.admin_merge_failed,
+		"retained_admin_merge_readback",
+	)
+}
+
+fn apply_retained_admin_merge_attention<T>(
+	runtime: &RetainedReviewRuntime<'_, T>,
+	lane: &RetainedReviewLane,
+	outcome: LifecycleOutcome,
+	landing_state: &str,
+	reason: &str,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	record_retained_landing_decision(
+		runtime,
+		lane,
+		LifecycleEvidenceKind::LandingReadback,
+		outcome,
+		None,
+		landing_state,
+		"not_started",
+		reason,
 	)?;
 
 	retained_review_orchestration::apply_passive_retained_manual_attention(
@@ -209,7 +265,7 @@ where
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
 		lane.lifecycle_record(),
-		reasons.admin_merge_failed,
+		reason,
 	)
 }
 
@@ -227,14 +283,14 @@ fn record_retained_landing_decision<T>(
 where
 	T: IssueTracker,
 {
-	let review_checkpoint = runtime_review_checkpoint_status_for_head(
+	let review_checkpoint = orchestrator::runtime_review_checkpoint_status_for_head(
 		runtime.state_store,
 		runtime.project.service_id(),
 		&lane.snapshot.issue.id,
 		runtime.project.codex().review_level(),
 		lane.lifecycle_record().head_sha(),
 	)?;
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: runtime.project.service_id(),
 		issue_id: &lane.snapshot.issue.id,
 		review_lifecycle: Some(lane.lifecycle_record()),
@@ -267,7 +323,7 @@ where
 		evidence_kind.as_str(),
 		causation_id
 	);
-	let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let decision = lifecycle::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous,
 		evidence_kind,
@@ -293,22 +349,6 @@ where
 
 fn current_timestamp() -> String {
 	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
-}
-
-pub(super) fn retained_review_github_token<'a>(
-	project: &ServiceConfig,
-	github_token: &'a mut Option<String>,
-) -> Result<&'a str> {
-	if github_token.is_none() {
-		*github_token = Some(orchestrator::resolve_configured_env_var(
-			"github.token_env_var",
-			Some(project.github().token_env_var()),
-		)?);
-	}
-
-	github_token.as_deref().ok_or_else(|| {
-		eyre::eyre!("Retained review orchestration requires a configured GitHub token.")
-	})
 }
 
 fn retained_review_merge_subject(lane: &RetainedReviewLane) -> Result<String> {

@@ -74,7 +74,7 @@ fn classify_post_review_lane_ready_to_land_allows_zero_required_review_repos() {
 
 	tests::add_external_review_ack(&mut review_state);
 	tests::add_external_review_pass(&mut review_state);
-	super::super::record_clean_review_checkpoint_for_head(
+	review_landing_classification_review::record_clean_review_checkpoint_for_head(
 		&state_store,
 		&snapshot.issue.id,
 		&head_oid,

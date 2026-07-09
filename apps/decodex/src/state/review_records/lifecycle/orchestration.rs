@@ -1,4 +1,3 @@
-use super::terminal_lifecycle_authority_must_not_reenter_review;
 #[cfg(test)]
 use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture};
 use crate::{
@@ -6,13 +5,13 @@ use crate::{
 		PostReviewLifecycleFacts, RuntimeReviewGateState,
 		kernel::lifecycle::{
 			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-			PreviousLifecycleAuthority, decide_lifecycle_transition,
+			PreviousLifecycleAuthority,
 		},
 	},
 	prelude::Result,
 	state::{
-		ReviewLifecycleTransitionInput, StateStore, runtime_records::ReviewLifecycleKey,
-		runtime_row_parsers,
+		ReviewLifecycleTransitionInput, StateStore, review_records::lifecycle,
+		runtime_records::ReviewLifecycleKey, runtime_row_parsers,
 	},
 };
 
@@ -23,14 +22,14 @@ impl StateStore {
 		issue_id: &str,
 		input: ReviewLifecycleTransitionInput<'_>,
 	) -> Result<()> {
-		if self
-			.review_lifecycle_record(project_id, issue_id, input.branch_name)?
-			.is_some_and(|record| terminal_lifecycle_authority_must_not_reenter_review(&record))
-		{
+		if self.review_lifecycle_record(project_id, issue_id, input.branch_name)?.is_some_and(
+			|record| lifecycle::terminal_lifecycle_authority_must_not_reenter_review(&record),
+		) {
 			return Ok(());
 		}
 
 		record_orchestration_lifecycle_authority(self, project_id, issue_id, &input)?;
+
 		let now = runtime_row_parsers::timestamp_parts();
 		let key = ReviewLifecycleKey::new(project_id, issue_id, input.branch_name);
 		let mut state = self.lock()?;
@@ -168,20 +167,22 @@ fn record_orchestration_lifecycle_authority(
 			input.run_id, input.attempt_number, input.phase, input.head_sha
 		)],
 	};
-	let decision = decide_lifecycle_transition(LifecycleDecisionInput {
-		facts: &facts,
-		previous,
-		evidence_kind,
-		outcome: LifecycleOutcome::Intent,
-		merge_commit: None,
-		cleanup_state: Some("not_started"),
-		authority: "review_lifecycle_runtime",
-		actor: "state_adapter",
-		idempotency_key: &idempotency_key,
-		correlation_id: input.run_id,
-		causation_id: Some(input.phase),
-		decided_at: &decided_at,
-	});
+	let decision = crate::orchestrator::kernel::lifecycle::decide_lifecycle_transition(
+		LifecycleDecisionInput {
+			facts: &facts,
+			previous,
+			evidence_kind,
+			outcome: LifecycleOutcome::Intent,
+			merge_commit: None,
+			cleanup_state: Some("not_started"),
+			authority: "review_lifecycle_runtime",
+			actor: "state_adapter",
+			idempotency_key: &idempotency_key,
+			correlation_id: input.run_id,
+			causation_id: Some(input.phase),
+			decided_at: &decided_at,
+		},
+	);
 
 	state_store.record_lifecycle_decision(input.run_id, input.attempt_number, &decision)?;
 

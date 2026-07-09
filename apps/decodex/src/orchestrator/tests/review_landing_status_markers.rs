@@ -15,9 +15,9 @@ fn ignores_stale_marker_projection_from_prior_handoff() {
 	let head_oid = "abc123";
 	let branch_name = "x/pubfi-pub-101";
 	let stale_pr_url = "https://github.com/hack-ink/decodex/pull/99";
-
 	let stale_handoff =
 		tests::sample_review_lifecycle_handoff_fixture(branch_name, stale_pr_url, "deadbeef");
+
 	state_store
 		.upsert_review_lifecycle_handoff_fixture(config.service_id(), &issue.id, &stale_handoff)
 		.expect("stale handoff should persist");
@@ -44,9 +44,11 @@ fn ignores_stale_marker_projection_from_prior_handoff() {
 
 	let current_handoff =
 		tests::sample_review_lifecycle_handoff_fixture(branch_name, current_pr_url, head_oid);
+
 	state_store
 		.upsert_review_lifecycle_handoff_fixture(config.service_id(), &issue.id, &current_handoff)
 		.expect("current lifecycle authority should persist");
+
 	let lifecycle_record = state_store
 		.review_lifecycle_record(config.service_id(), &issue.id, branch_name)
 		.expect("lifecycle lookup should succeed")

@@ -1,9 +1,10 @@
-use crate::state::ReviewLifecycleRecord;
-
-use crate::orchestrator::status::post_review::{
-	self, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
-	PullRequestMergeViewResponse, PullRequestReadbackRootCause, ServiceConfig, github,
-	retry_budget,
+use crate::{
+	orchestrator::status::post_review::{
+		self, PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
+		PullRequestMergeViewResponse, PullRequestReadbackRootCause, ServiceConfig, github,
+		retry_budget,
+	},
+	state::ReviewLifecycleRecord,
 };
 
 pub(crate) fn confirm_status_visible_merged_closeout(

@@ -59,12 +59,14 @@ pub(crate) fn build_operator_status_snapshot_with_account_mode(
 	let (worktrees, mut warnings, warning_details) =
 		status::operator_status_worktrees(project, state_store)?;
 	let mut warning_details = warning_details;
+
 	orchestrator::push_baseline_status_projection(
 		project,
 		&loop_evidence,
 		&mut warnings,
 		&mut warning_details,
 	);
+
 	let accounts =
 		status::codex_account_activity_summaries(project, &mut warnings, account_activity_mode);
 	let mut snapshot = OperatorStatusSnapshot {

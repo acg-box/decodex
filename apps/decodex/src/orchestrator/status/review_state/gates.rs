@@ -2,7 +2,7 @@ use crate::{
 	orchestrator::status::{
 		ExternalReviewRequestCiGate, PullRequestLandingGateView, PullRequestReviewState,
 	},
-	pull_request,
+	pull_request::{self, LandingGateMode},
 };
 
 pub(crate) fn external_review_request_ci_gate(
@@ -11,7 +11,7 @@ pub(crate) fn external_review_request_ci_gate(
 	if !review_state.required_status_contexts.is_empty() {
 		return match pull_request::classify_landing_gate(
 			review_state_landing_gate_view(review_state),
-			pull_request::LandingGateMode::Retained,
+			LandingGateMode::Retained,
 		) {
 			pull_request::LandingGateDecision::Repair(
 				"required_status_context_failed" | "required_checks_failed",

@@ -81,6 +81,7 @@ where
 	if issue.state.name == context.completed_state && lifecycle_record.is_none() {
 		return Ok(None);
 	}
+
 	let local_branch_name =
 		match post_review::worktree_checkout_branch_name(worktree.worktree_path()) {
 			Ok(local_branch_name) => local_branch_name,

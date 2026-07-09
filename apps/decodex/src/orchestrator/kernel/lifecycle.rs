@@ -68,7 +68,7 @@ pub(crate) struct PreviousLifecycleAuthority<'a> {
 	pub(crate) next_state: &'a str,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct LifecycleAuthorityRecord {
 	pub(crate) schema_version: String,
 	pub(crate) project_id: String,
@@ -99,7 +99,7 @@ pub(crate) struct LifecycleAuthorityRecord {
 	pub(crate) decided_at: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct LifecycleEventEnvelope {
 	pub(crate) schema_version: String,
 	pub(crate) event_type: String,
@@ -129,6 +129,7 @@ pub(crate) fn decide_lifecycle_transition(input: LifecycleDecisionInput<'_>) -> 
 	let next_action =
 		lifecycle_next_action(input.evidence_kind, input.outcome, &next_state, &phase);
 	let mut source_evidence_refs = input.facts.source_evidence_refs.clone();
+
 	source_evidence_refs.push(format!(
 		"lifecycle_evidence:{}:{}",
 		input.evidence_kind.as_str(),
@@ -285,67 +286,65 @@ mod tests {
 	use crate::{
 		config::ReviewLevel,
 		orchestrator::{
-			PullRequestReviewState,
+			self, PostReviewLifecycleFactsInput, PullRequestReviewState,
 			kernel::lifecycle::{
 				LIFECYCLE_EVENT_SCHEMA_VERSION, LifecycleDecisionInput, LifecycleEvidenceKind,
-				LifecycleOutcome, decide_lifecycle_transition,
+				LifecycleOutcome,
 			},
 		},
 		state::{ReviewLifecycleHandoffFixture, ReviewLifecycleRecord},
 	};
 
-	use crate::orchestrator::{PostReviewLifecycleFactsInput, build_post_review_lifecycle_facts};
-
 	#[test]
 	fn lifecycle_kernel_is_pure_and_emits_authority_record_envelope() {
-		let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
-			project_id: "pubfi",
-			issue_id: "PUB-101",
-			review_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
-				&ReviewLifecycleHandoffFixture::new(
-					"run-1",
-					1,
-					"x/pub-101",
-					"https://github.com/hack-ink/decodex/pull/101",
-					"main",
-					"x/pub-101",
-					"head-sha",
-				),
-				None,
-			)),
-			review_state: &PullRequestReviewState {
-				url: String::from("https://github.com/hack-ink/decodex/pull/101"),
-				state: String::from("OPEN"),
-				is_draft: false,
-				review_decision: Some(String::from("APPROVED")),
-				merge_commit_allowed: true,
-				pending_review_requests: 0,
-				mergeable: String::from("MERGEABLE"),
-				merge_state_status: String::from("CLEAN"),
-				base_ref_oid: Some(String::from("base-sha")),
-				head_ref_name: String::from("x/pub-101"),
-				head_ref_oid: String::from("head-sha"),
-				merge_commit_oid: None,
-				head_repository_name: None,
-				head_repository_owner: None,
-				status_check_rollup_state: Some(String::from("SUCCESS")),
-				required_status_contexts: Vec::new(),
-				unresolved_review_threads: 0,
-				issue_description_external_review_thumbs_up_count: 0,
-				issue_comments: Vec::new(),
-				reviews: Vec::new(),
-			},
-			worktree_path: Path::new("/tmp/pubfi"),
-			review_level: ReviewLevel::Standard,
-			phase: "request_pending",
-			landing_state: None,
-			closeout_state: None,
-			validated_head_sha: Some("head-sha"),
-			review_checkpoint_phase: Some("handoff"),
-			review_checkpoint_status: Some("clean"),
-		});
-
-		let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+		let facts =
+			orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+				project_id: "pubfi",
+				issue_id: "PUB-101",
+				review_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
+					&ReviewLifecycleHandoffFixture::new(
+						"run-1",
+						1,
+						"x/pub-101",
+						"https://github.com/hack-ink/decodex/pull/101",
+						"main",
+						"x/pub-101",
+						"head-sha",
+					),
+					None,
+				)),
+				review_state: &PullRequestReviewState {
+					url: String::from("https://github.com/hack-ink/decodex/pull/101"),
+					state: String::from("OPEN"),
+					is_draft: false,
+					review_decision: Some(String::from("APPROVED")),
+					merge_commit_allowed: true,
+					pending_review_requests: 0,
+					mergeable: String::from("MERGEABLE"),
+					merge_state_status: String::from("CLEAN"),
+					base_ref_oid: Some(String::from("base-sha")),
+					head_ref_name: String::from("x/pub-101"),
+					head_ref_oid: String::from("head-sha"),
+					merge_commit_oid: None,
+					head_repository_name: None,
+					head_repository_owner: None,
+					status_check_rollup_state: Some(String::from("SUCCESS")),
+					required_status_contexts: Vec::new(),
+					unresolved_review_threads: 0,
+					issue_description_external_review_thumbs_up_count: 0,
+					issue_comments: Vec::new(),
+					reviews: Vec::new(),
+				},
+				worktree_path: Path::new("/tmp/pubfi"),
+				review_level: ReviewLevel::Standard,
+				phase: "request_pending",
+				landing_state: None,
+				closeout_state: None,
+				validated_head_sha: Some("head-sha"),
+				review_checkpoint_phase: Some("handoff"),
+				review_checkpoint_status: Some("clean"),
+			});
+		let decision = super::decide_lifecycle_transition(LifecycleDecisionInput {
 			facts: &facts,
 			previous: None,
 			evidence_kind: LifecycleEvidenceKind::LandingReadback,

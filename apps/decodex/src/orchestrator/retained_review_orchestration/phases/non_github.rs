@@ -1,23 +1,26 @@
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::orchestrator::{
-	self, PostReviewLifecycleFacts, PostReviewLifecycleFactsInput, RuntimeReviewGateState,
-	build_post_review_lifecycle_facts,
-	kernel::lifecycle::{
-		LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-		PreviousLifecycleAuthority, decide_lifecycle_transition,
+	self, PostReviewLifecycleFacts, PostReviewLifecycleFactsInput, RuntimeReviewCheckpointStatus,
+	RuntimeReviewGateState,
+	kernel::{
+		lifecycle,
+		lifecycle::{
+			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
+			PreviousLifecycleAuthority,
+		},
 	},
-	latest_runtime_review_checkpoint_status,
 	retained_review_orchestration::{
-		CommandIntentKind, IssueTracker, PassiveRetainedAttentionRuntime, Result,
+		self, CommandIntentKind, IssueTracker, PassiveRetainedAttentionRuntime, Result,
 		RetainedAdminMergeReasons, RetainedReviewLane, RetainedReviewLifecycleAuthorityFields,
 		RetainedReviewRuntime, ServiceConfig, StateStore, WorkflowDocument, admin_merge,
 		lifecycle_authority,
-		phases::{merge, result},
+		phases::{
+			RetainedReviewLifecycleAction, merge,
+			non_github::lifecycle::decide_lifecycle_transition, result,
+		},
 	},
-	runtime_review_checkpoint_status_for_head_phase,
-	runtime_standard_review::{RuntimeStandardReviewRunner, runtime_review_execution_mode},
-	worktree_has_review_blocking_changes,
+	runtime_standard_review::{self, RuntimeStandardReviewRunner},
 };
 
 const PRODUCER_FAILURE_BUDGET: i64 = 3;
@@ -38,8 +41,7 @@ pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_non
 where
 	T: IssueTracker,
 {
-	let action =
-		super::RetainedReviewLifecycleAction::parse(lane.lifecycle_record().next_action())?;
+	let action = RetainedReviewLifecycleAction::parse(lane.lifecycle_record().next_action())?;
 
 	if matches!(
 		action,
@@ -129,7 +131,7 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 	} else {
 		None
 	};
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: project.service_id(),
 		issue_id: &lane.snapshot.issue.id,
 		review_lifecycle: Some(lane.lifecycle_record()),
@@ -146,8 +148,9 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 
 	match facts.review_gate_state {
 		RuntimeReviewGateState::NotRequired => Ok(false),
-		RuntimeReviewGateState::Clean =>
-			Ok(worktree_has_review_blocking_changes(lane.snapshot.worktree.worktree_path())?),
+		RuntimeReviewGateState::Clean => Ok(orchestrator::worktree_has_review_blocking_changes(
+			lane.snapshot.worktree.worktree_path(),
+		)?),
 		RuntimeReviewGateState::Findings => {
 			lifecycle_authority::write_retained_review_lifecycle_authority_for_command(
 				state_store,
@@ -159,6 +162,7 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 					lane.lifecycle_record(),
 				),
 			)?;
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::WorktreeHeadMissing => Ok(true),
@@ -172,6 +176,7 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 				&facts,
 				"runtime_standard_review_needs_architecture_review",
 			)?;
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::Blocked => {
@@ -184,6 +189,7 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 				&facts,
 				"runtime_standard_review_blocked",
 			)?;
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::Unknown(_) => {
@@ -196,49 +202,67 @@ pub(super) fn runtime_standard_review_gate_requires_wait_or_repair(
 				&facts,
 				"runtime_standard_review_unknown_checkpoint_status",
 			)?;
-			Ok(true)
-		},
-		RuntimeReviewGateState::Pending => {
-			match orchestrator::runtime_standard_review::ensure_runtime_standard_review_checkpoint_with_runner(
-				tracker,
-				project,
-				workflow,
-				state_store,
-				lane,
-				runtime_review_runner,
-			) {
-				Ok(()) => {},
-				Err(error) => {
-					let retry_count = lane.lifecycle_record().request_retry_count() + 1;
-					tracing::warn!(
-						?error,
-						project_id = project.service_id(),
-						issue_id = lane.snapshot.issue.id.as_str(),
-						retry_count,
-						"Runtime-owned Decodex Review checkpoint producer failed."
-					);
-					write_runtime_standard_review_producer_retry_count(
-						state_store,
-						lane,
-						retry_count,
-					)?;
-					if retry_count >= PRODUCER_FAILURE_BUDGET {
-						apply_runtime_standard_review_manual_attention(
-							tracker,
-							project,
-							workflow,
-							state_store,
-							lane,
-							&facts,
-							"runtime_standard_review_checkpoint_producer_failed",
-						)?;
-					}
-				},
-			}
 
 			Ok(true)
 		},
+		RuntimeReviewGateState::Pending => handle_pending_runtime_standard_review_gate(
+			tracker,
+			project,
+			workflow,
+			state_store,
+			lane,
+			runtime_review_runner,
+			&facts,
+		),
 	}
+}
+
+fn handle_pending_runtime_standard_review_gate(
+	tracker: &impl IssueTracker,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	lane: &RetainedReviewLane,
+	runtime_review_runner: &impl RuntimeStandardReviewRunner,
+	facts: &PostReviewLifecycleFacts,
+) -> Result<bool> {
+	match runtime_standard_review::ensure_runtime_standard_review_checkpoint_with_runner(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		lane,
+		runtime_review_runner,
+	) {
+		Ok(()) => {},
+		Err(error) => {
+			let retry_count = lane.lifecycle_record().request_retry_count() + 1;
+
+			tracing::warn!(
+				?error,
+				project_id = project.service_id(),
+				issue_id = lane.snapshot.issue.id.as_str(),
+				retry_count,
+				"Runtime-owned Decodex Review checkpoint producer failed."
+			);
+
+			write_runtime_standard_review_producer_retry_count(state_store, lane, retry_count)?;
+
+			if retry_count >= PRODUCER_FAILURE_BUDGET {
+				apply_runtime_standard_review_manual_attention(
+					tracker,
+					project,
+					workflow,
+					state_store,
+					lane,
+					facts,
+					"runtime_standard_review_checkpoint_producer_failed",
+				)?;
+			}
+		},
+	}
+
+	Ok(true)
 }
 
 fn runtime_standard_review_checkpoint_for_gate(
@@ -246,9 +270,11 @@ fn runtime_standard_review_checkpoint_for_gate(
 	state_store: &StateStore,
 	lane: &RetainedReviewLane,
 	local_head_oid: &str,
-) -> Result<Option<crate::orchestrator::RuntimeReviewCheckpointStatus>> {
-	let expected_phase = runtime_review_execution_mode(project, state_store, lane)?.as_str();
-	let handoff = runtime_review_checkpoint_status_for_head_phase(
+) -> Result<Option<RuntimeReviewCheckpointStatus>> {
+	let expected_phase =
+		runtime_standard_review::runtime_review_execution_mode(project, state_store, lane)?
+			.as_str();
+	let handoff = orchestrator::runtime_review_checkpoint_status_for_head_phase(
 		state_store,
 		project.service_id(),
 		&lane.snapshot.issue.id,
@@ -256,7 +282,7 @@ fn runtime_standard_review_checkpoint_for_gate(
 		local_head_oid,
 		"handoff",
 	)?;
-	let repair = runtime_review_checkpoint_status_for_head_phase(
+	let repair = orchestrator::runtime_review_checkpoint_status_for_head_phase(
 		state_store,
 		project.service_id(),
 		&lane.snapshot.issue.id,
@@ -264,12 +290,11 @@ fn runtime_standard_review_checkpoint_for_gate(
 		local_head_oid,
 		"repair",
 	)?;
-
-	let latest = latest_runtime_review_checkpoint_status(vec![handoff, repair])?;
+	let latest = orchestrator::latest_runtime_review_checkpoint_status(vec![handoff, repair])?;
 
 	Ok(match latest {
 		Some(checkpoint) => Some(checkpoint),
-		None => runtime_review_checkpoint_status_for_head_phase(
+		None => orchestrator::runtime_review_checkpoint_status_for_head_phase(
 			state_store,
 			project.service_id(),
 			&lane.snapshot.issue.id,
@@ -308,7 +333,7 @@ fn apply_runtime_standard_review_manual_attention(
 ) -> Result<()> {
 	record_runtime_standard_review_manual_attention_authority(state_store, lane, facts, reason)?;
 
-	orchestrator::retained_review_orchestration::apply_passive_retained_manual_attention(
+	retained_review_orchestration::apply_passive_retained_manual_attention(
 		PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
@@ -340,7 +365,7 @@ fn record_runtime_standard_review_manual_attention_authority(
 		LifecycleEvidenceKind::LandingReadback.as_str(),
 		reason
 	);
-	let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let decision = self::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts,
 		previous,
 		evidence_kind: LifecycleEvidenceKind::LandingReadback,

@@ -2,7 +2,7 @@ use std::{
 	env,
 	ffi::OsString,
 	fs,
-	os::unix::fs::PermissionsExt,
+	os::unix::fs::PermissionsExt as _,
 	path::{Path, PathBuf},
 };
 
@@ -151,9 +151,11 @@ esac
 	);
 
 	fs::write(&gh_path, script).expect("fake gh should write");
+
 	let mut permissions = fs::metadata(&gh_path).expect("fake gh metadata").permissions();
 
 	permissions.set_mode(0o755);
+
 	fs::set_permissions(&gh_path, permissions).expect("fake gh should be executable");
 
 	gh_path
