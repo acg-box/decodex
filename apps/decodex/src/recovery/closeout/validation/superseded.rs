@@ -300,7 +300,9 @@ fn ensure_marker_has_no_live_runtime_evidence(
 		);
 	}
 
-	if marker.last_progress_unix_epoch().is_some()
+	if marker.last_activity_unix_epoch().is_some()
+		|| marker.current_operation().is_some()
+		|| marker.last_progress_unix_epoch().is_some()
 		|| marker.last_protocol_activity_unix_epoch().is_some()
 		|| marker.event_count() > 0
 		|| marker.last_event_type().is_some()
@@ -824,6 +826,101 @@ mod tests {
 			.expect_err("superseded closeout should reject stale retained activity evidence");
 
 		assert!(error.to_string().contains("run-older-dead-marker"));
+		assert!(error.to_string().contains("retained activity marker ownership"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_mismatched_dead_activity_only_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		context
+			.state_store
+			.record_run_attempt("run-latest", &issue.id, 2, "succeeded")
+			.expect("latest terminal run should persist");
+		fs::create_dir_all(&worktree_path).expect("worktree should exist");
+		state::write_run_activity_marker_for_process(
+			&worktree_path,
+			"run-older-dead-activity-marker",
+			1,
+			u32::MAX,
+		)
+		.expect("dead activity-only marker should persist");
+
+		let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+			.expect("marker should read")
+			.expect("marker should exist");
+		assert_eq!(
+			process_liveness::stale_active_optional_marker_process_liveness(Some(&marker)),
+			StaleActiveProcessLiveness::NotAlive
+		);
+		assert!(marker.last_activity_unix_epoch().is_some());
+		assert!(marker.current_operation().is_none());
+		assert!(marker.last_progress_unix_epoch().is_none());
+		assert!(marker.last_protocol_activity_unix_epoch().is_none());
+		assert_eq!(marker.event_count(), 0);
+		assert!(marker.last_event_type().is_none());
+		assert!(marker.child_agent_activity().is_none());
+		assert!(marker.protocol_activity().is_none());
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject stale activity-only evidence");
+
+		assert!(error.to_string().contains("run-older-dead-activity-marker"));
+		assert!(error.to_string().contains("retained activity marker ownership"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_mismatched_operation_only_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		context
+			.state_store
+			.record_run_attempt("run-latest", &issue.id, 2, "succeeded")
+			.expect("latest terminal run should persist");
+		state::write_run_operation_marker_preserving_activity(
+			&worktree_path,
+			"run-older-operation-marker",
+			1,
+			state::RUN_OPERATION_AGENT_RUN,
+		)
+		.expect("operation-only marker should persist");
+
+		let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+			.expect("marker should read")
+			.expect("marker should exist");
+		assert!(marker.last_activity_unix_epoch().is_none());
+		assert_eq!(marker.current_operation(), Some(state::RUN_OPERATION_AGENT_RUN));
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject stale operation-only evidence");
+
+		assert!(error.to_string().contains("run-older-operation-marker"));
 		assert!(error.to_string().contains("retained activity marker ownership"));
 	}
 
