@@ -22,7 +22,7 @@ where
 	.into_iter()
 	.any(|lane| {
 		lane.issue_id == target_issue_id
-			&& orchestrator::post_review_lane_is_repair_candidate(&lane)
+			&& orchestrator::post_review_lane_is_repair_dispatch_candidate(&lane)
 	}))
 }
 

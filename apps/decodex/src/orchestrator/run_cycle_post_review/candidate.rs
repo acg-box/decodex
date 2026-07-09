@@ -86,7 +86,7 @@ where
 	)?;
 	let candidate_issue_ids = lanes
 		.iter()
-		.filter(|lane| predicates::post_review_lane_is_repair_candidate(lane))
+		.filter(|lane| predicates::post_review_lane_is_repair_dispatch_candidate(lane))
 		.filter(|lane| !excluded_issue_ids.contains(&lane.issue_id.as_str()))
 		.map(|lane| lane.issue_id.clone())
 		.collect::<Vec<_>>();
@@ -100,7 +100,7 @@ where
 		issues.into_iter().map(|issue| (issue.id.clone(), issue)).collect::<HashMap<_, _>>();
 
 	for lane in lanes {
-		if !predicates::post_review_lane_is_repair_candidate(&lane) {
+		if !predicates::post_review_lane_is_repair_dispatch_candidate(&lane) {
 			continue;
 		}
 		if excluded_issue_ids.contains(&lane.issue_id.as_str()) {

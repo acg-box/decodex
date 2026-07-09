@@ -12,3 +12,12 @@ pub(crate) fn post_review_lane_is_repair_candidate(lane: &OperatorPostReviewLane
 	PostReviewLaneDecision::from_str(&lane.classification)
 		== Some(PostReviewLaneDecision::NeedsReviewRepair)
 }
+
+pub(crate) fn post_review_lane_is_repair_dispatch_candidate(
+	lane: &OperatorPostReviewLaneStatus,
+) -> bool {
+	post_review_lane_is_repair_candidate(lane)
+		|| (PostReviewLaneDecision::from_str(&lane.classification)
+			== Some(PostReviewLaneDecision::WaitForReview)
+			&& lane.reason == "runtime_standard_review_checkpoint_pending")
+}
