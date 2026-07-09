@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{
-		self, IssueDispatchMode, TargetIssueRunContext,
+		self, IssueDispatchMode, ReviewLevel, TargetIssueRunContext,
 		tests::{
 			self, FakePullRequestReviewStateInspector, FakeTracker, TEST_SERVICE_ID,
 			intake_candidate_selection::support,
@@ -111,6 +111,127 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 	assert_eq!(summary.issue_identifier, repair_issue.identifier);
 	assert_eq!(summary.dispatch_mode, orchestrator::IssueDispatchMode::ReviewRepair);
 	assert_eq!(summary.issue_state, "In Review");
+}
+
+#[test]
+fn post_review_repair_selection_accepts_pending_runtime_review_checkpoint() {
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_review_level(&base_config, ReviewLevel::Standard);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let repair_issue = support::candidate_selection_service_owned_issue("In Review");
+	let tracker = FakeTracker::with_refresh_snapshots(
+		vec![repair_issue.clone()],
+		vec![vec![repair_issue.clone()], vec![repair_issue.clone()]],
+	);
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let worktree = worktree_manager
+		.ensure_worktree(&repair_issue.identifier, false)
+		.expect("worktree should exist");
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
+
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&repair_issue.id,
+			&worktree.branch_name,
+			&worktree.path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	tests::seed_review_lifecycle_handoff_fixture_value(
+		&state_store,
+		config.service_id(),
+		&repair_issue.id,
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
+	);
+
+	let inspector = FakePullRequestReviewStateInspector::new(vec![Ok(
+		tests::sample_pull_request_review_state(
+			pr_url,
+			&worktree.branch_name,
+			&head_oid,
+			Some("APPROVED"),
+			"MERGEABLE",
+			"CLEAN",
+			Some("SUCCESS"),
+			0,
+		),
+	)]);
+	let selected = orchestrator::select_post_review_repair_issue_candidate_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&[],
+		&inspector,
+	)
+	.expect("post-review repair selection should succeed")
+	.expect("checkpoint-pending lane should be selected for retained continuation");
+
+	assert_eq!(selected.identifier, repair_issue.identifier);
+}
+
+#[test]
+fn targeted_post_review_repair_selection_accepts_pending_runtime_review_checkpoint() {
+	let (_temp_dir, base_config, workflow) = tests::temp_project_layout();
+	let config = tests::service_config_with_review_level(&base_config, ReviewLevel::Standard);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let repair_issue = support::candidate_selection_service_owned_issue("In Review");
+	let tracker = FakeTracker::with_refresh_snapshots(
+		vec![repair_issue.clone()],
+		vec![vec![repair_issue.clone()], vec![repair_issue.clone()]],
+	);
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let worktree = worktree_manager
+		.ensure_worktree(&repair_issue.identifier, false)
+		.expect("worktree should exist");
+	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
+
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&repair_issue.id,
+			&worktree.branch_name,
+			&worktree.path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	tests::seed_review_lifecycle_handoff_fixture_value(
+		&state_store,
+		config.service_id(),
+		&repair_issue.id,
+		&tests::sample_review_lifecycle_handoff_fixture(&worktree.branch_name, pr_url, &head_oid),
+	);
+
+	let inspector = FakePullRequestReviewStateInspector::new(vec![Ok(
+		tests::sample_pull_request_review_state(
+			pr_url,
+			&worktree.branch_name,
+			&head_oid,
+			Some("APPROVED"),
+			"MERGEABLE",
+			"CLEAN",
+			Some("SUCCESS"),
+			0,
+		),
+	)]);
+	let selected = orchestrator::select_target_review_repair_candidate_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&repair_issue.id,
+		&repair_issue.identifier,
+		&inspector,
+	)
+	.expect("targeted post-review repair selection should succeed")
+	.expect("targeted checkpoint-pending lane should be selected");
+
+	assert_eq!(selected.identifier, repair_issue.identifier);
 }
 
 #[test]

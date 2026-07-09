@@ -121,7 +121,7 @@ pub(crate) use self::{
 		worktree_mapping_is_stale_terminal_local_residue,
 	},
 	run_cycle_post_review::{
-		post_review_lane_is_closeout_candidate, post_review_lane_is_repair_candidate,
+		post_review_lane_is_closeout_candidate, post_review_lane_is_repair_dispatch_candidate,
 		retained_closeout_preferred_run_identity, select_post_review_issue_candidate,
 		select_target_closeout_candidate_with_inspector,
 		select_target_review_repair_candidate_with_inspector,
