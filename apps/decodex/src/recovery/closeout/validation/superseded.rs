@@ -7,6 +7,7 @@ use crate::{
 			validation::merged::{issue, pull_request},
 		},
 		context::RecoveryContext,
+		evidence,
 		process_liveness::{self, StaleActiveProcessLiveness},
 		pull_request_inspection,
 		requests::SupersededCloseoutRecoveryRequest,
@@ -243,7 +244,54 @@ fn ensure_issue_has_no_live_runtime_ownership(
 					attempt.run_id()
 				);
 			}
+
+			ensure_run_attempt_has_no_durable_runtime_evidence(context, issue, &attempt)?;
 		}
+	}
+
+	Ok(())
+}
+
+fn ensure_run_attempt_has_no_durable_runtime_evidence(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	attempt: &state::RunAttempt,
+) -> Result<()> {
+	let run_id = attempt.run_id();
+	let attempt_number = attempt.attempt_number();
+	let private_events = context.state_store.list_private_execution_events_for_run_attempt(
+		context.config.service_id(),
+		run_id,
+		attempt_number,
+	)?;
+
+	if let Some(event) = private_events.iter().find(|event| {
+		event.event_type() == "progress_checkpoint"
+			|| !evidence::stale_active_private_event_allows_release(
+				event,
+				StaleActiveProcessLiveness::NotAlive,
+				false,
+			)
+	}) {
+		eyre::bail!(
+			"Issue `{}` still has retained private progress evidence `{}` for run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires stale progress evidence to be cleared or classified by explicit recovery before terminalization.",
+			issue.identifier,
+			event.event_type()
+		);
+	}
+
+	if context.state_store.event_count(run_id)? > 0 {
+		eyre::bail!(
+			"Issue `{}` still has retained protocol event evidence for run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires stale protocol evidence to be cleared or classified by explicit recovery before terminalization.",
+			issue.identifier
+		);
+	}
+
+	if context.state_store.run_has_activity_summary_evidence(run_id)? {
+		eyre::bail!(
+			"Issue `{}` still has retained run activity summary evidence for run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires stale activity evidence to be cleared or classified by explicit recovery before terminalization.",
+			issue.identifier
+		);
 	}
 
 	Ok(())
@@ -566,6 +614,107 @@ mod tests {
 
 		assert!(error.to_string().contains("run-continuation"));
 		assert!(error.to_string().contains("continuation_pending"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_durable_private_progress_without_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let state_path = temp_dir.path().join("private-progress.sqlite3");
+		let mut context =
+			sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context.state_store = StateStore::open(&state_path).expect("state store should open");
+
+		context
+			.state_store
+			.record_run_attempt("run-private-progress", &issue.id, 1, "failed")
+			.expect("terminal run should persist");
+		context
+			.state_store
+			.append_private_execution_event(
+				context.config.service_id(),
+				&issue.id,
+				"run-private-progress",
+				1,
+				"progress_checkpoint",
+				serde_json::json!({
+					"phase": "probing",
+					"pr_url": null,
+					"verification": [],
+				}),
+			)
+			.expect("private progress should persist");
+		context.state_store = StateStore::open(&state_path).expect("state store should reopen");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject durable private progress");
+
+		assert!(error.to_string().contains("run-private-progress"));
+		assert!(error.to_string().contains("private progress evidence"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_durable_protocol_events_without_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let state_path = temp_dir.path().join("protocol-events.sqlite3");
+		let mut context =
+			sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context.state_store = StateStore::open(&state_path).expect("state store should open");
+
+		context
+			.state_store
+			.record_run_attempt("run-protocol-evidence", &issue.id, 1, "failed")
+			.expect("terminal run should persist");
+		context
+			.state_store
+			.append_event("run-protocol-evidence", 1, "turn/item", r#"{"kind":"progress"}"#)
+			.expect("protocol event should persist");
+		context.state_store = StateStore::open(&state_path).expect("state store should reopen");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject durable protocol evidence");
+
+		assert!(error.to_string().contains("run-protocol-evidence"));
+		assert!(error.to_string().contains("protocol event evidence"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_durable_run_activity_summary_without_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let state_path = temp_dir.path().join("run-activity.sqlite3");
+		let mut context =
+			sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let protocol_activity = ProtocolActivitySummary {
+			turn_status: Some(String::from("completed")),
+			waiting_reason: None,
+			rate_limit_status: None,
+			recent_events: Vec::new(),
+		};
+
+		context.state_store = StateStore::open(&state_path).expect("state store should open");
+
+		context
+			.state_store
+			.record_run_attempt("run-activity-summary", &issue.id, 1, "failed")
+			.expect("terminal run should persist");
+		context
+			.state_store
+			.record_run_activity_summary("run-activity-summary", 1, None, Some(&protocol_activity))
+			.expect("run activity summary should persist");
+		context.state_store = StateStore::open(&state_path).expect("state store should reopen");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject durable run activity evidence");
+
+		assert!(error.to_string().contains("run-activity-summary"));
+		assert!(error.to_string().contains("run activity summary evidence"));
 	}
 
 	#[test]

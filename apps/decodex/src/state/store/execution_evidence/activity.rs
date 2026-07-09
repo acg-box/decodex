@@ -32,6 +32,15 @@ impl StateStore {
 		self.upsert_run_activity_summary_locked(&summary)
 	}
 
+	/// Return whether one run retains durable child-agent or protocol activity evidence.
+	pub(crate) fn run_has_activity_summary_evidence(&self, run_id: &str) -> Result<bool> {
+		let state = self.lock()?;
+
+		Ok(state.run_activity_summaries.get(run_id).is_some_and(|summary| {
+			summary.child_agent_activity.is_some() || summary.protocol_activity.is_some()
+		}))
+	}
+
 	/// Read the latest recorded activity timestamp for one run as a Unix epoch.
 	pub fn last_run_activity_unix_epoch(&self, run_id: &str) -> Result<Option<i64>> {
 		let state = self.lock()?;
