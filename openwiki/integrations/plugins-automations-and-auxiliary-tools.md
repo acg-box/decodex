@@ -141,7 +141,7 @@ npm --prefix site run build
 npm --prefix site run dev
 ```
 
-Site caveat: `site/README.md` still says the scaffold stops at a route shell and mentions future signal content scaffolding. That appears stale relative to the current source and site contract; prefer `site/src/` and the site contract when documenting current behavior.
+Use `site/README.md`, `site/src/`, `site/package.json`, and the site contract together when documenting current behavior. The README records the static-site boundary; source and build output remain the final check for rendered behavior.
 
 ## Generated and local-only paths
 

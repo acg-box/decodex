@@ -96,7 +96,7 @@ fn autonomy_signal_from_tool_args(
 		AutonomySignalKind::ProtocolDrift => AutonomySignal::protocol_drift(input),
 		AutonomySignalKind::MetricRegression => AutonomySignal::metric_regression(input),
 		AutonomySignalKind::ExecutionFriction => AutonomySignal::execution_friction(input),
-		AutonomySignalKind::DocsPluginDrift => AutonomySignal::docs_plugin_drift(input),
+		AutonomySignalKind::OpenWikiDrift => AutonomySignal::openwiki_drift(input),
 	};
 
 	signal.map_err(|error| {

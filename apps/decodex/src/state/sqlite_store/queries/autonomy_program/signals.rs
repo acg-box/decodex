@@ -63,7 +63,7 @@ impl SqliteStateStore {
 			return Ok(Some(record));
 		}
 
-		self.legacy_docs_skill_drift_signal_by_canonical_id(project_id, signal_id)
+		self.legacy_openwiki_drift_signal_by_canonical_id(project_id, signal_id)
 	}
 
 	fn autonomy_signal_by_stored_id(
@@ -88,7 +88,7 @@ impl SqliteStateStore {
 			.transpose()
 	}
 
-	fn legacy_docs_skill_drift_signal_by_canonical_id(
+	fn legacy_openwiki_drift_signal_by_canonical_id(
 		&self,
 		project_id: &str,
 		signal_id: &str,
@@ -99,7 +99,7 @@ impl SqliteStateStore {
 				 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
 				 created_at_unix, updated_at, updated_at_unix \
 				 FROM autonomy_signals \
-				 WHERE project_id = ?1 AND kind = 'docs_skill_drift' \
+				 WHERE project_id = ?1 AND kind IN ('docs_plugin_drift', 'docs_skill_drift') \
 				 ORDER BY updated_at_unix DESC, signal_id ASC",
 			)?;
 			let rows = statement.query_map(
@@ -129,7 +129,8 @@ impl SqliteStateStore {
 		self.upsert_autonomy_signal(&record)?;
 		self.connection.execute(
 			"DELETE FROM autonomy_signals
-			 WHERE project_id = ?1 AND signal_id = ?2 AND kind = 'docs_skill_drift'",
+			 WHERE project_id = ?1 AND signal_id = ?2 \
+			   AND kind IN ('docs_plugin_drift', 'docs_skill_drift')",
 			rusqlite::params![project_id, legacy_signal_id],
 		)?;
 
