@@ -106,7 +106,7 @@ impl<'a> TrackerToolBridge<'a> {
 			)
 			.map_err(|error| {
 				format!(
-					"Failed to inspect docs-impact checkpoints for issue `{}`: {error}",
+					"Failed to inspect OpenWiki-impact checkpoints for issue `{}`: {error}",
 					self.issue.identifier
 				)
 			})?;
