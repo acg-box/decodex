@@ -47,9 +47,9 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains("Do not substitute broader repo-documentation examples"));
 	assert!(instructions.contains("Keep pre-edit discovery bounded"));
 	assert!(instructions.contains("Do not browse upstream references"));
-	assert!(instructions.contains("Docs impact contract"));
+	assert!(instructions.contains("OpenWiki impact contract"));
 	assert!(instructions.contains(
-		"classify docs impact as `none`, `update_required`, `research_required`, or `drift_required`"
+		"classify OpenWiki impact as `none`, `update_required`, `research_required`, or `drift_required`"
 	));
 	assert!(instructions.contains("Before any terminal finalize path"));
 	assert!(

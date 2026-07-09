@@ -29,7 +29,7 @@ pub(crate) fn seed_docs_impact_checkpoint(
 				"head_sha": head_sha
 			}),
 		)
-		.expect("docs impact checkpoint should seed");
+		.expect("OpenWiki impact checkpoint should seed");
 }
 
 pub(crate) fn write_review_policy_checkpoint(

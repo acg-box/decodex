@@ -12,7 +12,7 @@ fn autonomy_signal_memory_and_report_sources_require_primary_refs_and_proposal_o
 
 		assert!(AutonomySignal::docs_plugin_drift(input.clone()).is_err());
 
-		input.primary_source_refs = vec![String::from("docs/spec/runtime.md")];
+		input.primary_source_refs = vec![String::from("openwiki/specs/contracts-and-data.md")];
 		input.proposal_only = true;
 
 		AutonomySignal::docs_plugin_drift(input)

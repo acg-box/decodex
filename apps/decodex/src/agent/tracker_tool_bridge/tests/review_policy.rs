@@ -72,7 +72,7 @@ pub(in crate::agent::tracker_tool_bridge::tests) fn review_checks_json() -> Valu
 		"intended_behavior": "Checked the implementation against the issue requirements.",
 		"regression_risk": "Checked shared runtime regression risk for the touched path.",
 		"missing_tests": "Checked whether the current change needs additional tests.",
-		"docs_config_drift": "Checked docs and config drift for the runtime behavior change.",
+		"docs_config_drift": "Checked OpenWiki and config drift for the runtime behavior change.",
 		"migration_fallout": "Checked additive runtime-store migration fallout.",
 		"operator_facing_fallout": "Checked Linear and operator-facing fallout.",
 		"loop_decision_contract": "Compared the change against the accepted Loop/Decision Contract and found no mismatch."
@@ -109,7 +109,7 @@ pub(in crate::agent::tracker_tool_bridge::tests) fn review_contract_with_risk_js
 		"objective": "Review the current committed lane head against the accepted issue contract.",
 		"scope": ["Current committed lane diff and directly owned behavior."],
 		"non_goals": ["Do not widen into unrelated cleanup or unowned product direction."],
-		"required_checks": ["Intended behavior, regression risk, tests, docs/config drift, migration fallout, operator-facing fallout, and Loop/Decision Contract alignment."],
+		"required_checks": ["Intended behavior, regression risk, tests, OpenWiki/config drift, migration fallout, operator-facing fallout, and Loop/Decision Contract alignment."],
 		"allowed_expansion_triggers": ["Safety, authority-boundary, data-loss, security, live-mutation, public-API, migration, or operator-facing regression."],
 		"validation_evidence": ["Repo-native validation was rerun for the committed lane head before review."]
 	})

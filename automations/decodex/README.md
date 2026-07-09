@@ -8,8 +8,7 @@ This directory owns repo-local source for Decodex Publisher automation.
 - `scripts/social/`: social candidate, reservation, and post schemas.
 - `skills/`: Publisher skills and shared publishing gates.
 - `scripts/config/`: shared automation config evaluation and live-install utilities.
-- `research/`: retained automation research data that is not part of the Markdown docs
-  bundle.
+- `research/`: retained automation research data that is not part of OpenWiki.
 
 Generated Publisher state belongs under `.agent/automations/decodex/cache/social`.
 

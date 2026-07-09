@@ -77,7 +77,7 @@ fn objective_fixture(version: u64) -> AutonomyObjectiveContract {
 		"goals": ["Reduce repeated validation and review churn."],
 		"non_goals": ["Do not bypass Decision Contract authority."],
 		"metrics": ["Validation retry count stays below objective tolerance."],
-		"allowed_surfaces": ["apps/decodex/src", "docs/spec"],
+		"allowed_surfaces": ["apps/decodex/src", "openwiki/specs"],
 		"allowed_signal_kinds": ["runtime_health", "review_feedback_cluster"],
 		"validation_gates": ["cargo make check"],
 		"review_policy": "independent current-head review required",

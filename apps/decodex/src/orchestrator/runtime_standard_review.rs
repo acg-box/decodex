@@ -364,7 +364,7 @@ fn runtime_review_contract_json(review_mode: ReviewExecutionMode) -> Value {
 		"scope": [
 			"Current committed lane HEAD",
 			"PR head lineage and review-blocking changed surface",
-			"Validation, docs/config drift, operator-facing fallout, and lifecycle impact"
+			"Validation, OpenWiki/config drift, operator-facing fallout, and lifecycle impact"
 		],
 		"non_goals": [
 			"Do not edit files",
@@ -379,7 +379,7 @@ fn runtime_review_contract_json(review_mode: ReviewExecutionMode) -> Value {
 		"allowed_expansion_triggers": [
 			"Evidence of current-head regression",
 			"Missing validation for touched behavior",
-			"Docs/config/runtime lifecycle drift"
+			"OpenWiki/config/runtime lifecycle drift"
 		],
 		"validation_evidence": [
 			"Reviewer inspected current HEAD and repository evidence",

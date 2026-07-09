@@ -29,15 +29,15 @@ const commands = [
 const docs = [
   {
     title: "Runtime contract",
-    href: `${decodexGitHubUrl}/blob/main/docs/spec/loop-runtime.md`,
+    href: `${decodexGitHubUrl}/blob/main/openwiki/specs/contracts-and-data.md`,
   },
   {
     title: "Operator control",
-    href: `${decodexGitHubUrl}/blob/main/docs/reference/operator-control-plane.md`,
+    href: `${decodexGitHubUrl}/blob/main/openwiki/workflows/runtime-operator-workflows.md`,
   },
   {
     title: "Project workflow",
-    href: `${decodexGitHubUrl}/blob/main/docs/spec/workflow-file.md`,
+    href: `${decodexGitHubUrl}/blob/main/openwiki/architecture/runtime-architecture.md`,
   },
   {
     title: "Decodex plugin",

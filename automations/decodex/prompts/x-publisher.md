@@ -13,9 +13,7 @@ Required reads:
 - `automations/decodex/skills/x-post-publisher/SKILL.md`
 - `automations/decodex/skills/x-post-quality-system/SKILL.md`
 - `automations/decodex/skills/references/social-release-publisher-gates.md`
-- `docs/spec/social-candidate.md`
-- `docs/spec/social-publishing.md`
-- `docs/runbook/social-publishing-workflow.md`
+- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 
 Workflow:
 1. Read candidates under `.agent/automations/decodex/cache/social/x/candidates`.

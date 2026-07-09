@@ -39,23 +39,23 @@ fn plan_tool_result(params: &PlanToolArgs) -> Value {
 	let (prompt, resource_hint, next_action) = match params.intent.as_str() {
 		"intake_goal" => (
 			"decodex_validation_ready",
-			"decodex://docs/reference/build-test-run",
+			"decodex://openwiki/operations/commands-and-validation",
 			"Use intake_goal dry_run first, then apply only with explicit accepted Decision Contract authority.",
 		),
 		"handoff" => (
 			"decodex_handoff",
-			"decodex://docs/spec/review-orchestration",
+			"decodex://openwiki/workflows/runtime-operator-workflows",
 			"Run bounded review and repo validation before PR-backed handoff.",
 		),
 		"lane_control" => (
 			"decodex_lane_control",
-			"decodex://docs/spec/lane-control",
+			"decodex://openwiki/workflows/runtime-operator-workflows",
 			"Inspect first; then call guarded MCP lane-control with explicit authority and current run/turn preconditions.",
 		),
 		_ => (
 			"decodex_validation_ready",
-			"decodex://docs/reference/build-test-run",
-			"Implement locally, run targeted validation, record docs impact, and complete the phase goal.",
+			"decodex://openwiki/operations/commands-and-validation",
+			"Implement locally, run targeted validation, record OpenWiki impact, and complete the phase goal.",
 		),
 	};
 
