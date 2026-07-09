@@ -1,9 +1,10 @@
-use crate::state::ReviewLifecycleRecord;
-
-use crate::orchestrator::status::{
-	self, OperatorPostReviewLaneStatus, PostReviewLaneClassification, PostReviewLaneDecision,
-	PostReviewReadbackDegradation, PullRequestReadbackRootCause, PullRequestReviewState,
-	ServiceConfig, TrackerIssue, WorktreeMapping,
+use crate::{
+	orchestrator::status::{
+		self, OperatorPostReviewLaneStatus, PostReviewLaneClassification, PostReviewLaneDecision,
+		PostReviewReadbackDegradation, PullRequestReadbackRootCause, PullRequestReviewState,
+		ServiceConfig, TrackerIssue, WorktreeMapping,
+	},
+	state::ReviewLifecycleRecord,
 };
 
 pub(crate) fn initial_post_review_lane_classification(

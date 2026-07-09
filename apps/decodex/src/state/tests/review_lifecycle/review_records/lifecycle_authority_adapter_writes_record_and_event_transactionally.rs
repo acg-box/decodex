@@ -3,11 +3,13 @@ use std::path::Path;
 use crate::{
 	config::ReviewLevel,
 	orchestrator::{
-		PostReviewLifecycleFactsInput, PullRequestReviewState, build_post_review_lifecycle_facts,
-		kernel::lifecycle::{
-			LIFECYCLE_EVENT_SCHEMA_VERSION, LIFECYCLE_EVENT_TYPE, LifecycleDecisionInput,
-			LifecycleEvidenceKind, LifecycleOutcome, PreviousLifecycleAuthority,
-			decide_lifecycle_transition,
+		self, PostReviewLifecycleFactsInput, PullRequestReviewState,
+		kernel::{
+			lifecycle,
+			lifecycle::{
+				LIFECYCLE_EVENT_SCHEMA_VERSION, LIFECYCLE_EVENT_TYPE, LifecycleDecisionInput,
+				LifecycleEvidenceKind, LifecycleOutcome, PreviousLifecycleAuthority,
+			},
 		},
 	},
 	state::{
@@ -76,7 +78,7 @@ fn lifecycle_authority_adapter_writes_record_and_event_transactionally() {
 		issue_comments: Vec::new(),
 		reviews: Vec::new(),
 	};
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: "pubfi",
 		issue_id: "PUB-101",
 		review_lifecycle: Some(&lifecycle_record),
@@ -90,7 +92,7 @@ fn lifecycle_authority_adapter_writes_record_and_event_transactionally() {
 		review_checkpoint_phase: Some("handoff"),
 		review_checkpoint_status: Some("clean"),
 	});
-	let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let decision = lifecycle::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous: None,
 		evidence_kind: LifecycleEvidenceKind::LandingReadback,
@@ -104,7 +106,6 @@ fn lifecycle_authority_adapter_writes_record_and_event_transactionally() {
 		causation_id: Some("landing-intent-1"),
 		decided_at: "2026-07-07T00:00:00Z",
 	});
-
 	let event = store
 		.record_lifecycle_decision("run-1", 1, &decision)
 		.expect("lifecycle decision should persist");
@@ -164,15 +165,17 @@ fn review_wait_sync_does_not_regress_terminal_lifecycle_authority() {
 		"x/pub-101",
 		"head-sha",
 	);
+
 	store
 		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("handoff authority should persist");
+
 	let lifecycle_record = store
 		.review_lifecycle_record("pubfi", "PUB-101", "x/pub-101")
 		.expect("authority record should read")
 		.expect("authority record should exist");
 	let review_state = pub_101_merged_review_state();
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: "pubfi",
 		issue_id: "PUB-101",
 		review_lifecycle: Some(&lifecycle_record),
@@ -186,7 +189,7 @@ fn review_wait_sync_does_not_regress_terminal_lifecycle_authority() {
 		review_checkpoint_phase: Some("handoff"),
 		review_checkpoint_status: Some("clean"),
 	});
-	let closeout_decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let closeout_decision = lifecycle::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous: Some(PreviousLifecycleAuthority {
 			sequence: lifecycle_record.sequence(),
@@ -203,9 +206,11 @@ fn review_wait_sync_does_not_regress_terminal_lifecycle_authority() {
 		causation_id: Some("manual_land_closeout_complete"),
 		decided_at: "2026-07-07T00:00:00Z",
 	});
+
 	store
 		.record_lifecycle_decision("run-1", 1, &closeout_decision)
 		.expect("closeout authority should persist");
+
 	let event_count_before_stale_sync = store
 		.list_private_execution_events_for_issue("pubfi", "PUB-101")
 		.expect("events should list")
@@ -260,15 +265,17 @@ fn review_handoff_sync_does_not_regress_landed_lifecycle_authority() {
 		"x/pub-101",
 		"head-sha",
 	);
+
 	store
 		.upsert_review_lifecycle_handoff_fixture("pubfi", "PUB-101", &handoff)
 		.expect("handoff authority should persist");
+
 	let lifecycle_record = store
 		.review_lifecycle_record("pubfi", "PUB-101", "x/pub-101")
 		.expect("authority record should read")
 		.expect("authority record should exist");
 	let review_state = pub_101_merged_review_state();
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: "pubfi",
 		issue_id: "PUB-101",
 		review_lifecycle: Some(&lifecycle_record),
@@ -282,7 +289,7 @@ fn review_handoff_sync_does_not_regress_landed_lifecycle_authority() {
 		review_checkpoint_phase: Some("handoff"),
 		review_checkpoint_status: Some("clean"),
 	});
-	let landed_decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let landed_decision = lifecycle::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous: Some(PreviousLifecycleAuthority {
 			sequence: lifecycle_record.sequence(),
@@ -299,9 +306,11 @@ fn review_handoff_sync_does_not_regress_landed_lifecycle_authority() {
 		causation_id: Some("landing_complete"),
 		decided_at: "2026-07-07T00:00:00Z",
 	});
+
 	store
 		.record_lifecycle_decision("run-1", 1, &landed_decision)
 		.expect("landed authority should persist");
+
 	let event_count_before_stale_sync = store
 		.list_private_execution_events_for_issue("pubfi", "PUB-101")
 		.expect("events should list")

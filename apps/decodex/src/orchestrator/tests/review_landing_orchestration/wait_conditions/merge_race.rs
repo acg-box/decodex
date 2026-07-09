@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::Path};
 
 use crate::{
 	orchestrator::{
@@ -53,6 +53,7 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 			1,
 		),
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
@@ -90,7 +91,29 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 	)
 	.expect("post-review orchestration should accept an already-merged PR race");
 
-	let gh_invocation = fs::read_to_string(&invocation_log_path)
+	assert_merge_race_invocation(&invocation_log_path, &head_oid, landed_merge_subject, pr_url);
+
+	let lifecycle = state_store
+		.review_lifecycle_record(config.service_id(), &issue.id, "main")
+		.expect("lifecycle record should read")
+		.expect("landing authority should record");
+
+	assert_eq!(lifecycle.next_state(), "landed");
+	assert_eq!(lifecycle.merge_commit(), Some("cafebabe"));
+	assert!(
+		tracker.comments.borrow().is_empty(),
+		"already-merged race handling should persist orchestration in StateStore, not Linear comments",
+	);
+	assert!(tracker.label_additions.borrow().is_empty());
+}
+
+fn assert_merge_race_invocation(
+	invocation_log_path: &Path,
+	head_oid: &str,
+	landed_merge_subject: &str,
+	pr_url: &str,
+) {
+	let gh_invocation = fs::read_to_string(invocation_log_path)
 		.expect("fake gh invocation log should read")
 		.lines()
 		.map(str::to_owned)
@@ -104,7 +127,7 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 			String::from("--admin"),
 			String::from("--merge"),
 			String::from("--match-head-commit"),
-			head_oid,
+			String::from(head_oid),
 			String::from("--subject"),
 			String::from(landed_merge_subject),
 			String::from("--body"),
@@ -122,15 +145,4 @@ fn reconcile_post_review_orchestration_tolerates_already_merged_merge_race() {
 			String::from("state,headRefOid,mergeCommit"),
 		]
 	);
-	let lifecycle = state_store
-		.review_lifecycle_record(config.service_id(), &issue.id, "main")
-		.expect("lifecycle record should read")
-		.expect("landing authority should record");
-	assert_eq!(lifecycle.next_state(), "landed");
-	assert_eq!(lifecycle.merge_commit(), Some("cafebabe"));
-	assert!(
-		tracker.comments.borrow().is_empty(),
-		"already-merged race handling should persist orchestration in StateStore, not Linear comments",
-	);
-	assert!(tracker.label_additions.borrow().is_empty());
 }

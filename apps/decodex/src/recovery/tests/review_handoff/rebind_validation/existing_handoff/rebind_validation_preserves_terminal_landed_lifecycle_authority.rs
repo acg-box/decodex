@@ -1,20 +1,8 @@
 use std::path::Path;
 
-use crate::{
-	config::ReviewLevel,
-	orchestrator::{
-		PostReviewLifecycleFactsInput, PullRequestReviewState, build_post_review_lifecycle_facts,
-		kernel::lifecycle::{
-			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-			PreviousLifecycleAuthority, decide_lifecycle_transition,
-		},
-	},
-	recovery::tests::review_handoff,
-	state::{
-		ReviewLifecycleHandoffFixture, ReviewLifecycleHandoffInput, ReviewLifecycleTransitionInput,
-		StateStore,
-	},
-};
+use crate::recovery::tests::review_handoff::rebind_validation::existing_handoff::rebind_validation_preserves_terminal_landed_lifecycle_authority::lifecycle::decide_lifecycle_transition;
+use crate::{config::ReviewLevel, orchestrator::{self, PostReviewLifecycleFactsInput, PullRequestReviewState, kernel::lifecycle::{LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome, PreviousLifecycleAuthority}}, recovery::tests::review_handoff, state::{ReviewLifecycleHandoffFixture, ReviewLifecycleHandoffInput, ReviewLifecycleTransitionInput, StateStore}};
+use crate::orchestrator::kernel::lifecycle::self;
 
 fn merged_review_state(pr_url: &str, branch_name: &str, head_oid: &str) -> PullRequestReviewState {
 	PullRequestReviewState {
@@ -56,15 +44,17 @@ fn rebind_validation_preserves_terminal_landed_lifecycle_authority() {
 		branch_name,
 		head_oid,
 	);
+
 	state_store
 		.upsert_review_lifecycle_handoff_fixture("pubfi", "issue-id", &handoff)
 		.expect("handoff authority should persist");
+
 	let lifecycle_record = state_store
 		.review_lifecycle_record("pubfi", "issue-id", branch_name)
 		.expect("authority record should read")
 		.expect("authority record should exist");
 	let review_state = merged_review_state(pr_url, branch_name, head_oid);
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: "pubfi",
 		issue_id: "issue-id",
 		review_lifecycle: Some(&lifecycle_record),
@@ -78,7 +68,7 @@ fn rebind_validation_preserves_terminal_landed_lifecycle_authority() {
 		review_checkpoint_phase: Some("handoff"),
 		review_checkpoint_status: Some("clean"),
 	});
-	let landed_decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let landed_decision = self::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous: Some(PreviousLifecycleAuthority {
 			sequence: lifecycle_record.sequence(),
@@ -95,9 +85,11 @@ fn rebind_validation_preserves_terminal_landed_lifecycle_authority() {
 		causation_id: Some("landing_complete"),
 		decided_at: "2026-07-07T00:00:00Z",
 	});
+
 	state_store
 		.record_lifecycle_decision("pub-718-attempt-1", 1, &landed_decision)
 		.expect("landed authority should persist");
+
 	let event_count_before_rebind = state_store
 		.list_private_execution_events_for_issue("pubfi", "issue-id")
 		.expect("events should list")

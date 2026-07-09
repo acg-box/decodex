@@ -33,7 +33,6 @@ pub(super) fn expected_developer_instructions(
 		format_command_list(workflow.frontmatter().execution().canonicalize_commands()),
 		format_command_list(workflow.frontmatter().execution().verify_commands())
 	));
-
 	sections.extend(
 		read_first_files
 			.iter()

@@ -91,6 +91,7 @@ impl ProjectGitHubConfig {
 		if let Some(command_path) = self.command_path.as_deref() {
 			validation::validate_nonempty_path("github.command_path", command_path)?;
 		}
+
 		if self.landing_mode.is_fast() && self.landing_actors.is_empty() {
 			color_eyre::eyre::bail!(
 				"`github.landing_actors` must include at least one trusted GitHub actor when `github.landing_mode = \"fast\"`."
@@ -101,6 +102,7 @@ impl ProjectGitHubConfig {
 				"`github.landing_actors` is only valid when `github.landing_mode = \"fast\"`."
 			);
 		}
+
 		for actor in &self.landing_actors {
 			validation::validate_required_config_string("github.landing_actors", actor)?;
 		}

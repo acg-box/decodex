@@ -14,7 +14,7 @@ pub(crate) use self::{
 #[cfg(test)] pub(crate) use program::select_target_status_visible_program_candidate;
 
 use crate::orchestrator::{
-	BaselineGuardDispatchOutcome, ensure_clean_baseline_before_dispatch,
+	self, BaselineGuardDispatchOutcome,
 	run_cycle::{
 		self, IssueDispatchMode, IssueRunPlan, IssueTracker, PrepareIssueRunContext, Result,
 		RetryIssueStateHint, RunSummary, ServiceConfig, StateStore, TargetIssueRunContext,
@@ -167,7 +167,7 @@ where
 	if !context.dry_run && context.dispatch_mode != IssueDispatchMode::Closeout {
 		run_cycle::ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
 	}
-	if ensure_clean_baseline_before_dispatch(
+	if orchestrator::ensure_clean_baseline_before_dispatch(
 		context.project,
 		context.workflow,
 		context.state_store,

@@ -29,9 +29,11 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 		repo_gate_failure.disposition(),
 		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention
 	);
+
 	let decision = repo_gate_failure
 		.tracked_rewrite_decision()
 		.expect("lane-external tracked rewrite should include rewrite evidence");
+
 	assert_eq!(decision.to_json()["classification"], "lane_external_tracked_rewrite");
 	assert_eq!(decision.to_json()["decision"], "require_scoped_authority");
 	assert_eq!(decision.to_json()["fileCount"], 1);

@@ -105,16 +105,6 @@ pub(crate) fn inspect_required_commit_status_contexts(
 		.collect())
 }
 
-fn latest_status_for_context<'a>(
-	statuses: &'a [CommitStatusResponse],
-	context: &str,
-) -> Option<&'a CommitStatusResponse> {
-	statuses
-		.iter()
-		.filter(|status| status.context == context)
-		.max_by_key(|status| status.updated_at.as_deref().unwrap_or(""))
-}
-
 pub(crate) fn commit_status_description_with_base_ref_oid(
 	description: Option<&str>,
 	base_ref_oid: &str,
@@ -125,30 +115,27 @@ pub(crate) fn commit_status_description_with_base_ref_oid(
 	}
 }
 
-fn commit_status_description_base_ref_oid(description: &str) -> Option<&str> {
-	description
-		.split(|character: char| character.is_whitespace() || character == ';' || character == ',')
-		.find_map(|part| part.strip_prefix("base_ref_oid=").filter(|value| !value.is_empty()))
-}
-
 pub(crate) fn publish_commit_status(request: CommitStatusPublishRequest<'_>) -> Result<()> {
-	let mut command = github::gh_command_with_config(request.gh_command_path);
 	let endpoint = format!("repos/{}/{}/statuses/{}", request.owner, request.repo, request.sha);
+	let mut command = github::gh_command_with_config(request.gh_command_path);
 
 	command.args(["api", "--method", "POST", &endpoint]);
 	command.args(["-f", &format!("state={}", request.state.as_str())]);
 	command.args(["-f", &format!("context={}", request.context)]);
+
 	if let Some(description) = request.description {
 		command.args(["-f", &format!("description={description}")]);
 	}
 	if let Some(target_url) = request.target_url {
 		command.args(["-f", &format!("target_url={target_url}")]);
 	}
+
 	command.current_dir(request.cwd);
 
 	github::configure_gh_command(&mut command, request.github_token);
 
 	let output = command.output()?;
+
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -165,6 +152,22 @@ pub(crate) fn publish_commit_status(request: CommitStatusPublishRequest<'_>) -> 
 	Ok(())
 }
 
+fn latest_status_for_context<'a>(
+	statuses: &'a [CommitStatusResponse],
+	context: &str,
+) -> Option<&'a CommitStatusResponse> {
+	statuses
+		.iter()
+		.filter(|status| status.context == context)
+		.max_by_key(|status| status.updated_at.as_deref().unwrap_or(""))
+}
+
+fn commit_status_description_base_ref_oid(description: &str) -> Option<&str> {
+	description
+		.split(|character: char| character.is_whitespace() || character == ';' || character == ',')
+		.find_map(|part| part.strip_prefix("base_ref_oid=").filter(|value| !value.is_empty()))
+}
+
 fn query_commit_statuses(
 	cwd: &Path,
 	owner: &str,
@@ -173,8 +176,8 @@ fn query_commit_statuses(
 	github_token: &str,
 	gh_command_path: Option<&Path>,
 ) -> Result<Vec<CommitStatusResponse>> {
-	let mut command = github::gh_command_with_config(gh_command_path);
 	let endpoint = format!("repos/{owner}/{repo}/commits/{sha}/statuses");
+	let mut command = github::gh_command_with_config(gh_command_path);
 
 	command.args(["api", &endpoint]);
 	command.current_dir(cwd);
@@ -182,6 +185,7 @@ fn query_commit_statuses(
 	github::configure_gh_command(&mut command, github_token);
 
 	let output = command.output()?;
+
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -196,11 +200,11 @@ fn query_commit_statuses(
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, os::unix::fs::PermissionsExt};
+	use std::{fs, os::unix::fs::PermissionsExt as _};
 
 	use tempfile::TempDir;
 
-	use super::*;
+	use crate::github::status::{self, CommitStatusPublishRequest, CommitStatusState};
 
 	#[test]
 	fn inspect_required_commit_status_contexts_reads_exact_context_and_creator() {
@@ -209,8 +213,7 @@ mod tests {
 			&temp_dir,
 			r#"[{"context":"decodex/local-full-check","state":"success","creator":{"login":"decodex-bot"}},{"context":"ci/slow","state":"pending","creator":{"login":"github-actions"}}]"#,
 		);
-
-		let statuses = inspect_required_commit_status_contexts(
+		let statuses = status::inspect_required_commit_status_contexts(
 			temp_dir.path(),
 			"hack-ink",
 			"decodex",
@@ -245,8 +248,7 @@ mod tests {
 			&temp_dir,
 			r#"[{"context":"decodex/local-full-check","state":"success","description":"cargo make check passed; base_ref_oid=base-sha","creator":{"login":"decodex-bot"}}]"#,
 		);
-
-		let statuses = inspect_required_commit_status_contexts(
+		let statuses = status::inspect_required_commit_status_contexts(
 			temp_dir.path(),
 			"hack-ink",
 			"decodex",
@@ -270,8 +272,7 @@ mod tests {
 			&temp_dir,
 			r#"[{"context":"decodex/local-full-check","state":"failure","updated_at":"2026-07-09T01:00:00Z","creator":{"login":"decodex-bot"}},{"context":"decodex/local-full-check","state":"success","updated_at":"2026-07-09T02:00:00Z","creator":{"login":"yvette-carlisle"}}]"#,
 		);
-
-		let statuses = inspect_required_commit_status_contexts(
+		let statuses = status::inspect_required_commit_status_contexts(
 			temp_dir.path(),
 			"hack-ink",
 			"decodex",
@@ -295,7 +296,7 @@ mod tests {
 		let gh_path = fake_gh(&temp_dir, "{}");
 		let log_path = temp_dir.path().join("gh.log");
 
-		publish_commit_status(CommitStatusPublishRequest {
+		status::publish_commit_status(CommitStatusPublishRequest {
 			cwd: temp_dir.path(),
 			owner: "hack-ink",
 			repo: "decodex",
@@ -332,9 +333,11 @@ JSON
 		);
 
 		fs::write(&gh_path, script).expect("fake gh should write");
+
 		let mut permissions = fs::metadata(&gh_path).expect("fake gh metadata").permissions();
 
 		permissions.set_mode(0o755);
+
 		fs::set_permissions(&gh_path, permissions).expect("fake gh should be executable");
 
 		gh_path

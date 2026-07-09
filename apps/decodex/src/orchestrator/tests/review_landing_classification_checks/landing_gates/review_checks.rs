@@ -54,6 +54,7 @@ fn review_state_gates_allow_configured_status_context_when_rollup_pending() {
 		Some("PENDING"),
 		0,
 	);
+
 	review_state.required_status_contexts = vec![PullRequestRequiredStatusContext {
 		context: String::from("decodex/local-full-check"),
 		state: Some(String::from("success")),
@@ -82,6 +83,7 @@ fn review_state_gates_wait_for_configured_status_context_on_stale_base() {
 		Some("SUCCESS"),
 		0,
 	);
+
 	review_state.required_status_contexts = vec![PullRequestRequiredStatusContext {
 		context: String::from("decodex/local-full-check"),
 		state: Some(String::from("success")),
@@ -110,6 +112,7 @@ fn configured_status_context_success_ignores_failed_global_rollup() {
 		Some("FAILURE"),
 		0,
 	);
+
 	review_state.required_status_contexts = vec![PullRequestRequiredStatusContext {
 		context: String::from("decodex/local-full-check"),
 		state: Some(String::from("success")),

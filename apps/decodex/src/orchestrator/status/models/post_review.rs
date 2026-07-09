@@ -85,35 +85,6 @@ pub(in crate::orchestrator) struct PostReviewOrchestrationStatus {
 	pub(in crate::orchestrator) clean_path_landing_gates_satisfied: bool,
 	pub(in crate::orchestrator) landing_requires_agent_fallback: bool,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::orchestrator) enum PostReviewLifecycleAction {
-	StartReviewGateOrExternalReview,
-	RequestExternalReview,
-	WaitForExternalReviewAck,
-	WaitForExternalReviewResult,
-	WaitForLandingGates,
-	RunReviewRepair,
-	PollLandingReadback,
-	RunCloseoutAdapter,
-	RequestManualAttention,
-}
-impl PostReviewLifecycleAction {
-	pub(in crate::orchestrator) fn parse(value: &str) -> Result<Self> {
-		Ok(match value {
-			"wait_for_runtime_review_gate_or_external_review" =>
-				Self::StartReviewGateOrExternalReview,
-			"request_external_review" => Self::RequestExternalReview,
-			"wait_for_external_review_ack" => Self::WaitForExternalReviewAck,
-			"wait_for_external_review_result" => Self::WaitForExternalReviewResult,
-			"wait_for_landing_gates" => Self::WaitForLandingGates,
-			"run_retained_review_repair_adapter" => Self::RunReviewRepair,
-			"poll_landing_readback" => Self::PollLandingReadback,
-			"run_retained_closeout_adapter" => Self::RunCloseoutAdapter,
-			"request_manual_attention" => Self::RequestManualAttention,
-			_ => eyre::bail!("Unknown post-review lifecycle action `{value}`."),
-		})
-	}
-}
 impl PostReviewOrchestrationStatus {
 	pub(in crate::orchestrator) fn from_review_state(
 		review_state: &PullRequestReviewState,
@@ -140,6 +111,36 @@ impl PostReviewOrchestrationStatus {
 				orchestrator::review_state_clean_path_landing_gates_satisfied(review_state),
 			landing_requires_agent_fallback:
 				orchestrator::review_state_landing_requires_agent_fallback(review_state),
+		})
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::orchestrator) enum PostReviewLifecycleAction {
+	StartReviewGateOrExternalReview,
+	RequestExternalReview,
+	WaitForExternalReviewAck,
+	WaitForExternalReviewResult,
+	WaitForLandingGates,
+	RunReviewRepair,
+	PollLandingReadback,
+	RunCloseoutAdapter,
+	RequestManualAttention,
+}
+impl PostReviewLifecycleAction {
+	pub(in crate::orchestrator) fn parse(value: &str) -> Result<Self> {
+		Ok(match value {
+			"wait_for_runtime_review_gate_or_external_review" =>
+				Self::StartReviewGateOrExternalReview,
+			"request_external_review" => Self::RequestExternalReview,
+			"wait_for_external_review_ack" => Self::WaitForExternalReviewAck,
+			"wait_for_external_review_result" => Self::WaitForExternalReviewResult,
+			"wait_for_landing_gates" => Self::WaitForLandingGates,
+			"run_retained_review_repair_adapter" => Self::RunReviewRepair,
+			"poll_landing_readback" => Self::PollLandingReadback,
+			"run_retained_closeout_adapter" => Self::RunCloseoutAdapter,
+			"request_manual_attention" => Self::RequestManualAttention,
+			_ => eyre::bail!("Unknown post-review lifecycle action `{value}`."),
 		})
 	}
 }

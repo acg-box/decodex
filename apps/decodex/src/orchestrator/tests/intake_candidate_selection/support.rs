@@ -58,7 +58,6 @@ pub(super) fn assert_admin_merge_invocation(
 		.lines()
 		.map(str::to_owned)
 		.collect::<Vec<_>>();
-
 	let expected = vec![
 		String::from("pr"),
 		String::from("merge"),
@@ -79,6 +78,7 @@ pub(super) fn assert_admin_merge_invocation(
 	];
 
 	assert!(gh_invocation.starts_with(&expected));
+
 	for extra_view in gh_invocation[expected.len()..].chunks(5) {
 		assert_eq!(
 			extra_view,

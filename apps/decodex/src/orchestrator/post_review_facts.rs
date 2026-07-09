@@ -45,6 +45,7 @@ impl RuntimeReviewGateState {
 		if validated_head_sha.is_none_or(str::is_empty) {
 			return Self::WorktreeHeadMissing;
 		}
+
 		match checkpoint_status {
 			None => Self::Pending,
 			Some("clean") => Self::Clean,
@@ -103,6 +104,7 @@ pub(crate) fn build_post_review_lifecycle_facts(
 		input.validated_head_sha.unwrap_or(input.review_state.head_ref_oid.as_str()).to_owned();
 	let mut source_evidence_refs =
 		vec![format!("pr_readback:{}:{}", input.review_state.url, input.review_state.head_ref_oid)];
+
 	if let Some(lifecycle) = input.review_lifecycle {
 		source_evidence_refs.push(format!(
 			"review_lifecycle:{}:{}:{}",
@@ -111,6 +113,7 @@ pub(crate) fn build_post_review_lifecycle_facts(
 			lifecycle.pr_head_oid()
 		));
 	}
+
 	if input.review_checkpoint_status.is_some() {
 		source_evidence_refs.push(format!(
 			"review_checkpoint:{}:{}:{}",
@@ -210,8 +213,10 @@ pub(crate) fn worktree_has_review_blocking_changes(worktree_path: &Path) -> Resu
 		.arg(worktree_path)
 		.args(["status", "--porcelain=v1", "--untracked-files=all"])
 		.output()?;
+
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
+
 		eyre::bail!(
 			"Failed to inspect review-blocking worktree status in `{}`: {}",
 			worktree_path.display(),
@@ -220,6 +225,7 @@ pub(crate) fn worktree_has_review_blocking_changes(worktree_path: &Path) -> Resu
 	}
 
 	let status = String::from_utf8(output.stdout)?;
+
 	Ok(status
 		.lines()
 		.map(str::trim)
@@ -229,9 +235,11 @@ pub(crate) fn worktree_has_review_blocking_changes(worktree_path: &Path) -> Resu
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use crate::{
-		orchestrator::PullRequestReviewState,
+		orchestrator::{
+			PullRequestReviewState, RuntimeReviewGateState,
+			post_review_facts::{self, Path, PostReviewLifecycleFactsInput, ReviewLevel},
+		},
 		state::{
 			ReviewLifecycleHandoffFixture, ReviewLifecycleRecord, ReviewPolicyCheckpointInput,
 			StateStore,
@@ -271,23 +279,23 @@ mod tests {
 			"x/pub-101",
 			"head-sha",
 		);
-
-		let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
-			project_id: "pubfi",
-			issue_id: "PUB-101",
-			review_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
-				&handoff, None,
-			)),
-			review_state: &review_state,
-			worktree_path: Path::new("/tmp/pubfi"),
-			review_level: ReviewLevel::Standard,
-			phase: "request_pending",
-			landing_state: None,
-			closeout_state: None,
-			validated_head_sha: Some("head-sha"),
-			review_checkpoint_phase: Some("handoff"),
-			review_checkpoint_status: Some("clean"),
-		});
+		let facts =
+			post_review_facts::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+				project_id: "pubfi",
+				issue_id: "PUB-101",
+				review_lifecycle: Some(&ReviewLifecycleRecord::from_test_lifecycle_fixtures(
+					&handoff, None,
+				)),
+				review_state: &review_state,
+				worktree_path: Path::new("/tmp/pubfi"),
+				review_level: ReviewLevel::Standard,
+				phase: "request_pending",
+				landing_state: None,
+				closeout_state: None,
+				validated_head_sha: Some("head-sha"),
+				review_checkpoint_phase: Some("handoff"),
+				review_checkpoint_status: Some("clean"),
+			});
 
 		assert_eq!(facts.project_id, "pubfi");
 		assert_eq!(facts.issue_id, "PUB-101");
@@ -339,7 +347,7 @@ mod tests {
 			})
 			.expect("handoff checkpoint should persist");
 
-		let checkpoint = runtime_review_checkpoint_status_for_head(
+		let checkpoint = post_review_facts::runtime_review_checkpoint_status_for_head(
 			&state_store,
 			"pubfi",
 			"PUB-101",
