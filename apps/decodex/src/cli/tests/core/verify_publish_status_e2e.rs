@@ -100,8 +100,8 @@ api_key_env_var = "HOME"
 [github]
 token_env_var = "DECODX_VERIFY_STATUS_E2E_TOKEN"
 command_path = "{}"
-landing_required_status_contexts = ["decodex/local-full-check"]
-landing_required_status_creators = ["decodex-bot"]
+landing_mode = "fast"
+landing_actors = ["decodex-bot"]
 
 [paths]
 repo_root = "."

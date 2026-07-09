@@ -98,6 +98,7 @@ fn review_state_landing_gate_view(
 		mergeable: review_state.mergeable.as_str(),
 		merge_state_status: review_state.merge_state_status.as_str(),
 		status_check_rollup_state: review_state.status_check_rollup_state.as_deref(),
+		fast_landing: !review_state.required_status_contexts.is_empty(),
 		required_status_contexts: &review_state.required_status_contexts,
 		unresolved_review_threads: review_state.unresolved_review_threads,
 	}

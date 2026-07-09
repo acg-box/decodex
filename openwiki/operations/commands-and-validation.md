@@ -83,7 +83,13 @@ Important source modules:
 
 ## Local validation status gate
 
-Projects can configure fast landing checks through `[github].landing_required_status_contexts` and `landing_required_status_creators` in `project.toml` (`decodex.example.toml`). The current command publishes a GitHub commit status after validating current PR head and base evidence (`apps/decodex/src/cli/verify_commands.rs`):
+Projects choose `[github].landing_mode` in `project.toml` (`decodex.example.toml`).
+The default `standard` mode waits for GitHub's status rollup and ordinary merge
+gates. `fast` mode trusts the Decodex local full-check status
+`decodex/local-full-check`, requires `landing_actors`, and allows those actors to
+execute ruleset bypass landing after local validation passes. The publish command
+attaches the local validation status to the exact PR head and base evidence
+(`apps/decodex/src/cli/verify_commands.rs`):
 
 ```sh
 cargo make check

@@ -23,8 +23,8 @@ pub(in crate::manual) fn finalize_already_merged_manual_land_recovery(
 		&context.pr_url,
 		&context.github_token,
 		context.github_command_path.as_deref(),
-		&context.landing_required_status_contexts,
-		&context.landing_required_status_creators,
+		&context.landing_status_contexts,
+		&context.landing_actors,
 	)?;
 
 	if landing_state.state != "MERGED" {
