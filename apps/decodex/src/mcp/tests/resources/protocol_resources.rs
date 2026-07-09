@@ -40,7 +40,7 @@ fn logging_set_level_is_stdio_compatible() {
 }
 
 #[test]
-fn resources_list_includes_docs_and_decisions() {
+fn resources_list_includes_openwiki_pages() {
 	let repo = support::test_repo();
 	let responses = support::run_stdio(
 		repo.path(),
@@ -54,9 +54,9 @@ fn resources_list_includes_docs_and_decisions() {
 		.filter_map(|resource| resource.get("uri").and_then(Value::as_str))
 		.collect::<Vec<_>>();
 
-	assert!(uris.contains(&"decodex://docs/index"));
-	assert!(uris.contains(&"decodex://docs/spec/runtime"));
-	assert!(uris.contains(&"decodex://docs/decisions/mcp-gateway"));
+	assert!(uris.contains(&"decodex://openwiki/quickstart"));
+	assert!(uris.contains(&"decodex://openwiki/specs/contracts-and-data"));
+	assert!(uris.contains(&"decodex://openwiki/workflows/runtime-operator-workflows"));
 }
 
 #[test]
@@ -128,18 +128,18 @@ fn resources_read_returns_runtime_decision_contract() {
 }
 
 #[test]
-fn resources_read_returns_checked_in_doc_text() {
+fn resources_read_returns_checked_in_openwiki_text() {
 	let repo = support::test_repo();
 	let responses = support::run_stdio(
 		repo.path(),
-		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://docs/spec/runtime"}}"#,
+		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://openwiki/specs/contracts-and-data"}}"#,
 	);
 	let contents = support::response_at(&responses, 0)["result"]["contents"]
 		.as_array()
 		.expect("contents array");
 	let text = contents[0]["text"].as_str().expect("text content");
 
-	assert_eq!(text, "# Runtime\n\nSpec body.\n");
+	assert_eq!(text, "# Contracts\n\nSpec body.\n");
 }
 
 #[test]

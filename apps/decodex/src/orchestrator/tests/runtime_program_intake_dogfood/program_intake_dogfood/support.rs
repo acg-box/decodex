@@ -188,7 +188,7 @@ pub(super) fn dogfood_goal_contract() -> DecisionContract {
 		},
 		"research_provenance": [{
 			"kind": "spec",
-			"reference": "docs/spec/loop-runtime.md",
+			"reference": "openwiki/specs/contracts-and-data.md",
 			"summary": "Program Intake materializes accepted contracts."
 		}],
 		"research_evidence": [{

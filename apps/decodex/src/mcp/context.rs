@@ -27,7 +27,7 @@ impl McpContext {
 			.or_else(|| discover_repo_root_from_current_dir().ok().flatten())
 			.ok_or_else(|| {
 				eyre::eyre!(
-					"Failed to find the Decodex repository root for MCP docs resources; start from a checkout or pass --config."
+						"Failed to find the Decodex repository root for MCP OpenWiki resources; start from a checkout or pass --config."
 				)
 			})?;
 		let project_id = config.map(|config| config.service_id().to_owned());
@@ -59,7 +59,9 @@ fn discover_repo_root_from_current_dir() -> Result<Option<PathBuf>> {
 	let mut candidate = env::current_dir()?;
 
 	loop {
-		if candidate.join("docs/index.md").is_file() && candidate.join("Cargo.toml").is_file() {
+		if candidate.join("openwiki/quickstart.md").is_file()
+			&& candidate.join("Cargo.toml").is_file()
+		{
 			return Ok(Some(candidate));
 		}
 		if !candidate.pop() {

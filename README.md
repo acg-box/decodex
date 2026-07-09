@@ -26,8 +26,9 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 - Static Astro site for the public Decodex product surface and app download entry.
 - Installable Decodex agent plugin for runtime planning, operations, commit, and
   landing workflows.
-- Repository documentation split by question type into spec, runbook, reference, and
-  decision lanes.
+- GitHub CodeQL workflow for required repository code-scanning rules.
+- OpenWiki-backed project knowledge under `openwiki/`, split by architecture,
+  workflows, contracts, operations, and integrations.
 
 ## Status
 
@@ -63,21 +64,22 @@ runtime.
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns Decodex runtime/operator lifecycle skills.
-- `docs/` remains the authoritative documentation surface.
+- `openwiki/` owns the repo-local project knowledge surface.
 - `automations/decodex/automations.toml` and `automations/radar/automations.toml`
   are the portable Codex app automation source; install live local configs from a
   clone with `python3 automations/decodex/scripts/config/sync_automations.py --apply`.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
-`~/.codex/decodex/projects/<service-id>/`, and the governing specs under `docs/spec/`.
-Public site authority stays in `site/` and the site specs.
+`~/.codex/decodex/projects/<service-id>/`, and checked-in OpenWiki contract maps under
+`openwiki/specs/`. Public site authority stays in `site/` and OpenWiki integration
+notes.
 
 ## Runtime platform support
 
 - The Decodex runtime contract is Unix-only: macOS and Linux.
 - Windows is outside the runtime contract.
 - Current Codex/app-server compatibility is capability-gated and recorded in
-  [`docs/spec/app-server.md`](docs/spec/app-server.md).
+  [`openwiki/specs/contracts-and-data.md`](openwiki/specs/contracts-and-data.md).
 - The public site is static and deploys through GitHub Pages.
 - Starting `decodex serve` without its `--config` option schedules enabled projects
   from the explicit registry only. Operator and App snapshots still expose active
@@ -171,7 +173,7 @@ allowing unauthenticated CORS preflight. Direct non-loopback listeners require b
 minimum direct-listener boundary, not OAuth Protected Resource Metadata; OAuth or a
 managed relay can still sit in front for broader MCP client interoperability.
 The gateway advertises resources, resource templates, prompts, tools, logging
-compatibility, and progress notifications. Resources expose checked-in documentation,
+compatibility, and progress notifications. Resources expose checked-in OpenWiki context,
 runtime Decision Contract readback, local status snapshots, remote-safe live
 status/activity projections, current/recent status-window run event/protocol/child-agent
 activity/progress diagnostics, PR/review-state readback, lane-inspect aliases, and
@@ -278,9 +280,9 @@ The public site does not own:
 - the operator dashboard served by `decodex serve`
 - upstream monitoring or public publishing automation
 
-The static-site boundary is recorded in `docs/decisions/static-public-site.md`. GitHub
-Pages setup for `https://decodex.space`, including the external automation boundary,
-lives in `docs/runbook/github-pages-deploy.md`.
+The static-site boundary and GitHub Pages setup for `https://decodex.space`, including
+the external automation boundary, are summarized in
+[`openwiki/integrations/plugins-automations-and-auxiliary-tools.md`](openwiki/integrations/plugins-automations-and-auxiliary-tools.md).
 
 ## Operator Dashboard
 
@@ -329,7 +331,7 @@ previewing a staged app. For dashboard and App preview UI work, prefer the singl
 server above.
 
 The dashboard semantics and local-vs-external state boundary live in
-`docs/reference/operator-control-plane.md`.
+[`openwiki/workflows/runtime-operator-workflows.md`](openwiki/workflows/runtime-operator-workflows.md).
 
 ## Development
 
@@ -373,11 +375,7 @@ The tracked workspace currently keeps:
 - `apps/decodex/` as the Rust package that builds the `decodex` CLI and runtime
 - `site/` as the Astro static site for the public Decodex product surface
 - `plugins/decodex/` as the canonical installable Decodex plugin source
-- `docs/spec/` as the normative runtime, workflow, site, and content contract lane
-- `docs/runbook/` as the operator procedures, validation sequences, deployment steps,
-  and maintenance workflow lane
-- `docs/reference/` as the current repository and artifact surface map lane
-- `docs/decisions/` as the durable design-rationale lane
+- `openwiki/` as the repo-local project knowledge and agent context surface
 - `dev/` as local development helpers, such as the operator dashboard mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
   generated `.icns`, and menu bar template assets
@@ -385,18 +383,20 @@ The tracked workspace currently keeps:
 Generated or local-only directories such as `target/`, `site/dist/`, `site/.astro/`,
 `.worktrees/`, `.workspaces/`, and `.codex/` are not part of the tracked repository
 structure. For the authoritative layout and ownership map, read
-`docs/reference/workspace-layout.md`.
+[`openwiki/quickstart.md`](openwiki/quickstart.md).
 
-## Documentation
+## OpenWiki
 
 - Product and development overview: this `README.md`
-- Unified documentation router: `docs/index.md`
-- Natural-language loop-runtime contract: `docs/spec/loop-runtime.md`
-- Normative specs: `docs/spec/index.md`
-- Procedural runbooks: `docs/runbook/index.md`
-- Current implementation references: `docs/reference/index.md`
-- Durable design rationale: `docs/decisions/index.md`
-- Documentation policy and placement rules: `docs/policy.md`
+- Agent and maintainer entrypoint: [`openwiki/quickstart.md`](openwiki/quickstart.md)
+- Runtime architecture: [`openwiki/architecture/runtime-architecture.md`](openwiki/architecture/runtime-architecture.md)
+- Operator workflows: [`openwiki/workflows/runtime-operator-workflows.md`](openwiki/workflows/runtime-operator-workflows.md)
+- Contracts and data: [`openwiki/specs/contracts-and-data.md`](openwiki/specs/contracts-and-data.md)
+- Runtime lifecycle: [`openwiki/specs/runtime-lifecycle.md`](openwiki/specs/runtime-lifecycle.md)
+- Commands and validation: [`openwiki/operations/commands-and-validation.md`](openwiki/operations/commands-and-validation.md)
+- Operator runbooks: [`openwiki/operations/operator-runbooks.md`](openwiki/operations/operator-runbooks.md)
+- Plugins, automations, and auxiliary tools: [`openwiki/integrations/plugins-automations-and-auxiliary-tools.md`](openwiki/integrations/plugins-automations-and-auxiliary-tools.md)
+- Radar, Publisher, and site contracts: [`openwiki/integrations/radar-publisher-site.md`](openwiki/integrations/radar-publisher-site.md)
 
 ## Support Me
 

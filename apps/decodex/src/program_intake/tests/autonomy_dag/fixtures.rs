@@ -29,7 +29,7 @@ pub(crate) fn autonomy_dag_objective() -> AutonomyObjectiveContract {
 			"Do not touch live Linear, GitHub, worktrees, installs, restarts, or plugin sync."
 		],
 		"metrics": ["Isolated test creates one internal Execution Program with dependent nodes."],
-		"allowed_surfaces": ["apps/decodex/src", "docs/spec"],
+		"allowed_surfaces": ["apps/decodex/src", "openwiki/specs"],
 		"allowed_signal_kinds": ["runtime_health"],
 		"validation_gates": ["cargo test -p decodex autonomy_proposal --lib"],
 		"review_policy": "isolated challenge evidence required before promotion",

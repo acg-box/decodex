@@ -10,13 +10,13 @@ fn preflight_repo_root_default_branch_sync_rejects_untracked_path_prefix_conflic
 	let (_temp_dir, repo_root, remote_root) = tests::init_repo();
 	let peer_root = tests::clone_repo(&remote_root, "peer");
 
-	fs::create_dir_all(peer_root.join("docs")).expect("peer nested directory should exist");
-	fs::write(peer_root.join("docs/guide.md"), "remote tracked file\n")
+	fs::create_dir_all(peer_root.join("openwiki")).expect("peer nested directory should exist");
+	fs::write(peer_root.join("openwiki/guide.md"), "remote tracked file\n")
 		.expect("peer nested file should write");
-	tests::run_git(&peer_root, &["add", "docs/guide.md"]);
+	tests::run_git(&peer_root, &["add", "openwiki/guide.md"]);
 	tests::run_git(&peer_root, &["commit", "-m", "add nested file"]);
 	tests::run_git(&peer_root, &["push", "origin", "main"]);
-	fs::write(repo_root.join("docs"), "local untracked file\n")
+	fs::write(repo_root.join("openwiki"), "local untracked file\n")
 		.expect("repo-root conflicting untracked file should write");
 
 	let error =
@@ -24,5 +24,5 @@ fn preflight_repo_root_default_branch_sync_rejects_untracked_path_prefix_conflic
 			.expect_err("incoming tracked directories must not overwrite local untracked files");
 
 	assert!(error.to_string().contains("untracked local files"));
-	assert!(error.to_string().contains("docs"));
+	assert!(error.to_string().contains("openwiki"));
 }
