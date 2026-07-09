@@ -47,7 +47,7 @@ pub(crate) fn run_operator_run_activity_websocket_broadcasts(
 				last_fingerprint = Some(event.fingerprint);
 			},
 			Err(error) => {
-				tracing::warn!(?error, "Skipped dashboard run activity event.");
+				tracing::warn!(?error, "Skipped operator run activity event.");
 			},
 		}
 	}
@@ -68,7 +68,7 @@ pub(crate) fn build_operator_run_activity_event(
 					project_id = registration.service_id(),
 					config_path = %registration.config_path().display(),
 					?error,
-					"Skipped dashboard run activity for an unreadable registered project."
+					"Skipped operator run activity for an unreadable registered project."
 				);
 
 				continue;
@@ -81,7 +81,7 @@ pub(crate) fn build_operator_run_activity_event(
 					project_id = project.service_id(),
 					workflow_path = %project.workflow_path().display(),
 					?error,
-					"Skipped dashboard run activity for a project with an unreadable workflow."
+					"Skipped operator run activity for a project with an unreadable workflow."
 				);
 
 				continue;
@@ -173,7 +173,7 @@ pub(crate) fn write_cached_dashboard_run_activity_event(
 			{
 				tracing::warn!(
 					?error,
-					"Skipped cached dashboard run activity snapshot for a WebSocket client."
+					"Skipped cached operator run activity snapshot for a WebSocket client."
 				);
 			}
 		},
