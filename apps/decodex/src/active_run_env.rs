@@ -13,7 +13,6 @@ pub(crate) struct ActiveRunCommitContext {
 	issue_id: String,
 	issue_identifier: String,
 }
-
 impl ActiveRunCommitContext {
 	pub(crate) fn new(
 		service_id: String,

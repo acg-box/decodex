@@ -33,6 +33,7 @@ pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitReque
 		&request.related,
 		request.breaking,
 	)?;
+
 	git::run_git_checked_with_stdio(&cwd, &["commit", "-S", "-m", message.as_str()])
 }
 
