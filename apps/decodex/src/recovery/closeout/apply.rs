@@ -604,7 +604,7 @@ fn record_superseded_closeout_lifecycle_authority(
 		review_level,
 		phase: "superseded_closeout_recovery",
 		landing_state: Some("superseded"),
-		closeout_state: Some("completed"),
+		closeout_state: Some(superseded_closeout_fact_closeout_state(cleanup_state)),
 		validated_head_sha: Some(&validation.obsolete_landing_state.head_ref_oid),
 		review_checkpoint_phase: checkpoint.as_ref().map(|checkpoint| checkpoint.phase),
 		review_checkpoint_status: checkpoint.as_ref().map(|checkpoint| checkpoint.status.as_str()),
@@ -631,12 +631,13 @@ fn record_superseded_closeout_lifecycle_authority(
 		"completed" => "superseded_closeout_recovery_closeout_complete",
 		_ => "superseded_closeout_recovery_closeout_state",
 	};
+	let (evidence_kind, outcome) = superseded_closeout_lifecycle_evidence(cleanup_state);
 	let decided_at = current_timestamp();
 	let decision = self::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous,
-		evidence_kind: LifecycleEvidenceKind::CloseoutCompletion,
-		outcome: LifecycleOutcome::Succeeded,
+		evidence_kind,
+		outcome,
 		merge_commit: Some(&validation.successor_merge_commit),
 		cleanup_state: Some(cleanup_state),
 		authority: "issue_authority",
@@ -654,6 +655,22 @@ fn record_superseded_closeout_lifecycle_authority(
 	)?;
 
 	Ok(())
+}
+
+fn superseded_closeout_fact_closeout_state(cleanup_state: &str) -> &'static str {
+	match cleanup_state {
+		"completed" => "completed",
+		_ => "not_started",
+	}
+}
+
+fn superseded_closeout_lifecycle_evidence(
+	cleanup_state: &str,
+) -> (LifecycleEvidenceKind, LifecycleOutcome) {
+	match cleanup_state {
+		"completed" => (LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded),
+		_ => (LifecycleEvidenceKind::CloseoutIntent, LifecycleOutcome::Intent),
+	}
 }
 
 fn superseded_closeout_review_state(

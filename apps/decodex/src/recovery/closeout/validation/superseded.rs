@@ -1,4 +1,5 @@
 use crate::{
+	orchestrator,
 	prelude::{Result, eyre},
 	recovery::{
 		closeout::{
@@ -225,10 +226,10 @@ fn ensure_issue_has_no_live_runtime_ownership(
 			);
 		}
 		if let Some(attempt) = context.state_store.latest_run_attempt_for_issue(&issue_key)?
-			&& matches!(attempt.status(), "starting" | "running")
+			&& !orchestrator::local_run_attempt_status_is_terminal(attempt.status())
 		{
 			eyre::bail!(
-				"Issue `{}` still has {} run `{}` for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
+				"Issue `{}` still has non-terminal {} run `{}` for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
 				issue.identifier,
 				attempt.status(),
 				attempt.run_id()
@@ -468,6 +469,25 @@ mod tests {
 			.expect_err("superseded closeout should reject running attempts");
 
 		assert!(error.to_string().contains("run-active"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_continuation_pending_attempt_without_lease() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.record_run_attempt("run-continuation", &issue.id, 1, "continuation_pending")
+			.expect("run should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject continuation-owned attempts");
+
+		assert!(error.to_string().contains("run-continuation"));
+		assert!(error.to_string().contains("continuation_pending"));
 	}
 
 	#[test]

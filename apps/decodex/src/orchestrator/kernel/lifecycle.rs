@@ -13,6 +13,7 @@ pub(crate) enum LifecycleEvidenceKind {
 	ReviewRepair,
 	LandingIntent,
 	LandingReadback,
+	CloseoutIntent,
 	CloseoutCompletion,
 }
 impl LifecycleEvidenceKind {
@@ -23,6 +24,7 @@ impl LifecycleEvidenceKind {
 			Self::ReviewRepair => "review_repair",
 			Self::LandingIntent => "landing_intent",
 			Self::LandingReadback => "landing_readback",
+			Self::CloseoutIntent => "closeout_intent",
 			Self::CloseoutCompletion => "closeout_completion",
 		}
 	}
@@ -193,6 +195,8 @@ fn lifecycle_transition(kind: LifecycleEvidenceKind, outcome: LifecycleOutcome) 
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed) => "landing_failed",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) =>
 			"manual_attention_required",
+		(LifecycleEvidenceKind::CloseoutIntent, LifecycleOutcome::Intent) =>
+			"closeout_intent_recorded",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded) =>
 			"closeout_completed",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Failed) => "closeout_failed",
@@ -214,6 +218,7 @@ fn lifecycle_next_state(kind: LifecycleEvidenceKind, outcome: LifecycleOutcome) 
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed) => "landing_failed",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) =>
 			"manual_attention_required",
+		(LifecycleEvidenceKind::CloseoutIntent, LifecycleOutcome::Intent) => "closeout_pending",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded) => "closed",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Failed) => "closeout_failed",
 		(_, LifecycleOutcome::NeedsManualAttention) => "manual_attention_required",
@@ -238,6 +243,7 @@ fn lifecycle_phase(
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed) => "landing_failed",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::NeedsManualAttention) =>
 			"manual_attention_required",
+		(LifecycleEvidenceKind::CloseoutIntent, LifecycleOutcome::Intent) => "closeout_pending",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded) => "closed",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Failed) => "closeout_failed",
 		(_, LifecycleOutcome::NeedsManualAttention) => "manual_attention_required",
@@ -272,6 +278,8 @@ fn lifecycle_next_action(
 			"run_retained_closeout_adapter",
 		(LifecycleEvidenceKind::LandingReadback, LifecycleOutcome::Failed, _) =>
 			"repair_landing_failure_or_request_manual_attention",
+		(LifecycleEvidenceKind::CloseoutIntent, LifecycleOutcome::Intent, _) =>
+			"run_retained_closeout_adapter",
 		(LifecycleEvidenceKind::CloseoutCompletion, LifecycleOutcome::Succeeded, _) => "no_action",
 		(_, LifecycleOutcome::NeedsManualAttention, _) => "request_manual_attention",
 		_ => "continue_lifecycle",
@@ -368,5 +376,66 @@ mod tests {
 			LIFECYCLE_EVENT_SCHEMA_VERSION
 		);
 		assert_eq!(decision.authority_record_envelope.authority_record, decision.authority_record);
+	}
+
+	#[test]
+	fn closeout_intent_is_retryable_non_terminal_authority() {
+		let facts =
+			orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+				project_id: "pubfi",
+				issue_id: "PUB-1704",
+				review_lifecycle: None,
+				review_state: &PullRequestReviewState {
+					url: String::from("https://github.com/helixbox/pubfi-mono/pull/826"),
+					state: String::from("OPEN"),
+					is_draft: false,
+					review_decision: Some(String::from("APPROVED")),
+					merge_commit_allowed: false,
+					pending_review_requests: 0,
+					mergeable: String::from("CONFLICTING"),
+					merge_state_status: String::from("DIRTY"),
+					base_ref_oid: Some(String::from("base-sha")),
+					head_ref_name: String::from("y/pubfi-pub-1704"),
+					head_ref_oid: String::from("obsolete-head"),
+					merge_commit_oid: Some(String::from("successor-merge")),
+					head_repository_name: None,
+					head_repository_owner: None,
+					status_check_rollup_state: Some(String::from("SUCCESS")),
+					required_status_contexts: Vec::new(),
+					unresolved_review_threads: 0,
+					issue_description_external_review_thumbs_up_count: 0,
+					issue_comments: Vec::new(),
+					reviews: Vec::new(),
+				},
+				worktree_path: Path::new(".worktrees/PUB-1704"),
+				review_level: ReviewLevel::Strict,
+				phase: "superseded_closeout_recovery",
+				landing_state: Some("superseded"),
+				closeout_state: Some("not_started"),
+				validated_head_sha: Some("obsolete-head"),
+				review_checkpoint_phase: None,
+				review_checkpoint_status: None,
+			});
+		let decision = super::decide_lifecycle_transition(LifecycleDecisionInput {
+			facts: &facts,
+			previous: None,
+			evidence_kind: LifecycleEvidenceKind::CloseoutIntent,
+			outcome: LifecycleOutcome::Intent,
+			merge_commit: Some("successor-merge"),
+			cleanup_state: Some("pending"),
+			authority: "issue_authority",
+			actor: "superseded_closeout_recovery",
+			idempotency_key: "pubfi:PUB-1704:successor-merge:superseded_closeout_recovery:pending",
+			correlation_id: "run-1",
+			causation_id: Some("superseded_closeout_recovery_pr_close_authorized"),
+			decided_at: "2026-07-09T00:00:00Z",
+		});
+
+		assert_eq!(decision.authority_record.next_state, "closeout_pending");
+		assert_eq!(decision.authority_record.phase, "closeout_pending");
+		assert_eq!(decision.authority_record.cleanup_state, "pending");
+		assert_eq!(decision.authority_record.next_action, "run_retained_closeout_adapter");
+		assert_ne!(decision.authority_record.next_state, "closed");
+		assert_ne!(decision.authority_record.next_action, "no_action");
 	}
 }
