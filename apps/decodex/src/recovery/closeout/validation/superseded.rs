@@ -235,7 +235,29 @@ fn ensure_issue_has_no_live_runtime_ownership(
 			);
 		}
 
-		for attempt in context.state_store.list_run_attempts_for_issue(&issue_key)? {
+		ensure_issue_has_no_active_run_control_channel(context, issue, &issue_key)?;
+
+		let attempts = context.state_store.list_run_attempts_for_issue(&issue_key)?;
+		let private_events = context
+			.state_store
+			.list_private_execution_events_for_issue(context.config.service_id(), &issue_key)?;
+
+		if let Some(event) = private_events.iter().find(|event| {
+			!attempts.iter().any(|attempt| {
+				attempt.run_id() == event.run_id()
+					&& attempt.attempt_number() == event.attempt_number()
+			})
+		}) {
+			eyre::bail!(
+				"Issue `{}` still has retained private execution evidence `{}` for run `{}` attempt {} without a matching run attempt; superseded closeout recovery requires stale private evidence to be cleared or classified by explicit recovery before terminalization.",
+				issue.identifier,
+				event.event_type(),
+				event.run_id(),
+				event.attempt_number()
+			);
+		}
+
+		for attempt in attempts {
 			if !orchestrator::local_run_attempt_status_is_terminal(attempt.status()) {
 				eyre::bail!(
 					"Issue `{}` still has non-terminal {} run `{}` for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
@@ -245,8 +267,33 @@ fn ensure_issue_has_no_live_runtime_ownership(
 				);
 			}
 
-			ensure_run_attempt_has_no_durable_runtime_evidence(context, issue, &attempt)?;
+			ensure_run_attempt_has_no_durable_runtime_evidence(
+				context,
+				issue,
+				&attempt,
+				&private_events,
+			)?;
 		}
+	}
+
+	Ok(())
+}
+
+fn ensure_issue_has_no_active_run_control_channel(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	issue_key: &str,
+) -> Result<()> {
+	if let Some(channel) = context
+		.state_store
+		.active_run_control_channel_for_issue(context.config.service_id(), issue_key)?
+	{
+		eyre::bail!(
+			"Issue `{}` still has active run-control channel ownership for run `{}` attempt {}; superseded closeout recovery requires explicit stale-lane recovery before terminalization.",
+			issue.identifier,
+			channel.run_id(),
+			channel.attempt_number()
+		);
 	}
 
 	Ok(())
@@ -256,25 +303,21 @@ fn ensure_run_attempt_has_no_durable_runtime_evidence(
 	context: &RecoveryContext,
 	issue: &TrackerIssue,
 	attempt: &state::RunAttempt,
+	issue_private_events: &[state::PrivateExecutionEvent],
 ) -> Result<()> {
 	let run_id = attempt.run_id();
 	let attempt_number = attempt.attempt_number();
-	let private_events = context.state_store.list_private_execution_events_for_run_attempt(
-		context.config.service_id(),
-		run_id,
-		attempt_number,
-	)?;
+	let private_events = issue_private_events
+		.iter()
+		.filter(|event| event.run_id() == run_id && event.attempt_number() == attempt_number)
+		.collect::<Vec<_>>();
 
 	if let Some(event) = private_events.iter().find(|event| {
 		event.event_type() == "progress_checkpoint"
-			|| !evidence::stale_active_private_event_allows_release(
-				event,
-				StaleActiveProcessLiveness::NotAlive,
-				false,
-			)
+			|| !superseded_private_event_allows_terminalization(event)
 	}) {
 		eyre::bail!(
-			"Issue `{}` still has retained private progress evidence `{}` for run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires stale progress evidence to be cleared or classified by explicit recovery before terminalization.",
+			"Issue `{}` still has retained private execution evidence `{}` for run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires stale private evidence to be cleared or classified by explicit recovery before terminalization.",
 			issue.identifier,
 			event.event_type()
 		);
@@ -295,6 +338,37 @@ fn ensure_run_attempt_has_no_durable_runtime_evidence(
 	}
 
 	Ok(())
+}
+
+fn superseded_private_event_allows_terminalization(event: &state::PrivateExecutionEvent) -> bool {
+	// Superseded closeout independently rejects active control rows, non-terminal attempts, and
+	// progress/protocol/activity evidence. The stale-active release allowlist is therefore limited
+	// here to shaped historical telemetry that does not itself retain execution ownership.
+	let payload = event.payload();
+
+	match event.event_type() {
+		"control_channel_published" => {
+			return payload.get("schema").and_then(serde_json::Value::as_str)
+				== Some("decodex.run_control_channel/v1")
+				&& payload.get("transport").and_then(serde_json::Value::as_str).is_some()
+				&& payload.get("channel_path").and_then(serde_json::Value::as_str).is_some()
+				&& payload.get("status").and_then(serde_json::Value::as_str) == Some("active")
+				&& payload.get("published_at").and_then(serde_json::Value::as_str).is_some();
+		},
+		"phase_goal_set" => {
+			return payload.get("schema").and_then(serde_json::Value::as_str)
+				== Some("decodex.phase_goal_signal/1")
+				&& payload.get("phase").and_then(serde_json::Value::as_str).is_some()
+				&& payload.get("payload").is_some_and(serde_json::Value::is_object);
+		},
+		_ => {},
+	}
+
+	evidence::stale_active_private_event_allows_release(
+		event,
+		StaleActiveProcessLiveness::NotAlive,
+		false,
+	)
 }
 
 fn ensure_retained_worktree_marker_has_no_live_runtime_ownership(
@@ -617,6 +691,178 @@ mod tests {
 	}
 
 	#[test]
+	fn terminalizable_guard_rejects_active_control_channel_after_terminal_attempt() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		for (case, issue_key) in
+			[issue.id.as_str(), issue.identifier.as_str()].into_iter().enumerate()
+		{
+			let state_path = temp_dir.path().join(format!("active-control-channel-{case}.sqlite3"));
+			let channel_path = temp_dir.path().join(format!("run-control-{case}.channel"));
+			let run_id = format!("run-control-{case}");
+			let mut context =
+				sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+
+			context.state_store = StateStore::open(&state_path).expect("state store should open");
+			context
+				.state_store
+				.upsert_lease(context.config.service_id(), issue_key, &run_id, "Todo")
+				.expect("lease should persist");
+			context
+				.state_store
+				.record_run_attempt(&run_id, issue_key, 1, "running")
+				.expect("run should persist");
+			context
+				.state_store
+				.publish_run_control_channel_for_active_attempt(
+					&run_id,
+					1,
+					&channel_path,
+					"local_file",
+				)
+				.expect("control channel should publish")
+				.expect("control channel should be active");
+			context
+				.state_store
+				.update_run_status(&run_id, "failed")
+				.expect("run should become terminal");
+			context
+				.state_store
+				.clear_lease(issue_key)
+				.expect("lease should clear without retiring the channel");
+			context.state_store = StateStore::open(&state_path).expect("state store should reopen");
+
+			let error =
+				ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+					.expect_err("superseded closeout should reject an active control channel");
+
+			assert!(error.to_string().contains("active run-control channel ownership"));
+			assert!(error.to_string().contains(&run_id));
+		}
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_private_evidence_without_attempt_row() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		for (case, issue_key) in
+			[issue.id.as_str(), issue.identifier.as_str()].into_iter().enumerate()
+		{
+			let state_path =
+				temp_dir.path().join(format!("orphan-private-evidence-{case}.sqlite3"));
+			let run_id = format!("run-without-attempt-{case}");
+			let mut context =
+				sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+
+			context.state_store = StateStore::open(&state_path).expect("state store should open");
+			context
+				.state_store
+				.append_private_execution_event(
+					context.config.service_id(),
+					issue_key,
+					&run_id,
+					1,
+					"phase_goal_set",
+					serde_json::json!({"phase": "implement_to_validation_ready"}),
+				)
+				.expect("orphan private evidence should persist");
+			context.state_store = StateStore::open(&state_path).expect("state store should reopen");
+
+			let error =
+				ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+					.expect_err(
+						"superseded closeout should reject private evidence without an attempt",
+					);
+
+			assert!(error.to_string().contains(&run_id));
+			assert!(error.to_string().contains("without a matching run attempt"));
+		}
+	}
+
+	#[test]
+	fn terminalizable_guard_allows_shaped_historical_private_telemetry() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.record_run_attempt("run-classification", &issue.id, 1, "failed")
+			.expect("terminal run should persist");
+		context
+			.state_store
+			.append_private_execution_event(
+				context.config.service_id(),
+				&issue.id,
+				"run-classification",
+				1,
+				"phase_goal_set",
+				serde_json::json!({
+					"schema": "decodex.phase_goal_signal/1",
+					"phase": "implement_to_validation_ready",
+					"payload": {"status": "active"},
+				}),
+			)
+			.expect("private evidence should persist");
+
+		context
+			.state_store
+			.append_private_execution_event(
+				context.config.service_id(),
+				&issue.id,
+				"run-classification",
+				1,
+				"control_channel_published",
+				serde_json::json!({
+					"schema": "decodex.run_control_channel/v1",
+					"transport": "local_file",
+					"channel_path": ".decodex-run-control/run-classification-1.channel",
+					"status": "active",
+					"published_at": "2026-07-09T00:00:00Z",
+				}),
+			)
+			.expect("historical control telemetry should persist");
+
+		ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect("shaped historical telemetry should not retain runtime ownership");
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_malformed_historical_private_telemetry() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.record_run_attempt("run-malformed-telemetry", &issue.id, 1, "failed")
+			.expect("terminal run should persist");
+		context
+			.state_store
+			.append_private_execution_event(
+				context.config.service_id(),
+				&issue.id,
+				"run-malformed-telemetry",
+				1,
+				"control_channel_published",
+				serde_json::json!({"status": "active"}),
+			)
+			.expect("malformed telemetry should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("unshaped historical telemetry should fail closed");
+
+		assert!(error.to_string().contains("control_channel_published"));
+		assert!(error.to_string().contains("private execution evidence"));
+	}
+
+	#[test]
 	fn terminalizable_guard_rejects_durable_private_progress_without_marker() {
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let state_path = temp_dir.path().join("private-progress.sqlite3");
@@ -652,7 +898,7 @@ mod tests {
 			.expect_err("superseded closeout should reject durable private progress");
 
 		assert!(error.to_string().contains("run-private-progress"));
-		assert!(error.to_string().contains("private progress evidence"));
+		assert!(error.to_string().contains("private execution evidence"));
 	}
 
 	#[test]

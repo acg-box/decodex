@@ -9,6 +9,30 @@ use crate::{
 };
 
 impl StateStore {
+	/// Read one active run-control channel for an issue, when retained runtime control exists.
+	pub(crate) fn active_run_control_channel_for_issue(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<Option<RunControlChannel>> {
+		let state = self.lock()?;
+
+		Ok(state
+			.control_channels
+			.values()
+			.filter(|channel| {
+				channel.project_id == project_id
+					&& channel.issue_id == issue_id
+					&& channel.status == RUN_CONTROL_CHANNEL_STATUS_ACTIVE
+			})
+			.max_by(|left, right| {
+				left.attempt_number
+					.cmp(&right.attempt_number)
+					.then_with(|| left.run_id.cmp(&right.run_id))
+			})
+			.map(RunControlChannelRecord::as_public))
+	}
+
 	/// Publish the local control channel for an active attempt when the runtime owns it.
 	pub(crate) fn publish_run_control_channel_for_active_attempt(
 		&self,

@@ -46,12 +46,15 @@ service labels, recovery, or lane-control details matter.
   `decodex recover superseded-closeout <ISSUE> --pr <OLD_PR> --successor-issue <ISSUE> --successor-pr <MERGED_PR> --dry-run`
   before live superseded closeout. The obsolete issue must have no queue, active,
   or needs-attention labels or live runtime ownership, including non-terminal
-  attempts such as `continuation_pending`, retained retry schedules on the
-  worktree marker, and retained worktree markers that still show live process
-  or active thread. Any retained protocol, activity, or progress evidence also
-  blocks terminalization when the marker process is dead or no matching latest
-  attempt row exists; explicit stale-lane recovery must clear or classify that
-  evidence first. The
+  attempts such as `continuation_pending`, active issue-scoped run-control
+  channels, retained retry schedules on the worktree marker, and retained
+  worktree markers that still show live process or active thread. Any retained
+  protocol, activity, or progress evidence also blocks terminalization when the
+  marker process is dead, a private event has no matching attempt row, or no
+  matching latest attempt row exists; explicit stale-lane recovery must clear or
+  classify that evidence first. Shaped historical telemetry is non-owning only
+  after the independent channel, attempt, marker, protocol, activity, and
+  progress guards pass. The
   successor issue must expose a Decodex ledger record for the exact successor
   PR head and merge commit. Live superseded
   closeout records retryable pending closeout authority before public Linear or
