@@ -5,11 +5,21 @@ use crate::{
 			FakeTracker, TEST_SERVICE_ID, recovery_terminal_support, {self},
 		},
 	},
-	state::StateStore,
+	state::{ReviewLifecycleTransitionInput, StateStore},
 	test_support,
 	tracker::{self, TrackerState, records},
 	worktree::WorktreeManager,
 };
+
+struct StaleReviewWaitSync<'a> {
+	service_id: &'a str,
+	issue_id: &'a str,
+	branch_name: &'a str,
+	run_id: &'a str,
+	attempt_number: i64,
+	pr_url: &'a str,
+	head_oid: &'a str,
+}
 
 #[test]
 fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
@@ -78,6 +88,8 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 		&worktree,
 		"pub-701-attempt-3-closeout",
 	);
+	let run_id = issue_run.run_id.clone();
+	let attempt_number = issue_run.attempt_number;
 
 	state_store
 		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "starting")
@@ -111,6 +123,18 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 	assert_eq!(lifecycle_record.next_state(), "closed");
 	assert_eq!(lifecycle_record.transition(), "closeout_completed");
 	assert_eq!(lifecycle_record.cleanup_state(), "completed");
+	assert_stale_review_wait_sync_preserves_closed_lifecycle(
+		&state_store,
+		StaleReviewWaitSync {
+			service_id: config.service_id(),
+			issue_id: &issue.id,
+			branch_name: &worktree.branch_name,
+			run_id: &run_id,
+			attempt_number,
+			pr_url,
+			head_oid: &head_oid,
+		},
+	);
 	assert!(!worktree.path.exists(), "deterministic closeout should remove the retained worktree");
 	assert!(
 		state_store
@@ -128,4 +152,50 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 		2,
 		"deterministic closeout should clear active and queue lane labels"
 	);
+}
+
+fn assert_stale_review_wait_sync_preserves_closed_lifecycle(
+	state_store: &StateStore,
+	input: StaleReviewWaitSync<'_>,
+) {
+	let event_count_before_stale_sync = state_store
+		.list_private_execution_events_for_issue(input.service_id, input.issue_id)
+		.expect("private events should list")
+		.len();
+
+	state_store
+		.record_review_lifecycle_transition(
+			input.service_id,
+			input.issue_id,
+			ReviewLifecycleTransitionInput {
+				run_id: input.run_id,
+				attempt_number: input.attempt_number,
+				branch_name: input.branch_name,
+				pr_url: input.pr_url,
+				head_sha: input.head_oid,
+				phase: "request_pending",
+				request_comment_database_id: None,
+				request_created_at_unix_epoch: None,
+				request_description_thumbs_up_count: None,
+				request_retry_count: 1,
+				external_round_count: 0,
+				auto_merge_enabled_at_unix_epoch: None,
+			},
+		)
+		.expect("stale review-wait sync after closeout should be ignored");
+
+	let preserved_lifecycle_record = state_store
+		.review_lifecycle_record(input.service_id, input.issue_id, input.branch_name)
+		.expect("lifecycle authority lookup should succeed")
+		.expect("deterministic closeout should preserve lifecycle authority");
+	let event_count_after_stale_sync = state_store
+		.list_private_execution_events_for_issue(input.service_id, input.issue_id)
+		.expect("private events should list")
+		.len();
+
+	assert_eq!(preserved_lifecycle_record.next_state(), "closed");
+	assert_eq!(preserved_lifecycle_record.transition(), "closeout_completed");
+	assert_eq!(preserved_lifecycle_record.next_action(), "no_action");
+	assert_eq!(preserved_lifecycle_record.phase(), "closed");
+	assert_eq!(event_count_after_stale_sync, event_count_before_stale_sync);
 }

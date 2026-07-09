@@ -8,4 +8,5 @@ pub(super) use crate::recovery::{
 	diagnostic_binding, manual_adopt_run_id, validate_adopt_existing_worktree_mapping,
 	validate_adopt_issue_state_for_policy, validate_adopt_landing_state,
 	validate_rebind_issue_state_for_policy, write_review_lifecycle_fixtures_with_rollback,
+	write_review_lifecycle_with_rollback,
 };
