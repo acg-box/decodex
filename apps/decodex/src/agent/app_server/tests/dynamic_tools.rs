@@ -27,7 +27,7 @@ fn dynamic_tool_call_rejects_hidden_review_checkpoint_tool() {
 		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
 
 	assert!(!dispatch.response.success);
-	assert_eq!(*handler.called.borrow(), false);
+	assert!(!(*handler.called.borrow()));
 	assert!(matches!(
 		dispatch.response.content_items.as_slice(),
 		[DynamicToolContentItem::InputText { text }]
