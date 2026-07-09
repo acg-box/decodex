@@ -1,35 +1,13 @@
 use crate::orchestrator::operator_http::{
 	self, OPERATOR_ACCOUNTS_ENDPOINT_PATH, OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH,
-	OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH, OPERATOR_DASHBOARD_ENDPOINT_PATH,
 	OPERATOR_DASHBOARD_WS_ENDPOINT_PATH, OPERATOR_LANE_INSPECT_ENDPOINT_PATH,
 	OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH, OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH,
 	OPERATOR_LANE_STEER_ENDPOINT_PATH, OPERATOR_LINEAR_SCAN_ENDPOINT_PATH,
 	OPERATOR_LIVE_ENDPOINT_PATH, OperatorRequestRoute,
-	assets::{
-		OPERATOR_DASHBOARD_HTML, OPERATOR_DASHBOARD_ICON_PNG, OPERATOR_DASHBOARD_LOGO_ICO,
-		OPERATOR_DASHBOARD_LOGO_TOUCH_PNG,
-	},
 };
 
 pub(super) fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> Vec<u8> {
 	match route {
-		OperatorRequestRoute::Dashboard => operator_http::http_response_bytes(
-			"200 OK",
-			"text/html; charset=utf-8",
-			OPERATOR_DASHBOARD_HTML.as_bytes(),
-		),
-		OperatorRequestRoute::DashboardIconPng =>
-			operator_http::http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG),
-		OperatorRequestRoute::DashboardLogoIco => operator_http::http_response_bytes(
-			"200 OK",
-			"image/x-icon",
-			OPERATOR_DASHBOARD_LOGO_ICO,
-		),
-		OperatorRequestRoute::DashboardLogoTouchPng => operator_http::http_response_bytes(
-			"200 OK",
-			"image/png",
-			OPERATOR_DASHBOARD_LOGO_TOUCH_PNG,
-		),
 		OperatorRequestRoute::DashboardWs => operator_http::websocket_upgrade_required_response(),
 		OperatorRequestRoute::AppSnapshot =>
 			operator_http::http_response_bytes("200 OK", "application/json", b"{}"),
@@ -96,11 +74,6 @@ pub(super) fn parse_operator_state_request_route(
 		.map_or(path_without_query, |(path_without_fragment, _)| path_without_fragment);
 
 	match (method, normalized_path) {
-		("GET", OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH) =>
-			Ok(OperatorRequestRoute::Dashboard),
-		("GET", "/assets/icon.png") => Ok(OperatorRequestRoute::DashboardIconPng),
-		("GET", "/assets/logo.ico") => Ok(OperatorRequestRoute::DashboardLogoIco),
-		("GET", "/assets/logo-touch.png") => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
 		("GET", OPERATOR_DASHBOARD_WS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::DashboardWs),
 		("GET", OPERATOR_LIVE_ENDPOINT_PATH) => Ok(OperatorRequestRoute::Live),
 		("GET", OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AppSnapshot),
@@ -120,9 +93,7 @@ pub(super) fn parse_operator_state_request_route(
 		("POST", "/api/accounts/reroll-name") => Ok(OperatorRequestRoute::AccountRerollName),
 		(
 			_,
-			OPERATOR_DASHBOARD_ENDPOINT_PATH
-			| OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH
-			| OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
+			OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
 			| OPERATOR_LIVE_ENDPOINT_PATH
 			| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
 			| OPERATOR_LINEAR_SCAN_ENDPOINT_PATH

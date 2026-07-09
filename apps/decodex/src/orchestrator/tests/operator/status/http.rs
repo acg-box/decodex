@@ -1,5 +1,4 @@
 mod accounts;
-mod dashboard_html;
 mod lane_control;
 mod run_activity;
 mod state_endpoint;
@@ -8,8 +7,7 @@ mod websocket;
 use crate::orchestrator::tests::operator::status::{
 	Arc, Child, CodexAccountActivitySummary, CodexAccountMarker, Command,
 	DASHBOARD_MAX_WEBSOCKET_CLIENTS, DashboardClientSubscription, DashboardEventHub, Duration,
-	ErrorKind, Instant, Mutex, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
-	OPERATOR_DASHBOARD_ENDPOINT_PATH, OffsetDateTime, OperatorControlRequests, Path, PathBuf,
+	ErrorKind, Instant, Mutex, OffsetDateTime, OperatorControlRequests, Path, PathBuf,
 	ProjectRegistration, ProtocolActivityMarker, ProtocolActivitySummary,
 	PublishedOperatorSnapshot, RUN_CONTROL_CHANNEL_DIR, RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
 	Read, ServiceConfig, Shutdown, SocketAddr, StateStore, TcpListener, TcpStream, TempDir,

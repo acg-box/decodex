@@ -131,10 +131,10 @@ pub(crate) fn parse_dashboard_websocket_client_frame(
 	};
 
 	if payload_length > DASHBOARD_WS_MESSAGE_MAX_BYTES {
-		eyre::bail!("WebSocket client frame exceeded the dashboard message limit.");
+		eyre::bail!("WebSocket client frame exceeded the operator message limit.");
 	}
 	if !fin {
-		eyre::bail!("Fragmented dashboard WebSocket messages are not supported.");
+		eyre::bail!("Fragmented operator WebSocket messages are not supported.");
 	}
 	if !masked {
 		eyre::bail!("Dashboard WebSocket client frame was not masked.");

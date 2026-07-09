@@ -108,7 +108,7 @@ function handleControlText(context, socket, text) {
 				message,
 				false,
 				"unsupported",
-				"Mock dashboard control type is unsupported.",
+				"Mock operator control type is unsupported.",
 			),
 		);
 		return;
@@ -125,7 +125,7 @@ function sendInvalidJson(socket) {
 			action: "control",
 			accepted: false,
 			status: "invalid_json",
-			message: "Mock dashboard control received invalid JSON.",
+			message: "Mock operator control received invalid JSON.",
 		},
 	});
 }
@@ -178,7 +178,7 @@ function handleControlAction(context, socket, message) {
 			message,
 			false,
 			"unsupported",
-			"Mock dashboard control action is unsupported.",
+			"Mock operator control action is unsupported.",
 		),
 	);
 }
