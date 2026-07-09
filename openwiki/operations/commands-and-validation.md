@@ -114,7 +114,7 @@ Success requires head/base preconditions, preventing stale green statuses after 
 
 GitHub rulesets for this repository require CodeQL code scanning before merge.
 The checked-in workflow is `.github/workflows/codeql.yml` and runs on pushes to
-`main` and `xy/**`, pull requests targeting `main`, and a weekly schedule. It
+`main`, pull requests targeting `main`, and a weekly schedule. It
 analyzes Rust and JavaScript/TypeScript with no-build CodeQL mode so the
 required code-scanning tool is configured for PR heads without adding a second
 repository build gate.
