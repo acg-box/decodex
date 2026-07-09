@@ -11,8 +11,7 @@ source-backed release checkpoint.
 
 ## Read First
 
-- `docs/spec/release-delta.md`
-- `docs/runbook/local-github-signal-workflow.md`
+- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `automations/radar/skills/codex-upstream-triage/SKILL.md` and
   `automations/radar/skills/codex-code-analysis/SKILL.md` only when routing missing source analysis
 

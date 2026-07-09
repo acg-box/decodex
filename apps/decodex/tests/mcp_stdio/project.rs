@@ -12,9 +12,8 @@ pub(crate) fn test_repo() -> TempDir {
 	let repo = TempDir::new().expect("temp repo should exist");
 
 	write_file(repo.path().join("Cargo.toml"), "[workspace]\n");
-	write_file(repo.path().join("docs/index.md"), "# Docs\n");
-	write_file(repo.path().join("docs/policy.md"), "# Policy\n");
-	write_file(repo.path().join("docs/spec/runtime.md"), "# Runtime\n");
+	write_file(repo.path().join("openwiki/quickstart.md"), "# Quickstart\n");
+	write_file(repo.path().join("openwiki/specs/contracts-and-data.md"), "# Contracts\n");
 
 	repo
 }
@@ -30,7 +29,7 @@ pub(crate) fn test_project() -> TestProject {
 	fs::create_dir_all(&project_config_dir).expect("project config dir should exist");
 
 	write_file(repo_path.join("README.md"), "test repo\n");
-	write_file(repo_path.join("docs/index.md"), "# Docs\n");
+	write_file(repo_path.join("openwiki/quickstart.md"), "# Quickstart\n");
 	write_file(
 		project_config_dir.join("WORKFLOW.md"),
 		r#"+++

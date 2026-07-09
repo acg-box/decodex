@@ -20,7 +20,7 @@ fn resources_templates_list_exposes_parameterized_resources() {
 		.filter_map(|template| template.get("uriTemplate").and_then(Value::as_str))
 		.collect::<Vec<_>>();
 
-	assert!(uri_templates.contains(&"decodex://docs/spec/{topic}"));
+	assert!(uri_templates.contains(&"decodex://openwiki/specs/{topic}"));
 	assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane-control/{issue}"));
 	assert!(uri_templates.contains(&"decodex://projects/{project_id}/status_live"));
 	assert!(uri_templates.contains(&"decodex://projects/{project_id}/activity_tail"));

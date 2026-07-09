@@ -5,6 +5,6 @@ mod types;
 
 #[cfg(test)] pub(super) use types::ResourceContent;
 
-const DOCS_HOST: &str = "docs";
+const OPENWIKI_HOST: &str = "openwiki";
 const DECISION_CONTRACTS_HOST: &str = "decision-contracts";
 const PROJECTS_HOST: &str = "projects";

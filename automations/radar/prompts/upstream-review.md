@@ -13,11 +13,7 @@ Required reads:
 - `automations/radar/skills/codex-upstream-triage/SKILL.md`
 - `automations/radar/skills/codex-code-analysis/SKILL.md`
 - `automations/radar/skills/github-signal/SKILL.md`
-- `docs/spec/upstream-review.md`
-- `docs/spec/github-change-bundle.md`
-- `docs/spec/signal-entry.md`
-- `docs/spec/upstream-impact.md`
-- `docs/spec/control-plane-upgrade-candidate.md`
+- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 
 Workflow:
 1. Refresh deterministic upstream state with `radar refresh-upstream-queue` and, when release context matters, `radar refresh-release-delta`.
