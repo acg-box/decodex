@@ -104,7 +104,7 @@ Source entrypoints:
 - `social_post/v1`
 - social artifact validation and reservation workflows
 
-Generated Publisher state belongs under `.agent/automations/decodex/cache/social`. Publisher consumes Radar handoff evidence, but must not refresh upstream state or perform fresh upstream source analysis (`automations/decodex/README.md`).
+Generated Publisher state belongs under `.agent/automations/decodex/cache/social`. Publisher consumes Radar handoff evidence, but must not refresh upstream state or perform fresh upstream source analysis (`automations/decodex/README.md`). See [Radar Publisher contracts](radar-publisher-contracts.md) for reservation and social artifact boundaries.
 
 Example command:
 
