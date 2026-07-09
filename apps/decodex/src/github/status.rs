@@ -53,6 +53,7 @@ struct CommitStatusCreator {
 	login: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn inspect_required_commit_status_contexts(
 	cwd: &Path,
 	owner: &str,

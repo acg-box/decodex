@@ -29,7 +29,7 @@ pub(crate) fn handle_dashboard_control_action(
 			action,
 			true,
 			"acknowledged",
-				"Operator acknowledgement recorded for this WebSocket session only.",
+			"Operator acknowledgement recorded for this WebSocket session only.",
 		),
 		_ => dashboard_unsupported_control_ack(session, message, action),
 	}
