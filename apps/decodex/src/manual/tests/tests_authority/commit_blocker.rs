@@ -5,9 +5,9 @@ use tempfile::TempDir;
 use crate::{
 	active_run_env::{
 		DECODEX_ACTIVE_RUN_ID_ENV, DECODEX_ACTIVE_RUN_ISSUE_ID_ENV,
-		DECODEX_ACTIVE_RUN_SERVICE_ID_ENV,
+		DECODEX_ACTIVE_RUN_ISSUE_IDENTIFIER_ENV, DECODEX_ACTIVE_RUN_SERVICE_ID_ENV,
 	},
-	manual::{self},
+	manual::{self, ManualAuthority},
 	state::StateStore,
 	test_support::TestEnvVarGuard,
 };
@@ -23,13 +23,13 @@ fn manual_commit_blocker_rejects_active_claimed_managed_worktree() {
 	state_store
 		.upsert_worktree(
 			"decodex",
-			"issue-1",
+			"linear-id-225",
 			"y/decodex-xy-225",
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree mapping should persist");
 	state_store
-		.upsert_lease("decodex", "issue-1", "run-1", "In Progress")
+		.upsert_lease("decodex", "linear-id-225", "run-1", "In Progress")
 		.expect("active lease should persist");
 
 	let blocker = manual::manual_commit_active_lane_blocker(
@@ -37,11 +37,12 @@ fn manual_commit_blocker_rejects_active_claimed_managed_worktree() {
 		"decodex",
 		&worktree_path,
 		Some("y/decodex-xy-225"),
+		&ManualAuthority::Issue("XY-225".to_owned()),
 	)
 	.expect("manual commit blocker should evaluate")
 	.expect("active managed worktree should block");
 
-	assert_eq!(blocker.issue_id, "issue-1");
+	assert_eq!(blocker.issue_id, "linear-id-225");
 	assert_eq!(blocker.branch_name, "y/decodex-xy-225");
 	assert_eq!(blocker.worktree_path, worktree_path);
 }
@@ -54,7 +55,8 @@ fn manual_commit_blocker_allows_matching_active_run_context() {
 	let _env_guard = TestEnvVarGuard::set_many([
 		(DECODEX_ACTIVE_RUN_SERVICE_ID_ENV, "decodex"),
 		(DECODEX_ACTIVE_RUN_ID_ENV, "run-1"),
-		(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV, "issue-1"),
+		(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV, "linear-id-225"),
+		(DECODEX_ACTIVE_RUN_ISSUE_IDENTIFIER_ENV, "XY-225"),
 	]);
 
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
@@ -62,16 +64,16 @@ fn manual_commit_blocker_allows_matching_active_run_context() {
 	state_store
 		.upsert_worktree(
 			"decodex",
-			"issue-1",
+			"linear-id-225",
 			"y/decodex-xy-225",
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree mapping should persist");
 	state_store
-		.upsert_lease("decodex", "issue-1", "run-1", "In Progress")
+		.upsert_lease("decodex", "linear-id-225", "run-1", "In Progress")
 		.expect("active lease should persist");
 	state_store
-		.record_run_attempt("run-1", "issue-1", 1, "running")
+		.record_run_attempt("run-1", "linear-id-225", 1, "running")
 		.expect("active run attempt should persist");
 
 	assert!(
@@ -80,9 +82,94 @@ fn manual_commit_blocker_allows_matching_active_run_context() {
 			"decodex",
 			&worktree_path,
 			Some("y/decodex-xy-225"),
+			&ManualAuthority::Issue("XY-225".to_owned()),
 		)
 		.expect("manual commit blocker should evaluate")
 		.is_none()
+	);
+}
+
+#[test]
+fn manual_commit_blocker_rejects_active_run_manual_authority() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_path = temp_dir.path().join("XY-225");
+	let _env_guard = TestEnvVarGuard::set_many([
+		(DECODEX_ACTIVE_RUN_SERVICE_ID_ENV, "decodex"),
+		(DECODEX_ACTIVE_RUN_ID_ENV, "run-1"),
+		(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV, "linear-id-225"),
+		(DECODEX_ACTIVE_RUN_ISSUE_IDENTIFIER_ENV, "XY-225"),
+	]);
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.upsert_worktree(
+			"decodex",
+			"linear-id-225",
+			"y/decodex-xy-225",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should persist");
+	state_store
+		.upsert_lease("decodex", "linear-id-225", "run-1", "In Progress")
+		.expect("active lease should persist");
+	state_store
+		.record_run_attempt("run-1", "linear-id-225", 1, "running")
+		.expect("active run attempt should persist");
+
+	assert!(
+		manual::manual_commit_active_lane_blocker(
+			&state_store,
+			"decodex",
+			&worktree_path,
+			Some("y/decodex-xy-225"),
+			&ManualAuthority::Manual,
+		)
+		.expect("manual commit blocker should evaluate")
+		.is_some()
+	);
+}
+
+#[test]
+fn manual_commit_blocker_rejects_active_run_mismatched_authority() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_path = temp_dir.path().join("XY-225");
+	let _env_guard = TestEnvVarGuard::set_many([
+		(DECODEX_ACTIVE_RUN_SERVICE_ID_ENV, "decodex"),
+		(DECODEX_ACTIVE_RUN_ID_ENV, "run-1"),
+		(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV, "linear-id-225"),
+		(DECODEX_ACTIVE_RUN_ISSUE_IDENTIFIER_ENV, "XY-225"),
+	]);
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.upsert_worktree(
+			"decodex",
+			"linear-id-225",
+			"y/decodex-xy-225",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should persist");
+	state_store
+		.upsert_lease("decodex", "linear-id-225", "run-1", "In Progress")
+		.expect("active lease should persist");
+	state_store
+		.record_run_attempt("run-1", "linear-id-225", 1, "running")
+		.expect("active run attempt should persist");
+
+	assert!(
+		manual::manual_commit_active_lane_blocker(
+			&state_store,
+			"decodex",
+			&worktree_path,
+			Some("y/decodex-xy-225"),
+			&ManualAuthority::Issue("XY-226".to_owned()),
+		)
+		.expect("manual commit blocker should evaluate")
+		.is_some()
 	);
 }
 
@@ -94,7 +181,8 @@ fn manual_commit_blocker_rejects_stale_active_run_context() {
 	let _env_guard = TestEnvVarGuard::set_many([
 		(DECODEX_ACTIVE_RUN_SERVICE_ID_ENV, "decodex"),
 		(DECODEX_ACTIVE_RUN_ID_ENV, "run-1"),
-		(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV, "issue-1"),
+		(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV, "linear-id-225"),
+		(DECODEX_ACTIVE_RUN_ISSUE_IDENTIFIER_ENV, "XY-225"),
 	]);
 
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
@@ -102,16 +190,16 @@ fn manual_commit_blocker_rejects_stale_active_run_context() {
 	state_store
 		.upsert_worktree(
 			"decodex",
-			"issue-1",
+			"linear-id-225",
 			"y/decodex-xy-225",
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree mapping should persist");
 	state_store
-		.upsert_lease("decodex", "issue-1", "run-1", "In Progress")
+		.upsert_lease("decodex", "linear-id-225", "run-1", "In Progress")
 		.expect("active lease should persist");
 	state_store
-		.record_run_attempt("run-1", "issue-1", 1, "failed")
+		.record_run_attempt("run-1", "linear-id-225", 1, "failed")
 		.expect("terminal run attempt should persist");
 
 	assert!(
@@ -120,6 +208,7 @@ fn manual_commit_blocker_rejects_stale_active_run_context() {
 			"decodex",
 			&worktree_path,
 			Some("y/decodex-xy-225"),
+			&ManualAuthority::Issue("XY-225".to_owned()),
 		)
 		.expect("manual commit blocker should evaluate")
 		.is_some()
@@ -139,7 +228,7 @@ fn manual_commit_blocker_allows_unclaimed_or_unmapped_worktree() {
 	state_store
 		.upsert_worktree(
 			"decodex",
-			"issue-1",
+			"linear-id-225",
 			"y/decodex-xy-225",
 			&worktree_path.display().to_string(),
 		)
@@ -151,13 +240,14 @@ fn manual_commit_blocker_allows_unclaimed_or_unmapped_worktree() {
 			"decodex",
 			&worktree_path,
 			Some("y/decodex-xy-225"),
+			&ManualAuthority::Issue("XY-225".to_owned()),
 		)
 		.expect("unclaimed worktree should evaluate")
 		.is_none()
 	);
 
 	state_store
-		.upsert_lease("decodex", "issue-1", "run-1", "In Progress")
+		.upsert_lease("decodex", "linear-id-225", "run-1", "In Progress")
 		.expect("active lease should persist");
 
 	assert!(
@@ -166,6 +256,7 @@ fn manual_commit_blocker_allows_unclaimed_or_unmapped_worktree() {
 			"decodex",
 			&other_path,
 			Some("y/decodex-xy-226"),
+			&ManualAuthority::Issue("XY-226".to_owned()),
 		)
 		.expect("unmapped worktree should evaluate")
 		.is_none()

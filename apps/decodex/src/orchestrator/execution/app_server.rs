@@ -64,6 +64,7 @@ where
 			project_id: input.project.service_id().to_owned(),
 			run_id: input.issue_run.run_id.clone(),
 			issue_id: input.issue_run.issue.id.clone(),
+			issue_identifier: input.issue_run.issue.identifier.clone(),
 			attempt_number: input.issue_run.attempt_number,
 			listen: input.transport.to_owned(),
 			cwd: input.issue_run.worktree.path.display().to_string(),
