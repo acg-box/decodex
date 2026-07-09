@@ -3,7 +3,7 @@ use super::review::ReviewHandoffContext;
 #[derive(Debug)]
 pub(crate) struct NormalizedProgressCheckpoint {
 	pub(crate) phase: ExecutionProgressPhase,
-	pub(crate) docs_impact: DocsImpact,
+	pub(crate) openwiki_impact: OpenWikiImpact,
 	pub(crate) focus: String,
 	pub(crate) next_action: String,
 	pub(crate) blockers: Vec<String>,
@@ -62,13 +62,13 @@ impl ExecutionProgressPhase {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DocsImpact {
+pub(crate) enum OpenWikiImpact {
 	None,
 	UpdateRequired,
 	ResearchRequired,
 	DriftRequired,
 }
-impl DocsImpact {
+impl OpenWikiImpact {
 	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::None => "none",
@@ -85,7 +85,7 @@ impl DocsImpact {
 			"research_required" => Ok(Self::ResearchRequired),
 			"drift_required" => Ok(Self::DriftRequired),
 			other => Err(format!(
-				"`issue_progress_checkpoint` docs_impact must be `none`, `update_required`, `research_required`, or `drift_required`, not `{other}`."
+				"`issue_progress_checkpoint` openwiki_impact must be `none`, `update_required`, `research_required`, or `drift_required`, not `{other}`."
 			)),
 		}
 	}

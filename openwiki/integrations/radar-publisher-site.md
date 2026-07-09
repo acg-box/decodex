@@ -24,7 +24,7 @@ Required behavior:
 
 GitHub change bundles summarize PR or release source material for downstream review. They should preserve PR-first fields, commit/file summaries, analysis boundaries, and source URLs. They should not become a substitute for the target repo's own tests or review.
 
-Radar bundle tests intentionally treat upstream documentation-path and `README.md` references as external source material. That classification does not reintroduce a Decodex repo-local docs surface.
+Radar bundle tests intentionally treat upstream documentation-path and `README.md` references as external source material. That classification does not reintroduce a Decodex repo-local legacy documentation tree.
 
 ## Signal entries and homepage inclusion
 

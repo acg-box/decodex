@@ -14,8 +14,6 @@ pub(crate) enum AutonomySignalKind {
 	MetricRegression,
 	ExecutionFriction,
 	#[serde(rename = "openwiki_drift")]
-	#[serde(alias = "docs_plugin_drift")]
-	#[serde(alias = "docs_skill_drift")]
 	OpenWikiDrift,
 }
 impl AutonomySignalKind {
@@ -32,12 +30,6 @@ impl AutonomySignalKind {
 			Self::OpenWikiDrift => "openwiki_drift",
 		}
 	}
-
-	pub(crate) fn matches_stored_kind(self, value: &str) -> bool {
-		value == self.as_str()
-			|| matches!(self, Self::OpenWikiDrift)
-				&& matches!(value, "docs_plugin_drift" | "docs_skill_drift")
-	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -49,8 +41,6 @@ pub(crate) enum AutonomySignalSourceType {
 	Telemetry,
 	Runtime,
 	#[serde(rename = "openwiki")]
-	#[serde(alias = "docs")]
-	#[serde(alias = "open_wiki")]
 	OpenWiki,
 	Protocol,
 	Agent,

@@ -53,7 +53,8 @@ impl ValidationEvidence {
 				"continue validation; progress checkpoint evidence is optional until terminal finalize",
 			"stale_progress_checkpoint" =>
 				"ignore stale progress evidence or record current OpenWiki impact before terminal finalize",
-			"docs_impact_missing" => "record parseable docs_impact before terminal finalize",
+			"openwiki_impact_missing" =>
+				"record parseable openwiki_impact before terminal finalize",
 			"no_effective_delta" =>
 				"produce an issue-scoped effective delta before completing the phase goal again",
 			"non_goal_violation" =>

@@ -22,7 +22,7 @@ pub(in crate::orchestrator::tests) fn record_validation_evidence_progress_checkp
 			"progress_checkpoint",
 			serde_json::json!({
 				"phase": "verifying",
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 				"focus": "Validate phase-specific work before handoff.",
 				"next_action": "Complete the active phase goal.",
 				"blockers": blockers,

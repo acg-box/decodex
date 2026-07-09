@@ -57,10 +57,8 @@ fn tools_list_exposes_schema_bound_tools() {
 	assert!(
 		autonomy_signal_kind_schema.as_array().is_some_and(|kinds| {
 			kinds.iter().any(|kind| kind.as_str() == Some("openwiki_drift"))
-				&& !kinds.iter().any(|kind| kind.as_str() == Some("docs_plugin_drift"))
-				&& !kinds.iter().any(|kind| kind.as_str() == Some("docs_skill_drift"))
 		}),
-		"autonomy_submit_signal should expose only the current OpenWiki drift kind"
+		"autonomy_submit_signal should expose the current OpenWiki drift kind"
 	);
 
 	support::assert_tool_output_schema_variant(
