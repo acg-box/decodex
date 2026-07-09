@@ -39,6 +39,10 @@ Important behavior:
 - `--dry-run --explain` is queue explanation only and rejects a preferred issue.
 - Without a preferred issue, project selection may choose ordinary queued work, persisted Program dispatch nodes, retry candidates, retained closeout, or post-review work depending on runtime state.
 - With an issue, dispatch mode is inferred unless a daemon child request supplies one internally.
+- Retained post-review lanes that are waiting only for a missing runtime-owned
+  standard review checkpoint are eligible as post-review repair continuations, so
+  `decodex run <ISSUE>` can resume the retained lane instead of leaving the issue
+  as "No eligible issue found".
 - Tracker connector backoff is persisted and rendered instead of repeatedly failing the connector.
 - Baseline canonicalization guard may run before normal/program/retry dispatch when workflow canonicalization commands exist (`apps/decodex/src/orchestrator/baseline_guard.rs`).
 
