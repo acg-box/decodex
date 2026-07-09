@@ -172,6 +172,7 @@ pub(super) fn finalize_land_closeout(
 	Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_manual_land_lifecycle_decision(
 	ledger: &ManualLandLedgerContext<'_>,
 	review_level: ReviewLevel,

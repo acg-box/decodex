@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 	let (temp_dir, base_config, workflow) = tests::temp_project_layout();
 	let (gh_command_path, invocation_log_path) =
