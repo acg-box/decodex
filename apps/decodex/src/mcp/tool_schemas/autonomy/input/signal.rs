@@ -27,7 +27,7 @@ pub(in crate::mcp) fn autonomy_submit_signal_tool_input_schema() -> Value {
 					"protocol_drift",
 					"metric_regression",
 					"execution_friction",
-					"docs_plugin_drift"
+					"openwiki_drift"
 				]
 			},
 			"signal": {
