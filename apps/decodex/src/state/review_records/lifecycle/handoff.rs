@@ -1,3 +1,4 @@
+use super::terminal_lifecycle_authority_must_not_reenter_review;
 #[cfg(test)]
 use crate::state::{ReviewLifecycleHandoffFixture, runtime_records::ReviewLifecycleKey};
 use crate::{
@@ -20,6 +21,13 @@ impl StateStore {
 		issue_id: &str,
 		input: ReviewLifecycleHandoffInput<'_>,
 	) -> Result<()> {
+		if self
+			.review_lifecycle_record(project_id, issue_id, input.branch_name)?
+			.is_some_and(|record| terminal_lifecycle_authority_must_not_reenter_review(&record))
+		{
+			return Ok(());
+		}
+
 		record_handoff_lifecycle_authority(self, project_id, issue_id, &input)
 	}
 
@@ -31,6 +39,13 @@ impl StateStore {
 		issue_id: &str,
 		marker: &ReviewLifecycleHandoffFixture,
 	) -> Result<()> {
+		if self
+			.review_lifecycle_record(project_id, issue_id, marker.branch_name())?
+			.is_some_and(|record| terminal_lifecycle_authority_must_not_reenter_review(&record))
+		{
+			return Ok(());
+		}
+
 		record_handoff_lifecycle_authority(
 			self,
 			project_id,
@@ -119,6 +134,10 @@ fn record_handoff_lifecycle_authority(
 ) -> Result<()> {
 	let previous_record =
 		state_store.review_lifecycle_record(project_id, issue_id, input.branch_name)?;
+	if previous_record.as_ref().is_some_and(terminal_lifecycle_authority_must_not_reenter_review) {
+		return Ok(());
+	}
+
 	let previous = previous_record.as_ref().map(|record| PreviousLifecycleAuthority {
 		sequence: record.sequence(),
 		next_state: record.next_state(),
