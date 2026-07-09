@@ -54,7 +54,11 @@ service labels, recovery, or lane-control details matter.
   PR head and merge commit. Live superseded
   closeout records retryable pending closeout authority before public Linear or
   GitHub projections, then records completed closeout authority before public
-  cleanup projection and retained worktree cleanup.
+  cleanup projection and retained worktree cleanup. Closeout recovery retries
+  any local ledger duplicate whose matching public Linear comment is absent.
+- Merged closeout recovery records lifecycle authority before public Linear
+  closeout or cleanup projections and only clears retained run/worktree state
+  after required projections succeed or are confirmed already present.
 - Do not infer PR lineage from branch names, PR titles, Linear comments, status
   summaries, or stale snapshots.
 

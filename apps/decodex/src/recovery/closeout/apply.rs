@@ -23,9 +23,12 @@ use crate::{
 		context::RecoveryContext,
 		pull_request_inspection,
 	},
+	state::StateStore,
 	tracker::{
 		self, IssueTracker,
-		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
+		privacy_classifier::{
+			ConfiguredPublicProjectionPrivacyClassifier, PublicProjectionPrivacyClassifier,
+		},
 		records::{self, LinearExecutionEventRecord},
 	},
 };
@@ -77,45 +80,78 @@ pub(super) fn apply_merged_closeout_recovery(
 	context: &RecoveryContext,
 	validation: &MergedCloseoutValidation,
 ) -> Result<(bool, bool)> {
-	let closeout_event = events::merged_closeout_event(context, validation);
-	let cleanup_event = events::merged_closeout_cleanup_event(context, validation);
-	let closeout_recorded = write_merged_closeout_event(
-		context,
-		validation,
-		&closeout_event,
-		"Decodex merged closeout recovery: verified the PR was merged into the current default branch and reconciled the stale retained attention closeout ledger.",
-	)?;
-	let cleanup_recorded = match write_merged_closeout_event(
-		context,
-		validation,
-		&cleanup_event,
-		"Decodex merged closeout recovery: verified retained lane cleanup is already complete and recorded cleanup_complete.",
-	) {
-		Ok(cleanup_recorded) => cleanup_recorded,
-		Err(error) => {
-			if closeout_recorded {
-				context
-					.state_store
-					.forget_linear_execution_event(&closeout_event.idempotency_key)?;
-			}
+	let mut operations = MergedCloseoutRecoveryOperations { context, validation };
 
-			return Err(error);
-		},
-	};
+	apply_merged_closeout_recovery_sequence(&mut operations)
+}
 
-	if validation.worktree_mapping.is_some() {
-		context.state_store.clear_worktree(&validation.issue.id)?;
+trait MergedCloseoutRecoveryOperationsRunner {
+	fn record_lifecycle_authority(&mut self) -> Result<()>;
+	fn write_closeout_event(&mut self) -> Result<bool>;
+	fn write_cleanup_event(&mut self) -> Result<bool>;
+	fn clear_worktree_if_present(&mut self) -> Result<()>;
+	fn update_run_status(&mut self) -> Result<()>;
+}
 
-		if validation.issue.identifier != validation.issue.id {
-			context.state_store.clear_worktree(&validation.issue.identifier)?;
-		}
-	}
-
-	record_merged_closeout_lifecycle_authority(context, validation)?;
-
-	context.state_store.update_run_status(&validation.run_id, "succeeded")?;
+fn apply_merged_closeout_recovery_sequence(
+	operations: &mut impl MergedCloseoutRecoveryOperationsRunner,
+) -> Result<(bool, bool)> {
+	operations.record_lifecycle_authority()?;
+	let closeout_recorded = operations.write_closeout_event()?;
+	let cleanup_recorded = operations.write_cleanup_event()?;
+	operations.clear_worktree_if_present()?;
+	operations.update_run_status()?;
 
 	Ok((closeout_recorded, cleanup_recorded))
+}
+
+struct MergedCloseoutRecoveryOperations<'a> {
+	context: &'a RecoveryContext,
+	validation: &'a MergedCloseoutValidation,
+}
+
+impl MergedCloseoutRecoveryOperationsRunner for MergedCloseoutRecoveryOperations<'_> {
+	fn record_lifecycle_authority(&mut self) -> Result<()> {
+		record_merged_closeout_lifecycle_authority(self.context, self.validation)
+	}
+
+	fn write_closeout_event(&mut self) -> Result<bool> {
+		let closeout_event = events::merged_closeout_event(self.context, self.validation);
+
+		write_merged_closeout_event(
+			self.context,
+			self.validation,
+			&closeout_event,
+			"Decodex merged closeout recovery: verified the PR was merged into the current default branch and reconciled the stale retained attention closeout ledger.",
+		)
+	}
+
+	fn write_cleanup_event(&mut self) -> Result<bool> {
+		let cleanup_event = events::merged_closeout_cleanup_event(self.context, self.validation);
+
+		write_merged_closeout_event(
+			self.context,
+			self.validation,
+			&cleanup_event,
+			"Decodex merged closeout recovery: verified retained lane cleanup is already complete and recorded cleanup_complete.",
+		)
+	}
+
+	fn clear_worktree_if_present(&mut self) -> Result<()> {
+		if self.validation.worktree_mapping.is_some() {
+			self.context.state_store.clear_worktree(&self.validation.issue.id)?;
+
+			if self.validation.issue.identifier != self.validation.issue.id {
+				self.context.state_store.clear_worktree(&self.validation.issue.identifier)?;
+			}
+		}
+
+		Ok(())
+	}
+
+	fn update_run_status(&mut self) -> Result<()> {
+		self.context.state_store.update_run_status(&self.validation.run_id, "succeeded")
+	}
 }
 
 pub(super) fn apply_superseded_closeout_recovery(
@@ -262,11 +298,64 @@ impl SupersededCloseoutRecoveryOperationsRunner for SupersededCloseoutRecoveryOp
 mod tests {
 	use std::cell::RefCell;
 
-	use crate::prelude::{Result, eyre};
+	use crate::{
+		prelude::{Result, eyre},
+		state::StateStore,
+		tracker::{
+			IssueTracker, TrackerComment, TrackerIssue,
+			privacy_classifier::DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER,
+			records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+		},
+	};
 
 	use super::{
-		SupersededCloseoutRecoveryOperationsRunner, apply_superseded_closeout_recovery_sequence,
+		MergedCloseoutRecoveryOperationsRunner, SupersededCloseoutRecoveryOperationsRunner,
+		apply_merged_closeout_recovery_sequence, apply_superseded_closeout_recovery_sequence,
+		write_recovery_closeout_event,
 	};
+
+	#[derive(Default)]
+	struct RecordingMergedCloseoutOperations {
+		steps: RefCell<Vec<&'static str>>,
+		fail_at: Option<&'static str>,
+	}
+	impl RecordingMergedCloseoutOperations {
+		fn record(&self, step: &'static str) -> Result<()> {
+			self.steps.borrow_mut().push(step);
+
+			if self.fail_at == Some(step) {
+				eyre::bail!("{step} failed");
+			}
+
+			Ok(())
+		}
+	}
+
+	impl MergedCloseoutRecoveryOperationsRunner for RecordingMergedCloseoutOperations {
+		fn record_lifecycle_authority(&mut self) -> Result<()> {
+			self.record("record_lifecycle_authority")
+		}
+
+		fn write_closeout_event(&mut self) -> Result<bool> {
+			self.record("write_closeout_event")?;
+
+			Ok(true)
+		}
+
+		fn write_cleanup_event(&mut self) -> Result<bool> {
+			self.record("write_cleanup_event")?;
+
+			Ok(true)
+		}
+
+		fn clear_worktree_if_present(&mut self) -> Result<()> {
+			self.record("clear_worktree_if_present")
+		}
+
+		fn update_run_status(&mut self) -> Result<()> {
+			self.record("update_run_status")
+		}
+	}
 
 	#[derive(Default)]
 	struct RecordingSupersededCloseoutOperations {
@@ -331,6 +420,200 @@ mod tests {
 
 			Ok(true)
 		}
+	}
+
+	#[derive(Default)]
+	struct ProjectionTracker {
+		comments: RefCell<Vec<TrackerComment>>,
+		created_comments: RefCell<Vec<String>>,
+		list_error: Option<&'static str>,
+		create_error: Option<&'static str>,
+	}
+
+	impl ProjectionTracker {
+		fn with_comments(comments: Vec<TrackerComment>) -> Self {
+			Self {
+				comments: RefCell::new(comments),
+				created_comments: RefCell::new(Vec::new()),
+				list_error: None,
+				create_error: None,
+			}
+		}
+	}
+
+	impl IssueTracker for ProjectionTracker {
+		fn list_issues_with_label(&self, _label_name: &str) -> Result<Vec<TrackerIssue>> {
+			Ok(Vec::new())
+		}
+
+		fn find_team_label_id(&self, _team_id: &str, _label_name: &str) -> Result<Option<String>> {
+			Ok(None)
+		}
+
+		fn get_issue_by_identifier(&self, _issue_identifier: &str) -> Result<Option<TrackerIssue>> {
+			Ok(None)
+		}
+
+		fn refresh_issues(&self, _issue_ids: &[String]) -> Result<Vec<TrackerIssue>> {
+			Ok(Vec::new())
+		}
+
+		fn list_comments(&self, _issue_id: &str) -> Result<Vec<TrackerComment>> {
+			if let Some(error) = self.list_error {
+				eyre::bail!(error);
+			}
+
+			Ok(self.comments.borrow().clone())
+		}
+
+		fn update_issue_state(&self, _issue_id: &str, _state_id: &str) -> Result<()> {
+			Ok(())
+		}
+
+		fn add_issue_labels(&self, _issue_id: &str, _label_ids: &[String]) -> Result<()> {
+			Ok(())
+		}
+
+		fn remove_issue_labels(&self, _issue_id: &str, _label_ids: &[String]) -> Result<()> {
+			Ok(())
+		}
+
+		fn create_comment(&self, _issue_id: &str, body: &str) -> Result<()> {
+			if let Some(error) = self.create_error {
+				eyre::bail!(error);
+			}
+
+			self.created_comments.borrow_mut().push(body.to_owned());
+			self.comments.borrow_mut().push(TrackerComment {
+				body: body.to_owned(),
+				created_at: String::from("2026-07-09T00:00:00Z"),
+			});
+
+			Ok(())
+		}
+	}
+
+	fn closeout_record(anchor: &str) -> LinearExecutionEventRecord {
+		let mut record = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "decodex",
+				issue_id: "issue-id",
+				issue_identifier: "XY-1248",
+				run_id: "run-id",
+				attempt_number: 1,
+			},
+			"closeout",
+			String::from("2026-07-09T00:00:00Z"),
+			anchor,
+		);
+		record.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/1073"));
+		record.commit_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
+		record.summary = Some(String::from("Closeout recovery projection test record."));
+
+		record
+	}
+
+	fn tracker_comment_for_record(record: &LinearExecutionEventRecord) -> TrackerComment {
+		let body = records::render_linear_execution_event_comment_body(record, None);
+		let body = records::append_structured_comment_record(&body, record)
+			.expect("structured comment should render");
+
+		TrackerComment { body, created_at: String::from("2026-07-09T00:00:00Z") }
+	}
+
+	#[test]
+	fn merged_closeout_records_lifecycle_authority_before_public_projection() {
+		let mut operations = RecordingMergedCloseoutOperations::default();
+
+		let result = apply_merged_closeout_recovery_sequence(&mut operations)
+			.expect("merged closeout sequence should succeed");
+
+		assert_eq!(result, (true, true));
+		assert_eq!(
+			operations.steps.into_inner(),
+			vec![
+				"record_lifecycle_authority",
+				"write_closeout_event",
+				"write_cleanup_event",
+				"clear_worktree_if_present",
+				"update_run_status",
+			]
+		);
+	}
+
+	#[test]
+	fn merged_closeout_does_not_write_public_projection_when_lifecycle_authority_fails() {
+		let mut operations = RecordingMergedCloseoutOperations {
+			fail_at: Some("record_lifecycle_authority"),
+			..RecordingMergedCloseoutOperations::default()
+		};
+
+		let error = apply_merged_closeout_recovery_sequence(&mut operations)
+			.expect_err("lifecycle authority failure should stop recovery");
+
+		assert!(error.to_string().contains("record_lifecycle_authority failed"));
+		assert_eq!(operations.steps.into_inner(), vec!["record_lifecycle_authority"]);
+	}
+
+	#[test]
+	fn merged_closeout_does_not_clear_or_succeed_run_when_projection_fails() {
+		let mut operations = RecordingMergedCloseoutOperations {
+			fail_at: Some("write_closeout_event"),
+			..RecordingMergedCloseoutOperations::default()
+		};
+
+		let error = apply_merged_closeout_recovery_sequence(&mut operations)
+			.expect_err("public projection failure should stop recovery");
+
+		assert!(error.to_string().contains("write_closeout_event failed"));
+		assert_eq!(
+			operations.steps.into_inner(),
+			vec!["record_lifecycle_authority", "write_closeout_event",]
+		);
+	}
+
+	#[test]
+	fn closeout_projection_retries_remote_comment_when_local_record_is_duplicate() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let tracker = ProjectionTracker::default();
+		let event = closeout_record("duplicate-local-missing-remote");
+		state_store.record_linear_execution_event(&event).expect("local event should record");
+
+		let written = write_recovery_closeout_event(
+			&tracker,
+			&state_store,
+			"issue-id",
+			&event,
+			"Recovery closeout projection.",
+			None,
+			&DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER,
+		)
+		.expect("duplicate local record should still post missing remote projection");
+
+		assert!(written);
+		assert_eq!(tracker.created_comments.borrow().len(), 1);
+	}
+
+	#[test]
+	fn closeout_projection_skips_duplicate_only_when_remote_comment_exists() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let event = closeout_record("duplicate-local-and-remote");
+		state_store.record_linear_execution_event(&event).expect("local event should record");
+		let tracker = ProjectionTracker::with_comments(vec![tracker_comment_for_record(&event)]);
+
+		let written = write_recovery_closeout_event(
+			&tracker,
+			&state_store,
+			"issue-id",
+			&event,
+			"Recovery closeout projection.",
+			None,
+			&DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER,
+		)
+		.expect("remote duplicate should be accepted");
+
+		assert!(!written);
+		assert!(tracker.created_comments.borrow().is_empty());
 	}
 
 	#[test]
@@ -439,29 +722,16 @@ fn write_merged_closeout_event(
 		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
-	let body = format!(
-		"{body}\n\n{}",
-		records::render_linear_execution_event_comment_body(event, retry_budget_attempt_count)
-	);
-	let projection =
-		tracker::prepare_linear_execution_event_comment(&body, event, &privacy_classifier)?;
-	let recorded = context.state_store.record_linear_execution_event(&projection.record)?;
 
-	if !recorded {
-		return Ok(false);
-	}
-
-	if let Err(error) = tracker::create_linear_execution_event_comment_direct(
+	write_recovery_closeout_event(
 		&context.tracker,
+		&context.state_store,
 		&validation.issue.id,
-		&projection,
-	) {
-		context.state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
-
-		return Err(error);
-	}
-
-	Ok(true)
+		event,
+		body,
+		retry_budget_attempt_count,
+		&privacy_classifier,
+	)
 }
 
 fn write_superseded_closeout_event(
@@ -477,29 +747,47 @@ fn write_superseded_closeout_event(
 		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
+	write_recovery_closeout_event(
+		&context.tracker,
+		&context.state_store,
+		&validation.issue.id,
+		event,
+		body,
+		retry_budget_attempt_count,
+		&privacy_classifier,
+	)
+}
+
+fn write_recovery_closeout_event<T>(
+	tracker: &T,
+	state_store: &StateStore,
+	issue_id: &str,
+	event: &LinearExecutionEventRecord,
+	body: &str,
+	retry_budget_attempt_count: Option<i64>,
+	privacy_classifier: &dyn PublicProjectionPrivacyClassifier,
+) -> Result<bool>
+where
+	T: IssueTracker + ?Sized,
+{
 	let body = format!(
 		"{body}\n\n{}",
 		records::render_linear_execution_event_comment_body(event, retry_budget_attempt_count)
 	);
 	let projection =
-		tracker::prepare_linear_execution_event_comment(&body, event, &privacy_classifier)?;
-	let recorded = context.state_store.record_linear_execution_event(&projection.record)?;
+		tracker::prepare_linear_execution_event_comment(&body, event, privacy_classifier)?;
+	let recorded = state_store.record_linear_execution_event(&projection.record)?;
 
-	if !recorded {
-		return Ok(false);
+	match tracker::create_prepared_linear_execution_event_comment(tracker, issue_id, &projection) {
+		Ok(comment_created) => Ok(recorded || comment_created),
+		Err(error) => {
+			if recorded {
+				state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
+			}
+
+			Err(error)
+		},
 	}
-
-	if let Err(error) = tracker::create_linear_execution_event_comment_direct(
-		&context.tracker,
-		&validation.issue.id,
-		&projection,
-	) {
-		context.state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
-
-		return Err(error);
-	}
-
-	Ok(true)
 }
 
 fn record_merged_closeout_lifecycle_authority(
