@@ -165,6 +165,7 @@ pub(super) fn apply_superseded_closeout_recovery(
 
 trait SupersededCloseoutRecoveryOperationsRunner {
 	fn ensure_terminalizable(&mut self) -> Result<()>;
+	fn ensure_run_attempt_recorded(&mut self) -> Result<()>;
 	fn update_issue_state(&mut self) -> Result<()>;
 	fn write_closeout_event(&mut self) -> Result<bool>;
 	fn write_cleanup_event(&mut self) -> Result<bool>;
@@ -179,12 +180,13 @@ fn apply_superseded_closeout_recovery_sequence(
 	operations: &mut impl SupersededCloseoutRecoveryOperationsRunner,
 ) -> Result<(bool, bool, bool)> {
 	operations.ensure_terminalizable()?;
+	operations.ensure_run_attempt_recorded()?;
 	operations.record_lifecycle_authority("pending")?;
 	let closeout_recorded = operations.write_closeout_event()?;
 	operations.post_pull_request_comment()?;
 	let pr_closed = operations.close_pull_request_if_open()?;
-	operations.update_issue_state()?;
 	operations.record_lifecycle_authority("completed")?;
+	operations.update_issue_state()?;
 	let cleanup_recorded = operations.write_cleanup_event()?;
 	operations.update_run_status()?;
 	operations.clear_worktree()?;
@@ -199,9 +201,15 @@ struct SupersededCloseoutRecoveryOperations<'a> {
 
 impl SupersededCloseoutRecoveryOperationsRunner for SupersededCloseoutRecoveryOperations<'_> {
 	fn ensure_terminalizable(&mut self) -> Result<()> {
-		super::validation::ensure_superseded_issue_terminalizable(
-			self.context,
-			&self.validation.issue,
+		super::validation::ensure_superseded_issue_terminalizable(self.context, self.validation)
+	}
+
+	fn ensure_run_attempt_recorded(&mut self) -> Result<()> {
+		ensure_superseded_closeout_run_attempt(
+			&self.context.state_store,
+			&self.validation.issue.id,
+			&self.validation.run_id,
+			self.validation.attempt_number,
 		)
 	}
 
@@ -294,6 +302,24 @@ impl SupersededCloseoutRecoveryOperationsRunner for SupersededCloseoutRecoveryOp
 	}
 }
 
+fn ensure_superseded_closeout_run_attempt(
+	state_store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+) -> Result<()> {
+	if !super::validation::ensure_superseded_closeout_run_attempt_compatible(
+		state_store,
+		issue_id,
+		run_id,
+		attempt_number,
+	)? {
+		state_store.record_run_attempt(run_id, issue_id, attempt_number, "terminated")?;
+	}
+
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 	use std::cell::RefCell;
@@ -311,7 +337,7 @@ mod tests {
 	use super::{
 		MergedCloseoutRecoveryOperationsRunner, SupersededCloseoutRecoveryOperationsRunner,
 		apply_merged_closeout_recovery_sequence, apply_superseded_closeout_recovery_sequence,
-		write_recovery_closeout_event,
+		ensure_superseded_closeout_run_attempt, write_recovery_closeout_event,
 	};
 
 	#[derive(Default)]
@@ -377,6 +403,10 @@ mod tests {
 	impl SupersededCloseoutRecoveryOperationsRunner for RecordingSupersededCloseoutOperations {
 		fn ensure_terminalizable(&mut self) -> Result<()> {
 			self.record("ensure_terminalizable")
+		}
+
+		fn ensure_run_attempt_recorded(&mut self) -> Result<()> {
+			self.record("ensure_run_attempt_recorded")
 		}
 
 		fn update_issue_state(&mut self) -> Result<()> {
@@ -628,12 +658,13 @@ mod tests {
 			operations.steps.into_inner(),
 			vec![
 				"ensure_terminalizable",
+				"ensure_run_attempt_recorded",
 				"record_lifecycle_authority_pending",
 				"write_closeout_event",
 				"post_pull_request_comment",
 				"close_pull_request_if_open",
-				"update_issue_state",
 				"record_lifecycle_authority_completed",
+				"update_issue_state",
 				"write_cleanup_event",
 				"update_run_status",
 				"clear_worktree",
@@ -654,7 +685,11 @@ mod tests {
 		assert!(error.to_string().contains("record_lifecycle_authority_pending failed"));
 		assert_eq!(
 			operations.steps.into_inner(),
-			vec!["ensure_terminalizable", "record_lifecycle_authority_pending",]
+			vec![
+				"ensure_terminalizable",
+				"ensure_run_attempt_recorded",
+				"record_lifecycle_authority_pending",
+			]
 		);
 	}
 
@@ -701,11 +736,66 @@ mod tests {
 			operations.steps.into_inner(),
 			vec![
 				"ensure_terminalizable",
+				"ensure_run_attempt_recorded",
 				"record_lifecycle_authority_pending",
 				"write_closeout_event",
 				"post_pull_request_comment",
 			]
 		);
+	}
+
+	#[test]
+	fn superseded_closeout_records_completed_authority_before_terminal_issue_state() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_at: Some("record_lifecycle_authority_completed"),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("completed lifecycle authority failure should stop terminalization");
+
+		assert!(error.to_string().contains("record_lifecycle_authority_completed failed"));
+		assert!(!operations.steps.borrow().contains(&"update_issue_state"));
+	}
+
+	#[test]
+	fn superseded_closeout_records_missing_recovery_run_attempt() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+
+		ensure_superseded_closeout_run_attempt(
+			&state_store,
+			"issue-id",
+			"superseded-closeout-xy-1248",
+			1,
+		)
+		.expect("missing recovery run attempt should be recorded");
+
+		let attempt = state_store
+			.run_attempt("superseded-closeout-xy-1248")
+			.expect("run attempt read should succeed")
+			.expect("run attempt should exist");
+		assert_eq!(attempt.issue_id(), "issue-id");
+		assert_eq!(attempt.attempt_number(), 1);
+		assert_eq!(attempt.status(), "terminated");
+	}
+
+	#[test]
+	fn superseded_closeout_rejects_conflicting_recovery_run_attempt() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		state_store
+			.record_run_attempt("superseded-closeout-xy-1248", "other-issue", 2, "running")
+			.expect("conflicting run attempt should record");
+
+		let error = ensure_superseded_closeout_run_attempt(
+			&state_store,
+			"issue-id",
+			"superseded-closeout-xy-1248",
+			1,
+		)
+		.expect_err("conflicting run attempt should fail closed");
+
+		assert!(error.to_string().contains("conflicts with issue"));
+		assert!(error.to_string().contains("other-issue"));
 	}
 }
 

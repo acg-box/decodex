@@ -56,11 +56,15 @@ service labels, recovery, or lane-control details matter.
   after the independent channel, attempt, marker, protocol, activity, and
   progress guards pass. The
   successor issue must expose a Decodex ledger record for the exact successor
-  PR head and merge commit. Live superseded
-  closeout records retryable pending closeout authority before public Linear or
-  GitHub projections, then records completed closeout authority before public
-  cleanup projection and retained worktree cleanup. Closeout recovery retries
-  any local ledger duplicate whose matching public Linear comment is absent.
+  PR head and merge commit. Live superseded closeout records retryable pending
+  closeout authority before public Linear or GitHub projections. Exact
+  superseded-closeout lifecycle envelopes remain retryable after partial
+  failure, and a no-attempt lane records a matching terminal synthetic attempt
+  before lifecycle evidence. After the obsolete PR comment and close path
+  succeeds, the command records completed authority before the terminal Linear
+  transition or public cleanup, then clears retained worktree state only after
+  those projections succeed. Closeout recovery retries any local ledger
+  duplicate whose matching public Linear comment is absent.
 - Merged closeout recovery records lifecycle authority before public Linear
   closeout or cleanup projections and only clears retained run/worktree state
   after required projections succeed or are confirmed already present.

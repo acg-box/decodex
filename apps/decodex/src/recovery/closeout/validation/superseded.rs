@@ -110,8 +110,14 @@ pub(in crate::recovery) fn validate_superseded_closeout_request(
 		} else {
 			(format!("superseded-closeout-{}", issue.identifier.to_ascii_lowercase()), 1)
 		};
+	ensure_superseded_closeout_run_attempt_compatible(
+		&context.state_store,
+		&issue.id,
+		&run_id,
+		attempt_number,
+	)?;
 
-	Ok(SupersededCloseoutValidation {
+	let validation = SupersededCloseoutValidation {
 		issue,
 		successor_issue,
 		branch_name: worktree_mapping.branch_name().to_owned(),
@@ -122,7 +128,35 @@ pub(in crate::recovery) fn validate_superseded_closeout_request(
 		successor_landing_state,
 		successor_merge_commit,
 		completed_state_id,
-	})
+	};
+	ensure_superseded_issue_terminalizable(context, &validation)?;
+
+	Ok(validation)
+}
+
+pub(in crate::recovery::closeout) fn ensure_superseded_closeout_run_attempt_compatible(
+	state_store: &state::StateStore,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+) -> Result<bool> {
+	let Some(attempt) = state_store.run_attempt(run_id)? else {
+		return Ok(false);
+	};
+
+	if attempt.issue_id() != issue_id
+		|| attempt.attempt_number() != attempt_number
+		|| !orchestrator::local_run_attempt_status_is_terminal(attempt.status())
+	{
+		eyre::bail!(
+			"Superseded closeout recovery run `{run_id}` conflicts with issue `{}` attempt {} status `{}`; expected issue `{issue_id}` attempt {attempt_number} with terminal status.",
+			attempt.issue_id(),
+			attempt.attempt_number(),
+			attempt.status()
+		);
+	}
+
+	Ok(true)
 }
 
 fn validate_same_tracker_team(issue: &TrackerIssue, successor_issue: &TrackerIssue) -> Result<()> {
@@ -152,8 +186,6 @@ fn validate_superseded_issue_context(
 			tracker_policy.opt_out_label()
 		);
 	}
-	ensure_superseded_issue_terminalizable(context, issue)?;
-
 	issue
 		.team
 		.states
@@ -171,11 +203,19 @@ fn validate_superseded_issue_context(
 
 pub(in crate::recovery::closeout) fn ensure_superseded_issue_terminalizable(
 	context: &RecoveryContext,
-	issue: &TrackerIssue,
+	validation: &SupersededCloseoutValidation,
 ) -> Result<()> {
-	ensure_superseded_issue_terminalizable_with_tracker(context, &context.tracker, issue)
+	let lineage = SupersededCloseoutRetryLineage::from_validation(context, validation);
+
+	ensure_superseded_issue_terminalizable_with_tracker_and_lineage(
+		context,
+		&context.tracker,
+		&validation.issue,
+		Some(&lineage),
+	)
 }
 
+#[cfg(test)]
 fn ensure_superseded_issue_terminalizable_with_tracker<T>(
 	context: &RecoveryContext,
 	tracker: &T,
@@ -184,8 +224,52 @@ fn ensure_superseded_issue_terminalizable_with_tracker<T>(
 where
 	T: IssueTracker + ?Sized,
 {
+	ensure_superseded_issue_terminalizable_with_tracker_and_lineage(context, tracker, issue, None)
+}
+
+fn ensure_superseded_issue_terminalizable_with_tracker_and_lineage<T>(
+	context: &RecoveryContext,
+	tracker: &T,
+	issue: &TrackerIssue,
+	retry_lineage: Option<&SupersededCloseoutRetryLineage<'_>>,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
 	ensure_superseded_issue_recovery_labels_absent_with_tracker(context, tracker, issue)?;
-	ensure_issue_has_no_live_runtime_ownership(context, issue)
+	ensure_issue_has_no_live_runtime_ownership(context, issue, retry_lineage)
+}
+
+struct SupersededCloseoutRetryLineage<'a> {
+	project_id: &'a str,
+	issue_id: &'a str,
+	run_id: &'a str,
+	attempt_number: i64,
+	branch_name: &'a str,
+	base_branch: &'a str,
+	obsolete_pr_url: &'a str,
+	obsolete_head_sha: &'a str,
+	successor_merge_commit: &'a str,
+}
+impl<'a> SupersededCloseoutRetryLineage<'a> {
+	fn from_validation(
+		context: &'a RecoveryContext,
+		validation: &'a SupersededCloseoutValidation,
+	) -> Self {
+		Self {
+			project_id: context.config.service_id(),
+			issue_id: &validation.issue.id,
+			run_id: &validation.run_id,
+			attempt_number: validation.attempt_number,
+			branch_name: &validation.branch_name,
+			base_branch: &validation.obsolete_landing_state.base_ref_name,
+			obsolete_pr_url: pull_request_inspection::landing_url(
+				&validation.obsolete_landing_state,
+			),
+			obsolete_head_sha: &validation.obsolete_landing_state.head_ref_oid,
+			successor_merge_commit: &validation.successor_merge_commit,
+		}
+	}
 }
 
 fn ensure_superseded_issue_recovery_labels_absent_with_tracker<T>(
@@ -217,6 +301,7 @@ where
 fn ensure_issue_has_no_live_runtime_ownership(
 	context: &RecoveryContext,
 	issue: &TrackerIssue,
+	retry_lineage: Option<&SupersededCloseoutRetryLineage<'_>>,
 ) -> Result<()> {
 	let retained_worktree_mapping = issue::retained_worktree_mapping_for_issue(context, issue)?;
 	ensure_retained_worktree_marker_has_no_live_runtime_ownership(
@@ -246,7 +331,7 @@ fn ensure_issue_has_no_live_runtime_ownership(
 			!attempts.iter().any(|attempt| {
 				attempt.run_id() == event.run_id()
 					&& attempt.attempt_number() == event.attempt_number()
-			})
+			}) && !superseded_closeout_lifecycle_event_allows_retry(event, retry_lineage)
 		}) {
 			eyre::bail!(
 				"Issue `{}` still has retained private execution evidence `{}` for run `{}` attempt {} without a matching run attempt; superseded closeout recovery requires stale private evidence to be cleared or classified by explicit recovery before terminalization.",
@@ -272,6 +357,7 @@ fn ensure_issue_has_no_live_runtime_ownership(
 				issue,
 				&attempt,
 				&private_events,
+				retry_lineage,
 			)?;
 		}
 	}
@@ -304,6 +390,7 @@ fn ensure_run_attempt_has_no_durable_runtime_evidence(
 	issue: &TrackerIssue,
 	attempt: &state::RunAttempt,
 	issue_private_events: &[state::PrivateExecutionEvent],
+	retry_lineage: Option<&SupersededCloseoutRetryLineage<'_>>,
 ) -> Result<()> {
 	let run_id = attempt.run_id();
 	let attempt_number = attempt.attempt_number();
@@ -314,7 +401,7 @@ fn ensure_run_attempt_has_no_durable_runtime_evidence(
 
 	if let Some(event) = private_events.iter().find(|event| {
 		event.event_type() == "progress_checkpoint"
-			|| !superseded_private_event_allows_terminalization(event)
+			|| !superseded_private_event_allows_terminalization(event, retry_lineage)
 	}) {
 		eyre::bail!(
 			"Issue `{}` still has retained private execution evidence `{}` for run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires stale private evidence to be cleared or classified by explicit recovery before terminalization.",
@@ -340,13 +427,18 @@ fn ensure_run_attempt_has_no_durable_runtime_evidence(
 	Ok(())
 }
 
-fn superseded_private_event_allows_terminalization(event: &state::PrivateExecutionEvent) -> bool {
+fn superseded_private_event_allows_terminalization(
+	event: &state::PrivateExecutionEvent,
+	retry_lineage: Option<&SupersededCloseoutRetryLineage<'_>>,
+) -> bool {
 	// Superseded closeout independently rejects active control rows, non-terminal attempts, and
 	// progress/protocol/activity evidence. The stale-active release allowlist is therefore limited
 	// here to shaped historical telemetry that does not itself retain execution ownership.
 	let payload = event.payload();
 
 	match event.event_type() {
+		"lifecycle_event" =>
+			return superseded_closeout_lifecycle_event_allows_retry(event, retry_lineage),
 		"control_channel_published" => {
 			return payload.get("schema").and_then(serde_json::Value::as_str)
 				== Some("decodex.run_control_channel/v1")
@@ -369,6 +461,79 @@ fn superseded_private_event_allows_terminalization(event: &state::PrivateExecuti
 		StaleActiveProcessLiveness::NotAlive,
 		false,
 	)
+}
+
+fn superseded_closeout_lifecycle_event_allows_retry(
+	event: &state::PrivateExecutionEvent,
+	retry_lineage: Option<&SupersededCloseoutRetryLineage<'_>>,
+) -> bool {
+	let Some(lineage) = retry_lineage else {
+		return false;
+	};
+	let envelope = event.payload();
+	let Some(authority) = envelope.get("authority_record") else {
+		return false;
+	};
+	let envelope_string = |field| envelope.get(field).and_then(serde_json::Value::as_str);
+	let authority_string = |field| authority.get(field).and_then(serde_json::Value::as_str);
+	let expected_subject_id =
+		format!("{}:{}:{}", lineage.project_id, lineage.issue_id, lineage.branch_name);
+	let expected_pending_idempotency_key = format!(
+		"{}:{}:{}:superseded_closeout_recovery:pending",
+		lineage.project_id, lineage.issue_id, lineage.successor_merge_commit
+	);
+	let expected_completed_idempotency_key = format!(
+		"{}:{}:{}:superseded_closeout_recovery:completed",
+		lineage.project_id, lineage.issue_id, lineage.successor_merge_commit
+	);
+
+	if envelope_string("schema_version") != Some("decodex/lifecycle-event/1")
+		|| envelope_string("event_type") != Some("lifecycle_authority_recorded")
+		|| envelope_string("subject_id") != Some(expected_subject_id.as_str())
+		|| envelope_string("subject_id") != authority_string("subject_id")
+		|| envelope_string("idempotency_key") != authority_string("idempotency_key")
+		|| envelope_string("correlation_id") != Some(event.run_id())
+		|| authority_string("schema_version") != Some("decodex/lifecycle-authority-record/1")
+		|| authority_string("issue_id") != Some(event.issue_id())
+		|| authority_string("project_id") != Some(lineage.project_id)
+		|| authority_string("service_id") != Some(lineage.project_id)
+		|| authority_string("issue_id") != Some(lineage.issue_id)
+		|| authority_string("correlation_id") != Some(event.run_id())
+		|| event.run_id() != lineage.run_id
+		|| event.attempt_number() != lineage.attempt_number
+		|| authority_string("head_branch") != Some(lineage.branch_name)
+		|| authority_string("base_branch") != Some(lineage.base_branch)
+		|| authority_string("pr_url") != Some(lineage.obsolete_pr_url)
+		|| authority_string("validated_head_sha") != Some(lineage.obsolete_head_sha)
+		|| authority_string("merge_commit") != Some(lineage.successor_merge_commit)
+		|| authority_string("actor") != Some("superseded_closeout_recovery")
+		|| authority_string("authority") != Some("issue_authority")
+		|| envelope_string("causation_id") != authority_string("causation_id")
+	{
+		return false;
+	}
+
+	match authority_string("cleanup_state") {
+		Some("pending") =>
+			authority_string("phase") == Some("closeout_pending")
+				&& authority_string("transition") == Some("closeout_intent_recorded")
+				&& authority_string("next_state") == Some("closeout_pending")
+				&& authority_string("next_action") == Some("run_retained_closeout_adapter")
+				&& authority_string("causation_id")
+					== Some("superseded_closeout_recovery_pr_close_authorized")
+				&& authority_string("idempotency_key")
+					== Some(expected_pending_idempotency_key.as_str()),
+		Some("completed") =>
+			authority_string("phase") == Some("closed")
+				&& authority_string("transition") == Some("closeout_completed")
+				&& authority_string("next_state") == Some("closed")
+				&& authority_string("next_action") == Some("no_action")
+				&& authority_string("causation_id")
+					== Some("superseded_closeout_recovery_closeout_complete")
+				&& authority_string("idempotency_key")
+					== Some(expected_completed_idempotency_key.as_str()),
+		_ => false,
+	}
 }
 
 fn ensure_retained_worktree_marker_has_no_live_runtime_ownership(
@@ -654,6 +819,25 @@ mod tests {
 	}
 
 	#[test]
+	fn superseded_recovery_validation_rejects_deterministic_run_id_collision() {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		state_store
+			.record_run_attempt("superseded-closeout-pub-1704", "other-issue", 2, "running")
+			.expect("conflicting run attempt should record");
+
+		let error = ensure_superseded_closeout_run_attempt_compatible(
+			&state_store,
+			"issue-id",
+			"superseded-closeout-pub-1704",
+			1,
+		)
+		.expect_err("dry-run validation should reject a deterministic run id collision");
+
+		assert!(error.to_string().contains("conflicts with issue"));
+		assert!(error.to_string().contains("other-issue"));
+	}
+
+	#[test]
 	fn terminalizable_guard_rejects_running_attempt_without_lease() {
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
@@ -780,6 +964,156 @@ mod tests {
 
 			assert!(error.to_string().contains(&run_id));
 			assert!(error.to_string().contains("without a matching run attempt"));
+		}
+	}
+
+	#[test]
+	fn terminalizable_guard_allows_superseded_lifecycle_retry_without_attempt_row() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		for cleanup_state in ["pending", "completed"] {
+			let context =
+				sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+			let run_id = format!("superseded-closeout-{cleanup_state}");
+			let lineage = sample_superseded_retry_lineage(&issue, &run_id);
+
+			context
+				.state_store
+				.append_private_execution_event(
+					context.config.service_id(),
+					&issue.id,
+					&run_id,
+					1,
+					"lifecycle_event",
+					superseded_lifecycle_event_payload(&issue.id, &run_id, cleanup_state),
+				)
+				.expect("superseded lifecycle evidence should persist");
+
+			ensure_superseded_issue_terminalizable_with_tracker_and_lineage(
+				&context,
+				&tracker,
+				&issue,
+				Some(&lineage),
+			)
+			.expect("matching superseded lifecycle authority should remain retryable");
+		}
+	}
+
+	#[test]
+	fn terminalizable_guard_allows_superseded_lifecycle_retry_with_terminal_attempt() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let run_id = "run-existing-terminal";
+		let lineage = sample_superseded_retry_lineage(&issue, run_id);
+
+		context
+			.state_store
+			.record_run_attempt(run_id, &issue.id, 1, "terminated")
+			.expect("terminal run attempt should persist");
+		context
+			.state_store
+			.append_private_execution_event(
+				context.config.service_id(),
+				&issue.id,
+				run_id,
+				1,
+				"lifecycle_event",
+				superseded_lifecycle_event_payload(&issue.id, run_id, "pending"),
+			)
+			.expect("pending lifecycle evidence should persist");
+
+		ensure_superseded_issue_terminalizable_with_tracker_and_lineage(
+			&context,
+			&tracker,
+			&issue,
+			Some(&lineage),
+		)
+		.expect("matching pending authority should permit reentry");
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_unshaped_lifecycle_event_without_attempt_row() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.append_private_execution_event(
+				context.config.service_id(),
+				&issue.id,
+				"superseded-closeout-malformed",
+				1,
+				"lifecycle_event",
+				serde_json::json!({"actor": "superseded_closeout_recovery"}),
+			)
+			.expect("malformed lifecycle evidence should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("unshaped lifecycle evidence should fail closed");
+
+		assert!(error.to_string().contains("without a matching run attempt"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_superseded_lifecycle_lineage_mismatch() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let cases = [
+			("root", "subject_id"),
+			("authority_record", "project_id"),
+			("authority_record", "issue_id"),
+			("authority_record", "correlation_id"),
+			("authority_record", "pr_url"),
+			("authority_record", "base_branch"),
+			("authority_record", "validated_head_sha"),
+			("authority_record", "merge_commit"),
+			("authority_record", "actor"),
+			("authority_record", "idempotency_key"),
+		];
+
+		for (case, (scope, field)) in cases.into_iter().enumerate() {
+			let context =
+				sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+			let run_id = format!("superseded-closeout-mismatch-{case}");
+			let lineage = sample_superseded_retry_lineage(&issue, &run_id);
+			let mut payload = superseded_lifecycle_event_payload(&issue.id, &run_id, "pending");
+			if scope == "root" {
+				payload[field] = serde_json::Value::String(String::from("mismatch"));
+			} else {
+				payload[scope][field] = serde_json::Value::String(String::from("mismatch"));
+			}
+
+			context
+				.state_store
+				.append_private_execution_event(
+					context.config.service_id(),
+					&issue.id,
+					&run_id,
+					1,
+					"lifecycle_event",
+					payload,
+				)
+				.expect("mismatched lifecycle evidence should persist");
+
+			let error = ensure_superseded_issue_terminalizable_with_tracker_and_lineage(
+				&context,
+				&tracker,
+				&issue,
+				Some(&lineage),
+			)
+			.expect_err("mismatched lifecycle lineage should fail closed");
+
+			assert!(
+				error.to_string().contains("without a matching run attempt"),
+				"{scope}.{field} mismatch should reject reentry: {error}"
+			);
 		}
 	}
 
@@ -1425,6 +1759,80 @@ mod tests {
 		issue.identifier = String::from("PUB-1705");
 
 		issue
+	}
+
+	fn superseded_lifecycle_event_payload(
+		issue_id: &str,
+		run_id: &str,
+		cleanup_state: &str,
+	) -> serde_json::Value {
+		let (phase, transition, next_state, next_action, causation_id) = match cleanup_state {
+			"pending" => (
+				"closeout_pending",
+				"closeout_intent_recorded",
+				"closeout_pending",
+				"run_retained_closeout_adapter",
+				"superseded_closeout_recovery_pr_close_authorized",
+			),
+			"completed" => (
+				"closed",
+				"closeout_completed",
+				"closed",
+				"no_action",
+				"superseded_closeout_recovery_closeout_complete",
+			),
+			_ => panic!("unsupported lifecycle cleanup state"),
+		};
+		let idempotency_key =
+			format!("pubfi:{issue_id}:merge:superseded_closeout_recovery:{cleanup_state}");
+
+		serde_json::json!({
+			"schema_version": "decodex/lifecycle-event/1",
+			"event_type": "lifecycle_authority_recorded",
+			"subject_id": format!("pubfi:{issue_id}:y/pubfi-pub-1704"),
+			"idempotency_key": idempotency_key,
+			"correlation_id": run_id,
+			"causation_id": causation_id,
+			"authority_record": {
+				"schema_version": "decodex/lifecycle-authority-record/1",
+				"project_id": "pubfi",
+				"service_id": "pubfi",
+				"issue_id": issue_id,
+				"subject_id": format!("pubfi:{issue_id}:y/pubfi-pub-1704"),
+				"phase": phase,
+				"transition": transition,
+				"next_state": next_state,
+				"next_action": next_action,
+				"pr_url": "https://github.com/helixbox/pubfi-mono/pull/826",
+				"base_branch": "main",
+				"head_branch": "y/pubfi-pub-1704",
+				"validated_head_sha": "obsolete-head",
+				"merge_commit": "merge",
+				"cleanup_state": cleanup_state,
+				"authority": "issue_authority",
+				"actor": "superseded_closeout_recovery",
+				"idempotency_key": idempotency_key,
+				"correlation_id": run_id,
+				"causation_id": causation_id,
+			}
+		})
+	}
+
+	fn sample_superseded_retry_lineage<'a>(
+		issue: &'a TrackerIssue,
+		run_id: &'a str,
+	) -> SupersededCloseoutRetryLineage<'a> {
+		SupersededCloseoutRetryLineage {
+			project_id: "pubfi",
+			issue_id: &issue.id,
+			run_id,
+			attempt_number: 1,
+			branch_name: "y/pubfi-pub-1704",
+			base_branch: "main",
+			obsolete_pr_url: "https://github.com/helixbox/pubfi-mono/pull/826",
+			obsolete_head_sha: "obsolete-head",
+			successor_merge_commit: "merge",
+		}
 	}
 
 	fn write_live_protocol_marker(
