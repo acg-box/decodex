@@ -125,9 +125,30 @@ pub(super) fn apply_superseded_closeout_recovery(
 	let obsolete_pr_url = pull_request_inspection::landing_url(&validation.obsolete_landing_state);
 	let successor_pr_url =
 		pull_request_inspection::landing_url(&validation.successor_landing_state);
+	super::validation::ensure_superseded_issue_terminalizable(context, &validation.issue)?;
+	context.tracker.update_issue_state(&validation.issue.id, &validation.completed_state_id)?;
+
+	let closeout_event = events::superseded_closeout_event(context, validation);
+	let cleanup_event = events::superseded_closeout_cleanup_event(context, validation);
+	let closeout_recorded = write_superseded_closeout_event(
+		context,
+		validation,
+		&closeout_event,
+		"Decodex superseded closeout recovery: verified a successor PR landed the retained repair lineage and authorized closure of the obsolete PR.",
+	)?;
+	let cleanup_recorded = match write_superseded_closeout_event(
+		context,
+		validation,
+		&cleanup_event,
+		"Decodex superseded closeout recovery: verified the obsolete retained lane has no remaining unique unlanded work and recorded cleanup_complete.",
+	) {
+		Ok(cleanup_recorded) => cleanup_recorded,
+		Err(error) => return Err(error),
+	};
+
 	let github_token = context.config.github().resolve_token()?;
 	let pr_comment = format!(
-		"Decodex superseded closeout: closing this retained PR because successor PR {successor_pr_url} for issue {} landed the accepted repair. Original issue {} is being terminalized as superseded and should not be landed from this PR.",
+		"Decodex superseded closeout: closing this retained PR because successor PR {successor_pr_url} for issue {} landed the accepted repair. Original issue {} is terminalized as superseded and should not be landed from this PR.",
 		validation.successor_issue.identifier, validation.issue.identifier
 	);
 
@@ -151,42 +172,13 @@ pub(super) fn apply_superseded_closeout_recovery(
 		false
 	};
 
-	let closeout_event = events::superseded_closeout_event(context, validation);
-	let cleanup_event = events::superseded_closeout_cleanup_event(context, validation);
-	let closeout_recorded = write_superseded_closeout_event(
-		context,
-		validation,
-		&closeout_event,
-		"Decodex superseded closeout recovery: verified a successor PR landed the retained repair lineage and closed the obsolete PR.",
-	)?;
-	let cleanup_recorded = match write_superseded_closeout_event(
-		context,
-		validation,
-		&cleanup_event,
-		"Decodex superseded closeout recovery: verified the obsolete retained lane has no remaining unique unlanded work and recorded cleanup_complete.",
-	) {
-		Ok(cleanup_recorded) => cleanup_recorded,
-		Err(error) => {
-			if closeout_recorded {
-				context
-					.state_store
-					.forget_linear_execution_event(&closeout_event.idempotency_key)?;
-			}
-
-			return Err(error);
-		},
-	};
-
-	context.tracker.update_issue_state(&validation.issue.id, &validation.completed_state_id)?;
-	clear_superseded_lane_labels(context, validation)?;
+	record_superseded_closeout_lifecycle_authority(context, validation)?;
+	context.state_store.update_run_status(&validation.run_id, "succeeded")?;
 	context.state_store.clear_worktree(&validation.issue.id)?;
 
 	if validation.issue.identifier != validation.issue.id {
 		context.state_store.clear_worktree(&validation.issue.identifier)?;
 	}
-
-	record_superseded_closeout_lifecycle_authority(context, validation)?;
-	context.state_store.update_run_status(&validation.run_id, "succeeded")?;
 
 	Ok((closeout_recorded, cleanup_recorded, pr_closed))
 }
@@ -265,45 +257,6 @@ fn write_superseded_closeout_event(
 	}
 
 	Ok(true)
-}
-
-fn clear_superseded_lane_labels(
-	context: &RecoveryContext,
-	validation: &SupersededCloseoutValidation,
-) -> Result<()> {
-	let tracker_policy = context.workflow.frontmatter().tracker();
-	let candidate_labels = [
-		tracker::automation_queue_label(context.config.service_id()),
-		tracker::automation_active_label(context.config.service_id()),
-		tracker_policy.needs_attention_label().to_owned(),
-	];
-	let mut label_ids = Vec::new();
-
-	for label in candidate_labels {
-		if !tracker::issue_has_label_with_server_confirmation(
-			&context.tracker,
-			&validation.issue,
-			&label,
-		)? {
-			continue;
-		}
-		if let Some(label_id) = validation.issue.label_id_for_name(&label) {
-			label_ids.push(label_id.to_owned());
-
-			continue;
-		}
-		if let Some(label_id) =
-			context.tracker.find_team_label_id(&validation.issue.team.id, &label)?
-		{
-			label_ids.push(label_id);
-		}
-	}
-
-	if label_ids.is_empty() {
-		return Ok(());
-	}
-
-	context.tracker.remove_issue_labels(&validation.issue.id, &label_ids)
 }
 
 fn record_merged_closeout_lifecycle_authority(

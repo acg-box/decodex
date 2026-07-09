@@ -10,7 +10,10 @@ use crate::{
 		requests::SupersededCloseoutRecoveryRequest,
 		review_handoff,
 	},
-	tracker::TrackerIssue,
+	tracker::{
+		self, IssueTracker, TrackerIssue,
+		records::{self, LinearExecutionEventRecord},
+	},
 };
 
 pub(in crate::recovery) fn validate_superseded_closeout_request(
@@ -53,6 +56,13 @@ pub(in crate::recovery) fn validate_superseded_closeout_request(
 			context,
 			&request.successor_pr_url,
 		)?;
+	validate_successor_issue_pr_lineage(
+		context,
+		&context.tracker,
+		&successor_issue,
+		&successor_landing_state,
+		&successor_merge_commit,
+	)?;
 	pull_request::ensure_merge_commit_reachable_from_remote_default_branch(
 		context.config.repo_root(),
 		&request.successor_pr_url,
@@ -138,6 +148,7 @@ fn validate_superseded_issue_context(
 			tracker_policy.opt_out_label()
 		);
 	}
+	ensure_superseded_issue_terminalizable(context, issue)?;
 
 	issue
 		.team
@@ -152,6 +163,173 @@ fn validate_superseded_issue_context(
 				tracker_policy.resolved_completed_state()
 			)
 		})
+}
+
+pub(in crate::recovery::closeout) fn ensure_superseded_issue_terminalizable(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<()> {
+	ensure_superseded_issue_terminalizable_with_tracker(context, &context.tracker, issue)
+}
+
+fn ensure_superseded_issue_terminalizable_with_tracker<T>(
+	context: &RecoveryContext,
+	tracker: &T,
+	issue: &TrackerIssue,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	ensure_superseded_issue_recovery_labels_absent_with_tracker(context, tracker, issue)?;
+	ensure_issue_has_no_live_runtime_ownership(context, issue)
+}
+
+fn ensure_superseded_issue_recovery_labels_absent_with_tracker<T>(
+	context: &RecoveryContext,
+	tracker: &T,
+	issue: &TrackerIssue,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let tracker_policy = context.workflow.frontmatter().tracker();
+
+	for label in [
+		tracker::automation_queue_label(context.config.service_id()),
+		tracker::automation_active_label(context.config.service_id()),
+		tracker_policy.needs_attention_label().to_owned(),
+	] {
+		if tracker::issue_has_label_with_server_confirmation(tracker, issue, &label)? {
+			eyre::bail!(
+				"Issue `{}` still has Linear label `{label}`; superseded closeout recovery requires queue, active, and needs-attention labels to be absent.",
+				issue.identifier
+			);
+		}
+	}
+
+	Ok(())
+}
+
+fn ensure_issue_has_no_live_runtime_ownership(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<()> {
+	for issue_key in issue_keys(issue) {
+		if context
+			.state_store
+			.issue_has_active_shared_claim_read_only(context.config.service_id(), &issue_key)?
+		{
+			eyre::bail!(
+				"Issue `{}` still has active runtime ownership for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
+				issue.identifier
+			);
+		}
+		if let Some(attempt) = context.state_store.latest_run_attempt_for_issue(&issue_key)?
+			&& matches!(attempt.status(), "starting" | "running")
+		{
+			eyre::bail!(
+				"Issue `{}` still has {} run `{}` for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
+				issue.identifier,
+				attempt.status(),
+				attempt.run_id()
+			);
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_successor_issue_pr_lineage<T>(
+	context: &RecoveryContext,
+	tracker: &T,
+	successor_issue: &TrackerIssue,
+	successor_landing_state: &crate::pull_request::PullRequestLandingState,
+	successor_merge_commit: &str,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let records = successor_issue_lifecycle_records(context, tracker, successor_issue)?;
+
+	if records.iter().any(|record| {
+		successor_issue_record_matches_pr_lineage(
+			context,
+			successor_issue,
+			record,
+			successor_landing_state,
+			successor_merge_commit,
+		)
+	}) {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"Successor issue `{}` has no Decodex execution ledger record tying it to successor PR `{}` head `{}` and merge commit `{successor_merge_commit}`.",
+		successor_issue.identifier,
+		pull_request_inspection::landing_url(successor_landing_state),
+		successor_landing_state.head_ref_oid
+	)
+}
+
+fn successor_issue_lifecycle_records<T>(
+	context: &RecoveryContext,
+	tracker: &T,
+	successor_issue: &TrackerIssue,
+) -> Result<Vec<LinearExecutionEventRecord>>
+where
+	T: IssueTracker + ?Sized,
+{
+	let mut lineage_records = Vec::new();
+
+	for issue_key in issue_keys(successor_issue) {
+		lineage_records.extend(
+			context
+				.state_store
+				.list_linear_execution_events(context.config.service_id(), &issue_key)?,
+		);
+	}
+
+	lineage_records.extend(
+		tracker
+			.list_comments(&successor_issue.id)?
+			.iter()
+			.filter_map(|comment| records::parse_linear_execution_event_record(&comment.body)),
+	);
+
+	Ok(lineage_records
+		.into_iter()
+		.filter(|record| {
+			record.service_id == context.config.service_id()
+				&& (record.issue_id == successor_issue.id
+					|| record.issue_identifier == successor_issue.identifier)
+		})
+		.collect())
+}
+
+fn successor_issue_record_matches_pr_lineage(
+	context: &RecoveryContext,
+	successor_issue: &TrackerIssue,
+	record: &LinearExecutionEventRecord,
+	successor_landing_state: &crate::pull_request::PullRequestLandingState,
+	successor_merge_commit: &str,
+) -> bool {
+	record.service_id == context.config.service_id()
+		&& (record.issue_id == successor_issue.id
+			|| record.issue_identifier == successor_issue.identifier)
+		&& record.pr_url.as_deref().map(str::trim)
+			== Some(pull_request_inspection::landing_url(successor_landing_state))
+		&& record.pr_head_sha.as_deref() == Some(successor_landing_state.head_ref_oid.as_str())
+		&& record.commit_sha.as_deref() == Some(successor_merge_commit)
+}
+
+fn issue_keys(issue: &TrackerIssue) -> Vec<String> {
+	let mut keys = vec![issue.id.clone()];
+
+	if issue.identifier != issue.id {
+		keys.push(issue.identifier.clone());
+	}
+
+	keys
 }
 
 fn validate_successor_issue_context(context: &RecoveryContext, issue: &TrackerIssue) -> Result<()> {
@@ -208,4 +386,439 @@ fn validate_obsolete_pull_request(
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{cell::RefCell, fs};
+
+	use tempfile::TempDir;
+	use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+	use super::*;
+	use crate::{
+		config::ServiceConfig,
+		recovery::{LEGACY_MANUAL_CLOSEOUT_EVENT, RecoveryRuntimeMutationPolicy},
+		state::StateStore,
+		tracker::{
+			TrackerComment, TrackerIssue, TrackerIssueBriefUpdate, TrackerIssueCreate,
+			TrackerLabel, TrackerState, TrackerTeam,
+			linear::LinearClient,
+			records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+		},
+		workflow::WorkflowDocument,
+	};
+
+	#[test]
+	fn terminalizable_guard_rejects_queue_active_and_attention_labels() {
+		let labels = [
+			tracker::automation_queue_label("pubfi"),
+			tracker::automation_active_label("pubfi"),
+			String::from("decodex:needs-attention"),
+		];
+
+		for label in labels {
+			let temp_dir = TempDir::new().expect("tempdir should create");
+			let context =
+				sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+			let issue = sample_issue_with_labels("Todo", &[label.clone()]);
+			let tracker = TestTracker::with_issues(vec![issue.clone()]);
+			let error =
+				ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+					.expect_err("superseded closeout should reject ownership labels");
+
+			assert!(
+				error.to_string().contains(label.as_str()),
+				"error should name rejected label `{label}`: {error}"
+			);
+		}
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_live_runtime_ownership() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.upsert_lease(context.config.service_id(), &issue.id, "run-lease", "Todo")
+			.expect("lease should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject active runtime lease");
+
+		assert!(error.to_string().contains("active runtime ownership"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_running_attempt_without_lease() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.record_run_attempt("run-active", &issue.id, 1, "running")
+			.expect("run should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject running attempts");
+
+		assert!(error.to_string().contains("run-active"));
+	}
+
+	#[test]
+	fn successor_lineage_rejects_unrelated_completed_issue_and_pr() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let successor_issue = successor_issue();
+		let mut successor_landing = sample_landing_state(
+			"https://github.com/helixbox/pubfi-mono/pull/827",
+			"y/pubfi-pub-1705",
+			"0123456789abcdef0123456789abcdef01234567",
+		);
+		successor_landing.state = String::from("MERGED");
+		let tracker = TestTracker::with_issues(vec![successor_issue.clone()]);
+
+		let error = validate_successor_issue_pr_lineage(
+			&context,
+			&tracker,
+			&successor_issue,
+			&successor_landing,
+			"1123456789abcdef0123456789abcdef01234567",
+		)
+		.expect_err("unrelated successor issue and PR should be rejected");
+
+		assert!(error.to_string().contains("has no Decodex execution ledger record"));
+	}
+
+	#[test]
+	fn successor_lineage_accepts_matching_successor_closeout_ledger() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let successor_issue = successor_issue();
+		let mut successor_landing = sample_landing_state(
+			"https://github.com/helixbox/pubfi-mono/pull/827",
+			"y/pubfi-pub-1705",
+			"0123456789abcdef0123456789abcdef01234567",
+		);
+		successor_landing.state = String::from("MERGED");
+		let merge_commit = "1123456789abcdef0123456789abcdef01234567";
+		let comment_body = successor_closeout_comment(
+			&context,
+			&successor_issue,
+			&successor_landing,
+			merge_commit,
+		);
+		let tracker = TestTracker::with_issues(vec![successor_issue.clone()]).with_comments(vec![
+			TrackerComment { body: comment_body, created_at: current_timestamp() },
+		]);
+
+		validate_successor_issue_pr_lineage(
+			&context,
+			&tracker,
+			&successor_issue,
+			&successor_landing,
+			merge_commit,
+		)
+		.expect("matching successor closeout ledger should prove lineage");
+	}
+
+	fn successor_issue() -> TrackerIssue {
+		let mut issue = sample_issue("Done");
+
+		issue.id = String::from("successor-issue-id");
+		issue.identifier = String::from("PUB-1705");
+
+		issue
+	}
+
+	fn successor_closeout_comment(
+		context: &RecoveryContext,
+		successor_issue: &TrackerIssue,
+		successor_landing: &crate::pull_request::PullRequestLandingState,
+		merge_commit: &str,
+	) -> String {
+		let mut record = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: context.config.service_id(),
+				issue_id: &successor_issue.id,
+				issue_identifier: &successor_issue.identifier,
+				run_id: "pub-1705-attempt-1",
+				attempt_number: 1,
+			},
+			LEGACY_MANUAL_CLOSEOUT_EVENT,
+			current_timestamp(),
+			"successor-closeout",
+		);
+
+		record.branch = Some(successor_landing.head_ref_name.clone());
+		record.worktree_path = Some(String::from(".worktrees/PUB-1705"));
+		record.pr_url = Some(successor_landing.url.clone());
+		record.pr_head_sha = Some(successor_landing.head_ref_oid.clone());
+		record.pr_base_ref = Some(successor_landing.base_ref_name.clone());
+		record.commit_sha = Some(merge_commit.to_owned());
+		record.validation_result = Some(String::from("passed"));
+		record.target_state = Some(String::from("Done"));
+		record.summary = Some(String::from("Successor closeout recorded."));
+
+		records::append_structured_comment_record("successor closeout", &record)
+			.expect("comment record should render")
+	}
+
+	fn sample_recovery_context(
+		temp_dir: &TempDir,
+		runtime_mutation_policy: RecoveryRuntimeMutationPolicy,
+	) -> RecoveryContext {
+		let repo_root = temp_dir.path().join("repo");
+		let config_path = temp_dir.path().join("project.toml");
+
+		fs::create_dir_all(&repo_root).expect("repo root should exist");
+		fs::write(
+			&config_path,
+			r#"
+service_id = "pubfi"
+
+[paths]
+repo_root = "repo"
+
+[tracker]
+api_key_env_var = "HOME"
+
+[github]
+token_env_var = "HOME"
+"#,
+		)
+		.expect("config should write");
+
+		RecoveryContext {
+			config: ServiceConfig::from_path(&config_path).expect("config should load"),
+			workflow: sample_workflow(),
+			state_store: StateStore::open_in_memory().expect("state store should open"),
+			tracker: LinearClient::new(String::from("test-token"))
+				.expect("linear client should build"),
+			runtime_mutation_policy,
+		}
+	}
+
+	fn sample_workflow() -> WorkflowDocument {
+		WorkflowDocument::parse_markdown(
+			r#"
++++
+version = 1
+
+[tracker]
+provider = "linear"
+startable_states = ["Todo"]
+terminal_states = ["Done", "Canceled", "Duplicate"]
+in_progress_state = "In Progress"
+success_state = "In Review"
+completed_state = "Done"
+failure_state = "Todo"
+opt_out_label = "decodex:manual-only"
+needs_attention_label = "decodex:needs-attention"
+
+[agent]
+transport = "stdio://"
+
+[execution]
+max_attempts = 3
+max_turns = 8
+max_retry_backoff_ms = 300000
+gate_profiles = {}
+canonicalize_commands = []
+verify_commands = []
+
+[execution.workspace_hooks]
+after_create_commands = []
+before_remove_commands = []
+timeout_seconds = 60
+
+[context]
+read_first = []
++++
+
+Test workflow.
+"#,
+		)
+		.expect("sample workflow should parse")
+	}
+
+	fn sample_landing_state(
+		pr_url: &str,
+		branch_name: &str,
+		head_oid: &str,
+	) -> crate::pull_request::PullRequestLandingState {
+		crate::pull_request::PullRequestLandingState {
+			url: pr_url.to_owned(),
+			state: String::from("OPEN"),
+			is_draft: false,
+			review_decision: Some(String::from("APPROVED")),
+			base_ref_name: String::from("main"),
+			base_ref_oid: Some(String::from("base-sha")),
+			pending_review_requests: 0,
+			mergeable: String::from("MERGEABLE"),
+			merge_state_status: String::from("CLEAN"),
+			head_ref_name: branch_name.to_owned(),
+			head_ref_oid: head_oid.to_owned(),
+			status_check_rollup_state: Some(String::from("SUCCESS")),
+			required_status_contexts: Vec::new(),
+			unresolved_review_threads: 0,
+		}
+	}
+
+	fn sample_issue(state_name: &str) -> TrackerIssue {
+		let states = vec![
+			TrackerState { id: String::from("state-todo"), name: String::from("Todo") },
+			TrackerState { id: String::from("state-progress"), name: String::from("In Progress") },
+			TrackerState { id: String::from("state-review"), name: String::from("In Review") },
+			TrackerState { id: String::from("state-done"), name: String::from("Done") },
+		];
+		let state = states
+			.iter()
+			.find(|state| state.name == state_name)
+			.expect("sample state should exist")
+			.clone();
+
+		TrackerIssue {
+			id: String::from("issue-id"),
+			identifier: String::from("PUB-1704"),
+			#[cfg(test)]
+			project_slug: None,
+			title: String::from("Sample issue"),
+			author: None,
+			description: String::new(),
+			priority: None,
+			created_at: String::from("2026-06-09T00:00:00Z"),
+			updated_at: String::from("2026-06-09T00:00:00Z"),
+			state,
+			team: TrackerTeam {
+				id: String::from("team-id"),
+				name: String::from("XY"),
+				states,
+				labels: Vec::new(),
+			},
+			labels_complete: true,
+			labels: Vec::new(),
+			blockers: Vec::new(),
+		}
+	}
+
+	fn sample_issue_with_labels(state_name: &str, labels: &[String]) -> TrackerIssue {
+		let mut issue = sample_issue(state_name);
+
+		for label in labels {
+			let tracker_label = TrackerLabel {
+				id: format!("label-{}", label.replace(':', "-")),
+				name: label.clone(),
+			};
+
+			issue.team.labels.push(tracker_label.clone());
+			issue.labels.push(tracker_label);
+		}
+
+		issue
+	}
+
+	fn current_timestamp() -> String {
+		OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
+	}
+
+	struct TestTracker {
+		issues: Vec<TrackerIssue>,
+		comments: Vec<TrackerComment>,
+		state_updates: RefCell<Vec<(String, String)>>,
+		label_removals: RefCell<Vec<(String, Vec<String>)>>,
+	}
+
+	impl TestTracker {
+		fn with_issues(issues: Vec<TrackerIssue>) -> Self {
+			Self {
+				issues,
+				comments: Vec::new(),
+				state_updates: RefCell::new(Vec::new()),
+				label_removals: RefCell::new(Vec::new()),
+			}
+		}
+
+		fn with_comments(mut self, comments: Vec<TrackerComment>) -> Self {
+			self.comments = comments;
+
+			self
+		}
+	}
+
+	impl IssueTracker for TestTracker {
+		fn list_issues_with_label(&self, label_name: &str) -> Result<Vec<TrackerIssue>> {
+			Ok(self.issues.iter().filter(|issue| issue.has_label(label_name)).cloned().collect())
+		}
+
+		fn find_team_label_id(&self, team_id: &str, label_name: &str) -> Result<Option<String>> {
+			Ok(self
+				.issues
+				.iter()
+				.find(|issue| issue.team.id == team_id)
+				.and_then(|issue| issue.label_id_for_name(label_name).map(ToOwned::to_owned)))
+		}
+
+		fn get_issue_by_identifier(&self, issue_identifier: &str) -> Result<Option<TrackerIssue>> {
+			Ok(self
+				.issues
+				.iter()
+				.find(|issue| issue.identifier.eq_ignore_ascii_case(issue_identifier))
+				.cloned())
+		}
+
+		fn refresh_issues(&self, issue_ids: &[String]) -> Result<Vec<TrackerIssue>> {
+			Ok(self
+				.issues
+				.iter()
+				.filter(|issue| issue_ids.iter().any(|issue_id| issue_id == &issue.id))
+				.cloned()
+				.collect())
+		}
+
+		fn list_comments(&self, _issue_id: &str) -> Result<Vec<TrackerComment>> {
+			Ok(self.comments.clone())
+		}
+
+		fn update_issue_state(&self, issue_id: &str, state_id: &str) -> Result<()> {
+			self.state_updates.borrow_mut().push((issue_id.to_owned(), state_id.to_owned()));
+
+			Ok(())
+		}
+
+		fn add_issue_labels(&self, _issue_id: &str, _label_ids: &[String]) -> Result<()> {
+			Ok(())
+		}
+
+		fn remove_issue_labels(&self, issue_id: &str, label_ids: &[String]) -> Result<()> {
+			self.label_removals.borrow_mut().push((issue_id.to_owned(), label_ids.to_vec()));
+
+			Ok(())
+		}
+
+		fn create_comment(&self, _issue_id: &str, _body: &str) -> Result<()> {
+			Ok(())
+		}
+
+		fn create_issue(&self, request: &TrackerIssueCreate) -> Result<TrackerIssue> {
+			let _ = request;
+
+			eyre::bail!("test tracker does not create issues")
+		}
+
+		fn update_issue_brief(
+			&self,
+			issue_id: &str,
+			request: &TrackerIssueBriefUpdate,
+		) -> Result<TrackerIssue> {
+			let _ = (issue_id, request);
+
+			eyre::bail!("test tracker does not update issue briefs")
+		}
+	}
 }

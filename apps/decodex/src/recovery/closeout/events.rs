@@ -160,7 +160,9 @@ pub(super) fn merged_closeout_cleanup_event(
 		String::from("linear_queue_active_attention_labels_absent=true"),
 		String::from("retained_worktree_has_no_uncommitted_changes=true"),
 	]);
-	event.next_action = Some(String::from("No Decodex runtime action remains for this lane."));
+	event.next_action = Some(String::from(
+		"Decodex will close the obsolete PR, record lifecycle authority, and clear retained lane cleanup state.",
+	));
 
 	event
 }
@@ -217,7 +219,7 @@ pub(super) fn superseded_closeout_event(
 		String::from("retained_worktree_has_no_uncommitted_changes=true"),
 	]);
 	event.next_action = Some(String::from(
-		"Decodex will close the obsolete PR, mark the superseded issue complete, and clear retained lane cleanup state.",
+		"Decodex will close the obsolete PR and clear retained lane cleanup state.",
 	));
 
 	event
@@ -267,7 +269,7 @@ pub(super) fn superseded_closeout_cleanup_event(
 		format!("branch={}", validation.branch_name),
 		format!("worktree_path={}", validation.worktree_path_for_event),
 		format!("successor_issue={}", validation.successor_issue.identifier),
-		String::from("obsolete_pr_closed_or_already_closed=true"),
+		String::from("obsolete_pr_closure_authorized=true"),
 		String::from("retained_worktree_has_no_uncommitted_changes=true"),
 	]);
 	event.next_action = Some(String::from("No Decodex runtime action remains for this lane."));

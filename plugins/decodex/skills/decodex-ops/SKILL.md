@@ -44,7 +44,10 @@ service labels, recovery, or lane-control details matter.
 - If a later issue and merged successor PR already landed the accepted repair, do
   not rebind the obsolete PR. Dry-run
   `decodex recover superseded-closeout <ISSUE> --pr <OLD_PR> --successor-issue <ISSUE> --successor-pr <MERGED_PR> --dry-run`
-  before live superseded closeout.
+  before live superseded closeout. The obsolete issue must have no queue, active,
+  or needs-attention labels or live runtime ownership, and the successor issue
+  must expose a Decodex ledger record for the exact successor PR head and merge
+  commit.
 - Do not infer PR lineage from branch names, PR titles, Linear comments, status
   summaries, or stale snapshots.
 
