@@ -28,7 +28,7 @@ actor DecodexServerBridge {
 		components.query = nil
 
 		guard let url = components.url else {
-			throw DecodexAppBridgeError.invalidResponse("Decodex dashboard WebSocket URL is invalid")
+			throw DecodexAppBridgeError.invalidResponse("Decodex operator WebSocket URL is invalid")
 		}
 
 		return url

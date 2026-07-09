@@ -1,4 +1,4 @@
-//! Operator HTTP endpoint, dashboard, and control API handling.
+//! Operator HTTP endpoint, WebSocket, and control API handling.
 
 mod api;
 mod assets;

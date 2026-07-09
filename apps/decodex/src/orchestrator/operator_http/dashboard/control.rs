@@ -72,7 +72,7 @@ pub(crate) fn handle_dashboard_client_message(
 			&action,
 			false,
 			"unsupported_message",
-			"Unsupported dashboard WebSocket message type.",
+			"Unsupported operator WebSocket message type.",
 		),
 	}
 }
