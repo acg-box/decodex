@@ -5,7 +5,7 @@ use crate::orchestrator::{
 	ISSUE_TRANSITION_TOOL_NAME, IssueDispatchMode, IssueRunPlan, IssueTracker, Result,
 	ServiceConfig, StateStore, WorkflowDocument,
 	prompting::{
-		DOCS_IMPACT_CONTRACT, TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION, prompting_contracts,
+		OPENWIKI_IMPACT_CONTRACT, TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION, prompting_contracts,
 		prompting_recovery, prompting_review_guidance, prompting_workflow_context,
 	},
 };
@@ -153,7 +153,7 @@ fn push_developer_instruction_base_sections(
 	sections.push(String::from(
 		"Execution discipline\n- Keep pre-edit discovery bounded to the smallest code surface that can satisfy the current issue.\n- Start with the implementation files directly implicated by the issue before reading broader OpenWiki or repo-wide guidance.\n- Do not browse upstream references or general repository documentation unless a concrete ambiguity blocks the change.\n- Once the relevant change surface is identified, patch code and run validation instead of continuing broad searches.",
 	));
-	sections.push(String::from(DOCS_IMPACT_CONTRACT));
+	sections.push(String::from(OPENWIKI_IMPACT_CONTRACT));
 	sections.push(String::from(
 		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/2` JSON commit message.\n- Required fields: `schema`, `change`, `authority`, and `impact`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- `impact` must be `compatible` or `breaking`.\n- Do not encode related issues, source branch, landing mode, PR state, closeout state, or other process-state fields in the commit message.",
 	));

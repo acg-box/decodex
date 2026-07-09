@@ -58,7 +58,7 @@ fn progress_checkpoint_classifier_allows_public_projection() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			"focus": "Private focus stays local.",
 			"next_action": "Continue implementation.",
 			"blockers": [],

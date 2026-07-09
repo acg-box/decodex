@@ -252,7 +252,7 @@ pub(crate) use self::{
 #[allow(unused_imports)]
 pub(crate) use self::{
 	prompting::{
-		DOCS_IMPACT_CONTRACT, build_continuation_user_input, build_developer_instructions,
+		OPENWIKI_IMPACT_CONTRACT, build_continuation_user_input, build_developer_instructions,
 		build_review_run_context, build_user_input, review_pull_request_title,
 		validate_workflow_read_first_files,
 	},

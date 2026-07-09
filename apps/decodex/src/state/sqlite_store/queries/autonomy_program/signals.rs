@@ -63,7 +63,7 @@ impl SqliteStateStore {
 			return Ok(Some(record));
 		}
 
-		self.legacy_openwiki_drift_signal_by_canonical_id(project_id, signal_id)
+		Ok(None)
 	}
 
 	fn autonomy_signal_by_stored_id(
@@ -86,55 +86,6 @@ impl SqliteStateStore {
 			.transpose()?
 			.map(runtime_row_parsers::autonomy_signal_record_from_row_parts)
 			.transpose()
-	}
-
-	fn legacy_openwiki_drift_signal_by_canonical_id(
-		&self,
-		project_id: &str,
-		signal_id: &str,
-	) -> Result<Option<AutonomySignalRuntimeRecord>> {
-		let legacy_record = {
-			let mut statement = self.connection.prepare(
-				"SELECT project_id, signal_id, objective_id, objective_version, kind, fingerprint, \
-				 freshness, evidence_class, confidence, privacy, payload_json, created_at, \
-				 created_at_unix, updated_at, updated_at_unix \
-				 FROM autonomy_signals \
-				 WHERE project_id = ?1 AND kind IN ('docs_plugin_drift', 'docs_skill_drift') \
-				 ORDER BY updated_at_unix DESC, signal_id ASC",
-			)?;
-			let rows = statement.query_map(
-				rusqlite::params![project_id],
-				runtime_row_parsers::autonomy_signal_runtime_row_parts,
-			)?;
-			let mut legacy_record = None;
-
-			for row in rows {
-				let parts = row?;
-				let legacy_signal_id = parts.signal_id.clone();
-				let record = runtime_row_parsers::autonomy_signal_record_from_row_parts(parts)?;
-
-				if record.signal.id() == signal_id {
-					legacy_record = Some((legacy_signal_id, record));
-
-					break;
-				}
-			}
-
-			legacy_record
-		};
-		let Some((legacy_signal_id, record)) = legacy_record else {
-			return Ok(None);
-		};
-
-		self.upsert_autonomy_signal(&record)?;
-		self.connection.execute(
-			"DELETE FROM autonomy_signals
-			 WHERE project_id = ?1 AND signal_id = ?2 \
-			   AND kind IN ('docs_plugin_drift', 'docs_skill_drift')",
-			rusqlite::params![project_id, legacy_signal_id],
-		)?;
-
-		Ok(Some(record))
 	}
 
 	pub(in crate::state) fn list_autonomy_signals_for_objective(

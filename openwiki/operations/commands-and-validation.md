@@ -67,15 +67,14 @@ decodex --help
 decodex <subcommand> --help
 ```
 
-The compatibility docs readiness command is:
+The OpenWiki readiness command is:
 
 ```sh
-decodex docs check
+decodex openwiki check
 ```
 
-It checks the current repository documentation surface (`openwiki/` and/or
-`docs/`) and keeps downstream docs-readiness automation on a Decodex-owned CLI
-contract.
+It checks the current repository OpenWiki surface (`openwiki/`) and keeps
+downstream knowledge-readiness automation on a Decodex-owned CLI contract.
 
 Important source modules:
 
