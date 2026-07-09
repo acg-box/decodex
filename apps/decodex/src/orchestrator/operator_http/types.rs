@@ -1,4 +1,4 @@
-//! Operator HTTP request, route, dashboard session, and event types.
+//! Operator HTTP request, route, operator WebSocket session, and event types.
 
 pub(super) mod dashboard_events;
 pub(super) mod requests;

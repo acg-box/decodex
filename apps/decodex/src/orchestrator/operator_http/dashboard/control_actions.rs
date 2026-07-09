@@ -142,6 +142,6 @@ fn dashboard_unsupported_control_ack(
 		action,
 		false,
 		"unsupported_action",
-		"Unsupported dashboard control action.",
+		"Unsupported operator control action.",
 	)
 }
