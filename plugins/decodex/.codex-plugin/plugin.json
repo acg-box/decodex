@@ -18,6 +18,18 @@
     "diagnostics",
     "orchestration"
   ],
+  "package": {
+    "include": [
+      ".codex-plugin/**",
+      "hooks/**",
+      "references/**",
+      "scripts/**",
+      "skills/**"
+    ],
+    "exclude": [
+      "tests/**"
+    ]
+  },
   "skills": "./skills/",
   "interface": {
     "displayName": "Decodex",
