@@ -29,7 +29,7 @@ where
 	)?;
 	let repair_lanes = lanes
 		.into_iter()
-		.filter(predicates::post_review_lane_is_repair_candidate)
+		.filter(predicates::post_review_lane_is_repair_dispatch_candidate)
 		.collect::<Vec<_>>();
 
 	if repair_lanes.is_empty() {
