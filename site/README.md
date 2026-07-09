@@ -1,14 +1,15 @@
 # Decodex Site
 
-This directory owns the isolated static-site surface for the GitHub-first Decodex
-MVP.
+This directory owns the static public Decodex product site and app download entry.
+It is an Astro/TypeScript surface and must stay independent from live Decodex daemon
+state.
 
 Current scope:
 
-- Astro + TypeScript application shell
+- Astro + TypeScript site rendering
 - Tailwind-powered global styling
-- homepage route aligned to the one-page site contract
-- site-owned signal content collection scaffolding
+- public product homepage and app download content
+- static assets and content owned by the site build
 
 Local commands:
 
@@ -17,5 +18,6 @@ Local commands:
 - `npm run build`
 - `npm run check`
 
-This scaffold intentionally stops at the route shell. Real GitHub-backed signal
-entries and bundle tooling land in later execution tasks.
+External automation owns publication to GitHub Pages. Runtime scheduling, tracker
+writes, local operator state, app-server orchestration, and Radar/Publisher
+automation remain outside this static site boundary.

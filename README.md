@@ -375,8 +375,6 @@ The tracked workspace currently keeps:
 - `plugins/decodex/` as the canonical installable Decodex plugin source
 - `openwiki/` as the repo-local project knowledge and agent context surface
 - `dev/` as local development helpers, such as the operator dashboard mock server
-- `openwiki/` as the repo-local project knowledge and agent context surface
-- `dev/` as local development helpers, such as the operator mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
   generated `.icns`, and menu bar template assets
 
