@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::OsString, fs, path::PathBuf, process::Comma
 use crate::{
 	active_run_env::{
 		ActiveRunCommitContext, DECODEX_ACTIVE_RUN_ID_ENV, DECODEX_ACTIVE_RUN_ISSUE_ID_ENV,
-		DECODEX_ACTIVE_RUN_SERVICE_ID_ENV,
+		DECODEX_ACTIVE_RUN_ISSUE_IDENTIFIER_ENV, DECODEX_ACTIVE_RUN_SERVICE_ID_ENV,
 	},
 	agent::json_rpc::{
 		AppServerHomePreflightFailure, AppServerProcessEnv, ResolvedAppServerCodexHomeEnv,
@@ -66,6 +66,7 @@ fn app_server_command_inherits_active_run_commit_context() {
 			String::from("decodex"),
 			String::from("xy-1247-attempt-1"),
 			String::from("issue-1"),
+			String::from("XY-1247"),
 		));
 	let mut command = Command::new("codex");
 
@@ -77,6 +78,10 @@ fn app_server_command_inherits_active_run_commit_context() {
 	assert_eq!(envs.get(DECODEX_ACTIVE_RUN_SERVICE_ID_ENV).map(String::as_str), Some("decodex"));
 	assert_eq!(envs.get(DECODEX_ACTIVE_RUN_ID_ENV).map(String::as_str), Some("xy-1247-attempt-1"));
 	assert_eq!(envs.get(DECODEX_ACTIVE_RUN_ISSUE_ID_ENV).map(String::as_str), Some("issue-1"));
+	assert_eq!(
+		envs.get(DECODEX_ACTIVE_RUN_ISSUE_IDENTIFIER_ENV).map(String::as_str),
+		Some("XY-1247")
+	);
 }
 
 #[test]

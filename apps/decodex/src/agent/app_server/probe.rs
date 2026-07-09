@@ -30,6 +30,7 @@ pub(crate) fn probe_app_server(listen: &str) -> Result<AppServerRunResult> {
 			project_id: String::from("probe"),
 			run_id: PROBE_RUN_ID.to_owned(),
 			issue_id: PROBE_ISSUE_ID.to_owned(),
+			issue_identifier: PROBE_ISSUE_ID.to_owned(),
 			attempt_number: 1,
 			listen: listen.to_owned(),
 			cwd: env::current_dir()?.display().to_string(),

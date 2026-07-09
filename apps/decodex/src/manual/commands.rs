@@ -24,6 +24,7 @@ pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitReque
 		config_path,
 		&cwd,
 		&worktree_root,
+		&authority,
 	)?;
 
 	let message = commit_message::build_commit_message(
