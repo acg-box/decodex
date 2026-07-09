@@ -149,6 +149,11 @@ python3 scripts/config/sync_installable_plugins.py --apply --clean-repo-local-sk
 python3 -m unittest tests/scripts/test_sync_installable_plugins.py
 ```
 
+The Decodex plugin manifest declares runtime package include/exclude patterns.
+`scripts/config/sync_installable_plugins.py` must honor that contract when
+installing to `$CODEX_HOME/plugins/cache/hack-ink/decodex/<version>`, so
+source-only plugin tests are not copied into installed packages.
+
 Codex App automation sync and evaluation:
 
 ```sh
