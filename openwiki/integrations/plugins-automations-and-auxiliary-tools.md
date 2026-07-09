@@ -38,6 +38,10 @@ The installer is `scripts/config/sync_installable_plugins.py`. It finds the repo
 $CODEX_HOME/plugins/cache/hack-ink/<plugin>/<version>
 ```
 
+Each plugin manifest declares `package.include` and `package.exclude`. The sync
+script materializes only that runtime package contract; source-only assets such
+as `plugins/decodex/tests/` stay out of installed plugin cache entries.
+
 Commands:
 
 ```sh
