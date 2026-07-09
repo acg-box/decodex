@@ -300,16 +300,15 @@ fn ensure_marker_has_no_live_runtime_evidence(
 		);
 	}
 
-	if marker_liveness != StaleActiveProcessLiveness::NotAlive
-		&& (marker.last_progress_unix_epoch().is_some()
-			|| marker.last_protocol_activity_unix_epoch().is_some()
-			|| marker.event_count() > 0
-			|| marker.last_event_type().is_some()
-			|| marker.child_agent_activity().is_some()
-			|| marker.protocol_activity().is_some())
+	if marker.last_progress_unix_epoch().is_some()
+		|| marker.last_protocol_activity_unix_epoch().is_some()
+		|| marker.event_count() > 0
+		|| marker.last_event_type().is_some()
+		|| marker.child_agent_activity().is_some()
+		|| marker.protocol_activity().is_some()
 	{
 		eyre::bail!(
-			"Issue `{}` still has live retained activity marker ownership for retained worktree run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
+			"Issue `{}` still has retained activity marker ownership for retained worktree run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires stale activity evidence to be cleared by explicit recovery before terminalization.",
 			issue.identifier
 		);
 	}
@@ -780,6 +779,52 @@ mod tests {
 
 		assert!(error.to_string().contains("run-older-live-marker"));
 		assert!(error.to_string().contains("live retained"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_mismatched_dead_retained_activity_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		context
+			.state_store
+			.record_run_attempt("run-latest", &issue.id, 2, "succeeded")
+			.expect("latest terminal run should persist");
+		fs::create_dir_all(&worktree_path).expect("worktree should exist");
+		state::write_run_activity_marker_for_process(
+			&worktree_path,
+			"run-older-dead-marker",
+			1,
+			u32::MAX,
+		)
+		.expect("dead process marker should persist");
+		write_live_protocol_marker(&worktree_path, "run-older-dead-marker", 1);
+
+		let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+			.expect("marker should read")
+			.expect("marker should exist");
+		assert_eq!(
+			process_liveness::stale_active_optional_marker_process_liveness(Some(&marker)),
+			StaleActiveProcessLiveness::NotAlive
+		);
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject stale retained activity evidence");
+
+		assert!(error.to_string().contains("run-older-dead-marker"));
+		assert!(error.to_string().contains("retained activity marker ownership"));
 	}
 
 	#[test]
