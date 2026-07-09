@@ -1,6 +1,6 @@
 # Runtime Operator Workflows
 
-This page is the operator-task map for Decodex. It describes what commands do, where they enter source, and what future agents should verify when changing them.
+This page is the operator-task map for Decodex. It describes what commands do, where they enter source, and what future agents should verify when changing them. For recovery and landing decision boundaries, see [Recovery And Landing](../operations/recovery-and-landing.md).
 
 ## Project setup and registry
 
@@ -81,6 +81,16 @@ Default status may reuse a recent default listener snapshot when it covers the r
 
 `decodex diagnose` writes and prints local agent-readable evidence. `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N>` reads private runtime evidence from the local store. These outputs are repair aids, not scheduling authority (`openwiki/specs/contracts-and-data.md`).
 
+## Orchestration kernel lifecycle cutover
+
+When changing runtime lane policy, keep the cutover boundary locked: Self Check and Basic review behavior, agent-facing review checkpoint tools, legacy marker compatibility, and dual old/new lifecycle branches must stay out of active runtime. Standard review is runtime-owned; Strict review and GitHub review semantics remain fail-closed; current-head clean checkpoint, PR/head/worktree lineage, and dirty-worktree review blockers remain required.
+
+The kernel vocabulary is the operational contract. `OwnedLaneAction` remains the domain action set (`continue`, `wait_for_external_signal`, `retry_automatically`, `resume_retained_lane`, `manual_intervention_required`, `ready_to_land`), while side effects are `CommandIntentKind` values such as `start_retained_landing`, `start_review_repair`, `finish_retained_cleanup`, and `sync_review_lifecycle_authority` with idempotency keys, preconditions, and expected postconditions (`apps/decodex/src/orchestrator/kernel/action.rs`, `apps/decodex/src/orchestrator/kernel/command.rs`).
+
+For post-review work, the lifecycle authority record is the source of truth after review handoff. Mutations must flow through lifecycle decisions and `StateStore::record_lifecycle_decision`, which writes the authority projection and append-only lifecycle event together; do not infer post-review truth from branch names, PR titles, current HEAD alone, Linear comments, status rows, dashboard labels, or old marker-shaped names (`apps/decodex/src/orchestrator/kernel/lifecycle.rs`, `apps/decodex/src/state/review_records/lifecycle/authority.rs`). Status, dashboard, MCP, recovery, landing, and closeout code are projections or side-effect adapters over that authority, not independent lifecycle policy owners.
+
+Before calling the cutover complete, run reverse scans for removed review checkpoint surfaces, Self Check/Basic review language, and old marker authority names across `apps/decodex/src`, `docs`, and `plugins`, excluding historical runbook/log text when appropriate. Validation must include focused lifecycle/post-review/kernel tests, broad Rust validation or documented unrelated-failure evidence, `git diff --check`, and a final architecture review with no unresolved blocker. Completion means old lifecycle decision branches are deleted or reduced to adapters, every mutating path uses kernel command intents, and every read surface consumes projections.
+
 ## Lane control
 
 Lane commands (`apps/decodex/src/cli/control_commands/lane.rs`):
@@ -97,7 +107,10 @@ Rules:
 - Inspect first when possible. Steer requires the current run id and expected active turn id.
 - Soft interrupt uses app-server lane-control protocol when available.
 - `--force` allows hard process-kill fallback only after soft interrupt is unavailable, rejected, or times out under the documented conditions.
+- If soft control reports `run_lease_missing` while inspect/status still shows the same run id, attempt, branch, active channel, and live process or protocol activity, treat the lane as degraded active execution; do not classify it as cleanup-only or clear attention labels.
 - Lane-control results and audit records are local runtime evidence; they do not replace tracker lifecycle signals.
+
+After lane control, choose the next recovery path from evidence: wait for a matching live lane to settle, resume only when retained work and PR lineage exactly match, run stale-active recovery for tracker-present active-label claims without safe live/progress ownership, run ghost-lane recovery for missing-issue local state without retained evidence, run review-handoff recovery for PR-backed lifecycle drift, or stop for manual attention when evidence is missing or contradictory.
 
 MCP `decodex_lane_control` mirrors these preconditions as an inspect-first facade, not a shortcut.
 
@@ -135,6 +148,10 @@ decodex recover merged-closeout ...
 
 Use recovery when normal runtime status reports retained lane drift, missing lifecycle authority, ghost lanes, stale active ownership, or already-merged closeout gaps. The post-review lifecycle spec is strict: missing lifecycle records are fail-closed and must not be reconstructed from branch names, PR titles, Linear comments, or current head alone (`openwiki/specs/contracts-and-data.md`).
 
+Recovery is dry-run-first unless the command is read-only. `review-handoff diagnose` is the read-only entrypoint; `rebind` repairs retained Decodex PR lanes only when the retained worktree and PR prove exact issue/branch/head authority, while `adopt` is limited to human-created PRs from a managed clean Decodex worktree and must not take over lanes that already have lifecycle records. `stale-active diagnose` applies to tracker-present active-label ownership with no safe live/progress owner; `ghost-lane diagnose` applies to missing-issue local runtime state. Stop instead of mutating when the report names live process state, run leases/shared claims, needs-attention labels, non-runtime worktree changes, unmerged commits, unavailable default-branch proof, private progress evidence, review-policy checkpoints, PR/review lineage, mixed private evidence, or unreadable worktrees.
+
+Validate recovery by rerunning the diagnosis and `decodex status`. For review repair states, targeted `decodex run <ISSUE> --dry-run` should plan the retained repair path; if it reports no eligible issue while status still shows review repair, treat that as a runtime dispatch problem rather than adding queue labels or reusing the retained worktree.
+
 Future agents changing recovery must preserve explicit evidence requirements and add tests under the matching `apps/decodex/src/orchestrator/tests/recovery_*` or `apps/decodex/src/recovery/tests/` area.
 
 ## Commit and landing
@@ -169,7 +186,7 @@ Defaults:
 - Streamable HTTP defaults to `observe` and requires origin/bearer boundaries for non-loopback or elevated profiles.
 - CORS is not auth; `Mcp-Session-Id` is protocol session state, not authorization (`apps/decodex/src/mcp.rs`).
 
-Use MCP for typed resources, prompts, planning, lane control, and project control. Do not use it to bypass acceptance, lane-control run/turn preconditions, project enablement, or tracker/writeback policies.
+Use MCP for typed resources, prompts, planning, lane control, and project control. Do not use it to bypass acceptance, lane-control run/turn preconditions, project enablement, or tracker/writeback policies. For remote-control watched claims, reverse checks, and stop conditions, see [Drift audits](../evidence/drift-audits.md).
 
 ## Account pool and native App
 
