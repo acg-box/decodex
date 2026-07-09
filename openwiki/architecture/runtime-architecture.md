@@ -21,7 +21,7 @@ The crate has a compile-time Unix-only guard: macOS and Linux are supported; Win
 
 `apps/decodex/src/cli.rs` owns the command surface. Current top-level commands include:
 
-- `run`, `serve`, `status`, `project`, `lane`, `diagnose`, `docs`, `evidence`, `recover`, `intake`, `mcp`, `probe`, `verify`
+- `run`, `serve`, `status`, `project`, `lane`, `diagnose`, `openwiki`, `evidence`, `recover`, `intake`, `mcp`, `probe`, `verify`
 - `commit`, `land`, `git-hook` for Decodex-owned Git lifecycle policy
 - `account`, `app`, `archive-linear`, `maintenance`
 - hidden `_attempt` for daemon-planned child attempts
@@ -73,7 +73,7 @@ Recent source adds a baseline guard before ordinary, Program, and retry dispatch
 
 ## Long-running control plane
 
-`decodex serve` calls `orchestrator::run_control_plane` through `apps/decodex/src/cli/control_commands/serve.rs`. The operator listener default is `127.0.0.1:8192` in README examples and operator docs. `--dev` is hidden and is only for isolated endpoint testing; it does not represent normal scheduling.
+`decodex serve` calls `orchestrator::run_control_plane` through `apps/decodex/src/cli/control_commands/serve.rs`. The operator listener default is `127.0.0.1:8192` in README examples and OpenWiki operator notes. `--dev` is hidden and is only for isolated endpoint testing; it does not represent normal scheduling.
 
 Each daemon tick (`apps/decodex/src/orchestrator/daemon.rs`):
 

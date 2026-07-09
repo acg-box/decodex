@@ -61,7 +61,7 @@ fn progress_checkpoint_unavailable_classifier_preserves_private_event() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "verifying",
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			"focus": "Private verification focus stays local.",
 			"next_action": "Continue verification.",
 			"blockers": [],

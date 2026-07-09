@@ -40,7 +40,7 @@ fn review_repair_apply_preserves_existing_authority_when_comment_write_fails() {
 		}),
 	);
 
-	tests::seed_docs_impact_checkpoint(
+	tests::seed_openwiki_impact_checkpoint(
 		tests::bridge_state_store(&bridge),
 		&review_context,
 		&issue.id,

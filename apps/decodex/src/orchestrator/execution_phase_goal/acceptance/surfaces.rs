@@ -33,7 +33,7 @@ pub(crate) fn validation_evidence_blocker_count(payload: &Value) -> usize {
 	payload.get("blockers").and_then(Value::as_array).map_or(0, Vec::len)
 }
 
-pub(crate) fn validation_evidence_docs_impact_valid(value: &str) -> bool {
+pub(crate) fn validation_evidence_openwiki_impact_valid(value: &str) -> bool {
 	matches!(value, "none" | "update_required" | "research_required" | "drift_required")
 }
 
