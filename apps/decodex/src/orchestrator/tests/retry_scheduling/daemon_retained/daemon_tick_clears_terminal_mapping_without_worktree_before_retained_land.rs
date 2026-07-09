@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
 	orchestrator::{
 		self, DaemonTickRuntimeContext, RetryQueue, ReviewLevel, StateStore, tests,
@@ -76,39 +78,16 @@ fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 			&config.worktree_root().join("PUB-703").display().to_string(),
 		)
 		.expect("terminal stale worktree should record");
-	state_store
-		.upsert_worktree(
-			config.service_id(),
-			&retained_issue.id,
-			&retained_worktree.branch_name,
-			&retained_worktree.path.display().to_string(),
-		)
-		.expect("retained worktree should record");
 
-	tests::seed_review_lifecycle_handoff_fixture_value(
+	seed_ready_retained_lane(
 		&state_store,
 		config.service_id(),
 		&retained_issue.id,
-		&tests::sample_review_lifecycle_handoff_fixture(
-			&retained_worktree.branch_name,
-			pr_url,
-			&head_oid,
-		),
+		&retained_worktree.branch_name,
+		&retained_worktree.path,
+		pr_url,
+		&head_oid,
 	);
-	state_store
-		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
-			project_id: config.service_id(),
-			issue_id: &retained_issue.id,
-			run_id: "run-1",
-			attempt_number: 1,
-			phase: "handoff",
-			review_level: "standard",
-			status: "clean",
-			head_sha: &head_oid,
-			nonclean_rounds: 0,
-			details_json: "{}",
-		})
-		.expect("runtime standard checkpoint should persist");
 
 	let mut active_children = Vec::new();
 	let mut retry_queue = RetryQueue::default();
@@ -149,4 +128,40 @@ fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 		PUB_704_RETAINED_LANDED_SUBJECT,
 		pr_url,
 	);
+}
+
+fn seed_ready_retained_lane(
+	state_store: &StateStore,
+	service_id: &str,
+	issue_id: &str,
+	branch_name: &str,
+	worktree_path: &Path,
+	pr_url: &str,
+	head_oid: &str,
+) {
+	state_store
+		.upsert_worktree(service_id, issue_id, branch_name, &worktree_path.display().to_string())
+		.expect("retained worktree should record");
+
+	tests::seed_review_lifecycle_handoff_fixture_value(
+		state_store,
+		service_id,
+		issue_id,
+		&tests::sample_review_lifecycle_handoff_fixture(branch_name, pr_url, head_oid),
+	);
+
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: service_id,
+			issue_id,
+			run_id: "run-1",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime standard checkpoint should persist");
 }

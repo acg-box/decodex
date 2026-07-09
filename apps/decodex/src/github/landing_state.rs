@@ -57,6 +57,7 @@ pub(crate) fn inspect_pull_request_landing_state(
 	let mut landing_state = landing_state.ok_or_else(|| {
 		eyre::eyre!("GitHub GraphQL response for `{pr_url}` did not include a pull request.")
 	})?;
+
 	landing_state.required_status_contexts = github::inspect_required_commit_status_contexts(
 		cwd,
 		&locator.owner,

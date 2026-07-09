@@ -19,6 +19,10 @@ fn operator_run_phase_readback(run: &OperatorRunStatus) -> &str {
 	if run.run_phase.trim().is_empty() { &run.phase } else { &run.run_phase }
 }
 
+fn render_optional_seconds(value: Option<i64>) -> String {
+	value.map_or_else(|| String::from("none"), |value| value.to_string())
+}
+
 fn append_rendered_run_impl(output: &mut String, run: &OperatorRunStatus) {
 	let (freshness_source, freshness_at) = freshness::operator_run_freshness(run);
 	let protocol_event = thread::render_run_protocol_event(run);
@@ -26,11 +30,8 @@ fn append_rendered_run_impl(output: &mut String, run: &OperatorRunStatus) {
 	let turn_id = run.turn_id.as_deref().unwrap_or("none");
 	let thread_status = run.thread_status.as_deref().unwrap_or("none");
 	let thread_active_flags = thread::render_run_thread_active_flags(run);
-	let idle_for_seconds =
-		run.idle_for_seconds.map_or_else(|| String::from("none"), |value| value.to_string());
-	let protocol_idle_for_seconds = run
-		.protocol_idle_for_seconds
-		.map_or_else(|| String::from("none"), |value| value.to_string());
+	let idle_for_seconds = render_optional_seconds(run.idle_for_seconds);
+	let protocol_idle_for_seconds = render_optional_seconds(run.protocol_idle_for_seconds);
 	let branch_name = run.branch_name.as_deref().unwrap_or("none");
 	let worktree_path = run.worktree_path.as_deref().unwrap_or("none");
 	let queue_lease = control::operator_run_queue_lease_summary(run);

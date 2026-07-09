@@ -1,8 +1,8 @@
 use std::{
-	fs::{self, OpenOptions},
-	io::{ErrorKind, Read as _},
+	fs::{self, File, OpenOptions},
+	io::{ErrorKind, Read as _, Write as _},
 	path::{Path, PathBuf},
-	process::{Command, Output},
+	process::{self, Command, Output},
 	thread,
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -24,14 +24,6 @@ use crate::{
 	state::ProjectLoopEvidenceSnapshot,
 };
 
-const BASELINE_ISSUE_ID: &str = "__baseline__";
-const BASELINE_ATTEMPT_NUMBER: i64 = 1;
-const LOCK_FILE_NAME: &str = ".decodex-baseline-normalization.lock";
-const LOCK_SCHEMA: &str = "decodex/baseline_normalization_lock/1";
-const MERGE_READBACK_TIMEOUT: Duration = Duration::from_secs(120);
-const NORMALIZATION_WAIT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-const NORMALIZATION_WAIT_INTERVAL: Duration = Duration::from_secs(5);
-
 pub(crate) const BASELINE_GUARD_CLEAN_EVENT_TYPE: &str = "baseline_guard_clean";
 pub(crate) const BASELINE_GUARD_DIRTY_EVENT_TYPE: &str = "baseline_guard_dirty";
 pub(crate) const BASELINE_GUARD_FAILED_EVENT_TYPE: &str = "baseline_guard_failed";
@@ -49,228 +41,18 @@ pub(crate) const BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE: &str =
 	"baseline_normalization_recheck_failed";
 pub(crate) const BASELINE_NORMALIZATION_FAILED_EVENT_TYPE: &str = "baseline_normalization_failed";
 
-pub(crate) fn baseline_guard_applies_to_dispatch_mode(dispatch_mode: IssueDispatchMode) -> bool {
-	matches!(
-		dispatch_mode,
-		IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry
-	)
-}
+const BASELINE_ISSUE_ID: &str = "__baseline__";
+const BASELINE_ATTEMPT_NUMBER: i64 = 1;
+const LOCK_FILE_NAME: &str = ".decodex-baseline-normalization.lock";
+const LOCK_SCHEMA: &str = "decodex/baseline_normalization_lock/1";
+const MERGE_READBACK_TIMEOUT: Duration = Duration::from_secs(120);
+const NORMALIZATION_WAIT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const NORMALIZATION_WAIT_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BaselineGuardDispatchOutcome {
 	Clean,
 	NormalizedMain,
-}
-
-pub(crate) fn ensure_clean_baseline_before_dispatch(
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	dispatch_mode: IssueDispatchMode,
-	dry_run: bool,
-) -> Result<BaselineGuardDispatchOutcome> {
-	if dry_run || !baseline_guard_applies_to_dispatch_mode(dispatch_mode) {
-		return Ok(BaselineGuardDispatchOutcome::Clean);
-	}
-	let repo_gate = BaselineRepoGateCommands::from_workflow(workflow);
-	if repo_gate.canonicalize_commands.is_empty() {
-		return Ok(BaselineGuardDispatchOutcome::Clean);
-	}
-
-	let context = BaselineGuardContext::new(project, workflow)?;
-
-	if let Some((event_type, payload)) =
-		latest_baseline_event_for_context(project, state_store, &context)?
-	{
-		match event_type.as_str() {
-			BASELINE_GUARD_CLEAN_EVENT_TYPE | BASELINE_NORMALIZATION_RECHECK_PASSED_EVENT_TYPE => {
-			},
-			BASELINE_NORMALIZATION_STARTED_EVENT_TYPE
-			| BASELINE_NORMALIZATION_PR_CREATED_EVENT_TYPE
-			| BASELINE_NORMALIZATION_REPO_GATE_PASSED_EVENT_TYPE
-			| BASELINE_NORMALIZATION_MERGED_EVENT_TYPE => {
-				if baseline_normalization_lock_is_active(project.worktree_root())? {
-					return wait_for_existing_normalization(
-						project,
-						workflow,
-						state_store,
-						dispatch_mode,
-					);
-				}
-				if let Some(outcome) = resume_existing_normalization_from_payload(
-					project,
-					&repo_gate,
-					state_store,
-					&context,
-					&payload,
-				)? {
-					return Ok(outcome);
-				}
-			},
-			BASELINE_NORMALIZATION_REPO_GATE_FAILED_EVENT_TYPE
-			| BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE
-			| BASELINE_NORMALIZATION_FAILED_EVENT_TYPE => {
-				if !baseline_normalization_lock_is_active(project.worktree_root())?
-					&& let Some(outcome) = resume_existing_normalization_from_payload(
-						project,
-						&repo_gate,
-						state_store,
-						&context,
-						&payload,
-					)? {
-					return Ok(outcome);
-				}
-			},
-			_ => {},
-		}
-	}
-
-	let guard_run_id = context.guard_run_id();
-
-	match run_guard_once(project, &repo_gate, state_store, &context, &guard_run_id)? {
-		BaselineGuardCheck::Clean =>
-			if sync_repo_root_to_guarded_main(project, &context)? {
-				Ok(BaselineGuardDispatchOutcome::Clean)
-			} else {
-				Ok(BaselineGuardDispatchOutcome::NormalizedMain)
-			},
-		BaselineGuardCheck::Dirty => {
-			let Some(_lock) =
-				BaselineNormalizationLock::acquire(project.worktree_root(), &context)?
-			else {
-				return wait_for_existing_normalization(
-					project,
-					workflow,
-					state_store,
-					dispatch_mode,
-				);
-			};
-
-			let merged_main_oid =
-				run_baseline_normalization(project, &repo_gate, state_store, &context)?;
-			finish_normalized_main(project, &repo_gate, state_store, &context, merged_main_oid)
-		},
-	}
-}
-
-fn finish_normalized_main(
-	project: &ServiceConfig,
-	repo_gate: &BaselineRepoGateCommands,
-	state_store: &StateStore,
-	context: &BaselineGuardContext,
-	merged_main_oid: String,
-) -> Result<BaselineGuardDispatchOutcome> {
-	let recheck_context = context.with_main_oid(merged_main_oid);
-	let recheck_run_id = recheck_context.recheck_run_id();
-
-	match run_guard_once(project, repo_gate, state_store, &recheck_context, &recheck_run_id) {
-		Ok(BaselineGuardCheck::Clean) => {
-			record_event(
-				project,
-				state_store,
-				&recheck_run_id,
-				BASELINE_NORMALIZATION_RECHECK_PASSED_EVENT_TYPE,
-				recheck_context.payload(),
-			)?;
-			Ok(BaselineGuardDispatchOutcome::NormalizedMain)
-		},
-		Ok(BaselineGuardCheck::Dirty) => {
-			record_event(
-				project,
-				state_store,
-				&recheck_run_id,
-				BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE,
-				recheck_context.payload(),
-			)?;
-			eyre::bail!(
-				"Baseline canonicalization still rewrites tracked files after normalization for `{}` at `{}`.",
-				project.service_id(),
-				recheck_context.main_oid
-			)
-		},
-		Err(error) => {
-			record_event(
-				project,
-				state_store,
-				&recheck_run_id,
-				BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE,
-				payload_with_error(recheck_context.payload(), &error),
-			)?;
-			Err(error)
-		},
-	}
-}
-
-fn resume_existing_normalization_from_payload(
-	project: &ServiceConfig,
-	repo_gate: &BaselineRepoGateCommands,
-	state_store: &StateStore,
-	context: &BaselineGuardContext,
-	payload: &Value,
-) -> Result<Option<BaselineGuardDispatchOutcome>> {
-	let run = BaselineNormalizationRun::new(project, context);
-
-	if let Some(merge_commit) = payload.get("merge_commit").and_then(Value::as_str) {
-		let merged_main_oid =
-			resolve_merged_baseline_main(project, state_store, context, &run, merge_commit)?;
-
-		return finish_normalized_main(project, repo_gate, state_store, context, merged_main_oid)
-			.map(Some);
-	}
-
-	let Some(pr_url) = payload.get("pr_url").and_then(Value::as_str) else {
-		return Ok(None);
-	};
-	let Some(head_oid) = payload.get("head_oid").and_then(Value::as_str) else {
-		return Ok(None);
-	};
-
-	with_detached_worktree(project.repo_root(), &run.path, head_oid, &context.git_env, || {
-		let merge_commit =
-			merge_baseline_normalization_pr(project, state_store, context, &run, head_oid, pr_url)?;
-		let merged_main_oid =
-			resolve_merged_baseline_main(project, state_store, context, &run, &merge_commit)?;
-
-		finish_normalized_main(project, repo_gate, state_store, context, merged_main_oid).map(Some)
-	})
-}
-
-pub(crate) fn push_baseline_status_projection(
-	project: &ServiceConfig,
-	loop_evidence: &ProjectLoopEvidenceSnapshot,
-	warnings: &mut Vec<String>,
-	warning_details: &mut Vec<OperatorSnapshotWarningDetail>,
-) {
-	let Some(event) = loop_evidence.private_events_for_issue(BASELINE_ISSUE_ID).into_iter().last()
-	else {
-		return;
-	};
-	let warning = match event.event_type() {
-		BASELINE_GUARD_CLEAN_EVENT_TYPE | BASELINE_NORMALIZATION_RECHECK_PASSED_EVENT_TYPE => {
-			return;
-		},
-		BASELINE_GUARD_DIRTY_EVENT_TYPE => "baseline_guard_dirty",
-		BASELINE_GUARD_FAILED_EVENT_TYPE => "baseline_guard_failed",
-		BASELINE_NORMALIZATION_STARTED_EVENT_TYPE
-		| BASELINE_NORMALIZATION_PR_CREATED_EVENT_TYPE
-		| BASELINE_NORMALIZATION_REPO_GATE_PASSED_EVENT_TYPE
-		| BASELINE_NORMALIZATION_MERGED_EVENT_TYPE => "baseline_normalization_in_progress",
-		BASELINE_NORMALIZATION_REPO_GATE_FAILED_EVENT_TYPE => "baseline_normalization_gate_failed",
-		BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE => "baseline_normalization_recheck_failed",
-		BASELINE_NORMALIZATION_FAILED_EVENT_TYPE => "baseline_normalization_failed",
-		_ => return,
-	};
-
-	warnings.push(String::from(warning));
-	warning_details.push(OperatorSnapshotWarningDetail {
-		warning: String::from(warning),
-		project_id: Some(project.service_id().to_owned()),
-		repo_root: Some(project.repo_root().display().to_string()),
-		reason: baseline_status_reason(event.event_type(), event.payload()),
-		next_action: Some(String::from(
-			"let Decodex finish automatic baseline normalization before dispatching ordinary task lanes",
-		)),
-	});
 }
 
 enum BaselineGuardCheck {
@@ -321,7 +103,7 @@ impl BaselineGuardContext {
 		let timestamp =
 			SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_nanos();
 
-		format!("{}-{}-{timestamp}", self.binding_id(), std::process::id())
+		format!("{}-{}-{timestamp}", self.binding_id(), process::id())
 	}
 
 	fn guard_run_id(&self) -> String {
@@ -362,6 +144,7 @@ struct BaselineNormalizationLock {
 impl BaselineNormalizationLock {
 	fn acquire(worktree_root: &Path, context: &BaselineGuardContext) -> Result<Option<Self>> {
 		fs::create_dir_all(worktree_root)?;
+
 		let path = worktree_root.join(LOCK_FILE_NAME);
 
 		remove_stale_lock_if_needed(&path)?;
@@ -377,9 +160,8 @@ impl BaselineNormalizationLock {
 
 		match file_result {
 			Ok(mut file) => {
-				use std::io::Write as _;
-
 				file.write_all(lock_payload.to_string().as_bytes())?;
+
 				Ok(Some(Self { path }))
 			},
 			Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(None),
@@ -387,10 +169,256 @@ impl BaselineNormalizationLock {
 		}
 	}
 }
+
 impl Drop for BaselineNormalizationLock {
 	fn drop(&mut self) {
 		let _ = fs::remove_file(&self.path);
 	}
+}
+
+struct BaselineNormalizationRun {
+	run_id: String,
+	branch_name: String,
+	path: PathBuf,
+}
+impl BaselineNormalizationRun {
+	fn new(project: &ServiceConfig, context: &BaselineGuardContext) -> Self {
+		let binding_id = context.binding_id();
+
+		Self {
+			run_id: context.normalization_run_id(),
+			branch_name: format!(
+				"xy/{}-baseline-normalize-{}",
+				git_ref_component(project.service_id()),
+				binding_id.as_str()
+			),
+			path: baseline_worktree_path(project, "normalization", &binding_id),
+		}
+	}
+}
+
+pub(crate) fn baseline_guard_applies_to_dispatch_mode(dispatch_mode: IssueDispatchMode) -> bool {
+	matches!(
+		dispatch_mode,
+		IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry
+	)
+}
+
+pub(crate) fn ensure_clean_baseline_before_dispatch(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	dispatch_mode: IssueDispatchMode,
+	dry_run: bool,
+) -> Result<BaselineGuardDispatchOutcome> {
+	if dry_run || !baseline_guard_applies_to_dispatch_mode(dispatch_mode) {
+		return Ok(BaselineGuardDispatchOutcome::Clean);
+	}
+
+	let repo_gate = BaselineRepoGateCommands::from_workflow(workflow);
+
+	if repo_gate.canonicalize_commands.is_empty() {
+		return Ok(BaselineGuardDispatchOutcome::Clean);
+	}
+
+	let context = BaselineGuardContext::new(project, workflow)?;
+
+	if let Some((event_type, payload)) =
+		latest_baseline_event_for_context(project, state_store, &context)?
+	{
+		match event_type.as_str() {
+			BASELINE_GUARD_CLEAN_EVENT_TYPE | BASELINE_NORMALIZATION_RECHECK_PASSED_EVENT_TYPE => {
+			},
+			BASELINE_NORMALIZATION_STARTED_EVENT_TYPE
+			| BASELINE_NORMALIZATION_PR_CREATED_EVENT_TYPE
+			| BASELINE_NORMALIZATION_REPO_GATE_PASSED_EVENT_TYPE
+			| BASELINE_NORMALIZATION_MERGED_EVENT_TYPE => {
+				if baseline_normalization_lock_is_active(project.worktree_root())? {
+					return wait_for_existing_normalization(
+						project,
+						workflow,
+						state_store,
+						dispatch_mode,
+					);
+				}
+
+				if let Some(outcome) = resume_existing_normalization_from_payload(
+					project,
+					&repo_gate,
+					state_store,
+					&context,
+					&payload,
+				)? {
+					return Ok(outcome);
+				}
+			},
+			BASELINE_NORMALIZATION_REPO_GATE_FAILED_EVENT_TYPE
+			| BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE
+			| BASELINE_NORMALIZATION_FAILED_EVENT_TYPE => {
+				if !baseline_normalization_lock_is_active(project.worktree_root())?
+					&& let Some(outcome) = resume_existing_normalization_from_payload(
+						project,
+						&repo_gate,
+						state_store,
+						&context,
+						&payload,
+					)? {
+					return Ok(outcome);
+				}
+			},
+			_ => {},
+		}
+	}
+
+	let guard_run_id = context.guard_run_id();
+
+	match run_guard_once(project, &repo_gate, state_store, &context, &guard_run_id)? {
+		BaselineGuardCheck::Clean =>
+			if sync_repo_root_to_guarded_main(project, &context)? {
+				Ok(BaselineGuardDispatchOutcome::Clean)
+			} else {
+				Ok(BaselineGuardDispatchOutcome::NormalizedMain)
+			},
+		BaselineGuardCheck::Dirty => {
+			let Some(_lock) =
+				BaselineNormalizationLock::acquire(project.worktree_root(), &context)?
+			else {
+				return wait_for_existing_normalization(
+					project,
+					workflow,
+					state_store,
+					dispatch_mode,
+				);
+			};
+			let merged_main_oid =
+				run_baseline_normalization(project, &repo_gate, state_store, &context)?;
+
+			finish_normalized_main(project, &repo_gate, state_store, &context, merged_main_oid)
+		},
+	}
+}
+
+pub(crate) fn push_baseline_status_projection(
+	project: &ServiceConfig,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	warnings: &mut Vec<String>,
+	warning_details: &mut Vec<OperatorSnapshotWarningDetail>,
+) {
+	let Some(event) = loop_evidence.private_events_for_issue(BASELINE_ISSUE_ID).into_iter().last()
+	else {
+		return;
+	};
+	let warning = match event.event_type() {
+		BASELINE_GUARD_CLEAN_EVENT_TYPE | BASELINE_NORMALIZATION_RECHECK_PASSED_EVENT_TYPE => {
+			return;
+		},
+		BASELINE_GUARD_DIRTY_EVENT_TYPE => "baseline_guard_dirty",
+		BASELINE_GUARD_FAILED_EVENT_TYPE => "baseline_guard_failed",
+		BASELINE_NORMALIZATION_STARTED_EVENT_TYPE
+		| BASELINE_NORMALIZATION_PR_CREATED_EVENT_TYPE
+		| BASELINE_NORMALIZATION_REPO_GATE_PASSED_EVENT_TYPE
+		| BASELINE_NORMALIZATION_MERGED_EVENT_TYPE => "baseline_normalization_in_progress",
+		BASELINE_NORMALIZATION_REPO_GATE_FAILED_EVENT_TYPE => "baseline_normalization_gate_failed",
+		BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE => "baseline_normalization_recheck_failed",
+		BASELINE_NORMALIZATION_FAILED_EVENT_TYPE => "baseline_normalization_failed",
+		_ => return,
+	};
+
+	warnings.push(String::from(warning));
+	warning_details.push(OperatorSnapshotWarningDetail {
+		warning: String::from(warning),
+		project_id: Some(project.service_id().to_owned()),
+		repo_root: Some(project.repo_root().display().to_string()),
+		reason: baseline_status_reason(event.event_type(), event.payload()),
+		next_action: Some(String::from(
+			"let Decodex finish automatic baseline normalization before dispatching ordinary task lanes",
+		)),
+	});
+}
+
+fn finish_normalized_main(
+	project: &ServiceConfig,
+	repo_gate: &BaselineRepoGateCommands,
+	state_store: &StateStore,
+	context: &BaselineGuardContext,
+	merged_main_oid: String,
+) -> Result<BaselineGuardDispatchOutcome> {
+	let recheck_context = context.with_main_oid(merged_main_oid);
+	let recheck_run_id = recheck_context.recheck_run_id();
+
+	match run_guard_once(project, repo_gate, state_store, &recheck_context, &recheck_run_id) {
+		Ok(BaselineGuardCheck::Clean) => {
+			record_event(
+				project,
+				state_store,
+				&recheck_run_id,
+				BASELINE_NORMALIZATION_RECHECK_PASSED_EVENT_TYPE,
+				recheck_context.payload(),
+			)?;
+
+			Ok(BaselineGuardDispatchOutcome::NormalizedMain)
+		},
+		Ok(BaselineGuardCheck::Dirty) => {
+			record_event(
+				project,
+				state_store,
+				&recheck_run_id,
+				BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE,
+				recheck_context.payload(),
+			)?;
+
+			eyre::bail!(
+				"Baseline canonicalization still rewrites tracked files after normalization for `{}` at `{}`.",
+				project.service_id(),
+				recheck_context.main_oid
+			)
+		},
+		Err(error) => {
+			record_event(
+				project,
+				state_store,
+				&recheck_run_id,
+				BASELINE_NORMALIZATION_RECHECK_FAILED_EVENT_TYPE,
+				payload_with_error(recheck_context.payload(), &error),
+			)?;
+
+			Err(error)
+		},
+	}
+}
+
+fn resume_existing_normalization_from_payload(
+	project: &ServiceConfig,
+	repo_gate: &BaselineRepoGateCommands,
+	state_store: &StateStore,
+	context: &BaselineGuardContext,
+	payload: &Value,
+) -> Result<Option<BaselineGuardDispatchOutcome>> {
+	let run = BaselineNormalizationRun::new(project, context);
+
+	if let Some(merge_commit) = payload.get("merge_commit").and_then(Value::as_str) {
+		let merged_main_oid =
+			resolve_merged_baseline_main(project, state_store, context, &run, merge_commit)?;
+
+		return finish_normalized_main(project, repo_gate, state_store, context, merged_main_oid)
+			.map(Some);
+	}
+
+	let Some(pr_url) = payload.get("pr_url").and_then(Value::as_str) else {
+		return Ok(None);
+	};
+	let Some(head_oid) = payload.get("head_oid").and_then(Value::as_str) else {
+		return Ok(None);
+	};
+
+	with_detached_worktree(project.repo_root(), &run.path, head_oid, &context.git_env, || {
+		let merge_commit =
+			merge_baseline_normalization_pr(project, state_store, context, &run, head_oid, pr_url)?;
+		let merged_main_oid =
+			resolve_merged_baseline_main(project, state_store, context, &run, &merge_commit)?;
+
+		finish_normalized_main(project, repo_gate, state_store, context, merged_main_oid).map(Some)
+	})
 }
 
 fn baseline_normalization_lock_is_active(worktree_root: &Path) -> Result<bool> {
@@ -410,6 +438,7 @@ fn sync_repo_root_to_guarded_main(
 		&context.default_branch,
 		Some(GitCredentialSource::new(project.github().token_env_var(), &context.github_token)),
 	)?;
+
 	let local_main_oid =
 		git_capture(project.repo_root(), &["rev-parse", "HEAD"], &context.git_env)?;
 
@@ -426,9 +455,11 @@ fn run_guard_once(
 	let guard_path = baseline_worktree_path(project, "guard", &context.unique_binding_id());
 
 	remove_worktree_best_effort(project.repo_root(), &guard_path, &context.git_env);
+
 	if let Some(parent) = guard_path.parent() {
 		fs::create_dir_all(parent)?;
 	}
+
 	git_checked(
 		project.repo_root(),
 		&["worktree", "add", "--detach", path_arg(&guard_path).as_str(), &context.main_oid],
@@ -441,13 +472,17 @@ fn run_guard_once(
 	match result {
 		Ok(()) => {
 			let has_tracked_changes = worktree_has_tracked_changes(&guard_path, &context.git_env)?;
+
 			remove_worktree_best_effort(project.repo_root(), &guard_path, &context.git_env);
+
 			let event_type = if has_tracked_changes {
 				BASELINE_GUARD_DIRTY_EVENT_TYPE
 			} else {
 				BASELINE_GUARD_CLEAN_EVENT_TYPE
 			};
+
 			record_event(project, state_store, run_id, event_type, context.payload())?;
+
 			Ok(if has_tracked_changes {
 				BaselineGuardCheck::Dirty
 			} else {
@@ -463,6 +498,7 @@ fn run_guard_once(
 				payload_with_error(context.payload(), &error),
 			)?;
 			remove_worktree_best_effort(project.repo_root(), &guard_path, &context.git_env);
+
 			Err(error)
 		},
 	}
@@ -486,27 +522,6 @@ fn run_baseline_normalization(
 		&context.git_env,
 		|| execute_baseline_normalization(project, repo_gate, state_store, context, &run),
 	)
-}
-
-struct BaselineNormalizationRun {
-	run_id: String,
-	branch_name: String,
-	path: PathBuf,
-}
-impl BaselineNormalizationRun {
-	fn new(project: &ServiceConfig, context: &BaselineGuardContext) -> Self {
-		let binding_id = context.binding_id();
-
-		Self {
-			run_id: context.normalization_run_id(),
-			branch_name: format!(
-				"xy/{}-baseline-normalize-{}",
-				git_ref_component(project.service_id()),
-				binding_id.as_str()
-			),
-			path: baseline_worktree_path(project, "normalization", &binding_id),
-		}
-	}
 }
 
 fn record_baseline_normalization_started(
@@ -545,7 +560,9 @@ fn execute_baseline_normalization(
 	commit_normalization_diff(&run.path, context).inspect_err(|error| {
 		let _ = record_normalization_failed(project, state_store, &run.run_id, context, error);
 	})?;
+
 	let head_oid = git_capture(&run.path, &["rev-parse", "HEAD"], &context.git_env)?;
+
 	run_baseline_normalization_repo_gate(
 		project,
 		repo_gate,
@@ -555,6 +572,7 @@ fn execute_baseline_normalization(
 		&head_oid,
 		None,
 	)?;
+
 	let pr_url = push_baseline_normalization_pr(project, state_store, context, run, &head_oid)?;
 	let merge_commit =
 		merge_baseline_normalization_pr(project, state_store, context, run, &head_oid, &pr_url)?;
@@ -578,6 +596,7 @@ fn push_baseline_normalization_pr(
 	.inspect_err(|error| {
 		let _ = record_normalization_failed(project, state_store, &run.run_id, context, error);
 	})?;
+
 	let pr_url = create_pull_request(
 		&run.path,
 		&run.branch_name,
@@ -629,6 +648,7 @@ fn run_baseline_normalization_repo_gate(
 				BASELINE_NORMALIZATION_REPO_GATE_FAILED_EVENT_TYPE,
 				payload_with_error(normalization_payload(context, run, head_oid, pr_url), &error),
 			)?;
+
 			Err(error)
 		},
 	}
@@ -661,6 +681,7 @@ fn merge_baseline_normalization_pr(
 			payload_with_error(normalization_payload(context, run, head_oid, Some(pr_url)), error),
 		);
 	})?;
+
 	let merge_commit = github::wait_for_pull_request_merge_commit(
 		&run.path,
 		pr_url,
@@ -704,11 +725,13 @@ fn resolve_merged_baseline_main(
 		&context.default_branch,
 		&context.git_env,
 	)?;
+
 	if merged_main_oid != merge_commit {
 		let error = eyre::eyre!(
 			"Baseline normalization merge readback returned `{merge_commit}`, but `origin/{}` resolved to `{merged_main_oid}` after fetch.",
 			context.default_branch
 		);
+
 		record_event(
 			project,
 			state_store,
@@ -725,6 +748,7 @@ fn resolve_merged_baseline_main(
 
 		return Err(error);
 	}
+
 	default_branch_sync::sync_repo_root_default_branch(
 		project.repo_root(),
 		&context.default_branch,
@@ -733,13 +757,16 @@ fn resolve_merged_baseline_main(
 	.inspect_err(|error| {
 		let _ = record_normalization_failed(project, state_store, &run.run_id, context, error);
 	})?;
+
 	let local_main_oid =
 		git_capture(project.repo_root(), &["rev-parse", "HEAD"], &context.git_env)?;
+
 	if local_main_oid != merge_commit {
 		let error = eyre::eyre!(
 			"Baseline normalization synced `origin/{}` to `{merge_commit}`, but the local repo root HEAD is `{local_main_oid}`.",
 			context.default_branch
 		);
+
 		record_event(
 			project,
 			state_store,
@@ -830,6 +857,7 @@ fn create_pull_request(
 		"--head",
 		branch_name,
 	]);
+
 	github::configure_gh_command(&mut command, github_token);
 
 	let output = command.output()?;
@@ -862,10 +890,13 @@ where
 	F: FnOnce() -> Result<T>,
 {
 	remove_worktree_best_effort(repo_root, worktree_path, git_env);
+
 	if let Some(parent) = worktree_path.parent() {
 		fs::create_dir_all(parent)?;
 	}
+
 	let _ = git_status(repo_root, &["branch", "-D", branch_name], git_env);
+
 	git_checked(
 		repo_root,
 		&["worktree", "add", "-b", branch_name, path_arg(worktree_path).as_str(), start_oid],
@@ -874,10 +905,13 @@ where
 	)?;
 
 	let result = action();
+
 	if result.is_ok() {
 		remove_worktree_best_effort(repo_root, worktree_path, git_env);
+
 		let _ = git_status(repo_root, &["branch", "-D", branch_name], git_env);
 	}
+
 	result
 }
 
@@ -892,9 +926,11 @@ where
 	F: FnOnce() -> Result<T>,
 {
 	remove_worktree_best_effort(repo_root, worktree_path, git_env);
+
 	if let Some(parent) = worktree_path.parent() {
 		fs::create_dir_all(parent)?;
 	}
+
 	git_checked(
 		repo_root,
 		&["worktree", "add", "--detach", path_arg(worktree_path).as_str(), start_oid],
@@ -903,9 +939,11 @@ where
 	)?;
 
 	let result = action();
+
 	if result.is_ok() {
 		remove_worktree_best_effort(repo_root, worktree_path, git_env);
 	}
+
 	result
 }
 
@@ -928,8 +966,10 @@ fn resolve_origin_default_branch(
 		&["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
 		git_env,
 	)?;
+
 	if output.status.success() {
 		let remote_head = output_text(&output);
+
 		if let Some(default_branch) = remote_head.strip_prefix("origin/") {
 			return Ok(default_branch.to_owned());
 		}
@@ -1036,11 +1076,13 @@ fn remove_worktree_best_effort(
 }
 
 fn remove_stale_lock_if_needed(path: &Path) -> Result<()> {
-	let Ok(mut file) = fs::File::open(path) else {
+	let Ok(mut file) = File::open(path) else {
 		return Ok(());
 	};
 	let mut contents = String::new();
+
 	file.read_to_string(&mut contents)?;
+
 	let payload = serde_json::from_str::<Value>(&contents).ok();
 	let lock_has_valid_schema =
 		payload.as_ref().and_then(|payload| payload.get("schema").and_then(Value::as_str))
@@ -1100,7 +1142,6 @@ fn wait_for_existing_normalization(
 				false,
 			);
 		}
-
 		if Instant::now() >= deadline {
 			eyre::bail!(
 				"Timed out waiting for existing baseline normalization for `{}` to finish.",
@@ -1240,13 +1281,127 @@ fn output_text(output: &Output) -> String {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(unix)] use std::os::unix::fs::PermissionsExt;
-	use std::{fs, path::Path, process::Command};
+	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
+	use std::{fs, path::Path, process::Command, thread, time::Duration};
 
 	use tempfile::TempDir;
 
-	use super::*;
-	use crate::{config::ServiceConfig, state::StateStore, test_support::TestEnvVarGuard};
+	use crate::{
+		config::ServiceConfig,
+		orchestrator::{
+			BaselineGuardDispatchOutcome,
+			baseline_guard::{
+				self, BASELINE_GUARD_CLEAN_EVENT_TYPE, BASELINE_GUARD_DIRTY_EVENT_TYPE,
+				BASELINE_GUARD_FAILED_EVENT_TYPE, BASELINE_ISSUE_ID,
+				BASELINE_NORMALIZATION_FAILED_EVENT_TYPE, BASELINE_NORMALIZATION_MERGED_EVENT_TYPE,
+				BASELINE_NORMALIZATION_PR_CREATED_EVENT_TYPE,
+				BASELINE_NORMALIZATION_RECHECK_PASSED_EVENT_TYPE,
+				BASELINE_NORMALIZATION_REPO_GATE_FAILED_EVENT_TYPE,
+				BASELINE_NORMALIZATION_REPO_GATE_PASSED_EVENT_TYPE,
+				BASELINE_NORMALIZATION_STARTED_EVENT_TYPE, BaselineGuardContext,
+				BaselineNormalizationLock, BaselineNormalizationRun, BaselineRepoGateCommands,
+				IssueDispatchMode, LOCK_FILE_NAME, LOCK_SCHEMA, WorkflowDocument, eyre, git_ops,
+			},
+		},
+		state::StateStore,
+		test_support::TestEnvVarGuard,
+	};
+
+	struct BaselineGuardFixture {
+		_temp_dir: TempDir,
+		config: ServiceConfig,
+		workflow: WorkflowDocument,
+	}
+
+	impl BaselineGuardFixture {
+		fn new(execution_command_lines: &str) -> Self {
+			Self::new_with_optional_github_command_path(execution_command_lines, None)
+		}
+
+		fn new_with_github_command_path(
+			execution_command_lines: &str,
+			github_command_path: &Path,
+		) -> Self {
+			Self::new_with_optional_github_command_path(
+				execution_command_lines,
+				Some(github_command_path),
+			)
+		}
+
+		fn new_with_optional_github_command_path(
+			execution_command_lines: &str,
+			github_command_path: Option<&Path>,
+		) -> Self {
+			let temp_dir = TempDir::new().expect("temp dir should create");
+			let repo_root = temp_dir.path().join("repo");
+			let remote_root = temp_dir.path().join("origin.git");
+			let config_dir = temp_dir.path().join("config");
+
+			fs::create_dir_all(&repo_root).expect("repo should create");
+			fs::create_dir_all(repo_root.join(".worktrees")).expect("worktrees should create");
+			fs::create_dir_all(&config_dir).expect("config dir should create");
+			fs::write(repo_root.join("README.md"), "baseline\n").expect("readme should write");
+
+			run_git(&repo_root, &["init", "-b", "main"]);
+			run_git(&repo_root, &["config", "user.name", "Decodex Tests"]);
+			run_git(&repo_root, &["config", "user.email", "decodex-tests@example.com"]);
+			run_git(&repo_root, &["config", "commit.gpgsign", "false"]);
+			run_git(&repo_root, &["config", "core.hooksPath", "/dev/null"]);
+			run_git(&repo_root, &["add", "."]);
+			run_git(
+				&repo_root,
+				&[
+					"commit",
+					"-m",
+					r#"{"schema":"decodex/commit/2","change":"Bootstrap test repo","authority":"manual","impact":"compatible"}"#,
+				],
+			);
+			run_git(
+				temp_dir.path(),
+				&["init", "--bare", "-b", "main", baseline_guard::path_arg(&remote_root).as_str()],
+			);
+			run_git(
+				&repo_root,
+				&["remote", "add", "origin", baseline_guard::path_arg(&remote_root).as_str()],
+			);
+			run_git(&repo_root, &["push", "-u", "origin", "main"]);
+
+			fs::write(config_dir.join("WORKFLOW.md"), workflow_markdown(execution_command_lines))
+				.expect("workflow should write");
+
+			let github_command_path_line = github_command_path
+				.map(|path| format!("command_path = \"{}\"\n", path.display()))
+				.unwrap_or_default();
+
+			fs::write(
+				config_dir.join("project.toml"),
+				format!(
+					r#"service_id = "baseline-test"
+
+[tracker]
+api_key_env_var = "BASELINE_GUARD_TEST_LINEAR_TOKEN"
+
+[github]
+token_env_var = "BASELINE_GUARD_TEST_GITHUB_TOKEN"
+{github_command_path_line}
+
+[paths]
+repo_root = "{}"
+worktree_root = ".worktrees"
+"#,
+					repo_root.display()
+				),
+			)
+			.expect("config should write");
+
+			let config = ServiceConfig::from_path(config_dir.join("project.toml"))
+				.expect("config should load");
+			let workflow =
+				WorkflowDocument::from_path(config.workflow_path()).expect("workflow should load");
+
+			Self { _temp_dir: temp_dir, config, workflow }
+		}
+	}
 
 	#[test]
 	fn clean_guard_records_clean_event_and_leaves_no_worktree() {
@@ -1257,7 +1412,7 @@ verify_commands = []"#,
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 
-		ensure_clean_baseline_before_dispatch(
+		baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1289,6 +1444,7 @@ verify_commands = []"#,
 
 		fs::write(fixture.config.repo_root().join("README.md"), "remote baseline\n")
 			.expect("readme should write");
+
 		run_git(fixture.config.repo_root(), &["add", "README.md"]);
 		run_git(
 			fixture.config.repo_root(),
@@ -1299,15 +1455,17 @@ verify_commands = []"#,
 			],
 		);
 		run_git(fixture.config.repo_root(), &["push", "origin", "main"]);
+
 		let remote_head = git_capture_plain(fixture.config.repo_root(), &["rev-parse", "HEAD"]);
 
 		run_git(fixture.config.repo_root(), &["reset", "--hard", "HEAD~1"]);
+
 		let stale_local_head =
 			git_capture_plain(fixture.config.repo_root(), &["rev-parse", "HEAD"]);
 
 		assert_ne!(stale_local_head, remote_head);
 
-		let outcome = ensure_clean_baseline_before_dispatch(
+		let outcome = baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1329,8 +1487,7 @@ verify_commands = []"#,
 verify_commands = []"#,
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-
-		let error = ensure_clean_baseline_before_dispatch(
+		let error = baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1347,13 +1504,14 @@ verify_commands = []"#,
 
 		assert_eq!(events.len(), 1);
 		assert_eq!(events[0].event_type(), BASELINE_GUARD_FAILED_EVENT_TYPE);
+
 		let loop_evidence = state_store
 			.project_loop_evidence_snapshot("baseline-test")
 			.expect("loop evidence should load");
 		let mut warnings = Vec::new();
 		let mut warning_details = Vec::new();
 
-		push_baseline_status_projection(
+		baseline_guard::push_baseline_status_projection(
 			&fixture.config,
 			&loop_evidence,
 			&mut warnings,
@@ -1432,7 +1590,9 @@ verify_commands = []"#,
 				.expect("dead lock should be replaced");
 
 		assert!(dead_lock.is_some());
+
 		drop(dead_lock);
+
 		assert!(!lock_path.exists());
 	}
 
@@ -1447,7 +1607,7 @@ verify_commands = []"#,
 			.expect("context should load");
 		let first = BaselineNormalizationRun::new(&fixture.config, &context);
 
-		std::thread::sleep(Duration::from_millis(1));
+		thread::sleep(Duration::from_millis(1));
 
 		let second = BaselineNormalizationRun::new(&fixture.config, &context);
 
@@ -1460,7 +1620,7 @@ verify_commands = []"#,
 		let fixture = BaselineGuardFixture::new("canonicalize_commands = []\nverify_commands = []");
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 
-		ensure_clean_baseline_before_dispatch(
+		baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1491,7 +1651,7 @@ verify_commands = ["python3 -c \"from pathlib import Path; assert Path('README.m
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 
-		ensure_clean_baseline_before_dispatch(
+		baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1553,8 +1713,7 @@ canonicalize_commands = ["python3 -c \"from pathlib import Path; Path('README.md
 verify_commands = ["python3 -c \"from pathlib import Path; assert Path('README.md').read_text() == 'profile-normalized\\n'\""]"#,
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-
-		let outcome = ensure_clean_baseline_before_dispatch(
+		let outcome = baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1562,7 +1721,6 @@ verify_commands = ["python3 -c \"from pathlib import Path; assert Path('README.m
 			false,
 		)
 		.expect("baseline guard should not run profile-scoped canonicalize commands");
-
 		let origin_main =
 			git_capture_plain(fixture.config.repo_root(), &["show", "origin/main:README.md"]);
 		let events = state_store
@@ -1612,8 +1770,8 @@ verify_commands = ["cargo make check-b"]"#,
 		.expect("second workflow should parse");
 
 		assert_eq!(
-			workflow_hash(&first).expect("first hash"),
-			workflow_hash(&second).expect("second hash")
+			baseline_guard::workflow_hash(&first).expect("first hash"),
+			baseline_guard::workflow_hash(&second).expect("second hash")
 		);
 	}
 
@@ -1636,7 +1794,7 @@ verify_commands = ["python3 -c \"from pathlib import Path; assert Path('README.m
 			.expect("context should load");
 		let run = BaselineNormalizationRun::new(&fixture.config, &context);
 		let repo_gate = BaselineRepoGateCommands::from_workflow(&fixture.workflow);
-		let head_oid = with_branch_worktree(
+		let head_oid = baseline_guard::with_branch_worktree(
 			fixture.config.repo_root(),
 			&run.path,
 			&run.branch_name,
@@ -1644,9 +1802,15 @@ verify_commands = ["python3 -c \"from pathlib import Path; assert Path('README.m
 			&context.git_env,
 			|| {
 				git_ops::run_canonicalize_commands(&repo_gate.canonicalize_commands, &run.path)?;
-				commit_normalization_diff(&run.path, &context)?;
-				let head_oid = git_capture(&run.path, &["rev-parse", "HEAD"], &context.git_env)?;
-				git_checked(
+				baseline_guard::commit_normalization_diff(&run.path, &context)?;
+
+				let head_oid = baseline_guard::git_capture(
+					&run.path,
+					&["rev-parse", "HEAD"],
+					&context.git_env,
+				)?;
+
+				baseline_guard::git_checked(
 					&run.path,
 					&["push", "-u", "origin", &run.branch_name],
 					"push seeded baseline normalization branch",
@@ -1658,12 +1822,12 @@ verify_commands = ["python3 -c \"from pathlib import Path; assert Path('README.m
 		)
 		.expect("seed normalization branch should succeed");
 
-		record_event(
+		baseline_guard::record_event(
 			&fixture.config,
 			&state_store,
 			&run.run_id,
 			BASELINE_NORMALIZATION_PR_CREATED_EVENT_TYPE,
-			normalization_payload(
+			baseline_guard::normalization_payload(
 				&context,
 				&run,
 				&head_oid,
@@ -1671,8 +1835,7 @@ verify_commands = ["python3 -c \"from pathlib import Path; assert Path('README.m
 			),
 		)
 		.expect("pr-created event should record");
-
-		ensure_clean_baseline_before_dispatch(
+		baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1701,7 +1864,7 @@ verify_commands = []"#,
 		let context = BaselineGuardContext::new(&fixture.config, &fixture.workflow)
 			.expect("context should load");
 
-		record_event(
+		baseline_guard::record_event(
 			&fixture.config,
 			&state_store,
 			&context.guard_run_id(),
@@ -1709,8 +1872,7 @@ verify_commands = []"#,
 			context.payload(),
 		)
 		.expect("stale clean event should record");
-
-		ensure_clean_baseline_before_dispatch(
+		baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1747,16 +1909,18 @@ verify_commands = []"#,
 		let context = BaselineGuardContext::new(&fixture.config, &fixture.workflow)
 			.expect("context should load");
 
-		record_event(
+		baseline_guard::record_event(
 			&fixture.config,
 			&state_store,
 			&context.normalization_run_id(),
 			BASELINE_NORMALIZATION_FAILED_EVENT_TYPE,
-			payload_with_error(context.payload(), &eyre::eyre!("transient failure")),
+			baseline_guard::payload_with_error(
+				context.payload(),
+				&eyre::eyre!("transient failure"),
+			),
 		)
 		.expect("failed event should record");
-
-		ensure_clean_baseline_before_dispatch(
+		baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1796,7 +1960,7 @@ verify_commands = []"#,
 		let lock_path = fixture.config.worktree_root().join(LOCK_FILE_NAME);
 
 		fs::write(&lock_path, "").expect("malformed lock should write");
-		record_event(
+		baseline_guard::record_event(
 			&fixture.config,
 			&state_store,
 			&context.normalization_run_id(),
@@ -1804,8 +1968,7 @@ verify_commands = []"#,
 			context.payload(),
 		)
 		.expect("started event should record");
-
-		ensure_clean_baseline_before_dispatch(
+		baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1815,6 +1978,7 @@ verify_commands = []"#,
 		.expect("malformed stale lock should not block retry");
 
 		assert!(!lock_path.exists());
+
 		let origin_main =
 			git_capture_plain(fixture.config.repo_root(), &["show", "origin/main:README.md"]);
 
@@ -1835,8 +1999,7 @@ verify_commands = []"#,
 			&fake_gh_path,
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-
-		let error = ensure_clean_baseline_before_dispatch(
+		let error = baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1870,8 +2033,7 @@ verify_commands = ["python3 -c \"raise SystemExit(3)\""]"#,
 			&fake_gh_path,
 		);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
-
-		let first_error = ensure_clean_baseline_before_dispatch(
+		let first_error = baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1898,7 +2060,7 @@ verify_commands = ["python3 -c \"raise SystemExit(3)\""]"#,
 					== BASELINE_NORMALIZATION_REPO_GATE_FAILED_EVENT_TYPE)
 		);
 
-		let second_error = ensure_clean_baseline_before_dispatch(
+		let second_error = baseline_guard::ensure_clean_baseline_before_dispatch(
 			&fixture.config,
 			&fixture.workflow,
 			&state_store,
@@ -1917,96 +2079,6 @@ verify_commands = ["python3 -c \"raise SystemExit(3)\""]"#,
 				.iter()
 				.any(|event| event.event_type() == BASELINE_NORMALIZATION_PR_CREATED_EVENT_TYPE)
 		);
-	}
-
-	struct BaselineGuardFixture {
-		_temp_dir: TempDir,
-		config: ServiceConfig,
-		workflow: WorkflowDocument,
-	}
-	impl BaselineGuardFixture {
-		fn new(execution_command_lines: &str) -> Self {
-			Self::new_with_optional_github_command_path(execution_command_lines, None)
-		}
-
-		fn new_with_github_command_path(
-			execution_command_lines: &str,
-			github_command_path: &Path,
-		) -> Self {
-			Self::new_with_optional_github_command_path(
-				execution_command_lines,
-				Some(github_command_path),
-			)
-		}
-
-		fn new_with_optional_github_command_path(
-			execution_command_lines: &str,
-			github_command_path: Option<&Path>,
-		) -> Self {
-			let temp_dir = TempDir::new().expect("temp dir should create");
-			let repo_root = temp_dir.path().join("repo");
-			let remote_root = temp_dir.path().join("origin.git");
-			let config_dir = temp_dir.path().join("config");
-
-			fs::create_dir_all(&repo_root).expect("repo should create");
-			fs::create_dir_all(repo_root.join(".worktrees")).expect("worktrees should create");
-			fs::create_dir_all(&config_dir).expect("config dir should create");
-			fs::write(repo_root.join("README.md"), "baseline\n").expect("readme should write");
-
-			run_git(&repo_root, &["init", "-b", "main"]);
-			run_git(&repo_root, &["config", "user.name", "Decodex Tests"]);
-			run_git(&repo_root, &["config", "user.email", "decodex-tests@example.com"]);
-			run_git(&repo_root, &["config", "commit.gpgsign", "false"]);
-			run_git(&repo_root, &["config", "core.hooksPath", "/dev/null"]);
-			run_git(&repo_root, &["add", "."]);
-			run_git(
-				&repo_root,
-				&[
-					"commit",
-					"-m",
-					r#"{"schema":"decodex/commit/2","change":"Bootstrap test repo","authority":"manual","impact":"compatible"}"#,
-				],
-			);
-			run_git(
-				temp_dir.path(),
-				&["init", "--bare", "-b", "main", path_arg(&remote_root).as_str()],
-			);
-			run_git(&repo_root, &["remote", "add", "origin", path_arg(&remote_root).as_str()]);
-			run_git(&repo_root, &["push", "-u", "origin", "main"]);
-
-			fs::write(config_dir.join("WORKFLOW.md"), workflow_markdown(execution_command_lines))
-				.expect("workflow should write");
-			let github_command_path_line = github_command_path
-				.map(|path| format!("command_path = \"{}\"\n", path.display()))
-				.unwrap_or_default();
-			fs::write(
-				config_dir.join("project.toml"),
-				format!(
-					r#"service_id = "baseline-test"
-
-[tracker]
-api_key_env_var = "BASELINE_GUARD_TEST_LINEAR_TOKEN"
-
-[github]
-token_env_var = "BASELINE_GUARD_TEST_GITHUB_TOKEN"
-{github_command_path_line}
-
-[paths]
-repo_root = "{}"
-worktree_root = ".worktrees"
-"#,
-					repo_root.display()
-				),
-			)
-			.expect("config should write");
-
-			let config = ServiceConfig::from_path(config_dir.join("project.toml"))
-				.expect("config should load");
-			let workflow =
-				WorkflowDocument::from_path(config.workflow_path()).expect("workflow should load");
-
-			Self { _temp_dir: temp_dir, config, workflow }
-		}
 	}
 
 	fn write_fake_gh(path: &Path) {
@@ -2061,7 +2133,9 @@ exit 1
 		#[cfg(unix)]
 		{
 			let mut permissions = fs::metadata(path).expect("fake gh metadata").permissions();
+
 			permissions.set_mode(0o755);
+
 			fs::set_permissions(path, permissions).expect("fake gh executable");
 		}
 	}
@@ -2122,7 +2196,9 @@ exit 1
 		#[cfg(unix)]
 		{
 			let mut permissions = fs::metadata(path).expect("fake gh metadata").permissions();
+
 			permissions.set_mode(0o755);
+
 			fs::set_permissions(path, permissions).expect("fake gh executable");
 		}
 	}

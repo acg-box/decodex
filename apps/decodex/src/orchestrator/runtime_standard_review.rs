@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 
-use serde_json::{Map, Value, json};
+use serde_json::{self, Map, Value};
 
 use crate::{
 	agent::{
 		self, AppServerProcessEnv, AppServerRunRequest, RUN_LEASE_IDLE_TIMEOUT, ReviewExecutionMode,
 	},
 	orchestrator::{
-		IssueTracker, Result, RetainedReviewLane, ServiceConfig, StateStore, TrackerToolBridge,
-		WorkflowDocument, configured_public_projection_privacy_classifier,
+		self, IssueTracker, Result, RetainedReviewLane, ReviewHandoffContext, ServiceConfig,
+		StateStore, TrackerToolBridge, WorkflowDocument,
 	},
 	prelude::eyre,
 };
@@ -112,8 +112,9 @@ where
 	};
 	let review_mode = runtime_review_execution_mode(project, state_store, lane)?;
 	let review_run_id = runtime_review_run_id(marker.run_id(), review_mode, head_sha);
-	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
-	let review_context = crate::agent::ReviewHandoffContext {
+	let privacy_classifier =
+		orchestrator::configured_public_projection_privacy_classifier(project)?;
+	let review_context = ReviewHandoffContext {
 		attempt_number: marker.attempt_number(),
 		branch_name: marker.branch_name().to_owned(),
 		run_id: review_run_id.clone(),
@@ -174,6 +175,26 @@ pub(crate) fn runtime_review_execution_mode(
 	}
 
 	Ok(ReviewExecutionMode::Handoff)
+}
+
+pub(crate) fn record_runtime_standard_review_checkpoint_from_output(
+	tracker_tool_bridge: &TrackerToolBridge<'_>,
+	issue_id: &str,
+	issue_identifier: &str,
+	head_sha: &str,
+	review_mode: ReviewExecutionMode,
+	final_output: &str,
+) -> Result<()> {
+	let checkpoint = checkpoint_json_from_reviewer_output(final_output)?;
+	let arguments = runtime_review_checkpoint_arguments(
+		checkpoint,
+		issue_id,
+		issue_identifier,
+		head_sha,
+		review_mode,
+	)?;
+
+	tracker_tool_bridge.record_runtime_review_checkpoint(arguments)
 }
 
 fn runtime_review_run_id(
@@ -268,26 +289,6 @@ fn runtime_standard_review_user_input(
 	)
 }
 
-pub(crate) fn record_runtime_standard_review_checkpoint_from_output(
-	tracker_tool_bridge: &TrackerToolBridge<'_>,
-	issue_id: &str,
-	issue_identifier: &str,
-	head_sha: &str,
-	review_mode: ReviewExecutionMode,
-	final_output: &str,
-) -> Result<()> {
-	let checkpoint = checkpoint_json_from_reviewer_output(final_output)?;
-	let arguments = runtime_review_checkpoint_arguments(
-		checkpoint,
-		issue_id,
-		issue_identifier,
-		head_sha,
-		review_mode,
-	)?;
-
-	tracker_tool_bridge.record_runtime_review_checkpoint(arguments)
-}
-
 fn checkpoint_json_from_reviewer_output(final_output: &str) -> Result<Value> {
 	let trimmed = final_output.trim();
 
@@ -357,7 +358,7 @@ fn insert_runtime_owned_checkpoint_fields(
 }
 
 fn runtime_review_contract_json(review_mode: ReviewExecutionMode) -> Value {
-	json!({
+	serde_json::json!({
 		"workflow_policy_source": "registered_project_workflow",
 		"review_type": runtime_review_type(review_mode),
 		"risk_tier": "localized",
@@ -399,13 +400,11 @@ fn runtime_review_type(review_mode: ReviewExecutionMode) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-	use crate::orchestrator::runtime_standard_review::{
-		checkpoint_json_from_reviewer_output, runtime_review_checkpoint_arguments,
-	};
+	use crate::orchestrator::runtime_standard_review::{self};
 
 	#[test]
 	fn runtime_review_output_parser_accepts_fenced_json() {
-		let parsed = checkpoint_json_from_reviewer_output(
+		let parsed = runtime_standard_review::checkpoint_json_from_reviewer_output(
 			r#"```json
 {"status":"clean","checks":{"intended_behavior":"ok","regression_risk":"low","missing_tests":"none","openwiki_config_drift":"none","migration_fallout":"none","operator_facing_fallout":"none","loop_decision_contract":"ok"},"evidence":["read current HEAD"]}
 ```"#,
@@ -417,7 +416,7 @@ mod tests {
 
 	#[test]
 	fn runtime_review_arguments_override_authority_binding_fields() {
-		let arguments = runtime_review_checkpoint_arguments(
+		let arguments = runtime_standard_review::runtime_review_checkpoint_arguments(
 			serde_json::json!({
 				"issue_id": "wrong",
 				"issue_identifier": "WRONG-1",

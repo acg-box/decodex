@@ -170,6 +170,7 @@ pub(super) fn initialize_empty_git_worktree(worktree_path: &Path) {
 		.stderr(Stdio::null())
 		.status()
 		.expect("git init should run");
+
 	assert!(status.success(), "git init should succeed");
 }
 

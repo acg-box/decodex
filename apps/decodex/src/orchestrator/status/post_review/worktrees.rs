@@ -1,5 +1,3 @@
-use crate::state::ReviewLifecycleRecord;
-
 use crate::{
 	orchestrator::status::{
 		post_review,
@@ -11,6 +9,7 @@ use crate::{
 		},
 	},
 	prelude::{Result, eyre},
+	state::ReviewLifecycleRecord,
 };
 
 pub(crate) fn build_post_review_lane_statuses<T, I>(
@@ -123,6 +122,7 @@ where
 		else {
 			continue;
 		};
+
 		if lifecycle_record.target_base_ref_name().is_none() {
 			return Err(eyre::eyre!(
 				"Degraded post-review status requires lifecycle authority for `{}` on branch `{}` to include the PR base branch.",
@@ -130,6 +130,7 @@ where
 				worktree.branch_name()
 			));
 		}
+
 		let issue_identifier = retained_issue_identifier_from_worktree(&worktree);
 		let review_state = review_state_inspector
 			.inspect_review_state(worktree.worktree_path(), lifecycle_record.pr_url())

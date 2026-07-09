@@ -1,14 +1,13 @@
-use crate::{
-	orchestrator,
-	orchestrator::{
-		retained_review_orchestration::{
-			self, CommandIntentKind, IssueTracker, PullRequestReviewState, Result,
-			RetainedAdminMergeReasons, RetainedReviewLane, RetainedReviewLifecycleAuthorityFields,
-			RetainedReviewRuntime, ReviewLifecycleReadback, admin_merge, attention,
-			lifecycle_authority, phases::RetainedReviewLifecycleAction,
-		},
-		runtime_standard_review::RuntimeStandardReviewRunner,
+use crate::orchestrator::{
+	self,
+	retained_review_orchestration::{
+		self, CommandIntentKind, IssueTracker, PullRequestReviewState, Result,
+		RetainedAdminMergeReasons, RetainedReviewLane, RetainedReviewLifecycleAuthorityFields,
+		RetainedReviewRuntime, ReviewLifecycleReadback, admin_merge, attention,
+		lifecycle_authority,
+		phases::{RetainedReviewLifecycleAction, non_github},
 	},
+	runtime_standard_review::RuntimeStandardReviewRunner,
 };
 
 pub(in crate::orchestrator::retained_review_orchestration::phases) fn handle_waiting_for_result_phase<
@@ -61,7 +60,7 @@ where
 		lane.lifecycle_record(),
 	) {
 		if orchestrator::review_state_clean_path_landing_gates_satisfied(&lane.review_state) {
-			if super::non_github::runtime_standard_review_gate_requires_wait_or_repair(
+			if non_github::runtime_standard_review_gate_requires_wait_or_repair(
 				runtime.tracker,
 				runtime.project,
 				runtime.workflow,

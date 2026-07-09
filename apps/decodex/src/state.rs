@@ -13,6 +13,10 @@ mod sqlite_store;
 mod store;
 mod store_run_control;
 
+#[cfg(test)]
+pub(crate) use self::{
+	models::ReviewLifecycleHandoffFixture, models::ReviewLifecycleTransitionFixture,
+};
 pub(crate) use self::{
 	models::{
 		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
@@ -46,8 +50,6 @@ pub(crate) use self::{
 	},
 };
 pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
-#[cfg(test)] pub(crate) use models::ReviewLifecycleHandoffFixture;
-#[cfg(test)] pub(crate) use models::ReviewLifecycleTransitionFixture;
 #[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
 #[cfg(test)]
 pub(crate) use run_activity_marker::{

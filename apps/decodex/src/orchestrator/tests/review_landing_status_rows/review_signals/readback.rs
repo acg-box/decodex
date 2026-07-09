@@ -215,6 +215,7 @@ fn standard_review_waits_for_runtime_review_checkpoint_before_landing() {
 
 	fs::write(repo_root.join("dirty-after-review.txt"), "dirty\n")
 		.expect("dirty worktree file should write");
+
 	let lanes = orchestrator::build_post_review_lane_statuses(
 		&tracker,
 		&config,
