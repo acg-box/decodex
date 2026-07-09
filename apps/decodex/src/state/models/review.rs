@@ -1,5 +1,4 @@
 mod checkpoints;
-#[cfg(test)] mod handoff;
 mod records;
 
 #[cfg(test)] pub(crate) use self::handoff::ReviewLifecycleHandoffFixture;
@@ -125,22 +124,6 @@ impl ReviewLifecycleTransitionFixture {
 }
 
 #[cfg(test)]
-#[allow(dead_code)]
-impl ReviewLifecycleHandoffFixture {
-	pub(crate) fn from_lifecycle_record(record: &ReviewLifecycleRecord) -> Option<Self> {
-		Some(Self::new(
-			record.run_id().to_owned(),
-			record.attempt_number(),
-			record.branch_name().to_owned(),
-			record.pr_url().to_owned(),
-			record.target_base_ref_name()?.to_owned(),
-			record.pr_head_ref_name().to_owned(),
-			record.pr_head_oid().to_owned(),
-		))
-	}
-}
-
-#[cfg(test)]
 impl ReviewLifecycleReadback for ReviewLifecycleTransitionFixture {
 	fn branch_name(&self) -> &str {
 		self.branch_name()
@@ -175,6 +158,22 @@ impl ReviewLifecycleReadback for ReviewLifecycleTransitionFixture {
 	}
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+impl ReviewLifecycleHandoffFixture {
+	pub(crate) fn from_lifecycle_record(record: &ReviewLifecycleRecord) -> Option<Self> {
+		Some(Self::new(
+			record.run_id().to_owned(),
+			record.attempt_number(),
+			record.branch_name().to_owned(),
+			record.pr_url().to_owned(),
+			record.target_base_ref_name()?.to_owned(),
+			record.pr_head_ref_name().to_owned(),
+			record.pr_head_oid().to_owned(),
+		))
+	}
+}
+
 #[allow(dead_code)]
 impl ReviewLifecycleRecord {
 	#[cfg(test)]
@@ -185,6 +184,7 @@ impl ReviewLifecycleRecord {
 		let head_sha = orchestration
 			.map(ReviewLifecycleTransitionFixture::head_sha)
 			.unwrap_or_else(|| handoff.pr_head_oid());
+
 		Self {
 			project_id: String::from("test"),
 			issue_id: String::from("test"),
@@ -454,3 +454,5 @@ impl ReviewLifecycleReadback for ReviewLifecycleRecord {
 		self.request_retry_count()
 	}
 }
+
+#[cfg(test)] mod handoff;

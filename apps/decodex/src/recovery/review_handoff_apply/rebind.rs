@@ -21,6 +21,7 @@ pub(in crate::recovery) fn apply_review_handoff_rebind(
 		head_ref_name: &validation.landing_state.head_ref_name,
 		head_sha: &validation.local_head_oid,
 	};
+
 	lifecycle::write_review_lifecycle_with_rollback(
 		&context.state_store,
 		context.config.service_id(),

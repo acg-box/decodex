@@ -51,6 +51,7 @@ fn tools_list_exposes_schema_bound_tools() {
 			["items"]["properties"]["dependencies"]["description"],
 		"Candidate keys that must complete before this candidate."
 	);
+
 	let autonomy_signal_kind_schema =
 		&autonomy_submit_signal["inputSchema"]["properties"]["kind"]["enum"];
 

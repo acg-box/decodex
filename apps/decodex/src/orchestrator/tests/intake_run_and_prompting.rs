@@ -70,9 +70,10 @@ fn assert_review_repair_developer_prompt(prompt: &str) {
 	assert!(prompt.contains(ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME));
 	assert!(prompt.contains("Do not move the issue back to `In Progress`"));
 	assert!(prompt.contains("do not call `issue_review_handoff`"));
-	assert_runtime_owned_review_prompt_guidance(prompt);
-	assert!(prompt.contains("registered project workflow policy"));
 
+	assert_runtime_owned_review_prompt_guidance(prompt);
+
+	assert!(prompt.contains("registered project workflow policy"));
 	assert!(prompt.contains(
 		"including non-thread review summaries, validate the claim against the codebase, tests, and requirements"
 	));
@@ -85,6 +86,7 @@ fn assert_review_repair_developer_prompt(prompt: &str) {
 
 fn assert_review_repair_user_prompt(prompt: &str, pr_url: &str) {
 	assert!(prompt.contains(pr_url));
+
 	assert_runtime_owned_review_prompt_guidance(prompt);
 
 	assert!(prompt.contains(
@@ -105,6 +107,7 @@ fn assert_review_repair_user_prompt(prompt: &str, pr_url: &str) {
 
 fn assert_review_repair_continuation_prompt(prompt: &str) {
 	assert!(prompt.contains("Resume by committing any review-blocking repair edits"));
+
 	assert_runtime_owned_review_prompt_guidance(prompt);
 
 	assert!(prompt.contains(

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
 	orchestrator::{
 		self, DaemonTickRuntimeContext, RetryQueue, ReviewLevel, StateStore, tests,
@@ -60,42 +62,19 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		PUB_704_RETAINED_HEAD_SUBJECT,
 	);
 
-	state_store
-		.upsert_worktree(
-			config.service_id(),
-			&retained_issue.id,
-			&retained_worktree.branch_name,
-			&retained_worktree.path.display().to_string(),
-		)
-		.expect("retained worktree should record");
-	state_store
-		.record_run_attempt("leased-run", &active_issue.id, 1, "running")
-		.expect("current lane should record");
-
-	tests::seed_review_lifecycle_handoff_fixture_value(
+	seed_ready_retained_lane(
 		&state_store,
 		config.service_id(),
 		&retained_issue.id,
-		&tests::sample_review_lifecycle_handoff_fixture(
-			&retained_worktree.branch_name,
-			pr_url,
-			&head_oid,
-		),
+		&retained_worktree.branch_name,
+		&retained_worktree.path,
+		pr_url,
+		&head_oid,
 	);
+
 	state_store
-		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
-			project_id: config.service_id(),
-			issue_id: &retained_issue.id,
-			run_id: "runtime-review",
-			attempt_number: 1,
-			phase: "handoff",
-			review_level: "standard",
-			status: "clean",
-			head_sha: &head_oid,
-			nonclean_rounds: 0,
-			details_json: "{}",
-		})
-		.expect("runtime clean review checkpoint should seed");
+		.record_run_attempt("leased-run", &active_issue.id, 1, "running")
+		.expect("current lane should record");
 
 	let review_state = tests::sample_pull_request_review_state(
 		pr_url,
@@ -144,4 +123,40 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 		PUB_704_RETAINED_LANDED_SUBJECT,
 		pr_url,
 	);
+}
+
+fn seed_ready_retained_lane(
+	state_store: &StateStore,
+	service_id: &str,
+	issue_id: &str,
+	branch_name: &str,
+	worktree_path: &Path,
+	pr_url: &str,
+	head_oid: &str,
+) {
+	state_store
+		.upsert_worktree(service_id, issue_id, branch_name, &worktree_path.display().to_string())
+		.expect("retained worktree should record");
+
+	tests::seed_review_lifecycle_handoff_fixture_value(
+		state_store,
+		service_id,
+		issue_id,
+		&tests::sample_review_lifecycle_handoff_fixture(branch_name, pr_url, head_oid),
+	);
+
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: service_id,
+			issue_id,
+			run_id: "runtime-review",
+			attempt_number: 1,
+			phase: "handoff",
+			review_level: "standard",
+			status: "clean",
+			head_sha: head_oid,
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("runtime clean review checkpoint should seed");
 }

@@ -3,10 +3,6 @@ mod issue;
 mod ledger;
 mod receipt;
 
-use std::path::Path;
-
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-
 #[cfg(test)] pub(super) use self::issue::ensure_manual_closeout_issue_scope;
 #[cfg(test)] pub(super) use self::receipt::read_manual_land_closeout_receipt;
 pub(super) use self::{
@@ -22,20 +18,27 @@ pub(super) use self::{
 	receipt::{manual_land_closeout_receipt_matches, write_manual_land_closeout_receipt},
 };
 
+use std::path::Path;
+
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
 use crate::{
 	config::ReviewLevel,
 	default_branch_sync,
 	manual::{ManualLandContext, ManualLandLedgerContext},
 	orchestrator::{
-		PostReviewLifecycleFactsInput, PullRequestReviewState, build_post_review_lifecycle_facts,
-		kernel::lifecycle::{
-			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-			PreviousLifecycleAuthority, decide_lifecycle_transition,
+		self, PostReviewLifecycleFactsInput, PullRequestReviewState,
+		kernel::{
+			lifecycle,
+			lifecycle::{
+				LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
+				PreviousLifecycleAuthority,
+			},
 		},
-		runtime_review_checkpoint_status_for_head,
 	},
 	prelude::{Result, eyre},
 	runtime,
+	state::StateStore,
 };
 
 pub(super) fn finalize_land_closeout(
@@ -51,48 +54,14 @@ pub(super) fn finalize_land_closeout(
 	};
 	let worktree_path_for_event = cleanup::manual_land_relative_worktree_path(context);
 
-	if let Some(prepared_closeout) = context.prepared_closeout.as_ref() {
-		let state_store = state_store
-			.as_ref()
-			.ok_or_else(|| eyre::eyre!("Manual closeout state store was not opened."))?;
-		let lifecycle_record = context.review_lifecycle.as_ref().ok_or_else(|| {
-			eyre::eyre!(
-				"`decodex land` issue closeout requires retained review lifecycle authority."
-			)
-		})?;
-		let ledger = ManualLandLedgerContext {
-			service_id: &prepared_closeout.service_id,
-			issue: &prepared_closeout.issue,
-			state_store,
-			lifecycle_record,
-			pr_url: &context.pr_url,
-			merge_commit,
-			branch_name: &context.current_branch,
-			worktree_path: &worktree_path_for_event,
-			completed_state: &prepared_closeout.completed_state,
-			default_branch,
-			privacy_classifier: &context.public_projection_privacy_classifier,
-		};
-
-		record_manual_land_lifecycle_decision(
-			&ledger,
-			prepared_closeout.review_level,
-			LifecycleEvidenceKind::LandingReadback,
-			LifecycleOutcome::Succeeded,
-			Some(merge_commit),
-			"landed",
-			"not_started",
-			"not_started",
-			"manual_land_readback",
-		)?;
-		apply_closeout(
-			&context.cwd,
-			&prepared_closeout.tracker,
-			&prepared_closeout.completed_state,
-			&ledger,
-			landed_change_record,
-		)?;
-	}
+	apply_prepared_manual_land_closeout(
+		context,
+		state_store.as_ref(),
+		merge_commit,
+		default_branch,
+		landed_change_record,
+		&worktree_path_for_event,
+	)?;
 
 	default_branch_sync::sync_repo_root_default_branch(
 		&context.canonical_repo_root,
@@ -118,58 +87,123 @@ pub(super) fn finalize_land_closeout(
 	}
 
 	cleanup_manual_land_lane_checkout(context)?;
-
-	if let Some(prepared_closeout) = context.prepared_closeout.as_ref() {
-		let state_store = state_store
-			.as_ref()
-			.ok_or_else(|| eyre::eyre!("Manual closeout state store was not opened."))?;
-		let lifecycle_record = context.review_lifecycle.as_ref().ok_or_else(|| {
-			eyre::eyre!(
-				"`decodex land` issue cleanup requires retained review lifecycle authority."
-			)
-		})?;
-
-		clear_manual_closeout_runtime_state(
-			state_store,
-			&prepared_closeout.issue.id,
-			lifecycle_record.run_id(),
-		)?;
-		clear_manual_closeout_issue_scope(
-			&prepared_closeout.tracker,
-			&prepared_closeout.issue,
-			&prepared_closeout.service_id,
-			&prepared_closeout.needs_attention_label,
-		)?;
-
-		let ledger = ManualLandLedgerContext {
-			service_id: &prepared_closeout.service_id,
-			issue: &prepared_closeout.issue,
-			state_store,
-			lifecycle_record,
-			pr_url: &context.pr_url,
-			merge_commit,
-			branch_name: &context.current_branch,
-			worktree_path: &worktree_path_for_event,
-			completed_state: &prepared_closeout.completed_state,
-			default_branch,
-			privacy_classifier: &context.public_projection_privacy_classifier,
-		};
-
-		write_manual_land_cleanup_complete_event(&prepared_closeout.tracker, &ledger)?;
-		record_manual_land_lifecycle_decision(
-			&ledger,
-			prepared_closeout.review_level,
-			LifecycleEvidenceKind::CloseoutCompletion,
-			LifecycleOutcome::Succeeded,
-			Some(merge_commit),
-			"landed",
-			"completed",
-			"completed",
-			"manual_land_closeout_complete",
-		)?;
-	}
+	complete_prepared_manual_land_cleanup(
+		context,
+		state_store.as_ref(),
+		merge_commit,
+		default_branch,
+		&worktree_path_for_event,
+	)?;
 
 	Ok(())
+}
+
+fn apply_prepared_manual_land_closeout(
+	context: &ManualLandContext,
+	state_store: Option<&StateStore>,
+	merge_commit: &str,
+	default_branch: &str,
+	landed_change_record: &str,
+	worktree_path_for_event: &str,
+) -> Result<()> {
+	let Some(prepared_closeout) = context.prepared_closeout.as_ref() else {
+		return Ok(());
+	};
+	let state_store =
+		state_store.ok_or_else(|| eyre::eyre!("Manual closeout state store was not opened."))?;
+	let lifecycle_record = context.review_lifecycle.as_ref().ok_or_else(|| {
+		eyre::eyre!("`decodex land` issue closeout requires retained review lifecycle authority.")
+	})?;
+	let ledger = ManualLandLedgerContext {
+		service_id: &prepared_closeout.service_id,
+		issue: &prepared_closeout.issue,
+		state_store,
+		lifecycle_record,
+		pr_url: &context.pr_url,
+		merge_commit,
+		branch_name: &context.current_branch,
+		worktree_path: worktree_path_for_event,
+		completed_state: &prepared_closeout.completed_state,
+		default_branch,
+		privacy_classifier: &context.public_projection_privacy_classifier,
+	};
+
+	record_manual_land_lifecycle_decision(
+		&ledger,
+		prepared_closeout.review_level,
+		LifecycleEvidenceKind::LandingReadback,
+		LifecycleOutcome::Succeeded,
+		Some(merge_commit),
+		"landed",
+		"not_started",
+		"not_started",
+		"manual_land_readback",
+	)?;
+
+	apply_closeout(
+		&context.cwd,
+		&prepared_closeout.tracker,
+		&prepared_closeout.completed_state,
+		&ledger,
+		landed_change_record,
+	)
+}
+
+fn complete_prepared_manual_land_cleanup(
+	context: &ManualLandContext,
+	state_store: Option<&StateStore>,
+	merge_commit: &str,
+	default_branch: &str,
+	worktree_path_for_event: &str,
+) -> Result<()> {
+	let Some(prepared_closeout) = context.prepared_closeout.as_ref() else {
+		return Ok(());
+	};
+	let state_store =
+		state_store.ok_or_else(|| eyre::eyre!("Manual closeout state store was not opened."))?;
+	let lifecycle_record = context.review_lifecycle.as_ref().ok_or_else(|| {
+		eyre::eyre!("`decodex land` issue cleanup requires retained review lifecycle authority.")
+	})?;
+
+	clear_manual_closeout_runtime_state(
+		state_store,
+		&prepared_closeout.issue.id,
+		lifecycle_record.run_id(),
+	)?;
+	clear_manual_closeout_issue_scope(
+		&prepared_closeout.tracker,
+		&prepared_closeout.issue,
+		&prepared_closeout.service_id,
+		&prepared_closeout.needs_attention_label,
+	)?;
+
+	let ledger = ManualLandLedgerContext {
+		service_id: &prepared_closeout.service_id,
+		issue: &prepared_closeout.issue,
+		state_store,
+		lifecycle_record,
+		pr_url: &context.pr_url,
+		merge_commit,
+		branch_name: &context.current_branch,
+		worktree_path: worktree_path_for_event,
+		completed_state: &prepared_closeout.completed_state,
+		default_branch,
+		privacy_classifier: &context.public_projection_privacy_classifier,
+	};
+
+	write_manual_land_cleanup_complete_event(&prepared_closeout.tracker, &ledger)?;
+
+	record_manual_land_lifecycle_decision(
+		&ledger,
+		prepared_closeout.review_level,
+		LifecycleEvidenceKind::CloseoutCompletion,
+		LifecycleOutcome::Succeeded,
+		Some(merge_commit),
+		"landed",
+		"completed",
+		"completed",
+		"manual_land_closeout_complete",
+	)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -184,7 +218,7 @@ fn record_manual_land_lifecycle_decision(
 	cleanup_state: &str,
 	causation_id: &str,
 ) -> Result<()> {
-	let checkpoint = runtime_review_checkpoint_status_for_head(
+	let checkpoint = orchestrator::runtime_review_checkpoint_status_for_head(
 		ledger.state_store,
 		ledger.service_id,
 		&ledger.issue.id,
@@ -197,7 +231,7 @@ fn record_manual_land_lifecycle_decision(
 		&ledger.issue.id,
 		ledger.branch_name,
 	)?;
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: ledger.service_id,
 		issue_id: &ledger.issue.id,
 		review_lifecycle: previous_record.as_ref(),
@@ -224,7 +258,7 @@ fn record_manual_land_lifecycle_decision(
 		causation_id
 	);
 	let decided_at = current_timestamp();
-	let decision = decide_lifecycle_transition(LifecycleDecisionInput {
+	let decision = lifecycle::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
 		previous,
 		evidence_kind,

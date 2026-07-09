@@ -145,7 +145,6 @@ fn repo_gate_tracked_rewrite_decision(
 			rewritten_files,
 		));
 	}
-
 	if owned {
 		Some(RepoGateTrackedRewriteDecision::lane_owned_requires_clean_boundary(rewritten_files))
 	} else {

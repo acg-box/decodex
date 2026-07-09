@@ -1,9 +1,10 @@
+use rusqlite::{Error, Row};
+
 use crate::{
 	autonomy_signal::AutonomySignal,
 	prelude::eyre,
 	state::{AutonomySignalRuntimeRecord, AutonomySignalRuntimeRowParts},
 };
-use rusqlite::{Error, Row};
 
 pub(in crate::state) fn autonomy_signal_runtime_row_parts(
 	row: &Row<'_>,
@@ -31,7 +32,6 @@ pub(in crate::state) fn autonomy_signal_record_from_row_parts(
 	parts: AutonomySignalRuntimeRowParts,
 ) -> crate::prelude::Result<AutonomySignalRuntimeRecord> {
 	let signal = serde_json::from_str::<AutonomySignal>(&parts.payload_json)?;
-
 	let version = u64::try_from(parts.objective_version).map_err(|_| {
 		eyre::eyre!("Autonomy signal row objective_version must be greater than zero.")
 	})?;

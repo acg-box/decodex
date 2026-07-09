@@ -1,4 +1,3 @@
-use super::terminal_lifecycle_authority_must_not_reenter_review;
 #[cfg(test)]
 use crate::state::{ReviewLifecycleHandoffFixture, runtime_records::ReviewLifecycleKey};
 use crate::{
@@ -6,11 +5,13 @@ use crate::{
 		PostReviewLifecycleFacts, RuntimeReviewGateState,
 		kernel::lifecycle::{
 			LifecycleDecisionInput, LifecycleEvidenceKind, LifecycleOutcome,
-			PreviousLifecycleAuthority, decide_lifecycle_transition,
+			PreviousLifecycleAuthority,
 		},
 	},
 	prelude::Result,
-	state::{ReviewLifecycleHandoffInput, StateStore, runtime_row_parsers},
+	state::{
+		ReviewLifecycleHandoffInput, StateStore, review_records::lifecycle, runtime_row_parsers,
+	},
 };
 
 impl StateStore {
@@ -21,10 +22,9 @@ impl StateStore {
 		issue_id: &str,
 		input: ReviewLifecycleHandoffInput<'_>,
 	) -> Result<()> {
-		if self
-			.review_lifecycle_record(project_id, issue_id, input.branch_name)?
-			.is_some_and(|record| terminal_lifecycle_authority_must_not_reenter_review(&record))
-		{
+		if self.review_lifecycle_record(project_id, issue_id, input.branch_name)?.is_some_and(
+			|record| lifecycle::terminal_lifecycle_authority_must_not_reenter_review(&record),
+		) {
 			return Ok(());
 		}
 
@@ -39,10 +39,9 @@ impl StateStore {
 		issue_id: &str,
 		marker: &ReviewLifecycleHandoffFixture,
 	) -> Result<()> {
-		if self
-			.review_lifecycle_record(project_id, issue_id, marker.branch_name())?
-			.is_some_and(|record| terminal_lifecycle_authority_must_not_reenter_review(&record))
-		{
+		if self.review_lifecycle_record(project_id, issue_id, marker.branch_name())?.is_some_and(
+			|record| lifecycle::terminal_lifecycle_authority_must_not_reenter_review(&record),
+		) {
 			return Ok(());
 		}
 
@@ -60,6 +59,7 @@ impl StateStore {
 				head_sha: marker.pr_head_oid(),
 			},
 		)?;
+
 		let now = runtime_row_parsers::timestamp_parts();
 		let key = ReviewLifecycleKey::new(project_id, issue_id, marker.branch_name());
 		let mut state = self.lock()?;
@@ -134,7 +134,8 @@ fn record_handoff_lifecycle_authority(
 ) -> Result<()> {
 	let previous_record =
 		state_store.review_lifecycle_record(project_id, issue_id, input.branch_name)?;
-	if previous_record.as_ref().is_some_and(terminal_lifecycle_authority_must_not_reenter_review) {
+
+	if previous_record.as_ref().is_some_and(crate::state::review_records::lifecycle::terminal_lifecycle_authority_must_not_reenter_review) {
 		return Ok(());
 	}
 
@@ -167,20 +168,22 @@ fn record_handoff_lifecycle_authority(
 			input.run_id, input.attempt_number, input.head_sha
 		)],
 	};
-	let decision = decide_lifecycle_transition(LifecycleDecisionInput {
-		facts: &facts,
-		previous,
-		evidence_kind: LifecycleEvidenceKind::Handoff,
-		outcome: LifecycleOutcome::Intent,
-		merge_commit: None,
-		cleanup_state: Some("not_started"),
-		authority: "review_lifecycle_runtime",
-		actor: "state_adapter",
-		idempotency_key: &idempotency_key,
-		correlation_id: input.run_id,
-		causation_id: Some("review_lifecycle_handoff"),
-		decided_at: &decided_at,
-	});
+	let decision = crate::orchestrator::kernel::lifecycle::decide_lifecycle_transition(
+		LifecycleDecisionInput {
+			facts: &facts,
+			previous,
+			evidence_kind: LifecycleEvidenceKind::Handoff,
+			outcome: LifecycleOutcome::Intent,
+			merge_commit: None,
+			cleanup_state: Some("not_started"),
+			authority: "review_lifecycle_runtime",
+			actor: "state_adapter",
+			idempotency_key: &idempotency_key,
+			correlation_id: input.run_id,
+			causation_id: Some("review_lifecycle_handoff"),
+			decided_at: &decided_at,
+		},
+	);
 
 	state_store.record_lifecycle_decision(input.run_id, input.attempt_number, &decision)?;
 

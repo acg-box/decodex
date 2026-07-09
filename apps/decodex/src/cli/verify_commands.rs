@@ -1,12 +1,10 @@
 use clap::{Args, Subcommand, ValueEnum};
+use color_eyre::eyre;
 
 use crate::{
 	cli::ProjectConfigArgs,
 	config::ServiceConfig,
-	github::{
-		self, CommitStatusPublishRequest, CommitStatusState,
-		commit_status_description_with_base_ref_oid,
-	},
+	github::{self, CommitStatusPublishRequest, CommitStatusState},
 	prelude::Result,
 };
 
@@ -60,9 +58,10 @@ struct PublishStatusCommand {
 }
 impl PublishStatusCommand {
 	fn run(&self) -> Result<()> {
-		let config_path = self.project_config.as_path().ok_or_else(|| {
-			color_eyre::eyre::eyre!("`decodex verify publish-status` requires `--config`.")
-		})?;
+		let config_path = self
+			.project_config
+			.as_path()
+			.ok_or_else(|| eyre::eyre!("`decodex verify publish-status` requires `--config`."))?;
 		let config = ServiceConfig::from_path(config_path)?;
 		let github_token = config.github().resolve_token()?;
 		let landing_state = github::inspect_pull_request_landing_state(
@@ -73,6 +72,7 @@ impl PublishStatusCommand {
 			&[],
 			&[],
 		)?;
+
 		if self.state == PublishStatusState::Success && self.expected_head.is_none() {
 			color_eyre::eyre::bail!(
 				"`decodex verify publish-status --state success` requires `--expected-head`."
@@ -88,6 +88,7 @@ impl PublishStatusCommand {
 				"`decodex verify publish-status --state success` requires `--expected-base-oid`."
 			);
 		}
+
 		if let Some(expected_head) = self.expected_head.as_deref()
 			&& landing_state.head_ref_oid != expected_head
 		{
@@ -115,14 +116,13 @@ impl PublishStatusCommand {
 				landing_state.base_ref_oid.as_deref().unwrap_or("<unknown>")
 			);
 		}
+
 		let locator = github::parse_pull_request_url(&self.pr)?;
 		let description = if self.state == PublishStatusState::Success {
-			Some(commit_status_description_with_base_ref_oid(
+			Some(github::commit_status_description_with_base_ref_oid(
 				self.description.as_deref(),
 				landing_state.base_ref_oid.as_deref().ok_or_else(|| {
-					color_eyre::eyre::eyre!(
-						"GitHub did not return a PR base SHA; refusing to publish success."
-					)
+					eyre::eyre!("GitHub did not return a PR base SHA; refusing to publish success.")
 				})?,
 			))
 		} else {

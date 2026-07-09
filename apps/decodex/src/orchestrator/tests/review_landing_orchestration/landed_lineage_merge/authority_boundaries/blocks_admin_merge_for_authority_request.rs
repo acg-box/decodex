@@ -51,6 +51,7 @@ fn blocks_admin_merge_for_authority_request() {
 			1,
 		),
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
@@ -65,6 +66,7 @@ fn blocks_admin_merge_for_authority_request() {
 			details_json: "{}",
 		})
 		.expect("runtime review checkpoint should persist");
+
 	review_landing_classification_review::record_authority_decision_request(&state_store, &issue);
 
 	let mut review_state = tests::sample_pull_request_review_state(

@@ -1,22 +1,20 @@
-use crate::state::ReviewLifecycleRecord;
-
 #[cfg(test)] use crate::orchestrator::ReviewLevel;
 use crate::{
 	orchestrator::{
-		PostReviewLifecycleFactsInput, RuntimeReviewGateState, build_post_review_lifecycle_facts,
-		runtime_review_checkpoint_status_for_head,
+		self, PostReviewLifecycleFactsInput, RuntimeReviewGateState,
 		status::{
-			blocked_post_review_lane_from_state, post_review,
+			PullRequestReviewState, post_review,
 			post_review::{
 				OffsetDateTime, PostReviewLaneClassification, PostReviewLaneDecision,
 				PostReviewLaneKernelInput, PostReviewLaneSnapshot, PostReviewLaneStateLoad,
 				PostReviewOrchestrationStatus, PostReviewRuntimeState,
 				PullRequestReviewStateInspector, ServiceConfig, StateStore, WorkflowDocument,
 			},
+			review_state,
 		},
-		worktree_has_review_blocking_changes,
 	},
 	prelude::Result,
+	state::ReviewLifecycleRecord,
 };
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -108,7 +106,6 @@ where
 		if classification.decision == PostReviewLaneDecision::Block {
 			return Ok(finalize_post_review_lane_classification(snapshot, classification));
 		}
-
 		if apply_runtime_standard_review_gate(
 			snapshot,
 			&review_state,
@@ -153,6 +150,7 @@ where
 		&orchestration_status,
 		OffsetDateTime::now_utc().unix_timestamp(),
 	);
+
 	if classification.decision == PostReviewLaneDecision::ReadyToLand
 		&& classification.reason == "external_review_passed_strict"
 		&& apply_runtime_standard_review_gate(
@@ -164,6 +162,7 @@ where
 		)? {
 		return Ok(finalize_post_review_lane_classification(snapshot, classification));
 	}
+
 	post_review::apply_authority_boundary_landing_policy(
 		snapshot,
 		&mut classification,
@@ -203,21 +202,22 @@ pub(crate) fn finalize_post_review_lane_classification_with_retry_budget(
 
 fn apply_runtime_standard_review_gate(
 	snapshot: &PostReviewLaneSnapshot,
-	review_state: &crate::orchestrator::status::PullRequestReviewState,
+	review_state: &PullRequestReviewState,
 	classification: &mut PostReviewLaneClassification,
 	runtime_state: Option<PostReviewRuntimeState<'_>>,
-	lifecycle_record: Option<&crate::state::ReviewLifecycleRecord>,
+	lifecycle_record: Option<&ReviewLifecycleRecord>,
 ) -> Result<bool> {
 	let Some(runtime_state) = runtime_state else {
 		return Ok(false);
 	};
+
 	if !runtime_state.review_level.requires_review_checkpoint() {
 		return Ok(false);
 	}
 
 	let local_head_oid = snapshot.local_head_oid.as_deref();
 	let checkpoint = if let Some(local_head_oid) = local_head_oid {
-		runtime_review_checkpoint_status_for_head(
+		orchestrator::runtime_review_checkpoint_status_for_head(
 			runtime_state.state_store,
 			runtime_state.project_id,
 			&snapshot.issue.id,
@@ -227,7 +227,7 @@ fn apply_runtime_standard_review_gate(
 	} else {
 		None
 	};
-	let facts = build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
+	let facts = orchestrator::build_post_review_lifecycle_facts(PostReviewLifecycleFactsInput {
 		project_id: runtime_state.project_id,
 		issue_id: &snapshot.issue.id,
 		review_lifecycle: lifecycle_record,
@@ -245,50 +245,61 @@ fn apply_runtime_standard_review_gate(
 	match facts.review_gate_state {
 		RuntimeReviewGateState::NotRequired => Ok(false),
 		RuntimeReviewGateState::Clean => {
-			if worktree_has_review_blocking_changes(snapshot.worktree.worktree_path())? {
-				*classification = blocked_post_review_lane_from_state(
+			if orchestrator::worktree_has_review_blocking_changes(
+				snapshot.worktree.worktree_path(),
+			)? {
+				*classification = review_state::blocked_post_review_lane_from_state(
 					review_state,
 					"runtime_standard_review_clean_checkpoint_worktree_dirty",
 				);
+
 				return Ok(true);
 			}
 
 			Ok(false)
 		},
 		RuntimeReviewGateState::WorktreeHeadMissing => {
-			*classification =
-				blocked_post_review_lane_from_state(review_state, "worktree_head_missing");
+			*classification = review_state::blocked_post_review_lane_from_state(
+				review_state,
+				"worktree_head_missing",
+			);
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::Pending => {
 			classification.decision = PostReviewLaneDecision::WaitForReview;
 			classification.reason = String::from("runtime_standard_review_checkpoint_pending");
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::Findings => {
 			classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 			classification.reason = String::from("runtime_standard_review_repair_required");
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::NeedsArchitectureReview => {
-			*classification = blocked_post_review_lane_from_state(
+			*classification = review_state::blocked_post_review_lane_from_state(
 				review_state,
 				"runtime_standard_review_needs_architecture_review",
 			);
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::Blocked => {
-			*classification = blocked_post_review_lane_from_state(
+			*classification = review_state::blocked_post_review_lane_from_state(
 				review_state,
 				"runtime_standard_review_blocked",
 			);
+
 			Ok(true)
 		},
 		RuntimeReviewGateState::Unknown(_) => {
-			*classification = blocked_post_review_lane_from_state(
+			*classification = review_state::blocked_post_review_lane_from_state(
 				review_state,
 				"runtime_standard_review_unknown_checkpoint_status",
 			);
+
 			Ok(true)
 		},
 	}

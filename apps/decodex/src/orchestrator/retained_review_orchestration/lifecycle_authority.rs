@@ -113,6 +113,7 @@ fn write_retained_review_lifecycle_authority(
 		lane.snapshot.local_head_oid.as_deref().ok_or_else(|| {
 			eyre::eyre!("Retained review orchestration requires a local lane HEAD.")
 		})?;
+
 	state_store.record_review_lifecycle_transition(
 		lane.snapshot.worktree.project_id(),
 		&lane.snapshot.issue.id,

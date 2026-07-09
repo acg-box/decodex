@@ -15,6 +15,7 @@ pub(crate) fn build_commit_message(
 	if !related.is_empty() {
 		eyre::bail!("`decodex/commit/2` is commit-local and does not accept related issues");
 	}
+
 	let summary = normalize::normalize_single_line_field("summary", summary)?;
 	let authority = normalize::normalize_commit_authority("authority", authority)?;
 	let impact = commit_impact(breaking);

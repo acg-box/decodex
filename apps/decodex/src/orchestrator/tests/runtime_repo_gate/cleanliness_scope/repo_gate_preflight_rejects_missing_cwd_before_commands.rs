@@ -4,6 +4,7 @@ use crate::orchestrator::{self, RepoGateFailure, tests};
 fn repo_gate_preflight_rejects_missing_cwd_before_commands() {
 	let (temp_dir, config, _workflow) = tests::temp_project_layout();
 	let missing_worktree = config.repo_root().join("missing-worktree");
+
 	drop(temp_dir);
 
 	let error = orchestrator::run_repo_gate_commands(

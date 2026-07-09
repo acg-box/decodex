@@ -2,7 +2,7 @@
 
 use crate::{
 	orchestrator::kernel::lifecycle::{
-		LIFECYCLE_EVENT_TYPE, LifecycleAuthorityRecord, LifecycleDecision,
+		LIFECYCLE_EVENT_TYPE, LifecycleAuthorityRecord, LifecycleDecision, LifecycleEventEnvelope,
 	},
 	prelude::Result,
 	state::{
@@ -66,6 +66,7 @@ impl StateStore {
 
 		state.private_execution_events.push(event.clone());
 		self.persist_runtime_state_locked(&state)?;
+
 		event.record_id = state.next_private_execution_event_id()?.saturating_sub(1);
 
 		Ok(event.as_public())
@@ -130,7 +131,7 @@ fn new_lifecycle_authority_record(
 fn upsert_lifecycle_authority_projection(
 	runtime_record: &mut ReviewLifecycleRuntimeRecord,
 	record: &LifecycleAuthorityRecord,
-	envelope: &crate::orchestrator::kernel::lifecycle::LifecycleEventEnvelope,
+	envelope: &LifecycleEventEnvelope,
 	updated_at: &str,
 	updated_at_unix: i64,
 ) -> Result<()> {
@@ -140,14 +141,19 @@ fn upsert_lifecycle_authority_projection(
 	runtime_record.pr_head_oid = record.validated_head_sha.clone();
 	runtime_record.head_sha = record.validated_head_sha.clone();
 	runtime_record.phase = record.phase.clone();
+
 	let landing_state = landing_state_from_record(record);
+
 	if landing_state != "not_started" || runtime_record.landing_state == "not_started" {
 		runtime_record.landing_state = landing_state;
 	}
+
 	let closeout_state = closeout_state_from_record(record);
+
 	if closeout_state != "not_started" || runtime_record.closeout_state == "not_started" {
 		runtime_record.closeout_state = closeout_state;
 	}
+
 	runtime_record.evidence_json = serde_json::to_string(envelope)?;
 	runtime_record.next_action = record.next_action.clone();
 	runtime_record.schema_version = record.schema_version.clone();

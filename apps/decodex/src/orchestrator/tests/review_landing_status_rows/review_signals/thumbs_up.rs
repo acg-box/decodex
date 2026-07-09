@@ -83,6 +83,7 @@ fn accepts_existing_thumbs_up_for_later_pass_rounds() {
 		"APPROVED",
 		TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT + 1,
 	);
+
 	state_store
 		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
 			project_id: config.service_id(),
