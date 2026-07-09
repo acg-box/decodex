@@ -112,6 +112,8 @@ pub(super) fn prepare_configured_manual_land_context(
 		.as_ref()
 		.map(|record| record.branch_name().to_owned())
 		.unwrap_or_else(|| current_branch.clone());
+	let landing_status_contexts = config.github().landing_status_contexts();
+	let landing_actors = config.github().landing_actors().to_vec();
 
 	Ok(ManualLandContext {
 		cwd,
@@ -125,14 +127,8 @@ pub(super) fn prepare_configured_manual_land_context(
 		github_token_env_var: config.github().token_env_var().to_owned(),
 		github_token,
 		github_command_path,
-		landing_required_status_contexts: config
-			.github()
-			.landing_required_status_contexts()
-			.to_vec(),
-		landing_required_status_creators: config
-			.github()
-			.landing_required_status_creators()
-			.to_vec(),
+		landing_status_contexts,
+		landing_actors,
 		repository,
 		prepared_closeout,
 		review_lifecycle: lifecycle_record,

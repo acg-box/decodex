@@ -17,7 +17,7 @@ mod validation;
 pub use self::{
 	autonomy::{ProjectAutonomyConfig, ProjectAutonomyRuntimePolicyConfig},
 	codex::{ProjectCodexAccountsConfig, ProjectCodexConfig},
-	github::ProjectGitHubConfig,
+	github::{FAST_LANDING_STATUS_CONTEXT, ProjectGitHubConfig, ProjectGitHubLandingMode},
 	paths::ProjectPathsConfig,
 	privacy::ProjectPrivacyClassifierConfig,
 	review::ReviewLevel,

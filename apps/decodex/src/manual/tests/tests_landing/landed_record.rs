@@ -32,8 +32,8 @@ fn load_authoritative_landed_change_record_uses_merge_commit_subject() {
 		github_token_env_var: String::from("GITHUB_TOKEN"),
 		github_token: String::from("test-token"),
 		github_command_path: None,
-		landing_required_status_contexts: Vec::new(),
-		landing_required_status_creators: Vec::new(),
+		landing_status_contexts: Vec::new(),
+		landing_actors: Vec::new(),
 		repository: RepositoryContext {
 			owner: String::from("hack-ink"),
 			name: String::from("decodex"),

@@ -16,6 +16,7 @@ api_key_env_var = "LINEAR_API_KEY"
 
 [github]
 token_env_var = "GITHUB_TOKEN"
+landing_mode = "standard"
 
 [codex]
 review = "strict"
@@ -26,6 +27,10 @@ worktree_root = ".worktrees"
 ```
 
 Optional blocks include `[autonomy]`, `[autonomy.runtime_policy]`, `[codex.accounts]`, and `[privacy_classifier]` (`decodex.example.toml`). Config stores names of environment variables and references to runtime authority records; it does not embed live credentials or replace accepted Objective Contract/project-policy records.
+`github.landing_mode` defaults to `standard`, which waits for GitHub's status
+rollup. `fast` mode uses the stable `decodex/local-full-check` status and requires
+`github.landing_actors` to name the trusted GitHub users or Apps that can publish and
+execute fast landing.
 
 ## Workflow policy
 
