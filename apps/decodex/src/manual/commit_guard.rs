@@ -100,7 +100,7 @@ pub(super) fn manual_commit_active_lane_blocker(
 			continue;
 		}
 		if active_run_commit_context_allows_claimed_lane_commit(
-			&state_store,
+			state_store,
 			service_id,
 			mapping.issue_id(),
 			requested_authority,
@@ -136,6 +136,7 @@ fn active_run_commit_context_allows_claimed_lane_commit(
 	let Some(context) = ActiveRunCommitContext::from_process_env() else {
 		return Ok(false);
 	};
+
 	if context.service_id() != service_id || context.issue_id() != issue_id {
 		return Ok(false);
 	}
@@ -149,6 +150,7 @@ fn active_run_commit_context_allows_claimed_lane_commit(
 	let Some(lease) = state_store.lease_for_issue(issue_id)? else {
 		return Ok(false);
 	};
+
 	if lease.project_id() != service_id || lease.run_id() != context.run_id() {
 		return Ok(false);
 	}
