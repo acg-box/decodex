@@ -132,7 +132,7 @@ trait SupersededCloseoutRecoveryOperationsRunner {
 	fn update_issue_state(&mut self) -> Result<()>;
 	fn write_closeout_event(&mut self) -> Result<bool>;
 	fn write_cleanup_event(&mut self) -> Result<bool>;
-	fn record_lifecycle_authority(&mut self) -> Result<()>;
+	fn record_lifecycle_authority(&mut self, cleanup_state: &'static str) -> Result<()>;
 	fn update_run_status(&mut self) -> Result<()>;
 	fn clear_worktree(&mut self) -> Result<()>;
 	fn post_pull_request_comment(&mut self) -> Result<()>;
@@ -143,14 +143,15 @@ fn apply_superseded_closeout_recovery_sequence(
 	operations: &mut impl SupersededCloseoutRecoveryOperationsRunner,
 ) -> Result<(bool, bool, bool)> {
 	operations.ensure_terminalizable()?;
-	operations.update_issue_state()?;
 	let closeout_recorded = operations.write_closeout_event()?;
-	let cleanup_recorded = operations.write_cleanup_event()?;
-	operations.record_lifecycle_authority()?;
-	operations.update_run_status()?;
-	operations.clear_worktree()?;
+	operations.record_lifecycle_authority("pending")?;
 	operations.post_pull_request_comment()?;
 	let pr_closed = operations.close_pull_request_if_open()?;
+	operations.update_issue_state()?;
+	let cleanup_recorded = operations.write_cleanup_event()?;
+	operations.record_lifecycle_authority("completed")?;
+	operations.update_run_status()?;
+	operations.clear_worktree()?;
 
 	Ok((closeout_recorded, cleanup_recorded, pr_closed))
 }
@@ -197,8 +198,8 @@ impl SupersededCloseoutRecoveryOperationsRunner for SupersededCloseoutRecoveryOp
 		)
 	}
 
-	fn record_lifecycle_authority(&mut self) -> Result<()> {
-		record_superseded_closeout_lifecycle_authority(self.context, self.validation)
+	fn record_lifecycle_authority(&mut self, cleanup_state: &'static str) -> Result<()> {
+		record_superseded_closeout_lifecycle_authority(self.context, self.validation, cleanup_state)
 	}
 
 	fn update_run_status(&mut self) -> Result<()> {
@@ -305,8 +306,12 @@ mod tests {
 			Ok(true)
 		}
 
-		fn record_lifecycle_authority(&mut self) -> Result<()> {
-			self.record("record_lifecycle_authority")
+		fn record_lifecycle_authority(&mut self, cleanup_state: &'static str) -> Result<()> {
+			match cleanup_state {
+				"pending" => self.record("record_lifecycle_authority_pending"),
+				"completed" => self.record("record_lifecycle_authority_completed"),
+				_ => unreachable!("unsupported test cleanup state"),
+			}
 		}
 
 		fn update_run_status(&mut self) -> Result<()> {
@@ -340,37 +345,58 @@ mod tests {
 			operations.steps.into_inner(),
 			vec![
 				"ensure_terminalizable",
-				"update_issue_state",
 				"write_closeout_event",
-				"write_cleanup_event",
-				"record_lifecycle_authority",
-				"update_run_status",
-				"clear_worktree",
+				"record_lifecycle_authority_pending",
 				"post_pull_request_comment",
 				"close_pull_request_if_open",
+				"update_issue_state",
+				"write_cleanup_event",
+				"record_lifecycle_authority_completed",
+				"update_run_status",
+				"clear_worktree",
 			]
 		);
 	}
 
 	#[test]
-	fn superseded_closeout_does_not_touch_github_when_lifecycle_authority_fails() {
+	fn superseded_closeout_does_not_terminalize_issue_when_lifecycle_authority_fails() {
 		let mut operations = RecordingSupersededCloseoutOperations {
-			fail_at: Some("record_lifecycle_authority"),
+			fail_at: Some("record_lifecycle_authority_pending"),
 			..RecordingSupersededCloseoutOperations::default()
 		};
 
 		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
 			.expect_err("lifecycle authority failure should stop recovery");
 
-		assert!(error.to_string().contains("record_lifecycle_authority failed"));
+		assert!(error.to_string().contains("record_lifecycle_authority_pending failed"));
 		assert_eq!(
 			operations.steps.into_inner(),
 			vec![
 				"ensure_terminalizable",
-				"update_issue_state",
 				"write_closeout_event",
-				"write_cleanup_event",
-				"record_lifecycle_authority",
+				"record_lifecycle_authority_pending",
+			]
+		);
+	}
+
+	#[test]
+	fn superseded_closeout_keeps_cleanup_retryable_when_github_comment_fails() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_at: Some("post_pull_request_comment"),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("GitHub comment failure should stop cleanup");
+
+		assert!(error.to_string().contains("post_pull_request_comment failed"));
+		assert_eq!(
+			operations.steps.into_inner(),
+			vec![
+				"ensure_terminalizable",
+				"write_closeout_event",
+				"record_lifecycle_authority_pending",
+				"post_pull_request_comment",
 			]
 		);
 	}
@@ -558,6 +584,7 @@ fn record_merged_closeout_lifecycle_decision(
 fn record_superseded_closeout_lifecycle_authority(
 	context: &RecoveryContext,
 	validation: &SupersededCloseoutValidation,
+	cleanup_state: &'static str,
 ) -> Result<()> {
 	let review_level = context.config.codex().review_level();
 	let checkpoint = orchestrator::runtime_review_checkpoint_status_for_head(
@@ -592,12 +619,18 @@ fn record_superseded_closeout_lifecycle_authority(
 		next_state: record.next_state(),
 	});
 	let idempotency_key = format!(
-		"{}:{}:{}:{}",
+		"{}:{}:{}:{}:{}",
 		context.config.service_id(),
 		validation.issue.id,
 		validation.successor_merge_commit,
-		"superseded_closeout_recovery"
+		"superseded_closeout_recovery",
+		cleanup_state
 	);
+	let causation_id = match cleanup_state {
+		"pending" => "superseded_closeout_recovery_pr_close_authorized",
+		"completed" => "superseded_closeout_recovery_closeout_complete",
+		_ => "superseded_closeout_recovery_closeout_state",
+	};
 	let decided_at = current_timestamp();
 	let decision = self::decide_lifecycle_transition(LifecycleDecisionInput {
 		facts: &facts,
@@ -605,12 +638,12 @@ fn record_superseded_closeout_lifecycle_authority(
 		evidence_kind: LifecycleEvidenceKind::CloseoutCompletion,
 		outcome: LifecycleOutcome::Succeeded,
 		merge_commit: Some(&validation.successor_merge_commit),
-		cleanup_state: Some("completed"),
+		cleanup_state: Some(cleanup_state),
 		authority: "issue_authority",
 		actor: "superseded_closeout_recovery",
 		idempotency_key: &idempotency_key,
 		correlation_id: &validation.run_id,
-		causation_id: Some("superseded_closeout_recovery_closeout_complete"),
+		causation_id: Some(causation_id),
 		decided_at: &decided_at,
 	});
 

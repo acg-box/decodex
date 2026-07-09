@@ -47,7 +47,9 @@ service labels, recovery, or lane-control details matter.
   before live superseded closeout. The obsolete issue must have no queue, active,
   or needs-attention labels or live runtime ownership, and the successor issue
   must expose a Decodex ledger record for the exact successor PR head and merge
-  commit.
+  commit. Live superseded closeout records close authorization before the obsolete
+  issue/PR terminal mutation and records cleanup completion only after the PR
+  comment/close path succeeds.
 - Do not infer PR lineage from branch names, PR titles, Linear comments, status
   summaries, or stale snapshots.
 
