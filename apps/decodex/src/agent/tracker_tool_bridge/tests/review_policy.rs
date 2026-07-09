@@ -72,7 +72,7 @@ pub(in crate::agent::tracker_tool_bridge::tests) fn review_checks_json() -> Valu
 		"intended_behavior": "Checked the implementation against the issue requirements.",
 		"regression_risk": "Checked shared runtime regression risk for the touched path.",
 		"missing_tests": "Checked whether the current change needs additional tests.",
-		"docs_config_drift": "Checked OpenWiki and config drift for the runtime behavior change.",
+		"openwiki_config_drift": "Checked OpenWiki and config drift for the runtime behavior change.",
 		"migration_fallout": "Checked additive runtime-store migration fallout.",
 		"operator_facing_fallout": "Checked Linear and operator-facing fallout.",
 		"loop_decision_contract": "Compared the change against the accepted Loop/Decision Contract and found no mismatch."

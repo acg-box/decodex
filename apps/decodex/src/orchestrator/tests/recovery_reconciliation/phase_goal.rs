@@ -60,7 +60,7 @@ fn record_active_validation_ready_phase_goal_progress(
 			"progress_checkpoint",
 			serde_json::json!({
 				"phase": progress_phase,
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 				"blockers": blockers,
 				"verification": ["cargo make check"],
 				"head_sha": head_sha,

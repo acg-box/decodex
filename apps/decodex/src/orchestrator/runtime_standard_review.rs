@@ -210,7 +210,7 @@ fn runtime_standard_review_developer_instructions(
 		    \"intended_behavior\": \"...\",\n\
 		    \"regression_risk\": \"...\",\n\
 		    \"missing_tests\": \"...\",\n\
-		    \"docs_config_drift\": \"...\",\n\
+		    \"openwiki_config_drift\": \"...\",\n\
 		    \"migration_fallout\": \"...\",\n\
 		    \"operator_facing_fallout\": \"...\",\n\
 		    \"loop_decision_contract\": \"...\"\n\
@@ -406,7 +406,7 @@ mod tests {
 	fn runtime_review_output_parser_accepts_fenced_json() {
 		let parsed = checkpoint_json_from_reviewer_output(
 			r#"```json
-{"status":"clean","checks":{"intended_behavior":"ok","regression_risk":"low","missing_tests":"none","docs_config_drift":"none","migration_fallout":"none","operator_facing_fallout":"none","loop_decision_contract":"ok"},"evidence":["read current HEAD"]}
+{"status":"clean","checks":{"intended_behavior":"ok","regression_risk":"low","missing_tests":"none","openwiki_config_drift":"none","migration_fallout":"none","operator_facing_fallout":"none","loop_decision_contract":"ok"},"evidence":["read current HEAD"]}
 ```"#,
 		)
 		.expect("fenced json should parse");
@@ -427,7 +427,7 @@ mod tests {
 					"intended_behavior": "ok",
 					"regression_risk": "low",
 					"missing_tests": "none",
-					"docs_config_drift": "none",
+					"openwiki_config_drift": "none",
 					"migration_fallout": "none",
 					"operator_facing_fallout": "none",
 					"loop_decision_contract": "ok"

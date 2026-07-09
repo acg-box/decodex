@@ -53,7 +53,7 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		};
 
-		if let Err(error) = self.ensure_docs_impact_checkpoint(review_context, actual_path) {
+		if let Err(error) = self.ensure_openwiki_impact_checkpoint(review_context, actual_path) {
 			return DynamicToolCallResponse::failure(error);
 		}
 

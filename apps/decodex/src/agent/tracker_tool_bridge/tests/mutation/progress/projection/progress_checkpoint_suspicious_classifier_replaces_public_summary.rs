@@ -61,7 +61,7 @@ fn progress_checkpoint_suspicious_classifier_replaces_public_summary() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
-				"docs_impact": "none",
+				"openwiki_impact": "none",
 			"focus": "Private focus stays local.",
 			"next_action": "Continue implementation.",
 			"blockers": [],

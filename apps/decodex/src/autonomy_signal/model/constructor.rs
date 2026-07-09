@@ -93,19 +93,4 @@ impl AutonomySignal {
 
 		Ok(())
 	}
-
-	pub(crate) fn legacy_material_identity(
-		&self,
-		kind: &str,
-		source_type: &str,
-	) -> Result<(String, String)> {
-		let fingerprint = fingerprint::legacy_signal_fingerprint_for_material(
-			self,
-			kind,
-			source_type,
-		)?;
-		let id = fingerprint::autonomy_signal_id(&fingerprint);
-
-		Ok((id, fingerprint))
-	}
 }

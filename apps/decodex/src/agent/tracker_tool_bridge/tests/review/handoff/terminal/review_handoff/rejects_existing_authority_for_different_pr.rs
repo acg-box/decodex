@@ -74,7 +74,7 @@ fn rejects_existing_authority_for_different_pr() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "ready_for_review",
-			"docs_impact": "none",
+			"openwiki_impact": "none",
 			"focus": "Finalize review handoff.",
 			"next_action": "Record terminal finalize.",
 			"blockers": [],
