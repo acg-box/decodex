@@ -136,11 +136,8 @@ fn live_remote_commit_exclusion_oids(remote_name: &str, remote_url: &str) -> Res
 	let advertisements = live_remote_ref_advertisements(remote)
 		.unwrap_or_default()
 		.into_iter()
-		.filter(|advertisement| {
-			!advertisement.refname.ends_with("^{}")
-				&& local_commit_object_exists(&advertisement.oid).unwrap_or(false)
-		});
-	let mut oids = advertisements.map(|advertisement| advertisement.oid).collect::<Vec<_>>();
+		.filter_map(|advertisement| local_advertised_commit_oid(&advertisement.oid).ok().flatten());
+	let mut oids = advertisements.collect::<Vec<_>>();
 
 	oids.sort();
 	oids.dedup();
@@ -160,12 +157,14 @@ fn parse_ls_remote_line(line: &str) -> Option<RemoteRefAdvertisement> {
 	Some(RemoteRefAdvertisement { oid: oid.to_owned(), refname: refname.to_owned() })
 }
 
-fn local_commit_object_exists(oid: &str) -> Result<bool> {
-	git::git_command_success(&[
-		String::from("cat-file"),
-		String::from("-e"),
+fn local_advertised_commit_oid(oid: &str) -> Result<Option<String>> {
+	Ok(git::run_git_lines_if_success(&[
+		String::from("rev-parse"),
+		String::from("--verify"),
+		String::from("--quiet"),
 		format!("{oid}^{{commit}}"),
-	])
+	])?
+	.and_then(|lines| lines.into_iter().next()))
 }
 
 fn commit_message_text(oid: &str) -> Result<String> {
@@ -230,5 +229,21 @@ mod tests {
 				},
 			]
 		);
+	}
+
+	#[test]
+	fn live_remote_exclusions_keep_peeled_tag_commit_oids() {
+		let update = PrePushUpdate::new(
+			String::from("refs/heads/topic"),
+			String::from("local"),
+			String::from("refs/heads/topic"),
+			String::from("remote"),
+		);
+		let args = pre_push::rev_list_command_args_with_remote_exclusion(
+			&update,
+			&[String::from("peeled-tag-commit")],
+		);
+
+		assert!(args.contains(&String::from("peeled-tag-commit")));
 	}
 }
