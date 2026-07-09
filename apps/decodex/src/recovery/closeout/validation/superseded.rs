@@ -218,6 +218,10 @@ fn ensure_issue_has_no_live_runtime_ownership(
 	issue: &TrackerIssue,
 ) -> Result<()> {
 	let retained_worktree_mapping = issue::retained_worktree_mapping_for_issue(context, issue)?;
+	ensure_retained_worktree_marker_has_no_live_runtime_ownership(
+		issue,
+		retained_worktree_mapping.as_ref(),
+	)?;
 
 	for issue_key in issue_keys(issue) {
 		if context
@@ -230,7 +234,7 @@ fn ensure_issue_has_no_live_runtime_ownership(
 			);
 		}
 
-		if let Some(attempt) = context.state_store.latest_run_attempt_for_issue(&issue_key)? {
+		for attempt in context.state_store.list_run_attempts_for_issue(&issue_key)? {
 			if !orchestrator::local_run_attempt_status_is_terminal(attempt.status()) {
 				eyre::bail!(
 					"Issue `{}` still has non-terminal {} run `{}` for `{issue_key}`; superseded closeout recovery requires live ownership to be absent.",
@@ -239,24 +243,14 @@ fn ensure_issue_has_no_live_runtime_ownership(
 					attempt.run_id()
 				);
 			}
-			ensure_latest_attempt_has_no_live_retained_marker_ownership(
-				issue,
-				&issue_key,
-				attempt.run_id(),
-				attempt.attempt_number(),
-				retained_worktree_mapping.as_ref(),
-			)?;
 		}
 	}
 
 	Ok(())
 }
 
-fn ensure_latest_attempt_has_no_live_retained_marker_ownership(
+fn ensure_retained_worktree_marker_has_no_live_runtime_ownership(
 	issue: &TrackerIssue,
-	issue_key: &str,
-	run_id: &str,
-	attempt_number: i64,
 	retained_worktree_mapping: Option<&state::WorktreeMapping>,
 ) -> Result<()> {
 	let Some(worktree_mapping) = retained_worktree_mapping else {
@@ -267,47 +261,33 @@ fn ensure_latest_attempt_has_no_live_retained_marker_ownership(
 		return Ok(());
 	};
 
-	if marker.run_id() == run_id
-		&& marker.attempt_number() == attempt_number
-		&& let Some(retry_kind) = marker.retry_kind()
-	{
+	if let Some(retry_kind) = marker.retry_kind() {
 		eyre::bail!(
-			"Issue `{}` still has retry-scheduled runtime ownership for `{issue_key}` run `{run_id}` attempt {attempt_number} ({retry_kind}); superseded closeout recovery requires live ownership to be absent.",
-			issue.identifier
+			"Issue `{}` still has retry-scheduled runtime ownership for retained worktree run `{}` attempt {} ({retry_kind}); superseded closeout recovery requires live ownership to be absent.",
+			issue.identifier,
+			marker.run_id(),
+			marker.attempt_number()
 		);
 	}
 
-	ensure_matching_marker_has_no_live_runtime_evidence(
-		issue,
-		issue_key,
-		run_id,
-		attempt_number,
-		&marker,
-	)?;
-
-	Ok(())
+	ensure_marker_has_no_live_runtime_evidence(issue, &marker)
 }
 
-fn ensure_matching_marker_has_no_live_runtime_evidence(
+fn ensure_marker_has_no_live_runtime_evidence(
 	issue: &TrackerIssue,
-	issue_key: &str,
-	run_id: &str,
-	attempt_number: i64,
 	marker: &state::RunActivityMarker,
 ) -> Result<()> {
-	if marker.run_id() != run_id || marker.attempt_number() != attempt_number {
-		return Ok(());
-	}
-
+	let run_id = marker.run_id();
+	let attempt_number = marker.attempt_number();
 	let marker_liveness =
 		process_liveness::stale_active_optional_marker_process_liveness(Some(marker));
 	match marker_liveness {
 		StaleActiveProcessLiveness::Alive => eyre::bail!(
-			"Issue `{}` still has live retained process ownership for `{issue_key}` run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
+			"Issue `{}` still has live retained process ownership for retained worktree run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
 			issue.identifier
 		),
 		StaleActiveProcessLiveness::Unknown if marker.process_id().is_some() => eyre::bail!(
-			"Issue `{}` still has unknown retained process liveness for `{issue_key}` run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
+			"Issue `{}` still has unknown retained process liveness for retained worktree run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
 			issue.identifier
 		),
 		StaleActiveProcessLiveness::Unknown | StaleActiveProcessLiveness::NotAlive => {},
@@ -315,7 +295,7 @@ fn ensure_matching_marker_has_no_live_runtime_evidence(
 
 	if process_liveness::stale_active_marker_thread_active(marker) {
 		eyre::bail!(
-			"Issue `{}` still has live retained thread ownership for `{issue_key}` run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
+			"Issue `{}` still has live retained thread ownership for retained worktree run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
 			issue.identifier
 		);
 	}
@@ -329,7 +309,7 @@ fn ensure_matching_marker_has_no_live_runtime_evidence(
 			|| marker.protocol_activity().is_some())
 	{
 		eyre::bail!(
-			"Issue `{}` still has live retained activity marker ownership for `{issue_key}` run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
+			"Issue `{}` still has live retained activity marker ownership for retained worktree run `{run_id}` attempt {attempt_number}; superseded closeout recovery requires live ownership to be absent.",
 			issue.identifier
 		);
 	}
@@ -625,6 +605,76 @@ mod tests {
 	}
 
 	#[test]
+	fn terminalizable_guard_rejects_retry_marker_without_attempt_row() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		state::write_run_retry_schedule(
+			&worktree_path,
+			"run-marker-retry",
+			1,
+			"failure",
+			OffsetDateTime::now_utc().unix_timestamp() + 300,
+		)
+		.expect("retry schedule should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject marker-only retry ownership");
+
+		assert!(error.to_string().contains("run-marker-retry"));
+		assert!(error.to_string().contains("retry-scheduled runtime ownership"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_mismatched_retry_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		context
+			.state_store
+			.record_run_attempt("run-latest", &issue.id, 2, "succeeded")
+			.expect("latest terminal run should persist");
+		state::write_run_retry_schedule(
+			&worktree_path,
+			"run-older-retry",
+			1,
+			"failure",
+			OffsetDateTime::now_utc().unix_timestamp() + 300,
+		)
+		.expect("retry schedule should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject mismatched retry ownership");
+
+		assert!(error.to_string().contains("run-older-retry"));
+		assert!(error.to_string().contains("retry-scheduled runtime ownership"));
+	}
+
+	#[test]
 	fn terminalizable_guard_rejects_live_retained_marker_after_terminal_attempt() {
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
@@ -672,6 +722,106 @@ mod tests {
 
 		assert!(error.to_string().contains("run-live-marker"));
 		assert!(error.to_string().contains("live retained"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_live_retained_marker_without_attempt_row() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		write_live_protocol_marker(&worktree_path, "run-marker-only", 1);
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject marker-only live ownership");
+
+		assert!(error.to_string().contains("run-marker-only"));
+		assert!(error.to_string().contains("live retained"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_mismatched_live_retained_marker() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+		let worktree_path = temp_dir.path().join("PUB-1704");
+
+		context
+			.state_store
+			.upsert_worktree(
+				context.config.service_id(),
+				&issue.id,
+				"y/pubfi-pub-1704",
+				&worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should persist");
+		context
+			.state_store
+			.record_run_attempt("run-latest", &issue.id, 2, "succeeded")
+			.expect("latest terminal run should persist");
+		write_live_protocol_marker(&worktree_path, "run-older-live-marker", 1);
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err(
+				"superseded closeout should reject mismatched live retained marker ownership",
+			);
+
+		assert!(error.to_string().contains("run-older-live-marker"));
+		assert!(error.to_string().contains("live retained"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_any_non_terminal_attempt_for_issue() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.record_run_attempt("run-older-active", &issue.id, 1, "running")
+			.expect("older active run should persist");
+		context
+			.state_store
+			.record_run_attempt("run-latest-terminal", &issue.id, 2, "succeeded")
+			.expect("latest terminal run should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject any non-terminal attempt");
+
+		assert!(error.to_string().contains("run-older-active"));
+		assert!(error.to_string().contains("running"));
+	}
+
+	#[test]
+	fn terminalizable_guard_rejects_non_terminal_identifier_attempt() {
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let context = sample_recovery_context(&temp_dir, RecoveryRuntimeMutationPolicy::ReadOnly);
+		let issue = sample_issue("Todo");
+		let tracker = TestTracker::with_issues(vec![issue.clone()]);
+
+		context
+			.state_store
+			.record_run_attempt("run-identifier-active", &issue.identifier, 1, "running")
+			.expect("identifier-keyed active run should persist");
+
+		let error = ensure_superseded_issue_terminalizable_with_tracker(&context, &tracker, &issue)
+			.expect_err("superseded closeout should reject identifier-keyed non-terminal attempt");
+
+		assert!(error.to_string().contains("run-identifier-active"));
+		assert!(error.to_string().contains(&issue.identifier));
 	}
 
 	#[test]
@@ -738,6 +888,34 @@ mod tests {
 		issue.identifier = String::from("PUB-1705");
 
 		issue
+	}
+
+	fn write_live_protocol_marker(
+		worktree_path: &std::path::Path,
+		run_id: &str,
+		attempt_number: i64,
+	) {
+		let protocol_activity = ProtocolActivitySummary {
+			turn_status: Some(String::from("running")),
+			waiting_reason: Some(String::from("model_execution")),
+			rate_limit_status: None,
+			recent_events: Vec::new(),
+		};
+
+		state::write_run_protocol_activity_marker(
+			worktree_path,
+			&ProtocolActivityMarker {
+				run_id,
+				attempt_number,
+				thread_id: Some("thread-live"),
+				turn_id: Some("turn-live"),
+				event_count: 1,
+				last_event_type: "thread/turn/started",
+				child_agent_activity: None,
+				protocol_activity: Some(&protocol_activity),
+			},
+		)
+		.expect("live protocol marker should persist");
 	}
 
 	fn successor_closeout_comment(

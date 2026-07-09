@@ -46,14 +46,15 @@ service labels, recovery, or lane-control details matter.
   `decodex recover superseded-closeout <ISSUE> --pr <OLD_PR> --successor-issue <ISSUE> --successor-pr <MERGED_PR> --dry-run`
   before live superseded closeout. The obsolete issue must have no queue, active,
   or needs-attention labels or live runtime ownership, including non-terminal
-  attempts such as `continuation_pending` and retained retry schedules for a
-  terminal latest attempt, plus matching retained worktree markers that still
-  show live process, active thread, or live protocol/activity evidence. The
+  attempts such as `continuation_pending`, retained retry schedules on the
+  worktree marker, and retained worktree markers that still show live process,
+  active thread, or live protocol/activity evidence even without a matching
+  latest attempt row. The
   successor issue must expose a Decodex ledger record for the exact successor
   PR head and merge commit. Live superseded
-  closeout records close authorization plus retryable pending closeout authority
-  before the obsolete issue/PR terminal mutation and records cleanup completion
-  only after the PR comment/close path succeeds.
+  closeout records retryable pending closeout authority before public Linear or
+  GitHub projections, then records completed closeout authority before public
+  cleanup projection and retained worktree cleanup.
 - Do not infer PR lineage from branch names, PR titles, Linear comments, status
   summaries, or stale snapshots.
 

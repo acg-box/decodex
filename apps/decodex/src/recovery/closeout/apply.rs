@@ -143,13 +143,13 @@ fn apply_superseded_closeout_recovery_sequence(
 	operations: &mut impl SupersededCloseoutRecoveryOperationsRunner,
 ) -> Result<(bool, bool, bool)> {
 	operations.ensure_terminalizable()?;
-	let closeout_recorded = operations.write_closeout_event()?;
 	operations.record_lifecycle_authority("pending")?;
+	let closeout_recorded = operations.write_closeout_event()?;
 	operations.post_pull_request_comment()?;
 	let pr_closed = operations.close_pull_request_if_open()?;
 	operations.update_issue_state()?;
-	let cleanup_recorded = operations.write_cleanup_event()?;
 	operations.record_lifecycle_authority("completed")?;
+	let cleanup_recorded = operations.write_cleanup_event()?;
 	operations.update_run_status()?;
 	operations.clear_worktree()?;
 
@@ -345,13 +345,13 @@ mod tests {
 			operations.steps.into_inner(),
 			vec![
 				"ensure_terminalizable",
-				"write_closeout_event",
 				"record_lifecycle_authority_pending",
+				"write_closeout_event",
 				"post_pull_request_comment",
 				"close_pull_request_if_open",
 				"update_issue_state",
-				"write_cleanup_event",
 				"record_lifecycle_authority_completed",
+				"write_cleanup_event",
 				"update_run_status",
 				"clear_worktree",
 			]
@@ -371,12 +371,36 @@ mod tests {
 		assert!(error.to_string().contains("record_lifecycle_authority_pending failed"));
 		assert_eq!(
 			operations.steps.into_inner(),
-			vec![
-				"ensure_terminalizable",
-				"write_closeout_event",
-				"record_lifecycle_authority_pending",
-			]
+			vec!["ensure_terminalizable", "record_lifecycle_authority_pending",]
 		);
+	}
+
+	#[test]
+	fn superseded_closeout_does_not_write_public_closeout_when_lifecycle_authority_fails() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_at: Some("record_lifecycle_authority_pending"),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("lifecycle authority failure should stop recovery");
+
+		assert!(error.to_string().contains("record_lifecycle_authority_pending failed"));
+		assert!(!operations.steps.borrow().contains(&"write_closeout_event"));
+	}
+
+	#[test]
+	fn superseded_closeout_does_not_write_public_cleanup_when_lifecycle_authority_fails() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_at: Some("record_lifecycle_authority_completed"),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("completed lifecycle authority failure should stop recovery");
+
+		assert!(error.to_string().contains("record_lifecycle_authority_completed failed"));
+		assert!(!operations.steps.borrow().contains(&"write_cleanup_event"));
 	}
 
 	#[test]
@@ -394,8 +418,8 @@ mod tests {
 			operations.steps.into_inner(),
 			vec![
 				"ensure_terminalizable",
-				"write_closeout_event",
 				"record_lifecycle_authority_pending",
+				"write_closeout_event",
 				"post_pull_request_comment",
 			]
 		);
