@@ -1,6 +1,6 @@
 # Contracts And Data
 
-This page is the primary map for Decodex contracts and data boundaries. Use it to identify the source file or test area that owns behavior before editing.
+This page is the primary map for Decodex contracts and data boundaries. Use it to identify the source file or test area that owns behavior before editing. For the concise runtime authority contract across state ownership, project/`WORKFLOW.md`, app-server, tracker writeback, privacy, and recovery, start with [Runtime contracts](runtime-contracts.md).
 
 ## Project contract
 
@@ -57,9 +57,9 @@ The local SQLite database at `~/.codex/decodex/runtime.sqlite3` is the single-ma
 - `worktrees`: issue-to-branch/worktree mappings.
 - `linear_execution_events`: public tracker ledger event rows.
 
-Bootstrap then installs schemas for worktrees, review lifecycle, evidence artifacts, run-control channels, connector backoff, private execution events, Decision Contracts, autonomy objectives/signals/proposals, Execution Programs, Program Intake state, and loop guardrails.
+Bootstrap then installs schemas for worktrees, review lifecycle, evidence artifacts, run-control channels, connector backoff, private execution events, Decision Contracts, autonomy objectives/signals/proposals, Execution Programs, Program Intake state, and loop guardrails. These row families are authority records, not cache tables: Decision Contracts and Objective Contracts carry acceptance provenance, signals and proposals are private planning evidence, Program Intake records the dry-run/apply boundary, Execution Programs hold private dependency/conflict graph state, review lifecycle rows project retained post-review authority, and lane-control state gates mutating tools.
 
-Do not rebuild runtime truth from Linear comments on each tick. Linear comments are a public mirror; local SQLite owns active execution and retained lifecycle truth.
+State ownership is local-first: the global runtime database lives outside registered repositories, scopes rows by `project_id`, and owns active leases, attempt status, retry state, run-control channels, protocol summaries, private execution evidence, worktree mappings, and retained PR lifecycle. Linear comments, GitHub PR metadata, logs, and `.decodex-run-activity` markers are mirrors or diagnostics unless a runtime adapter persists them as structured authority. Do not rebuild runtime truth from Linear comments on each tick.
 
 ## Leases, attempts, and run control
 
@@ -73,7 +73,9 @@ A Decodex lane is one issue, one branch/worktree mapping, and one or more run at
 - retry budget and due-time scheduling
 - recovery classification after crashes or stale children
 
-Lane-control commands and MCP tools must use current run/turn authority instead of injecting commands into arbitrary threads (`apps/decodex/src/cli/control_commands/lane.rs`, `apps/decodex/src/mcp.rs`).
+Lane-control commands and MCP tools must use current run/turn authority instead of injecting commands into arbitrary threads (`apps/decodex/src/cli/control_commands/lane.rs`, `apps/decodex/src/mcp.rs`). Lane-control state has four independent axes: ownership, liveness, policy, and terminalization. Liveness evidence can make a lane diagnosable, but it must not recreate ownership after the lease/run authority is gone. Mutating tracker, review, closeout, worktree, or run-control tools must be fenced when terminalization is active or policy state requires architecture recovery, runtime recovery, or human attention.
+
+The lease/attempt lifecycle is single-owner. A normal lane acquires the local lease, prepares or reuses the deterministic linked worktree, starts one app-server attempt, records protocol/private execution evidence under that `run_id` and `attempt_number`, then resolves exactly one continuation, retry, manual-attention, review-handoff, or retained post-review transition. Queued retry and continuation entries remain runtime claims until they fire, are cancelled, or become ineligible; they must take precedence over fresh queue selection for the same project/issue. Terminal-looking child process exit alone does not own the final state when persisted attempt or lifecycle records already reached a terminal success path.
 
 ## App-server protocol contract
 
@@ -84,6 +86,7 @@ Lane-control commands and MCP tools must use current run/turn authority instead 
 - `decodex probe stdio://` should pass with `PROBE_OK` for compatibility evidence.
 - Required runtime methods include initialize, thread start/resume, turn start, thread archive, command exec health checks, dynamic tool calls, and phase-goal methods.
 - Phase goals are mandatory for retained lane execution; Decodex rejects incompatible app-server builds instead of silently falling back to ordinary continuation.
+- Protocol events are journaled with sequence and payload digest, while compact summaries own startup/status readback. `thread/archive` and `thread/archive/discarded` are terminal barriers for a run; later non-terminal app-server events are discarded local recovery evidence, not a reason to replace the terminal event.
 
 When changing app-server behavior, inspect source, schema tests, and upstream Codex behavior when available. Do not tune liveness or terminal semantics from one local pilot run only.
 
@@ -110,6 +113,8 @@ Important boundaries from source and `openwiki/specs/contracts-and-data.md`:
 - Completion must produce exactly one valid terminal path and matching `issue_terminal_finalize`; Decodex must fail rather than infer intent.
 - Review checkpoints are runtime-owned evidence writers for post-handoff/repair phases, not a generic agent escape hatch.
 
+Tracker writeback is private-first and disposition-driven. `issue_progress_checkpoint` writes the full normalized checkpoint to private runtime events before any public projection; Linear receives only allowlisted public summaries. Successful implementation requires `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")`; manual attention requires the needs-attention label intent, a validated explanatory public summary, and `issue_terminal_finalize(path = "manual_attention")`. If signals are missing, mixed, or not explicitly finalized, the wrapper fails closed instead of guessing.
+
 ## Decision Contracts, Program Intake, and Execution Programs
 
 The loop runtime sits above individual issue lanes (`openwiki/specs/contracts-and-data.md`, `apps/decodex/src/loop_contract.rs`, `apps/decodex/src/program_intake.rs`, `apps/decodex/src/execution_program.rs`).
@@ -126,7 +131,13 @@ Program Intake kinds:
 - `goal_intake`: materialize an accepted Decision Contract.
 - `issue_batch_intake`: materialize supplied existing Linear issues.
 
-Execution Programs are private runtime plans over normal issue-backed nodes. Scheduler dispatches ready nodes directly with `program` dispatch mode; queue labels are not Program scheduling. Public issue briefs may describe objectives, dependencies, validation, risks, and acceptance criteria, but must not expose internal graph ids, node ids, proposal ids, private evidence paths, or runtime row details.
+Accepted Decision Contracts preserve objectives, non-goals, constraints, assumptions, objections, stop conditions, validation expectations, risk notes, structured proposed issues, conflict domains, and acceptance metadata. The runtime must not infer acceptance from a summary, prompt, local file, MCP auth profile, project config body, or caller-supplied policy object.
+
+Program Intake has an explicit preview/commit boundary. Dry-run must not mutate Linear, Program Intake rows, Execution Program rows, issue mappings, or graph state. Apply may persist intake/program state only when the accepted authority already exists and the generated public briefs pass the privacy boundary.
+
+Execution Programs are private runtime plans over normal issue-backed nodes. Nodes may be ready, held, blocked, running, completed, failed, or skipped according to dependency, conflict-domain, tracker, workflow, and lease state. Scheduler dispatches ready nodes directly with `program` dispatch mode; queue labels are not Program scheduling. Public issue briefs may describe objectives, dependencies, validation, risks, and acceptance criteria, but must not expose internal graph ids, node ids, proposal ids, private evidence paths, or runtime row details.
+
+Objective Contracts are versioned project-level authority above Decision Contracts. Draft objectives have no execution authority; accepted versions are immutable; superseded and rejected versions remain provenance only. Signals are evidence bound to the exact accepted objective version and stable provenance; they cannot mutate tracker state, worktrees, GitHub, Program Intake, proposals, or execution state. Proposals bind signal clusters to goals, surfaces, validation gates, review requirements, contradictions, gaps, alternatives, rollback, and optional issue candidates. Accepting a proposal creates only a latent Decision Contract candidate unless a separate accepted Decision Contract or accepted project-policy authority promotes it.
 
 ## Review lifecycle records
 
@@ -137,9 +148,11 @@ After PR-backed handoff, retained review/landing/closeout lifecycle authority is
 - `apps/decodex/src/orchestrator/retained_review_orchestration.rs`
 - `apps/decodex/src/state/review_records/lifecycle.rs`
 
-The pure lifecycle kernel decides from normalized facts; adapters perform side effects and persist projections. Linear comments, manual receipts, local branch names, PR titles, and current head heuristics are not final lifecycle authority.
+The pure lifecycle kernel decides from normalized facts; adapters perform side effects and persist projections. Linear comments, manual receipts, local branch names, PR titles, and current head heuristics are not final lifecycle authority. The persisted lifecycle authority projection records issue/project identity, phase, transition, previous/next state, next action, review gate state, PR URL, base/head branches, validated head, worktree path, merge/cleanup state, source evidence refs, idempotency/correlation ids, actor, and decision time. Historical handoff/orchestration tables and public ledger comments are not a substitute for this projection.
 
 Fail-closed rule: if a retained lane lacks an exact lifecycle authority projection, normal/program/retry dispatch must not guess a lineage. Use explicit `decodex recover review-handoff diagnose`, `adopt`, or `rebind` paths depending on evidence.
+
+Recovery boundaries are explicit. Startup/current-lane recovery may rebuild retained worktree mappings only from deterministic paths plus tracker/runtime/lifecycle evidence; missing lifecycle records, mismatched stored handoff heads, stale PID markers, and unscoped logs are diagnostic inputs, not ownership. Retained tracked changes after crash or stall flow through retry, phase-goal recovery, repo-gate recovery, or human-attention classification according to runtime evidence; they must not be rebound from branch names or PR titles.
 
 ## Commit message contract
 
