@@ -150,6 +150,8 @@ decodex land "summary" --manual-authority --pr <URL>
 
 They produce or use `decodex/commit/2` records. The commit schema contains only `schema`, `change`, `authority`, and `impact`; PR URLs, branches, validation receipts, landing status, and closeout state belong elsewhere (`openwiki/specs/contracts-and-data.md`).
 
+Decodex app-server runs inherit active-run commit context in their environment. That lets the owning active lane use `decodex commit "<summary>" --authority <ISSUE>` from its worktree during the handoff phase after validation, while the same command remains blocked for unrelated manual processes when the lane still has a live runtime claim.
+
 Use `decodex land` rather than raw `gh pr merge` for Decodex-owned landing. The installable plugin hook blocks raw `git commit` and `gh pr merge` in Decodex-owned scope and tells the operator to use the Decodex commands (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 
 ## MCP gateway
