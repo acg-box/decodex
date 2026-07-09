@@ -67,6 +67,16 @@ decodex --help
 decodex <subcommand> --help
 ```
 
+The compatibility docs readiness command is:
+
+```sh
+decodex docs check
+```
+
+It checks the current repository documentation surface (`openwiki/` and/or
+`docs/`) and keeps downstream docs-readiness automation on a Decodex-owned CLI
+contract.
+
 Important source modules:
 
 - `apps/decodex/src/cli/control_commands/run.rs`: `decodex run`.

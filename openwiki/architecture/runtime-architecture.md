@@ -21,7 +21,7 @@ The crate has a compile-time Unix-only guard: macOS and Linux are supported; Win
 
 `apps/decodex/src/cli.rs` owns the command surface. Current top-level commands include:
 
-- `run`, `serve`, `status`, `project`, `lane`, `diagnose`, `evidence`, `recover`, `intake`, `mcp`, `probe`, `verify`
+- `run`, `serve`, `status`, `project`, `lane`, `diagnose`, `docs`, `evidence`, `recover`, `intake`, `mcp`, `probe`, `verify`
 - `commit`, `land`, `git-hook` for Decodex-owned Git lifecycle policy
 - `account`, `app`, `archive-linear`, `maintenance`
 - hidden `_attempt` for daemon-planned child attempts
