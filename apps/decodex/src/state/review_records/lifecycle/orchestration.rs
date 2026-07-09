@@ -1,3 +1,4 @@
+use super::terminal_lifecycle_authority_must_not_reenter_review;
 #[cfg(test)]
 use crate::state::{ReviewLifecycleHandoffFixture, ReviewLifecycleTransitionFixture};
 use crate::{
@@ -22,6 +23,13 @@ impl StateStore {
 		issue_id: &str,
 		input: ReviewLifecycleTransitionInput<'_>,
 	) -> Result<()> {
+		if self
+			.review_lifecycle_record(project_id, issue_id, input.branch_name)?
+			.is_some_and(|record| terminal_lifecycle_authority_must_not_reenter_review(&record))
+		{
+			return Ok(());
+		}
+
 		record_orchestration_lifecycle_authority(self, project_id, issue_id, &input)?;
 		let now = runtime_row_parsers::timestamp_parts();
 		let key = ReviewLifecycleKey::new(project_id, issue_id, input.branch_name);
