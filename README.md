@@ -20,9 +20,9 @@ Repo-native agent orchestration, retained lanes, and local operator control.
   typed signals, non-executable proposals, and normal Program Intake execution.
 - Native macOS app for Decodex Codex account-pool management.
 - Explicit project registry under `~/.codex/decodex/projects/<service-id>/`.
-- Local operator listener with a dashboard at `/` and `/dashboard`, WebSocket
-  snapshot/control traffic at `/dashboard/control`, Decodex App snapshot/account
-  APIs under `/api/`, and `GET /livez` for liveness.
+- Local operator listener with WebSocket snapshot/control traffic at
+  `/dashboard/control`, Decodex App snapshot/account APIs under `/api/`, and
+  `GET /livez` for liveness.
 - Static Astro site for the public Decodex product surface and app download entry.
 - Installable Decodex agent plugin for runtime planning, operations, commit, and
   landing workflows.
@@ -224,12 +224,12 @@ When a project enables `[codex.accounts]`, the shared ChatGPT account pool is
 file, and project configs do not own an account-pool path override. Set
 `[codex.accounts].fixed_account` in `~/.codex/decodex/config.toml` to pin all new
 account-pool runs to one account. When that global selector is absent, Decodex balances
-new runs across the pool. The operator dashboard Accounts UI writes and clears the same
-global selector; project configs do not pin specific accounts. Account display-name
+new runs across the pool. Decodex App writes and clears the same global selector;
+project configs do not pin specific accounts. Account display-name
 rerolls are also global Decodex state under `[codex.account_names.offsets]` in
-`~/.codex/decodex/config.toml` so the operator dashboard and Decodex App show the same
-privacy-preserving names. Client-only presentation preferences such as theme, sorting,
-and whether identities are hidden remain local to each UI. Usage probes also read
+`~/.codex/decodex/config.toml` so Decodex App shows privacy-preserving names.
+Client-only presentation preferences such as whether identities are hidden remain
+local to each UI. Usage probes also read
 Codex profile token stats for local Accounts displays. Bounded seven-day account
 usage estimates are kept in
 `~/.codex/decodex/account-usage-history.jsonl`; the file stores daily percentage
@@ -277,32 +277,30 @@ The public site does not own:
 - tracker writes
 - local operator state
 - app-server orchestration
-- the operator dashboard served by `decodex serve`
+- the local operator APIs served by `decodex serve`
 - upstream monitoring or public publishing automation
 
 The static-site boundary and GitHub Pages setup for `https://decodex.space`, including
 the external automation boundary, are summarized in
 [`openwiki/integrations/plugins-automations-and-auxiliary-tools.md`](openwiki/integrations/plugins-automations-and-auxiliary-tools.md).
 
-## Operator Dashboard
+## Operator Listener
 
-`decodex serve` owns the local operator listener. It serves the operator dashboard from
-`GET /` and `GET /dashboard`; published snapshots, current-lane updates, and local
-dashboard controls flow through the `/dashboard/control` WebSocket. The HTTP surface is
-kept to dashboard pages/assets, `GET /livez`, and the local account-control API used by
-Decodex App.
+`decodex serve` owns the local operator listener. Published snapshots,
+current-lane updates, and local operator controls flow through the
+`/dashboard/control` WebSocket. The HTTP surface is kept to `GET /livez` and
+the local account-control API used by Decodex App.
 
-For dashboard UI development, use one mock operator dashboard server for both the
-browser dashboard and Decodex App preview:
+For Decodex App preview, use one mock operator server:
 
 ```sh
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-codex-auth
 ```
 
-That single mock listener serves `GET /dashboard`, `GET /api/accounts`, and the
-dashboard authority WebSocket at `ws://127.0.0.1:57399/dashboard/control`. When
-previewing Decodex App against the mock, point the App at the same base URL with
+That single mock listener serves `GET /api/accounts` and the operator WebSocket
+at `ws://127.0.0.1:57399/dashboard/control`. When previewing Decodex App against
+the mock, point the App at the same base URL with
 `DECODEX_APP_SERVER_URL=http://127.0.0.1:57399`; do not start a second mock server for
 the App. This environment variable is authoritative: when it is set, Decodex App
 connects only to that server and reports an error instead of falling back to the
@@ -327,10 +325,10 @@ standalone launchd job or extra `decodex serve --listen-address 127.0.0.1:8192`
 process that would collide with it. `decodex app` opens the installed Decodex App by
 default and preserves the caller's environment, including any explicit
 `DECODEX_APP_SERVER_URL` override. Use `--bundle <APP_BUNDLE>` and `--new` when
-previewing a staged app. For dashboard and App preview UI work, prefer the single mock
-server above.
+previewing a staged app. For App preview UI work, prefer the single mock server
+above.
 
-The dashboard semantics and local-vs-external state boundary live in
+The operator listener semantics and local-vs-external state boundary live in
 [`openwiki/workflows/runtime-operator-workflows.md`](openwiki/workflows/runtime-operator-workflows.md).
 
 ## Development
@@ -377,6 +375,8 @@ The tracked workspace currently keeps:
 - `plugins/decodex/` as the canonical installable Decodex plugin source
 - `openwiki/` as the repo-local project knowledge and agent context surface
 - `dev/` as local development helpers, such as the operator dashboard mock server
+- `openwiki/` as the repo-local project knowledge and agent context surface
+- `dev/` as local development helpers, such as the operator mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
   generated `.icns`, and menu bar template assets
 

@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 
 @MainActor
@@ -75,17 +74,6 @@ final class AccountStore: ObservableObject {
 
 			return "Importing account"
 		}
-
-	func openWebUI() async {
-		do {
-			let url = try await DecodexServerBridge.shared.dashboardURL()
-
-			NSWorkspace.shared.open(url)
-			notice = nil
-		} catch {
-			notice = error.localizedDescription
-		}
-	}
 
 	func resetLoginSession() {
 		guard isLoggingIn == false else {

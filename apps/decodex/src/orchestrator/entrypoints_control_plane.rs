@@ -28,8 +28,8 @@ use std::{
 use crate::{
 	orchestrator::{
 		self, DEFAULT_CONTROL_PLANE_POLL_INTERVAL, DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
-		LINEAR_CONTROL_PLANE_POLL_INTERVAL, OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
-		OPERATOR_DASHBOARD_WS_ENDPOINT_PATH, OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL,
+		LINEAR_CONTROL_PLANE_POLL_INTERVAL, OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
+		OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL,
 		OPERATOR_LINEAR_SCAN_ENDPOINT_PATH, OperatorStateEndpoint, ProjectDaemonRuntime,
 		ServeRequest,
 	},
@@ -59,7 +59,6 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 		tracing::info!(
 			listen_address = %operator_state_endpoint.listen_address(),
-			path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 			ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
 			dev = true,
 			stream_interval_s = OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL.as_secs(),
@@ -104,7 +103,6 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 		local_tick_interval_s = DEFAULT_CONTROL_PLANE_POLL_INTERVAL.as_secs(),
 		linear_poll_interval_s = LINEAR_CONTROL_PLANE_POLL_INTERVAL.as_secs(),
 		listen_address = %operator_state_endpoint.listen_address(),
-		path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 		ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
 		linear_scan_path = OPERATOR_LINEAR_SCAN_ENDPOINT_PATH,
 		dev = false,
