@@ -45,6 +45,14 @@ impl DecisionPromotion {
 		&self.accepted_at
 	}
 
+	pub(crate) fn accepted_by_kind(&self) -> DecisionPromotionActorKind {
+		self.accepted_by_kind
+	}
+
+	pub(crate) fn acceptance_source(&self) -> &str {
+		&self.acceptance_source
+	}
+
 	pub(super) fn validate(&self) -> Result<()> {
 		validation::validate_required(
 			"decision contract promotion.accepted_by",

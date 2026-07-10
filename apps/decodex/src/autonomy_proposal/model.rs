@@ -34,6 +34,7 @@ pub(crate) struct AutonomyProposalAcceptedProjectPolicy {
 	pub(crate) authorized_actor_kind: AutonomyProposalAuthorityActorKind,
 	pub(crate) authorized_acceptance_sources: Vec<String>,
 	pub(crate) authorized_scopes: Vec<String>,
+	pub(crate) public_non_goals: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]

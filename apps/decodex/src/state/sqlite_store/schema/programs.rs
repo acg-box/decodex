@@ -117,6 +117,19 @@ CREATE TABLE IF NOT EXISTS program_issue_mappings (
 );
 CREATE INDEX IF NOT EXISTS program_issue_mappings_issue_idx
 ON program_issue_mappings (project_id, issue_id, updated_at_unix);
+CREATE TABLE IF NOT EXISTS program_intake_attempts (
+	project_id TEXT NOT NULL,
+	contract_id TEXT NOT NULL,
+	canonical_key TEXT NOT NULL,
+	request_digest TEXT NOT NULL,
+	status TEXT NOT NULL CHECK(status IN ('prepared', 'started', 'completed')),
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (project_id, contract_id),
+	UNIQUE (project_id, canonical_key)
+);
+CREATE INDEX IF NOT EXISTS program_intake_attempts_contract_idx
+ON program_intake_attempts (project_id, contract_id, status);
 "#,
 		)?;
 		self.backfill_program_intake_state_from_execution_programs()?;

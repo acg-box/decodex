@@ -2,6 +2,7 @@ mod mutation;
 mod query;
 
 use crate::{
+	autonomy_runtime_policy,
 	loop_contract::{DecisionContract, DecisionPromotion},
 	prelude::Result,
 	state::store::{DecisionContractRecord, StateStore},
@@ -14,6 +15,9 @@ impl StateStore {
 		source_issue_id: Option<&str>,
 		contract: DecisionContract,
 	) -> Result<DecisionContractRecord> {
+		let _authority_lock =
+			autonomy_runtime_policy::acquire_autonomy_project_authority_lock(project_id)?;
+
 		mutation::upsert_decision_contract(self, project_id, source_issue_id, contract)
 	}
 
@@ -92,6 +96,9 @@ impl StateStore {
 		contract_id: &str,
 		update: impl FnOnce(&mut DecisionContract) -> Result<()>,
 	) -> Result<DecisionContractRecord> {
+		let _authority_lock =
+			autonomy_runtime_policy::acquire_autonomy_project_authority_lock(project_id)?;
+
 		mutation::update_decision_contract(self, project_id, contract_id, update)
 	}
 }

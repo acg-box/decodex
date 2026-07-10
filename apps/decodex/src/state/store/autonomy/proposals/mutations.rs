@@ -4,6 +4,7 @@ use crate::{
 		AutonomyProposal, AutonomyProposalChallengeInput, AutonomyProposalDecisionBridgeAuthority,
 		AutonomyProposalRefusalReason,
 	},
+	autonomy_runtime_policy,
 	loop_contract::DecisionContractStatus,
 	prelude::{Result, eyre},
 	state::{
@@ -22,8 +23,11 @@ impl StateStore {
 	pub(crate) fn record_autonomy_proposal(
 		&self,
 		project_id: &str,
-		proposal: AutonomyProposal,
+		mut proposal: AutonomyProposal,
 	) -> Result<AutonomyProposalRecord> {
+		let _authority_lock =
+			autonomy_runtime_policy::acquire_autonomy_project_authority_lock(project_id)?;
+
 		validation::validate_autonomy_proposal_record_inputs(project_id, &proposal)?;
 
 		let now = runtime_row_parsers::timestamp_parts();
@@ -79,6 +83,11 @@ impl StateStore {
 		}
 
 		let key = AutonomyProposalKey::new(project_id, proposal.id());
+
+		if let Some(existing) = state.autonomy_proposals.get(&key) {
+			proposal.preserve_challenge_evidence_from(&existing.proposal)?;
+		}
+
 		let (created_at, created_at_unix) = state.autonomy_proposals.get(&key).map_or_else(
 			|| (now.text.clone(), now.unix),
 			|record| (record.created_at.clone(), record.created_at_unix),
@@ -106,6 +115,9 @@ impl StateStore {
 		proposal_id: &str,
 		challenge: AutonomyProposalChallengeInput,
 	) -> Result<AutonomyProposalRecord> {
+		let _authority_lock =
+			autonomy_runtime_policy::acquire_autonomy_project_authority_lock(project_id)?;
+
 		validation::validate_required_autonomy_proposal_field("project_id", project_id)?;
 		validation::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
 
@@ -137,6 +149,9 @@ impl StateStore {
 		proposal_id: &str,
 		authority: AutonomyProposalDecisionBridgeAuthority,
 	) -> Result<DecisionContractRecord> {
+		let _authority_lock =
+			autonomy_runtime_policy::acquire_autonomy_project_authority_lock(project_id)?;
+
 		validation::validate_required_autonomy_proposal_field("project_id", project_id)?;
 		validation::validate_required_autonomy_proposal_field("proposal_id", proposal_id)?;
 
@@ -156,6 +171,7 @@ impl StateStore {
 			if existing.status() == DecisionContractStatus::DraftLatent
 				&& existing_contract.promotion().is_none()
 				&& !has_generated_execution_links
+				&& existing_contract == &contract
 			{
 				return Ok(existing);
 			}

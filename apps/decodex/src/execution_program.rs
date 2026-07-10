@@ -9,6 +9,7 @@ mod validation;
 
 #[cfg(test)] pub(crate) use self::model::ExecutionReadinessState;
 pub(crate) use self::{
+	contract::decision_contract_fingerprint,
 	evaluation::{
 		ExecutionNodeEvaluation, ExecutionProgramEvaluation, ExecutionProgramOperatorSummary,
 	},

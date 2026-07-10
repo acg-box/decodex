@@ -122,6 +122,20 @@ impl McpServer {
 			apply: true,
 		}) {
 			Ok(report) => mcp::tool_success(results::intake_goal_result(&report, "apply")),
+			Err(error)
+				if error
+					.to_string()
+					.contains("program_intake_attempt_manual_recovery_required") =>
+				mcp::tool_refusal(
+					"program_intake_attempt_manual_recovery_required",
+					"A prior Program Intake apply is unresolved; recover it before any retry.",
+				),
+			Err(error)
+				if error.to_string().contains("program_intake_attempt_already_completed") =>
+				mcp::tool_refusal(
+					"program_intake_attempt_already_completed",
+					"This Program Intake apply already completed; read the existing Execution Program.",
+				),
 			Err(_) => mcp::tool_refusal(
 				"intake_goal_refused",
 				"Goal intake apply was refused by Decodex authority or tracker checks.",

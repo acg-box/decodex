@@ -3,7 +3,8 @@ use clap::Parser;
 use crate::cli::{
 	Cli, Command,
 	research_intake_commands::{
-		IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeSubcommand,
+		IntakeCommand, IntakeGoalCommand, IntakeIssuesCommand, IntakeRecoverAction,
+		IntakeRecoverCommand, IntakeSubcommand,
 	},
 };
 
@@ -33,6 +34,31 @@ fn parses_intake_issues_dry_run_with_project() {
 				..
 			})
 		}) if issues == vec![String::from("XY-1"), String::from("XY-2")]
+	));
+}
+
+#[test]
+fn parses_typed_program_intake_recovery() {
+	let cli = Cli::parse_from([
+		"decodex",
+		"intake",
+		"recover",
+		"--project",
+		"decodex",
+		"goal-intake-contract",
+		"complete-after-readback",
+	]);
+
+	assert!(matches!(
+		cli.command,
+		Command::Intake(IntakeCommand {
+			command: IntakeSubcommand::Recover(IntakeRecoverCommand {
+				project,
+				contract_id,
+				team_issue,
+				action: IntakeRecoverAction::CompleteAfterReadback,
+			})
+		}) if project == "decodex" && contract_id == "goal-intake-contract" && team_issue.is_none()
 	));
 }
 

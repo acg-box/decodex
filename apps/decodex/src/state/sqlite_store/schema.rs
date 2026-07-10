@@ -110,6 +110,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_private_execution_events_schema()?;
 		self.bootstrap_decision_contracts_schema()?;
 		self.bootstrap_autonomy_objectives_schema()?;
+		self.bootstrap_autonomy_runtime_policies_schema()?;
 		self.bootstrap_autonomy_signals_schema()?;
 		self.bootstrap_autonomy_proposals_schema()?;
 		self.bootstrap_execution_programs_schema()?;

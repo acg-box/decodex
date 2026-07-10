@@ -89,10 +89,6 @@ pub(in crate::program_intake) fn conflict_domain_labels(
 	labels
 }
 
-pub(in crate::program_intake) fn goal_program_id(service_id: &str, contract_id: &str) -> String {
-	format!("goal-{service_id}-{}", stable_slug(contract_id, 48))
-}
-
 pub(in crate::program_intake) fn goal_node_id(
 	contract_id: &str,
 	index: usize,
@@ -125,4 +121,8 @@ pub(in crate::program_intake) fn stable_slug(value: &str, max_len: usize) -> Str
 	}
 
 	if slug.is_empty() { String::from("goal") } else { slug }
+}
+
+pub(in crate::program_intake) fn goal_program_id(service_id: &str, contract_id: &str) -> String {
+	format!("goal-{service_id}-{}", stable_slug(contract_id, 48))
 }

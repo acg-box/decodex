@@ -14,6 +14,7 @@ pub(super) use self::{
 	autonomy::{
 		autonomy_objective_record_from_row_parts, autonomy_objective_runtime_row_parts,
 		autonomy_proposal_record_from_row_parts, autonomy_proposal_runtime_row_parts,
+		autonomy_runtime_policy_record_from_row_parts, autonomy_runtime_policy_runtime_row_parts,
 		autonomy_signal_record_from_row_parts, autonomy_signal_runtime_row_parts,
 	},
 	common::{
