@@ -163,6 +163,68 @@ fn autonomy_runtime_policy_persists_across_restart_and_stale_store_replay() {
 	assert_eq!(row_count, 1, "exact replay must retain one immutable row");
 }
 
+#[test]
+fn runtime_policy_schema_upgrade_revokes_legacy_unbound_acceptance() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let connection = Connection::open(&state_path).expect("legacy state should open");
+
+	connection
+		.execute_batch(
+			r#"
+CREATE TABLE autonomy_runtime_policies (
+	project_id TEXT NOT NULL,
+	policy_id TEXT NOT NULL,
+	policy_version TEXT NOT NULL,
+	objective_id TEXT NOT NULL,
+	objective_version INTEGER NOT NULL,
+	authority_ref TEXT NOT NULL,
+	accepted_by TEXT NOT NULL,
+	accepted_at TEXT NOT NULL,
+	acceptance_source TEXT NOT NULL,
+	public_non_goals_json TEXT NOT NULL,
+	PRIMARY KEY (project_id, policy_id, policy_version)
+);
+INSERT INTO autonomy_runtime_policies (
+	project_id, policy_id, policy_version, objective_id, objective_version, authority_ref,
+	accepted_by, accepted_at, acceptance_source, public_non_goals_json
+) VALUES (
+	'decodex', 'legacy-policy', '1', 'legacy-objective', 1,
+	'decodex.runtime_policy:legacy-policy@1', 'legacy-operator',
+	'2026-07-10T12:00:00Z', 'legacy-acceptance', '["No review bypass."]'
+);
+"#,
+		)
+		.expect("legacy runtime policy schema should create");
+
+	drop(connection);
+
+	let store = StateStore::open(&state_path).expect("legacy state should upgrade and load");
+
+	assert!(
+		store
+			.autonomy_runtime_policy("decodex", "legacy-policy", "1")
+			.expect("upgraded runtime policy should read")
+			.is_none(),
+		"an acceptance without an Objective digest must be revoked"
+	);
+
+	let connection = Connection::open(&state_path).expect("upgraded state should open");
+	let objective_digest_column_count = connection
+		.query_row(
+			"SELECT COUNT(*) FROM pragma_table_info('autonomy_runtime_policies') WHERE name = 'objective_digest'",
+			[],
+			|row| row.get::<_, i64>(0),
+		)
+		.expect("runtime policy schema should inspect");
+	let policy_count = connection
+		.query_row("SELECT COUNT(*) FROM autonomy_runtime_policies", [], |row| row.get::<_, i64>(0))
+		.expect("runtime policy rows should count");
+
+	assert_eq!(objective_digest_column_count, 1);
+	assert_eq!(policy_count, 0);
+}
+
 fn runtime_policy_record(accepted_by: &str) -> AutonomyRuntimePolicyRecord {
 	AutonomyRuntimePolicyRecord::new(
 		"decodex",
