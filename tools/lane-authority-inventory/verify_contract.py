@@ -25,6 +25,11 @@ OUTPUT_POLICY_PATH = Path(
 )
 CFG_COVERAGE_PATH = Path("tools/lane-authority-inventory/manifests/cfg_coverage.json")
 DATAFLOW_PROOFS_PATH = Path("tools/lane-authority-inventory/manifests/dataflow_proofs.json")
+ANALYSIS_CUT_PATH = Path("tools/lane-authority-inventory/manifests/analysis_cut.json")
+SOURCE_INVENTORY_PATH = Path("tools/lane-authority-inventory/manifests/source_inventory.json")
+CANDIDATE_RECORDS_PATH = Path(
+    "tools/lane-authority-inventory/manifests/relations/candidate_records.json"
+)
 REVIEW_RECEIPT_PATH = Path(
     "tools/lane-authority-inventory/reviews/c1i_integrated_review.json"
 )
@@ -34,6 +39,7 @@ EXECUTABLE_CONTRACT_PATHS = (
     Path("tools/lane-authority-inventory/requirements.lock"),
     Path("tools/lane-authority-inventory/requirements.txt"),
     Path("tools/lane-authority-inventory/run_locked_python.sh"),
+    Path("tools/lane-authority-inventory/materialize_p1.py"),
     Path("tools/lane-authority-inventory/verify_contract.py"),
 )
 REASON_CODES_PATH = Path(
@@ -53,6 +59,7 @@ SCHEMA_PATHS = (
     Path("tools/lane-authority-inventory/contracts/p0_checkpoint.schema.json"),
     Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json"),
     Path("tools/lane-authority-inventory/contracts/review_receipt.schema.json"),
+    Path("tools/lane-authority-inventory/contracts/source_inventory.schema.json"),
     Path("tools/lane-authority-inventory/contracts/rejection_report.schema.json"),
 )
 LAUNCHER_PATH = Path(
@@ -162,6 +169,7 @@ EXPECTED_OUTPUT_ARTIFACTS = {
     "tools/lane-authority-inventory/manifests/cfg_coverage.json": ("cfg_coverage", "artifact_sha256", True),
     "tools/lane-authority-inventory/manifests/dataflow_proofs.json": ("dataflow_proof", "artifact_sha256", True),
     "tools/lane-authority-inventory/manifests/inventory_composition.json": ("composition", "artifact_sha256", True),
+    "tools/lane-authority-inventory/manifests/source_inventory.json": ("source_inventory", "artifact_sha256", True),
     "tools/lane-authority-inventory/rejections/latest.json": ("rejection_report", "diagnostic_only", False),
     "tools/lane-authority-inventory/reviews/c1i_integrated_review.json": ("review_receipt", "exact_head_gate", False),
     **{
@@ -549,7 +557,21 @@ def source_partition_digests(sources: list[dict[str, Any]]) -> dict[str, str]:
         "tool": [],
     }
     for source in sources:
-        partitions[source_partition(source)].append(source)
+        identity = {
+            key: source[key]
+            for key in (
+                "byte_length",
+                "content_digest",
+                "language",
+                "path",
+                "predecessor_source_node_id",
+                "provenance",
+                "scope",
+                "source_node_id",
+                "status",
+            )
+        }
+        partitions[source_partition(source)].append(identity)
     return {
         partition: hashlib.sha256(
             (
@@ -561,6 +583,60 @@ def source_partition_digests(sources: list[dict[str, Any]]) -> dict[str, str]:
     }
 
 
+def validate_candidate_replay_records(
+    candidates: list[dict[str, Any]],
+    *,
+    source_paths: dict[str, str],
+    expected_observations: dict[str, dict[str, Any]],
+) -> None:
+    indexed = _unique_index(candidates, "candidate_id", "candidate_records")
+    if not indexed:
+        raise ContractError("candidate relation must not be empty")
+    identities: set[tuple[str, str, int, str]] = set()
+    by_observation = {observation_id: [] for observation_id in expected_observations}
+    for candidate in indexed.values():
+        if candidate["source_node_id"] not in source_paths:
+            raise ContractError("candidate references a missing source node")
+        if candidate["candidate_digest"] != candidate_record_digest(candidate):
+            raise ContractError("candidate record digest disagrees with its canonical fields")
+        if candidate["candidate_id"] != canonical_candidate_id(candidate):
+            raise ContractError("candidate id is not canonical for its source/category/line")
+        identity = (
+            candidate["source_node_id"],
+            candidate["candidate_category"],
+            candidate["line_number"],
+            candidate["line_digest"],
+        )
+        if identity in identities:
+            raise ContractError("candidate source/category/line identity is duplicated")
+        identities.add(identity)
+        if candidate["provenance"] != "c0_replay":
+            raise ContractError("P1 candidate replay contains a post-C0 candidate")
+        observed_origins: set[str] = set()
+        for observation_id in candidate["c0_observation_ids"]:
+            observation = expected_observations.get(observation_id)
+            if observation is None:
+                raise ContractError("candidate references an unknown C0 observation")
+            if candidate["candidate_category"] != observation["category"]:
+                raise ContractError("candidate category disagrees with its C0 observation")
+            if source_paths[candidate["source_node_id"]] != observation["path"]:
+                raise ContractError("candidate source path disagrees with its C0 observation")
+            observed_origins.add(observation["origin"])
+            by_observation[observation_id].append(candidate)
+        if set(candidate["c0_origin_artifacts"]) != observed_origins:
+            raise ContractError("candidate origin set disagrees with its C0 observations")
+    for observation_id, observation in expected_observations.items():
+        observed = by_observation[observation_id]
+        if len(observed) != observation["candidate_line_count"]:
+            raise ContractError("C0 candidate observation count disagrees with replay")
+        line_records = [
+            (candidate["line_number"], candidate["line_digest"])
+            for candidate in observed
+        ]
+        if min(line for line, _ in line_records) != observation["first_line"]:
+            raise ContractError("C0 candidate observation first line disagrees with replay")
+        if c0_candidate_digest(line_records) != observation["candidate_digest"]:
+            raise ContractError("C0 candidate observation digest disagrees with replay")
 def validate_json_schema_documents(root: Path) -> None:
     ids: set[str] = set()
     for path in SCHEMA_PATHS:
@@ -1666,25 +1742,9 @@ def validate_relation_manifests(
         raise ContractError("composition analysis-cut digest disagrees with canonical bytes")
     if composition["dataflow_contract_digest"] != sha256_path(root, DATAFLOW_PATH):
         raise ContractError("composition dataflow-contract digest drifted")
-    if analysis_cut["output_artifact_policy_digest"] != sha256_path(root, OUTPUT_POLICY_PATH):
-        raise ContractError("analysis-cut output-artifact policy digest drifted")
-    if (
-        analysis_cut["supporting_inputs_digest"]
-        != composition["relations"]["supporting_inputs"]["digest"]
-    ):
-        raise ContractError("analysis-cut supporting-input digest drifted")
-    if (
-        analysis_cut["build_config_matrix_digest"]
-        != composition["relations"]["cfg_projections"]["digest"]
-    ):
-        raise ContractError("analysis-cut build/config matrix digest drifted")
-    if analysis_cut["toolchain_allowlist_digest"] != toolchain_matrix_digest(catalog):
-        raise ContractError("analysis-cut toolchain allowlist digest drifted")
     semantic_digest = catalog_semantic_digest(catalog)
     if catalog.get("catalog_semantic_digest") != semantic_digest:
         raise ContractError("catalog semantic digest is invalid")
-    if analysis_cut["catalog_semantic_digest"] != semantic_digest:
-        raise ContractError("analysis cut catalog digest disagrees with the catalog")
     if composition["catalog_semantic_digest"] != semantic_digest:
         raise ContractError("composition catalog digest disagrees with the catalog")
     relation_schema = load_json(
@@ -1929,14 +1989,86 @@ def verify_p0(root: Path, *, require_review: bool = False) -> dict[str, Any]:
     }
 
 
+def verify_p1(root: Path) -> dict[str, Any]:
+    p0 = verify_p0(root, require_review=False)
+    analysis_cut = load_json(root, ANALYSIS_CUT_PATH)
+    source_inventory = load_json(root, SOURCE_INVENTORY_PATH)
+    candidate_manifest = load_json(root, CANDIDATE_RECORDS_PATH)
+    for value, schema_path, label in (
+        (
+            analysis_cut,
+            Path("tools/lane-authority-inventory/contracts/analysis_cut.schema.json"),
+            "analysis cut",
+        ),
+        (
+            source_inventory,
+            Path("tools/lane-authority-inventory/contracts/source_inventory.schema.json"),
+            "source inventory",
+        ),
+        (
+            candidate_manifest,
+            Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json"),
+            "candidate records",
+        ),
+    ):
+        try:
+            Draft202012Validator(load_json(root, schema_path)).validate(value)
+        except ValidationError as error:
+            raise ContractError(f"P1 {label} violates its schema: {error.message}") from error
+    if candidate_manifest["relation"] != "candidate_records":
+        raise ContractError("P1 candidate manifest has the wrong relation identity")
+    records = source_inventory["records"]
+    sources = _unique_index(records, "source_node_id", "source inventory")
+    if source_inventory["source_cut_commit"] != analysis_cut["source_cut_commit"]:
+        raise ContractError("source inventory and analysis cut commit disagree")
+    if source_inventory["source_cut_tree_oid"] != analysis_cut["source_cut_tree_oid"]:
+        raise ContractError("source inventory and analysis cut tree disagree")
+    validate_analysis_cut_against_git(root, analysis_cut, records)
+    partitions = source_partition_digests(records)
+    expected_counts = {
+        "analysis": analysis_cut["analysis_source_node_count"],
+        "deleted_tombstone": analysis_cut["deleted_tombstone_count"],
+        "tool": analysis_cut["tool_source_node_count"],
+    }
+    actual_counts = {key: 0 for key in expected_counts}
+    for source in records:
+        actual_counts[source_partition(source)] += 1
+    if actual_counts != expected_counts:
+        raise ContractError("P1 source partition counts disagree with the analysis cut")
+    expected_digests = {
+        "analysis": analysis_cut["analysis_source_nodes_digest"],
+        "deleted_tombstone": analysis_cut["deleted_tombstones_digest"],
+        "tool": analysis_cut["tool_source_nodes_digest"],
+    }
+    if partitions != expected_digests:
+        raise ContractError("P1 source partition digests disagree with the analysis cut")
+    validate_candidate_replay_records(
+        candidate_manifest["records"],
+        source_paths={source_id: source["path"] for source_id, source in sources.items()},
+        expected_observations=expected_c0_candidate_observations(root),
+    )
+    return {
+        **p0,
+        "analysis_cut_digest": hashlib.sha256(
+            canonical_json(analysis_cut).encode("utf-8")
+        ).hexdigest(),
+        "analysis_source_count": actual_counts["analysis"],
+        "candidate_record_count": len(candidate_manifest["records"]),
+        "deleted_tombstone_count": actual_counts["deleted_tombstone"],
+        "phase": "P1",
+        "source_cut_commit": analysis_cut["source_cut_commit"],
+        "tool_source_count": actual_counts["tool"],
+    }
+
+
 def readiness_rejection(root: Path) -> dict[str, Any]:
-    evidence = verify_p0(root, require_review=False)
+    evidence = verify_p1(root)
     report = {
         "advancement_state": "C1I_INCOMPLETE",
-        "analysis_input_digest": None,
+        "analysis_input_digest": evidence["analysis_cut_digest"],
         "counts": evidence["candidate_anchors"],
         "contract_digests": evidence["contract_digests"],
-        "phase": "P0",
+        "phase": evidence["phase"],
         "rejections": [
             {
                 "actual_digest": None,
@@ -1957,7 +2089,7 @@ def readiness_rejection(root: Path) -> dict[str, Any]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--phase", choices=["P0"])
+    mode.add_argument("--phase", choices=["P0", "P1"])
     mode.add_argument("--review-preimage", action="store_true")
     mode.add_argument("--readiness", choices=["C1I"])
     return parser.parse_args(argv)
@@ -1969,6 +2101,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.phase == "P0":
             print(canonical_json(verify_p0(root)), end="")
+            return 0
+        if args.phase == "P1":
+            print(canonical_json(verify_p1(root)), end="")
             return 0
         if args.review_preimage:
             evidence = verify_p0(root, require_review=False)

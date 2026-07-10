@@ -22,17 +22,17 @@ case "$1" in
 				exit 2
 				;;
 			0)
-				printf 'C1I P0 readiness unexpectedly succeeded\n' >&2
+				printf 'C1I incomplete readiness unexpectedly succeeded\n' >&2
 				exit 2
 				;;
 			*)
-				printf 'C1I P0 readiness returned unexpected status %s\n' "$status" >&2
+				printf 'C1I incomplete readiness returned unexpected status %s\n' "$status" >&2
 				exit 70
 				;;
 		esac
 		;;
 	*)
-		printf 'unsupported Lane Authority v2 gate in P0: %s\n' "$1" >&2
+		printf 'unsupported Lane Authority v2 incomplete gate: %s\n' "$1" >&2
 		exit 64
 		;;
 esac

@@ -85,11 +85,13 @@ analysis_input_tree_digest
 analysis_source_node_count
 analysis_source_nodes_digest
 tool_source_nodes_digest
-supporting_inputs_digest
-catalog_semantic_digest
-build_config_matrix_digest
-toolchain_allowlist_digest
 ```
+
+The analysis cut binds only immutable Git/source identity. It does not bind parser,
+supporting-input, cfg, toolchain, catalog, or dataflow outputs that do not exist until
+P2/P3. Those outputs are bound exactly once by the accepted composition. This separation
+prevents a later-phase artifact from becoming a placeholder or circular prerequisite for
+the P1 source cut.
 
 `analysis_input_tree_digest` is a domain-separated digest over every tracked in-scope
 source byte at the exact C1I source cut. Generated accepted manifests and checkpoint
@@ -111,6 +113,12 @@ tool/review receipts, rejection report, and ledger with an explicit binding mode
 analysis cut binds the policy digest instead of embedding a partial hand-maintained path
 list. An output absent from the policy or a relation absent from the composition is a
 contract failure.
+
+The P1 `source_inventory.json` contains the identity projection shared by later enriched
+source records: path, byte length/content digest, language, scope, provenance, status,
+predecessor, and canonical source id. Its partition digests deliberately exclude later
+parser receipts and syntax counts, so P2 can add analysis evidence without changing the
+immutable source cut.
 
 The materializer reads Git objects, not mutable worktree bytes. It creates a temporary
 read-only tree and verifies every path/content digest before parser or compiler startup.
@@ -471,7 +479,7 @@ All slices land in one C1I PR, but no intermediate slice is ready:
 | Phase | Required output | Advancement state |
 | --- | --- | --- |
 | P0 | This contract, catalog/composition schemas, rejection taxonomy, negative readiness fixture, current-base drift record | `C1I_INCOMPLETE`; readiness must fail |
-| P1 | Git-object materializer, exact analysis cut, post-C0 delta/tombstones, C0 candidate replay, four artifact/anchor proofs | `C1I_INCOMPLETE`; readiness must fail |
+| P1 | Git-object materializer, immutable source-identity inventory, exact analysis cut, post-C0 delta/tombstones, C0 candidate replay, four artifact/anchor proofs | `C1I_INCOMPLETE`; readiness must fail |
 | P2 | All language parsers, complete site universe, cfg/source/call/dataflow graph, supporting-input/tool receipts | `C1I_INCOMPLETE`; rejection report records nonzero unresolved |
 | P3 | Populated catalog, external-symbol closure, candidate adjudications, site classifications, finite dataflow proofs | unresolved reaches zero under machine validation; not ready |
 | P4 | Deterministic accepted manifests, five normative scripts, Linux/macOS CI, positive/negative fixtures, runtime-byte/dependency proof | technically complete but not ready or landed |

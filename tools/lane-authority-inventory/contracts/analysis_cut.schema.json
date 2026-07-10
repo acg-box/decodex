@@ -16,7 +16,6 @@
     "analysis_input_tree_digest": {"$ref": "#/$defs/digest"},
     "analysis_source_node_count": {"minimum": 3363, "type": "integer"},
     "analysis_source_nodes_digest": {"$ref": "#/$defs/digest"},
-    "build_config_matrix_digest": {"$ref": "#/$defs/digest"},
     "c0_artifact_sha256": {
       "additionalProperties": false,
       "properties": {
@@ -57,10 +56,8 @@
     "c0_source_tree_digest": {
       "const": "d55e72c9b4a522f7cec8af4afa8c968c6fd3749139d045d178160b6287f00507"
     },
-    "catalog_semantic_digest": {"$ref": "#/$defs/digest"},
     "deleted_tombstone_count": {"minimum": 0, "type": "integer"},
     "deleted_tombstones_digest": {"$ref": "#/$defs/digest"},
-    "output_artifact_policy_digest": {"$ref": "#/$defs/digest"},
     "output_binding_policy": {
       "const": "outputs_excluded_from_input_preimage_and_bound_by_artifact_digest_ledger_and_exact_head_gate"
     },
@@ -73,10 +70,8 @@
     "schema": {"const": "decodex/lane-authority-v2-c1i-analysis-cut/1"},
     "source_cut_commit": {"$ref": "#/$defs/git_oid"},
     "source_cut_tree_oid": {"$ref": "#/$defs/git_oid"},
-    "supporting_inputs_digest": {"$ref": "#/$defs/digest"},
     "tool_source_node_count": {"minimum": 1, "type": "integer"},
-    "tool_source_nodes_digest": {"$ref": "#/$defs/digest"},
-    "toolchain_allowlist_digest": {"$ref": "#/$defs/digest"}
+    "tool_source_nodes_digest": {"$ref": "#/$defs/digest"}
   },
   "required": [
     "schema",
@@ -100,11 +95,6 @@
     "deleted_tombstones_digest",
     "tool_source_node_count",
     "tool_source_nodes_digest",
-    "supporting_inputs_digest",
-    "catalog_semantic_digest",
-    "build_config_matrix_digest",
-    "toolchain_allowlist_digest",
-    "output_artifact_policy_digest",
     "output_binding_policy"
   ],
   "title": "Lane Authority v2 C1I exact analysis cut",

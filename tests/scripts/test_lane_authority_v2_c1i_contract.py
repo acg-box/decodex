@@ -59,14 +59,35 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         )
 
     def test_readiness_rejection_is_deterministic_and_reason_coded(self):
-        first = self.verifier.canonical_json(self.verifier.readiness_rejection(REPO_ROOT))
-        second = self.verifier.canonical_json(self.verifier.readiness_rejection(REPO_ROOT))
+        evidence = {
+            "analysis_cut_digest": "a" * 64,
+            "candidate_anchors": {
+                "c0_source_files": 3363,
+                "launcher_candidate_line_hits": 203,
+                "legacy_candidate_line_hits": 40854,
+                "mutation_candidate_line_hits": 39516,
+            },
+            "contract_digests": {},
+            "phase": "P1",
+        }
+        with mock.patch.object(self.verifier, "verify_p1", return_value=evidence):
+            first = self.verifier.canonical_json(self.verifier.readiness_rejection(REPO_ROOT))
+            second = self.verifier.canonical_json(self.verifier.readiness_rejection(REPO_ROOT))
 
         self.assertEqual(first, second)
         self.assertNotIn(str(REPO_ROOT), first)
         self.assertIn('"advancement_state":"C1I_INCOMPLETE"', first)
         self.assertIn('"reason_code":"c1i_phase_incomplete"', first)
         self.assertIn('"status":"rejected"', first)
+
+    def test_p1_materialization_replays_the_exact_git_cut(self):
+        result = self.verifier.verify_p1(REPO_ROOT)
+
+        self.assertEqual("P1", result["phase"])
+        self.assertEqual(3376, result["analysis_source_count"])
+        self.assertGreaterEqual(result["tool_source_count"], 5)
+        self.assertEqual(0, result["deleted_tombstone_count"])
+        self.assertEqual(41057, result["candidate_record_count"])
 
     def test_changed_path_policy_rejects_runtime_source(self):
         self.assertEqual(

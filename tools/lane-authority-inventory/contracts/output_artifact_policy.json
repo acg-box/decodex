@@ -5,6 +5,7 @@
     {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/cfg_coverage.json", "role": "cfg_coverage"},
     {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/dataflow_proofs.json", "role": "dataflow_proof"},
     {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/inventory_composition.json", "role": "composition"},
+    {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/source_inventory.json", "role": "source_inventory"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/call_edges.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/candidate_adjudications.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/candidate_records.json", "role": "relation"},

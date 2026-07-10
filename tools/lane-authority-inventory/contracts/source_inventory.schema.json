@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-source-inventory-1.json",
+  "$defs": {
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "git_oid": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "id": {"pattern": "^[a-z0-9][a-z0-9._:-]*$", "type": "string"},
+    "path": {"not": {"pattern": "^(?:/|[A-Za-z]:|.*\\.\\.)"}, "minLength": 1, "type": "string"},
+    "source_identity": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_length": {"minimum": 0, "type": "integer"},
+        "content_digest": {"$ref": "#/$defs/digest"},
+        "language": {"enum": ["python", "rust", "shell", "swift", "toml", "yaml"]},
+        "path": {"$ref": "#/$defs/path"},
+        "predecessor_source_node_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "provenance": {"enum": ["c0", "post_c0_base", "c1i_head", "tool", "deleted_tombstone"]},
+        "scope": {"enum": ["production", "test", "mixed", "generated", "tool"]},
+        "source_node_id": {"$ref": "#/$defs/id"},
+        "status": {"enum": ["current", "deleted"]}
+      },
+      "required": ["source_node_id", "path", "byte_length", "content_digest", "language", "scope", "provenance", "status", "predecessor_source_node_id"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "records": {"items": {"$ref": "#/$defs/source_identity"}, "minItems": 1, "type": "array"},
+    "schema": {"const": "decodex/lane-authority-v2-c1i-source-inventory/1"},
+    "source_cut_commit": {"$ref": "#/$defs/git_oid"},
+    "source_cut_tree_oid": {"$ref": "#/$defs/git_oid"}
+  },
+  "required": ["schema", "source_cut_commit", "source_cut_tree_oid", "records"],
+  "title": "Lane Authority v2 C1I immutable source identity inventory",
+  "type": "object"
+}
