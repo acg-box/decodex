@@ -167,13 +167,16 @@ and records its readback on the parent effect.
   desired-state readback, reconciliation policy, compensation class/stop rule, provider
   capability requirement, runtime generation (`v12_legacy|v2`), replacement owner/kind,
   semantic digest, and mandatory removal checkpoint (`retained_v2` for a target v2 kind).
+  An independent domain-separated C0 count/digest anchor covers every one of those fields;
+  changing the anchor is a reviewed scope change rather than a regeneration step.
   Alias rows must provide either one class shared by all expanded kinds or exactly one
   class per kind; any other cardinality fails generation. `entries` maps frozen source-file
   candidate classifications to their v12 replacement owners/kinds/checkpoints. Missing,
   duplicate, shortened-alias, or semantically changed table rows make baseline
   regeneration differ and fail verification.
-- C0 freezes every tracked Rust/Python/Swift/shell/config source file as a conservative
-  source node with content digest, root/tree digest, scope, and grouped high-recall
+- C0 freezes every tracked repository Rust/Python/Swift/shell/TOML/YAML file, including
+  root and package build manifests, as a conservative source node with content digest,
+  root/tree digest, scope, and grouped high-recall
   launcher/read/write/discovery candidates. The reviewed registry explicitly includes
   current fetch/default-branch fast-forward/ref/index/worktree paths. C1I, before any
   runtime implementation edit, replaces candidate discovery with the required language
