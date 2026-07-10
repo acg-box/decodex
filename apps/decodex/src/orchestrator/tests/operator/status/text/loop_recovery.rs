@@ -1,5 +1,8 @@
-use crate::orchestrator::tests::operator::status::{
-	self, ReviewPolicyCheckpointInput, ServiceConfig, StateStore, Value, orchestrator,
+use crate::orchestrator::{
+	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+	tests::operator::status::{
+		self, ReviewPolicyCheckpointInput, ServiceConfig, StateStore, Value, orchestrator,
+	},
 };
 
 #[test]
@@ -150,8 +153,10 @@ fn seed_loop_status_private_events(state_store: &StateStore, config: &ServiceCon
 			"issue-blocked",
 			"run-blocked",
 			1,
-			"authority_boundary_check",
+			AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
 			serde_json::json!({
+				"schema": AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+				"record_version": 2,
 				"attempted_recovery_reason": "review_churn",
 				"disposition": "requires_human",
 				"final_disposition": {

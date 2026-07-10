@@ -1,9 +1,12 @@
 use tempfile::TempDir;
 
-use crate::recovery::{
-	GHOST_LANE_BLOCKED_CLASSIFICATION, MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION,
-	RecoveryRuntimeMutationPolicy,
-	tests::{self, GhostLaneTestTracker},
+use crate::{
+	recovery::{
+		GHOST_LANE_BLOCKED_CLASSIFICATION, MCP_TEST_FIXTURE_GHOST_LANE_CLASSIFICATION,
+		RecoveryRuntimeMutationPolicy,
+		tests::{self, GhostLaneTestTracker},
+	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 };
 
 #[test]
@@ -86,8 +89,13 @@ fn ghost_lane_diagnostic_fails_closed_when_mcp_fixture_has_mixed_private_evidenc
 			"PUB-012",
 			"run-12",
 			1,
-			"progress_checkpoint",
-			serde_json::json!({"source": "runtime", "phase": "implementing"}),
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
+			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
+				"source": "runtime",
+				"phase": "implementing",
+			}),
 		)
 		.expect("real private evidence should record");
 

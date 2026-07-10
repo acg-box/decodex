@@ -17,8 +17,9 @@ pub(crate) const PHASE_GOAL_RECOVERY_EVENT_TYPE: &str = "phase_goal_recovery";
 pub(crate) const PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE: &str = "phase_goal_recovery_blocked";
 pub(crate) const PHASE_GOAL_RECOVERY_AUTOMATIC_CONTINUATION_LIMIT: i64 = 1;
 pub(crate) const VALIDATION_EVIDENCE_EVENT_TYPE: &str = "validation_evidence";
+pub(crate) const VALIDATION_EVIDENCE_SCHEMA: &str = "decodex.validation_evidence/2";
 #[allow(dead_code)]
-pub(crate) const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
+pub(crate) const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/2";
 pub(crate) const ARCHITECTURE_RECOVERY_PACKET_SCHEMA: &str =
 	"decodex.architecture_recovery_packet/1";
 
@@ -55,7 +56,7 @@ pub(crate) fn record_authority_boundary_check_private_event(
 		.collect::<Vec<_>>();
 	let payload = types::json!({
 		"schema": AUTHORITY_BOUNDARY_CHECK_SCHEMA,
-		"record_version": 1,
+		"record_version": 2,
 		"issue": {
 			"id": input.issue_id,
 			"identifier": input.issue_identifier,

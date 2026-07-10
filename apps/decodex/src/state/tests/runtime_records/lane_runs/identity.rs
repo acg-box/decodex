@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use tempfile::TempDir;
 
 use crate::state::{
-	self, StateStore,
+	self, PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, StateStore,
 	tests::{self, runtime_records::IN_PROGRESS_STATE},
 };
 
@@ -26,16 +26,9 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 	writer
 		.upsert_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
 		.expect("lease should persist");
-	writer
-		.append_private_execution_event(
-			"pubfi",
-			"PUB-101",
-			"run-1",
-			1,
-			"progress_checkpoint",
-			serde_json::json!({ "summary": "cached on visible tracker key" }),
-		)
-		.expect("private evidence should persist");
+
+	append_identity_progress_checkpoint(&writer);
+
 	writer
 		.upsert_decision_contract(
 			"pubfi",
@@ -126,6 +119,23 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 
 	assert_eq!(canonical_checkpoint.status(), "findings");
 	assert_eq!(canonical_checkpoint.nonclean_rounds(), 2);
+}
+
+fn append_identity_progress_checkpoint(store: &StateStore) {
+	store
+		.append_private_execution_event(
+			"pubfi",
+			"PUB-101",
+			"run-1",
+			1,
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
+			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
+				"summary": "cached on visible tracker key",
+			}),
+		)
+		.expect("private evidence should persist");
 }
 
 #[test]

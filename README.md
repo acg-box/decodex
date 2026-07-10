@@ -69,10 +69,10 @@ runtime.
   are the portable Codex app automation source; install live local configs from a
   clone with `python3 automations/decodex/scripts/config/sync_automations.py --apply`.
 
-Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
-`~/.codex/decodex/projects/<service-id>/`, and checked-in OpenWiki contract maps under
-`openwiki/specs/`. Public site authority stays in `site/` and OpenWiki integration
-notes.
+Runtime authority stays in `apps/decodex/src/`, registered project contracts under
+`~/.codex/decodex/projects/<service-id>/`, and local runtime state. OpenWiki explains
+those contracts for maintainers and agents but is not a runtime input. Public site
+authority stays in `site/`.
 
 ## Runtime platform support
 
@@ -173,8 +173,8 @@ allowing unauthenticated CORS preflight. Direct non-loopback listeners require b
 minimum direct-listener boundary, not OAuth Protected Resource Metadata; OAuth or a
 managed relay can still sit in front for broader MCP client interoperability.
 The gateway advertises resources, resource templates, prompts, tools, logging
-compatibility, and progress notifications. Resources expose checked-in OpenWiki context,
-runtime Decision Contract readback, local status snapshots, remote-safe live
+compatibility, and progress notifications. Resources expose runtime Decision Contract
+readback, local status snapshots, remote-safe live
 status/activity projections, current/recent status-window run event/protocol/child-agent
 activity/progress diagnostics, PR/review-state readback, lane-inspect aliases, and
 lane-control readback. The tool catalog is schema-bound and deliberately small. Local
@@ -380,7 +380,7 @@ The tracked workspace currently keeps:
 
 Generated or local-only directories such as `target/`, `site/dist/`, `site/.astro/`,
 `.worktrees/`, `.workspaces/`, and `.codex/` are not part of the tracked repository
-structure. For the authoritative layout and ownership map, read
+structure. For an explanatory layout and ownership map, read
 [`openwiki/quickstart.md`](openwiki/quickstart.md).
 
 ## OpenWiki

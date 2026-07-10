@@ -10,7 +10,6 @@ Preflight:
 Before any archive manifest write or cleanup action, run `pwd`, `git status --short --branch`, and `git rev-parse HEAD`. Report cwd, branch, HEAD, and dirty state. If the checkout is dirty, the cwd is not the automation checkout, required repo-local source files are missing, or archive validation is unavailable, fail closed before mutating cache state.
 
 Required reads:
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 
 Workflow:
 1. Start with a dry-run-first pass.

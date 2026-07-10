@@ -70,10 +70,3 @@ fn manifest_interface_surface(manifest_json: &str) -> String {
 fn assert_contains(haystack: &str, needle: &str) {
 	assert!(haystack.contains(needle), "expected packaged plugin content to contain `{needle}`");
 }
-
-fn assert_not_contains(haystack: &str, needle: &str) {
-	assert!(
-		!haystack.contains(needle),
-		"expected packaged plugin content not to contain `{needle}`"
-	);
-}

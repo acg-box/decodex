@@ -11,7 +11,7 @@ pub(crate) use self::{
 		ProgressCheckpointArgs, ReviewHandoffArgs, ScopeArgs, TerminalFinalizeArgs, TransitionArgs,
 	},
 	dynamic_tool::{DynamicToolCallResponse, DynamicToolContentItem, DynamicToolSpec},
-	progress::{ExecutionProgressPhase, NormalizedProgressCheckpoint, OpenWikiImpact},
+	progress::{ExecutionProgressPhase, NormalizedProgressCheckpoint},
 	review::{
 		LocalRepoDetails, PendingReviewAction, PendingReviewCompletion, PullRequestDetails,
 		ReviewExecutionMode, ReviewHandoffContext, ReviewHandoffWritebackFailed,

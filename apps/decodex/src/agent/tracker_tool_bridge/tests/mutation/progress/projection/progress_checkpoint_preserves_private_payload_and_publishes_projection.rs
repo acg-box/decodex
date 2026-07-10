@@ -32,7 +32,6 @@ fn progress_checkpoint_preserves_private_payload_and_publishes_projection() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
-				"openwiki_impact": "none",
 			"focus": "Wire the new execution-state skill into tracker-driven flows.",
 			"next_action": "Add the issue_progress_checkpoint runtime tool.",
 			"blockers": [],
@@ -81,7 +80,6 @@ fn progress_checkpoint_preserves_private_payload_and_publishes_projection() {
 		private_events[0].payload()["next_action"],
 		serde_json::json!("Add the issue_progress_checkpoint runtime tool.")
 	);
-	assert_eq!(private_events[0].payload()["openwiki_impact"], serde_json::json!("none"));
 	assert_eq!(
 		private_events[0].payload()["evidence"],
 		serde_json::json!(["Research decision favors Linear-backed execution snapshots."])

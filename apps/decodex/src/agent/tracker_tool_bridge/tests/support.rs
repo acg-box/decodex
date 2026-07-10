@@ -17,7 +17,7 @@ pub(crate) use self::{
 	review_policy_state::{
 		assert_review_policy_checkpoint_cleared, bridge_state_store,
 		persisted_review_lifecycle_handoff_fixture, persisted_review_lifecycle_transition_fixture,
-		persisted_review_policy_checkpoint, seed_openwiki_impact_checkpoint,
-		write_clean_review_checkpoint, write_review_policy_checkpoint,
+		persisted_review_policy_checkpoint, write_clean_review_checkpoint,
+		write_review_policy_checkpoint,
 	},
 };

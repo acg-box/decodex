@@ -22,7 +22,6 @@ fn tools_call_intake_goal_dry_run_does_not_persist_program_intake() {
 	support::write_decodex_workflow(repo.path());
 
 	let context = McpContext {
-		repo_root: repo.path().to_path_buf(),
 		config_path: Some(config_path),
 		project_id: Some(String::from("decodex")),
 		state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),

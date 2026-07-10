@@ -3,16 +3,12 @@ use crate::{agent::PhaseGoalKind, orchestrator::RepoGateTrackedRewriteDecision};
 pub(crate) fn validation_evidence_reason_code(
 	checkpoint_present: bool,
 	checkpoint_matches_head: bool,
-	openwiki_impact_valid: bool,
 	effective_delta_present: bool,
 	non_goal_passed: bool,
 	blocker_count: usize,
 ) -> &'static str {
 	if checkpoint_present && !checkpoint_matches_head {
 		return "stale_progress_checkpoint";
-	}
-	if !openwiki_impact_valid {
-		return "openwiki_impact_missing";
 	}
 	if !effective_delta_present {
 		return "no_effective_delta";

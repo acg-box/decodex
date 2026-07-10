@@ -28,7 +28,7 @@ fn tools_call_returns_structured_content() {
 	);
 	let structured = &support::response_at(&responses, 0)["result"]["structuredContent"];
 
-	assert_eq!(structured["schema"], "decodex.mcp.plan_result/1");
+	assert_eq!(structured["schema"], "decodex.mcp.plan_result/2");
 	assert_eq!(structured["status"], "ok");
 	assert_eq!(structured["issue"], "XY-994");
 }

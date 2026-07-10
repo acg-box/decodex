@@ -34,7 +34,6 @@ fn terminal_finalize_accepts_matching_manual_attention_path() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "blocked",
-			"openwiki_impact": "none",
 			"focus": "Manual attention required.",
 			"next_action": "Wait for human review.",
 			"blockers": ["Human input required."],

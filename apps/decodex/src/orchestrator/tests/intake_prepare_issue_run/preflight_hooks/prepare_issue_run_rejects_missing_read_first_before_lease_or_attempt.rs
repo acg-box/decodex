@@ -11,7 +11,7 @@ use crate::{
 fn prepare_issue_run_rejects_missing_read_first_before_lease_or_attempt() {
 	let workflow_markdown = tests::sample_workflow_markdown(
 		"pubfi",
-		&["openwiki/quickstart.md"],
+		&["missing-context.md"],
 		"Follow the repository policy.\n",
 		1,
 	);
@@ -45,7 +45,7 @@ fn prepare_issue_run_rejects_missing_read_first_before_lease_or_attempt() {
 	let message = format!("{error:#}");
 
 	assert!(message.contains("context.read_first"));
-	assert!(message.contains("openwiki/quickstart.md"));
+	assert!(message.contains("missing-context.md"));
 	assert!(
 		message.contains(config.workflow_path().to_str().expect("workflow path should be utf-8"))
 	);

@@ -35,7 +35,7 @@ pub(in crate::mcp) fn plan_tool_output_schema() -> Value {
 		"properties": {
 			"schema": {
 				"type": "string",
-				"enum": ["decodex.mcp.plan_result/1"]
+				"enum": ["decodex.mcp.plan_result/2"]
 			},
 			"status": {
 				"type": "string",
@@ -48,9 +48,6 @@ pub(in crate::mcp) fn plan_tool_output_schema() -> Value {
 			"prompt": {
 				"type": "string"
 			},
-			"resource": {
-				"type": "string"
-			},
 			"next_action": {
 				"type": "string"
 			},
@@ -61,6 +58,6 @@ pub(in crate::mcp) fn plan_tool_output_schema() -> Value {
 				"type": ["string", "null"]
 			}
 		},
-		"required": ["schema", "status", "intent", "prompt", "resource", "next_action"]
+		"required": ["schema", "status", "intent", "prompt", "next_action"]
 	}))
 }

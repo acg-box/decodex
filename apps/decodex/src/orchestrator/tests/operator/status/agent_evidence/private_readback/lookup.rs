@@ -1,5 +1,8 @@
-use crate::orchestrator::tests::operator::status::{
-	self, EvidenceRequest, ReviewLevel, StateStore, TEST_SERVICE_ID, TempDir, fs, orchestrator,
+use crate::{
+	orchestrator::tests::operator::status::{
+		self, EvidenceRequest, ReviewLevel, StateStore, TEST_SERVICE_ID, TempDir, fs, orchestrator,
+	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 };
 
 #[test]
@@ -42,8 +45,10 @@ fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
 			"issue-1",
 			"run-detached",
 			3,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"summary": "private checkpoint stayed local",
 			}),
 		)
@@ -64,7 +69,7 @@ fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
 	assert_eq!(readback.event_count, 1);
 	assert_eq!(readback.issue_id, "issue-1");
 	assert_eq!(readback.issue_identifier.as_deref(), Some("PUB-101"));
-	assert_eq!(readback.latest_event_type.as_deref(), Some("progress_checkpoint"));
+	assert_eq!(readback.latest_event_type.as_deref(), Some(PROGRESS_CHECKPOINT_EVENT_TYPE));
 	assert!(readback.warnings.is_empty());
 }
 

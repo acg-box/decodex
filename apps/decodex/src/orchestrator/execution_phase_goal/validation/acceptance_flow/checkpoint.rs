@@ -1,6 +1,6 @@
 use crate::{
 	orchestrator::{Result, execution_phase_goal::controller::RepoGatePhaseGoalController},
-	state::PrivateExecutionEvent,
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, PrivateExecutionEvent},
 };
 
 impl RepoGatePhaseGoalController<'_> {
@@ -14,6 +14,8 @@ impl RepoGatePhaseGoalController<'_> {
 			self.issue_run.attempt_number,
 		)?;
 
-		Ok(events.into_iter().rev().find(|event| event.event_type() == "progress_checkpoint"))
+		Ok(events.into_iter().rev().find(|event| {
+			event.matches_contract(PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, 2)
+		}))
 	}
 }

@@ -10,7 +10,6 @@ use crate::{
 			acceptance::{
 				self, ValidationDecision, ValidationEvidence, validation_evidence_blocker_count,
 				validation_evidence_has_non_goal_violation,
-				validation_evidence_openwiki_impact_valid,
 			},
 			controller::RepoGatePhaseGoalController,
 		},
@@ -44,15 +43,10 @@ impl RepoGatePhaseGoalController<'_> {
 			.zip(checkpoint_head_sha.as_deref())
 			.is_some_and(|(head, checkpoint_head)| head == checkpoint_head);
 		let checkpoint_present = checkpoint.is_some();
-		let openwiki_impact_valid = checkpoint_payload
-			.and_then(|payload| payload.get("openwiki_impact"))
-			.and_then(Value::as_str)
-			.is_none_or(validation_evidence_openwiki_impact_valid);
 		let blocker_count = checkpoint_payload.map_or(0, validation_evidence_blocker_count);
 		let non_goal_violation =
 			checkpoint_payload.is_some_and(validation_evidence_has_non_goal_violation);
 		let objective_covered = (!checkpoint_present || checkpoint_matches_head)
-			&& openwiki_impact_valid
 			&& effective_delta_present
 			&& blocker_count == 0;
 		let non_goal_passed = !non_goal_violation;
@@ -60,7 +54,6 @@ impl RepoGatePhaseGoalController<'_> {
 		let reason_code = acceptance::validation_evidence_reason_code(
 			checkpoint_present,
 			checkpoint_matches_head,
-			openwiki_impact_valid,
 			effective_delta_present,
 			non_goal_passed,
 			blocker_count,

@@ -7,11 +7,6 @@ pub(super) fn architecture_recovery_surfaces_for_path(
 	let lower = normalized.to_ascii_lowercase();
 	let mut surfaces = Vec::new();
 
-	if lower.starts_with("openwiki/") {
-		surfaces.push(AuthorityBoundarySurface::OpenWiki);
-
-		return surfaces;
-	}
 	if architecture_recovery_path_is_test(&lower) {
 		surfaces.push(AuthorityBoundarySurface::Tests);
 
@@ -20,6 +15,9 @@ pub(super) fn architecture_recovery_surfaces_for_path(
 	if architecture_recovery_path_is_config(&lower) {
 		surfaces.push(AuthorityBoundarySurface::Config);
 
+		return surfaces;
+	}
+	if !architecture_recovery_path_is_owned(&lower) {
 		return surfaces;
 	}
 	if architecture_recovery_path_is_public_api(&lower) {
@@ -59,7 +57,6 @@ pub(super) fn architecture_recovery_surface_summary(
 		AuthorityBoundarySurface::Runtime =>
 			"Runtime implementation files changed during recovery.",
 		AuthorityBoundarySurface::Tests => "Test files changed during recovery.",
-		AuthorityBoundarySurface::OpenWiki => "OpenWiki files changed during recovery.",
 		AuthorityBoundarySurface::PublicApi =>
 			"Public API or command surface files changed during recovery.",
 		AuthorityBoundarySurface::Config => "Configuration files changed during recovery.",
@@ -94,6 +91,25 @@ fn architecture_recovery_path_is_test(path: &str) -> bool {
 		|| path.contains("/test_")
 }
 
+fn architecture_recovery_path_is_owned(path: &str) -> bool {
+	path.starts_with("apps/")
+		|| path.starts_with("plugins/")
+		|| path.starts_with("automations/")
+		|| path.starts_with("scripts/")
+		|| path.starts_with("dev/")
+		|| path.starts_with("site/")
+		|| path.starts_with(".github/")
+		|| matches!(
+			path,
+			"cargo.toml"
+				| "cargo.lock"
+				| "makefile.toml"
+				| "clippy.toml"
+				| "rust-toolchain.toml"
+				| "decodex.example.toml"
+		)
+}
+
 fn architecture_recovery_path_is_config(path: &str) -> bool {
 	path == "cargo.toml"
 		|| path == "cargo.lock"
@@ -107,6 +123,11 @@ fn architecture_recovery_path_is_config(path: &str) -> bool {
 		|| path.ends_with(".yml")
 		|| path.ends_with(".json")
 		|| path.ends_with(".env")
+		|| architecture_recovery_path_is_dotfile(path)
+}
+
+fn architecture_recovery_path_is_dotfile(path: &str) -> bool {
+	path.rsplit('/').next().is_some_and(|name| name.starts_with('.') && name != ".gitkeep")
 }
 
 fn architecture_recovery_path_is_public_api(path: &str) -> bool {
@@ -160,10 +181,69 @@ fn architecture_recovery_path_is_review_policy(path: &str) -> bool {
 }
 
 fn architecture_recovery_path_is_runtime(path: &str) -> bool {
-	path.starts_with("apps/") || path.starts_with("scripts/") || path.starts_with("dev/")
+	architecture_recovery_path_is_owned(path)
 }
 
 fn architecture_recovery_path_has_segment(path: &str, segment: &str) -> bool {
 	path.split('/')
 		.any(|part| part == segment || part.strip_suffix(".rs").is_some_and(|stem| stem == segment))
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::orchestrator::execution_architecture_recovery::{
+		AuthorityBoundarySurface, surface::path_classification,
+	};
+
+	#[test]
+	fn explanatory_markdown_does_not_create_authority_surfaces() {
+		assert!(
+			path_classification::architecture_recovery_surfaces_for_path(
+				"notes/operations/commands-and-validation.md"
+			)
+			.is_empty()
+		);
+	}
+
+	#[test]
+	fn root_tests_remain_authority_surfaces() {
+		assert_eq!(
+			path_classification::architecture_recovery_surfaces_for_path(
+				"tests/scripts/test_sync_installable_plugins.py"
+			),
+			vec![AuthorityBoundarySurface::Tests]
+		);
+	}
+
+	#[test]
+	fn repository_config_remains_an_authority_surface() {
+		for path in [
+			".dockerignore",
+			".editorconfig",
+			".gitignore",
+			".prettierignore",
+			".prettierrc",
+			".taplo.toml",
+			".rustfmt.toml",
+			".agents/plugins/marketplace.json",
+			"assets/decodex/icon.json",
+			"site/.prettierrc",
+		] {
+			assert_eq!(
+				path_classification::architecture_recovery_surfaces_for_path(path),
+				vec![AuthorityBoundarySurface::Config],
+				"unexpected authority classification for {path}"
+			);
+		}
+	}
+
+	#[test]
+	fn owned_validation_source_still_blocks_landing() {
+		assert_eq!(
+			path_classification::architecture_recovery_surfaces_for_path(
+				"apps/decodex/src/repo_gate/validation.rs"
+			),
+			vec![AuthorityBoundarySurface::Validation]
+		);
+	}
 }

@@ -1,10 +1,14 @@
-use crate::orchestrator::{
-	self, PrivateEvidenceReadback,
-	tests::operator::status::{
-		AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition,
-		AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, StateStore, TEST_SERVICE_ID,
-		VALIDATION_EVIDENCE_EVENT_TYPE, Value,
+use crate::{
+	orchestrator::{
+		self, PrivateEvidenceReadback,
+		tests::operator::status::{
+			AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput,
+			AuthorityBoundaryDisposition, AuthorityBoundaryPolicyDecision,
+			AuthorityBoundarySurface, StateStore, TEST_SERVICE_ID, VALIDATION_EVIDENCE_EVENT_TYPE,
+			Value,
+		},
 	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 };
 
 pub(in crate::orchestrator::tests) fn assert_harness_outcome_payload(payload: &Value) {
@@ -160,20 +164,8 @@ pub(in crate::orchestrator::tests) fn record_harness_signal_fixture_events(
 			}),
 		)
 		.expect("review evidence should append");
-	state_store
-		.append_private_execution_event(
-			TEST_SERVICE_ID,
-			"issue-harness",
-			"run-harness",
-			2,
-			"progress_checkpoint",
-			serde_json::json!({
-				"phase": "review_repair",
-				"focus": "repair accepted finding"
-			}),
-		)
-		.expect("progress evidence should append");
 
+	record_harness_progress_checkpoint(state_store);
 	record_harness_validation_evidence_event(state_store);
 
 	orchestrator::record_authority_boundary_check_private_event(
@@ -226,7 +218,6 @@ pub(in crate::orchestrator::tests) fn record_harness_signal_fixture_events(
 		)
 		.expect("architecture recovery evidence should append");
 }
-
 pub(in crate::orchestrator::tests) fn record_harness_validation_evidence_event(
 	state_store: &StateStore,
 ) {
@@ -238,7 +229,8 @@ pub(in crate::orchestrator::tests) fn record_harness_validation_evidence_event(
 			2,
 			VALIDATION_EVIDENCE_EVENT_TYPE,
 			serde_json::json!({
-				"schema": "decodex.validation_evidence/1",
+				"schema": "decodex.validation_evidence/2",
+				"record_version": 2,
 				"phase": "implement_to_validation_ready",
 				"decision": "fail",
 				"reason_code": "no_effective_delta",
@@ -258,4 +250,22 @@ pub(in crate::orchestrator::tests) fn record_harness_validation_evidence_event(
 			}),
 		)
 		.expect("validation evidence should append");
+}
+
+fn record_harness_progress_checkpoint(state_store: &StateStore) {
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-harness",
+			"run-harness",
+			2,
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
+			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
+				"phase": "review_repair",
+				"focus": "repair accepted finding"
+			}),
+		)
+		.expect("progress evidence should append");
 }

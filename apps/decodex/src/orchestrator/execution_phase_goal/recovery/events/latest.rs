@@ -6,6 +6,7 @@ use crate::{
 		RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE, Result, ServiceConfig, StateStore,
 		execution_phase_goal::recovery::events::parsing,
 	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 };
 
 pub(crate) fn latest_phase_goal_recovery_candidate(
@@ -29,14 +30,24 @@ pub(crate) fn latest_phase_goal_recovery_candidate(
 			| "review_completion_intent"
 			| "terminal_finalize" => return Ok(None),
 			AUTHORITY_DECISION_REQUEST_EVENT_TYPE => return Ok(None),
-			"progress_checkpoint"
-				if parsing::progress_checkpoint_has_blockers(event.payload())
+			event_type
+				if event_type == PROGRESS_CHECKPOINT_EVENT_TYPE
+					&& event.matches_contract(
+						PROGRESS_CHECKPOINT_EVENT_TYPE,
+						PROGRESS_CHECKPOINT_SCHEMA,
+						2,
+					) && parsing::progress_checkpoint_has_blockers(event.payload())
 					&& !progress_blockers_cleared =>
 			{
 				return Ok(None);
 			},
-			"progress_checkpoint"
-				if parsing::progress_checkpoint_clears_blockers(event.payload()) =>
+			event_type
+				if event_type == PROGRESS_CHECKPOINT_EVENT_TYPE
+					&& event.matches_contract(
+						PROGRESS_CHECKPOINT_EVENT_TYPE,
+						PROGRESS_CHECKPOINT_SCHEMA,
+						2,
+					) && parsing::progress_checkpoint_clears_blockers(event.payload()) =>
 			{
 				progress_blockers_cleared = true;
 			},
@@ -81,14 +92,24 @@ pub(crate) fn latest_open_issue_phase_goal_before_attempt(
 			| AUTHORITY_DECISION_REQUEST_EVENT_TYPE
 			| PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE
 			| RETRYABLE_FAILED_START_CLEANUP_EVENT_TYPE => return Ok(None),
-			"progress_checkpoint"
-				if parsing::progress_checkpoint_has_blockers(event.payload())
+			event_type
+				if event_type == PROGRESS_CHECKPOINT_EVENT_TYPE
+					&& event.matches_contract(
+						PROGRESS_CHECKPOINT_EVENT_TYPE,
+						PROGRESS_CHECKPOINT_SCHEMA,
+						2,
+					) && parsing::progress_checkpoint_has_blockers(event.payload())
 					&& !progress_blockers_cleared =>
 			{
 				return Ok(None);
 			},
-			"progress_checkpoint"
-				if parsing::progress_checkpoint_clears_blockers(event.payload()) =>
+			event_type
+				if event_type == PROGRESS_CHECKPOINT_EVENT_TYPE
+					&& event.matches_contract(
+						PROGRESS_CHECKPOINT_EVENT_TYPE,
+						PROGRESS_CHECKPOINT_SCHEMA,
+						2,
+					) && parsing::progress_checkpoint_clears_blockers(event.payload()) =>
 			{
 				progress_blockers_cleared = true;
 			},
