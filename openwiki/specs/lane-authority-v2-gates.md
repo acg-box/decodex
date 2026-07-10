@@ -437,15 +437,26 @@ cargo make check
 git diff --check main...HEAD
 /Users/x/.codex/shims/codex-identity
 test -n "$DECODEX_C7_PR"
+case "$DECODEX_C7_PR" in
+  https://github.com/hack-ink/decodex/pull/*) ;;
+  *) exit 1 ;;
+esac
+pr_number="${DECODEX_C7_PR##*/}"
+case "$pr_number" in
+  ""|*[!0-9]*) exit 1 ;;
+esac
+test "$DECODEX_C7_PR" = "https://github.com/hack-ink/decodex/pull/$pr_number"
 test -x "$DECODEX_C7_BINARY"
 test -n "$DECODEX_LANE_AUTHORITY_V2_PLAN"
 test -n "$DECODEX_LANE_AUTHORITY_V2_CUTOVER_RECEIPT"
-pr_head_sha="$(gh pr view "$DECODEX_C7_PR" --json headRefOid --jq .headRefOid)"
+pr_head_sha="$(gh pr view "$DECODEX_C7_PR" --repo hack-ink/decodex \
+  --json headRefOid --jq .headRefOid)"
 test "$pr_head_sha" = "$(git rev-parse HEAD)"
 scripts/verify_lane_authority_v2_required_checks.sh \
   --commit "$pr_head_sha" --phase pull-request
 # Fresh code and skeptic reviews occur here, then Decodex lands the exact PR head.
-merge_commit_sha="$(gh pr view "$DECODEX_C7_PR" --json mergeCommit --jq .mergeCommit.oid)"
+merge_commit_sha="$(gh pr view "$DECODEX_C7_PR" --repo hack-ink/decodex \
+  --json mergeCommit --jq .mergeCommit.oid)"
 test -n "$merge_commit_sha"
 git fetch origin main
 remote_main_sha="$(git ls-remote --exit-code origin refs/heads/main | awk '{print $1}')"
@@ -518,7 +529,9 @@ Expected assertions:
 - `cutover-prepare` derives artifact digest, source commit, tested PR head, workflow
   identity, and required-check ids only from verified attestation, binary build-info, and
   fresh GitHub readback. Later stages accept only the signed receipt and rederive/recheck
-  live facts; no CLI flag can inject those authority identities;
+  live facts; no CLI flag can inject those authority identities. The sole PR locator is an
+  exact canonical `hack-ink/decodex` URL, every GitHub readback also pins that repository,
+  and ambient checkout or `GH_REPO` state cannot redirect it;
 - authority audit returns zero executable ambiguity, orphan claim, legacy authority
   writer, terminal conflict lease, stale active operation, and overdue unknown effect;
 - the final full-source reverse scan returns no legacy authority reader/writer or schema
