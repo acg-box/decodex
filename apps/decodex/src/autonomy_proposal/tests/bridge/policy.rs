@@ -143,4 +143,8 @@ fn autonomy_decision_bridge_external_agent_self_accept_requires_project_policy()
 
 	assert_eq!(candidate.status(), DecisionContractStatus::DraftLatent);
 	assert!(candidate.contract().promotion().is_none());
+	assert_eq!(
+		candidate.contract().accepted_authority().non_goals(),
+		&[String::from("Do not bypass accepted review authority.")]
+	);
 }

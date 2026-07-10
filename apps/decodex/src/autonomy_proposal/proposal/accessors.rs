@@ -1,10 +1,30 @@
-use crate::autonomy_proposal::{
-	AutonomyProposal, AutonomyProposalChallengeEvidence, AutonomyProposalIssueCandidate,
-	AutonomyProposalRefusal, AutonomyProposalRefusalReason, AutonomyProposalState,
+use crate::{
+	autonomy_proposal::{
+		AutonomyProposal, AutonomyProposalChallengeEvidence, AutonomyProposalIssueCandidate,
+		AutonomyProposalRefusal, AutonomyProposalRefusalReason, AutonomyProposalState,
+	},
+	prelude::Result,
 };
 
 #[allow(dead_code)]
 impl AutonomyProposal {
+	pub(crate) fn preserve_challenge_evidence_from(&mut self, existing: &Self) -> Result<()> {
+		let mut expected = self.clone();
+
+		expected.challenge_evidence = existing.challenge_evidence.clone();
+
+		if expected != *existing {
+			crate::prelude::eyre::bail!(
+				"Autonomy proposal `{}` conflicts with its immutable same-id payload.",
+				self.id
+			);
+		}
+
+		self.challenge_evidence = existing.challenge_evidence.clone();
+
+		Ok(())
+	}
+
 	pub(crate) fn id(&self) -> &str {
 		&self.id
 	}
@@ -77,7 +97,47 @@ impl AutonomyProposal {
 		&self.challenge_evidence
 	}
 
+	pub(crate) fn challenge_requirements(&self) -> &[String] {
+		&self.challenge_requirements
+	}
+
+	pub(crate) fn review_requirements(&self) -> &[String] {
+		&self.review_requirements
+	}
+
+	pub(crate) fn rollback_path(&self) -> &str {
+		&self.rollback_path
+	}
+
+	pub(crate) fn decision_contract_id(&self) -> String {
+		format!("autonomy-decision-{}", &self.fingerprint[..32])
+	}
+
 	pub(crate) fn has_refusal_reason(&self, reason: AutonomyProposalRefusalReason) -> bool {
 		self.refusal_reasons.iter().any(|refusal| refusal.reason == reason)
+	}
+}
+
+impl AutonomyProposalChallengeEvidence {
+	pub(crate) fn actor(&self) -> &str {
+		&self.actor
+	}
+
+	pub(crate) fn evidence_refs(&self) -> &[String] {
+		&self.evidence_refs
+	}
+
+	pub(crate) fn objections(&self) -> &[String] {
+		&self.objections
+	}
+}
+
+impl AutonomyProposalIssueCandidate {
+	pub(crate) fn key(&self) -> &str {
+		&self.key
+	}
+
+	pub(crate) fn queue_intent(&self) -> &str {
+		&self.queue_intent
 	}
 }

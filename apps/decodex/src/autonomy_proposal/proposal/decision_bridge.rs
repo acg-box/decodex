@@ -48,7 +48,11 @@ impl AutonomyProposal {
 			"research_options": decision::autonomy_decision_research_options(self),
 			"accepted_authority": {
 				"accepted_objectives": decision::proposal_objectives(self),
-				"non_goals": self.non_goals.clone(),
+				"non_goals": authority
+					.accepted_project_policy
+					.as_ref()
+					.map(|policy| policy.public_non_goals.clone())
+					.unwrap_or_else(|| self.non_goals.clone()),
 				"constraints": decision::proposal_constraints(self),
 				"assumptions": decision::proposal_assumptions(self, &authority),
 				"objections": decision::proposal_objections(self),
@@ -86,9 +90,5 @@ impl AutonomyProposal {
 		contract.validate()?;
 
 		Ok(contract)
-	}
-
-	fn decision_contract_id(&self) -> String {
-		format!("autonomy-decision-{}", &self.fingerprint[..32])
 	}
 }

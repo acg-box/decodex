@@ -31,6 +31,18 @@ fn tools_list_exposes_schema_bound_tools() {
 		.iter()
 		.find(|tool| tool.get("name").and_then(Value::as_str) == Some("autonomy_submit_signal"))
 		.expect("autonomy_submit_signal tool should exist");
+	let autonomy_accept_runtime_policy = tools
+		.iter()
+		.find(|tool| {
+			tool.get("name").and_then(Value::as_str) == Some("autonomy_accept_runtime_policy")
+		})
+		.expect("autonomy_accept_runtime_policy tool should exist");
+	let autonomy_apply_runtime_policy = tools
+		.iter()
+		.find(|tool| {
+			tool.get("name").and_then(Value::as_str) == Some("autonomy_apply_runtime_policy")
+		})
+		.expect("autonomy_apply_runtime_policy tool should exist");
 	let intake_goal = tools
 		.iter()
 		.find(|tool| tool.get("name").and_then(Value::as_str) == Some(intake_goal_tool_name))
@@ -51,6 +63,24 @@ fn tools_list_exposes_schema_bound_tools() {
 			["items"]["properties"]["dependencies"]["description"],
 		"Candidate keys that must complete before this candidate."
 	);
+	assert_eq!(
+		autonomy_accept_runtime_policy["inputSchema"]["properties"]["mode"]["enum"],
+		serde_json::json!(["dry_run"])
+	);
+	assert!(intake_goal["inputSchema"]["properties"].get("idempotencyKey").is_none());
+	assert_eq!(
+		autonomy_accept_runtime_policy["inputSchema"]["properties"]["authority"]["properties"]["acceptedByKind"]
+			["enum"],
+		serde_json::json!(["user"])
+	);
+	assert!(autonomy_apply_runtime_policy["inputSchema"]["properties"].get("challenge").is_none());
+
+	support::assert_tool_output_schema_variant(
+		autonomy_apply_runtime_policy,
+		"decodex.mcp.autonomy_runtime_policy_apply_result/1",
+		Some("program_intake_present"),
+	);
+
 	assert_eq!(
 		autonomy_submit_signal["inputSchema"]["properties"]["kind"]["enum"],
 		serde_json::json!([
