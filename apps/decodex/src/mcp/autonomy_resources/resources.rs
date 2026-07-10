@@ -172,6 +172,33 @@ pub(in crate::mcp) fn mcp_autonomy_proposal_resource(
 	}))
 }
 
+pub(in crate::mcp) fn mcp_autonomy_proposal_by_affected_identifier_resource(
+	state_store: &StateStore,
+	project_id: &str,
+	affected_identifier: &str,
+) -> Result<Value, McpError> {
+	let Some(record) = state_store
+		.autonomy_proposal_with_affected_identifier(project_id, affected_identifier)
+		.map_err(McpError::internal)?
+	else {
+		return Err(McpError::resource_not_found());
+	};
+
+	Ok(serde_json::json!({
+		"schema": "decodex.mcp.autonomy_proposal_resource/1",
+		"project_id": project_id,
+		"read_only": true,
+		"lookup": {
+			"kind": "affected_identifier",
+			"value": affected_identifier
+		},
+		"proposal": summaries::mcp_autonomy_proposal_summary(
+			record.proposal(),
+			Some(record.updated_at())
+		)
+	}))
+}
+
 pub(in crate::mcp) fn mcp_autonomy_signals_resource(
 	state_store: &StateStore,
 	project_id: &str,
