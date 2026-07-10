@@ -138,6 +138,10 @@ def validate_active_config(
             result.fail(f"active {field_name} mismatch: expected {expected!r}, got {actual!r}")
 
     active_cwds = active_config.get("cwds")
+    if isinstance(active_cwds, list) and any(
+        ".worktrees" in str(value).replace("\\", "/").split("/") for value in active_cwds
+    ):
+        result.fail("active cwds must not bind automations to a worktree")
     expected = expected_cwd(str(defaults.get("cwd", "{repo_root}")))
     if active_cwds != [expected]:
         result.fail(f"active cwds mismatch: expected {[expected]!r}, got {active_cwds!r}")
