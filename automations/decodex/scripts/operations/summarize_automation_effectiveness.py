@@ -67,6 +67,7 @@ def inspect_live_configs(codex_home: Path, managed_ids: list[str]) -> dict[str, 
 	statuses: Counter[str] = Counter()
 	missing: list[str] = []
 	worktree_bound: list[str] = []
+	updated_at: dict[str, str] = {}
 	for automation_id in managed_ids:
 		path = codex_home / "automations" / automation_id / "automation.toml"
 		if not path.exists():
@@ -78,11 +79,17 @@ def inspect_live_configs(codex_home: Path, managed_ids: list[str]) -> dict[str, 
 		cwds = config.get("cwds", [])
 		if any(".worktrees" in Path(str(cwd)).parts for cwd in cwds):
 			worktree_bound.append(automation_id)
+		if isinstance(config.get("updated_at"), int):
+			updated_at[automation_id] = datetime.fromtimestamp(
+				config["updated_at"] / 1000,
+				timezone.utc,
+			).isoformat().replace("+00:00", "Z")
 	return {
 		"managed": len(managed_ids),
 		"statuses": dict(sorted(statuses.items())),
 		"missing": missing,
 		"worktree_bound": worktree_bound,
+		"updated_at": updated_at,
 	}
 
 
@@ -165,7 +172,44 @@ def inspect_radar(start: datetime, end: datetime) -> dict[str, int]:
 	}
 
 
-def inspect_management(start: datetime, end: datetime) -> dict[str, Any]:
+def inspect_active_experiment(end: datetime) -> dict[str, Any]:
+	path = MANAGER_ROOT / "experiments/active.json"
+	value = load_json(path)
+	if value is None:
+		return {"status": "missing", "path": str(path.relative_to(RUNTIME_ROOT))}
+	try:
+		window = value["effective_window"]
+		window_start = parse_time(window["start"])
+		window_end = parse_time(window["end"])
+		experiments = value["experiments"]
+	except (KeyError, TypeError, ValueError):
+		return {"status": "invalid", "path": str(path.relative_to(RUNTIME_ROOT))}
+	if not isinstance(experiments, list) or not experiments:
+		status = "invalid"
+	elif window_end <= end:
+		status = "expired"
+	elif window_start > end:
+		status = "pending"
+	elif not any(item.get("status") == "active" for item in experiments if isinstance(item, dict)):
+		status = "invalid"
+	else:
+		status = "active"
+	return {
+		"status": status,
+		"path": str(path.relative_to(RUNTIME_ROOT)),
+		"effective_window": {
+			"start": window_start.isoformat().replace("+00:00", "Z"),
+			"end": window_end.isoformat().replace("+00:00", "Z"),
+		},
+		"experiment_count": len(experiments),
+	}
+
+
+def inspect_management(
+	start: datetime,
+	end: datetime,
+	manager_updated_at: str | None = None,
+) -> dict[str, Any]:
 	daily = files_in_window(MANAGER_ROOT / "reports", "**/*.md", start, end)
 	weekly = files_in_window(MANAGER_ROOT / "weekly", "**/*.md", start, end)
 	covered_days = sorted(
@@ -174,11 +218,18 @@ def inspect_management(start: datetime, end: datetime) -> dict[str, Any]:
 			for path in daily
 		}
 	)
+	coverage_start = start
+	if manager_updated_at:
+		coverage_start = max(start, parse_time(manager_updated_at))
+	expected_days = max(0, int((end - coverage_start).total_seconds() // 86400))
 	return {
 		"daily_reports": len(daily),
 		"daily_coverage_days": covered_days,
 		"weekly_reports": len(weekly),
 		"latest_daily_report": str(daily[-1].relative_to(RUNTIME_ROOT)) if daily else None,
+		"coverage_baseline": coverage_start.isoformat().replace("+00:00", "Z"),
+		"expected_daily_coverage_days": expected_days,
+		"active_experiment": inspect_active_experiment(end),
 	}
 
 
@@ -187,7 +238,11 @@ def build_scorecard(codex_home: Path, start: datetime, end: datetime) -> dict[st
 	live = inspect_live_configs(codex_home, managed_ids)
 	social = inspect_social(start, end)
 	radar = inspect_radar(start, end)
-	management = inspect_management(start, end)
+	management = inspect_management(
+		start,
+		end,
+		live["updated_at"].get("decodex-automation-manager"),
+	)
 	blockers: list[dict[str, str]] = []
 
 	if live["missing"]:
@@ -200,6 +255,10 @@ def build_scorecard(codex_home: Path, start: datetime, end: datetime) -> dict[st
 		blockers.append({"severity": "p0", "code": "stale_social_reservations"})
 	if management["daily_reports"] == 0:
 		blockers.append({"severity": "p1", "code": "missing_daily_manager_evidence"})
+	elif len(management["daily_coverage_days"]) < management["expected_daily_coverage_days"]:
+		blockers.append({"severity": "p1", "code": "daily_manager_coverage_gap"})
+	if management["active_experiment"]["status"] in {"missing", "invalid", "expired", "pending"}:
+		blockers.append({"severity": "p1", "code": "active_experiment_unavailable"})
 	if (
 		radar["impacts"] > 0
 		and social["published_records"] == 0
