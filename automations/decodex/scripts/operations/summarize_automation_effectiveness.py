@@ -27,6 +27,7 @@ MANIFESTS = (
 	SOURCE_ROOT / "automations/radar/automations.toml",
 )
 MANAGER_ROOT = RUNTIME_ROOT / ".agent/automations/decodex/cache/manager"
+TERMINAL_AUTOMATION_HANDOFF_STATUSES = {"closed", "resolved", "superseded"}
 
 
 def parse_time(value: str) -> datetime:
@@ -205,6 +206,25 @@ def inspect_active_experiment(end: datetime) -> dict[str, Any]:
 	}
 
 
+def inspect_automation_handoffs() -> dict[str, Any]:
+	handoffs = []
+	for path, value in all_json(MANAGER_ROOT / "handoffs", "**/*.json"):
+		if value.get("schema") != "decodex_automation_handoff/v1":
+			continue
+		status = str(value.get("status", "unknown"))
+		if status in TERMINAL_AUTOMATION_HANDOFF_STATUSES:
+			continue
+		handoffs.append(
+			{
+				"id": str(value.get("id", path.stem)),
+				"severity": str(value.get("severity", "p1")),
+				"status": status,
+				"path": str(path.relative_to(RUNTIME_ROOT)),
+			}
+		)
+	return {"unresolved": handoffs, "unresolved_count": len(handoffs)}
+
+
 def inspect_management(
 	start: datetime,
 	end: datetime,
@@ -230,6 +250,7 @@ def inspect_management(
 		"coverage_baseline": coverage_start.isoformat().replace("+00:00", "Z"),
 		"expected_daily_coverage_days": expected_days,
 		"active_experiment": inspect_active_experiment(end),
+		"automation_handoffs": inspect_automation_handoffs(),
 	}
 
 
@@ -259,6 +280,8 @@ def build_scorecard(codex_home: Path, start: datetime, end: datetime) -> dict[st
 		blockers.append({"severity": "p1", "code": "daily_manager_coverage_gap"})
 	if management["active_experiment"]["status"] in {"missing", "invalid", "expired", "pending"}:
 		blockers.append({"severity": "p1", "code": "active_experiment_unavailable"})
+	if management["automation_handoffs"]["unresolved_count"]:
+		blockers.append({"severity": "p1", "code": "unresolved_automation_handoffs"})
 	if (
 		radar["impacts"] > 0
 		and social["published_records"] == 0
