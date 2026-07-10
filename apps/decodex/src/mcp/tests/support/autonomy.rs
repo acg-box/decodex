@@ -170,7 +170,10 @@ pub(in crate::mcp::tests) fn seed_autonomy_mcp_state(state_store: &StateStore) -
 				objective_version: 1,
 				source_family: String::from("runtime_health"),
 				intended_surface: String::from("apps/decodex/src/mcp.rs"),
-				affected_identifiers: vec![String::from("XY-1090")],
+				affected_identifiers: vec![
+					String::from("XY-1090"),
+					String::from("bridge_proposal_fingerprint:fixture"),
+				],
 				summary: String::from("Expose autonomy MCP surface."),
 				challenge_requirements: vec![String::from("independent challenge")],
 				rejected_alternatives: Vec::new(),

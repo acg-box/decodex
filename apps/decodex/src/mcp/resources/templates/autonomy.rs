@@ -47,6 +47,12 @@ pub(in crate::mcp::resources) fn autonomy_resource_templates() -> Vec<Value> {
 			"application/json",
 		),
 		(
+			"decodex://projects/{project_id}/autonomy/proposals/affected/{namespace}/{value}",
+			"Autonomy proposal by affected identifier",
+			"Read-only exact proposal lookup by a namespaced affected identifier.",
+			"application/json",
+		),
+		(
 			"decodex://projects/{project_id}/autonomy/evidence",
 			"Autonomy evidence summaries",
 			"Read-only evidence summary counts and refs derived from recent signals and proposals.",

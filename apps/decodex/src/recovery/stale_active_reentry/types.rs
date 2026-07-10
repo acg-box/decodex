@@ -34,6 +34,7 @@ pub(in crate::recovery::stale_active_reentry) struct StaleActiveLocalCleanupReen
 	pub(in crate::recovery::stale_active_reentry) run: Option<&'a ProjectRunStatus>,
 	pub(in crate::recovery::stale_active_reentry) run_lease: bool,
 	pub(in crate::recovery::stale_active_reentry) active_shared_claim: bool,
+	pub(in crate::recovery::stale_active_reentry) queue_label_present: bool,
 	pub(in crate::recovery::stale_active_reentry) active_label_present: bool,
 	pub(in crate::recovery::stale_active_reentry) needs_attention_label_present: bool,
 	pub(in crate::recovery::stale_active_reentry) worktree_state: &'a str,
