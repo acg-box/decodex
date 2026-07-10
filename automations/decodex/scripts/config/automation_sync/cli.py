@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from automation_checkout import resolve_runtime_checkout
 from automation_sync.manifest import automation_specs
 from automation_sync.paths import (
     REPO_ROOT,
@@ -29,7 +30,11 @@ def parse_args() -> argparse.Namespace:
         help="Automation manifest path. Defaults to Decodex and Radar manifests.",
     )
     parser.add_argument("--codex-home", default=default_codex_home(), help="Codex home path.")
-    parser.add_argument("--repo-root", default=str(REPO_ROOT), help="Repo checkout path for live cwds.")
+    parser.add_argument(
+        "--repo-root",
+        default=None,
+        help="Primary main checkout path for live cwds. Defaults to the checkout owning main.",
+    )
     parser.add_argument("--automation-id", action="append", help="Install only this id. Repeatable.")
     parser.add_argument("--apply", action="store_true", help="Write live automation.toml files.")
     parser.add_argument("--json", action="store_true", help="Write machine-readable output.")
@@ -79,7 +84,10 @@ def sync_automations(
 
 def main() -> int:
     args = parse_args()
-    repo_root = Path(args.repo_root).expanduser().resolve()
+    try:
+        repo_root = resolve_runtime_checkout(REPO_ROOT, args.repo_root)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     codex_home = resolve_codex_home(args.codex_home, repo_root)
     specs = selected_automation_specs(args.manifest, args.automation_id)
     results = sync_automations(specs, codex_home, repo_root, args.apply)

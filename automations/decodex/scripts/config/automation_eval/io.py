@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from automation_checkout import primary_checkout_for_branch
 from automation_eval.constants import REPO_ROOT
 
 
@@ -24,7 +25,8 @@ def read_text(path: Path) -> str:
 
 
 def expected_cwd(value: str) -> str:
-    return value.replace("{repo_root}", str(REPO_ROOT))
+    runtime_root = primary_checkout_for_branch(REPO_ROOT)
+    return value.replace("{repo_root}", str(runtime_root))
 
 
 def active_automation_path(codex_home: Path, automation_id: str) -> Path:

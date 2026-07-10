@@ -23,7 +23,7 @@ forbidden_prompt_fragments = [
 	"~/.codex/decodex",
 ]
 kind = "cron"
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 reasoning_effort = "high"
 source_root = "automations/decodex"
 status = "ACTIVE"
@@ -77,3 +77,71 @@ required_paths = [
 	"openwiki/quickstart.md",
 ]
 rrule = "FREQ=DAILY;BYHOUR=4;BYMINUTE=40;BYSECOND=0"
+
+[[automations]]
+id = "decodex-automation-daily-effectiveness-review"
+name = "Decodex Daily Automation Effectiveness Review"
+prompt_file = "automations/decodex/prompts/automation-daily-effectiveness-review.md"
+required_cache_prefixes = [
+	".agent/automations/decodex/cache/manager",
+	".agent/automations/decodex/cache/social",
+	".agent/automations/radar/cache",
+]
+required_paths = [
+	"automations/decodex/automations.toml",
+	"automations/decodex/scripts/operations/automation_effectiveness_scorecard.schema.json",
+	"automations/decodex/scripts/operations/summarize_automation_effectiveness.py",
+	"automations/radar/automations.toml",
+	"openwiki/integrations/plugins-automations-and-auxiliary-tools.md",
+	"openwiki/integrations/radar-publisher-contracts.md",
+]
+rrule = "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0"
+
+[[automations]]
+id = "decodex-automation-manager"
+name = "Decodex Automation Manager"
+prompt_file = "automations/decodex/prompts/automation-manager.md"
+required_cache_prefixes = [
+	".agent/automations/decodex/cache/manager",
+	".agent/automations/decodex/cache/social",
+	".agent/automations/radar/cache",
+]
+required_paths = [
+	"apps/decodex-publisher/src/lib.rs",
+	"apps/radar/src/lib.rs",
+	"automations/decodex/automations.toml",
+	"automations/decodex/prompts/automation-daily-effectiveness-review.md",
+	"automations/decodex/prompts/automation-evaluator.md",
+	"automations/decodex/prompts/x-publisher.md",
+	"automations/decodex/scripts/config/evaluate_automations.py",
+	"automations/decodex/scripts/operations/automation_effectiveness_scorecard.schema.json",
+	"automations/decodex/scripts/operations/summarize_automation_effectiveness.py",
+	"automations/decodex/scripts/social/social_candidate.schema.json",
+	"automations/decodex/skills/references/social-release-publisher-gates.md",
+	"automations/decodex/skills/x-post-publisher/SKILL.md",
+	"automations/decodex/skills/x-post-quality-system/SKILL.md",
+	"automations/radar/automations.toml",
+	"openwiki/integrations/plugins-automations-and-auxiliary-tools.md",
+	"openwiki/integrations/radar-publisher-contracts.md",
+]
+rrule = "FREQ=DAILY;BYHOUR=9;BYMINUTE=10;BYSECOND=0"
+
+[[automations]]
+id = "decodex-automation-weekly-growth-review"
+name = "Decodex Weekly Growth Review"
+prompt_file = "automations/decodex/prompts/automation-weekly-growth-review.md"
+required_cache_prefixes = [
+	".agent/automations/decodex/cache/manager",
+	".agent/automations/decodex/cache/social",
+	".agent/automations/radar/cache",
+]
+required_paths = [
+	"automations/decodex/automations.toml",
+	"automations/decodex/prompts/automation-manager.md",
+	"automations/decodex/scripts/operations/automation_effectiveness_scorecard.schema.json",
+	"automations/decodex/scripts/operations/summarize_automation_effectiveness.py",
+	"automations/radar/automations.toml",
+	"openwiki/integrations/plugins-automations-and-auxiliary-tools.md",
+	"openwiki/integrations/radar-publisher-contracts.md",
+]
+rrule = "FREQ=WEEKLY;BYDAY=MO;BYHOUR=10;BYMINUTE=10;BYSECOND=0"
