@@ -36,35 +36,28 @@ pub(in crate::mcp) fn call_plan_tool(arguments: Value) -> Value {
 }
 
 fn plan_tool_result(params: &PlanToolArgs) -> Value {
-	let (prompt, resource_hint, next_action) = match params.intent.as_str() {
+	let (prompt, next_action) = match params.intent.as_str() {
 		"intake_goal" => (
 			"decodex_validation_ready",
-			"decodex://openwiki/operations/commands-and-validation",
 			"Use intake_goal dry_run first, then apply only with explicit accepted Decision Contract authority.",
 		),
-		"handoff" => (
-			"decodex_handoff",
-			"decodex://openwiki/workflows/runtime-operator-workflows",
-			"Run bounded review and repo validation before PR-backed handoff.",
-		),
+		"handoff" =>
+			("decodex_handoff", "Run bounded review and repo validation before PR-backed handoff."),
 		"lane_control" => (
 			"decodex_lane_control",
-			"decodex://openwiki/workflows/runtime-operator-workflows",
 			"Inspect first; then call guarded MCP lane-control with explicit authority and current run/turn preconditions.",
 		),
 		_ => (
 			"decodex_validation_ready",
-			"decodex://openwiki/operations/commands-and-validation",
-			"Implement locally, run targeted validation, record OpenWiki impact, and complete the phase goal.",
+			"Implement locally, run targeted validation, and complete the phase goal.",
 		),
 	};
 
 	serde_json::json!({
-		"schema": "decodex.mcp.plan_result/1",
+		"schema": "decodex.mcp.plan_result/2",
 		"status": "ok",
 		"intent": params.intent.as_str(),
 		"prompt": prompt,
-		"resource": resource_hint,
 		"next_action": next_action,
 		"issue": params.issue.as_deref(),
 		"contract_id": params.contract_id.as_deref()

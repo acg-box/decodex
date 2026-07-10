@@ -50,7 +50,6 @@ fn authority_boundary_surface_policy_matrix_classifies_risk() {
 		AuthorityBoundarySurface::ImplementationStrategy,
 		AuthorityBoundarySurface::Runtime,
 		AuthorityBoundarySurface::Tests,
-		AuthorityBoundarySurface::OpenWiki,
 	] {
 		assert_eq!(surface.policy_decision(), AuthorityBoundaryPolicyDecision::AutoContinue);
 	}

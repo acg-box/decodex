@@ -128,8 +128,8 @@ fn prompts_handle_machine_only_and_text_fenced_tracker_descriptions() {
 #[test]
 fn developer_instructions_match_trimmed_prompt_shape() {
 	let read_first_files = [
-		("openwiki/quickstart.md", "Use the documentation index.\n"),
-		("openwiki/workflows/runtime-operator-workflows.md", "Use the runbook index.\n"),
+		("CONTRIBUTING.md", "Use the contribution guide.\n"),
+		("Makefile.toml", "Use the runbook index.\n"),
 	];
 	let (_temp_dir, config, workflow) = tests::temp_project_layout_with_read_first(
 		&read_first_files,

@@ -1,6 +1,12 @@
-use crate::orchestrator::harness_improvement::{
-	HarnessImprovementCandidateSummary, HarnessOutcomeKind, HarnessOutcomeSignals,
-	HarnessPhaseGoalOutcome, PrivateExecutionEvent, Value, candidates,
+use crate::{
+	orchestrator::{
+		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+		harness_improvement::{
+			HarnessImprovementCandidateSummary, HarnessOutcomeKind, HarnessOutcomeSignals,
+			HarnessPhaseGoalOutcome, PrivateExecutionEvent, Value, candidates,
+		},
+	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 };
 
 pub(in crate::orchestrator::harness_improvement) fn harness_outcome_signals(
@@ -24,12 +30,25 @@ pub(in crate::orchestrator::harness_improvement) fn harness_outcome_signals(
 				push_phase_goal_signal(&mut signals, event),
 			"review_checkpoint" => push_review_signal(&mut signals, event.payload()),
 			"loop_guardrail_checkpoint" => push_guardrail_signal(&mut signals, event.payload()),
-			"authority_boundary_check" =>
+			event_type
+				if event_type == AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE
+					&& event.matches_contract(
+						AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+						AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+						2,
+					) =>
 				push_authority_boundary_signal(&mut signals, event.payload()),
 			"architecture_recovery_terminal" => {
 				push_architecture_recovery_signal(&mut signals, event.payload());
 			},
-			"progress_checkpoint" => push_progress_signal(&mut signals, event.payload()),
+			event_type
+				if event_type == PROGRESS_CHECKPOINT_EVENT_TYPE
+					&& event.matches_contract(
+						PROGRESS_CHECKPOINT_EVENT_TYPE,
+						PROGRESS_CHECKPOINT_SCHEMA,
+						2,
+					) =>
+				push_progress_signal(&mut signals, event.payload()),
 			_ => {},
 		}
 	}

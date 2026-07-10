@@ -43,10 +43,6 @@ impl AutonomySignal {
 		Self::from_input(AutonomySignalKind::ExecutionFriction, input)
 	}
 
-	pub(crate) fn openwiki_drift(input: AutonomySignalInput) -> Result<Self> {
-		Self::from_input(AutonomySignalKind::OpenWikiDrift, input)
-	}
-
 	fn from_input(kind: AutonomySignalKind, input: AutonomySignalInput) -> Result<Self> {
 		let mut signal = Self {
 			schema: model::autonomy_signal_schema(),

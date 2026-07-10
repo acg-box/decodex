@@ -29,7 +29,6 @@ fn preserves_private_events_without_duplicate_projection() {
 	);
 	let arguments = serde_json::json!({
 		"phase": "implementing",
-				"openwiki_impact": "none",
 		"focus": "Keep duplicate checkpoint writes idempotent.",
 		"next_action": "Retry the same tracker write.",
 		"blockers": [],
@@ -76,7 +75,6 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
-				"openwiki_impact": "none",
 			"focus": "First private implementation focus.",
 			"next_action": "Continue implementation.",
 			"blockers": [],
@@ -89,7 +87,6 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
-				"openwiki_impact": "none",
 			"focus": "Changed private implementation focus.",
 			"next_action": "Changed private next action.",
 			"blockers": [],
@@ -102,7 +99,6 @@ fn progress_checkpoint_public_projection_changes_only_on_material_signal() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "verifying",
-				"openwiki_impact": "none",
 			"focus": "Verify the implementation.",
 			"next_action": "Run tests.",
 			"blockers": [],
@@ -148,7 +144,6 @@ fn progress_checkpoint_stores_private_text_but_redacts_public_projection() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "implementing",
-				"openwiki_impact": "none",
 			"focus": "Inspected /Users/example/code/private checkout.",
 			"next_action": "Continue implementation.",
 			"blockers": [],

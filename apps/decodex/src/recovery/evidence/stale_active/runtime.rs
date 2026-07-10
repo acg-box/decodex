@@ -1,6 +1,9 @@
 use serde_json::Value;
 
-use crate::{recovery::evidence::json, state::PrivateExecutionEvent};
+use crate::{
+	recovery::evidence::json,
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, PrivateExecutionEvent},
+};
 
 pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is_stale_runtime_marker(
 	event: &PrivateExecutionEvent,
@@ -11,7 +14,7 @@ pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is
 pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is_probing_checkpoint(
 	event: &PrivateExecutionEvent,
 ) -> bool {
-	if event.event_type() != "progress_checkpoint" {
+	if !event.matches_contract(PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, 2) {
 		return false;
 	}
 

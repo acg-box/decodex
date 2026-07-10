@@ -3,8 +3,8 @@ use std::{fs, path::Path};
 use crate::{
 	recovery::tests,
 	state::{
-		self, ChildAgentActivitySummary, ProtocolActivityMarker, ProtocolActivitySummary,
-		StateStore,
+		self, ChildAgentActivitySummary, PROGRESS_CHECKPOINT_EVENT_TYPE,
+		PROGRESS_CHECKPOINT_SCHEMA, ProtocolActivityMarker, ProtocolActivitySummary, StateStore,
 	},
 	tracker::TrackerIssue,
 };
@@ -236,8 +236,10 @@ fn append_dead_orphan_private_telemetry_events(
 			}),
 		),
 		(
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"phase": "probing",
 				"pr_url": null,
 				"verification": [],

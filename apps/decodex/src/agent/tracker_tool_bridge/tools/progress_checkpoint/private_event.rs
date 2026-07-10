@@ -2,7 +2,7 @@ use crate::{
 	agent::tracker_tool_bridge::{
 		NormalizedProgressCheckpoint, ReviewHandoffContext, TrackerToolBridge,
 	},
-	state::StateStore,
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, StateStore},
 };
 
 impl<'a> TrackerToolBridge<'a> {
@@ -30,8 +30,9 @@ impl<'a> TrackerToolBridge<'a> {
 	) -> Result<(), String> {
 		let branch = checkpoint.public_branch(review_context);
 		let private_payload = serde_json::json!({
+			"schema": PROGRESS_CHECKPOINT_SCHEMA,
+			"record_version": 2,
 				"phase": checkpoint.phase.as_str(),
-				"openwiki_impact": checkpoint.openwiki_impact.as_str(),
 				"focus": checkpoint.focus.as_str(),
 			"next_action": checkpoint.next_action.as_str(),
 			"blockers": &checkpoint.blockers,
@@ -49,7 +50,7 @@ impl<'a> TrackerToolBridge<'a> {
 				&self.issue.id,
 				&review_context.run_id,
 				review_context.attempt_number,
-				"progress_checkpoint",
+				PROGRESS_CHECKPOINT_EVENT_TYPE,
 				private_payload,
 			)
 			.map(|_| ())

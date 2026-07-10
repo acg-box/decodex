@@ -354,7 +354,7 @@ impl LoopScenarioHarness {
 	.expect("authority boundary event should persist");
 
 		assert_eq!(event.event_type(), "authority_boundary_check");
-		assert_eq!(event.payload()["schema"], "decodex.authority_boundary_check/1");
+		assert_eq!(event.payload()["schema"], "decodex.authority_boundary_check/2");
 		assert_eq!(event.payload()["disposition"], "requires_human");
 		assert_eq!(event.payload()["issue"]["identifier"], self.issue_identifier);
 		assert_eq!(event.payload()["run"]["run_id"], self.run_id);

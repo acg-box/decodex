@@ -291,6 +291,24 @@ class DecodexLifecycleHookTests(unittest.TestCase):
                 for hook in entry["hooks"]:
                     self.assertIn(expected_path, hook["command"])
 
+    def test_packaged_text_routes_only_decodex_skills(self) -> None:
+        surfaces = []
+        for root in (PLUGIN_ROOT / "references", PLUGIN_ROOT / "skills"):
+            for path in root.rglob("*"):
+                if path.is_file() and path.suffix in {".md", ".yaml", ".yml"}:
+                    surfaces.append(path.read_text(encoding="utf-8"))
+        manifest = json.loads(
+            (PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        combined = "\n".join(surfaces)
+        skill_owners = set(re.findall(r"\$([a-z][a-z0-9-]*):", combined))
+        plugin_owners = set(re.findall(r"plugin://([a-z][a-z0-9-]*)@", combined))
+
+        self.assertNotIn("dependencies", manifest)
+        self.assertNotRegex(combined.lower(), r"\bplugins?\b")
+        self.assertEqual(set(), skill_owners)
+        self.assertEqual(set(), plugin_owners)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -96,15 +96,7 @@ fn proposal_issue_candidate(proposal: &AutonomyProposal) -> Value {
 }
 
 fn proposal_issue_stage(intended_surface: &str) -> &'static str {
-	if intended_surface.starts_with("openwiki/specs/") {
-		"spec"
-	} else if intended_surface.starts_with("openwiki/") {
-		"design"
-	} else if intended_surface.starts_with("apps/decodex/src/") {
-		"runtime"
-	} else {
-		"design"
-	}
+	if intended_surface.starts_with("apps/decodex/src/") { "runtime" } else { "design" }
 }
 
 fn looks_like_tracker_issue_identifier(value: &str) -> bool {

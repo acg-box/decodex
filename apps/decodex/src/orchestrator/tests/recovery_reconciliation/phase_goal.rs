@@ -9,7 +9,7 @@ use crate::{
 		self, CONTINUATION_PENDING_RUN_STATUS, RunLeaseDisposition, VALIDATION_EVIDENCE_EVENT_TYPE,
 		tests::{self, FakeTracker, TEST_SERVICE_ID},
 	},
-	state::{self, StateStore},
+	state::{self, PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, StateStore},
 	worktree::WorktreeManager,
 };
 
@@ -57,10 +57,11 @@ fn record_active_validation_ready_phase_goal_progress(
 			issue_id,
 			run_id,
 			1,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"phase": progress_phase,
-				"openwiki_impact": "none",
 				"blockers": blockers,
 				"verification": ["cargo make check"],
 				"head_sha": head_sha,

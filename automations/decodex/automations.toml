@@ -47,7 +47,6 @@ required_paths = [
 	"automations/decodex/skills/references/social-release-publisher-gates.md",
 	"automations/decodex/skills/x-post-publisher/SKILL.md",
 	"automations/decodex/skills/x-post-quality-system/SKILL.md",
-	"openwiki/integrations/plugins-automations-and-auxiliary-tools.md",
 ]
 rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=50;BYSECOND=0"
 
@@ -75,7 +74,6 @@ required_paths = [
 	"automations/decodex/scripts/config/sync_automations.py",
 	"automations/decodex/scripts/operations/summarize_automation_effectiveness.py",
 	"automations/radar/automations.toml",
-	"openwiki/quickstart.md",
 ]
 rrule = "FREQ=DAILY;BYHOUR=4;BYMINUTE=40;BYSECOND=0"
 

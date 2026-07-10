@@ -68,7 +68,6 @@ pub(crate) struct ReviewCheckpointChecksArgs {
 	pub(crate) intended_behavior: String,
 	pub(crate) regression_risk: String,
 	pub(crate) missing_tests: String,
-	pub(crate) openwiki_config_drift: String,
 	pub(crate) migration_fallout: String,
 	pub(crate) operator_facing_fallout: String,
 	pub(crate) loop_decision_contract: String,

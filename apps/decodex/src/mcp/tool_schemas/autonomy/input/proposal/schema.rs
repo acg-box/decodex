@@ -21,7 +21,7 @@ pub(in crate::mcp::tool_schemas::autonomy::input::proposal) fn autonomy_compile_
 			},
 			"intendedSurface": {
 				"type": "string",
-				"description": "Repo, OpenWiki, runtime, or workflow surface the proposal may affect."
+				"description": "Repository, runtime, or workflow surface the proposal may affect."
 			},
 			"affectedIdentifiers": {
 				"type": "array",

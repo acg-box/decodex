@@ -4,7 +4,7 @@ This page covers repository areas that support the runtime but are not the core 
 
 ## Installable Decodex plugin
 
-The installable plugin lives under `plugins/decodex/`. Its manifest describes a narrow scope: Decodex runtime and operator workflows for planning, ops, commit, and landing (`plugins/decodex/.codex-plugin/plugin.json`). It explicitly says generic repository work, OpenWiki-backed knowledge, and research/skeptic review belong to external installed plugins, not this Decodex plugin.
+The installable plugin lives under `plugins/decodex/`. Its manifest describes a narrow scope: Decodex runtime and operator workflows for planning, ops, commit, and landing (`plugins/decodex/.codex-plugin/plugin.json`). It contains only Decodex-owned guidance and does not route, bundle, or manage companion plugins.
 
 Core files:
 
@@ -14,7 +14,7 @@ Core files:
 - `plugins/decodex/hooks/hooks.json`: PreToolUse hook registration.
 - `plugins/decodex/scripts/decodex_lifecycle_hook`: Python guardrail for raw Git/GitHub commands in Decodex scope.
 
-The plugin is not runtime authority. Runtime policy still lives in source, project contracts, runtime DB records, and OpenWiki/spec content.
+The plugin is not runtime authority. Runtime policy lives in source, project contracts, and runtime DB records; this page only explains those boundaries.
 
 ## Lifecycle hook guardrails
 
