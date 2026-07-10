@@ -42,8 +42,9 @@ Daily loop:
 6. If no candidate is worth publishing, persist a quality skip with considered sources and rejection reasons. No-op without evidence is failure.
 7. When recent published post ids exist and outcome data can change the next action, use one budgeted X MCP batch read. Record impressions and interactions without treating the manager's own thread replies as organic engagement.
 8. Compare outcome against the active experiment. Apply only candidate adjustments already authorized by the active experiment, preserve historical measurements, and record an evidence-backed continue/modify/stop recommendation for Weekly. Do not mutate experiment status, selection, stop conditions, or authority.
-9. Inspect protocol/control-plane candidates. Operational prompt/live-config fixes may be applied only through canonical validated source. Code/schema/runtime changes become structured Decodex handoffs with evidence, acceptance tests, rollback, and authority requirement.
-10. Persist a machine-readable action record and a concise report under `.agent/automations/decodex/cache/manager/reports/<yyyy-mm-dd>/`.
+9. Reconcile every `decodex_automation_handoff/v1`. Mark it resolved only with concrete acceptance evidence. Mark it superseded only when a landed canonical cutover replaces its historical measurement contract and a deterministic current gate now owns recurrence detection. Preserve the original problem and add resolution time, evidence, and replacement gate. Never close `decodex_implementation_handoff/v1` without its required authority.
+10. Inspect protocol/control-plane candidates. Operational prompt/live-config fixes may be applied only through canonical validated source. Code/schema/runtime changes become structured Decodex handoffs with evidence, acceptance tests, rollback, and authority requirement.
+11. Persist a machine-readable action record and a concise report under `.agent/automations/decodex/cache/manager/reports/<yyyy-mm-dd>/`.
 
 Daily success conditions:
 - Every managed automation is active on primary `main`; none is worktree-bound.
