@@ -1,9 +1,20 @@
 use serde_json::Value;
 
 use crate::{
+	orchestrator::{PROGRAM_DISPATCH_SELECTED_EVENT_TYPE, PROGRAM_DISPATCH_SELECTED_SCHEMA},
 	recovery::evidence::json,
 	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, PrivateExecutionEvent},
 };
+
+pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is_dispatch_selection(
+	event: &PrivateExecutionEvent,
+) -> bool {
+	event.matches_contract(
+		PROGRAM_DISPATCH_SELECTED_EVENT_TYPE,
+		PROGRAM_DISPATCH_SELECTED_SCHEMA,
+		1,
+	)
+}
 
 pub(in crate::recovery::evidence::stale_active) fn stale_active_private_event_is_stale_runtime_marker(
 	event: &PrivateExecutionEvent,

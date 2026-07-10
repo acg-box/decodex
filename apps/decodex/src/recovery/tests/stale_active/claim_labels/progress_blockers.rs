@@ -3,6 +3,7 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::{
+	orchestrator::{PROGRAM_DISPATCH_SELECTED_EVENT_TYPE, PROGRAM_DISPATCH_SELECTED_SCHEMA},
 	recovery::{
 		self, RecoveryRuntimeMutationPolicy,
 		tests::{self, GhostLaneTestTracker},
@@ -10,6 +11,108 @@ use crate::{
 	state::{self, StateStore},
 	tracker,
 };
+
+#[test]
+fn stale_active_diagnose_allows_selection_only_private_evidence() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let store = StateStore::open_in_memory().expect("state store should open");
+	let workflow = tests::sample_workflow();
+	let active_label = tracker::automation_active_label("pubfi");
+	let worktree_path = temp_dir.path().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("Todo", &[active_label]);
+
+	issue.identifier = String::from("PUB-1626");
+
+	tests::init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
+
+	store
+		.record_run_attempt("run-1626", &issue.id, 1, "interrupted")
+		.expect("run attempt should record");
+	store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-1626",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+	store
+		.append_private_execution_event(
+			"pubfi",
+			&issue.id,
+			"run-1626",
+			1,
+			PROGRAM_DISPATCH_SELECTED_EVENT_TYPE,
+			serde_json::json!({
+				"schema": PROGRAM_DISPATCH_SELECTED_SCHEMA,
+				"record_version": 1,
+				"execution_program": {"program_id": "program-1", "node_id": "node-1"}
+			}),
+		)
+		.expect("selection evidence should record");
+
+	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+	let diagnostics = recovery::diagnose_stale_active_issues(
+		"pubfi",
+		&workflow,
+		temp_dir.path(),
+		&store,
+		&tracker,
+		Some("PUB-1626"),
+		RecoveryRuntimeMutationPolicy::ReadOnly,
+	)
+	.expect("stale active diagnosis should run");
+	let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+	assert!(
+		diagnostic.recoverable(),
+		"unexpected blockers: {:?}; evidence: {:?}",
+		diagnostic.blockers,
+		diagnostic.evidence
+	);
+	assert!(!diagnostic.blockers.contains(&String::from("private_progress_evidence_present")));
+}
+
+#[test]
+fn stale_active_diagnose_allows_clean_retained_cleanup_when_active_label_is_already_absent() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let store = StateStore::open_in_memory().expect("state store should open");
+	let workflow = tests::sample_workflow();
+	let worktree_path = temp_dir.path().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("Todo", &[]);
+
+	issue.identifier = String::from("PUB-1626");
+
+	tests::init_clean_git_repo_with_remote_default(&worktree_path, "x/pubfi-pub-1626");
+
+	store
+		.record_run_attempt("run-1626", &issue.id, 1, "interrupted")
+		.expect("run attempt should record");
+	store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-1626",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
+	let diagnostics = recovery::diagnose_stale_active_issues(
+		"pubfi",
+		&workflow,
+		temp_dir.path(),
+		&store,
+		&tracker,
+		Some("PUB-1626"),
+		RecoveryRuntimeMutationPolicy::ReadOnly,
+	)
+	.expect("stale active diagnosis should run");
+	let diagnostic = diagnostics.first().expect("diagnostic should exist");
+
+	assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+	assert!(diagnostic.evidence.contains(&String::from("active_label_already_absent_cleanup")));
+}
 
 #[test]
 fn stale_active_diagnose_blocks_identifier_keyed_private_progress() {
