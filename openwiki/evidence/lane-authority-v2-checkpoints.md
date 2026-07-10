@@ -786,6 +786,28 @@ readbacks, resolves live main through the explicit GitHub API repository path, a
 repository URL, which the helper must validate rather than infer. Another fresh exact-head
 review remains required.
 
+### Twenty-first skeptic review
+
+Verdict: PR #1084 requested changes with two medium findings.
+
+All prior C7 repository-authority repairs passed. The reviewer found that the C0 regex
+inventories still overmatched bare `Decodex`, `Lane`, lowercase `.update(...)`, and YAML
+`pull_request:` text, while one gate label called the result a supported-launcher inventory.
+That could make later work treat broad discovery hits as already classified authority.
+
+The inventory contract now separates closed-world source coverage from candidate
+classification. Every launcher/legacy/mutation source hit is explicitly
+`unclassified_pending_c1i`; C1I remains the first point where AST/syntax/call-graph evidence
+may classify it. Regexes were tightened and durable precision/recall controls cover the
+four false-positive examples plus structural process, SQL, LaneId, and provider-readback
+positives. The exact source set remains 3,363 files; launcher candidates are now 127,
+legacy candidates 2,712, and mutation candidates 2,675. Current artifact SHA-256 values
+are launcher `f7d104ba81a793073654082abb6fbda5695ad916b2c5082dd00a67c15d9ad8c9`,
+legacy `7443fb30ccbeefe9240d36074de7ec51a29c9b4cd3a378933628762012434917`,
+mutation `d0cbd97dfe32376d8a1d41a905a7b85bb5b4eee5c77b1cd2c13a219902fdfee8`,
+and scenario `c87acaa1373c4a4bc45833e116c9d78208be932d8690fb78108c83d5ffabb914`.
+Another fresh exact-head review remains required.
+
 ### C0 exit criteria
 
 - XY-1251, ADR, target contract, scenario matrix, and checkpoint ledger exist.
@@ -796,7 +818,7 @@ review remains required.
 - Project/issue identity, current authority disposition, migration quarantine,
   rollback point of no return, effect fencing/reconciliation, supersession acceptance,
   telemetry attribution, and projection privacy are frozen in the contract.
-- A fresh final skeptic review reports no unresolved blocker or high-severity authority
+- A fresh final skeptic review reports no unresolved blocker, high, or medium correctness
   objection.
 - The exact C0 branch is committed and pushed through Decodex-owned paths and linked to
   XY-1251 before C1 begins.
