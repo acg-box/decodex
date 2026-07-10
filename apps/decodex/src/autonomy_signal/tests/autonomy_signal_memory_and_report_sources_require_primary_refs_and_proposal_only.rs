@@ -10,12 +10,12 @@ fn autonomy_signal_memory_and_report_sources_require_primary_refs_and_proposal_o
 		input.primary_source_refs = Vec::new();
 		input.proposal_only = false;
 
-		assert!(AutonomySignal::openwiki_drift(input.clone()).is_err());
+		assert!(AutonomySignal::protocol_drift(input.clone()).is_err());
 
-		input.primary_source_refs = vec![String::from("openwiki/specs/contracts-and-data.md")];
+		input.primary_source_refs = vec![String::from("apps/decodex/src/autonomy_signal.rs")];
 		input.proposal_only = true;
 
-		AutonomySignal::openwiki_drift(input)
+		AutonomySignal::protocol_drift(input)
 			.expect("memory/report signals with primary refs remain proposal-only");
 	}
 }

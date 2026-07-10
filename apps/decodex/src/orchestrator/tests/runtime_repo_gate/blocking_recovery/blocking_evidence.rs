@@ -3,8 +3,60 @@ use crate::{
 		self, StateStore,
 		tests::{self, TEST_SERVICE_ID},
 	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 	tracker,
 };
+
+#[test]
+fn blocking_lane_decision_evidence_ignores_incomplete_or_mismatched_checkpoint_contract() {
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
+	let issue = tests::sample_issue(
+		"In Progress",
+		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
+	);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"run-unversioned-checkpoint",
+			1,
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
+			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"blockers": ["old payload must not retain runtime authority"],
+			}),
+		)
+		.expect("unversioned checkpoint fixture should record");
+
+	assert!(
+		!orchestrator::issue_has_blocking_lane_decision_evidence(&config, &state_store, &issue.id,)
+			.expect("blocking evidence should evaluate"),
+		"checkpoint payloads without record_version must not satisfy the current contract"
+	);
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"run-mismatched-checkpoint",
+			1,
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
+			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 1,
+				"blockers": ["mismatched version must not retain runtime authority"],
+			}),
+		)
+		.expect("mismatched checkpoint fixture should record");
+
+	assert!(
+		!orchestrator::issue_has_blocking_lane_decision_evidence(&config, &state_store, &issue.id,)
+			.expect("blocking evidence should evaluate"),
+		"checkpoint payloads with mismatched record_version must not satisfy the current contract"
+	);
+}
 
 #[test]
 fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
@@ -22,10 +74,11 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			&issue.id,
 			run_id,
 			1,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"blockers": ["repo-wide baseline requires separate authority"],
-				"openwiki_impact": "none",
 			}),
 		)
 		.expect("blocking checkpoint should record");
@@ -41,9 +94,10 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			&issue.id,
 			run_id,
 			1,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
-				"openwiki_impact": "none",
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 			}),
 		)
 		.expect("ordinary checkpoint should record");
@@ -60,10 +114,11 @@ fn blocking_lane_decision_evidence_clears_after_new_unblocked_checkpoint() {
 			&issue.id,
 			run_id,
 			1,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"blockers": [],
-				"openwiki_impact": "none",
 			}),
 		)
 		.expect("clearing checkpoint should record");

@@ -40,28 +40,7 @@ fn logging_set_level_is_stdio_compatible() {
 }
 
 #[test]
-fn resources_list_includes_openwiki_pages() {
-	let repo = support::test_repo();
-	let responses = support::run_stdio(
-		repo.path(),
-		r#"{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}"#,
-	);
-	let resources = support::response_at(&responses, 0)["result"]["resources"]
-		.as_array()
-		.expect("resources array");
-	let uris = resources
-		.iter()
-		.filter_map(|resource| resource.get("uri").and_then(Value::as_str))
-		.collect::<Vec<_>>();
-
-	assert!(uris.contains(&"decodex://openwiki/quickstart"));
-	assert!(uris.contains(&"decodex://openwiki/specs/contracts-and-data"));
-	assert!(uris.contains(&"decodex://openwiki/workflows/runtime-operator-workflows"));
-}
-
-#[test]
 fn resources_list_includes_runtime_decision_contracts() {
-	let repo = support::test_repo();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -74,7 +53,6 @@ fn resources_list_includes_runtime_decision_contracts() {
 
 	let responses = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(state_store),
@@ -89,12 +67,22 @@ fn resources_list_includes_runtime_decision_contracts() {
 		.filter_map(|resource| resource.get("uri").and_then(Value::as_str))
 		.collect::<Vec<_>>();
 
-	assert!(uris.contains(&"decodex://decision-contracts/decision-x-loop-contract"));
+	assert_eq!(
+		uris,
+		[
+			"decodex://decision-contracts/decision-x-loop-contract",
+			"decodex://projects/decodex/status",
+			"decodex://projects/decodex/status_live",
+			"decodex://projects/decodex/activity_tail",
+			"decodex://projects/decodex/lane-control",
+			"decodex://projects/decodex/pr_review_state",
+			"decodex://projects/decodex/autonomy",
+		]
+	);
 }
 
 #[test]
 fn resources_read_returns_runtime_decision_contract() {
-	let repo = support::test_repo();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -107,7 +95,6 @@ fn resources_read_returns_runtime_decision_contract() {
 
 	let responses = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(state_store),
@@ -125,21 +112,6 @@ fn resources_read_returns_runtime_decision_contract() {
 	assert!(content["decision_contract"]["evidence_boundary"]["private_evidence_refs"].is_null());
 	assert!(content["decision_contract"]["links"]["execution_program_node_ids"].is_null());
 	assert!(!text.contains("decision-x-run"));
-}
-
-#[test]
-fn resources_read_returns_checked_in_openwiki_text() {
-	let repo = support::test_repo();
-	let responses = support::run_stdio(
-		repo.path(),
-		r#"{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"decodex://openwiki/specs/contracts-and-data"}}"#,
-	);
-	let contents = support::response_at(&responses, 0)["result"]["contents"]
-		.as_array()
-		.expect("contents array");
-	let text = contents[0]["text"].as_str().expect("text content");
-
-	assert_eq!(text, "# Contracts\n\nSpec body.\n");
 }
 
 #[test]

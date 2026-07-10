@@ -22,16 +22,11 @@ pub(in crate::mcp::tests) fn run_stdio_with_context(
 }
 
 pub(in crate::mcp::tests) fn run_stdio_with_profile(
-	repo_root: &Path,
+	_repo_root: &Path,
 	capability_profile: McpCapabilityProfile,
 	input: &str,
 ) -> Vec<Value> {
-	let context = McpContext {
-		repo_root: repo_root.to_path_buf(),
-		config_path: None,
-		project_id: None,
-		state_store: None,
-	};
+	let context = McpContext { config_path: None, project_id: None, state_store: None };
 
 	run_stdio_raw_with_profile(context, capability_profile, input)
 		.lines()
@@ -40,24 +35,18 @@ pub(in crate::mcp::tests) fn run_stdio_with_profile(
 }
 
 pub(in crate::mcp::tests) fn project_mcp_context(
-	repo_root: &Path,
+	_repo_root: &Path,
 	config_path: &Path,
 ) -> McpContext {
 	McpContext {
-		repo_root: repo_root.to_path_buf(),
 		config_path: Some(config_path.to_path_buf()),
 		project_id: Some(String::from("pubfi")),
 		state_store: None,
 	}
 }
 
-pub(in crate::mcp::tests) fn run_stdio_raw(repo_root: &Path, input: &str) -> String {
-	let context = McpContext {
-		repo_root: repo_root.to_path_buf(),
-		config_path: None,
-		project_id: None,
-		state_store: None,
-	};
+pub(in crate::mcp::tests) fn run_stdio_raw(_repo_root: &Path, input: &str) -> String {
+	let context = McpContext { config_path: None, project_id: None, state_store: None };
 
 	run_stdio_raw_with_context(context, input)
 }

@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::orchestrator::{
-	PrivateExecutionEvent,
+	PrivateExecutionEvent, VALIDATION_EVIDENCE_SCHEMA,
 	agent_evidence::{PrivateEvidenceValidationSummary, VALIDATION_EVIDENCE_EVENT_TYPE},
 };
 
@@ -10,7 +10,9 @@ pub(super) fn validation_evidence_from_private_events(
 ) -> Vec<PrivateEvidenceValidationSummary> {
 	events
 		.iter()
-		.filter(|event| event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE)
+		.filter(|event| {
+			event.matches_contract(VALIDATION_EVIDENCE_EVENT_TYPE, VALIDATION_EVIDENCE_SCHEMA, 2)
+		})
 		.filter_map(validation_evidence_from_private_event)
 		.collect()
 }

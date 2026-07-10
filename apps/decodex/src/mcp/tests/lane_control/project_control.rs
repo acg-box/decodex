@@ -46,10 +46,8 @@ fn tools_call_project_control_pauses_future_dispatch_only() {
 
 #[test]
 fn tools_call_project_control_scan_refuses_without_operator_loop() {
-	let repo = support::test_repo();
 	let responses = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("pubfi")),
 			state_store: None,

@@ -53,10 +53,6 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		};
 
-		if let Err(error) = self.ensure_openwiki_impact_checkpoint(review_context, actual_path) {
-			return DynamicToolCallResponse::failure(error);
-		}
-
 		if actual_path == RunCompletionDisposition::ReviewHandoff
 			&& let Err(error) = self.persist_terminal_review_lifecycle_handoff(review_context)
 		{

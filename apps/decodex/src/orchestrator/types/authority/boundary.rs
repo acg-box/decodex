@@ -27,7 +27,6 @@ pub(crate) enum AuthorityBoundarySurface {
 	ImplementationStrategy,
 	Runtime,
 	Tests,
-	OpenWiki,
 	PublicApi,
 	Config,
 	Security,
@@ -48,7 +47,6 @@ impl AuthorityBoundarySurface {
 			Self::ImplementationStrategy => "implementation_strategy",
 			Self::Runtime => "runtime",
 			Self::Tests => "tests",
-			Self::OpenWiki => "openwiki",
 			Self::PublicApi => "public_api",
 			Self::Config => "config",
 			Self::Security => "security",
@@ -67,7 +65,7 @@ impl AuthorityBoundarySurface {
 
 	pub(crate) fn policy_decision(self) -> AuthorityBoundaryPolicyDecision {
 		match self {
-			Self::ImplementationStrategy | Self::Runtime | Self::Tests | Self::OpenWiki =>
+			Self::ImplementationStrategy | Self::Runtime | Self::Tests =>
 				AuthorityBoundaryPolicyDecision::AutoContinue,
 			Self::PublicApi
 			| Self::Config

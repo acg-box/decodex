@@ -254,9 +254,8 @@ pub(crate) use self::{
 #[allow(unused_imports)]
 pub(crate) use self::{
 	prompting::{
-		OPENWIKI_IMPACT_CONTRACT, build_continuation_user_input, build_developer_instructions,
-		build_review_run_context, build_user_input, review_pull_request_title,
-		validate_workflow_read_first_files,
+		build_continuation_user_input, build_developer_instructions, build_review_run_context,
+		build_user_input, review_pull_request_title, validate_workflow_read_first_files,
 	},
 	selection::{
 		RetryComment, build_run_id, compare_issue_candidates, current_timestamp,
@@ -322,15 +321,16 @@ pub(crate) use execution::{
 pub(crate) use types::{
 	ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE, ARCHITECTURE_RECOVERY_PACKET_SCHEMA,
 	ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE, ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE,
-	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-	ActiveWorkflowOverride, AgentGitCredentialsUnavailable, AuthorityBoundaryChangedSurface,
-	AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition, AuthorityBoundaryImprovementSignal,
-	AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface, AuthorityDecisionOption,
-	AuthorityDecisionRequestInput, CachedWorkflowDocument, ChildExitRetryContext, ChildRunRef,
-	CurrentChildRunContext, DaemonRunChild, DaemonTickContext, DiagnoseRequest, EvidenceRequest,
-	GhPullRequestReviewStateInspector, IssueDispatchMode, IssueRunPlan, IssueTurnContinuationGuard,
-	LaneSteerReport, LaneSteerRequest, LoopGuardrailReason, LoopGuardrailStopRequested,
-	ManualAttentionRequested, MaterializedDaemonSpawnState, OperatorArchitectureRecoveryStatus,
+	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+	AUTHORITY_DECISION_REQUEST_EVENT_TYPE, ActiveWorkflowOverride, AgentGitCredentialsUnavailable,
+	AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition,
+	AuthorityBoundaryImprovementSignal, AuthorityBoundaryPolicyDecision, AuthorityBoundarySurface,
+	AuthorityDecisionOption, AuthorityDecisionRequestInput, CachedWorkflowDocument,
+	ChildExitRetryContext, ChildRunRef, CurrentChildRunContext, DaemonRunChild, DaemonTickContext,
+	DiagnoseRequest, EvidenceRequest, GhPullRequestReviewStateInspector, IssueDispatchMode,
+	IssueRunPlan, IssueTurnContinuationGuard, LaneSteerReport, LaneSteerRequest,
+	LoopGuardrailReason, LoopGuardrailStopRequested, ManualAttentionRequested,
+	MaterializedDaemonSpawnState, OperatorArchitectureRecoveryStatus,
 	OperatorAuthorityDecisionRequestStatus, OperatorAutonomyDecisionContractStatus,
 	OperatorAutonomyExecutionEvidenceStatus, OperatorAutonomyLineageStatus,
 	OperatorAutonomyObjectiveStatus, OperatorAutonomyProgramIntakeStatus,
@@ -368,8 +368,9 @@ pub(crate) use types::{
 	RunCycleRequest, RunLeaseDisposition, RunLeaseReconciliation, RunOnceRequest, RunSummary,
 	SelectedIssueRunCandidate, ServeRequest, SpawnRunOnceChildRequest, StalledRunNeedsAttention,
 	TargetIssueRunContext, TerminalFailureOutcome, TrackerConnectorBackoff,
-	VALIDATION_EVIDENCE_EVENT_TYPE, classify_pull_request_readback_report,
-	record_authority_boundary_check_private_event, record_authority_decision_request_private_event,
+	VALIDATION_EVIDENCE_EVENT_TYPE, VALIDATION_EVIDENCE_SCHEMA,
+	classify_pull_request_readback_report, record_authority_boundary_check_private_event,
+	record_authority_decision_request_private_event,
 };
 
 use std::{

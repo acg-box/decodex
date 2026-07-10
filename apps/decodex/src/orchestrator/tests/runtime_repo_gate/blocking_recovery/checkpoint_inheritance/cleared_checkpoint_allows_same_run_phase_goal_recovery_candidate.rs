@@ -3,6 +3,7 @@ use crate::{
 		PhaseGoalKind, StateStore, execution_phase_goal, tests,
 		tests::{TEST_SERVICE_ID, runtime_repo_gate::support},
 	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 	tracker,
 };
 
@@ -35,8 +36,10 @@ fn cleared_checkpoint_allows_same_run_phase_goal_recovery_candidate() {
 			&issue.id,
 			&issue_run.run_id,
 			issue_run.attempt_number,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"blockers": ["repo-wide baseline requires separate authority"],
 			}),
 		)
@@ -47,8 +50,10 @@ fn cleared_checkpoint_allows_same_run_phase_goal_recovery_candidate() {
 			&issue.id,
 			&issue_run.run_id,
 			issue_run.attempt_number,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"blockers": [],
 			}),
 		)

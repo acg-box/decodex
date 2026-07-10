@@ -25,7 +25,7 @@ pub(crate) fn valid_control_plane_upgrade_candidate() -> Value {
 			"tag": "rust-v0.142.2",
 			"release_url": "https://github.com/openai/codex/releases/tag/rust-v0.142.2",
 			"compatibility_status": "needs_review",
-			"matrix_ref": "openwiki/operations/commands-and-validation.md#codex-01422"
+			"matrix_ref": "apps/decodex/src/agent/app_server/schema_probe/constants.rs"
 		},
 		"authority": {
 			"decision_contract_required": true,

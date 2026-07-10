@@ -3,6 +3,7 @@ use crate::{
 		self, PhaseGoalKind, StateStore,
 		tests::{self, TEST_SERVICE_ID},
 	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 	tracker,
 };
 
@@ -34,8 +35,10 @@ fn cleared_checkpoint_allows_cross_attempt_phase_goal_inheritance() {
 			&issue.id,
 			source_run_id,
 			1,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"blockers": ["repo-wide baseline requires separate authority"],
 			}),
 		)
@@ -46,8 +49,10 @@ fn cleared_checkpoint_allows_cross_attempt_phase_goal_inheritance() {
 			&issue.id,
 			source_run_id,
 			1,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"blockers": [],
 			}),
 		)

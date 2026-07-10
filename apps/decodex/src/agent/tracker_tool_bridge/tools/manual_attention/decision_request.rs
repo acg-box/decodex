@@ -6,8 +6,8 @@ use crate::{
 		tools::manual_attention::NormalizedAuthorityDecisionRequest,
 	},
 	orchestrator::{
-		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
-		AuthorityDecisionRequestInput,
+		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+		AuthorityDecisionOption, AuthorityDecisionRequestInput,
 	},
 	state::StateStore,
 };
@@ -45,7 +45,11 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		};
 
-		if boundary_event.event_type() != AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE {
+		if !boundary_event.matches_contract(
+			AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+			AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+			2,
+		) {
 			return Err(format!(
 				"`decision_request.boundary_check_id` {} references `{}` instead of an authority boundary check.",
 				decision_request.boundary_check_id,

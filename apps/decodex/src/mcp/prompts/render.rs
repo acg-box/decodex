@@ -5,7 +5,7 @@ use crate::mcp::prompts::arguments;
 pub(super) fn mcp_prompt_result(name: &str, arguments: Value) -> Option<Value> {
 	let text = match name {
 		"decodex_validation_ready" => format!(
-			"Work only to Decodex validation-ready state for issue {}. Implement the smallest coherent code and OpenWiki change, run targeted validation, record OpenWiki impact in a current-HEAD `issue_progress_checkpoint` using `openwiki_impact`, then complete the active phase goal without push or PR handoff.\n\nPhase: {}",
+			"Work only to Decodex validation-ready state for issue {}. Implement the smallest coherent change, run targeted validation, then complete the active phase goal without push or PR handoff.\n\nPhase: {}",
 			arguments::prompt_argument(&arguments, "issue")?,
 			arguments::prompt_argument(&arguments, "phase")
 				.unwrap_or("implement_to_validation_ready")

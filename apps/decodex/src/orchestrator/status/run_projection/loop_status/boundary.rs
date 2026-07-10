@@ -1,5 +1,6 @@
 use crate::orchestrator::{
-	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, OperatorBoundaryStatus, PrivateExecutionEvent, Value,
+	AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_BOUNDARY_CHECK_SCHEMA, OperatorBoundaryStatus,
+	PrivateExecutionEvent, Value,
 };
 
 pub(crate) fn operator_boundary_policy_decision_from_disposition(
@@ -22,7 +23,11 @@ pub(crate) fn operator_boundary_policy_blocks_landing(policy_decision: &str) -> 
 pub(crate) fn operator_boundary_status_from_event(
 	event: &PrivateExecutionEvent,
 ) -> Option<OperatorBoundaryStatus> {
-	if event.event_type() != AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE {
+	if !event.matches_contract(
+		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+		AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+		2,
+	) {
 		return None;
 	}
 
