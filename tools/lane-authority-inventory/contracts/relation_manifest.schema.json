@@ -8,14 +8,17 @@
     "source_node": {
       "additionalProperties": false,
       "allOf": [
-        {"if": {"properties": {"status": {"const": "deleted"}}, "required": ["status"]}, "then": {"properties": {"parser_receipt_id": {"const": null}, "syntax_site_count": {"const": 0}, "zero_syntax_reason_code": {"const": "deleted_tombstone"}}}},
-        {"if": {"properties": {"status": {"const": "current"}}, "required": ["status"]}, "then": {"properties": {"parser_receipt_id": {"$ref": "#/$defs/id"}, "syntax_site_count": {"minimum": 1}, "zero_syntax_reason_code": {"const": null}}}}
+        {"if": {"properties": {"status": {"const": "deleted"}}, "required": ["status"]}, "then": {"properties": {"parser_error_count": {"const": 0}, "parser_node_count": {"const": 0}, "parser_receipt_id": {"const": null}, "syntax_site_count": {"const": 0}, "zero_syntax_reason_code": {"const": "deleted_tombstone"}}}},
+        {"if": {"properties": {"status": {"const": "current"}}, "required": ["status"]}, "then": {"properties": {"parser_node_count": {"minimum": 1}, "parser_receipt_id": {"$ref": "#/$defs/id"}, "syntax_site_count": {"minimum": 1}, "zero_syntax_reason_code": {"const": null}}}}
       ],
       "properties": {
         "byte_length": {"minimum": 0, "type": "integer"},
         "content_digest": {"$ref": "#/$defs/digest"},
         "language": {"enum": ["python", "rust", "shell", "swift", "toml", "yaml"]},
         "parser_receipt_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "parser_error_count": {"minimum": 0, "type": "integer"},
+        "parser_node_count": {"minimum": 0, "type": "integer"},
+        "parser_node_digest": {"$ref": "#/$defs/digest"},
         "path": {"$ref": "#/$defs/path"},
         "predecessor_source_node_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
         "provenance": {"enum": ["c0", "post_c0_base", "c1i_head", "tool", "deleted_tombstone"]},
@@ -26,7 +29,7 @@
         "syntax_site_ids_digest": {"$ref": "#/$defs/digest"},
         "zero_syntax_reason_code": {"type": ["string", "null"]}
       },
-      "required": ["source_node_id", "path", "byte_length", "content_digest", "language", "scope", "provenance", "status", "predecessor_source_node_id", "parser_receipt_id", "syntax_site_count", "syntax_site_ids_digest", "zero_syntax_reason_code"],
+      "required": ["source_node_id", "path", "byte_length", "content_digest", "language", "scope", "provenance", "status", "predecessor_source_node_id", "parser_receipt_id", "parser_error_count", "parser_node_count", "parser_node_digest", "syntax_site_count", "syntax_site_ids_digest", "zero_syntax_reason_code"],
       "type": "object"
     },
     "syntax_site": {

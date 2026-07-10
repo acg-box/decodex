@@ -199,8 +199,12 @@ inventory includes, at minimum:
   argument assembly; and
 - include/macro/build/generated inputs and their resulting parsed sites.
 
-Every source parser publishes total node counts by language and node kind. Every catalog
-data root must map to one or more syntax/data sites or to a reviewed absent receipt. A
+Every source parser traverses every named node and publishes an exact total node count and
+domain-separated digest over `(kind, byte_start, byte_end)`. The persisted syntax relation
+materializes parser roots, candidate-covering nodes, and authority-relevant executable
+nodes; completeness comes from the total traversal receipt, not from serializing every
+identifier or literal into redundant JSON. Every catalog data root must map to one or more
+materialized syntax/data sites or to a reviewed absent receipt. A
 catalog root with neither is a rejection, not evidence that the root is unused.
 
 The accepted composition consists of these separately versioned relations:
@@ -305,10 +309,11 @@ target_projection
 config_projection
 ```
 
-Cfg projection records carry `projection_kind = target | config`. Both classification
-references must resolve to the classified syntax site (directly or through its derived
-symbol/data site) and to the matching kind; a globally existing projection for another site
-or dimension is not closure evidence.
+Cfg projection records carry `projection_kind = target | config`. A source-root projection
+is inherited by materialized descendant sites; a nested conditional may add a narrower
+projection. Both classification references must resolve to the classified site's source
+and to the matching kind; a globally existing projection for another source or dimension
+is not closure evidence.
 
 Accepted manifests contain no `unknown`, unresolved edge, missing owner, or unadjudicated
 candidate. `reviewed_non_authority` requires a reason and may not terminate an existing
@@ -340,8 +345,9 @@ accounting. The `cfg_coverage_manifest` proves every node appears in at least on
 projection or has that explicit unsupported disposition.
 
 The verifier checks both directions: every cfg projection references an existing syntax
-site, and every syntax site has at least one projection record, including an explicit
-unsupported disposition where applicable. An empty cfg relation cannot satisfy C1I.
+site, and every current source has both config and target projection coverage inherited by
+its materialized sites, including an explicit unsupported disposition where applicable.
+An empty cfg relation cannot satisfy C1I.
 Every site classification's target and config projection ids must resolve to those
 projection records. Classification scope equals the underlying source scope, and each cfg
 projection records the source language and platform. A toolchain receipt may use only

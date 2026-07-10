@@ -70,7 +70,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             "contract_digests": {},
             "phase": "P1",
         }
-        with mock.patch.object(self.verifier, "verify_p1", return_value=evidence):
+        with mock.patch.object(self.verifier, "verify_p2", return_value=evidence):
             first = self.verifier.canonical_json(self.verifier.readiness_rejection(REPO_ROOT))
             second = self.verifier.canonical_json(self.verifier.readiness_rejection(REPO_ROOT))
 
@@ -257,6 +257,9 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 "content_digest": digest,
                 "language": "rust",
                 "parser_receipt_id": "tool:rust",
+                "parser_error_count": 0,
+                "parser_node_count": 1,
+                "parser_node_digest": digest,
                 "path": "src/lib.rs",
                 "predecessor_source_node_id": None,
                 "provenance": "c1i_head",
@@ -361,6 +364,9 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                     "content_digest": digest,
                     "language": language,
                     "parser_receipt_id": f"tool:{language}",
+                    "parser_error_count": 0,
+                    "parser_node_count": 1,
+                    "parser_node_digest": digest,
                     "path": f"tools/scanner.{language}",
                     "predecessor_source_node_id": None,
                     "provenance": "tool",
@@ -1066,6 +1072,12 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             "site_ids": {"site:source", "site:sink", "site:other", "site:dead"},
             "sink_ids": {"site:sink"},
             "syntax_ids": {"site:source", "site:sink", "site:other", "site:dead"},
+            "syntax_sources": {
+                "site:source": "source:one",
+                "site:sink": "source:one",
+                "site:other": "source:other",
+                "site:dead": "source:other",
+            },
             "derived_syntax": {},
             "projections": {
                 "cfg:source": {

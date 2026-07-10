@@ -30,16 +30,27 @@ SOURCE_INVENTORY_PATH = Path("tools/lane-authority-inventory/manifests/source_in
 CANDIDATE_RECORDS_PATH = Path(
     "tools/lane-authority-inventory/manifests/relations/candidate_records.json"
 )
+SOURCE_NODES_PATH = Path("tools/lane-authority-inventory/manifests/relations/source_nodes.json")
+SYNTAX_SITES_PATH = Path("tools/lane-authority-inventory/manifests/relations/syntax_sites.json")
+CFG_PROJECTIONS_PATH = Path(
+    "tools/lane-authority-inventory/manifests/relations/cfg_projections.json"
+)
+CANDIDATE_SITE_EDGES_PATH = Path(
+    "tools/lane-authority-inventory/manifests/relations/candidate_site_edges.json"
+)
 REVIEW_RECEIPT_PATH = Path(
     "tools/lane-authority-inventory/reviews/c1i_integrated_review.json"
 )
 EXECUTABLE_CONTRACT_PATHS = (
     Path("scripts/verify_lane_authority_v2_c1i_contract.sh"),
     Path("scripts/verify_lane_authority_v2_gates.sh"),
+    Path("tools/lane-authority-inventory/Cargo.lock"),
+    Path("tools/lane-authority-inventory/Cargo.toml"),
     Path("tools/lane-authority-inventory/requirements.lock"),
     Path("tools/lane-authority-inventory/requirements.txt"),
     Path("tools/lane-authority-inventory/run_locked_python.sh"),
     Path("tools/lane-authority-inventory/materialize_p1.py"),
+    Path("tools/lane-authority-inventory/materialize_p2.py"),
     Path("tools/lane-authority-inventory/verify_contract.py"),
 )
 REASON_CODES_PATH = Path(
@@ -318,6 +329,7 @@ def validate_dataflow_proof_path(
     site_ids: set[str],
     sink_ids: set[str],
     syntax_ids: set[str],
+    syntax_sources: dict[str, str],
     derived_syntax: dict[str, str],
     projections: dict[str, dict[str, Any]],
 ) -> None:
@@ -370,9 +382,10 @@ def validate_dataflow_proof_path(
         site_id if site_id in syntax_ids else derived_syntax[site_id]
         for site_id in forward.intersection(reverse)
     }
+    path_source_ids = {syntax_sources[site_id] for site_id in path_syntax_ids}
     if any(
         projections[projection_id]["projection_kind"] != "config"
-        or projections[projection_id]["site_id"] not in path_syntax_ids
+        or syntax_sources[projections[projection_id]["site_id"]] not in path_source_ids
         for projection_id in projection_ids
     ):
         raise ContractError("dataflow proof config projection is outside its proven path")
@@ -1006,6 +1019,10 @@ def validate_cross_relation_records(
         syntax_ids = syntax_ids_by_source[source_id]
         if source["syntax_site_count"] != len(syntax_ids):
             raise ContractError("source syntax site count disagrees with syntax relation")
+        if source["parser_node_count"] < source["syntax_site_count"]:
+            raise ContractError("source materialized more syntax sites than parser nodes")
+        if source["status"] == "current" and source["parser_error_count"] != 0:
+            raise ContractError("accepted source contains parser recovery nodes")
         if source["syntax_site_ids_digest"] != stable_id_set_digest(
             "decodex/lane-authority-v2-source-syntax-sites/1", syntax_ids
         ):
@@ -1029,7 +1046,7 @@ def validate_cross_relation_records(
         if site["syntax_site_id"] not in syntax:
             raise ContractError("derived site references a missing syntax site")
 
-    projections_by_site: dict[str, int] = {}
+    projection_kinds_by_source: dict[str, set[str]] = {}
     projections = _unique_index(
         records["cfg_projections"], "projection_id", "cfg_projections"
     )
@@ -1040,9 +1057,17 @@ def validate_cross_relation_records(
         source = sources[syntax[site_id]["source_node_id"]]
         if projection["language"] != source["language"]:
             raise ContractError("cfg projection language disagrees with its source")
-        projections_by_site[site_id] = projections_by_site.get(site_id, 0) + 1
-    if set(projections_by_site) != set(syntax):
-        raise ContractError("every syntax site must have at least one cfg projection")
+        projection_kinds_by_source.setdefault(source["source_node_id"], set()).add(
+            projection["projection_kind"]
+        )
+    current_source_ids = {
+        source_id for source_id, source in sources.items() if source["status"] == "current"
+    }
+    if any(
+        projection_kinds_by_source.get(source_id, set()) != {"config", "target"}
+        for source_id in current_source_ids
+    ):
+        raise ContractError("every current source must have config and target cfg projections")
 
     classifications = _unique_index(
         records["site_classifications"], "site_id", "site_classifications"
@@ -1060,7 +1085,9 @@ def validate_cross_relation_records(
             projection = projections.get(classification[field])
             if projection is None:
                 raise ContractError(f"site classification {field} is unresolved")
-            if projection["site_id"] != syntax_site_id or projection["projection_kind"] != kind:
+            projection_source_id = syntax[projection["site_id"]]["source_node_id"]
+            classified_source_id = syntax[syntax_site_id]["source_node_id"]
+            if projection_source_id != classified_source_id or projection["projection_kind"] != kind:
                 raise ContractError(f"site classification {field} belongs to another site or kind")
             resolved_classification_projections[kind] = projection
         if (
@@ -1575,7 +1602,20 @@ def validate_proof_artifacts(
             raise ContractError(f"{label} violates its schema: {error.message}") from error
 
     syntax_ids = {record["site_id"] for record in records["syntax_sites"]}
-    covered_ids = {record["site_id"] for record in records["cfg_projections"]}
+    syntax_sources = {
+        record["site_id"]: record["source_node_id"] for record in records["syntax_sites"]
+    }
+    syntax_source_ids = {
+        record["site_id"]: record["source_node_id"] for record in records["syntax_sites"]
+    }
+    projected_source_ids = {
+        syntax_source_ids[record["site_id"]] for record in records["cfg_projections"]
+    }
+    covered_ids = {
+        site_id
+        for site_id, source_id in syntax_source_ids.items()
+        if source_id in projected_source_ids
+    }
     if cfg["analysis_cut_digest"] != analysis_cut_digest:
         raise ContractError("cfg coverage analysis-cut digest drifted")
     if cfg["cfg_relation_digest"] != composition["relations"]["cfg_projections"]["digest"]:
@@ -1672,6 +1712,7 @@ def validate_proof_artifacts(
             site_ids=site_ids,
             sink_ids=sink_ids,
             syntax_ids=syntax_ids,
+            syntax_sources=syntax_sources,
             derived_syntax=derived_syntax,
             projections=projections,
         )
@@ -2061,8 +2102,136 @@ def verify_p1(root: Path) -> dict[str, Any]:
     }
 
 
+def verify_p2(root: Path) -> dict[str, Any]:
+    p1 = verify_p1(root)
+    relation_schema = load_json(
+        root, Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json")
+    )
+    manifests = {
+        "source_nodes": load_json(root, SOURCE_NODES_PATH),
+        "syntax_sites": load_json(root, SYNTAX_SITES_PATH),
+        "cfg_projections": load_json(root, CFG_PROJECTIONS_PATH),
+        "candidate_site_edges": load_json(root, CANDIDATE_SITE_EDGES_PATH),
+    }
+    for relation_name, manifest in manifests.items():
+        try:
+            Draft202012Validator(relation_schema).validate(manifest)
+        except ValidationError as error:
+            raise ContractError(
+                f"P2 {relation_name} violates its relation schema: {error.message}"
+            ) from error
+        if manifest["relation"] != relation_name:
+            raise ContractError(f"P2 relation identity drifted: {relation_name}")
+
+    source_inventory = load_json(root, SOURCE_INVENTORY_PATH)
+    identity_fields = {
+        "byte_length",
+        "content_digest",
+        "language",
+        "path",
+        "predecessor_source_node_id",
+        "provenance",
+        "scope",
+        "source_node_id",
+        "status",
+    }
+    expected_sources = {
+        record["source_node_id"]: record for record in source_inventory["records"]
+    }
+    sources = _unique_index(
+        manifests["source_nodes"]["records"], "source_node_id", "P2 source nodes"
+    )
+    if set(sources) != set(expected_sources):
+        raise ContractError("P2 source nodes do not equal the immutable source inventory")
+    for source_id, source in sources.items():
+        identity = {key: source[key] for key in identity_fields}
+        if identity != expected_sources[source_id]:
+            raise ContractError("P2 enriched source identity drifted from P1")
+        if source["parser_node_count"] < source["syntax_site_count"]:
+            raise ContractError("P2 source has fewer parser nodes than materialized sites")
+
+    syntax = _unique_index(
+        manifests["syntax_sites"]["records"], "site_id", "P2 syntax sites"
+    )
+    sites_by_source = {source_id: set() for source_id in sources}
+    roots_by_source = {source_id: [] for source_id in sources}
+    for site in syntax.values():
+        source_id = site["source_node_id"]
+        if source_id not in sources:
+            raise ContractError("P2 syntax site references a missing source")
+        if site["byte_end"] > sources[source_id]["byte_length"]:
+            raise ContractError("P2 syntax site exceeds source bytes")
+        sites_by_source[source_id].add(site["site_id"])
+        if site["is_parser_root"]:
+            roots_by_source[source_id].append(site)
+    for source_id, source in sources.items():
+        site_ids = sites_by_source[source_id]
+        if source["syntax_site_count"] != len(site_ids):
+            raise ContractError("P2 source syntax count disagrees with materialized sites")
+        if source["syntax_site_ids_digest"] != stable_id_set_digest(
+            "decodex/lane-authority-v2-source-syntax-sites/1", site_ids
+        ):
+            raise ContractError("P2 source syntax digest disagrees with materialized sites")
+        if source["status"] == "deleted":
+            if site_ids or roots_by_source[source_id]:
+                raise ContractError("P2 tombstone contains syntax sites")
+            continue
+        roots = roots_by_source[source_id]
+        if (
+            len(roots) != 1
+            or roots[0]["byte_start"] != 0
+            or roots[0]["byte_end"] != source["byte_length"]
+            or roots[0]["node_kind"] != PARSER_ROOT_KINDS[source["language"]]
+        ):
+            raise ContractError("P2 source lacks one full-byte language parser root")
+
+    candidates = load_json(root, CANDIDATE_RECORDS_PATH)["records"]
+    candidate_ids = {candidate["candidate_id"] for candidate in candidates}
+    candidate_edges = manifests["candidate_site_edges"]["records"]
+    edge_candidates = [edge["candidate_id"] for edge in candidate_edges]
+    if set(edge_candidates) != candidate_ids or len(edge_candidates) != len(candidate_ids):
+        raise ContractError("P2 must map every candidate to exactly one syntax site")
+    if any(edge["site_id"] not in syntax for edge in candidate_edges):
+        raise ContractError("P2 candidate-site edge references a missing syntax site")
+
+    projections = _unique_index(
+        manifests["cfg_projections"]["records"], "projection_id", "P2 cfg projections"
+    )
+    coverage = {source_id: set() for source_id in sources if sources[source_id]["status"] == "current"}
+    for projection in projections.values():
+        site = syntax.get(projection["site_id"])
+        if site is None or not site["is_parser_root"]:
+            raise ContractError("P2 source projection must bind a parser root")
+        source = sources[site["source_node_id"]]
+        if projection["language"] != source["language"]:
+            raise ContractError("P2 projection language disagrees with its source")
+        coverage[source["source_node_id"]].add(
+            (projection["projection_kind"], projection["platform"])
+        )
+    required_coverage = {
+        ("config", "common"),
+        ("target", "common"),
+        ("config", "linux"),
+        ("config", "macos"),
+    }
+    if any(value != required_coverage for value in coverage.values()):
+        raise ContractError("P2 source cfg/target platform coverage is incomplete")
+
+    parser_errors = sum(source["parser_error_count"] for source in sources.values())
+    return {
+        **p1,
+        "candidate_site_edge_count": len(candidate_edges),
+        "cfg_projection_count": len(projections),
+        "parser_error_count": parser_errors,
+        "phase": "P2",
+        "source_node_count": len(sources),
+        "syntax_site_count": len(syntax),
+        "unresolved_count": parser_errors + len(candidate_ids) + 2,
+    }
+
+
 def readiness_rejection(root: Path) -> dict[str, Any]:
-    evidence = verify_p1(root)
+    evidence = verify_p2(root)
     report = {
         "advancement_state": "C1I_INCOMPLETE",
         "analysis_input_digest": evidence["analysis_cut_digest"],
@@ -2089,7 +2258,7 @@ def readiness_rejection(root: Path) -> dict[str, Any]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--phase", choices=["P0", "P1"])
+    mode.add_argument("--phase", choices=["P0", "P1", "P2"])
     mode.add_argument("--review-preimage", action="store_true")
     mode.add_argument("--readiness", choices=["C1I"])
     return parser.parse_args(argv)
@@ -2104,6 +2273,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.phase == "P1":
             print(canonical_json(verify_p1(root)), end="")
+            return 0
+        if args.phase == "P2":
+            print(canonical_json(verify_p2(root)), end="")
             return 0
         if args.review_preimage:
             evidence = verify_p0(root, require_review=False)
