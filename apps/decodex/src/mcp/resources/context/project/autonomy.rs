@@ -24,6 +24,16 @@ impl McpContext {
 				autonomy_resources::mcp_autonomy_signal_resource(state_store, project_id, signal_id),
 			[resource] if resource == "proposals" =>
 				autonomy_resources::mcp_autonomy_proposals_resource(state_store, project_id),
+			[resource, selector, namespace, value]
+				if resource == "proposals"
+					&& selector == "affected"
+					&& mcp::safe_runtime_identifier(namespace)
+					&& mcp::safe_runtime_identifier(value) =>
+				autonomy_resources::mcp_autonomy_proposal_by_affected_identifier_resource(
+					state_store,
+					project_id,
+					&format!("{namespace}:{value}"),
+				),
 			[resource, proposal_id]
 				if resource == "proposals" && mcp::safe_autonomy_record_identifier(proposal_id) =>
 				autonomy_resources::mcp_autonomy_proposal_resource(

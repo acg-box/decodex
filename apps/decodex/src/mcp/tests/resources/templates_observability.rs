@@ -41,6 +41,7 @@ fn resources_templates_list_exposes_parameterized_resources() {
 			"decodex://projects/{project_id}/autonomy/signals/{signal_id}",
 			"decodex://projects/{project_id}/autonomy/proposals",
 			"decodex://projects/{project_id}/autonomy/proposals/{proposal_id}",
+			"decodex://projects/{project_id}/autonomy/proposals/affected/{namespace}/{value}",
 			"decodex://projects/{project_id}/autonomy/evidence",
 		]
 	);

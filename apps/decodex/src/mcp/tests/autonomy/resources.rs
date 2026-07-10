@@ -41,7 +41,8 @@ fn autonomy_resources_expose_summaries_without_private_payloads() {
 				&format!(
 					r#"{{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{{"uri":"decodex://projects/decodex/autonomy/proposals/{proposal_id}"}}}}"#
 				),
-				r#"{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy/evidence"}}"#,
+				r#"{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy/proposals/affected/bridge_proposal_fingerprint/fixture"}}"#,
+				r#"{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy/evidence"}}"#,
 			]
 			.join("\n"),
 		);
@@ -49,12 +50,14 @@ fn autonomy_resources_expose_summaries_without_private_payloads() {
 	let objective = support::resource_response_json(&responses, 1);
 	let signal = support::resource_response_json(&responses, 2);
 	let proposal = support::resource_response_json(&responses, 3);
-	let evidence = support::resource_response_json(&responses, 4);
+	let proposal_by_affected_identifier = support::resource_response_json(&responses, 4);
+	let evidence = support::resource_response_json(&responses, 5);
 	let combined = serde_json::json!({
 		"summary": summary,
 		"objective": objective,
 		"signal": signal,
 		"proposal": proposal,
+		"proposal_by_affected_identifier": proposal_by_affected_identifier,
 		"evidence": evidence
 	});
 	let serialized = serde_json::to_string(&combined).expect("resources should serialize");
@@ -63,6 +66,7 @@ fn autonomy_resources_expose_summaries_without_private_payloads() {
 	assert_eq!(combined["objective"]["objective"]["state"], "accepted");
 	assert_eq!(combined["signal"]["signal"]["kind"], "runtime_health");
 	assert_eq!(combined["proposal"]["proposal"]["state"], "decision_candidate");
+	assert_eq!(combined["proposal_by_affected_identifier"]["proposal"]["proposal_id"], proposal_id);
 	assert_eq!(combined["evidence"]["evidence"]["signal_count"], 1);
 	assert!(serialized.contains("access_boundary_only"));
 	assert!(!serialized.contains("private evidence payload"));

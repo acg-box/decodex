@@ -68,6 +68,43 @@ impl StateStore {
 		Ok(first.map(|record| record.as_public()))
 	}
 
+	pub(crate) fn autonomy_proposal_with_affected_identifier(
+		&self,
+		project_id: &str,
+		affected_identifier: &str,
+	) -> Result<Option<AutonomyProposalRecord>> {
+		validation::validate_required_autonomy_proposal_field("project_id", project_id)?;
+		validation::validate_required_autonomy_proposal_field(
+			"affected_identifier",
+			affected_identifier,
+		)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.autonomy_proposal_with_affected_identifier(project_id, affected_identifier)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
+		let state = self.lock()?;
+		let mut matches = state.autonomy_proposals.values().filter(|record| {
+			record.project_id == project_id
+				&& record
+					.proposal
+					.affected_identifiers()
+					.iter()
+					.any(|identifier| identifier == affected_identifier)
+		});
+		let first = matches.next().cloned();
+
+		if matches.next().is_some() {
+			eyre::bail!("Affected identifier matches multiple autonomy proposals.");
+		}
+
+		Ok(first.map(|record| record.as_public()))
+	}
+
 	/// List recent autonomy proposals for one project for operator readback.
 	pub(crate) fn recent_autonomy_proposals_for_project(
 		&self,
