@@ -102,6 +102,15 @@ impl ExecutionProgramNode {
 		Ok(self)
 	}
 
+	/// Refresh dispatch intent from the owning intake authority.
+	pub(crate) fn with_queue_intent(mut self, queue_intent: ExecutionQueueIntent) -> Result<Self> {
+		self.queue_intent = queue_intent;
+
+		self.validate()?;
+
+		Ok(self)
+	}
+
 	/// Override the accepted-contract fingerprint used for drift detection.
 	#[cfg(test)]
 	pub(crate) fn with_contract_fingerprint(

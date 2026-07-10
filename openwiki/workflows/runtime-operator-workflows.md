@@ -136,6 +136,8 @@ Rules:
 - Goal apply uses one server-derived canonical claim per contract, bound to the exact project/config/workflow/team-anchor digest. `prepared` may retry only with those same inputs; `started` must not retry automatically because a tracker write may have occurred; `completed` is terminal. Newly recorded proposal objections block intake even after promotion.
 - Recovery inspection is read-only. `retry-prepared` performs the bound apply and accepts `--team-issue` only when it matches the original digest. `complete-after-readback` succeeds only when a started claim has exact contract-link, Program, plan id/kind/summary, node, mapping, issue, and fingerprint correspondence.
 - Issue-batch apply persists local Program Intake/Execution Program state for existing issues.
+- Issue-batch Program identity is stable for the service and normalized supplied issue identifiers. Reapplying the same batch refreshes its tracker snapshot in place and retires exact legacy duplicates rather than accumulating competing Programs.
+- Runtime reconciliation releases an issue-batch node whose persisted `active` intent came from ownership that is now absent, while preserving explicit terminal, paused, and not-ready intents.
 - Program dispatch is direct. It does not apply, remove, or wait for service queue labels.
 - Internal graph/node ids, proposal ids, private evidence refs, and local runtime rows must not be exposed in public Linear briefs.
 

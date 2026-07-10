@@ -68,6 +68,15 @@ impl StateStore {
 		mutation::upsert_execution_program(self, project_id, program)
 	}
 
+	/// Delete one superseded private Execution Program and its derived intake state.
+	pub(crate) fn delete_execution_program(
+		&self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<()> {
+		mutation::delete_execution_program(self, project_id, program_id)
+	}
+
 	/// Read one local internal Execution Program by project and program id.
 	#[allow(dead_code)]
 	pub(crate) fn execution_program(
