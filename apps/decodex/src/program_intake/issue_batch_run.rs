@@ -48,7 +48,10 @@ where
 
 	let batch_fingerprint =
 		identity::issue_batch_fingerprint(config.service_id(), &issue_identifiers, &resolved);
-	let program_id = identity::issue_batch_program_id(config.service_id(), &batch_fingerprint);
+	let batch_identity_fingerprint =
+		identity::issue_batch_identity_fingerprint(config.service_id(), &issue_identifiers);
+	let program_id =
+		identity::issue_batch_program_id(config.service_id(), &batch_identity_fingerprint);
 	let supplied_node_ids = issue_identifiers
 		.iter()
 		.map(|identifier| (identifier.clone(), identity::node_id_for_issue(identifier)))
@@ -119,7 +122,14 @@ where
 	let counts = reporting::classify_counts(&rows);
 
 	if persist {
+		let duplicate_program_ids =
+			exact_issue_batch_duplicate_program_ids(state_store, config.service_id(), &program)?;
+
 		state_store.upsert_execution_program(config.service_id(), program)?;
+
+		for duplicate_program_id in duplicate_program_ids {
+			state_store.delete_execution_program(config.service_id(), &duplicate_program_id)?;
+		}
 	}
 
 	Ok(IssueBatchIntakeReport {
@@ -131,4 +141,31 @@ where
 		counts,
 		issues: rows,
 	})
+}
+
+fn exact_issue_batch_duplicate_program_ids(
+	state_store: &StateStore,
+	service_id: &str,
+	replacement: &ExecutionProgram,
+) -> Result<Vec<String>> {
+	let replacement_node_ids =
+		replacement.nodes().iter().map(|node| node.node_id()).collect::<Vec<_>>();
+	let mut duplicates = Vec::new();
+
+	for record in state_store.list_execution_programs(service_id)? {
+		let program = record.program();
+		let is_issue_batch = program
+			.program_intake_plan()
+			.is_some_and(|plan| plan.intake_kind().as_str() == "issue_batch_intake");
+		let node_ids = program.nodes().iter().map(|node| node.node_id()).collect::<Vec<_>>();
+
+		if is_issue_batch
+			&& program.program_id() != replacement.program_id()
+			&& node_ids == replacement_node_ids
+		{
+			duplicates.push(program.program_id().to_owned());
+		}
+	}
+
+	Ok(duplicates)
 }

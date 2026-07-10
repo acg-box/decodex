@@ -3,6 +3,30 @@ use rusqlite::Transaction;
 use crate::state::sqlite_store::mutations::{self, Result, SqliteStateStore};
 
 impl SqliteStateStore {
+	pub(in crate::state) fn delete_execution_program(
+		&mut self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<()> {
+		let transaction = self.connection.transaction()?;
+
+		transaction.execute(
+			"DELETE FROM program_issue_mappings WHERE project_id = ?1 AND program_id = ?2",
+			mutations::params![project_id, program_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM program_intake_plans WHERE project_id = ?1 AND program_id = ?2",
+			mutations::params![project_id, program_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM execution_programs WHERE project_id = ?1 AND program_id = ?2",
+			mutations::params![project_id, program_id],
+		)?;
+		transaction.commit()?;
+
+		Ok(())
+	}
+
 	pub(in crate::state) fn retarget_issue_identity(
 		&mut self,
 		previous_issue_id: &str,

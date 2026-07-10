@@ -38,9 +38,9 @@ use crate::{
 		compare_recent_autonomy_signal_runtime_records, dispatch_slot_lock_path,
 		issue_claim_id_from_path, issue_claim_lock_path, parse_linear_execution_event_unix,
 		prune_unlocked_shared_lock_files, read_issue_claim_record,
-		read_run_activity_marker_snapshot, remove_lock_file_if_exists, set_close_on_exec,
-		sqlite_store::SqliteStateStore, timestamp_parts, validate_private_execution_event_inputs,
-		write_issue_claim_record,
+		read_run_activity_marker_snapshot, remove_derived_program_intake_state,
+		remove_lock_file_if_exists, set_close_on_exec, sqlite_store::SqliteStateStore,
+		timestamp_parts, validate_private_execution_event_inputs, write_issue_claim_record,
 	},
 };
 

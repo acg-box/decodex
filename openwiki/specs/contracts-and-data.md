@@ -130,12 +130,15 @@ Program Intake kinds:
 
 - `goal_intake`: materialize an accepted Decision Contract.
 - `issue_batch_intake`: materialize supplied existing Linear issues.
+- Issue-batch Program ids derive from the service and normalized supplied identifiers, not mutable tracker state. Apply replaces the same batch in place and removes exact legacy duplicates after the replacement is durable.
 
 Accepted Decision Contracts preserve objectives, non-goals, constraints, assumptions, objections, stop conditions, validation expectations, risk notes, structured proposed issues, conflict domains, and acceptance metadata. The runtime must not infer acceptance from a summary, prompt, local file, MCP auth profile, project config body, or caller-supplied policy object.
 
 Program Intake has an explicit preview/commit boundary. Dry-run must not mutate Linear, Program Intake rows, Execution Program rows, issue mappings, or graph state. Apply may persist intake/program state only when the accepted authority already exists and the generated public briefs pass the privacy boundary.
 
 Execution Programs are private runtime plans over normal issue-backed nodes. Nodes may be ready, held, blocked, running, completed, failed, or skipped according to dependency, conflict-domain, tracker, workflow, and lease state. Scheduler dispatches ready nodes directly with `program` dispatch mode; queue labels are not Program scheduling. Public issue briefs may describe objectives, dependencies, validation, risks, and acceptance criteria, but must not expose internal graph ids, node ids, proposal ids, private evidence paths, or runtime row details.
+
+For issue-batch Programs, `active` is a snapshot of runtime ownership rather than a permanent operator pause. Reconciliation may return that intent to `ready_to_queue` only after live tracker, claim, retained-lane, and post-review ownership facts show the lane is no longer active. Other queue intents remain authority-bearing and are not rewritten by this recovery projection.
 
 Objective Contracts are versioned project-level authority above Decision Contracts. Draft objectives have no execution authority; accepted versions are immutable; superseded and rejected versions remain provenance only. Signals are evidence bound to the exact accepted objective version and stable provenance; they cannot mutate tracker state, worktrees, GitHub, Program Intake, proposals, or execution state. Proposals bind signal clusters to goals, surfaces, validation gates, review requirements, contradictions, gaps, alternatives, rollback, and optional issue candidates. Accepting a proposal creates only a latent Decision Contract candidate unless a separate accepted Decision Contract or accepted project-policy authority promotes it.
 

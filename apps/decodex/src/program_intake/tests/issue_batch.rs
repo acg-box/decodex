@@ -1,6 +1,7 @@
 use tempfile::TempDir;
 
 use crate::{
+	execution_program::ExecutionProgram,
 	program_intake::{
 		self, IssueBatchIntakeClassification,
 		tests::{
@@ -200,5 +201,112 @@ fn issue_batch_persist_writes_program_and_adjacent_intake_state() {
 	assert_eq!(
 		store.list_program_intake_plans("decodex").expect("plans")[0].intake_kind(),
 		"issue_batch_intake"
+	);
+}
+
+#[test]
+fn issue_batch_reapply_keeps_stable_program_identity_and_removes_exact_legacy_duplicates() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("store should open");
+	let workflow = test_support::workflow();
+	let config = test_support::test_config();
+	let issue = test_support::issue("XY-1", "Todo");
+	let first = program_intake::run_issue_batch_intake(
+		&store,
+		&FakeTracker::default().with_issues([issue.clone()]),
+		&config,
+		&workflow,
+		vec![String::from("XY-1")],
+		false,
+		true,
+	)
+	.expect("first persist should write local state");
+	let first_program = store
+		.execution_program("decodex", &first.program_id)
+		.expect("program lookup should read")
+		.expect("program should exist");
+	let legacy = ExecutionProgram::from_issue_batch_intake(
+		"issue-batch-decodex-legacy",
+		"decodex",
+		"legacy-snapshot-fingerprint",
+		"Legacy duplicate issue-batch intake.",
+		first_program.program().nodes().to_vec(),
+	)
+	.expect("legacy duplicate should build");
+
+	store.upsert_execution_program("decodex", legacy).expect("legacy duplicate should persist");
+
+	assert_eq!(store.list_execution_programs("decodex").expect("programs").len(), 2);
+
+	let mut refreshed_issue = issue;
+
+	refreshed_issue.updated_at = String::from("2026-07-10T12:00:00Z");
+
+	let reapplied = program_intake::run_issue_batch_intake(
+		&store,
+		&FakeTracker::default().with_issues([refreshed_issue]),
+		&config,
+		&workflow,
+		vec![String::from("XY-1")],
+		false,
+		true,
+	)
+	.expect("reapply should replace exact duplicates");
+
+	assert_eq!(reapplied.program_id, first.program_id);
+	assert_eq!(store.list_execution_programs("decodex").expect("programs").len(), 1);
+	assert!(
+		store
+			.execution_program("decodex", "issue-batch-decodex-legacy")
+			.expect("legacy lookup should read")
+			.is_none()
+	);
+	assert_eq!(store.list_program_intake_plans("decodex").expect("plans").len(), 1);
+
+	drop(store);
+
+	let reopened = StateStore::open(&state_path).expect("store should reopen");
+
+	assert_eq!(reopened.list_execution_programs("decodex").expect("programs").len(), 1);
+	assert!(
+		reopened
+			.execution_program("decodex", "issue-batch-decodex-legacy")
+			.expect("legacy lookup should read")
+			.is_none()
+	);
+}
+
+#[test]
+fn issue_batch_identity_survives_initially_unresolved_identifier() {
+	let store = StateStore::open_in_memory().expect("store should open");
+	let workflow = test_support::workflow();
+	let config = test_support::test_config();
+	let missing = program_intake::run_issue_batch_intake(
+		&store,
+		&FakeTracker::default(),
+		&config,
+		&workflow,
+		vec![String::from("XY-404")],
+		false,
+		true,
+	)
+	.expect("unresolved intake should persist");
+	let resolved = program_intake::run_issue_batch_intake(
+		&store,
+		&FakeTracker::default().with_issues([test_support::issue("XY-404", "Todo")]),
+		&config,
+		&workflow,
+		vec![String::from("XY-404")],
+		false,
+		true,
+	)
+	.expect("resolved reapply should persist");
+
+	assert_eq!(resolved.program_id, missing.program_id);
+	assert_eq!(store.list_execution_programs("decodex").expect("programs").len(), 1);
+	assert_eq!(
+		store.list_program_issue_mappings("decodex", &resolved.program_id).expect("mappings").len(),
+		1
 	);
 }

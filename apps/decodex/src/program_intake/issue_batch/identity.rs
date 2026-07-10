@@ -52,6 +52,22 @@ pub(in crate::program_intake) fn issue_batch_fingerprint(
 	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+pub(in crate::program_intake) fn issue_batch_identity_fingerprint(
+	service_id: &str,
+	issue_identifiers: &[String],
+) -> String {
+	let mut digest = Sha256::new();
+
+	digest.update(service_id.as_bytes());
+
+	for identifier in issue_identifiers {
+		digest.update(b"\0identifier:");
+		digest.update(identifier.as_bytes());
+	}
+
+	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 pub(in crate::program_intake) fn issue_batch_program_id(
 	service_id: &str,
 	fingerprint: &str,
