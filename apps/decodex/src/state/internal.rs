@@ -8,7 +8,7 @@ pub(super) use self::{
 	data::StateData,
 	derived_program::{
 		apply_derived_program_intake_state, derived_program_intake_plan_records,
-		derived_program_issue_mapping_records,
+		derived_program_issue_mapping_records, remove_derived_program_intake_state,
 	},
 	guards::{DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard},
 	locks::{
