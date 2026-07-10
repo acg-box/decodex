@@ -11,7 +11,6 @@ correctness to public-reader value and media quality.
 
 ## Read First
 
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `../references/social-release-publisher-gates.md`
 
 ## Hard Boundaries

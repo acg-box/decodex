@@ -62,15 +62,6 @@ fn closeout_apply_keeps_active_label_until_cleanup() {
 		"summary": "Merged the approved lane and finished closeout."
 		}),
 	);
-
-	tests::seed_openwiki_impact_checkpoint(
-		tests::bridge_state_store(&bridge),
-		&review_context,
-		&issue.id,
-		"closeout",
-		&tests::sample_local_repo().head_oid,
-	);
-
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,

@@ -4,25 +4,17 @@ Use when Decodex work crosses runtime planning, ops, commit, or landing.
 
 ## Mode Map
 
-- Generic repo work: use the external installed `codebase` plugin.
-- Repo knowledge: use the external installed `knowledge` plugin.
-- Research, frame, scout, and skeptic work: use the external installed `research`
-  plugin.
 - Decodex planning: use `planning` after explicit Decodex execution instruction
   or accepted project-policy authority.
 - Ops: use `decodex-ops` for retained automation, manual CLI, tracker intake, labels,
   lane control, recovery, operator readback, and missing handoff diagnosis.
 - Commit/land: use `commit` or `land` only for their narrow high-risk surfaces.
 
-## First Reads
+## Authority Inputs
 
-- This repo: `AGENTS.md`, `openwiki/quickstart.md`, `README.md`, and `Makefile.toml`.
-- Projects: `project.toml` and `WORKFLOW.md`.
-- Runtime: `openwiki/architecture/runtime-architecture.md`,
-  `openwiki/workflows/runtime-operator-workflows.md`, and
-  `openwiki/specs/contracts-and-data.md`.
-- Orchestration lifecycle: `openwiki/workflows/runtime-operator-workflows.md` and
-  `openwiki/specs/contracts-and-data.md`.
+- Projects: registered `project.toml` and `WORKFLOW.md`.
+- Runtime: typed Decodex status, diagnose, lane-control, MCP, and retained-state readback.
+- Lifecycle: runtime lifecycle authority records and append-only lifecycle events.
 
 ## Boundaries
 
@@ -44,7 +36,7 @@ Use when Decodex work crosses runtime planning, ops, commit, or landing.
 - MCP is a typed facade, not a bypass. Non-loopback Streamable HTTP requires origin
   plus bearer auth; profiles above `observe` require bearer auth.
 - CORS is not authentication; typed plan tools and inspect-first operate/admin
-  preconditions live in `openwiki/workflows/runtime-operator-workflows.md`.
+  preconditions remain enforced by the MCP capability profile and runtime guards.
 - Do not use global `AGENTS.md` as Decodex runtime, tracker, identity, landing,
   closeout, or cleanup authority.
 - Do not hand-edit runtime DB rows, hidden children, Linear state, labels, graph ids,

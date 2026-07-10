@@ -218,7 +218,8 @@ fn runtime_standard_review_developer_instructions(
 		"Runtime-owned Decodex Review\n\
 		- You are an independent fresh-context reviewer for the current committed HEAD.\n\
 		- Work read-only: do not edit files, commit, push, merge, land, transition tracker state, or write comments.\n\
-		- Inspect the issue contract, repository workflow policy, current diff, current HEAD, and relevant tests.\n\
+			- Inspect the issue contract, repository workflow policy, current diff, current HEAD, and relevant tests.\n\
+			- In checks.regression_risk, explicitly assess configuration and runtime lifecycle drift for touched behavior.\n\
 		- Return exactly one JSON object and no surrounding prose.\n\
 		- The runtime will inject issue scope, reviewer identity, reviewed head, and review_contract; do not include or override those fields.\n\
 		- Use status `clean` only when no current landing-blocking repair remains.\n\
@@ -232,7 +233,6 @@ fn runtime_standard_review_developer_instructions(
 		    \"intended_behavior\": \"...\",\n\
 		    \"regression_risk\": \"...\",\n\
 		    \"missing_tests\": \"...\",\n\
-		    \"openwiki_config_drift\": \"...\",\n\
 		    \"migration_fallout\": \"...\",\n\
 		    \"operator_facing_fallout\": \"...\",\n\
 		    \"loop_decision_contract\": \"...\"\n\
@@ -366,7 +366,7 @@ fn runtime_review_contract_json(review_mode: ReviewExecutionMode) -> Value {
 		"scope": [
 			"Current committed lane HEAD",
 			"PR head lineage and review-blocking changed surface",
-			"Validation, OpenWiki/config drift, operator-facing fallout, and lifecycle impact"
+			"Validation, configuration alignment, operator-facing fallout, and lifecycle impact"
 		],
 		"non_goals": [
 			"Do not edit files",
@@ -376,12 +376,13 @@ fn runtime_review_contract_json(review_mode: ReviewExecutionMode) -> Value {
 		"required_checks": [
 			"Current HEAD matches the reviewed checkpoint head",
 			"Review-blocking worktree changes are absent before checkpoint writeback",
+			"Regression risk covers configuration and runtime lifecycle drift for touched behavior",
 			"Findings are routed before they can drive repair or landing"
 		],
 		"allowed_expansion_triggers": [
 			"Evidence of current-head regression",
 			"Missing validation for touched behavior",
-			"OpenWiki/config/runtime lifecycle drift"
+			"Configuration or runtime lifecycle drift"
 		],
 		"validation_evidence": [
 			"Reviewer inspected current HEAD and repository evidence",
@@ -406,12 +407,28 @@ mod tests {
 	fn runtime_review_output_parser_accepts_fenced_json() {
 		let parsed = runtime_standard_review::checkpoint_json_from_reviewer_output(
 			r#"```json
-{"status":"clean","checks":{"intended_behavior":"ok","regression_risk":"low","missing_tests":"none","openwiki_config_drift":"none","migration_fallout":"none","operator_facing_fallout":"none","loop_decision_contract":"ok"},"evidence":["read current HEAD"]}
+{"status":"clean","checks":{"intended_behavior":"ok","regression_risk":"low","missing_tests":"none","migration_fallout":"none","operator_facing_fallout":"none","loop_decision_contract":"ok"},"evidence":["read current HEAD"]}
 ```"#,
 		)
 		.expect("fenced json should parse");
 
 		assert_eq!(parsed["status"], "clean");
+	}
+
+	#[test]
+	fn runtime_review_contract_requires_configuration_and_lifecycle_risk_assessment() {
+		let contract = runtime_standard_review::runtime_review_contract_json(
+			runtime_standard_review::ReviewExecutionMode::Handoff,
+		);
+		let required_checks =
+			contract["required_checks"].as_array().expect("required checks should be an array");
+
+		assert!(required_checks.iter().any(|check| {
+			check.as_str()
+				== Some(
+					"Regression risk covers configuration and runtime lifecycle drift for touched behavior",
+				)
+		}));
 	}
 
 	#[test]
@@ -427,7 +444,6 @@ mod tests {
 					"intended_behavior": "ok",
 					"regression_risk": "low",
 					"missing_tests": "none",
-					"openwiki_config_drift": "none",
 					"migration_fallout": "none",
 					"operator_facing_fallout": "none",
 					"loop_decision_contract": "ok"

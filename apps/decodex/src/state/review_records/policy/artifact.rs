@@ -17,7 +17,7 @@ pub(in crate::state::review_records::policy) fn evidence_artifact_from_review_ch
 	let key_json =
 		hash::review_checkpoint_evidence_key_json(input.phase, input.review_level, input.head_sha)?;
 	let payload_json = serde_json::json!({
-		"schema": "decodex.review_checkpoint_artifact/1",
+		"schema": "decodex.review_checkpoint_artifact/2",
 		"phase": input.phase,
 		"review_level": input.review_level,
 		"status": input.status,

@@ -3,6 +3,7 @@ use serde_json::Value;
 use crate::orchestrator::{
 	self, LaneDecisionSnapshot, LaneNextAction, PhaseGoalKind, PhaseGoalSpec,
 	RepoGateTrackedRewriteDecision, Result, VALIDATION_EVIDENCE_EVENT_TYPE,
+	VALIDATION_EVIDENCE_SCHEMA,
 	execution_phase_goal::{
 		acceptance::ValidationEvidence, controller::RepoGatePhaseGoalController,
 	},
@@ -75,7 +76,8 @@ impl RepoGatePhaseGoalController<'_> {
 			self.issue_run.attempt_number,
 			VALIDATION_EVIDENCE_EVENT_TYPE,
 			orchestrator::json!({
-				"schema": "decodex.validation_evidence/1",
+				"schema": VALIDATION_EVIDENCE_SCHEMA,
+				"record_version": 2,
 				"phase": check.phase.as_str(),
 				"decision": check.decision.as_str(),
 				"reason_code": check.reason_code,

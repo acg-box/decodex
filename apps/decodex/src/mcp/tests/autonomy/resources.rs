@@ -26,7 +26,6 @@ fn autonomy_resources_expose_summaries_without_private_payloads() {
 		.signal_id()
 		.to_owned();
 	let context = McpContext {
-		repo_root: repo.path().to_path_buf(),
 		config_path: None,
 		project_id: Some(String::from("decodex")),
 		state_store: Some(state_store),
@@ -74,7 +73,6 @@ fn autonomy_resources_expose_summaries_without_private_payloads() {
 
 #[test]
 fn autonomy_resources_redact_local_private_signal_refs() {
-	let repo = support::test_repo();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -130,7 +128,6 @@ fn autonomy_resources_redact_local_private_signal_refs() {
 
 	let responses = support::run_stdio_with_context(
 			McpContext {
-				repo_root: repo.path().to_path_buf(),
 				config_path: None,
 				project_id: Some(String::from("decodex")),
 				state_store: Some(state_store),

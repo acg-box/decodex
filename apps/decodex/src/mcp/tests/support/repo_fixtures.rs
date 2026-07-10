@@ -11,15 +11,6 @@ pub(in crate::mcp::tests) fn test_repo() -> TempDir {
 	let repo = TempDir::new().expect("temp repo should exist");
 
 	write_file(repo.path().join("Cargo.toml"), "[workspace]\n");
-	write_file(repo.path().join("openwiki/quickstart.md"), "# Quickstart\n");
-	write_file(
-		repo.path().join("openwiki/specs/contracts-and-data.md"),
-		"# Contracts\n\nSpec body.\n",
-	);
-	write_file(
-		repo.path().join("openwiki/workflows/runtime-operator-workflows.md"),
-		"# Workflows\n",
-	);
 
 	repo
 }

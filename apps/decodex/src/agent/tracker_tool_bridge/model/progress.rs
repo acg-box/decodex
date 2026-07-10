@@ -3,7 +3,6 @@ use super::review::ReviewHandoffContext;
 #[derive(Debug)]
 pub(crate) struct NormalizedProgressCheckpoint {
 	pub(crate) phase: ExecutionProgressPhase,
-	pub(crate) openwiki_impact: OpenWikiImpact,
 	pub(crate) focus: String,
 	pub(crate) next_action: String,
 	pub(crate) blockers: Vec<String>,
@@ -56,36 +55,6 @@ impl ExecutionProgressPhase {
 			"closeout" => Ok(Self::Closeout),
 			other => Err(format!(
 				"`issue_progress_checkpoint` phase must be `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, or `closeout`, not `{other}`."
-			)),
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum OpenWikiImpact {
-	None,
-	UpdateRequired,
-	ResearchRequired,
-	DriftRequired,
-}
-impl OpenWikiImpact {
-	pub(crate) fn as_str(self) -> &'static str {
-		match self {
-			Self::None => "none",
-			Self::UpdateRequired => "update_required",
-			Self::ResearchRequired => "research_required",
-			Self::DriftRequired => "drift_required",
-		}
-	}
-
-	pub(crate) fn parse(value: &str) -> std::result::Result<Self, String> {
-		match value {
-			"none" => Ok(Self::None),
-			"update_required" => Ok(Self::UpdateRequired),
-			"research_required" => Ok(Self::ResearchRequired),
-			"drift_required" => Ok(Self::DriftRequired),
-			other => Err(format!(
-				"`issue_progress_checkpoint` openwiki_impact must be `none`, `update_required`, `research_required`, or `drift_required`, not `{other}`."
 			)),
 		}
 	}

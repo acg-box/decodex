@@ -46,7 +46,6 @@ required_paths = [
 	"automations/radar/skills/codex-code-analysis/SKILL.md",
 	"automations/radar/skills/codex-upstream-triage/SKILL.md",
 	"automations/radar/skills/github-signal/SKILL.md",
-	"openwiki/integrations/plugins-automations-and-auxiliary-tools.md",
 ]
 rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=0;BYSECOND=0"
 
@@ -63,7 +62,6 @@ required_cache_prefixes = [
 required_paths = [
 	"apps/radar/src/lib.rs",
 	"automations/radar/skills/codex-release-analysis/SKILL.md",
-	"openwiki/integrations/plugins-automations-and-auxiliary-tools.md",
 ]
 rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=20;BYSECOND=0"
 
@@ -81,6 +79,5 @@ required_cache_prefixes = [
 required_paths = [
 	"apps/radar/src/lib.rs",
 	"automations/radar/radar.toml",
-	"openwiki/integrations/plugins-automations-and-auxiliary-tools.md",
 ]
 rrule = "FREQ=DAILY;BYHOUR=3;BYMINUTE=30;BYSECOND=0"

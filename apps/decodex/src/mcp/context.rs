@@ -3,15 +3,9 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use crate::{
-	config::ServiceConfig,
-	prelude::{Result, eyre},
-	runtime,
-	state::StateStore,
-};
+use crate::{config::ServiceConfig, prelude::Result, runtime, state::StateStore};
 
 pub(super) struct McpContext {
-	pub(super) repo_root: PathBuf,
 	pub(super) config_path: Option<PathBuf>,
 	pub(super) project_id: Option<String>,
 	pub(super) state_store: Option<StateStore>,
@@ -21,18 +15,9 @@ impl McpContext {
 		let state_store = runtime::open_runtime_store_lazy().ok();
 		let config_path = resolve_context_config_path(config_path, state_store.as_ref())?;
 		let config = config_path.as_ref().map(ServiceConfig::from_path).transpose()?;
-		let repo_root = config
-			.as_ref()
-			.map(|config| config.repo_root().to_path_buf())
-			.or_else(|| discover_repo_root_from_current_dir().ok().flatten())
-			.ok_or_else(|| {
-				eyre::eyre!(
-						"Failed to find the Decodex repository root for MCP OpenWiki resources; start from a checkout or pass --config."
-				)
-			})?;
 		let project_id = config.map(|config| config.service_id().to_owned());
 
-		Ok(Self { repo_root, config_path, project_id, state_store })
+		Ok(Self { config_path, project_id, state_store })
 	}
 
 	pub(super) fn project_id(&self) -> Option<&str> {
@@ -53,19 +38,4 @@ fn resolve_context_config_path(
 	};
 
 	runtime::registered_config_path_for_cwd(state_store, &env::current_dir()?)
-}
-
-fn discover_repo_root_from_current_dir() -> Result<Option<PathBuf>> {
-	let mut candidate = env::current_dir()?;
-
-	loop {
-		if candidate.join("openwiki/quickstart.md").is_file()
-			&& candidate.join("Cargo.toml").is_file()
-		{
-			return Ok(Some(candidate));
-		}
-		if !candidate.pop() {
-			return Ok(None);
-		}
-	}
 }

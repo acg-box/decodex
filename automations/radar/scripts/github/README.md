@@ -54,12 +54,13 @@ Decodex Publisher validates `social_candidate/v1`,
 
 Contract ownership:
 
-- input bundle shape: `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
-- upstream review queue and AI review boundary: `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
-- output signal shape: `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
-- upstream impact shape: `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
-- Control Plane upgrade candidate shape:
-  `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
+- Radar artifact schemas and validation: `apps/radar/src/artifact_validation/`
+- upstream review and analysis schemas: `automations/radar/scripts/github/upstream_review.schema.json`
+  and `automations/radar/scripts/github/analysis_draft.schema.json`
+- upstream impact schema: `automations/radar/scripts/github/upstream_impact.schema.json`
+- Control Plane upgrade candidate schema:
+  `automations/radar/scripts/github/control_plane_upgrade_candidate.schema.json`
+- analysis workflow: `automations/radar/skills/codex-code-analysis/SKILL.md`
 
 Example flow:
 
@@ -143,5 +144,4 @@ are Decodex Publisher contracts, not Radar contracts.
 
 Raw bundles and analysis drafts are retained in hot cache for a 21-day window. Archive
 older raw batches through an explicit external-archive handoff when needed, and write
-the recovery manifest under `.agent/automations/radar/cache/archive/index/`. See
-`openwiki/integrations/plugins-automations-and-auxiliary-tools.md` and `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`.
+the recovery manifest under `.agent/automations/radar/cache/archive/index/`.

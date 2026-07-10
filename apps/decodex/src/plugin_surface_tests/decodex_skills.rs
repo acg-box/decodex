@@ -21,10 +21,6 @@ fn packaged_decodex_skills_are_runtime_operator_only() {
 	plugin_surface_tests::assert_contains(&skill_surface, "raw Git");
 	plugin_surface_tests::assert_contains(&skill_surface, "GitHub UI");
 	plugin_surface_tests::assert_contains(&skill_surface, "gh pr merge");
-	plugin_surface_tests::assert_contains(&skill_surface, "external installed `codebase`");
-	plugin_surface_tests::assert_not_contains(&skill_surface, "research-promote");
-	plugin_surface_tests::assert_not_contains(&skill_surface, "deliberation:");
-	plugin_surface_tests::assert_not_contains(&skill_surface, "$knowledge:docs");
 }
 
 #[test]

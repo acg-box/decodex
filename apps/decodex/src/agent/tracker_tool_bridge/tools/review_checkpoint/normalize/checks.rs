@@ -18,10 +18,6 @@ pub(super) fn normalize_review_checkpoint_checks(
 			checks.missing_tests,
 			"checks.missing_tests",
 		)?,
-		openwiki_config_drift: shared::normalize_required_review_text(
-			checks.openwiki_config_drift,
-			"checks.openwiki_config_drift",
-		)?,
 		migration_fallout: shared::normalize_required_review_text(
 			checks.migration_fallout,
 			"checks.migration_fallout",

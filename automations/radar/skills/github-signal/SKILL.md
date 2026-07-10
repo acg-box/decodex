@@ -16,7 +16,6 @@ It consumes a reviewed bundle plus source-backed analysis and drafts the JSON th
 
 ## Read before drafting
 
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `automations/radar/skills/codex-upstream-triage/SKILL.md`
 - `automations/radar/skills/codex-code-analysis/SKILL.md`
 

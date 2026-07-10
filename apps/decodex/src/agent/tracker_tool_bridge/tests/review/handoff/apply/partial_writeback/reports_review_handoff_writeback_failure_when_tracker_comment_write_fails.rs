@@ -81,7 +81,6 @@ fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
 			"progress_checkpoint",
 			serde_json::json!({
 				"phase": "ready_for_review",
-				"openwiki_impact": "none",
 				"head_sha": tests::sample_local_repo().head_oid,
 				"focus": "Finalize review handoff.",
 				"next_action": "Record terminal finalize.",

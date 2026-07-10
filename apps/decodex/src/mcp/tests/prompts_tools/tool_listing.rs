@@ -51,20 +51,23 @@ fn tools_list_exposes_schema_bound_tools() {
 			["items"]["properties"]["dependencies"]["description"],
 		"Candidate keys that must complete before this candidate."
 	);
-
-	let autonomy_signal_kind_schema =
-		&autonomy_submit_signal["inputSchema"]["properties"]["kind"]["enum"];
-
-	assert!(
-		autonomy_signal_kind_schema.as_array().is_some_and(|kinds| {
-			kinds.iter().any(|kind| kind.as_str() == Some("openwiki_drift"))
-		}),
-		"autonomy_submit_signal should expose the current OpenWiki drift kind"
+	assert_eq!(
+		autonomy_submit_signal["inputSchema"]["properties"]["kind"]["enum"],
+		serde_json::json!([
+			"runtime_health",
+			"validation_regression",
+			"review_feedback_cluster",
+			"user_feedback_cluster",
+			"spec_drift",
+			"protocol_drift",
+			"metric_regression",
+			"execution_friction"
+		])
 	);
 
 	support::assert_tool_output_schema_variant(
 		plan,
-		"decodex.mcp.plan_result/1",
+		"decodex.mcp.plan_result/2",
 		Some("next_action"),
 	);
 	support::assert_tool_output_schema_variant(plan, "decodex.mcp.refusal/1", Some("reason"));

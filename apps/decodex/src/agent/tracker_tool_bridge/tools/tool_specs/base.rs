@@ -127,15 +127,6 @@ impl<'a> TrackerToolBridge<'a> {
 							"closeout"
 						]
 					},
-					"openwiki_impact": {
-						"type": "string",
-						"enum": [
-							"none",
-							"update_required",
-							"research_required",
-							"drift_required"
-						]
-					},
 					"focus": { "type": "string" },
 					"next_action": { "type": "string" },
 				"blockers": {
@@ -154,7 +145,7 @@ impl<'a> TrackerToolBridge<'a> {
 				"branch": { "type": "string" },
 				"pr_url": { "type": "string" }
 			},
-				"required": ["phase", "openwiki_impact", "focus", "next_action", "blockers", "evidence"],
+				"required": ["phase", "focus", "next_action", "blockers", "evidence"],
 				"additionalProperties": false
 			}),
 		)]
