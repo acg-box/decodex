@@ -19,6 +19,7 @@ pub(in crate::recovery) fn stale_active_private_event_allows_release(
 		|| ((marker_liveness == StaleActiveProcessLiveness::NotAlive || release_audit_present)
 			&& control::stale_active_event_is_dead_process_telemetry(event))
 		|| runtime::stale_active_private_event_is_stale_runtime_marker(event)
+		|| runtime::stale_active_private_event_is_dispatch_selection(event)
 		|| runtime::stale_active_private_event_is_probing_checkpoint(event)
 		|| guardrail::stale_active_private_event_is_no_diff_guardrail(event)
 		|| runtime::stale_active_event_is_phase_goal_failure_telemetry(event)

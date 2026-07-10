@@ -168,3 +168,85 @@ fn guards_terminal_looking_run_before_final_check() {
 		);
 	}
 }
+
+#[test]
+fn releases_clean_retained_worktree_when_active_label_is_already_absent() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let context = tests::sample_recovery_context(
+		&temp_dir,
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+	);
+	let worktree_path = context.config.worktree_root().join("PUB-1626");
+	let mut issue = tests::sample_issue_with_labels("Todo", &[]);
+
+	issue.identifier = String::from("PUB-1626");
+
+	tests::init_git_repo(context.config.repo_root());
+	tests::run_git(context.config.repo_root(), &["checkout", "-B", "main"]);
+	tests::commit_test_file(context.config.repo_root(), "README.md", "base\n", "base");
+	tests::run_git(context.config.repo_root(), &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+	tests::run_git(
+		context.config.repo_root(),
+		&["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+	);
+	tests::run_git(
+		context.config.repo_root(),
+		&[
+			"worktree",
+			"add",
+			"-b",
+			"x/pubfi-pub-1626",
+			worktree_path.to_str().expect("worktree path should be utf-8"),
+			"main",
+		],
+	);
+
+	context
+		.state_store
+		.record_run_attempt("run-1626", &issue.id, 1, "interrupted")
+		.expect("run attempt should record");
+	context
+		.state_store
+		.upsert_worktree(
+			context.config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-1626",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	let tracker = GhostLaneTestTracker::with_issues(vec![issue.clone()]);
+	let mut diagnostics = release::diagnose_stale_active_issues(
+		context.config.service_id(),
+		&context.workflow,
+		context.config.worktree_root(),
+		&context.state_store,
+		&tracker,
+		Some("PUB-1626"),
+		RecoveryRuntimeMutationPolicy::AllowRuntimeWrites,
+	)
+	.expect("stale active diagnosis should run");
+	let diagnostic = diagnostics.pop().expect("diagnostic should exist");
+
+	assert!(diagnostic.recoverable(), "unexpected blockers: {:?}", diagnostic.blockers);
+	assert!(diagnostic.evidence.contains(&String::from("active_label_already_absent_cleanup")));
+
+	release::apply_stale_active_release_with_tracker(
+		&tracker,
+		&context.config,
+		&context.workflow,
+		&context.state_store,
+		&diagnostic,
+	)
+	.expect("clean retained worktree should release without an active-label mutation");
+
+	let run = context
+		.state_store
+		.run_attempt("run-1626")
+		.expect("run attempt should read")
+		.expect("run should exist");
+
+	assert_eq!(run.status(), GHOST_LANE_TERMINAL_STATUS);
+	assert!(!worktree_path.exists(), "retained worktree should be removed");
+	assert!(tracker.label_removals.borrow().is_empty());
+}
