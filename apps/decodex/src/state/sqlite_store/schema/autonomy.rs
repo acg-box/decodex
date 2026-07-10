@@ -85,6 +85,13 @@ CREATE INDEX IF NOT EXISTS autonomy_runtime_policy_receipts_expiry_idx
 ON autonomy_runtime_policy_receipts (project_id, expires_at_unix, consumed_at);
 "#,
 		)?;
+		self.ensure_column(
+			"autonomy_runtime_policies",
+			"objective_digest",
+			"ALTER TABLE autonomy_runtime_policies ADD COLUMN objective_digest TEXT NOT NULL DEFAULT ''",
+		)?;
+		self.connection
+			.execute("DELETE FROM autonomy_runtime_policies WHERE objective_digest = ''", [])?;
 
 		Ok(())
 	}
