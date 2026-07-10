@@ -29,10 +29,9 @@ where
 	let Some(issue) = active::refreshed_child_exit_issue(&mut context, issue_id)? else {
 		return Ok(());
 	};
-	let continuation_pending =
-		exit_status.success() && run_attempt.status() == CONTINUATION_PENDING_RUN_STATUS;
+	let continuation_pending = run_attempt.status() == CONTINUATION_PENDING_RUN_STATUS;
 
-	if !exit_status.success() && run_attempt.status() != "failed" {
+	if !exit_status.success() && run_attempt.status() != "failed" && !continuation_pending {
 		daemon_retry::clear_retry_schedule_and_release(
 			context.retry_queue,
 			context.state_store,
@@ -60,18 +59,22 @@ where
 		return Ok(());
 	}
 
-	let recovered_phase_goal_continuation = match daemon_retry::recover_child_exit_phase_goal(
-		&mut context,
-		&issue,
-		child,
-		issue_id,
-		initial_issue_state,
-		dispatch_mode,
-		exit_status.success(),
-	)? {
-		ChildExitPhaseGoalRecovery::None => None,
-		ChildExitPhaseGoalRecovery::Continuation(recovery) => Some(recovery),
-		ChildExitPhaseGoalRecovery::Terminalized => return Ok(()),
+	let recovered_phase_goal_continuation = if continuation_pending {
+		None
+	} else {
+		match daemon_retry::recover_child_exit_phase_goal(
+			&mut context,
+			&issue,
+			child,
+			issue_id,
+			initial_issue_state,
+			dispatch_mode,
+			exit_status.success(),
+		)? {
+			ChildExitPhaseGoalRecovery::None => None,
+			ChildExitPhaseGoalRecovery::Continuation(recovery) => Some(recovery),
+			ChildExitPhaseGoalRecovery::Terminalized => return Ok(()),
+		}
 	};
 	let (kind, attempt, continuation_initial_issue_state) = if continuation_pending {
 		plan::continuation_child_exit_retry_plan(&run_attempt, initial_issue_state)
