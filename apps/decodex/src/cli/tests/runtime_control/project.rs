@@ -11,6 +11,7 @@ fn parses_project_subcommands() {
 		Add,
 		Enable,
 		Remove,
+		AcceptRuntimePolicy,
 	}
 
 	for (case_name, args, expected) in [
@@ -28,6 +29,18 @@ fn parses_project_subcommands() {
 			"remove",
 			&["decodex", "project", "remove", "vibe-mono"][..],
 			ExpectedProjectSubcommand::Remove,
+		),
+		(
+			"accept-runtime-policy",
+			&[
+				"decodex",
+				"project",
+				"accept-runtime-policy",
+				"pubfi",
+				"--public-non-goal",
+				"Do not bypass review.",
+			][..],
+			ExpectedProjectSubcommand::AcceptRuntimePolicy,
 		),
 	] {
 		let cli = Cli::parse_from(args.iter().copied());
@@ -51,6 +64,15 @@ fn parses_project_subcommands() {
 				matches!(
 					cli.command,
 					Command::Project(ProjectCommand { command: ProjectSubcommand::Remove(_) })
+				),
+				"unexpected parsed project subcommand for `{case_name}`"
+			),
+			ExpectedProjectSubcommand::AcceptRuntimePolicy => assert!(
+				matches!(
+					cli.command,
+					Command::Project(ProjectCommand {
+						command: ProjectSubcommand::AcceptRuntimePolicy(_)
+					})
 				),
 				"unexpected parsed project subcommand for `{case_name}`"
 			),

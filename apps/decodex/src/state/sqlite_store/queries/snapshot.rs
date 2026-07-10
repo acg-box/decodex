@@ -18,6 +18,7 @@ impl SqliteStateStore {
 		self.load_private_execution_events(&mut state)?;
 		self.load_decision_contracts(&mut state)?;
 		self.load_autonomy_objectives(&mut state)?;
+		self.load_autonomy_runtime_policies(&mut state)?;
 		self.load_autonomy_signals(&mut state)?;
 		self.load_autonomy_proposals(&mut state)?;
 		self.load_execution_programs(&mut state)?;

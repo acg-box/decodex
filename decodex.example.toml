@@ -30,11 +30,17 @@ review = "strict"
 # auto_promote = false
 # auto_intake  = false
 
-# Required only when `auto_promote = true`. This table is references-only: it names
-# accepted runtime authority records. The Objective Contract and project-policy bodies
-# live in Decodex runtime state, not in project.toml. Those accepted records carry
-# goals, non-goals, signal kinds, allowed surfaces, validation/review gates, and write
-# limits. `team_issue_identifier` is also required when `auto_intake = true`.
+# Required only when `auto_promote = true`. This references-only binding is not
+# authority by itself. An operator must run interactive
+# `decodex project accept-runtime-policy <SERVICE_ID> --public-non-goal <TEXT>...`,
+# inspect the exact candidate digest, and type the digest confirmation. That command
+# issues and atomically consumes a server-stored, principal-bound, single-use
+# 10-minute receipt into the immutable accepted record. MCP can preview the candidate
+# but cannot perform acceptance, including from the default Admin stdio profile.
+# `autonomy_apply_runtime_policy` then runs Decodex's internal challenge and may
+# promote a matching ready proposal; it never performs Program Intake.
+# `team_issue_identifier` is required when `auto_intake = true` so a separate
+# `intake_goal` dry-run/apply sequence can use the registered tracker anchor.
 # [autonomy.runtime_policy]
 # accepted_objective_id = "quality-autonomy"
 # accepted_objective_version = "1"

@@ -28,6 +28,14 @@ impl SqliteStateStore {
 			mutations::params![service_id],
 		)?;
 		transaction.execute(
+			"DELETE FROM autonomy_runtime_policies WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM autonomy_runtime_policy_receipts WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
+		transaction.execute(
 			"DELETE FROM autonomy_signals WHERE project_id = ?1",
 			mutations::params![service_id],
 		)?;
@@ -45,6 +53,10 @@ impl SqliteStateStore {
 		)?;
 		transaction.execute(
 			"DELETE FROM program_issue_mappings WHERE project_id = ?1",
+			mutations::params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM program_intake_attempts WHERE project_id = ?1",
 			mutations::params![service_id],
 		)?;
 		transaction.execute(

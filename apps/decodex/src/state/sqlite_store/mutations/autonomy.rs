@@ -1,11 +1,108 @@
 mod signals;
 
-use crate::state::sqlite_store::mutations::{
-	self, AutonomyObjectiveRuntimeRecord, DecisionContractRuntimeRecord,
-	ExecutionProgramRuntimeRecord, Result, SqliteStateStore, eyre, persist,
+use crate::{
+	autonomy_runtime_policy,
+	state::{
+		AutonomyRuntimePolicyReceiptInput, AutonomyRuntimePolicyRecord,
+		sqlite_store::mutations::{
+			self, AutonomyObjectiveRuntimeRecord, AutonomyRuntimePolicyRuntimeRecord,
+			DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord, Result, SqliteStateStore,
+			eyre, persist,
+		},
+	},
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn issue_autonomy_runtime_policy_receipt(
+		&self,
+		input: AutonomyRuntimePolicyReceiptInput<'_>,
+	) -> Result<()> {
+		self.connection.execute(
+			"INSERT INTO autonomy_runtime_policy_receipts (
+				project_id, receipt_id, principal, candidate_digest, candidate_json,
+				created_at, expires_at_unix, consumed_at
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
+			mutations::params![
+				input.project_id,
+				input.receipt_id,
+				input.principal,
+				input.candidate_digest,
+				serde_json::to_string(input.candidate)?,
+				input.created_at,
+				input.expires_at_unix,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	pub(in crate::state) fn consume_autonomy_runtime_policy_receipt(
+		&mut self,
+		project_id: &str,
+		receipt_id: &str,
+		principal: &str,
+		now: &str,
+		now_unix: i64,
+	) -> Result<AutonomyRuntimePolicyRuntimeRecord> {
+		let transaction = self.connection.transaction()?;
+		let (stored_principal, candidate_digest, candidate_json, expires_at_unix, consumed_at) =
+			transaction.query_row(
+				"SELECT principal, candidate_digest, candidate_json, expires_at_unix, consumed_at
+				 FROM autonomy_runtime_policy_receipts
+				 WHERE project_id = ?1 AND receipt_id = ?2",
+				mutations::params![project_id, receipt_id],
+				|row| {
+					Ok((
+						row.get::<_, String>(0)?,
+						row.get::<_, String>(1)?,
+						row.get::<_, String>(2)?,
+						row.get::<_, i64>(3)?,
+						row.get::<_, Option<String>>(4)?,
+					))
+				},
+			)?;
+
+		if stored_principal != principal {
+			eyre::bail!("runtime_policy_receipt_principal_mismatch");
+		}
+		if consumed_at.is_some() {
+			eyre::bail!("runtime_policy_receipt_already_consumed");
+		}
+		if expires_at_unix < now_unix {
+			eyre::bail!("runtime_policy_receipt_expired");
+		}
+		if expires_at_unix - now_unix > 600 {
+			eyre::bail!("runtime_policy_receipt_expiry_invalid");
+		}
+
+		let candidate: AutonomyRuntimePolicyRecord = serde_json::from_str(&candidate_json)?;
+
+		candidate.validate()?;
+
+		let calculated_digest =
+			autonomy_runtime_policy::runtime_policy_candidate_digest(&candidate)?;
+
+		if candidate.project_id() != project_id || calculated_digest != candidate_digest {
+			eyre::bail!("runtime_policy_receipt_candidate_mismatch");
+		}
+
+		let runtime_record = AutonomyRuntimePolicyRuntimeRecord::from(candidate);
+		let stored = persist::upsert_autonomy_runtime_policy_record(&transaction, &runtime_record)?;
+		let consumed = transaction.execute(
+			"UPDATE autonomy_runtime_policy_receipts SET consumed_at = ?3
+			 WHERE project_id = ?1 AND receipt_id = ?2 AND consumed_at IS NULL",
+			mutations::params![project_id, receipt_id, now],
+		)?;
+
+		if consumed != 1 {
+			eyre::bail!("runtime_policy_receipt_consumption_conflict");
+		}
+
+		transaction.commit()?;
+
+		Ok(stored)
+	}
+
 	#[allow(dead_code)]
 	pub(in crate::state) fn upsert_decision_contract(
 		&self,
@@ -73,6 +170,13 @@ impl SqliteStateStore {
 		)?;
 
 		Ok(())
+	}
+
+	pub(in crate::state) fn upsert_autonomy_runtime_policy(
+		&self,
+		record: &AutonomyRuntimePolicyRuntimeRecord,
+	) -> Result<AutonomyRuntimePolicyRuntimeRecord> {
+		persist::upsert_autonomy_runtime_policy_record(&self.connection, record)
 	}
 
 	#[allow(dead_code)]

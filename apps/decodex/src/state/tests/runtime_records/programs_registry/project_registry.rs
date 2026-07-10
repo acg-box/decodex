@@ -1,6 +1,6 @@
 use tempfile::TempDir;
 
-use crate::state::{ProjectRegistration, StateStore};
+use crate::state::{AutonomyRuntimePolicyRecord, ProjectRegistration, StateStore};
 
 #[test]
 fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
@@ -168,6 +168,27 @@ fn remove_project_deletes_persistent_registry_row() {
 	};
 
 	store.upsert_project(&registration).expect("project should persist");
+	store
+		.accept_autonomy_runtime_policy(
+			AutonomyRuntimePolicyRecord::new(
+				"vibe-mono",
+				"policy",
+				"1",
+				"objective",
+				1,
+				"sha256:objective",
+				"policy:1",
+				"operator",
+				"2026-07-10T12:00:00Z",
+				"test",
+				vec![String::from("No bypass.")],
+			)
+			.expect("policy should validate"),
+		)
+		.expect("policy should persist");
+	store
+		.begin_program_intake_attempt("vibe-mono", "contract-1", "digest-1")
+		.expect("intake attempt should persist");
 
 	let removed = store.remove_project("vibe-mono").expect("project should remove");
 
@@ -179,5 +200,19 @@ fn remove_project_deletes_persistent_registry_row() {
 	assert!(
 		reopened.list_projects().expect("project registry should load").is_empty(),
 		"removed project must not remain in SQLite registry"
+	);
+	assert!(
+		reopened
+			.autonomy_runtime_policy("vibe-mono", "policy", "1")
+			.expect("policy lookup should work")
+			.is_none(),
+		"project removal must delete accepted runtime policy authority"
+	);
+	assert_eq!(
+		reopened
+			.program_intake_attempt_status("vibe-mono", "contract-1")
+			.expect("attempt lookup should work"),
+		None,
+		"project removal must delete stale Program Intake claims"
 	);
 }

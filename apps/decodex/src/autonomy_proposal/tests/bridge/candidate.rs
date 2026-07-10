@@ -1,5 +1,9 @@
 use crate::{
-	autonomy_proposal::{AutonomyProposal, tests},
+	autonomy_proposal::{
+		AutonomyProposal, AutonomyProposalAuthorityActorKind,
+		AutonomyProposalDecisionBridgeAuthority, AutonomyProposalDecisionBridgeAuthorityInput,
+		tests,
+	},
 	loop_contract::{DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind},
 	state::StateStore,
 };
@@ -26,6 +30,29 @@ fn accepts_candidate_contract_with_lineage_readback() {
 		.expect("re-accepting the same latent contract should be idempotent");
 
 	assert_eq!(idempotent.contract(), candidate.contract());
+
+	let conflicting_authority = AutonomyProposalDecisionBridgeAuthority::new(
+		AutonomyProposalDecisionBridgeAuthorityInput {
+			accepted_by: String::from("other-operator"),
+			accepted_by_kind: AutonomyProposalAuthorityActorKind::User,
+			accepted_at: String::from("2026-06-22T00:03:00Z"),
+			acceptance_source: String::from("conversation"),
+			reason: String::from("Conflicting same-id authority."),
+			proposal_actor: String::from("subagent"),
+			proposal_actor_kind: AutonomyProposalAuthorityActorKind::ExternalAgent,
+			accepted_project_policy: None,
+		},
+	)
+	.expect("conflicting authority fixture should validate");
+	let conflict = store
+		.accept_autonomy_proposal_as_decision_contract_candidate(
+			"decodex",
+			&proposal_id,
+			conflicting_authority,
+		)
+		.expect_err("same-id latent contract with different authority must be refused");
+
+	assert!(conflict.to_string().contains("will not replace"));
 
 	let missing_promotion_authority = DecisionPromotion::new(
 		"",

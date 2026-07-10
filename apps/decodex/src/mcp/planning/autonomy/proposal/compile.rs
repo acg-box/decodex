@@ -1,10 +1,13 @@
 use serde_json::{self, Value};
 
-use crate::mcp::{
-	self, McpServer, TOOL_AUTONOMY_COMPILE_PROPOSAL,
-	planning::{
-		self,
-		autonomy::{args::AutonomyCompileProposalToolArgs, results},
+use crate::{
+	autonomy_runtime_policy,
+	mcp::{
+		self, McpServer, TOOL_AUTONOMY_COMPILE_PROPOSAL,
+		planning::{
+			self,
+			autonomy::{args::AutonomyCompileProposalToolArgs, results},
+		},
 	},
 };
 
@@ -71,6 +74,17 @@ impl McpServer {
 				None,
 			));
 		}
+
+		let _authority_lock =
+			match autonomy_runtime_policy::acquire_autonomy_project_authority_lock(&project_id) {
+				Ok(lock) => lock,
+				Err(_) => {
+					return mcp::tool_refusal(
+						"autonomy_proposal_refused",
+						"Autonomy proposal persistence could not acquire the trusted authority lock.",
+					);
+				},
+			};
 
 		match store.record_autonomy_proposal(&project_id, proposal) {
 			Ok(record) => mcp::tool_success(results::autonomy_proposal_tool_result(
