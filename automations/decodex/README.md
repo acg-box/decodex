@@ -1,13 +1,15 @@
 # Decodex Publisher Automation Operations
 
-This directory owns repo-local source for Decodex Publisher automation.
+This directory owns repo-local source for Decodex Publisher and automation-operations jobs.
 
-- `automations.toml`: checked-in recurring automation source for public-publishing and
-  automation health audit jobs.
+- `automations.toml`: checked-in recurring automation source for public publishing,
+  health repair, daily effectiveness, daily management, and weekly growth review.
 - `prompts/`: Codex app automation prompts for Publisher-owned jobs.
 - `scripts/social/`: social candidate, reservation, and post schemas.
 - `skills/`: Publisher skills and shared publishing gates.
 - `scripts/config/`: shared automation config evaluation and live-install utilities.
+- `scripts/operations/`: deterministic effectiveness scorecards consumed by daily and
+  weekly management loops.
 - `research/`: retained automation research data that is not part of OpenWiki.
 
 Generated Publisher state belongs under `.agent/automations/decodex/cache/social`.
@@ -45,6 +47,19 @@ python3 automations/decodex/scripts/config/evaluate_automations.py --manifest au
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/radar/automations.toml
 ```
 
-The installer resolves `cwd = "{repo_root}"` to the current clone path at install time
-and refuses prompts containing configured private fragments such as absolute user-home
-paths, auth files, account files, or runtime databases.
+The installer resolves `cwd = "{repo_root}"` to the primary checkout owning `main`,
+even when the command is invoked from a development worktree. It rejects explicit
+linked-worktree runtime roots. The evaluator also fails any managed live config whose
+cwd contains `.worktrees`. Prompts containing configured private fragments such as
+absolute user-home paths, auth files, account files, or runtime databases are refused.
+
+Build a deterministic seven-day operating scorecard with:
+
+```sh
+python3 automations/decodex/scripts/operations/summarize_automation_effectiveness.py
+```
+
+The scorecard reports live availability and cwd violations, social candidate and
+terminal outcomes, stale reservations, Radar throughput, manager evidence, and
+machine-actionable blockers. It does not substitute generated evidence for X outcome
+readback or accepted Decodex execution authority.

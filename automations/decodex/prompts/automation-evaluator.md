@@ -1,27 +1,28 @@
-Audit Decodex and Radar Codex app automations and repo-local automation source against their canonical automation manifests.
+Audit and repair live Decodex and Radar Codex app automation configuration against canonical repo manifests. This is Codex app automation, not GitHub Actions.
 
 Authority and boundaries:
-- This is Codex app automation, not GitHub Actions.
-- The canonical automation definitions are `automations/decodex/automations.toml`
-  and `automations/radar/automations.toml`.
-- Prompt authority lives in `automations/decodex/prompts/*.md` and
-  `automations/radar/prompts/*.md`.
-- Generated Decodex state must stay under `.agent/automations/decodex/cache`;
-  generated Radar state must stay under `.agent/automations/radar/cache`.
-- Private Decodex runtime, account-pool, auth, and project-registry files are outside this automation boundary.
-- Do not mutate Linear, publish to X, create GitHub Actions, open or land PRs, or write upstream-monitoring/public-publishing artifacts into tracked source.
+- Canonical definitions are `automations/decodex/automations.toml`, `automations/radar/automations.toml`, and their prompt files.
+- Every managed automation must be active and its cwd must be the primary `main` checkout. A cwd containing `.worktrees` is a P0 failure.
+- Generated Decodex state must stay under `.agent/automations/decodex/cache`; generated Radar state must stay under `.agent/automations/radar/cache`.
+- You may repair live automation config from validated canonical source. Do not edit repo source, mutate Linear, publish to X, create GitHub Actions, push, open or land PRs, or touch private runtime/account/auth state.
 
 Preflight:
-Before reporting health, run `pwd`, `git status --short --branch`, and `git rev-parse HEAD`. Report cwd, branch, HEAD, and dirty state. If the checkout is dirty, the cwd is not the automation checkout, or required repo-local source files are missing, fail closed and report the exact reason without mutating config or source.
+Before reporting health or applying live repair, run `pwd`, `git status --short --branch`, and `git rev-parse HEAD`. The cwd must be the primary clean `main` checkout. Otherwise fail closed without mutating config or source.
+
+Required reads:
+- `automations/decodex/automations.toml`
+- `automations/radar/automations.toml`
+- `automations/decodex/scripts/config/evaluate_automations.py`
+- `automations/decodex/scripts/config/sync_automations.py`
+- `openwiki/quickstart.md`
 
 Workflow:
-1. Run `python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml --json`.
-2. Run `python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/radar/automations.toml --json`.
-3. If live `$CODEX_HOME` automation configs are unavailable, also run both commands with `--repo-only` and report that live config readback was skipped.
-4. Inspect any failure against the matching checked-in manifest, prompt files, active `$CODEX_HOME/automations/*/automation.toml`, and repo paths.
-5. Do not self-mutate live automation config or repo source. Report exact drift, the authoritative source path, and the proposed `automation_update` or repo patch for an operator-driven follow-up.
-6. Do not enable paused automations unless there is explicit operator intent.
-7. If no mutation happened, do not claim fixed; report the current evaluator result and remaining operator action.
+1. Run live evaluation for both manifests with `--json`.
+2. If both pass, record a healthy terminal result.
+3. If repo-only evaluation fails, do not repair live config. Report the exact source defect.
+4. If repo-only evaluation passes and failures are confined to managed live status, cwd, prompt, schedule, model, reasoning effort, or missing live config, run the canonical sync installer with `--apply` from the primary `main` checkout.
+5. Re-run both live evaluations. Claim repaired only when every managed id passes and no cwd contains `.worktrees`.
+6. Persist a concise health record under `.agent/automations/decodex/cache/manager/health/<yyyy-mm-dd>/` containing before/after results and the repair action.
 
 Terminal report:
-Report evaluated automation ids, pass/fail status per id, stale config findings, config changes made, source changes made, validation evidence, and residual risks. Archive the run thread after a terminal healthy/no-op or bounded self-improvement outcome when no human handoff remains.
+Report every managed id, before/after status, worktree-binding violations, repair action, final validation, health-record path, and unresolved blockers. Archive the run after a terminal healthy, repaired, or fail-closed outcome.

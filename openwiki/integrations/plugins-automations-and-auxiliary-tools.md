@@ -59,7 +59,7 @@ Automation source is checked in under:
 - `automations/decodex/`: Publisher automation, public-publishing jobs, automation health audit jobs, social schemas, skills, and shared config tooling.
 - `automations/radar/`: Radar upstream review, release checkpoint curation, artifact retention, GitHub/Codex analysis helpers, and Radar skills.
 
-These are portable sources. Live Codex App configs under `$CODEX_HOME/automations/*/automation.toml` are generated and machine-local. Source manifests use relative paths and `{repo_root}` placeholders, and the installer refuses configured private fragments such as absolute user-home paths, auth files, account files, or runtime databases (`automations/decodex/README.md`).
+These are portable sources. Live Codex App configs under `$CODEX_HOME/automations/*/automation.toml` are generated and machine-local. Source manifests use relative paths and `{repo_root}` placeholders. Runtime cwd is always the primary checkout owning `main`: the installer rejects linked-worktree runtime roots and the evaluator treats any managed `.worktrees` cwd as a P0 failure. The installer also refuses configured private fragments such as absolute user-home paths, auth files, account files, or runtime databases (`automations/decodex/README.md`).
 
 Commands:
 
@@ -68,7 +68,26 @@ python3 automations/decodex/scripts/config/sync_automations.py
 python3 automations/decodex/scripts/config/sync_automations.py --apply
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/radar/automations.toml
+python3 automations/decodex/scripts/operations/summarize_automation_effectiveness.py
 ```
+
+The operating loop has explicit owners:
+
+- Health Audit repairs live-config-only drift from validated canonical source and
+  re-evaluates every managed automation. It never edits repo source.
+- Daily Effectiveness Review independently measures the previous 24 hours and writes
+  `automation_effectiveness_scorecard/v1` evidence.
+- Automation Manager consumes that evidence, ranks fresh Radar opportunities, creates
+  at most one qualified social candidate, closes operational incidents, and updates the
+  active content experiment. Publisher remains the sole X writer.
+- Weekly Growth Review compares consecutive seven-day windows and persists the next
+  experiment. Paid X MCP reads are bounded and used only when fresh outcome or benchmark
+  evidence can change the decision.
+
+Operational autonomy does not bypass repository authority. Prompt/live-config repair,
+candidate selection, publishing, outcome learning, and strategy updates can close
+automatically. Code, schema, runtime, PR, and landing changes still require normal
+Decodex authority and are emitted as structured implementation handoffs.
 
 Do not copy full automation prompts into OpenWiki. Summarize boundaries and link to source files when a task needs details.
 

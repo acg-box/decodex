@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "automation_effectiveness_scorecard.schema.json",
+  "title": "Decodex automation effectiveness scorecard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generated_at",
+    "window",
+    "status",
+    "live",
+    "social",
+    "radar",
+    "management",
+    "blockers"
+  ],
+  "properties": {
+    "schema": { "const": "automation_effectiveness_scorecard/v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "status": { "enum": ["healthy", "needs_action", "blocked"] },
+    "live": { "type": "object" },
+    "social": { "type": "object" },
+    "radar": { "type": "object" },
+    "management": { "type": "object" },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "code"],
+        "properties": {
+          "severity": { "enum": ["p0", "p1"] },
+          "code": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
