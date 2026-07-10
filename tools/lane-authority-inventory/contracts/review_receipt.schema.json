@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-review-receipt-1.json",
+  "additionalProperties": false,
+  "properties": {
+    "material_findings": {"const": 0},
+    "review_id": {"pattern": "^[a-z0-9-]+$", "type": "string"},
+    "reviewed_base_commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "reviewed_base_tree_oid": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "reviewed_input_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "reviewer_kind": {"const": "fresh_independent_read_only"},
+    "schema": {"const": "decodex/lane-authority-v2-c1i-review-receipt/1"},
+    "scope_policy": {"const": "all_c1i_changed_and_untracked_paths_except_this_receipt"},
+    "verdict": {"const": "APPROVE"}
+  },
+  "required": ["schema", "review_id", "reviewer_kind", "reviewed_base_commit", "reviewed_base_tree_oid", "reviewed_input_digest", "scope_policy", "verdict", "material_findings"],
+  "title": "Lane Authority v2 C1I non-self-referential integrated-ready review receipt",
+  "type": "object"
+}

@@ -1,0 +1,48 @@
+{
+  "advancement_state": "C1I_INCOMPLETE",
+  "provisional_analysis_cut_anchor": {
+    "c0_artifacts": {
+      "apps/decodex/src/bootstrap/tests/fixtures/lane_authority_v2/launcher_inventory.json": "f7d104ba81a793073654082abb6fbda5695ad916b2c5082dd00a67c15d9ad8c9",
+      "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/mutation_registry.json": "d0cbd97dfe32376d8a1d41a905a7b85bb5b4eee5c77b1cd2c13a219902fdfee8",
+      "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/scenario_manifest.json": "c87acaa1373c4a4bc45833e116c9d78208be932d8690fb78108c83d5ffabb914",
+      "apps/decodex/src/state/tests/fixtures/lane_authority_v2/legacy_authority_inventory.json": "7443fb30ccbeefe9240d36074de7ec51a29c9b4cd3a378933628762012434917"
+    },
+    "c0_baseline_commit": "d57553bc1bcdceebe1d0c7ec5ad5dc492b695348",
+    "c0_baseline_tree_oid": "741abc506dc169e28ed07618dd1c82e3e5f9f954",
+    "c0_source_tree_digest": "d55e72c9b4a522f7cec8af4afa8c968c6fd3749139d045d178160b6287f00507",
+    "exact_head_binding": "ephemeral_gate_receipt_required",
+    "provisional_pr_base_commit": "51f553fd32c8f75eed925afe87f99931844fffec",
+    "provisional_pr_base_tree_oid": "f858f8f6ded1d4a79c1e9afff3d8eb8785e98548",
+    "repository_key": "github.com/hack-ink/decodex"
+  },
+  "candidate_anchors": {
+    "c0_source_files": 3363,
+    "launcher_candidate_line_hits": 203,
+    "legacy_candidate_line_hits": 40854,
+    "mutation_candidate_line_hits": 39516
+  },
+  "catalog_status": "p0_schema_only_incomplete",
+  "review_cadence_policy": {
+    "architecture_review": "complete_at_c0",
+    "integrated_ready_review": "p5_exact_head",
+    "intermediate_phases": "machine_validation_only",
+    "lane_v2_land_review": "c7_exact_head"
+  },
+  "migration_state": "not_started",
+  "phase": "P0",
+  "plan_review": {
+    "material_findings": 0,
+    "model": "opencode/deepseek-v4-flash-free",
+    "future_independent_review_gates": ["P5_exact_head_ready", "C7_exact_head_land"],
+    "reviewed_plan_digest": "82147da6a392877aa24942c9c823864fe5d74aa40a57d0681cb382f969258074",
+    "reviewer_kind": "fresh_independent_read_only",
+    "scope": "plan_contract_only",
+    "verdict": "APPROVE"
+  },
+  "readiness_expectation": {
+    "exit_code": 1,
+    "reason_code": "c1i_phase_incomplete"
+  },
+  "schema": "decodex/lane-authority-v2-c1i-checkpoint/1",
+  "unresolved_state": "not_measured_until_p1"
+}

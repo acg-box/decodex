@@ -1,0 +1,507 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-inventory-composition-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "candidate_adjudication": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"disposition": {"const": "covered_by_sites"}}, "required": ["disposition"]},
+          "then": {"properties": {"related_site_ids": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"disposition": {"enum": ["regex_false_positive", "declarative_document", "supporting_input", "deleted_since_c0"]}}, "required": ["disposition"]},
+          "then": {"properties": {"related_site_ids": {"maxItems": 0}}}
+        }
+      ],
+      "properties": {
+        "candidate_category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "candidate_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "disposition": {
+          "enum": [
+            "covered_by_sites",
+            "regex_false_positive",
+            "declarative_document",
+            "supporting_input",
+            "deleted_since_c0"
+          ]
+        },
+        "evidence_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reason_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "related_site_ids": {
+          "items": {
+            "$ref": "#/$defs/stable_id"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "review_receipt_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "candidate_category",
+        "related_site_ids",
+        "disposition",
+        "evidence_digest",
+        "reason_code",
+        "review_receipt_digest"
+      ],
+      "type": "object"
+    },
+    "candidate_record": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidate_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "first_line": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source_node_id": {
+          "$ref": "#/$defs/stable_id"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "source_node_id",
+        "candidate_category",
+        "first_line",
+        "candidate_digest"
+      ],
+      "type": "object"
+    },
+    "candidate_site_edge": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "edge_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "site_id": {
+          "$ref": "#/$defs/stable_id"
+        }
+      },
+      "required": ["candidate_id", "site_id", "edge_digest"],
+      "type": "object"
+    },
+    "cfg_projection": {
+      "additionalProperties": false,
+      "properties": {
+        "cfg_expression_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "disposition": {
+          "enum": [
+            "active_supported",
+            "inactive_supported_projection",
+            "unsupported_by_product_contract",
+            "generated_from_bound_input"
+          ]
+        },
+        "evidence_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "language": {"$ref": "#/$defs/language"},
+        "platform": {"enum": ["common", "linux", "macos"]},
+        "projection_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "projection_kind": {"enum": ["config", "target"]},
+        "site_id": {
+          "$ref": "#/$defs/stable_id"
+        }
+      },
+      "required": [
+        "projection_id",
+        "projection_kind",
+        "site_id",
+        "language",
+        "platform",
+        "cfg_expression_digest",
+        "disposition",
+        "evidence_digest"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "language": {
+      "enum": ["python", "rust", "shell", "swift", "toml", "yaml"]
+    },
+    "relation_receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "schema": {
+          "pattern": "^decodex/lane-authority-v2-c1i-[a-z0-9-]+/1$",
+          "type": "string"
+        }
+        ,
+        "path": {
+          "pattern": "^tools/lane-authority-inventory/manifests/relations/[a-z0-9_]+\\.json$",
+          "type": "string"
+        }
+      },
+      "required": ["schema", "path", "count", "digest"],
+      "type": "object"
+    },
+    "site_classification": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "authority_relevance": {
+                "const": "authority_surface"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "ownership": {
+                "enum": ["registered_adapter", "legacy_direct"]
+              },
+              "removal_checkpoint": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "replacement_kind": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "authority_relevance": {
+                "const": "reviewed_non_authority"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "owner": {
+                "const": null
+              },
+              "ownership": {
+                "const": "not_applicable"
+              },
+              "removal_checkpoint": {
+                "const": null
+              },
+              "replacement_kind": {
+                "const": null
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "authority_relevance": {
+          "enum": ["authority_surface", "reviewed_non_authority"]
+        },
+        "config_projection": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "owner": {
+          "type": ["string", "null"]
+        },
+        "ownership": {
+          "enum": ["registered_adapter", "legacy_direct", "not_applicable"]
+        },
+        "reason_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "removal_checkpoint": {
+          "type": ["string", "null"]
+        },
+        "replacement_kind": {
+          "type": ["string", "null"]
+        },
+        "runtime_generation": {
+          "enum": ["v12", "v2", "not_runtime"]
+        },
+        "scope": {
+          "enum": ["production", "test", "mixed", "generated", "tool"]
+        },
+        "semantic_kinds": {
+          "items": {
+            "enum": [
+              "mutation",
+              "authority_read",
+              "authority_discovery",
+              "launcher",
+              "data_only",
+              "declarative_executable"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "site_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "target_projection": {
+          "$ref": "#/$defs/stable_id"
+        }
+      },
+      "required": [
+        "site_id",
+        "scope",
+        "semantic_kinds",
+        "runtime_generation",
+        "authority_relevance",
+        "ownership",
+        "owner",
+        "replacement_kind",
+        "removal_checkpoint",
+        "reason_code",
+        "target_projection",
+        "config_projection"
+      ],
+      "type": "object"
+    },
+    "source_node": {
+      "additionalProperties": false,
+      "properties": {
+        "content_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "language": {
+          "$ref": "#/$defs/language"
+        },
+        "parser_receipt_id": {"anyOf": [{"$ref": "#/$defs/stable_id"}, {"type": "null"}]},
+        "path": {
+          "not": {
+            "pattern": "^(?:/|[A-Za-z]:|.*\\.\\.)"
+          },
+          "type": "string"
+        },
+        "predecessor_source_node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/stable_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provenance": {
+          "enum": ["c0", "post_c0_base", "c1i_head", "tool", "deleted_tombstone"]
+        },
+        "scope": {
+          "enum": ["production", "test", "mixed", "generated", "tool"]
+        },
+        "source_node_id": {
+          "$ref": "#/$defs/stable_id"
+        },
+        "status": {
+          "enum": ["current", "deleted"]
+        },
+        "syntax_site_count": {"minimum": 0, "type": "integer"},
+        "syntax_site_ids_digest": {"$ref": "#/$defs/digest"},
+        "zero_syntax_reason_code": {"type": ["string", "null"]}
+      },
+      "required": [
+        "source_node_id",
+        "path",
+        "content_digest",
+        "language",
+        "scope",
+        "provenance",
+        "status",
+        "predecessor_source_node_id",
+        "parser_receipt_id",
+        "syntax_site_count",
+        "syntax_site_ids_digest",
+        "zero_syntax_reason_code"
+      ],
+      "type": "object"
+    },
+    "stable_id": {
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "accepted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "catalog_status": {
+            "const": "p3_populated_approved"
+          },
+          "unresolved_count": {
+            "const": 0
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "analysis_cut_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "catalog_semantic_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "catalog_status": {
+      "enum": ["p0_schema_only_incomplete", "p3_populated_approved"]
+    },
+    "cfg_coverage_digest": {"$ref": "#/$defs/digest"},
+    "composition_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "cross_relation_invariants": {
+      "const": [
+        "every_source_node_or_tombstone_is_present_exactly_once",
+        "source_node_partitions_equal_analysis_cut_current_tombstone_and_tool_counts",
+        "source_node_partition_digests_equal_the_exact_analysis_cut",
+        "every_source_node_syntax_count_digest_and_parser_receipt_match",
+        "every_current_source_has_exactly_one_clean_parser_root",
+        "candidate_call_and_dataflow_relations_are_nonempty",
+        "candidate_records_have_canonical_unique_source_category_line_identity",
+        "candidate_records_replay_every_frozen_c0_observation_count_line_and_digest",
+        "every_candidate_record_has_exactly_one_adjudication",
+        "every_candidate_site_edge_references_existing_candidate_and_site",
+        "every_candidate_adjudication_category_matches_its_candidate",
+        "every_candidate_adjudication_related_site_set_equals_its_edge_site_set",
+        "every_covered_candidate_has_at_least_one_related_site",
+        "every_noncovered_candidate_has_no_related_sites",
+        "every_site_has_exactly_one_site_classification",
+        "every_site_classification_scope_matches_its_source",
+        "every_site_classification_projection_resolves_to_its_site_and_kind",
+        "every_site_classification_target_and_config_platform_match",
+        "every_cfg_projection_references_an_existing_site",
+        "every_cfg_projection_language_matches_its_source",
+        "every_syntax_site_has_at_least_one_cfg_projection",
+        "every_external_symbol_has_exactly_one_disposition",
+        "every_catalog_entry_has_exact_consumers_or_one_reviewed_absent_receipt",
+        "toolchain_receipts_equal_the_unique_catalog_matrix_and_cover_every_language",
+        "toolchain_projection_language_and_platform_match_the_receipt",
+        "tool_receipt_expected_completed_and_output_sets_match_relations",
+        "each_language_has_one_common_parser_with_analysis_cut_derived_expected_sources",
+        "every_call_and_dataflow_edge_has_existing_endpoints",
+        "no_accepted_relation_contains_unknown_or_unresolved_state",
+        "catalog_used_symbol_and_semantic_digests_match_canonical_relations",
+        "composition_and_analysis_cut_artifact_digests_are_recomputed",
+        "analysis_cut_source_universe_is_reconstructed_from_git_objects",
+        "post_source_cut_commits_change_only_closed_output_policy_paths",
+        "cfg_coverage_and_dataflow_proof_artifacts_are_schema_valid_and_digest_bound",
+        "each_relation_digest_is_composed_exactly_once"
+      ]
+    },
+    "dataflow_contract_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "dataflow_proofs_digest": {"$ref": "#/$defs/digest"},
+    "relations": {
+      "additionalProperties": false,
+      "properties": {
+        "call_edges": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/call_edges.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-call-edges/1"}}}]},
+        "candidate_adjudications": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/candidate_adjudications.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-candidate-adjudications/1"}}}]},
+        "candidate_records": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/candidate_records.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-candidate-records/1"}}}]},
+        "candidate_site_edges": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/candidate_site_edges.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-candidate-site-edges/1"}}}]},
+        "cfg_projections": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/cfg_projections.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-cfg-projections/1"}}}]},
+        "data_sites": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/data_sites.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-data-sites/1"}}}]},
+        "dataflow_edges": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/dataflow_edges.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-dataflow-edges/1"}}}]},
+        "catalog_entry_dispositions": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/catalog_entry_dispositions.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-catalog-entry-dispositions/1"}}}]},
+        "site_classifications": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/site_classifications.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-site-classifications/1"}}}]},
+        "source_nodes": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/source_nodes.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-source-nodes/1"}}}]},
+        "supporting_inputs": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/supporting_inputs.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-supporting-inputs/1"}}}]},
+        "symbol_sites": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/symbol_sites.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-symbol-sites/1"}}}]},
+        "syntax_sites": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/syntax_sites.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-syntax-sites/1"}}}]},
+        "toolchain_receipts": {"allOf": [{"$ref": "#/$defs/relation_receipt"}, {"properties": {"path": {"const": "tools/lane-authority-inventory/manifests/relations/toolchain_receipts.json"}, "schema": {"const": "decodex/lane-authority-v2-c1i-toolchain-receipts/1"}}}]}
+      },
+      "required": [
+        "source_nodes",
+        "cfg_projections",
+        "syntax_sites",
+        "symbol_sites",
+        "data_sites",
+        "call_edges",
+        "dataflow_edges",
+        "catalog_entry_dispositions",
+        "candidate_records",
+        "candidate_site_edges",
+        "candidate_adjudications",
+        "site_classifications",
+        "supporting_inputs",
+        "toolchain_receipts"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "const": "decodex/lane-authority-v2-c1i-inventory-composition/1"
+    },
+    "status": {
+      "enum": ["C1I_INCOMPLETE", "accepted"]
+    },
+    "unresolved_count": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "status",
+    "analysis_cut_digest",
+    "catalog_status",
+    "catalog_semantic_digest",
+    "cfg_coverage_digest",
+    "dataflow_contract_digest",
+    "dataflow_proofs_digest",
+    "cross_relation_invariants",
+    "relations",
+    "unresolved_count",
+    "composition_digest"
+  ],
+  "title": "Lane Authority v2 C1I sole inventory composition",
+  "type": "object"
+}

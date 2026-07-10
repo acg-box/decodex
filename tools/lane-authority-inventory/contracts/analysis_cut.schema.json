@@ -1,0 +1,112 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-analysis-cut-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "git_oid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "analysis_input_tree_digest": {"$ref": "#/$defs/digest"},
+    "analysis_source_node_count": {"minimum": 3363, "type": "integer"},
+    "analysis_source_nodes_digest": {"$ref": "#/$defs/digest"},
+    "build_config_matrix_digest": {"$ref": "#/$defs/digest"},
+    "c0_artifact_sha256": {
+      "additionalProperties": false,
+      "properties": {
+        "launcher_inventory": {
+          "const": "f7d104ba81a793073654082abb6fbda5695ad916b2c5082dd00a67c15d9ad8c9"
+        },
+        "legacy_authority_inventory": {
+          "const": "7443fb30ccbeefe9240d36074de7ec51a29c9b4cd3a378933628762012434917"
+        },
+        "mutation_registry": {
+          "const": "d0cbd97dfe32376d8a1d41a905a7b85bb5b4eee5c77b1cd2c13a219902fdfee8"
+        },
+        "scenario_manifest": {
+          "const": "c87acaa1373c4a4bc45833e116c9d78208be932d8690fb78108c83d5ffabb914"
+        }
+      },
+      "required": [
+        "launcher_inventory",
+        "legacy_authority_inventory",
+        "mutation_registry",
+        "scenario_manifest"
+      ],
+      "type": "object"
+    },
+    "c0_candidate_anchors": {
+      "const": {
+        "launcher": 203,
+        "legacy": 40854,
+        "mutation": 39516
+      }
+    },
+    "c0_baseline_commit": {
+      "const": "d57553bc1bcdceebe1d0c7ec5ad5dc492b695348"
+    },
+    "c0_baseline_tree_oid": {
+      "const": "741abc506dc169e28ed07618dd1c82e3e5f9f954"
+    },
+    "c0_source_tree_digest": {
+      "const": "d55e72c9b4a522f7cec8af4afa8c968c6fd3749139d045d178160b6287f00507"
+    },
+    "catalog_semantic_digest": {"$ref": "#/$defs/digest"},
+    "deleted_tombstone_count": {"minimum": 0, "type": "integer"},
+    "deleted_tombstones_digest": {"$ref": "#/$defs/digest"},
+    "output_artifact_policy_digest": {"$ref": "#/$defs/digest"},
+    "output_binding_policy": {
+      "const": "outputs_excluded_from_input_preimage_and_bound_by_artifact_digest_ledger_and_exact_head_gate"
+    },
+    "post_c0_added_count": {"minimum": 0, "type": "integer"},
+    "post_c0_delta_digest": {"$ref": "#/$defs/digest"},
+    "post_c0_modified_count": {"minimum": 0, "type": "integer"},
+    "pr_base_commit": {"$ref": "#/$defs/git_oid"},
+    "pr_base_tree_oid": {"$ref": "#/$defs/git_oid"},
+    "repository_key": {"const": "github.com/hack-ink/decodex"},
+    "schema": {"const": "decodex/lane-authority-v2-c1i-analysis-cut/1"},
+    "source_cut_commit": {"$ref": "#/$defs/git_oid"},
+    "source_cut_tree_oid": {"$ref": "#/$defs/git_oid"},
+    "supporting_inputs_digest": {"$ref": "#/$defs/digest"},
+    "tool_source_node_count": {"minimum": 1, "type": "integer"},
+    "tool_source_nodes_digest": {"$ref": "#/$defs/digest"},
+    "toolchain_allowlist_digest": {"$ref": "#/$defs/digest"}
+  },
+  "required": [
+    "schema",
+    "repository_key",
+    "c0_baseline_commit",
+    "c0_baseline_tree_oid",
+    "c0_source_tree_digest",
+    "c0_artifact_sha256",
+    "c0_candidate_anchors",
+    "pr_base_commit",
+    "pr_base_tree_oid",
+    "source_cut_commit",
+    "source_cut_tree_oid",
+    "analysis_input_tree_digest",
+    "analysis_source_node_count",
+    "analysis_source_nodes_digest",
+    "post_c0_added_count",
+    "post_c0_modified_count",
+    "post_c0_delta_digest",
+    "deleted_tombstone_count",
+    "deleted_tombstones_digest",
+    "tool_source_node_count",
+    "tool_source_nodes_digest",
+    "supporting_inputs_digest",
+    "catalog_semantic_digest",
+    "build_config_matrix_digest",
+    "toolchain_allowlist_digest",
+    "output_artifact_policy_digest",
+    "output_binding_policy"
+  ],
+  "title": "Lane Authority v2 C1I exact analysis cut",
+  "type": "object"
+}

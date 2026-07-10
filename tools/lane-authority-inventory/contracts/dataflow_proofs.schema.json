@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-dataflow-proofs-1.json",
+  "$defs": {
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "id": {"pattern": "^[a-z0-9][a-z0-9._:-]*$", "type": "string"},
+    "proof": {
+      "additionalProperties": false,
+      "properties": {
+        "call_edge_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array", "uniqueItems": true},
+        "catalog_entry_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "config_projection_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "dataflow_edge_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array", "uniqueItems": true},
+        "fixed_point_digest": {"$ref": "#/$defs/digest"},
+        "proof_id": {"$ref": "#/$defs/id"},
+        "result_value": {
+          "additionalProperties": false,
+          "properties": {"kind": {"enum": ["Constant", "FiniteSet", "Structured", "AuthorityRoot"]}, "value_digest": {"$ref": "#/$defs/digest"}},
+          "required": ["kind", "value_digest"],
+          "type": "object"
+        },
+        "sink_site_id": {"$ref": "#/$defs/id"},
+        "source_site_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "tool_receipt_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "transfer_rule_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array", "uniqueItems": true}
+      },
+      "required": ["proof_id", "source_site_ids", "sink_site_id", "call_edge_ids", "dataflow_edge_ids", "catalog_entry_ids", "config_projection_ids", "transfer_rule_ids", "tool_receipt_ids", "fixed_point_digest", "result_value"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "analysis_cut_digest": {"$ref": "#/$defs/digest"},
+    "call_relation_digest": {"$ref": "#/$defs/digest"},
+    "dataflow_contract_digest": {"$ref": "#/$defs/digest"},
+    "dataflow_proofs_digest": {"$ref": "#/$defs/digest"},
+    "dataflow_relation_digest": {"$ref": "#/$defs/digest"},
+    "fixed_point_digest": {"$ref": "#/$defs/digest"},
+    "proofs": {"items": {"$ref": "#/$defs/proof"}, "minItems": 1, "type": "array"},
+    "schema": {"const": "decodex/lane-authority-v2-c1i-dataflow-proofs/1"},
+    "sink_count": {"minimum": 1, "type": "integer"},
+    "top_reaching_sink_count": {"const": 0},
+    "unresolved_count": {"const": 0}
+  },
+  "required": ["schema", "analysis_cut_digest", "dataflow_contract_digest", "call_relation_digest", "dataflow_relation_digest", "sink_count", "top_reaching_sink_count", "unresolved_count", "fixed_point_digest", "proofs", "dataflow_proofs_digest"],
+  "title": "Lane Authority v2 C1I bounded dataflow proof artifact",
+  "type": "object"
+}

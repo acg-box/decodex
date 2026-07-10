@@ -1,0 +1,28 @@
+{
+  "catalog_semantic_digest": null,
+  "catalog_status": "p0_schema_only_incomplete",
+  "dynamic_capability_roots": [],
+  "executable_declarative_paths": [],
+  "external_symbols": [],
+  "languages": [
+    "python",
+    "rust",
+    "shell",
+    "swift",
+    "toml",
+    "yaml"
+  ],
+  "local_closure_boundaries": [],
+  "persistent_data_roots": [],
+  "provider_and_config_roots": [],
+  "review_gate": {
+    "architecture_review_complete": true,
+    "p0_p4_machine_validation_only": true,
+    "p5_integrated_digest_requires_fresh_review": true,
+    "semantic_change_invalidates_ready_review": true
+  },
+  "reviewed_non_authority_external_symbols": [],
+  "schema": "decodex/lane-authority-v2-authority-surface-catalog/1",
+  "toolchain_matrix": [],
+  "used_external_symbol_set_digest": null
+}

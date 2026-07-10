@@ -1,0 +1,142 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-rejection-report-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "advancement_state": {
+      "const": "C1I_INCOMPLETE"
+    },
+    "analysis_input_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": ["string", "null"]
+    },
+    "counts": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "type": "object"
+    },
+    "contract_digests": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "phase": {
+      "enum": ["P0", "P1", "P2", "P3", "P4", "P5"]
+    },
+    "rejections": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": ["string", "null"]
+          },
+          "candidate_ids": {
+            "items": {
+              "pattern": "^[a-z0-9][a-z0-9._:-]*$",
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "expected_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": ["string", "null"]
+          },
+          "reason_code": {
+            "enum": [
+              "analysis_input_digest_mismatch",
+              "authority_catalog_digest_unapproved",
+              "authority_catalog_entry_missing",
+              "authority_catalog_semantic_change",
+              "c1i_phase_incomplete",
+              "candidate_adjudication_duplicate",
+              "candidate_adjudication_missing",
+              "candidate_replay_anchor_mismatch",
+              "cfg_projection_incomplete",
+              "cfg_scope_unknown",
+              "composition_digest_mismatch",
+              "external_symbol_disposition_missing",
+              "generated_input_missing",
+              "generated_input_unstable",
+              "index_completion_missing",
+              "main_or_pr_base_changed",
+              "non_deterministic_output",
+              "parser_recovery_node",
+              "post_c0_delta_unclassified",
+              "pr_head_does_not_contain_base",
+              "rejection_report_not_sanitized",
+              "runtime_dependency_graph_changed",
+              "runtime_source_changed",
+              "site_classification_duplicate",
+              "site_classification_missing",
+              "source_node_missing",
+              "supporting_input_unbound",
+              "tool_identity_unapproved",
+              "tool_index_incomplete",
+              "unexpected_language",
+              "unresolved_call_edge",
+              "unresolved_dataflow_edge",
+              "unresolved_dynamic_target",
+              "unresolved_external_symbol",
+              "unresolved_top_reaches_authority_sink"
+            ]
+          },
+          "site_ids": {
+            "items": {
+              "pattern": "^[a-z0-9][a-z0-9._:-]*$",
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "tool_receipt_ids": {
+            "items": {
+              "pattern": "^[a-z0-9][a-z0-9._:-]*$",
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "reason_code",
+          "site_ids",
+          "candidate_ids",
+          "tool_receipt_ids",
+          "expected_digest",
+          "actual_digest"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema": {
+      "const": "decodex/lane-authority-v2-c1i-rejection-report/1"
+    },
+    "status": {
+      "const": "rejected"
+    }
+  },
+  "required": [
+    "schema",
+    "status",
+    "phase",
+    "advancement_state",
+    "analysis_input_digest",
+    "counts",
+    "contract_digests",
+    "rejections"
+  ],
+  "title": "Lane Authority v2 C1I sanitized rejection report",
+  "type": "object"
+}

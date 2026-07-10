@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-cfg-coverage-1.json",
+  "$defs": {"digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}},
+  "additionalProperties": false,
+  "properties": {
+    "analysis_cut_digest": {"$ref": "#/$defs/digest"},
+    "cfg_coverage_digest": {"$ref": "#/$defs/digest"},
+    "cfg_relation_digest": {"$ref": "#/$defs/digest"},
+    "covered_syntax_site_count": {"minimum": 1, "type": "integer"},
+    "covered_syntax_site_ids_digest": {"$ref": "#/$defs/digest"},
+    "platform_slice_digests": {
+      "additionalProperties": false,
+      "properties": {"common": {"$ref": "#/$defs/digest"}, "linux": {"$ref": "#/$defs/digest"}, "macos": {"$ref": "#/$defs/digest"}},
+      "required": ["common", "linux", "macos"],
+      "type": "object"
+    },
+    "schema": {"const": "decodex/lane-authority-v2-c1i-cfg-coverage/1"},
+    "syntax_site_count": {"minimum": 1, "type": "integer"},
+    "syntax_site_ids_digest": {"$ref": "#/$defs/digest"},
+    "unresolved_count": {"const": 0}
+  },
+  "required": ["schema", "analysis_cut_digest", "cfg_relation_digest", "syntax_site_count", "syntax_site_ids_digest", "covered_syntax_site_count", "covered_syntax_site_ids_digest", "platform_slice_digests", "unresolved_count", "cfg_coverage_digest"],
+  "title": "Lane Authority v2 C1I cfg coverage proof",
+  "type": "object"
+}

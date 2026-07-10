@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://decodex.space/schemas/lane-authority-v2-c1i-checkpoint-1.json",
+  "additionalProperties": false,
+  "properties": {
+    "advancement_state": {"const": "C1I_INCOMPLETE"},
+    "provisional_analysis_cut_anchor": {
+      "additionalProperties": false,
+      "properties": {
+        "c0_artifacts": {
+          "additionalProperties": false,
+          "properties": {
+            "apps/decodex/src/bootstrap/tests/fixtures/lane_authority_v2/launcher_inventory.json": {
+              "const": "f7d104ba81a793073654082abb6fbda5695ad916b2c5082dd00a67c15d9ad8c9"
+            },
+            "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/mutation_registry.json": {
+              "const": "d0cbd97dfe32376d8a1d41a905a7b85bb5b4eee5c77b1cd2c13a219902fdfee8"
+            },
+            "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/scenario_manifest.json": {
+              "const": "c87acaa1373c4a4bc45833e116c9d78208be932d8690fb78108c83d5ffabb914"
+            },
+            "apps/decodex/src/state/tests/fixtures/lane_authority_v2/legacy_authority_inventory.json": {
+              "const": "7443fb30ccbeefe9240d36074de7ec51a29c9b4cd3a378933628762012434917"
+            }
+          },
+          "required": [
+            "apps/decodex/src/bootstrap/tests/fixtures/lane_authority_v2/launcher_inventory.json",
+            "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/mutation_registry.json",
+            "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/scenario_manifest.json",
+            "apps/decodex/src/state/tests/fixtures/lane_authority_v2/legacy_authority_inventory.json"
+          ],
+          "type": "object"
+        },
+        "c0_baseline_commit": {
+          "const": "d57553bc1bcdceebe1d0c7ec5ad5dc492b695348"
+        },
+        "c0_baseline_tree_oid": {
+          "const": "741abc506dc169e28ed07618dd1c82e3e5f9f954"
+        },
+        "c0_source_tree_digest": {
+          "const": "d55e72c9b4a522f7cec8af4afa8c968c6fd3749139d045d178160b6287f00507"
+        },
+        "exact_head_binding": {"const": "ephemeral_gate_receipt_required"},
+        "provisional_pr_base_commit": {
+          "const": "51f553fd32c8f75eed925afe87f99931844fffec"
+        },
+        "provisional_pr_base_tree_oid": {
+          "const": "f858f8f6ded1d4a79c1e9afff3d8eb8785e98548"
+        },
+        "repository_key": {"const": "github.com/hack-ink/decodex"}
+      },
+      "required": [
+        "repository_key",
+        "c0_baseline_commit",
+        "c0_baseline_tree_oid",
+        "c0_source_tree_digest",
+        "c0_artifacts",
+        "provisional_pr_base_commit",
+        "provisional_pr_base_tree_oid",
+        "exact_head_binding"
+      ],
+      "type": "object"
+    },
+    "candidate_anchors": {
+      "additionalProperties": false,
+      "properties": {
+        "c0_source_files": {"const": 3363},
+        "launcher_candidate_line_hits": {"const": 203},
+        "legacy_candidate_line_hits": {"const": 40854},
+        "mutation_candidate_line_hits": {"const": 39516}
+      },
+      "required": [
+        "c0_source_files",
+        "launcher_candidate_line_hits",
+        "legacy_candidate_line_hits",
+        "mutation_candidate_line_hits"
+      ],
+      "type": "object"
+    },
+    "catalog_status": {"const": "p0_schema_only_incomplete"},
+    "review_cadence_policy": {
+      "const": {
+        "architecture_review": "complete_at_c0",
+        "integrated_ready_review": "p5_exact_head",
+        "intermediate_phases": "machine_validation_only",
+        "lane_v2_land_review": "c7_exact_head"
+      }
+    },
+    "migration_state": {"const": "not_started"},
+    "phase": {"const": "P0"},
+    "plan_review": {
+      "additionalProperties": false,
+      "properties": {
+        "material_findings": {"const": 0},
+        "model": {"const": "opencode/deepseek-v4-flash-free"},
+        "future_independent_review_gates": {
+          "const": ["P5_exact_head_ready", "C7_exact_head_land"]
+        },
+        "reviewed_plan_digest": {
+          "const": "82147da6a392877aa24942c9c823864fe5d74aa40a57d0681cb382f969258074"
+        },
+        "reviewer_kind": {"const": "fresh_independent_read_only"},
+        "scope": {"const": "plan_contract_only"},
+        "verdict": {"const": "APPROVE"}
+      },
+      "required": [
+        "verdict",
+        "material_findings",
+        "model",
+        "future_independent_review_gates",
+        "reviewed_plan_digest",
+        "reviewer_kind",
+        "scope"
+      ],
+      "type": "object"
+    },
+    "readiness_expectation": {
+      "const": {"exit_code": 1, "reason_code": "c1i_phase_incomplete"}
+    },
+    "schema": {"const": "decodex/lane-authority-v2-c1i-checkpoint/1"},
+    "unresolved_state": {"const": "not_measured_until_p1"}
+  },
+  "required": [
+    "schema",
+    "phase",
+    "advancement_state",
+    "provisional_analysis_cut_anchor",
+    "candidate_anchors",
+    "catalog_status",
+    "review_cadence_policy",
+    "migration_state",
+    "plan_review",
+    "readiness_expectation",
+    "unresolved_state"
+  ],
+  "title": "Lane Authority v2 C1I P0 checkpoint",
+  "type": "object"
+}

@@ -1,0 +1,324 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-authority-surface-catalog-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "catalog_entry": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "authority_relevance": {"const": "authority_surface"}
+            }
+          },
+          "then": {
+            "properties": {
+              "owner": {"minLength": 1, "type": "string"},
+              "ownership": {"enum": ["registered_adapter", "legacy_direct"]},
+              "removal_checkpoint": {"minLength": 1, "type": "string"},
+              "replacement_kind": {"minLength": 1, "type": "string"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "authority_relevance": {"const": "reviewed_non_authority"}
+            }
+          },
+          "then": {
+            "properties": {
+              "owner": {"const": null},
+              "ownership": {"const": "not_applicable"},
+              "removal_checkpoint": {"const": null},
+              "replacement_kind": {"const": null}
+            }
+          }
+        }
+      ],
+      "properties": {
+        "authority_relevance": {
+          "enum": ["authority_surface", "reviewed_non_authority"]
+        },
+        "consumer_ids": {
+          "items": {"$ref": "#/$defs/stable_id"},
+          "type": "array",
+          "uniqueItems": true
+        },
+        "entry_kind": {
+          "enum": [
+            "external_symbol",
+            "dynamic_capability_root",
+            "executable_declarative_path",
+            "local_closure_boundary",
+            "persistent_data_root",
+            "provider_or_config_root"
+          ]
+        },
+        "id": {"$ref": "#/$defs/stable_id"},
+        "language": {"$ref": "#/$defs/language"},
+        "match_mode": {
+          "enum": [
+            "exact_symbol",
+            "exact_key_path",
+            "exact_table_column",
+            "exact_file_or_env_path",
+            "exact_capability_root",
+            "exact_local_boundary"
+          ]
+        },
+        "owner": {"type": ["string", "null"]},
+        "ownership": {
+          "enum": ["registered_adapter", "legacy_direct", "not_applicable"]
+        },
+        "reason_code": {"pattern": "^(?!.*(?:unknown|unresolved|pending|todo|missing|error))[a-z0-9][a-z0-9._:-]*$", "type": "string"},
+        "removal_checkpoint": {"type": ["string", "null"]},
+        "replacement_kind": {"type": ["string", "null"]},
+        "semantic_kinds": {
+          "items": {
+            "enum": [
+              "authority_discovery",
+              "authority_read",
+              "data_only",
+              "declarative_executable",
+              "launcher",
+              "mutation"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "signature": {
+          "minLength": 1,
+          "not": {"pattern": "[?*]"},
+          "type": "string"
+        },
+        "used_site_set_digest": {"$ref": "#/$defs/digest"}
+      },
+      "required": [
+        "id",
+        "entry_kind",
+        "language",
+        "match_mode",
+        "signature",
+        "semantic_kinds",
+        "authority_relevance",
+        "ownership",
+        "owner",
+        "replacement_kind",
+        "removal_checkpoint",
+        "reason_code",
+        "consumer_ids",
+        "used_site_set_digest"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "dynamic_capability_root_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/catalog_entry"},
+        {"properties": {"authority_relevance": {"const": "authority_surface"}, "entry_kind": {"const": "dynamic_capability_root"}, "match_mode": {"const": "exact_capability_root"}}}
+      ]
+    },
+    "executable_declarative_path_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/catalog_entry"},
+        {"properties": {"authority_relevance": {"const": "authority_surface"}, "entry_kind": {"const": "executable_declarative_path"}, "match_mode": {"const": "exact_file_or_env_path"}}}
+      ]
+    },
+    "external_symbol_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/catalog_entry"},
+        {"properties": {"authority_relevance": {"const": "authority_surface"}, "entry_kind": {"const": "external_symbol"}, "match_mode": {"const": "exact_symbol"}}}
+      ]
+    },
+    "language": {
+      "enum": ["python", "rust", "shell", "swift", "toml", "yaml"]
+    },
+    "local_closure_boundary_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/catalog_entry"},
+        {"properties": {"authority_relevance": {"const": "authority_surface"}, "entry_kind": {"const": "local_closure_boundary"}, "match_mode": {"const": "exact_local_boundary"}}}
+      ]
+    },
+    "persistent_data_root_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/catalog_entry"},
+        {"properties": {"authority_relevance": {"const": "authority_surface"}, "entry_kind": {"const": "persistent_data_root"}, "match_mode": {"const": "exact_table_column"}}}
+      ]
+    },
+    "provider_or_config_root_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/catalog_entry"},
+        {"properties": {"authority_relevance": {"const": "authority_surface"}, "entry_kind": {"const": "provider_or_config_root"}, "match_mode": {"enum": ["exact_key_path", "exact_file_or_env_path"]}}}
+      ]
+    },
+    "reviewed_non_authority_external_symbol_entry": {
+      "allOf": [
+        {"$ref": "#/$defs/catalog_entry"},
+        {"properties": {"authority_relevance": {"const": "reviewed_non_authority"}, "entry_kind": {"const": "external_symbol"}, "match_mode": {"const": "exact_symbol"}}}
+      ]
+    },
+    "stable_id": {
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$",
+      "type": "string"
+    },
+    "toolchain_entry": {
+      "additionalProperties": false,
+      "properties": {
+        "config_projection_ids": {
+          "items": {"$ref": "#/$defs/stable_id"},
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "language": {"$ref": "#/$defs/language"},
+        "platform": {"enum": ["common", "linux", "macos"]},
+        "receipt_role": {"enum": ["parser", "platform_slice"]},
+        "tool": {"minLength": 1, "type": "string"},
+        "tool_identity_digest": {"$ref": "#/$defs/digest"}
+      },
+      "required": [
+        "language",
+        "platform",
+        "receipt_role",
+        "tool",
+        "tool_identity_digest",
+        "config_projection_ids"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "catalog_status": {"const": "p0_schema_only_incomplete"}
+        }
+      },
+      "then": {
+        "properties": {
+          "catalog_semantic_digest": {"const": null},
+          "dynamic_capability_roots": {"const": []},
+          "executable_declarative_paths": {"const": []},
+          "external_symbols": {"const": []},
+          "local_closure_boundaries": {"const": []},
+          "persistent_data_roots": {"const": []},
+          "provider_and_config_roots": {"const": []},
+          "reviewed_non_authority_external_symbols": {"const": []},
+          "toolchain_matrix": {"const": []},
+          "used_external_symbol_set_digest": {"const": null}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "catalog_status": {"const": "p3_populated_approved"}
+        }
+      },
+      "then": {
+        "properties": {
+          "catalog_semantic_digest": {"$ref": "#/$defs/digest"},
+          "external_symbols": {"minItems": 1},
+          "toolchain_matrix": {"minItems": 1},
+          "used_external_symbol_set_digest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    }
+  ],
+  "properties": {
+    "catalog_semantic_digest": {
+      "anyOf": [
+        {"$ref": "#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "catalog_status": {
+      "enum": ["p0_schema_only_incomplete", "p3_populated_approved"]
+    },
+    "dynamic_capability_roots": {
+      "items": {"$ref": "#/$defs/dynamic_capability_root_entry"},
+      "type": "array"
+    },
+    "executable_declarative_paths": {
+      "items": {"$ref": "#/$defs/executable_declarative_path_entry"},
+      "type": "array"
+    },
+    "external_symbols": {
+      "items": {"$ref": "#/$defs/external_symbol_entry"},
+      "type": "array"
+    },
+    "languages": {
+      "const": ["python", "rust", "shell", "swift", "toml", "yaml"]
+    },
+    "local_closure_boundaries": {
+      "items": {"$ref": "#/$defs/local_closure_boundary_entry"},
+      "type": "array"
+    },
+    "persistent_data_roots": {
+      "items": {"$ref": "#/$defs/persistent_data_root_entry"},
+      "type": "array"
+    },
+    "provider_and_config_roots": {
+      "items": {"$ref": "#/$defs/provider_or_config_root_entry"},
+      "type": "array"
+    },
+    "review_gate": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture_review_complete": {"const": true},
+        "p0_p4_machine_validation_only": {"const": true},
+        "p5_integrated_digest_requires_fresh_review": {"const": true},
+        "semantic_change_invalidates_ready_review": {"const": true}
+      },
+      "required": [
+        "architecture_review_complete",
+        "p0_p4_machine_validation_only",
+        "p5_integrated_digest_requires_fresh_review",
+        "semantic_change_invalidates_ready_review"
+      ],
+      "type": "object"
+    },
+    "reviewed_non_authority_external_symbols": {
+      "items": {"$ref": "#/$defs/reviewed_non_authority_external_symbol_entry"},
+      "type": "array"
+    },
+    "schema": {
+      "const": "decodex/lane-authority-v2-authority-surface-catalog/1"
+    },
+    "toolchain_matrix": {
+      "items": {"$ref": "#/$defs/toolchain_entry"},
+      "type": "array"
+    },
+    "used_external_symbol_set_digest": {
+      "anyOf": [
+        {"$ref": "#/$defs/digest"},
+        {"type": "null"}
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "catalog_status",
+    "catalog_semantic_digest",
+    "used_external_symbol_set_digest",
+    "languages",
+    "external_symbols",
+    "reviewed_non_authority_external_symbols",
+    "dynamic_capability_roots",
+    "executable_declarative_paths",
+    "local_closure_boundaries",
+    "persistent_data_roots",
+    "provider_and_config_roots",
+    "toolchain_matrix",
+    "review_gate"
+  ],
+  "title": "Lane Authority v2 authority surface catalog",
+  "type": "object"
+}

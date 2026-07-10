@@ -127,6 +127,21 @@ proves it acquires the generation lock. C1B contains dormant v2 foundations and
 migration tooling; host apply remains disabled until the exact C7 activation release.
 C1B cannot begin from merely merged-but-not-deployed C1A code.
 
+The normative C1I implementation and anti-drift rules live in
+[Lane Authority v2 C1I inventory contract](lane-authority-v2-inventory.md). C1I must
+classify the complete exact-landing source cut, not only the C0 tree: immutable C0
+observations compose with all post-C0 base/head additions, modifications, deletions, and
+tool sources. The exact PR base and analysis input digest are authority inputs. Main/base
+movement invalidates manifests, CI, and review approval.
+
+C1I uses an independent reviewed authority-surface catalog plus a complete syntax,
+symbol, data, call, declarative, cfg, and generated-input universe. Candidate-to-site
+mapping is many-to-many with one adjudication per candidate category. Dynamic targets
+require the fixed finite dataflow proof; parser recovery, top/unknown values, incomplete
+cfg projections, missing symbols/edges, or unreviewed catalog changes fail closed. P0-P4
+must report `C1I_INCOMPLETE`; only P5 may report ready after current-base regeneration,
+exact-head CI, fresh skeptic/code review, and Decodex-owned landing.
+
 Commands for C1I:
 
 ```sh
@@ -168,9 +183,11 @@ scripts/verify_lane_authority_v2_gates.sh C1B
 Expected assertions:
 
 - C1I proves every frozen source file and high-recall candidate maps to parsed
-  Rust/Python/Swift/shell syntax/call graph or TOML/YAML semantic document, every
-  discovered production mutation/launcher has an exact registry owner/disposition, and
-  no runtime behavior changed;
+  Rust/Python/Swift/shell syntax/call/dataflow graph or TOML/YAML semantic document;
+  every post-C0 source delta and tool source also maps to the exact landing analysis cut;
+  every candidate category has an explicit adjudication; every discovered production
+  mutation/read/discovery/launcher and every dynamic capability path has an exact
+  catalog owner/disposition or finite rejection proof; and no runtime behavior changed;
 - C1A-before/after tests prove migration refusal before guard deployment, lock ownership
   for every supported launcher after deployment, and refusal while any old process or
   open handle remains; exact deployed identities are recorded before C1B, including the

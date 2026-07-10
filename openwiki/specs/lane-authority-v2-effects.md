@@ -183,7 +183,12 @@ and records its readback on the parent effect.
   preserving structural positive examples. The reviewed registry explicitly includes
   current fetch/default-branch fast-forward/ref/index/worktree paths. C1I, before any
   runtime implementation edit, replaces candidate discovery with the required language
-  AST/syntax/call-graph verifier and proves every frozen file/candidate is classified;
+  AST/syntax/data/call-graph verifier and proves every frozen file/candidate is classified.
+  The exact rules are frozen in
+  [Lane Authority v2 C1I inventory contract](lane-authority-v2-inventory.md): immutable
+  C0 observations compose with the exact PR-base/head source delta, an independent
+  authority-surface catalog, per-category candidate adjudications, complete cfg and
+  generated-input coverage, and finite fail-closed dynamic dataflow proofs;
   only then may C1A change launchers or C1B move callsites behind sealed capabilities.
   A callsite newly found by AST is not outside the baseline: it must map to its frozen
   file source node, receive an exact classification, and update the machine digest before

@@ -1,0 +1,7 @@
+{
+  "expected_exit_code": 1,
+  "expected_reason_code": "c1i_phase_incomplete",
+  "phase": "P0",
+  "schema": "decodex/lane-authority-v2-c1i-readiness-negative/1",
+  "status": "C1I_INCOMPLETE"
+}

@@ -1,0 +1,27 @@
+{
+  "artifacts": [
+    {"accepted_authority": false, "binding": "exact_head_gate", "path": "openwiki/evidence/lane-authority-v2-checkpoints.md", "role": "ledger"},
+    {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/analysis_cut.json", "role": "analysis_cut"},
+    {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/cfg_coverage.json", "role": "cfg_coverage"},
+    {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/dataflow_proofs.json", "role": "dataflow_proof"},
+    {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/inventory_composition.json", "role": "composition"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/call_edges.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/candidate_adjudications.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/candidate_records.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/candidate_site_edges.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/cfg_projections.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/data_sites.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/dataflow_edges.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/catalog_entry_dispositions.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/site_classifications.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/source_nodes.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/supporting_inputs.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/symbol_sites.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/syntax_sites.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/toolchain_receipts.json", "role": "tool_receipt"},
+    {"accepted_authority": false, "binding": "diagnostic_only", "path": "tools/lane-authority-inventory/rejections/latest.json", "role": "rejection_report"},
+    {"accepted_authority": false, "binding": "exact_head_gate", "path": "tools/lane-authority-inventory/reviews/c1i_integrated_review.json", "role": "review_receipt"}
+  ],
+  "schema": "decodex/lane-authority-v2-c1i-output-artifact-manifest/1",
+  "status": "p0_policy_only_incomplete"
+}

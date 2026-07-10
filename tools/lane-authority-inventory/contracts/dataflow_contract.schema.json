@@ -1,0 +1,141 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-dataflow-contract-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accepted_proof_receipt_fields": {
+      "const": [
+        "proof_id",
+        "source_site_ids",
+        "sink_site_id",
+        "call_edge_ids",
+        "dataflow_edge_ids",
+        "catalog_entry_ids",
+        "config_projection_ids",
+        "transfer_rule_ids",
+        "tool_receipt_ids",
+        "fixed_point_digest",
+        "result_value"
+      ]
+    },
+    "allowed_transfer_rules": {
+      "const": [
+        {
+          "id": "bind_or_assign_exact",
+          "inputs": ["Bottom", "Constant", "FiniteSet", "Structured", "AuthorityRoot"],
+          "result": "preserve"
+        },
+        {
+          "id": "branch_or_match_finite_union",
+          "inputs": ["Bottom", "Constant", "FiniteSet", "Structured", "AuthorityRoot"],
+          "result": "finite_union_or_top"
+        },
+        {
+          "id": "constant_construct",
+          "inputs": ["Bottom"],
+          "result": "constant"
+        },
+        {
+          "id": "constant_format_interpolation",
+          "inputs": ["Constant", "FiniteSet", "Structured", "AuthorityRoot"],
+          "result": "structured_or_top"
+        },
+        {
+          "id": "finite_enum_or_collection_construct",
+          "inputs": ["Bottom", "Constant", "FiniteSet", "Structured", "AuthorityRoot"],
+          "result": "structured_or_top"
+        },
+        {
+          "id": "path_join_or_push_finite",
+          "inputs": ["Constant", "FiniteSet", "Structured", "AuthorityRoot"],
+          "result": "structured_or_top"
+        },
+        {
+          "id": "reviewed_serialization_mapping",
+          "inputs": ["Constant", "FiniteSet", "Structured", "AuthorityRoot"],
+          "result": "structured_or_top"
+        },
+        {
+          "id": "typed_field_or_wrapper_projection",
+          "inputs": ["Structured", "AuthorityRoot"],
+          "result": "projected_or_top"
+        }
+      ]
+    },
+    "analysis": {
+      "const": {
+        "alias_policy": "mutable_or_unresolved_alias_is_top",
+        "call_graph_policy": "resolved_local_edges_only",
+        "context_policy": "call_site_sensitive_until_scc_then_summary",
+        "field_policy": "field_sensitive",
+        "fixed_point": "deterministic_scc_iteration",
+        "heap_policy": "unmodeled_or_escaping_heap_is_top",
+        "interprocedural": true,
+        "recursion_policy": "nonconvergence_is_top",
+        "top_policy": "absorbing_and_rejects_any_authority_sink_path",
+        "unmodeled_operation_policy": "top"
+      }
+    },
+    "limits": {
+      "const": {
+        "maximum_finite_set_cardinality": 64,
+        "maximum_scc_iterations": 256,
+        "maximum_structured_depth": 16
+      }
+    },
+    "schema": {
+      "const": "decodex/lane-authority-v2-dataflow-contract/1"
+    },
+    "sink_semantic_kinds": {
+      "const": [
+        "authority_discovery",
+        "authority_read",
+        "declarative_executable",
+        "launcher",
+        "mutation"
+      ]
+    },
+    "top_reason_codes": {
+      "const": [
+        "alias_uncertainty",
+        "cardinality_overflow",
+        "config_projection_missing",
+        "dynamic_eval",
+        "ffi_boundary",
+        "generated_input_unbound",
+        "mutable_reference",
+        "recursion_nonconvergence",
+        "reflection_or_selector",
+        "structured_depth_overflow",
+        "trait_object_dispatch",
+        "unbounded_input",
+        "unresolved_call",
+        "unknown_external_return",
+        "unsupported_transform"
+      ]
+    },
+    "top_transition": {
+      "const": {
+        "applies": "before_and_after_every_transfer_and_call_resolution",
+        "condition": "any_top_reason_code",
+        "result": "Top(reason_code)"
+      }
+    },
+    "value_lattice": {
+      "const": ["Bottom", "Constant", "FiniteSet", "Structured", "AuthorityRoot", "Top"]
+    }
+  },
+  "required": [
+    "schema",
+    "value_lattice",
+    "limits",
+    "analysis",
+    "allowed_transfer_rules",
+    "top_reason_codes",
+    "top_transition",
+    "sink_semantic_kinds",
+    "accepted_proof_receipt_fields"
+  ],
+  "title": "Lane Authority v2 bounded dataflow contract",
+  "type": "object"
+}

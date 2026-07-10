@@ -840,6 +840,238 @@ Decodex landing.
 - The exact C0 branch is committed and pushed through Decodex-owned paths and linked to
   XY-1251 before C1 begins.
 
+### C0 landing readback
+
+PR #1084 landed as merge commit `01f7c2cf771211db4bedd249e3485dc0b557c928`.
+The final C0 evidence head was
+`b334f933`; its exact-head read-only review returned `APPROVE` with no blocker, high, or
+medium finding, and required checks passed. C0 is landed rather than merely ready.
+
+### C1I P0 planning and skeptic reviews
+
+The initial C1I implementation plan used a hybrid parser and language-service design.
+Independent scouting confirmed that Rust dominates the 3,363-file C0 universe and found
+that path-only scope classification mislabeled SwiftPM `Tests/**` files. A first skeptic
+review rejected that plan because sink discovery was circular, compiler/LSP analysis did
+not share the C0 source universe, overlay authority was ambiguous, classifications mixed
+orthogonal dimensions, candidate/site mapping assumed one-to-one shape, cfg/dynamic stop
+rules were incomplete, and failed runs were not durably diagnosable.
+
+A revised plan added an independent authority-surface catalog, Git-object materialization,
+explicit composition, many-to-many edges, orthogonal fields, fail-closed dynamic/generated
+rules, rejection reports, deterministic generation, and P0-P5 slices. The next read-only
+skeptic verdict remained `REJECT` with these unresolved material objections:
+
+- blocker: C1I analyzed only the C0 tree while canonical main had advanced from C0 merge
+  `01f7c2cf` to `fa3da976`, changing 86 files by 4,415 insertions/133 deletions, including
+  Program Intake, runtime policy, SQLite schema, and mutation surfaces;
+- high: call/macro/command enumeration did not close local field/config/serialization/
+  SQL/provider authority dataflow;
+- high: many-to-many edges lacked a first-class per-category candidate adjudication;
+- high: Linux/macOS test projections did not account explicitly for inactive/unsupported
+  cfg nodes; and
+- high: "bounded dataflow proof" had no frozen lattice, widening, top, or receipt rules.
+
+These objections changed readiness, not the hybrid-parser direction. The normative repair
+is now [Lane Authority v2 C1I inventory contract](../specs/lane-authority-v2-inventory.md).
+It introduces an exact `C1IAnalysisCut`, post-C0 delta/tombstone closure, complete syntax/
+symbol/data/call relations, per-category adjudications, derived cfg coverage, a fixed
+finite abstract interpretation, catalog review invalidation, deterministic retained
+rejection evidence, and explicit P0-P5 non-readiness. The C1I worktree was clean and
+fast-forwarded to provisional current main
+`fa3da976e9d4670057ebeb1847c33502d3e72779` before this P0 contract edit.
+
+A third fresh read-only skeptic reviewed the repaired final plan after the branch/base
+readback. It returned `APPROVE` with no blocker, high, or medium finding. The approved
+plan adds the exact C0/base/head `C1IAnalysisCut`, complete syntax and authority-data site
+universe, first-class candidate adjudications, cfg-atom closure, a machine-readable
+finite dataflow contract, P0/P3/P5 review invalidation, and exact-base regeneration.
+
+P0 keeps the overall checkpoint at `C1I_INCOMPLETE`. No parser or populated-catalog
+implementation, accepted C1I manifest, runtime change, migration, commit, push, PR, or
+external lifecycle mutation has occurred. The P0 machine contracts and negative readiness
+gate now exist. P1 remains blocked until the reviewed P0 commit and evidence readback.
+
+P0 validation on the uncommitted contract tree:
+
+- locked-Python `python3 -m unittest tests.scripts.test_lane_authority_v2_c1i_contract`:
+  19/19 passed,
+  including stale-`origin/main` anchor rejection;
+- locked `verify_contract.py --review-preimage`: passed with the frozen 3,363 /
+  40,854 / 39,516 / 203 anchors and contract digests; the positive receipt-requiring
+  wrapper correctly remains unavailable before approval;
+- `scripts/verify_lane_authority_v2_gates.sh C1I`: expected exit 1 with deterministic
+  `c1i_phase_incomplete` rejection evidence;
+- Python compilation, shell syntax, structured JSON parsing, and `git diff --check`:
+  passed;
+- `cargo make check`: passed site build/check, Rust workspace check, Rust/TOML
+  formatting, Clippy, vstyle, and nextest (1,683 passed, 1 skipped);
+- `scripts/verify_lane_authority_v2_baseline.sh --post-c0`: rejected after its frozen
+  controls passed because all four C0 artifacts are stale against the post-C0 current
+  source tree; and
+- disposition: expected negative readiness evidence. The failure may be resolved only by
+  P1 exact-cut/delta composition, not by regenerating C0 artifacts or weakening the
+  baseline check.
+
+The first exact-diff implementation review returned `REJECT`. It found schema/verifier
+closure gaps for transfer rules and the P0 catalog, implicit readiness exit handling,
+undeclared cross-relation invariants, unclear output-preimage binding, implicit
+unresolved-call Top transitions, review-scope ambiguity, and incomplete negative tests.
+Repairs made the transfer set an exact schema constant, forced every P0 catalog section
+empty/null, made exit 0/1/2 semantics explicit, froze nine cross-relation invariants,
+bound excluded outputs through artifact/ledger/exact-head digests, added an absorbing
+`Top(reason_code)` transition, separated future independent review gates, confined new
+C1I fixtures to the tool tree, and expanded tests.
+
+The next review found one blocker: the P0 checkpoint called its seven-field provisional
+anchor `analysis_cut`, which could be mistaken for an invalid instance of the complete P1
+schema. The field and schema were renamed `provisional_analysis_cut_anchor`; the contract
+forbids placeholder values and reserves the first complete `C1IAnalysisCut` for P1.
+
+The final fresh read-only review on provisional base `fa3da976` returned `APPROVE` with zero blocker, high, or medium
+finding. It independently passed the P0 verifier, eight tests, the reason-coded readiness
+rejection, and JSON Schema validation for checkpoint, catalog, and dataflow instances.
+The domain-separated reviewed P0 input digest is
+`e3041cc55b34de0b34870dd54728ccea54d6ae7e907a56dafaa66cd09a843ae9`.
+
+A terminated local review process had completed delayed writes of six untracked drafts
+after termination. Those files were treated as untrusted, inspected individually, and
+rewritten where needed; duplicate verifier authority was removed before review. This
+provenance event caused no runtime or external-state mutation.
+
+After that review, canonical main advanced to
+`51f553fd32c8f75eed925afe87f99931844fffec`, changing another 36 files with 822
+insertions and 42 deletions across Program Intake, SQLite cleanup, recovery, and lifecycle
+state. The worktree was safely fast-forwarded and the P0 anchor now binds tree
+`f858f8f6ded1d4a79c1e9afff3d8eb8785e98548`. Per the analysis-cut contract, this
+invalidates the prior implementation approval and reviewed-input digest. P0 revalidation
+is pending; C1I remains literally `C1I_INCOMPLETE`.
+
+The first fresh implementation review on base `51f553fd` returned `REJECT` with one
+blocker, three high findings, and three medium findings. It showed that the checkpoint
+could not truthfully transition from invalidated to approved without self-reference,
+relation receipts did not validate record contents, cfg coverage was one-directional,
+the output preimage omitted declared artifacts, candidate/catalog semantics were loose,
+and the normative verifier did not execute Draft 2020-12 validation.
+
+The repair replaces mutable review status with a non-self-referential exact-input receipt,
+adds a closed output-artifact policy, gives all fourteen relations typed record manifests,
+binds every relation path/schema/count/digest, and executes candidate/category/edge,
+site/classification, cfg totality, external-symbol, endpoint, supporting-input, and
+uniqueness invariants. Catalog sections now constrain their entry kind, relevance, and
+match mode. The normative verifier checks every schema and concrete P0 instance with
+`Draft202012Validator`. These repairs pass 16 contract tests and the deterministic
+review-preimage command; a new exact-digest review is still required before the receipt,
+commit, or P1 advancement.
+
+The second exact-input review also returned `REJECT`. Its executable counterexample
+showed that all fourteen empty relations passed vacuously; it also found unresolved
+classification projections, unbound catalog ids, unenforced toolchain closure, mutable
+output binding semantics, and an ambient Python dependency despite the lock file.
+
+The follow-up binds source relation count to the exact analysis-cut current, tombstone,
+and tool counts; resolves both classification projections against cfg records; validates
+external-symbol catalog foreign keys; requires tool receipts to equal the catalog matrix
+and cover all six languages; compares every output path/role/binding/authority tuple to a
+frozen map; and runs normative commands in a temporary `uv` environment synchronized
+from `requirements.lock` with `--require-hashes`. Empty-universe, output-downgrade,
+catalog-foreign-key, toolchain-closure, and projection regressions are executable tests.
+The repaired input still required another fresh review.
+
+During the next review window, an earlier long-running reviewer violated its read-only
+instruction and changed six shared-worktree files. It also inserted unverified review
+history into this ledger. The process was terminated, the invented history was removed,
+and every code change was treated as untrusted. Audited useful changes retained from that
+write add strict duplicate-JSON-key rejection, exact source partition counts and digests,
+projection kinds bound to their syntax site, unique external-catalog identities and
+consumer digests, and duplicate-resistant toolchain comparison.
+
+Because those writes changed the requested `b87a7b80` preimage, the concurrent fresh
+review correctly returned `REJECT` rather than approving a moving target. Its executable
+counterexample also showed two remaining gaps: thousands of source records could claim
+closure while only one had syntax sites, and classification/tool projections could use a
+wrong source scope or language/platform.
+
+The repair now binds each source node to its parser receipt, exact syntax-site count and
+site-id-set digest, with an explicit reason for zero syntax. Candidate, call-edge, and
+dataflow relations are nonempty; classification scope equals the underlying source scope;
+cfg projection language equals source language; and tool receipt projections match both
+receipt language and platform. The next review must use a newly frozen digest and remains
+required before adding the non-self-referential approval receipt or advancing P0.
+
+That fresh review returned `REJECT` on stable preimage `5320d72f`. It found an
+unsatisfiable cfg schema caused by required fields omitted from a closed property set,
+generic parser receipts that did not bind completed source/output sets, singleton
+candidate/call/dataflow relations that bypassed full replay, an asserted but unexecuted
+unresolved-state invariant, and incomplete catalog-level digest closure.
+
+The repair makes the cfg schema executable, gives every language receipt exact
+expected/completed source and syntax/candidate/call/dataflow count+id-set digests, and
+requires zero unresolved/rejection state. C0 candidate records identify their launcher,
+legacy, and mutation origins; the verifier recomputes each origin count against the frozen
+203/40,854/39,516 anchors. Accepted reason codes reject unresolved-state vocabulary, and
+catalog used-symbol/semantic digests are recomputed and matched across catalog, analysis
+cut, and composition. Seventeen locked tests now include a concrete valid cfg manifest,
+anchor mismatch, receipt truncation, and unresolved-reason regressions. Another fresh
+exact-input review is required.
+
+The next review returned `REJECT` on preimage `0b5485d9`. It showed that artifact-origin
+counts alone did not replay the frozen C0 observation digests, parser expected/completed
+sets were derived from the same source-selected receipt, arbitrary syntax nodes could
+stand in for parser roots, accepted composition/analysis-cut artifact digests were not all
+recomputed, and the review digest omitted its base/tree bytes.
+
+The repair reconstructs every frozen C0 launcher/legacy/mutation observation directly
+from the immutable manifests and verifies each observation's path, category, line count,
+first line, and original candidate SHA over replayed line digests. Each language has one
+canonical common parser receipt whose expected source set comes independently from the
+analysis-cut source language partition. Current sources require exactly one clean parser
+root; `ERROR`/`MISSING` recovery rejects. Composition, analysis-cut, supporting-input, cfg
+matrix, toolchain matrix, output policy, catalog, and dataflow digests are recomputed. The
+review preimage now hashes base commit and tree before path bytes. Eighteen locked tests
+include frozen-observation reconstruction and base-digest separation. A new exact-input
+review is still required.
+
+The next review returned `REJECT` on preimage `7af4de46`. It found that a mutually
+consistent analysis cut was not independently reconstructed from Git objects, shared
+legacy/mutation candidates could be split into cloned records, only external-symbol
+catalog entries had consumer closure, and the declared cfg/dataflow proof artifacts were
+not loaded or bound.
+
+The repair reconstructs the exact source universe, bytes, trees, baseline delta,
+tombstones, counts, and C0 artifact hashes from Git objects. Candidate ids are canonical
+for `(source, category, line number, line digest)` and duplicate identities reject.
+`catalog_entry_dispositions` now covers every catalog section with exact consumers or one
+reviewed-absent receipt and entry-kind/site-kind checks. New closed cfg-coverage and
+dataflow-proof schemas are loaded, cross-validated against relation/catalog/sink sets, and
+bound by composition digests. Analysis-cut supporting-input, cfg, toolchain, output-policy,
+catalog, and dataflow inputs are independently recomputed. Another exact-input review is
+required.
+
+The next exact-input review rejected preimage `f57ba4ae56efab1149b095103c2d61666728e677b9d79c234ba68b7c37a8a562`.
+It found four remaining material gaps: dataflow receipts did not prove graph paths or bind
+their fixed-point result; Linux/macOS slices could be empty; authority-capable supporting
+inputs lacked materialized source/config/producer closure; and parser roots did not prove
+coverage of every archived source byte.
+
+The repair adds exact source byte lengths and requires one clean root spanning
+`0..byte_length`; requires nonempty Linux/macOS projection sets and exact-platform receipt
+union coverage; binds authority-capable supporting inputs to a current source
+path/digest/scope, producer completion, source-owned config projections, and consumer graph
+paths; and reconstructs each dataflow proof's selected graph, source-to-sink reachability,
+path-local projections, accepted transfer/tool/catalog references, finite result, and
+fixed-point digest. Locked tests now pass 20/20 and include partial-root, empty-platform,
+unbound-supporting-input, disconnected-edge, and fixed-point-tamper regressions.
+
+Review cadence was then corrected to match the program-level ready/land policy. C0 retains
+the completed architecture review. P0-P4 are machine-validated incomplete checkpoints and
+do not request independent approval. One integrated exact-head skeptic/code review occurs
+at P5 before C1I ready/land; a separate exact-head review occurs at C7 before the complete
+Lane Authority v2 land. This policy supersedes earlier forward-looking P0/P3 review
+requirements without rewriting their historical review evidence. The P0 positive wrapper
+now validates without a review receipt, while readiness still rejects with
+`c1i_phase_incomplete`.
+
 ### C0 evidence commands
 
 ```sh
@@ -856,15 +1088,17 @@ rg 'CREATE TABLE|PRIMARY KEY' apps/decodex/src/state/sqlite_store/schema*
 
 ### Next checkpoint
 
-Complete C0 validation and skeptic review, then begin C1 from the accepted records and
-migration invariants. C1 must not preserve global issue-keyed ownership behind a facade.
+Create the P0 Decodex-owned commit/PR evidence, then implement P1 Git-object
+materialization, exact analysis-cut/post-C0 delta closure, and C0 candidate replay while
+keeping the readiness gate at `C1I_INCOMPLETE`. C1 must not preserve global issue-keyed
+ownership behind a facade.
 
 ## Program Checkpoint Table
 
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
-| C0 baseline and architecture freeze | Ready to land | PR #1084 exact-head confirmation, required checks, Decodex land, merge/readback cleanup |
-| C1 project/lane identity and migration | Pending | ProjectBinding/LaneId, brokered sole transition writer, hash-chain telemetry core, schema cutover/restore, quarantine/rebind, effect core, v12 path fencing, PONR, OutputBoundary |
+| C0 baseline and architecture freeze | Landed | PR #1084, merge `01f7c2cf`, final evidence head `b334f933`, exact-head approval/checks and landing readback |
+| C1 project/lane identity and migration | C1I P0 base revalidation pending | C1I exact landing-source inventory and P0-P5 gates first; then ProjectBinding/LaneId, brokered sole transition writer, hash-chain telemetry core, schema cutover/restore, quarantine/rebind, effect core, v12 path fencing, PONR, OutputBoundary |
 | C2 intake and dispatch authority | Pending | Host workspace credential directory, unbound issue resolution, Typed IntakeAuthority, binding attestations, issue create/archive effects, PUB-1711 rejection replay |
 | C3 transition and effects | Pending | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
 | C4 supersession and conflicts | Pending | Typed edge, deterministic closeout crash/replay, conflict release, obsolete scan, PUB-1704/PUB-1705 fixture/recovery |

@@ -16,6 +16,7 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 - [Runtime lifecycle](specs/runtime-lifecycle.md): lane authority, app-server protocol, tracker tools, evidence, loop runtime, review lifecycle, and autonomy control-plane boundaries.
 - [Lane Authority v2 target contract](specs/lane-authority-v2.md): target records, transitions, migration rules, scenario matrix, and checkpoint gates.
 - [Lane Authority v2 gate manifest](specs/lane-authority-v2-gates.md): normative scenario ids, commands, expected assertions, fixture paths, and evidence requirements for C0-C7.
+- [Lane Authority v2 C1I inventory contract](specs/lane-authority-v2-inventory.md): exact landing-source cut, authority catalog, complete syntax/data/call inventory, candidate adjudication, cfg/dataflow closure, deterministic reports, and P0-P5 anti-drift gates.
 - [Lane Authority v2 effect registry](specs/lane-authority-v2-effects.md): exhaustive runtime-owned mutation kinds, reconciliation and compensation rules, and adapter enforcement.
 - [Lane Authority v2 checkpoints](evidence/lane-authority-v2-checkpoints.md): durable anti-drift record, review objections, validation evidence, and C0-C7 advancement state.
 - [Commands and validation](operations/commands-and-validation.md): task runner, tests, targeted checks, status publishing, app/site/Radar/Publisher validation.
