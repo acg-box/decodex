@@ -81,7 +81,9 @@ The operating loop has explicit owners:
   at most one qualified social candidate, closes operational incidents, and executes
   the active content experiment. Daily records measurements and recommends strategy
   changes; Weekly alone selects, modifies, continues, or stops experiments. Publisher
-  remains the sole X writer.
+  remains the sole X writer. Manager also reconciles automation handoffs: resolution
+  requires acceptance evidence, while supersession requires a landed cutover plus a
+  deterministic replacement gate; implementation handoffs remain authority-gated.
 - Weekly Growth Review compares consecutive seven-day windows and persists the next
   experiment. The deterministic scorecard treats missing, invalid, or expired active
   strategy and post-cutover Daily Manager coverage gaps as operational P1 evidence;
