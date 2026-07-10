@@ -808,6 +808,23 @@ mutation `d0cbd97dfe32376d8a1d41a905a7b85bb5b4eee5c77b1cd2c13a219902fdfee8`,
 and scenario `c87acaa1373c4a4bc45833e116c9d78208be932d8690fb78108c83d5ffabb914`.
 Another fresh exact-head review remains required.
 
+### Twenty-second skeptic review
+
+Verdict: `APPROVE` with no blocker, high, or medium findings on exact head
+`17f50311af30331061a5355ac81bab4e30c0c68f`.
+
+The fresh reviewer independently reran the baseline self-test/verifier, `git diff --check`,
+and `cargo make check`; it confirmed exact source closure, explicit
+`unclassified_pending_c1i` candidate status, all precision/recall controls, effect/scenario
+semantic anchors, and the complete C7 repository/provenance lineage. The only residual is
+the intentional C0/C1I boundary: exact AST/syntax/call-graph classification begins in C1I
+and is not silently claimed by C0. CodeQL JavaScript/TypeScript, Rust, and aggregate checks
+also passed on that head.
+
+This evidence-only ledger update changes no contract, generator, manifest, or runtime
+behavior. It requires a final exact-head confirmation and required-check readback before
+Decodex landing.
+
 ### C0 exit criteria
 
 - XY-1251, ADR, target contract, scenario matrix, and checkpoint ledger exist.
@@ -846,7 +863,7 @@ migration invariants. C1 must not preserve global issue-keyed ownership behind a
 
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
-| C0 baseline and architecture freeze | PR review repair | PR #1084 exact-head repair, validation, fresh skeptic review, required checks, Decodex land |
+| C0 baseline and architecture freeze | Ready to land | PR #1084 exact-head confirmation, required checks, Decodex land, merge/readback cleanup |
 | C1 project/lane identity and migration | Pending | ProjectBinding/LaneId, brokered sole transition writer, hash-chain telemetry core, schema cutover/restore, quarantine/rebind, effect core, v12 path fencing, PONR, OutputBoundary |
 | C2 intake and dispatch authority | Pending | Host workspace credential directory, unbound issue resolution, Typed IntakeAuthority, binding attestations, issue create/archive effects, PUB-1711 rejection replay |
 | C3 transition and effects | Pending | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
