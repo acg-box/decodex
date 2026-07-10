@@ -113,11 +113,15 @@ def inspect_social(start: datetime, end: datetime) -> dict[str, Any]:
 		if value.get("decision", {}).get("idempotency_key")
 	}
 	open_candidates = []
+	overdue_candidates = []
 	for path, value in candidates:
 		decision = value.get("decision", {})
 		key = decision.get("idempotency_key")
 		if decision.get("worthiness") == "publish" and key not in terminal_keys:
 			open_candidates.append(path.name)
+			modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+			if modified + timedelta(hours=24) <= end:
+				overdue_candidates.append(path.name)
 
 	window_posts = [
 		value
@@ -149,6 +153,7 @@ def inspect_social(start: datetime, end: datetime) -> dict[str, Any]:
 	return {
 		"candidate_files": len(candidates),
 		"open_publishable_candidates": open_candidates,
+		"overdue_publishable_candidates": overdue_candidates,
 		"post_outcomes": dict(sorted(status_counts.items())),
 		"published_records": len(published),
 		"published_post_units": published_units,
@@ -274,6 +279,8 @@ def build_scorecard(codex_home: Path, start: datetime, end: datetime) -> dict[st
 		blockers.append({"severity": "p0", "code": "managed_automations_not_active"})
 	if social["stale_reservations"]:
 		blockers.append({"severity": "p0", "code": "stale_social_reservations"})
+	if social["overdue_publishable_candidates"]:
+		blockers.append({"severity": "p1", "code": "publisher_terminal_outcome_overdue"})
 	if management["daily_reports"] == 0:
 		blockers.append({"severity": "p1", "code": "missing_daily_manager_evidence"})
 	elif len(management["daily_coverage_days"]) < management["expected_daily_coverage_days"]:
