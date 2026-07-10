@@ -73,6 +73,7 @@ required_paths = [
 	"automations/decodex/scripts/config/automation_eval/validators.py",
 	"automations/decodex/scripts/config/evaluate_automations.py",
 	"automations/decodex/scripts/config/sync_automations.py",
+	"automations/decodex/scripts/operations/summarize_automation_effectiveness.py",
 	"automations/radar/automations.toml",
 	"openwiki/quickstart.md",
 ]

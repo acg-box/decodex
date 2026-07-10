@@ -30,8 +30,9 @@ Weekly loop:
 4. Use budgeted X MCP reads only for decision-critical fresh outcome or benchmark evidence. Benchmark posts are style/market evidence, never technical claim authority.
 5. Select one primary and at most one secondary experiment for the next seven days. Each experiment must define hypothesis, audience, content format, source requirements, owner, daily trigger, metric, minimum sample, stop condition, rollback, and cost ceiling.
 6. Persist the active experiment in machine-readable form under `.agent/automations/decodex/cache/manager/experiments/active.json`; the Daily Manager must consume it.
-7. Convert repeated operational drift into canonical prompt/config repair or a structured Decodex implementation handoff. Never count an unlanded local commit as an improvement outcome.
-8. Write the weekly report under `.agent/automations/decodex/cache/manager/weekly/<yyyy-mm-dd>/` and name the next Daily Manager action.
+7. Reconcile Daily Manager experiment evidence and continue/modify/stop recommendations. Weekly alone may change experiment selection, status, stop conditions, rollback, or cost ceiling.
+8. Convert repeated operational drift into canonical prompt/config repair or a structured Decodex implementation handoff. Never count an unlanded local commit as an improvement outcome.
+9. Write the weekly report under `.agent/automations/decodex/cache/manager/weekly/<yyyy-mm-dd>/` and name the next Daily Manager action.
 
 Terminal report:
 Report both scorecards, week-over-week deltas, outcome quality, benchmark evidence, active experiments, stopped experiments, planned/actual X MCP cost, resolved/unresolved handoffs, validation, and next daily action. Archive after strategy is persisted or a precise fail-closed handoff exists.
