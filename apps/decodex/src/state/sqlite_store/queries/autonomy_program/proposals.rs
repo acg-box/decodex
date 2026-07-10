@@ -139,6 +139,38 @@ impl SqliteStateStore {
 		Ok(records.into_iter().next())
 	}
 
+	pub(in crate::state) fn autonomy_proposal_with_affected_identifier(
+		&self,
+		project_id: &str,
+		affected_identifier: &str,
+	) -> Result<Option<AutonomyProposalRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, proposal_id, objective_id, objective_version, state, fingerprint, \
+			 source_family, intended_surface, payload_json, created_at, created_at_unix, \
+			 updated_at, updated_at_unix \
+			 FROM autonomy_proposals \
+			 WHERE project_id = ?1 \
+			 AND EXISTS ( \
+				 SELECT 1 FROM json_each(autonomy_proposals.payload_json, '$.affected_identifiers') \
+				 WHERE json_each.value = ?2 \
+			 ) \
+			 ORDER BY updated_at_unix DESC, proposal_id ASC LIMIT 2",
+		)?;
+		let rows = statement.query_map(
+			rusqlite::params![project_id, affected_identifier],
+			runtime_row_parsers::autonomy_proposal_runtime_row_parts,
+		)?;
+		let records = rows
+			.map(|row| runtime_row_parsers::autonomy_proposal_record_from_row_parts(row?))
+			.collect::<Result<Vec<_>>>()?;
+
+		if records.len() > 1 {
+			eyre::bail!("Affected identifier matches multiple autonomy proposals.");
+		}
+
+		Ok(records.into_iter().next())
+	}
+
 	pub(in crate::state) fn recent_autonomy_proposals_for_project(
 		&self,
 		project_id: &str,
