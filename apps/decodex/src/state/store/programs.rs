@@ -9,7 +9,55 @@ use crate::{
 	},
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ProgramIntakeAttemptClaim {
+	Acquired,
+	Prepared,
+	Started,
+	Completed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ProgramIntakeAttemptStatus {
+	Prepared,
+	Started,
+	Completed,
+}
+
 impl StateStore {
+	pub(crate) fn begin_program_intake_attempt(
+		&self,
+		project_id: &str,
+		contract_id: &str,
+		request_digest: &str,
+	) -> Result<ProgramIntakeAttemptClaim> {
+		mutation::begin_program_intake_attempt(self, project_id, contract_id, request_digest)
+	}
+
+	pub(crate) fn program_intake_attempt_status(
+		&self,
+		project_id: &str,
+		contract_id: &str,
+	) -> Result<Option<ProgramIntakeAttemptStatus>> {
+		mutation::program_intake_attempt_status(self, project_id, contract_id)
+	}
+
+	pub(crate) fn mark_program_intake_attempt_started(
+		&self,
+		project_id: &str,
+		contract_id: &str,
+	) -> Result<()> {
+		mutation::mark_program_intake_attempt_started(self, project_id, contract_id)
+	}
+
+	pub(crate) fn complete_program_intake_attempt(
+		&self,
+		project_id: &str,
+		contract_id: &str,
+	) -> Result<()> {
+		mutation::complete_program_intake_attempt(self, project_id, contract_id)
+	}
+
 	/// Create or replace one local internal Execution Program payload.
 	#[allow(dead_code)]
 	pub(crate) fn upsert_execution_program(

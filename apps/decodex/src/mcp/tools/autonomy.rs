@@ -56,5 +56,23 @@ pub(super) fn mcp_autonomy_tools() -> Vec<McpTool> {
 			tool_schemas::autonomy_promotion_request_tool_output_schema(),
 			false,
 		),
+		entry::mcp_tool_entry(
+			McpCapabilityProfile::Admin,
+			mcp::TOOL_AUTONOMY_ACCEPT_RUNTIME_POLICY,
+			"Decodex Autonomy Accept Runtime Policy",
+			"Validate or explicitly accept the exact registered runtime-policy binding as immutable Decodex authority.",
+			tool_schemas::autonomy_accept_runtime_policy_tool_input_schema(),
+			tool_schemas::autonomy_runtime_policy_acceptance_tool_output_schema(),
+			false,
+		),
+		entry::mcp_tool_entry(
+			McpCapabilityProfile::Plan,
+			mcp::TOOL_AUTONOMY_APPLY_RUNTIME_POLICY,
+			"Decodex Autonomy Apply Runtime Policy",
+			"Run Decodex's internal challenge and promote an exact policy-bound proposal without invoking Program Intake.",
+			tool_schemas::autonomy_apply_runtime_policy_tool_input_schema(),
+			tool_schemas::autonomy_runtime_policy_apply_tool_output_schema(),
+			false,
+		),
 	]
 }

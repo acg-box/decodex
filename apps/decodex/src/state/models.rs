@@ -12,9 +12,9 @@ pub(crate) use self::{
 		ProtocolActivityEventSummary, ProtocolActivitySummary, RunActivityMarker,
 	},
 	autonomy_program::{
-		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
-		DecisionContractRecord, ExecutionProgramRecord, ProgramIntakePlanRecord,
-		ProgramIssueMappingRecord,
+		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomyRuntimePolicyReceiptInput,
+		AutonomyRuntimePolicyRecord, AutonomySignalRecord, DecisionContractRecord,
+		ExecutionProgramRecord, ProgramIntakePlanRecord, ProgramIssueMappingRecord,
 	},
 	project::{
 		ConnectorBackoff, PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA,

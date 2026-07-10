@@ -8,7 +8,9 @@ pub(in crate::state) use self::{
 	autonomy::{
 		AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyObjectiveRuntimeRowParts,
 		AutonomyProposalKey, AutonomyProposalRuntimeRecord, AutonomyProposalRuntimeRowParts,
-		AutonomySignalKey, AutonomySignalRuntimeRecord, AutonomySignalRuntimeRowParts,
+		AutonomyRuntimePolicyKey, AutonomyRuntimePolicyRuntimeRecord,
+		AutonomyRuntimePolicyRuntimeRowParts, AutonomySignalKey, AutonomySignalRuntimeRecord,
+		AutonomySignalRuntimeRowParts,
 	},
 	program::{
 		DecisionContractKey, DecisionContractRuntimeRecord, DecisionContractRuntimeRowParts,

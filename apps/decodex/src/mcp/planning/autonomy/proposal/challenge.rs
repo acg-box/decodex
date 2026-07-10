@@ -1,11 +1,16 @@
 use serde_json::{self, Value};
 
-use crate::mcp::{
-	self, McpServer, TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
-	planning::{
-		self,
-		autonomy::{args::AutonomyChallengeProposalToolArgs, results},
+use crate::{
+	autonomy_proposal::AutonomyProposalChallengeInput,
+	autonomy_runtime_policy,
+	mcp::{
+		self, McpServer, TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+		planning::{
+			self,
+			autonomy::{args::AutonomyChallengeProposalToolArgs, results},
+		},
 	},
+	state::StateStore,
 };
 
 impl McpServer {
@@ -49,6 +54,20 @@ impl McpServer {
 			Ok(project_id) => project_id,
 			Err(result) => return result,
 		};
+
+		if params.challenge.actor.starts_with("decodex-runtime")
+			|| params
+				.challenge
+				.evidence_refs
+				.iter()
+				.any(|reference| reference.starts_with("decodex:runtime-policy-"))
+		{
+			return mcp::invalid_tool_arguments(
+				TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+				"Runtime-policy challenge actor and evidence namespaces are reserved for trusted Decodex evaluation.",
+			);
+		}
+
 		let challenge = match params.challenge.into_challenge_input() {
 			Ok(challenge) => challenge,
 			Err(result) => return result,
@@ -66,37 +85,19 @@ impl McpServer {
 			);
 		}
 		if mode == "dry_run" {
-			let record = match store.autonomy_proposal(&project_id, proposal_id) {
-				Ok(Some(record)) => record,
-				Ok(None) => {
-					return mcp::tool_refusal(
-						"proposal_not_found",
-						"Autonomy proposal was not found in the current Decodex project.",
-					);
-				},
-				Err(error) => {
+			return dry_run_challenge(store, &project_id, proposal_id, challenge, mode);
+		}
+
+		let _authority_lock =
+			match autonomy_runtime_policy::acquire_autonomy_project_authority_lock(&project_id) {
+				Ok(lock) => lock,
+				Err(_) => {
 					return mcp::tool_refusal(
 						"autonomy_challenge_refused",
-						format!("Autonomy proposal readback failed closed: {error}"),
+						"Autonomy proposal challenge could not acquire the trusted authority lock.",
 					);
 				},
 			};
-			let mut proposal = record.proposal().clone();
-
-			return match proposal.record_challenge(challenge) {
-				Ok(()) => mcp::tool_success(results::autonomy_challenge_tool_result(
-					&project_id,
-					&proposal,
-					mode,
-					false,
-					Some(record.updated_at()),
-				)),
-				Err(error) => mcp::tool_refusal(
-					"autonomy_challenge_refused",
-					format!("Autonomy proposal challenge was refused: {error}"),
-				),
-			};
-		}
 
 		match store.record_autonomy_proposal_challenge(&project_id, proposal_id, challenge) {
 			Ok(record) => mcp::tool_success(results::autonomy_challenge_tool_result(
@@ -113,5 +114,44 @@ impl McpServer {
 				),
 			),
 		}
+	}
+}
+
+fn dry_run_challenge(
+	store: &StateStore,
+	project_id: &str,
+	proposal_id: &str,
+	challenge: AutonomyProposalChallengeInput,
+	mode: &str,
+) -> Value {
+	let record = match store.autonomy_proposal(project_id, proposal_id) {
+		Ok(Some(record)) => record,
+		Ok(None) => {
+			return mcp::tool_refusal(
+				"proposal_not_found",
+				"Autonomy proposal was not found in the current Decodex project.",
+			);
+		},
+		Err(error) => {
+			return mcp::tool_refusal(
+				"autonomy_challenge_refused",
+				format!("Autonomy proposal readback failed closed: {error}"),
+			);
+		},
+	};
+	let mut proposal = record.proposal().clone();
+
+	match proposal.record_challenge(challenge) {
+		Ok(()) => mcp::tool_success(results::autonomy_challenge_tool_result(
+			project_id,
+			&proposal,
+			mode,
+			false,
+			Some(record.updated_at()),
+		)),
+		Err(error) => mcp::tool_refusal(
+			"autonomy_challenge_refused",
+			format!("Autonomy proposal challenge was refused: {error}"),
+		),
 	}
 }

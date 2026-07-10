@@ -32,10 +32,24 @@ For autonomy work, use the capability-profiled MCP surface: observe reads
 `autonomy_draft_objective`,
 `autonomy_accept_objective`, `autonomy_submit_signal`,
 `autonomy_compile_proposal`, `autonomy_challenge_proposal`, and
-`autonomy_request_promotion`. Auth and profile prove access only; Objective Contract
+`autonomy_request_promotion`; accepted-policy automation additionally uses
+`autonomy_accept_runtime_policy` and `autonomy_apply_runtime_policy`. Auth and profile prove access only; Objective Contract
 acceptance and proposal acceptance still require explicit human or accepted
 project-policy authority resolved from trusted Decodex state, not a caller-supplied
-policy body.
+policy body. Runtime-policy acceptance requires the interactive
+`decodex project accept-runtime-policy` operator ceremony. It binds the OS-resolved
+principal, exact Objective digest, public non-goals, and typed candidate-digest
+confirmation into a server-side single-use 10-minute receipt that the CLI atomically
+consumes. MCP may preview but cannot perform acceptance, including through default
+Admin stdio. `autonomy_apply_runtime_policy` runs a
+Decodex-internal challenge and may promote only an exact accepted-Objective proposal;
+it never invokes Program Intake. Use `intake_goal` dry-run and apply as separate calls.
+Decodex derives one canonical claim per contract: `prepared` is retry-safe,
+`started` is externally uncertain and must stop automatic retries, and `completed`
+is terminal. The claim binds project/config/workflow/team-anchor inputs and current
+proposal objections are rechecked before intake. `retry-prepared` performs the exact
+bound retry. Use `decodex intake recover` for typed inspection or reconciliation;
+never edit the runtime database to clear a claim.
 
 Program Intake is not queue-label polling. Decodex-owned landing uses `decodex land`,
 not raw GitHub merge paths. Issue-authority manual landing enters lifecycle authority;

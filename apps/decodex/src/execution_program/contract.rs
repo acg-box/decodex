@@ -21,15 +21,6 @@ pub(super) fn ensure_accepted_contract(contract: &DecisionContract) -> Result<()
 	Ok(())
 }
 
-pub(super) fn decision_contract_fingerprint(contract: &DecisionContract) -> Result<String> {
-	contract.validate()?;
-
-	let payload = serde_json::to_vec(contract)?;
-	let digest = Sha256::digest(payload);
-
-	Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>())
-}
-
 pub(super) fn decision_contract_provenance_reference(
 	contract: &DecisionContract,
 	kind: &str,
@@ -58,4 +49,13 @@ pub(super) fn decision_contract_autonomy_signal_refs(contract: &DecisionContract
 	refs.dedup();
 
 	refs
+}
+
+pub(crate) fn decision_contract_fingerprint(contract: &DecisionContract) -> Result<String> {
+	contract.validate()?;
+
+	let payload = serde_json::to_vec(contract)?;
+	let digest = Sha256::digest(payload);
+
+	Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>())
 }

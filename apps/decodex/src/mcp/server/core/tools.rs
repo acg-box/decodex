@@ -2,7 +2,8 @@ use serde_json::Value;
 
 use crate::{
 	mcp::{
-		self, McpError, TOOL_AUTONOMY_ACCEPT_OBJECTIVE, TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
+		self, McpError, TOOL_AUTONOMY_ACCEPT_OBJECTIVE, TOOL_AUTONOMY_ACCEPT_RUNTIME_POLICY,
+		TOOL_AUTONOMY_APPLY_RUNTIME_POLICY, TOOL_AUTONOMY_CHALLENGE_PROPOSAL,
 		TOOL_AUTONOMY_COMPILE_PROPOSAL, TOOL_AUTONOMY_DRAFT_OBJECTIVE,
 		TOOL_AUTONOMY_REQUEST_PROMOTION, TOOL_AUTONOMY_SUBMIT_SIGNAL, TOOL_INTAKE_GOAL,
 		TOOL_LANE_CONTROL, TOOL_OBSERVE, TOOL_PLAN, TOOL_PROJECT_CONTROL, planning,
@@ -57,6 +58,10 @@ impl McpServer {
 				Ok(self.call_autonomy_challenge_proposal_tool(arguments)),
 			TOOL_AUTONOMY_REQUEST_PROMOTION =>
 				Ok(self.call_autonomy_request_promotion_tool(arguments)),
+			TOOL_AUTONOMY_ACCEPT_RUNTIME_POLICY =>
+				Ok(self.call_autonomy_accept_runtime_policy_tool(arguments)),
+			TOOL_AUTONOMY_APPLY_RUNTIME_POLICY =>
+				Ok(self.call_autonomy_apply_runtime_policy_tool(arguments)),
 			TOOL_LANE_CONTROL => Ok(self.call_lane_control_tool(arguments, required_profile)),
 			TOOL_PROJECT_CONTROL => Ok(self.call_project_control_tool(arguments, required_profile)),
 			_ => Ok(mcp::tool_refusal("unknown_tool", "Decodex MCP tool is not registered.")),
