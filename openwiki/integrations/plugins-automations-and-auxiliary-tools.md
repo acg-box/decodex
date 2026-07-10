@@ -78,11 +78,16 @@ The operating loop has explicit owners:
 - Daily Effectiveness Review independently measures the previous 24 hours and writes
   `automation_effectiveness_scorecard/v1` evidence.
 - Automation Manager consumes that evidence, ranks fresh Radar opportunities, creates
-  at most one qualified social candidate, closes operational incidents, and updates the
-  active content experiment. Publisher remains the sole X writer.
+  at most one qualified social candidate, closes operational incidents, and executes
+  the active content experiment. Daily records measurements and recommends strategy
+  changes; Weekly alone selects, modifies, continues, or stops experiments. Publisher
+  remains the sole X writer.
 - Weekly Growth Review compares consecutive seven-day windows and persists the next
-  experiment. Paid X MCP reads are bounded and used only when fresh outcome or benchmark
-  evidence can change the decision.
+  experiment. The deterministic scorecard treats missing, invalid, or expired active
+  strategy and post-cutover Daily Manager coverage gaps as operational P1 evidence;
+  an ACTIVE live config alone is not successful execution. Paid X MCP reads are
+  bounded and used only when fresh outcome or benchmark evidence can change the
+  decision.
 
 Operational autonomy does not bypass repository authority. Prompt/live-config repair,
 candidate selection, publishing, outcome learning, and strategy updates can close
