@@ -30,6 +30,14 @@ impl IssueTracker for LinearClient {
 		self.collect_issue_comments(issue_id)
 	}
 
+	fn issues_have_explicit_relation(
+		&self,
+		issue_id: &str,
+		related_issue_id: &str,
+	) -> Result<bool> {
+		self.inspect_explicit_issue_relation(issue_id, related_issue_id)
+	}
+
 	fn update_issue_state(&self, issue_id: &str, state_id: &str) -> Result<()> {
 		mutations::update_issue_state(self, issue_id, state_id)
 	}

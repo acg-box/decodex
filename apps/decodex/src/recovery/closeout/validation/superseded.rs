@@ -37,6 +37,7 @@ pub(in crate::recovery) fn validate_superseded_closeout_request(
 	let completed_state_id = validate_superseded_issue_context(context, &issue)?;
 	validate_successor_issue_context(context, &successor_issue)?;
 	validate_same_tracker_team(&issue, &successor_issue)?;
+	validate_predecessor_successor_issue_relation(&context.tracker, &issue, &successor_issue)?;
 
 	let (obsolete_landing_state, default_branch) =
 		pull_request_inspection::inspect_project_pull_request(context, &request.pr_url)?;
@@ -171,6 +172,81 @@ fn validate_same_tracker_team(issue: &TrackerIssue, successor_issue: &TrackerIss
 		successor_issue.identifier,
 		successor_issue.team.name
 	)
+}
+
+fn validate_predecessor_successor_issue_relation<T>(
+	tracker: &T,
+	issue: &TrackerIssue,
+	successor_issue: &TrackerIssue,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	if tracker.issues_have_explicit_relation(&issue.id, &successor_issue.id)? {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"Superseded issue `{}` and successor issue `{}` have no explicit tracker relation; superseded closeout requires public predecessor/successor lineage before terminalization.",
+		issue.identifier,
+		successor_issue.identifier
+	)
+}
+
+pub(in crate::recovery::closeout) fn validate_obsolete_pull_request_unchanged(
+	validated: &crate::pull_request::PullRequestLandingState,
+	current: &crate::pull_request::PullRequestLandingState,
+	current_default_branch: &str,
+) -> Result<()> {
+	validate_obsolete_pull_request_identity(
+		validated,
+		current,
+		current_default_branch,
+		&validated.state,
+	)
+}
+
+pub(in crate::recovery::closeout) fn validate_obsolete_pull_request_closed(
+	validated: &crate::pull_request::PullRequestLandingState,
+	current: &crate::pull_request::PullRequestLandingState,
+	current_default_branch: &str,
+) -> Result<()> {
+	validate_obsolete_pull_request_identity(validated, current, current_default_branch, "CLOSED")
+}
+
+fn validate_obsolete_pull_request_identity(
+	validated: &crate::pull_request::PullRequestLandingState,
+	current: &crate::pull_request::PullRequestLandingState,
+	current_default_branch: &str,
+	expected_state: &str,
+) -> Result<()> {
+	let validated_url = pull_request_inspection::landing_url(validated);
+	let current_url = pull_request_inspection::landing_url(current);
+
+	if current_url != validated_url
+		|| current_default_branch != validated.base_ref_name
+		|| current.base_ref_name != validated.base_ref_name
+		|| current.base_ref_oid != validated.base_ref_oid
+		|| current.state != expected_state
+		|| current.head_ref_name != validated.head_ref_name
+		|| current.head_ref_oid != validated.head_ref_oid
+	{
+		eyre::bail!(
+			"Obsolete pull request `{validated_url}` changed after superseded closeout validation; expected state `{}`, base `{}` at `{:?}`, and head `{}` at `{}`, but found URL `{current_url}`, state `{}`, default/base `{current_default_branch}`/`{}` at `{:?}`, and head `{}` at `{}`.",
+			expected_state,
+			validated.base_ref_name,
+			validated.base_ref_oid,
+			validated.head_ref_name,
+			validated.head_ref_oid,
+			current.state,
+			current.base_ref_name,
+			current.base_ref_oid,
+			current.head_ref_name,
+			current.head_ref_oid
+		);
+	}
+
+	Ok(())
 }
 
 fn validate_superseded_issue_context(
@@ -1752,6 +1828,66 @@ mod tests {
 		.expect("matching successor closeout ledger should prove lineage");
 	}
 
+	#[test]
+	fn predecessor_successor_lineage_rejects_unrelated_issues() {
+		let issue = sample_issue("Todo");
+		let successor_issue = successor_issue();
+		let tracker = TestTracker::with_issues(vec![issue.clone(), successor_issue.clone()]);
+
+		let error =
+			validate_predecessor_successor_issue_relation(&tracker, &issue, &successor_issue)
+				.expect_err("unrelated issues should not prove superseded lineage");
+
+		assert!(error.to_string().contains("no explicit tracker relation"));
+	}
+
+	#[test]
+	fn predecessor_successor_lineage_accepts_explicit_issue_relation() {
+		let issue = sample_issue("Todo");
+		let successor_issue = successor_issue();
+		let tracker = TestTracker::with_issues(vec![issue.clone(), successor_issue.clone()])
+			.with_related_issues(&issue.id, &successor_issue.id);
+
+		validate_predecessor_successor_issue_relation(&tracker, &issue, &successor_issue)
+			.expect("explicit issue relation should prove superseded lineage");
+	}
+
+	#[test]
+	fn obsolete_pull_request_revalidation_rejects_moved_head() {
+		let validated = sample_landing_state(
+			"https://github.com/helixbox/pubfi-mono/pull/826",
+			"y/pubfi-pub-1704",
+			"validated-head",
+		);
+		let mut current = validated.clone();
+		current.head_ref_oid = String::from("moved-head");
+
+		let error = validate_obsolete_pull_request_unchanged(&validated, &current, "main")
+			.expect_err("moved PR head should invalidate superseded closeout");
+
+		assert!(error.to_string().contains("changed after superseded closeout validation"));
+		assert!(error.to_string().contains("moved-head"));
+	}
+
+	#[test]
+	fn obsolete_pull_request_close_readback_requires_same_lineage_and_closed_state() {
+		let validated = sample_landing_state(
+			"https://github.com/helixbox/pubfi-mono/pull/826",
+			"y/pubfi-pub-1704",
+			"validated-head",
+		);
+		let mut closed = validated.clone();
+		closed.state = String::from("CLOSED");
+
+		validate_obsolete_pull_request_closed(&validated, &closed, "main")
+			.expect("same-head closed readback should confirm PR closure");
+
+		closed.base_ref_oid = Some(String::from("moved-base"));
+		let error = validate_obsolete_pull_request_closed(&validated, &closed, "main")
+			.expect_err("moved base should invalidate close readback");
+		assert!(error.to_string().contains("changed after superseded closeout validation"));
+	}
+
 	fn successor_issue() -> TrackerIssue {
 		let mut issue = sample_issue("Done");
 
@@ -2057,6 +2193,7 @@ Test workflow.
 	struct TestTracker {
 		issues: Vec<TrackerIssue>,
 		comments: Vec<TrackerComment>,
+		related_issue_pairs: Vec<(String, String)>,
 		state_updates: RefCell<Vec<(String, String)>>,
 		label_removals: RefCell<Vec<(String, Vec<String>)>>,
 	}
@@ -2066,6 +2203,7 @@ Test workflow.
 			Self {
 				issues,
 				comments: Vec::new(),
+				related_issue_pairs: Vec::new(),
 				state_updates: RefCell::new(Vec::new()),
 				label_removals: RefCell::new(Vec::new()),
 			}
@@ -2073,6 +2211,12 @@ Test workflow.
 
 		fn with_comments(mut self, comments: Vec<TrackerComment>) -> Self {
 			self.comments = comments;
+
+			self
+		}
+
+		fn with_related_issues(mut self, issue_id: &str, related_issue_id: &str) -> Self {
+			self.related_issue_pairs.push((issue_id.to_owned(), related_issue_id.to_owned()));
 
 			self
 		}
@@ -2110,6 +2254,17 @@ Test workflow.
 
 		fn list_comments(&self, _issue_id: &str) -> Result<Vec<TrackerComment>> {
 			Ok(self.comments.clone())
+		}
+
+		fn issues_have_explicit_relation(
+			&self,
+			issue_id: &str,
+			related_issue_id: &str,
+		) -> Result<bool> {
+			Ok(self.related_issue_pairs.iter().any(|(left, right)| {
+				(left == issue_id && right == related_issue_id)
+					|| (left == related_issue_id && right == issue_id)
+			}))
 		}
 
 		fn update_issue_state(&self, issue_id: &str, state_id: &str) -> Result<()> {

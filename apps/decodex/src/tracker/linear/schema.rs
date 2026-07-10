@@ -11,10 +11,11 @@ pub(super) use self::issue::{
 pub(super) use self::{
 	graphql::{GraphqlError, GraphqlRequest, GraphqlResponse},
 	issue::{
-		IssueBlockersData, IssueBlockersVariables, IssueByIdentifierData,
-		IssueByIdentifierVariables, IssueCommentsData, IssueCommentsVariables, IssueConnectionData,
-		IssuesByIdsVariables, IssuesWithLabelVariables, LinearIssue, LinearIssueRelation,
-		LinearUser,
+		ExplicitIssueRelationConnection, IssueBlockersData, IssueBlockersVariables,
+		IssueByIdentifierData, IssueByIdentifierVariables, IssueCommentsData,
+		IssueCommentsVariables, IssueConnectionData, IssueInverseRelationsData, IssueRelationsData,
+		IssueRelationsVariables, IssuesByIdsVariables, IssuesWithLabelVariables, LinearIssue,
+		LinearIssueRelation, LinearUser,
 	},
 	mutation::{
 		CommentCreateData, CommentCreateInput, CommentCreateVariables, IssueArchiveData,

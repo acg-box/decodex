@@ -166,6 +166,8 @@ pub(super) fn apply_superseded_closeout_recovery(
 trait SupersededCloseoutRecoveryOperationsRunner {
 	fn ensure_terminalizable(&mut self) -> Result<()>;
 	fn ensure_run_attempt_recorded(&mut self) -> Result<()>;
+	fn revalidate_obsolete_pull_request(&mut self) -> Result<()>;
+	fn confirm_obsolete_pull_request_closed(&mut self) -> Result<()>;
 	fn update_issue_state(&mut self) -> Result<()>;
 	fn write_closeout_event(&mut self) -> Result<bool>;
 	fn write_cleanup_event(&mut self) -> Result<bool>;
@@ -182,13 +184,20 @@ fn apply_superseded_closeout_recovery_sequence(
 	operations.ensure_terminalizable()?;
 	operations.ensure_run_attempt_recorded()?;
 	operations.record_lifecycle_authority("pending")?;
+	operations.revalidate_obsolete_pull_request()?;
 	let closeout_recorded = operations.write_closeout_event()?;
+	operations.revalidate_obsolete_pull_request()?;
 	operations.post_pull_request_comment()?;
+	operations.revalidate_obsolete_pull_request()?;
 	let pr_closed = operations.close_pull_request_if_open()?;
+	operations.confirm_obsolete_pull_request_closed()?;
 	operations.record_lifecycle_authority("completed")?;
+	operations.confirm_obsolete_pull_request_closed()?;
 	operations.update_issue_state()?;
+	operations.confirm_obsolete_pull_request_closed()?;
 	let cleanup_recorded = operations.write_cleanup_event()?;
 	operations.update_run_status()?;
+	operations.confirm_obsolete_pull_request_closed()?;
 	operations.clear_worktree()?;
 
 	Ok((closeout_recorded, cleanup_recorded, pr_closed))
@@ -210,6 +219,32 @@ impl SupersededCloseoutRecoveryOperationsRunner for SupersededCloseoutRecoveryOp
 			&self.validation.issue.id,
 			&self.validation.run_id,
 			self.validation.attempt_number,
+		)
+	}
+
+	fn revalidate_obsolete_pull_request(&mut self) -> Result<()> {
+		let obsolete_pr_url =
+			pull_request_inspection::landing_url(&self.validation.obsolete_landing_state);
+		let (current, default_branch) =
+			pull_request_inspection::inspect_project_pull_request(self.context, obsolete_pr_url)?;
+
+		super::validation::validate_obsolete_pull_request_unchanged(
+			&self.validation.obsolete_landing_state,
+			&current,
+			&default_branch,
+		)
+	}
+
+	fn confirm_obsolete_pull_request_closed(&mut self) -> Result<()> {
+		let obsolete_pr_url =
+			pull_request_inspection::landing_url(&self.validation.obsolete_landing_state);
+		let (current, default_branch) =
+			pull_request_inspection::inspect_project_pull_request(self.context, obsolete_pr_url)?;
+
+		super::validation::validate_obsolete_pull_request_closed(
+			&self.validation.obsolete_landing_state,
+			&current,
+			&default_branch,
 		)
 	}
 
@@ -387,12 +422,17 @@ mod tests {
 	struct RecordingSupersededCloseoutOperations {
 		steps: RefCell<Vec<&'static str>>,
 		fail_at: Option<&'static str>,
+		fail_on_occurrence: Option<(&'static str, usize)>,
 	}
 	impl RecordingSupersededCloseoutOperations {
 		fn record(&self, step: &'static str) -> Result<()> {
-			self.steps.borrow_mut().push(step);
+			let occurrence = {
+				let mut steps = self.steps.borrow_mut();
+				steps.push(step);
+				steps.iter().filter(|recorded| **recorded == step).count()
+			};
 
-			if self.fail_at == Some(step) {
+			if self.fail_at == Some(step) || self.fail_on_occurrence == Some((step, occurrence)) {
 				eyre::bail!("{step} failed");
 			}
 
@@ -407,6 +447,14 @@ mod tests {
 
 		fn ensure_run_attempt_recorded(&mut self) -> Result<()> {
 			self.record("ensure_run_attempt_recorded")
+		}
+
+		fn revalidate_obsolete_pull_request(&mut self) -> Result<()> {
+			self.record("revalidate_obsolete_pull_request")
+		}
+
+		fn confirm_obsolete_pull_request_closed(&mut self) -> Result<()> {
+			self.record("confirm_obsolete_pull_request_closed")
 		}
 
 		fn update_issue_state(&mut self) -> Result<()> {
@@ -660,16 +708,102 @@ mod tests {
 				"ensure_terminalizable",
 				"ensure_run_attempt_recorded",
 				"record_lifecycle_authority_pending",
+				"revalidate_obsolete_pull_request",
 				"write_closeout_event",
+				"revalidate_obsolete_pull_request",
 				"post_pull_request_comment",
+				"revalidate_obsolete_pull_request",
 				"close_pull_request_if_open",
+				"confirm_obsolete_pull_request_closed",
 				"record_lifecycle_authority_completed",
+				"confirm_obsolete_pull_request_closed",
 				"update_issue_state",
+				"confirm_obsolete_pull_request_closed",
 				"write_cleanup_event",
 				"update_run_status",
+				"confirm_obsolete_pull_request_closed",
 				"clear_worktree",
 			]
 		);
+	}
+
+	#[test]
+	fn superseded_closeout_confirms_closed_pr_before_issue_terminalization() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_on_occurrence: Some(("confirm_obsolete_pull_request_closed", 2)),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("reopened PR should stop issue terminalization");
+
+		assert!(error.to_string().contains("confirm_obsolete_pull_request_closed failed"));
+		assert!(!operations.steps.borrow().contains(&"update_issue_state"));
+		assert!(!operations.steps.borrow().contains(&"write_cleanup_event"));
+	}
+
+	#[test]
+	fn superseded_closeout_confirms_closed_pr_before_cleanup_projection() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_on_occurrence: Some(("confirm_obsolete_pull_request_closed", 3)),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("reopened PR should stop cleanup projection");
+
+		assert!(error.to_string().contains("confirm_obsolete_pull_request_closed failed"));
+		assert!(operations.steps.borrow().contains(&"update_issue_state"));
+		assert!(!operations.steps.borrow().contains(&"write_cleanup_event"));
+		assert!(!operations.steps.borrow().contains(&"update_run_status"));
+		assert!(!operations.steps.borrow().contains(&"clear_worktree"));
+	}
+
+	#[test]
+	fn superseded_closeout_confirms_closed_pr_before_worktree_clear() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_on_occurrence: Some(("confirm_obsolete_pull_request_closed", 4)),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("reopened PR should preserve retained worktree");
+
+		assert!(error.to_string().contains("confirm_obsolete_pull_request_closed failed"));
+		assert!(operations.steps.borrow().contains(&"write_cleanup_event"));
+		assert!(operations.steps.borrow().contains(&"update_run_status"));
+		assert!(!operations.steps.borrow().contains(&"clear_worktree"));
+	}
+
+	#[test]
+	fn superseded_closeout_revalidates_before_public_projection() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_on_occurrence: Some(("revalidate_obsolete_pull_request", 1)),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("changed PR should stop before public projection");
+
+		assert!(error.to_string().contains("revalidate_obsolete_pull_request failed"));
+		assert!(!operations.steps.borrow().contains(&"write_closeout_event"));
+		assert!(!operations.steps.borrow().contains(&"post_pull_request_comment"));
+	}
+
+	#[test]
+	fn superseded_closeout_revalidates_again_before_pr_close() {
+		let mut operations = RecordingSupersededCloseoutOperations {
+			fail_on_occurrence: Some(("revalidate_obsolete_pull_request", 3)),
+			..RecordingSupersededCloseoutOperations::default()
+		};
+
+		let error = apply_superseded_closeout_recovery_sequence(&mut operations)
+			.expect_err("changed PR after comment should stop before close");
+
+		assert!(error.to_string().contains("revalidate_obsolete_pull_request failed"));
+		assert!(operations.steps.borrow().contains(&"post_pull_request_comment"));
+		assert!(!operations.steps.borrow().contains(&"close_pull_request_if_open"));
+		assert!(!operations.steps.borrow().contains(&"record_lifecycle_authority_completed"));
 	}
 
 	#[test]
@@ -738,7 +872,9 @@ mod tests {
 				"ensure_terminalizable",
 				"ensure_run_attempt_recorded",
 				"record_lifecycle_authority_pending",
+				"revalidate_obsolete_pull_request",
 				"write_closeout_event",
+				"revalidate_obsolete_pull_request",
 				"post_pull_request_comment",
 			]
 		);

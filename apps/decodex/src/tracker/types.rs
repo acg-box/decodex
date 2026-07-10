@@ -6,6 +6,15 @@ pub(crate) trait IssueTracker {
 	fn get_issue_by_identifier(&self, issue_identifier: &str) -> Result<Option<TrackerIssue>>;
 	fn refresh_issues(&self, issue_ids: &[String]) -> Result<Vec<TrackerIssue>>;
 	fn list_comments(&self, issue_id: &str) -> Result<Vec<TrackerComment>>;
+	fn issues_have_explicit_relation(
+		&self,
+		issue_id: &str,
+		related_issue_id: &str,
+	) -> Result<bool> {
+		let _ = (issue_id, related_issue_id);
+
+		Ok(false)
+	}
 	fn update_issue_state(&self, issue_id: &str, state_id: &str) -> Result<()>;
 	fn add_issue_labels(&self, issue_id: &str, label_ids: &[String]) -> Result<()>;
 	fn remove_issue_labels(&self, issue_id: &str, label_ids: &[String]) -> Result<()>;

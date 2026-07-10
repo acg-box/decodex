@@ -55,12 +55,16 @@ service labels, recovery, or lane-control details matter.
   classify that evidence first. Shaped historical telemetry is non-owning only
   after the independent channel, attempt, marker, protocol, activity, and
   progress guards pass. The
-  successor issue must expose a Decodex ledger record for the exact successor
-  PR head and merge commit. Live superseded closeout records retryable pending
-  closeout authority before public Linear or GitHub projections. Exact
+  predecessor and successor issues must have an explicit Linear relation, and
+  the successor issue must expose a Decodex ledger record for the exact
+  successor PR head and merge commit. Live superseded closeout records
+  retryable pending closeout authority before public Linear or GitHub
+  projections. Exact
   superseded-closeout lifecycle envelopes remain retryable after partial
   failure, and a no-attempt lane records a matching terminal synthetic attempt
-  before lifecycle evidence. After the obsolete PR comment and close path
+  before lifecycle evidence. The apply path re-reads the obsolete PR URL,
+  base, state, and head before each public Linear/GitHub mutation, then confirms
+  the same lineage is closed before completed authority. After that close path
   succeeds, the command records completed authority before the terminal Linear
   transition or public cleanup, then clears retained worktree state only after
   those projections succeed. Closeout recovery retries any local ledger

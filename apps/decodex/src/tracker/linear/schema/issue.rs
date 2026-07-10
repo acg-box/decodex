@@ -40,6 +40,14 @@ pub(in crate::tracker::linear) struct IssueCommentsVariables {
 	pub(in crate::tracker::linear) after: Option<String>,
 }
 
+#[derive(Serialize)]
+pub(in crate::tracker::linear) struct IssueRelationsVariables {
+	#[serde(rename = "issueId")]
+	pub(in crate::tracker::linear) issue_id: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(in crate::tracker::linear) after: Option<String>,
+}
+
 #[derive(Deserialize)]
 pub(in crate::tracker::linear) struct IssueConnectionData {
 	pub(in crate::tracker::linear) issues: IssueConnection,
@@ -58,6 +66,16 @@ pub(in crate::tracker::linear) struct IssueBlockersData {
 #[derive(Deserialize)]
 pub(in crate::tracker::linear) struct IssueCommentsData {
 	pub(in crate::tracker::linear) issue: Option<LinearIssueComments>,
+}
+
+#[derive(Deserialize)]
+pub(in crate::tracker::linear) struct IssueRelationsData {
+	pub(in crate::tracker::linear) issue: Option<LinearIssueRelations>,
+}
+
+#[derive(Deserialize)]
+pub(in crate::tracker::linear) struct IssueInverseRelationsData {
+	pub(in crate::tracker::linear) issue: Option<LinearIssueInverseRelations>,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +99,17 @@ pub(in crate::tracker::linear) struct LinearIssueBlockerPage {
 #[derive(Deserialize)]
 pub(in crate::tracker::linear) struct LinearIssueComments {
 	pub(in crate::tracker::linear) comments: CommentConnection,
+}
+
+#[derive(Deserialize)]
+pub(in crate::tracker::linear) struct LinearIssueRelations {
+	pub(in crate::tracker::linear) relations: ExplicitIssueRelationConnection,
+}
+
+#[derive(Deserialize)]
+pub(in crate::tracker::linear) struct LinearIssueInverseRelations {
+	#[serde(rename = "inverseRelations")]
+	pub(in crate::tracker::linear) inverse_relations: ExplicitIssueRelationConnection,
 }
 
 #[derive(Deserialize)]
@@ -149,6 +178,25 @@ pub(in crate::tracker::linear) struct IssueRelationConnection {
 	pub(in crate::tracker::linear) nodes: Vec<LinearIssueRelation>,
 	#[serde(rename = "pageInfo")]
 	pub(in crate::tracker::linear) page_info: PageInfo,
+}
+
+#[derive(Deserialize)]
+pub(in crate::tracker::linear) struct ExplicitIssueRelationConnection {
+	pub(in crate::tracker::linear) nodes: Vec<ExplicitIssueRelation>,
+	#[serde(rename = "pageInfo")]
+	pub(in crate::tracker::linear) page_info: PageInfo,
+}
+
+#[derive(Deserialize)]
+pub(in crate::tracker::linear) struct ExplicitIssueRelation {
+	pub(in crate::tracker::linear) issue: ExplicitRelatedIssue,
+	#[serde(rename = "relatedIssue")]
+	pub(in crate::tracker::linear) related_issue: ExplicitRelatedIssue,
+}
+
+#[derive(Deserialize)]
+pub(in crate::tracker::linear) struct ExplicitRelatedIssue {
+	pub(in crate::tracker::linear) id: String,
 }
 
 #[derive(Deserialize)]

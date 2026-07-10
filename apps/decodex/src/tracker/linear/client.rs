@@ -3,6 +3,7 @@ mod blockers;
 mod comments;
 mod pagination;
 mod post;
+mod relations;
 
 use std::time::Duration;
 
