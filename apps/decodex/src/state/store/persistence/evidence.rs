@@ -3,9 +3,9 @@ use crate::{
 	state::{
 		runtime_records::{
 			AutonomyObjectiveRuntimeRecord, AutonomyProposalRuntimeRecord,
-			AutonomySignalRuntimeRecord, DecisionContractRuntimeRecord,
-			ExecutionProgramRuntimeRecord, LinearExecutionEventRuntimeRecord,
-			PrivateExecutionEventRuntimeRecord,
+			AutonomyRuntimePolicyRuntimeRecord, AutonomySignalRuntimeRecord,
+			DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord,
+			LinearExecutionEventRuntimeRecord, PrivateExecutionEventRuntimeRecord,
 		},
 		store::StateStore,
 	},
@@ -91,6 +91,20 @@ impl StateStore {
 			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_autonomy_objective(record)
+	}
+
+	#[allow(dead_code)]
+	pub(in crate::state) fn upsert_autonomy_runtime_policy_locked(
+		&self,
+		record: &AutonomyRuntimePolicyRuntimeRecord,
+	) -> Result<AutonomyRuntimePolicyRuntimeRecord> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(record.clone());
+		};
+		let sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_autonomy_runtime_policy(record)
 	}
 
 	#[allow(dead_code)]

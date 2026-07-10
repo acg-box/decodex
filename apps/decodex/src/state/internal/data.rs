@@ -5,6 +5,7 @@ mod replacements;
 use std::collections::HashMap;
 
 use crate::state::{
+	ProgramIntakeAttemptStatus,
 	internal::guards::{DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard},
 	models::{
 		ConnectorBackoff, IssueLease, ProgramIntakePlanRecord, ProgramIssueMappingRecord,
@@ -12,7 +13,8 @@ use crate::state::{
 	},
 	runtime_records::{
 		AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyProposalKey,
-		AutonomyProposalRuntimeRecord, AutonomySignalKey, AutonomySignalRuntimeRecord,
+		AutonomyProposalRuntimeRecord, AutonomyRuntimePolicyKey,
+		AutonomyRuntimePolicyRuntimeRecord, AutonomySignalKey, AutonomySignalRuntimeRecord,
 		DecisionContractKey, DecisionContractRuntimeRecord, EvidenceArtifactKey,
 		EvidenceArtifactRuntimeRecord, ExecutionProgramKey, ExecutionProgramRuntimeRecord,
 		LinearExecutionEventRuntimeRecord, LoopGuardrailKey, LoopGuardrailRuntimeRecord,
@@ -43,12 +45,16 @@ pub(in crate::state) struct StateData {
 	pub(in crate::state) autonomy_signals: HashMap<AutonomySignalKey, AutonomySignalRuntimeRecord>,
 	pub(in crate::state) autonomy_proposals:
 		HashMap<AutonomyProposalKey, AutonomyProposalRuntimeRecord>,
+	pub(in crate::state) autonomy_runtime_policies:
+		HashMap<AutonomyRuntimePolicyKey, AutonomyRuntimePolicyRuntimeRecord>,
 	pub(in crate::state) execution_programs:
 		HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
 	pub(in crate::state) program_intake_plans:
 		HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
 	pub(in crate::state) program_issue_mappings:
 		HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
+	pub(in crate::state) program_intake_attempts:
+		HashMap<(String, String), (ProgramIntakeAttemptStatus, String)>,
 	pub(in crate::state) review_lifecycle_records:
 		HashMap<ReviewLifecycleKey, ReviewLifecycleRuntimeRecord>,
 	pub(in crate::state) review_policy_checkpoints:

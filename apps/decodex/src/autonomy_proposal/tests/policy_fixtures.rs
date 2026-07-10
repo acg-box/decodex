@@ -22,6 +22,7 @@ pub(crate) fn accepted_project_policy_fixture(
 		authorized_actor_kind,
 		authorized_acceptance_sources: vec![acceptance_source.to_owned()],
 		authorized_scopes: vec![acceptance_scope.to_owned()],
+		public_non_goals: vec![String::from("Do not bypass accepted review authority.")],
 	}
 }
 

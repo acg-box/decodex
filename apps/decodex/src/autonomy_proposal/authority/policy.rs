@@ -37,6 +37,17 @@ impl AutonomyProposalAcceptedProjectPolicy {
 			"autonomy proposal accepted project policy.authorized_scopes",
 			&self.authorized_scopes,
 		)?;
+		validation::validate_string_list(
+			"autonomy proposal accepted project policy.public_non_goals",
+			&self.public_non_goals,
+		)?;
+
+		if self.public_non_goals.is_empty() {
+			eyre::bail!(
+				"Autonomy proposal accepted project policy `{}` must include an explicitly accepted public non-goal projection.",
+				self.authority_ref
+			);
+		}
 
 		validate_objective_version(self)?;
 		validate_acceptance_scope(self)?;

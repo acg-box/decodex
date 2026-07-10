@@ -104,3 +104,44 @@ fn autonomy_proposal_sqlite_round_trips_full_dry_run_record() {
 		reopened.list_program_intake_plans("decodex").expect("intake plans should list").is_empty()
 	);
 }
+
+#[test]
+fn same_id_recompile_preserves_append_only_challenge_evidence() {
+	let store = StateStore::open_in_memory().expect("store should open");
+	let objective = tests::store_accepted_objective(&store);
+	let signal = store
+		.record_autonomy_signal("decodex", tests::runtime_signal())
+		.expect("signal should store")
+		.signal()
+		.clone();
+	let proposal =
+		AutonomyProposal::compile_dry_run(Some(&objective), &[signal], tests::compile_input())
+			.expect("proposal should compile");
+	let proposal_id = proposal.id().to_owned();
+
+	store.record_autonomy_proposal("decodex", proposal.clone()).expect("proposal should persist");
+	store
+		.record_autonomy_proposal_challenge(
+			"decodex",
+			&proposal_id,
+			AutonomyProposalChallengeInput {
+				source: AutonomyProposalChallengeSource::InlineSkeptic,
+				actor: String::from("skeptic"),
+				summary: String::from("Blocking objection."),
+				objections: vec![String::from("authority_not_proven")],
+				evidence_refs: vec![String::from("review:1")],
+				recorded_at: String::from("2026-07-10T12:00:00Z"),
+			},
+		)
+		.expect("challenge should persist");
+
+	let replay = store
+		.record_autonomy_proposal("decodex", proposal)
+		.expect("exact proposal replay should preserve challenge");
+
+	assert_eq!(replay.proposal().challenge_evidence().len(), 1);
+	assert_eq!(
+		replay.proposal().challenge_evidence()[0].objections(),
+		&[String::from("authority_not_proven")]
+	);
+}
