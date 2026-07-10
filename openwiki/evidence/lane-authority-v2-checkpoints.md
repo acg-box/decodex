@@ -758,6 +758,20 @@ The command block now has exactly one PR locator. Provenance verification and
 operator-supplied second locator exists. This repair requires another fresh exact-head
 review before landing.
 
+### Nineteenth skeptic review
+
+Verdict: PR #1084 requested changes with one medium finding.
+
+The reviewer confirmed the undefined second locator was removed, but found that a bare
+numeric `DECODEX_C7_PR` could still make `gh pr view` consume ambient checkout or `GH_REPO`
+repository identity while later Decodex `--pr` parsing expects a full URL.
+
+The C7 contract now accepts only the exact canonical
+`https://github.com/hack-ink/decodex/pull/<digits>` shape, rejects suffixes and nonnumeric
+identifiers, explicitly pins `--repo hack-ink/decodex` on both GitHub readbacks, and passes
+that same URL to provenance and cutover. There is no ambient repository or alternate PR
+locator. Another fresh exact-head review remains required.
+
 ### C0 exit criteria
 
 - XY-1251, ADR, target contract, scenario matrix, and checkpoint ledger exist.
