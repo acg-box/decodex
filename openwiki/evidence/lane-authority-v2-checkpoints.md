@@ -772,6 +772,20 @@ identifiers, explicitly pins `--repo hack-ink/decodex` on both GitHub readbacks,
 that same URL to provenance and cutover. There is no ambient repository or alternate PR
 locator. Another fresh exact-head review remains required.
 
+### Twentieth skeptic review
+
+Verdict: PR #1084 requested changes with two medium findings.
+
+The canonical PR URL repair held, but the reviewer found two remaining ambient repository
+inputs: live main was read from the checkout's `origin`, and the required-check helper took
+only commit/phase so it could infer a repository from `GH_REPO` or the checkout.
+
+The C7 contract now pins `GH_HOST=github.com`, pins `github.com/hack-ink/decodex` on both PR
+readbacks, resolves live main through the explicit GitHub API repository path, and removes
+`origin` from authority readback. Both required-check phases receive the exact canonical
+repository URL, which the helper must validate rather than infer. Another fresh exact-head
+review remains required.
+
 ### C0 exit criteria
 
 - XY-1251, ADR, target contract, scenario matrix, and checkpoint ledger exist.

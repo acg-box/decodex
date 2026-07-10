@@ -436,6 +436,7 @@ Commands:
 cargo make check
 git diff --check main...HEAD
 /Users/x/.codex/shims/codex-identity
+export GH_HOST=github.com
 test -n "$DECODEX_C7_PR"
 case "$DECODEX_C7_PR" in
   https://github.com/hack-ink/decodex/pull/*) ;;
@@ -449,20 +450,21 @@ test "$DECODEX_C7_PR" = "https://github.com/hack-ink/decodex/pull/$pr_number"
 test -x "$DECODEX_C7_BINARY"
 test -n "$DECODEX_LANE_AUTHORITY_V2_PLAN"
 test -n "$DECODEX_LANE_AUTHORITY_V2_CUTOVER_RECEIPT"
-pr_head_sha="$(gh pr view "$DECODEX_C7_PR" --repo hack-ink/decodex \
+pr_head_sha="$(gh pr view "$DECODEX_C7_PR" --repo github.com/hack-ink/decodex \
   --json headRefOid --jq .headRefOid)"
 test "$pr_head_sha" = "$(git rev-parse HEAD)"
 scripts/verify_lane_authority_v2_required_checks.sh \
+  --repository https://github.com/hack-ink/decodex \
   --commit "$pr_head_sha" --phase pull-request
 # Fresh code and skeptic reviews occur here, then Decodex lands the exact PR head.
-merge_commit_sha="$(gh pr view "$DECODEX_C7_PR" --repo hack-ink/decodex \
+merge_commit_sha="$(gh pr view "$DECODEX_C7_PR" --repo github.com/hack-ink/decodex \
   --json mergeCommit --jq .mergeCommit.oid)"
 test -n "$merge_commit_sha"
-git fetch origin main
-remote_main_sha="$(git ls-remote --exit-code origin refs/heads/main | awk '{print $1}')"
-test "$remote_main_sha" = "$(git rev-parse origin/main)"
+remote_main_sha="$(gh api --hostname github.com \
+  repos/hack-ink/decodex/git/ref/heads/main --jq .object.sha)"
 test "$remote_main_sha" = "$merge_commit_sha"
 scripts/verify_lane_authority_v2_required_checks.sh \
+  --repository https://github.com/hack-ink/decodex \
   --commit "$merge_commit_sha" --phase main-activation
 attestation_json="$(mktemp)"
 trap 'rm -f "$attestation_json"' EXIT
@@ -531,7 +533,8 @@ Expected assertions:
   fresh GitHub readback. Later stages accept only the signed receipt and rederive/recheck
   live facts; no CLI flag can inject those authority identities. The sole PR locator is an
   exact canonical `hack-ink/decodex` URL, every GitHub readback also pins that repository,
-  and ambient checkout or `GH_REPO` state cannot redirect it;
+  and ambient checkout, `origin`, `GH_HOST`, or `GH_REPO` state cannot redirect it. The
+  required-check helper rejects any repository except the canonical GitHub URL;
 - authority audit returns zero executable ambiguity, orphan claim, legacy authority
   writer, terminal conflict lease, stale active operation, and overdue unknown effect;
 - the final full-source reverse scan returns no legacy authority reader/writer or schema
