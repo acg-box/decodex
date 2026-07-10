@@ -99,11 +99,11 @@ fn autonomy_proposal_refusal_reasons_are_specific_and_inspectable() {
 	assert_eq!(traversal_surface.state(), AutonomyProposalState::Rejected);
 	assert!(traversal_surface.has_refusal_reason(AutonomyProposalRefusalReason::DisallowedSurface));
 
-	let openwiki_signal = AutonomySignal::openwiki_drift(tests::signal_input())
-		.expect("OpenWiki signal should validate");
+	let disallowed_signal = AutonomySignal::protocol_drift(tests::signal_input())
+		.expect("protocol signal should validate");
 	let disallowed_kind = AutonomyProposal::compile_dry_run(
 		Some(&objective),
-		&[openwiki_signal],
+		&[disallowed_signal],
 		tests::compile_input(),
 	)
 	.expect("disallowed signal proposal should compile as refusal");

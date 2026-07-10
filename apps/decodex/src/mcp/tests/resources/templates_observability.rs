@@ -20,24 +20,30 @@ fn resources_templates_list_exposes_parameterized_resources() {
 		.filter_map(|template| template.get("uriTemplate").and_then(Value::as_str))
 		.collect::<Vec<_>>();
 
-	assert!(uri_templates.contains(&"decodex://openwiki/specs/{topic}"));
-	assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane-control/{issue}"));
-	assert!(uri_templates.contains(&"decodex://projects/{project_id}/status_live"));
-	assert!(uri_templates.contains(&"decodex://projects/{project_id}/activity_tail"));
-	assert!(uri_templates.contains(&"decodex://projects/{project_id}/lane_inspect/{issue}"));
-	assert!(uri_templates.contains(&"decodex://projects/{project_id}/runs/{run_id}/events"));
-	assert!(
-		uri_templates.contains(&"decodex://projects/{project_id}/runs/{run_id}/protocol_activity")
+	assert_eq!(
+		uri_templates,
+		[
+			"decodex://decision-contracts/{contract_id}",
+			"decodex://projects/{project_id}/status",
+			"decodex://projects/{project_id}/status_live",
+			"decodex://projects/{project_id}/activity_tail",
+			"decodex://projects/{project_id}/lane_inspect/{issue}",
+			"decodex://projects/{project_id}/lane-control/{issue}",
+			"decodex://projects/{project_id}/runs/{run_id}/events",
+			"decodex://projects/{project_id}/runs/{run_id}/protocol_activity",
+			"decodex://projects/{project_id}/runs/{run_id}/child_agent_activity",
+			"decodex://projects/{project_id}/runs/{run_id}/progress_diagnostics",
+			"decodex://projects/{project_id}/pr_review_state",
+			"decodex://projects/{project_id}/autonomy",
+			"decodex://projects/{project_id}/autonomy/objectives/{objective_id}/current",
+			"decodex://projects/{project_id}/autonomy/objectives/{objective_id}/{version}",
+			"decodex://projects/{project_id}/autonomy/signals",
+			"decodex://projects/{project_id}/autonomy/signals/{signal_id}",
+			"decodex://projects/{project_id}/autonomy/proposals",
+			"decodex://projects/{project_id}/autonomy/proposals/{proposal_id}",
+			"decodex://projects/{project_id}/autonomy/evidence",
+		]
 	);
-	assert!(
-		uri_templates
-			.contains(&"decodex://projects/{project_id}/runs/{run_id}/child_agent_activity")
-	);
-	assert!(
-		uri_templates
-			.contains(&"decodex://projects/{project_id}/runs/{run_id}/progress_diagnostics")
-	);
-	assert!(uri_templates.contains(&"decodex://projects/{project_id}/pr_review_state"));
 
 	for uri_template in [
 		"decodex://projects/{project_id}/runs/{run_id}/events",

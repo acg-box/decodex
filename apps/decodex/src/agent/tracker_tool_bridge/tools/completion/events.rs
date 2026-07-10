@@ -1,8 +1,6 @@
-use serde_json::Value;
-
 use crate::agent::tracker_tool_bridge::{
-	ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME, OpenWikiImpact,
-	PullRequestDetails, ReviewHandoffContext, RunCompletionDisposition, TrackerToolBridge,
+	ISSUE_TERMINAL_FINALIZE_TOOL_NAME, PullRequestDetails, ReviewHandoffContext,
+	RunCompletionDisposition, TrackerToolBridge,
 	tools::{REVIEW_COMPLETION_INTENT_EVENT_TYPE, TERMINAL_FINALIZE_EVENT_TYPE},
 };
 
@@ -83,62 +81,6 @@ impl<'a> TrackerToolBridge<'a> {
 					self.issue.identifier
 				)
 			})
-	}
-
-	pub(in crate::agent::tracker_tool_bridge::tools) fn ensure_openwiki_impact_checkpoint(
-		&self,
-		review_context: &ReviewHandoffContext,
-		path: RunCompletionDisposition,
-	) -> Result<(), String> {
-		let state_store = self.state_store.ok_or_else(|| {
-			format!(
-				"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` requires the Decodex runtime state store for issue `{}`.",
-				self.issue.identifier
-			)
-		})?;
-		let local_repo = self.current_local_repo_details(review_context)?;
-		let events = state_store
-			.list_private_execution_events(
-				&review_context.service_id,
-				&self.issue.id,
-				&review_context.run_id,
-				review_context.attempt_number,
-			)
-			.map_err(|error| {
-				format!(
-					"Failed to inspect OpenWiki-impact checkpoints for issue `{}`: {error}",
-					self.issue.identifier
-				)
-			})?;
-		let Some(checkpoint) =
-			events.iter().rev().find(|event| event.event_type() == "progress_checkpoint")
-		else {
-			return Err(format!(
-				"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` path `{}` requires a prior `{ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME}` with `openwiki_impact` for the current lane HEAD `{}`.",
-				path.as_str(),
-				local_repo.head_oid
-			));
-		};
-		let has_openwiki_impact = checkpoint
-			.payload()
-			.get("openwiki_impact")
-			.and_then(Value::as_str)
-			.is_some_and(|value| OpenWikiImpact::parse(value).is_ok());
-		let matches_current_head = checkpoint
-			.payload()
-			.get("head_sha")
-			.and_then(Value::as_str)
-			.is_some_and(|head_sha| head_sha == local_repo.head_oid);
-
-		if has_openwiki_impact && matches_current_head {
-			return Ok(());
-		}
-
-		Err(format!(
-			"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` path `{}` requires the latest `{ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME}` to record `openwiki_impact` for the current lane HEAD `{}`.",
-			path.as_str(),
-			local_repo.head_oid
-		))
 	}
 
 	pub(in crate::agent::tracker_tool_bridge::tools) fn clear_review_policy_state_after_completion(

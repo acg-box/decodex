@@ -73,7 +73,7 @@ fn latent_goal_research_provenance() -> Value {
 		},
 		{
 			"kind": "spec",
-			"reference": "openwiki/specs/contracts-and-data.md",
+			"reference": "apps/decodex/src/loop_contract.rs",
 			"summary": "Promoted contracts can shape normal Linear issues."
 		}
 	])
@@ -90,7 +90,7 @@ fn latent_goal_research_evidence() -> Value {
 		{
 			"claim": "Goal intake needs generated issues and an internal program.",
 			"support": "The loop-runtime spec defines Program Intake records.",
-			"source_ref": "openwiki/specs/contracts-and-data.md"
+			"source_ref": "apps/decodex/src/loop_contract.rs"
 		}
 	])
 }
@@ -119,7 +119,7 @@ fn latent_goal_execution_readiness() -> Value {
 		"validation_expectations": ["Run cargo make test before handoff."],
 		"risk_notes": ["Generated issue descriptions must stay natural-language."],
 		"proposed_issues": [goal_intake_runtime_issue(), goal_intake_links_issue()],
-		"conflict_domains": ["module:runtime", "file:openwiki/specs/contracts-and-data.md"]
+		"conflict_domains": ["module:runtime", "file:apps/decodex/src/loop_contract.rs"]
 	})
 }
 
@@ -145,7 +145,7 @@ fn goal_intake_links_issue() -> Value {
 		"objective": "Persist Execution Program links for generated issues.",
 		"stage": "runtime",
 		"dependencies": ["goal-intake-runtime"],
-		"conflict_domains": ["module:runtime", "file:openwiki/specs/contracts-and-data.md"],
+		"conflict_domains": ["module:runtime", "file:apps/decodex/src/loop_contract.rs"],
 		"acceptance": [
 			"Apply links generated issue identifiers and execution nodes back to the accepted contract."
 		],

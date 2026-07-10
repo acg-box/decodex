@@ -87,7 +87,7 @@ fn closeout_prompts_require_retained_pr_closeout_completion() {
 	assert!(continuation_input.contains("may already be in `Done`"));
 	assert!(
 		continuation_input
-			.contains("either omit `head_sha` and let `decodex` record the exact current lane HEAD automatically, or pass the exact full current `HEAD` SHA")
+			.contains("omit `head_sha` to capture the current lane HEAD automatically or pass the exact full current `HEAD` SHA")
 	);
 	assert!(continuation_input.contains(
 		"If the issue is still in `In Review`, transition it once to `Done` with `issue_transition` before `issue_closeout_complete`"

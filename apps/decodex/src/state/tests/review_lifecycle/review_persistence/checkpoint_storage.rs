@@ -95,12 +95,15 @@ fn review_checkpoint_artifact_reuses_only_matching_evidence_key() {
 	assert_eq!(reused.status(), "clean");
 	assert_eq!(reused.details_json(), r#"{"reviewer":"independent_fresh_context"}"#);
 
-	let key_json = Connection::open(&state_path)
+	let (key_json, payload_json) = Connection::open(&state_path)
 		.expect("state sqlite should open")
-		.query_row("SELECT key_json FROM evidence_artifacts", [], |row| row.get::<_, String>(0))
+		.query_row("SELECT key_json, payload_json FROM evidence_artifacts", [], |row| {
+			Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+		})
 		.expect("review artifact key should read");
 
-	assert!(key_json.contains(r#""review_prompt_version":"decodex-review-checkpoint/2""#));
+	assert!(key_json.contains(r#""review_prompt_version":"decodex-review-checkpoint/3""#));
+	assert!(payload_json.contains(r#""schema":"decodex.review_checkpoint_artifact/2""#));
 	assert!(
 		reopened
 			.review_checkpoint_artifact(ReviewCheckpointArtifactLookup {

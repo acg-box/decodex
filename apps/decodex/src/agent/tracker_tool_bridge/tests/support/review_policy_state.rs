@@ -9,29 +9,6 @@ use crate::{
 	tracker::TrackerIssue,
 };
 
-pub(crate) fn seed_openwiki_impact_checkpoint(
-	state_store: &StateStore,
-	review_context: &ReviewHandoffContext,
-	issue_id: &str,
-	phase: &str,
-	head_sha: &str,
-) {
-	state_store
-		.append_private_execution_event(
-			&review_context.service_id,
-			issue_id,
-			&review_context.run_id,
-			review_context.attempt_number,
-			"progress_checkpoint",
-			serde_json::json!({
-				"phase": phase,
-				"openwiki_impact": "none",
-				"head_sha": head_sha
-			}),
-		)
-		.expect("OpenWiki impact checkpoint should seed");
-}
-
 pub(crate) fn write_review_policy_checkpoint(
 	bridge: &TrackerToolBridge<'_>,
 	issue: &TrackerIssue,

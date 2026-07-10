@@ -45,7 +45,6 @@ pub(in crate::mcp::tests) fn seed_autonomy_challenged_proposal() -> (TempDir, Pa
 	let signal_call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"autonomy_submit_signal","arguments":{"mode":"apply","kind":"runtime_health","signal":{"objectiveId":"quality-autonomy","objectiveVersion":1,"sourceType":"runtime","sourceRefs":["status:XY-1090"],"freshness":"fresh","summary":"Runtime status is consistent.","evidence":["status readback summarized"],"evidenceClass":"live_readback","confidence":"high","privacy":"team"},"authority":{"source":"mcp-test","reason":"submit evidence"}}}}"#;
 	let signal_responses = stdio::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
@@ -59,7 +58,6 @@ pub(in crate::mcp::tests) fn seed_autonomy_challenged_proposal() -> (TempDir, Pa
 	);
 	let proposal_responses = stdio::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
@@ -74,7 +72,6 @@ pub(in crate::mcp::tests) fn seed_autonomy_challenged_proposal() -> (TempDir, Pa
 	);
 	let challenge_responses = stdio::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
@@ -106,8 +103,8 @@ pub(in crate::mcp::tests) fn autonomy_objective_fixture() -> AutonomyObjectiveCo
 		"goals": ["Reduce repeated validation and review churn."],
 		"non_goals": ["Do not bypass Decision Contract authority."],
 		"metrics": ["Validation retry count stays below objective tolerance."],
-		"allowed_surfaces": ["apps/decodex/src/mcp.rs", "openwiki/specs/contracts-and-data.md"],
-		"allowed_signal_kinds": ["runtime_health", "openwiki_drift"],
+		"allowed_surfaces": ["apps/decodex/src/mcp.rs"],
+		"allowed_signal_kinds": ["runtime_health", "protocol_drift"],
 		"validation_gates": ["cargo test -p decodex mcp --lib"],
 		"review_policy": "independent current-head review required",
 		"memory_policy": "source-linked read-only memory only",

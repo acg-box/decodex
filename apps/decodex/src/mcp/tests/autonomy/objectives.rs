@@ -35,7 +35,6 @@ fn autonomy_tools_are_plan_profile_and_apply_requires_authority() {
 
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let context = McpContext {
-		repo_root: repo.path().to_path_buf(),
 		config_path: None,
 		project_id: Some(String::from("decodex")),
 		state_store: Some(state_store),
@@ -53,36 +52,14 @@ fn autonomy_tools_are_plan_profile_and_apply_requires_authority() {
 }
 
 #[test]
-fn autonomy_submit_signal_accepts_current_openwiki_drift_kind() {
-	let repo = support::test_repo();
-	let responses = support::run_stdio_with_context(
-		McpContext {
-			repo_root: repo.path().to_path_buf(),
-			config_path: None,
-			project_id: Some(String::from("decodex")),
-			state_store: Some(StateStore::open_in_memory().expect("state store should open")),
-		},
-		r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"autonomy_submit_signal","arguments":{"mode":"dry_run","kind":"openwiki_drift","signal":{"objectiveId":"quality-autonomy","objectiveVersion":1,"sourceType":"openwiki","sourceRefs":["openwiki/specs/contracts-and-data.md"],"freshness":"fresh","summary":"OpenWiki contract map changed.","evidence":["OpenWiki source reviewed"],"evidenceClass":"repo_source","confidence":"high","privacy":"team"}}}}"#,
-	);
-	let structured = &support::response_at(&responses, 0)["result"]["structuredContent"];
-
-	assert_eq!(structured["schema"], "decodex.mcp.autonomy_signal_result/1");
-	assert_eq!(structured["persisted"], false);
-	assert_eq!(structured["signal"]["kind"], "openwiki_drift");
-	assert_eq!(structured["signal"]["source_type"], "openwiki");
-}
-
-#[test]
 fn autonomy_accept_objective_accepts_draft_without_execution_authority() {
-	let repo = support::test_repo();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let draft_call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"autonomy_draft_objective","arguments":{"mode":"apply","objective":{"schema":"decodex.autonomy_objective/1","record_version":1,"project_id":"decodex","id":"self-iteration-pilot","version":1,"state":"draft","summary":"Pilot Decodex self-iteration only on the decodex project.","goals":["Reduce repeated operator intervention.","Convert Decodex-only feedback into evidence-backed proposals."],"non_goals":["Do not touch other projects.","Do not bypass review, landing, install, restart, or plugin-sync gates."],"metrics":["Manual-attention count.","Validated proposal replay completeness."],"allowed_surfaces":["apps/decodex/src","automations/decodex","openwiki","plugins/decodex"],"allowed_signal_kinds":["runtime_health","protocol_drift","execution_friction","validation_regression","user_feedback_cluster"],"validation_gates":["cargo test -p decodex mcp --lib"],"review_policy":"challenge required before promotion","memory_policy":"source-linked evidence only","report_policy":"public-safe source refs with known gaps"},"authority":{"source":"mcp-test","reason":"store draft objective"}}}}"#;
+	let draft_call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"autonomy_draft_objective","arguments":{"mode":"apply","objective":{"schema":"decodex.autonomy_objective/1","record_version":1,"project_id":"decodex","id":"self-iteration-pilot","version":1,"state":"draft","summary":"Pilot Decodex self-iteration only on the decodex project.","goals":["Reduce repeated operator intervention.","Convert Decodex-only feedback into evidence-backed proposals."],"non_goals":["Do not touch other projects.","Do not bypass review, landing, install, restart, or plugin-sync gates."],"metrics":["Manual-attention count.","Validated proposal replay completeness."],"allowed_surfaces":["apps/decodex/src","automations/decodex","plugins/decodex"],"allowed_signal_kinds":["runtime_health","protocol_drift","execution_friction","validation_regression","user_feedback_cluster"],"validation_gates":["cargo test -p decodex mcp --lib"],"review_policy":"challenge required before promotion","memory_policy":"source-linked evidence only","report_policy":"public-safe source refs with known gaps"},"authority":{"source":"mcp-test","reason":"store draft objective"}}}}"#;
 	let accept_missing_authority_call = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"autonomy_accept_objective","arguments":{"mode":"apply","objectiveId":"self-iteration-pilot","objectiveVersion":1}}}"#;
 	let accept_call = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"autonomy_accept_objective","arguments":{"mode":"apply","objectiveId":"self-iteration-pilot","objectiveVersion":1,"authority":{"acceptedBy":"operator","acceptedByKind":"user","acceptedAt":"2026-06-27T00:00:00Z","acceptanceSource":"conversation"}}}}"#;
 	let read_call = r#"{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"decodex://projects/decodex/autonomy/objectives/self-iteration-pilot/current"}}"#;
 	let responses = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(state_store),
@@ -112,7 +89,6 @@ fn autonomy_accept_objective_accepts_draft_without_execution_authority() {
 
 #[test]
 fn autonomy_accept_objective_refuses_caller_supplied_runtime_policy_authority() {
-	let repo = support::test_repo();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
 	state_store
@@ -121,7 +97,6 @@ fn autonomy_accept_objective_refuses_caller_supplied_runtime_policy_authority() 
 
 	let responses = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(state_store),

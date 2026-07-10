@@ -34,7 +34,7 @@
   "interface": {
     "displayName": "Decodex",
     "shortDescription": "Operate Decodex planning, runtime ops, commit, and landing.",
-    "longDescription": "Routes Decodex product/runtime work: issue briefing and planning, runtime ops, lane control, recovery, commit, and landing. Generic repository work, OpenWiki-backed knowledge, and research/skeptic review live in external installed codebase, knowledge, and research plugins.",
+    "longDescription": "Routes Decodex product and runtime work: issue briefing and planning, runtime operations, lane control, recovery, commit, and landing.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [

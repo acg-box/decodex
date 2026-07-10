@@ -14,7 +14,6 @@ Decodex plugin skill.
 
 ## Read Before Triage
 
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `automations/radar/skills/codex-code-analysis/SKILL.md`
 - `automations/radar/skills/codex-release-analysis/SKILL.md`
 

@@ -6,7 +6,9 @@ mod worktree;
 
 pub(crate) use self::{
 	connector::ConnectorBackoff,
-	private_event::PrivateExecutionEvent,
+	private_event::{
+		PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, PrivateExecutionEvent,
+	},
 	registration::ProjectRegistration,
 	run_status::ProjectRunStatus,
 	worktree::{

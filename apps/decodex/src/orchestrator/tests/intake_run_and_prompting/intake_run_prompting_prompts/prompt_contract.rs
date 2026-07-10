@@ -47,14 +47,6 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains("Do not substitute broader repo-documentation examples"));
 	assert!(instructions.contains("Keep pre-edit discovery bounded"));
 	assert!(instructions.contains("Do not browse upstream references"));
-	assert!(instructions.contains("OpenWiki impact contract"));
-	assert!(instructions.contains(
-		"classify OpenWiki impact as `none`, `update_required`, `research_required`, or `drift_required`"
-	));
-	assert!(instructions.contains("Before any terminal finalize path"));
-	assert!(
-		instructions.contains("Decodex records internal validation evidence for phase transitions")
-	);
 	assert!(instructions.contains("Tracker tool contract"));
 	assert!(instructions.contains("Linear tracker text is public/team-visible"));
 	assert!(instructions.contains("You own issue-scoped tracker writes for `PUB-101`."));

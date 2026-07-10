@@ -1,10 +1,13 @@
 use crate::{
-	orchestrator::status::post_review::{
-		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
-		PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
-		PostReviewRuntimeState, PrivateExecutionEvent, Value,
-		operator_boundary_policy_blocks_landing,
-		operator_boundary_policy_requires_enhanced_evidence,
+	orchestrator::{
+		AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+		status::post_review::{
+			AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
+			PostReviewLaneClassification, PostReviewLaneDecision, PostReviewLaneSnapshot,
+			PostReviewRuntimeState, PrivateExecutionEvent, Value,
+			operator_boundary_policy_blocks_landing,
+			operator_boundary_policy_requires_enhanced_evidence,
+		},
 	},
 	prelude::Result,
 };
@@ -47,8 +50,11 @@ pub(crate) fn authority_boundary_landing_requirement(
 		return Ok(Some("authority_boundary_requires_human_decision"));
 	}
 	if events.iter().rev().any(|event| {
-		event.event_type() == AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE
-			&& authority_boundary_event_requires_human_decision(event.payload())
+		event.matches_contract(
+			AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+			AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+			2,
+		) && authority_boundary_event_requires_human_decision(event.payload())
 	}) {
 		return Ok(Some("authority_boundary_requires_human_decision"));
 	}
@@ -61,8 +67,11 @@ pub(crate) fn authority_boundary_landing_requirement(
 
 	for event in events.iter().rev() {
 		if event.record_id() <= latest_clean_review_record_id
-			|| event.event_type() != AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE
-		{
+			|| !event.matches_contract(
+				AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+				AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+				2,
+			) {
 			continue;
 		}
 

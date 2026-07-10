@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::orchestrator::{
-	PrivateExecutionEvent,
+	AUTHORITY_BOUNDARY_CHECK_SCHEMA, PrivateExecutionEvent,
 	agent_evidence::{
 		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
 		PrivateEvidenceBoundaryCheckSummary, PrivateEvidenceDecisionRequestSummary,
@@ -13,7 +13,13 @@ pub(super) fn boundary_checks_from_private_events(
 ) -> Vec<PrivateEvidenceBoundaryCheckSummary> {
 	events
 		.iter()
-		.filter(|event| event.event_type() == AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE)
+		.filter(|event| {
+			event.matches_contract(
+				AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+				AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+				2,
+			)
+		})
 		.filter_map(boundary_check_from_private_event)
 		.collect()
 }

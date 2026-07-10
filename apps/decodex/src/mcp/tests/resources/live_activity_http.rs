@@ -12,7 +12,6 @@ fn resources_read_exposes_bounded_live_activity_and_recent_run_readback() {
 	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
 	let context = McpContext {
-		repo_root: repo.path().to_path_buf(),
 		config_path: Some(config_path.clone()),
 		project_id: Some(String::from("pubfi")),
 		state_store: None,
@@ -94,7 +93,6 @@ fn streamable_http_resources_read_exposes_observability_resources() {
 	support::seed_project_runtime_for_mcp_resources(repo.path(), &config_path);
 
 	let context = McpContext {
-		repo_root: repo.path().to_path_buf(),
 		config_path: Some(config_path),
 		project_id: Some(String::from("pubfi")),
 		state_store: None,

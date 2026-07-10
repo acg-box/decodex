@@ -1,6 +1,6 @@
 use crate::agent::tracker_tool_bridge::{
-	self, ExecutionProgressPhase, NormalizedProgressCheckpoint, OpenWikiImpact,
-	ProgressCheckpointArgs, TrackerToolBridge,
+	self, ExecutionProgressPhase, NormalizedProgressCheckpoint, ProgressCheckpointArgs,
+	TrackerToolBridge,
 };
 
 impl<'a> TrackerToolBridge<'a> {
@@ -9,7 +9,6 @@ impl<'a> TrackerToolBridge<'a> {
 		parsed: ProgressCheckpointArgs,
 	) -> Result<NormalizedProgressCheckpoint, String> {
 		let phase = ExecutionProgressPhase::parse(&parsed.phase)?;
-		let openwiki_impact = OpenWikiImpact::parse(&parsed.openwiki_impact)?;
 		let focus = tracker_tool_bridge::normalize_summary(&parsed.focus);
 		let next_action = tracker_tool_bridge::normalize_summary(&parsed.next_action);
 		let blockers = tracker_tool_bridge::normalize_progress_list(parsed.blockers);
@@ -35,7 +34,6 @@ impl<'a> TrackerToolBridge<'a> {
 
 		Ok(NormalizedProgressCheckpoint {
 			phase,
-			openwiki_impact,
 			focus,
 			next_action,
 			blockers,

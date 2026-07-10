@@ -12,7 +12,6 @@ always writes the terminal `social_post/v1` record.
 
 ## Read First
 
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `../references/social-release-publisher-gates.md`
 - `automations/decodex/skills/x-post-quality-system/SKILL.md`
 
