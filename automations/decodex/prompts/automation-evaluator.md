@@ -15,7 +15,6 @@ Required reads:
 - `automations/decodex/scripts/config/evaluate_automations.py`
 - `automations/decodex/scripts/config/sync_automations.py`
 - `automations/decodex/scripts/operations/summarize_automation_effectiveness.py`
-- `openwiki/quickstart.md`
 
 Workflow:
 1. Run live evaluation for both manifests with `--json`.

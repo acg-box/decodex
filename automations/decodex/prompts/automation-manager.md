@@ -30,8 +30,6 @@ Required reads:
 - `automations/decodex/skills/x-post-publisher/SKILL.md`
 - `automations/decodex/skills/x-post-quality-system/SKILL.md`
 - `automations/decodex/skills/references/social-release-publisher-gates.md`
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
-- `openwiki/integrations/radar-publisher-contracts.md`
 
 Daily loop:
 1. Read the latest independent daily review, weekly strategy, active experiment, previous manager action, and Publisher terminal state.
