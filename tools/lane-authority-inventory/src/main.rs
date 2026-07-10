@@ -247,7 +247,7 @@ fn parse_source(
 			}
 		})
 		.collect();
-	let receipt_id = format!("tool:{}:parser", source.language);
+	let receipt_id = format!("tool:{}:parser:common", source.language);
 	Ok((
 		ParsedSource {
 			identity: source,

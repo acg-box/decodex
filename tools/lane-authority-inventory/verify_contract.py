@@ -127,6 +127,28 @@ EXPECTED_RELATIONS = {
     "syntax_sites",
     "toolchain_receipts",
 }
+RELATION_DEFINITIONS = {
+    "call_edges": "edge",
+    "candidate_adjudications": "candidate_adjudication",
+    "candidate_records": "candidate_record",
+    "candidate_site_edges": "candidate_site_edge",
+    "catalog_entry_dispositions": "catalog_entry_disposition",
+    "cfg_projections": "cfg_projection",
+    "data_sites": "data_site",
+    "dataflow_edges": "edge",
+    "site_classifications": "site_classification",
+    "source_nodes": "source_node",
+    "supporting_inputs": "supporting_input",
+    "symbol_sites": "symbol_site",
+    "syntax_sites": "syntax_site",
+    "toolchain_receipts": "toolchain_receipt",
+}
+NONEMPTY_RELATIONS = {
+    "call_edges",
+    "candidate_records",
+    "dataflow_edges",
+    "syntax_sites",
+}
 EXPECTED_TRANSFER_RULES = {
     "bind_or_assign_exact",
     "branch_or_match_finite_union",
@@ -680,6 +702,33 @@ def validate_instance(root: Path, instance_path: Path, schema_path: Path) -> Non
         raise ContractError(
             f"{instance_path} violates {schema_path} at {location}: {error.message}"
         ) from error
+
+
+def validate_typed_relation_manifest(
+    manifest: dict[str, Any], relation_name: str, relation_schema: dict[str, Any]
+) -> None:
+    if set(manifest) != {"schema", "relation", "records"}:
+        raise ContractError(f"relation manifest fields drifted: {relation_name}")
+    expected_schema = f"decodex/lane-authority-v2-c1i-{relation_name.replace('_', '-')}/1"
+    if manifest["schema"] != expected_schema or manifest["relation"] != relation_name:
+        raise ContractError(f"relation manifest identity drifted: {relation_name}")
+    records = manifest["records"]
+    if not isinstance(records, list) or (relation_name in NONEMPTY_RELATIONS and not records):
+        raise ContractError(f"relation manifest cardinality drifted: {relation_name}")
+    validator = Draft202012Validator(
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": relation_schema["$defs"],
+            "$ref": f"#/$defs/{RELATION_DEFINITIONS[relation_name]}",
+        }
+    )
+    for index, record in enumerate(records):
+        try:
+            validator.validate(record)
+        except ValidationError as error:
+            raise ContractError(
+                f"relation {relation_name} record {index} violates its schema: {error.message}"
+            ) from error
 
 
 def validate_rejection_contract(root: Path) -> None:
@@ -1795,13 +1844,8 @@ def validate_relation_manifests(
     for relation, receipt in composition["relations"].items():
         path = Path(receipt["path"])
         manifest = load_json(root, path)
-        try:
-            Draft202012Validator(relation_schema).validate(manifest)
-        except ValidationError as error:
-            raise ContractError(
-                f"relation {relation} violates its record schema: {error.message}"
-            ) from error
-        if manifest["relation"] != relation or manifest["schema"] != receipt["schema"]:
+        validate_typed_relation_manifest(manifest, relation, relation_schema)
+        if manifest["schema"] != receipt["schema"]:
             raise ContractError(f"relation receipt identity mismatch: {relation}")
         if len(manifest["records"]) != receipt["count"]:
             raise ContractError(f"relation receipt count mismatch: {relation}")
@@ -2046,18 +2090,19 @@ def verify_p1(root: Path) -> dict[str, Any]:
             Path("tools/lane-authority-inventory/contracts/source_inventory.schema.json"),
             "source inventory",
         ),
-        (
-            candidate_manifest,
-            Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json"),
-            "candidate records",
-        ),
     ):
         try:
             Draft202012Validator(load_json(root, schema_path)).validate(value)
         except ValidationError as error:
             raise ContractError(f"P1 {label} violates its schema: {error.message}") from error
-    if candidate_manifest["relation"] != "candidate_records":
-        raise ContractError("P1 candidate manifest has the wrong relation identity")
+    validate_typed_relation_manifest(
+        candidate_manifest,
+        "candidate_records",
+        load_json(
+            root,
+            Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json"),
+        ),
+    )
     records = source_inventory["records"]
     sources = _unique_index(records, "source_node_id", "source inventory")
     if source_inventory["source_cut_commit"] != analysis_cut["source_cut_commit"]:
@@ -2112,16 +2157,25 @@ def verify_p2(root: Path) -> dict[str, Any]:
         "syntax_sites": load_json(root, SYNTAX_SITES_PATH),
         "cfg_projections": load_json(root, CFG_PROJECTIONS_PATH),
         "candidate_site_edges": load_json(root, CANDIDATE_SITE_EDGES_PATH),
+        **{
+            relation_name: load_json(
+                root,
+                Path(
+                    f"tools/lane-authority-inventory/manifests/relations/{relation_name}.json"
+                ),
+            )
+            for relation_name in (
+                "call_edges",
+                "data_sites",
+                "dataflow_edges",
+                "supporting_inputs",
+                "symbol_sites",
+                "toolchain_receipts",
+            )
+        },
     }
     for relation_name, manifest in manifests.items():
-        try:
-            Draft202012Validator(relation_schema).validate(manifest)
-        except ValidationError as error:
-            raise ContractError(
-                f"P2 {relation_name} violates its relation schema: {error.message}"
-            ) from error
-        if manifest["relation"] != relation_name:
-            raise ContractError(f"P2 relation identity drifted: {relation_name}")
+        validate_typed_relation_manifest(manifest, relation_name, relation_schema)
 
     source_inventory = load_json(root, SOURCE_INVENTORY_PATH)
     identity_fields = {
@@ -2217,16 +2271,119 @@ def verify_p2(root: Path) -> dict[str, Any]:
     if any(value != required_coverage for value in coverage.values()):
         raise ContractError("P2 source cfg/target platform coverage is incomplete")
 
+    data_sites = _unique_index(
+        manifests["data_sites"]["records"], "site_id", "P2 data sites"
+    )
+    if any(site["syntax_site_id"] not in syntax for site in data_sites.values()):
+        raise ContractError("P2 data site references a missing syntax site")
+    all_site_ids = set(syntax) | set(data_sites)
+    call_edges = _unique_index(
+        manifests["call_edges"]["records"], "edge_id", "P2 call edges"
+    )
+    dataflow_edges = _unique_index(
+        manifests["dataflow_edges"]["records"], "edge_id", "P2 dataflow edges"
+    )
+    for relation_name, edges in (
+        ("call", call_edges),
+        ("dataflow", dataflow_edges),
+    ):
+        if not edges or any(
+            edge["from_site_id"] not in all_site_ids
+            or edge["to_site_id"] not in all_site_ids
+            for edge in edges.values()
+        ):
+            raise ContractError(f"P2 {relation_name} graph has missing endpoints")
+
+    def source_id_for_site(site_id: str) -> str:
+        if site_id in syntax:
+            return syntax[site_id]["source_node_id"]
+        return syntax[data_sites[site_id]["syntax_site_id"]]["source_node_id"]
+
+    receipts = _unique_index(
+        manifests["toolchain_receipts"]["records"],
+        "receipt_id",
+        "P2 toolchain receipts",
+    )
+    expected_receipt_keys = {
+        (language, role, platform)
+        for language in EXPECTED_LANGUAGES
+        for role, platform in (
+            ("parser", "common"),
+            ("platform_slice", "linux"),
+            ("platform_slice", "macos"),
+        )
+    }
+    actual_receipt_keys = {
+        (receipt["language"], receipt["receipt_role"], receipt["platform"])
+        for receipt in receipts.values()
+    }
+    if actual_receipt_keys != expected_receipt_keys:
+        raise ContractError("P2 parser/platform receipts do not cover the toolchain matrix")
+    projection_ids_by_key: dict[tuple[str, str], set[str]] = {}
+    for projection_id, projection in projections.items():
+        if projection["projection_kind"] == "config":
+            projection_ids_by_key.setdefault(
+                (projection["language"], projection["platform"]), set()
+            ).add(projection_id)
+    candidate_source = {
+        candidate["candidate_id"]: candidate["source_node_id"] for candidate in candidates
+    }
+    for receipt in receipts.values():
+        source_ids = {
+            source_id
+            for source_id, source in sources.items()
+            if source["status"] == "current" and source["language"] == receipt["language"]
+        }
+        if set(receipt["completed_source_node_ids"]) != source_ids:
+            raise ContractError("P2 tool receipt completed source set is incomplete")
+        if set(receipt["config_projection_ids"]) != projection_ids_by_key[
+            (receipt["language"], receipt["platform"])
+        ]:
+            raise ContractError("P2 tool receipt config projection set is incomplete")
+        observed_sets = {
+            "expected_source_node": source_ids,
+            "completed_source_node": source_ids,
+            "syntax_site": {
+                site_id for site_id in syntax if source_id_for_site(site_id) in source_ids
+            },
+            "candidate_record": {
+                candidate_id
+                for candidate_id, source_id in candidate_source.items()
+                if source_id in source_ids
+            },
+            "call_edge": {
+                edge_id
+                for edge_id, edge in call_edges.items()
+                if source_id_for_site(edge["from_site_id"]) in source_ids
+            },
+            "dataflow_edge": {
+                edge_id
+                for edge_id, edge in dataflow_edges.items()
+                if source_id_for_site(edge["from_site_id"]) in source_ids
+            },
+        }
+        for prefix, identifiers in observed_sets.items():
+            if receipt[f"{prefix}_count"] != len(identifiers) or receipt[
+                f"{prefix}_ids_digest"
+            ] != stable_id_set_digest(
+                f"decodex/lane-authority-v2-tool-receipt-{prefix}/1", identifiers
+            ):
+                raise ContractError(f"P2 tool receipt {prefix} evidence drifted")
+
     parser_errors = sum(source["parser_error_count"] for source in sources.values())
     return {
         **p1,
         "candidate_site_edge_count": len(candidate_edges),
         "cfg_projection_count": len(projections),
+        "call_edge_count": len(call_edges),
+        "data_site_count": len(data_sites),
+        "dataflow_edge_count": len(dataflow_edges),
         "parser_error_count": parser_errors,
         "phase": "P2",
         "source_node_count": len(sources),
         "syntax_site_count": len(syntax),
-        "unresolved_count": parser_errors + len(candidate_ids) + 2,
+        "toolchain_receipt_count": len(receipts),
+        "unresolved_count": parser_errors + len(candidate_ids) + len(call_edges) + len(dataflow_edges),
     }
 
 

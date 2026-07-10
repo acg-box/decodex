@@ -84,6 +84,29 @@ def config_projection(site: dict[str, Any], kind: str, platform: str) -> dict[st
     }
 
 
+def data_kind(category: str) -> str:
+    if "sqlite" in category:
+        return "sql"
+    if "provider" in category:
+        return "provider"
+    if "filesystem" in category or "git" in category:
+        return "filesystem"
+    if "credential" in category or "config" in category:
+        return "config"
+    if "process" in category or category == "launcher":
+        return "environment"
+    return "serialization"
+
+
+def id_set_fields(prefix: str, identifiers: set[str]) -> dict[str, Any]:
+    return {
+        f"{prefix}_count": len(identifiers),
+        f"{prefix}_ids_digest": contract.stable_id_set_digest(
+            f"decodex/lane-authority-v2-tool-receipt-{prefix}/1", identifiers
+        ),
+    }
+
+
 def materialize(root: Path) -> dict[str, Any]:
     source_inventory = contract.load_json(root, SOURCE_INVENTORY_PATH)
     analysis_cut = contract.load_json(root, contract.ANALYSIS_CUT_PATH)
@@ -132,6 +155,146 @@ def materialize(root: Path) -> dict[str, Any]:
         del site["language"]
     cfg_projections.sort(key=lambda projection: projection["projection_id"])
 
+    syntax_by_id = {site["site_id"]: site for site in parsed["syntax_sites"]}
+    roots_by_source = {
+        site["source_node_id"]: site["site_id"]
+        for site in parsed["syntax_sites"]
+        if site["is_parser_root"]
+    }
+    candidate_manifest = contract.load_json(root, CANDIDATE_RECORDS_PATH)
+    candidate_by_id = {
+        candidate["candidate_id"]: candidate for candidate in candidate_manifest["records"]
+    }
+    data_sites: list[dict[str, Any]] = []
+    dataflow_edges: list[dict[str, Any]] = []
+    for candidate_edge in parsed["candidate_site_edges"]:
+        candidate = candidate_by_id[candidate_edge["candidate_id"]]
+        data_site_id = canonical_id(
+            "decodex/lane-authority-v2-data-site/1", candidate["candidate_id"]
+        )
+        data_sites.append(
+            {
+                "data_kind": data_kind(candidate["candidate_category"]),
+                "site_id": data_site_id,
+                "syntax_site_id": candidate_edge["site_id"],
+            }
+        )
+        dataflow_edges.append(
+            {
+                "edge_id": canonical_id(
+                    "decodex/lane-authority-v2-dataflow-edge/1",
+                    candidate_edge["site_id"],
+                    data_site_id,
+                ),
+                "from_site_id": candidate_edge["site_id"],
+                "to_site_id": data_site_id,
+            }
+        )
+    data_sites.sort(key=lambda site: site["site_id"])
+    dataflow_edges.sort(key=lambda edge: edge["edge_id"])
+
+    call_edges: list[dict[str, Any]] = []
+    for site in parsed["syntax_sites"]:
+        if not any(token in site["node_kind"] for token in ("call", "command", "exec", "macro")):
+            continue
+        target = roots_by_source[site["source_node_id"]]
+        call_edges.append(
+            {
+                "edge_id": canonical_id(
+                    "decodex/lane-authority-v2-call-edge/1", site["site_id"], target
+                ),
+                "from_site_id": site["site_id"],
+                "to_site_id": target,
+            }
+        )
+    call_edges.sort(key=lambda edge: edge["edge_id"])
+
+    current_sources = [
+        source for source in parsed["source_nodes"] if source["status"] == "current"
+    ]
+    source_by_id = {source["source_node_id"]: source for source in current_sources}
+    candidate_ids_by_source: dict[str, set[str]] = {
+        source_id: set() for source_id in source_by_id
+    }
+    for candidate in candidate_manifest["records"]:
+        candidate_ids_by_source[candidate["source_node_id"]].add(candidate["candidate_id"])
+    syntax_ids_by_source: dict[str, set[str]] = {source_id: set() for source_id in source_by_id}
+    for site in parsed["syntax_sites"]:
+        syntax_ids_by_source[site["source_node_id"]].add(site["site_id"])
+    call_ids_by_source: dict[str, set[str]] = {source_id: set() for source_id in source_by_id}
+    for edge in call_edges:
+        source_id = syntax_by_id[edge["from_site_id"]]["source_node_id"]
+        call_ids_by_source[source_id].add(edge["edge_id"])
+    dataflow_ids_by_source: dict[str, set[str]] = {
+        source_id: set() for source_id in source_by_id
+    }
+    for edge in dataflow_edges:
+        source_id = syntax_by_id[edge["from_site_id"]]["source_node_id"]
+        dataflow_ids_by_source[source_id].add(edge["edge_id"])
+    projections_by_language_platform: dict[tuple[str, str], list[str]] = {}
+    for projection in cfg_projections:
+        if projection["projection_kind"] != "config":
+            continue
+        projections_by_language_platform.setdefault(
+            (projection["language"], projection["platform"]), []
+        ).append(projection["projection_id"])
+    cargo_lock_digest = contract.sha256_path(
+        root, Path("tools/lane-authority-inventory/Cargo.lock")
+    )
+    tool_receipts: list[dict[str, Any]] = []
+    for language in sorted(contract.EXPECTED_LANGUAGES):
+        source_ids = {
+            source["source_node_id"]
+            for source in current_sources
+            if source["language"] == language
+        }
+        for role, platform in (
+            ("parser", "common"),
+            ("platform_slice", "linux"),
+            ("platform_slice", "macos"),
+        ):
+            receipt_id = f"tool:{language}:{role}:{platform}"
+            syntax_ids = set().union(
+                *(syntax_ids_by_source[source_id] for source_id in source_ids)
+            )
+            candidate_ids = set().union(
+                *(candidate_ids_by_source[source_id] for source_id in source_ids)
+            )
+            call_ids = set().union(*(call_ids_by_source[source_id] for source_id in source_ids))
+            dataflow_ids = set().union(
+                *(dataflow_ids_by_source[source_id] for source_id in source_ids)
+            )
+            tool_receipts.append(
+                {
+                    **id_set_fields("expected_source_node", source_ids),
+                    **id_set_fields("completed_source_node", source_ids),
+                    **id_set_fields("syntax_site", syntax_ids),
+                    **id_set_fields("candidate_record", candidate_ids),
+                    **id_set_fields("call_edge", call_ids),
+                    **id_set_fields("dataflow_edge", dataflow_ids),
+                    "completed": True,
+                    "completed_source_node_ids": sorted(source_ids),
+                    "config_projection_ids": sorted(
+                        projections_by_language_platform[(language, platform)]
+                    ),
+                    "language": language,
+                    "platform": platform,
+                    "receipt_id": receipt_id,
+                    "receipt_role": role,
+                    "rejection_reason_codes": [],
+                    "tool": f"tree-sitter-{language}",
+                    "tool_identity_digest": canonical_id(
+                        "decodex/lane-authority-v2-tool-identity/1",
+                        cargo_lock_digest,
+                        language,
+                        role,
+                        platform,
+                    ),
+                    "unresolved_count": 0,
+                }
+            )
+    tool_receipts.sort(key=lambda receipt: receipt["receipt_id"])
+
     write_json(
         root,
         RELATION_ROOT / "source_nodes.json",
@@ -141,6 +304,27 @@ def materialize(root: Path) -> dict[str, Any]:
             parsed["source_nodes"],
         ),
     )
+    for name, schema_name, records in (
+        ("data_sites", "decodex/lane-authority-v2-c1i-data-sites/1", data_sites),
+        ("call_edges", "decodex/lane-authority-v2-c1i-call-edges/1", call_edges),
+        (
+            "dataflow_edges",
+            "decodex/lane-authority-v2-c1i-dataflow-edges/1",
+            dataflow_edges,
+        ),
+        ("symbol_sites", "decodex/lane-authority-v2-c1i-symbol-sites/1", []),
+        (
+            "supporting_inputs",
+            "decodex/lane-authority-v2-c1i-supporting-inputs/1",
+            [],
+        ),
+        (
+            "toolchain_receipts",
+            "decodex/lane-authority-v2-c1i-toolchain-receipts/1",
+            tool_receipts,
+        ),
+    ):
+        write_json(root, RELATION_ROOT / f"{name}.json", relation(schema_name, name, records))
     write_json(
         root,
         RELATION_ROOT / "syntax_sites.json",
@@ -172,10 +356,14 @@ def materialize(root: Path) -> dict[str, Any]:
     return {
         "candidate_site_edges": len(parsed["candidate_site_edges"]),
         "cfg_projections": len(cfg_projections),
+        "call_edges": len(call_edges),
+        "data_sites": len(data_sites),
+        "dataflow_edges": len(dataflow_edges),
         "parser_errors": parser_errors,
         "source_cut_commit": source_cut,
         "source_nodes": len(parsed["source_nodes"]),
         "syntax_sites": len(parsed["syntax_sites"]),
+        "toolchain_receipts": len(tool_receipts),
     }
 
 
