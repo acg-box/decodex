@@ -29,21 +29,9 @@ impl PrePushHookCommand {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct RemoteConfig {
-	name: String,
-	urls: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RemoteUrlIdentity {
-	host: String,
-	path: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RemoteUrlMode {
-	Fetch,
-	Push,
+struct RemoteRefAdvertisement {
+	oid: String,
+	refname: String,
 }
 
 pub(in crate::cli::git_hook_commands) fn read_pre_push_updates(
@@ -80,12 +68,14 @@ fn validate_pre_push_updates(
 	remote_url: &str,
 	updates: &[PrePushUpdate],
 ) -> Result<()> {
+	let remote_exclusions = live_remote_commit_exclusion_oids(remote_name, remote_url)?;
+
 	for update in updates {
 		if is_zero_oid(&update.local_oid) {
 			continue;
 		}
 
-		for oid in rev_list_args(remote_name, remote_url, update)? {
+		for oid in rev_list_args(update, &remote_exclusions)? {
 			let message = commit_message_text(&oid)?;
 			let subject = commit_msg::extract_commit_subject(&message).map_err(|error| {
 				eyre::eyre!(
@@ -106,23 +96,8 @@ fn validate_pre_push_updates(
 	Ok(())
 }
 
-fn rev_list_args(
-	remote_name: &str,
-	remote_url: &str,
-	update: &PrePushUpdate,
-) -> Result<Vec<String>> {
-	let args = if is_zero_oid(&update.remote_oid) {
-		let mut args = vec![String::from("rev-list"), update.local_oid.clone()];
-
-		if let Some(remotes_arg) = remote_exclusion_arg(remote_name, remote_url)? {
-			args.push(String::from("--not"));
-			args.push(remotes_arg);
-		}
-
-		args
-	} else {
-		vec![String::from("rev-list"), format!("{}..{}", update.remote_oid, update.local_oid)]
-	};
+fn rev_list_args(update: &PrePushUpdate, remote_exclusions: &[String]) -> Result<Vec<String>> {
+	let args = rev_list_command_args_with_remote_exclusion(update, remote_exclusions);
 
 	git::run_git_lines(&args).map_err(|error| {
 		eyre::eyre!(
@@ -133,111 +108,63 @@ fn rev_list_args(
 	})
 }
 
-fn remote_exclusion_arg(remote_name: &str, remote_url: &str) -> Result<Option<String>> {
-	let remotes = configured_remotes()?;
+fn rev_list_command_args_with_remote_exclusion(
+	update: &PrePushUpdate,
+	remote_exclusions: &[String],
+) -> Vec<String> {
+	let mut args = if is_zero_oid(&update.remote_oid) {
+		vec![String::from("rev-list"), update.local_oid.clone()]
+	} else {
+		vec![String::from("rev-list"), format!("{}..{}", update.remote_oid, update.local_oid)]
+	};
 
-	Ok(remote_exclusion_arg_from_config(remote_name, remote_url, &remotes))
+	if !remote_exclusions.is_empty() {
+		args.push(String::from("--not"));
+		args.extend(remote_exclusions.iter().cloned());
+	}
+
+	args
 }
 
-fn remote_exclusion_arg_from_config(
-	remote_name: &str,
-	remote_url: &str,
-	remotes: &[RemoteConfig],
-) -> Option<String> {
-	if remote_name.is_empty() {
-		return Some(String::from("--remotes"));
-	}
-	if remotes.iter().any(|candidate| candidate.name == remote_name) {
-		return Some(format!("--remotes={remote_name}"));
-	}
-	if !remote_url.is_empty()
-		&& let Some(remote) = remotes.iter().find(|candidate| {
-			candidate.urls.iter().any(|candidate_url| urls_match(candidate_url, remote_url))
-		}) {
-		return Some(format!("--remotes={}", remote.name));
+fn live_remote_commit_exclusion_oids(remote_name: &str, remote_url: &str) -> Result<Vec<String>> {
+	let remote = if remote_url.is_empty() { remote_name } else { remote_url };
+
+	if remote.is_empty() {
+		return Ok(Vec::new());
 	}
 
-	None
-}
-
-fn configured_remotes() -> Result<Vec<RemoteConfig>> {
-	let remote_names = git::run_git_lines(&[String::from("remote")])?;
-
-	remote_names
+	let advertisements = live_remote_ref_advertisements(remote)
+		.unwrap_or_default()
 		.into_iter()
-		.map(|name| Ok(RemoteConfig { urls: remote_urls(&name)?, name }))
-		.collect()
+		.filter_map(|advertisement| local_advertised_commit_oid(&advertisement.oid).ok().flatten());
+	let mut oids = advertisements.collect::<Vec<_>>();
+
+	oids.sort();
+	oids.dedup();
+
+	Ok(oids)
 }
 
-fn remote_urls(remote: &str) -> Result<Vec<String>> {
-	let mut urls = Vec::new();
+fn live_remote_ref_advertisements(remote: &str) -> Result<Vec<RemoteRefAdvertisement>> {
+	let lines = git::run_git_lines(&[String::from("ls-remote"), remote.to_owned()])?;
 
-	for mode in [RemoteUrlMode::Fetch, RemoteUrlMode::Push] {
-		let mut args = vec![String::from("remote"), String::from("get-url")];
-
-		if mode == RemoteUrlMode::Push {
-			args.push(String::from("--push"));
-		}
-
-		args.push(String::from("--all"));
-		args.push(remote.to_owned());
-		urls.extend(git::run_git_lines(&args)?);
-	}
-
-	urls.sort();
-	urls.dedup();
-
-	Ok(urls)
+	Ok(lines.into_iter().filter_map(|line| parse_ls_remote_line(&line)).collect())
 }
 
-fn urls_match(candidate: &str, remote_url: &str) -> bool {
-	candidate == remote_url
-		|| match (remote_url_identity(candidate), remote_url_identity(remote_url)) {
-			(Some(candidate), Some(remote)) => candidate == remote,
-			_ => false,
-		}
+fn parse_ls_remote_line(line: &str) -> Option<RemoteRefAdvertisement> {
+	let (oid, refname) = line.split_once('\t')?;
+
+	Some(RemoteRefAdvertisement { oid: oid.to_owned(), refname: refname.to_owned() })
 }
 
-fn remote_url_identity(value: &str) -> Option<RemoteUrlIdentity> {
-	let value = value.trim();
-
-	if value.is_empty() || value.starts_with('/') || value.starts_with('.') {
-		return None;
-	}
-
-	if let Some(scheme_separator) = value.find("://") {
-		return url_identity_from_authority_path(&value[scheme_separator + 3..]);
-	}
-
-	let user_host_separator = value.find('@')?;
-	let path_separator = value[user_host_separator + 1..].find(':')? + user_host_separator + 1;
-	let host = &value[user_host_separator + 1..path_separator];
-	let path = &value[path_separator + 1..];
-
-	remote_url_identity_parts(host, path)
-}
-
-fn url_identity_from_authority_path(value: &str) -> Option<RemoteUrlIdentity> {
-	let path_separator = value.find('/')?;
-	let authority = &value[..path_separator];
-	let path = &value[path_separator + 1..];
-	let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
-
-	remote_url_identity_parts(host, path)
-}
-
-fn remote_url_identity_parts(host: &str, path: &str) -> Option<RemoteUrlIdentity> {
-	let host = host.trim();
-	let path = path.trim().trim_start_matches('/').trim_end_matches('/');
-
-	if host.is_empty() || path.is_empty() {
-		return None;
-	}
-
-	Some(RemoteUrlIdentity {
-		host: host.to_ascii_lowercase(),
-		path: path.strip_suffix(".git").unwrap_or(path).to_owned(),
-	})
+fn local_advertised_commit_oid(oid: &str) -> Result<Option<String>> {
+	Ok(git::run_git_lines_if_success(&[
+		String::from("rev-parse"),
+		String::from("--verify"),
+		String::from("--quiet"),
+		format!("{oid}^{{commit}}"),
+	])?
+	.and_then(|lines| lines.into_iter().next()))
 }
 
 fn commit_message_text(oid: &str) -> Result<String> {
@@ -257,78 +184,66 @@ fn is_zero_oid(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use crate::cli::git_hook_commands::pre_push::{self, RemoteConfig};
-
-	fn remote(name: &str, urls: &[&str]) -> RemoteConfig {
-		RemoteConfig { name: name.to_owned(), urls: urls.iter().map(ToString::to_string).collect() }
-	}
+	use crate::cli::git_hook_commands::{
+		model::PrePushUpdate,
+		pre_push::{self, RemoteRefAdvertisement},
+	};
 
 	#[test]
-	fn remote_exclusion_uses_configured_remote_name() {
-		let exclusion = pre_push::remote_exclusion_arg_from_config(
-			"origin",
-			"https://github.com/hack-ink/decodex.git",
-			&[remote("origin", &["git@github.com-y:hack-ink/decodex.git"])],
+	fn pre_push_update_excludes_remote_reachable_commits_for_existing_branch() {
+		let update = PrePushUpdate::new(
+			String::from("refs/heads/topic"),
+			String::from("local"),
+			String::from("refs/heads/topic"),
+			String::from("remote"),
+		);
+		let args = pre_push::rev_list_command_args_with_remote_exclusion(
+			&update,
+			&[String::from("remote-main"), String::from("remote-topic")],
 		);
 
-		assert_eq!(exclusion.as_deref(), Some("--remotes=origin"));
+		assert_eq!(args, ["rev-list", "remote..local", "--not", "remote-main", "remote-topic"]);
 	}
 
 	#[test]
-	fn remote_exclusion_maps_exact_url_remote_name_to_configured_remote() {
-		let exclusion = pre_push::remote_exclusion_arg_from_config(
-			"https://github.com/helixbox/pubfi-insight.git",
-			"https://github.com/helixbox/pubfi-insight.git",
-			&[remote(
-				"origin",
-				&[
-					"git@github.com:helixbox/pubfi-insight.git",
-					"https://github.com/helixbox/pubfi-insight.git",
-				],
-			)],
+	fn live_remote_ref_advertisements_parse_ls_remote_lines() {
+		let lines = [
+			String::from("1111111111111111111111111111111111111111\tHEAD"),
+			String::from("2222222222222222222222222222222222222222\trefs/heads/main"),
+		];
+		let advertisements = lines
+			.into_iter()
+			.filter_map(|line| pre_push::parse_ls_remote_line(&line))
+			.collect::<Vec<_>>();
+
+		assert_eq!(
+			advertisements,
+			[
+				RemoteRefAdvertisement {
+					oid: String::from("1111111111111111111111111111111111111111"),
+					refname: String::from("HEAD"),
+				},
+				RemoteRefAdvertisement {
+					oid: String::from("2222222222222222222222222222222222222222"),
+					refname: String::from("refs/heads/main"),
+				},
+			]
+		);
+	}
+
+	#[test]
+	fn live_remote_exclusions_keep_peeled_tag_commit_oids() {
+		let update = PrePushUpdate::new(
+			String::from("refs/heads/topic"),
+			String::from("local"),
+			String::from("refs/heads/topic"),
+			String::from("remote"),
+		);
+		let args = pre_push::rev_list_command_args_with_remote_exclusion(
+			&update,
+			&[String::from("peeled-tag-commit")],
 		);
 
-		assert_eq!(exclusion.as_deref(), Some("--remotes=origin"));
-	}
-
-	#[test]
-	fn remote_exclusion_maps_https_url_push_to_ssh_configured_remote() {
-		let exclusion = pre_push::remote_exclusion_arg_from_config(
-			"https://github.com/helixbox/pubfi-insight.git",
-			"https://github.com/helixbox/pubfi-insight.git",
-			&[remote("origin", &["git@github.com:helixbox/pubfi-insight.git"])],
-		);
-
-		assert_eq!(exclusion.as_deref(), Some("--remotes=origin"));
-	}
-
-	#[test]
-	fn remote_exclusion_does_not_exclude_unmatched_url_remotes() {
-		let exclusion = pre_push::remote_exclusion_arg_from_config(
-			"https://github.com/example/other.git",
-			"https://github.com/example/other.git",
-			&[
-				remote("origin", &["https://github.com/hack-ink/decodex.git"]),
-				remote("backup", &["https://github.com/example/backup.git"]),
-			],
-		);
-
-		assert_eq!(exclusion, None);
-	}
-
-	#[test]
-	fn remote_url_matching_accepts_common_git_url_forms() {
-		assert!(pre_push::urls_match(
-			"git@github.com:helixbox/pubfi-insight.git",
-			"https://github.com/helixbox/pubfi-insight.git",
-		));
-		assert!(pre_push::urls_match(
-			"ssh://git@github.com/helixbox/pubfi-insight.git",
-			"https://github.com/helixbox/pubfi-insight",
-		));
-		assert!(!pre_push::urls_match(
-			"git@github.com:helixbox/pubfi-insight.git",
-			"https://github.com/hack-ink/decodex.git",
-		));
+		assert!(args.contains(&String::from("peeled-tag-commit")));
 	}
 }
