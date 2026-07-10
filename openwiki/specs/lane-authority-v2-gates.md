@@ -464,13 +464,13 @@ gh attestation verify "$DECODEX_C7_BINARY" \
 scripts/verify_lane_authority_v2_activation_provenance.sh \
   --binary "$DECODEX_C7_BINARY" \
   --attestation "$attestation_json" \
-  --pr "$pr_url"
+  --pr "$DECODEX_C7_PR"
 test "$("$DECODEX_C7_BINARY" build-info --json | jq -r .source_commit)" = \
   "$merge_commit_sha"
 test "$("$DECODEX_C7_BINARY" build-info --json | jq -r .dirty)" = false
 decodex supervisor cutover-prepare \
   --binary "$DECODEX_C7_BINARY" \
-  --pr "$pr_url" \
+  --pr "$DECODEX_C7_PR" \
   --verified-attestation "$attestation_json" \
   --require-format v12 --drain --stop \
   --plan-output "$DECODEX_LANE_AUTHORITY_V2_PLAN" \
