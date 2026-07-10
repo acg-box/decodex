@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -24,7 +25,8 @@ class EffectivenessScorecardTests(unittest.TestCase):
 			(social / "candidates").mkdir(parents=True)
 			(social / "posts").mkdir()
 			(social / "reservations").mkdir()
-			(social / "candidates/candidate.json").write_text(
+			candidate = social / "candidates/candidate.json"
+			candidate.write_text(
 				json.dumps(
 					{
 						"decision": {
@@ -35,6 +37,8 @@ class EffectivenessScorecardTests(unittest.TestCase):
 				),
 				encoding="utf-8",
 			)
+			old = datetime(2026, 7, 8, tzinfo=timezone.utc).timestamp()
+			os.utime(candidate, (old, old))
 			(social / "reservations/reservation.json").write_text(
 				json.dumps(
 					{
@@ -48,6 +52,7 @@ class EffectivenessScorecardTests(unittest.TestCase):
 			with patch.object(effectiveness, "RUNTIME_ROOT", root):
 				result = effectiveness.inspect_social(end - timedelta(days=7), end)
 			self.assertEqual(result["open_publishable_candidates"], ["candidate.json"])
+			self.assertEqual(result["overdue_publishable_candidates"], ["candidate.json"])
 			self.assertEqual(result["stale_reservations"], ["reservation.json"])
 
 	def test_live_config_reports_worktree_binding(self) -> None:
@@ -153,6 +158,7 @@ class EffectivenessScorecardTests(unittest.TestCase):
 		}
 		social = {
 			"stale_reservations": [],
+			"overdue_publishable_candidates": [],
 			"published_records": 1,
 			"open_publishable_candidates": [],
 		}
