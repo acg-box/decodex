@@ -138,6 +138,7 @@ Rules:
 - Issue-batch apply persists local Program Intake/Execution Program state for existing issues.
 - Issue-batch Program identity is stable for the service and normalized supplied issue identifiers. Reapplying the same batch refreshes its tracker snapshot in place and retires exact legacy duplicates rather than accumulating competing Programs.
 - Runtime reconciliation releases an issue-batch node whose persisted `active` intent came from ownership that is now absent, while preserving explicit terminal, paused, and not-ready intents.
+- A persisted `continuation_pending` run remains eligible for daemon continuation even when the child process exits non-zero after the continuation boundary. The persisted phase cursor and lane policy remain authoritative; the exit code alone must not clear its retry schedule.
 - Program dispatch is direct. It does not apply, remove, or wait for service queue labels.
 - Internal graph/node ids, proposal ids, private evidence refs, and local runtime rows must not be exposed in public Linear briefs.
 
