@@ -707,6 +707,42 @@ the 2,837 frozen source candidates. The reviewer reran the baseline verifier,
 main-thread gate also passed site build/check, Rust check/fmt/clippy, vstyle over 3,175
 files, and all 1,657 executed tests with one repository-declared skip.
 
+### Seventeenth skeptic review
+
+Verdict: PR #1084 requested changes with two high and two medium findings.
+
+The post-commit PR reviewer found that the prior source inventory froze only eight selected
+paths while the contract claimed every tracked repository source/config file; the effect
+table still lacked an independent semantic freeze; the scenario freeze omitted scenario
+and required-result text; and the C7 example passed source/tested/artifact identities as
+operator CLI flags despite forbidding that authority source.
+
+The repair expands the baseline to every tracked repository Rust/Python/Swift/shell/TOML/
+YAML file, including root and package build manifests. Ignored dependency/build outputs are
+explicitly excluded from untracked-source discovery, but tracked files in those locations
+remain frozen. The resulting exact baseline contains 3,363 files, 1,052 launcher entries,
+2,967 legacy authority candidate files, and 2,865 mutation candidate files. It now includes
+`Cargo.toml`, `Makefile.toml`, every package `Cargo.toml`, `Package.swift`, and
+`rust-toolchain.toml`. A separate `--post-c0` mode relaxes only the initial changed-path
+allowlist so later checkpoints can rerun the frozen manifests without weakening their
+baseline, effect, or scenario anchors.
+
+The 104 effect kinds now have an independent full-semantic freeze
+`5aef53544036bc289eab1c7edd9e84b197ea667c20633b679894c87d7875311d`.
+The 129 scenario rows freeze id, checkpoint, test name, scenario text, and required result
+under `41c2860b5d9d887d52e2003f70eeec2af4a122ed9b79f782472f61b554bd29e0`.
+Negative controls mutate both semantic sets and must fail. Current artifact SHA-256 values
+are launcher `d0dda5f96f95b6fc9b5501fb411587d5c818ce9738e335a18e97f8b80ef3be0a`,
+legacy `c2153a3391209ca1bf433b2f36af99fafef1ffd1dfa7373c2131aa90486233fe`,
+mutation `32c272bf96f2ecc1da297ba4cee15340ad9bbd751a7cf76f5bb8ba3595aaa569`,
+and scenario `c87acaa1373c4a4bc45833e116c9d78208be932d8690fb78108c83d5ffabb914`.
+
+The C7 command no longer accepts source commit, tested PR head, artifact digest, or live-main
+identity as cutover authority flags. `cutover-prepare` derives them from verified
+attestation, binary build-info, and fresh GitHub readback; later stages consume the signed
+receipt and independently revalidate live facts. A fresh exact-head review is required
+after the repair commit.
+
 ### C0 exit criteria
 
 - XY-1251, ADR, target contract, scenario matrix, and checkpoint ledger exist.
@@ -745,7 +781,7 @@ migration invariants. C1 must not preserve global issue-keyed ownership behind a
 
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
-| C0 baseline and architecture freeze | Ready for authority commit | ADR/spec, exact-main launcher/mutation/legacy/scenario manifests, umbrella issue, ledger, validation, skeptic review |
+| C0 baseline and architecture freeze | PR review repair | PR #1084 exact-head repair, validation, fresh skeptic review, required checks, Decodex land |
 | C1 project/lane identity and migration | Pending | ProjectBinding/LaneId, brokered sole transition writer, hash-chain telemetry core, schema cutover/restore, quarantine/rebind, effect core, v12 path fencing, PONR, OutputBoundary |
 | C2 intake and dispatch authority | Pending | Host workspace credential directory, unbound issue resolution, Typed IntakeAuthority, binding attestations, issue create/archive effects, PUB-1711 rejection replay |
 | C3 transition and effects | Pending | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |

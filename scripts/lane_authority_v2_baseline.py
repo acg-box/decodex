@@ -15,17 +15,21 @@ from pathlib import Path
 
 
 BASELINE_DEFAULT = "d57553bc1bcdceebe1d0c7ec5ad5dc492b695348"
-SOURCE_ROOTS = (
-    ".github",
-    "apps/decodex/src",
-    "apps/decodex-app/Sources",
-    "apps/decodex-publisher/src",
-    "apps/radar/src",
-    "automations",
-    "plugins/decodex",
-    "scripts",
-)
+SOURCE_ROOTS = (".",)
 SOURCE_SUFFIXES = {".rs", ".py", ".swift", ".sh", ".bash", ".zsh", ".toml", ".yml", ".yaml"}
+IGNORED_BUILD_COMPONENTS = {
+    ".build",
+    ".next",
+    ".turbo",
+    ".venv",
+    "__pycache__",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "out",
+    "target",
+}
 GENERATED_PATHS = {
     "apps/decodex/src/bootstrap/tests/fixtures/lane_authority_v2/launcher_inventory.json",
     "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/mutation_registry.json",
@@ -45,7 +49,9 @@ C0_ALLOWED_PATHS = GENERATED_PATHS | {
 SCENARIO_SPEC = Path("openwiki/specs/lane-authority-v2.md")
 EFFECT_SPEC = Path("openwiki/specs/lane-authority-v2-effects.md")
 SCENARIO_FREEZE_COUNT = 129
-SCENARIO_FREEZE_DIGEST = "43b5a08e8c196d8253af341db92858717610c67f77c2718d2bdd973b342ac127"
+SCENARIO_FREEZE_DIGEST = "41c2860b5d9d887d52e2003f70eeec2af4a122ed9b79f782472f61b554bd29e0"
+EFFECT_FREEZE_COUNT = 104
+EFFECT_FREEZE_DIGEST = "5aef53544036bc289eab1c7edd9e84b197ea667c20633b679894c87d7875311d"
 
 
 @dataclass(frozen=True)
@@ -137,9 +143,8 @@ LAUNCH_PATTERN = re.compile(
     r"(?:\bdecodex\b|Command::new|std::process::Command|subprocess\.|Process\s*\(|launchd|systemd|automation)",
     re.I,
 )
-SCENARIO_PATTERN = re.compile(
-    r"^\|\s*((?:ID|MIG|QUA|ADM|EFX|SUP|TEL|ADJ)-\d{2})\s*\|\s*(C\d[A-Z]?)\s*\|"
-)
+SCENARIO_ID_PATTERN = re.compile(r"(?:ID|MIG|QUA|ADM|EFX|SUP|TEL|ADJ)-\d{2}")
+CHECKPOINT_PATTERN = re.compile(r"C\d[A-Z]?")
 
 
 def run_git(root: Path, *args: str) -> str:
@@ -200,6 +205,10 @@ def baseline_files(root: Path, baseline: str) -> list[str]:
     ]
 
 
+def is_ignored_build_output(path: str) -> bool:
+    return any(part in IGNORED_BUILD_COMPONENTS for part in Path(path).parts)
+
+
 def ignored_source_files(root: Path) -> set[str]:
     output = run_git(
         root,
@@ -213,14 +222,20 @@ def ignored_source_files(root: Path) -> set[str]:
     return {
         path
         for path in output.splitlines()
-        if Path(path).suffix in SOURCE_SUFFIXES and path not in GENERATED_PATHS
+        if Path(path).suffix in SOURCE_SUFFIXES
+        and path not in GENERATED_PATHS
+        and not is_ignored_build_output(path)
     }
 
 
-def validate_c0_scope(root: Path, baseline: str) -> None:
+def validate_baseline_ancestor(root: Path, baseline: str) -> None:
     subprocess.run(
         ["git", "merge-base", "--is-ancestor", baseline, "HEAD"], cwd=root, check=True
     )
+
+
+def validate_c0_scope(root: Path, baseline: str) -> None:
+    validate_baseline_ancestor(root, baseline)
     changed = set(run_git(root, "diff", "--name-only", baseline, "--").splitlines())
     untracked = set(
         run_git(root, "ls-files", "--others", "--exclude-standard").splitlines()
@@ -247,7 +262,7 @@ def inspect_sources(
     list[list[object]],
 ]:
     file_records: list[tuple[str, str]] = []
-    root_records: dict[str, list[tuple[str, str]]] = {source_root: [] for source_root in SOURCE_ROOTS}
+    root_records: dict[str, list[tuple[str, str]]] = {}
     authority_nodes: list[dict[str, object]] = []
     launcher_nodes: list[dict[str, object]] = []
     source_files: list[list[object]] = []
@@ -256,8 +271,8 @@ def inspect_sources(
         content = (root / path).read_bytes()
         content_digest = sha256_bytes(content)
         file_records.append((path, content_digest))
-        source_root = next(item for item in SOURCE_ROOTS if path == item or path.startswith(f"{item}/"))
-        root_records[source_root].append((path, content_digest))
+        source_bucket = path.split("/", 1)[0] if "/" in path else "."
+        root_records.setdefault(source_bucket, []).append((path, content_digest))
         language = language_for(path)
         scope = "test" if is_test_path(path) else "production"
         source_files.append([path, language, scope, content_digest])
@@ -328,16 +343,28 @@ def scenario_records(root: Path) -> list[dict[str, str]]:
     scenarios: list[dict[str, str]] = []
     seen: set[str] = set()
     for line in (root / SCENARIO_SPEC).read_text(encoding="utf-8").splitlines():
-        match = SCENARIO_PATTERN.match(line)
-        if match is None:
+        if not line.startswith("|"):
             continue
-        scenario_id, checkpoint = match.groups()
+        cells = split_markdown_table_row(line)
+        if len(cells) != 4:
+            continue
+        scenario_id, checkpoint, scenario, required_result = cells
+        if SCENARIO_ID_PATTERN.fullmatch(scenario_id) is None:
+            continue
+        if CHECKPOINT_PATTERN.fullmatch(checkpoint) is None:
+            raise ValueError(f"invalid scenario checkpoint: {line}")
         if scenario_id in seen:
             raise ValueError(f"duplicate scenario id: {scenario_id}")
         seen.add(scenario_id)
         test_name = f"lane_authority_v2_{checkpoint.lower()}_{scenario_id.lower().replace('-', '_')}"
         scenarios.append(
-            {"checkpoint": checkpoint, "id": scenario_id, "test_name": test_name}
+            {
+                "checkpoint": checkpoint,
+                "id": scenario_id,
+                "required_result": required_result,
+                "scenario": scenario,
+                "test_name": test_name,
+            }
         )
     scenarios.sort(key=lambda item: item["id"])
     if not scenarios:
@@ -348,7 +375,7 @@ def scenario_records(root: Path) -> list[dict[str, str]]:
 def scenario_freeze_digest(scenarios: list[dict[str, str]]) -> str:
     digest = hashlib.sha256(b"decodex/lane-authority-v2-scenario-freeze/1\0")
     for scenario in sorted(scenarios, key=lambda item: item["id"]):
-        for key in ("id", "checkpoint", "test_name"):
+        for key in ("id", "checkpoint", "test_name", "scenario", "required_result"):
             value = scenario[key].encode("utf-8")
             digest.update(len(value).to_bytes(4, "big"))
             digest.update(value)
@@ -388,10 +415,36 @@ def run_self_tests(root: Path) -> None:
         fixture = Path(temporary)
         subprocess.run(["git", "init", "--quiet"], cwd=fixture, check=True)
         (fixture / "scripts").mkdir()
-        (fixture / ".gitignore").write_text("scripts/probe.py\n", encoding="utf-8")
+        (fixture / ".gitignore").write_text("scripts/probe.py\ntarget\n", encoding="utf-8")
         (fixture / "scripts/probe.py").write_text("probe = True\n", encoding="utf-8")
         if "scripts/probe.py" not in ignored_source_files(fixture):
             raise AssertionError("ignored source/config self-test did not detect probe")
+        (fixture / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+        (fixture / "target").mkdir()
+        (fixture / "target/tracked.rs").write_text("fn tracked() {}\n", encoding="utf-8")
+        subprocess.run(["git", "add", ".gitignore", "Cargo.toml"], cwd=fixture, check=True)
+        subprocess.run(["git", "add", "--force", "target/tracked.rs"], cwd=fixture, check=True)
+        tree = run_git(fixture, "write-tree").strip()
+        commit = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Lane Authority v2",
+                "-c",
+                "user.email=lane-authority-v2@example.invalid",
+                "commit-tree",
+                tree,
+            ],
+            cwd=fixture,
+            check=True,
+            input="fixture\n",
+            text=True,
+            stdout=subprocess.PIPE,
+        )
+        run_git(fixture, "update-ref", "HEAD", commit.stdout.strip())
+        frozen = set(baseline_files(fixture, "HEAD"))
+        if frozen != {"Cargo.toml", "target/tracked.rs"}:
+            raise AssertionError(f"tracked closed-world self-test mismatch: {frozen}")
 
     scenarios = scenario_records(root)
     validate_scenario_freeze(scenarios)
@@ -403,7 +456,27 @@ def run_self_tests(root: Path) -> None:
         pass
     else:
         raise AssertionError("scenario freeze self-test accepted checkpoint drift")
-    print("verified ignored-source and scenario-freeze negative controls")
+
+    mutated = [dict(item) for item in scenarios]
+    mutated[0]["required_result"] += " semantic drift"
+    try:
+        validate_scenario_freeze(mutated)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("scenario freeze self-test accepted semantic drift")
+
+    effects = effect_kind_registry(root)
+    validate_effect_freeze(effects)
+    mutated_effects = [dict(item) for item in effects]
+    mutated_effects[0]["desired_state_readback"] = "weakened readback"
+    try:
+        validate_effect_freeze(mutated_effects)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("effect freeze self-test accepted semantic drift")
+    print("verified closed-world source, scenario-freeze, and effect-freeze controls")
 
 
 def expand_effect_kinds(kind_cell: str) -> list[str]:
@@ -490,6 +563,46 @@ def effect_kind_registry(root: Path) -> list[dict[str, object]]:
     return effects
 
 
+def effect_freeze_digest(effects: list[dict[str, object]]) -> str:
+    fields = (
+        "kind",
+        "adapter_owner",
+        "compensation_class",
+        "compensation_stop_rule",
+        "desired_state_readback",
+        "reconciliation_policy",
+        "provider_capability_requirement",
+        "runtime_generation",
+        "replacement_owner",
+        "replacement_kind",
+        "semantic_digest",
+        "mandatory_removal_checkpoint",
+    )
+    digest = hashlib.sha256(b"decodex/lane-authority-v2-effect-freeze/1\0")
+    for effect in sorted(effects, key=lambda item: str(item["kind"])):
+        for key in fields:
+            value = str(effect[key]).encode("utf-8")
+            digest.update(len(value).to_bytes(4, "big"))
+            digest.update(value)
+    return digest.hexdigest()
+
+
+def validate_effect_freeze(
+    effects: list[dict[str, object]],
+    *,
+    expected_count: int = EFFECT_FREEZE_COUNT,
+    expected_digest: str = EFFECT_FREEZE_DIGEST,
+) -> str:
+    actual_digest = effect_freeze_digest(effects)
+    if len(effects) != expected_count or actual_digest != expected_digest:
+        raise ValueError(
+            "effect freeze mismatch: "
+            f"expected count={expected_count} digest={expected_digest}; "
+            f"actual count={len(effects)} digest={actual_digest}"
+        )
+    return actual_digest
+
+
 def group_authority_nodes(
     nodes: list[dict[str, object]], *, mutation_only: bool
 ) -> list[dict[str, object]]:
@@ -525,6 +638,7 @@ def group_authority_nodes(
 def manifests(root: Path, baseline: str) -> dict[str, dict[str, object]]:
     source, authority_nodes, launcher_nodes, source_files = inspect_sources(root, baseline)
     effect_kinds = effect_kind_registry(root)
+    effect_digest = validate_effect_freeze(effect_kinds)
     category_definitions = {
         pattern.category: {
             "access": pattern.access,
@@ -566,6 +680,7 @@ def manifests(root: Path, baseline: str) -> dict[str, dict[str, object]]:
                 "candidate_digest",
                 "source_node_id",
             ],
+            "effect_freeze_digest": effect_digest,
             "effect_kinds": effect_kinds,
             "entries": group_authority_nodes(authority_nodes, mutation_only=True),
             "schema": "decodex/lane-authority-v2-mutation-registry/1",
@@ -621,6 +736,7 @@ def verify_manifests(root: Path, values: dict[str, dict[str, object]]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", default=BASELINE_DEFAULT)
+    parser.add_argument("--post-c0", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
@@ -629,7 +745,10 @@ def main() -> None:
         run_self_tests(root)
         return
     baseline = run_git(root, "rev-parse", args.baseline).strip()
-    validate_c0_scope(root, baseline)
+    if args.post_c0:
+        validate_baseline_ancestor(root, baseline)
+    else:
+        validate_c0_scope(root, baseline)
     values = manifests(root, baseline)
     if args.write:
         write_manifests(root, values)

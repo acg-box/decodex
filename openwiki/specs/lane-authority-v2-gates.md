@@ -6,9 +6,10 @@ This file makes C0-C7 advancement falsifiable. The machine scenario manifest liv
 `apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/scenario_manifest.json`
 and maps every scenario id to one exact future Rust test name and checkpoint at C0. The C0
 baseline verifier compares the parsed table to an independently frozen, domain-separated
-scenario-set digest and count in the verifier, then fails on missing, duplicate, renamed,
-wrong-checkpoint, or unexpected ids/test names. Changing that freeze constant is a reviewed
-scope change, not a manifest regeneration step. From C1 onward the gate verifier also runs
+scenario-set digest and count over id, checkpoint, test name, scenario text, and required
+result, then fails on missing, duplicate, renamed, semantically changed, wrong-checkpoint,
+or unexpected rows. Changing that freeze constant is a reviewed scope change, not a
+manifest regeneration step. From C1 onward the gate verifier also runs
 `cargo test -- --list`, fails on missing/duplicate/skipped/unexpected tests, then runs each
 required implemented test by exact name and records its result. Each checkpoint records
 command exit codes, exact commit and PR head, fixture SHA-256 digests, and assertions in
@@ -82,15 +83,20 @@ trap - EXIT
 Expected assertions:
 
 - the repository-owned broad gate and all whitespace checks report no failure;
-- launcher, mutation, and legacy source-node inventories cover the exact current-main
-  Rust/Python/Swift/shell/TOML/YAML baseline with stable digests and no unclassified
-  candidate; ignored as well as ordinary untracked source/config paths under the frozen
-  roots fail verification, and a disposable-repository negative control proves the ignored
-  path cannot escape;
-- the scenario table matches the independent C0 count/digest freeze, and an in-memory
-  checkpoint mutation negative control proves regeneration cannot bless scenario drift;
+- launcher, mutation, and legacy source-node inventories cover every tracked repository
+  Rust/Python/Swift/shell/TOML/YAML file, including root/package build manifests, at exact
+  current main with stable digests and no unclassified candidate; outside explicit
+  dependency/build-output components, ignored as well as ordinary untracked source/config
+  paths fail verification, and a disposable-repository negative control proves the ignored
+  path cannot escape. The same fixture force-tracks a file under an ignored build component
+  and proves tracked files are never excluded because of their directory name;
+- the scenario table matches the independent C0 count/digest freeze, and in-memory
+  checkpoint plus required-result mutation controls prove regeneration cannot bless
+  scenario drift;
 - mutation registry expands every normative effect row to one concrete `effect_kinds`
-  entry with complete semantics and separately maps frozen v12 source candidates;
+  entry with complete semantics, matches an independent count/digest freeze over every
+  semantic field, rejects a desired-state-readback mutation in a negative control, and
+  separately maps frozen v12 source candidates;
 - no C0 assertion depends on an OpenWiki-specific Decodex CLI/MCP/runtime surface;
 - branch contains current origin/main, and the ledger classifies every intervening
   launcher/mutation surface before review;
@@ -120,12 +126,16 @@ C1B cannot begin from merely merged-but-not-deployed C1A code.
 Commands for C1I:
 
 ```sh
-scripts/verify_lane_authority_v2_baseline.sh
+scripts/verify_lane_authority_v2_baseline.sh --post-c0
 scripts/verify_lane_authority_v2_legacy_authority.sh --checkpoint C1I
 scripts/verify_lane_authority_v2_mutations.sh --checkpoint C1I
 scripts/verify_lane_authority_v2_launchers.sh --inventory-only
 scripts/verify_lane_authority_v2_gates.sh C1I
 ```
+
+`--post-c0` disables only the initial C0 changed-path allowlist after C0 has landed. It
+still requires the frozen baseline ancestor and byte-exact source, effect, and scenario
+manifests; C0 itself must run the command without that flag.
 
 Commands for C1A:
 
@@ -454,17 +464,14 @@ gh attestation verify "$DECODEX_C7_BINARY" \
 scripts/verify_lane_authority_v2_activation_provenance.sh \
   --binary "$DECODEX_C7_BINARY" \
   --attestation "$attestation_json" \
-  --source-commit "$merge_commit_sha" \
-  --pr-head "$pr_head_sha"
-binary_sha256="$(shasum -a 256 "$DECODEX_C7_BINARY" | awk '{print $1}')"
+  --pr "$pr_url"
 test "$("$DECODEX_C7_BINARY" build-info --json | jq -r .source_commit)" = \
   "$merge_commit_sha"
 test "$("$DECODEX_C7_BINARY" build-info --json | jq -r .dirty)" = false
 decodex supervisor cutover-prepare \
   --binary "$DECODEX_C7_BINARY" \
-  --expected-sha256 "$binary_sha256" \
+  --pr "$pr_url" \
   --verified-attestation "$attestation_json" \
-  --source-commit "$merge_commit_sha" --tested-pr-head "$pr_head_sha" \
   --require-format v12 --drain --stop \
   --plan-output "$DECODEX_LANE_AUTHORITY_V2_PLAN" \
   --receipt-output "$DECODEX_LANE_AUTHORITY_V2_CUTOVER_RECEIPT" --json
@@ -476,17 +483,14 @@ decodex supervisor cutover-prepare \
   --plan "$DECODEX_LANE_AUTHORITY_V2_PLAN" --json
 "$DECODEX_C7_BINARY" supervisor cutover-preflight \
   --cutover-receipt "$DECODEX_LANE_AUTHORITY_V2_CUTOVER_RECEIPT" \
-  --expected-sha256 "$binary_sha256" \
   --require-format v2 --kernel-ipc-probe --disable-external-effects \
   --disable-non-probe-process-spawn \
   --rollbackable-writer-probe --json
 "$DECODEX_C7_BINARY" maintenance lane-authority-v2 commit-point-of-no-return \
   --cutover-receipt "$DECODEX_LANE_AUTHORITY_V2_CUTOVER_RECEIPT" \
-  --expected-sha256 "$binary_sha256" \
-  --require-live-main "$merge_commit_sha" --json
+  --json
 "$DECODEX_C7_BINARY" supervisor cutover-activate \
   --cutover-receipt "$DECODEX_LANE_AUTHORITY_V2_CUTOVER_RECEIPT" \
-  --expected-sha256 "$binary_sha256" \
   --require-format v2 --json
 "$DECODEX_C7_BINARY" maintenance lane-authority-v2 status --json
 "$DECODEX_C7_BINARY" maintenance lane-authority-v2 rollback-status --json
@@ -511,6 +515,10 @@ Expected assertions:
   before cutover-prepare without operator-supplied source/tested hashes; all identities,
   check-run ids and attestation digest are signed into the cutover receipt; PONR rechecks
   live main/source binding and fails if main advanced;
+- `cutover-prepare` derives artifact digest, source commit, tested PR head, workflow
+  identity, and required-check ids only from verified attestation, binary build-info, and
+  fresh GitHub readback. Later stages accept only the signed receipt and rederive/recheck
+  live facts; no CLI flag can inject those authority identities;
 - authority audit returns zero executable ambiguity, orphan claim, legacy authority
   writer, terminal conflict lease, stale active operation, and overdue unknown effect;
 - the final full-source reverse scan returns no legacy authority reader/writer or schema
