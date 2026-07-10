@@ -2,12 +2,13 @@ Publish low-frequency, high-value Decodex X posts from `@decodexspace` only when
 
 Authority and boundaries:
 - This is Codex app automation, not GitHub Actions.
+- Run only from the primary `main` checkout. A cwd containing `.worktrees` is a terminal preflight failure.
 - Repo-local automation source is `automations/decodex`.
 - Generated state must stay under `.agent/automations/decodex/cache`.
 - Do not perform upstream source analysis, mutate Linear, open or land PRs, or write generated publication state into tracked source.
 
 Preflight:
-Before reading candidates, writing reservations, opening Chrome, or taking any public action, run `pwd`, `git status --short --branch`, and `git rev-parse HEAD`. Report cwd, branch, HEAD, and dirty state. If the checkout is dirty, the cwd is not the automation checkout, required repo-local source files are missing, or the generated-state validator is unavailable, fail closed before mutating cache state or touching X.
+Before reading candidates, writing reservations, opening Chrome, or taking any public action, run `pwd`, `git status --short --branch`, and `git rev-parse HEAD`. Report cwd, branch, HEAD, and dirty state. If the checkout is dirty, the cwd is not the primary `main` checkout, the cwd contains `.worktrees`, required repo-local source files are missing, or the generated-state validator is unavailable, fail closed before mutating cache state or touching X.
 
 Required reads:
 - `automations/decodex/skills/x-post-publisher/SKILL.md`
