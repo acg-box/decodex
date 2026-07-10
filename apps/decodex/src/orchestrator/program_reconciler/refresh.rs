@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-	execution_program::ExecutionProgramNode,
+	execution_program::{ExecutionProgramNode, ExecutionQueueIntent},
 	orchestrator::{
 		self, ExecutionProgramRecord, IssueTracker, ProgramIssueSnapshot,
 		ProgramIssueSnapshotInput, RefreshedExecutionProgram, Result, StateStore, TrackerIssue,
@@ -47,6 +47,10 @@ pub(crate) fn refresh_execution_program_tracker_facts<T>(
 where
 	T: IssueTracker + ?Sized,
 {
+	let refresh_queue_intent = record
+		.program()
+		.program_intake_plan()
+		.is_some_and(|plan| plan.intake_kind().as_str() == "issue_batch_intake");
 	let mut refreshed_nodes = Vec::with_capacity(record.program().nodes().len());
 	let mut issues_by_node = BTreeMap::new();
 
@@ -73,8 +77,19 @@ where
 			issue,
 		})?;
 		let mapping = snapshot.linear_mapping()?;
+		let mut refreshed_node = node.clone().with_linear_issue(mapping)?;
 
-		refreshed_nodes.push(node.clone().with_linear_issue(mapping)?);
+		if refresh_queue_intent && node.queue_intent() == ExecutionQueueIntent::Active {
+			refreshed_node =
+				refreshed_node.with_queue_intent(refreshed_active_issue_batch_queue_intent(
+					state_store,
+					service_id,
+					&snapshot,
+					workflow,
+				)?)?;
+		}
+
+		refreshed_nodes.push(refreshed_node);
 		issues_by_node.insert(node.node_id().to_owned(), snapshot);
 	}
 
@@ -141,4 +156,34 @@ where
 		has_generic_dispatch_briefing: orchestrator::issue_has_generic_dispatch_briefing(issue),
 		has_post_review_lifecycle,
 	})
+}
+
+fn refreshed_active_issue_batch_queue_intent(
+	state_store: &StateStore,
+	service_id: &str,
+	snapshot: &ProgramIssueSnapshot,
+	workflow: &WorkflowDocument,
+) -> Result<ExecutionQueueIntent> {
+	if orchestrator::state_name_is_terminal(&snapshot.issue.state.name, workflow) {
+		return Ok(ExecutionQueueIntent::Done);
+	}
+	if snapshot.has_active_label
+		|| snapshot.has_post_review_lifecycle
+		|| state_store.worktree_for_issue(&snapshot.issue.id)?.is_some()
+		|| state_store.issue_has_active_shared_claim(service_id, &snapshot.issue.id)?
+	{
+		return Ok(ExecutionQueueIntent::Active);
+	}
+	if snapshot.has_opt_out_label
+		|| !workflow
+			.frontmatter()
+			.tracker()
+			.startable_states()
+			.iter()
+			.any(|state| state == &snapshot.issue.state.name)
+	{
+		return Ok(ExecutionQueueIntent::NotReady);
+	}
+
+	Ok(ExecutionQueueIntent::ReadyToQueue)
 }

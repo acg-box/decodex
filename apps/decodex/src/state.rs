@@ -73,7 +73,8 @@ use internal::{
 	compare_project_run_status, derived_program_intake_plan_records,
 	derived_program_issue_mapping_records, dispatch_slot_lock_path, issue_claim_id_from_path,
 	issue_claim_lock_path, prune_unlocked_shared_lock_files, read_issue_claim_record,
-	remove_lock_file_if_exists, set_close_on_exec, write_issue_claim_record,
+	remove_derived_program_intake_state, remove_lock_file_if_exists, set_close_on_exec,
+	write_issue_claim_record,
 };
 use runtime_records::{
 	AutonomyObjectiveRuntimeRecord, AutonomyObjectiveRuntimeRowParts,
