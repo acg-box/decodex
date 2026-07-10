@@ -51,6 +51,20 @@ impl StateStore {
 		sqlite.delete_worktree_mapping(issue_id)
 	}
 
+	pub(in crate::state) fn delete_execution_program_locked(
+		&self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let mut sqlite =
+			sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.delete_execution_program(project_id, program_id)
+	}
+
 	pub(in crate::state) fn delete_review_marker_identity_locked(
 		&self,
 		project_id: &str,

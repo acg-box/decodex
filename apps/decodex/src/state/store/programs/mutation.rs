@@ -189,6 +189,21 @@ pub(in crate::state::store::programs) fn upsert_execution_program(
 	Ok(record.as_public())
 }
 
+pub(in crate::state::store::programs) fn delete_execution_program(
+	store: &StateStore,
+	project_id: &str,
+	program_id: &str,
+) -> Result<()> {
+	let key = ExecutionProgramKey::new(project_id, program_id);
+	let mut state = store.lock_without_refresh()?;
+
+	state.execution_programs.remove(&key);
+
+	store::remove_derived_program_intake_state(&mut state, project_id, program_id);
+
+	store.delete_execution_program_locked(project_id, program_id)
+}
+
 fn canonical_program_intake_key(project_id: &str, contract_id: &str) -> String {
 	let digest = Sha256::digest(format!("{project_id}\0{contract_id}").as_bytes());
 
