@@ -1072,6 +1072,37 @@ requirements without rewriting their historical review evidence. The P0 positive
 now validates without a review receipt, while readiness still rejects with
 `c1i_phase_incomplete`.
 
+### C1I P1 exact source cut
+
+P1 separates immutable source identity from later parser evidence. The analysis cut no
+longer circularly binds P2/P3 supporting-input, cfg, toolchain, catalog, or dataflow
+outputs; those remain composition-owned. Commit
+`f8d8e39aa960a16ca3c72777fafbf7758acc6885` is the exact P1 source cut and includes the
+Git-object materializer itself.
+
+Two consecutive materializations from that commit produced byte-identical outputs:
+
+- `analysis_cut.json`: `c1ad9f070bad4650c86dd73720d3564675b4a282a867ac52e6daebab7a272c99`;
+- `source_inventory.json`: `0f823d8e76f5a58a615508570aaab5cdf7b80fa48dc839ec65a4f5ffaea1029d`;
+- `candidate_records.json`: `70b18014c5e7aae72c0a8edfd96229fd1c740a69882697d3d8fb8255ea9cb84b`.
+
+The cut contains 3,376 analysis sources, 6 inventory-tool sources, no tombstones, and
+41,057 canonical candidate records. Every frozen C0 observation was independently replayed
+from the pinned C0 generator semantics and baseline Git bytes; its path, category, line
+count, first line, and digest match the immutable launcher/legacy/mutation artifacts.
+
+P1 validation evidence:
+
+- two-run artifact SHA comparison: pass;
+- `scripts/verify_lane_authority_v2_c1i_contract.sh`: exit 0;
+- locked contract tests: 21/21 pass;
+- `scripts/verify_lane_authority_v2_gates.sh C1I`: expected exit 1 with phase `P1` and
+  reason `c1i_phase_incomplete`.
+
+P1 remains `C1I_INCOMPLETE`. No runtime source, runtime database, migration, external
+provider, Linear state, or GitHub PR state changed. P2 next enriches the immutable source
+identities with complete parser/cfg/site/edge/supporting-input/tool receipt evidence.
+
 ### C0 evidence commands
 
 ```sh
