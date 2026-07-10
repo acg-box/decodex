@@ -68,7 +68,7 @@ PATTERNS = (
     Pattern(
         "sqlite_write",
         "write",
-        re.compile(r"\b(?:execute|execute_batch|execute_named|transaction|savepoint)\s*\(|\b(?:INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|REPLACE)\b", re.I),
+        re.compile(r"\b(?:execute|execute_batch|execute_named|transaction|savepoint)\s*\(|\b(?:INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|REPLACE)\b"),
         "lane_authority_v2::state_adapter",
         "runtime.commit_transition",
         "C7",
@@ -116,7 +116,7 @@ PATTERNS = (
     Pattern(
         "provider_authority_read",
         "read_discovery",
-        re.compile(r"(?:get_issue|list_issues|list_comments|pull_request|review|labels_complete|updated_at|pageInfo|hasNextPage)", re.I),
+        re.compile(r"(?:get_issue\s*\(|list_issues\s*\(|list_comments\s*\(|get_pull_request\s*\(|pull_request\s*\(|pullRequest\s*(?:\(|\{)|review_threads|labels_complete|updated_at|pageInfo|hasNextPage)", re.I),
         "lane_authority_v2::provider_adapter",
         "provider.versioned_readback",
         "C7",
@@ -124,7 +124,7 @@ PATTERNS = (
     Pattern(
         "authority_state_or_path",
         "read_write_discovery",
-        re.compile(r"(?:lease|attempt|lane|worktree|review_lifecycle|execution_program|private_event|activity_marker|terminal_guard|run_control|closeout|supersed|\.codex|decodex)", re.I),
+        re.compile(r"(?:\blease\b|\battempt(?:_id|_number|s)?\b|LaneId|lane_(?:id|key|epoch|state|authority)|worktree|review_lifecycle|execution_program|private_event|activity_marker|terminal_guard|run_control|closeout|supersed|\.codex|decodex)", re.I),
         "lane_authority_v2::authority_adapter",
         "runtime.typed_authority_or_diagnostic",
         "C7",
@@ -140,7 +140,7 @@ PATTERNS = (
 )
 
 LAUNCH_PATTERN = re.compile(
-    r"(?:\bdecodex\b|Command::new|std::process::Command|subprocess\.|Process\s*\(|launchd|systemd|automation)",
+    r"(?:Command::new|std::process::Command|subprocess\.(?:run|Popen|check_call|check_output)|Process\s*\(|ProgramArguments|ExecStart|launchctl|systemctl|^\s*(?:(?:exec|command)\s+)?(?:[^\s\"']*/)?decodex(?:\s|$)|(?:command|program|executable)\s*[:=].*\bdecodex\b)",
     re.I,
 )
 SCENARIO_ID_PATTERN = re.compile(r"(?:ID|MIG|QUA|ADM|EFX|SUP|TEL|ADJ)-\d{2}")
@@ -313,6 +313,7 @@ def inspect_sources(
             node_key = f"launcher\0{path}".encode("utf-8")
             launcher_nodes.append(
                 {
+                    "candidate_status": "unclassified_pending_c1i",
                     "candidate_digest": candidate_digest(launcher_hits),
                     "candidate_line_count": len(launcher_hits),
                     "first_line": launcher_hits[0][0],
@@ -446,6 +447,26 @@ def run_self_tests(root: Path) -> None:
         if frozen != {"Cargo.toml", "target/tracked.rs"}:
             raise AssertionError(f"tracked closed-world self-test mismatch: {frozen}")
 
+    patterns = {pattern.category: pattern.expression for pattern in PATTERNS}
+    precision_cases = (
+        (LAUNCH_PATTERN, 'Text("Decodex")'),
+        (patterns["authority_state_or_path"], 'let sample = "Lane"'),
+        (patterns["sqlite_write"], "nsView.update(context: context)"),
+        (patterns["provider_authority_read"], "pull_request:"),
+    )
+    for expression, line in precision_cases:
+        if expression.search(line):
+            raise AssertionError(f"candidate precision self-test overmatched: {line}")
+    recall_cases = (
+        (LAUNCH_PATTERN, 'Command::new("decodex")'),
+        (patterns["authority_state_or_path"], "lane_epoch"),
+        (patterns["sqlite_write"], "UPDATE lanes SET state = ?"),
+        (patterns["provider_authority_read"], "get_pull_request(owner, repo, number)"),
+    )
+    for expression, line in recall_cases:
+        if expression.search(line) is None:
+            raise AssertionError(f"candidate recall self-test missed: {line}")
+
     scenarios = scenario_records(root)
     validate_scenario_freeze(scenarios)
     mutated = [dict(item) for item in scenarios]
@@ -476,7 +497,10 @@ def run_self_tests(root: Path) -> None:
         pass
     else:
         raise AssertionError("effect freeze self-test accepted semantic drift")
-    print("verified closed-world source, scenario-freeze, and effect-freeze controls")
+    print(
+        "verified closed-world source, candidate precision, scenario-freeze, "
+        "and effect-freeze controls"
+    )
 
 
 def expand_effect_kinds(kind_cell: str) -> list[str]:
@@ -614,6 +638,7 @@ def group_authority_nodes(
         entry = grouped.setdefault(
             path,
             {
+                "candidate_status": "unclassified_pending_c1i",
                 "classifications": [],
                 "language": node["language"],
                 "path": path,
@@ -653,6 +678,7 @@ def manifests(root: Path, baseline: str) -> dict[str, dict[str, object]]:
         "apps/decodex/src/bootstrap/tests/fixtures/lane_authority_v2/launcher_inventory.json": {
             "baseline": source,
             "entries": launcher_nodes,
+            "inventory_semantics": "closed_world_source_files_with_unclassified_high_recall_candidates",
             "schema": "decodex/lane-authority-v2-launcher-inventory/1",
         },
         "apps/decodex/src/state/tests/fixtures/lane_authority_v2/legacy_authority_inventory.json": {
@@ -668,6 +694,7 @@ def manifests(root: Path, baseline: str) -> dict[str, dict[str, object]]:
             "source_file_tuple": ["path", "language", "scope", "sha256"],
             "source_files": source_files,
             "nodes": group_authority_nodes(authority_nodes, mutation_only=False),
+            "inventory_semantics": "closed_world_source_files_with_unclassified_high_recall_candidates",
             "schema": "decodex/lane-authority-v2-legacy-authority-inventory/1",
         },
         "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/mutation_registry.json": {
@@ -683,6 +710,7 @@ def manifests(root: Path, baseline: str) -> dict[str, dict[str, object]]:
             "effect_freeze_digest": effect_digest,
             "effect_kinds": effect_kinds,
             "entries": group_authority_nodes(authority_nodes, mutation_only=True),
+            "inventory_semantics": "frozen_v2_effect_semantics_plus_unclassified_v12_source_candidates",
             "schema": "decodex/lane-authority-v2-mutation-registry/1",
         },
         "apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/scenario_manifest.json": scenario_manifest(

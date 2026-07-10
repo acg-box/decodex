@@ -24,7 +24,7 @@ prove the required assertion.
 | Fixture | Required path | First gate |
 | --- | --- | --- |
 | scenario-to-test manifest | `apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/scenario_manifest.json` | C0 |
-| supported launcher/generation-lock inventory | `apps/decodex/src/bootstrap/tests/fixtures/lane_authority_v2/launcher_inventory.json` | C0 |
+| closed-world launcher candidate inventory | `apps/decodex/src/bootstrap/tests/fixtures/lane_authority_v2/launcher_inventory.json` | C0 |
 | closed-world legacy source-node/read/write/discovery inventory | `apps/decodex/src/state/tests/fixtures/lane_authority_v2/legacy_authority_inventory.json` | C0 |
 | v12 global-key collisions and partial overwrite | `apps/decodex/src/state/tests/fixtures/lane_authority_v2/schema_v12_collisions.json` | C1 |
 | PUB-1711 wrong-project admission | `apps/decodex/src/program_intake/tests/fixtures/lane_authority_v2/pub_1711_wrong_project.json` | C2 |
@@ -85,11 +85,15 @@ Expected assertions:
 - the repository-owned broad gate and all whitespace checks report no failure;
 - launcher, mutation, and legacy source-node inventories cover every tracked repository
   Rust/Python/Swift/shell/TOML/YAML file, including root/package build manifests, at exact
-  current main with stable digests and no unclassified candidate; outside explicit
+  current main with stable digests. Every regex hit is explicitly
+  `unclassified_pending_c1i`, never a supported launcher or authority claim; outside explicit
   dependency/build-output components, ignored as well as ordinary untracked source/config
   paths fail verification, and a disposable-repository negative control proves the ignored
   path cannot escape. The same fixture force-tracks a file under an ignored build component
   and proves tracked files are never excluded because of their directory name;
+- candidate precision controls reject bare UI `Decodex`/`Lane`, ordinary `.update(...)`,
+  and YAML `pull_request:` while retaining structural process, SQL, LaneId, and provider
+  readback examples. C1I remains responsible for final AST/syntax/call-graph classification;
 - the scenario table matches the independent C0 count/digest freeze, and in-memory
   checkpoint plus required-result mutation controls prove regeneration cannot bless
   scenario drift;

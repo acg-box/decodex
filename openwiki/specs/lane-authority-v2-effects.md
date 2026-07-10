@@ -177,7 +177,10 @@ and records its readback on the parent effect.
 - C0 freezes every tracked repository Rust/Python/Swift/shell/TOML/YAML file, including
   root and package build manifests, as a conservative source node with content digest,
   root/tree digest, scope, and grouped high-recall
-  launcher/read/write/discovery candidates. The reviewed registry explicitly includes
+  launcher/read/write/discovery candidates. Every hit is marked
+  `unclassified_pending_c1i`; C0 does not declare regex hits to be supported launchers or
+  legacy authority. Precision controls reject known UI/config false-positive shapes while
+  preserving structural positive examples. The reviewed registry explicitly includes
   current fetch/default-branch fast-forward/ref/index/worktree paths. C1I, before any
   runtime implementation edit, replaces candidate discovery with the required language
   AST/syntax/call-graph verifier and proves every frozen file/candidate is classified;
