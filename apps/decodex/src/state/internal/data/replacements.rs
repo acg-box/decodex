@@ -16,6 +16,7 @@ impl StateData {
 		self.autonomy_objectives = loaded.autonomy_objectives;
 		self.autonomy_signals = loaded.autonomy_signals;
 		self.autonomy_proposals = loaded.autonomy_proposals;
+		self.autonomy_runtime_policies = loaded.autonomy_runtime_policies;
 		self.execution_programs = loaded.execution_programs;
 		self.program_intake_plans = loaded.program_intake_plans;
 		self.program_issue_mappings = loaded.program_issue_mappings;

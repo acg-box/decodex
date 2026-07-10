@@ -19,8 +19,9 @@ pub(crate) use self::{
 };
 pub(crate) use self::{
 	models::{
-		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomySignalRecord,
-		ChildAgentActivityBucket, ChildAgentActivitySummary, CodexAccountActivitySummary,
+		AutonomyObjectiveRecord, AutonomyProposalRecord, AutonomyRuntimePolicyReceiptInput,
+		AutonomyRuntimePolicyRecord, AutonomySignalRecord, ChildAgentActivityBucket,
+		ChildAgentActivitySummary, CodexAccountActivitySummary,
 		CodexAccountProfileDailyUsageSummary, CodexAccountResetCreditSummary, ConnectorBackoff,
 		DecisionContractRecord, ExecutionProgramRecord, IssueLease, LoopGuardrailCheckpoint,
 		PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, PreacquiredLeaseGuards,
@@ -46,8 +47,9 @@ pub(crate) use self::{
 		write_run_turn_marker,
 	},
 	store::{
-		ConnectorBackoffInput, LoopGuardrailCheckpointInput, ProjectLoopEvidenceSnapshot,
-		ReviewCheckpointArtifactLookup, ReviewPolicyCheckpointInput,
+		ConnectorBackoffInput, LoopGuardrailCheckpointInput, ProgramIntakeAttemptClaim,
+		ProgramIntakeAttemptStatus, ProjectLoopEvidenceSnapshot, ReviewCheckpointArtifactLookup,
+		ReviewPolicyCheckpointInput,
 	},
 };
 pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};

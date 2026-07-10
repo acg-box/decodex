@@ -123,6 +123,9 @@ decodex intake goal --project <SERVICE_ID> <CONTRACT_ID> --dry-run
 decodex intake goal --project <SERVICE_ID> <CONTRACT_ID> --apply
 decodex intake issues --project <SERVICE_ID> <ISSUE>... --dry-run
 decodex intake issues --project <SERVICE_ID> <ISSUE>... --apply
+decodex intake recover --project <SERVICE_ID> <CONTRACT_ID> inspect
+decodex intake recover --project <SERVICE_ID> <CONTRACT_ID> retry-prepared
+decodex intake recover --project <SERVICE_ID> <CONTRACT_ID> complete-after-readback
 ```
 
 Rules:
@@ -130,6 +133,8 @@ Rules:
 - Goal intake requires an accepted Decision Contract. Draft, rejected, or needs-human-decision contracts are not executable.
 - Dry-run reads and renders a deterministic report without mutating Linear or runtime Program Intake rows.
 - Apply may create/update generated normal Linear issue briefs for goal intake and persist local Program Intake/Execution Program rows.
+- Goal apply uses one server-derived canonical claim per contract, bound to the exact project/config/workflow/team-anchor digest. `prepared` may retry only with those same inputs; `started` must not retry automatically because a tracker write may have occurred; `completed` is terminal. Newly recorded proposal objections block intake even after promotion.
+- Recovery inspection is read-only. `retry-prepared` performs the bound apply and accepts `--team-issue` only when it matches the original digest. `complete-after-readback` succeeds only when a started claim has exact contract-link, Program, plan id/kind/summary, node, mapping, issue, and fingerprint correspondence.
 - Issue-batch apply persists local Program Intake/Execution Program state for existing issues.
 - Program dispatch is direct. It does not apply, remove, or wait for service queue labels.
 - Internal graph/node ids, proposal ids, private evidence refs, and local runtime rows must not be exposed in public Linear briefs.

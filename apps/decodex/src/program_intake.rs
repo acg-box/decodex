@@ -23,4 +23,8 @@ pub(crate) use self::{
 	render::{render_goal_intake_report, render_issue_batch_intake_report},
 };
 
+pub(crate) fn goal_program_id(service_id: &str, contract_id: &str) -> String {
+	goal::goal_program_id(service_id, contract_id)
+}
+
 #[cfg(test)] mod tests;

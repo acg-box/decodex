@@ -16,6 +16,7 @@ pub(crate) use self::{
 		ConnectorBackoffInput, LoopGuardrailCheckpointInput, ReviewCheckpointArtifactLookup,
 		ReviewPolicyCheckpointInput,
 	},
+	programs::{ProgramIntakeAttemptClaim, ProgramIntakeAttemptStatus},
 };
 
 use std::{path::Path, sync::Mutex};

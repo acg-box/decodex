@@ -14,10 +14,11 @@ use crate::{
 		derived_program_intake_plan_records, derived_program_issue_mapping_records,
 		runtime_records::{
 			AutonomyObjectiveRuntimeRecord, AutonomyProposalRuntimeRecord,
-			AutonomySignalRuntimeRecord, DecisionContractRuntimeRecord,
-			ExecutionProgramRuntimeRecord, LinearExecutionEventRuntimeRecord,
-			PrivateExecutionEventRuntimeRecord, ProtocolEventRecord, RunActivitySummaryRecord,
-			RunAttemptRecord, RunControlChannelRecord, WorktreeMappingRecord,
+			AutonomyRuntimePolicyRuntimeRecord, AutonomySignalRuntimeRecord,
+			DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord,
+			LinearExecutionEventRuntimeRecord, PrivateExecutionEventRuntimeRecord,
+			ProtocolEventRecord, RunActivitySummaryRecord, RunAttemptRecord,
+			RunControlChannelRecord, WorktreeMappingRecord,
 		},
 		runtime_row_parsers::{
 			connector_backoff_from_row, execution_program_record_from_row_parts,

@@ -51,6 +51,44 @@ ON autonomy_objectives (project_id, objective_id, version);
 		Ok(())
 	}
 
+	pub(in crate::state) fn bootstrap_autonomy_runtime_policies_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS autonomy_runtime_policies (
+	project_id TEXT NOT NULL,
+	policy_id TEXT NOT NULL,
+	policy_version TEXT NOT NULL,
+	objective_id TEXT NOT NULL,
+	objective_version INTEGER NOT NULL,
+	objective_digest TEXT NOT NULL,
+	authority_ref TEXT NOT NULL,
+	accepted_by TEXT NOT NULL,
+	accepted_at TEXT NOT NULL,
+	acceptance_source TEXT NOT NULL,
+	public_non_goals_json TEXT NOT NULL,
+	PRIMARY KEY (project_id, policy_id, policy_version)
+);
+CREATE INDEX IF NOT EXISTS autonomy_runtime_policies_objective_idx
+ON autonomy_runtime_policies (project_id, objective_id, objective_version);
+CREATE TABLE IF NOT EXISTS autonomy_runtime_policy_receipts (
+	project_id TEXT NOT NULL,
+	receipt_id TEXT NOT NULL,
+	principal TEXT NOT NULL,
+	candidate_digest TEXT NOT NULL,
+	candidate_json TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	expires_at_unix INTEGER NOT NULL,
+	consumed_at TEXT,
+	PRIMARY KEY (project_id, receipt_id)
+);
+CREATE INDEX IF NOT EXISTS autonomy_runtime_policy_receipts_expiry_idx
+ON autonomy_runtime_policy_receipts (project_id, expires_at_unix, consumed_at);
+"#,
+		)?;
+
+		Ok(())
+	}
+
 	pub(in crate::state) fn bootstrap_autonomy_signals_schema(&self) -> Result<()> {
 		self.connection.execute_batch(
 			r#"

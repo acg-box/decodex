@@ -5,8 +5,9 @@ mod review;
 
 pub(super) use self::{
 	autonomy::{
-		persist_autonomy_objectives, persist_autonomy_proposals, persist_autonomy_signals,
-		persist_decision_contracts, persist_execution_programs,
+		persist_autonomy_objectives, persist_autonomy_proposals, persist_autonomy_runtime_policies,
+		persist_autonomy_signals, persist_decision_contracts, persist_execution_programs,
+		upsert_autonomy_runtime_policy_record,
 	},
 	base::{
 		persist_leases, persist_linear_execution_events, persist_private_execution_events,
