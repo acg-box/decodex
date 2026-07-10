@@ -743,6 +743,21 @@ attestation, binary build-info, and fresh GitHub readback; later stages consume 
 receipt and independently revalidate live facts. A fresh exact-head review is required
 after the repair commit.
 
+### Eighteenth skeptic review
+
+Verdict: PR #1084 requested changes with one high finding.
+
+The reviewer independently passed the full-repository source inventory, effect semantic
+freeze, scenario semantic freeze, post-C0 mode, and all three prior C7 identity removals.
+It found one remaining split identity in the C7 command block: early checks resolved and
+validated `DECODEX_C7_PR`, while provenance and cutover consumed a separate undefined
+`pr_url`. That could abort under `set -u` or select a different PR.
+
+The command block now has exactly one PR locator. Provenance verification and
+`cutover-prepare` both consume the same already validated `DECODEX_C7_PR`; no derived or
+operator-supplied second locator exists. This repair requires another fresh exact-head
+review before landing.
+
 ### C0 exit criteria
 
 - XY-1251, ADR, target contract, scenario matrix, and checkpoint ledger exist.
