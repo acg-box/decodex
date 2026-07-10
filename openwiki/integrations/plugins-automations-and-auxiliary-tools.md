@@ -88,9 +88,10 @@ The operating loop has explicit owners:
   experiment. The deterministic scorecard treats missing, invalid, or expired active
   strategy and post-cutover Daily Manager coverage gaps as operational P1 evidence;
   unresolved `decodex_automation_handoff/v1` items are also P1 evidence, while
-  authority-gated implementation proposals remain separate. An ACTIVE live config
-  alone is not successful execution. Paid X MCP reads are bounded and used only when
-  fresh outcome or benchmark evidence can change the decision.
+  authority-gated implementation proposals remain separate. A publishable candidate
+  without a terminal Publisher outcome after 24 hours is another P1. An ACTIVE live
+  config alone is not successful execution. Paid X MCP reads are bounded and used
+  only when fresh outcome or benchmark evidence can change the decision.
 
 Operational autonomy does not bypass repository authority. Prompt/live-config repair,
 candidate selection, publishing, outcome learning, and strategy updates can close
