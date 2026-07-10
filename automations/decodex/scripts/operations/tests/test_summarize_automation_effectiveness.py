@@ -110,6 +110,39 @@ class EffectivenessScorecardTests(unittest.TestCase):
 			self.assertEqual(result["expected_daily_coverage_days"], 0)
 			self.assertEqual(result["daily_reports"], 1)
 
+	def test_automation_handoffs_exclude_terminal_and_implementation_proposals(self) -> None:
+		with tempfile.TemporaryDirectory() as value:
+			root = Path(value)
+			manager_root = root / ".agent/automations/decodex/cache/manager"
+			handoffs = manager_root / "handoffs/2026-07-10"
+			handoffs.mkdir(parents=True)
+			for name, payload in {
+				"open.json": {
+					"schema": "decodex_automation_handoff/v1",
+					"id": "open-automation-handoff",
+					"status": "open",
+					"severity": "p1",
+				},
+				"resolved.json": {
+					"schema": "decodex_automation_handoff/v1",
+					"id": "resolved-automation-handoff",
+					"status": "resolved",
+				},
+				"implementation.json": {
+					"schema": "decodex_implementation_handoff/v1",
+					"id": "authority-gated-proposal",
+					"status": "needs_decision",
+				},
+			}.items():
+				(handoffs / name).write_text(json.dumps(payload), encoding="utf-8")
+			with (
+				patch.object(effectiveness, "RUNTIME_ROOT", root),
+				patch.object(effectiveness, "MANAGER_ROOT", manager_root),
+			):
+				result = effectiveness.inspect_automation_handoffs()
+		self.assertEqual(result["unresolved_count"], 1)
+		self.assertEqual(result["unresolved"][0]["id"], "open-automation-handoff")
+
 	def test_scorecard_blocks_missing_experiment_and_coverage_gap(self) -> None:
 		live = {
 			"managed": 1,
@@ -128,6 +161,7 @@ class EffectivenessScorecardTests(unittest.TestCase):
 			"daily_coverage_days": ["2026-07-09"],
 			"expected_daily_coverage_days": 7,
 			"active_experiment": {"status": "missing"},
+			"automation_handoffs": {"unresolved_count": 1},
 		}
 		with (
 			patch.object(effectiveness, "managed_automation_ids", return_value=["manager"]),
@@ -144,7 +178,11 @@ class EffectivenessScorecardTests(unittest.TestCase):
 		self.assertEqual(result["status"], "needs_action")
 		self.assertEqual(
 			[item["code"] for item in result["blockers"]],
-			["daily_manager_coverage_gap", "active_experiment_unavailable"],
+			[
+				"daily_manager_coverage_gap",
+				"active_experiment_unavailable",
+				"unresolved_automation_handoffs",
+			],
 		)
 
 
