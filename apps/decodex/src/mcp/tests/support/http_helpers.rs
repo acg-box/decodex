@@ -16,16 +16,11 @@ pub(in crate::mcp::tests) fn http_handler(
 }
 
 pub(in crate::mcp::tests) fn http_handler_with_authorization(
-	repo_root: &Path,
+	_repo_root: &Path,
 	capability_profile: McpCapabilityProfile,
 	authorization: McpHttpAuthorization,
 ) -> McpHttpHandler {
-	let context = McpContext {
-		repo_root: repo_root.to_path_buf(),
-		config_path: None,
-		project_id: None,
-		state_store: None,
-	};
+	let context = McpContext { config_path: None, project_id: None, state_store: None };
 
 	http_handler_with_context_and_authorization(
 		context,
@@ -36,16 +31,11 @@ pub(in crate::mcp::tests) fn http_handler_with_authorization(
 }
 
 pub(in crate::mcp::tests) fn http_handler_with_allowed_origins(
-	repo_root: &Path,
+	_repo_root: &Path,
 	capability_profile: McpCapabilityProfile,
 	allowed_origins: Vec<String>,
 ) -> McpHttpHandler {
-	let context = McpContext {
-		repo_root: repo_root.to_path_buf(),
-		config_path: None,
-		project_id: None,
-		state_store: None,
-	};
+	let context = McpContext { config_path: None, project_id: None, state_store: None };
 
 	http_handler_with_context(context, capability_profile, allowed_origins)
 }

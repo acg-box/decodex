@@ -95,7 +95,8 @@ fn operator_status_snapshot_surfaces_validation_evidence() {
 			1,
 			VALIDATION_EVIDENCE_EVENT_TYPE,
 			serde_json::json!({
-				"schema": "decodex.validation_evidence/1",
+				"schema": "decodex.validation_evidence/2",
+				"record_version": 2,
 				"phase": "implement_to_validation_ready",
 				"decision": "fail",
 				"reason_code": "no_effective_delta",

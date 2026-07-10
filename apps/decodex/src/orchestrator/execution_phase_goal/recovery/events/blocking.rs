@@ -1,8 +1,11 @@
 use serde_json::Value;
 
-use crate::orchestrator::{
-	AUTHORITY_DECISION_REQUEST_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, Result,
-	ServiceConfig, StateStore, execution_phase_goal::recovery::events::parsing,
+use crate::{
+	orchestrator::{
+		AUTHORITY_DECISION_REQUEST_EVENT_TYPE, PHASE_GOAL_RECOVERY_BLOCKED_EVENT_TYPE, Result,
+		ServiceConfig, StateStore, execution_phase_goal::recovery::events::parsing,
+	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 };
 
 pub(crate) fn issue_has_blocking_lane_decision_evidence(
@@ -22,11 +25,23 @@ pub(crate) fn issue_has_blocking_lane_decision_evidence(
 			"lane_decision" if lane_decision_event_blocks_automatic_recovery(event.payload()) => {
 				return Ok(true);
 			},
-			"progress_checkpoint" if parsing::progress_checkpoint_has_blockers(event.payload()) => {
+			event_type
+				if event_type == PROGRESS_CHECKPOINT_EVENT_TYPE
+					&& event.matches_contract(
+						PROGRESS_CHECKPOINT_EVENT_TYPE,
+						PROGRESS_CHECKPOINT_SCHEMA,
+						2,
+					) && parsing::progress_checkpoint_has_blockers(event.payload()) =>
+			{
 				return Ok(true);
 			},
-			"progress_checkpoint"
-				if parsing::progress_checkpoint_clears_blockers(event.payload()) =>
+			event_type
+				if event_type == PROGRESS_CHECKPOINT_EVENT_TYPE
+					&& event.matches_contract(
+						PROGRESS_CHECKPOINT_EVENT_TYPE,
+						PROGRESS_CHECKPOINT_SCHEMA,
+						2,
+					) && parsing::progress_checkpoint_clears_blockers(event.payload()) =>
 			{
 				return Ok(false);
 			},

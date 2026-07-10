@@ -38,15 +38,6 @@ fn persists_updated_authority_without_transition() {
 			"summary": "Addressed the requested review changes."
 		}),
 	);
-
-	tests::seed_openwiki_impact_checkpoint(
-		tests::bridge_state_store(&bridge),
-		&review_context,
-		&issue.id,
-		"review_repair",
-		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
-	);
-
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,

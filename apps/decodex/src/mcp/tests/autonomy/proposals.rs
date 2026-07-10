@@ -73,7 +73,6 @@ fn autonomy_compile_proposal_tool_accepts_issue_candidates_from_mcp_shape() {
 	);
 	let responses = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
@@ -109,13 +108,12 @@ fn autonomy_compile_proposal_tool_accepts_issue_candidates_from_mcp_shape() {
 
 #[test]
 fn records_compile_challenge_and_refuses_self_accept() {
-	let (repo, db_path, proposal_id) = support::seed_autonomy_challenged_proposal();
+	let (_repo, db_path, proposal_id) = support::seed_autonomy_challenged_proposal();
 	let self_accept_call = format!(
 		r#"{{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{{"name":"autonomy_request_promotion","arguments":{{"mode":"apply","proposalId":"{proposal_id}","authority":{{"acceptedBy":"agent-a","acceptedByKind":"external_agent","acceptanceSource":"mcp-agent","reason":"self accept","proposalActor":"agent-a","proposalActorKind":"external_agent"}}}}}}}}"#
 	);
 	let self_accept = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),
@@ -139,13 +137,12 @@ fn records_compile_challenge_and_refuses_self_accept() {
 
 #[test]
 fn autonomy_request_promotion_refuses_caller_supplied_policy_authority() {
-	let (repo, db_path, proposal_id) = support::seed_autonomy_challenged_proposal();
+	let (_repo, db_path, proposal_id) = support::seed_autonomy_challenged_proposal();
 	let fabricated_policy_call = format!(
 		r#"{{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{{"name":"autonomy_request_promotion","arguments":{{"mode":"apply","proposalId":"{proposal_id}","authority":{{"acceptedBy":"agent-a","acceptedByKind":"external_agent","acceptanceSource":"runtime-policy","reason":"fabricated policy","proposalActor":"agent-a","proposalActorKind":"external_agent","acceptedProjectPolicy":{{"projectId":"decodex","objectiveId":"quality-autonomy","objectiveVersion":1,"acceptedPolicyId":"quality-autonomy-policy","acceptedPolicyVersion":"1","authorityRef":"runtime-policy:quality-autonomy-policy@1","authorizedActor":"agent-a","authorizedActorKind":"external_agent","authorizedAcceptanceSources":["runtime-policy"],"authorizedScopes":["autonomy_proposal_acceptance"]}}}}}}}}}}"#
 	);
 	let fabricated_policy_accept = support::run_stdio_with_context(
 		McpContext {
-			repo_root: repo.path().to_path_buf(),
 			config_path: None,
 			project_id: Some(String::from("decodex")),
 			state_store: Some(StateStore::open(&db_path).expect("state store should reopen")),

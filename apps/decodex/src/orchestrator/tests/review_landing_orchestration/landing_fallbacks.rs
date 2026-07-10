@@ -81,7 +81,6 @@ impl RuntimeStandardReviewRunner for CleanRuntimeReviewRunner {
 				"intended_behavior": "The retained PR head still satisfies the issue objective.",
 				"regression_risk": "No current-head regression was found.",
 				"missing_tests": "No additional required tests were identified.",
-				"openwiki_config_drift": "No OpenWiki or config drift was found.",
 				"migration_fallout": "No migration fallout was found.",
 				"operator_facing_fallout": "No operator-facing fallout was found.",
 				"loop_decision_contract": "The lifecycle can proceed after the runtime-owned checkpoint."
@@ -130,7 +129,6 @@ impl RuntimeStandardReviewRunner for TerminalRuntimeReviewRunner {
 				"intended_behavior": "The retained PR head was inspected.",
 				"regression_risk": "Runtime review cannot clear the lane automatically.",
 				"missing_tests": "Manual follow-up is required before adding more tests.",
-				"openwiki_config_drift": "Manual follow-up is required before landing.",
 				"migration_fallout": "Manual follow-up is required before landing.",
 				"operator_facing_fallout": "Manual follow-up is required before landing.",
 				"loop_decision_contract": "The runtime must fail closed for operator attention."

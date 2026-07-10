@@ -17,7 +17,8 @@ pub(crate) use self::{
 		ProgramIssueMappingRecord,
 	},
 	project::{
-		ConnectorBackoff, PrivateExecutionEvent, ProjectRegistration, ProjectRunStatus,
+		ConnectorBackoff, PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA,
+		PrivateExecutionEvent, ProjectRegistration, ProjectRunStatus,
 		WORKTREE_PROVENANCE_FILESYSTEM_SCAN, WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
 		WORKTREE_PROVENANCE_LEGACY_UNKNOWN, WORKTREE_PROVENANCE_RUNTIME_RECORDED,
 		WORKTREE_PROVENANCE_RUNTIME_RECOVERED, WorktreeMapping, WorktreeProvenance,

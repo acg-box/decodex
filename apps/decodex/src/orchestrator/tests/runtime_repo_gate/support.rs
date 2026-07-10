@@ -1,5 +1,6 @@
 use crate::{
 	orchestrator::{IssueDispatchMode, IssueRunPlan, ServiceConfig, StateStore, tests},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 	tracker::TrackerIssue,
 	worktree::WorktreeSpec,
 };
@@ -19,10 +20,11 @@ pub(in crate::orchestrator::tests) fn record_validation_evidence_progress_checkp
 			&issue_run.issue.id,
 			&issue_run.run_id,
 			issue_run.attempt_number,
-			"progress_checkpoint",
+			PROGRESS_CHECKPOINT_EVENT_TYPE,
 			serde_json::json!({
+				"schema": PROGRESS_CHECKPOINT_SCHEMA,
+				"record_version": 2,
 				"phase": "verifying",
-				"openwiki_impact": "none",
 				"focus": "Validate phase-specific work before handoff.",
 				"next_action": "Complete the active phase goal.",
 				"blockers": blockers,

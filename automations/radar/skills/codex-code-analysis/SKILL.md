@@ -18,7 +18,6 @@ of redoing the source pass.
 
 ## Read Before Analysis
 
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 - `automations/radar/skills/README.md`
 
 ## Inputs

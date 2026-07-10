@@ -10,7 +10,7 @@ This directory owns repo-local source for Decodex Publisher and automation-opera
 - `scripts/config/`: shared automation config evaluation and live-install utilities.
 - `scripts/operations/`: deterministic effectiveness scorecards consumed by daily and
   weekly management loops.
-- `research/`: retained automation research data that is not part of OpenWiki.
+- `research/`: retained automation research data.
 
 Generated Publisher state belongs under `.agent/automations/decodex/cache/social`.
 

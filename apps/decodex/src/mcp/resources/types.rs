@@ -13,19 +13,6 @@ pub(super) struct McpResource {
 	mime_type: String,
 }
 impl McpResource {
-	pub(super) fn markdown(
-		uri: impl Into<String>,
-		name: impl Into<String>,
-		description: impl Into<String>,
-	) -> Self {
-		Self {
-			uri: uri.into(),
-			name: name.into(),
-			description: description.into(),
-			mime_type: String::from("text/markdown"),
-		}
-	}
-
 	pub(super) fn json(
 		uri: impl Into<String>,
 		name: impl Into<String>,

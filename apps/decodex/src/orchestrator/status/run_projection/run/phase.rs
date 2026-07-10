@@ -1,8 +1,12 @@
 use serde_json::Value;
 
-use crate::orchestrator::{
-	OperatorValidationEvidenceStatus, PrivateExecutionEvent, ProtocolActivitySummary,
-	RUN_OPERATION_REVIEW_WRITEBACK, TERMINAL_GUARDED_RUN_STATUS, VALIDATION_EVIDENCE_EVENT_TYPE,
+use crate::{
+	orchestrator::{
+		OperatorValidationEvidenceStatus, PrivateExecutionEvent, ProtocolActivitySummary,
+		RUN_OPERATION_REVIEW_WRITEBACK, TERMINAL_GUARDED_RUN_STATUS,
+		VALIDATION_EVIDENCE_EVENT_TYPE, VALIDATION_EVIDENCE_SCHEMA,
+	},
+	state::{PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA},
 };
 
 pub(super) fn operator_run_active_goal_phase(events: &[PrivateExecutionEvent]) -> Option<String> {
@@ -36,7 +40,8 @@ pub(super) fn operator_run_public_progress_phase(
 	events: &[PrivateExecutionEvent],
 ) -> Option<String> {
 	events.iter().rev().find_map(|event| {
-		(event.event_type() == "progress_checkpoint")
+		event
+			.matches_contract(PROGRESS_CHECKPOINT_EVENT_TYPE, PROGRESS_CHECKPOINT_SCHEMA, 2)
 			.then_some(event.payload())
 			.and_then(|payload| payload.get("phase"))
 			.and_then(Value::as_str)
@@ -47,8 +52,9 @@ pub(super) fn operator_run_public_progress_phase(
 pub(super) fn operator_run_validation_evidence_status(
 	events: &[PrivateExecutionEvent],
 ) -> Option<OperatorValidationEvidenceStatus> {
-	let event =
-		events.iter().rev().find(|event| event.event_type() == VALIDATION_EVIDENCE_EVENT_TYPE)?;
+	let event = events.iter().rev().find(|event| {
+		event.matches_contract(VALIDATION_EVIDENCE_EVENT_TYPE, VALIDATION_EVIDENCE_SCHEMA, 2)
+	})?;
 	let payload = event.payload();
 	let phase = payload.get("phase")?.as_str()?.to_owned();
 	let decision = payload.get("decision")?.as_str()?.to_owned();

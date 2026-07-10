@@ -115,4 +115,4 @@ When changing these contracts, validate both source and behavior:
 - Tracker writeback and privacy: `apps/decodex/src/agent/tracker_tool_bridge.rs`, `apps/decodex/src/agent/tracker_tool_bridge/tools/`, `apps/decodex/src/agent/tracker_tool_bridge/tests/`, `apps/decodex/src/tracker/privacy_classifier.rs`.
 - Recovery and lifecycle boundaries: recovery modules under `apps/decodex/src/recovery/`, review lifecycle modules under `apps/decodex/src/state/review_records/`, and post-review orchestration under `apps/decodex/src/orchestrator/`.
 
-The legacy spec files inspected from git history were useful background, but current source and OpenWiki are the maintained contract surfaces. Do not recreate `docs/`; keep future updates in `openwiki/`.
+The legacy spec files inspected from git history were useful background, but current source, project contracts, tests, manifests, and runtime state remain authoritative. OpenWiki is the maintained explanatory knowledge surface; do not recreate `docs/`.

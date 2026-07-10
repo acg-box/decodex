@@ -31,7 +31,6 @@ fn progress_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
 			"phase": "closeout",
-				"openwiki_impact": "none",
 			"focus": "Finish retained closeout bookkeeping.",
 			"next_action": "Record the closeout checkpoint with the live lane head.",
 			"blockers": [],

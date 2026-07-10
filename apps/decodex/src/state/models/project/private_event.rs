@@ -1,5 +1,8 @@
 use serde_json::Value;
 
+pub(crate) const PROGRESS_CHECKPOINT_EVENT_TYPE: &str = "progress_checkpoint";
+pub(crate) const PROGRESS_CHECKPOINT_SCHEMA: &str = "decodex.progress_checkpoint/2";
+
 /// One private, local-only execution event retained in the runtime SQLite ledger.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PrivateExecutionEvent {
@@ -48,6 +51,17 @@ impl PrivateExecutionEvent {
 	/// Structured JSON payload kept local to the runtime store.
 	pub fn payload(&self) -> &Value {
 		&self.payload
+	}
+
+	pub(crate) fn matches_contract(
+		&self,
+		event_type: &str,
+		schema: &str,
+		record_version: u64,
+	) -> bool {
+		self.event_type == event_type
+			&& self.payload.get("schema").and_then(Value::as_str) == Some(schema)
+			&& self.payload.get("record_version").and_then(Value::as_u64) == Some(record_version)
 	}
 
 	/// UTC timestamp when the runtime store recorded this row.

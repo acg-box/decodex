@@ -17,7 +17,6 @@ files are missing, fail closed before mutating cache state.
 
 Required reads:
 - `automations/radar/skills/codex-release-analysis/SKILL.md`
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
 
 Workflow:
 1. Read `.agent/automations/radar/cache/site-content/release-deltas/openai-codex-latest.json`

@@ -20,8 +20,6 @@ Required reads:
 - `automations/decodex/prompts/automation-manager.md`
 - `automations/decodex/scripts/operations/automation_effectiveness_scorecard.schema.json`
 - `automations/decodex/scripts/operations/summarize_automation_effectiveness.py`
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
-- `openwiki/integrations/radar-publisher-contracts.md`
 
 Weekly loop:
 1. Produce machine-readable scorecards for the latest seven-day window and the preceding seven-day window.

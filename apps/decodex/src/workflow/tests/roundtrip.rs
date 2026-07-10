@@ -35,7 +35,7 @@ before_remove_commands = []
 timeout_seconds = 60
 
 [context]
-read_first = ["openwiki/quickstart.md", "README.md"]
+read_first = ["README.md", "Cargo.toml"]
 +++
 
 Read the repo policy first.

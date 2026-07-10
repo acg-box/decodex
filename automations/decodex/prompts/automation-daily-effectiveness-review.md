@@ -13,8 +13,6 @@ Required reads:
 - `automations/radar/automations.toml`
 - `automations/decodex/scripts/operations/automation_effectiveness_scorecard.schema.json`
 - `automations/decodex/scripts/operations/summarize_automation_effectiveness.py`
-- `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`
-- `openwiki/integrations/radar-publisher-contracts.md`
 
 Workflow:
 1. Persist a one-day `automation_effectiveness_scorecard/v1` under `.agent/automations/decodex/cache/manager/scorecards/<yyyy-mm-dd>/daily.json`.

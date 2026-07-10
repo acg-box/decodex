@@ -89,15 +89,6 @@ decodex --help
 decodex <subcommand> --help
 ```
 
-The OpenWiki readiness command is:
-
-```sh
-decodex openwiki check
-```
-
-It checks the current repository OpenWiki surface (`openwiki/`) and keeps
-downstream knowledge-readiness automation on a Decodex-owned CLI contract.
-
 Important source modules:
 
 - `apps/decodex/src/cli/control_commands/run.rs`: `decodex run`.

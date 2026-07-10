@@ -60,15 +60,6 @@ fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
 		"summary": "Merged the approved lane and finished closeout."
 		}),
 	);
-
-	tests::seed_openwiki_impact_checkpoint(
-		tests::bridge_state_store(&bridge),
-		&review_context,
-		&issue.id,
-		"closeout",
-		&tests::sample_local_repo().head_oid,
-	);
-
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
@@ -164,15 +155,6 @@ fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
 		"summary": "Merged the approved lane and finished closeout."
 		}),
 	);
-
-	tests::seed_openwiki_impact_checkpoint(
-		tests::bridge_state_store(&bridge),
-		&review_context,
-		&issue.id,
-		"closeout",
-		&tests::sample_local_repo().head_oid,
-	);
-
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
