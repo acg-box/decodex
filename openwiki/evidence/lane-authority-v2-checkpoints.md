@@ -1338,6 +1338,52 @@ Machine evidence for the lexical binding cut:
 - no runtime source, runtime database, migration, external provider, Linear state, or
   GitHub PR lifecycle state changed.
 
+### C1I Rust type-path resolution
+
+Source cut `7e51ba5505a5715ddfa95a2cc681fd7b572ca8bf` adds an independently
+replayable Rust type-namespace path graph. The implementation checkpoints are
+`5544abfc`, `f41ffe10`, `fbe877a9`, `c26cf852`, and `7e51ba55`.
+The cut still contains 3,377 analysis source files and 10 tool files. It
+materializes 19,501 target-qualified Rust scopes, 29,338 type-namespace name
+bindings, and 24,843 use/re-export path resolutions:
+
+- 3,538 resolve to a canonical local module;
+- 11,258 resolve to a canonical local type declaration;
+- 5,069 resolve through a Cargo-metadata-attested external crate;
+- 4,978 remain conservatively unresolved;
+- zero are ambiguous, cyclic, visibility-inaccessible, or unsupported.
+
+The resolver does not inherit bare names across Rust module boundaries, treats
+anonymous `as _` imports separately from named conflicts, distinguishes the type
+namespace from value and macro namespaces, and applies `private`, `pub(super)`,
+`pub(crate)`, `pub(in ...)`, and public visibility at every selected hop.
+Cargo dependency renames and the standard crates are recorded on the exact Cargo
+target root instead of inferring an external crate from an unknown first segment.
+
+The verifier recursively consumes every flattened binding chain and independently
+replays anchors, lexical/direct lookup, namespace selection, visibility, external
+attestation, and the canonical terminal. A tamper test replaces a middle hop and
+recomputes the artifact digest; verification still rejects the forged chain.
+The indexed verifier replayed all 24,843 paths in 0.315 seconds in the local
+checkpoint benchmark.
+
+Machine evidence for the type-path cut:
+
+- all eight Rust parser tests pass;
+- all 47 locked Python contract/materializer tests pass;
+- the P2 and P3 verifiers pass; P3 reports 1,160 authority symbols, 15,983
+  reviewed-non-authority external symbols, and 73,457 unresolved symbols;
+- two complete P1/P2/P3 materializations produced identical SHAs for all 17
+  manifests;
+- the P3 analysis-cut digest is
+  `0afbdb1496932df01f1693b71306a92150895f696d653b069e59736fa2d8d92b`;
+- no runtime source, runtime database, migration, external provider, Linear state,
+  or GitHub PR lifecycle state changed.
+
+This checkpoint does not claim value/macro namespace closure or canonical receiver
+and local-call closure. The 4,978 unresolved type-path records remain executable
+incompleteness evidence until those consumers are separated and proved.
+
 ### C0 evidence commands
 
 ```sh
@@ -1354,12 +1400,11 @@ rg 'CREATE TABLE|PRIMARY KEY' apps/decodex/src/state/sqlite_store/schema*
 
 ### Next checkpoint
 
-Materialize target-qualified Rust module scopes, lexical name bindings, and independently
-replayable path resolutions from the exact Cargo target roots. Resolve local calls by
-canonical type-definition identity, then adjudicate the remaining dynamic/object calls,
-C0 candidates, and bounded dataflow without terminal-name guessing or generated semantic
-decisions. Keep the readiness gate at `C1I_INCOMPLETE`. C1 must not preserve global
-issue-keyed ownership behind a facade.
+Resolve receiver types and local calls by canonical type-definition identity. Add the
+separate Rust value/macro namespace evidence needed by those consumers, then adjudicate
+the remaining dynamic/object calls, C0 candidates, and bounded dataflow without
+terminal-name guessing or generated semantic decisions. Keep the readiness gate at
+`C1I_INCOMPLETE`. C1 must not preserve global issue-keyed ownership behind a facade.
 
 ## Program Checkpoint Table
 
