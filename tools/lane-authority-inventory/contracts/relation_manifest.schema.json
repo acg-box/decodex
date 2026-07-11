@@ -233,6 +233,29 @@
       "required": ["site_id", "source_node_id", "byte_start", "byte_end", "node_kind", "is_parser_root", "recovery_state"],
       "type": "object"
     },
+    "symbol_disposition": {
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"disposition": {"const": "resolved_local"}}, "required": ["disposition"]}, "then": {"properties": {"call_edge_ids": {"minItems": 1}, "catalog_disposition_id": {"const": null}, "dataflow_proof_id": {"const": null}, "policy_entry_id": {"const": null}, "reason_code": {"const": "canonical_local_call"}}}},
+        {"if": {"properties": {"disposition": {"enum": ["cataloged_authority_external", "cataloged_non_authority_external"]}}, "required": ["disposition"]}, "then": {"properties": {"call_edge_ids": {"maxItems": 0}, "catalog_disposition_id": {"$ref": "#/$defs/id"}, "dataflow_proof_id": {"const": null}, "policy_entry_id": {"$ref": "#/$defs/id"}}}},
+        {"if": {"properties": {"disposition": {"const": "language_intrinsic"}}, "required": ["disposition"]}, "then": {"properties": {"call_edge_ids": {"maxItems": 0}, "catalog_disposition_id": {"const": null}, "dataflow_proof_id": {"const": null}, "policy_entry_id": {"$ref": "#/$defs/id"}, "reason_code": {"const": "language_intrinsic_policy"}}}},
+        {"if": {"properties": {"disposition": {"const": "finite_dynamic_target"}}, "required": ["disposition"]}, "then": {"properties": {"call_edge_ids": {"maxItems": 0}, "catalog_disposition_id": {"$ref": "#/$defs/id"}, "dataflow_proof_id": {"$ref": "#/$defs/id"}, "policy_entry_id": {"$ref": "#/$defs/id"}, "reason_code": {"const": "finite_dynamic_dataflow"}}}},
+        {"if": {"properties": {"disposition": {"const": "rejected_dynamic_target"}}, "required": ["disposition"]}, "then": {"properties": {"call_edge_ids": {"maxItems": 0}, "catalog_disposition_id": {"const": null}, "dataflow_proof_id": {"const": null}, "policy_entry_id": {"const": null}, "reason_code": {"const": "dynamic_target_not_finite"}}}}
+      ],
+      "properties": {
+        "call_edge_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array", "uniqueItems": true},
+        "catalog_disposition_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "dataflow_proof_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "disposition": {"enum": ["resolved_local", "cataloged_authority_external", "cataloged_non_authority_external", "language_intrinsic", "finite_dynamic_target", "rejected_dynamic_target"]},
+        "disposition_id": {"$ref": "#/$defs/id"},
+        "evidence_digest": {"$ref": "#/$defs/digest"},
+        "policy_entry_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "reason_code": {"enum": ["canonical_local_call", "authority_external_policy", "reviewed_non_authority_external_policy", "language_intrinsic_policy", "finite_dynamic_dataflow", "dynamic_target_not_finite"]},
+        "site_id": {"$ref": "#/$defs/id"}
+      },
+      "required": ["disposition_id", "site_id", "disposition", "call_edge_ids", "policy_entry_id", "catalog_disposition_id", "dataflow_proof_id", "reason_code", "evidence_digest"],
+      "type": "object"
+    },
     "symbol_site": {
       "additionalProperties": false,
       "allOf": [
@@ -462,6 +485,7 @@
     {"properties": {"relation": {"const": "cfg_projections"}, "records": {"items": {"$ref": "#/$defs/cfg_projection"}}, "schema": {"const": "decodex/lane-authority-v2-c1i-cfg-projections/1"}}},
     {"properties": {"relation": {"const": "syntax_sites"}, "records": {"items": {"$ref": "#/$defs/syntax_site"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-syntax-sites/1"}}},
     {"properties": {"relation": {"const": "symbol_sites"}, "records": {"items": {"$ref": "#/$defs/symbol_site"}}, "schema": {"const": "decodex/lane-authority-v2-c1i-symbol-sites/1"}}},
+    {"properties": {"relation": {"const": "symbol_dispositions"}, "records": {"items": {"$ref": "#/$defs/symbol_disposition"}}, "schema": {"const": "decodex/lane-authority-v2-c1i-symbol-dispositions/1"}}},
     {"properties": {"relation": {"const": "rust_module_scopes"}, "records": {"items": {"$ref": "#/$defs/rust_module_scope"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-module-scopes/1"}}},
     {"properties": {"relation": {"const": "rust_name_bindings"}, "records": {"items": {"$ref": "#/$defs/rust_name_binding"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-name-bindings/1"}}},
     {"properties": {"relation": {"const": "rust_path_resolutions"}, "records": {"items": {"$ref": "#/$defs/rust_path_resolution"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-path-resolutions/1"}}},
@@ -481,7 +505,7 @@
   ],
   "properties": {
     "records": {"type": "array"},
-    "relation": {"enum": ["source_nodes", "cfg_projections", "syntax_sites", "symbol_sites", "rust_module_scopes", "rust_name_bindings", "rust_path_resolutions", "rust_receiver_type_resolutions", "rust_method_owner_resolutions", "rust_qualified_owner_resolutions", "data_sites", "call_edges", "dataflow_edges", "catalog_entry_dispositions", "candidate_records", "candidate_site_edges", "candidate_adjudications", "site_classifications", "supporting_inputs", "toolchain_receipts"]},
+    "relation": {"enum": ["source_nodes", "cfg_projections", "syntax_sites", "symbol_sites", "symbol_dispositions", "rust_module_scopes", "rust_name_bindings", "rust_path_resolutions", "rust_receiver_type_resolutions", "rust_method_owner_resolutions", "rust_qualified_owner_resolutions", "data_sites", "call_edges", "dataflow_edges", "catalog_entry_dispositions", "candidate_records", "candidate_site_edges", "candidate_adjudications", "site_classifications", "supporting_inputs", "toolchain_receipts"]},
     "schema": {"pattern": "^decodex/lane-authority-v2-c1i-[a-z0-9-]+/1$", "type": "string"}
   },
   "required": ["schema", "relation", "records"],

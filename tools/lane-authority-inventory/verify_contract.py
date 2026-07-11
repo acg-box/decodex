@@ -47,6 +47,9 @@ CANDIDATE_SITE_EDGES_PATH = Path(
 CATALOG_DISPOSITIONS_PATH = Path(
     "tools/lane-authority-inventory/manifests/relations/catalog_entry_dispositions.json"
 )
+SYMBOL_DISPOSITIONS_PATH = Path(
+    "tools/lane-authority-inventory/manifests/relations/symbol_dispositions.json"
+)
 REVIEW_RECEIPT_PATH = Path(
     "tools/lane-authority-inventory/reviews/c1i_integrated_review.json"
 )
@@ -172,6 +175,7 @@ EXPECTED_RELATIONS = {
     "rust_qualified_owner_resolutions",
     "supporting_inputs",
     "symbol_sites",
+    "symbol_dispositions",
     "syntax_sites",
     "toolchain_receipts",
 }
@@ -194,6 +198,7 @@ RELATION_DEFINITIONS = {
     "rust_qualified_owner_resolutions": "rust_qualified_owner_resolution",
     "supporting_inputs": "supporting_input",
     "symbol_sites": "symbol_site",
+    "symbol_dispositions": "symbol_disposition",
     "syntax_sites": "syntax_site",
     "toolchain_receipts": "toolchain_receipt",
 }
@@ -4007,12 +4012,88 @@ def verify_p3(root: Path) -> dict[str, Any]:
             }
     if dispositions != expected_dispositions:
         raise ContractError("P3 catalog dispositions are not the exact policy projection")
+
+    symbol_disposition_manifest = load_json(root, SYMBOL_DISPOSITIONS_PATH)
+    validate_typed_relation_manifest(
+        symbol_disposition_manifest, "symbol_dispositions", relation_schema
+    )
+    symbol_dispositions = _unique_index(
+        symbol_disposition_manifest["records"],
+        "disposition_id",
+        "P3 symbol dispositions",
+    )
+    call_edge_manifest = load_json(
+        root,
+        Path("tools/lane-authority-inventory/manifests/relations/call_edges.json"),
+    )
+    call_edge_ids_by_site: dict[str, list[str]] = {}
+    for edge in call_edge_manifest["records"]:
+        call_edge_ids_by_site.setdefault(edge["from_site_id"], []).append(edge["edge_id"])
+    authority_entry_ids = {entry["id"] for entry in authority_policy["entries"]}
+    catalog_disposition_by_site = {
+        disposition["site_id"]: disposition for disposition in dispositions.values()
+    }
+    expected_symbol_dispositions: dict[str, dict[str, Any]] = {}
+    rejected_symbol_count = 0
+    for site in symbols.values():
+        if site["role"] != "call_target":
+            continue
+        policy_entry = policy_by_identity.get((site["language"], site["signature"]))
+        call_edge_ids = sorted(call_edge_ids_by_site.get(site["site_id"], []))
+        catalog_disposition = catalog_disposition_by_site.get(site["site_id"])
+        policy_entry_id = None
+        catalog_disposition_id = None
+        dataflow_proof_id = None
+        if site["resolution"] == "local":
+            if not call_edge_ids:
+                raise ContractError("P3 local symbol disposition lacks call edges")
+            disposition = "resolved_local"
+            reason_code = "canonical_local_call"
+        elif policy_entry is not None and site["resolution"] == "unresolved":
+            if catalog_disposition is None or call_edge_ids:
+                raise ContractError("P3 policy symbol has inconsistent catalog or call edges")
+            policy_entry_id = policy_entry["id"]
+            catalog_disposition_id = catalog_disposition["disposition_id"]
+            if policy_entry_id in authority_entry_ids:
+                disposition = "cataloged_authority_external"
+                reason_code = "authority_external_policy"
+            else:
+                disposition = "cataloged_non_authority_external"
+                reason_code = "reviewed_non_authority_external_policy"
+        else:
+            disposition = "rejected_dynamic_target"
+            reason_code = "dynamic_target_not_finite"
+            rejected_symbol_count += 1
+        disposition_id = stable_parts_id(
+            "decodex/lane-authority-v2-symbol-disposition/1", site["site_id"]
+        )
+        expected_symbol_dispositions[disposition_id] = {
+            "call_edge_ids": call_edge_ids,
+            "catalog_disposition_id": catalog_disposition_id,
+            "dataflow_proof_id": dataflow_proof_id,
+            "disposition": disposition,
+            "disposition_id": disposition_id,
+            "evidence_digest": stable_parts_id(
+                "decodex/lane-authority-v2-symbol-disposition-evidence/1",
+                site["site_id"],
+                site["signature_digest"],
+                disposition,
+                *(call_edge_ids or [""]),
+                policy_entry_id or "",
+                catalog_disposition_id or "",
+                dataflow_proof_id or "",
+            ),
+            "policy_entry_id": policy_entry_id,
+            "reason_code": reason_code,
+            "site_id": site["site_id"],
+        }
+    if symbol_dispositions != expected_symbol_dispositions:
+        raise ContractError("P3 symbol dispositions are not the exact call-target projection")
     expected_used_digest = stable_id_set_digest(
         "decodex/lane-authority-v2-used-external-symbol-sites/1", external_sites
     )
     if catalog["used_external_symbol_set_digest"] != expected_used_digest:
         raise ContractError("P3 used external symbol digest disagrees")
-    authority_entry_ids = {entry["id"] for entry in authority_policy["entries"]}
     authority_sites = set().union(
         *(matched_by_entry[entry_id] for entry_id in authority_entry_ids)
     )
@@ -4026,6 +4107,10 @@ def verify_p3(root: Path) -> dict[str, Any]:
         "external_symbol_count": len(external_sites),
         "non_authority_external_symbol_count": len(external_sites - authority_sites),
         "phase": "P3",
+        "rejected_symbol_count": rejected_symbol_count,
+        "symbol_disposition_count": len(symbol_dispositions),
+        "unresolved_count": p2["unresolved_count"] - len(external_sites),
+        "unresolved_symbol_count": rejected_symbol_count,
     }
 
 

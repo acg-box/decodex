@@ -615,6 +615,46 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         ):
             self.materializer_p3.assert_immutable_inputs(REPO_ROOT, tampered)
 
+    def test_symbol_disposition_schema_enforces_disjoint_evidence(self):
+        schema = self.verifier.load_json(
+            REPO_ROOT,
+            Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json"),
+        )
+        record = {
+            "call_edge_ids": ["edge:one"],
+            "catalog_disposition_id": None,
+            "dataflow_proof_id": None,
+            "disposition": "resolved_local",
+            "disposition_id": "symbol-disposition:one",
+            "evidence_digest": "a" * 64,
+            "policy_entry_id": None,
+            "reason_code": "canonical_local_call",
+            "site_id": "symbol:one",
+        }
+        manifest = {
+            "records": [record],
+            "relation": "symbol_dispositions",
+            "schema": "decodex/lane-authority-v2-c1i-symbol-dispositions/1",
+        }
+        Draft202012Validator(schema).validate(manifest)
+
+        missing_local_edge = copy.deepcopy(manifest)
+        missing_local_edge["records"][0]["call_edge_ids"] = []
+        with self.assertRaises(ValidationError):
+            Draft202012Validator(schema).validate(missing_local_edge)
+
+        policy_laundered_rejection = copy.deepcopy(manifest)
+        policy_laundered_rejection["records"][0].update(
+            {
+                "call_edge_ids": [],
+                "disposition": "rejected_dynamic_target",
+                "policy_entry_id": "external-policy:invented",
+                "reason_code": "dynamic_target_not_finite",
+            }
+        )
+        with self.assertRaises(ValidationError):
+            Draft202012Validator(schema).validate(policy_laundered_rejection)
+
     def test_pending_authority_projection_is_only_allowed_for_materializer_preflight(self):
         catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
         external_policy = self.verifier.load_json(

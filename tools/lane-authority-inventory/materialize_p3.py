@@ -25,11 +25,11 @@ P3_OUTPUT_PATHS = {
 }
 
 
-def relation(records: list[dict[str, Any]]) -> dict[str, Any]:
+def relation(name: str, records: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "records": records,
-        "relation": "catalog_entry_dispositions",
-        "schema": "decodex/lane-authority-v2-c1i-catalog-entry-dispositions/1",
+        "relation": name,
+        "schema": f"decodex/lane-authority-v2-c1i-{name.replace('_', '-')}/1",
     }
 
 
@@ -174,8 +174,87 @@ def materialize(root: Path) -> dict[str, Any]:
             )
     dispositions.sort(key=lambda disposition: disposition["disposition_id"])
 
+    call_edges = contract.load_json(
+        root,
+        Path("tools/lane-authority-inventory/manifests/relations/call_edges.json"),
+    )["records"]
+    call_edge_ids_by_site: dict[str, list[str]] = {}
+    for edge in call_edges:
+        call_edge_ids_by_site.setdefault(edge["from_site_id"], []).append(edge["edge_id"])
+    catalog_disposition_by_site = {
+        disposition["site_id"]: disposition for disposition in dispositions
+    }
+    authority_policy_ids = {entry["id"] for entry in authority_policy["entries"]}
+    symbol_dispositions: list[dict[str, Any]] = []
+    for site in symbols:
+        if site["role"] != "call_target":
+            continue
+        policy_entry = policy_by_identity.get((site["language"], site["signature"]))
+        call_edge_ids = sorted(call_edge_ids_by_site.get(site["site_id"], []))
+        catalog_disposition = catalog_disposition_by_site.get(site["site_id"])
+        policy_entry_id = None
+        catalog_disposition_id = None
+        dataflow_proof_id = None
+        if site["resolution"] == "local":
+            if not call_edge_ids:
+                raise contract.ContractError("local symbol lacks canonical call edges")
+            disposition = "resolved_local"
+            reason_code = "canonical_local_call"
+        elif policy_entry is not None and site["resolution"] == "unresolved":
+            if catalog_disposition is None or call_edge_ids:
+                raise contract.ContractError(
+                    "cataloged external symbol has inconsistent edge projection"
+                )
+            policy_entry_id = policy_entry["id"]
+            catalog_disposition_id = catalog_disposition["disposition_id"]
+            if policy_entry_id in authority_policy_ids:
+                disposition = "cataloged_authority_external"
+                reason_code = "authority_external_policy"
+            else:
+                disposition = "cataloged_non_authority_external"
+                reason_code = "reviewed_non_authority_external_policy"
+        else:
+            disposition = "rejected_dynamic_target"
+            reason_code = "dynamic_target_not_finite"
+        disposition_id = contract.stable_parts_id(
+            "decodex/lane-authority-v2-symbol-disposition/1", site["site_id"]
+        )
+        evidence_digest = contract.stable_parts_id(
+            "decodex/lane-authority-v2-symbol-disposition-evidence/1",
+            site["site_id"],
+            site["signature_digest"],
+            disposition,
+            *(call_edge_ids or [""]),
+            policy_entry_id or "",
+            catalog_disposition_id or "",
+            dataflow_proof_id or "",
+        )
+        symbol_dispositions.append(
+            {
+                "call_edge_ids": call_edge_ids,
+                "catalog_disposition_id": catalog_disposition_id,
+                "dataflow_proof_id": dataflow_proof_id,
+                "disposition": disposition,
+                "disposition_id": disposition_id,
+                "evidence_digest": evidence_digest,
+                "policy_entry_id": policy_entry_id,
+                "reason_code": reason_code,
+                "site_id": site["site_id"],
+            }
+        )
+    symbol_dispositions.sort(key=lambda item: item["disposition_id"])
+
     write_json(root, contract.CATALOG_PATH, catalog)
-    write_json(root, contract.CATALOG_DISPOSITIONS_PATH, relation(dispositions))
+    write_json(
+        root,
+        contract.CATALOG_DISPOSITIONS_PATH,
+        relation("catalog_entry_dispositions", dispositions),
+    )
+    write_json(
+        root,
+        contract.SYMBOL_DISPOSITIONS_PATH,
+        relation("symbol_dispositions", symbol_dispositions),
+    )
     assert_immutable_inputs(root, immutable_before)
     evidence = contract.verify_p3(root)
     return {
