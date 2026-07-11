@@ -1487,6 +1487,14 @@ def replay_rust_type_path_resolution(
 
         while index < len(segments):
             if terminal is not None:
+                if terminal["status"] == "external":
+                    return {
+                        **terminal,
+                        "canonical_path": (
+                            f"{terminal['canonical_path']}::"
+                            f"{'::'.join(segments[index:])}"
+                        ),
+                    }
                 if terminal["status"] != "resolved_local_module":
                     return terminal
                 current_scope = scopes[terminal["canonical_module_scope_id"]]

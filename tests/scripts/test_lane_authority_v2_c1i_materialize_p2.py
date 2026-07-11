@@ -597,6 +597,34 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                 "visibility": "private",
             },
             {
+                "binding_id": "binding:collections-alias",
+                "binding_kind": "use",
+                "crate_target_id": "target:one",
+                "local_name": "collections",
+                "namespace": "type",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:time",
+                "surface_target_path": "std::collections",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
+            {
+                "binding_id": "binding:hash-map",
+                "binding_kind": "use",
+                "crate_target_id": "target:one",
+                "local_name": "HashMap",
+                "namespace": "type",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:time",
+                "surface_target_path": "collections::HashMap",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
+            {
                 "binding_id": "binding:private-type",
                 "binding_kind": "type_declaration",
                 "crate_target_id": "target:one",
@@ -641,6 +669,11 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         self.assertEqual("external", by_source["binding:write-anonymous"]["status"])
         self.assertEqual("unresolved", by_source["binding:time-value-reexport"]["status"])
         self.assertEqual("unresolved", by_source["binding:unknown-crate"]["status"])
+        self.assertEqual("external", by_source["binding:hash-map"]["status"])
+        self.assertEqual(
+            "std::collections::HashMap",
+            by_source["binding:hash-map"]["canonical_path"],
+        )
         self.assertEqual(
             "inaccessible", by_source["binding:inaccessible-private"]["status"]
         )

@@ -889,6 +889,15 @@ def resolve_rust_binding_paths(
 
         while index < len(segments):
             if terminal is not None:
+                if terminal["status"] == "external":
+                    return {
+                        **terminal,
+                        "binding_ids": path_binding_ids,
+                        "canonical_path": (
+                            f"{terminal['canonical_path']}::"
+                            f"{'::'.join(segments[index:])}"
+                        ),
+                    }
                 if terminal["status"] != "resolved_local_module":
                     return {**terminal, "binding_ids": path_binding_ids}
                 current_scope = scopes[terminal["canonical_module_scope_id"]]
