@@ -2,6 +2,7 @@
   "artifacts": [
     {"accepted_authority": false, "binding": "exact_head_gate", "path": "openwiki/evidence/lane-authority-v2-checkpoints.md", "role": "ledger"},
     {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/analysis_cut.json", "role": "analysis_cut"},
+    {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/authority_surface_catalog.json", "role": "catalog_projection"},
     {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/cfg_coverage.json", "role": "cfg_coverage"},
     {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/dataflow_proofs.json", "role": "dataflow_proof"},
     {"accepted_authority": true, "binding": "artifact_sha256", "path": "tools/lane-authority-inventory/manifests/inventory_composition.json", "role": "composition"},

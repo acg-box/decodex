@@ -18,7 +18,7 @@ from jsonschema.exceptions import SchemaError, ValidationError
 
 
 CHECKPOINT_PATH = Path("tools/lane-authority-inventory/contracts/p0_checkpoint.json")
-CATALOG_PATH = Path("tools/lane-authority-inventory/catalog/authority_surface_catalog.json")
+CATALOG_PATH = Path("tools/lane-authority-inventory/manifests/authority_surface_catalog.json")
 AUTHORITY_SYMBOL_POLICY_PATH = Path(
     "tools/lane-authority-inventory/catalog/authority_symbol_policy.json"
 )
@@ -259,6 +259,7 @@ EXPECTED_CROSS_RELATION_INVARIANTS = [
 EXPECTED_OUTPUT_ARTIFACTS = {
     "openwiki/evidence/lane-authority-v2-checkpoints.md": ("ledger", "exact_head_gate", False),
     "tools/lane-authority-inventory/manifests/analysis_cut.json": ("analysis_cut", "artifact_sha256", True),
+    "tools/lane-authority-inventory/manifests/authority_surface_catalog.json": ("catalog_projection", "artifact_sha256", True),
     "tools/lane-authority-inventory/manifests/cfg_coverage.json": ("cfg_coverage", "artifact_sha256", True),
     "tools/lane-authority-inventory/manifests/dataflow_proofs.json": ("dataflow_proof", "artifact_sha256", True),
     "tools/lane-authority-inventory/manifests/inventory_composition.json": ("composition", "artifact_sha256", True),
@@ -3960,20 +3961,17 @@ def verify_p3(root: Path) -> dict[str, Any]:
     matched_by_entry = {entry_id: set() for entry_id in policy_by_id}
     external_sites: set[str] = set()
     for site in symbols.values():
+        if site["resolution"] == "external":
+            raise ContractError("P3 observed a mutated P2 external symbol")
         identity = (site["language"], site["signature"])
         policy_entry = policy_by_identity.get(identity)
-        if site["resolution"] == "external":
-            if (
-                policy_entry is None
-                or site["role"] != "call_target"
-                or site["external"] is not True
-                or site["definition_site_ids"]
-            ):
-                raise ContractError("P3 external symbol lacks exact policy authority")
+        if (
+            policy_entry is not None
+            and site["role"] == "call_target"
+            and site["resolution"] == "unresolved"
+        ):
             matched_by_entry[policy_entry["id"]].add(site["site_id"])
             external_sites.add(site["site_id"])
-        elif policy_entry is not None and site["role"] == "call_target":
-            raise ContractError("P3 left an exact policy consumer unresolved")
     if any(not site_ids for site_ids in matched_by_entry.values()):
         raise ContractError("P3 external policy contains an unused entry")
 

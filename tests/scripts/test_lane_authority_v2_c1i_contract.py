@@ -683,7 +683,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         with (
             mock.patch.object(self.verifier, "verify_p2", return_value={}),
             mock.patch.object(self.verifier, "load_json", side_effect=load_tampered),
-            self.assertRaisesRegex(self.verifier.ContractError, "policy authority"),
+            self.assertRaisesRegex(self.verifier.ContractError, "mutated P2 external symbol"),
         ):
             self.verifier.verify_p3(REPO_ROOT)
 

@@ -15,9 +15,9 @@ self-approving document:
 
 - `tools/lane-authority-inventory/contracts/analysis_cut.schema.json` defines the
   non-self-referential accepted source cut;
-- `tools/lane-authority-inventory/contracts/authority_surface_catalog.schema.json` and
-  `tools/lane-authority-inventory/catalog/authority_surface_catalog.json` define the
-  independent catalog input, which remains intentionally empty in P0;
+- `tools/lane-authority-inventory/contracts/authority_surface_catalog.schema.json`
+  defines the generated catalog projection shape; independently authored semantic
+  policies remain under `tools/lane-authority-inventory/catalog/`;
 - `tools/lane-authority-inventory/contracts/dataflow_contract.schema.json` and
   `dataflow_contract.json` freeze the finite lattice, transfer rules, limits, Top reasons,
   and proof receipt;

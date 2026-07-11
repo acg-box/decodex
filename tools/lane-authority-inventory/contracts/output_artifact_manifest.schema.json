@@ -8,7 +8,7 @@
         "accepted_authority": {"type": "boolean"},
         "binding": {"enum": ["artifact_sha256", "composition_relation_receipt", "exact_head_gate", "diagnostic_only"]},
         "path": {"pattern": "^(?:openwiki/evidence|tools/lane-authority-inventory)/(?!.*\\.\\.)[a-zA-Z0-9_./-]+$", "type": "string"},
-        "role": {"enum": ["analysis_cut", "cfg_coverage", "composition", "dataflow_proof", "ledger", "relation", "rejection_report", "review_receipt", "source_inventory", "tool_receipt"]}
+        "role": {"enum": ["analysis_cut", "catalog_projection", "cfg_coverage", "composition", "dataflow_proof", "ledger", "relation", "rejection_report", "review_receipt", "source_inventory", "tool_receipt"]}
       },
       "required": ["path", "role", "binding", "accepted_authority"],
       "type": "object"

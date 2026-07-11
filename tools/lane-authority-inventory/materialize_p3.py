@@ -29,6 +29,30 @@ def write_json(root: Path, path: Path, value: dict[str, Any]) -> None:
     destination.write_text(contract.canonical_json(value), encoding="utf-8")
 
 
+def empty_catalog_projection() -> dict[str, Any]:
+    return {
+        "catalog_semantic_digest": "0" * 64,
+        "catalog_status": "p3_machine_validated_incomplete",
+        "dynamic_capability_roots": [],
+        "executable_declarative_paths": [],
+        "external_symbols": [],
+        "languages": ["python", "rust", "shell", "swift", "toml", "yaml"],
+        "local_closure_boundaries": [],
+        "persistent_data_roots": [],
+        "provider_and_config_roots": [],
+        "review_gate": {
+            "architecture_review_complete": True,
+            "p0_p4_machine_validation_only": True,
+            "p5_integrated_digest_requires_fresh_review": True,
+            "semantic_change_invalidates_ready_review": True,
+        },
+        "reviewed_non_authority_external_symbols": [],
+        "schema": "decodex/lane-authority-v2-authority-surface-catalog/1",
+        "toolchain_matrix": [],
+        "used_external_symbol_set_digest": "0" * 64,
+    }
+
+
 def materialize(root: Path) -> dict[str, Any]:
     contract.verify_p2(root, allow_pending_authority_projection=True)
     policy = contract.load_json(root, contract.EXTERNAL_SYMBOL_POLICY_PATH)
@@ -63,21 +87,8 @@ def materialize(root: Path) -> dict[str, Any]:
         if site["role"] != "call_target":
             continue
         entry = policy_by_identity.get((site["language"], site["signature"]))
-        if site["resolution"] == "external":
-            if (
-                entry is None
-                or site["external"] is not True
-                or site["definition_site_ids"]
-            ):
-                raise contract.ContractError(
-                    "existing external symbol lacks exact policy authority"
-                )
-            consumers[entry["id"]].add(site["site_id"])
-            continue
         if entry is None or site["resolution"] != "unresolved":
             continue
-        site["external"] = True
-        site["resolution"] = "external"
         consumers[entry["id"]].add(site["site_id"])
     unused_entries = sorted(entry_id for entry_id, sites in consumers.items() if not sites)
     if unused_entries:
@@ -85,13 +96,7 @@ def materialize(root: Path) -> dict[str, Any]:
             f"external symbol policy entries have no exact consumers: {unused_entries}"
         )
 
-    catalog = contract.load_json(root, contract.CATALOG_PATH)
-    if catalog["catalog_status"] not in {
-        "p0_schema_only_incomplete",
-        "p3_machine_validated_incomplete",
-    }:
-        raise contract.ContractError("P3 materialization requires a P0 or P3 policy catalog")
-    catalog["catalog_status"] = "p3_machine_validated_incomplete"
+    catalog = empty_catalog_projection()
     for section, section_policy, builder in policy_sets:
         section_ids = {entry["id"] for entry in section_policy["entries"]}
         catalog[section] = [
@@ -131,7 +136,6 @@ def materialize(root: Path) -> dict[str, Any]:
             )
     dispositions.sort(key=lambda disposition: disposition["disposition_id"])
 
-    write_json(root, SYMBOLS_PATH, symbol_manifest)
     write_json(root, contract.CATALOG_PATH, catalog)
     write_json(root, contract.CATALOG_DISPOSITIONS_PATH, relation(dispositions))
     evidence = contract.verify_p3(root)
