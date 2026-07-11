@@ -142,6 +142,32 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         ):
             self.verifier.verify_p2(REPO_ROOT)
 
+    def test_p2_rejects_rust_name_binding_identity_tampering(self):
+        relation_path = Path(
+            "tools/lane-authority-inventory/manifests/relations/rust_name_bindings.json"
+        )
+        manifest = self.verifier.load_json(REPO_ROOT, relation_path)
+        tampered = copy.deepcopy(manifest)
+        binding = next(
+            record
+            for record in tampered["records"]
+            if record["resolution"] == "resolved"
+        )
+        binding["local_name"] += "Forged"
+        original_load = self.verifier.load_json
+
+        def load_tampered(root, path):
+            if path == relation_path:
+                return copy.deepcopy(tampered)
+            return original_load(root, path)
+
+        with mock.patch.object(
+            self.verifier, "load_json", side_effect=load_tampered
+        ), self.assertRaisesRegex(
+            self.verifier.ContractError, "Rust name binding id drifted"
+        ):
+            self.verifier.verify_p2(REPO_ROOT)
+
     def test_changed_path_policy_rejects_runtime_source(self):
         self.assertEqual(
             ["apps/decodex/src/lib.rs"],
