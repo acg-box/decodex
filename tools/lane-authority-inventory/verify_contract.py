@@ -116,6 +116,11 @@ PARSER_ROOT_KINDS = {
     "toml": "document",
     "yaml": "stream",
 }
+RUST_PRELUDE_TYPE_PATHS = {
+    "Option": "core::option::Option",
+    "String": "alloc::string::String",
+    "Vec": "alloc::vec::Vec",
+}
 EXPECTED_LATTICE = [
     "Bottom",
     "Constant",
@@ -3212,6 +3217,11 @@ def verify_p2(
             or lexical_scope["crate_target_id"] != resolution["crate_target_id"]
             or lexical_scope["source_node_id"] != syntax_site["source_node_id"]
             or resolution["surface_path"] != symbol["receiver_type_signature"]
+            or resolution["query_path"]
+            != RUST_PRELUDE_TYPE_PATHS.get(
+                symbol["receiver_type_signature"],
+                symbol["receiver_type_signature"],
+            )
             or resolution["receiver_type_evidence"] != symbol["receiver_type_evidence"]
             or resolution["reason_code"] != reason_by_status[resolution["status"]]
             or any(binding_id not in rust_bindings for binding_id in resolution["binding_ids"])
@@ -3242,6 +3252,7 @@ def verify_p2(
             resolution["crate_target_id"],
             lexical_scope["scope_id"],
             resolution["surface_path"],
+            resolution["query_path"],
         )
         expected_resolution_id = stable_parts_id(
             "decodex/lane-authority-v2-rust-receiver-type-resolution/1",
@@ -3249,6 +3260,7 @@ def verify_p2(
             resolution["crate_target_id"],
             lexical_scope["scope_id"],
             resolution["surface_path"],
+            resolution["query_path"],
             resolution["status"],
             resolution["canonical_path"] or "",
         )
@@ -3277,7 +3289,7 @@ def verify_p2(
             "resolution": "unresolved",
             "scope_id": lexical_scope["scope_id"],
             "source_node_id": syntax_site["source_node_id"],
-            "surface_target_path": resolution["surface_path"],
+            "surface_target_path": resolution["query_path"],
             "syntax_site_id": symbol["syntax_site_id"],
             "target_scope_id": None,
             "target_symbol_site_id": None,

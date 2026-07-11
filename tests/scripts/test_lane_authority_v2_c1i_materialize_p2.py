@@ -520,14 +520,26 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                         "role": "call_target",
                         "site_id": "symbol:receiver-call",
                         "syntax_site_id": "syntax:receiver-call",
-                    }
+                    },
+                    {
+                        "language": "rust",
+                        "receiver_type_evidence": "explicit_local_type",
+                        "receiver_type_signature": "Option",
+                        "role": "call_target",
+                        "site_id": "symbol:option-call",
+                        "syntax_site_id": "syntax:receiver-call",
+                    },
                 ],
                 scopes,
                 bindings,
             )
         )
-        self.assertEqual(1, len(receiver_resolutions))
-        receiver = receiver_resolutions[0]
+        self.assertEqual(2, len(receiver_resolutions))
+        by_symbol = {
+            resolution["source_symbol_site_id"]: resolution
+            for resolution in receiver_resolutions
+        }
+        receiver = by_symbol["symbol:receiver-call"]
         self.assertEqual("resolved_local_type", receiver["status"])
         self.assertEqual("symbol:state-store", receiver["canonical_type_definition_site_id"])
         self.assertEqual(
@@ -539,6 +551,11 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
             ],
             receiver["binding_ids"],
         )
+        option = by_symbol["symbol:option-call"]
+        self.assertEqual("external", option["status"])
+        self.assertEqual("Option", option["surface_path"])
+        self.assertEqual("core::option::Option", option["query_path"])
+        self.assertEqual("core::option::Option", option["canonical_path"])
 
     def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
         scopes = [

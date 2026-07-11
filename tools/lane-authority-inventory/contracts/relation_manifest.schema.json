@@ -112,6 +112,7 @@
         "namespace": {"const": "type"},
         "purpose": {"const": "receiver_type"},
         "query_binding_id": {"$ref": "#/$defs/id"},
+        "query_path": {"minLength": 1, "maxLength": 512, "type": "string"},
         "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied"]},
         "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type"]},
         "resolution_digest": {"$ref": "#/$defs/digest"},
@@ -121,7 +122,7 @@
         "status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]},
         "surface_path": {"minLength": 1, "maxLength": 512, "type": "string"}
       },
-      "required": ["resolution_id", "purpose", "crate_target_id", "lexical_scope_id", "namespace", "surface_path", "canonical_path", "canonical_module_scope_id", "canonical_type_definition_site_id", "query_binding_id", "source_symbol_site_id", "source_syntax_site_id", "receiver_type_evidence", "binding_ids", "status", "reason_code", "resolution_digest"],
+      "required": ["resolution_id", "purpose", "crate_target_id", "lexical_scope_id", "namespace", "surface_path", "query_path", "canonical_path", "canonical_module_scope_id", "canonical_type_definition_site_id", "query_binding_id", "source_symbol_site_id", "source_syntax_site_id", "receiver_type_evidence", "binding_ids", "status", "reason_code", "resolution_digest"],
       "type": "object"
     },
     "source_node": {

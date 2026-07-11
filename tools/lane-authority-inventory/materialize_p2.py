@@ -22,6 +22,11 @@ CANDIDATE_RECORDS_PATH = Path(
     "tools/lane-authority-inventory/manifests/relations/candidate_records.json"
 )
 RELATION_ROOT = Path("tools/lane-authority-inventory/manifests/relations")
+RUST_PRELUDE_TYPE_PATHS = {
+    "Option": "core::option::Option",
+    "String": "alloc::string::String",
+    "Vec": "alloc::vec::Vec",
+}
 
 
 def canonical_id(domain: str, *parts: str) -> str:
@@ -1024,6 +1029,7 @@ def materialize_rust_receiver_type_resolutions(
         surface = symbol["receiver_type_signature"]
         if symbol["language"] != "rust" or symbol["role"] != "call_target" or surface is None:
             continue
+        query_path = RUST_PRELUDE_TYPE_PATHS.get(surface, surface)
         syntax = syntax_by_id[symbol["syntax_site_id"]]
         candidates = [
             scope
@@ -1071,6 +1077,7 @@ def materialize_rust_receiver_type_resolutions(
                 target_id,
                 lexical_scope["scope_id"],
                 surface,
+                query_path,
             )
             query = {
                 "binding_id": query_binding_id,
@@ -1082,7 +1089,7 @@ def materialize_rust_receiver_type_resolutions(
                 "resolution": "unresolved",
                 "scope_id": lexical_scope["scope_id"],
                 "source_node_id": syntax["source_node_id"],
-                "surface_target_path": surface,
+                "surface_target_path": query_path,
                 "syntax_site_id": symbol["syntax_site_id"],
                 "target_scope_id": None,
                 "target_symbol_site_id": None,
@@ -1114,6 +1121,7 @@ def materialize_rust_receiver_type_resolutions(
             symbol["site_id"],
             query["crate_target_id"],
             query["scope_id"],
+            symbol["receiver_type_signature"],
             query["surface_target_path"],
             path["status"],
             path.get("canonical_path") or "",
@@ -1129,6 +1137,7 @@ def materialize_rust_receiver_type_resolutions(
             "lexical_scope_id": query["scope_id"],
             "namespace": "type",
             "purpose": "receiver_type",
+            "query_path": query["surface_target_path"],
             "query_binding_id": query_binding_id,
             "reason_code": path["reason_code"],
             "receiver_type_evidence": symbol["receiver_type_evidence"],
@@ -1136,7 +1145,7 @@ def materialize_rust_receiver_type_resolutions(
             "source_symbol_site_id": symbol["site_id"],
             "source_syntax_site_id": symbol["syntax_site_id"],
             "status": path["status"],
-            "surface_path": query["surface_target_path"],
+            "surface_path": symbol["receiver_type_signature"],
         }
         record["resolution_digest"] = hashlib.sha256(
             contract.canonical_json(record).encode("utf-8")
