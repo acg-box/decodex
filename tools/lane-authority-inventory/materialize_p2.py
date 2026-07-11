@@ -404,7 +404,17 @@ def materialize(root: Path) -> dict[str, Any]:
         ),
     )
     parser_errors = sum(source["parser_error_count"] for source in parsed["source_nodes"])
+    symbol_fact_counts = {
+        f"{role}_{hint}_symbol_facts": sum(
+            1
+            for fact in parsed["semantic_symbol_facts"]
+            if fact["role"] == role and fact["resolution_hint"] == hint
+        )
+        for role in ("call_target", "declaration")
+        for hint in ("dynamic", "exact", "qualified")
+    }
     return {
+        **symbol_fact_counts,
         "candidate_site_edges": len(parsed["candidate_site_edges"]),
         "cfg_projections": len(cfg_projections),
         "call_edges": len(call_edges),

@@ -84,7 +84,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         result = self.verifier.verify_p1(REPO_ROOT)
 
         self.assertEqual("P1", result["phase"])
-        self.assertEqual(3376, result["analysis_source_count"])
+        self.assertEqual(3377, result["analysis_source_count"])
         self.assertGreaterEqual(result["tool_source_count"], 5)
         self.assertEqual(0, result["deleted_tombstone_count"])
         self.assertEqual(41057, result["candidate_record_count"])

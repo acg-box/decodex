@@ -70,9 +70,27 @@ struct CandidateSiteEdge {
 }
 
 #[derive(Serialize)]
+struct SemanticSymbolFact {
+	resolution_hint: String,
+	role: String,
+	signature: String,
+	signature_digest: String,
+	source_node_id: String,
+	syntax_site_id: String,
+}
+
+#[derive(Serialize)]
 struct ParseOutput {
 	candidate_site_edges: Vec<CandidateSiteEdge>,
+	semantic_symbol_facts: Vec<SemanticSymbolFact>,
 	source_nodes: Vec<ParsedSource>,
+	syntax_sites: Vec<SyntaxSite>,
+}
+
+struct ParsedSourceOutput {
+	candidate_site_edges: Vec<CandidateSiteEdge>,
+	semantic_symbol_facts: Vec<SemanticSymbolFact>,
+	source: ParsedSource,
 	syntax_sites: Vec<SyntaxSite>,
 }
 
@@ -109,6 +127,75 @@ fn language(name: &str) -> Result<Language, String> {
 
 fn materialize_kind(kind: &str) -> bool {
 	["call", "command", "exec", "macro", "redirect"].iter().any(|needle| kind.contains(needle))
+}
+
+fn declaration_name_node<'tree>(language: &str, node: Node<'tree>) -> Option<Node<'tree>> {
+	let declaration = match language {
+		"python" => node.kind() == "function_definition",
+		"rust" => node.kind() == "function_item",
+		"shell" => node.kind() == "function_definition",
+		"swift" => node.kind() == "function_declaration",
+		_ => false,
+	};
+	declaration.then(|| node.child_by_field_name("name")).flatten()
+}
+
+fn call_target_node<'tree>(language: &str, node: Node<'tree>) -> Option<Node<'tree>> {
+	match (language, node.kind()) {
+		("rust", "call_expression") | ("python", "call") => node.child_by_field_name("function"),
+		("rust", "macro_invocation") => node.child_by_field_name("macro"),
+		("swift", "call_expression") =>
+			node.child_by_field_name("called_expression").or_else(|| {
+				let mut cursor = node.walk();
+				node.named_children(&mut cursor).next()
+			}),
+		("shell", "command") => {
+			let mut cursor = node.walk();
+			node.named_children(&mut cursor).next()
+		},
+		_ => None,
+	}
+}
+
+fn classify_symbol_signature(text: &str, node_kind: &str) -> (String, String) {
+	let exact = !text.is_empty()
+		&& text.len() <= 256
+		&& text.chars().all(|character| character.is_alphanumeric() || character == '_');
+	let qualified = !text.is_empty()
+		&& text.len() <= 256
+		&& text.chars().all(|character| {
+			character.is_alphanumeric()
+				|| matches!(character, '_' | ':' | '.' | '!' | '#' | '$' | '-')
+		});
+	if exact {
+		(text.to_owned(), "exact".to_owned())
+	} else if qualified {
+		(text.to_owned(), "qualified".to_owned())
+	} else {
+		(format!("<dynamic:{node_kind}>"), "dynamic".to_owned())
+	}
+}
+
+fn symbol_signature(bytes: &[u8], node: Node<'_>) -> (String, String) {
+	classify_symbol_signature(node.utf8_text(bytes).unwrap_or_default().trim(), node.kind())
+}
+
+fn semantic_symbol_fact(
+	bytes: &[u8],
+	source_id: &str,
+	site: Node<'_>,
+	symbol: Node<'_>,
+	role: &str,
+) -> SemanticSymbolFact {
+	let (signature, resolution_hint) = symbol_signature(bytes, symbol);
+	SemanticSymbolFact {
+		resolution_hint,
+		role: role.to_owned(),
+		signature_digest: sha256(&[signature.as_bytes()]),
+		signature,
+		source_node_id: source_id.to_owned(),
+		syntax_site_id: site_id(source_id, site),
+	}
 }
 
 fn site_id(source_id: &str, node: Node<'_>) -> String {
@@ -161,10 +248,12 @@ fn parse_source(
 	root: &Path,
 	source: SourceIdentity,
 	candidates: &[&Candidate],
-) -> Result<(ParsedSource, Vec<SyntaxSite>, Vec<CandidateSiteEdge>), String> {
+) -> Result<ParsedSourceOutput, String> {
 	if source.status == "deleted" {
-		return Ok((
-			ParsedSource {
+		return Ok(ParsedSourceOutput {
+			candidate_site_edges: Vec::new(),
+			semantic_symbol_facts: Vec::new(),
+			source: ParsedSource {
 				identity: source,
 				parser_error_count: 0,
 				parser_node_count: 0,
@@ -177,9 +266,8 @@ fn parse_source(
 				),
 				zero_syntax_reason_code: Some("deleted_tombstone".to_owned()),
 			},
-			Vec::new(),
-			Vec::new(),
-		));
+			syntax_sites: Vec::new(),
+		});
 	}
 	let bytes = fs::read(root.join(&source.path)).map_err(|error| error.to_string())?;
 	if bytes.len() != source.byte_length || sha256(&[&bytes]) != source.content_digest {
@@ -207,7 +295,10 @@ fn parse_source(
 		.collect();
 	let mut selected: BTreeMap<String, Node<'_>> = BTreeMap::new();
 	for node in &nodes {
-		if *node == tree.root_node() || materialize_kind(node.kind()) {
+		if *node == tree.root_node()
+			|| materialize_kind(node.kind())
+			|| declaration_name_node(&source.language, *node).is_some()
+		{
 			selected.insert(site_id(&source.source_node_id, *node), *node);
 		}
 	}
@@ -247,9 +338,32 @@ fn parse_source(
 			}
 		})
 		.collect();
+	let mut semantic_symbol_facts = Vec::new();
+	for node in selected.values().copied() {
+		if let Some(name) = declaration_name_node(&source.language, node) {
+			semantic_symbol_facts.push(semantic_symbol_fact(
+				&bytes,
+				&source.source_node_id,
+				node,
+				name,
+				"declaration",
+			));
+		}
+		if let Some(target) = call_target_node(&source.language, node) {
+			semantic_symbol_facts.push(semantic_symbol_fact(
+				&bytes,
+				&source.source_node_id,
+				node,
+				target,
+				"call_target",
+			));
+		}
+	}
 	let receipt_id = format!("tool:{}:parser:common", source.language);
-	Ok((
-		ParsedSource {
+	Ok(ParsedSourceOutput {
+		candidate_site_edges: edges,
+		semantic_symbol_facts,
+		source: ParsedSource {
 			identity: source,
 			parser_error_count,
 			parser_node_count: nodes.len(),
@@ -262,9 +376,8 @@ fn parse_source(
 			),
 			zero_syntax_reason_code: None,
 		},
-		sites,
-		edges,
-	))
+		syntax_sites: sites,
+	})
 }
 
 fn arguments() -> Result<(PathBuf, PathBuf, PathBuf, PathBuf), String> {
@@ -293,22 +406,30 @@ fn run() -> Result<(), String> {
 	}
 	let mut output = ParseOutput {
 		candidate_site_edges: Vec::new(),
+		semantic_symbol_facts: Vec::new(),
 		source_nodes: Vec::new(),
 		syntax_sites: Vec::new(),
 	};
 	for source in inventory.records {
 		let candidates =
 			candidates_by_source.get(&source.source_node_id).map(Vec::as_slice).unwrap_or_default();
-		let (parsed, mut sites, mut edges) = parse_source(&root, source, candidates)?;
-		output.source_nodes.push(parsed);
-		output.syntax_sites.append(&mut sites);
-		output.candidate_site_edges.append(&mut edges);
+		let mut parsed = parse_source(&root, source, candidates)?;
+		output.source_nodes.push(parsed.source);
+		output.syntax_sites.append(&mut parsed.syntax_sites);
+		output.candidate_site_edges.append(&mut parsed.candidate_site_edges);
+		output.semantic_symbol_facts.append(&mut parsed.semantic_symbol_facts);
 	}
 	output
 		.source_nodes
 		.sort_by(|left, right| left.identity.source_node_id.cmp(&right.identity.source_node_id));
 	output.syntax_sites.sort_by(|left, right| left.site_id.cmp(&right.site_id));
 	output.candidate_site_edges.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
+	output.semantic_symbol_facts.sort_by(|left, right| {
+		left.syntax_site_id
+			.cmp(&right.syntax_site_id)
+			.then_with(|| left.role.cmp(&right.role))
+			.then_with(|| left.signature.cmp(&right.signature))
+	});
 	fs::write(output_path, serde_json::to_vec(&output).map_err(|error| error.to_string())?)
 		.map_err(|error| error.to_string())?;
 	Ok(())
@@ -318,5 +439,30 @@ fn main() {
 	if let Err(error) = run() {
 		eprintln!("lane-authority-inventory: {error}");
 		std::process::exit(1);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::classify_symbol_signature;
+
+	#[test]
+	fn classifies_exact_and_qualified_symbol_signatures() {
+		assert_eq!(
+			("dispatch".to_owned(), "exact".to_owned()),
+			classify_symbol_signature("dispatch", "identifier")
+		);
+		assert_eq!(
+			("runtime::dispatch".to_owned(), "qualified".to_owned()),
+			classify_symbol_signature("runtime::dispatch", "scoped_identifier")
+		);
+	}
+
+	#[test]
+	fn dynamic_symbol_signature_does_not_retain_source_text() {
+		assert_eq!(
+			("<dynamic:closure_expression>".to_owned(), "dynamic".to_owned()),
+			classify_symbol_signature("factory()(secret)", "closure_expression")
+		);
 	}
 }
