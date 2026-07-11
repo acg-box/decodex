@@ -1105,7 +1105,7 @@ identities with complete parser/cfg/site/edge/supporting-input/tool receipt evid
 
 ### C1I P2 bounded parser and graph checkpoint
 
-P2 source cut is `8e72ffb9e67b03da10d65ffa056ee32a6da11853`. The tool-local,
+P2 source cut is `1545e6cc34cb27c562ad997f77b23ffa74a29f0b`. The tool-local,
 hash-locked Rust workspace uses mature tree-sitter grammars for Rust, Python, Swift,
 shell, TOML, and YAML. It parses a temporary read-only Git archive, verifies every source
 byte against P1 identity, traverses every named node, and records per-source node
@@ -1116,12 +1116,18 @@ and dataflow edges, and exact parser/platform receipts.
 P2 evidence totals:
 
 - 3,386 source records: 3,377 analysis and 9 tool sources;
-- 1,297,252 traversed parser nodes and 134,937 materialized syntax sites;
+- 1,298,172 traversed parser nodes and 143,922 materialized syntax sites;
 - 41,057 candidate-site edges and 41,057 typed data sites/dataflow edges;
-- 100,157 syntactic call edges;
+- 100,227 syntactic call edges;
 - 13,544 common/Linux/macOS source-level cfg/target projections;
 - 18 receipts: one common parser plus Linux/macOS slices for each of six languages;
-- artifact SHA-list digest `1783087fcb3830bc23049bbc50c86d598545eb26d3c4aa0b69f6a11ec82d7c34`.
+- artifact SHA-list digest `67efa269f8945b5f0f1b1e8e53a054f7f1fcbde491d48206771e53df54c6f08e`.
+
+The parser also emits transient semantic facts for 8,915 exact declarations and 96,540
+call targets: 23,818 exact, 49,227 qualified, and 23,495 dynamic. Dynamic signatures retain
+only their parser node kind, never source text. P2 call edges remain syntax-only placeholder
+edges to each source root; P3 must replace them with language-resolved local edges and
+catalog dispositions. They are not accepted call-graph authority.
 
 Two consecutive P1/P2 materializations from the exact source cut produced byte-identical
 artifacts. The P2 contract verifier exits zero. The broad C1I readiness gate remains an
@@ -1134,7 +1140,7 @@ binds the compiler identity plus recovery-source set into its tool receipt. The 
 parser accepts the file, so unresolved parser recovery is zero; a native parse failure
 remains a hard materialization failure. Candidate adjudication and semantic call/dataflow
 resolution remain intentionally unresolved. P2 therefore remains `C1I_INCOMPLETE` with
-182,271 unresolved candidate/edge items; no P2 artifact is ready authority.
+182,341 unresolved candidate/edge items; no P2 artifact is ready authority.
 
 ### C0 evidence commands
 
