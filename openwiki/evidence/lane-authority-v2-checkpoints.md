@@ -1240,6 +1240,37 @@ Machine evidence for the receiver proof cut:
 - no runtime source, runtime database, migration, external provider, Linear state, or
   GitHub PR lifecycle state changed.
 
+#### Exact Cargo target binding cut
+
+Source cut `5246bb740de32b1e91846f25838c4681e1951f94` removes directory-layout
+authority from the planned local Rust closure. P2 now runs
+`cargo metadata --locked --no-deps` against the read-only exact Git archive, normalizes
+away temporary absolute paths and Cargo package-id noise, and binds each package
+manifest, target name/kind, edition, crate type, and target root to an exact source-node
+identity. Workspace members and the standalone inventory tool produce ten unique Cargo
+targets. Missing manifests, target roots outside the cut, non-Rust target roots, escaping
+paths, duplicate target ids, and conflicting metadata reject.
+
+The normalized target set and Cargo version are included in the Rust parser receipt
+identity. Two complete P1/P2/P3 materializations from the source cut produced identical
+SHAs for all eight changed generated artifacts, proving that temporary extraction paths
+do not affect the receipt or inventory. The exact cut has 3,387 source nodes, 146,169
+syntax sites, 107,701 symbol sites, 10,472 declarations, 7,149 local call edges, 13,548
+cfg projections, 72,974 unresolved symbols, and 155,088 total unresolved
+candidate/symbol/dataflow items. The authority projection remains 1,160 sites and the
+reviewed-non-authority projection remains 15,946 sites.
+
+Machine evidence for the Cargo target binding cut:
+
+- all 39 locked Python contract/materializer tests pass, including path escape, missing
+  source-root, and normalized-target fixtures;
+- the P3 verifier passes with analysis-cut digest
+  `c5acf2b295e6c9a86dbc82a8adbef95f3e4a7b421db7384913637a8213764f1d`;
+- `scripts/verify_lane_authority_v2_gates.sh C1I` returns the expected exit 1 with reason
+  `c1i_phase_incomplete`;
+- no runtime source, runtime database, migration, external provider, Linear state, or
+  GitHub PR lifecycle state changed.
+
 ### C0 evidence commands
 
 ```sh
@@ -1256,10 +1287,12 @@ rg 'CREATE TABLE|PRIMARY KEY' apps/decodex/src/state/sqlite_store/schema*
 
 ### Next checkpoint
 
-Complete local Rust receiver/declaration closure with module-qualified type identity,
-then adjudicate the remaining dynamic/object calls, C0 candidates, and bounded dataflow
-without terminal-name guessing or generated semantic decisions. Keep the readiness gate
-at `C1I_INCOMPLETE`. C1 must not preserve global issue-keyed ownership behind a facade.
+Materialize target-qualified Rust module scopes, lexical name bindings, and independently
+replayable path resolutions from the exact Cargo target roots. Resolve local calls by
+canonical type-definition identity, then adjudicate the remaining dynamic/object calls,
+C0 candidates, and bounded dataflow without terminal-name guessing or generated semantic
+decisions. Keep the readiness gate at `C1I_INCOMPLETE`. C1 must not preserve global
+issue-keyed ownership behind a facade.
 
 ## Program Checkpoint Table
 
