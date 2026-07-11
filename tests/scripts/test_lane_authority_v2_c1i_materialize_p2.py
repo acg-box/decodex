@@ -589,6 +589,49 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         self.assertEqual("StateStore", implicit_self["query_path"])
         self.assertEqual("resolved_local_type", implicit_self["status"])
 
+        owner_resolutions = self.materializer.materialize_rust_method_owner_resolutions(
+            [
+                {
+                    "byte_end": 20,
+                    "byte_start": 10,
+                    "site_id": "syntax:method",
+                    "source_node_id": "source:root",
+                }
+            ],
+            [
+                {
+                    "language": "rust",
+                    "owner_signature": "crate::state::StateStore",
+                    "role": "declaration",
+                    "site_id": "symbol:method",
+                    "syntax_site_id": "syntax:method",
+                },
+                {
+                    "language": "rust",
+                    "owner_signature": "Option",
+                    "role": "declaration",
+                    "site_id": "symbol:option-method",
+                    "syntax_site_id": "syntax:method",
+                },
+            ],
+            scopes,
+            bindings,
+        )
+        self.assertEqual(2, len(owner_resolutions))
+        owners_by_symbol = {
+            resolution["source_symbol_site_id"]: resolution
+            for resolution in owner_resolutions
+        }
+        local_owner = owners_by_symbol["symbol:method"]
+        self.assertEqual("resolved_local_type", local_owner["status"])
+        self.assertEqual(
+            "symbol:state-store", local_owner["canonical_type_definition_site_id"]
+        )
+        option_owner = owners_by_symbol["symbol:option-method"]
+        self.assertEqual("Option", option_owner["surface_path"])
+        self.assertEqual("core::option::Option", option_owner["query_path"])
+        self.assertEqual("external", option_owner["status"])
+
     def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
         scopes = [
             {
