@@ -2769,6 +2769,7 @@ def verify_p2(
                 "rust_name_bindings",
                 "rust_path_resolutions",
                 "rust_receiver_type_resolutions",
+                "rust_method_owner_resolutions",
                 "supporting_inputs",
                 "symbol_sites",
                 "toolchain_receipts",
