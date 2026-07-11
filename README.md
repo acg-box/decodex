@@ -26,8 +26,8 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 - Static Astro site for the public Decodex product surface and app download entry.
 - Installable Decodex agent plugin for runtime planning, operations, commit, and
   landing workflows.
-- GitHub Actions workflows for language checks, CodeQL scanning, Pages deploys,
-  and release packaging.
+- GitHub Actions workflows for language checks, Pages deploys, and release
+  packaging.
 - OpenWiki-backed project knowledge under `openwiki/`, split by architecture,
   workflows, contracts, operations, and integrations.
 

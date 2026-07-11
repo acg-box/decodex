@@ -46,7 +46,8 @@ Use the owner path to choose the first validation surface:
 - `site/`: Astro/TypeScript public static site and app download entry; validate with site type/build commands rather than runtime checks.
 - `apps/decodex-app/`: native SwiftPM macOS app for local account-pool management and bundled Decodex helper/server workflows.
 - `scripts/`: repository helpers; `scripts/assets/` owns checked-in asset generation and `scripts/macos/` owns macOS app packaging checks.
-- `.github/`: repository automation such as CodeQL code scanning ruleset support.
+- `.github/`: repository automation for language checks, Pages deployment,
+  release packaging, and dependency updates.
 
 ## Targeted Rust checks
 
@@ -136,31 +137,21 @@ Success requires head/base preconditions, preventing stale green statuses after 
 
 The checked-in GitHub Actions workflows under `.github/workflows/` cover:
 
-- `language.yml`: Rust formatting, style, check, clippy, tests, docs check,
-  site build/check, and TOML formatting for pushes and pull requests targeting
-  `main`, plus merge queue groups.
-- `codeql.yml`: CodeQL code scanning on pushes to `main`, pull requests
-  targeting `main`, and a weekly schedule. Push and pull request runs skip
-  documentation, automation, and asset-only changes; the weekly schedule keeps a
-  periodic repository scan.
+- `language.yml`: Rust formatting, style, check, clippy, tests, site build/check,
+  and TOML formatting for pushes and pull requests targeting `main`, plus merge
+  queue groups.
 - `deploy-pages.yml`: static Astro site build and GitHub Pages deployment from
-  `main` when `site/` or the Pages workflow changes, plus manual dispatch.
+  every push to `main`, plus manual dispatch.
 - `release.yml`: tagged release packaging for the Rust CLI, macOS app, and
-  release assets.
+  release assets. Its macOS job stages `target/decodex-app/Decodex.app` and
+  verifies the `Decodex` bundle name and `space.decodex.app` identifier before
+  packaging.
 
 Dependabot configuration lives in `.github/dependabot.yml` for Cargo, GitHub
 Actions, and site npm dependency updates.
 
 Radar upstream review, release checkpoint curation, and artifact retention are
 Codex App automations sourced from `automations/radar/`, not GitHub Actions.
-
-## Code scanning
-
-The checked-in CodeQL workflow is `.github/workflows/codeql.yml` and runs on
-pushes to `main`, pull requests targeting `main`, and a weekly schedule. Push
-and pull request triggers skip documentation, automation, and asset-only
-changes. It analyzes Rust and JavaScript/TypeScript with no-build CodeQL mode so
-code scanning stays available without adding a second repository build gate.
 
 ## App-server compatibility checks
 

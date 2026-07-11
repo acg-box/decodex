@@ -146,13 +146,13 @@ jobs:
           ./apps/decodex-app/script/build_and_run.sh stage
 
           COMMON_ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
-          APP_PATH="${COMMON_ROOT}/target/decodex-app/Decodex App.app"
+          APP_PATH="${COMMON_ROOT}/target/decodex-app/Decodex.app"
           if [[ ! -d "${APP_PATH}" ]]; then
             echo "Failed to find staged Decodex App bundle at ${APP_PATH}" >&2
             exit 1
           fi
-          test "$(plutil -extract CFBundleName raw "${APP_PATH}/Contents/Info.plist")" = "Decodex App"
-          test "$(plutil -extract CFBundleDisplayName raw "${APP_PATH}/Contents/Info.plist")" = "Decodex App"
+          test "$(plutil -extract CFBundleName raw "${APP_PATH}/Contents/Info.plist")" = "Decodex"
+          test "$(plutil -extract CFBundleDisplayName raw "${APP_PATH}/Contents/Info.plist")" = "Decodex"
           test "$(plutil -extract CFBundleIdentifier raw "${APP_PATH}/Contents/Info.plist")" = "space.decodex.app"
           codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
           codesign -dv --verbose=4 "${APP_PATH}" 2>&1 | grep -q '^TeamIdentifier='
