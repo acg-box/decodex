@@ -227,7 +227,7 @@
           "catalog_semantic_digest": {"$ref": "#/$defs/digest"},
           "dynamic_capability_roots": {"const": []},
           "executable_declarative_paths": {"const": []},
-          "external_symbols": {"const": []},
+          "external_symbols": {"minItems": 1},
           "local_closure_boundaries": {"const": []},
           "persistent_data_roots": {"const": []},
           "provider_and_config_roots": {"const": []},

@@ -322,8 +322,11 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         self.assertEqual("P3", result["phase"])
         self.assertEqual("p3_machine_validated_incomplete", result["catalog_status"])
         self.assertEqual(20, result["external_policy_entry_count"])
-        self.assertEqual(15926, result["external_symbol_count"])
-        self.assertEqual(15926, result["catalog_disposition_count"])
+        self.assertEqual(29, result["authority_policy_entry_count"])
+        self.assertEqual(1015, result["authority_symbol_count"])
+        self.assertEqual(15926, result["non_authority_external_symbol_count"])
+        self.assertEqual(16941, result["external_symbol_count"])
+        self.assertEqual(16941, result["catalog_disposition_count"])
         self.assertGreater(result["unresolved_symbol_count"], 0)
 
     def test_p3_rejects_consumer_projection_tampering(self):
@@ -358,8 +361,14 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         policy = self.verifier.load_json(
             REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
         )
+        authority_policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.AUTHORITY_SYMBOL_POLICY_PATH
+        )
         policy_identities = {
             (entry["language"], entry["signature"]) for entry in policy["entries"]
+        } | {
+            (entry["language"], entry["signature"])
+            for entry in authority_policy["entries"]
         }
         site = next(
             site

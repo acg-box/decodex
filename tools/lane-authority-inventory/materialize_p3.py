@@ -32,12 +32,32 @@ def write_json(root: Path, path: Path, value: dict[str, Any]) -> None:
 def materialize(root: Path) -> dict[str, Any]:
     contract.verify_p2(root)
     policy = contract.load_json(root, contract.EXTERNAL_SYMBOL_POLICY_PATH)
+    authority_policy = contract.load_json(root, contract.AUTHORITY_SYMBOL_POLICY_PATH)
     contract.validate_external_symbol_policy(policy)
+    contract.validate_authority_symbol_policy(authority_policy)
     symbol_manifest = contract.load_json(root, SYMBOLS_PATH)
-    policy_by_identity = {
-        (entry["language"], entry["signature"]): entry for entry in policy["entries"]
-    }
-    consumers = {entry["id"]: set() for entry in policy["entries"]}
+    policy_sets = (
+        (
+            "reviewed_non_authority_external_symbols",
+            policy,
+            contract.policy_catalog_entry,
+        ),
+        ("external_symbols", authority_policy, contract.authority_policy_catalog_entry),
+    )
+    policy_by_identity: dict[tuple[str, str], dict[str, Any]] = {}
+    policy_by_id: dict[str, dict[str, Any]] = {}
+    policy_digest_by_id: dict[str, str] = {}
+    for _section, section_policy, _builder in policy_sets:
+        for entry in section_policy["entries"]:
+            identity = (entry["language"], entry["signature"])
+            if identity in policy_by_identity or entry["id"] in policy_by_id:
+                raise contract.ContractError("external symbol policies overlap")
+            policy_by_identity[identity] = entry
+            policy_by_id[entry["id"]] = entry
+            policy_digest_by_id[entry["id"]] = section_policy[
+                "policy_semantic_digest"
+            ]
+    consumers = {entry_id: set() for entry_id in policy_by_id}
     symbols = symbol_manifest["records"]
     for site in symbols:
         if site["role"] != "call_target":
@@ -65,7 +85,6 @@ def materialize(root: Path) -> dict[str, Any]:
             f"external symbol policy entries have no exact consumers: {unused_entries}"
         )
 
-    policy_by_id = {entry["id"]: entry for entry in policy["entries"]}
     catalog = contract.load_json(root, contract.CATALOG_PATH)
     if catalog["catalog_status"] not in {
         "p0_schema_only_incomplete",
@@ -73,16 +92,18 @@ def materialize(root: Path) -> dict[str, Any]:
     }:
         raise contract.ContractError("P3 materialization requires a P0 or P3 policy catalog")
     catalog["catalog_status"] = "p3_machine_validated_incomplete"
-    catalog["reviewed_non_authority_external_symbols"] = [
-        contract.policy_catalog_entry(policy_by_id[entry_id], consumers[entry_id])
-        for entry_id in sorted(policy_by_id)
-    ]
+    for section, section_policy, builder in policy_sets:
+        section_ids = {entry["id"] for entry in section_policy["entries"]}
+        catalog[section] = [
+            builder(policy_by_id[entry_id], consumers[entry_id])
+            for entry_id in sorted(section_ids)
+        ]
     external_site_ids = set().union(*consumers.values())
     catalog["used_external_symbol_set_digest"] = contract.stable_id_set_digest(
         "decodex/lane-authority-v2-used-external-symbol-sites/1", external_site_ids
     )
     catalog["catalog_semantic_digest"] = contract.catalog_semantic_digest(catalog)
-    contract.validate_catalog_p3_policy_projection(catalog, policy)
+    contract.validate_catalog_p3_policy_projection(catalog, policy, authority_policy)
 
     symbols_by_id = {site["site_id"]: site for site in symbols}
     dispositions: list[dict[str, Any]] = []
@@ -99,7 +120,7 @@ def materialize(root: Path) -> dict[str, Any]:
                     "disposition_id": disposition_id,
                     "evidence_digest": contract.stable_parts_id(
                         "decodex/lane-authority-v2-external-policy-binding/1",
-                        policy["policy_semantic_digest"],
+                        policy_digest_by_id[entry_id],
                         entry_id,
                         site_id,
                         symbols_by_id[site_id]["signature_digest"],
@@ -117,6 +138,8 @@ def materialize(root: Path) -> dict[str, Any]:
     return {
         "catalog_dispositions": evidence["catalog_disposition_count"],
         "catalog_status": evidence["catalog_status"],
+        "authority_policy_entries": evidence["authority_policy_entry_count"],
+        "authority_symbols": evidence["authority_symbol_count"],
         "external_policy_entries": evidence["external_policy_entry_count"],
         "external_symbols": evidence["external_symbol_count"],
         "phase": evidence["phase"],

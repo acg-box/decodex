@@ -1016,15 +1016,37 @@ def policy_catalog_entry(
     }
 
 
+def authority_policy_catalog_entry(
+    policy_entry: dict[str, Any], consumer_ids: set[str]
+) -> dict[str, Any]:
+    return {
+        "authority_relevance": "authority_surface",
+        "consumer_ids": sorted(consumer_ids),
+        "entry_kind": "external_symbol",
+        "id": policy_entry["id"],
+        "language": policy_entry["language"],
+        "match_mode": "exact_symbol",
+        "owner": policy_entry["owner"],
+        "ownership": policy_entry["ownership"],
+        "reason_code": policy_entry["reason_code"],
+        "removal_checkpoint": policy_entry["removal_checkpoint"],
+        "replacement_kind": policy_entry["replacement_kind"],
+        "semantic_kinds": policy_entry["semantic_kinds"],
+        "signature": policy_entry["signature"],
+        "used_site_set_digest": stable_id_set_digest(
+            "decodex/lane-authority-v2-catalog-entry-used-sites/1", consumer_ids
+        ),
+    }
+
+
 def validate_catalog_p3_policy_projection(
-    catalog: dict[str, Any], policy: dict[str, Any]
+    catalog: dict[str, Any], policy: dict[str, Any], authority_policy: dict[str, Any]
 ) -> None:
     if catalog.get("catalog_status") != "p3_machine_validated_incomplete":
         raise ContractError("P3 policy catalog must remain explicitly incomplete")
     empty_sections = (
         "dynamic_capability_roots",
         "executable_declarative_paths",
-        "external_symbols",
         "local_closure_boundaries",
         "persistent_data_roots",
         "provider_and_config_roots",
@@ -1033,21 +1055,43 @@ def validate_catalog_p3_policy_projection(
     for section in empty_sections:
         if catalog.get(section) != []:
             raise ContractError(f"P3 policy cut cannot populate {section}")
-    entries = catalog.get("reviewed_non_authority_external_symbols")
-    if not isinstance(entries, list) or not entries:
-        raise ContractError("P3 policy catalog must contain external policy entries")
-    policy_by_id = {entry["id"]: entry for entry in policy["entries"]}
-    catalog_by_id = _unique_index(entries, "id", "P3 policy catalog")
-    if set(catalog_by_id) != set(policy_by_id):
-        raise ContractError("P3 catalog entries do not equal the external symbol policy")
-    for entry_id, catalog_entry in catalog_by_id.items():
-        expected = policy_catalog_entry(
-            policy_by_id[entry_id], set(catalog_entry["consumer_ids"])
-        )
-        if catalog_entry != expected:
-            raise ContractError("P3 catalog semantic fields drifted from policy")
-        if not catalog_entry["consumer_ids"]:
-            raise ContractError("P3 policy entry has no exact source consumer")
+    sections = (
+        (
+            "reviewed_non_authority_external_symbols",
+            policy,
+            policy_catalog_entry,
+            "non-authority",
+        ),
+        ("external_symbols", authority_policy, authority_policy_catalog_entry, "authority"),
+    )
+    all_policy_ids: set[str] = set()
+    all_policy_identities: set[tuple[str, str]] = set()
+    for section, section_policy, builder, label in sections:
+        entries = catalog.get(section)
+        if not isinstance(entries, list) or not entries:
+            raise ContractError(f"P3 catalog must contain {label} policy entries")
+        policy_by_id = {entry["id"]: entry for entry in section_policy["entries"]}
+        catalog_by_id = _unique_index(entries, "id", f"P3 {label} policy catalog")
+        if set(catalog_by_id) != set(policy_by_id):
+            raise ContractError(f"P3 catalog entries do not equal the {label} policy")
+        if all_policy_ids & set(policy_by_id):
+            raise ContractError("P3 authority policies contain duplicate ids")
+        all_policy_ids.update(policy_by_id)
+        identities = {
+            (entry["language"], entry["signature"])
+            for entry in section_policy["entries"]
+        }
+        if all_policy_identities & identities:
+            raise ContractError("P3 authority policies overlap by language/signature")
+        all_policy_identities.update(identities)
+        for entry_id, catalog_entry in catalog_by_id.items():
+            expected = builder(
+                policy_by_id[entry_id], set(catalog_entry["consumer_ids"])
+            )
+            if catalog_entry != expected:
+                raise ContractError(f"P3 {label} catalog fields drifted from policy")
+            if not catalog_entry["consumer_ids"]:
+                raise ContractError(f"P3 {label} policy entry has no exact source consumer")
     if catalog["catalog_semantic_digest"] != catalog_semantic_digest(catalog):
         raise ContractError("P3 catalog semantic digest disagrees")
 
@@ -2251,7 +2295,9 @@ def verify_p0(
     validate_authority_symbol_policy(authority_symbol_policy)
     validate_external_symbol_policy(external_symbol_policy)
     if allow_later_catalog and catalog.get("catalog_status") == "p3_machine_validated_incomplete":
-        validate_catalog_p3_policy_projection(catalog, external_symbol_policy)
+        validate_catalog_p3_policy_projection(
+            catalog, external_symbol_policy, authority_symbol_policy
+        )
     else:
         validate_catalog_p0(catalog)
     validate_dataflow_contract(dataflow, root)
@@ -2664,7 +2710,8 @@ def verify_p3(root: Path) -> dict[str, Any]:
     p2 = verify_p2(root)
     catalog = load_json(root, CATALOG_PATH)
     policy = load_json(root, EXTERNAL_SYMBOL_POLICY_PATH)
-    validate_catalog_p3_policy_projection(catalog, policy)
+    authority_policy = load_json(root, AUTHORITY_SYMBOL_POLICY_PATH)
+    validate_catalog_p3_policy_projection(catalog, policy, authority_policy)
     disposition_manifest = load_json(root, CATALOG_DISPOSITIONS_PATH)
     relation_schema = load_json(
         root, Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json")
@@ -2676,10 +2723,29 @@ def verify_p3(root: Path) -> dict[str, Any]:
         root, Path("tools/lane-authority-inventory/manifests/relations/symbol_sites.json")
     )
     symbols = _unique_index(symbol_manifest["records"], "site_id", "P3 symbol sites")
-    policy_by_identity = {
-        (entry["language"], entry["signature"]): entry for entry in policy["entries"]
-    }
-    matched_by_entry = {entry["id"]: set() for entry in policy["entries"]}
+    policy_sets = (
+        ("reviewed_non_authority_external_symbols", policy),
+        ("external_symbols", authority_policy),
+    )
+    policy_by_identity: dict[tuple[str, str], dict[str, Any]] = {}
+    policy_by_id: dict[str, dict[str, Any]] = {}
+    policy_digest_by_id: dict[str, str] = {}
+    catalog_entries: dict[str, dict[str, Any]] = {}
+    for section, section_policy in policy_sets:
+        for entry in section_policy["entries"]:
+            identity = (entry["language"], entry["signature"])
+            if identity in policy_by_identity or entry["id"] in policy_by_id:
+                raise ContractError("P3 authority policies overlap")
+            policy_by_identity[identity] = entry
+            policy_by_id[entry["id"]] = entry
+            policy_digest_by_id[entry["id"]] = section_policy[
+                "policy_semantic_digest"
+            ]
+        for entry in catalog[section]:
+            if entry["id"] in catalog_entries:
+                raise ContractError("P3 catalog contains a duplicate policy id")
+            catalog_entries[entry["id"]] = entry
+    matched_by_entry = {entry_id: set() for entry_id in policy_by_id}
     external_sites: set[str] = set()
     for site in symbols.values():
         identity = (site["language"], site["signature"])
@@ -2699,11 +2765,6 @@ def verify_p3(root: Path) -> dict[str, Any]:
     if any(not site_ids for site_ids in matched_by_entry.values()):
         raise ContractError("P3 external policy contains an unused entry")
 
-    catalog_entries = _unique_index(
-        catalog["reviewed_non_authority_external_symbols"],
-        "id",
-        "P3 external policy catalog",
-    )
     for entry_id, site_ids in matched_by_entry.items():
         if set(catalog_entries[entry_id]["consumer_ids"]) != site_ids:
             raise ContractError("P3 catalog consumers disagree with exact policy matches")
@@ -2715,7 +2776,7 @@ def verify_p3(root: Path) -> dict[str, Any]:
     )
     expected_dispositions: dict[str, dict[str, Any]] = {}
     for entry_id, site_ids in matched_by_entry.items():
-        policy_entry = next(entry for entry in policy["entries"] if entry["id"] == entry_id)
+        policy_entry = policy_by_id[entry_id]
         for site_id in site_ids:
             disposition_id = stable_parts_id(
                 "decodex/lane-authority-v2-catalog-disposition/1", entry_id, site_id
@@ -2726,7 +2787,7 @@ def verify_p3(root: Path) -> dict[str, Any]:
                 "disposition_id": disposition_id,
                 "evidence_digest": stable_parts_id(
                     "decodex/lane-authority-v2-external-policy-binding/1",
-                    policy["policy_semantic_digest"],
+                    policy_digest_by_id[entry_id],
                     entry_id,
                     site_id,
                     symbols[site_id]["signature_digest"],
@@ -2741,12 +2802,19 @@ def verify_p3(root: Path) -> dict[str, Any]:
     )
     if catalog["used_external_symbol_set_digest"] != expected_used_digest:
         raise ContractError("P3 used external symbol digest disagrees")
+    authority_entry_ids = {entry["id"] for entry in authority_policy["entries"]}
+    authority_sites = set().union(
+        *(matched_by_entry[entry_id] for entry_id in authority_entry_ids)
+    )
     return {
         **p2,
+        "authority_policy_entry_count": len(authority_policy["entries"]),
+        "authority_symbol_count": len(authority_sites),
         "catalog_disposition_count": len(dispositions),
         "catalog_status": catalog["catalog_status"],
         "external_policy_entry_count": len(policy["entries"]),
         "external_symbol_count": len(external_sites),
+        "non_authority_external_symbol_count": len(external_sites - authority_sites),
         "phase": "P3",
     }
 
