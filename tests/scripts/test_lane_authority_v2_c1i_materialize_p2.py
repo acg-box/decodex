@@ -25,7 +25,7 @@ def load_module(name: str, path: Path):
 class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        load_module("verify_contract", TOOL_ROOT / "verify_contract.py")
+        cls.verifier = load_module("verify_contract", TOOL_ROOT / "verify_contract.py")
         cls.materializer = load_module(
             "lane_authority_v2_c1i_materialize_p2", TOOL_ROOT / "materialize_p2.py"
         )
@@ -467,6 +467,13 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         ]
 
         resolutions = self.materializer.resolve_rust_binding_paths(scopes, bindings)
+        for resolution in resolutions:
+            with self.subTest(source_binding_id=resolution["source_binding_id"]):
+                self.verifier.replay_rust_type_path_resolution(
+                    resolution,
+                    {scope["scope_id"]: scope for scope in scopes},
+                    {binding["binding_id"]: binding for binding in bindings},
+                )
 
         by_source = {resolution["source_binding_id"]: resolution for resolution in resolutions}
         resolved = by_source["binding:use"]
@@ -589,9 +596,44 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                 "target_symbol_site_id": None,
                 "visibility": "private",
             },
+            {
+                "binding_id": "binding:private-type",
+                "binding_kind": "type_declaration",
+                "crate_target_id": "target:one",
+                "local_name": "Private",
+                "namespace": "type",
+                "reason_code": "rust_binding_exact_type_declaration",
+                "resolution": "resolved",
+                "scope_id": "scope:time",
+                "surface_target_path": None,
+                "target_scope_id": None,
+                "target_symbol_site_id": "symbol:private",
+                "visibility": "private",
+            },
+            {
+                "binding_id": "binding:inaccessible-private",
+                "binding_kind": "use",
+                "crate_target_id": "target:one",
+                "local_name": "Private",
+                "namespace": "type",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:root",
+                "surface_target_path": "crate::time::Private",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
         ]
 
         resolutions = self.materializer.resolve_rust_binding_paths(scopes, bindings)
+        for resolution in resolutions:
+            with self.subTest(source_binding_id=resolution["source_binding_id"]):
+                self.verifier.replay_rust_type_path_resolution(
+                    resolution,
+                    {scope["scope_id"]: scope for scope in scopes},
+                    {binding["binding_id"]: binding for binding in bindings},
+                )
 
         by_source = {resolution["source_binding_id"]: resolution for resolution in resolutions}
         self.assertEqual("external", by_source["binding:duration"]["status"])
@@ -599,6 +641,9 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         self.assertEqual("external", by_source["binding:write-anonymous"]["status"])
         self.assertEqual("unresolved", by_source["binding:time-value-reexport"]["status"])
         self.assertEqual("unresolved", by_source["binding:unknown-crate"]["status"])
+        self.assertEqual(
+            "inaccessible", by_source["binding:inaccessible-private"]["status"]
+        )
 
     def test_native_swift_parser_resolves_tree_sitter_recovery(self):
         parsed = {

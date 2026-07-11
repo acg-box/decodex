@@ -51,7 +51,7 @@
         "crate_target_id": {"$ref": "#/$defs/id"},
         "local_name": {"minLength": 1, "maxLength": 256, "type": "string"},
         "namespace": {"const": "type"},
-        "reason_code": {"enum": ["rust_binding_exact_module_declaration", "rust_binding_exact_type_declaration", "rust_binding_exact_path_resolution", "rust_binding_external_path", "rust_binding_path_ambiguous", "rust_binding_path_unsupported", "rust_binding_path_target_unresolved", "rust_binding_path_resolution_pending", "rust_binding_module_target_unresolved", "rust_binding_type_symbol_unresolved", "rust_binding_ambiguous_module_declaration", "rust_binding_ambiguous_type_declaration", "rust_binding_same_scope_ambiguous", "rust_binding_glob_unsupported", "rust_binding_visibility_unsupported"]},
+        "reason_code": {"enum": ["rust_binding_exact_module_declaration", "rust_binding_exact_type_declaration", "rust_binding_exact_path_resolution", "rust_binding_external_path", "rust_binding_path_ambiguous", "rust_binding_path_inaccessible", "rust_binding_path_unsupported", "rust_binding_path_target_unresolved", "rust_binding_path_resolution_pending", "rust_binding_module_target_unresolved", "rust_binding_type_symbol_unresolved", "rust_binding_ambiguous_module_declaration", "rust_binding_ambiguous_type_declaration", "rust_binding_same_scope_ambiguous", "rust_binding_glob_unsupported", "rust_binding_visibility_unsupported"]},
         "resolution": {"enum": ["resolved", "external", "unresolved", "ambiguous", "unsupported"]},
         "scope_id": {"$ref": "#/$defs/id"},
         "source_node_id": {"$ref": "#/$defs/id"},
@@ -72,7 +72,7 @@
         {"if": {"properties": {"status": {"const": "resolved_local_module"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"$ref": "#/$defs/id"}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
         {"if": {"properties": {"status": {"const": "resolved_local_type"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"$ref": "#/$defs/id"}}}},
         {"if": {"properties": {"status": {"const": "external"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
-        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}}
+        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}}
       ],
       "properties": {
         "binding_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array"},
@@ -83,12 +83,12 @@
         "lexical_scope_id": {"$ref": "#/$defs/id"},
         "namespace": {"const": "type"},
         "purpose": {"enum": ["binding_target"]},
-        "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct"]},
+        "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied"]},
         "resolution_digest": {"$ref": "#/$defs/digest"},
         "resolution_id": {"$ref": "#/$defs/id"},
         "source_binding_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
         "source_symbol_site_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
-        "status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "unresolved", "unsupported"]},
+        "status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]},
         "surface_path": {"minLength": 1, "maxLength": 512, "type": "string"}
       },
       "required": ["resolution_id", "purpose", "crate_target_id", "lexical_scope_id", "namespace", "surface_path", "canonical_path", "canonical_module_scope_id", "canonical_type_definition_site_id", "source_binding_id", "source_symbol_site_id", "binding_ids", "status", "reason_code", "resolution_digest"],

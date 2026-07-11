@@ -1260,6 +1260,254 @@ def _unique_index(records: list[dict[str, Any]], field: str, relation: str) -> d
     return result
 
 
+def replay_rust_type_path_resolution(
+    resolution: dict[str, Any],
+    scopes: dict[str, dict[str, Any]],
+    bindings: dict[str, dict[str, Any]],
+) -> None:
+    chain = resolution["binding_ids"]
+    cursor = 0
+    roots = {
+        scope["crate_target_id"]: scope["scope_id"]
+        for scope in scopes.values()
+        if scope["scope_kind"] == "crate_root"
+    }
+
+    def module_scope(scope_id: str) -> dict[str, Any]:
+        scope = scopes[scope_id]
+        while scope["scope_kind"] == "block":
+            scope = scopes[scope["parent_scope_id"]]
+        return scope
+
+    def parent_module(scope_id: str) -> dict[str, Any] | None:
+        scope = module_scope(scope_id)
+        if scope["parent_scope_id"] is None:
+            return None
+        return module_scope(scope["parent_scope_id"])
+
+    def visible_from(binding: dict[str, Any], accessing_scope_id: str) -> bool:
+        visibility = binding["visibility"]
+        if visibility in {"public", "crate"}:
+            return True
+        declaring = module_scope(binding["scope_id"])
+        accessing_path = module_scope(accessing_scope_id)["canonical_module_path"]
+        allowed_path = declaring["canonical_module_path"]
+        if visibility == "super":
+            parent = parent_module(declaring["scope_id"])
+            if parent is None:
+                return False
+            allowed_path = parent["canonical_module_path"]
+        elif visibility == "in":
+            segments = [
+                segment
+                for segment in (binding["visibility_path"] or "").split("::")
+                if segment
+            ]
+            if not segments:
+                return False
+            if segments[0] == "crate":
+                allowed_path = scopes[roots[binding["crate_target_id"]]][
+                    "canonical_module_path"
+                ]
+                segments = segments[1:]
+            elif segments[0] == "self":
+                segments = segments[1:]
+            elif segments[0] == "super":
+                current = declaring
+                while segments and segments[0] == "super":
+                    parent = parent_module(current["scope_id"])
+                    if parent is None:
+                        return False
+                    current = parent
+                    segments = segments[1:]
+                allowed_path = current["canonical_module_path"]
+            else:
+                return False
+            if segments:
+                allowed_path = f"{allowed_path}::{'::'.join(segments)}"
+        elif visibility != "private":
+            return False
+        return accessing_path == allowed_path or accessing_path.startswith(
+            f"{allowed_path}::"
+        )
+
+    def select(
+        target_id: str,
+        scope_id: str,
+        accessing_scope_id: str,
+        name: str,
+        *,
+        lexical: bool,
+        require_module: bool,
+        excluded_binding_id: str | None = None,
+    ) -> tuple[str, str | None]:
+        current_id: str | None = scope_id
+        while current_id is not None:
+            all_candidates = [
+                binding_id
+                for binding_id, binding in bindings.items()
+                if binding["crate_target_id"] == target_id
+                and binding["scope_id"] == current_id
+                and binding["local_name"] == name
+                and binding_id != excluded_binding_id
+                and binding["local_name"] != "_"
+            ]
+            candidates = [
+                binding_id
+                for binding_id in all_candidates
+                if visible_from(bindings[binding_id], accessing_scope_id)
+            ]
+            if all_candidates and not candidates:
+                return "inaccessible", None
+            declarations = [
+                binding_id
+                for binding_id in candidates
+                if bindings[binding_id]["binding_kind"]
+                in {"module", "type_declaration"}
+            ]
+            if require_module:
+                modules = [
+                    binding_id
+                    for binding_id in candidates
+                    if bindings[binding_id]["binding_kind"] == "module"
+                ]
+                if modules:
+                    candidates = modules
+            elif declarations:
+                candidates = declarations
+            if len(candidates) > 1:
+                return ("ambiguous" if declarations else "unresolved"), None
+            if len(candidates) == 1:
+                candidate = bindings[candidates[0]]
+                if (
+                    candidate["binding_kind"] in {"module", "type_declaration"}
+                    and candidate["resolution"] == "ambiguous"
+                ):
+                    return "ambiguous", None
+                return "found", candidates[0]
+            if not lexical or scopes[current_id]["scope_kind"] != "block":
+                break
+            current_id = scopes[current_id]["parent_scope_id"]
+        return "missing", None
+
+    def consume(binding_id: str, stack: tuple[str, ...]) -> dict[str, Any]:
+        nonlocal cursor
+        if cursor >= len(chain) or chain[cursor] != binding_id:
+            raise ContractError("P2 Rust path resolution binding chain is not replayable")
+        cursor += 1
+        if binding_id in stack:
+            return {"status": "cycle"}
+        binding = bindings[binding_id]
+        if binding["visibility"] == "unsupported" or binding["binding_kind"] == "glob":
+            return {"status": "unsupported"}
+        if binding["binding_kind"] == "module":
+            target_scope_id = binding["target_scope_id"]
+            if target_scope_id is None:
+                return {"status": binding["resolution"]}
+            return {
+                "canonical_module_scope_id": target_scope_id,
+                "canonical_path": scopes[target_scope_id]["canonical_module_path"],
+                "canonical_type_definition_site_id": None,
+                "status": "resolved_local_module",
+            }
+        if binding["binding_kind"] == "type_declaration":
+            target_symbol_id = binding["target_symbol_site_id"]
+            if target_symbol_id is None:
+                return {"status": binding["resolution"]}
+            return {
+                "canonical_module_scope_id": None,
+                "canonical_path": (
+                    f"{module_scope(binding['scope_id'])['canonical_module_path']}"
+                    f"::{binding['local_name']}"
+                ),
+                "canonical_type_definition_site_id": target_symbol_id,
+                "status": "resolved_local_type",
+            }
+
+        surface = binding["surface_target_path"] or ""
+        segments = [segment for segment in surface.split("::") if segment]
+        if not segments:
+            return {"status": "unsupported"}
+        target_id = binding["crate_target_id"]
+        current_scope = module_scope(binding["scope_id"])
+        index = 0
+        terminal: dict[str, Any] | None = None
+        if segments[0] == "crate":
+            current_scope = scopes[roots[target_id]]
+            index = 1
+        elif segments[0] == "self":
+            index = 1
+        elif segments[0] == "super":
+            while index < len(segments) and segments[index] == "super":
+                parent = parent_module(current_scope["scope_id"])
+                if parent is None:
+                    return {"status": "unsupported"}
+                current_scope = parent
+                index += 1
+        else:
+            state, found = select(
+                target_id,
+                binding["scope_id"],
+                binding["scope_id"],
+                segments[0],
+                lexical=True,
+                require_module=len(segments) > 1,
+                excluded_binding_id=binding_id,
+            )
+            if state == "missing":
+                root = scopes[roots[target_id]]
+                if segments[0] in root["target_extern_crate_names"]:
+                    return {
+                        "canonical_module_scope_id": None,
+                        "canonical_path": surface,
+                        "canonical_type_definition_site_id": None,
+                        "status": "external",
+                    }
+                return {"status": "unresolved"}
+            if state != "found":
+                return {"status": state}
+            terminal = consume(found, stack + (binding_id,))
+            index = 1
+
+        while index < len(segments):
+            if terminal is not None:
+                if terminal["status"] != "resolved_local_module":
+                    return terminal
+                current_scope = scopes[terminal["canonical_module_scope_id"]]
+            state, found = select(
+                target_id,
+                current_scope["scope_id"],
+                binding["scope_id"],
+                segments[index],
+                lexical=False,
+                require_module=index < len(segments) - 1,
+            )
+            if state != "found":
+                return {"status": "unresolved" if state == "missing" else state}
+            terminal = consume(found, stack + (binding_id,))
+            index += 1
+        if terminal is not None:
+            return terminal
+        return {
+            "canonical_module_scope_id": current_scope["scope_id"],
+            "canonical_path": current_scope["canonical_module_path"],
+            "canonical_type_definition_site_id": None,
+            "status": "resolved_local_module",
+        }
+
+    replayed = consume(resolution["source_binding_id"], ())
+    if cursor != len(chain):
+        raise ContractError("P2 Rust path resolution binding chain has trailing hops")
+    for field in (
+        "canonical_module_scope_id",
+        "canonical_path",
+        "canonical_type_definition_site_id",
+        "status",
+    ):
+        if resolution[field] != replayed.get(field):
+            raise ContractError("P2 Rust path resolution replay disagrees")
+
+
 def validate_cross_relation_records(
     records: dict[str, list[dict[str, Any]]],
     *,
@@ -2834,6 +3082,7 @@ def verify_p2(
             canonical_json(digest_payload).encode("utf-8")
         ).hexdigest():
             raise ContractError("P2 Rust path resolution digest drifted")
+        replay_rust_type_path_resolution(resolution, rust_scopes, rust_bindings)
         terminal_binding = rust_bindings[resolution["binding_ids"][-1]]
         if resolution["status"] == "resolved_local_module":
             target = rust_scopes.get(resolution["canonical_module_scope_id"])

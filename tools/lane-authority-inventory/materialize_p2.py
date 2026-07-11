@@ -683,18 +683,62 @@ def resolve_rust_binding_paths(
             return None
         return module_scope(parent_id)
 
+    def visible_from(binding: dict[str, Any], accessing_scope_id: str) -> bool:
+        visibility = binding["visibility"]
+        if visibility in {"public", "crate"}:
+            return True
+        declaring_module = module_scope(binding["scope_id"])
+        accessing_path = module_scope(accessing_scope_id)["canonical_module_path"]
+        allowed_path = declaring_module["canonical_module_path"]
+        if visibility == "super":
+            parent = parent_module(declaring_module["scope_id"])
+            if parent is None:
+                return False
+            allowed_path = parent["canonical_module_path"]
+        elif visibility == "in":
+            surface = binding["visibility_path"] or ""
+            segments = [segment for segment in surface.split("::") if segment]
+            if not segments:
+                return False
+            if segments[0] == "crate":
+                allowed_path = scopes[roots[binding["crate_target_id"]]][
+                    "canonical_module_path"
+                ]
+                segments = segments[1:]
+            elif segments[0] == "self":
+                segments = segments[1:]
+            elif segments[0] == "super":
+                cursor = declaring_module
+                while segments and segments[0] == "super":
+                    parent = parent_module(cursor["scope_id"])
+                    if parent is None:
+                        return False
+                    cursor = parent
+                    segments = segments[1:]
+                allowed_path = cursor["canonical_module_path"]
+            else:
+                return False
+            if segments:
+                allowed_path = f"{allowed_path}::{'::'.join(segments)}"
+        elif visibility != "private":
+            return False
+        return accessing_path == allowed_path or accessing_path.startswith(
+            f"{allowed_path}::"
+        )
+
     def lookup(
         target_id: str,
         scope_id: str,
         name: str,
         *,
+        accessing_scope_id: str,
         lexical: bool,
         require_module: bool = False,
         excluded_binding_id: str | None = None,
     ) -> tuple[str, str | None]:
         current_id: str | None = scope_id
         while current_id is not None:
-            candidate_ids = [
+            all_candidate_ids = [
                 binding_id
                 for binding_id in bindings_by_scope_name.get(
                     (target_id, current_id, name), []
@@ -702,6 +746,13 @@ def resolve_rust_binding_paths(
                 if binding_id != excluded_binding_id
                 and bindings[binding_id]["local_name"] != "_"
             ]
+            candidate_ids = [
+                binding_id
+                for binding_id in all_candidate_ids
+                if visible_from(bindings[binding_id], accessing_scope_id)
+            ]
+            if all_candidate_ids and not candidate_ids:
+                return "inaccessible", None
             declarations = [
                 binding_id
                 for binding_id in candidate_ids
@@ -766,7 +817,7 @@ def resolve_rust_binding_paths(
         if binding_id in cache:
             return cache[binding_id]
         if binding_id in stack:
-            return {"status": "cycle", "binding_ids": list(stack) + [binding_id]}
+            return {"status": "cycle", "binding_ids": [binding_id]}
         binding = bindings[binding_id]
         if binding["resolution"] == "ambiguous":
             return {"status": "ambiguous", "binding_ids": [binding_id]}
@@ -808,14 +859,17 @@ def resolve_rust_binding_paths(
                 target_id,
                 binding["scope_id"],
                 segments[0],
+                accessing_scope_id=binding["scope_id"],
                 lexical=True,
                 require_module=len(segments) > 1,
                 excluded_binding_id=binding["binding_id"],
             )
             if state == "ambiguous":
-                return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}
+                return {"status": "ambiguous", "binding_ids": path_binding_ids}
             if state == "unresolved":
-                return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
+                return {"status": "unresolved", "binding_ids": path_binding_ids}
+            if state == "inaccessible":
+                return {"status": "inaccessible", "binding_ids": path_binding_ids}
             if state == "missing":
                 if segments[0] not in extern_crates[target_id]:
                     return {
@@ -842,15 +896,18 @@ def resolve_rust_binding_paths(
                 target_id,
                 current_scope["scope_id"],
                 segments[index],
+                accessing_scope_id=binding["scope_id"],
                 lexical=False,
                 require_module=index < len(segments) - 1,
             )
             if state == "ambiguous":
-                return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}
+                return {"status": "ambiguous", "binding_ids": path_binding_ids}
             if state == "unresolved":
-                return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
+                return {"status": "unresolved", "binding_ids": path_binding_ids}
+            if state == "inaccessible":
+                return {"status": "inaccessible", "binding_ids": path_binding_ids}
             if state == "missing":
-                return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
+                return {"status": "unresolved", "binding_ids": path_binding_ids}
             terminal = follow(found, stack)
             path_binding_ids.extend(terminal["binding_ids"])
             index += 1
@@ -869,6 +926,7 @@ def resolve_rust_binding_paths(
         "ambiguous": "rust_path_ambiguous_binding",
         "cycle": "rust_path_reexport_cycle",
         "external": "rust_path_external_crate",
+        "inaccessible": "rust_path_visibility_denied",
         "resolved_local_module": "rust_path_unique_local_module",
         "resolved_local_type": "rust_path_unique_local_type",
         "unresolved": "rust_path_target_unresolved",
@@ -926,6 +984,9 @@ def resolve_rust_binding_paths(
         elif status == "unsupported":
             binding["resolution"] = "unsupported"
             binding["reason_code"] = "rust_binding_path_unsupported"
+        elif status == "inaccessible":
+            binding["resolution"] = "unresolved"
+            binding["reason_code"] = "rust_binding_path_inaccessible"
         else:
             binding["resolution"] = "unresolved"
             binding["reason_code"] = "rust_binding_path_target_unresolved"

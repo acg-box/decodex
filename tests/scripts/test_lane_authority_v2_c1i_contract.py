@@ -168,6 +168,51 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         ):
             self.verifier.verify_p2(REPO_ROOT)
 
+    def test_p2_rejects_rehashed_rust_path_middle_hop_tampering(self):
+        resolution_path = Path(
+            "tools/lane-authority-inventory/manifests/relations/rust_path_resolutions.json"
+        )
+        binding_path = Path(
+            "tools/lane-authority-inventory/manifests/relations/rust_name_bindings.json"
+        )
+        manifest = self.verifier.load_json(REPO_ROOT, resolution_path)
+        bindings = self.verifier.load_json(REPO_ROOT, binding_path)["records"]
+        tampered = copy.deepcopy(manifest)
+        resolution = next(
+            record
+            for record in tampered["records"]
+            if record["status"].startswith("resolved_local_")
+            and len(record["binding_ids"]) >= 3
+        )
+        replacement = next(
+            binding["binding_id"]
+            for binding in bindings
+            if binding["binding_id"] not in resolution["binding_ids"]
+        )
+        resolution["binding_ids"][1] = replacement
+        resolution["resolution_digest"] = hashlib.sha256(
+            self.verifier.canonical_json(
+                {
+                    key: value
+                    for key, value in resolution.items()
+                    if key != "resolution_digest"
+                }
+            ).encode("utf-8")
+        ).hexdigest()
+        original_load = self.verifier.load_json
+
+        def load_tampered(root, path):
+            if path == resolution_path:
+                return copy.deepcopy(tampered)
+            return original_load(root, path)
+
+        with mock.patch.object(
+            self.verifier, "load_json", side_effect=load_tampered
+        ), self.assertRaisesRegex(
+            self.verifier.ContractError, "binding chain is not replayable"
+        ):
+            self.verifier.verify_p2(REPO_ROOT)
+
     def test_changed_path_policy_rejects_runtime_source(self):
         self.assertEqual(
             ["apps/decodex/src/lib.rs"],
