@@ -3742,6 +3742,36 @@ def verify_p2(
         owner_definitions_by_key.setdefault(
             (resolution["crate_target_id"], owner_site_id, declaration["signature"]), set()
         ).add(declaration["site_id"])
+    module_definitions_by_key: dict[tuple[str, str, str], set[str]] = {}
+    for declaration in symbol_sites.values():
+        if (
+            declaration["language"] != "rust"
+            or declaration["role"] != "declaration"
+            or declaration["owner_signature"] is not None
+        ):
+            continue
+        syntax_site = syntax[declaration["syntax_site_id"]]
+        by_target: dict[str, list[dict[str, Any]]] = {}
+        for scope in scopes_by_source.get(syntax_site["source_node_id"], []):
+            if (
+                scope["byte_start"] <= syntax_site["byte_start"]
+                and syntax_site["byte_end"] <= scope["byte_end"]
+            ):
+                by_target.setdefault(scope["crate_target_id"], []).append(scope)
+        for target_id, target_scopes in by_target.items():
+            target_scopes.sort(
+                key=lambda scope: (
+                    scope["byte_end"] - scope["byte_start"],
+                    -scope["byte_start"],
+                    scope["scope_id"],
+                )
+            )
+            lexical_scope = target_scopes[0]
+            if lexical_scope["scope_kind"] == "block":
+                continue
+            module_definitions_by_key.setdefault(
+                (target_id, lexical_scope["scope_id"], declaration["signature"]), set()
+            ).add(declaration["site_id"])
     expected_rust_targets: dict[str, set[str]] = {}
     for resolution in receiver_resolutions.values():
         owner_site_id = resolution["canonical_type_definition_site_id"]
@@ -3752,6 +3782,24 @@ def verify_p2(
         definitions = owner_definitions_by_key.get(
             (resolution["crate_target_id"], owner_site_id, method_name), set()
         )
+        if len(definitions) == 1:
+            expected_rust_targets.setdefault(call["site_id"], set()).update(definitions)
+    for resolution in qualified_resolutions.values():
+        call = symbol_sites[resolution["source_symbol_site_id"]]
+        method_name = call["signature"].rsplit("::", 1)[-1]
+        definitions: set[str] = set()
+        if resolution["status"] == "resolved_local_type":
+            owner_site_id = resolution["canonical_type_definition_site_id"]
+            if owner_site_id is not None:
+                definitions = owner_definitions_by_key.get(
+                    (resolution["crate_target_id"], owner_site_id, method_name), set()
+                )
+        elif resolution["status"] == "resolved_local_module":
+            module_scope_id = resolution["canonical_module_scope_id"]
+            if module_scope_id is not None:
+                definitions = module_definitions_by_key.get(
+                    (resolution["crate_target_id"], module_scope_id, method_name), set()
+                )
         if len(definitions) == 1:
             expected_rust_targets.setdefault(call["site_id"], set()).update(definitions)
     for site_id, site in symbol_sites.items():

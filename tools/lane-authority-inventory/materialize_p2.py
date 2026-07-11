@@ -1736,6 +1736,36 @@ def materialize(root: Path) -> dict[str, Any]:
         declarations_by_canonical_owner.setdefault(
             (resolution["crate_target_id"], owner_site_id, declaration["signature"]), []
         ).append(declaration["site_id"])
+    scopes_by_source: dict[str, list[dict[str, Any]]] = {}
+    for scope in rust_module_scopes:
+        scopes_by_source.setdefault(scope["source_node_id"], []).append(scope)
+    declarations_by_canonical_module: dict[tuple[str, str, str], list[str]] = {}
+    for declaration in symbol_sites:
+        if (
+            declaration["language"] != "rust"
+            or declaration["role"] != "declaration"
+            or declaration["owner_signature"] is not None
+        ):
+            continue
+        syntax = syntax_by_id[declaration["syntax_site_id"]]
+        by_target: dict[str, list[dict[str, Any]]] = {}
+        for scope in scopes_by_source.get(syntax["source_node_id"], []):
+            if scope["byte_start"] <= syntax["byte_start"] and syntax["byte_end"] <= scope["byte_end"]:
+                by_target.setdefault(scope["crate_target_id"], []).append(scope)
+        for target_id, target_scopes in by_target.items():
+            target_scopes.sort(
+                key=lambda scope: (
+                    scope["byte_end"] - scope["byte_start"],
+                    -scope["byte_start"],
+                    scope["scope_id"],
+                )
+            )
+            lexical_scope = target_scopes[0]
+            if lexical_scope["scope_kind"] == "block":
+                continue
+            declarations_by_canonical_module.setdefault(
+                (target_id, lexical_scope["scope_id"], declaration["signature"]), []
+            ).append(declaration["site_id"])
     for resolution in rust_receiver_type_resolutions:
         owner_site_id = resolution["canonical_type_definition_site_id"]
         if resolution["status"] != "resolved_local_type" or owner_site_id is None:
@@ -1751,6 +1781,43 @@ def materialize(root: Path) -> dict[str, Any]:
         if call["definition_site_ids"] and call["definition_site_ids"] != [definition_site_id]:
             raise contract.ContractError(
                 f"Rust receiver call has conflicting canonical targets: {call['site_id']}"
+            )
+        call["definition_site_ids"] = [definition_site_id]
+        call["external"] = False
+        call["resolution"] = "local"
+        call_edges.append(
+            {
+                "edge_id": canonical_id(
+                    "decodex/lane-authority-v2-call-edge/1",
+                    call["site_id"],
+                    definition_site_id,
+                ),
+                "from_site_id": call["site_id"],
+                "to_site_id": definition_site_id,
+            }
+        )
+    for resolution in rust_qualified_owner_resolutions:
+        call = symbol_sites_by_id[resolution["source_symbol_site_id"]]
+        method_name = call["signature"].rsplit("::", 1)[-1]
+        definitions: list[str] = []
+        if resolution["status"] == "resolved_local_type":
+            owner_site_id = resolution["canonical_type_definition_site_id"]
+            if owner_site_id is not None:
+                definitions = declarations_by_canonical_owner.get(
+                    (resolution["crate_target_id"], owner_site_id, method_name), []
+                )
+        elif resolution["status"] == "resolved_local_module":
+            module_scope_id = resolution["canonical_module_scope_id"]
+            if module_scope_id is not None:
+                definitions = declarations_by_canonical_module.get(
+                    (resolution["crate_target_id"], module_scope_id, method_name), []
+                )
+        if len(definitions) != 1:
+            continue
+        definition_site_id = definitions[0]
+        if call["definition_site_ids"] and call["definition_site_ids"] != [definition_site_id]:
+            raise contract.ContractError(
+                f"Rust qualified call has conflicting canonical targets: {call['site_id']}"
             )
         call["definition_site_ids"] = [definition_site_id]
         call["external"] = False
