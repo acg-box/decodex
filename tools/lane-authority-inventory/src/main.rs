@@ -133,10 +133,13 @@ fn materialize_kind(kind: &str) -> bool {
 
 fn declaration_name_node<'tree>(language: &str, node: Node<'tree>) -> Option<Node<'tree>> {
 	let declaration = match language {
-		"python" => node.kind() == "function_definition",
-		"rust" => node.kind() == "function_item",
+		"python" => matches!(node.kind(), "class_definition" | "function_definition"),
+		"rust" => matches!(
+			node.kind(),
+			"enum_item" | "function_item" | "struct_item" | "trait_item" | "type_item"
+		),
 		"shell" => node.kind() == "function_definition",
-		"swift" => node.kind() == "function_declaration",
+		"swift" => matches!(node.kind(), "class_declaration" | "function_declaration"),
 		_ => false,
 	};
 	declaration.then(|| node.child_by_field_name("name")).flatten()
@@ -469,7 +472,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-	use super::{classify_symbol_signature, collect_nodes, enclosing_owner_signature, language};
+	use super::{
+		classify_symbol_signature, collect_nodes, declaration_name_node, enclosing_owner_signature,
+		language,
+	};
 	use tree_sitter::Parser;
 
 	#[test]
@@ -494,7 +500,7 @@ mod tests {
 
 	#[test]
 	fn extracts_rust_impl_owner_for_method_declarations_and_calls() {
-		let source = b"impl StateStore { fn open() { Self::open(); } }";
+		let source = b"struct StateStore; impl StateStore { fn open() { Self::open(); } }";
 		let mut parser = Parser::new();
 		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
 		let tree = parser.parse(source, None).expect("Rust syntax tree");
@@ -509,6 +515,27 @@ mod tests {
 				Some("StateStore".to_owned()),
 				enclosing_owner_signature(source, "rust", *node)
 			);
+		}
+	}
+
+	#[test]
+	fn includes_type_declarations_in_the_symbol_universe() {
+		for (language_name, source, declaration_kind, expected_name) in [
+			("python", "class Store:\n  pass\n", "class_definition", "Store"),
+			("rust", "struct Store;", "struct_item", "Store"),
+			("swift", "struct Store {}", "class_declaration", "Store"),
+		] {
+			let mut parser = Parser::new();
+			parser
+				.set_language(&language(language_name).expect("language grammar"))
+				.expect("set language grammar");
+			let tree = parser.parse(source, None).expect("syntax tree");
+			let declaration = collect_nodes(tree.root_node())
+				.into_iter()
+				.find(|node| node.kind() == declaration_kind)
+				.expect("type declaration");
+			let name = declaration_name_node(language_name, declaration).expect("declaration name");
+			assert_eq!(expected_name, name.utf8_text(source.as_bytes()).expect("UTF-8 name"));
 		}
 	}
 }
