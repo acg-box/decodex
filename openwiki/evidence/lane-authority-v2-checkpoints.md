@@ -1566,11 +1566,11 @@ record and artifact digests are recomputed.
 Machine evidence for this cut:
 
 - all 11 Rust parser tests pass;
-- the focused unresolved-symbol schema fixture passes after being updated for the
-  required nullable qualified-owner fields; the full 50-test Python proof suite is
-  being rerun on this exact cut before the generated checkpoint is committed;
-- the P2 and P3 verifiers pass with analysis-cut digest
-  `a1ab8bce66cfb9e7d50346a7b7bf7fb1c06e02159aa73a3d12fc11bee2537a29`;
+- all 50 Python proof tests pass in 467.8 seconds, including unresolved-symbol schema
+  coverage and rehashed middle-hop tampering;
+- the P2 and P3 verifiers pass on evidence cut
+  `e85a84f0931e081949827a96ba0bba8eee60843b` with analysis-cut digest
+  `3f5baacd565822ed4f8ae430dd5431cd3ce834713fad9e7b1e44217ff18da0cf`;
 - P3 reports 1,160 authority symbols and 16,011 reviewed-non-authority external
   symbols, zero parser errors, and literal `C1I_INCOMPLETE`;
 - migration remains not started. C1I changed no runtime database, provider state,
