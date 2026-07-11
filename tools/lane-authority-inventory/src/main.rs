@@ -368,6 +368,22 @@ fn rust_base_type_node(mut node: Node<'_>) -> Option<Node<'_>> {
 	}
 }
 
+fn rust_qualified_owner_signature(bytes: &[u8], node: Node<'_>) -> Option<String> {
+	let base = match node.kind() {
+		"generic_type" => node.child_by_field_name("type")?,
+		"bracketed_type" => {
+			let qualified = node.named_child(0)?;
+			if qualified.kind() != "qualified_type" {
+				return None;
+			}
+			qualified.child_by_field_name("type")?
+		},
+		_ => node,
+	};
+	let surface = base.utf8_text(bytes).ok()?.trim();
+	(!surface.is_empty()).then(|| surface.to_owned())
+}
+
 fn canonical_rust_type(
 	bytes: &[u8],
 	type_node: Node<'_>,
@@ -546,7 +562,7 @@ fn semantic_call_fact(
 		}
 		if target.kind() == "scoped_identifier" {
 			if let Some(owner) = target.child_by_field_name("path") {
-				let owner = owner.utf8_text(bytes).unwrap_or_default().trim().to_owned();
+				let owner = rust_qualified_owner_signature(bytes, owner).unwrap_or_default();
 				if !owner.is_empty() {
 					fact.qualified_owner_kind =
 						Some(rust_receiver_type_kind(bytes, call, &owner));
@@ -1115,7 +1131,7 @@ mod tests {
 		call_target_node, classify_symbol_signature, collect_nodes, declaration_name_node,
 		enclosing_owner_signature, language, rust_imports, rust_module_declaration_facts,
 		rust_name_binding_facts, rust_receiver_type, rust_receiver_type_kind, rust_scope_facts,
-		rust_struct_field_types, semantic_call_fact,
+		rust_qualified_owner_signature, rust_struct_field_types, semantic_call_fact,
 	};
 	use tree_sitter::Parser;
 
@@ -1329,7 +1345,7 @@ mod tests {
 
 	#[test]
 	fn extracts_rust_qualified_call_owner_kinds() {
-		let source = b"fn run<T>() { StateStore::open(); Self::close(); T::finish(); }";
+		let source = b"fn run<T>() { StateStore::open(); Self::close(); T::finish(); Vec::<String>::new(); <Sha256 as Digest>::new(); i64::from(1); }";
 		let mut parser = Parser::new();
 		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
 		let tree = parser.parse(source, None).expect("Rust syntax tree");
@@ -1352,6 +1368,9 @@ mod tests {
 				(Some("StateStore"), Some("concrete")),
 				(Some("Self"), Some("implicit_self")),
 				(Some("T"), Some("generic_parameter")),
+				(Some("Vec"), Some("concrete")),
+				(Some("Sha256"), Some("concrete")),
+				(Some("i64"), Some("concrete")),
 			],
 			facts
 				.iter()
@@ -1359,6 +1378,16 @@ mod tests {
 					(fact.qualified_owner_signature.as_deref(), fact.qualified_owner_kind.as_deref())
 				})
 				.collect::<Vec<_>>()
+		);
+		let owner_nodes = nodes
+			.iter()
+			.copied()
+			.filter(|node| matches!(node.kind(), "generic_type" | "bracketed_type"))
+			.collect::<Vec<_>>();
+		assert_eq!(Some("Vec".to_owned()), rust_qualified_owner_signature(source, owner_nodes[0]));
+		assert_eq!(
+			Some("Sha256".to_owned()),
+			rust_qualified_owner_signature(source, owner_nodes[1])
 		);
 	}
 

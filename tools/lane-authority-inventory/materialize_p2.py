@@ -23,9 +23,33 @@ CANDIDATE_RECORDS_PATH = Path(
 )
 RELATION_ROOT = Path("tools/lane-authority-inventory/manifests/relations")
 RUST_PRELUDE_TYPE_PATHS = {
+    "Box": "alloc::boxed::Box",
+    "Default": "core::default::Default",
     "Option": "core::option::Option",
     "String": "alloc::string::String",
     "Vec": "alloc::vec::Vec",
+    **{
+        primitive: f"core::primitive::{primitive}"
+        for primitive in (
+            "bool",
+            "char",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+            "i128",
+            "isize",
+            "str",
+            "u8",
+            "u16",
+            "u32",
+            "u64",
+            "u128",
+            "usize",
+        )
+    },
 }
 
 
