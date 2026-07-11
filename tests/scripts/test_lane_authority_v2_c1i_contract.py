@@ -34,11 +34,16 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.verifier = load_verifier_module()
 
-    def test_p0_contract_verifies_frozen_anchors_and_remains_incomplete(self):
-        result = self.verifier.verify_p0(REPO_ROOT, require_review=False)
+    def test_p0_foundation_verifies_frozen_anchors_under_later_catalog(self):
+        result = self.verifier.verify_p0(
+            REPO_ROOT, require_review=False, allow_later_catalog=True
+        )
 
         self.assertEqual("P0", result["phase"])
         self.assertEqual("C1I_INCOMPLETE", result["advancement_state"])
+        self.assertEqual(
+            "p3_machine_validated_incomplete", result["catalog_status"]
+        )
         self.assertEqual(
             {
                 "c0_source_files": 3363,
@@ -48,6 +53,10 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             },
             result["candidate_anchors"],
         )
+
+    def test_p0_phase_rejects_a_later_catalog(self):
+        with self.assertRaisesRegex(self.verifier.ContractError, "P0 catalog"):
+            self.verifier.verify_p0(REPO_ROOT, require_review=False)
 
     def test_c0_candidate_observations_are_reconstructed_from_frozen_artifacts(self):
         observations = self.verifier.expected_c0_candidate_observations(REPO_ROOT)
@@ -240,6 +249,74 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
 
         catalog["reviewed_non_authority_external_symbols"][0]["signature"] = "Other"
         self.assertNotEqual(original, self.verifier.catalog_semantic_digest(catalog))
+
+    def test_p3_external_policy_projection_is_exact_and_incomplete(self):
+        result = self.verifier.verify_p3(REPO_ROOT)
+
+        self.assertEqual("P3", result["phase"])
+        self.assertEqual("p3_machine_validated_incomplete", result["catalog_status"])
+        self.assertEqual(20, result["external_policy_entry_count"])
+        self.assertEqual(15926, result["external_symbol_count"])
+        self.assertEqual(15926, result["catalog_disposition_count"])
+        self.assertEqual(73825, result["unresolved_symbol_count"])
+
+    def test_p3_rejects_consumer_projection_tampering(self):
+        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        tampered = copy.deepcopy(catalog)
+        entry = tampered["reviewed_non_authority_external_symbols"][0]
+        entry["consumer_ids"].pop()
+        entry["used_site_set_digest"] = self.verifier.stable_id_set_digest(
+            "decodex/lane-authority-v2-catalog-entry-used-sites/1",
+            set(entry["consumer_ids"]),
+        )
+        original_load = self.verifier.load_json
+
+        def load_tampered(root, path):
+            if path == self.verifier.CATALOG_PATH:
+                return copy.deepcopy(tampered)
+            return original_load(root, path)
+
+        with (
+            mock.patch.object(self.verifier, "verify_p2", return_value={}),
+            mock.patch.object(self.verifier, "load_json", side_effect=load_tampered),
+            self.assertRaisesRegex(self.verifier.ContractError, "consumers disagree"),
+        ):
+            self.verifier.verify_p3(REPO_ROOT)
+
+    def test_p3_rejects_an_external_symbol_without_policy_authority(self):
+        symbols_path = Path(
+            "tools/lane-authority-inventory/manifests/relations/symbol_sites.json"
+        )
+        symbol_manifest = self.verifier.load_json(REPO_ROOT, symbols_path)
+        tampered = copy.deepcopy(symbol_manifest)
+        policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
+        )
+        policy_identities = {
+            (entry["language"], entry["signature"]) for entry in policy["entries"]
+        }
+        site = next(
+            site
+            for site in tampered["records"]
+            if site["role"] == "call_target"
+            and site["resolution"] == "unresolved"
+            and (site["language"], site["signature"]) not in policy_identities
+        )
+        site["external"] = True
+        site["resolution"] = "external"
+        original_load = self.verifier.load_json
+
+        def load_tampered(root, path):
+            if path == symbols_path:
+                return copy.deepcopy(tampered)
+            return original_load(root, path)
+
+        with (
+            mock.patch.object(self.verifier, "verify_p2", return_value={}),
+            mock.patch.object(self.verifier, "load_json", side_effect=load_tampered),
+            self.assertRaisesRegex(self.verifier.ContractError, "policy authority"),
+        ):
+            self.verifier.verify_p3(REPO_ROOT)
 
     def test_gate_distinguishes_valid_incomplete_from_invalid_contract(self):
         gate = subprocess.run(
