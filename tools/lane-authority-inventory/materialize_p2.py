@@ -251,6 +251,28 @@ def materialize(root: Path) -> dict[str, Any]:
         )
     call_edges.sort(key=lambda edge: edge["edge_id"])
 
+    symbol_sites_by_id: dict[str, dict[str, Any]] = {}
+    for fact in parsed["semantic_symbol_facts"]:
+        symbol_site_id = canonical_id(
+            "decodex/lane-authority-v2-symbol-site/1",
+            fact["syntax_site_id"],
+            fact["role"],
+            fact["signature_digest"],
+        )
+        declaration = fact["role"] == "declaration"
+        symbol_sites_by_id[symbol_site_id] = {
+            "definition_site_ids": [],
+            "external": False if declaration else None,
+            "resolution": "declaration" if declaration else "unresolved",
+            "resolution_hint": fact["resolution_hint"],
+            "role": fact["role"],
+            "signature": fact["signature"],
+            "signature_digest": fact["signature_digest"],
+            "site_id": symbol_site_id,
+            "syntax_site_id": fact["syntax_site_id"],
+        }
+    symbol_sites = sorted(symbol_sites_by_id.values(), key=lambda site: site["site_id"])
+
     current_sources = [
         source for source in parsed["source_nodes"] if source["status"] == "current"
     ]
@@ -363,7 +385,11 @@ def materialize(root: Path) -> dict[str, Any]:
             "decodex/lane-authority-v2-c1i-dataflow-edges/1",
             dataflow_edges,
         ),
-        ("symbol_sites", "decodex/lane-authority-v2-c1i-symbol-sites/1", []),
+        (
+            "symbol_sites",
+            "decodex/lane-authority-v2-c1i-symbol-sites/1",
+            symbol_sites,
+        ),
         (
             "supporting_inputs",
             "decodex/lane-authority-v2-c1i-supporting-inputs/1",
@@ -423,6 +449,7 @@ def materialize(root: Path) -> dict[str, Any]:
         "parser_errors": parser_errors,
         "source_cut_commit": source_cut,
         "source_nodes": len(parsed["source_nodes"]),
+        "symbol_sites": len(symbol_sites),
         "syntax_sites": len(parsed["syntax_sites"]),
         "toolchain_receipts": len(tool_receipts),
     }

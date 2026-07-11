@@ -48,13 +48,36 @@
     },
     "symbol_site": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"resolution": {"const": "declaration"}}, "required": ["resolution"]},
+          "then": {"properties": {"definition_site_ids": {"maxItems": 0}, "external": {"const": false}, "role": {"const": "declaration"}}}
+        },
+        {
+          "if": {"properties": {"resolution": {"const": "local"}}, "required": ["resolution"]},
+          "then": {"properties": {"definition_site_ids": {"minItems": 1}, "external": {"const": false}, "role": {"const": "call_target"}}}
+        },
+        {
+          "if": {"properties": {"resolution": {"const": "external"}}, "required": ["resolution"]},
+          "then": {"properties": {"definition_site_ids": {"maxItems": 0}, "external": {"const": true}, "role": {"const": "call_target"}}}
+        },
+        {
+          "if": {"properties": {"resolution": {"const": "unresolved"}}, "required": ["resolution"]},
+          "then": {"properties": {"definition_site_ids": {"maxItems": 0}, "external": {"const": null}, "role": {"const": "call_target"}}}
+        }
+      ],
       "properties": {
-        "external": {"type": "boolean"},
+        "definition_site_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array", "uniqueItems": true},
+        "external": {"type": ["boolean", "null"]},
+        "resolution": {"enum": ["declaration", "local", "external", "unresolved"]},
+        "resolution_hint": {"enum": ["dynamic", "exact", "qualified"]},
+        "role": {"enum": ["declaration", "call_target"]},
+        "signature": {"minLength": 1, "maxLength": 256, "type": "string"},
         "signature_digest": {"$ref": "#/$defs/digest"},
         "site_id": {"$ref": "#/$defs/id"},
         "syntax_site_id": {"$ref": "#/$defs/id"}
       },
-      "required": ["site_id", "syntax_site_id", "signature_digest", "external"],
+      "required": ["site_id", "syntax_site_id", "role", "signature", "signature_digest", "resolution_hint", "resolution", "definition_site_ids", "external"],
       "type": "object"
     },
     "data_site": {

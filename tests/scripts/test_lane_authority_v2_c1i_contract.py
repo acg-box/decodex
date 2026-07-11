@@ -806,11 +806,19 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 catalog=catalog,
             )
 
+        external_signature = "std::env::var"
         missing_catalog_entry = copy.deepcopy(records)
         missing_catalog_entry["symbol_sites"] = [
             {
+                "definition_site_ids": [],
                 "external": True,
-                "signature_digest": digest,
+                "resolution": "external",
+                "resolution_hint": "qualified",
+                "role": "call_target",
+                "signature": external_signature,
+                "signature_digest": hashlib.sha256(
+                    external_signature.encode("utf-8")
+                ).hexdigest(),
                 "site_id": "symbol:one",
                 "syntax_site_id": "site:one",
             }
@@ -865,11 +873,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 catalog=wrong_section_catalog,
             )
 
-        external_signature = "std::env::var"
         matched_external = copy.deepcopy(missing_catalog_entry)
-        matched_external["symbol_sites"][0]["signature_digest"] = hashlib.sha256(
-            external_signature.encode("utf-8")
-        ).hexdigest()
         matched_catalog = copy.deepcopy(catalog)
         matched_catalog["external_symbols"] = [
             {
@@ -959,6 +963,35 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         }
         with self.assertRaises(ValidationError):
             Draft202012Validator(schema).validate(manifest)
+
+    def test_symbol_relation_represents_unresolved_without_false_external_claim(self):
+        schema = self.verifier.load_json(
+            REPO_ROOT,
+            Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json"),
+        )
+        symbol = {
+            "definition_site_ids": [],
+            "external": None,
+            "resolution": "unresolved",
+            "resolution_hint": "dynamic",
+            "role": "call_target",
+            "signature": "<dynamic:call_expression>",
+            "signature_digest": "a" * 64,
+            "site_id": "symbol:one",
+            "syntax_site_id": "syntax:one",
+        }
+        manifest = {
+            "records": [symbol],
+            "relation": "symbol_sites",
+            "schema": "decodex/lane-authority-v2-c1i-symbol-sites/1",
+        }
+        Draft202012Validator(schema).validate(manifest)
+
+        invalid_local = copy.deepcopy(manifest)
+        invalid_local["records"][0]["external"] = False
+        invalid_local["records"][0]["resolution"] = "local"
+        with self.assertRaises(ValidationError):
+            Draft202012Validator(schema).validate(invalid_local)
 
     def test_cfg_projection_relation_schema_is_satisfiable(self):
         schema = self.verifier.load_json(

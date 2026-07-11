@@ -1095,6 +1095,13 @@ def validate_cross_relation_records(
     for site in [*symbols.values(), *data.values()]:
         if site["syntax_site_id"] not in syntax:
             raise ContractError("derived site references a missing syntax site")
+    if any(site["resolution"] == "unresolved" for site in symbols.values()):
+        raise ContractError("accepted symbol relation contains unresolved targets")
+    for site in symbols.values():
+        for definition_site_id in site["definition_site_ids"]:
+            definition = symbols.get(definition_site_id)
+            if definition is None or definition["resolution"] != "declaration":
+                raise ContractError("local symbol target references a missing declaration")
 
     projection_kinds_by_source: dict[str, set[str]] = {}
     projections = _unique_index(
@@ -1235,7 +1242,9 @@ def validate_cross_relation_records(
             if edge["from_site_id"] not in all_sites or edge["to_site_id"] not in all_sites:
                 raise ContractError(f"{relation} contains a missing endpoint")
 
-    external_symbols = {site_id for site_id, site in symbols.items() if site["external"]}
+    external_symbols = {
+        site_id for site_id, site in symbols.items() if site["resolution"] == "external"
+    }
     dispositions = _unique_index(
         records["catalog_entry_dispositions"],
         "disposition_id",
@@ -2277,7 +2286,15 @@ def verify_p2(root: Path) -> dict[str, Any]:
     )
     if any(site["syntax_site_id"] not in syntax for site in data_sites.values()):
         raise ContractError("P2 data site references a missing syntax site")
-    all_site_ids = set(syntax) | set(data_sites)
+    symbol_sites = _unique_index(
+        manifests["symbol_sites"]["records"], "site_id", "P2 symbol sites"
+    )
+    if any(site["syntax_site_id"] not in syntax for site in symbol_sites.values()):
+        raise ContractError("P2 symbol site references a missing syntax site")
+    unresolved_symbols = sum(
+        site["resolution"] == "unresolved" for site in symbol_sites.values()
+    )
+    all_site_ids = set(syntax) | set(symbol_sites) | set(data_sites)
     call_edges = _unique_index(
         manifests["call_edges"]["records"], "edge_id", "P2 call edges"
     )
@@ -2382,9 +2399,17 @@ def verify_p2(root: Path) -> dict[str, Any]:
         "parser_error_count": parser_errors,
         "phase": "P2",
         "source_node_count": len(sources),
+        "symbol_site_count": len(symbol_sites),
         "syntax_site_count": len(syntax),
         "toolchain_receipt_count": len(receipts),
-        "unresolved_count": parser_errors + len(candidate_ids) + len(call_edges) + len(dataflow_edges),
+        "unresolved_count": (
+            parser_errors
+            + len(candidate_ids)
+            + len(call_edges)
+            + len(dataflow_edges)
+            + unresolved_symbols
+        ),
+        "unresolved_symbol_count": unresolved_symbols,
     }
 
 
