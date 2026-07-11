@@ -161,6 +161,62 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 ):
                     self.verifier.validate_catalog_p0(populated)
 
+    def test_external_symbol_policy_is_exact_unique_and_review_pending(self):
+        policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
+        )
+
+        self.verifier.validate_external_symbol_policy(policy)
+
+        self.assertEqual(
+            "p3_machine_validated_review_pending", policy["policy_status"]
+        )
+        self.assertTrue(
+            all(
+                entry["authority_relevance"] == "reviewed_non_authority"
+                for entry in policy["entries"]
+            )
+        )
+
+    def test_external_symbol_policy_rejects_duplicate_signature_and_wildcard(self):
+        policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
+        )
+        duplicate = copy.deepcopy(policy)
+        duplicate["entries"].insert(1, copy.deepcopy(duplicate["entries"][0]))
+        duplicate["policy_semantic_digest"] = (
+            self.verifier.external_symbol_policy_semantic_digest(duplicate)
+        )
+        with self.assertRaisesRegex(
+            self.verifier.ContractError, "duplicate language/signature"
+        ):
+            self.verifier.validate_external_symbol_policy(duplicate)
+
+        wildcard = copy.deepcopy(policy)
+        wildcard["entries"][15]["signature"] = "panic*"
+        wildcard["policy_semantic_digest"] = (
+            self.verifier.external_symbol_policy_semantic_digest(wildcard)
+        )
+        with self.assertRaisesRegex(self.verifier.ContractError, "wildcard"):
+            self.verifier.validate_external_symbol_policy(wildcard)
+
+    def test_external_symbol_policy_schema_excludes_authority_capabilities(self):
+        schema = self.verifier.load_json(
+            REPO_ROOT,
+            Path(
+                "tools/lane-authority-inventory/contracts/"
+                "external_symbol_policy.schema.json"
+            ),
+        )
+        policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
+        )
+        unsafe = copy.deepcopy(policy)
+        unsafe["entries"][0]["capability_class"] = "filesystem"
+
+        with self.assertRaises(ValidationError):
+            Draft202012Validator(schema).validate(unsafe)
+
     def test_gate_distinguishes_valid_incomplete_from_invalid_contract(self):
         gate = subprocess.run(
             [str(REPO_ROOT / "scripts/verify_lane_authority_v2_gates.sh"), "C1I"],

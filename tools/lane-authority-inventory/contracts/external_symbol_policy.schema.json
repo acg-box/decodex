@@ -1,0 +1,81 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-external-symbol-policy-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "entry": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_relevance": {"const": "reviewed_non_authority"},
+        "capability_class": {
+          "enum": [
+            "assertion",
+            "in_memory_construction",
+            "presentation",
+            "pure_data"
+          ]
+        },
+        "evidence_source": {
+          "enum": [
+            "python_builtin",
+            "python_standard_library",
+            "rust_core_or_prelude",
+            "rust_standard_library",
+            "swift_standard_library",
+            "swift_xctest"
+          ]
+        },
+        "id": {
+          "pattern": "^external-policy:[a-z0-9][a-z0-9._:-]*$",
+          "type": "string"
+        },
+        "language": {
+          "enum": ["python", "rust", "shell", "swift"]
+        },
+        "reason_code": {
+          "enum": [
+            "language_assertion",
+            "language_value_constructor",
+            "standard_library_in_memory_value",
+            "test_assertion"
+          ]
+        },
+        "semantic_kinds": {"const": ["data_only"]},
+        "signature": {
+          "maxLength": 512,
+          "minLength": 1,
+          "not": {"pattern": "[?*]"},
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "language",
+        "signature",
+        "authority_relevance",
+        "semantic_kinds",
+        "capability_class",
+        "evidence_source",
+        "reason_code"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "entries": {
+      "items": {"$ref": "#/$defs/entry"},
+      "minItems": 1,
+      "type": "array"
+    },
+    "policy_semantic_digest": {"$ref": "#/$defs/digest"},
+    "policy_status": {"const": "p3_machine_validated_review_pending"},
+    "schema": {"const": "decodex/lane-authority-v2-external-symbol-policy/1"}
+  },
+  "required": ["schema", "policy_status", "policy_semantic_digest", "entries"],
+  "title": "Lane Authority v2 external symbol policy",
+  "type": "object"
+}

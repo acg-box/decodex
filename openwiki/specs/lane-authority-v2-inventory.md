@@ -155,6 +155,15 @@ base; the final readback rule above remains authoritative.
 
 `tools/lane-authority-inventory/catalog/authority_surface_catalog.json` is a reviewed,
 versioned input. It is never generated from C0 regex candidates or from scanner output.
+`tools/lane-authority-inventory/catalog/external_symbol_policy.json` is the independent,
+signature-exact semantic input for proposed non-authority external symbols. P3 may bind
+an enumerated source consumer only to the same `(language, signature)` policy identity;
+it must not infer, widen, or generate a policy decision. The policy schema intentionally
+has no filesystem, process, environment, SQL, network, provider, time, or other
+authority-capable class. Unlisted and dynamic symbols remain unresolved until separately
+adjudicated. The policy remains machine-validated and review-pending until the P5 review
+approves its exact semantic digest with the complete populated catalog.
+
 It has closed, language-qualified sections for:
 
 - canonical external symbol/API signatures used by the analysis source universe;
