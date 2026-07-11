@@ -34,6 +34,24 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.verifier = load_verifier_module()
 
+    def p0_catalog(self):
+        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        catalog["catalog_status"] = "p0_schema_only_incomplete"
+        catalog["catalog_semantic_digest"] = None
+        catalog["used_external_symbol_set_digest"] = None
+        for section in (
+            "dynamic_capability_roots",
+            "executable_declarative_paths",
+            "external_symbols",
+            "local_closure_boundaries",
+            "persistent_data_roots",
+            "provider_and_config_roots",
+            "reviewed_non_authority_external_symbols",
+            "toolchain_matrix",
+        ):
+            catalog[section] = []
+        return catalog
+
     def test_p0_foundation_verifies_frozen_anchors_under_later_catalog(self):
         result = self.verifier.verify_p0(
             REPO_ROOT, require_review=False, allow_later_catalog=True
@@ -150,7 +168,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             self.verifier.validate_dataflow_contract(weakened_top)
 
     def test_p0_catalog_rejects_early_population(self):
-        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        catalog = self.p0_catalog()
         sections = (
             "dynamic_capability_roots",
             "executable_declarative_paths",
@@ -227,7 +245,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             Draft202012Validator(schema).validate(unsafe)
 
     def test_catalog_semantic_digest_excludes_generated_consumer_projection(self):
-        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        catalog = self.p0_catalog()
         policy = self.verifier.load_json(
             REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
         )
@@ -370,7 +388,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 "tools/lane-authority-inventory/contracts/authority_surface_catalog.schema.json"
             ),
         )
-        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        catalog = self.p0_catalog()
         catalog["catalog_status"] = "p3_populated_approved"
         catalog["catalog_semantic_digest"] = "a" * 64
         catalog["used_external_symbol_set_digest"] = "b" * 64
@@ -542,7 +560,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 "review_receipt_digest": digest,
             }
         ]
-        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        catalog = self.p0_catalog()
         catalog["toolchain_matrix"] = []
         records["toolchain_receipts"] = []
         for language in sorted(self.verifier.EXPECTED_LANGUAGES):
@@ -1347,7 +1365,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
 
     def test_empty_relation_universe_cannot_pass_vacuously(self):
         records = {relation: [] for relation in self.verifier.EXPECTED_RELATIONS}
-        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        catalog = self.p0_catalog()
         expected_candidate_observations = {}
         with self.assertRaisesRegex(self.verifier.ContractError, "analysis cut"):
             self.verifier.validate_cross_relation_records(
