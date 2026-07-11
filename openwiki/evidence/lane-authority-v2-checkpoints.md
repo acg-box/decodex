@@ -1650,6 +1650,24 @@ and P3 verifiers pass; the focused projection, tamper, output-policy, and immuta
 tests pass. The generated output is still incomplete authority and the next slice is the
 call-target-only `symbol_dispositions` relation with executed evidence invariants.
 
+Commit `1213f0a6` implements that relation across the closed relation schema,
+composition schema, output policy, P3 materializer, and independently reconstructing
+verifier. Its domain is exactly all `call_target` records and excludes declarations.
+Local, authority-policy, reviewed-non-authority-policy, intrinsic, finite-dynamic, and
+rejected-dynamic dispositions have disjoint schema evidence requirements. Commit
+`1ee3798e` adds missing-record and recomputed policy-laundering tamper tests.
+
+The first generated disposition cut contains 98,402 call targets: 11,589 canonical local
+calls, 1,160 cataloged authority externals, 16,011 cataloged reviewed-non-authority
+externals, and 69,642 explicitly rejected dynamic targets. No intrinsic or finite-dynamic
+claim is generated without its future independent policy/proof. P2 and P3 verifiers pass
+with analysis-cut digest
+`4ebfbcf5aabc6f84347f0b41809b5c0fabe189c63f5c12880b34bfefd840d34d`.
+The remaining rejected count is now the authoritative symbol-closure backlog. The next
+slice extends Rust name authority from type-only bindings to distinct type, value, and
+macro namespaces; it cannot change semantic policy or classify a dynamic target as
+non-authority.
+
 ### C0 evidence commands
 
 ```sh
