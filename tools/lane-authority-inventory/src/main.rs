@@ -230,7 +230,9 @@ fn enclosing_owner_signature(bytes: &[u8], language: &str, node: Node<'_>) -> Op
 	let mut ancestor = node.parent();
 	while let Some(current) = ancestor {
 		let owner = match (language, current.kind()) {
-			("rust", "impl_item") => current.child_by_field_name("type"),
+			("rust", "impl_item") => current
+				.child_by_field_name("type")
+				.and_then(rust_base_type_node),
 			("python", "class_definition") | ("swift", "class_declaration") => {
 				current.child_by_field_name("name")
 			},
@@ -1269,7 +1271,7 @@ mod tests {
 
 	#[test]
 	fn extracts_rust_impl_owner_for_method_declarations_and_calls() {
-		let source = b"struct StateStore; impl StateStore { fn open() { Self::open(); } }";
+		let source = b"struct StateStore<T>(T); impl<T> crate::StateStore<T> { fn open() { Self::open(); } }";
 		let mut parser = Parser::new();
 		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
 		let tree = parser.parse(source, None).expect("Rust syntax tree");
@@ -1281,7 +1283,7 @@ mod tests {
 		assert_eq!(2, owned_nodes.len());
 		for node in owned_nodes {
 			assert_eq!(
-				Some("StateStore".to_owned()),
+				Some("crate::StateStore".to_owned()),
 				enclosing_owner_signature(source, "rust", *node)
 			);
 		}
