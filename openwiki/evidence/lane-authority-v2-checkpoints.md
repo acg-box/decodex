@@ -1191,14 +1191,52 @@ Machine evidence for this checkpoint:
 
 - policy semantic digest
   `c71c5efafc1d120bbfae677a2e966824377b2bcb6482996609d5090ca138ccc6`;
-- authority policy semantic digest
-  `d96d7bb8aa6e57bd3d66a6c85353affecce6db3adb2f375dc6899577956fd903`;
+- current authority policy semantic digest
+  `268dc9b8fb6fdefea2e44c70f153ee0a77ec0a433efd638dfbb3ed48a31ae70f`;
 - all 36 locked contract/materializer tests pass, including policy, semantic-digest,
   consumer-tamper, and unauthorized-external regressions;
 - P3 contract verifier passes; the broad C1I gate returns the expected exit 1 and
   reason-coded `C1I_INCOMPLETE` rejection;
 - two consecutive P1/P2/P3 materializations from the exact source cut have identical
   output SHAs and counts, including a second run from an already projected P3 state;
+- no runtime source, runtime database, migration, external provider, Linear state, or
+  GitHub PR lifecycle state changed.
+
+#### Explicit Rust receiver proof cut
+
+Source cut `ddd784d9f2c8f250bfd3a071865e180482ab7a28` extends P3 with
+conservative AST-backed receiver identity. A Rust object call acquires a canonical type
+only from an explicit parameter type, explicit local binding type, or same-file
+enclosing-struct field type. Structured `use` imports must resolve uniquely; ambiguous
+imports, inferred return types, untyped bindings, arbitrary method chains, and
+cross-file field shapes remain unresolved. The materializer never uses receiver variable
+names as API identity.
+
+The exact generated cut contains 3,387 source records (3,377 analysis and 10 tool),
+1,308,394 traversed parser nodes, 146,090 syntax sites, 107,622 symbol sites, 10,466
+declarations, 7,144 local call edges, and 13,548 cfg projections. Call targets comprise
+24,061 exact, 50,001 qualified, and 23,094 dynamic sites. Explicit receiver evidence
+covers 5,219 Rust call facts: 4,461 parameter types, 42 local binding types, and 716
+enclosing-struct field types. Fifteen of those calls resolve to local declarations before
+the remaining P3 closure.
+
+The authority policy now has 36 exact entries. The added typed `rusqlite` roots classify
+145 calls, bringing the authority projection to 1,160 sites. Together with 15,946
+reviewed-non-authority sites, the catalog has 17,106 exact dispositions. It intentionally
+leaves local `StateStore` receiver calls for local declaration closure rather than
+misclassifying them as external authority. The cut has 72,906 unresolved symbols and
+155,020 total unresolved candidate/symbol/dataflow items; P3 therefore remains
+`C1I_INCOMPLETE`.
+
+Machine evidence for the receiver proof cut:
+
+- six Rust parser tests and all 36 locked Python contract/materializer tests pass;
+- two consecutive P1/P2/P3 materializations from the exact source cut produced identical
+  SHAs for all ten generated artifacts;
+- the P3 verifier passes, while `scripts/verify_lane_authority_v2_gates.sh C1I` returns
+  the expected exit 1 with reason `c1i_phase_incomplete`;
+- the generated analysis-cut digest is
+  `d04cb89127b4b9edd2e6455cc331748fa29911b6c03f048cd8eb8b7c8e3e64d0`;
 - no runtime source, runtime database, migration, external provider, Linear state, or
   GitHub PR lifecycle state changed.
 
@@ -1218,11 +1256,10 @@ rg 'CREATE TABLE|PRIMARY KEY' apps/decodex/src/state/sqlite_store/schema*
 
 ### Next checkpoint
 
-Implement the P3 materializer as an exact `(language, signature)` join over this policy,
-populate catalog consumer/disposition evidence without generating semantic decisions,
-then adjudicate dynamic/object calls, C0 candidates, and bounded dataflow while keeping
-the readiness gate at `C1I_INCOMPLETE`. C1 must not preserve global issue-keyed ownership
-behind a facade.
+Complete local Rust receiver/declaration closure with module-qualified type identity,
+then adjudicate the remaining dynamic/object calls, C0 candidates, and bounded dataflow
+without terminal-name guessing or generated semantic decisions. Keep the readiness gate
+at `C1I_INCOMPLETE`. C1 must not preserve global issue-keyed ownership behind a facade.
 
 ## Program Checkpoint Table
 
