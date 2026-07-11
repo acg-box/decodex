@@ -1438,6 +1438,38 @@ This checkpoint does not yet bind impl method declarations to canonical owner ty
 identities or replace terminal-name local call matching. Those are the next
 mandatory closure layer.
 
+#### Generic impl owner surface closure
+
+Source cut `5c37cbcc434e6138dd3b92a494d47adbbb4b6e4b` makes Rust impl-owner
+extraction structural for generic and scoped owner types. The parser now unwraps
+`impl<T> Owner<T>` through the AST type node to the base owner path instead of
+classifying the generic type text as dynamic. It does not infer an owner from a
+method name or identifier spelling.
+
+Exact-cut regeneration increased Rust method declarations with an explicit impl
+owner from 2,126 to 2,286, receiver type resolutions from 5,240 to 5,251, and
+local call edges from 7,212 to 7,608. The 160 recovered declaration owners and
+396 additional local edges are evidence that the change affects the real source
+universe rather than only its parser fixture. These edges remain provisional
+until declaration and receiver owners are joined through canonical type identity.
+
+Machine evidence for this cut:
+
+- all nine Rust parser tests pass, including `impl<T> crate::StateStore<T>` owner
+  extraction;
+- all 37 Python contract/materializer tests pass;
+- the P2 and P3 verifiers pass with analysis-cut digest
+  `7179fdff6fbadc6b734406497f027e49f831c26e3c35cf5e9b4e4369014cae57`;
+- P3 reports 1,160 authority symbols and 15,987 reviewed-non-authority external
+  symbols; readiness remains `C1I_INCOMPLETE`;
+- migration remains not started and no runtime source, runtime database, provider,
+  Linear state, or GitHub lifecycle state changed.
+
+The next closure step resolves each Rust impl declaration owner through the same
+Cargo-target and lexical-scope type-path authority used for receivers, then builds
+method edges only when canonical owner declaration identity and method identity
+both agree. Terminal-name matching must then be removed for those Rust sites.
+
 ### C0 evidence commands
 
 ```sh
