@@ -1384,6 +1384,60 @@ This checkpoint does not claim value/macro namespace closure or canonical receiv
 and local-call closure. The 4,978 unresolved type-path records remain executable
 incompleteness evidence until those consumers are separated and proved.
 
+### C1I Rust receiver type identity
+
+Source cut `60ef9ec321d61dd5ded97ecb0faf30a66747fb0a` adds 5,240
+target-qualified receiver type resolutions. The implementation checkpoints are
+`7629b4c6`, `e9228f0e`, `d6bdb332`, `b61f448d`, `a0a2de14`,
+`d0c028db`, and `60ef9ec3`.
+
+Every Rust call target with explicit receiver evidence is bound to its exact Cargo
+target and innermost lexical scope:
+
+- 2,331 receiver types resolve to a canonical local type declaration;
+- 2,844 resolve to an attested external or Rust prelude type;
+- 65 are AST-proven generic parameters (`T`, `W`, `I`, or `R`) and are
+  reason-coded as dynamic generic dispatch;
+- zero remain ordinarily unresolved, ambiguous, cyclic, visibility-inaccessible,
+  unsupported, or module-terminal.
+
+The relation preserves the source type spelling separately from its query path.
+`Option`, `Vec`, and `String` normalize to explicit `core` or `alloc`
+paths only for receiver lookup; ordinary Rust `use` path semantics are unchanged.
+`Self` is proved from its enclosing impl and resolved through the impl owner. Both
+`Self` sites resolve to the same canonical
+`AuthorityBoundaryPolicyDecision` declaration. All 569 `StateStore` receiver
+sites resolve to the same canonical `state::store::StateStore` declaration.
+External aliases continue through remaining path segments, so an alias such as
+`collections::HashMap` proves `std::collections::HashMap`, not merely the alias
+root.
+
+Receiver queries are deterministic temporary bindings. They are not persisted in
+the lexical binding graph. The accepted relation retains only query identity,
+source symbol and syntax identity, target/scope identity, real binding hops,
+receiver evidence/kind, raw path status, semantic status, and canonical terminal.
+The verifier reconstructs each temporary query and independently replays every
+real hop. A test replaces a receiver middle hop and recomputes the artifact digest;
+verification still rejects it.
+
+Machine evidence for the receiver cut:
+
+- all nine Rust parser tests pass;
+- all 48 locked Python contract/materializer tests pass;
+- the P2 and P3 verifiers pass;
+- two complete P1/P2/P3 materializations produced identical SHAs for all 18
+  manifests;
+- the P3 analysis-cut digest is
+  `d67e6b36229916e5f258c97f9984715c8d9536ad455c06ee98529fe957bfca4a`;
+- P3 still reports 1,160 authority symbols and 15,987 reviewed-non-authority
+  external symbols; readiness remains `C1I_INCOMPLETE`;
+- no runtime source, runtime database, migration, external provider, Linear state,
+  or GitHub PR lifecycle state changed.
+
+This checkpoint does not yet bind impl method declarations to canonical owner type
+identities or replace terminal-name local call matching. Those are the next
+mandatory closure layer.
+
 ### C0 evidence commands
 
 ```sh
@@ -1400,9 +1454,10 @@ rg 'CREATE TABLE|PRIMARY KEY' apps/decodex/src/state/sqlite_store/schema*
 
 ### Next checkpoint
 
-Resolve receiver types and local calls by canonical type-definition identity. Add the
-separate Rust value/macro namespace evidence needed by those consumers, then adjudicate
-the remaining dynamic/object calls, C0 candidates, and bounded dataflow without
+Resolve impl method declarations to canonical owner type identities and rebuild local
+call edges from receiver/owner identity plus method identity. Add separate Rust
+value/macro namespace evidence only where remaining consumers require it, then
+adjudicate dynamic/object calls, C0 candidates, and bounded dataflow without
 terminal-name guessing or generated semantic decisions. Keep the readiness gate at
 `C1I_INCOMPLETE`. C1 must not preserve global issue-keyed ownership behind a facade.
 
