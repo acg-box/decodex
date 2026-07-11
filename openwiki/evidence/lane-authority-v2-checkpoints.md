@@ -1538,6 +1538,50 @@ Remaining Rust call closure is limited to associated/type-qualified calls such a
 Those sites must use canonical type queries or stay rejected; terminal-name matching
 will not return.
 
+#### Canonical Rust qualified-owner call edges
+
+PR #1091 separately corrected the Linux-only `fs::read_to_string` source by adding
+the missing cfg-qualified `std::fs` import. Decodex landed that runtime correction as
+merge `5546dcb3b2eb0a8aecf7d6a3b117d2605ea315b8`; C1I then rebased and reattested that
+deployed main tree. Keeping the runtime edit outside C1I preserved the inventory
+contract's runtime-byte prohibition while allowing the exact source universe to be
+parsed without inventing an unresolved local symbol.
+
+Source cut `578db9436cda452509939824d0ce63f1cd684568` adds the typed
+`rust_qualified_owner_resolutions` relation for associated and module-qualified Rust
+calls. The parser normalizes turbofish and UFCS owner syntax, preserves the original
+surface path, and records an explicit target-qualified query path. Local type owners
+resolve through canonical type identity; local module owners resolve only to top-level
+functions in the same canonical module. Prelude and external owners remain explicit
+external authority, while generic owners stay reason-coded dynamic dispatch. No
+ordinary qualified owner remains unresolved.
+
+The accepted relation contains 24,400 records: 11,055 canonical local-module owners,
+4,019 canonical local-type owners, and 9,326 attested external owners. Qualified and
+receiver call edges are rebuilt from canonical owner identity and method identity;
+the complete graph contains 11,578 call edges. The verifier independently reconstructs
+the query and every binding hop and rejects a middle-hop substitution even when the
+record and artifact digests are recomputed.
+
+Machine evidence for this cut:
+
+- all 11 Rust parser tests pass;
+- the focused unresolved-symbol schema fixture passes after being updated for the
+  required nullable qualified-owner fields; the full 50-test Python proof suite is
+  being rerun on this exact cut before the generated checkpoint is committed;
+- the P2 and P3 verifiers pass with analysis-cut digest
+  `a1ab8bce66cfb9e7d50346a7b7bf7fb1c06e02159aa73a3d12fc11bee2537a29`;
+- P3 reports 1,160 authority symbols and 16,011 reviewed-non-authority external
+  symbols, zero parser errors, and literal `C1I_INCOMPLETE`;
+- migration remains not started. C1I changed no runtime database, provider state,
+  tracker state, or GitHub lifecycle state beyond the separately reviewed and landed
+  Linux source correction.
+
+Remaining P3 work is explicit dynamic/generic/object dispatch adjudication and the
+bounded authority-dataflow closure. P4/P5 deterministic regeneration, cross-platform
+and runtime-byte checks, exact-base readback, integrated reviews, CI, and Decodex land
+remain mandatory before C1I may become ready.
+
 ### C0 evidence commands
 
 ```sh
@@ -1554,12 +1598,11 @@ rg 'CREATE TABLE|PRIMARY KEY' apps/decodex/src/state/sqlite_store/schema*
 
 ### Next checkpoint
 
-Resolve impl method declarations to canonical owner type identities and rebuild local
-call edges from receiver/owner identity plus method identity. Add separate Rust
-value/macro namespace evidence only where remaining consumers require it, then
-adjudicate dynamic/object calls, C0 candidates, and bounded dataflow without
-terminal-name guessing or generated semantic decisions. Keep the readiness gate at
-`C1I_INCOMPLETE`. C1 must not preserve global issue-keyed ownership behind a facade.
+Adjudicate the remaining dynamic/generic/object calls, C0 candidates, and bounded
+authority dataflow without terminal-name guessing or generated semantic decisions.
+Then complete P4/P5 determinism, platform/runtime-byte, exact-base, integrated review,
+CI, and landing gates. Keep readiness at `C1I_INCOMPLETE` until every gate passes. C1
+must not preserve global issue-keyed ownership behind a facade.
 
 ## Program Checkpoint Table
 
