@@ -476,6 +476,142 @@ def materialize_rust_module_scopes(
     return sorted(records_by_id.values(), key=lambda record: record["scope_id"])
 
 
+def materialize_rust_name_bindings(
+    parsed: dict[str, Any],
+    rust_module_scopes: list[dict[str, Any]],
+    symbol_sites: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    scopes_by_lexical_site: dict[
+        tuple[str, str], list[dict[str, Any]]
+    ] = {}
+    module_targets: dict[tuple[str, str, str], list[str]] = {}
+    for scope in rust_module_scopes:
+        scopes_by_lexical_site.setdefault(
+            (scope["source_node_id"], scope["scope_syntax_site_id"]), []
+        ).append(scope)
+        if scope["declaration_syntax_site_id"] is not None:
+            module_targets.setdefault(
+                (
+                    scope["crate_target_id"],
+                    scope["parent_scope_id"],
+                    scope["declaration_syntax_site_id"],
+                ),
+                [],
+            ).append(scope["scope_id"])
+
+    type_symbols_by_syntax: dict[tuple[str, str], list[str]] = {}
+    for symbol in symbol_sites:
+        if symbol["language"] == "rust" and symbol["role"] == "declaration":
+            type_symbols_by_syntax.setdefault(
+                (symbol["syntax_site_id"], symbol["signature"]), []
+            ).append(symbol["site_id"])
+
+    bindings_by_id: dict[str, dict[str, Any]] = {}
+    for fact in parsed["rust_name_binding_facts"]:
+        lexical_scopes = scopes_by_lexical_site.get(
+            (
+                fact["source_node_id"],
+                fact["lexical_scope_syntax_site_id"],
+            ),
+            [],
+        )
+        for lexical_scope in lexical_scopes:
+            target_scope_id = None
+            target_symbol_site_id = None
+            resolution = "unresolved"
+            reason_code = "rust_binding_path_resolution_pending"
+            if fact["visibility"] == "unsupported":
+                resolution = "unsupported"
+                reason_code = "rust_binding_visibility_unsupported"
+            elif fact["binding_kind"] == "glob":
+                resolution = "unsupported"
+                reason_code = "rust_binding_glob_unsupported"
+            elif fact["binding_kind"] == "module":
+                targets = module_targets.get(
+                    (
+                        lexical_scope["crate_target_id"],
+                        lexical_scope["scope_id"],
+                        fact["syntax_site_id"],
+                    ),
+                    [],
+                )
+                if len(targets) == 1:
+                    target_scope_id = targets[0]
+                    resolution = "resolved"
+                    reason_code = "rust_binding_exact_module_declaration"
+                elif len(targets) > 1:
+                    resolution = "ambiguous"
+                    reason_code = "rust_binding_ambiguous_module_declaration"
+                else:
+                    reason_code = "rust_binding_module_target_unresolved"
+            elif fact["binding_kind"] == "type_declaration":
+                targets = type_symbols_by_syntax.get(
+                    (fact["syntax_site_id"], fact["local_name"]), []
+                )
+                if len(targets) == 1:
+                    target_symbol_site_id = targets[0]
+                    resolution = "resolved"
+                    reason_code = "rust_binding_exact_type_declaration"
+                elif len(targets) > 1:
+                    resolution = "ambiguous"
+                    reason_code = "rust_binding_ambiguous_type_declaration"
+                else:
+                    reason_code = "rust_binding_type_symbol_unresolved"
+
+            binding_id = canonical_id(
+                "decodex/lane-authority-v2-rust-name-binding/1",
+                lexical_scope["crate_target_id"],
+                lexical_scope["scope_id"],
+                fact["syntax_site_id"],
+                fact["binding_kind"],
+                fact["local_name"],
+                fact["surface_target_path"] or "",
+            )
+            record = {
+                "binding_id": binding_id,
+                "binding_kind": fact["binding_kind"],
+                "crate_target_id": lexical_scope["crate_target_id"],
+                "local_name": fact["local_name"],
+                "reason_code": reason_code,
+                "resolution": resolution,
+                "scope_id": lexical_scope["scope_id"],
+                "source_node_id": fact["source_node_id"],
+                "surface_target_path": fact["surface_target_path"],
+                "syntax_site_id": fact["syntax_site_id"],
+                "target_scope_id": target_scope_id,
+                "target_symbol_site_id": target_symbol_site_id,
+                "visibility": fact["visibility"],
+                "visibility_path": fact["visibility_path"],
+            }
+            existing = bindings_by_id.get(binding_id)
+            if existing is not None and existing != record:
+                raise contract.ContractError(
+                    f"Rust name binding identity has conflicting facts: {binding_id}"
+                )
+            bindings_by_id[binding_id] = record
+
+    bindings_by_identity: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for binding in bindings_by_id.values():
+        bindings_by_identity.setdefault(
+            (
+                binding["crate_target_id"],
+                binding["scope_id"],
+                binding["local_name"],
+            ),
+            [],
+        ).append(binding)
+    for bindings in bindings_by_identity.values():
+        if len(bindings) <= 1:
+            continue
+        for binding in bindings:
+            binding["resolution"] = "ambiguous"
+            binding["reason_code"] = "rust_binding_same_scope_ambiguous"
+            binding["target_scope_id"] = None
+            binding["target_symbol_site_id"] = None
+
+    return sorted(bindings_by_id.values(), key=lambda binding: binding["binding_id"])
+
+
 def resolve_swift_recovery(
     materialized: Path, parsed: dict[str, Any]
 ) -> tuple[str | None, set[str]]:
@@ -678,6 +814,9 @@ def materialize(root: Path) -> dict[str, Any]:
         )
     call_edges.sort(key=lambda edge: edge["edge_id"])
     symbol_sites = sorted(symbol_sites_by_id.values(), key=lambda site: site["site_id"])
+    rust_name_bindings = materialize_rust_name_bindings(
+        parsed, rust_module_scopes, symbol_sites
+    )
 
     current_sources = [
         source for source in parsed["source_nodes"] if source["status"] == "current"
@@ -808,6 +947,11 @@ def materialize(root: Path) -> dict[str, Any]:
             rust_module_scopes,
         ),
         (
+            "rust_name_bindings",
+            "decodex/lane-authority-v2-c1i-rust-name-bindings/1",
+            rust_name_bindings,
+        ),
+        (
             "supporting_inputs",
             "decodex/lane-authority-v2-c1i-supporting-inputs/1",
             [],
@@ -866,6 +1010,7 @@ def materialize(root: Path) -> dict[str, Any]:
         "dataflow_edges": len(dataflow_edges),
         "parser_errors": parser_errors,
         "rust_module_scopes": len(rust_module_scopes),
+        "rust_name_bindings": len(rust_name_bindings),
         "source_cut_commit": source_cut,
         "source_nodes": len(parsed["source_nodes"]),
         "symbol_sites": len(symbol_sites),

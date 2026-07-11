@@ -302,6 +302,84 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
 
         self.assertEqual(["crate_root"], [scope["scope_kind"] for scope in scopes])
 
+    def test_rust_name_bindings_resolve_only_exact_declarations(self):
+        parsed = {
+            "rust_name_binding_facts": [
+                {
+                    "binding_kind": "module",
+                    "lexical_scope_syntax_site_id": "syntax:root",
+                    "local_name": "state",
+                    "source_node_id": "source:lib",
+                    "surface_target_path": None,
+                    "syntax_site_id": "syntax:module",
+                    "visibility": "private",
+                    "visibility_path": None,
+                },
+                {
+                    "binding_kind": "type_declaration",
+                    "lexical_scope_syntax_site_id": "syntax:root",
+                    "local_name": "Store",
+                    "source_node_id": "source:lib",
+                    "surface_target_path": None,
+                    "syntax_site_id": "syntax:type",
+                    "visibility": "public",
+                    "visibility_path": None,
+                },
+                {
+                    "binding_kind": "use",
+                    "lexical_scope_syntax_site_id": "syntax:root",
+                    "local_name": "Row",
+                    "source_node_id": "source:lib",
+                    "surface_target_path": "rusqlite::Row",
+                    "syntax_site_id": "syntax:use",
+                    "visibility": "private",
+                    "visibility_path": None,
+                },
+            ]
+        }
+        scopes = [
+            {
+                "crate_target_id": "target:one",
+                "declaration_syntax_site_id": None,
+                "parent_scope_id": None,
+                "scope_id": "scope:root",
+                "scope_syntax_site_id": "syntax:root",
+                "source_node_id": "source:lib",
+            },
+            {
+                "crate_target_id": "target:one",
+                "declaration_syntax_site_id": "syntax:module",
+                "parent_scope_id": "scope:root",
+                "scope_id": "scope:state",
+                "scope_syntax_site_id": "syntax:state-root",
+                "source_node_id": "source:state",
+            },
+        ]
+        symbols = [
+            {
+                "language": "rust",
+                "role": "declaration",
+                "signature": "Store",
+                "site_id": "symbol:store",
+                "syntax_site_id": "syntax:type",
+            }
+        ]
+
+        bindings = self.materializer.materialize_rust_name_bindings(
+            parsed, scopes, symbols
+        )
+
+        module = next(binding for binding in bindings if binding["local_name"] == "state")
+        store = next(binding for binding in bindings if binding["local_name"] == "Store")
+        row = next(binding for binding in bindings if binding["local_name"] == "Row")
+        self.assertEqual(("resolved", "scope:state"), (module["resolution"], module["target_scope_id"]))
+        self.assertEqual(
+            ("resolved", "symbol:store"),
+            (store["resolution"], store["target_symbol_site_id"]),
+        )
+        self.assertEqual("unresolved", row["resolution"])
+        self.assertEqual("rust_binding_path_resolution_pending", row["reason_code"])
+
     def test_native_swift_parser_resolves_tree_sitter_recovery(self):
         parsed = {
             "source_nodes": [

@@ -17,6 +17,7 @@
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/site_classifications.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/source_nodes.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/rust_module_scopes.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/rust_name_bindings.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/supporting_inputs.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/symbol_sites.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/syntax_sites.json", "role": "relation"},

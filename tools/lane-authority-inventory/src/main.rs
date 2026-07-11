@@ -102,10 +102,23 @@ struct RustModuleDeclarationFact {
 	source_node_id: String,
 }
 
+#[derive(Clone, Serialize)]
+struct RustNameBindingFact {
+	binding_kind: String,
+	lexical_scope_syntax_site_id: String,
+	local_name: String,
+	source_node_id: String,
+	surface_target_path: Option<String>,
+	syntax_site_id: String,
+	visibility: String,
+	visibility_path: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ParseOutput {
 	candidate_site_edges: Vec<CandidateSiteEdge>,
 	rust_module_declaration_facts: Vec<RustModuleDeclarationFact>,
+	rust_name_binding_facts: Vec<RustNameBindingFact>,
 	rust_scope_facts: Vec<RustScopeFact>,
 	semantic_symbol_facts: Vec<SemanticSymbolFact>,
 	source_nodes: Vec<ParsedSource>,
@@ -115,6 +128,7 @@ struct ParseOutput {
 struct ParsedSourceOutput {
 	candidate_site_edges: Vec<CandidateSiteEdge>,
 	rust_module_declaration_facts: Vec<RustModuleDeclarationFact>,
+	rust_name_binding_facts: Vec<RustNameBindingFact>,
 	rust_scope_facts: Vec<RustScopeFact>,
 	semantic_symbol_facts: Vec<SemanticSymbolFact>,
 	source: ParsedSource,
@@ -307,7 +321,7 @@ fn collect_rust_use_node(
 			};
 			register_rust_import(imports, alias.to_owned(), canonical);
 		},
-		"identifier" | "type_identifier" | "scoped_identifier" => {
+		"identifier" | "type_identifier" | "scoped_identifier" | "self" => {
 			let text = node.utf8_text(bytes).unwrap_or_default().trim();
 			if text.is_empty() || text == "self" || text == "*" {
 				return;
@@ -611,6 +625,181 @@ fn rust_module_declaration_facts(
 	facts
 }
 
+fn rust_visibility(bytes: &[u8], node: Node<'_>) -> (String, Option<String>) {
+	let mut cursor = node.walk();
+	let modifier =
+		node.named_children(&mut cursor).find(|child| child.kind() == "visibility_modifier");
+	let Some(modifier) = modifier else {
+		return ("private".to_owned(), None);
+	};
+	let text = modifier.utf8_text(bytes).unwrap_or_default().trim();
+	match text {
+		"pub" => ("public".to_owned(), None),
+		"pub(crate)" => ("crate".to_owned(), None),
+		"pub(super)" => ("super".to_owned(), None),
+		"pub(self)" => ("private".to_owned(), None),
+		_ => text
+			.strip_prefix("pub(in ")
+			.and_then(|path| path.strip_suffix(')'))
+			.map(|path| ("in".to_owned(), Some(path.trim().to_owned())))
+			.unwrap_or_else(|| ("unsupported".to_owned(), None)),
+	}
+}
+
+fn rust_use_target(prefix: Option<&str>, path: &str) -> String {
+	match prefix {
+		Some(prefix) if !prefix.is_empty() => format!("{prefix}::{path}"),
+		_ => path.to_owned(),
+	}
+}
+
+fn collect_rust_use_binding_leaves(
+	bytes: &[u8],
+	node: Node<'_>,
+	prefix: Option<&str>,
+	bindings: &mut Vec<(String, String, String)>,
+) {
+	match node.kind() {
+		"scoped_use_list" => {
+			let path = node
+				.child_by_field_name("path")
+				.and_then(|path| path.utf8_text(bytes).ok())
+				.map(str::trim)
+				.filter(|path| !path.is_empty());
+			let combined = path.map(|path| rust_use_target(prefix, path));
+			if let Some(list) = node.child_by_field_name("list") {
+				collect_rust_use_binding_leaves(
+					bytes,
+					list,
+					combined.as_deref().or(prefix),
+					bindings,
+				);
+			}
+		},
+		"use_list" => {
+			let mut cursor = node.walk();
+			for child in node.named_children(&mut cursor) {
+				collect_rust_use_binding_leaves(bytes, child, prefix, bindings);
+			}
+		},
+		"use_as_clause" => {
+			let Some(path) = node.child_by_field_name("path") else { return };
+			let Some(alias) = node.child_by_field_name("alias") else { return };
+			let path = path.utf8_text(bytes).unwrap_or_default().trim();
+			let alias = alias.utf8_text(bytes).unwrap_or_default().trim();
+			if !path.is_empty() && !alias.is_empty() {
+				bindings.push((
+					"named".to_owned(),
+					alias.to_owned(),
+					rust_use_target(prefix, path),
+				));
+			}
+		},
+		"identifier" | "type_identifier" | "scoped_identifier" | "self" => {
+			let text = node.utf8_text(bytes).unwrap_or_default().trim();
+			if text.is_empty() {
+				return;
+			}
+			if text == "self" {
+				if let Some(prefix) = prefix {
+					let local = prefix.rsplit("::").next().unwrap_or(prefix);
+					bindings.push(("named".to_owned(), local.to_owned(), prefix.to_owned()));
+				}
+				return;
+			}
+			let target = rust_use_target(prefix, text);
+			let local = text.rsplit("::").next().unwrap_or(text);
+			bindings.push(("named".to_owned(), local.to_owned(), target));
+		},
+		"use_wildcard" => {
+			let text = node.utf8_text(bytes).unwrap_or_default().trim();
+			let path = text.strip_suffix("::*").unwrap_or("");
+			bindings.push(("glob".to_owned(), "*".to_owned(), rust_use_target(prefix, path)));
+		},
+		_ => {},
+	}
+}
+
+fn rust_name_binding_facts(
+	bytes: &[u8],
+	source_id: &str,
+	nodes: &[Node<'_>],
+) -> Vec<RustNameBindingFact> {
+	let mut facts = Vec::new();
+	for node in nodes.iter().copied() {
+		let lexical_scope = match enclosing_rust_scope(node) {
+			Some(scope) => scope,
+			None => continue,
+		};
+		let syntax_site_id = site_id(source_id, node);
+		let lexical_scope_syntax_site_id = site_id(source_id, lexical_scope);
+		let (visibility, visibility_path) = rust_visibility(bytes, node);
+		if node.kind() == "mod_item" {
+			if let Some(name) = node.child_by_field_name("name") {
+				let name = name.utf8_text(bytes).unwrap_or_default().trim();
+				if !name.is_empty() {
+					facts.push(RustNameBindingFact {
+						binding_kind: "module".to_owned(),
+						lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
+						local_name: name.to_owned(),
+						source_node_id: source_id.to_owned(),
+						surface_target_path: None,
+						syntax_site_id: syntax_site_id.clone(),
+						visibility: visibility.clone(),
+						visibility_path: visibility_path.clone(),
+					});
+				}
+			}
+		} else if matches!(node.kind(), "enum_item" | "struct_item" | "trait_item" | "type_item") {
+			if let Some(name) = node.child_by_field_name("name") {
+				let name = name.utf8_text(bytes).unwrap_or_default().trim();
+				if !name.is_empty() {
+					facts.push(RustNameBindingFact {
+						binding_kind: "type_declaration".to_owned(),
+						lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
+						local_name: name.to_owned(),
+						source_node_id: source_id.to_owned(),
+						surface_target_path: None,
+						syntax_site_id: syntax_site_id.clone(),
+						visibility: visibility.clone(),
+						visibility_path: visibility_path.clone(),
+					});
+				}
+			}
+		} else if node.kind() == "use_declaration" {
+			let Some(argument) = node.child_by_field_name("argument") else { continue };
+			let mut leaves = Vec::new();
+			collect_rust_use_binding_leaves(bytes, argument, None, &mut leaves);
+			for (leaf_kind, local_name, surface_target_path) in leaves {
+				facts.push(RustNameBindingFact {
+					binding_kind: if leaf_kind == "glob" {
+						"glob".to_owned()
+					} else if visibility == "private" {
+						"use".to_owned()
+					} else {
+						"reexport".to_owned()
+					},
+					lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
+					local_name,
+					source_node_id: source_id.to_owned(),
+					surface_target_path: Some(surface_target_path),
+					syntax_site_id: syntax_site_id.clone(),
+					visibility: visibility.clone(),
+					visibility_path: visibility_path.clone(),
+				});
+			}
+		}
+	}
+	facts.sort_by(|left, right| {
+		left.syntax_site_id
+			.cmp(&right.syntax_site_id)
+			.then(left.binding_kind.cmp(&right.binding_kind))
+			.then(left.local_name.cmp(&right.local_name))
+			.then(left.surface_target_path.cmp(&right.surface_target_path))
+	});
+	facts
+}
+
 fn smallest_node_for_line<'tree>(nodes: &[Node<'tree>], line: usize) -> Option<Node<'tree>> {
 	let row = line.checked_sub(1)?;
 	nodes
@@ -629,6 +818,7 @@ fn parse_source(
 		return Ok(ParsedSourceOutput {
 			candidate_site_edges: Vec::new(),
 			rust_module_declaration_facts: Vec::new(),
+			rust_name_binding_facts: Vec::new(),
 			rust_scope_facts: Vec::new(),
 			semantic_symbol_facts: Vec::new(),
 			source: ParsedSource {
@@ -684,7 +874,8 @@ fn parse_source(
 			|| materialize_kind(node.kind())
 			|| declaration_name_node(&source.language, *node).is_some()
 			|| (source.language == "rust"
-				&& (rust_scope_kind(*node).is_some() || node.kind() == "mod_item"))
+				&& (rust_scope_kind(*node).is_some()
+					|| matches!(node.kind(), "mod_item" | "use_declaration")))
 		{
 			selected.insert(site_id(&source.source_node_id, *node), *node);
 		}
@@ -760,10 +951,16 @@ fn parse_source(
 	} else {
 		Vec::new()
 	};
+	let rust_name_binding_facts = if source.language == "rust" {
+		rust_name_binding_facts(&bytes, &source.source_node_id, &nodes)
+	} else {
+		Vec::new()
+	};
 	let receipt_id = format!("tool:{}:parser:common", source.language);
 	Ok(ParsedSourceOutput {
 		candidate_site_edges: edges,
 		rust_module_declaration_facts,
+		rust_name_binding_facts,
 		rust_scope_facts,
 		semantic_symbol_facts,
 		source: ParsedSource {
@@ -810,6 +1007,7 @@ fn run() -> Result<(), String> {
 	let mut output = ParseOutput {
 		candidate_site_edges: Vec::new(),
 		rust_module_declaration_facts: Vec::new(),
+		rust_name_binding_facts: Vec::new(),
 		rust_scope_facts: Vec::new(),
 		semantic_symbol_facts: Vec::new(),
 		source_nodes: Vec::new(),
@@ -823,6 +1021,7 @@ fn run() -> Result<(), String> {
 		output.syntax_sites.append(&mut parsed.syntax_sites);
 		output.candidate_site_edges.append(&mut parsed.candidate_site_edges);
 		output.rust_module_declaration_facts.append(&mut parsed.rust_module_declaration_facts);
+		output.rust_name_binding_facts.append(&mut parsed.rust_name_binding_facts);
 		output.rust_scope_facts.append(&mut parsed.rust_scope_facts);
 		output.semantic_symbol_facts.append(&mut parsed.semantic_symbol_facts);
 	}
@@ -833,6 +1032,13 @@ fn run() -> Result<(), String> {
 	output.candidate_site_edges.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
 	output.rust_module_declaration_facts.sort_by(|left, right| {
 		left.declaration_syntax_site_id.cmp(&right.declaration_syntax_site_id)
+	});
+	output.rust_name_binding_facts.sort_by(|left, right| {
+		left.syntax_site_id
+			.cmp(&right.syntax_site_id)
+			.then(left.binding_kind.cmp(&right.binding_kind))
+			.then(left.local_name.cmp(&right.local_name))
+			.then(left.surface_target_path.cmp(&right.surface_target_path))
 	});
 	output.rust_scope_facts.sort_by(|left, right| left.syntax_site_id.cmp(&right.syntax_site_id));
 	output.semantic_symbol_facts.sort_by(|left, right| {
@@ -858,7 +1064,7 @@ mod tests {
 	use super::{
 		call_target_node, classify_symbol_signature, collect_nodes, declaration_name_node,
 		enclosing_owner_signature, language, rust_imports, rust_module_declaration_facts,
-		rust_receiver_type, rust_scope_facts, rust_struct_field_types,
+		rust_name_binding_facts, rust_receiver_type, rust_scope_facts, rust_struct_field_types,
 	};
 	use tree_sitter::Parser;
 
@@ -932,6 +1138,39 @@ mod tests {
 			modules.iter().find(|module| module.module_name == "external").expect("external");
 		assert_eq!(None, external.body_scope_syntax_site_id);
 		assert_eq!(root.syntax_site_id, external.lexical_scope_syntax_site_id);
+	}
+
+	#[test]
+	fn records_structured_rust_name_bindings_and_visibility() {
+		let source = b"pub(crate) mod state; pub use self::{store::StateStore, model::Thing as Alias}; use local::{self, Item}; use external::*; pub(in crate) struct Scoped;";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let nodes = collect_nodes(tree.root_node());
+		let facts = rust_name_binding_facts(source, "source:rust", &nodes);
+		let state = facts
+			.iter()
+			.find(|fact| fact.binding_kind == "module" && fact.local_name == "state")
+			.expect("module binding");
+		assert_eq!("crate", state.visibility);
+		let store = facts.iter().find(|fact| fact.local_name == "StateStore").expect("store");
+		assert_eq!("reexport", store.binding_kind);
+		assert_eq!(Some("self::store::StateStore"), store.surface_target_path.as_deref());
+		let alias = facts.iter().find(|fact| fact.local_name == "Alias").expect("alias");
+		assert_eq!(Some("self::model::Thing"), alias.surface_target_path.as_deref());
+		let local = facts
+			.iter()
+			.find(|fact| fact.binding_kind == "use" && fact.local_name == "local")
+			.expect("grouped self binding");
+		assert_eq!(Some("local"), local.surface_target_path.as_deref());
+		let glob = facts.iter().find(|fact| fact.binding_kind == "glob").expect("glob");
+		assert_eq!(Some("external"), glob.surface_target_path.as_deref());
+		let scoped = facts
+			.iter()
+			.find(|fact| fact.binding_kind == "type_declaration")
+			.expect("type binding");
+		assert_eq!("in", scoped.visibility);
+		assert_eq!(Some("crate"), scoped.visibility_path.as_deref());
 	}
 
 	#[test]

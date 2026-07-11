@@ -136,6 +136,7 @@ EXPECTED_RELATIONS = {
     "site_classifications",
     "source_nodes",
     "rust_module_scopes",
+    "rust_name_bindings",
     "supporting_inputs",
     "symbol_sites",
     "syntax_sites",
@@ -153,6 +154,7 @@ RELATION_DEFINITIONS = {
     "site_classifications": "site_classification",
     "source_nodes": "source_node",
     "rust_module_scopes": "rust_module_scope",
+    "rust_name_bindings": "rust_name_binding",
     "supporting_inputs": "supporting_input",
     "symbol_sites": "symbol_site",
     "syntax_sites": "syntax_site",
@@ -163,6 +165,7 @@ NONEMPTY_RELATIONS = {
     "candidate_records",
     "dataflow_edges",
     "rust_module_scopes",
+    "rust_name_bindings",
     "syntax_sites",
 }
 EXPECTED_TRANSFER_RULES = {
@@ -2477,6 +2480,7 @@ def verify_p2(
                 "data_sites",
                 "dataflow_edges",
                 "rust_module_scopes",
+                "rust_name_bindings",
                 "supporting_inputs",
                 "symbol_sites",
                 "toolchain_receipts",
@@ -2701,6 +2705,70 @@ def verify_p2(
             or not site["signature"].startswith(f"{receiver_type}::")
         ):
             raise ContractError("P2 receiver type proof disagrees with its symbol")
+
+    rust_bindings = _unique_index(
+        manifests["rust_name_bindings"]["records"],
+        "binding_id",
+        "P2 Rust name bindings",
+    )
+    bindings_by_identity: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for binding in rust_bindings.values():
+        scope = rust_scopes.get(binding["scope_id"])
+        site = syntax.get(binding["syntax_site_id"])
+        if (
+            scope is None
+            or scope["crate_target_id"] != binding["crate_target_id"]
+            or scope["source_node_id"] != binding["source_node_id"]
+            or site is None
+            or site["source_node_id"] != binding["source_node_id"]
+        ):
+            raise ContractError("P2 Rust name binding lacks target/scope/syntax evidence")
+        expected_binding_id = stable_parts_id(
+            "decodex/lane-authority-v2-rust-name-binding/1",
+            binding["crate_target_id"],
+            binding["scope_id"],
+            binding["syntax_site_id"],
+            binding["binding_kind"],
+            binding["local_name"],
+            binding["surface_target_path"] or "",
+        )
+        if binding["binding_id"] != expected_binding_id:
+            raise ContractError("P2 Rust name binding id drifted")
+        if binding["target_scope_id"] is not None:
+            target_scope = rust_scopes.get(binding["target_scope_id"])
+            if (
+                target_scope is None
+                or target_scope["crate_target_id"] != binding["crate_target_id"]
+                or target_scope["parent_scope_id"] != binding["scope_id"]
+                or target_scope["declaration_syntax_site_id"]
+                != binding["syntax_site_id"]
+            ):
+                raise ContractError("P2 Rust module binding target drifted")
+        if binding["target_symbol_site_id"] is not None:
+            target_symbol = symbol_sites.get(binding["target_symbol_site_id"])
+            if (
+                target_symbol is None
+                or target_symbol["language"] != "rust"
+                or target_symbol["role"] != "declaration"
+                or target_symbol["syntax_site_id"] != binding["syntax_site_id"]
+                or target_symbol["signature"] != binding["local_name"]
+            ):
+                raise ContractError("P2 Rust type binding target drifted")
+        bindings_by_identity.setdefault(
+            (
+                binding["crate_target_id"],
+                binding["scope_id"],
+                binding["local_name"],
+            ),
+            [],
+        ).append(binding)
+    for bindings in bindings_by_identity.values():
+        if len(bindings) > 1 and any(
+            binding["resolution"] != "ambiguous"
+            or binding["reason_code"] != "rust_binding_same_scope_ambiguous"
+            for binding in bindings
+        ):
+            raise ContractError("P2 Rust same-scope binding ambiguity was accepted")
     unresolved_symbols = sum(
         site["resolution"] == "unresolved" for site in symbol_sites.values()
     )
@@ -2826,6 +2894,7 @@ def verify_p2(
         "parser_error_count": parser_errors,
         "phase": "P2",
         "rust_module_scope_count": len(rust_scopes),
+        "rust_name_binding_count": len(rust_bindings),
         "source_node_count": len(sources),
         "symbol_site_count": len(symbol_sites),
         "syntax_site_count": len(syntax),
