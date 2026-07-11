@@ -1264,14 +1264,31 @@ def replay_rust_type_path_resolution(
     resolution: dict[str, Any],
     scopes: dict[str, dict[str, Any]],
     bindings: dict[str, dict[str, Any]],
+    replay_index: dict[str, Any] | None = None,
 ) -> None:
     chain = resolution["binding_ids"]
     cursor = 0
-    roots = {
-        scope["crate_target_id"]: scope["scope_id"]
-        for scope in scopes.values()
-        if scope["scope_kind"] == "crate_root"
-    }
+    if replay_index is None:
+        bindings_by_scope_name: dict[tuple[str, str, str], list[str]] = {}
+        for binding in bindings.values():
+            bindings_by_scope_name.setdefault(
+                (
+                    binding["crate_target_id"],
+                    binding["scope_id"],
+                    binding["local_name"],
+                ),
+                [],
+            ).append(binding["binding_id"])
+        replay_index = {
+            "bindings_by_scope_name": bindings_by_scope_name,
+            "roots": {
+                scope["crate_target_id"]: scope["scope_id"]
+                for scope in scopes.values()
+                if scope["scope_kind"] == "crate_root"
+            },
+        }
+    roots = replay_index["roots"]
+    bindings_by_scope_name = replay_index["bindings_by_scope_name"]
 
     def module_scope(scope_id: str) -> dict[str, Any]:
         scope = scopes[scope_id]
@@ -1345,12 +1362,11 @@ def replay_rust_type_path_resolution(
         while current_id is not None:
             all_candidates = [
                 binding_id
-                for binding_id, binding in bindings.items()
-                if binding["crate_target_id"] == target_id
-                and binding["scope_id"] == current_id
-                and binding["local_name"] == name
-                and binding_id != excluded_binding_id
-                and binding["local_name"] != "_"
+                for binding_id in bindings_by_scope_name.get(
+                    (target_id, current_id, name), []
+                )
+                if binding_id != excluded_binding_id
+                and bindings[binding_id]["local_name"] != "_"
             ]
             candidates = [
                 binding_id
@@ -3041,6 +3057,25 @@ def verify_p2(
         ):
             raise ContractError("P2 Rust same-scope binding ambiguity was accepted")
 
+    replay_bindings_by_scope_name: dict[tuple[str, str, str], list[str]] = {}
+    for binding in rust_bindings.values():
+        replay_bindings_by_scope_name.setdefault(
+            (
+                binding["crate_target_id"],
+                binding["scope_id"],
+                binding["local_name"],
+            ),
+            [],
+        ).append(binding["binding_id"])
+    rust_path_replay_index = {
+        "bindings_by_scope_name": replay_bindings_by_scope_name,
+        "roots": {
+            scope["crate_target_id"]: scope["scope_id"]
+            for scope in rust_scopes.values()
+            if scope["scope_kind"] == "crate_root"
+        },
+    }
+
     rust_resolutions = _unique_index(
         manifests["rust_path_resolutions"]["records"],
         "resolution_id",
@@ -3082,7 +3117,12 @@ def verify_p2(
             canonical_json(digest_payload).encode("utf-8")
         ).hexdigest():
             raise ContractError("P2 Rust path resolution digest drifted")
-        replay_rust_type_path_resolution(resolution, rust_scopes, rust_bindings)
+        replay_rust_type_path_resolution(
+            resolution,
+            rust_scopes,
+            rust_bindings,
+            rust_path_replay_index,
+        )
         terminal_binding = rust_bindings[resolution["binding_ids"][-1]]
         if resolution["status"] == "resolved_local_module":
             target = rust_scopes.get(resolution["canonical_module_scope_id"])
