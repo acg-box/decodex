@@ -65,6 +65,11 @@
         {
           "if": {"properties": {"resolution": {"const": "unresolved"}}, "required": ["resolution"]},
           "then": {"properties": {"definition_site_ids": {"maxItems": 0}, "external": {"const": null}, "role": {"const": "call_target"}}}
+        },
+        {
+          "if": {"properties": {"receiver_type_evidence": {"type": "string"}}, "required": ["receiver_type_evidence"]},
+          "then": {"properties": {"language": {"const": "rust"}, "receiver_type_signature": {"minLength": 1, "type": "string"}, "resolution_hint": {"const": "qualified"}, "role": {"const": "call_target"}}},
+          "else": {"properties": {"receiver_type_signature": {"const": null}}}
         }
       ],
       "properties": {
@@ -72,6 +77,8 @@
         "external": {"type": ["boolean", "null"]},
         "language": {"$ref": "#/$defs/language"},
         "owner_signature": {"type": ["string", "null"], "maxLength": 256},
+        "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type", null]},
+        "receiver_type_signature": {"maxLength": 256, "type": ["string", "null"]},
         "resolution": {"enum": ["declaration", "local", "external", "unresolved"]},
         "resolution_hint": {"enum": ["dynamic", "exact", "qualified"]},
         "role": {"enum": ["declaration", "call_target"]},
@@ -80,7 +87,7 @@
         "site_id": {"$ref": "#/$defs/id"},
         "syntax_site_id": {"$ref": "#/$defs/id"}
       },
-      "required": ["site_id", "syntax_site_id", "language", "owner_signature", "role", "signature", "signature_digest", "resolution_hint", "resolution", "definition_site_ids", "external"],
+      "required": ["site_id", "syntax_site_id", "language", "owner_signature", "receiver_type_evidence", "receiver_type_signature", "role", "signature", "signature_digest", "resolution_hint", "resolution", "definition_site_ids", "external"],
       "type": "object"
     },
     "data_site": {

@@ -244,6 +244,8 @@ def materialize(root: Path) -> dict[str, Any]:
             "external": False if declaration else None,
             "language": fact["language"],
             "owner_signature": fact["owner_signature"],
+            "receiver_type_evidence": fact["receiver_type_evidence"],
+            "receiver_type_signature": fact["receiver_type_signature"],
             "resolution": "declaration" if declaration else "unresolved",
             "resolution_hint": fact["resolution_hint"],
             "role": fact["role"],

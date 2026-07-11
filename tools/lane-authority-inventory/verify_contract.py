@@ -2593,6 +2593,22 @@ def verify_p2(
         for site in symbol_sites.values()
     ):
         raise ContractError("P2 symbol language disagrees with its source")
+    for site in symbol_sites.values():
+        if site["signature_digest"] != hashlib.sha256(
+            site["signature"].encode("utf-8")
+        ).hexdigest():
+            raise ContractError("P2 symbol signature digest disagrees")
+        receiver_type = site["receiver_type_signature"]
+        receiver_evidence = site["receiver_type_evidence"]
+        if (receiver_type is None) != (receiver_evidence is None):
+            raise ContractError("P2 receiver type evidence is incomplete")
+        if receiver_type is not None and (
+            site["language"] != "rust"
+            or site["role"] != "call_target"
+            or site["resolution_hint"] != "qualified"
+            or not site["signature"].startswith(f"{receiver_type}::")
+        ):
+            raise ContractError("P2 receiver type proof disagrees with its symbol")
     unresolved_symbols = sum(
         site["resolution"] == "unresolved" for site in symbol_sites.values()
     )

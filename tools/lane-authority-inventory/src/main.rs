@@ -73,6 +73,8 @@ struct CandidateSiteEdge {
 struct SemanticSymbolFact {
 	language: String,
 	owner_signature: Option<String>,
+	receiver_type_evidence: Option<String>,
+	receiver_type_signature: Option<String>,
 	resolution_hint: String,
 	role: String,
 	signature: String,
@@ -149,11 +151,12 @@ fn call_target_node<'tree>(language: &str, node: Node<'tree>) -> Option<Node<'tr
 	match (language, node.kind()) {
 		("rust", "call_expression") | ("python", "call") => node.child_by_field_name("function"),
 		("rust", "macro_invocation") => node.child_by_field_name("macro"),
-		("swift", "call_expression") =>
+		("swift", "call_expression") => {
 			node.child_by_field_name("called_expression").or_else(|| {
 				let mut cursor = node.walk();
 				node.named_children(&mut cursor).next()
-			}),
+			})
+		},
 		("shell", "command") => {
 			let mut cursor = node.walk();
 			node.named_children(&mut cursor).next()
@@ -190,8 +193,9 @@ fn enclosing_owner_signature(bytes: &[u8], language: &str, node: Node<'_>) -> Op
 	while let Some(current) = ancestor {
 		let owner = match (language, current.kind()) {
 			("rust", "impl_item") => current.child_by_field_name("type"),
-			("python", "class_definition") | ("swift", "class_declaration") =>
-				current.child_by_field_name("name"),
+			("python", "class_definition") | ("swift", "class_declaration") => {
+				current.child_by_field_name("name")
+			},
 			_ => None,
 		};
 		if let Some(owner) = owner {
@@ -215,6 +219,8 @@ fn semantic_symbol_fact(
 	SemanticSymbolFact {
 		language: language.to_owned(),
 		owner_signature: enclosing_owner_signature(bytes, language, site),
+		receiver_type_evidence: None,
+		receiver_type_signature: None,
 		resolution_hint,
 		role: role.to_owned(),
 		signature_digest: sha256(&[signature.as_bytes()]),
@@ -222,6 +228,248 @@ fn semantic_symbol_fact(
 		source_node_id: source_id.to_owned(),
 		syntax_site_id: site_id(source_id, site),
 	}
+}
+
+fn register_rust_import(
+	imports: &mut BTreeMap<String, Option<String>>,
+	alias: String,
+	canonical: String,
+) {
+	match imports.get(&alias) {
+		None => {
+			imports.insert(alias, Some(canonical));
+		},
+		Some(Some(existing)) if existing == &canonical => {},
+		Some(_) => {
+			imports.insert(alias, None);
+		},
+	}
+}
+
+fn collect_rust_use_node(
+	bytes: &[u8],
+	node: Node<'_>,
+	prefix: Option<&str>,
+	imports: &mut BTreeMap<String, Option<String>>,
+) {
+	match node.kind() {
+		"scoped_use_list" => {
+			let Some(path) = node.child_by_field_name("path") else { return };
+			let path = path.utf8_text(bytes).unwrap_or_default().trim();
+			let canonical_prefix = match prefix {
+				Some(prefix) => format!("{prefix}::{path}"),
+				None => path.to_owned(),
+			};
+			if let Some(list) = node.child_by_field_name("list") {
+				collect_rust_use_node(bytes, list, Some(&canonical_prefix), imports);
+			}
+		},
+		"use_list" => {
+			let mut cursor = node.walk();
+			for child in node.named_children(&mut cursor) {
+				collect_rust_use_node(bytes, child, prefix, imports);
+			}
+		},
+		"use_as_clause" => {
+			let Some(path) = node.child_by_field_name("path") else { return };
+			let Some(alias) = node.child_by_field_name("alias") else { return };
+			let path = path.utf8_text(bytes).unwrap_or_default().trim();
+			let alias = alias.utf8_text(bytes).unwrap_or_default().trim();
+			if alias.is_empty() || path.is_empty() {
+				return;
+			}
+			let canonical = match prefix {
+				Some(prefix) => format!("{prefix}::{path}"),
+				None => path.to_owned(),
+			};
+			register_rust_import(imports, alias.to_owned(), canonical);
+		},
+		"identifier" | "type_identifier" | "scoped_identifier" => {
+			let text = node.utf8_text(bytes).unwrap_or_default().trim();
+			if text.is_empty() || text == "self" || text == "*" {
+				return;
+			}
+			let canonical = match prefix {
+				Some(prefix) => format!("{prefix}::{text}"),
+				None => text.to_owned(),
+			};
+			let alias = text.rsplit("::").next().unwrap_or(text).to_owned();
+			register_rust_import(imports, alias, canonical);
+		},
+		_ => {},
+	}
+}
+
+fn rust_imports(bytes: &[u8], nodes: &[Node<'_>]) -> BTreeMap<String, Option<String>> {
+	let mut imports = BTreeMap::new();
+	for node in nodes.iter().filter(|node| node.kind() == "use_declaration") {
+		if let Some(argument) = node.child_by_field_name("argument") {
+			collect_rust_use_node(bytes, argument, None, &mut imports);
+		}
+	}
+	imports
+}
+
+fn rust_base_type_node(mut node: Node<'_>) -> Option<Node<'_>> {
+	loop {
+		match node.kind() {
+			"reference_type" | "generic_type" => node = node.child_by_field_name("type")?,
+			"identifier" | "type_identifier" | "scoped_type_identifier" => return Some(node),
+			_ => return None,
+		}
+	}
+}
+
+fn canonical_rust_type(
+	bytes: &[u8],
+	type_node: Node<'_>,
+	imports: &BTreeMap<String, Option<String>>,
+) -> Option<String> {
+	let node = rust_base_type_node(type_node)?;
+	let signature = node.utf8_text(bytes).ok()?.trim();
+	if signature.is_empty() {
+		return None;
+	}
+	if signature.contains("::") {
+		return Some(signature.to_owned());
+	}
+	match imports.get(signature) {
+		Some(Some(canonical)) => Some(canonical.clone()),
+		Some(None) => None,
+		None => Some(signature.to_owned()),
+	}
+}
+
+fn rust_struct_field_types(
+	bytes: &[u8],
+	nodes: &[Node<'_>],
+	imports: &BTreeMap<String, Option<String>>,
+) -> BTreeMap<(String, String), String> {
+	let mut fields = BTreeMap::new();
+	for node in nodes.iter().filter(|node| node.kind() == "field_declaration") {
+		let Some(name) = node.child_by_field_name("name") else { continue };
+		let Some(type_node) = node.child_by_field_name("type") else { continue };
+		let Some(canonical_type) = canonical_rust_type(bytes, type_node, imports) else {
+			continue;
+		};
+		let Some(struct_item) = node.parent().and_then(|parent| parent.parent()) else { continue };
+		if struct_item.kind() != "struct_item" {
+			continue;
+		}
+		let Some(owner) = struct_item.child_by_field_name("name") else { continue };
+		fields.insert(
+			(
+				owner.utf8_text(bytes).unwrap_or_default().trim().to_owned(),
+				name.utf8_text(bytes).unwrap_or_default().trim().to_owned(),
+			),
+			canonical_type,
+		);
+	}
+	fields
+}
+
+fn enclosing_rust_function(node: Node<'_>) -> Option<Node<'_>> {
+	let mut current = node.parent();
+	while let Some(ancestor) = current {
+		if ancestor.kind() == "function_item" {
+			return Some(ancestor);
+		}
+		current = ancestor.parent();
+	}
+	None
+}
+
+fn explicit_rust_binding_type(
+	bytes: &[u8],
+	call: Node<'_>,
+	name: &str,
+	nodes: &[Node<'_>],
+	imports: &BTreeMap<String, Option<String>>,
+) -> Option<(String, String)> {
+	let function = enclosing_rust_function(call)?;
+	let mut matches = nodes
+		.iter()
+		.copied()
+		.filter(|node| {
+			node.start_byte() >= function.start_byte()
+				&& node.end_byte() <= function.end_byte()
+				&& node.start_byte() < call.start_byte()
+				&& matches!(node.kind(), "parameter" | "let_declaration")
+		})
+		.filter_map(|node| {
+			let pattern = node.child_by_field_name("pattern")?;
+			(pattern.utf8_text(bytes).ok()?.trim() == name).then_some(node)
+		})
+		.collect::<Vec<_>>();
+	matches.sort_by_key(Node::start_byte);
+	let binding = matches.pop()?;
+	let type_node = binding.child_by_field_name("type")?;
+	let canonical = canonical_rust_type(bytes, type_node, imports)?;
+	let evidence = match binding.kind() {
+		"parameter" => "explicit_parameter_type",
+		"let_declaration" => "explicit_local_type",
+		_ => return None,
+	};
+	Some((canonical, evidence.to_owned()))
+}
+
+fn rust_receiver_type(
+	bytes: &[u8],
+	call: Node<'_>,
+	target: Node<'_>,
+	nodes: &[Node<'_>],
+	imports: &BTreeMap<String, Option<String>>,
+	struct_fields: &BTreeMap<(String, String), String>,
+) -> Option<(String, String, String)> {
+	if target.kind() != "field_expression" {
+		return None;
+	}
+	let receiver = target.child_by_field_name("value")?;
+	let method = target.child_by_field_name("field")?.utf8_text(bytes).ok()?.trim().to_owned();
+	if method.is_empty() {
+		return None;
+	}
+	let (receiver_type, evidence) = if receiver.kind() == "identifier" {
+		let name = receiver.utf8_text(bytes).ok()?.trim();
+		explicit_rust_binding_type(bytes, call, name, nodes, imports)?
+	} else if receiver.kind() == "field_expression" {
+		let base = receiver.child_by_field_name("value")?;
+		if base.kind() != "self" {
+			return None;
+		}
+		let field = receiver.child_by_field_name("field")?.utf8_text(bytes).ok()?.trim();
+		let owner = enclosing_owner_signature(bytes, "rust", call)?;
+		let receiver_type = struct_fields.get(&(owner, field.to_owned()))?.clone();
+		(receiver_type, "enclosing_struct_field_type".to_owned())
+	} else {
+		return None;
+	};
+	Some((format!("{receiver_type}::{method}"), receiver_type, evidence))
+}
+
+fn semantic_call_fact(
+	bytes: &[u8],
+	source_id: &str,
+	call: Node<'_>,
+	target: Node<'_>,
+	language: &str,
+	nodes: &[Node<'_>],
+	imports: &BTreeMap<String, Option<String>>,
+	struct_fields: &BTreeMap<(String, String), String>,
+) -> SemanticSymbolFact {
+	let mut fact = semantic_symbol_fact(bytes, source_id, call, target, "call_target", language);
+	if language == "rust" {
+		if let Some((signature, receiver_type, evidence)) =
+			rust_receiver_type(bytes, call, target, nodes, imports, struct_fields)
+		{
+			fact.signature_digest = sha256(&[signature.as_bytes()]);
+			fact.signature = signature;
+			fact.resolution_hint = "qualified".to_owned();
+			fact.receiver_type_evidence = Some(evidence);
+			fact.receiver_type_signature = Some(receiver_type);
+		}
+	}
+	fact
 }
 
 fn site_id(source_id: &str, node: Node<'_>) -> String {
@@ -305,6 +553,13 @@ fn parse_source(
 		.parse(&bytes, None)
 		.ok_or_else(|| format!("parser returned no tree: {}", source.path))?;
 	let nodes = collect_nodes(tree.root_node());
+	let rust_imports =
+		if source.language == "rust" { rust_imports(&bytes, &nodes) } else { BTreeMap::new() };
+	let rust_struct_fields = if source.language == "rust" {
+		rust_struct_field_types(&bytes, &nodes, &rust_imports)
+	} else {
+		BTreeMap::new()
+	};
 	let parser_error_count =
 		nodes.iter().filter(|node| node.is_error() || node.is_missing()).count();
 	let mut digest = Sha256::new();
@@ -377,13 +632,15 @@ fn parse_source(
 			));
 		}
 		if let Some(target) = call_target_node(&source.language, node) {
-			semantic_symbol_facts.push(semantic_symbol_fact(
+			semantic_symbol_facts.push(semantic_call_fact(
 				&bytes,
 				&source.source_node_id,
 				node,
 				target,
-				"call_target",
 				&source.language,
+				&nodes,
+				&rust_imports,
+				&rust_struct_fields,
 			));
 		}
 	}
@@ -473,10 +730,68 @@ fn main() {
 #[cfg(test)]
 mod tests {
 	use super::{
-		classify_symbol_signature, collect_nodes, declaration_name_node, enclosing_owner_signature,
-		language,
+		call_target_node, classify_symbol_signature, collect_nodes, declaration_name_node,
+		enclosing_owner_signature, language, rust_imports, rust_receiver_type,
+		rust_struct_field_types,
 	};
 	use tree_sitter::Parser;
+
+	#[test]
+	fn exposes_rust_receiver_type_ast_shapes() {
+		let source = b"use rusqlite::{Connection, Row}; struct Store { connection: Connection } impl Store { fn read(row: &Row<'_>) { let local: Connection = todo!(); row.get(0); self.connection.prepare(\"x\"); local.execute(\"x\", []); } }";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let nodes = collect_nodes(tree.root_node());
+		let imports = rust_imports(source, &nodes);
+		let fields = rust_struct_field_types(source, &nodes, &imports);
+		assert_eq!(Some(&Some("rusqlite::Connection".to_owned())), imports.get("Connection"));
+		assert_eq!(Some(&Some("rusqlite::Row".to_owned())), imports.get("Row"));
+		let resolved = nodes
+			.iter()
+			.copied()
+			.filter(|node| node.kind() == "call_expression")
+			.filter_map(|call| {
+				let target = call_target_node("rust", call)?;
+				rust_receiver_type(source, call, target, &nodes, &imports, &fields)
+			})
+			.collect::<Vec<_>>();
+		assert_eq!(
+			vec![
+				(
+					"rusqlite::Row::get".to_owned(),
+					"rusqlite::Row".to_owned(),
+					"explicit_parameter_type".to_owned(),
+				),
+				(
+					"rusqlite::Connection::prepare".to_owned(),
+					"rusqlite::Connection".to_owned(),
+					"enclosing_struct_field_type".to_owned(),
+				),
+				(
+					"rusqlite::Connection::execute".to_owned(),
+					"rusqlite::Connection".to_owned(),
+					"explicit_local_type".to_owned(),
+				),
+			],
+			resolved
+		);
+	}
+
+	#[test]
+	fn rejects_ambiguous_rust_receiver_type_imports() {
+		let source = b"use one::Row; use two::Row; fn read(row: &Row) { row.get(0); }";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let nodes = collect_nodes(tree.root_node());
+		let imports = rust_imports(source, &nodes);
+		let fields = rust_struct_field_types(source, &nodes, &imports);
+		let call =
+			nodes.iter().copied().find(|node| node.kind() == "call_expression").expect("call");
+		let target = call_target_node("rust", call).expect("call target");
+		assert_eq!(None, rust_receiver_type(source, call, target, &nodes, &imports, &fields));
+	}
 
 	#[test]
 	fn classifies_exact_and_qualified_symbol_signatures() {

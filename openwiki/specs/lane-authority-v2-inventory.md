@@ -177,6 +177,13 @@ field-qualified calls such as database, provider, process, and file handles rema
 unresolved until their receiver type is proven. Every admitted authority entry must have
 at least one exact consumer, and every consumer remains bound by a catalog disposition.
 
+Rust receiver proof is conservative and explicit. P3 may canonicalize an object method
+to `ImportedType::method` only when tree-sitter proves an explicit parameter type, an
+explicit local binding type, or a same-file enclosing struct field type and resolves the
+type through a unique structured `use` path. The symbol relation records the canonical
+receiver type and evidence kind. Inferred return types, ambiguous imports, untyped
+bindings, arbitrary method chains, and cross-file field shapes remain unresolved.
+
 It has closed, language-qualified sections for:
 
 - canonical external symbol/API signatures used by the analysis source universe;
