@@ -242,6 +242,240 @@ def exact_cut_cargo_targets(
     return targets, receipt_digest
 
 
+def materialize_rust_module_scopes(
+    parsed: dict[str, Any],
+    cargo_targets: list[dict[str, Any]],
+    cfg_projections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    sources_by_id = {
+        source["source_node_id"]: source
+        for source in parsed["source_nodes"]
+        if source["status"] == "current"
+    }
+    sources_by_path = {source["path"]: source for source in sources_by_id.values()}
+    scope_facts_by_source: dict[str, dict[str, dict[str, Any]]] = {}
+    for fact in parsed["rust_scope_facts"]:
+        scope_facts_by_source.setdefault(fact["source_node_id"], {})[
+            fact["syntax_site_id"]
+        ] = fact
+    declarations_by_source: dict[str, list[dict[str, Any]]] = {}
+    for fact in parsed["rust_module_declaration_facts"]:
+        declarations_by_source.setdefault(fact["source_node_id"], []).append(fact)
+
+    syntax_by_id = {site["site_id"]: site for site in parsed["syntax_sites"]}
+    projections_by_source: dict[str, list[str]] = {}
+    for projection in cfg_projections:
+        source_id = syntax_by_id[projection["site_id"]]["source_node_id"]
+        projections_by_source.setdefault(source_id, []).append(
+            projection["projection_id"]
+        )
+    for projection_ids in projections_by_source.values():
+        projection_ids.sort()
+
+    records_by_id: dict[str, dict[str, Any]] = {}
+    visited_contexts: set[tuple[str, str, str]] = set()
+
+    def scope_id(
+        target_id: str, source_id: str, syntax_site_id: str, module_path: str
+    ) -> str:
+        return canonical_id(
+            "decodex/lane-authority-v2-rust-module-scope/1",
+            target_id,
+            source_id,
+            syntax_site_id,
+            module_path,
+        )
+
+    def insert(record: dict[str, Any]) -> None:
+        existing = records_by_id.get(record["scope_id"])
+        if existing is not None and existing != record:
+            raise contract.ContractError(
+                f"Rust module scope identity has conflicting facts: {record['scope_id']}"
+            )
+        records_by_id[record["scope_id"]] = record
+
+    def add_source_context(
+        target: dict[str, Any],
+        source: dict[str, Any],
+        module_path: str,
+        module_directory: Path,
+        parent_scope_id: str | None,
+        declaration_syntax_site_id: str | None,
+        root_kind: str,
+    ) -> None:
+        context_key = (
+            target["crate_target_id"],
+            source["source_node_id"],
+            module_path,
+        )
+        if context_key in visited_contexts:
+            return
+        visited_contexts.add(context_key)
+
+        facts = scope_facts_by_source.get(source["source_node_id"], {})
+        roots = [fact for fact in facts.values() if fact["scope_kind"] == "source_file"]
+        if len(roots) != 1:
+            raise contract.ContractError(
+                f"Rust source must have one parser root scope: {source['path']}"
+            )
+        root_fact = roots[0]
+        root_scope_id = scope_id(
+            target["crate_target_id"],
+            source["source_node_id"],
+            root_fact["syntax_site_id"],
+            module_path,
+        )
+        root_record = {
+            "byte_end": root_fact["byte_end"],
+            "byte_start": root_fact["byte_start"],
+            "canonical_module_path": module_path,
+            "cfg_projection_ids": projections_by_source.get(
+                source["source_node_id"], []
+            ),
+            "crate_target_id": target["crate_target_id"],
+            "declaration_syntax_site_id": declaration_syntax_site_id,
+            "parent_scope_id": parent_scope_id,
+            "scope_id": root_scope_id,
+            "scope_kind": root_kind,
+            "scope_syntax_site_id": root_fact["syntax_site_id"],
+            "source_node_id": source["source_node_id"],
+            "target_manifest_path": (
+                target["manifest_path"] if root_kind == "crate_root" else None
+            ),
+            "target_kinds": target["target_kinds"] if root_kind == "crate_root" else None,
+            "target_name": target["target_name"] if root_kind == "crate_root" else None,
+            "target_root_path": (
+                target["target_root_path"] if root_kind == "crate_root" else None
+            ),
+            "target_root_source_node_id": (
+                target["target_root_source_node_id"]
+                if root_kind == "crate_root"
+                else None
+            ),
+        }
+        insert(root_record)
+
+        scope_records_by_syntax = {root_fact["syntax_site_id"]: root_record}
+        module_directories_by_syntax = {
+            root_fact["syntax_site_id"]: module_directory
+        }
+        inline_declarations = {
+            declaration["body_scope_syntax_site_id"]: declaration
+            for declaration in declarations_by_source.get(source["source_node_id"], [])
+            if declaration["body_scope_syntax_site_id"] is not None
+        }
+        pending = [
+            fact for fact in facts.values() if fact["syntax_site_id"] != root_fact["syntax_site_id"]
+        ]
+        while pending:
+            progressed = False
+            for fact in list(pending):
+                parent = scope_records_by_syntax.get(
+                    fact["parent_scope_syntax_site_id"]
+                )
+                if parent is None:
+                    continue
+                canonical_path = parent["canonical_module_path"]
+                scope_kind = fact["scope_kind"]
+                declaration_id = None
+                child_module_directory = module_directories_by_syntax[
+                    fact["parent_scope_syntax_site_id"]
+                ]
+                if scope_kind == "inline_module":
+                    declaration = inline_declarations.get(fact["syntax_site_id"])
+                    if declaration is None:
+                        raise contract.ContractError(
+                            "inline Rust module scope has no declaration fact"
+                        )
+                    canonical_path = (
+                        f"{canonical_path}::{declaration['module_name']}"
+                    )
+                    child_module_directory = (
+                        child_module_directory / declaration["module_name"]
+                    )
+                    declaration_id = declaration["declaration_syntax_site_id"]
+                child_id = scope_id(
+                    target["crate_target_id"],
+                    source["source_node_id"],
+                    fact["syntax_site_id"],
+                    canonical_path,
+                )
+                record = {
+                    "byte_end": fact["byte_end"],
+                    "byte_start": fact["byte_start"],
+                    "canonical_module_path": canonical_path,
+                    "cfg_projection_ids": projections_by_source.get(
+                        source["source_node_id"], []
+                    ),
+                    "crate_target_id": target["crate_target_id"],
+                    "declaration_syntax_site_id": declaration_id,
+                    "parent_scope_id": parent["scope_id"],
+                    "scope_id": child_id,
+                    "scope_kind": scope_kind,
+                    "scope_syntax_site_id": fact["syntax_site_id"],
+                    "source_node_id": source["source_node_id"],
+                    "target_manifest_path": None,
+                    "target_kinds": None,
+                    "target_name": None,
+                    "target_root_path": None,
+                    "target_root_source_node_id": None,
+                }
+                insert(record)
+                scope_records_by_syntax[fact["syntax_site_id"]] = record
+                module_directories_by_syntax[fact["syntax_site_id"]] = (
+                    child_module_directory
+                )
+                pending.remove(fact)
+                progressed = True
+            if not progressed:
+                raise contract.ContractError(
+                    f"Rust scope parent chain is disconnected: {source['path']}"
+                )
+
+        for declaration in declarations_by_source.get(source["source_node_id"], []):
+            if declaration["body_scope_syntax_site_id"] is not None:
+                continue
+            lexical_scope = scope_records_by_syntax.get(
+                declaration["lexical_scope_syntax_site_id"]
+            )
+            if lexical_scope is None or lexical_scope["scope_kind"] == "block":
+                continue
+            parent_directory = module_directories_by_syntax[
+                declaration["lexical_scope_syntax_site_id"]
+            ]
+            name = declaration["module_name"]
+            candidates = [
+                (parent_directory / f"{name}.rs").as_posix(),
+                (parent_directory / name / "mod.rs").as_posix(),
+            ]
+            matches = [sources_by_path[path] for path in candidates if path in sources_by_path]
+            if len(matches) != 1 or matches[0]["language"] != "rust":
+                continue
+            add_source_context(
+                target,
+                matches[0],
+                f"{lexical_scope['canonical_module_path']}::{name}",
+                parent_directory / name,
+                lexical_scope["scope_id"],
+                declaration["declaration_syntax_site_id"],
+                "file_module",
+            )
+
+    for target in cargo_targets:
+        root_source = sources_by_id[target["target_root_source_node_id"]]
+        add_source_context(
+            target,
+            root_source,
+            f"target::{target['crate_target_id']}",
+            Path(target["target_root_path"]).parent,
+            None,
+            None,
+            "crate_root",
+        )
+
+    return sorted(records_by_id.values(), key=lambda record: record["scope_id"])
+
+
 def resolve_swift_recovery(
     materialized: Path, parsed: dict[str, Any]
 ) -> tuple[str | None, set[str]]:
@@ -334,6 +568,9 @@ def materialize(root: Path) -> dict[str, Any]:
     for site in parsed["syntax_sites"]:
         del site["language"]
     cfg_projections.sort(key=lambda projection: projection["projection_id"])
+    rust_module_scopes = materialize_rust_module_scopes(
+        parsed, cargo_targets, cfg_projections
+    )
 
     syntax_by_id = {site["site_id"]: site for site in parsed["syntax_sites"]}
     candidate_manifest = contract.load_json(root, CANDIDATE_RECORDS_PATH)
@@ -566,6 +803,11 @@ def materialize(root: Path) -> dict[str, Any]:
             symbol_sites,
         ),
         (
+            "rust_module_scopes",
+            "decodex/lane-authority-v2-c1i-rust-module-scopes/1",
+            rust_module_scopes,
+        ),
+        (
             "supporting_inputs",
             "decodex/lane-authority-v2-c1i-supporting-inputs/1",
             [],
@@ -623,6 +865,7 @@ def materialize(root: Path) -> dict[str, Any]:
         "data_sites": len(data_sites),
         "dataflow_edges": len(dataflow_edges),
         "parser_errors": parser_errors,
+        "rust_module_scopes": len(rust_module_scopes),
         "source_cut_commit": source_cut,
         "source_nodes": len(parsed["source_nodes"]),
         "symbol_sites": len(symbol_sites),

@@ -135,6 +135,7 @@ EXPECTED_RELATIONS = {
     "catalog_entry_dispositions",
     "site_classifications",
     "source_nodes",
+    "rust_module_scopes",
     "supporting_inputs",
     "symbol_sites",
     "syntax_sites",
@@ -151,6 +152,7 @@ RELATION_DEFINITIONS = {
     "dataflow_edges": "edge",
     "site_classifications": "site_classification",
     "source_nodes": "source_node",
+    "rust_module_scopes": "rust_module_scope",
     "supporting_inputs": "supporting_input",
     "symbol_sites": "symbol_site",
     "syntax_sites": "syntax_site",
@@ -160,6 +162,7 @@ NONEMPTY_RELATIONS = {
     "call_edges",
     "candidate_records",
     "dataflow_edges",
+    "rust_module_scopes",
     "syntax_sites",
 }
 EXPECTED_TRANSFER_RULES = {
@@ -2473,6 +2476,7 @@ def verify_p2(
                 "call_edges",
                 "data_sites",
                 "dataflow_edges",
+                "rust_module_scopes",
                 "supporting_inputs",
                 "symbol_sites",
                 "toolchain_receipts",
@@ -2575,6 +2579,95 @@ def verify_p2(
     }
     if any(value != required_coverage for value in coverage.values()):
         raise ContractError("P2 source cfg/target platform coverage is incomplete")
+
+    projection_ids_by_source = {source_id: set() for source_id in coverage}
+    for projection_id, projection in projections.items():
+        source_id = syntax[projection["site_id"]]["source_node_id"]
+        projection_ids_by_source[source_id].add(projection_id)
+    rust_scopes = _unique_index(
+        manifests["rust_module_scopes"]["records"],
+        "scope_id",
+        "P2 Rust module scopes",
+    )
+    roots_by_target: dict[str, list[dict[str, Any]]] = {}
+    for scope in rust_scopes.values():
+        source = sources.get(scope["source_node_id"])
+        site = syntax.get(scope["scope_syntax_site_id"])
+        if (
+            source is None
+            or source["language"] != "rust"
+            or site is None
+            or site["source_node_id"] != source["source_node_id"]
+            or site["byte_start"] != scope["byte_start"]
+            or site["byte_end"] != scope["byte_end"]
+        ):
+            raise ContractError("P2 Rust module scope lacks exact source/syntax evidence")
+        if set(scope["cfg_projection_ids"]) != projection_ids_by_source[
+            source["source_node_id"]
+        ]:
+            raise ContractError("P2 Rust module scope cfg projection set drifted")
+        expected_scope_id = stable_parts_id(
+            "decodex/lane-authority-v2-rust-module-scope/1",
+            scope["crate_target_id"],
+            scope["source_node_id"],
+            scope["scope_syntax_site_id"],
+            scope["canonical_module_path"],
+        )
+        if scope["scope_id"] != expected_scope_id:
+            raise ContractError("P2 Rust module scope id drifted")
+        if scope["scope_kind"] == "crate_root":
+            roots_by_target.setdefault(scope["crate_target_id"], []).append(scope)
+            expected_target_id = stable_parts_id(
+                "decodex/lane-authority-v2-rust-crate-target/1",
+                scope["target_manifest_path"],
+                scope["target_name"],
+                ",".join(scope["target_kinds"]),
+                scope["target_root_path"],
+            )
+            if (
+                scope["crate_target_id"] != expected_target_id
+                or scope["canonical_module_path"]
+                != f"target::{scope['crate_target_id']}"
+                or scope["source_node_id"] != scope["target_root_source_node_id"]
+                or source["path"] != scope["target_root_path"]
+            ):
+                raise ContractError("P2 Rust crate-root target identity drifted")
+        else:
+            parent = rust_scopes.get(scope["parent_scope_id"])
+            if parent is None or parent["crate_target_id"] != scope["crate_target_id"]:
+                raise ContractError("P2 Rust module scope parent is missing or cross-target")
+            if scope["scope_kind"] == "block":
+                if scope["canonical_module_path"] != parent["canonical_module_path"]:
+                    raise ContractError("P2 Rust block changed canonical module identity")
+            elif not scope["canonical_module_path"].startswith(
+                f"{parent['canonical_module_path']}::"
+            ):
+                raise ContractError("P2 Rust child module escaped its parent path")
+            declaration = syntax.get(scope["declaration_syntax_site_id"])
+            if scope["scope_kind"] != "block" and (
+                declaration is None
+                or declaration["source_node_id"] != parent["source_node_id"]
+                or declaration["node_kind"] != "mod_item"
+            ):
+                raise ContractError("P2 Rust module scope lacks its parent mod declaration")
+            if parent["source_node_id"] == scope["source_node_id"] and not (
+                parent["byte_start"] <= scope["byte_start"]
+                and scope["byte_end"] <= parent["byte_end"]
+            ):
+                raise ContractError("P2 Rust lexical scope exceeds its parent byte range")
+
+    if not roots_by_target or any(len(roots) != 1 for roots in roots_by_target.values()):
+        raise ContractError("P2 Rust module graph lacks one root per Cargo target")
+    for scope in rust_scopes.values():
+        seen: set[str] = set()
+        current = scope
+        while current["parent_scope_id"] is not None:
+            if current["scope_id"] in seen:
+                raise ContractError("P2 Rust module scope parent graph contains a cycle")
+            seen.add(current["scope_id"])
+            current = rust_scopes[current["parent_scope_id"]]
+        if current["scope_kind"] != "crate_root":
+            raise ContractError("P2 Rust module scope does not reach a Cargo target root")
 
     data_sites = _unique_index(
         manifests["data_sites"]["records"], "site_id", "P2 data sites"
@@ -2732,6 +2825,7 @@ def verify_p2(
         "dataflow_edge_count": len(dataflow_edges),
         "parser_error_count": parser_errors,
         "phase": "P2",
+        "rust_module_scope_count": len(rust_scopes),
         "source_node_count": len(sources),
         "symbol_site_count": len(symbol_sites),
         "syntax_site_count": len(syntax),

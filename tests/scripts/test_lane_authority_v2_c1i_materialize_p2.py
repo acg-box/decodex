@@ -145,6 +145,163 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                     root, metadata, sources
                 )
 
+    def test_rust_module_scopes_follow_unique_target_qualified_mod_edges(self):
+        parsed = {
+            "source_nodes": [
+                {
+                    "language": "rust",
+                    "path": "src/lib.rs",
+                    "source_node_id": "source:lib",
+                    "status": "current",
+                },
+                {
+                    "language": "rust",
+                    "path": "src/child.rs",
+                    "source_node_id": "source:child",
+                    "status": "current",
+                },
+            ],
+            "rust_module_declaration_facts": [
+                {
+                    "body_scope_syntax_site_id": None,
+                    "declaration_syntax_site_id": "syntax:mod-child",
+                    "lexical_scope_syntax_site_id": "syntax:lib-root",
+                    "module_name": "child",
+                    "source_node_id": "source:lib",
+                }
+            ],
+            "rust_scope_facts": [
+                {
+                    "byte_end": 20,
+                    "byte_start": 0,
+                    "parent_scope_syntax_site_id": None,
+                    "scope_kind": "source_file",
+                    "source_node_id": "source:lib",
+                    "syntax_site_id": "syntax:lib-root",
+                },
+                {
+                    "byte_end": 19,
+                    "byte_start": 10,
+                    "parent_scope_syntax_site_id": "syntax:lib-root",
+                    "scope_kind": "block",
+                    "source_node_id": "source:lib",
+                    "syntax_site_id": "syntax:block",
+                },
+                {
+                    "byte_end": 11,
+                    "byte_start": 0,
+                    "parent_scope_syntax_site_id": None,
+                    "scope_kind": "source_file",
+                    "source_node_id": "source:child",
+                    "syntax_site_id": "syntax:child-root",
+                },
+            ],
+            "syntax_sites": [
+                {"site_id": "syntax:lib-root", "source_node_id": "source:lib"},
+                {"site_id": "syntax:block", "source_node_id": "source:lib"},
+                {"site_id": "syntax:mod-child", "source_node_id": "source:lib"},
+                {"site_id": "syntax:child-root", "source_node_id": "source:child"},
+            ],
+        }
+        target = {
+            "crate_target_id": "target:one",
+            "manifest_path": "Cargo.toml",
+            "target_kinds": ["lib"],
+            "target_name": "example",
+            "target_root_path": "src/lib.rs",
+            "target_root_source_node_id": "source:lib",
+        }
+        projections = [
+            {"projection_id": "projection:lib", "site_id": "syntax:lib-root"},
+            {
+                "projection_id": "projection:child",
+                "site_id": "syntax:child-root",
+            },
+        ]
+
+        scopes = self.materializer.materialize_rust_module_scopes(
+            parsed, [target], projections
+        )
+
+        self.assertEqual(3, len(scopes))
+        root = next(scope for scope in scopes if scope["scope_kind"] == "crate_root")
+        block = next(scope for scope in scopes if scope["scope_kind"] == "block")
+        child = next(scope for scope in scopes if scope["scope_kind"] == "file_module")
+        self.assertEqual(root["scope_id"], block["parent_scope_id"])
+        self.assertEqual(root["canonical_module_path"], block["canonical_module_path"])
+        self.assertEqual(root["scope_id"], child["parent_scope_id"])
+        self.assertEqual(
+            f"{root['canonical_module_path']}::child",
+            child["canonical_module_path"],
+        )
+        self.assertEqual("syntax:mod-child", child["declaration_syntax_site_id"])
+
+    def test_ambiguous_external_rust_module_files_are_not_guessed(self):
+        parsed = {
+            "source_nodes": [
+                {
+                    "language": "rust",
+                    "path": path,
+                    "source_node_id": source_id,
+                    "status": "current",
+                }
+                for path, source_id in (
+                    ("src/lib.rs", "source:lib"),
+                    ("src/child.rs", "source:flat"),
+                    ("src/child/mod.rs", "source:nested"),
+                )
+            ],
+            "rust_module_declaration_facts": [
+                {
+                    "body_scope_syntax_site_id": None,
+                    "declaration_syntax_site_id": "syntax:mod-child",
+                    "lexical_scope_syntax_site_id": "syntax:lib-root",
+                    "module_name": "child",
+                    "source_node_id": "source:lib",
+                }
+            ],
+            "rust_scope_facts": [
+                {
+                    "byte_end": 1,
+                    "byte_start": 0,
+                    "parent_scope_syntax_site_id": None,
+                    "scope_kind": "source_file",
+                    "source_node_id": source_id,
+                    "syntax_site_id": syntax_id,
+                }
+                for source_id, syntax_id in (
+                    ("source:lib", "syntax:lib-root"),
+                    ("source:flat", "syntax:flat-root"),
+                    ("source:nested", "syntax:nested-root"),
+                )
+            ],
+            "syntax_sites": [
+                {"site_id": "syntax:lib-root", "source_node_id": "source:lib"},
+                {"site_id": "syntax:mod-child", "source_node_id": "source:lib"},
+                {"site_id": "syntax:flat-root", "source_node_id": "source:flat"},
+                {"site_id": "syntax:nested-root", "source_node_id": "source:nested"},
+            ],
+        }
+        target = {
+            "crate_target_id": "target:one",
+            "manifest_path": "Cargo.toml",
+            "target_kinds": ["lib"],
+            "target_name": "example",
+            "target_root_path": "src/lib.rs",
+            "target_root_source_node_id": "source:lib",
+        }
+        projections = [
+            {"projection_id": "projection:lib", "site_id": "syntax:lib-root"},
+            {"projection_id": "projection:flat", "site_id": "syntax:flat-root"},
+            {"projection_id": "projection:nested", "site_id": "syntax:nested-root"},
+        ]
+
+        scopes = self.materializer.materialize_rust_module_scopes(
+            parsed, [target], projections
+        )
+
+        self.assertEqual(["crate_root"], [scope["scope_kind"] for scope in scopes])
+
     def test_native_swift_parser_resolves_tree_sitter_recovery(self):
         parsed = {
             "source_nodes": [
