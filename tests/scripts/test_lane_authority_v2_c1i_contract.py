@@ -18,6 +18,7 @@ from jsonschema.exceptions import ValidationError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VERIFIER_PATH = REPO_ROOT / "tools/lane-authority-inventory/verify_contract.py"
+MATERIALIZER_P3_PATH = REPO_ROOT / "tools/lane-authority-inventory/materialize_p3.py"
 
 
 def load_verifier_module():
@@ -29,10 +30,23 @@ def load_verifier_module():
     return module
 
 
+def load_p3_materializer_module(verifier):
+    spec = importlib.util.spec_from_file_location(
+        "lane_authority_v2_c1i_materialize_p3", MATERIALIZER_P3_PATH
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules["verify_contract"] = verifier
+    sys.modules["lane_authority_v2_c1i_materialize_p3"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class LaneAuthorityV2C1IContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.verifier = load_verifier_module()
+        cls.materializer_p3 = load_p3_materializer_module(cls.verifier)
 
     def p0_catalog(self):
         catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
@@ -584,6 +598,22 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             result["external_symbol_count"], result["catalog_disposition_count"]
         )
         self.assertGreater(result["unresolved_symbol_count"], 0)
+
+    def test_p3_immutability_guard_covers_authored_and_p1_p2_inputs(self):
+        before = self.materializer_p3.immutable_input_digests(REPO_ROOT)
+        self.assertIn(self.verifier.EXTERNAL_SYMBOL_POLICY_PATH, before)
+        self.assertIn(
+            Path("tools/lane-authority-inventory/manifests/relations/symbol_sites.json"),
+            before,
+        )
+        self.assertNotIn(self.verifier.CATALOG_PATH, before)
+
+        tampered = dict(before)
+        tampered[self.verifier.EXTERNAL_SYMBOL_POLICY_PATH] = "0" * 64
+        with self.assertRaisesRegex(
+            self.verifier.ContractError, "P3 mutated authored or P1/P2 inputs"
+        ):
+            self.materializer_p3.assert_immutable_inputs(REPO_ROOT, tampered)
 
     def test_pending_authority_projection_is_only_allowed_for_materializer_preflight(self):
         catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)

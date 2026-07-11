@@ -13,6 +13,16 @@ import verify_contract as contract
 SYMBOLS_PATH = Path(
     "tools/lane-authority-inventory/manifests/relations/symbol_sites.json"
 )
+P3_OUTPUT_PATHS = {
+    contract.CATALOG_PATH,
+    contract.CATALOG_DISPOSITIONS_PATH,
+    contract.CFG_COVERAGE_PATH,
+    contract.DATAFLOW_PROOFS_PATH,
+    Path("tools/lane-authority-inventory/manifests/inventory_composition.json"),
+    Path("tools/lane-authority-inventory/manifests/relations/candidate_adjudications.json"),
+    Path("tools/lane-authority-inventory/manifests/relations/site_classifications.json"),
+    Path("tools/lane-authority-inventory/manifests/relations/symbol_dispositions.json"),
+}
 
 
 def relation(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -53,8 +63,36 @@ def empty_catalog_projection() -> dict[str, Any]:
     }
 
 
+def immutable_input_digests(root: Path) -> dict[Path, str]:
+    roots = (
+        root / "tools/lane-authority-inventory/catalog",
+        root / "tools/lane-authority-inventory/manifests",
+    )
+    paths = {
+        path.relative_to(root)
+        for input_root in roots
+        for path in input_root.rglob("*.json")
+        if path.relative_to(root) not in P3_OUTPUT_PATHS
+    }
+    return {path: contract.sha256_path(root, path) for path in sorted(paths)}
+
+
+def assert_immutable_inputs(root: Path, before: dict[Path, str]) -> None:
+    after = immutable_input_digests(root)
+    if after != before:
+        changed = sorted(
+            str(path)
+            for path in set(before) | set(after)
+            if before.get(path) != after.get(path)
+        )
+        raise contract.ContractError(
+            f"P3 mutated authored or P1/P2 inputs: {changed}"
+        )
+
+
 def materialize(root: Path) -> dict[str, Any]:
     contract.verify_p2(root, allow_pending_authority_projection=True)
+    immutable_before = immutable_input_digests(root)
     policy = contract.load_json(root, contract.EXTERNAL_SYMBOL_POLICY_PATH)
     authority_policy = contract.load_json(root, contract.AUTHORITY_SYMBOL_POLICY_PATH)
     contract.validate_external_symbol_policy(policy)
@@ -138,6 +176,7 @@ def materialize(root: Path) -> dict[str, Any]:
 
     write_json(root, contract.CATALOG_PATH, catalog)
     write_json(root, contract.CATALOG_DISPOSITIONS_PATH, relation(dispositions))
+    assert_immutable_inputs(root, immutable_before)
     evidence = contract.verify_p3(root)
     return {
         "catalog_dispositions": evidence["catalog_disposition_count"],
