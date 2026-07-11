@@ -1040,7 +1040,11 @@ def authority_policy_catalog_entry(
 
 
 def validate_catalog_p3_policy_projection(
-    catalog: dict[str, Any], policy: dict[str, Any], authority_policy: dict[str, Any]
+    catalog: dict[str, Any],
+    policy: dict[str, Any],
+    authority_policy: dict[str, Any],
+    *,
+    allow_pending_authority_projection: bool = False,
 ) -> None:
     if catalog.get("catalog_status") != "p3_machine_validated_incomplete":
         raise ContractError("P3 policy catalog must remain explicitly incomplete")
@@ -1068,6 +1072,12 @@ def validate_catalog_p3_policy_projection(
     all_policy_identities: set[tuple[str, str]] = set()
     for section, section_policy, builder, label in sections:
         entries = catalog.get(section)
+        if (
+            allow_pending_authority_projection
+            and label == "authority"
+            and entries == []
+        ):
+            continue
         if not isinstance(entries, list) or not entries:
             raise ContractError(f"P3 catalog must contain {label} policy entries")
         policy_by_id = {entry["id"]: entry for entry in section_policy["entries"]}
@@ -2253,6 +2263,7 @@ def verify_p0(
     *,
     require_review: bool = False,
     allow_later_catalog: bool = False,
+    allow_pending_authority_projection: bool = False,
 ) -> dict[str, Any]:
     checkpoint = load_json(root, CHECKPOINT_PATH)
     catalog = load_json(root, CATALOG_PATH)
@@ -2296,7 +2307,10 @@ def verify_p0(
     validate_external_symbol_policy(external_symbol_policy)
     if allow_later_catalog and catalog.get("catalog_status") == "p3_machine_validated_incomplete":
         validate_catalog_p3_policy_projection(
-            catalog, external_symbol_policy, authority_symbol_policy
+            catalog,
+            external_symbol_policy,
+            authority_symbol_policy,
+            allow_pending_authority_projection=allow_pending_authority_projection,
         )
     else:
         validate_catalog_p0(catalog)
@@ -2355,8 +2369,15 @@ def verify_p0(
     }
 
 
-def verify_p1(root: Path) -> dict[str, Any]:
-    p0 = verify_p0(root, require_review=False, allow_later_catalog=True)
+def verify_p1(
+    root: Path, *, allow_pending_authority_projection: bool = False
+) -> dict[str, Any]:
+    p0 = verify_p0(
+        root,
+        require_review=False,
+        allow_later_catalog=True,
+        allow_pending_authority_projection=allow_pending_authority_projection,
+    )
     analysis_cut = load_json(root, ANALYSIS_CUT_PATH)
     source_inventory = load_json(root, SOURCE_INVENTORY_PATH)
     candidate_manifest = load_json(root, CANDIDATE_RECORDS_PATH)
@@ -2428,8 +2449,12 @@ def verify_p1(root: Path) -> dict[str, Any]:
     }
 
 
-def verify_p2(root: Path) -> dict[str, Any]:
-    p1 = verify_p1(root)
+def verify_p2(
+    root: Path, *, allow_pending_authority_projection: bool = False
+) -> dict[str, Any]:
+    p1 = verify_p1(
+        root, allow_pending_authority_projection=allow_pending_authority_projection
+    )
     relation_schema = load_json(
         root, Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json")
     )

@@ -30,7 +30,7 @@ def write_json(root: Path, path: Path, value: dict[str, Any]) -> None:
 
 
 def materialize(root: Path) -> dict[str, Any]:
-    contract.verify_p2(root)
+    contract.verify_p2(root, allow_pending_authority_projection=True)
     policy = contract.load_json(root, contract.EXTERNAL_SYMBOL_POLICY_PATH)
     authority_policy = contract.load_json(root, contract.AUTHORITY_SYMBOL_POLICY_PATH)
     contract.validate_external_symbol_policy(policy)

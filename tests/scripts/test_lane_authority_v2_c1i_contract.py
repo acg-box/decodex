@@ -329,6 +329,15 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         self.assertEqual(16941, result["catalog_disposition_count"])
         self.assertGreater(result["unresolved_symbol_count"], 0)
 
+    def test_pending_authority_projection_is_only_allowed_for_materializer_preflight(self):
+        with self.assertRaisesRegex(self.verifier.ContractError, "authority policy entries"):
+            self.verifier.verify_p2(REPO_ROOT)
+
+        result = self.verifier.verify_p2(
+            REPO_ROOT, allow_pending_authority_projection=True
+        )
+        self.assertEqual("P2", result["phase"])
+
     def test_p3_rejects_consumer_projection_tampering(self):
         catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
         tampered = copy.deepcopy(catalog)
