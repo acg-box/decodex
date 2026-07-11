@@ -3217,21 +3217,24 @@ def verify_p2(
             or any(binding_id not in rust_bindings for binding_id in resolution["binding_ids"])
         ):
             raise ContractError("P2 Rust receiver type source evidence drifted")
-        candidates = [
+        scope_candidates = [
             scope
             for scope in scopes_by_source[syntax_site["source_node_id"]]
             if scope["crate_target_id"] == resolution["crate_target_id"]
             and scope["byte_start"] <= syntax_site["byte_start"]
             and syntax_site["byte_end"] <= scope["byte_end"]
         ]
-        candidates.sort(
+        scope_candidates.sort(
             key=lambda scope: (
                 scope["byte_end"] - scope["byte_start"],
                 -scope["byte_start"],
                 scope["scope_id"],
             )
         )
-        if not candidates or candidates[0]["scope_id"] != lexical_scope["scope_id"]:
+        if (
+            not scope_candidates
+            or scope_candidates[0]["scope_id"] != lexical_scope["scope_id"]
+        ):
             raise ContractError("P2 Rust receiver lexical scope drifted")
         expected_query_id = stable_parts_id(
             "decodex/lane-authority-v2-rust-receiver-type-query/1",
