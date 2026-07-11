@@ -2640,6 +2640,14 @@ def verify_p2(
                 or source["path"] != scope["target_root_path"]
             ):
                 raise ContractError("P2 Rust crate-root target identity drifted")
+            if (
+                scope["target_extern_crate_names"]
+                != sorted(set(scope["target_extern_crate_names"]))
+                or not {"alloc", "core", "proc_macro", "std"}.issubset(
+                    scope["target_extern_crate_names"]
+                )
+            ):
+                raise ContractError("P2 Rust extern-crate attestation drifted")
         else:
             parent = rust_scopes.get(scope["parent_scope_id"])
             if parent is None or parent["crate_target_id"] != scope["crate_target_id"]:
@@ -2740,24 +2748,34 @@ def verify_p2(
             raise ContractError("P2 Rust name binding id drifted")
         if binding["target_scope_id"] is not None:
             target_scope = rust_scopes.get(binding["target_scope_id"])
-            if (
-                target_scope is None
-                or target_scope["crate_target_id"] != binding["crate_target_id"]
-                or target_scope["parent_scope_id"] != binding["scope_id"]
+            if target_scope is None or target_scope["crate_target_id"] != binding[
+                "crate_target_id"
+            ]:
+                raise ContractError("P2 Rust module binding target drifted")
+            if binding["binding_kind"] == "module" and (
+                target_scope["parent_scope_id"] != binding["scope_id"]
                 or target_scope["declaration_syntax_site_id"]
                 != binding["syntax_site_id"]
             ):
-                raise ContractError("P2 Rust module binding target drifted")
+                raise ContractError("P2 Rust module declaration target drifted")
         if binding["target_symbol_site_id"] is not None:
             target_symbol = symbol_sites.get(binding["target_symbol_site_id"])
             if (
                 target_symbol is None
                 or target_symbol["language"] != "rust"
                 or target_symbol["role"] != "declaration"
-                or target_symbol["syntax_site_id"] != binding["syntax_site_id"]
-                or target_symbol["signature"] != binding["local_name"]
             ):
                 raise ContractError("P2 Rust type binding target drifted")
+            if binding["binding_kind"] == "type_declaration" and (
+                target_symbol["syntax_site_id"] != binding["syntax_site_id"]
+                or target_symbol["signature"] != binding["local_name"]
+            ):
+                raise ContractError("P2 Rust type declaration target drifted")
+        if binding["local_name"] == "_" or binding["binding_kind"] not in {
+            "module",
+            "type_declaration",
+        }:
+            continue
         bindings_by_identity.setdefault(
             (
                 binding["crate_target_id"],

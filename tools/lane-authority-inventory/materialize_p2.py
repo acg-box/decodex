@@ -128,7 +128,17 @@ def normalize_cargo_metadata_targets(
             raise contract.ContractError(
                 f"cargo package manifest is outside the exact source inventory: {manifest_path}"
             )
-        for target in package.get("targets", []):
+        package_targets = package.get("targets", [])
+        dependency_crate_names = {
+            (dependency.get("rename") or dependency["name"]).replace("-", "_")
+            for dependency in package.get("dependencies", [])
+        }
+        library_crate_names = {
+            target["name"].replace("-", "_")
+            for target in package_targets
+            if set(target["kind"]) & {"lib", "proc-macro"}
+        }
+        for target in package_targets:
             root_path = _relative_metadata_path(materialized, target["src_path"])
             root_source = source_by_path.get(root_path)
             if root_source is None or root_source["language"] != "rust":
@@ -144,11 +154,20 @@ def normalize_cargo_metadata_targets(
                 ",".join(kinds),
                 root_path,
             )
+            extern_crate_names = dependency_crate_names | {
+                "alloc",
+                "core",
+                "proc_macro",
+                "std",
+            }
+            if not (set(kinds) & {"lib", "proc-macro"}):
+                extern_crate_names.update(library_crate_names)
             targets.append(
                 {
                     "crate_target_id": target_id,
                     "crate_types": crate_types,
                     "edition": target["edition"],
+                    "extern_crate_names": sorted(extern_crate_names),
                     "manifest_path": manifest_path,
                     "package_name": package["name"],
                     "package_version": package["version"],
@@ -339,6 +358,9 @@ def materialize_rust_module_scopes(
             "scope_kind": root_kind,
             "scope_syntax_site_id": root_fact["syntax_site_id"],
             "source_node_id": source["source_node_id"],
+            "target_extern_crate_names": (
+                target["extern_crate_names"] if root_kind == "crate_root" else None
+            ),
             "target_manifest_path": (
                 target["manifest_path"] if root_kind == "crate_root" else None
             ),
@@ -414,6 +436,7 @@ def materialize_rust_module_scopes(
                     "scope_kind": scope_kind,
                     "scope_syntax_site_id": fact["syntax_site_id"],
                     "source_node_id": source["source_node_id"],
+                    "target_extern_crate_names": None,
                     "target_manifest_path": None,
                     "target_kinds": None,
                     "target_name": None,
@@ -592,6 +615,11 @@ def materialize_rust_name_bindings(
 
     bindings_by_identity: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for binding in bindings_by_id.values():
+        if binding["local_name"] == "_" or binding["binding_kind"] not in {
+            "module",
+            "type_declaration",
+        }:
+            continue
         bindings_by_identity.setdefault(
             (
                 binding["crate_target_id"],
@@ -635,6 +663,10 @@ def resolve_rust_binding_paths(
         for scope in rust_module_scopes
         if scope["scope_kind"] == "crate_root"
     }
+    extern_crates = {
+        target_id: set(scopes[root_id]["target_extern_crate_names"])
+        for target_id, root_id in roots.items()
+    }
 
     def module_scope(scope_id: str) -> dict[str, Any]:
         scope = scopes[scope_id]
@@ -655,6 +687,7 @@ def resolve_rust_binding_paths(
         name: str,
         *,
         lexical: bool,
+        require_module: bool = False,
         excluded_binding_id: str | None = None,
     ) -> tuple[str, str | None]:
         current_id: str | None = scope_id
@@ -665,7 +698,16 @@ def resolve_rust_binding_paths(
                     (target_id, current_id, name), []
                 )
                 if binding_id != excluded_binding_id
+                and bindings[binding_id]["local_name"] != "_"
             ]
+            if require_module:
+                module_ids = [
+                    binding_id
+                    for binding_id in candidate_ids
+                    if bindings[binding_id]["binding_kind"] == "module"
+                ]
+                if module_ids:
+                    candidate_ids = module_ids
             if len(candidate_ids) > 1:
                 return "ambiguous", None
             if len(candidate_ids) == 1:
@@ -674,6 +716,8 @@ def resolve_rust_binding_paths(
                     return "ambiguous", None
                 return "found", candidate_ids[0]
             if not lexical:
+                break
+            if scopes[current_id]["scope_kind"] != "block":
                 break
             current_id = scopes[current_id]["parent_scope_id"]
         return "missing", None
@@ -751,11 +795,17 @@ def resolve_rust_binding_paths(
                 binding["scope_id"],
                 segments[0],
                 lexical=True,
+                require_module=len(segments) > 1,
                 excluded_binding_id=binding["binding_id"],
             )
             if state == "ambiguous":
                 return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}
             if state == "missing":
+                if segments[0] not in extern_crates[target_id]:
+                    return {
+                        "status": "unresolved",
+                        "binding_ids": [binding["binding_id"]],
+                    }
                 return {
                     "binding_ids": [binding["binding_id"]],
                     "canonical_module_scope_id": None,
@@ -777,6 +827,7 @@ def resolve_rust_binding_paths(
                 current_scope["scope_id"],
                 segments[index],
                 lexical=False,
+                require_module=index < len(segments) - 1,
             )
             if state == "ambiguous":
                 return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}

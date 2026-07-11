@@ -55,6 +55,10 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
             metadata = {
                 "packages": [
                     {
+                        "dependencies": [
+                            {"name": "serde-json", "rename": "json"},
+                            {"name": "time", "rename": None},
+                        ],
                         "manifest_path": str(manifest),
                         "name": "example",
                         "version": "1.2.3",
@@ -88,6 +92,10 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         self.assertEqual(1, len(targets))
         self.assertEqual(["lib"], targets[0]["crate_types"])
         self.assertEqual(["lib"], targets[0]["target_kinds"])
+        self.assertEqual(
+            ["alloc", "core", "json", "proc_macro", "std", "time"],
+            targets[0]["extern_crate_names"],
+        )
         self.assertEqual("apps/example/Cargo.toml", targets[0]["manifest_path"])
         self.assertEqual("apps/example/src/lib.rs", targets[0]["target_root_path"])
         self.assertEqual("source:lib", targets[0]["target_root_source_node_id"])
@@ -205,6 +213,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         }
         target = {
             "crate_target_id": "target:one",
+            "extern_crate_names": ["alloc", "core", "proc_macro", "std"],
             "manifest_path": "Cargo.toml",
             "target_kinds": ["lib"],
             "target_name": "example",
@@ -284,6 +293,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         }
         target = {
             "crate_target_id": "target:one",
+            "extern_crate_names": ["alloc", "core", "proc_macro", "std"],
             "manifest_path": "Cargo.toml",
             "target_kinds": ["lib"],
             "target_name": "example",
@@ -388,6 +398,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                 "parent_scope_id": None,
                 "scope_id": "scope:root",
                 "scope_kind": "crate_root",
+                "target_extern_crate_names": ["alloc", "core", "proc_macro", "std"],
             },
             {
                 "canonical_module_path": "target::one::state",
@@ -473,6 +484,114 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
             ],
             resolved["binding_ids"],
         )
+
+    def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
+        scopes = [
+            {
+                "canonical_module_path": "target::one",
+                "crate_target_id": "target:one",
+                "parent_scope_id": None,
+                "scope_id": "scope:root",
+                "scope_kind": "crate_root",
+                "target_extern_crate_names": ["alloc", "core", "proc_macro", "std", "time"],
+            },
+            {
+                "canonical_module_path": "target::one::time",
+                "crate_target_id": "target:one",
+                "parent_scope_id": "scope:root",
+                "scope_id": "scope:time",
+                "scope_kind": "file_module",
+            },
+        ]
+        bindings = [
+            {
+                "binding_id": "binding:module-time",
+                "binding_kind": "module",
+                "crate_target_id": "target:one",
+                "local_name": "time",
+                "reason_code": "rust_binding_exact_module_declaration",
+                "resolution": "resolved",
+                "scope_id": "scope:root",
+                "surface_target_path": None,
+                "target_scope_id": "scope:time",
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
+            {
+                "binding_id": "binding:duration",
+                "binding_kind": "use",
+                "crate_target_id": "target:one",
+                "local_name": "Duration",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:time",
+                "surface_target_path": "time::Duration",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
+            {
+                "binding_id": "binding:read-anonymous",
+                "binding_kind": "use",
+                "crate_target_id": "target:one",
+                "local_name": "_",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:time",
+                "surface_target_path": "std::io::Read",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
+            {
+                "binding_id": "binding:write-anonymous",
+                "binding_kind": "use",
+                "crate_target_id": "target:one",
+                "local_name": "_",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:time",
+                "surface_target_path": "std::io::Write",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
+            {
+                "binding_id": "binding:time-value-reexport",
+                "binding_kind": "reexport",
+                "crate_target_id": "target:one",
+                "local_name": "time",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:root",
+                "surface_target_path": "self::time::time",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "crate",
+            },
+            {
+                "binding_id": "binding:unknown-crate",
+                "binding_kind": "use",
+                "crate_target_id": "target:one",
+                "local_name": "Unknown",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": "scope:time",
+                "surface_target_path": "mystery::Unknown",
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+            },
+        ]
+
+        resolutions = self.materializer.resolve_rust_binding_paths(scopes, bindings)
+
+        by_source = {resolution["source_binding_id"]: resolution for resolution in resolutions}
+        self.assertEqual("external", by_source["binding:duration"]["status"])
+        self.assertEqual("external", by_source["binding:read-anonymous"]["status"])
+        self.assertEqual("external", by_source["binding:write-anonymous"]["status"])
+        self.assertEqual("unresolved", by_source["binding:time-value-reexport"]["status"])
+        self.assertEqual("unresolved", by_source["binding:unknown-crate"]["status"])
 
     def test_native_swift_parser_resolves_tree_sitter_recovery(self):
         parsed = {

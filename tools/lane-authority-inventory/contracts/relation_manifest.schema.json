@@ -9,9 +9,9 @@
     "rust_module_scope": {
       "additionalProperties": false,
       "allOf": [
-        {"if": {"properties": {"scope_kind": {"const": "crate_root"}}, "required": ["scope_kind"]}, "then": {"properties": {"declaration_syntax_site_id": {"const": null}, "parent_scope_id": {"const": null}, "target_kinds": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true}, "target_manifest_path": {"$ref": "#/$defs/path"}, "target_name": {"minLength": 1, "type": "string"}, "target_root_path": {"$ref": "#/$defs/path"}, "target_root_source_node_id": {"$ref": "#/$defs/id"}}}},
-        {"if": {"properties": {"scope_kind": {"enum": ["file_module", "inline_module"]}}, "required": ["scope_kind"]}, "then": {"properties": {"declaration_syntax_site_id": {"$ref": "#/$defs/id"}, "parent_scope_id": {"$ref": "#/$defs/id"}, "target_kinds": {"const": null}, "target_manifest_path": {"const": null}, "target_name": {"const": null}, "target_root_path": {"const": null}, "target_root_source_node_id": {"const": null}}}},
-        {"if": {"properties": {"scope_kind": {"const": "block"}}, "required": ["scope_kind"]}, "then": {"properties": {"declaration_syntax_site_id": {"const": null}, "parent_scope_id": {"$ref": "#/$defs/id"}, "target_kinds": {"const": null}, "target_manifest_path": {"const": null}, "target_name": {"const": null}, "target_root_path": {"const": null}, "target_root_source_node_id": {"const": null}}}}
+        {"if": {"properties": {"scope_kind": {"const": "crate_root"}}, "required": ["scope_kind"]}, "then": {"properties": {"declaration_syntax_site_id": {"const": null}, "parent_scope_id": {"const": null}, "target_extern_crate_names": {"items": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "type": "string"}, "minItems": 4, "type": "array", "uniqueItems": true}, "target_kinds": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true}, "target_manifest_path": {"$ref": "#/$defs/path"}, "target_name": {"minLength": 1, "type": "string"}, "target_root_path": {"$ref": "#/$defs/path"}, "target_root_source_node_id": {"$ref": "#/$defs/id"}}}},
+        {"if": {"properties": {"scope_kind": {"enum": ["file_module", "inline_module"]}}, "required": ["scope_kind"]}, "then": {"properties": {"declaration_syntax_site_id": {"$ref": "#/$defs/id"}, "parent_scope_id": {"$ref": "#/$defs/id"}, "target_extern_crate_names": {"const": null}, "target_kinds": {"const": null}, "target_manifest_path": {"const": null}, "target_name": {"const": null}, "target_root_path": {"const": null}, "target_root_source_node_id": {"const": null}}}},
+        {"if": {"properties": {"scope_kind": {"const": "block"}}, "required": ["scope_kind"]}, "then": {"properties": {"declaration_syntax_site_id": {"const": null}, "parent_scope_id": {"$ref": "#/$defs/id"}, "target_extern_crate_names": {"const": null}, "target_kinds": {"const": null}, "target_manifest_path": {"const": null}, "target_name": {"const": null}, "target_root_path": {"const": null}, "target_root_source_node_id": {"const": null}}}}
       ],
       "properties": {
         "byte_end": {"minimum": 0, "type": "integer"},
@@ -26,12 +26,13 @@
         "scope_syntax_site_id": {"$ref": "#/$defs/id"},
         "source_node_id": {"$ref": "#/$defs/id"},
         "target_manifest_path": {"anyOf": [{"$ref": "#/$defs/path"}, {"type": "null"}]},
+        "target_extern_crate_names": {"anyOf": [{"items": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "type": "string"}, "type": "array", "uniqueItems": true}, {"type": "null"}]},
         "target_kinds": {"anyOf": [{"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true}, {"type": "null"}]},
         "target_name": {"type": ["string", "null"]},
         "target_root_path": {"anyOf": [{"$ref": "#/$defs/path"}, {"type": "null"}]},
         "target_root_source_node_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
       },
-      "required": ["scope_id", "crate_target_id", "source_node_id", "scope_syntax_site_id", "parent_scope_id", "scope_kind", "canonical_module_path", "byte_start", "byte_end", "declaration_syntax_site_id", "cfg_projection_ids", "target_manifest_path", "target_kinds", "target_name", "target_root_path", "target_root_source_node_id"],
+      "required": ["scope_id", "crate_target_id", "source_node_id", "scope_syntax_site_id", "parent_scope_id", "scope_kind", "canonical_module_path", "byte_start", "byte_end", "declaration_syntax_site_id", "cfg_projection_ids", "target_extern_crate_names", "target_manifest_path", "target_kinds", "target_name", "target_root_path", "target_root_source_node_id"],
       "type": "object"
     },
     "rust_name_binding": {
