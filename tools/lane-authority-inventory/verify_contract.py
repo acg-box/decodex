@@ -19,6 +19,9 @@ from jsonschema.exceptions import SchemaError, ValidationError
 
 CHECKPOINT_PATH = Path("tools/lane-authority-inventory/contracts/p0_checkpoint.json")
 CATALOG_PATH = Path("tools/lane-authority-inventory/catalog/authority_surface_catalog.json")
+AUTHORITY_SYMBOL_POLICY_PATH = Path(
+    "tools/lane-authority-inventory/catalog/authority_symbol_policy.json"
+)
 EXTERNAL_SYMBOL_POLICY_PATH = Path(
     "tools/lane-authority-inventory/catalog/external_symbol_policy.json"
 )
@@ -68,6 +71,7 @@ INCOMPLETE_FIXTURE_PATH = Path(
 )
 SCHEMA_PATHS = (
     Path("tools/lane-authority-inventory/contracts/analysis_cut.schema.json"),
+    Path("tools/lane-authority-inventory/contracts/authority_symbol_policy.schema.json"),
     Path("tools/lane-authority-inventory/contracts/authority_surface_catalog.schema.json"),
     Path("tools/lane-authority-inventory/contracts/external_symbol_policy.schema.json"),
     Path("tools/lane-authority-inventory/contracts/dataflow_contract.schema.json"),
@@ -915,6 +919,45 @@ def external_symbol_policy_semantic_digest(value: dict[str, Any]) -> str:
             + canonical_json(semantic_value)
         ).encode("utf-8")
     ).hexdigest()
+
+
+def authority_symbol_policy_semantic_digest(value: dict[str, Any]) -> str:
+    semantic_value = {
+        "entries": value["entries"],
+        "policy_status": value["policy_status"],
+        "schema": value["schema"],
+    }
+    return hashlib.sha256(
+        (
+            "decodex/lane-authority-v2-authority-symbol-policy/1\n"
+            + canonical_json(semantic_value)
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def validate_authority_symbol_policy(value: dict[str, Any]) -> None:
+    expected_keys = {"entries", "policy_semantic_digest", "policy_status", "schema"}
+    if set(value) != expected_keys:
+        raise ContractError("authority symbol policy fields do not match its closed schema")
+    if value.get("schema") != "decodex/lane-authority-v2-authority-symbol-policy/1":
+        raise ContractError("unexpected authority symbol policy schema")
+    if value.get("policy_status") != "p3_machine_validated_review_pending":
+        raise ContractError("authority symbol policy must remain review-pending before P5")
+    entries = value.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ContractError("authority symbol policy must be non-empty")
+    identities = [(entry["language"], entry["signature"]) for entry in entries]
+    if identities != sorted(identities):
+        raise ContractError("authority symbol policy entries must be language/signature sorted")
+    if len(set(identities)) != len(identities):
+        raise ContractError("authority symbol policy contains a duplicate language/signature")
+    ids = [entry["id"] for entry in entries]
+    if len(set(ids)) != len(ids):
+        raise ContractError("authority symbol policy contains a duplicate id")
+    if any("?" in entry["signature"] or "*" in entry["signature"] for entry in entries):
+        raise ContractError("authority symbol policy forbids wildcard signatures")
+    if value["policy_semantic_digest"] != authority_symbol_policy_semantic_digest(value):
+        raise ContractError("authority symbol policy semantic digest disagrees")
 
 
 def validate_external_symbol_policy(value: dict[str, Any]) -> None:
@@ -2149,6 +2192,7 @@ def contract_digests(root: Path) -> dict[str, str]:
     paths = (
         CHECKPOINT_PATH,
         CATALOG_PATH,
+        AUTHORITY_SYMBOL_POLICY_PATH,
         EXTERNAL_SYMBOL_POLICY_PATH,
         DATAFLOW_PATH,
         OUTPUT_POLICY_PATH,
@@ -2168,6 +2212,7 @@ def verify_p0(
 ) -> dict[str, Any]:
     checkpoint = load_json(root, CHECKPOINT_PATH)
     catalog = load_json(root, CATALOG_PATH)
+    authority_symbol_policy = load_json(root, AUTHORITY_SYMBOL_POLICY_PATH)
     external_symbol_policy = load_json(root, EXTERNAL_SYMBOL_POLICY_PATH)
     dataflow = load_json(root, DATAFLOW_PATH)
     validate_json_schema_documents(root)
@@ -2185,6 +2230,13 @@ def verify_p0(
     )
     validate_instance(
         root,
+        AUTHORITY_SYMBOL_POLICY_PATH,
+        Path(
+            "tools/lane-authority-inventory/contracts/authority_symbol_policy.schema.json"
+        ),
+    )
+    validate_instance(
+        root,
         EXTERNAL_SYMBOL_POLICY_PATH,
         Path(
             "tools/lane-authority-inventory/contracts/external_symbol_policy.schema.json"
@@ -2196,6 +2248,7 @@ def verify_p0(
         Path("tools/lane-authority-inventory/contracts/dataflow_contract.schema.json"),
     )
     validate_rejection_contract(root)
+    validate_authority_symbol_policy(authority_symbol_policy)
     validate_external_symbol_policy(external_symbol_policy)
     if allow_later_catalog and catalog.get("catalog_status") == "p3_machine_validated_incomplete":
         validate_catalog_p3_policy_projection(catalog, external_symbol_policy)

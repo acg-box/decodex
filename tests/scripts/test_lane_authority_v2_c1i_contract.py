@@ -205,6 +205,54 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             )
         )
 
+    def test_authority_symbol_policy_is_exact_unique_and_observed(self):
+        policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.AUTHORITY_SYMBOL_POLICY_PATH
+        )
+        symbols = self.verifier.load_json(
+            REPO_ROOT,
+            Path(
+                "tools/lane-authority-inventory/manifests/relations/symbol_sites.json"
+            ),
+        )["records"]
+
+        self.verifier.validate_authority_symbol_policy(policy)
+
+        unresolved_identities = {
+            (site["language"], site["signature"])
+            for site in symbols
+            if site["resolution"] == "unresolved"
+        }
+        self.assertEqual(29, len(policy["entries"]))
+        self.assertTrue(
+            all(
+                (entry["language"], entry["signature"]) in unresolved_identities
+                for entry in policy["entries"]
+            )
+        )
+
+    def test_authority_symbol_policy_rejects_duplicate_signature_and_wildcard(self):
+        policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.AUTHORITY_SYMBOL_POLICY_PATH
+        )
+        duplicate = copy.deepcopy(policy)
+        duplicate["entries"].insert(1, copy.deepcopy(duplicate["entries"][0]))
+        duplicate["policy_semantic_digest"] = (
+            self.verifier.authority_symbol_policy_semantic_digest(duplicate)
+        )
+        with self.assertRaisesRegex(
+            self.verifier.ContractError, "duplicate language/signature"
+        ):
+            self.verifier.validate_authority_symbol_policy(duplicate)
+
+        wildcard = copy.deepcopy(policy)
+        wildcard["entries"][24]["signature"] = "std::process::*"
+        wildcard["policy_semantic_digest"] = (
+            self.verifier.authority_symbol_policy_semantic_digest(wildcard)
+        )
+        with self.assertRaisesRegex(self.verifier.ContractError, "wildcard"):
+            self.verifier.validate_authority_symbol_policy(wildcard)
+
     def test_external_symbol_policy_rejects_duplicate_signature_and_wildcard(self):
         policy = self.verifier.load_json(
             REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH

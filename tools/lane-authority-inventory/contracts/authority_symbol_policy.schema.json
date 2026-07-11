@@ -1,0 +1,117 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-authority-symbol-policy-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "entry": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_relevance": {"const": "authority_surface"},
+        "capability_class": {
+          "enum": [
+            "credential_read",
+            "environment_mutation",
+            "environment_read",
+            "filesystem_mutation",
+            "filesystem_read",
+            "git_capability",
+            "network_capability",
+            "process_capability",
+            "provider_mutation",
+            "provider_read",
+            "sqlite_read",
+            "sqlite_write",
+            "tracker_mutation",
+            "tracker_read"
+          ]
+        },
+        "evidence_source": {
+          "enum": [
+            "dependency_api",
+            "python_standard_library",
+            "repository_api",
+            "rust_standard_library",
+            "swift_foundation"
+          ]
+        },
+        "id": {
+          "pattern": "^authority-policy:[a-z0-9][a-z0-9._:-]*$",
+          "type": "string"
+        },
+        "language": {"enum": ["python", "rust", "swift"]},
+        "owner": {
+          "enum": [
+            "environment_effect_adapter",
+            "filesystem_effect_adapter",
+            "git_effect_adapter",
+            "network_effect_adapter",
+            "process_effect_adapter",
+            "provider_effect_adapter",
+            "sqlite_state_adapter",
+            "tracker_effect_adapter"
+          ]
+        },
+        "ownership": {"const": "legacy_direct"},
+        "reason_code": {
+          "enum": [
+            "direct_credential_read",
+            "direct_environment_mutation",
+            "direct_environment_read",
+            "direct_filesystem_mutation",
+            "direct_filesystem_read",
+            "direct_git_capability",
+            "direct_network_capability",
+            "direct_process_capability",
+            "direct_provider_mutation",
+            "direct_provider_read",
+            "direct_sqlite_read",
+            "direct_sqlite_write",
+            "direct_tracker_mutation",
+            "direct_tracker_read"
+          ]
+        },
+        "removal_checkpoint": {"const": "C1B"},
+        "replacement_kind": {"const": "capability_adapter"},
+        "semantic_kinds": {
+          "items": {
+            "enum": ["authority_discovery", "authority_read", "launcher", "mutation"]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "signature": {
+          "maxLength": 512,
+          "minLength": 1,
+          "not": {"pattern": "[?*]"},
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "language",
+        "signature",
+        "authority_relevance",
+        "semantic_kinds",
+        "capability_class",
+        "evidence_source",
+        "ownership",
+        "owner",
+        "replacement_kind",
+        "removal_checkpoint",
+        "reason_code"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "entries": {"items": {"$ref": "#/$defs/entry"}, "minItems": 1, "type": "array"},
+    "policy_semantic_digest": {"$ref": "#/$defs/digest"},
+    "policy_status": {"const": "p3_machine_validated_review_pending"},
+    "schema": {"const": "decodex/lane-authority-v2-authority-symbol-policy/1"}
+  },
+  "required": ["schema", "policy_status", "policy_semantic_digest", "entries"],
+  "title": "Lane Authority v2 authority symbol policy",
+  "type": "object"
+}

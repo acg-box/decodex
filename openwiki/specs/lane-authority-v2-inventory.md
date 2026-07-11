@@ -168,6 +168,15 @@ authority-capable class. Unlisted and dynamic symbols remain unresolved until se
 adjudicated. The policy remains machine-validated and review-pending until the P5 review
 approves its exact semantic digest with the complete populated catalog.
 
+`tools/lane-authority-inventory/catalog/authority_symbol_policy.json` independently
+enumerates signature-exact authority roots with capability class, semantic kinds, owner,
+current ownership, replacement, removal checkpoint, and reason. Scanner output and C0
+candidates may discover proposed entries but cannot create or widen them. Directly
+qualified standard-library roots may be admitted before receiver typing; variable- or
+field-qualified calls such as database, provider, process, and file handles remain
+unresolved until their receiver type is proven. Every admitted authority entry must have
+at least one exact consumer, and every consumer remains bound by a catalog disposition.
+
 It has closed, language-qualified sections for:
 
 - canonical external symbol/API signatures used by the analysis source universe;
