@@ -3549,6 +3549,158 @@ def verify_p2(
         ):
             raise ContractError("P2 Rust method owner target coverage is incomplete")
 
+    qualified_resolutions = _unique_index(
+        manifests["rust_qualified_owner_resolutions"]["records"],
+        "resolution_id",
+        "P2 Rust qualified owner resolutions",
+    )
+    qualified_resolutions_by_symbol: dict[str, list[dict[str, Any]]] = {}
+    qualified_reason_by_status = {
+        **reason_by_status,
+        "generic_parameter": "rust_qualified_owner_generic_parameter",
+    }
+    for resolution in qualified_resolutions.values():
+        symbol = symbol_sites.get(resolution["source_symbol_site_id"])
+        syntax_site = syntax.get(resolution["source_syntax_site_id"])
+        lexical_scope = rust_scopes.get(resolution["lexical_scope_id"])
+        expected_query_path = RUST_PRELUDE_TYPE_PATHS.get(
+            symbol["qualified_owner_signature"] if symbol is not None else "",
+            symbol["qualified_owner_signature"] if symbol is not None else "",
+        )
+        if symbol is not None and symbol["qualified_owner_kind"] == "implicit_self":
+            expected_query_path = symbol["owner_signature"] or ""
+        expected_status = resolution["path_status"]
+        if symbol is not None and symbol["qualified_owner_kind"] == "generic_parameter":
+            if resolution["path_status"] != "unresolved":
+                raise ContractError("P2 Rust generic qualified owner unexpectedly resolved")
+            expected_status = "generic_parameter"
+        if (
+            symbol is None
+            or symbol["language"] != "rust"
+            or symbol["role"] != "call_target"
+            or symbol["qualified_owner_signature"] is None
+            or syntax_site is None
+            or symbol["syntax_site_id"] != syntax_site["site_id"]
+            or lexical_scope is None
+            or lexical_scope["crate_target_id"] != resolution["crate_target_id"]
+            or lexical_scope["source_node_id"] != syntax_site["source_node_id"]
+            or resolution["surface_path"] != symbol["qualified_owner_signature"]
+            or resolution["query_path"] != expected_query_path
+            or resolution["qualified_owner_evidence"] != symbol["qualified_owner_evidence"]
+            or resolution["qualified_owner_kind"] != symbol["qualified_owner_kind"]
+            or resolution["status"] != expected_status
+            or resolution["reason_code"] != qualified_reason_by_status[resolution["status"]]
+            or any(binding_id not in rust_bindings for binding_id in resolution["binding_ids"])
+        ):
+            raise ContractError("P2 Rust qualified owner source evidence drifted")
+        scope_candidates = [
+            scope
+            for scope in scopes_by_source[syntax_site["source_node_id"]]
+            if scope["crate_target_id"] == resolution["crate_target_id"]
+            and scope["byte_start"] <= syntax_site["byte_start"]
+            and syntax_site["byte_end"] <= scope["byte_end"]
+        ]
+        scope_candidates.sort(
+            key=lambda scope: (
+                scope["byte_end"] - scope["byte_start"],
+                -scope["byte_start"],
+                scope["scope_id"],
+            )
+        )
+        if not scope_candidates or scope_candidates[0]["scope_id"] != lexical_scope["scope_id"]:
+            raise ContractError("P2 Rust qualified owner lexical scope drifted")
+        expected_query_id = stable_parts_id(
+            "decodex/lane-authority-v2-rust-qualified-owner-query/1",
+            symbol["site_id"],
+            resolution["crate_target_id"],
+            lexical_scope["scope_id"],
+            resolution["surface_path"],
+            resolution["query_path"],
+        )
+        expected_resolution_id = stable_parts_id(
+            "decodex/lane-authority-v2-rust-qualified-owner-resolution/1",
+            symbol["site_id"],
+            resolution["crate_target_id"],
+            lexical_scope["scope_id"],
+            resolution["surface_path"],
+            resolution["query_path"],
+            resolution["path_status"],
+            resolution["status"],
+            resolution["canonical_path"] or "",
+        )
+        if (
+            resolution["query_binding_id"] != expected_query_id
+            or resolution["resolution_id"] != expected_resolution_id
+        ):
+            raise ContractError("P2 Rust qualified owner identity drifted")
+        digest_payload = {
+            key: value for key, value in resolution.items() if key != "resolution_digest"
+        }
+        if resolution["resolution_digest"] != hashlib.sha256(
+            canonical_json(digest_payload).encode("utf-8")
+        ).hexdigest():
+            raise ContractError("P2 Rust qualified owner digest drifted")
+        query = {
+            "binding_id": expected_query_id,
+            "binding_kind": "use",
+            "crate_target_id": resolution["crate_target_id"],
+            "local_name": f"__qualified_owner_{symbol['site_id']}",
+            "namespace": "type",
+            "reason_code": "rust_binding_path_resolution_pending",
+            "resolution": "unresolved",
+            "scope_id": lexical_scope["scope_id"],
+            "source_node_id": syntax_site["source_node_id"],
+            "surface_target_path": resolution["query_path"],
+            "syntax_site_id": symbol["syntax_site_id"],
+            "target_scope_id": None,
+            "target_symbol_site_id": None,
+            "visibility": "private",
+            "visibility_path": None,
+        }
+        replay_record = {
+            **resolution,
+            "binding_ids": [expected_query_id, *resolution["binding_ids"]],
+            "source_binding_id": expected_query_id,
+            "status": resolution["path_status"],
+        }
+        rust_bindings[expected_query_id] = query
+        replay_key = (query["crate_target_id"], query["scope_id"], query["local_name"])
+        rust_path_replay_index["bindings_by_scope_name"][replay_key] = [expected_query_id]
+        try:
+            replay_rust_type_path_resolution(
+                replay_record, rust_scopes, rust_bindings, rust_path_replay_index
+            )
+        finally:
+            del rust_bindings[expected_query_id]
+            del rust_path_replay_index["bindings_by_scope_name"][replay_key]
+        qualified_resolutions_by_symbol.setdefault(symbol["site_id"], []).append(resolution)
+    expected_qualified_symbols = {
+        site_id
+        for site_id, site in symbol_sites.items()
+        if site["language"] == "rust"
+        and site["role"] == "call_target"
+        and site["qualified_owner_signature"] is not None
+    }
+    if set(qualified_resolutions_by_symbol) != expected_qualified_symbols:
+        raise ContractError("P2 Rust qualified owner coverage is incomplete")
+    for symbol_id in expected_qualified_symbols:
+        symbol = symbol_sites[symbol_id]
+        syntax_site = syntax[symbol["syntax_site_id"]]
+        expected_targets = {
+            scope["crate_target_id"]
+            for scope in scopes_by_source[syntax_site["source_node_id"]]
+            if scope["byte_start"] <= syntax_site["byte_start"]
+            and syntax_site["byte_end"] <= scope["byte_end"]
+        }
+        actual_targets = {
+            resolution["crate_target_id"]
+            for resolution in qualified_resolutions_by_symbol[symbol_id]
+        }
+        if actual_targets != expected_targets or len(
+            qualified_resolutions_by_symbol[symbol_id]
+        ) != len(expected_targets):
+            raise ContractError("P2 Rust qualified owner target coverage is incomplete")
+
     unresolved_symbols = sum(
         site["resolution"] == "unresolved" for site in symbol_sites.values()
     )
@@ -3703,6 +3855,7 @@ def verify_p2(
         "rust_path_resolution_count": len(rust_resolutions),
         "rust_receiver_type_resolution_count": len(receiver_resolutions),
         "rust_method_owner_resolution_count": len(owner_resolutions),
+        "rust_qualified_owner_resolution_count": len(qualified_resolutions),
         "source_node_count": len(sources),
         "symbol_site_count": len(symbol_sites),
         "syntax_site_count": len(syntax),
