@@ -326,6 +326,8 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             {
                 "definition_site_ids": [],
                 "external": False,
+                "language": "rust",
+                "owner_signature": None,
                 "resolution": "declaration",
                 "resolution_hint": "exact",
                 "role": "declaration",
@@ -337,6 +339,8 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             {
                 "definition_site_ids": ["symbol:definition"],
                 "external": False,
+                "language": "rust",
+                "owner_signature": None,
                 "resolution": "local",
                 "resolution_hint": "exact",
                 "role": "call_target",
@@ -852,6 +856,8 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             {
                 "definition_site_ids": [],
                 "external": True,
+                "language": "rust",
+                "owner_signature": None,
                 "resolution": "external",
                 "resolution_hint": "qualified",
                 "role": "call_target",
@@ -1012,6 +1018,8 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         symbol = {
             "definition_site_ids": [],
             "external": None,
+            "language": "rust",
+            "owner_signature": None,
             "resolution": "unresolved",
             "resolution_hint": "dynamic",
             "role": "call_target",

@@ -4,6 +4,7 @@
   "$defs": {
     "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "id": {"pattern": "^[a-z0-9][a-z0-9._:-]*$", "type": "string"},
+    "language": {"enum": ["python", "rust", "shell", "swift", "toml", "yaml"]},
     "path": {"not": {"pattern": "^(?:/|[A-Za-z]:|.*\\.\\.)"}, "minLength": 1, "type": "string"},
     "source_node": {
       "additionalProperties": false,
@@ -69,6 +70,8 @@
       "properties": {
         "definition_site_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array", "uniqueItems": true},
         "external": {"type": ["boolean", "null"]},
+        "language": {"$ref": "#/$defs/language"},
+        "owner_signature": {"type": ["string", "null"], "maxLength": 256},
         "resolution": {"enum": ["declaration", "local", "external", "unresolved"]},
         "resolution_hint": {"enum": ["dynamic", "exact", "qualified"]},
         "role": {"enum": ["declaration", "call_target"]},
@@ -77,7 +80,7 @@
         "site_id": {"$ref": "#/$defs/id"},
         "syntax_site_id": {"$ref": "#/$defs/id"}
       },
-      "required": ["site_id", "syntax_site_id", "role", "signature", "signature_digest", "resolution_hint", "resolution", "definition_site_ids", "external"],
+      "required": ["site_id", "syntax_site_id", "language", "owner_signature", "role", "signature", "signature_digest", "resolution_hint", "resolution", "definition_site_ids", "external"],
       "type": "object"
     },
     "data_site": {

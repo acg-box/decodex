@@ -1095,6 +1095,10 @@ def validate_cross_relation_records(
     for site in [*symbols.values(), *data.values()]:
         if site["syntax_site_id"] not in syntax:
             raise ContractError("derived site references a missing syntax site")
+    for site in symbols.values():
+        source = sources[syntax[site["syntax_site_id"]]["source_node_id"]]
+        if site["language"] != source["language"]:
+            raise ContractError("symbol language disagrees with its source")
     if any(site["resolution"] == "unresolved" for site in symbols.values()):
         raise ContractError("accepted symbol relation contains unresolved targets")
     for site in symbols.values():
@@ -2300,6 +2304,12 @@ def verify_p2(root: Path) -> dict[str, Any]:
     )
     if any(site["syntax_site_id"] not in syntax for site in symbol_sites.values()):
         raise ContractError("P2 symbol site references a missing syntax site")
+    if any(
+        site["language"]
+        != sources[syntax[site["syntax_site_id"]]["source_node_id"]]["language"]
+        for site in symbol_sites.values()
+    ):
+        raise ContractError("P2 symbol language disagrees with its source")
     unresolved_symbols = sum(
         site["resolution"] == "unresolved" for site in symbol_sites.values()
     )

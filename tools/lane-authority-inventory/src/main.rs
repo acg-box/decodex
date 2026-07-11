@@ -71,6 +71,8 @@ struct CandidateSiteEdge {
 
 #[derive(Serialize)]
 struct SemanticSymbolFact {
+	language: String,
+	owner_signature: Option<String>,
 	resolution_hint: String,
 	role: String,
 	signature: String,
@@ -180,15 +182,36 @@ fn symbol_signature(bytes: &[u8], node: Node<'_>) -> (String, String) {
 	classify_symbol_signature(node.utf8_text(bytes).unwrap_or_default().trim(), node.kind())
 }
 
+fn enclosing_owner_signature(bytes: &[u8], language: &str, node: Node<'_>) -> Option<String> {
+	let mut ancestor = node.parent();
+	while let Some(current) = ancestor {
+		let owner = match (language, current.kind()) {
+			("rust", "impl_item") => current.child_by_field_name("type"),
+			("python", "class_definition") | ("swift", "class_declaration") =>
+				current.child_by_field_name("name"),
+			_ => None,
+		};
+		if let Some(owner) = owner {
+			let (signature, hint) = symbol_signature(bytes, owner);
+			return (hint != "dynamic").then_some(signature);
+		}
+		ancestor = current.parent();
+	}
+	None
+}
+
 fn semantic_symbol_fact(
 	bytes: &[u8],
 	source_id: &str,
 	site: Node<'_>,
 	symbol: Node<'_>,
 	role: &str,
+	language: &str,
 ) -> SemanticSymbolFact {
 	let (signature, resolution_hint) = symbol_signature(bytes, symbol);
 	SemanticSymbolFact {
+		language: language.to_owned(),
+		owner_signature: enclosing_owner_signature(bytes, language, site),
 		resolution_hint,
 		role: role.to_owned(),
 		signature_digest: sha256(&[signature.as_bytes()]),
@@ -347,6 +370,7 @@ fn parse_source(
 				node,
 				name,
 				"declaration",
+				&source.language,
 			));
 		}
 		if let Some(target) = call_target_node(&source.language, node) {
@@ -356,6 +380,7 @@ fn parse_source(
 				node,
 				target,
 				"call_target",
+				&source.language,
 			));
 		}
 	}
@@ -444,7 +469,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-	use super::classify_symbol_signature;
+	use super::{classify_symbol_signature, collect_nodes, enclosing_owner_signature, language};
+	use tree_sitter::Parser;
 
 	#[test]
 	fn classifies_exact_and_qualified_symbol_signatures() {
@@ -464,5 +490,25 @@ mod tests {
 			("<dynamic:closure_expression>".to_owned(), "dynamic".to_owned()),
 			classify_symbol_signature("factory()(secret)", "closure_expression")
 		);
+	}
+
+	#[test]
+	fn extracts_rust_impl_owner_for_method_declarations_and_calls() {
+		let source = b"impl StateStore { fn open() { Self::open(); } }";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let nodes = collect_nodes(tree.root_node());
+		let owned_nodes: Vec<_> = nodes
+			.iter()
+			.filter(|node| matches!(node.kind(), "function_item" | "call_expression"))
+			.collect();
+		assert_eq!(2, owned_nodes.len());
+		for node in owned_nodes {
+			assert_eq!(
+				Some("StateStore".to_owned()),
+				enclosing_owner_signature(source, "rust", *node)
+			);
+		}
 	}
 }

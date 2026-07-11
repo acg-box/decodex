@@ -242,6 +242,8 @@ def materialize(root: Path) -> dict[str, Any]:
         symbol_sites_by_id[symbol_site_id] = {
             "definition_site_ids": [],
             "external": False if declaration else None,
+            "language": fact["language"],
+            "owner_signature": fact["owner_signature"],
             "resolution": "declaration" if declaration else "unresolved",
             "resolution_hint": fact["resolution_hint"],
             "role": fact["role"],
@@ -250,17 +252,36 @@ def materialize(root: Path) -> dict[str, Any]:
             "site_id": symbol_site_id,
             "syntax_site_id": fact["syntax_site_id"],
         }
-    declarations_by_signature: dict[str, list[str]] = {}
+    declarations_by_signature: dict[tuple[str, str], list[str]] = {}
+    declarations_by_owner: dict[tuple[str, str, str], list[str]] = {}
     for site in symbol_sites_by_id.values():
         if site["resolution"] == "declaration":
-            declarations_by_signature.setdefault(site["signature"], []).append(
-                site["site_id"]
-            )
+            declarations_by_signature.setdefault(
+                (site["language"], site["signature"]), []
+            ).append(site["site_id"])
+            if site["owner_signature"] is not None:
+                declarations_by_owner.setdefault(
+                    (site["language"], site["owner_signature"], site["signature"]),
+                    [],
+                ).append(site["site_id"])
     call_edges: list[dict[str, Any]] = []
     for site in symbol_sites_by_id.values():
-        if site["role"] != "call_target" or site["resolution_hint"] != "exact":
+        if site["role"] != "call_target":
             continue
-        definitions = declarations_by_signature.get(site["signature"], [])
+        definitions: list[str] = []
+        if site["resolution_hint"] == "exact":
+            definitions = declarations_by_signature.get(
+                (site["language"], site["signature"]), []
+            )
+        elif site["resolution_hint"] == "qualified":
+            separator = "::" if "::" in site["signature"] else "."
+            owner, separator_found, name = site["signature"].rpartition(separator)
+            if separator_found:
+                if owner in {"self", "Self"}:
+                    owner = site["owner_signature"] or ""
+                definitions = declarations_by_owner.get(
+                    (site["language"], owner, name), []
+                )
         if len(definitions) != 1:
             continue
         definition_site_id = definitions[0]
