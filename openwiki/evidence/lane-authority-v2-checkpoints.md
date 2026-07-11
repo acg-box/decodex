@@ -1636,6 +1636,20 @@ runtime database, provider, tracker, or production lifecycle state changed. Unti
 new contract and exact artifacts pass, the only valid advancement state is literal
 `C1I_INCOMPLETE`.
 
+The first re-freeze implementation slice is complete. Commit `0a1a834d` moves the
+generated authority catalog projection from `catalog/` to the closed manifest output
+universe and makes P3 rebuild it solely from the two authored symbol policies. P3 no
+longer rewrites `symbol_sites`; verifier matching overlays exact policy consumers on the
+immutable unresolved P2 observations. Commit `79de3ff9` adds a fail-closed before/after
+digest guard over every authored `catalog/*.json` file and every non-P3 manifest.
+
+On source cut `79de3ff94a20ade103bf878baf65e5c3a35df0b4`, P3 leaves those
+inputs byte-identical, projects 17,171 exact policy consumers, and reports the honest P2
+unresolved observation count of 86,769 rather than reducing it by mutating records. P2
+and P3 verifiers pass; the focused projection, tamper, output-policy, and immutability
+tests pass. The generated output is still incomplete authority and the next slice is the
+call-target-only `symbol_dispositions` relation with executed evidence invariants.
+
 ### C0 evidence commands
 
 ```sh
