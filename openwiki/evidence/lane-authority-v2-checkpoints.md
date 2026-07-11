@@ -1303,6 +1303,41 @@ Machine evidence for the module scope cut:
 - no runtime source, runtime database, migration, external provider, Linear state, or
   GitHub PR lifecycle state changed.
 
+#### Target-qualified Rust lexical binding cut
+
+Source cut `d27431a01dd464425810870124b49369dd0f0a1b` adds the second local
+Rust identity relation. The parser records structured module/type declarations, named
+and aliased `use` leaves, grouped `self`, re-exports, globs, lexical scope, and
+`pub`/`pub(crate)`/`pub(super)`/`pub(in path)` visibility without resolving a surface
+path by spelling. The materializer projects each fact only into applicable Cargo-target
+scopes. Unique module and type declarations resolve to their exact target scope or symbol
+site; use/re-export paths remain explicitly pending for the path-resolution relation.
+Same-scope duplicate names become ambiguous and lose all targets. Globs and unsupported
+visibility fail closed.
+
+The exact relation contains 29,338 bindings: 20,670 private uses, 4,173 re-exports,
+3,219 modules, and 1,276 type declarations. It proves 4,481 declaration bindings,
+retains 24,805 use/re-export bindings for path resolution, and marks 52 same-scope
+bindings ambiguous. The cut has 19,501 Rust scopes (10 roots, 3,196 file modules, 23
+inline modules, and 16,272 blocks), 171,180 syntax sites, 108,173 symbol sites, 10,497
+declarations, and 7,212 local call edges. P3 classifies 1,160 authority and 15,983
+reviewed-non-authority sites, leaving 73,321 unresolved symbols and 155,435 total
+unresolved candidate/symbol/dataflow items.
+
+Machine evidence for the lexical binding cut:
+
+- eight Rust parser tests and all 44 locked Python contract/materializer tests pass;
+- binding identity tampering is rejected, and ambiguous module files or same-scope names
+  are never guessed;
+- two complete P1/P2/P3 materializations produced identical SHAs for all twelve changed
+  generated artifacts, including `rust_name_bindings.json`;
+- the P3 verifier passes with analysis-cut digest
+  `d5d7e6f435e33fbeb494025ee5361a1694e2b66c677082fe247c2ec0429d5f8e`;
+- the C1I readiness gate returns the expected exit 1 with reason
+  `c1i_phase_incomplete`;
+- no runtime source, runtime database, migration, external provider, Linear state, or
+  GitHub PR lifecycle state changed.
+
 ### C0 evidence commands
 
 ```sh
