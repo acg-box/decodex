@@ -1501,6 +1501,43 @@ receiver calls. The next step rebuilds Rust local call edges from the pair
 `(canonical owner declaration identity, method identity)` and deletes the old
 terminal-name owner matching for those sites.
 
+#### Canonical Rust receiver call edges
+
+Source cut `98c4168201f96ba3306e4417d1a220493c16af61` removes Rust calls
+from the terminal-name matcher. `self.method()` is now explicit `Self` receiver
+evidence, with enclosing impl or trait owner proven by AST and resolved through the
+same canonical type-path relation as every other receiver. This adds 768
+`implicit_self_receiver` records; all 768 resolve to canonical local types.
+
+The complete receiver relation now contains 6,019 records: 3,110 canonical local
+types, 2,844 attested external/prelude types, and 65 AST-proven generic parameters.
+The method-owner relation contains 2,294 records after including trait declarations.
+Rust local call edges are independently reconstructed only from the tuple
+`(Cargo target, canonical owner declaration site, method name)`. The verifier
+derives this tuple again from the two proof relations and rejects any edge or symbol
+definition set that bypasses it.
+
+Removing unproved terminal-name matches reduced total call edges from 7,623 to
+4,609. The retained set contains 2,962 Rust, 878 Python, 758 Swift, and 11 shell
+edges. All 786 receiver records whose canonical owner is the sole `StateStore`
+declaration resolve to a canonical method declaration; none retain a name-only or
+unresolved target.
+
+Machine evidence for this cut:
+
+- all ten Rust parser tests pass, including implicit-self impl and trait owner
+  fixtures;
+- the P2 and P3 verifiers pass with analysis-cut digest
+  `73fa2dd7683c3436133138720145a5c3877ad5a6552b34959710cd49e8893590`;
+- P3 reports 1,160 authority symbols and 15,988 reviewed-non-authority external
+  symbols; readiness remains `C1I_INCOMPLETE`;
+- migration remains not started and no runtime behavior changed.
+
+Remaining Rust call closure is limited to associated/type-qualified calls such as
+`Type::method` and explicitly reason-coded generic/trait-object dynamic dispatch.
+Those sites must use canonical type queries or stay rejected; terminal-name matching
+will not return.
+
 ### C0 evidence commands
 
 ```sh
