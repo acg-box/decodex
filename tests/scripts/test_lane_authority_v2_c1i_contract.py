@@ -1461,6 +1461,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             "language": "rust",
             "owner_signature": None,
             "receiver_type_evidence": None,
+            "receiver_type_kind": None,
             "receiver_type_signature": None,
             "resolution": "unresolved",
             "resolution_hint": "dynamic",
