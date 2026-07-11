@@ -72,8 +72,7 @@
         {"if": {"properties": {"status": {"const": "resolved_local_module"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"$ref": "#/$defs/id"}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
         {"if": {"properties": {"status": {"const": "resolved_local_type"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"$ref": "#/$defs/id"}}}},
         {"if": {"properties": {"status": {"const": "external"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
-        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "generic_parameter", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}},
-        {"if": {"properties": {"status": {"const": "generic_parameter"}}, "required": ["status"]}, "then": {"properties": {"path_status": {"const": "unresolved"}, "receiver_type_kind": {"const": "generic_parameter"}}}}
+        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}}
       ],
       "properties": {
         "binding_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array"},
@@ -83,7 +82,6 @@
         "crate_target_id": {"$ref": "#/$defs/id"},
         "lexical_scope_id": {"$ref": "#/$defs/id"},
         "namespace": {"const": "type"},
-        "path_status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]},
         "purpose": {"enum": ["binding_target"]},
         "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied"]},
         "resolution_digest": {"$ref": "#/$defs/digest"},
@@ -102,7 +100,8 @@
         {"if": {"properties": {"status": {"const": "resolved_local_module"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"$ref": "#/$defs/id"}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
         {"if": {"properties": {"status": {"const": "resolved_local_type"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"$ref": "#/$defs/id"}}}},
         {"if": {"properties": {"status": {"const": "external"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
-        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}}
+        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "generic_parameter", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}},
+        {"if": {"properties": {"status": {"const": "generic_parameter"}}, "required": ["status"]}, "then": {"properties": {"path_status": {"const": "unresolved"}, "receiver_type_kind": {"const": "generic_parameter"}}}}
       ],
       "properties": {
         "binding_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array"},
@@ -112,6 +111,7 @@
         "crate_target_id": {"$ref": "#/$defs/id"},
         "lexical_scope_id": {"$ref": "#/$defs/id"},
         "namespace": {"const": "type"},
+        "path_status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]},
         "purpose": {"const": "receiver_type"},
         "query_binding_id": {"$ref": "#/$defs/id"},
         "query_path": {"minLength": 1, "maxLength": 512, "type": "string"},
