@@ -473,6 +473,8 @@ fn rust_receiver_type(
 	let (receiver_type, evidence) = if receiver.kind() == "identifier" {
 		let name = receiver.utf8_text(bytes).ok()?.trim();
 		explicit_rust_binding_type(bytes, call, name, nodes, imports)?
+	} else if receiver.kind() == "self" {
+		("Self".to_owned(), "implicit_self_receiver".to_owned())
 	} else if receiver.kind() == "field_expression" {
 		let base = receiver.child_by_field_name("value")?;
 		if base.kind() != "self" {
@@ -1101,7 +1103,7 @@ mod tests {
 
 	#[test]
 	fn exposes_rust_receiver_type_ast_shapes() {
-		let source = b"use rusqlite::{Connection, Row}; struct Store { connection: Connection } impl Store { fn read(row: &Row<'_>) { let local: Connection = todo!(); row.get(0); self.connection.prepare(\"x\"); local.execute(\"x\", []); } }";
+		let source = b"use rusqlite::{Connection, Row}; struct Store { connection: Connection } impl Store { fn read(row: &Row<'_>) { let local: Connection = todo!(); row.get(0); self.connection.prepare(\"x\"); local.execute(\"x\", []); self.finish(); } }";
 		let mut parser = Parser::new();
 		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
 		let tree = parser.parse(source, None).expect("Rust syntax tree");
@@ -1135,6 +1137,11 @@ mod tests {
 					"rusqlite::Connection::execute".to_owned(),
 					"rusqlite::Connection".to_owned(),
 					"explicit_local_type".to_owned(),
+				),
+				(
+					"Self::finish".to_owned(),
+					"Self".to_owned(),
+					"implicit_self_receiver".to_owned(),
 				),
 			],
 			resolved

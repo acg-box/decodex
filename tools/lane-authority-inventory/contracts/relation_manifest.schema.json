@@ -116,7 +116,7 @@
         "query_binding_id": {"$ref": "#/$defs/id"},
         "query_path": {"minLength": 1, "maxLength": 512, "type": "string"},
         "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied", "rust_receiver_generic_parameter"]},
-        "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type"]},
+        "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type", "implicit_self_receiver"]},
         "receiver_type_kind": {"enum": ["concrete", "generic_parameter", "implicit_self"]},
         "resolution_digest": {"$ref": "#/$defs/digest"},
         "resolution_id": {"$ref": "#/$defs/id"},
