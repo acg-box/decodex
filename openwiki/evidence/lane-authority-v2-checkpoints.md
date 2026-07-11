@@ -1103,6 +1103,37 @@ P1 remains `C1I_INCOMPLETE`. No runtime source, runtime database, migration, ext
 provider, Linear state, or GitHub PR state changed. P2 next enriches the immutable source
 identities with complete parser/cfg/site/edge/supporting-input/tool receipt evidence.
 
+### C1I P2 bounded parser and graph checkpoint
+
+P2 source cut is `ae8ffff60499b61c16d618d09ce0598825218f6c`. The tool-local,
+hash-locked Rust workspace uses mature tree-sitter grammars for Rust, Python, Swift,
+shell, TOML, and YAML. It parses a temporary read-only Git archive, verifies every source
+byte against P1 identity, traverses every named node, and records per-source node
+count/digest. It materializes roots, candidate-covering nodes, executable call/command/
+macro nodes, source-level target/config projections, candidate/data sites, syntactic call
+and dataflow edges, and exact parser/platform receipts.
+
+P2 evidence totals:
+
+- 3,385 source records: 3,376 analysis and 9 tool sources;
+- 1,296,305 traversed parser nodes and 134,892 materialized syntax sites;
+- 41,057 candidate-site edges and 41,057 typed data sites/dataflow edges;
+- 100,113 syntactic call edges;
+- 13,540 common/Linux/macOS source-level cfg/target projections;
+- 18 receipts: one common parser plus Linux/macOS slices for each of six languages;
+- artifact SHA-list digest `dd65bca07a60af563c68ff99d9018723e6789bb45acc0018c7821fff433fe266`.
+
+Two consecutive P1/P2 materializations from the exact source cut produced byte-identical
+artifacts. The P2 contract verifier exits zero. The broad C1I readiness gate remains an
+expected reason-coded rejection at phase `P2`; P3-P5 evidence is still absent.
+
+One Swift source,
+`apps/decodex-app/Sources/DecodexApp/AccountRunStripContainerScrolling.swift`, contains
+seven tree-sitter recovery nodes. P2 records rather than suppresses them; SourceKit/P3
+must resolve or reject them. Candidate adjudication and semantic call/dataflow resolution
+also remain intentionally unresolved. P2 therefore remains `C1I_INCOMPLETE` with 182,234
+unresolved parser/candidate/edge items; no P2 artifact is ready authority.
+
 ### C0 evidence commands
 
 ```sh
