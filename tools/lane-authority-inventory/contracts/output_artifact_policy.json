@@ -21,6 +21,7 @@
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/rust_path_resolutions.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/rust_receiver_type_resolutions.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/rust_method_owner_resolutions.json", "role": "relation"},
+    {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/rust_qualified_owner_resolutions.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/supporting_inputs.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/symbol_sites.json", "role": "relation"},
     {"accepted_authority": true, "binding": "composition_relation_receipt", "path": "tools/lane-authority-inventory/manifests/relations/syntax_sites.json", "role": "relation"},

@@ -1313,6 +1313,165 @@ def materialize_rust_method_owner_resolutions(
     return records
 
 
+def materialize_rust_qualified_owner_resolutions(
+    syntax_sites: list[dict[str, Any]],
+    symbol_sites: list[dict[str, Any]],
+    rust_module_scopes: list[dict[str, Any]],
+    rust_name_bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    syntax_by_id = {site["site_id"]: site for site in syntax_sites}
+    scopes_by_source: dict[str, list[dict[str, Any]]] = {}
+    for scope in rust_module_scopes:
+        scopes_by_source.setdefault(scope["source_node_id"], []).append(scope)
+
+    synthetic_by_id: dict[str, dict[str, Any]] = {}
+    owner_by_binding_id: dict[str, dict[str, Any]] = {}
+    for symbol in symbol_sites:
+        surface = symbol["qualified_owner_signature"]
+        if symbol["language"] != "rust" or symbol["role"] != "call_target" or surface is None:
+            continue
+        query_path = RUST_PRELUDE_TYPE_PATHS.get(surface, surface)
+        if symbol["qualified_owner_kind"] == "implicit_self":
+            if symbol["owner_signature"] is None:
+                raise contract.ContractError(
+                    f"Rust Self qualified call has no enclosing owner: {symbol['site_id']}"
+                )
+            query_path = symbol["owner_signature"]
+        syntax = syntax_by_id[symbol["syntax_site_id"]]
+        candidates = [
+            scope
+            for scope in scopes_by_source.get(syntax["source_node_id"], [])
+            if scope["byte_start"] <= syntax["byte_start"]
+            and syntax["byte_end"] <= scope["byte_end"]
+        ]
+        by_target: dict[str, list[dict[str, Any]]] = {}
+        for scope in candidates:
+            by_target.setdefault(scope["crate_target_id"], []).append(scope)
+        if not by_target:
+            raise contract.ContractError(
+                f"Rust qualified call has no Cargo-target lexical scope: {symbol['site_id']}"
+            )
+        for target_id, target_scopes in by_target.items():
+            target_scopes.sort(
+                key=lambda scope: (
+                    scope["byte_end"] - scope["byte_start"],
+                    -scope["byte_start"],
+                    scope["scope_id"],
+                )
+            )
+            lexical_scope = target_scopes[0]
+            best_identity = (
+                lexical_scope["byte_end"] - lexical_scope["byte_start"],
+                lexical_scope["byte_start"],
+            )
+            if (
+                sum(
+                    (
+                        scope["byte_end"] - scope["byte_start"],
+                        scope["byte_start"],
+                    )
+                    == best_identity
+                    for scope in target_scopes
+                )
+                != 1
+            ):
+                raise contract.ContractError(
+                    f"Rust qualified owner lexical scope is ambiguous: {symbol['site_id']}"
+                )
+            query_binding_id = canonical_id(
+                "decodex/lane-authority-v2-rust-qualified-owner-query/1",
+                symbol["site_id"],
+                target_id,
+                lexical_scope["scope_id"],
+                surface,
+                query_path,
+            )
+            query = {
+                "binding_id": query_binding_id,
+                "binding_kind": "use",
+                "crate_target_id": target_id,
+                "local_name": f"__qualified_owner_{symbol['site_id']}",
+                "namespace": "type",
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": lexical_scope["scope_id"],
+                "source_node_id": syntax["source_node_id"],
+                "surface_target_path": query_path,
+                "syntax_site_id": symbol["syntax_site_id"],
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+                "visibility_path": None,
+            }
+            synthetic_by_id[query_binding_id] = query
+            owner_by_binding_id[query_binding_id] = symbol
+
+    working_bindings = [dict(binding) for binding in rust_name_bindings]
+    working_bindings.extend(dict(binding) for binding in synthetic_by_id.values())
+    path_resolutions = resolve_rust_binding_paths(rust_module_scopes, working_bindings)
+    path_by_source = {
+        resolution["source_binding_id"]: resolution
+        for resolution in path_resolutions
+        if resolution["source_binding_id"] in synthetic_by_id
+    }
+    if set(path_by_source) != set(synthetic_by_id):
+        raise contract.ContractError("Rust qualified owner path coverage is incomplete")
+
+    records: list[dict[str, Any]] = []
+    for query_binding_id, query in synthetic_by_id.items():
+        path = path_by_source[query_binding_id]
+        symbol = owner_by_binding_id[query_binding_id]
+        status = path["status"]
+        reason_code = path["reason_code"]
+        if symbol["qualified_owner_kind"] == "generic_parameter":
+            if status != "unresolved":
+                raise contract.ContractError(
+                    f"Rust generic qualified owner unexpectedly resolved: {symbol['site_id']}"
+                )
+            status = "generic_parameter"
+            reason_code = "rust_qualified_owner_generic_parameter"
+        resolution_id = canonical_id(
+            "decodex/lane-authority-v2-rust-qualified-owner-resolution/1",
+            symbol["site_id"],
+            query["crate_target_id"],
+            query["scope_id"],
+            symbol["qualified_owner_signature"],
+            query["surface_target_path"],
+            path["status"],
+            status,
+            path.get("canonical_path") or "",
+        )
+        record = {
+            "binding_ids": path["binding_ids"][1:],
+            "canonical_module_scope_id": path.get("canonical_module_scope_id"),
+            "canonical_path": path.get("canonical_path"),
+            "canonical_type_definition_site_id": path.get(
+                "canonical_type_definition_site_id"
+            ),
+            "crate_target_id": query["crate_target_id"],
+            "lexical_scope_id": query["scope_id"],
+            "namespace": "type",
+            "path_status": path["status"],
+            "purpose": "qualified_call_owner",
+            "qualified_owner_evidence": symbol["qualified_owner_evidence"],
+            "qualified_owner_kind": symbol["qualified_owner_kind"],
+            "query_binding_id": query_binding_id,
+            "query_path": query["surface_target_path"],
+            "reason_code": reason_code,
+            "resolution_id": resolution_id,
+            "source_symbol_site_id": symbol["site_id"],
+            "source_syntax_site_id": symbol["syntax_site_id"],
+            "status": status,
+            "surface_path": symbol["qualified_owner_signature"],
+        }
+        record["resolution_digest"] = hashlib.sha256(
+            contract.canonical_json(record).encode("utf-8")
+        ).hexdigest()
+        records.append(record)
+    records.sort(key=lambda record: record["resolution_id"])
+    return records
+
+
 def resolve_swift_recovery(
     materialized: Path, parsed: dict[str, Any]
 ) -> tuple[str | None, set[str]]:
@@ -1456,6 +1615,9 @@ def materialize(root: Path) -> dict[str, Any]:
             "external": False if declaration else None,
             "language": fact["language"],
             "owner_signature": fact["owner_signature"],
+            "qualified_owner_evidence": fact["qualified_owner_evidence"],
+            "qualified_owner_kind": fact["qualified_owner_kind"],
+            "qualified_owner_signature": fact["qualified_owner_signature"],
             "receiver_type_evidence": fact["receiver_type_evidence"],
             "receiver_type_kind": fact["receiver_type_kind"],
             "receiver_type_signature": fact["receiver_type_signature"],
@@ -1530,6 +1692,12 @@ def materialize(root: Path) -> dict[str, Any]:
         rust_name_bindings,
     )
     rust_method_owner_resolutions = materialize_rust_method_owner_resolutions(
+        parsed["syntax_sites"],
+        symbol_sites,
+        rust_module_scopes,
+        rust_name_bindings,
+    )
+    rust_qualified_owner_resolutions = materialize_rust_qualified_owner_resolutions(
         parsed["syntax_sites"],
         symbol_sites,
         rust_module_scopes,
@@ -1725,6 +1893,11 @@ def materialize(root: Path) -> dict[str, Any]:
             rust_method_owner_resolutions,
         ),
         (
+            "rust_qualified_owner_resolutions",
+            "decodex/lane-authority-v2-c1i-rust-qualified-owner-resolutions/1",
+            rust_qualified_owner_resolutions,
+        ),
+        (
             "supporting_inputs",
             "decodex/lane-authority-v2-c1i-supporting-inputs/1",
             [],
@@ -1787,6 +1960,7 @@ def materialize(root: Path) -> dict[str, Any]:
         "rust_path_resolutions": len(rust_path_resolutions),
         "rust_receiver_type_resolutions": len(rust_receiver_type_resolutions),
         "rust_method_owner_resolutions": len(rust_method_owner_resolutions),
+        "rust_qualified_owner_resolutions": len(rust_qualified_owner_resolutions),
         "source_cut_commit": source_cut,
         "source_nodes": len(parsed["source_nodes"]),
         "symbol_sites": len(symbol_sites),

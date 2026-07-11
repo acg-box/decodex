@@ -145,6 +145,7 @@ EXPECTED_RELATIONS = {
     "rust_path_resolutions",
     "rust_receiver_type_resolutions",
     "rust_method_owner_resolutions",
+    "rust_qualified_owner_resolutions",
     "supporting_inputs",
     "symbol_sites",
     "syntax_sites",
@@ -166,6 +167,7 @@ RELATION_DEFINITIONS = {
     "rust_path_resolutions": "rust_path_resolution",
     "rust_receiver_type_resolutions": "rust_receiver_type_resolution",
     "rust_method_owner_resolutions": "rust_method_owner_resolution",
+    "rust_qualified_owner_resolutions": "rust_qualified_owner_resolution",
     "supporting_inputs": "supporting_input",
     "symbol_sites": "symbol_site",
     "syntax_sites": "syntax_site",
@@ -180,6 +182,7 @@ NONEMPTY_RELATIONS = {
     "rust_path_resolutions",
     "rust_receiver_type_resolutions",
     "rust_method_owner_resolutions",
+    "rust_qualified_owner_resolutions",
     "syntax_sites",
 }
 EXPECTED_TRANSFER_RULES = {
@@ -2770,6 +2773,7 @@ def verify_p2(
                 "rust_path_resolutions",
                 "rust_receiver_type_resolutions",
                 "rust_method_owner_resolutions",
+                "rust_qualified_owner_resolutions",
                 "supporting_inputs",
                 "symbol_sites",
                 "toolchain_receipts",
@@ -3006,6 +3010,21 @@ def verify_p2(
             or not site["signature"].startswith(f"{receiver_type}::")
         ):
             raise ContractError("P2 receiver type proof disagrees with its symbol")
+        qualified_owner = site["qualified_owner_signature"]
+        qualified_evidence = site["qualified_owner_evidence"]
+        qualified_kind = site["qualified_owner_kind"]
+        if (
+            (qualified_owner is None) != (qualified_evidence is None)
+            or (qualified_owner is None) != (qualified_kind is None)
+        ):
+            raise ContractError("P2 qualified owner evidence is incomplete")
+        if qualified_owner is not None and (
+            site["language"] != "rust"
+            or site["role"] != "call_target"
+            or site["resolution_hint"] != "qualified"
+            or not site["signature"].startswith(f"{qualified_owner}::")
+        ):
+            raise ContractError("P2 qualified owner proof disagrees with its symbol")
 
     rust_bindings = _unique_index(
         manifests["rust_name_bindings"]["records"],

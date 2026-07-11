@@ -73,6 +73,9 @@ struct CandidateSiteEdge {
 struct SemanticSymbolFact {
 	language: String,
 	owner_signature: Option<String>,
+	qualified_owner_evidence: Option<String>,
+	qualified_owner_kind: Option<String>,
+	qualified_owner_signature: Option<String>,
 	receiver_type_evidence: Option<String>,
 	receiver_type_kind: Option<String>,
 	receiver_type_signature: Option<String>,
@@ -260,6 +263,9 @@ fn semantic_symbol_fact(
 	SemanticSymbolFact {
 		language: language.to_owned(),
 		owner_signature: enclosing_owner_signature(bytes, language, site),
+		qualified_owner_evidence: None,
+		qualified_owner_kind: None,
+		qualified_owner_signature: None,
 		receiver_type_evidence: None,
 		receiver_type_kind: None,
 		receiver_type_signature: None,
@@ -537,6 +543,17 @@ fn semantic_call_fact(
 			fact.receiver_type_evidence = Some(evidence);
 			fact.receiver_type_kind = Some(rust_receiver_type_kind(bytes, call, &receiver_type));
 			fact.receiver_type_signature = Some(receiver_type);
+		}
+		if target.kind() == "scoped_identifier" {
+			if let Some(owner) = target.child_by_field_name("path") {
+				let owner = owner.utf8_text(bytes).unwrap_or_default().trim().to_owned();
+				if !owner.is_empty() {
+					fact.qualified_owner_kind =
+						Some(rust_receiver_type_kind(bytes, call, &owner));
+					fact.qualified_owner_evidence = Some("scoped_call_path".to_owned());
+					fact.qualified_owner_signature = Some(owner);
+				}
+			}
 		}
 	}
 	fact
@@ -1098,7 +1115,7 @@ mod tests {
 		call_target_node, classify_symbol_signature, collect_nodes, declaration_name_node,
 		enclosing_owner_signature, language, rust_imports, rust_module_declaration_facts,
 		rust_name_binding_facts, rust_receiver_type, rust_receiver_type_kind, rust_scope_facts,
-		rust_struct_field_types,
+		rust_struct_field_types, semantic_call_fact,
 	};
 	use tree_sitter::Parser;
 
@@ -1308,6 +1325,41 @@ mod tests {
 			.find(|node| node.kind() == "call_expression")
 			.expect("call");
 		assert_eq!(Some("Store".to_owned()), enclosing_owner_signature(source, "rust", call));
+	}
+
+	#[test]
+	fn extracts_rust_qualified_call_owner_kinds() {
+		let source = b"fn run<T>() { StateStore::open(); Self::close(); T::finish(); }";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let nodes = collect_nodes(tree.root_node());
+		let imports = rust_imports(source, &nodes);
+		let fields = rust_struct_field_types(source, &nodes, &imports);
+		let facts = nodes
+			.iter()
+			.copied()
+			.filter(|node| node.kind() == "call_expression")
+			.filter_map(|call| {
+				let target = call_target_node("rust", call)?;
+				Some(semantic_call_fact(
+					source, "source", call, target, "rust", &nodes, &imports, &fields,
+				))
+			})
+			.collect::<Vec<_>>();
+		assert_eq!(
+			vec![
+				(Some("StateStore"), Some("concrete")),
+				(Some("Self"), Some("implicit_self")),
+				(Some("T"), Some("generic_parameter")),
+			],
+			facts
+				.iter()
+				.map(|fact| {
+					(fact.qualified_owner_signature.as_deref(), fact.qualified_owner_kind.as_deref())
+				})
+				.collect::<Vec<_>>()
+		);
 	}
 
 	#[test]
