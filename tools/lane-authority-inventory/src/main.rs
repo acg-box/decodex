@@ -83,9 +83,30 @@ struct SemanticSymbolFact {
 	syntax_site_id: String,
 }
 
+#[derive(Clone, Serialize)]
+struct RustScopeFact {
+	byte_end: usize,
+	byte_start: usize,
+	parent_scope_syntax_site_id: Option<String>,
+	scope_kind: String,
+	source_node_id: String,
+	syntax_site_id: String,
+}
+
+#[derive(Clone, Serialize)]
+struct RustModuleDeclarationFact {
+	body_scope_syntax_site_id: Option<String>,
+	declaration_syntax_site_id: String,
+	lexical_scope_syntax_site_id: String,
+	module_name: String,
+	source_node_id: String,
+}
+
 #[derive(Serialize)]
 struct ParseOutput {
 	candidate_site_edges: Vec<CandidateSiteEdge>,
+	rust_module_declaration_facts: Vec<RustModuleDeclarationFact>,
+	rust_scope_facts: Vec<RustScopeFact>,
 	semantic_symbol_facts: Vec<SemanticSymbolFact>,
 	source_nodes: Vec<ParsedSource>,
 	syntax_sites: Vec<SyntaxSite>,
@@ -93,6 +114,8 @@ struct ParseOutput {
 
 struct ParsedSourceOutput {
 	candidate_site_edges: Vec<CandidateSiteEdge>,
+	rust_module_declaration_facts: Vec<RustModuleDeclarationFact>,
+	rust_scope_facts: Vec<RustScopeFact>,
 	semantic_symbol_facts: Vec<SemanticSymbolFact>,
 	source: ParsedSource,
 	syntax_sites: Vec<SyntaxSite>,
@@ -509,6 +532,85 @@ fn collect_nodes<'tree>(root: Node<'tree>) -> Vec<Node<'tree>> {
 	result
 }
 
+fn rust_scope_kind(node: Node<'_>) -> Option<&'static str> {
+	match node.kind() {
+		"source_file" => Some("source_file"),
+		"block" => Some("block"),
+		"declaration_list"
+			if node.parent().is_some_and(|parent| {
+				parent.kind() == "mod_item"
+					&& parent.child_by_field_name("body").is_some_and(|body| body == node)
+			}) =>
+		{
+			Some("inline_module")
+		},
+		_ => None,
+	}
+}
+
+fn enclosing_rust_scope(mut node: Node<'_>) -> Option<Node<'_>> {
+	while let Some(parent) = node.parent() {
+		if rust_scope_kind(parent).is_some() {
+			return Some(parent);
+		}
+		node = parent;
+	}
+	None
+}
+
+fn rust_scope_facts(source_id: &str, nodes: &[Node<'_>]) -> Vec<RustScopeFact> {
+	let mut facts = nodes
+		.iter()
+		.copied()
+		.filter_map(|node| {
+			let scope_kind = rust_scope_kind(node)?;
+			Some(RustScopeFact {
+				byte_end: node.end_byte(),
+				byte_start: node.start_byte(),
+				parent_scope_syntax_site_id: enclosing_rust_scope(node)
+					.map(|parent| site_id(source_id, parent)),
+				scope_kind: scope_kind.to_owned(),
+				source_node_id: source_id.to_owned(),
+				syntax_site_id: site_id(source_id, node),
+			})
+		})
+		.collect::<Vec<_>>();
+	facts.sort_by(|left, right| left.syntax_site_id.cmp(&right.syntax_site_id));
+	facts
+}
+
+fn rust_module_declaration_facts(
+	bytes: &[u8],
+	source_id: &str,
+	nodes: &[Node<'_>],
+) -> Vec<RustModuleDeclarationFact> {
+	let mut facts = nodes
+		.iter()
+		.copied()
+		.filter(|node| node.kind() == "mod_item")
+		.filter_map(|node| {
+			let name = node.child_by_field_name("name")?.utf8_text(bytes).ok()?.trim();
+			if name.is_empty() {
+				return None;
+			}
+			let lexical_scope = enclosing_rust_scope(node)?;
+			Some(RustModuleDeclarationFact {
+				body_scope_syntax_site_id: node
+					.child_by_field_name("body")
+					.map(|body| site_id(source_id, body)),
+				declaration_syntax_site_id: site_id(source_id, node),
+				lexical_scope_syntax_site_id: site_id(source_id, lexical_scope),
+				module_name: name.to_owned(),
+				source_node_id: source_id.to_owned(),
+			})
+		})
+		.collect::<Vec<_>>();
+	facts.sort_by(|left, right| {
+		left.declaration_syntax_site_id.cmp(&right.declaration_syntax_site_id)
+	});
+	facts
+}
+
 fn smallest_node_for_line<'tree>(nodes: &[Node<'tree>], line: usize) -> Option<Node<'tree>> {
 	let row = line.checked_sub(1)?;
 	nodes
@@ -526,6 +628,8 @@ fn parse_source(
 	if source.status == "deleted" {
 		return Ok(ParsedSourceOutput {
 			candidate_site_edges: Vec::new(),
+			rust_module_declaration_facts: Vec::new(),
+			rust_scope_facts: Vec::new(),
 			semantic_symbol_facts: Vec::new(),
 			source: ParsedSource {
 				identity: source,
@@ -579,6 +683,8 @@ fn parse_source(
 		if *node == tree.root_node()
 			|| materialize_kind(node.kind())
 			|| declaration_name_node(&source.language, *node).is_some()
+			|| (source.language == "rust"
+				&& (rust_scope_kind(*node).is_some() || node.kind() == "mod_item"))
 		{
 			selected.insert(site_id(&source.source_node_id, *node), *node);
 		}
@@ -644,9 +750,21 @@ fn parse_source(
 			));
 		}
 	}
+	let rust_scope_facts = if source.language == "rust" {
+		rust_scope_facts(&source.source_node_id, &nodes)
+	} else {
+		Vec::new()
+	};
+	let rust_module_declaration_facts = if source.language == "rust" {
+		rust_module_declaration_facts(&bytes, &source.source_node_id, &nodes)
+	} else {
+		Vec::new()
+	};
 	let receipt_id = format!("tool:{}:parser:common", source.language);
 	Ok(ParsedSourceOutput {
 		candidate_site_edges: edges,
+		rust_module_declaration_facts,
+		rust_scope_facts,
 		semantic_symbol_facts,
 		source: ParsedSource {
 			identity: source,
@@ -691,6 +809,8 @@ fn run() -> Result<(), String> {
 	}
 	let mut output = ParseOutput {
 		candidate_site_edges: Vec::new(),
+		rust_module_declaration_facts: Vec::new(),
+		rust_scope_facts: Vec::new(),
 		semantic_symbol_facts: Vec::new(),
 		source_nodes: Vec::new(),
 		syntax_sites: Vec::new(),
@@ -702,6 +822,8 @@ fn run() -> Result<(), String> {
 		output.source_nodes.push(parsed.source);
 		output.syntax_sites.append(&mut parsed.syntax_sites);
 		output.candidate_site_edges.append(&mut parsed.candidate_site_edges);
+		output.rust_module_declaration_facts.append(&mut parsed.rust_module_declaration_facts);
+		output.rust_scope_facts.append(&mut parsed.rust_scope_facts);
 		output.semantic_symbol_facts.append(&mut parsed.semantic_symbol_facts);
 	}
 	output
@@ -709,6 +831,10 @@ fn run() -> Result<(), String> {
 		.sort_by(|left, right| left.identity.source_node_id.cmp(&right.identity.source_node_id));
 	output.syntax_sites.sort_by(|left, right| left.site_id.cmp(&right.site_id));
 	output.candidate_site_edges.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
+	output.rust_module_declaration_facts.sort_by(|left, right| {
+		left.declaration_syntax_site_id.cmp(&right.declaration_syntax_site_id)
+	});
+	output.rust_scope_facts.sort_by(|left, right| left.syntax_site_id.cmp(&right.syntax_site_id));
 	output.semantic_symbol_facts.sort_by(|left, right| {
 		left.syntax_site_id
 			.cmp(&right.syntax_site_id)
@@ -731,8 +857,8 @@ fn main() {
 mod tests {
 	use super::{
 		call_target_node, classify_symbol_signature, collect_nodes, declaration_name_node,
-		enclosing_owner_signature, language, rust_imports, rust_receiver_type,
-		rust_struct_field_types,
+		enclosing_owner_signature, language, rust_imports, rust_module_declaration_facts,
+		rust_receiver_type, rust_scope_facts, rust_struct_field_types,
 	};
 	use tree_sitter::Parser;
 
@@ -776,6 +902,36 @@ mod tests {
 			],
 			resolved
 		);
+	}
+
+	#[test]
+	fn records_complete_rust_scope_parentage_and_module_declarations() {
+		let source = b"mod outer { fn run() { if true { drop(1); } } } mod external;";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let nodes = collect_nodes(tree.root_node());
+		let scopes = rust_scope_facts("source:rust", &nodes);
+		assert_eq!(vec!["block", "block", "inline_module", "source_file"], {
+			let mut kinds =
+				scopes.iter().map(|scope| scope.scope_kind.as_str()).collect::<Vec<_>>();
+			kinds.sort_unstable();
+			kinds
+		});
+		let root = scopes.iter().find(|scope| scope.scope_kind == "source_file").expect("root");
+		assert_eq!(None, root.parent_scope_syntax_site_id);
+		for scope in scopes.iter().filter(|scope| scope.scope_kind != "source_file") {
+			assert!(scope.parent_scope_syntax_site_id.is_some());
+		}
+		let modules = rust_module_declaration_facts(source, "source:rust", &nodes);
+		assert_eq!(2, modules.len());
+		let outer = modules.iter().find(|module| module.module_name == "outer").expect("outer");
+		assert!(outer.body_scope_syntax_site_id.is_some());
+		assert_eq!(root.syntax_site_id, outer.lexical_scope_syntax_site_id);
+		let external =
+			modules.iter().find(|module| module.module_name == "external").expect("external");
+		assert_eq!(None, external.body_scope_syntax_site_id);
+		assert_eq!(root.syntax_site_id, external.lexical_scope_syntax_site_id);
 	}
 
 	#[test]
