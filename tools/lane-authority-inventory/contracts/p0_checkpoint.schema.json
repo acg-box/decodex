@@ -42,10 +42,10 @@
         },
         "exact_head_binding": {"const": "ephemeral_gate_receipt_required"},
         "provisional_pr_base_commit": {
-          "const": "51f553fd32c8f75eed925afe87f99931844fffec"
+          "const": "5546dcb3b2eb0a8aecf7d6a3b117d2605ea315b8"
         },
         "provisional_pr_base_tree_oid": {
-          "const": "f858f8f6ded1d4a79c1e9afff3d8eb8785e98548"
+          "const": "f922729b921e7ff0d403a1471cdccd53a1d11b76"
         },
         "repository_key": {"const": "github.com/hack-ink/decodex"}
       },
