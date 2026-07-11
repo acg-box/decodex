@@ -1105,7 +1105,7 @@ identities with complete parser/cfg/site/edge/supporting-input/tool receipt evid
 
 ### C1I P2 bounded parser and graph checkpoint
 
-P2 source cut is `a238d798e3829950446c29d229091a388512ca52`. The tool-local,
+P2 source cut is `ad135583b9e90214a22b2036111872f93265df57`. The tool-local,
 hash-locked Rust workspace uses mature tree-sitter grammars for Rust, Python, Swift,
 shell, TOML, and YAML. It parses a temporary read-only Git archive, verifies every source
 byte against P1 identity, traverses every named node, and records per-source node
@@ -1116,21 +1116,21 @@ and dataflow edges, and exact parser/platform receipts.
 P2 evidence totals:
 
 - 3,386 source records: 3,377 analysis and 9 tool sources;
-- 1,298,786 traversed parser nodes and 143,949 materialized syntax sites;
+- 1,299,409 traversed parser nodes and 143,975 materialized syntax sites;
 - 41,057 candidate-site edges and 41,057 typed data sites/dataflow edges;
-- 100,253 syntactic call edges;
+- 3,303 unique-exact local call edges;
 - 13,544 common/Linux/macOS source-level cfg/target projections;
 - 18 receipts: one common parser plus Linux/macOS slices for each of six languages;
-- artifact SHA-list digest `df82cadbf58f323912720f9de46e9a77f082964245a8ff25db6e7da0fa9af36e`.
+- artifact SHA-list digest `92b04aa23d00b89eec564dcc087d4ab5a4ab2c640b0dffb7cc4441e34825a1d7`.
 
-The parser persists 105,482 semantic symbol sites: 8,916 exact declarations and 96,566
-unresolved call targets, of which 23,833 are exact, 49,236 qualified, and 23,497 dynamic.
-Dynamic signatures retain only their parser node kind, never source text. Unresolved call
-targets have `external=null` and no definition edge; the schema permits changing them to
-local or external only with the corresponding definition or catalog evidence. P2 call
-edges remain syntax-only placeholder edges to each source root; P3 must replace them with
-language-resolved local edges and catalog dispositions. They are not accepted call-graph
-authority.
+The parser persists 105,508 semantic symbol sites: 8,916 exact declarations and 96,592
+call targets, of which 23,841 are exact, 49,247 qualified, and 23,504 dynamic. It resolves
+3,303 exact targets only where the complete source cut has one declaration with that
+signature. Each resulting call edge connects a call-target symbol to its declaration and
+the verifier proves equality with `definition_site_ids`. Ambiguous/unmatched exact,
+qualified, and dynamic targets remain 93,289 explicit unresolved symbols. Dynamic
+signatures retain only their parser node kind, never source text. No source-root
+placeholder call edges remain.
 
 Two consecutive P1/P2 materializations from the exact source cut produced byte-identical
 artifacts. The P2 contract verifier exits zero. The broad C1I readiness gate remains an
@@ -1143,7 +1143,7 @@ binds the compiler identity plus recovery-source set into its tool receipt. The 
 parser accepts the file, so unresolved parser recovery is zero; a native parse failure
 remains a hard materialization failure. Candidate adjudication and semantic call/dataflow
 resolution remain intentionally unresolved. P2 therefore remains `C1I_INCOMPLETE` with
-278,933 unresolved candidate/symbol/edge items; no P2 artifact is ready authority.
+175,403 unresolved candidate/symbol/dataflow items; no P2 artifact is ready authority.
 
 ### C0 evidence commands
 
