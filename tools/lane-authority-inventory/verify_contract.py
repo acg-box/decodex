@@ -2741,6 +2741,7 @@ def verify_p2(
             binding["scope_id"],
             binding["syntax_site_id"],
             binding["binding_kind"],
+            binding["namespace"],
             binding["local_name"],
             binding["surface_target_path"] or "",
         )
@@ -2807,6 +2808,7 @@ def verify_p2(
             or lexical_scope is None
             or resolution["crate_target_id"] != source_binding["crate_target_id"]
             or resolution["lexical_scope_id"] != source_binding["scope_id"]
+            or resolution["namespace"] != source_binding["namespace"]
             or resolution["surface_path"] != source_binding["surface_target_path"]
             or resolution["binding_ids"][0] != source_binding["binding_id"]
             or any(binding_id not in rust_bindings for binding_id in resolution["binding_ids"])
@@ -2816,6 +2818,7 @@ def verify_p2(
             "decodex/lane-authority-v2-rust-path-resolution/1",
             source_binding["binding_id"],
             source_binding["scope_id"],
+            resolution["namespace"],
             source_binding["surface_target_path"],
             resolution["status"],
             resolution["canonical_path"] or "",

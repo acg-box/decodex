@@ -587,6 +587,7 @@ def materialize_rust_name_bindings(
                 lexical_scope["scope_id"],
                 fact["syntax_site_id"],
                 fact["binding_kind"],
+                "type",
                 fact["local_name"],
                 fact["surface_target_path"] or "",
             )
@@ -595,6 +596,7 @@ def materialize_rust_name_bindings(
                 "binding_kind": fact["binding_kind"],
                 "crate_target_id": lexical_scope["crate_target_id"],
                 "local_name": fact["local_name"],
+                "namespace": "type",
                 "reason_code": reason_code,
                 "resolution": resolution,
                 "scope_id": lexical_scope["scope_id"],
@@ -700,6 +702,14 @@ def resolve_rust_binding_paths(
                 if binding_id != excluded_binding_id
                 and bindings[binding_id]["local_name"] != "_"
             ]
+            declarations = [
+                binding_id
+                for binding_id in candidate_ids
+                if bindings[binding_id]["binding_kind"] in {
+                    "module",
+                    "type_declaration",
+                }
+            ]
             if require_module:
                 module_ids = [
                     binding_id
@@ -708,7 +718,11 @@ def resolve_rust_binding_paths(
                 ]
                 if module_ids:
                     candidate_ids = module_ids
+            elif declarations:
+                candidate_ids = declarations
             if len(candidate_ids) > 1:
+                if not declarations:
+                    return "unresolved", None
                 return "ambiguous", None
             if len(candidate_ids) == 1:
                 candidate = bindings[candidate_ids[0]]
@@ -800,6 +814,8 @@ def resolve_rust_binding_paths(
             )
             if state == "ambiguous":
                 return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}
+            if state == "unresolved":
+                return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
             if state == "missing":
                 if segments[0] not in extern_crates[target_id]:
                     return {
@@ -831,6 +847,8 @@ def resolve_rust_binding_paths(
             )
             if state == "ambiguous":
                 return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}
+            if state == "unresolved":
+                return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
             if state == "missing":
                 return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
             terminal = follow(found, stack)
@@ -865,6 +883,7 @@ def resolve_rust_binding_paths(
             "decodex/lane-authority-v2-rust-path-resolution/1",
             binding["binding_id"],
             binding["scope_id"],
+            binding["namespace"],
             binding["surface_target_path"] or "",
             status,
             result.get("canonical_path") or "",
@@ -878,6 +897,7 @@ def resolve_rust_binding_paths(
             ),
             "crate_target_id": binding["crate_target_id"],
             "lexical_scope_id": binding["scope_id"],
+            "namespace": binding["namespace"],
             "purpose": "binding_target",
             "reason_code": reason_by_status[status],
             "resolution_id": resolution_id,
