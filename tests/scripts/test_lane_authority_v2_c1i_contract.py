@@ -716,6 +716,47 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         ):
             self.verifier.verify_p3(REPO_ROOT)
 
+    def test_p3_rejects_missing_or_laundered_symbol_dispositions(self):
+        manifest = self.verifier.load_json(
+            REPO_ROOT, self.verifier.SYMBOL_DISPOSITIONS_PATH
+        )
+        original_load = self.verifier.load_json
+
+        missing = copy.deepcopy(manifest)
+        missing["records"].pop()
+
+        laundered = copy.deepcopy(manifest)
+        rejected = next(
+            record
+            for record in laundered["records"]
+            if record["disposition"] == "rejected_dynamic_target"
+        )
+        rejected.update(
+            {
+                "catalog_disposition_id": "catalog-disposition:invented",
+                "disposition": "cataloged_non_authority_external",
+                "policy_entry_id": "external-policy:invented",
+                "reason_code": "reviewed_non_authority_external_policy",
+            }
+        )
+        rejected["evidence_digest"] = "a" * 64
+
+        for tampered in (missing, laundered):
+            def load_tampered(root, path, *, value=tampered):
+                if path == self.verifier.SYMBOL_DISPOSITIONS_PATH:
+                    return copy.deepcopy(value)
+                return original_load(root, path)
+
+            with (
+                mock.patch.object(self.verifier, "verify_p2", return_value={}),
+                mock.patch.object(self.verifier, "load_json", side_effect=load_tampered),
+                self.assertRaisesRegex(
+                    self.verifier.ContractError,
+                    "symbol dispositions are not the exact call-target projection",
+                ),
+            ):
+                self.verifier.verify_p3(REPO_ROOT)
+
     def test_p3_rejects_an_external_symbol_without_policy_authority(self):
         symbols_path = Path(
             "tools/lane-authority-inventory/manifests/relations/symbol_sites.json"
