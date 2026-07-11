@@ -184,6 +184,34 @@ type through a unique structured `use` path. The symbol relation records the can
 receiver type and evidence kind. Inferred return types, ambiguous imports, untyped
 bindings, arbitrary method chains, and cross-file field shapes remain unresolved.
 
+`ImportedType` is sufficient only for an external API identity. A local Rust type is not
+canonical until a target-qualified module graph proves its unique declaration. Directory
+layout, filename conventions, terminal type names, and owner strings are not authority
+for that proof. P3 therefore materializes three separate relations:
+
+- `rust_module_scopes` starts from targets reported by exact-cut
+  `cargo metadata --locked --no-deps`, then records crate roots, file modules, inline
+  modules, and block scopes with parentage, byte ranges, source identity, cfg projections,
+  and target identity. A source shared by multiple targets remains target-qualified.
+- `rust_name_bindings` records module/type declarations and lexical `use`/re-export
+  bindings with scope, visibility, surface target, resolved target scope or symbol,
+  syntax evidence, and cfg projections. `crate`, `self`, multi-level `super`, grouped
+  imports, aliases, and visibility are explicit graph facts. Glob imports, cycles,
+  unsupported `#[path]`, macro/include-generated items, conflicting cfg branches, and
+  ambiguous same-scope bindings fail closed.
+- `rust_path_resolutions` records each receiver-type or impl-owner proof from its lexical
+  scope and surface path through an ordered binding chain to one canonical type
+  declaration. It binds the Cargo target, canonical path, type-definition site, source
+  symbol site, and a recomputable digest.
+
+The verifier independently replays those three relations. Every hop must remain within
+one applicable Cargo target, satisfy lexical scope and visibility, form a continuous
+acyclic path, and end at exactly one type declaration. Canonical receiver/owner fields
+exist if and only if such a resolution exists. A local method call edge joins
+`(canonical_type_definition_site_id, method_name)`, never
+`(terminal_type_name, method_name)` or an owner string. Removing or changing any
+re-export hop must make the dependent call unresolved.
+
 It has closed, language-qualified sections for:
 
 - canonical external symbol/API signatures used by the analysis source universe;

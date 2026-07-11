@@ -107,6 +107,141 @@ def id_set_fields(prefix: str, identifiers: set[str]) -> dict[str, Any]:
     }
 
 
+def _relative_metadata_path(materialized: Path, value: str) -> str:
+    try:
+        return Path(value).resolve().relative_to(materialized.resolve()).as_posix()
+    except ValueError as error:
+        raise contract.ContractError(
+            f"cargo metadata path escapes the exact source cut: {value}"
+        ) from error
+
+
+def normalize_cargo_metadata_targets(
+    materialized: Path,
+    metadata: dict[str, Any],
+    source_by_path: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    targets: list[dict[str, Any]] = []
+    for package in metadata.get("packages", []):
+        manifest_path = _relative_metadata_path(materialized, package["manifest_path"])
+        if manifest_path not in source_by_path:
+            raise contract.ContractError(
+                f"cargo package manifest is outside the exact source inventory: {manifest_path}"
+            )
+        for target in package.get("targets", []):
+            root_path = _relative_metadata_path(materialized, target["src_path"])
+            root_source = source_by_path.get(root_path)
+            if root_source is None or root_source["language"] != "rust":
+                raise contract.ContractError(
+                    f"cargo target root is not an exact-cut Rust source: {root_path}"
+                )
+            kinds = sorted(set(target["kind"]))
+            crate_types = sorted(set(target["crate_types"]))
+            target_id = canonical_id(
+                "decodex/lane-authority-v2-rust-crate-target/1",
+                manifest_path,
+                target["name"],
+                ",".join(kinds),
+                root_path,
+            )
+            targets.append(
+                {
+                    "crate_target_id": target_id,
+                    "crate_types": crate_types,
+                    "edition": target["edition"],
+                    "manifest_path": manifest_path,
+                    "package_name": package["name"],
+                    "package_version": package["version"],
+                    "target_kinds": kinds,
+                    "target_name": target["name"],
+                    "target_root_path": root_path,
+                    "target_root_source_node_id": root_source["source_node_id"],
+                }
+            )
+    targets.sort(key=lambda target: target["crate_target_id"])
+    if len({target["crate_target_id"] for target in targets}) != len(targets):
+        raise contract.ContractError("cargo metadata produced duplicate crate target ids")
+    return targets
+
+
+def exact_cut_cargo_targets(
+    materialized: Path, source_inventory: dict[str, Any]
+) -> tuple[list[dict[str, Any]], str]:
+    current_sources = {
+        source["path"]: source
+        for source in source_inventory["records"]
+        if source["status"] == "current"
+    }
+    manifests = sorted(
+        path for path in current_sources if path.endswith("Cargo.toml")
+    )
+    if "Cargo.toml" in manifests:
+        manifests.remove("Cargo.toml")
+        manifests.insert(0, "Cargo.toml")
+
+    covered_manifests: set[str] = set()
+    targets_by_id: dict[str, dict[str, Any]] = {}
+    cargo_version = subprocess.run(
+        ["cargo", "--version", "--verbose"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    ).stdout.strip()
+    for manifest in manifests:
+        if manifest in covered_manifests:
+            continue
+        metadata = json.loads(
+            subprocess.run(
+                [
+                    "cargo",
+                    "metadata",
+                    "--locked",
+                    "--no-deps",
+                    "--format-version",
+                    "1",
+                    "--manifest-path",
+                    str(materialized / manifest),
+                ],
+                cwd=materialized,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            ).stdout
+        )
+        normalized = normalize_cargo_metadata_targets(
+            materialized, metadata, current_sources
+        )
+        metadata_manifests = {target["manifest_path"] for target in normalized}
+        covered_manifests.update(metadata_manifests)
+        for target in normalized:
+            existing = targets_by_id.get(target["crate_target_id"])
+            if existing is not None and existing != target:
+                raise contract.ContractError(
+                    f"cargo target identity has conflicting metadata: {target['crate_target_id']}"
+                )
+            targets_by_id[target["crate_target_id"]] = target
+
+    package_manifests = {
+        path for path in manifests if path != "Cargo.toml"
+    }
+    missing_manifests = package_manifests - covered_manifests
+    if missing_manifests:
+        raise contract.ContractError(
+            f"cargo metadata did not cover package manifests: {sorted(missing_manifests)}"
+        )
+    targets = sorted(targets_by_id.values(), key=lambda target: target["crate_target_id"])
+    if not targets:
+        raise contract.ContractError("cargo metadata produced no exact-cut targets")
+    receipt_digest = hashlib.sha256(
+        contract.canonical_json(
+            {"cargo_version": cargo_version, "targets": targets}
+        ).encode("utf-8")
+    ).hexdigest()
+    return targets, receipt_digest
+
+
 def resolve_swift_recovery(
     materialized: Path, parsed: dict[str, Any]
 ) -> tuple[str | None, set[str]]:
@@ -157,6 +292,9 @@ def materialize(root: Path) -> dict[str, Any]:
         materialized = Path(temporary, "source")
         materialized.mkdir()
         extract_git_tree(root, source_cut, materialized)
+        cargo_targets, cargo_metadata_digest = exact_cut_cargo_targets(
+            materialized, source_inventory
+        )
         parser_output = Path(temporary, "parser-output.json")
         subprocess.run(
             [
@@ -394,6 +532,11 @@ def materialize(root: Path) -> dict[str, Any]:
                             "decodex/lane-authority-v2-swift-recovery-sources/1",
                             swift_recovery_source_ids,
                         ),
+                        (
+                            cargo_metadata_digest
+                            if language == "rust"
+                            else "not-rust-cargo-metadata"
+                        ),
                     ),
                     "unresolved_count": 0,
                 }
@@ -474,6 +617,7 @@ def materialize(root: Path) -> dict[str, Any]:
     return {
         **symbol_fact_counts,
         "candidate_site_edges": len(parsed["candidate_site_edges"]),
+        "cargo_targets": len(cargo_targets),
         "cfg_projections": len(cfg_projections),
         "call_edges": len(call_edges),
         "data_sites": len(data_sites),
