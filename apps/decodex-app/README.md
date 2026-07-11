@@ -88,7 +88,7 @@ identity, enables hardened runtime, and verifies the signature before launch. Ov
 the signing identity with `DECODEX_APP_SIGN_IDENTITY`; override the staging directory
 with `DECODEX_APP_STAGE_DIR`.
 
-Release packaging is owned by external Codex automation. That automation supplies
+Release packaging is owned by `.github/workflows/release.yml`. The workflow supplies
 `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and
 `APPLE_SIGNING_IDENTITY`, builds the Swift app in release mode, bundles the release
 Rust `decodex` and `decodex-app-helper` executables, then publishes
