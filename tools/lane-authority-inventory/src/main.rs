@@ -74,6 +74,7 @@ struct SemanticSymbolFact {
 	language: String,
 	owner_signature: Option<String>,
 	receiver_type_evidence: Option<String>,
+	receiver_type_kind: Option<String>,
 	receiver_type_signature: Option<String>,
 	resolution_hint: String,
 	role: String,
@@ -257,6 +258,7 @@ fn semantic_symbol_fact(
 		language: language.to_owned(),
 		owner_signature: enclosing_owner_signature(bytes, language, site),
 		receiver_type_evidence: None,
+		receiver_type_kind: None,
 		receiver_type_signature: None,
 		resolution_hint,
 		role: role.to_owned(),
@@ -484,6 +486,31 @@ fn rust_receiver_type(
 	Some((format!("{receiver_type}::{method}"), receiver_type, evidence))
 }
 
+fn rust_receiver_type_kind(bytes: &[u8], call: Node<'_>, receiver_type: &str) -> String {
+	if receiver_type == "Self" {
+		return "implicit_self".to_owned();
+	}
+	if receiver_type.contains("::") {
+		return "concrete".to_owned();
+	}
+	let mut current = Some(call);
+	while let Some(ancestor) = current {
+		if let Some(parameters) = ancestor.child_by_field_name("type_parameters") {
+			if collect_nodes(parameters)
+				.into_iter()
+				.filter(|node| node.kind() == "type_parameter")
+				.filter_map(|node| node.child_by_field_name("name"))
+				.filter_map(|name| name.utf8_text(bytes).ok())
+				.any(|name| name.trim() == receiver_type)
+			{
+				return "generic_parameter".to_owned();
+			}
+		}
+		current = ancestor.parent();
+	}
+	"concrete".to_owned()
+}
+
 fn semantic_call_fact(
 	bytes: &[u8],
 	source_id: &str,
@@ -503,6 +530,7 @@ fn semantic_call_fact(
 			fact.signature = signature;
 			fact.resolution_hint = "qualified".to_owned();
 			fact.receiver_type_evidence = Some(evidence);
+			fact.receiver_type_kind = Some(rust_receiver_type_kind(bytes, call, &receiver_type));
 			fact.receiver_type_signature = Some(receiver_type);
 		}
 	}
@@ -1064,7 +1092,8 @@ mod tests {
 	use super::{
 		call_target_node, classify_symbol_signature, collect_nodes, declaration_name_node,
 		enclosing_owner_signature, language, rust_imports, rust_module_declaration_facts,
-		rust_name_binding_facts, rust_receiver_type, rust_scope_facts, rust_struct_field_types,
+		rust_name_binding_facts, rust_receiver_type, rust_receiver_type_kind, rust_scope_facts,
+		rust_struct_field_types,
 	};
 	use tree_sitter::Parser;
 
@@ -1107,6 +1136,36 @@ mod tests {
 				),
 			],
 			resolved
+		);
+	}
+
+	#[test]
+	fn classifies_generic_and_self_receiver_types_from_ast_scope() {
+		let source = b"struct Store; impl Store { fn own(value: &Self) { value.clone(); } fn generic<T: Clone>(value: &T) { value.clone(); } }";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let nodes = collect_nodes(tree.root_node());
+		let imports = rust_imports(source, &nodes);
+		let fields = rust_struct_field_types(source, &nodes, &imports);
+		let mut kinds = nodes
+			.iter()
+			.copied()
+			.filter(|node| node.kind() == "call_expression")
+			.filter_map(|call| {
+				let target = call_target_node("rust", call)?;
+				let (_, receiver_type, _) =
+					rust_receiver_type(source, call, target, &nodes, &imports, &fields)?;
+				Some((receiver_type.clone(), rust_receiver_type_kind(source, call, &receiver_type)))
+			})
+			.collect::<Vec<_>>();
+		kinds.sort();
+		assert_eq!(
+			vec![
+				("Self".to_owned(), "implicit_self".to_owned()),
+				("T".to_owned(), "generic_parameter".to_owned()),
+			],
+			kinds
 		);
 	}
 

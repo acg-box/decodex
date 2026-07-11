@@ -72,7 +72,8 @@
         {"if": {"properties": {"status": {"const": "resolved_local_module"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"$ref": "#/$defs/id"}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
         {"if": {"properties": {"status": {"const": "resolved_local_type"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"$ref": "#/$defs/id"}}}},
         {"if": {"properties": {"status": {"const": "external"}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}, "canonical_type_definition_site_id": {"const": null}}}},
-        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}}
+        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "generic_parameter", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}, "canonical_type_definition_site_id": {"const": null}}}},
+        {"if": {"properties": {"status": {"const": "generic_parameter"}}, "required": ["status"]}, "then": {"properties": {"path_status": {"const": "unresolved"}, "receiver_type_kind": {"const": "generic_parameter"}}}}
       ],
       "properties": {
         "binding_ids": {"items": {"$ref": "#/$defs/id"}, "minItems": 1, "type": "array"},
@@ -82,6 +83,7 @@
         "crate_target_id": {"$ref": "#/$defs/id"},
         "lexical_scope_id": {"$ref": "#/$defs/id"},
         "namespace": {"const": "type"},
+        "path_status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]},
         "purpose": {"enum": ["binding_target"]},
         "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied"]},
         "resolution_digest": {"$ref": "#/$defs/digest"},
@@ -113,16 +115,17 @@
         "purpose": {"const": "receiver_type"},
         "query_binding_id": {"$ref": "#/$defs/id"},
         "query_path": {"minLength": 1, "maxLength": 512, "type": "string"},
-        "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied"]},
+        "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_module", "rust_path_unique_local_type", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied", "rust_receiver_generic_parameter"]},
         "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type"]},
+        "receiver_type_kind": {"enum": ["concrete", "generic_parameter", "implicit_self"]},
         "resolution_digest": {"$ref": "#/$defs/digest"},
         "resolution_id": {"$ref": "#/$defs/id"},
         "source_symbol_site_id": {"$ref": "#/$defs/id"},
         "source_syntax_site_id": {"$ref": "#/$defs/id"},
-        "status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]},
+        "status": {"enum": ["resolved_local_module", "resolved_local_type", "external", "ambiguous", "cycle", "generic_parameter", "inaccessible", "unresolved", "unsupported"]},
         "surface_path": {"minLength": 1, "maxLength": 512, "type": "string"}
       },
-      "required": ["resolution_id", "purpose", "crate_target_id", "lexical_scope_id", "namespace", "surface_path", "query_path", "canonical_path", "canonical_module_scope_id", "canonical_type_definition_site_id", "query_binding_id", "source_symbol_site_id", "source_syntax_site_id", "receiver_type_evidence", "binding_ids", "status", "reason_code", "resolution_digest"],
+      "required": ["resolution_id", "purpose", "crate_target_id", "lexical_scope_id", "namespace", "surface_path", "query_path", "path_status", "canonical_path", "canonical_module_scope_id", "canonical_type_definition_site_id", "query_binding_id", "source_symbol_site_id", "source_syntax_site_id", "receiver_type_evidence", "receiver_type_kind", "binding_ids", "status", "reason_code", "resolution_digest"],
       "type": "object"
     },
     "source_node": {
@@ -187,8 +190,8 @@
         },
         {
           "if": {"properties": {"receiver_type_evidence": {"type": "string"}}, "required": ["receiver_type_evidence"]},
-          "then": {"properties": {"language": {"const": "rust"}, "receiver_type_signature": {"minLength": 1, "type": "string"}, "resolution_hint": {"const": "qualified"}, "role": {"const": "call_target"}}},
-          "else": {"properties": {"receiver_type_signature": {"const": null}}}
+          "then": {"properties": {"language": {"const": "rust"}, "receiver_type_kind": {"enum": ["concrete", "generic_parameter", "implicit_self"]}, "receiver_type_signature": {"minLength": 1, "type": "string"}, "resolution_hint": {"const": "qualified"}, "role": {"const": "call_target"}}},
+          "else": {"properties": {"receiver_type_kind": {"const": null}, "receiver_type_signature": {"const": null}}}
         }
       ],
       "properties": {
@@ -197,6 +200,7 @@
         "language": {"$ref": "#/$defs/language"},
         "owner_signature": {"type": ["string", "null"], "maxLength": 256},
         "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type", null]},
+        "receiver_type_kind": {"enum": ["concrete", "generic_parameter", "implicit_self", null]},
         "receiver_type_signature": {"maxLength": 256, "type": ["string", "null"]},
         "resolution": {"enum": ["declaration", "local", "external", "unresolved"]},
         "resolution_hint": {"enum": ["dynamic", "exact", "qualified"]},
@@ -206,7 +210,7 @@
         "site_id": {"$ref": "#/$defs/id"},
         "syntax_site_id": {"$ref": "#/$defs/id"}
       },
-      "required": ["site_id", "syntax_site_id", "language", "owner_signature", "receiver_type_evidence", "receiver_type_signature", "role", "signature", "signature_digest", "resolution_hint", "resolution", "definition_site_ids", "external"],
+      "required": ["site_id", "syntax_site_id", "language", "owner_signature", "receiver_type_evidence", "receiver_type_kind", "receiver_type_signature", "role", "signature", "signature_digest", "resolution_hint", "resolution", "definition_site_ids", "external"],
       "type": "object"
     },
     "data_site": {

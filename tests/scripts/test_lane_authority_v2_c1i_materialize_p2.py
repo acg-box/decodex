@@ -515,7 +515,9 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                 [
                     {
                         "language": "rust",
+                        "owner_signature": None,
                         "receiver_type_evidence": "explicit_parameter_type",
+                        "receiver_type_kind": "concrete",
                         "receiver_type_signature": "crate::state::StateStore",
                         "role": "call_target",
                         "site_id": "symbol:receiver-call",
@@ -523,10 +525,32 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                     },
                     {
                         "language": "rust",
+                        "owner_signature": None,
                         "receiver_type_evidence": "explicit_local_type",
+                        "receiver_type_kind": "concrete",
                         "receiver_type_signature": "Option",
                         "role": "call_target",
                         "site_id": "symbol:option-call",
+                        "syntax_site_id": "syntax:receiver-call",
+                    },
+                    {
+                        "language": "rust",
+                        "owner_signature": None,
+                        "receiver_type_evidence": "explicit_parameter_type",
+                        "receiver_type_kind": "generic_parameter",
+                        "receiver_type_signature": "T",
+                        "role": "call_target",
+                        "site_id": "symbol:generic-call",
+                        "syntax_site_id": "syntax:receiver-call",
+                    },
+                    {
+                        "language": "rust",
+                        "owner_signature": "StateStore",
+                        "receiver_type_evidence": "explicit_parameter_type",
+                        "receiver_type_kind": "implicit_self",
+                        "receiver_type_signature": "Self",
+                        "role": "call_target",
+                        "site_id": "symbol:self-call",
                         "syntax_site_id": "syntax:receiver-call",
                     },
                 ],
@@ -534,7 +558,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                 bindings,
             )
         )
-        self.assertEqual(2, len(receiver_resolutions))
+        self.assertEqual(4, len(receiver_resolutions))
         by_symbol = {
             resolution["source_symbol_site_id"]: resolution
             for resolution in receiver_resolutions
@@ -556,6 +580,14 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         self.assertEqual("Option", option["surface_path"])
         self.assertEqual("core::option::Option", option["query_path"])
         self.assertEqual("core::option::Option", option["canonical_path"])
+        generic = by_symbol["symbol:generic-call"]
+        self.assertEqual("generic_parameter", generic["status"])
+        self.assertEqual("unresolved", generic["path_status"])
+        self.assertEqual("rust_receiver_generic_parameter", generic["reason_code"])
+        implicit_self = by_symbol["symbol:self-call"]
+        self.assertEqual("Self", implicit_self["surface_path"])
+        self.assertEqual("StateStore", implicit_self["query_path"])
+        self.assertEqual("resolved_local_type", implicit_self["status"])
 
     def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
         scopes = [

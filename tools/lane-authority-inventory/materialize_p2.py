@@ -1030,6 +1030,12 @@ def materialize_rust_receiver_type_resolutions(
         if symbol["language"] != "rust" or symbol["role"] != "call_target" or surface is None:
             continue
         query_path = RUST_PRELUDE_TYPE_PATHS.get(surface, surface)
+        if symbol["receiver_type_kind"] == "implicit_self":
+            if symbol["owner_signature"] is None:
+                raise contract.ContractError(
+                    f"Rust Self receiver has no enclosing owner: {symbol['site_id']}"
+                )
+            query_path = symbol["owner_signature"]
         syntax = syntax_by_id[symbol["syntax_site_id"]]
         candidates = [
             scope
@@ -1116,6 +1122,15 @@ def materialize_rust_receiver_type_resolutions(
     for query_binding_id, query in synthetic_by_id.items():
         path = path_by_source[query_binding_id]
         symbol = receiver_by_binding_id[query_binding_id]
+        status = path["status"]
+        reason_code = path["reason_code"]
+        if symbol["receiver_type_kind"] == "generic_parameter":
+            if status != "unresolved":
+                raise contract.ContractError(
+                    f"Rust generic receiver unexpectedly resolved: {symbol['site_id']}"
+                )
+            status = "generic_parameter"
+            reason_code = "rust_receiver_generic_parameter"
         resolution_id = canonical_id(
             "decodex/lane-authority-v2-rust-receiver-type-resolution/1",
             symbol["site_id"],
@@ -1124,6 +1139,7 @@ def materialize_rust_receiver_type_resolutions(
             symbol["receiver_type_signature"],
             query["surface_target_path"],
             path["status"],
+            status,
             path.get("canonical_path") or "",
         )
         record = {
@@ -1136,15 +1152,17 @@ def materialize_rust_receiver_type_resolutions(
             "crate_target_id": query["crate_target_id"],
             "lexical_scope_id": query["scope_id"],
             "namespace": "type",
+            "path_status": path["status"],
             "purpose": "receiver_type",
             "query_path": query["surface_target_path"],
             "query_binding_id": query_binding_id,
-            "reason_code": path["reason_code"],
+            "reason_code": reason_code,
             "receiver_type_evidence": symbol["receiver_type_evidence"],
+            "receiver_type_kind": symbol["receiver_type_kind"],
             "resolution_id": resolution_id,
             "source_symbol_site_id": symbol["site_id"],
             "source_syntax_site_id": symbol["syntax_site_id"],
-            "status": path["status"],
+            "status": status,
             "surface_path": symbol["receiver_type_signature"],
         }
         record["resolution_digest"] = hashlib.sha256(
@@ -1299,6 +1317,7 @@ def materialize(root: Path) -> dict[str, Any]:
             "language": fact["language"],
             "owner_signature": fact["owner_signature"],
             "receiver_type_evidence": fact["receiver_type_evidence"],
+            "receiver_type_kind": fact["receiver_type_kind"],
             "receiver_type_signature": fact["receiver_type_signature"],
             "resolution": "declaration" if declaration else "unresolved",
             "resolution_hint": fact["resolution_hint"],

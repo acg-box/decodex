@@ -2989,7 +2989,11 @@ def verify_p2(
             raise ContractError("P2 symbol signature digest disagrees")
         receiver_type = site["receiver_type_signature"]
         receiver_evidence = site["receiver_type_evidence"]
-        if (receiver_type is None) != (receiver_evidence is None):
+        receiver_kind = site["receiver_type_kind"]
+        if (
+            (receiver_type is None) != (receiver_evidence is None)
+            or (receiver_type is None) != (receiver_kind is None)
+        ):
             raise ContractError("P2 receiver type evidence is incomplete")
         if receiver_type is not None and (
             site["language"] != "rust"
@@ -3193,6 +3197,7 @@ def verify_p2(
         "ambiguous": "rust_path_ambiguous_binding",
         "cycle": "rust_path_reexport_cycle",
         "external": "rust_path_external_crate",
+        "generic_parameter": "rust_receiver_generic_parameter",
         "inaccessible": "rust_path_visibility_denied",
         "resolved_local_module": "rust_path_unique_local_module",
         "resolved_local_type": "rust_path_unique_local_type",
@@ -3206,6 +3211,17 @@ def verify_p2(
         symbol = symbol_sites.get(resolution["source_symbol_site_id"])
         syntax_site = syntax.get(resolution["source_syntax_site_id"])
         lexical_scope = rust_scopes.get(resolution["lexical_scope_id"])
+        expected_query_path = RUST_PRELUDE_TYPE_PATHS.get(
+            symbol["receiver_type_signature"] if symbol is not None else "",
+            symbol["receiver_type_signature"] if symbol is not None else "",
+        )
+        if symbol is not None and symbol["receiver_type_kind"] == "implicit_self":
+            expected_query_path = symbol["owner_signature"] or ""
+        expected_status = resolution["path_status"]
+        if symbol is not None and symbol["receiver_type_kind"] == "generic_parameter":
+            if resolution["path_status"] != "unresolved":
+                raise ContractError("P2 Rust generic receiver path unexpectedly resolved")
+            expected_status = "generic_parameter"
         if (
             symbol is None
             or symbol["language"] != "rust"
@@ -3217,12 +3233,10 @@ def verify_p2(
             or lexical_scope["crate_target_id"] != resolution["crate_target_id"]
             or lexical_scope["source_node_id"] != syntax_site["source_node_id"]
             or resolution["surface_path"] != symbol["receiver_type_signature"]
-            or resolution["query_path"]
-            != RUST_PRELUDE_TYPE_PATHS.get(
-                symbol["receiver_type_signature"],
-                symbol["receiver_type_signature"],
-            )
+            or resolution["query_path"] != expected_query_path
             or resolution["receiver_type_evidence"] != symbol["receiver_type_evidence"]
+            or resolution["receiver_type_kind"] != symbol["receiver_type_kind"]
+            or resolution["status"] != expected_status
             or resolution["reason_code"] != reason_by_status[resolution["status"]]
             or any(binding_id not in rust_bindings for binding_id in resolution["binding_ids"])
         ):
@@ -3261,6 +3275,7 @@ def verify_p2(
             lexical_scope["scope_id"],
             resolution["surface_path"],
             resolution["query_path"],
+            resolution["path_status"],
             resolution["status"],
             resolution["canonical_path"] or "",
         )
@@ -3300,6 +3315,7 @@ def verify_p2(
             **resolution,
             "binding_ids": [expected_query_id, *resolution["binding_ids"]],
             "source_binding_id": expected_query_id,
+            "status": resolution["path_status"],
         }
         rust_bindings[expected_query_id] = query
         replay_key = (
