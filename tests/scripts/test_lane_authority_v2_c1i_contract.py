@@ -218,15 +218,15 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
 
         self.verifier.validate_authority_symbol_policy(policy)
 
-        unresolved_identities = {
+        observed_identities = {
             (site["language"], site["signature"])
             for site in symbols
-            if site["resolution"] == "unresolved"
+            if site["role"] == "call_target"
         }
         self.assertEqual(29, len(policy["entries"]))
         self.assertTrue(
             all(
-                (entry["language"], entry["signature"]) in unresolved_identities
+                (entry["language"], entry["signature"]) in observed_identities
                 for entry in policy["entries"]
             )
         )
@@ -330,13 +330,29 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         self.assertGreater(result["unresolved_symbol_count"], 0)
 
     def test_pending_authority_projection_is_only_allowed_for_materializer_preflight(self):
-        with self.assertRaisesRegex(self.verifier.ContractError, "authority policy entries"):
-            self.verifier.verify_p2(REPO_ROOT)
-
-        result = self.verifier.verify_p2(
-            REPO_ROOT, allow_pending_authority_projection=True
+        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        external_policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
         )
-        self.assertEqual("P2", result["phase"])
+        authority_policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.AUTHORITY_SYMBOL_POLICY_PATH
+        )
+        pending = copy.deepcopy(catalog)
+        pending["external_symbols"] = []
+        pending["catalog_semantic_digest"] = self.verifier.catalog_semantic_digest(
+            pending
+        )
+
+        with self.assertRaisesRegex(self.verifier.ContractError, "authority policy entries"):
+            self.verifier.validate_catalog_p3_policy_projection(
+                pending, external_policy, authority_policy
+            )
+        self.verifier.validate_catalog_p3_policy_projection(
+            pending,
+            external_policy,
+            authority_policy,
+            allow_pending_authority_projection=True,
+        )
 
     def test_p3_rejects_consumer_projection_tampering(self):
         catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
