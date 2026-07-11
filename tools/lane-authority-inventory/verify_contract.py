@@ -144,6 +144,7 @@ EXPECTED_RELATIONS = {
     "rust_name_bindings",
     "rust_path_resolutions",
     "rust_receiver_type_resolutions",
+    "rust_method_owner_resolutions",
     "supporting_inputs",
     "symbol_sites",
     "syntax_sites",
@@ -164,6 +165,7 @@ RELATION_DEFINITIONS = {
     "rust_name_bindings": "rust_name_binding",
     "rust_path_resolutions": "rust_path_resolution",
     "rust_receiver_type_resolutions": "rust_receiver_type_resolution",
+    "rust_method_owner_resolutions": "rust_method_owner_resolution",
     "supporting_inputs": "supporting_input",
     "symbol_sites": "symbol_site",
     "syntax_sites": "syntax_site",
@@ -177,6 +179,7 @@ NONEMPTY_RELATIONS = {
     "rust_name_bindings",
     "rust_path_resolutions",
     "rust_receiver_type_resolutions",
+    "rust_method_owner_resolutions",
     "syntax_sites",
 }
 EXPECTED_TRANSFER_RULES = {
