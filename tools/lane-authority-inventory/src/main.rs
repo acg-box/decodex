@@ -233,6 +233,7 @@ fn enclosing_owner_signature(bytes: &[u8], language: &str, node: Node<'_>) -> Op
 			("rust", "impl_item") => current
 				.child_by_field_name("type")
 				.and_then(rust_base_type_node),
+			("rust", "trait_item") => current.child_by_field_name("name"),
 			("python", "class_definition") | ("swift", "class_declaration") => {
 				current.child_by_field_name("name")
 			},
@@ -1294,6 +1295,19 @@ mod tests {
 				enclosing_owner_signature(source, "rust", *node)
 			);
 		}
+	}
+
+	#[test]
+	fn extracts_rust_trait_owner_for_default_method_calls() {
+		let source = b"trait Store { fn open(&self) { self.close(); } fn close(&self); }";
+		let mut parser = Parser::new();
+		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
+		let tree = parser.parse(source, None).expect("Rust syntax tree");
+		let call = collect_nodes(tree.root_node())
+			.into_iter()
+			.find(|node| node.kind() == "call_expression")
+			.expect("call");
+		assert_eq!(Some("Store".to_owned()), enclosing_owner_signature(source, "rust", call));
 	}
 
 	#[test]
