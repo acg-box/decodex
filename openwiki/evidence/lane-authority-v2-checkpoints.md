@@ -1105,7 +1105,7 @@ identities with complete parser/cfg/site/edge/supporting-input/tool receipt evid
 
 ### C1I P2 bounded parser and graph checkpoint
 
-P2 source cut is `415e7c8e82d31b1936ccd7fe577d69199653a57f`. The tool-local,
+P2 source cut is `2ced59f8642b65b1384c14e986ca4f46533eb8a1`. The tool-local,
 hash-locked Rust workspace uses mature tree-sitter grammars for Rust, Python, Swift,
 shell, TOML, and YAML. It parses a temporary read-only Git archive, verifies every source
 byte against P1 identity, traverses every named node, and records per-source node
@@ -1116,23 +1116,23 @@ and dataflow edges, and exact parser/platform receipts.
 P2 evidence totals:
 
 - 3,386 source records: 3,377 analysis and 9 tool sources;
-- 1,300,254 traversed parser nodes and 145,535 materialized syntax sites;
+- 1,301,045 traversed parser nodes and 145,598 materialized syntax sites;
 - 41,057 candidate-site edges and 41,057 typed data sites/dataflow edges;
-- 7,039 unique exact or owner-qualified local call edges;
+- 7,053 unique exact or owner-qualified local call edges;
 - 13,544 common/Linux/macOS source-level cfg/target projections;
 - 18 receipts: one common parser plus Linux/macOS slices for each of six languages;
-- artifact SHA-list digest `578c689d325efe946752cd8e201482b69effb4d70b976b5c18e35f737818dd59`.
+- two consecutive materializations produced an exact eight-file artifact SHA match.
 
-The parser persists 107,068 semantic symbol sites: 10,427 exact function, method, class,
-struct, enum, trait, and type declarations plus 96,641 call targets, of which 23,858 are
-exact, 49,262 qualified, and 23,521 dynamic. It resolves
+The parser persists 107,131 semantic symbol sites: 10,432 exact function, method, class,
+struct, enum, trait, and type declarations plus 96,699 call targets, of which 23,890 are
+exact, 49,284 qualified, and 23,525 dynamic. It resolves
 an exact target only where the same-language source cut has one declaration with that
 signature. It also resolves `Type::method`, `Type.method`, `Self::method`, and
 `self.method` only where the call's enclosing owner and the declaration owner match
 exactly and uniquely. Each resulting call edge connects a call-target symbol to its
 declaration and the verifier proves equality with `definition_site_ids` and source
 language. Object receivers, ambiguous/unmatched exact targets, and other qualified or
-dynamic targets remain 89,602 explicit unresolved symbols. Dynamic signatures retain only
+dynamic targets remain 89,646 explicit unresolved symbols. Dynamic signatures retain only
 their parser node kind, never source text. No source-root placeholder call edges remain.
 
 Two consecutive P1/P2 materializations from the exact source cut produced byte-identical
@@ -1146,7 +1146,38 @@ binds the compiler identity plus recovery-source set into its tool receipt. The 
 parser accepts the file, so unresolved parser recovery is zero; a native parse failure
 remains a hard materialization failure. Candidate adjudication and semantic call/dataflow
 resolution remain intentionally unresolved. P2 therefore remains `C1I_INCOMPLETE` with
-171,716 unresolved candidate/symbol/dataflow items; no P2 artifact is ready authority.
+171,760 unresolved candidate/symbol/dataflow items; no P2 artifact is ready authority.
+
+### C1I P3 external symbol policy checkpoint
+
+Commit `2ced59f8642b65b1384c14e986ca4f46533eb8a1` adds an independent,
+signature-exact external-symbol policy. Its closed schema permits only assertion,
+in-memory construction, presentation, and pure-data capability classes; filesystem,
+process, environment, SQL, network, provider, time, and other authority-capable classes
+cannot be represented as reviewed non-authority decisions. Wildcards, duplicate ids,
+duplicate `(language, signature)` identities, unsorted entries, schema drift, and semantic
+digest drift reject.
+
+The first policy cut contains 20 conservative Rust core/standard-library and Swift XCTest
+signatures. Every entry has at least one exact consumer in the current unresolved symbol
+universe. Exact joining would classify 15,926 sites (8,161 assertions and 7,765 in-memory
+constructors), reducing unresolved symbols from 89,646 to 73,720 without widening a
+signature or making scanner-derived semantic decisions. The policy remains
+`p3_machine_validated_review_pending`; P3 has not yet changed symbol resolution or
+populated the authority catalog. Unlisted and dynamic calls therefore remain unresolved.
+
+Machine evidence for this checkpoint:
+
+- policy semantic digest
+  `c71c5efafc1d120bbfae677a2e966824377b2bcb6482996609d5090ca138ccc6`;
+- all 28 locked contract/materializer tests pass, including three policy
+  rejection/acceptance tests;
+- P2 contract verifier passes; the broad C1I gate returns the expected exit 1 and
+  reason-coded `C1I_INCOMPLETE` rejection;
+- two consecutive P1/P2 materializations from the exact source cut have identical output
+  SHAs and identical counts;
+- no runtime source, runtime database, migration, external provider, Linear state, or
+  GitHub PR lifecycle state changed.
 
 ### C0 evidence commands
 
@@ -1164,10 +1195,11 @@ rg 'CREATE TABLE|PRIMARY KEY' apps/decodex/src/state/sqlite_store/schema*
 
 ### Next checkpoint
 
-Create the P0 Decodex-owned commit/PR evidence, then implement P1 Git-object
-materialization, exact analysis-cut/post-C0 delta closure, and C0 candidate replay while
-keeping the readiness gate at `C1I_INCOMPLETE`. C1 must not preserve global issue-keyed
-ownership behind a facade.
+Implement the P3 materializer as an exact `(language, signature)` join over this policy,
+populate catalog consumer/disposition evidence without generating semantic decisions,
+then adjudicate dynamic/object calls, C0 candidates, and bounded dataflow while keeping
+the readiness gate at `C1I_INCOMPLETE`. C1 must not preserve global issue-keyed ownership
+behind a facade.
 
 ## Program Checkpoint Table
 
