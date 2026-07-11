@@ -358,12 +358,15 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         authority_policy = self.verifier.load_json(
             REPO_ROOT, self.verifier.AUTHORITY_SYMBOL_POLICY_PATH
         )
+        stale = copy.deepcopy(catalog)
+        stale["external_symbols"].pop()
+        stale["catalog_semantic_digest"] = self.verifier.catalog_semantic_digest(stale)
         with self.assertRaisesRegex(self.verifier.ContractError, "authority policy"):
             self.verifier.validate_catalog_p3_policy_projection(
-                catalog, external_policy, authority_policy
+                stale, external_policy, authority_policy
             )
         self.verifier.validate_catalog_p3_policy_projection(
-            catalog,
+            stale,
             external_policy,
             authority_policy,
             allow_pending_authority_projection=True,
