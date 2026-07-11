@@ -1582,6 +1582,60 @@ bounded authority-dataflow closure. P4/P5 deterministic regeneration, cross-plat
 and runtime-byte checks, exact-base readback, integrated reviews, CI, and Decodex land
 remain mandatory before C1I may become ready.
 
+#### P3 authority-separation re-freeze
+
+The qualified-owner analyzer facts and their focused tests remain valid, but the claim
+that their generated checkpoint was exact after commit `4da682c2` is withdrawn. A fresh
+P2 verifier rejects with `commits after the analysis source cut changed non-output paths`.
+The cause is architectural: P3 rewrites
+`catalog/authority_surface_catalog.json` with generated consumers and digests, while the
+analysis cut correctly treats that path as an authored semantic input. Committing the
+generated projection therefore invalidates its own source cut. P3 also rewrites the P2
+`symbol_sites` observation relation from unresolved to external.
+
+Read-only inventory analysis and a fresh skeptic review found additional blockers:
+
+- the P3 disposition domain and evidence taxonomy were not closed;
+- Rust name authority covers only the type namespace, so same-name value/macro calls
+  cannot yet be proved without guessing;
+- candidate adjudications have no independently authored decision authority;
+- mandatory dataflow sinks are circularly derived from generated site classifications;
+- the verifier validates submitted proof paths but does not independently replay the
+  complete abstract interpretation, so an omitted Top predecessor could falsely pass;
+- `supporting_inputs` is empty despite macro/include/build/source closure requirements;
+- `symbol_dispositions` is absent from the relation schema, composition, and output
+  policy; and
+- candidate/site record shapes are duplicated across schemas and can drift.
+
+The revised P3 contract keeps every P2 relation immutable and adds exactly one typed
+disposition for every call target only. Local, authority-external,
+reviewed-non-authority-external, intrinsic, finite-dynamic, and rejected-dynamic outcomes
+have disjoint evidence requirements. Authored semantic policies remain under `catalog/`;
+generated consumer projections move under `manifests/`. Candidate decisions bind a
+separate authored policy. Mandatory sinks derive from authority policy/dispositions, and
+the analyzer and verifier independently compute the whole-graph fixed point.
+
+Implementation order is frozen as follows:
+
+1. split authored policy from generated projection and prove P3 leaves P2/policy bytes
+   unchanged;
+2. freeze and implement the call-target-only disposition relation across all closed
+   schemas and artifact policy;
+3. extend Rust bindings/resolutions to type, value, and macro namespaces with same-name,
+   alias, re-export, and ambiguity fixtures;
+4. add independently authorized candidate decisions and complete supporting-input/site
+   classification closure;
+5. derive sinks independently, implement the finite abstract interpreter and an
+   independently coded whole-graph replay, including an omitted-Top-predecessor test;
+6. generate the accepted zero-unresolved composition, then perform P4/P5 exact-cut,
+   deterministic, platform/runtime-byte, concentrated review, CI, and Decodex landing.
+
+This re-freeze changes the P3 implementation plan but not the Lane Authority v2 target,
+one-shot migration policy, or checkpoint ordering. Migration remains not started. No
+runtime database, provider, tracker, or production lifecycle state changed. Until the
+new contract and exact artifacts pass, the only valid advancement state is literal
+`C1I_INCOMPLETE`.
+
 ### C0 evidence commands
 
 ```sh

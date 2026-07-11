@@ -153,12 +153,12 @@ base; the final readback rule above remains authoritative.
 
 ## Normative Authority Surface Catalog
 
-`tools/lane-authority-inventory/catalog/authority_surface_catalog.json` is a reviewed,
-versioned semantic input. Its signatures, capability classes, authority relevance,
-ownership, owners, replacements, removal checkpoints, and reason codes are never
-generated from C0 regex candidates or scanner output. P3 may materialize only exact
-consumer ids, used-site digests, and dispositions for those independently supplied
-semantic entries.
+The files under `tools/lane-authority-inventory/catalog/` are reviewed, versioned semantic
+inputs. Their signatures, capability classes, authority relevance, ownership, owners,
+replacements, removal checkpoints, reason codes, intrinsic decisions, and candidate
+decisions are never generated from C0 regex candidates or scanner output. P3 materializes
+their exact consumer ids, used-site digests, and dispositions only into the separate
+generated catalog projection under `tools/lane-authority-inventory/manifests/`.
 `tools/lane-authority-inventory/catalog/external_symbol_policy.json` is the independent,
 signature-exact semantic input for proposed non-authority external symbols. P3 may bind
 an enumerated source consumer only to the same `(language, signature)` policy identity;
@@ -271,6 +271,7 @@ source_nodes
 cfg_projections
 syntax_sites
 symbol_sites
+symbol_dispositions
 data_sites
 call_edges
 dataflow_edges
@@ -282,6 +283,54 @@ site_classifications
 supporting_inputs
 toolchain_receipts
 ```
+
+`symbol_sites` is an immutable P2 observation relation. P3 must not rewrite its
+resolution, external, definition, signature, owner, receiver, or evidence fields. Every
+`call_target` symbol site, and no declaration site, has exactly one P3
+`symbol_disposition`. The closed disposition taxonomy is:
+
+- `resolved_local`, bound to the complete P2 call-edge set for that target;
+- `cataloged_authority_external`, bound to one independently authored authority policy
+  entry and one generated catalog projection;
+- `cataloged_non_authority_external`, bound to one independently authored
+  reviewed-non-authority policy entry and one generated catalog projection;
+- `language_intrinsic`, bound to one independently authored intrinsic policy entry;
+- `finite_dynamic_target`, bound to an independently authored dynamic capability root
+  and a whole-graph finite dataflow proof; and
+- `rejected_dynamic_target`, which is never accepted and contributes one unresolved
+  item.
+
+Local, cataloged, intrinsic, and finite-dynamic dispositions have disjoint required
+evidence fields. A recomputed digest without the required independent policy or graph
+evidence cannot change the disposition. Declarations, field reads, and other syntax
+sites that are not AST-proven call targets are outside this relation rather than being
+called false positives.
+
+The semantic policy and its consumer projection are separate artifacts. Files under
+`tools/lane-authority-inventory/catalog/` contain authored semantic entries only. They
+never contain generated consumer ids, used-site digests, scanner-derived classifications,
+or accepted-run status. P3 writes an authority catalog projection under
+`tools/lane-authority-inventory/manifests/`; that projection binds exact policy identity,
+consumer ids, used-site digests, and matched or absent dispositions. Running P3 must
+leave every P1/P2 relation and every authored policy byte-identical.
+
+Candidate adjudications likewise bind a separate authored decision policy. The policy
+binds exact candidate identities or exact candidate-set digests and supplies the semantic
+disposition, reason, and policy identity. P3 generates only the candidate-to-policy and
+candidate-to-site projection. A P5 integrated review binds the complete policy digest;
+P3 does not fabricate a per-candidate review receipt.
+
+Authority sink identity is derived from authored authority policy plus exact catalog and
+symbol dispositions, never from generated site classifications. Site classifications
+must agree with that independently derived sink set and cannot remove a sink by relabeling
+it `data_only`.
+
+Finite dataflow acceptance is a whole-graph fixed point, not a selected-path receipt. The
+analyzer and verifier independently compute deterministic SCC order, root seeds, joins,
+transfer applicability, cardinality/depth limits, Top propagation and reasons, and sink
+values over the complete accepted call/dataflow graph. A finite path does not override an
+unbounded predecessor. Submitted proof paths are explanatory projections of that replay,
+not authority for the result.
 
 The sole effective C1I inventory is the composition of those relations, the four bound
 C0 artifacts, and the catalog/supporting-input/config/toolchain digests. No C0 manifest
