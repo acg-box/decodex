@@ -1470,6 +1470,37 @@ Cargo-target and lexical-scope type-path authority used for receivers, then buil
 method edges only when canonical owner declaration identity and method identity
 both agree. Terminal-name matching must then be removed for those Rust sites.
 
+#### Canonical Rust method-owner identity
+
+Source cut `7c7ae36facbdb234411c4302690f501de297a33d` adds the typed
+`rust_method_owner_resolutions` relation and binds all 2,286 Rust impl method
+declarations to their Cargo target, innermost lexical scope, and replayed type-path
+proof. Of those declarations, 2,285 resolve to a canonical local type declaration
+and the one legal external owner resolves explicitly from surface `Option` through
+query path `core::option::Option`; no ordinary unresolved, ambiguous, cyclic,
+inaccessible, unsupported, or module-terminal owner remains.
+
+The accepted artifact preserves surface and query paths separately. Its verifier
+reconstructs every synthetic owner query, checks exact source/target coverage,
+replays every real binding hop, and recomputes identity and content digests. A
+negative test changes a middle hop and recomputes the record digest; verification
+still rejects the non-replayable chain.
+
+Machine evidence for this cut:
+
+- all 49 focused and contract Python tests pass, including local/prelude owner
+  materialization and rehashed middle-hop tampering;
+- the P2 and P3 verifiers pass with analysis-cut digest
+  `d2ffb7164ed87cc721ccf492bd47717feea287842fe636d56435b201d7229d21`;
+- P3 reports 1,160 authority symbols and 15,987 reviewed-non-authority external
+  symbols; readiness remains `C1I_INCOMPLETE`;
+- migration remains not started and runtime/provider/tracker behavior is unchanged.
+
+Canonical owner identity is now available on both method declarations and typed
+receiver calls. The next step rebuilds Rust local call edges from the pair
+`(canonical owner declaration identity, method identity)` and deletes the old
+terminal-name owner matching for those sites.
+
 ### C0 evidence commands
 
 ```sh
