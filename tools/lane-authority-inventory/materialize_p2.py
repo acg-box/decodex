@@ -107,6 +107,45 @@ def id_set_fields(prefix: str, identifiers: set[str]) -> dict[str, Any]:
     }
 
 
+def resolve_swift_recovery(
+    materialized: Path, parsed: dict[str, Any]
+) -> tuple[str | None, set[str]]:
+    recovery_sources = {
+        source["source_node_id"]: source
+        for source in parsed["source_nodes"]
+        if source["language"] == "swift" and source["parser_error_count"] > 0
+    }
+    if not recovery_sources:
+        return None, set()
+
+    try:
+        version = subprocess.run(
+            ["swiftc", "--version"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ).stdout.strip()
+    except FileNotFoundError as error:
+        raise contract.ContractError(
+            "Swift recovery requires the native swiftc parser"
+        ) from error
+
+    for source in recovery_sources.values():
+        source_path = materialized / source["path"]
+        subprocess.run(
+            ["swiftc", "-frontend", "-parse", str(source_path)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        source["parser_error_count"] = 0
+
+    version_digest = hashlib.sha256(version.encode("utf-8")).hexdigest()
+    return version_digest, set(recovery_sources)
+
+
 def materialize(root: Path) -> dict[str, Any]:
     source_inventory = contract.load_json(root, SOURCE_INVENTORY_PATH)
     analysis_cut = contract.load_json(root, contract.ANALYSIS_CUT_PATH)
@@ -137,6 +176,9 @@ def materialize(root: Path) -> dict[str, Any]:
             check=True,
         )
         parsed = json.loads(parser_output.read_text(encoding="utf-8"))
+        swift_parser_digest, swift_recovery_source_ids = resolve_swift_recovery(
+            materialized, parsed
+        )
 
     language_by_source = {
         source["source_node_id"]: source["language"] for source in parsed["source_nodes"]
@@ -282,13 +324,22 @@ def materialize(root: Path) -> dict[str, Any]:
                     "receipt_id": receipt_id,
                     "receipt_role": role,
                     "rejection_reason_codes": [],
-                    "tool": f"tree-sitter-{language}",
+                    "tool": (
+                        "tree-sitter-swift+swiftc-parse"
+                        if language == "swift" and swift_parser_digest is not None
+                        else f"tree-sitter-{language}"
+                    ),
                     "tool_identity_digest": canonical_id(
                         "decodex/lane-authority-v2-tool-identity/1",
                         cargo_lock_digest,
                         language,
                         role,
                         platform,
+                        swift_parser_digest or "no-native-recovery",
+                        contract.stable_id_set_digest(
+                            "decodex/lane-authority-v2-swift-recovery-sources/1",
+                            swift_recovery_source_ids,
+                        ),
                     ),
                     "unresolved_count": 0,
                 }

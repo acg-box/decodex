@@ -91,6 +91,7 @@ ALLOWED_EXACT_PATHS = {
     "scripts/verify_lane_authority_v2_c1i_contract.sh",
     "scripts/verify_lane_authority_v2_gates.sh",
     "tests/scripts/test_lane_authority_v2_c1i_contract.py",
+    "tests/scripts/test_lane_authority_v2_c1i_materialize_p2.py",
 }
 ALLOWED_PREFIXES = ("tools/lane-authority-inventory/",)
 EXPECTED_LANGUAGES = {"python", "rust", "shell", "swift", "toml", "yaml"}
