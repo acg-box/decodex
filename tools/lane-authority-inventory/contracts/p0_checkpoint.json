@@ -11,8 +11,8 @@
     "c0_baseline_tree_oid": "741abc506dc169e28ed07618dd1c82e3e5f9f954",
     "c0_source_tree_digest": "d55e72c9b4a522f7cec8af4afa8c968c6fd3749139d045d178160b6287f00507",
     "exact_head_binding": "ephemeral_gate_receipt_required",
-    "provisional_pr_base_commit": "51f553fd32c8f75eed925afe87f99931844fffec",
-    "provisional_pr_base_tree_oid": "f858f8f6ded1d4a79c1e9afff3d8eb8785e98548",
+    "provisional_pr_base_commit": "5546dcb3b2eb0a8aecf7d6a3b117d2605ea315b8",
+    "provisional_pr_base_tree_oid": "f922729b921e7ff0d403a1471cdccd53a1d11b76",
     "repository_key": "github.com/hack-ink/decodex"
   },
   "candidate_anchors": {
