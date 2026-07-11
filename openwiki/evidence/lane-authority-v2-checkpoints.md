@@ -1271,6 +1271,38 @@ Machine evidence for the Cargo target binding cut:
 - no runtime source, runtime database, migration, external provider, Linear state, or
   GitHub PR lifecycle state changed.
 
+#### Target-qualified Rust module scope cut
+
+Source cut `82e36a3abba7e9defdcf765c46d7b7d5d93ceb52` materializes the first
+of the three local Rust identity relations. The parser records every Rust source-file,
+inline-module, and block scope with complete AST parentage plus each `mod` declaration's
+lexical and body scopes. The materializer starts only from the ten exact Cargo target
+roots, traverses unique external module files and inline modules, and binds every emitted
+scope to its target, source node, syntax site, parent scope, canonical module path, byte
+range, and complete source cfg projection set. Simultaneous `foo.rs` and `foo/mod.rs`,
+missing targets, disconnected parents, cycles, and cross-target parents fail closed.
+
+The relation contains 19,464 scopes: 10 crate roots, 3,196 file modules, 23 inline
+modules, and 16,235 blocks. The current exact cut has 165,795 syntax sites, 107,914
+symbol sites, 10,487 declarations, 7,188 local call edges, and 13,548 cfg projections.
+P3 classifies 1,160 authority sites and 15,966 reviewed-non-authority sites, leaving
+73,113 unresolved symbols and 155,227 total unresolved candidate/symbol/dataflow items.
+Name bindings and path resolutions are still absent, so the scope graph is not permission
+to resolve `StateStore` calls and P3 remains `C1I_INCOMPLETE`.
+
+Machine evidence for the module scope cut:
+
+- seven Rust parser tests and all 42 locked Python contract/materializer tests pass;
+- canonical-module-path tampering is rejected by independent verifier replay;
+- two complete P1/P2/P3 materializations produced identical SHAs for all eleven changed
+  generated artifacts, including `rust_module_scopes.json`;
+- the P3 verifier passes with analysis-cut digest
+  `eebc4cb65bfea4070d3f3119095911895990fce4bd857783389bd6c26b911a80`;
+- the C1I readiness gate returns the expected exit 1 with reason
+  `c1i_phase_incomplete`;
+- no runtime source, runtime database, migration, external provider, Linear state, or
+  GitHub PR lifecycle state changed.
+
 ### C0 evidence commands
 
 ```sh
