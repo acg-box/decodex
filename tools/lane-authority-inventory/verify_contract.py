@@ -41,6 +41,9 @@ CFG_PROJECTIONS_PATH = Path(
 CANDIDATE_SITE_EDGES_PATH = Path(
     "tools/lane-authority-inventory/manifests/relations/candidate_site_edges.json"
 )
+CATALOG_DISPOSITIONS_PATH = Path(
+    "tools/lane-authority-inventory/manifests/relations/catalog_entry_dispositions.json"
+)
 REVIEW_RECEIPT_PATH = Path(
     "tools/lane-authority-inventory/reviews/c1i_integrated_review.json"
 )
@@ -54,6 +57,7 @@ EXECUTABLE_CONTRACT_PATHS = (
     Path("tools/lane-authority-inventory/run_locked_python.sh"),
     Path("tools/lane-authority-inventory/materialize_p1.py"),
     Path("tools/lane-authority-inventory/materialize_p2.py"),
+    Path("tools/lane-authority-inventory/materialize_p3.py"),
     Path("tools/lane-authority-inventory/verify_contract.py"),
 )
 REASON_CODES_PATH = Path(
@@ -339,6 +343,16 @@ def stable_id_set_digest(domain: str, identifiers: set[str]) -> str:
     return digest.hexdigest()
 
 
+def stable_parts_id(domain: str, *parts: str) -> str:
+    digest = hashlib.sha256()
+    digest.update(domain.encode("utf-8"))
+    digest.update(b"\0")
+    for part in parts:
+        digest.update(part.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def dataflow_fixed_point_digest(proof: dict[str, Any]) -> str:
     return hashlib.sha256(
         (
@@ -514,6 +528,21 @@ def expected_c0_candidate_observations(root: Path) -> dict[str, dict[str, Any]]:
 def catalog_semantic_digest(catalog: dict[str, Any]) -> str:
     preimage = json.loads(json.dumps(catalog))
     preimage["catalog_semantic_digest"] = None
+    preimage["used_external_symbol_set_digest"] = None
+    for section in (
+        "dynamic_capability_roots",
+        "executable_declarative_paths",
+        "external_symbols",
+        "local_closure_boundaries",
+        "persistent_data_roots",
+        "provider_and_config_roots",
+        "reviewed_non_authority_external_symbols",
+    ):
+        for entry in preimage[section]:
+            entry["consumer_ids"] = []
+            entry["used_site_set_digest"] = "0" * 64
+    for entry in preimage["toolchain_matrix"]:
+        entry["config_projection_ids"] = []
     return hashlib.sha256(
         (
             "decodex/lane-authority-v2-catalog-semantic/1\0"
@@ -919,6 +948,65 @@ def validate_external_symbol_policy(value: dict[str, Any]) -> None:
         raise ContractError("external symbol policy contains an authority-capable class")
     if value["policy_semantic_digest"] != external_symbol_policy_semantic_digest(value):
         raise ContractError("external symbol policy semantic digest disagrees")
+
+
+def policy_catalog_entry(
+    policy_entry: dict[str, Any], consumer_ids: set[str]
+) -> dict[str, Any]:
+    return {
+        "authority_relevance": "reviewed_non_authority",
+        "consumer_ids": sorted(consumer_ids),
+        "entry_kind": "external_symbol",
+        "id": policy_entry["id"],
+        "language": policy_entry["language"],
+        "match_mode": "exact_symbol",
+        "owner": None,
+        "ownership": "not_applicable",
+        "reason_code": policy_entry["reason_code"],
+        "removal_checkpoint": None,
+        "replacement_kind": None,
+        "semantic_kinds": policy_entry["semantic_kinds"],
+        "signature": policy_entry["signature"],
+        "used_site_set_digest": stable_id_set_digest(
+            "decodex/lane-authority-v2-catalog-entry-used-sites/1", consumer_ids
+        ),
+    }
+
+
+def validate_catalog_p3_policy_projection(
+    catalog: dict[str, Any], policy: dict[str, Any]
+) -> None:
+    if catalog.get("catalog_status") != "p3_machine_validated_incomplete":
+        raise ContractError("P3 policy catalog must remain explicitly incomplete")
+    empty_sections = (
+        "dynamic_capability_roots",
+        "executable_declarative_paths",
+        "external_symbols",
+        "local_closure_boundaries",
+        "persistent_data_roots",
+        "provider_and_config_roots",
+        "toolchain_matrix",
+    )
+    for section in empty_sections:
+        if catalog.get(section) != []:
+            raise ContractError(f"P3 policy cut cannot populate {section}")
+    entries = catalog.get("reviewed_non_authority_external_symbols")
+    if not isinstance(entries, list) or not entries:
+        raise ContractError("P3 policy catalog must contain external policy entries")
+    policy_by_id = {entry["id"]: entry for entry in policy["entries"]}
+    catalog_by_id = _unique_index(entries, "id", "P3 policy catalog")
+    if set(catalog_by_id) != set(policy_by_id):
+        raise ContractError("P3 catalog entries do not equal the external symbol policy")
+    for entry_id, catalog_entry in catalog_by_id.items():
+        expected = policy_catalog_entry(
+            policy_by_id[entry_id], set(catalog_entry["consumer_ids"])
+        )
+        if catalog_entry != expected:
+            raise ContractError("P3 catalog semantic fields drifted from policy")
+        if not catalog_entry["consumer_ids"]:
+            raise ContractError("P3 policy entry has no exact source consumer")
+    if catalog["catalog_semantic_digest"] != catalog_semantic_digest(catalog):
+        raise ContractError("P3 catalog semantic digest disagrees")
 
 
 def validate_checkpoint_p0(value: dict[str, Any], root: Path | None = None) -> None:
@@ -2072,7 +2160,12 @@ def contract_digests(root: Path) -> dict[str, str]:
     return {str(path): sha256_path(root, path) for path in paths}
 
 
-def verify_p0(root: Path, *, require_review: bool = False) -> dict[str, Any]:
+def verify_p0(
+    root: Path,
+    *,
+    require_review: bool = False,
+    allow_later_catalog: bool = False,
+) -> dict[str, Any]:
     checkpoint = load_json(root, CHECKPOINT_PATH)
     catalog = load_json(root, CATALOG_PATH)
     external_symbol_policy = load_json(root, EXTERNAL_SYMBOL_POLICY_PATH)
@@ -2103,8 +2196,11 @@ def verify_p0(root: Path, *, require_review: bool = False) -> dict[str, Any]:
         Path("tools/lane-authority-inventory/contracts/dataflow_contract.schema.json"),
     )
     validate_rejection_contract(root)
-    validate_catalog_p0(catalog)
     validate_external_symbol_policy(external_symbol_policy)
+    if allow_later_catalog and catalog.get("catalog_status") == "p3_machine_validated_incomplete":
+        validate_catalog_p3_policy_projection(catalog, external_symbol_policy)
+    else:
+        validate_catalog_p0(catalog)
     validate_dataflow_contract(dataflow, root)
     validate_checkpoint_p0(checkpoint, root)
     validate_composition_schema(root)
@@ -2116,7 +2212,9 @@ def verify_p0(root: Path, *, require_review: bool = False) -> dict[str, Any]:
         raise ContractError("P0 verifier received a non-P0 checkpoint")
     if checkpoint.get("advancement_state") != "C1I_INCOMPLETE":
         raise ContractError("P0 must not claim C1I readiness")
-    if checkpoint.get("catalog_status") != catalog.get("catalog_status"):
+    if not allow_later_catalog and checkpoint.get("catalog_status") != catalog.get(
+        "catalog_status"
+    ):
         raise ContractError("checkpoint and catalog status disagree")
     if checkpoint.get("migration_state") != "not_started":
         raise ContractError("C1I must not start runtime migration")
@@ -2151,7 +2249,7 @@ def verify_p0(root: Path, *, require_review: bool = False) -> dict[str, Any]:
     return {
         "advancement_state": "C1I_INCOMPLETE",
         "candidate_anchors": counts,
-        "catalog_status": "p0_schema_only_incomplete",
+        "catalog_status": catalog["catalog_status"],
         "contract_digests": contract_digests(root),
         "phase": "P0",
         "schema": "decodex/lane-authority-v2-c1i-contract-check/1",
@@ -2159,7 +2257,7 @@ def verify_p0(root: Path, *, require_review: bool = False) -> dict[str, Any]:
 
 
 def verify_p1(root: Path) -> dict[str, Any]:
-    p0 = verify_p0(root, require_review=False)
+    p0 = verify_p0(root, require_review=False, allow_later_catalog=True)
     analysis_cut = load_json(root, ANALYSIS_CUT_PATH)
     source_inventory = load_json(root, SOURCE_INVENTORY_PATH)
     candidate_manifest = load_json(root, CANDIDATE_RECORDS_PATH)
@@ -2509,8 +2607,104 @@ def verify_p2(root: Path) -> dict[str, Any]:
     }
 
 
+def verify_p3(root: Path) -> dict[str, Any]:
+    p2 = verify_p2(root)
+    catalog = load_json(root, CATALOG_PATH)
+    policy = load_json(root, EXTERNAL_SYMBOL_POLICY_PATH)
+    validate_catalog_p3_policy_projection(catalog, policy)
+    disposition_manifest = load_json(root, CATALOG_DISPOSITIONS_PATH)
+    relation_schema = load_json(
+        root, Path("tools/lane-authority-inventory/contracts/relation_manifest.schema.json")
+    )
+    validate_typed_relation_manifest(
+        disposition_manifest, "catalog_entry_dispositions", relation_schema
+    )
+    symbol_manifest = load_json(
+        root, Path("tools/lane-authority-inventory/manifests/relations/symbol_sites.json")
+    )
+    symbols = _unique_index(symbol_manifest["records"], "site_id", "P3 symbol sites")
+    policy_by_identity = {
+        (entry["language"], entry["signature"]): entry for entry in policy["entries"]
+    }
+    matched_by_entry = {entry["id"]: set() for entry in policy["entries"]}
+    external_sites: set[str] = set()
+    for site in symbols.values():
+        identity = (site["language"], site["signature"])
+        policy_entry = policy_by_identity.get(identity)
+        if site["resolution"] == "external":
+            if (
+                policy_entry is None
+                or site["role"] != "call_target"
+                or site["external"] is not True
+                or site["definition_site_ids"]
+            ):
+                raise ContractError("P3 external symbol lacks exact policy authority")
+            matched_by_entry[policy_entry["id"]].add(site["site_id"])
+            external_sites.add(site["site_id"])
+        elif policy_entry is not None and site["role"] == "call_target":
+            raise ContractError("P3 left an exact policy consumer unresolved")
+    if any(not site_ids for site_ids in matched_by_entry.values()):
+        raise ContractError("P3 external policy contains an unused entry")
+
+    catalog_entries = _unique_index(
+        catalog["reviewed_non_authority_external_symbols"],
+        "id",
+        "P3 external policy catalog",
+    )
+    for entry_id, site_ids in matched_by_entry.items():
+        if set(catalog_entries[entry_id]["consumer_ids"]) != site_ids:
+            raise ContractError("P3 catalog consumers disagree with exact policy matches")
+
+    dispositions = _unique_index(
+        disposition_manifest["records"],
+        "disposition_id",
+        "P3 catalog dispositions",
+    )
+    expected_dispositions: dict[str, dict[str, Any]] = {}
+    for entry_id, site_ids in matched_by_entry.items():
+        policy_entry = next(entry for entry in policy["entries"] if entry["id"] == entry_id)
+        for site_id in site_ids:
+            disposition_id = stable_parts_id(
+                "decodex/lane-authority-v2-catalog-disposition/1", entry_id, site_id
+            )
+            expected_dispositions[disposition_id] = {
+                "catalog_entry_id": entry_id,
+                "disposition": "matched_site",
+                "disposition_id": disposition_id,
+                "evidence_digest": stable_parts_id(
+                    "decodex/lane-authority-v2-external-policy-binding/1",
+                    policy["policy_semantic_digest"],
+                    entry_id,
+                    site_id,
+                    symbols[site_id]["signature_digest"],
+                ),
+                "reason_code": policy_entry["reason_code"],
+                "site_id": site_id,
+            }
+    if dispositions != expected_dispositions:
+        raise ContractError("P3 catalog dispositions are not the exact policy projection")
+    expected_used_digest = stable_id_set_digest(
+        "decodex/lane-authority-v2-used-external-symbol-sites/1", external_sites
+    )
+    if catalog["used_external_symbol_set_digest"] != expected_used_digest:
+        raise ContractError("P3 used external symbol digest disagrees")
+    return {
+        **p2,
+        "catalog_disposition_count": len(dispositions),
+        "catalog_status": catalog["catalog_status"],
+        "external_policy_entry_count": len(policy["entries"]),
+        "external_symbol_count": len(external_sites),
+        "phase": "P3",
+    }
+
+
 def readiness_rejection(root: Path) -> dict[str, Any]:
-    evidence = verify_p2(root)
+    catalog = load_json(root, CATALOG_PATH)
+    evidence = (
+        verify_p3(root)
+        if catalog.get("catalog_status") == "p3_machine_validated_incomplete"
+        else verify_p2(root)
+    )
     report = {
         "advancement_state": "C1I_INCOMPLETE",
         "analysis_input_digest": evidence["analysis_cut_digest"],
@@ -2537,7 +2731,7 @@ def readiness_rejection(root: Path) -> dict[str, Any]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--phase", choices=["P0", "P1", "P2"])
+    mode.add_argument("--phase", choices=["P0", "P1", "P2", "P3"])
     mode.add_argument("--review-preimage", action="store_true")
     mode.add_argument("--readiness", choices=["C1I"])
     return parser.parse_args(argv)
@@ -2555,6 +2749,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.phase == "P2":
             print(canonical_json(verify_p2(root)), end="")
+            return 0
+        if args.phase == "P3":
+            print(canonical_json(verify_p3(root)), end="")
             return 0
         if args.review_preimage:
             evidence = verify_p0(root, require_review=False)

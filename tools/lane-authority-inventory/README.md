@@ -39,6 +39,16 @@ tools/lane-authority-inventory/run_locked_python.sh \
   tools/lane-authority-inventory/materialize_p2.py
 ```
 
+P3 first projects only independently approved exact external-symbol policy identities;
+unlisted or dynamic symbols remain unresolved:
+
+```sh
+tools/lane-authority-inventory/run_locked_python.sh \
+  tools/lane-authority-inventory/materialize_p3.py
+tools/lane-authority-inventory/run_locked_python.sh \
+  tools/lane-authority-inventory/verify_contract.py --phase P3
+```
+
 P0-P4 require machine validation only and remain incomplete. At P5, the preimage command
 validates the integrated exact-head input and emits the digest for the single C1I ready
 review. Its receipt is excluded from its own digest and cannot approve a different base

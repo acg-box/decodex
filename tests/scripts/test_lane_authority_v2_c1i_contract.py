@@ -217,6 +217,30 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Draft202012Validator(schema).validate(unsafe)
 
+    def test_catalog_semantic_digest_excludes_generated_consumer_projection(self):
+        catalog = self.verifier.load_json(REPO_ROOT, self.verifier.CATALOG_PATH)
+        policy = self.verifier.load_json(
+            REPO_ROOT, self.verifier.EXTERNAL_SYMBOL_POLICY_PATH
+        )
+        catalog["catalog_status"] = "p3_machine_validated_incomplete"
+        catalog["used_external_symbol_set_digest"] = "a" * 64
+        catalog["reviewed_non_authority_external_symbols"] = [
+            self.verifier.policy_catalog_entry(policy["entries"][0], {"site:one"})
+        ]
+        original = self.verifier.catalog_semantic_digest(catalog)
+
+        catalog["used_external_symbol_set_digest"] = "b" * 64
+        catalog["reviewed_non_authority_external_symbols"][0]["consumer_ids"] = [
+            "site:two"
+        ]
+        catalog["reviewed_non_authority_external_symbols"][0][
+            "used_site_set_digest"
+        ] = "c" * 64
+        self.assertEqual(original, self.verifier.catalog_semantic_digest(catalog))
+
+        catalog["reviewed_non_authority_external_symbols"][0]["signature"] = "Other"
+        self.assertNotEqual(original, self.verifier.catalog_semantic_digest(catalog))
+
     def test_gate_distinguishes_valid_incomplete_from_invalid_contract(self):
         gate = subprocess.run(
             [str(REPO_ROOT / "scripts/verify_lane_authority_v2_gates.sh"), "C1I"],

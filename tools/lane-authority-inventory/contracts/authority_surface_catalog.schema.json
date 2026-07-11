@@ -219,6 +219,27 @@
     {
       "if": {
         "properties": {
+          "catalog_status": {"const": "p3_machine_validated_incomplete"}
+        }
+      },
+      "then": {
+        "properties": {
+          "catalog_semantic_digest": {"$ref": "#/$defs/digest"},
+          "dynamic_capability_roots": {"const": []},
+          "executable_declarative_paths": {"const": []},
+          "external_symbols": {"const": []},
+          "local_closure_boundaries": {"const": []},
+          "persistent_data_roots": {"const": []},
+          "provider_and_config_roots": {"const": []},
+          "reviewed_non_authority_external_symbols": {"minItems": 1},
+          "toolchain_matrix": {"const": []},
+          "used_external_symbol_set_digest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "catalog_status": {"const": "p3_populated_approved"}
         }
       },
@@ -240,7 +261,11 @@
       ]
     },
     "catalog_status": {
-      "enum": ["p0_schema_only_incomplete", "p3_populated_approved"]
+      "enum": [
+        "p0_schema_only_incomplete",
+        "p3_machine_validated_incomplete",
+        "p3_populated_approved"
+      ]
     },
     "dynamic_capability_roots": {
       "items": {"$ref": "#/$defs/dynamic_capability_root_entry"},

@@ -154,7 +154,11 @@ base; the final readback rule above remains authoritative.
 ## Normative Authority Surface Catalog
 
 `tools/lane-authority-inventory/catalog/authority_surface_catalog.json` is a reviewed,
-versioned input. It is never generated from C0 regex candidates or from scanner output.
+versioned semantic input. Its signatures, capability classes, authority relevance,
+ownership, owners, replacements, removal checkpoints, and reason codes are never
+generated from C0 regex candidates or scanner output. P3 may materialize only exact
+consumer ids, used-site digests, and dispositions for those independently supplied
+semantic entries.
 `tools/lane-authority-inventory/catalog/external_symbol_policy.json` is the independent,
 signature-exact semantic input for proposed non-authority external symbols. P3 may bind
 an enumerated source consumer only to the same `(language, signature)` policy identity;
