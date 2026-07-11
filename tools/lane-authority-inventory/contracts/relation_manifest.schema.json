@@ -229,7 +229,7 @@
         "external": {"type": ["boolean", "null"]},
         "language": {"$ref": "#/$defs/language"},
         "owner_signature": {"type": ["string", "null"], "maxLength": 256},
-        "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type", null]},
+        "receiver_type_evidence": {"enum": ["enclosing_struct_field_type", "explicit_local_type", "explicit_parameter_type", "implicit_self_receiver", null]},
         "receiver_type_kind": {"enum": ["concrete", "generic_parameter", "implicit_self", null]},
         "receiver_type_signature": {"maxLength": 256, "type": ["string", "null"]},
         "resolution": {"enum": ["declaration", "local", "external", "unresolved"]},
