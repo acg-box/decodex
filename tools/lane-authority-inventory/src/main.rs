@@ -564,6 +564,14 @@ fn semantic_call_fact(
 			if let Some(owner) = target.child_by_field_name("path") {
 				let owner = rust_qualified_owner_signature(bytes, owner).unwrap_or_default();
 				if !owner.is_empty() {
+					if let Some(method) = target.child_by_field_name("name") {
+						let method = method.utf8_text(bytes).unwrap_or_default().trim();
+						if !method.is_empty() {
+							fact.signature = format!("{owner}::{method}");
+							fact.signature_digest = sha256(&[fact.signature.as_bytes()]);
+							fact.resolution_hint = "qualified".to_owned();
+						}
+					}
 					fact.qualified_owner_kind =
 						Some(rust_receiver_type_kind(bytes, call, &owner));
 					fact.qualified_owner_evidence = Some("scoped_call_path".to_owned());
@@ -1389,6 +1397,9 @@ mod tests {
 			Some("Sha256".to_owned()),
 			rust_qualified_owner_signature(source, owner_nodes[1])
 		);
+		assert_eq!("Vec::new", facts[3].signature);
+		assert_eq!("Sha256::new", facts[4].signature);
+		assert!(facts.iter().all(|fact| fact.resolution_hint == "qualified"));
 	}
 
 	#[test]
