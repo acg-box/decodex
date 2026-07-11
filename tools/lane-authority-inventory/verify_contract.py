@@ -1075,7 +1075,6 @@ def validate_catalog_p3_policy_projection(
         if (
             allow_pending_authority_projection
             and label == "authority"
-            and entries == []
         ):
             continue
         if not isinstance(entries, list) or not entries:
