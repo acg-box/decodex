@@ -1483,6 +1483,8 @@ def materialize(root: Path) -> dict[str, Any]:
     for site in symbol_sites_by_id.values():
         if site["role"] != "call_target":
             continue
+        if site["language"] == "rust":
+            continue
         definitions: list[str] = []
         if site["resolution_hint"] == "exact":
             definitions = declarations_by_signature.get(
@@ -1514,7 +1516,6 @@ def materialize(root: Path) -> dict[str, Any]:
                 "to_site_id": definition_site_id,
             }
         )
-    call_edges.sort(key=lambda edge: edge["edge_id"])
     symbol_sites = sorted(symbol_sites_by_id.values(), key=lambda site: site["site_id"])
     rust_name_bindings = materialize_rust_name_bindings(
         parsed, rust_module_scopes, symbol_sites
@@ -1534,6 +1535,46 @@ def materialize(root: Path) -> dict[str, Any]:
         rust_module_scopes,
         rust_name_bindings,
     )
+    declarations_by_canonical_owner: dict[tuple[str, str, str], list[str]] = {}
+    for resolution in rust_method_owner_resolutions:
+        owner_site_id = resolution["canonical_type_definition_site_id"]
+        if resolution["status"] != "resolved_local_type" or owner_site_id is None:
+            continue
+        declaration = symbol_sites_by_id[resolution["source_symbol_site_id"]]
+        declarations_by_canonical_owner.setdefault(
+            (resolution["crate_target_id"], owner_site_id, declaration["signature"]), []
+        ).append(declaration["site_id"])
+    for resolution in rust_receiver_type_resolutions:
+        owner_site_id = resolution["canonical_type_definition_site_id"]
+        if resolution["status"] != "resolved_local_type" or owner_site_id is None:
+            continue
+        call = symbol_sites_by_id[resolution["source_symbol_site_id"]]
+        method_name = call["signature"].rsplit("::", 1)[-1]
+        definitions = declarations_by_canonical_owner.get(
+            (resolution["crate_target_id"], owner_site_id, method_name), []
+        )
+        if len(definitions) != 1:
+            continue
+        definition_site_id = definitions[0]
+        if call["definition_site_ids"] and call["definition_site_ids"] != [definition_site_id]:
+            raise contract.ContractError(
+                f"Rust receiver call has conflicting canonical targets: {call['site_id']}"
+            )
+        call["definition_site_ids"] = [definition_site_id]
+        call["external"] = False
+        call["resolution"] = "local"
+        call_edges.append(
+            {
+                "edge_id": canonical_id(
+                    "decodex/lane-authority-v2-call-edge/1",
+                    call["site_id"],
+                    definition_site_id,
+                ),
+                "from_site_id": call["site_id"],
+                "to_site_id": definition_site_id,
+            }
+        )
+    call_edges.sort(key=lambda edge: edge["edge_id"])
 
     current_sources = [
         source for source in parsed["source_nodes"] if source["status"] == "current"

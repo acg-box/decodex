@@ -3538,7 +3538,32 @@ def verify_p2(
         ):
             raise ContractError("P2 call edge lacks local symbol resolution")
         call_targets[source["site_id"]].add(target["site_id"])
+    owner_definitions_by_key: dict[tuple[str, str, str], set[str]] = {}
+    for resolution in owner_resolutions.values():
+        owner_site_id = resolution["canonical_type_definition_site_id"]
+        if resolution["status"] != "resolved_local_type" or owner_site_id is None:
+            continue
+        declaration = symbol_sites[resolution["source_symbol_site_id"]]
+        owner_definitions_by_key.setdefault(
+            (resolution["crate_target_id"], owner_site_id, declaration["signature"]), set()
+        ).add(declaration["site_id"])
+    expected_rust_targets: dict[str, set[str]] = {}
+    for resolution in receiver_resolutions.values():
+        owner_site_id = resolution["canonical_type_definition_site_id"]
+        if resolution["status"] != "resolved_local_type" or owner_site_id is None:
+            continue
+        call = symbol_sites[resolution["source_symbol_site_id"]]
+        method_name = call["signature"].rsplit("::", 1)[-1]
+        definitions = owner_definitions_by_key.get(
+            (resolution["crate_target_id"], owner_site_id, method_name), set()
+        )
+        if len(definitions) == 1:
+            expected_rust_targets.setdefault(call["site_id"], set()).update(definitions)
     for site_id, site in symbol_sites.items():
+        if site["language"] == "rust" and call_targets[site_id] != expected_rust_targets.get(
+            site_id, set()
+        ):
+            raise ContractError("P2 Rust call edge bypasses canonical owner identity")
         if call_targets[site_id] != set(site["definition_site_ids"]):
             raise ContractError("P2 symbol definition set disagrees with call edges")
 
