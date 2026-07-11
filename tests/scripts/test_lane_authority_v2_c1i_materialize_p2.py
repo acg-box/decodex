@@ -393,26 +393,35 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
     def test_rust_path_resolution_follows_crate_self_and_reexport_chain(self):
         scopes = [
             {
+                "byte_end": 100,
+                "byte_start": 0,
                 "canonical_module_path": "target::one",
                 "crate_target_id": "target:one",
                 "parent_scope_id": None,
                 "scope_id": "scope:root",
                 "scope_kind": "crate_root",
+                "source_node_id": "source:root",
                 "target_extern_crate_names": ["alloc", "core", "proc_macro", "std"],
             },
             {
+                "byte_end": 100,
+                "byte_start": 0,
                 "canonical_module_path": "target::one::state",
                 "crate_target_id": "target:one",
                 "parent_scope_id": "scope:root",
                 "scope_id": "scope:state",
                 "scope_kind": "file_module",
+                "source_node_id": "source:state",
             },
             {
+                "byte_end": 100,
+                "byte_start": 0,
                 "canonical_module_path": "target::one::state::store",
                 "crate_target_id": "target:one",
                 "parent_scope_id": "scope:state",
                 "scope_id": "scope:store",
                 "scope_kind": "file_module",
+                "source_node_id": "source:store",
             },
         ]
 
@@ -491,6 +500,44 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                 "binding:type",
             ],
             resolved["binding_ids"],
+        )
+
+        receiver_resolutions = (
+            self.materializer.materialize_rust_receiver_type_resolutions(
+                [
+                    {
+                        "byte_end": 20,
+                        "byte_start": 10,
+                        "site_id": "syntax:receiver-call",
+                        "source_node_id": "source:root",
+                    }
+                ],
+                [
+                    {
+                        "language": "rust",
+                        "receiver_type_evidence": "explicit_parameter_type",
+                        "receiver_type_signature": "crate::state::StateStore",
+                        "role": "call_target",
+                        "site_id": "symbol:receiver-call",
+                        "syntax_site_id": "syntax:receiver-call",
+                    }
+                ],
+                scopes,
+                bindings,
+            )
+        )
+        self.assertEqual(1, len(receiver_resolutions))
+        receiver = receiver_resolutions[0]
+        self.assertEqual("resolved_local_type", receiver["status"])
+        self.assertEqual("symbol:state-store", receiver["canonical_type_definition_site_id"])
+        self.assertEqual(
+            [
+                "binding:state",
+                "binding:reexport",
+                "binding:store",
+                "binding:type",
+            ],
+            receiver["binding_ids"],
         )
 
     def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
