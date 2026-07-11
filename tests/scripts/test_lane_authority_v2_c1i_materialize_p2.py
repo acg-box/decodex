@@ -632,6 +632,96 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         self.assertEqual("core::option::Option", option_owner["query_path"])
         self.assertEqual("external", option_owner["status"])
 
+        qualified_resolutions = (
+            self.materializer.materialize_rust_qualified_owner_resolutions(
+                [
+                    {
+                        "byte_end": 20,
+                        "byte_start": 10,
+                        "site_id": "syntax:qualified-call",
+                        "source_node_id": "source:root",
+                    }
+                ],
+                [
+                    {
+                        "language": "rust",
+                        "owner_signature": None,
+                        "qualified_owner_evidence": "scoped_call_path",
+                        "qualified_owner_kind": "concrete",
+                        "qualified_owner_signature": "crate::state::StateStore",
+                        "role": "call_target",
+                        "site_id": "symbol:type-call",
+                        "syntax_site_id": "syntax:qualified-call",
+                    },
+                    {
+                        "language": "rust",
+                        "owner_signature": None,
+                        "qualified_owner_evidence": "scoped_call_path",
+                        "qualified_owner_kind": "concrete",
+                        "qualified_owner_signature": "crate::state",
+                        "role": "call_target",
+                        "site_id": "symbol:module-call",
+                        "syntax_site_id": "syntax:qualified-call",
+                    },
+                    {
+                        "language": "rust",
+                        "owner_signature": None,
+                        "qualified_owner_evidence": "scoped_call_path",
+                        "qualified_owner_kind": "concrete",
+                        "qualified_owner_signature": "Option",
+                        "role": "call_target",
+                        "site_id": "symbol:prelude-call",
+                        "syntax_site_id": "syntax:qualified-call",
+                    },
+                    {
+                        "language": "rust",
+                        "owner_signature": None,
+                        "qualified_owner_evidence": "scoped_call_path",
+                        "qualified_owner_kind": "generic_parameter",
+                        "qualified_owner_signature": "T",
+                        "role": "call_target",
+                        "site_id": "symbol:generic-qualified-call",
+                        "syntax_site_id": "syntax:qualified-call",
+                    },
+                    {
+                        "language": "rust",
+                        "owner_signature": "StateStore",
+                        "qualified_owner_evidence": "scoped_call_path",
+                        "qualified_owner_kind": "implicit_self",
+                        "qualified_owner_signature": "Self",
+                        "role": "call_target",
+                        "site_id": "symbol:self-qualified-call",
+                        "syntax_site_id": "syntax:qualified-call",
+                    },
+                ],
+                scopes,
+                bindings,
+            )
+        )
+        self.assertEqual(5, len(qualified_resolutions))
+        qualified_by_symbol = {
+            resolution["source_symbol_site_id"]: resolution
+            for resolution in qualified_resolutions
+        }
+        self.assertEqual(
+            "resolved_local_type", qualified_by_symbol["symbol:type-call"]["status"]
+        )
+        self.assertEqual(
+            "resolved_local_module", qualified_by_symbol["symbol:module-call"]["status"]
+        )
+        self.assertEqual("external", qualified_by_symbol["symbol:prelude-call"]["status"])
+        self.assertEqual(
+            "generic_parameter",
+            qualified_by_symbol["symbol:generic-qualified-call"]["status"],
+        )
+        self.assertEqual(
+            "StateStore", qualified_by_symbol["symbol:self-qualified-call"]["query_path"]
+        )
+        self.assertEqual(
+            "resolved_local_type",
+            qualified_by_symbol["symbol:self-qualified-call"]["status"],
+        )
+
     def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
         scopes = [
             {
