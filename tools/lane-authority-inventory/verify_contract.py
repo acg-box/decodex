@@ -137,6 +137,7 @@ EXPECTED_RELATIONS = {
     "source_nodes",
     "rust_module_scopes",
     "rust_name_bindings",
+    "rust_path_resolutions",
     "supporting_inputs",
     "symbol_sites",
     "syntax_sites",
@@ -155,6 +156,7 @@ RELATION_DEFINITIONS = {
     "source_nodes": "source_node",
     "rust_module_scopes": "rust_module_scope",
     "rust_name_bindings": "rust_name_binding",
+    "rust_path_resolutions": "rust_path_resolution",
     "supporting_inputs": "supporting_input",
     "symbol_sites": "symbol_site",
     "syntax_sites": "syntax_site",
@@ -166,6 +168,7 @@ NONEMPTY_RELATIONS = {
     "dataflow_edges",
     "rust_module_scopes",
     "rust_name_bindings",
+    "rust_path_resolutions",
     "syntax_sites",
 }
 EXPECTED_TRANSFER_RULES = {
@@ -2481,6 +2484,7 @@ def verify_p2(
                 "dataflow_edges",
                 "rust_module_scopes",
                 "rust_name_bindings",
+                "rust_path_resolutions",
                 "supporting_inputs",
                 "symbol_sites",
                 "toolchain_receipts",
@@ -2769,6 +2773,88 @@ def verify_p2(
             for binding in bindings
         ):
             raise ContractError("P2 Rust same-scope binding ambiguity was accepted")
+
+    rust_resolutions = _unique_index(
+        manifests["rust_path_resolutions"]["records"],
+        "resolution_id",
+        "P2 Rust path resolutions",
+    )
+    resolutions_by_binding: dict[str, list[dict[str, Any]]] = {}
+    for resolution in rust_resolutions.values():
+        source_binding = rust_bindings.get(resolution["source_binding_id"])
+        lexical_scope = rust_scopes.get(resolution["lexical_scope_id"])
+        if (
+            source_binding is None
+            or source_binding["binding_kind"] not in {"use", "reexport", "glob"}
+            or lexical_scope is None
+            or resolution["crate_target_id"] != source_binding["crate_target_id"]
+            or resolution["lexical_scope_id"] != source_binding["scope_id"]
+            or resolution["surface_path"] != source_binding["surface_target_path"]
+            or resolution["binding_ids"][0] != source_binding["binding_id"]
+            or any(binding_id not in rust_bindings for binding_id in resolution["binding_ids"])
+        ):
+            raise ContractError("P2 Rust path resolution source chain drifted")
+        expected_resolution_id = stable_parts_id(
+            "decodex/lane-authority-v2-rust-path-resolution/1",
+            source_binding["binding_id"],
+            source_binding["scope_id"],
+            source_binding["surface_target_path"],
+            resolution["status"],
+            resolution["canonical_path"] or "",
+        )
+        if resolution["resolution_id"] != expected_resolution_id:
+            raise ContractError("P2 Rust path resolution id drifted")
+        digest_payload = {
+            key: value
+            for key, value in resolution.items()
+            if key != "resolution_digest"
+        }
+        if resolution["resolution_digest"] != hashlib.sha256(
+            canonical_json(digest_payload).encode("utf-8")
+        ).hexdigest():
+            raise ContractError("P2 Rust path resolution digest drifted")
+        terminal_binding = rust_bindings[resolution["binding_ids"][-1]]
+        if resolution["status"] == "resolved_local_module":
+            target = rust_scopes.get(resolution["canonical_module_scope_id"])
+            if (
+                target is None
+                or target["crate_target_id"] != resolution["crate_target_id"]
+                or target["canonical_module_path"] != resolution["canonical_path"]
+                or source_binding["resolution"] != "resolved"
+                or source_binding["target_scope_id"] != target["scope_id"]
+                or terminal_binding["target_scope_id"] != target["scope_id"]
+            ):
+                raise ContractError("P2 Rust local module path resolution drifted")
+        elif resolution["status"] == "resolved_local_type":
+            target = symbol_sites.get(
+                resolution["canonical_type_definition_site_id"]
+            )
+            if (
+                target is None
+                or target["language"] != "rust"
+                or target["role"] != "declaration"
+                or source_binding["resolution"] != "resolved"
+                or source_binding["target_symbol_site_id"] != target["site_id"]
+                or terminal_binding["target_symbol_site_id"] != target["site_id"]
+            ):
+                raise ContractError("P2 Rust local type path resolution drifted")
+        elif resolution["status"] == "external":
+            if source_binding["resolution"] != "external":
+                raise ContractError("P2 Rust external path resolution drifted")
+        elif source_binding["resolution"] == "resolved":
+            raise ContractError("P2 unresolved Rust path retained a resolved binding")
+        resolutions_by_binding.setdefault(source_binding["binding_id"], []).append(
+            resolution
+        )
+    expected_resolution_bindings = {
+        binding_id
+        for binding_id, binding in rust_bindings.items()
+        if binding["binding_kind"] in {"use", "reexport", "glob"}
+    }
+    if set(resolutions_by_binding) != expected_resolution_bindings or any(
+        len(resolutions) != 1 for resolutions in resolutions_by_binding.values()
+    ):
+        raise ContractError("P2 Rust path resolution coverage is incomplete")
     unresolved_symbols = sum(
         site["resolution"] == "unresolved" for site in symbol_sites.values()
     )
@@ -2895,6 +2981,7 @@ def verify_p2(
         "phase": "P2",
         "rust_module_scope_count": len(rust_scopes),
         "rust_name_binding_count": len(rust_bindings),
+        "rust_path_resolution_count": len(rust_resolutions),
         "source_node_count": len(sources),
         "symbol_site_count": len(symbol_sites),
         "syntax_site_count": len(syntax),

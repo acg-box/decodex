@@ -612,6 +612,260 @@ def materialize_rust_name_bindings(
     return sorted(bindings_by_id.values(), key=lambda binding: binding["binding_id"])
 
 
+def resolve_rust_binding_paths(
+    rust_module_scopes: list[dict[str, Any]],
+    rust_name_bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    scopes = {scope["scope_id"]: scope for scope in rust_module_scopes}
+    bindings = {
+        binding["binding_id"]: binding for binding in rust_name_bindings
+    }
+    bindings_by_scope_name: dict[tuple[str, str, str], list[str]] = {}
+    for binding in rust_name_bindings:
+        bindings_by_scope_name.setdefault(
+            (
+                binding["crate_target_id"],
+                binding["scope_id"],
+                binding["local_name"],
+            ),
+            [],
+        ).append(binding["binding_id"])
+    roots = {
+        scope["crate_target_id"]: scope["scope_id"]
+        for scope in rust_module_scopes
+        if scope["scope_kind"] == "crate_root"
+    }
+
+    def module_scope(scope_id: str) -> dict[str, Any]:
+        scope = scopes[scope_id]
+        while scope["scope_kind"] == "block":
+            scope = scopes[scope["parent_scope_id"]]
+        return scope
+
+    def parent_module(scope_id: str) -> dict[str, Any] | None:
+        scope = module_scope(scope_id)
+        parent_id = scope["parent_scope_id"]
+        if parent_id is None:
+            return None
+        return module_scope(parent_id)
+
+    def lookup(
+        target_id: str,
+        scope_id: str,
+        name: str,
+        *,
+        lexical: bool,
+        excluded_binding_id: str | None = None,
+    ) -> tuple[str, str | None]:
+        current_id: str | None = scope_id
+        while current_id is not None:
+            candidate_ids = [
+                binding_id
+                for binding_id in bindings_by_scope_name.get(
+                    (target_id, current_id, name), []
+                )
+                if binding_id != excluded_binding_id
+            ]
+            if len(candidate_ids) > 1:
+                return "ambiguous", None
+            if len(candidate_ids) == 1:
+                candidate = bindings[candidate_ids[0]]
+                if candidate["resolution"] == "ambiguous":
+                    return "ambiguous", None
+                return "found", candidate_ids[0]
+            if not lexical:
+                break
+            current_id = scopes[current_id]["parent_scope_id"]
+        return "missing", None
+
+    cache: dict[str, dict[str, Any]] = {}
+
+    def terminal_for_declaration(binding: dict[str, Any]) -> dict[str, Any]:
+        scope = scopes[binding["scope_id"]]
+        if binding["binding_kind"] == "module":
+            target_scope_id = binding["target_scope_id"]
+            if target_scope_id is None:
+                return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
+            return {
+                "binding_ids": [binding["binding_id"]],
+                "canonical_module_scope_id": target_scope_id,
+                "canonical_path": scopes[target_scope_id]["canonical_module_path"],
+                "canonical_type_definition_site_id": None,
+                "status": "resolved_local_module",
+            }
+        target_symbol_id = binding["target_symbol_site_id"]
+        if target_symbol_id is None:
+            return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
+        return {
+            "binding_ids": [binding["binding_id"]],
+            "canonical_module_scope_id": None,
+            "canonical_path": f"{scope['canonical_module_path']}::{binding['local_name']}",
+            "canonical_type_definition_site_id": target_symbol_id,
+            "status": "resolved_local_type",
+        }
+
+    def follow(binding_id: str, stack: tuple[str, ...]) -> dict[str, Any]:
+        if binding_id in cache:
+            return cache[binding_id]
+        if binding_id in stack:
+            return {"status": "cycle", "binding_ids": list(stack) + [binding_id]}
+        binding = bindings[binding_id]
+        if binding["resolution"] == "ambiguous":
+            return {"status": "ambiguous", "binding_ids": [binding_id]}
+        if binding["visibility"] == "unsupported" or binding["binding_kind"] == "glob":
+            return {"status": "unsupported", "binding_ids": [binding_id]}
+        if binding["binding_kind"] in {"module", "type_declaration"}:
+            result = terminal_for_declaration(binding)
+            cache[binding_id] = result
+            return result
+        result = resolve_surface(binding, stack + (binding_id,))
+        if result["status"] != "cycle":
+            cache[binding_id] = result
+        return result
+
+    def resolve_surface(binding: dict[str, Any], stack: tuple[str, ...]) -> dict[str, Any]:
+        surface = binding["surface_target_path"] or ""
+        segments = [segment for segment in surface.split("::") if segment]
+        if not segments:
+            return {"status": "unsupported", "binding_ids": [binding["binding_id"]]}
+        target_id = binding["crate_target_id"]
+        current_scope = module_scope(binding["scope_id"])
+        index = 0
+        terminal: dict[str, Any] | None = None
+        path_binding_ids = [binding["binding_id"]]
+        if segments[0] == "crate":
+            current_scope = scopes[roots[target_id]]
+            index = 1
+        elif segments[0] == "self":
+            index = 1
+        elif segments[0] == "super":
+            while index < len(segments) and segments[index] == "super":
+                parent = parent_module(current_scope["scope_id"])
+                if parent is None:
+                    return {"status": "unsupported", "binding_ids": [binding["binding_id"]]}
+                current_scope = parent
+                index += 1
+        else:
+            state, found = lookup(
+                target_id,
+                binding["scope_id"],
+                segments[0],
+                lexical=True,
+                excluded_binding_id=binding["binding_id"],
+            )
+            if state == "ambiguous":
+                return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}
+            if state == "missing":
+                return {
+                    "binding_ids": [binding["binding_id"]],
+                    "canonical_module_scope_id": None,
+                    "canonical_path": surface,
+                    "canonical_type_definition_site_id": None,
+                    "status": "external",
+                }
+            terminal = follow(found, stack)
+            path_binding_ids.extend(terminal["binding_ids"])
+            index = 1
+
+        while index < len(segments):
+            if terminal is not None:
+                if terminal["status"] != "resolved_local_module":
+                    return {**terminal, "binding_ids": path_binding_ids}
+                current_scope = scopes[terminal["canonical_module_scope_id"]]
+            state, found = lookup(
+                target_id,
+                current_scope["scope_id"],
+                segments[index],
+                lexical=False,
+            )
+            if state == "ambiguous":
+                return {"status": "ambiguous", "binding_ids": [binding["binding_id"]]}
+            if state == "missing":
+                return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
+            terminal = follow(found, stack)
+            path_binding_ids.extend(terminal["binding_ids"])
+            index += 1
+        if terminal is None:
+            return {
+                "binding_ids": path_binding_ids,
+                "canonical_module_scope_id": current_scope["scope_id"],
+                "canonical_path": current_scope["canonical_module_path"],
+                "canonical_type_definition_site_id": None,
+                "status": "resolved_local_module",
+            }
+        return {**terminal, "binding_ids": path_binding_ids}
+
+    resolutions: list[dict[str, Any]] = []
+    reason_by_status = {
+        "ambiguous": "rust_path_ambiguous_binding",
+        "cycle": "rust_path_reexport_cycle",
+        "external": "rust_path_external_crate",
+        "resolved_local_module": "rust_path_unique_local_module",
+        "resolved_local_type": "rust_path_unique_local_type",
+        "unresolved": "rust_path_target_unresolved",
+        "unsupported": "rust_path_unsupported_construct",
+    }
+    for binding in rust_name_bindings:
+        if binding["binding_kind"] not in {"use", "reexport", "glob"}:
+            continue
+        result = follow(binding["binding_id"], ())
+        status = result["status"]
+        resolution_id = canonical_id(
+            "decodex/lane-authority-v2-rust-path-resolution/1",
+            binding["binding_id"],
+            binding["scope_id"],
+            binding["surface_target_path"] or "",
+            status,
+            result.get("canonical_path") or "",
+        )
+        record = {
+            "binding_ids": result["binding_ids"],
+            "canonical_module_scope_id": result.get("canonical_module_scope_id"),
+            "canonical_path": result.get("canonical_path"),
+            "canonical_type_definition_site_id": result.get(
+                "canonical_type_definition_site_id"
+            ),
+            "crate_target_id": binding["crate_target_id"],
+            "lexical_scope_id": binding["scope_id"],
+            "purpose": "binding_target",
+            "reason_code": reason_by_status[status],
+            "resolution_id": resolution_id,
+            "source_binding_id": binding["binding_id"],
+            "source_symbol_site_id": None,
+            "status": status,
+            "surface_path": binding["surface_target_path"],
+        }
+        record["resolution_digest"] = hashlib.sha256(
+            contract.canonical_json(record).encode("utf-8")
+        ).hexdigest()
+        resolutions.append(record)
+        if status in {"resolved_local_module", "resolved_local_type"}:
+            binding["resolution"] = "resolved"
+            binding["reason_code"] = "rust_binding_exact_path_resolution"
+            binding["target_scope_id"] = result.get("canonical_module_scope_id")
+            binding["target_symbol_site_id"] = result.get(
+                "canonical_type_definition_site_id"
+            )
+        elif status == "external":
+            binding["resolution"] = "external"
+            binding["reason_code"] = "rust_binding_external_path"
+        elif status in {"ambiguous", "cycle"}:
+            binding["resolution"] = "ambiguous"
+            binding["reason_code"] = "rust_binding_path_ambiguous"
+        elif status == "unsupported":
+            binding["resolution"] = "unsupported"
+            binding["reason_code"] = "rust_binding_path_unsupported"
+        else:
+            binding["resolution"] = "unresolved"
+            binding["reason_code"] = "rust_binding_path_target_unresolved"
+        if binding["resolution"] != "resolved":
+            binding["target_scope_id"] = None
+            binding["target_symbol_site_id"] = None
+
+    resolutions.sort(key=lambda resolution: resolution["resolution_id"])
+    return resolutions
+
+
 def resolve_swift_recovery(
     materialized: Path, parsed: dict[str, Any]
 ) -> tuple[str | None, set[str]]:
@@ -817,6 +1071,9 @@ def materialize(root: Path) -> dict[str, Any]:
     rust_name_bindings = materialize_rust_name_bindings(
         parsed, rust_module_scopes, symbol_sites
     )
+    rust_path_resolutions = resolve_rust_binding_paths(
+        rust_module_scopes, rust_name_bindings
+    )
 
     current_sources = [
         source for source in parsed["source_nodes"] if source["status"] == "current"
@@ -952,6 +1209,11 @@ def materialize(root: Path) -> dict[str, Any]:
             rust_name_bindings,
         ),
         (
+            "rust_path_resolutions",
+            "decodex/lane-authority-v2-c1i-rust-path-resolutions/1",
+            rust_path_resolutions,
+        ),
+        (
             "supporting_inputs",
             "decodex/lane-authority-v2-c1i-supporting-inputs/1",
             [],
@@ -1011,6 +1273,7 @@ def materialize(root: Path) -> dict[str, Any]:
         "parser_errors": parser_errors,
         "rust_module_scopes": len(rust_module_scopes),
         "rust_name_bindings": len(rust_name_bindings),
+        "rust_path_resolutions": len(rust_path_resolutions),
         "source_cut_commit": source_cut,
         "source_nodes": len(parsed["source_nodes"]),
         "symbol_sites": len(symbol_sites),

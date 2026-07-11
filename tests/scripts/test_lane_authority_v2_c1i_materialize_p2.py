@@ -380,6 +380,100 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         self.assertEqual("unresolved", row["resolution"])
         self.assertEqual("rust_binding_path_resolution_pending", row["reason_code"])
 
+    def test_rust_path_resolution_follows_crate_self_and_reexport_chain(self):
+        scopes = [
+            {
+                "canonical_module_path": "target::one",
+                "crate_target_id": "target:one",
+                "parent_scope_id": None,
+                "scope_id": "scope:root",
+                "scope_kind": "crate_root",
+            },
+            {
+                "canonical_module_path": "target::one::state",
+                "crate_target_id": "target:one",
+                "parent_scope_id": "scope:root",
+                "scope_id": "scope:state",
+                "scope_kind": "file_module",
+            },
+            {
+                "canonical_module_path": "target::one::state::store",
+                "crate_target_id": "target:one",
+                "parent_scope_id": "scope:state",
+                "scope_id": "scope:store",
+                "scope_kind": "file_module",
+            },
+        ]
+
+        def binding(
+            binding_id,
+            kind,
+            scope_id,
+            local_name,
+            surface=None,
+            target_scope=None,
+            target_symbol=None,
+        ):
+            return {
+                "binding_id": binding_id,
+                "binding_kind": kind,
+                "crate_target_id": "target:one",
+                "local_name": local_name,
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "resolved" if target_scope or target_symbol else "unresolved",
+                "scope_id": scope_id,
+                "surface_target_path": surface,
+                "target_scope_id": target_scope,
+                "target_symbol_site_id": target_symbol,
+                "visibility": "crate",
+            }
+
+        bindings = [
+            binding("binding:state", "module", "scope:root", "state", target_scope="scope:state"),
+            binding("binding:store", "module", "scope:state", "store", target_scope="scope:store"),
+            binding(
+                "binding:type",
+                "type_declaration",
+                "scope:store",
+                "StateStore",
+                target_symbol="symbol:state-store",
+            ),
+            binding(
+                "binding:reexport",
+                "reexport",
+                "scope:state",
+                "StateStore",
+                "self::store::StateStore",
+            ),
+            binding(
+                "binding:use",
+                "use",
+                "scope:root",
+                "StateStore",
+                "crate::state::StateStore",
+            ),
+        ]
+
+        resolutions = self.materializer.resolve_rust_binding_paths(scopes, bindings)
+
+        by_source = {resolution["source_binding_id"]: resolution for resolution in resolutions}
+        resolved = by_source["binding:use"]
+        self.assertEqual("resolved_local_type", resolved["status"])
+        self.assertEqual("symbol:state-store", resolved["canonical_type_definition_site_id"])
+        self.assertEqual(
+            "target::one::state::store::StateStore", resolved["canonical_path"]
+        )
+        self.assertEqual(
+            [
+                "binding:use",
+                "binding:state",
+                "binding:reexport",
+                "binding:store",
+                "binding:type",
+            ],
+            resolved["binding_ids"],
+        )
+
     def test_native_swift_parser_resolves_tree_sitter_recovery(self):
         parsed = {
             "source_nodes": [
