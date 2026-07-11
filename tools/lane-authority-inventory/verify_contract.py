@@ -1241,6 +1241,15 @@ def validate_cross_relation_records(
         for edge in records[relation]:
             if edge["from_site_id"] not in all_sites or edge["to_site_id"] not in all_sites:
                 raise ContractError(f"{relation} contains a missing endpoint")
+    call_targets: dict[str, set[str]] = {site_id: set() for site_id in symbols}
+    for edge in records["call_edges"]:
+        if edge["from_site_id"] not in symbols or edge["to_site_id"] not in symbols:
+            raise ContractError("accepted call edge must connect symbol sites")
+        call_targets[edge["from_site_id"]].add(edge["to_site_id"])
+    for site_id, site in symbols.items():
+        expected = set(site["definition_site_ids"])
+        if call_targets[site_id] != expected:
+            raise ContractError("symbol definition set disagrees with call edges")
 
     external_symbols = {
         site_id for site_id, site in symbols.items() if site["resolution"] == "external"
@@ -2311,10 +2320,27 @@ def verify_p2(root: Path) -> dict[str, Any]:
             for edge in edges.values()
         ):
             raise ContractError(f"P2 {relation_name} graph has missing endpoints")
+    call_targets: dict[str, set[str]] = {site_id: set() for site_id in symbol_sites}
+    for edge in call_edges.values():
+        source = symbol_sites.get(edge["from_site_id"])
+        target = symbol_sites.get(edge["to_site_id"])
+        if (
+            source is None
+            or target is None
+            or source["resolution"] != "local"
+            or target["resolution"] != "declaration"
+        ):
+            raise ContractError("P2 call edge lacks local symbol resolution")
+        call_targets[source["site_id"]].add(target["site_id"])
+    for site_id, site in symbol_sites.items():
+        if call_targets[site_id] != set(site["definition_site_ids"]):
+            raise ContractError("P2 symbol definition set disagrees with call edges")
 
     def source_id_for_site(site_id: str) -> str:
         if site_id in syntax:
             return syntax[site_id]["source_node_id"]
+        if site_id in symbol_sites:
+            return syntax[symbol_sites[site_id]["syntax_site_id"]]["source_node_id"]
         return syntax[data_sites[site_id]["syntax_site_id"]]["source_node_id"]
 
     receipts = _unique_index(
@@ -2405,7 +2431,6 @@ def verify_p2(root: Path) -> dict[str, Any]:
         "unresolved_count": (
             parser_errors
             + len(candidate_ids)
-            + len(call_edges)
             + len(dataflow_edges)
             + unresolved_symbols
         ),

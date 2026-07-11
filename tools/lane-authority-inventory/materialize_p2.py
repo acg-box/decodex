@@ -198,11 +198,6 @@ def materialize(root: Path) -> dict[str, Any]:
     cfg_projections.sort(key=lambda projection: projection["projection_id"])
 
     syntax_by_id = {site["site_id"]: site for site in parsed["syntax_sites"]}
-    roots_by_source = {
-        site["source_node_id"]: site["site_id"]
-        for site in parsed["syntax_sites"]
-        if site["is_parser_root"]
-    }
     candidate_manifest = contract.load_json(root, CANDIDATE_RECORDS_PATH)
     candidate_by_id = {
         candidate["candidate_id"]: candidate for candidate in candidate_manifest["records"]
@@ -235,22 +230,6 @@ def materialize(root: Path) -> dict[str, Any]:
     data_sites.sort(key=lambda site: site["site_id"])
     dataflow_edges.sort(key=lambda edge: edge["edge_id"])
 
-    call_edges: list[dict[str, Any]] = []
-    for site in parsed["syntax_sites"]:
-        if not any(token in site["node_kind"] for token in ("call", "command", "exec", "macro")):
-            continue
-        target = roots_by_source[site["source_node_id"]]
-        call_edges.append(
-            {
-                "edge_id": canonical_id(
-                    "decodex/lane-authority-v2-call-edge/1", site["site_id"], target
-                ),
-                "from_site_id": site["site_id"],
-                "to_site_id": target,
-            }
-        )
-    call_edges.sort(key=lambda edge: edge["edge_id"])
-
     symbol_sites_by_id: dict[str, dict[str, Any]] = {}
     for fact in parsed["semantic_symbol_facts"]:
         symbol_site_id = canonical_id(
@@ -271,6 +250,35 @@ def materialize(root: Path) -> dict[str, Any]:
             "site_id": symbol_site_id,
             "syntax_site_id": fact["syntax_site_id"],
         }
+    declarations_by_signature: dict[str, list[str]] = {}
+    for site in symbol_sites_by_id.values():
+        if site["resolution"] == "declaration":
+            declarations_by_signature.setdefault(site["signature"], []).append(
+                site["site_id"]
+            )
+    call_edges: list[dict[str, Any]] = []
+    for site in symbol_sites_by_id.values():
+        if site["role"] != "call_target" or site["resolution_hint"] != "exact":
+            continue
+        definitions = declarations_by_signature.get(site["signature"], [])
+        if len(definitions) != 1:
+            continue
+        definition_site_id = definitions[0]
+        site["definition_site_ids"] = [definition_site_id]
+        site["external"] = False
+        site["resolution"] = "local"
+        call_edges.append(
+            {
+                "edge_id": canonical_id(
+                    "decodex/lane-authority-v2-call-edge/1",
+                    site["site_id"],
+                    definition_site_id,
+                ),
+                "from_site_id": site["site_id"],
+                "to_site_id": definition_site_id,
+            }
+        )
+    call_edges.sort(key=lambda edge: edge["edge_id"])
     symbol_sites = sorted(symbol_sites_by_id.values(), key=lambda site: site["site_id"])
 
     current_sources = [
@@ -287,7 +295,8 @@ def materialize(root: Path) -> dict[str, Any]:
         syntax_ids_by_source[site["source_node_id"]].add(site["site_id"])
     call_ids_by_source: dict[str, set[str]] = {source_id: set() for source_id in source_by_id}
     for edge in call_edges:
-        source_id = syntax_by_id[edge["from_site_id"]]["source_node_id"]
+        symbol = symbol_sites_by_id[edge["from_site_id"]]
+        source_id = syntax_by_id[symbol["syntax_site_id"]]["source_node_id"]
         call_ids_by_source[source_id].add(edge["edge_id"])
     dataflow_ids_by_source: dict[str, set[str]] = {
         source_id: set() for source_id in source_by_id

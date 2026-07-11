@@ -322,6 +322,37 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 "target_projection": "cfg:target",
             }
         ]
+        records["symbol_sites"] = [
+            {
+                "definition_site_ids": [],
+                "external": False,
+                "resolution": "declaration",
+                "resolution_hint": "exact",
+                "role": "declaration",
+                "signature": "run",
+                "signature_digest": hashlib.sha256(b"run").hexdigest(),
+                "site_id": "symbol:definition",
+                "syntax_site_id": "site:one",
+            },
+            {
+                "definition_site_ids": ["symbol:definition"],
+                "external": False,
+                "resolution": "local",
+                "resolution_hint": "exact",
+                "role": "call_target",
+                "signature": "run",
+                "signature_digest": hashlib.sha256(b"run").hexdigest(),
+                "site_id": "symbol:call",
+                "syntax_site_id": "site:one",
+            },
+        ]
+        records["site_classifications"].extend(
+            {
+                **records["site_classifications"][0],
+                "site_id": site_id,
+            }
+            for site_id in ("symbol:definition", "symbol:call")
+        )
         candidate = {
             "candidate_category": "legacy_read",
             "candidate_digest": "0" * 64,
@@ -470,7 +501,11 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 }
             )
         records["call_edges"] = [
-            {"edge_id": "call:one", "from_site_id": "site:one", "to_site_id": "site:one"}
+            {
+                "edge_id": "call:one",
+                "from_site_id": "symbol:call",
+                "to_site_id": "symbol:definition",
+            }
         ]
         records["dataflow_edges"] = [
             {"edge_id": "flow:one", "from_site_id": "site:one", "to_site_id": "site:one"}
@@ -527,6 +562,11 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
             call_ids = {
                 edge["edge_id"] for edge in records["call_edges"]
                 if edge["from_site_id"] in syntax_ids
+                or any(
+                    symbol["site_id"] == edge["from_site_id"]
+                    and symbol["syntax_site_id"] in syntax_ids
+                    for symbol in records["symbol_sites"]
+                )
             }
             dataflow_ids = {
                 edge["edge_id"] for edge in records["dataflow_edges"]
@@ -808,7 +848,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
 
         external_signature = "std::env::var"
         missing_catalog_entry = copy.deepcopy(records)
-        missing_catalog_entry["symbol_sites"] = [
+        missing_catalog_entry["symbol_sites"].append(
             {
                 "definition_site_ids": [],
                 "external": True,
@@ -822,7 +862,7 @@ class LaneAuthorityV2C1IContractTests(unittest.TestCase):
                 "site_id": "symbol:one",
                 "syntax_site_id": "site:one",
             }
-        ]
+        )
         missing_catalog_entry["site_classifications"].append(
             {
                 **missing_catalog_entry["site_classifications"][0],
