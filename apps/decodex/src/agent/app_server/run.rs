@@ -14,7 +14,8 @@ pub(crate) fn execute_app_server_run(
 	request: &AppServerRunRequest<'_>,
 	state_store: &StateStore,
 ) -> Result<AppServerRunResult> {
-	state_store.record_run_attempt(
+	state_store.record_lane_run_attempt(
+		&request.project_id,
 		&request.run_id,
 		&request.issue_id,
 		request.attempt_number,
@@ -42,7 +43,8 @@ pub(crate) fn execute_app_server_run(
 				)?;
 			},
 		Err(_error) => {
-			state_store.record_run_attempt(
+			state_store.record_lane_run_attempt(
+				&request.project_id,
 				&request.run_id,
 				&request.issue_id,
 				request.attempt_number,
@@ -134,7 +136,8 @@ fn execute_app_server_run_inner(
 	)?;
 	turn_loop::flush_pending_messages(&mut client, &mut recorder, Some(&thread_id))?;
 
-	state_store.record_run_attempt(
+	state_store.record_lane_run_attempt(
+		&request.project_id,
 		&request.run_id,
 		&request.issue_id,
 		request.attempt_number,
@@ -145,7 +148,8 @@ fn execute_app_server_run_inner(
 	let turn_result =
 		turn_loop::execute_turn_loop(&mut client, &mut recorder, request, state_store, &thread_id)?;
 
-	state_store.record_run_attempt(
+	state_store.record_lane_run_attempt(
+		&request.project_id,
 		&request.run_id,
 		&request.issue_id,
 		request.attempt_number,

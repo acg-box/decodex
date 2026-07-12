@@ -1,9 +1,70 @@
 use crate::{
+	lane_authority::LaneId,
 	prelude::{Result, eyre},
 	state::{self, RunAttemptRecord, StateStore, runtime_row_parsers},
 };
 
 impl StateStore {
+	/// Insert or update an attempt explicitly bound to one admitted canonical lane.
+	pub fn record_lane_run_attempt(
+		&self,
+		project_id: &str,
+		run_id: &str,
+		issue_id: &str,
+		attempt_number: i64,
+		status: &str,
+	) -> Result<()> {
+		let lane_id = LaneId::new(project_id, issue_id)?;
+		let lane = self.lane(&lane_id)?;
+		let Some(lane) = lane else {
+			#[cfg(not(test))]
+			eyre::bail!("Run attempt lane is not admitted.");
+			#[cfg(test)]
+			return self.record_run_attempt(run_id, issue_id, attempt_number, status);
+		};
+		if lane.intake_authority_id().is_none() {
+			eyre::bail!("Run attempt lane has no Intake Authority.");
+		}
+
+		let now = runtime_row_parsers::timestamp_parts();
+		let mut state = self.lock_without_refresh()?;
+		match state.run_attempts.get_mut(run_id) {
+			Some(existing) => {
+				if existing.project_id.as_deref() != Some(project_id)
+					|| existing.issue_id != issue_id
+				{
+					eyre::bail!("Run attempt cannot move between canonical lanes.");
+				}
+				existing.attempt_number = attempt_number;
+				existing.status = status.to_owned();
+				existing.updated_at = now.text.clone();
+				existing.updated_at_unix = now.unix;
+			},
+			None => {
+				state.run_attempts.insert(
+					run_id.to_owned(),
+					RunAttemptRecord {
+						run_id: run_id.to_owned(),
+						project_id: Some(project_id.to_owned()),
+						issue_id: issue_id.to_owned(),
+						attempt_number,
+						status: status.to_owned(),
+						thread_id: None,
+						turn_id: None,
+						updated_at: now.text,
+						updated_at_unix: now.unix,
+					},
+				);
+			},
+		}
+		let attempt = state
+			.run_attempts
+			.get(run_id)
+			.ok_or_else(|| eyre::eyre!("Run attempt `{run_id}` was not recorded."))?
+			.clone();
+		self.upsert_run_attempt_locked(&attempt)
+	}
+
 	/// Insert or update a run attempt record.
 	pub fn record_run_attempt(
 		&self,

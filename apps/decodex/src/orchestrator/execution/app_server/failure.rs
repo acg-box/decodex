@@ -54,7 +54,8 @@ where
 		tracker_tool_bridge,
 	)?;
 
-	state_store.record_run_attempt(
+	state_store.record_lane_run_attempt(
+		project.service_id(),
 		&issue_run.run_id,
 		&issue_run.issue.id,
 		issue_run.attempt_number,

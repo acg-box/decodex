@@ -14,9 +14,10 @@ pub(in crate::orchestrator::run_cycle::prepare) fn clear_prepare_issue_run_lease
 
 pub(in crate::orchestrator::run_cycle::prepare) fn record_starting_attempt(
 	state_store: &StateStore,
+	project_id: &str,
 	run_id: &str,
 	issue_id: &str,
 	attempt_number: i64,
 ) -> Result<()> {
-	state_store.record_run_attempt(run_id, issue_id, attempt_number, "starting")
+	state_store.record_lane_run_attempt(project_id, run_id, issue_id, attempt_number, "starting")
 }

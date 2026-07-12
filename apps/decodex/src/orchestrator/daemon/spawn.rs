@@ -111,7 +111,8 @@ where
 		let _ = state_store.clear_lease(&summary.issue_id);
 	})?;
 
-	state_store.record_run_attempt(
+	state_store.record_lane_run_attempt(
+		context.project.service_id(),
 		&summary.run_id,
 		&summary.issue_id,
 		summary.attempt_number,

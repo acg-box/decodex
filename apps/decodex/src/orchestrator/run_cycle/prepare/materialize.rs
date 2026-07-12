@@ -63,6 +63,7 @@ where
 	if !request.context.dry_run {
 		lifecycle::record_starting_attempt(
 			request.context.state_store,
+			request.context.project.service_id(),
 			&request.run_id,
 			&request.issue.id,
 			request.attempt_number,
