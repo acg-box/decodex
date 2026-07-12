@@ -6,6 +6,55 @@ This is the durable anti-drift ledger for the Lane Authority v2 program. Update 
 every checkpoint with facts, inferences, exact source/PR identities, validation results,
 migration state, unresolved objections, scope changes, and the next checkpoint.
 
+## Runtime Implementation Reset
+
+Status: active on draft PR #1092.
+
+Recorded at: 2026-07-12 (America/New_York).
+
+The earlier C0/C1I proof branch and draft PR #1090 are frozen. They are incident and
+inventory evidence only, are not a runtime prerequisite, and must not be landed as the
+Lane Authority implementation. In particular, generated whole-repository source graphs,
+generic AST/call/dataflow analysis, and their large audit artifacts are outside the
+runtime cutover path. Reusable incident fixtures, mutation inventories, target contracts,
+and scenario ids may be retained only when a runtime gate consumes them directly.
+
+The runtime implementation is isolated in `.worktrees/lane-authority-v2-runtime` on
+`xv/lane-authority-v2-runtime`, with draft PR #1092. The following exact commits are
+implemented and pushed:
+
+- `8bfbce85`: immutable `ProjectBinding`, required GitHub owner/repository and tracker
+  team configuration, project registry persistence, and drift rejection.
+- `f2081b1d`: pure typed lane transition kernel.
+- `806059f2`: project-qualified lane aggregate, binding/epoch CAS, and transactional
+  SQLite persistence.
+- `ec82217e`: fail-closed tracker-team filtering before queue mutations or dispatch.
+- `890b425a`: registered project/GitHub/tracker binding attestation before recovery,
+  baseline, lease, or worktree side effects.
+- `449b5197`: normal dispatch lease acquisition/release projected from canonical lane
+  claim commands, including retry and cross-project collision tests.
+- `541a79e6`: normal dispatch worktree attachment through the canonical lane command.
+
+Fresh focused evidence on this runtime branch:
+
+- lane authority tests: 7 passed;
+- state tests: 114 passed;
+- lease tests: 17 passed;
+- intake tests: 93 passed;
+- `cargo check -p decodex --all-targets`: passed;
+- `git diff --check`: passed before each runtime commit.
+
+Current limitations are explicit. Legacy `leases` and `worktrees` remain temporary
+projections and many recovery/read surfaces still use issue-only keys. Typed
+`IntakeAuthority`, effect journal/outbox, migration/quarantine, supersession, telemetry,
+and adjacent XY-1249 fixes are not complete. No C1 or C2 completion claim is valid until
+those old authority writers are removed or converted, PUB-1711 is replayed end to end,
+and the one-shot migration gate proves no executable ambiguity.
+
+Next implementation checkpoint: carry binding/intake authority into the lane aggregate,
+convert attempts/control/review/Program references and recovery worktree adoption to
+project-qualified lane commands, then remove issue-only lease/worktree authority APIs.
+
 ## C0 Baseline And Architecture Freeze
 
 Status: in progress.
@@ -863,8 +912,8 @@ migration invariants. C1 must not preserve global issue-keyed ownership behind a
 
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
-| C0 baseline and architecture freeze | Ready to land | PR #1084 exact-head confirmation, required checks, Decodex land, merge/readback cleanup |
-| C1 project/lane identity and migration | Pending | ProjectBinding/LaneId, brokered sole transition writer, hash-chain telemetry core, schema cutover/restore, quarantine/rebind, effect core, v12 path fencing, PONR, OutputBoundary |
+| C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
+| C1 project/lane identity and migration | In progress on PR #1092 | ProjectBinding/LaneId and transactional lane CAS exist; sole-writer cutover, migration/quarantine, and old issue-only API removal remain |
 | C2 intake and dispatch authority | Pending | Host workspace credential directory, unbound issue resolution, Typed IntakeAuthority, binding attestations, issue create/archive effects, PUB-1711 rejection replay |
 | C3 transition and effects | Pending | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
 | C4 supersession and conflicts | Pending | Typed edge, deterministic closeout crash/replay, conflict release, obsolete scan, PUB-1704/PUB-1705 fixture/recovery |
