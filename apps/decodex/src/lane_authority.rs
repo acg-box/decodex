@@ -1,8 +1,13 @@
 //! Canonical project and lane identities for the Lane Authority v2 runtime.
 
+mod effect;
 mod intake;
 mod kernel;
 
+pub use effect::{
+	EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect, LaneEffectKind,
+	LaneEffectRejection, apply_effect_command,
+};
 pub use intake::{IntakeAuthority, IntakeAuthorityKind};
 pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
 
