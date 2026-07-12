@@ -1376,6 +1376,19 @@ checkpoint closure. Next C1 work is the offline migration/quarantine state machi
 its exact scenario bindings; KeyProtector initialization also still needs to be folded
 into that journal so a crash cannot leave unclassified partial cutover artifacts.
 
+Commit `06ad19d5` replaces the create-once initializer lock and cleanup-on-error behavior
+with a persistent, fsynced activation journal. The journal binds generation and genesis
+and advances only through `planned`, `database_prepared`, `anchor_initialized`,
+`manifest_published`, and `complete`; a permanent cross-process `flock` serializes
+resume. Startup rejects a selected manifest unless the same generation's journal is
+complete. Anchor creation is idempotent across host-id, public-key pin, and signed-head
+steps, while mismatched partial artifacts freeze instead of being overwritten. The
+manifest remains the last published selector, and stale operation-owned temp files are
+discarded only while the exclusive lock is held. Exact MIG-04 and MIG-05 tests now bind
+old-binary tombstone refusal and resume from every durable activation stage. This is the
+selected host's empty archive/reset activation path; encrypted legacy archive, rollback
+restore, PONR fencing, and the remaining MIG scenarios are still required.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
