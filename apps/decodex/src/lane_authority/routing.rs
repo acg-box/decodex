@@ -154,6 +154,37 @@ mod tests {
 		assert!(matches!(resolution, RoutingResolution::NoMatch { .. }));
 	}
 
+	#[test]
+	fn lane_authority_v2_c2_adm_02() {
+		let temp = tempfile::tempdir().expect("tempdir");
+		let store =
+			crate::state::StateStore::open(temp.path().join("runtime.sqlite3")).expect("store");
+		let cases = [
+			(
+				"issue-zero",
+				resolve_project_binding(Vec::new(), "team-pubfi", "decodex:queued:pubfi", &[]),
+			),
+			(
+				"issue-multiple",
+				resolve_project_binding(
+					vec![binding_with_route("one", "one"), binding_with_route("two", "two")],
+					"team-pubfi",
+					"decodex:queued:shared",
+					&[],
+				),
+			),
+		];
+		for (issue, resolution) in cases {
+			assert!(matches!(
+				resolution,
+				RoutingResolution::NoMatch { .. } | RoutingResolution::Ambiguous { .. }
+			));
+			let quarantine = resolution.quarantine(issue, &"b".repeat(64)).expect("quarantine");
+			store.record_routing_quarantine(quarantine.clone()).expect("persist");
+			assert_eq!(store.routing_quarantine(issue).expect("read"), Some(quarantine));
+		}
+	}
+
 	fn binding(project: &str, repository: &str) -> ProjectBinding {
 		ProjectBinding::new(
 			project,
@@ -161,6 +192,18 @@ mod tests {
 			repository,
 			"team-pubfi",
 			&format!("decodex:queued:{project}"),
+			&format!("binding:{project}"),
+		)
+		.expect("binding")
+	}
+
+	fn binding_with_route(project: &str, repository: &str) -> ProjectBinding {
+		ProjectBinding::new(
+			project,
+			"helixbox",
+			repository,
+			"team-pubfi",
+			"decodex:queued:shared",
 			&format!("binding:{project}"),
 		)
 		.expect("binding")
