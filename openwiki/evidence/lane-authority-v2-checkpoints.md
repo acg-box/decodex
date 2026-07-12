@@ -1412,6 +1412,17 @@ Exact ADM-02 now also proves zero and multiple candidate sets persist quarantine
 than selecting a Lane, taking C2 exact coverage to `2/11`. Typed adjudication/transfer
 and candidate-rich operator projection remain.
 
+Commits `d394552e` and `8fbf336a` bind ADM-03, ADM-05, and ADM-06. Redispatch now
+re-reads the immutable IntakeAuthority named by the Lane and rejects when either its
+binding attestation or the Lane fingerprint differs from the fresh ProjectBinding;
+no claim/worktree/attempt follows. Issue-batch authority remains valid without a
+Decision Contract id. Program plus IntakeAuthority persistence now restores the exact
+in-memory program, authority, plan, and mapping projection if the SQLite transaction
+fails; an injected SQLite abort proves neither durable nor cached partial intake
+survives. C2 exact coverage is now `5/11`. Admit/transfer racing, provider-idempotent
+issue creation, version-bracketed paginated labels, workspace-qualified identity, and
+the orphan archive effect remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
