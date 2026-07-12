@@ -1301,6 +1301,16 @@ never recreate a retry after terminal attention. Restart evidence proves both th
 ordinal-1 retry and terminal reason-coded outcome replay exactly. Scheduler consumption
 and the canonical Lane operation transition remain the C6 completion boundary.
 
+Commit `53ac2c08` adds an explicit `ScheduleContinuation` phase transition. Unlike an
+ordinary in-thread repair goal, it persists the next phase goal and exits the app-server
+turn with `continuation_pending`, so the daemon child-exit path can schedule a typed
+continuation attempt without consuming failure retry budget. A process-level fake
+app-server fixture proves one completed turn sets the repair goal and exits at that
+boundary. Production no-effective-delta wiring is intentionally not guessed: the current
+`IssueRunPlan` does not yet carry the admitted base identity required to construct the
+complete base/head/merge-base/PatchSet diagnostics. C2/C3 must freeze and propagate that
+identity before C6 can consume this transition without reconstructing authority from Git.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
