@@ -33,7 +33,9 @@ impl McpServer {
 			);
 		}
 
-		let state_store = match runtime::open_runtime_store_lazy() {
+		let state_store = match runtime::open_runtime_store_lazy_for_origin(
+			crate::lane_authority::InvocationOrigin::Mcp,
+		) {
 			Ok(state_store) => state_store,
 			Err(error) => {
 				return results::project_control_refusal_result(

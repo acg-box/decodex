@@ -1,6 +1,13 @@
+use std::{sync::atomic::{AtomicU64, Ordering}, time::{SystemTime, UNIX_EPOCH}};
+
+use sha2::{Digest as _, Sha256};
+
 #[cfg(test)] use crate::lane_authority::LaneTransitionRejection;
 use crate::{
-	lane_authority::{LaneAggregate, LaneClaim, LaneCommand, LaneId, transition},
+	lane_authority::{
+		AuthorityDecision, AuthorityEventType, AuthorityReasonCode, AuthorityTransitionContext,
+		LaneAggregate, LaneClaim, LaneCommand, LaneId, transition,
+	},
 	prelude::{Result, eyre},
 	state::StateStore,
 };
@@ -152,12 +159,16 @@ impl StateStore {
 				sqlite.lock().map_err(|_| eyre::eyre!("SQLite state lock poisoned."))?;
 			for _ in 0..3 {
 				let expected_epoch = sqlite.lane(&id)?.map_or(0, |lane| lane.epoch());
+				let authority_event = self
+					.authority_transition_context(&id, expected_epoch, &command)?
+					.map(|context| context.into_lane_event(&id, binding_fingerprint))
+					.transpose()?;
 				match sqlite.transition_lane(
 					&id,
 					expected_epoch,
 					binding_fingerprint,
 					command.clone(),
-					None,
+					authority_event,
 				) {
 					Ok(next) => {
 						self.inner
@@ -185,6 +196,133 @@ impl StateStore {
 		state.lanes.insert(id, next.clone());
 		Ok(next)
 	}
+
+	fn authority_transition_context(
+		&self,
+		id: &LaneId,
+		expected_epoch: u64,
+		command: &LaneCommand,
+	) -> Result<Option<AuthorityTransitionContext>> {
+		static EVENT_ORDINAL: AtomicU64 = AtomicU64::new(1);
+		let Some(invocation) = self.invocation_identity.as_ref() else {
+			return Ok(None);
+		};
+		let ordinal = EVENT_ORDINAL.fetch_add(1, Ordering::Relaxed);
+		let recorded_at_unix_micros = i64::try_from(
+			SystemTime::now().duration_since(UNIX_EPOCH)?.as_micros(),
+		)?;
+		let facts = lane_command_fingerprint(id, expected_epoch, command);
+		let event_id = format!(
+			"event:{}",
+			hex_sha256(
+				format!("{}:{ordinal}:{facts}", invocation.invocation_id()).as_bytes()
+			),
+		);
+		let event_type = match command {
+			LaneCommand::ReleaseClaim { .. } => AuthorityEventType::LaneReleased,
+			LaneCommand::BeginSupersededCleanup => AuthorityEventType::LaneTransferred,
+			_ => AuthorityEventType::TransitionCommitted,
+		};
+		Ok(Some(AuthorityTransitionContext {
+			invocation: invocation.clone(),
+			event_id,
+			event_type,
+			transition_id: format!("lane-transition:{}:{expected_epoch}", id.tracker_issue_id()),
+			correlation_id: invocation.invocation_id().to_owned(),
+			causation_id: invocation.invocation_id().to_owned(),
+			observed_facts_fingerprint: facts,
+			decision: AuthorityDecision::Committed,
+			reason_codes: vec![AuthorityReasonCode::BindingMatched],
+			operation_id: None,
+			runtime_version: concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_SHA"))
+				.to_owned(),
+			recorded_at_unix_micros,
+			boot_id_fingerprint: hex_sha256(
+				crate::state::current_host_boot_id().unwrap_or_else(|| String::from("unavailable")).as_bytes(),
+			),
+			monotonic_nanos: ordinal,
+		}))
+	}
+}
+
+fn lane_command_fingerprint(id: &LaneId, expected_epoch: u64, command: &LaneCommand) -> String {
+	let mut digest = Sha256::new();
+	for field in [
+		b"decodex.lane-command/1".as_slice(),
+		id.project_key().as_bytes(),
+		id.tracker_issue_id().as_bytes(),
+		&expected_epoch.to_be_bytes(),
+	] {
+		digest.update(u64::try_from(field.len()).unwrap_or(u64::MAX).to_be_bytes());
+		digest.update(field);
+	}
+	match command {
+		LaneCommand::Admit { intake_authority_id } =>
+			update_command_digest(&mut digest, "admit", &[intake_authority_id.as_bytes()]),
+		LaneCommand::AcquireClaim { run_id } =>
+			update_command_digest(&mut digest, "acquire_claim", &[run_id.as_bytes()]),
+		LaneCommand::FreezeAdmittedBase { oid } =>
+			update_command_digest(&mut digest, "freeze_admitted_base", &[oid.as_bytes()]),
+		LaneCommand::ReleaseClaim { run_id } =>
+			update_command_digest(&mut digest, "release_claim", &[run_id.as_bytes()]),
+		LaneCommand::AttachWorktree { branch_name, worktree_path } =>
+			update_worktree_command_digest(
+				&mut digest,
+				"attach_worktree",
+				branch_name,
+				worktree_path,
+			),
+		LaneCommand::DetachWorktree { branch_name, worktree_path } =>
+			update_worktree_command_digest(
+				&mut digest,
+				"detach_worktree",
+				branch_name,
+				worktree_path,
+			),
+		LaneCommand::BeginRun => update_command_digest(&mut digest, "begin_run", &[]),
+		LaneCommand::BeginReview => update_command_digest(&mut digest, "begin_review", &[]),
+		LaneCommand::Land => update_command_digest(&mut digest, "land", &[]),
+		LaneCommand::Cancel => update_command_digest(&mut digest, "cancel", &[]),
+		LaneCommand::RequireAttention =>
+			update_command_digest(&mut digest, "require_attention", &[]),
+		LaneCommand::BeginSupersededCleanup =>
+			update_command_digest(&mut digest, "begin_superseded_cleanup", &[]),
+		LaneCommand::CompleteTerminalCleanup =>
+			update_command_digest(&mut digest, "complete_terminal_cleanup", &[]),
+	}
+	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn update_command_digest(digest: &mut Sha256, kind: &str, fields: &[&[u8]]) {
+	for field in std::iter::once(kind.as_bytes()).chain(fields.iter().copied()) {
+		digest.update(u64::try_from(field.len()).unwrap_or(u64::MAX).to_be_bytes());
+		digest.update(field);
+	}
+}
+
+fn update_worktree_command_digest(
+	digest: &mut Sha256,
+	kind: &str,
+	branch_name: &str,
+	worktree_path: &std::path::Path,
+) {
+	let path = path_bytes(worktree_path);
+	update_command_digest(digest, kind, &[branch_name.as_bytes(), &path]);
+}
+
+#[cfg(unix)]
+fn path_bytes(path: &std::path::Path) -> Vec<u8> {
+	use std::os::unix::ffi::OsStrExt as _;
+	path.as_os_str().as_bytes().to_vec()
+}
+
+#[cfg(not(unix))]
+fn path_bytes(path: &std::path::Path) -> Vec<u8> {
+	path.to_string_lossy().as_bytes().to_vec()
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+	Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -229,6 +367,32 @@ mod tests {
 		let events = store.verify_authority_events().expect("event chain");
 		assert_eq!(events.len(), 1);
 		assert_eq!(events[0].draft.event_id, "event-1");
+	}
+
+	#[test]
+	fn broker_owned_store_appends_event_for_production_lane_writer() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let database = temp_dir.path().join("state.sqlite");
+		let store = StateStore::open_with_invocation(
+			&database,
+			crate::authority_broker::test_invocation_identity(),
+		)
+		.expect("store");
+		store.initialize_authority_generation(1, &[7_u8; 32]).expect("generation");
+		let id = LaneId::new("pubfi", "PUB-1711").expect("lane");
+		store
+			.apply_lane_command(
+				id.clone(),
+				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+			)
+			.expect("admit");
+		let events = store.verify_authority_events().expect("events");
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0].draft.project_key.as_deref(), Some("pubfi"));
+		assert_eq!(events[0].draft.tracker_issue_id.as_deref(), Some("PUB-1711"));
+		assert_eq!(events[0].draft.event_type, AuthorityEventType::TransitionCommitted);
+		assert_eq!(events[0].draft.decision, AuthorityDecision::Committed);
 	}
 
 	fn authority_context(event_id: &str) -> AuthorityTransitionContext {

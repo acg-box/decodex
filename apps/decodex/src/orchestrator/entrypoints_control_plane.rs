@@ -45,7 +45,9 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 	orchestrator::validate_daemon_runtime()?;
 
-	let state_store = Arc::new(runtime::open_runtime_store()?);
+	let state_store = Arc::new(runtime::open_runtime_store_for_origin(
+		crate::lane_authority::InvocationOrigin::Supervisor,
+	)?);
 
 	maintenance::run_control_plane_maintenance("startup");
 

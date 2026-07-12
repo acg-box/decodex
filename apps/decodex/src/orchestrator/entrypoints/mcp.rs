@@ -25,7 +25,9 @@ pub(crate) fn build_mcp_status_resource(config_path: Option<&Path>, limit: usize
 		eyre::bail!("MCP status resource limit must be greater than zero.");
 	}
 
-	let state_store = runtime::open_runtime_store_lazy()?;
+	let state_store = runtime::open_runtime_store_lazy_for_origin(
+		crate::lane_authority::InvocationOrigin::Mcp,
+	)?;
 	let Some(config_path) = orchestrator::resolve_config_path(config_path, &state_store)? else {
 		eyre::bail!(
 			"No Decodex project config found. Start MCP from a registered checkout or pass --config."
@@ -54,7 +56,9 @@ pub(crate) fn build_mcp_lane_control_resource(
 		eyre::bail!("MCP lane-control resource limit must be greater than zero.");
 	}
 
-	let state_store = runtime::open_runtime_store_lazy()?;
+	let state_store = runtime::open_runtime_store_lazy_for_origin(
+		crate::lane_authority::InvocationOrigin::Mcp,
+	)?;
 	let Some(config_path) = orchestrator::resolve_config_path(config_path, &state_store)? else {
 		eyre::bail!(
 			"No Decodex project config found. Start MCP from a registered checkout or pass --config."
@@ -94,7 +98,9 @@ pub(crate) fn run_mcp_lane_interrupt(
 	reason: Option<&str>,
 	source: &str,
 ) -> Result<Value> {
-	let state_store = runtime::open_runtime_store_lazy()?;
+	let state_store = runtime::open_runtime_store_lazy_for_origin(
+		crate::lane_authority::InvocationOrigin::Mcp,
+	)?;
 	let Some(config_path) = orchestrator::resolve_config_path(config_path, &state_store)? else {
 		eyre::bail!(
 			"No Decodex project config found. Start MCP from a registered checkout or pass --config."
@@ -115,7 +121,9 @@ pub(crate) fn run_mcp_lane_interrupt(
 }
 
 pub(crate) fn run_mcp_lane_steer(request: McpLaneSteerRequest<'_>) -> Result<Value> {
-	let state_store = runtime::open_runtime_store_lazy()?;
+	let state_store = runtime::open_runtime_store_lazy_for_origin(
+		crate::lane_authority::InvocationOrigin::Mcp,
+	)?;
 	let Some(config_path) = orchestrator::resolve_config_path(request.config_path, &state_store)?
 	else {
 		eyre::bail!(

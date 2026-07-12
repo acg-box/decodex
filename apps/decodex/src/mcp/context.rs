@@ -12,7 +12,10 @@ pub(super) struct McpContext {
 }
 impl McpContext {
 	pub(super) fn for_process(config_path: Option<&Path>) -> Result<Self> {
-		let state_store = runtime::open_runtime_store_lazy().ok();
+		let state_store = runtime::open_runtime_store_lazy_for_origin(
+			crate::lane_authority::InvocationOrigin::Mcp,
+		)
+		.ok();
 		let config_path = resolve_context_config_path(config_path, state_store.as_ref())?;
 		let config = config_path.as_ref().map(ServiceConfig::from_path).transpose()?;
 		let project_id = config.map(|config| config.service_id().to_owned());

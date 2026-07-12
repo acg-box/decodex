@@ -54,10 +54,19 @@ use crate::{
 };
 
 /// Local runtime store for leases, attempts, worktrees, protocol events, and private evidence.
-#[derive(Default)]
 pub struct StateStore {
 	pub(super) inner: Mutex<StateData>,
 	pub(super) sqlite: Option<Mutex<SqliteStateStore>>,
+	pub(super) invocation_identity: Option<crate::lane_authority::InvocationIdentity>,
+}
+impl Default for StateStore {
+	fn default() -> Self {
+		Self {
+			inner: Mutex::new(StateData::default()),
+			sqlite: None,
+			invocation_identity: None,
+		}
+	}
 }
 impl StateStore {
 	/// Open the local persistent runtime store.
@@ -65,14 +74,40 @@ impl StateStore {
 		let sqlite = SqliteStateStore::open(path.as_ref())?;
 		let state = sqlite.load_state()?;
 
-		Ok(Self { inner: Mutex::new(state), sqlite: Some(Mutex::new(sqlite)) })
+		Ok(Self {
+			inner: Mutex::new(state),
+			sqlite: Some(Mutex::new(sqlite)),
+			invocation_identity: None,
+		})
+	}
+
+	pub(crate) fn open_with_invocation(
+		path: impl AsRef<Path>,
+		invocation_identity: crate::lane_authority::InvocationIdentity,
+	) -> Result<Self> {
+		let mut store = Self::open(path)?;
+		store.invocation_identity = Some(invocation_identity);
+		Ok(store)
 	}
 
 	/// Open the local persistent runtime store without preloading durable rows.
 	pub fn open_lazy(path: impl AsRef<Path>) -> Result<Self> {
 		let sqlite = SqliteStateStore::open(path.as_ref())?;
 
-		Ok(Self { inner: Mutex::new(StateData::default()), sqlite: Some(Mutex::new(sqlite)) })
+		Ok(Self {
+			inner: Mutex::new(StateData::default()),
+			sqlite: Some(Mutex::new(sqlite)),
+			invocation_identity: None,
+		})
+	}
+
+	pub(crate) fn open_lazy_with_invocation(
+		path: impl AsRef<Path>,
+		invocation_identity: crate::lane_authority::InvocationIdentity,
+	) -> Result<Self> {
+		let mut store = Self::open_lazy(path)?;
+		store.invocation_identity = Some(invocation_identity);
+		Ok(store)
 	}
 
 	/// Open an in-memory runtime store for tests.

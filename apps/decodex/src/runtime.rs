@@ -22,18 +22,50 @@ pub(crate) use self::{
 };
 pub(crate) use global_config::global_fixed_account_selector;
 
-use crate::{prelude::Result, state::StateStore};
+use std::{fs::File, io::Read as _, path::PathBuf};
+
+use crate::{
+	authority_broker,
+	lane_authority::InvocationOrigin,
+	prelude::Result,
+	state::StateStore,
+};
 
 /// Open the global single-machine runtime database.
 pub(crate) fn open_runtime_store() -> Result<StateStore> {
+	open_runtime_store_for_origin(InvocationOrigin::LocalCli)
+}
+
+pub(crate) fn open_runtime_store_for_origin(origin: InvocationOrigin) -> Result<StateStore> {
 	let root = decodex_home_dir()?;
-	StateStore::open(generation::selected_runtime_db_path_from(&root)?)
+	let generation = generation::selected_runtime_generation_from(&root)?;
+	let invocation = authority_broker::local_process_invocation_identity(origin, generation)?;
+	StateStore::open_with_invocation(
+		generation::selected_runtime_db_path_from(&root)?,
+		invocation,
+	)
 }
 
 /// Open the global runtime database without preloading all durable rows.
 pub(crate) fn open_runtime_store_lazy() -> Result<StateStore> {
+	open_runtime_store_lazy_for_origin(InvocationOrigin::LocalCli)
+}
+
+pub(crate) fn open_runtime_store_lazy_for_origin(origin: InvocationOrigin) -> Result<StateStore> {
 	let root = decodex_home_dir()?;
-	StateStore::open_lazy(generation::selected_runtime_db_path_from(&root)?)
+	let generation = generation::selected_runtime_generation_from(&root)?;
+	let invocation = authority_broker::local_process_invocation_identity(origin, generation)?;
+	StateStore::open_lazy_with_invocation(
+		generation::selected_runtime_db_path_from(&root)?,
+		invocation,
+	)
+}
+
+pub(crate) fn initialize_fresh_runtime_generation(generation: u64) -> Result<PathBuf> {
+	let root = decodex_home_dir()?;
+	let mut genesis_hash = [0_u8; 32];
+	File::open("/dev/urandom")?.read_exact(&mut genesis_hash)?;
+	generation::initialize_fresh_runtime_generation_from(&root, generation, &genesis_hash)
 }
 
 #[cfg(test)] mod tests;

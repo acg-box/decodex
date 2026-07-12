@@ -8,7 +8,7 @@ use std::{
 
 use serde::Deserialize;
 
-use crate::prelude::{Result, eyre};
+use crate::{prelude::{Result, eyre}, state::StateStore};
 
 const RUNTIME_FORMAT_SCHEMA: &str = "decodex/runtime-format/2";
 const RUNTIME_FORMAT_MANIFEST: &str = "runtime-format.toml";
@@ -23,6 +23,14 @@ struct RuntimeFormatManifest {
 }
 
 pub(super) fn selected_runtime_db_path_from(runtime_root: &Path) -> Result<PathBuf> {
+	Ok(selected_runtime_from(runtime_root)?.1)
+}
+
+pub(super) fn selected_runtime_generation_from(runtime_root: &Path) -> Result<u64> {
+	Ok(selected_runtime_from(runtime_root)?.0)
+}
+
+fn selected_runtime_from(runtime_root: &Path) -> Result<(u64, PathBuf)> {
 	let legacy_path = runtime_root.join(LEGACY_DATABASE);
 	if legacy_path.is_file() {
 		eyre::bail!("legacy_runtime_database_requires_offline_archive_and_reset");
@@ -49,7 +57,7 @@ pub(super) fn selected_runtime_db_path_from(runtime_root: &Path) -> Result<PathB
 	if !selected.is_file() {
 		eyre::bail!("runtime_format_selected_database_unavailable");
 	}
-	Ok(selected)
+	Ok((manifest.generation, selected))
 }
 
 pub(super) fn publish_runtime_generation_from(
@@ -89,6 +97,62 @@ pub(super) fn publish_runtime_generation_from(
 	}
 	OpenOptions::new().read(true).open(runtime_root)?.sync_all()?;
 	selected_runtime_db_path_from(runtime_root)
+}
+
+pub(super) fn initialize_fresh_runtime_generation_from(
+	runtime_root: &Path,
+	generation: u64,
+	genesis_hash: &[u8; 32],
+) -> Result<PathBuf> {
+	let lock_path = runtime_root.join(".runtime-initialize.lock");
+	let lock = OpenOptions::new().create_new(true).write(true).open(&lock_path)?;
+	let result = initialize_fresh_runtime_generation_locked(
+		runtime_root,
+		generation,
+		genesis_hash,
+	);
+	drop(lock);
+	fs::remove_file(&lock_path)?;
+	OpenOptions::new().read(true).open(runtime_root)?.sync_all()?;
+	result
+}
+
+fn initialize_fresh_runtime_generation_locked(
+	runtime_root: &Path,
+	generation: u64,
+	genesis_hash: &[u8; 32],
+) -> Result<PathBuf> {
+	if generation == 0 {
+		eyre::bail!("runtime_generation_zero");
+	}
+	if runtime_root.join(RUNTIME_FORMAT_MANIFEST).exists() {
+		eyre::bail!("runtime_format_manifest_already_published");
+	}
+	if !runtime_root.join(LEGACY_DATABASE).is_dir() {
+		eyre::bail!("legacy_runtime_tombstone_missing");
+	}
+	let generations = runtime_root.join("generations");
+	fs::create_dir_all(&generations)?;
+	let generation_root = generations.join(generation.to_string());
+	fs::create_dir(&generation_root)?;
+	let database = generation_root.join(LEGACY_DATABASE);
+	let prepare = (|| -> Result<()> {
+		let store = StateStore::open(&database)?;
+		store.initialize_authority_generation(generation, genesis_hash)?;
+		if !store.verify_authority_events()?.is_empty() {
+			eyre::bail!("fresh_runtime_authority_chain_not_empty");
+		}
+		drop(store);
+		OpenOptions::new().read(true).open(&database)?.sync_all()?;
+		OpenOptions::new().read(true).open(&generation_root)?.sync_all()?;
+		OpenOptions::new().read(true).open(&generations)?.sync_all()?;
+		Ok(())
+	})();
+	if let Err(error) = prepare {
+		let _ = fs::remove_dir_all(&generation_root);
+		return Err(error);
+	}
+	publish_runtime_generation_from(runtime_root, generation)
 }
 
 fn validate_database_relative_path(path: &Path, generation: u64) -> Result<()> {
@@ -187,5 +251,34 @@ mod tests {
 			.expect("manifest");
 			assert!(selected_runtime_db_path_from(temp.path()).is_err(), "accepted {path}");
 		}
+	}
+
+	#[test]
+	fn lane_authority_v2_c1_fresh_initialization_prepares_chain_before_manifest_publish() {
+		let temp = TempDir::new().expect("tempdir");
+		fs::create_dir(temp.path().join(LEGACY_DATABASE)).expect("tombstone");
+		let selected = initialize_fresh_runtime_generation_from(temp.path(), 9, &[8_u8; 32])
+			.expect("initialize");
+		assert_eq!(selected, temp.path().join("generations/9/runtime.sqlite3"));
+		let store = StateStore::open(&selected).expect("store");
+		assert!(store.verify_authority_events().expect("chain").is_empty());
+		assert_eq!(selected_runtime_generation_from(temp.path()).expect("generation"), 9);
+		assert!(initialize_fresh_runtime_generation_from(temp.path(), 10, &[9_u8; 32]).is_err());
+		assert!(!temp.path().join("generations/10").exists());
+	}
+
+	#[test]
+	fn lane_authority_v2_c1_fresh_initialization_requires_exclusive_operator_lock() {
+		let temp = TempDir::new().expect("tempdir");
+		fs::create_dir(temp.path().join(LEGACY_DATABASE)).expect("tombstone");
+		let lock = OpenOptions::new()
+			.create_new(true)
+			.write(true)
+			.open(temp.path().join(".runtime-initialize.lock"))
+			.expect("lock");
+		assert!(initialize_fresh_runtime_generation_from(temp.path(), 1, &[1_u8; 32]).is_err());
+		drop(lock);
+		fs::remove_file(temp.path().join(".runtime-initialize.lock")).expect("unlock");
+		assert!(initialize_fresh_runtime_generation_from(temp.path(), 1, &[1_u8; 32]).is_ok());
 	}
 }
