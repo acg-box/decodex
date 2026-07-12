@@ -325,7 +325,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		lane_authority::{
-			CloseoutEffectPlanItem, EffectCommand, EffectReceipt, LaneCommand, LaneEffectKind,
+		CloseoutEffectPlanItem, EffectCommand, EffectReceipt, LaneCommand,
 			LaneId, LanePhase, PatchDisposition, ProjectBinding,
 		},
 		state::ProjectRegistration,
@@ -410,14 +410,24 @@ mod tests {
 				"predecessor-pr-version",
 				vec![
 					CloseoutEffectPlanItem::new(
-						LaneEffectKind::GithubPrClose,
+						crate::lane_authority::CloseoutEffectTarget::GithubPullRequest {
+							repository_key: String::from("github:helixbox/pubfi-mono"),
+							pull_request_number: 826,
+							expected_head_oid: String::from("predecessor-head"),
+							expected_base_ref: String::from("main"),
+						},
 						"pr-request",
 						"pr-closed",
 						"pr-facts",
 					)
 					.expect("PR effect"),
 					CloseoutEffectPlanItem::new(
-						LaneEffectKind::WorktreeRemove,
+						crate::lane_authority::CloseoutEffectTarget::Worktree {
+							project_key: String::from("pubfi"),
+							issue_id: String::from("predecessor"),
+							branch_name: String::from("x/pubfi-pub-1704"),
+							worktree_path: worktree_path.clone(),
+						},
 						"worktree-request",
 						"worktree-removed",
 						&worktree_remove_facts_fingerprint(

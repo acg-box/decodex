@@ -1162,6 +1162,14 @@ change returns `PredecessorPatchChanged` before disposition or terminal authorit
 accepted. Twelve supersession tests pass (plus the explicit real-object replay test,
 ignored unless its complete external checkout is supplied).
 
+Closeout effect plans now freeze a typed target instead of only opaque digests. The
+target carries exact PR repository/number/head/base, control resource/owner, worktree
+project/issue/branch/absolute path, or remote/local ref repository/branch/expected OID;
+effect kind is derived from that target and mismatches fail validation. The durable
+operation plan digest therefore covers every executor argument across restart, and the
+operation exposes target lookup by immutable ordinal. Existing supersession and
+persistent worktree fixtures pass. Provider executor wiring is next.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

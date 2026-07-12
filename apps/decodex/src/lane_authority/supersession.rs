@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -362,14 +363,96 @@ pub struct SupersededCloseoutOperation {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CloseoutEffectPlanItem {
+	target: CloseoutEffectTarget,
 	kind: LaneEffectKind,
 	request_digest: String,
 	desired_state_digest: String,
 	facts_fingerprint: String,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum CloseoutEffectTarget {
+	GithubPullRequest {
+		repository_key: String,
+		pull_request_number: u64,
+		expected_head_oid: String,
+		expected_base_ref: String,
+	},
+	ControlResource {
+		resource_id: String,
+		owner_token: String,
+	},
+	Worktree {
+		project_key: String,
+		issue_id: String,
+		branch_name: String,
+		worktree_path: PathBuf,
+	},
+	RemoteRef {
+		repository_key: String,
+		branch_name: String,
+		expected_oid: String,
+	},
+	LocalRef {
+		repository_path: PathBuf,
+		branch_name: String,
+		expected_oid: String,
+	},
+}
+impl CloseoutEffectTarget {
+	pub const fn effect_kind(&self) -> LaneEffectKind {
+		match self {
+			Self::GithubPullRequest { .. } => LaneEffectKind::GithubPrClose,
+			Self::ControlResource { .. } => LaneEffectKind::ControlResourceRetire,
+			Self::Worktree { .. } => LaneEffectKind::WorktreeRemove,
+			Self::RemoteRef { .. } => LaneEffectKind::RemoteRefDelete,
+			Self::LocalRef { .. } => LaneEffectKind::LocalRefDelete,
+		}
+	}
+
+	fn validate(&self) -> Result<()> {
+		let valid = match self {
+			Self::GithubPullRequest {
+				repository_key,
+				pull_request_number,
+				expected_head_oid,
+				expected_base_ref,
+			} => {
+				repository_key.starts_with("github:")
+					&& *pull_request_number > 0
+					&& !expected_head_oid.trim().is_empty()
+					&& !expected_base_ref.trim().is_empty()
+			},
+			Self::ControlResource { resource_id, owner_token } => {
+				!resource_id.trim().is_empty() && !owner_token.trim().is_empty()
+			},
+			Self::Worktree { project_key, issue_id, branch_name, worktree_path } => {
+				!project_key.trim().is_empty()
+					&& !issue_id.trim().is_empty()
+					&& !branch_name.trim().is_empty()
+					&& worktree_path.is_absolute()
+			},
+			Self::RemoteRef { repository_key, branch_name, expected_oid } => {
+				repository_key.starts_with("github:")
+					&& !branch_name.trim().is_empty()
+					&& !expected_oid.trim().is_empty()
+			},
+			Self::LocalRef { repository_path, branch_name, expected_oid } => {
+				repository_path.is_absolute()
+					&& !branch_name.trim().is_empty()
+					&& !expected_oid.trim().is_empty()
+			},
+		};
+		if !valid {
+			eyre::bail!("Closeout effect target is incomplete.");
+		}
+		Ok(())
+	}
+}
 impl CloseoutEffectPlanItem {
 	pub fn new(
-		kind: LaneEffectKind,
+		target: CloseoutEffectTarget,
 		request_digest: &str,
 		desired_state_digest: &str,
 		facts_fingerprint: &str,
@@ -380,12 +463,19 @@ impl CloseoutEffectPlanItem {
 		{
 			eyre::bail!("Closeout effect plan digest cannot be empty.");
 		}
+		target.validate()?;
+		let kind = target.effect_kind();
 		Ok(Self {
+			target,
 			kind,
 			request_digest: request_digest.to_owned(),
 			desired_state_digest: desired_state_digest.to_owned(),
 			facts_fingerprint: facts_fingerprint.to_owned(),
 		})
+	}
+
+	pub fn target(&self) -> &CloseoutEffectTarget {
+		&self.target
 	}
 }
 impl SupersededCloseoutOperation {
@@ -478,6 +568,10 @@ impl SupersededCloseoutOperation {
 			.collect()
 	}
 
+	pub fn planned_effect_target(&self, ordinal: u32) -> Option<&CloseoutEffectTarget> {
+		self.effect_plan.get(usize::try_from(ordinal).ok()?).map(|item| item.target())
+	}
+
 	pub fn validate(&self) -> Result<()> {
 		if self.schema != SUPERSEDED_CLOSEOUT_SCHEMA
 			|| self.operation_id.trim().is_empty()
@@ -499,6 +593,10 @@ fn validate_closeout_effect_plan(plan: &[CloseoutEffectPlanItem]) -> Result<()> 
 	}
 	let mut previous_rank = 0;
 	for (index, item) in plan.iter().enumerate() {
+		item.target.validate()?;
+		if item.target.effect_kind() != item.kind {
+			eyre::bail!("Closeout effect kind does not match its immutable target.");
+		}
 		let rank = match item.kind {
 			LaneEffectKind::GithubPrClose if index == 0 => 0,
 			LaneEffectKind::ControlResourceRetire => 1,
@@ -738,14 +836,24 @@ mod tests {
 	fn closeout_plan() -> Vec<CloseoutEffectPlanItem> {
 		vec![
 			CloseoutEffectPlanItem::new(
-				LaneEffectKind::GithubPrClose,
+				CloseoutEffectTarget::GithubPullRequest {
+					repository_key: String::from("github:helixbox/pubfi-mono"),
+					pull_request_number: 826,
+					expected_head_oid: String::from("predecessor-head"),
+					expected_base_ref: String::from("main"),
+				},
 				"pr-request",
 				"pr-closed",
 				"pr-facts",
 			)
 			.expect("PR effect"),
 			CloseoutEffectPlanItem::new(
-				LaneEffectKind::WorktreeRemove,
+				CloseoutEffectTarget::Worktree {
+					project_key: String::from("pubfi"),
+					issue_id: String::from("predecessor"),
+					branch_name: String::from("x/pubfi-pub-1704"),
+					worktree_path: PathBuf::from("/tmp/pubfi-predecessor"),
+				},
 				"worktree-request",
 				"worktree-removed",
 				"worktree-facts",
@@ -848,7 +956,12 @@ mod tests {
 			"reachability",
 			vec![
 				CloseoutEffectPlanItem::new(
-					LaneEffectKind::GithubPrClose,
+					CloseoutEffectTarget::GithubPullRequest {
+						repository_key: String::from("github:helixbox/pubfi-mono"),
+						pull_request_number: 826,
+						expected_head_oid: String::from("predecessor-head"),
+						expected_base_ref: String::from("main"),
+					},
 					"changed-request",
 					"pr-closed",
 					"pr-facts",
