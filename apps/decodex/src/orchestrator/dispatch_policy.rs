@@ -46,6 +46,13 @@ use crate::{
 
 pub(crate) const REVIEW_HANDOFF_BLOCK_REASON: &str = "review_handoff_state_transition_pending";
 
+pub(crate) fn issue_matches_project_tracker_scope(
+	issue: &TrackerIssue,
+	project: &ServiceConfig,
+) -> bool {
+	issue.team.id == project.tracker().team_id()
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CloseoutDispatchEligibility {
 	Eligible,
@@ -134,6 +141,10 @@ pub(crate) fn issue_passes_current_dispatch_policy<T>(
 where
 	T: IssueTracker + ?Sized,
 {
+	if !issue_matches_project_tracker_scope(issue, project) {
+		return Ok(false);
+	}
+
 	match dispatch_mode {
 		IssueDispatchMode::Normal => {
 			let queue_label = tracker::automation_queue_label(project.service_id());

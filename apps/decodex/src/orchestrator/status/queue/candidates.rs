@@ -1,10 +1,13 @@
 use crate::{
-	orchestrator::status::{
-		self, HashSet, IssueTracker, LoopGuardrailReason, OperatorQueuedIssueStatus, ServiceConfig,
-		StateStore, TrackerIssue, WorkflowDocument, compare_issue_candidates,
-		queue::{
-			classification,
-			models::{QueuedCandidateStatusPlan, QueuedIssueStatusOutcome},
+	orchestrator::{
+		dispatch_policy::issue_matches_project_tracker_scope,
+		status::{
+			self, HashSet, IssueTracker, LoopGuardrailReason, OperatorQueuedIssueStatus,
+			ServiceConfig, StateStore, TrackerIssue, WorkflowDocument, compare_issue_candidates,
+			queue::{
+				classification,
+				models::{QueuedCandidateStatusPlan, QueuedIssueStatusOutcome},
+			},
 		},
 	},
 	prelude::Result,
@@ -40,6 +43,7 @@ where
 		.collect::<HashSet<_>>();
 	let success_state = workflow.frontmatter().tracker().success_state();
 	let mut issues = tracker.list_issues_with_label(&queue_label)?;
+	issues.retain(|issue| issue_matches_project_tracker_scope(issue, project));
 
 	issues.sort_by(compare_issue_candidates);
 

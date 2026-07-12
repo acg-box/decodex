@@ -1,5 +1,6 @@
 use crate::{
 	orchestrator::{
+		dispatch_policy::issue_matches_project_tracker_scope,
 		run_cycle,
 		run_cycle::{
 			IssueTracker, Result, ServiceConfig, StateStore, TrackerIssue, WorkflowDocument,
@@ -19,13 +20,13 @@ where
 	T: IssueTracker,
 {
 	let queue_label = tracker::automation_queue_label(project.service_id());
-	let issues = clear_terminal_queued_lane_labels(
-		tracker,
-		project,
-		workflow,
-		tracker.list_issues_with_label(&queue_label)?,
-		dry_run,
-	)?;
+	let scoped_issues = tracker
+		.list_issues_with_label(&queue_label)?
+		.into_iter()
+		.filter(|issue| issue_matches_project_tracker_scope(issue, project))
+		.collect();
+	let issues =
+		clear_terminal_queued_lane_labels(tracker, project, workflow, scoped_issues, dry_run)?;
 
 	if !dry_run {
 		let plan =

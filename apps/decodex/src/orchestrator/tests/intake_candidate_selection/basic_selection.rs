@@ -35,6 +35,23 @@ fn candidate_selection_allows_dispatch_when_another_issue_has_active_lease() {
 }
 
 #[test]
+fn project_tracker_scope_rejects_same_routing_label_from_another_team() {
+	let (_temp_dir, project, _workflow) = tests::temp_project_layout();
+	let mut foreign_issue = tests::sample_issue("Todo", &[]);
+	foreign_issue.team.id = String::from("foreign-team");
+
+	assert!(!orchestrator::dispatch_policy::issue_matches_project_tracker_scope(
+		&foreign_issue,
+		&project,
+	));
+	foreign_issue.team.id = project.tracker().team_id().to_owned();
+	assert!(orchestrator::dispatch_policy::issue_matches_project_tracker_scope(
+		&foreign_issue,
+		&project,
+	));
+}
+
+#[test]
 fn blocks_ordinary_dispatch_for_retained_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

@@ -79,7 +79,7 @@ pub(super) fn sample_issue_with_project_slug_and_sort_fields(
 		updated_at: created_at.to_owned(),
 		state: TrackerState { id: String::from("state-current"), name: state_name.to_owned() },
 		team: TrackerTeam {
-			id: String::from("team-1"),
+			id: String::from("team-test"),
 			name: String::from("Pubfi"),
 			states: vec![
 				TrackerState { id: String::from("state-todo"), name: String::from("Todo") },
