@@ -4,30 +4,35 @@ mod replacements;
 
 use std::collections::HashMap;
 
-use crate::state::{
-	ProgramIntakeAttemptStatus,
-	internal::guards::{DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard},
-	models::{
-		ConnectorBackoff, IssueLease, ProgramIntakePlanRecord, ProgramIssueMappingRecord,
-		ProjectRegistration,
-	},
-	runtime_records::{
-		AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyProposalKey,
-		AutonomyProposalRuntimeRecord, AutonomyRuntimePolicyKey,
-		AutonomyRuntimePolicyRuntimeRecord, AutonomySignalKey, AutonomySignalRuntimeRecord,
-		DecisionContractKey, DecisionContractRuntimeRecord, EvidenceArtifactKey,
-		EvidenceArtifactRuntimeRecord, ExecutionProgramKey, ExecutionProgramRuntimeRecord,
-		LinearExecutionEventRuntimeRecord, LoopGuardrailKey, LoopGuardrailRuntimeRecord,
-		PrivateExecutionEventRuntimeRecord, ProgramIntakePlanKey, ProgramIssueMappingKey,
-		ProtocolEventRecord, ProtocolEventSummaryRecord, ReviewLifecycleKey,
-		ReviewLifecycleRuntimeRecord, ReviewPolicyKey, ReviewPolicyRuntimeRecord,
-		RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord, WorktreeMappingRecord,
+use crate::{
+	lane_authority::{LaneAggregate, LaneId},
+	state::{
+		ProgramIntakeAttemptStatus,
+		internal::guards::{DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard},
+		models::{
+			ConnectorBackoff, IssueLease, ProgramIntakePlanRecord, ProgramIssueMappingRecord,
+			ProjectRegistration,
+		},
+		runtime_records::{
+			AutonomyObjectiveKey, AutonomyObjectiveRuntimeRecord, AutonomyProposalKey,
+			AutonomyProposalRuntimeRecord, AutonomyRuntimePolicyKey,
+			AutonomyRuntimePolicyRuntimeRecord, AutonomySignalKey, AutonomySignalRuntimeRecord,
+			DecisionContractKey, DecisionContractRuntimeRecord, EvidenceArtifactKey,
+			EvidenceArtifactRuntimeRecord, ExecutionProgramKey, ExecutionProgramRuntimeRecord,
+			LinearExecutionEventRuntimeRecord, LoopGuardrailKey, LoopGuardrailRuntimeRecord,
+			PrivateExecutionEventRuntimeRecord, ProgramIntakePlanKey, ProgramIssueMappingKey,
+			ProtocolEventRecord, ProtocolEventSummaryRecord, ReviewLifecycleKey,
+			ReviewLifecycleRuntimeRecord, ReviewPolicyKey, ReviewPolicyRuntimeRecord,
+			RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord,
+			WorktreeMappingRecord,
+		},
 	},
 };
 
 #[derive(Default)]
 pub(in crate::state) struct StateData {
 	pub(in crate::state) projects: HashMap<String, ProjectRegistration>,
+	pub(in crate::state) lanes: HashMap<LaneId, LaneAggregate>,
 	pub(in crate::state) leases: HashMap<String, IssueLease>,
 	pub(in crate::state) run_attempts: HashMap<String, RunAttemptRecord>,
 	pub(in crate::state) control_channels: HashMap<String, RunControlChannelRecord>,

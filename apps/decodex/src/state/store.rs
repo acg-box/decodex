@@ -4,6 +4,7 @@ mod autonomy;
 mod decision_contracts;
 mod execution_evidence;
 mod inputs;
+mod lanes;
 mod leases;
 mod persistence;
 mod programs;

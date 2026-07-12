@@ -40,6 +40,21 @@ CREATE TABLE IF NOT EXISTS leases (
 	run_id TEXT NOT NULL,
 	issue_state TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS lanes (
+	project_key TEXT NOT NULL,
+	tracker_issue_id TEXT NOT NULL,
+	binding_fingerprint TEXT NOT NULL,
+	epoch INTEGER NOT NULL,
+	phase TEXT NOT NULL,
+	claim_run_id TEXT,
+	branch_name TEXT,
+	worktree_path TEXT,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_key, tracker_issue_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS lanes_active_tracker_issue_idx
+ON lanes (tracker_issue_id)
+WHERE phase NOT IN ('landed', 'canceled', 'needs_attention');
 CREATE TABLE IF NOT EXISTS run_attempts (
 	run_id TEXT PRIMARY KEY NOT NULL,
 	project_id TEXT,

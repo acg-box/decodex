@@ -1,5 +1,5 @@
 use crate::{
-	lane_authority::ProjectBinding,
+	lane_authority::{LaneAggregate, LaneId, LanePhase, ProjectBinding},
 	state::sqlite_store::{
 		SqliteStateStore,
 		queries::{
@@ -10,6 +10,51 @@ use crate::{
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn load_lanes(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_key, tracker_issue_id, binding_fingerprint, epoch, phase, \
+			 claim_run_id, branch_name, worktree_path FROM lanes",
+		)?;
+		let rows = statement.query_map([], |row| {
+			let project_key: String = row.get(0)?;
+			let tracker_issue_id: String = row.get(1)?;
+			let phase_value: String = row.get(4)?;
+			let phase = LanePhase::from_str(&phase_value).ok_or_else(|| {
+				rusqlite::Error::InvalidColumnType(
+					4,
+					String::from("phase"),
+					rusqlite::types::Type::Text,
+				)
+			})?;
+			let id = LaneId::new(&project_key, &tracker_issue_id).map_err(|_| {
+				rusqlite::Error::InvalidColumnType(
+					0,
+					String::from("project_key"),
+					rusqlite::types::Type::Text,
+				)
+			})?;
+			let epoch = u64::try_from(row.get::<_, i64>(3)?)
+				.map_err(|_| rusqlite::Error::IntegralValueOutOfRange(3, -1))?;
+			let worktree_path = row.get::<_, Option<String>>(7)?.map(PathBuf::from);
+			let aggregate = LaneAggregate::from_persisted_parts(
+				id.clone(),
+				row.get(2)?,
+				epoch,
+				phase,
+				row.get(5)?,
+				row.get(6)?,
+				worktree_path,
+			);
+			Ok((id, aggregate))
+		})?;
+
+		for row in rows {
+			let (id, aggregate) = row?;
+			state.lanes.insert(id, aggregate);
+		}
+		Ok(())
+	}
+
 	pub(in crate::state) fn load_projects(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT service_id, config_path, repo_root, worktree_root, workflow_path, \

@@ -17,6 +17,31 @@ impl LanePhase {
 	pub const fn is_terminal(self) -> bool {
 		matches!(self, Self::Landed | Self::Canceled | Self::NeedsAttention)
 	}
+
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::Unclaimed => "unclaimed",
+			Self::Claimed => "claimed",
+			Self::Running => "running",
+			Self::WaitingReview => "waiting_review",
+			Self::Landed => "landed",
+			Self::Canceled => "canceled",
+			Self::NeedsAttention => "needs_attention",
+		}
+	}
+
+	pub(crate) fn from_str(value: &str) -> Option<Self> {
+		match value {
+			"unclaimed" => Some(Self::Unclaimed),
+			"claimed" => Some(Self::Claimed),
+			"running" => Some(Self::Running),
+			"waiting_review" => Some(Self::WaitingReview),
+			"landed" => Some(Self::Landed),
+			"canceled" => Some(Self::Canceled),
+			"needs_attention" => Some(Self::NeedsAttention),
+			_ => None,
+		}
+	}
 }
 
 /// Sole local ownership and lifecycle projection for one lane.
@@ -41,6 +66,18 @@ impl LaneAggregate {
 			branch_name: None,
 			worktree_path: None,
 		}
+	}
+
+	pub(crate) fn from_persisted_parts(
+		id: LaneId,
+		binding_fingerprint: String,
+		epoch: u64,
+		phase: LanePhase,
+		claim_run_id: Option<String>,
+		branch_name: Option<String>,
+		worktree_path: Option<PathBuf>,
+	) -> Self {
+		Self { id, binding_fingerprint, epoch, phase, claim_run_id, branch_name, worktree_path }
 	}
 
 	pub fn id(&self) -> &LaneId {
@@ -92,6 +129,7 @@ pub enum LaneTransitionRejection {
 	InvalidPhase,
 	ConflictingClaim,
 	ConflictingWorktree,
+	TrackerIssueAlreadyActive,
 }
 
 /// Apply one deterministic lane transition under binding and epoch CAS.
