@@ -91,6 +91,14 @@ mod tests {
 				_ => unreachable!(),
 			}
 			drop(connection);
+			assert!(
+				StateStore::open_with_invocation(
+					&database,
+					crate::authority_broker::test_invocation_identity(),
+				)
+				.is_err(),
+				"production open must fail closed for {mutation}",
+			);
 			let reopened = StateStore::open(&database).expect("reopen");
 			assert!(reopened.verify_authority_events().is_err(), "{mutation} must be detected");
 		}

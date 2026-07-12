@@ -86,6 +86,7 @@ impl StateStore {
 		invocation_identity: crate::lane_authority::InvocationIdentity,
 	) -> Result<Self> {
 		let mut store = Self::open(path)?;
+		store.verify_authority_events()?;
 		store.invocation_identity = Some(invocation_identity);
 		Ok(store)
 	}
@@ -106,6 +107,7 @@ impl StateStore {
 		invocation_identity: crate::lane_authority::InvocationIdentity,
 	) -> Result<Self> {
 		let mut store = Self::open_lazy(path)?;
+		store.verify_authority_events()?;
 		store.invocation_identity = Some(invocation_identity);
 		Ok(store)
 	}
