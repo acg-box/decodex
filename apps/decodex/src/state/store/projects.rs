@@ -44,6 +44,18 @@ impl StateStore {
 		}) {
 			eyre::bail!("RepositoryKey is already bound to another immutable ProjectBinding.");
 		}
+		if registration.enabled()
+			&& state.projects.values().any(|existing| {
+				existing.service_id() != registration.service_id()
+					&& existing.enabled()
+					&& existing.binding().tracker_team_id()
+						== registration.binding().tracker_team_id()
+					&& existing.binding().routing_label()
+						== registration.binding().routing_label()
+			})
+		{
+			eyre::bail!("Active routing predicate overlaps another ProjectBinding.");
+		}
 
 		state.projects.insert(registration.service_id().to_owned(), registration.clone());
 		self.upsert_project_locked(&registration)?;
@@ -81,6 +93,20 @@ impl StateStore {
 	/// Enable or disable one registered project.
 	pub(crate) fn set_project_enabled(&self, service_id: &str, enabled: bool) -> Result<()> {
 		let mut state = self.lock()?;
+		if enabled {
+			let target = state
+				.projects
+				.get(service_id)
+				.ok_or_else(|| eyre::eyre!("Decodex project `{service_id}` is not registered."))?;
+			if state.projects.values().any(|existing| {
+				existing.service_id() != service_id
+					&& existing.enabled()
+					&& existing.binding().tracker_team_id() == target.binding().tracker_team_id()
+					&& existing.binding().routing_label() == target.binding().routing_label()
+			}) {
+				eyre::bail!("Active routing predicate overlaps another ProjectBinding.");
+			}
+		}
 		let project = state
 			.projects
 			.get_mut(service_id)

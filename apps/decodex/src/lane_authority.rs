@@ -10,6 +10,7 @@ mod no_effective_delta;
 mod patch_set;
 #[allow(dead_code)]
 pub(crate) mod protected_head;
+mod routing;
 mod supersession;
 
 pub use effect::{
@@ -35,6 +36,7 @@ pub use no_effective_delta::{
 	decide_no_effective_delta,
 };
 pub use patch_set::{CanonicalPatchSet, PatchSetBuildError, build_canonical_patch_set};
+pub(crate) use routing::{RoutingResolution, resolve_project_binding};
 pub use supersession::{
 	CloseoutEffectPlanItem, CloseoutEffectTarget, PatchDisposition, PredecessorPatchReadback,
 	RepairHandoffAuthority, RepairHandoffState, SupersededCloseoutCommand,

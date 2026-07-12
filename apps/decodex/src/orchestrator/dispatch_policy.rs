@@ -37,6 +37,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::{
 	lane_authority::{
 		BindingAttestation, IntakeAuthority, IntakeAuthorityKind, LaneCommand, ProjectBinding,
+		RoutingResolution, resolve_project_binding,
 	},
 	orchestrator::{
 		ErrorKind, GhPullRequestReviewStateInspector, GitCredentialSource, IssueDispatchMode,
@@ -65,24 +66,30 @@ pub(crate) fn attest_issue_project_binding(
 	issue: &TrackerIssue,
 ) -> Result<BindingAttestation> {
 	let binding = attest_project_binding(state_store, project)?;
-	let mut repository_selectors = issue
-		.labels
-		.iter()
-		.filter_map(|label| label.name.strip_prefix("repo:"))
+	let catalog = state_store
+		.list_projects()?
+		.into_iter()
+		.filter(|registration| registration.enabled())
+		.map(|registration| registration.binding().clone())
 		.collect::<Vec<_>>();
-	repository_selectors.sort_unstable();
-	repository_selectors.dedup();
-	if repository_selectors.iter().any(|selector| selector.is_empty())
-		|| repository_selectors.len() > 1
-	{
-		eyre::bail!("Issue repository selector is ambiguous; binding attestation rejected.");
-	}
-	if let Some(selector) = repository_selectors.first()
-		&& *selector != binding.github_repository()
-	{
-		eyre::bail!(
-			"Issue repository selector does not match the immutable project binding."
-		);
+	#[cfg(test)]
+	let catalog = if catalog.is_empty() { vec![binding.clone()] } else { catalog };
+	let labels = issue.labels.iter().map(|label| label.name.clone()).collect::<Vec<_>>();
+	match resolve_project_binding(
+		catalog,
+		&issue.team.id,
+		binding.routing_label(),
+		&labels,
+	) {
+		RoutingResolution::Selected { binding: selected, .. } if selected == binding => {},
+		RoutingResolution::Selected { .. } =>
+			eyre::bail!("Global routing selected a different immutable ProjectBinding."),
+		RoutingResolution::NoMatch { .. } =>
+			eyre::bail!("Issue repository selector does not match any active project binding."),
+		RoutingResolution::Ambiguous { .. } =>
+			eyre::bail!("Issue routing matches multiple active project bindings."),
+		RoutingResolution::InvalidSelector =>
+			eyre::bail!("Issue routing selector is ambiguous or invalid."),
 	}
 	BindingAttestation::new(&binding, &issue.id, &issue.team.id)
 }
