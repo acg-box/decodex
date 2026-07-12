@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use time::OffsetDateTime;
 
 use crate::{
+	lane_authority::{LaneCommand, LaneId},
 	prelude::{Result, eyre},
 	state::{
 		StateStore, WORKTREE_PROVENANCE_RUNTIME_RECORDED, WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
@@ -11,6 +12,53 @@ use crate::{
 };
 
 impl StateStore {
+	/// Attach a worktree to an already claimed canonical lane, then update its legacy projection.
+	pub fn upsert_claimed_worktree(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		branch_name: &str,
+		worktree_path: &str,
+	) -> Result<()> {
+		let binding = match self.registered_project_binding(project_id)? {
+			Some(binding) => binding,
+			None => {
+				#[cfg(not(test))]
+				eyre::bail!("Project is not registered; worktree attachment is forbidden.");
+				#[cfg(test)]
+				crate::lane_authority::ProjectBinding::new(
+					project_id,
+					"test-owner",
+					"test-repository",
+					"team-test",
+					&format!("decodex:queued:{project_id}"),
+					&format!("test-binding:{project_id}"),
+				)?
+			},
+		};
+		let lane_id = LaneId::new(project_id, issue_id)?;
+		#[cfg(test)]
+		if self.lane(&lane_id)?.is_none()
+			&& let Some(lease) = self.lease_for_issue(issue_id)?
+			&& lease.project_id() == project_id
+		{
+			self.apply_lane_command(
+				lane_id.clone(),
+				binding.config_fingerprint(),
+				LaneCommand::AcquireClaim { run_id: lease.run_id().to_owned() },
+			)?;
+		}
+		self.apply_lane_command(
+			lane_id,
+			binding.config_fingerprint(),
+			LaneCommand::AttachWorktree {
+				branch_name: branch_name.to_owned(),
+				worktree_path: PathBuf::from(worktree_path),
+			},
+		)?;
+		self.upsert_worktree(project_id, issue_id, branch_name, worktree_path)
+	}
+
 	/// Create or replace the worktree mapping for one issue.
 	pub fn upsert_worktree(
 		&self,

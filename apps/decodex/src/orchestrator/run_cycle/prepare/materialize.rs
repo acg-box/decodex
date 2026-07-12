@@ -37,7 +37,7 @@ where
 	};
 
 	if !request.context.dry_run {
-		request.context.state_store.upsert_worktree(
+		request.context.state_store.upsert_claimed_worktree(
 			request.context.project.service_id(),
 			request.lease_issue_id,
 			&worktree.branch_name,

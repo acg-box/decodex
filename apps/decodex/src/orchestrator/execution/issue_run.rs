@@ -28,7 +28,7 @@ where
 		"Starting issue run."
 	);
 
-	state_store.upsert_worktree(
+	state_store.upsert_claimed_worktree(
 		project.service_id(),
 		&issue_run.issue.id,
 		&issue_run.worktree.branch_name,

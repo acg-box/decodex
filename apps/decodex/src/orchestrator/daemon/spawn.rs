@@ -117,7 +117,7 @@ where
 		summary.attempt_number,
 		"starting",
 	)?;
-	state_store.upsert_worktree(
+	state_store.upsert_claimed_worktree(
 		context.project.service_id(),
 		&summary.issue_id,
 		&daemon_spawn_state.worktree.branch_name,
