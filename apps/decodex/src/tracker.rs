@@ -27,6 +27,6 @@ pub(crate) use self::{
 		TrackerIssueCreate, TrackerLabel, TrackerState, TrackerTeam,
 	},
 	workspace_directory::{
-		TrackerCredentialAttestation, TrackerWorkspaceDirectory, TrackerWorkspaceEntry,
+		TrackerCredentialAttestation, TrackerWorkspaceDirectory, TrackerWorkspacePublishOutcome,
 	},
 };

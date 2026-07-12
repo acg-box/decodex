@@ -6,6 +6,7 @@ mod project_config_registration_requires_explicit_repo_root;
 mod registered_config_path_for_cwd_matches_repo_and_worktree_roots;
 mod registered_config_path_for_project_id_uses_service_id;
 mod runtime_paths_live_under_codex_decodex_home;
+mod tracker_credential_catalog_is_host_scoped;
 
 use std::{fs, path::Path};
 

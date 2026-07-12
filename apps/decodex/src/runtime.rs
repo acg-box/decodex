@@ -5,6 +5,7 @@ mod global_config;
 mod generation;
 mod paths;
 mod projects;
+mod tracker_credentials;
 
 #[cfg(test)]
 pub(crate) use self::{
@@ -20,7 +21,8 @@ pub(crate) use self::{
 		registered_config_path_for_project_id,
 	},
 };
-pub(crate) use global_config::global_fixed_account_selector;
+pub(crate) use global_config::{global_fixed_account_selector, tracker_credential_catalog};
+pub(crate) use tracker_credentials::bootstrap_tracker_workspace_directory;
 
 use std::{fs::File, io::Read as _, path::PathBuf};
 

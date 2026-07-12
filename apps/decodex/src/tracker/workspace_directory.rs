@@ -81,6 +81,12 @@ pub(crate) enum TrackerCredentialQuarantineReason {
 	WorkspaceIdentityConflict,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum TrackerWorkspacePublishOutcome {
+	Published(TrackerWorkspaceEntry),
+	Quarantined(TrackerCredentialQuarantine),
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub(crate) struct TrackerWorkspaceDirectory {
 	epoch: u64,
@@ -101,21 +107,23 @@ impl TrackerWorkspaceDirectory {
 	pub(crate) fn publish(
 		&mut self,
 		attestation: TrackerCredentialAttestation,
-	) -> Result<&TrackerWorkspaceEntry> {
+	) -> Result<TrackerWorkspacePublishOutcome> {
 		if self.quarantines.contains_key(&attestation.credential_ref) {
 			eyre::bail!("Tracker credential is quarantined and cannot publish a workspace.");
 		}
 		if let Some(existing) = self.credential_attestations.get(&attestation.credential_ref) {
 			if existing == &attestation {
-				return self.entry_for(&attestation);
+				return Ok(TrackerWorkspacePublishOutcome::Published(
+					self.entry_for(&attestation)?.clone(),
+				));
 			}
 
-			self.quarantine(
+			let quarantine = self.quarantine(
 				&attestation,
 				TrackerCredentialQuarantineReason::CredentialIdentityDrift,
 				existing.workspace_id.clone(),
 			);
-			eyre::bail!("Tracker credential immutable identity changed during introspection.");
+			return Ok(TrackerWorkspacePublishOutcome::Quarantined(quarantine));
 		}
 
 		let key = workspace_key(attestation.provider, &attestation.workspace_id);
@@ -124,12 +132,12 @@ impl TrackerWorkspaceDirectory {
 				|| existing.capability_fingerprint != attestation.capability_fingerprint)
 		{
 			let existing_workspace = existing.workspace_id.clone();
-			self.quarantine(
+			let quarantine = self.quarantine(
 				&attestation,
 				TrackerCredentialQuarantineReason::WorkspaceIdentityConflict,
 				existing_workspace,
 			);
-			eyre::bail!("Tracker credentials disagree on immutable workspace authority.");
+			return Ok(TrackerWorkspacePublishOutcome::Quarantined(quarantine));
 		}
 
 		self.credential_attestations
@@ -149,7 +157,7 @@ impl TrackerWorkspaceDirectory {
 			.checked_add(1)
 			.ok_or_else(|| eyre::eyre!("Workspace directory epoch overflow."))?;
 
-		Ok(entry)
+		Ok(TrackerWorkspacePublishOutcome::Published(entry.clone()))
 	}
 
 	fn entry_for(
@@ -166,19 +174,20 @@ impl TrackerWorkspaceDirectory {
 		attestation: &TrackerCredentialAttestation,
 		reason: TrackerCredentialQuarantineReason,
 		other_workspace_id: String,
-	) {
+	) -> TrackerCredentialQuarantine {
 		let mut candidate_workspace_ids =
 			vec![other_workspace_id, attestation.workspace_id.clone()];
 		candidate_workspace_ids.sort();
 		candidate_workspace_ids.dedup();
-		self.quarantines.insert(
-			attestation.credential_ref.clone(),
-			TrackerCredentialQuarantine {
-				credential_ref: attestation.credential_ref.clone(),
-				reason,
-				candidate_workspace_ids,
-			},
-		);
+		let quarantine = TrackerCredentialQuarantine {
+			credential_ref: attestation.credential_ref.clone(),
+			reason,
+			candidate_workspace_ids,
+		};
+		self.quarantines.insert(attestation.credential_ref.clone(), quarantine.clone());
+		self.epoch = self.epoch.checked_add(1).expect("workspace directory epoch");
+
+		quarantine
 	}
 }
 
@@ -228,15 +237,15 @@ mod tests {
 			.publish(attestation("credential-1", "account-1", "workspace-1", "capability-1"))
 			.expect("first credential");
 
-		let error = directory
+		let outcome = directory
 			.publish(attestation("credential-2", "account-conflict", "workspace-1", "capability-1"))
-			.expect_err("conflicting identity must reject");
+			.expect("conflict must become durable quarantine");
 
-		assert!(error.to_string().contains("disagree"));
+		assert!(matches!(outcome, super::TrackerWorkspacePublishOutcome::Quarantined(_)));
 		assert_eq!(
 			directory.quarantines["credential-2"].reason,
 			TrackerCredentialQuarantineReason::WorkspaceIdentityConflict
 		);
-		assert_eq!(directory.epoch, 1);
+		assert_eq!(directory.epoch, 2);
 	}
 }

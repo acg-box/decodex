@@ -10,6 +10,64 @@ use crate::{
 	runtime,
 };
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TrackerCredentialConfig {
+	pub(crate) credential_ref: String,
+	pub(crate) provider: String,
+	pub(crate) api_key_env_var: String,
+}
+
+/// Read host-level tracker credential references. Project contracts cannot supply these.
+pub(crate) fn tracker_credential_catalog() -> Result<Vec<TrackerCredentialConfig>> {
+	let config_path = runtime::global_config_path()?;
+	let input = match fs::read_to_string(&config_path) {
+		Ok(input) => input,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+		Err(error) =>
+			eyre::bail!("Failed to read Decodex global config `{}`: {error}", config_path.display()),
+	};
+	let document = toml::from_str::<toml::Table>(&input)?;
+	let Some(credentials) = document
+		.get("tracker")
+		.and_then(Value::as_table)
+		.and_then(|tracker| tracker.get("credentials"))
+		.and_then(Value::as_array)
+	else {
+		return Ok(Vec::new());
+	};
+	let mut catalog = Vec::with_capacity(credentials.len());
+	for credential in credentials {
+		let table = credential
+			.as_table()
+			.ok_or_else(|| eyre::eyre!("Each tracker credential must be a TOML table."))?;
+		let required = |field: &str| -> Result<String> {
+			table
+				.get(field)
+				.and_then(Value::as_str)
+				.map(str::trim)
+				.filter(|value| !value.is_empty())
+				.map(str::to_owned)
+				.ok_or_else(|| eyre::eyre!("Tracker credential `{field}` is required."))
+		};
+		let entry = TrackerCredentialConfig {
+			credential_ref: required("ref")?,
+			provider: required("provider")?,
+			api_key_env_var: required("api_key_env_var")?,
+		};
+		if entry.provider != "linear" {
+			eyre::bail!("Unsupported tracker credential provider `{}`.", entry.provider);
+		}
+		if catalog.iter().any(|existing: &TrackerCredentialConfig| {
+			existing.credential_ref == entry.credential_ref
+		}) {
+			eyre::bail!("Tracker credential refs must be globally unique.");
+		}
+		catalog.push(entry);
+	}
+
+	Ok(catalog)
+}
+
 /// Read the global fixed account selector, when the operator pinned one.
 pub(crate) fn global_fixed_account_selector() -> Result<Option<String>> {
 	let config_path = runtime::global_config_path()?;

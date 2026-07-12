@@ -1,17 +1,19 @@
 use crate::{
 	prelude::Result,
 	state::StateStore,
-	tracker::{TrackerCredentialAttestation, TrackerWorkspaceDirectory, TrackerWorkspaceEntry},
+	tracker::{
+		TrackerCredentialAttestation, TrackerWorkspaceDirectory, TrackerWorkspacePublishOutcome,
+	},
 };
 
 impl StateStore {
 	pub(crate) fn publish_tracker_credential_attestation(
 		&self,
 		attestation: TrackerCredentialAttestation,
-	) -> Result<TrackerWorkspaceEntry> {
+	) -> Result<TrackerWorkspacePublishOutcome> {
 		let mut inner = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 		let mut next = inner.tracker_workspace_directory.clone();
-		let entry = next.publish(attestation)?.clone();
+		let outcome = next.publish(attestation)?;
 
 		if let Some(sqlite) = &self.sqlite {
 			sqlite
@@ -21,7 +23,7 @@ impl StateStore {
 		}
 		inner.tracker_workspace_directory = next;
 
-		Ok(entry)
+		Ok(outcome)
 	}
 
 	pub(crate) fn tracker_workspace_directory(&self) -> TrackerWorkspaceDirectory {

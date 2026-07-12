@@ -1,6 +1,7 @@
 mod archive;
 mod blockers;
 mod comments;
+mod identity;
 mod pagination;
 mod post;
 

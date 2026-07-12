@@ -25,6 +25,7 @@ pub(crate) fn run_issue_batch_intake_command(
 	}
 
 	let state_store = runtime::open_runtime_store()?;
+	runtime::bootstrap_tracker_workspace_directory(&state_store)?;
 	let config_path = program_intake::resolve_intake_project_config_path(
 		request.config_path,
 		request.project_id,

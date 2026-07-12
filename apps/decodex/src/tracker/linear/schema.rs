@@ -2,6 +2,7 @@ mod graphql;
 mod issue;
 mod mutation;
 mod pagination;
+mod workspace;
 
 #[cfg(test)]
 pub(super) use self::issue::{
@@ -23,4 +24,5 @@ pub(super) use self::{
 		TeamLabelByNameData, TeamLabelByNameVariables,
 	},
 	pagination::PageInfo,
+	workspace::WorkspaceIdentityData,
 };
