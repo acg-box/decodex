@@ -20,6 +20,9 @@ impl StateStore {
 		branch_name: &str,
 		worktree_path: &str,
 	) -> Result<()> {
+		let lane_id = LaneId::new(project_id, issue_id)?;
+		#[cfg(test)]
+		let existing_lane = self.lane(&lane_id)?;
 		let binding = match self.registered_project_binding(project_id)? {
 			Some(binding) => binding,
 			None => {
@@ -32,13 +35,18 @@ impl StateStore {
 					"test-repository",
 					"team-test",
 					&format!("decodex:queued:{project_id}"),
-					&format!("test-binding:{project_id}"),
+					existing_lane
+						.as_ref()
+						.map_or_else(
+							|| format!("test-binding:{project_id}"),
+							|lane| lane.binding_fingerprint().to_owned(),
+						)
+						.as_str(),
 				)?
 			},
 		};
-		let lane_id = LaneId::new(project_id, issue_id)?;
 		#[cfg(test)]
-		if self.lane(&lane_id)?.is_none()
+		if existing_lane.is_none()
 			&& let Some(lease) = self.lease_for_issue(issue_id)?
 			&& lease.project_id() == project_id
 		{

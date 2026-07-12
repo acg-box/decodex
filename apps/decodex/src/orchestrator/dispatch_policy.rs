@@ -31,8 +31,13 @@ pub(crate) use closeout::{
 };
 pub(crate) use description::description_is_machine_only_fenced_block;
 
+use sha2::{Digest, Sha256};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
 use crate::{
-	lane_authority::{BindingAttestation, ProjectBinding},
+	lane_authority::{
+		BindingAttestation, IntakeAuthority, IntakeAuthorityKind, LaneCommand, ProjectBinding,
+	},
 	orchestrator::{
 		ErrorKind, GhPullRequestReviewStateInspector, GitCredentialSource, IssueDispatchMode,
 		IssueRunPlan, IssueTracker, Path, PathBuf, PullRequestReviewStateInspector, Result,
@@ -61,6 +66,67 @@ pub(crate) fn attest_issue_project_binding(
 ) -> Result<BindingAttestation> {
 	let binding = attest_project_binding(state_store, project)?;
 	BindingAttestation::new(&binding, &issue.id, &issue.team.id)
+}
+
+pub(crate) fn admit_normal_queue_lane(
+	state_store: &StateStore,
+	attestation: &BindingAttestation,
+	issue: &TrackerIssue,
+) -> Result<()> {
+	let lane_id = attestation.lane_id().clone();
+	if let Some(lane) = state_store.lane(&lane_id)? {
+		if lane.intake_authority_id().is_some() {
+			return Ok(());
+		}
+	}
+
+	let mut digest = Sha256::new();
+	for value in [
+		lane_id.project_key(),
+		lane_id.tracker_issue_id(),
+		&issue.team.id,
+		&issue.updated_at,
+		attestation.routing_label(),
+		attestation.binding_fingerprint(),
+	] {
+		digest.update((value.len() as u64).to_be_bytes());
+		digest.update(value.as_bytes());
+	}
+	let snapshot_fingerprint =
+		digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+	let program_id =
+		format!("normal-queue-{}-{}", lane_id.project_key(), &snapshot_fingerprint[..16]);
+	let authority = if let Some(existing) =
+		state_store.intake_authority_for_program(lane_id.project_key(), &program_id)?
+	{
+		existing
+	} else {
+		let now = OffsetDateTime::now_utc();
+		let accepted_at = now.format(&Rfc3339)?;
+		IntakeAuthority::new(
+			&format!("intake-authority-{program_id}"),
+			lane_id.project_key(),
+			attestation.project().clone(),
+			&format!("plan-{program_id}"),
+			&program_id,
+			"decodex_runtime",
+			"normal_queue_label",
+			&format!("normal-queue:{}", lane_id.tracker_issue_id()),
+			&accepted_at,
+			now.unix_timestamp(),
+			IntakeAuthorityKind::IssueBatch {
+				accepted_intake_id: format!("normal-queue:{}", lane_id.tracker_issue_id()),
+				batch_fingerprint: snapshot_fingerprint,
+			},
+		)?
+	};
+	let authority = state_store.persist_intake_authority(authority)?;
+	state_store.apply_lane_command(
+		lane_id,
+		attestation.binding_fingerprint(),
+		LaneCommand::Admit { intake_authority_id: authority.authority_id().to_owned() },
+	)?;
+	Ok(())
 }
 
 pub(crate) fn attest_project_binding(

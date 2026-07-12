@@ -162,11 +162,18 @@ where
 		return Ok(None);
 	}
 
-	let _binding_attestation = crate::orchestrator::dispatch_policy::attest_issue_project_binding(
+	let binding_attestation = crate::orchestrator::dispatch_policy::attest_issue_project_binding(
 		context.state_store,
 		context.project,
 		&issue,
 	)?;
+	if !context.dry_run && context.dispatch_mode == IssueDispatchMode::Normal {
+		crate::orchestrator::dispatch_policy::admit_normal_queue_lane(
+			context.state_store,
+			&binding_attestation,
+			&issue,
+		)?;
+	}
 
 	let reuses_existing_closeout_claim =
 		closeout::target_issue_reuses_existing_closeout_claim(context, &issue_id, &issue)?;

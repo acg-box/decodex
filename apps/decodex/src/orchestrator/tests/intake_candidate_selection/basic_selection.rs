@@ -81,6 +81,39 @@ fn pub_1711_repo_binding_drift_rejects_before_lane_side_effects() {
 }
 
 #[test]
+fn normal_queue_planning_seals_typed_intake_authority_into_lane() {
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store");
+	let issue = tests::sample_issue("Todo", &[]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	let plan = orchestrator::plan_project_issue_run_with_exclusions(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		false,
+		&[],
+	)
+	.expect("planning")
+	.expect("planned run");
+	let lane_id =
+		crate::lane_authority::LaneId::new(config.service_id(), &issue.id).expect("lane id");
+	let lane = state_store.lane(&lane_id).expect("lane read").expect("lane");
+	let authority_id = lane.intake_authority_id().expect("sealed authority");
+	let authority = state_store
+		.intake_authority(config.service_id(), authority_id)
+		.expect("authority read")
+		.expect("authority");
+	assert!(matches!(
+		authority.authority(),
+		crate::lane_authority::IntakeAuthorityKind::IssueBatch { .. }
+	));
+	assert_eq!(lane.claim_run_id(), Some(plan.run_id.as_str()));
+	state_store.clear_lease(&issue.id).expect("cleanup lease");
+}
+
+#[test]
 fn blocks_ordinary_dispatch_for_retained_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

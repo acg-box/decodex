@@ -106,8 +106,15 @@ where
 		return Ok(replanned);
 	}
 
-	let _binding_attestation =
+	let binding_attestation =
 		orchestrator::dispatch_policy::attest_issue_project_binding(state_store, project, &issue)?;
+	if !dry_run && dispatch_mode == IssueDispatchMode::Normal {
+		orchestrator::dispatch_policy::admit_normal_queue_lane(
+			state_store,
+			&binding_attestation,
+			&issue,
+		)?;
+	}
 
 	if orchestrator::ensure_clean_baseline_before_dispatch(
 		project,

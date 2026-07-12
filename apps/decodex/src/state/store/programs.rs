@@ -95,6 +95,40 @@ impl StateStore {
 			.cloned())
 	}
 
+	#[cfg(test)]
+	pub(crate) fn intake_authority(
+		&self,
+		project_id: &str,
+		authority_id: &str,
+	) -> Result<Option<IntakeAuthority>> {
+		let state = self.lock()?;
+		Ok(state.intake_authorities.get(&(project_id.to_owned(), authority_id.to_owned())).cloned())
+	}
+
+	pub(crate) fn persist_intake_authority(
+		&self,
+		authority: IntakeAuthority,
+	) -> Result<IntakeAuthority> {
+		authority.validate()?;
+		let key = (authority.project_key().to_owned(), authority.authority_id().to_owned());
+		let mut state = self.lock_without_refresh()?;
+		if let Some(existing) = state.intake_authorities.get(&key) {
+			if existing != &authority {
+				color_eyre::eyre::bail!("Immutable Intake Authority cannot be replaced.");
+			}
+			return Ok(existing.clone());
+		}
+		if state.intake_authorities.values().any(|existing| {
+			existing.project_key() == authority.project_key()
+				&& existing.program_id() == authority.program_id()
+		}) {
+			color_eyre::eyre::bail!("Program identity already has a different Intake Authority.");
+		}
+		state.intake_authorities.insert(key, authority.clone());
+		self.persist_runtime_state_locked(&state)?;
+		Ok(authority)
+	}
+
 	/// Delete one superseded private Execution Program and its derived intake state.
 	pub(crate) fn delete_execution_program(
 		&self,
