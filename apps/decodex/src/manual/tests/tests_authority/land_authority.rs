@@ -59,7 +59,6 @@ fn manual_land_manual_authority_without_config_prepares_unregistered_context() {
 		authority: None,
 		manual_authority: true,
 		pr_url: Some(String::from("https://github.com/hack-ink/decodex/pull/64")),
-		related: Vec::new(),
 		breaking: false,
 	};
 	let context = manual::prepare_unregistered_manual_land_context(
@@ -102,7 +101,6 @@ fn manual_land_manual_authority_with_config_does_not_refresh_project_registry() 
 		authority: None,
 		manual_authority: true,
 		pr_url: Some(String::from("https://github.com/hack-ink/decodex/pull/64")),
-		related: Vec::new(),
 		breaking: false,
 	};
 

@@ -1,10 +1,10 @@
 use clap::Parser;
 
-use crate::cli::{Cli, Command, manual_commands::CommitCommand};
+use crate::cli::Cli;
 
 #[test]
-fn parses_commit_with_authority_related_and_breaking() {
-	let cli = Cli::parse_from([
+fn rejects_commit_related_before_execution() {
+	let error = Cli::try_parse_from([
 		"decodex",
 		"commit",
 		"redesign decodex cli",
@@ -12,18 +12,9 @@ fn parses_commit_with_authority_related_and_breaking() {
 		"XY-225",
 		"--related",
 		"XY-201",
-		"--related",
-		"XY-202",
 		"--breaking",
-	]);
+	])
+	.expect_err("commit-local authority must reject related issues");
 
-	assert!(matches!(
-		cli.command,
-		Command::Commit(CommitCommand {
-			authority: Some(_),
-			manual_authority: false,
-			breaking: true,
-			..
-		})
-	));
+	assert!(error.to_string().contains("unexpected argument '--related'"));
 }

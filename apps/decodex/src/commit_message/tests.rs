@@ -1,9 +1,9 @@
 use crate::commit_message::{self};
 
 #[test]
-fn build_commit_message_omits_empty_related_and_false_breaking() {
+fn build_commit_message_uses_compatible_impact_by_default() {
 	let message =
-		commit_message::build_commit_message("tighten workflow defaults", "XY-225", &[], false)
+		commit_message::build_commit_message("tighten workflow defaults", "XY-225", false)
 			.expect("commit message should build");
 
 	assert_eq!(
@@ -13,37 +13,21 @@ fn build_commit_message_omits_empty_related_and_false_breaking() {
 }
 
 #[test]
-fn build_commit_message_rejects_related_issues() {
-	let message = commit_message::build_commit_message(
-		"tighten workflow defaults",
-		"XY-225",
-		&[String::from("XY-12"), String::from("XY-99")],
-		true,
-	)
-	.expect_err("related issues should be outside commit/2");
-
-	assert!(message.to_string().contains("does not accept related"));
-}
-
-#[test]
 fn build_landing_commit_message_normalizes_land_prefix() {
-	for (summary, related, breaking, expected) in [
+	for (summary, breaking, expected) in [
 		(
 			"tighten workflow defaults",
-			Vec::new(),
 			true,
 			r#"{"schema":"decodex/commit/2","change":"Land tighten workflow defaults","authority":"XY-225","impact":"breaking"}"#,
 		),
 		(
 			"Land tighten workflow defaults",
-			Vec::new(),
 			false,
 			r#"{"schema":"decodex/commit/2","change":"Land tighten workflow defaults","authority":"XY-225","impact":"compatible"}"#,
 		),
 	] {
-		let message =
-			commit_message::build_landing_commit_message(summary, "XY-225", &related, breaking)
-				.expect("landing commit message should build");
+		let message = commit_message::build_landing_commit_message(summary, "XY-225", breaking)
+			.expect("landing commit message should build");
 
 		assert_eq!(message, expected);
 	}
@@ -51,7 +35,7 @@ fn build_landing_commit_message_normalizes_land_prefix() {
 
 #[test]
 fn build_commit_message_rejects_multiline_summary() {
-	let error = commit_message::build_commit_message("one\ntwo", "XY-225", &[], false)
+	let error = commit_message::build_commit_message("one\ntwo", "XY-225", false)
 		.expect_err("multiline summary should fail");
 
 	assert!(error.to_string().contains("must stay on one line"));
@@ -60,7 +44,7 @@ fn build_commit_message_rejects_multiline_summary() {
 #[test]
 fn build_commit_message_accepts_manual_authority() {
 	let message =
-		commit_message::build_commit_message("ship hotfix outside tracker", "manual", &[], false)
+		commit_message::build_commit_message("ship hotfix outside tracker", "manual", false)
 			.expect("manual authority should build");
 
 	assert_eq!(
@@ -71,13 +55,9 @@ fn build_commit_message_accepts_manual_authority() {
 
 #[test]
 fn build_commit_message_accepts_baseline_authority() {
-	let message = commit_message::build_commit_message(
-		"normalize repo gate baseline",
-		"baseline",
-		&[],
-		false,
-	)
-	.expect("baseline authority should build");
+	let message =
+		commit_message::build_commit_message("normalize repo gate baseline", "baseline", false)
+			.expect("baseline authority should build");
 
 	assert_eq!(
 		message,

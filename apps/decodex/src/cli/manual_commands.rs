@@ -21,9 +21,6 @@ pub(super) struct CommitCommand {
 	/// Use reserved authority `manual` instead of a Linear issue.
 	#[arg(long, conflicts_with = "authority")]
 	pub(super) manual_authority: bool,
-	/// Additional related issues for the commit message.
-	#[arg(long, value_name = "ISSUE")]
-	pub(super) related: Vec<String>,
 	/// Mark the change as breaking.
 	#[arg(long)]
 	pub(super) breaking: bool,
@@ -36,7 +33,6 @@ impl CommitCommand {
 				summary: self.summary.clone(),
 				authority: self.authority.clone(),
 				manual_authority: self.manual_authority,
-				related: self.related.clone(),
 				breaking: self.breaking,
 			},
 		)
@@ -61,9 +57,6 @@ pub(super) struct LandCommand {
 	/// current review lifecycle record.
 	#[arg(long, value_name = "URL")]
 	pub(super) pr: Option<String>,
-	/// Additional related issues for the landed change record.
-	#[arg(long, value_name = "ISSUE")]
-	pub(super) related: Vec<String>,
 	/// Mark the landed change record as breaking.
 	#[arg(long)]
 	pub(super) breaking: bool,
@@ -77,7 +70,6 @@ impl LandCommand {
 				authority: self.authority.clone(),
 				manual_authority: self.manual_authority,
 				pr_url: self.pr.clone(),
-				related: self.related.clone(),
 				breaking: self.breaking,
 			},
 		)

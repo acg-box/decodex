@@ -45,7 +45,6 @@ fn manual_land_manual_authority_recovery_entrypoint_accepts_merged_pr() {
 		authority: None,
 		manual_authority: true,
 		pr_url: Some(context.pr_url.clone()),
-		related: Vec::new(),
 		breaking: false,
 	};
 	let outcome = manual::finalize_already_merged_manual_land_recovery(&context, &request)

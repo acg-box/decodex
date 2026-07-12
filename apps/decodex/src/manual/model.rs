@@ -28,7 +28,6 @@ pub(crate) struct ManualCommitRequest {
 	pub(crate) summary: String,
 	pub(crate) authority: Option<String>,
 	pub(crate) manual_authority: bool,
-	pub(crate) related: Vec<String>,
 	pub(crate) breaking: bool,
 }
 
@@ -38,7 +37,6 @@ pub(crate) struct ManualLandRequest {
 	pub(crate) authority: Option<String>,
 	pub(crate) manual_authority: bool,
 	pub(crate) pr_url: Option<String>,
-	pub(crate) related: Vec<String>,
 	pub(crate) breaking: bool,
 }
 

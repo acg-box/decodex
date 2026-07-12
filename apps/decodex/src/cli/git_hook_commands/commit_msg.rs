@@ -31,7 +31,7 @@ pub(in crate::cli::git_hook_commands) fn validate_subject(subject: &str) -> Resu
 	commit_message::validate_commit_message_subject(subject).map_err(|error| {
 		eyre::eyre!(
 			"Invalid Decodex commit message subject: {error}\nexpected a single-line JSON subject such as `{}`.",
-			commit_message::build_commit_message("describe the change", "manual", &[], false)
+			commit_message::build_commit_message("describe the change", "manual", false)
 				.expect("static example should build")
 		)
 	})

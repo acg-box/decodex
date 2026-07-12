@@ -3,19 +3,14 @@ use crate::{
 		model::{COMMIT_MESSAGE_SCHEMA, CommitMessage},
 		normalize, parse,
 	},
-	prelude::{Result, eyre},
+	prelude::Result,
 };
 
 pub(crate) fn build_commit_message(
 	summary: &str,
 	authority: &str,
-	related: &[String],
 	breaking: bool,
 ) -> Result<String> {
-	if !related.is_empty() {
-		eyre::bail!("`decodex/commit/2` is commit-local and does not accept related issues");
-	}
-
 	let summary = normalize::normalize_single_line_field("summary", summary)?;
 	let authority = normalize::normalize_commit_authority("authority", authority)?;
 	let impact = commit_impact(breaking);
@@ -32,13 +27,12 @@ pub(crate) fn build_commit_message(
 pub(crate) fn build_landing_commit_message(
 	summary: &str,
 	authority: &str,
-	related: &[String],
 	breaking: bool,
 ) -> Result<String> {
 	let summary = normalize::normalize_single_line_field("summary", summary)?;
 	let landed_summary = landing_summary(&summary);
 
-	build_commit_message(&landed_summary, authority, related, breaking)
+	build_commit_message(&landed_summary, authority, breaking)
 }
 
 pub(crate) fn build_landed_merge_commit_message(
@@ -51,7 +45,7 @@ pub(crate) fn build_landed_merge_commit_message(
 		normalize::normalize_commit_authority("expected_authority", expected_authority)?;
 	let breaking = record.impact == "breaking";
 
-	build_commit_message(&landed_summary, &authority, &[], breaking)
+	build_commit_message(&landed_summary, &authority, breaking)
 }
 
 pub(crate) fn validate_commit_message_subject(message: &str) -> Result<()> {

@@ -30,7 +30,6 @@ pub(crate) fn run_commit(config_path: Option<&Path>, request: &ManualCommitReque
 	let message = commit_message::build_commit_message(
 		&request.summary,
 		authority.commit_message_value(),
-		&request.related,
 		request.breaking,
 	)?;
 
@@ -110,7 +109,6 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 	let landed_change_record = commit_message::build_landing_commit_message(
 		&request.summary,
 		context.authority.commit_message_value(),
-		&request.related,
 		request.breaking,
 	)?;
 	let merge_commit = landing::execute_land_merge(

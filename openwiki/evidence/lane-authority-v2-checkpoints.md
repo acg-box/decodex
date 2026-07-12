@@ -985,6 +985,14 @@ process-level fixture proving that retry returns the existing comment instead of
 It is intentionally not yet wired to a superseded-closeout writer because C4 typed
 supersession does not exist; the adapter remains staged and cannot be used as authority.
 
+The manual commit/land CLI no longer advertises or accepts `--related`. The commit/2
+record is intentionally commit-local, so manual requests and commit-message builders no
+longer carry a field that the runtime must reject later. A Clap parser fixture proves
+that `--related` fails before repository or provider access. Focused evidence: 10
+commit-message tests, 14 core CLI tests, 41 manual-command tests, and
+`cargo check -p decodex --all-targets` pass. This satisfies only the parser half of C6;
+the no-effective-delta outcome FSM and its bounded retry evidence remain incomplete.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
