@@ -58,6 +58,7 @@ pub struct StateStore {
 	pub(super) inner: Mutex<StateData>,
 	pub(super) sqlite: Option<Mutex<SqliteStateStore>>,
 	pub(super) invocation_identity: Option<crate::lane_authority::InvocationIdentity>,
+	pub(super) authority_anchor: Option<Mutex<crate::lane_authority::protected_head::AuthorityAnchor>>,
 }
 impl Default for StateStore {
 	fn default() -> Self {
@@ -65,6 +66,7 @@ impl Default for StateStore {
 			inner: Mutex::new(StateData::default()),
 			sqlite: None,
 			invocation_identity: None,
+			authority_anchor: None,
 		}
 	}
 }
@@ -78,6 +80,7 @@ impl StateStore {
 			inner: Mutex::new(state),
 			sqlite: Some(Mutex::new(sqlite)),
 			invocation_identity: None,
+			authority_anchor: None,
 		})
 	}
 
@@ -99,6 +102,7 @@ impl StateStore {
 			inner: Mutex::new(StateData::default()),
 			sqlite: Some(Mutex::new(sqlite)),
 			invocation_identity: None,
+			authority_anchor: None,
 		})
 	}
 

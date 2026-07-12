@@ -6,6 +6,12 @@ use crate::{
 	state::sqlite_store::{SqliteStateStore, mutations::params},
 };
 
+pub(in crate::state) struct AuthorityChainSnapshot {
+	pub(in crate::state) generation: u64,
+	pub(in crate::state) genesis_hash: Vec<u8>,
+	pub(in crate::state) events: Vec<AuthorityEvent>,
+}
+
 impl SqliteStateStore {
 	pub(in crate::state) fn initialize_authority_generation(
 		&self,
@@ -46,6 +52,10 @@ impl SqliteStateStore {
 	}
 
 	pub(in crate::state) fn verify_authority_events(&self) -> Result<Vec<AuthorityEvent>> {
+		Ok(self.authority_chain_snapshot()?.events)
+	}
+
+	pub(in crate::state) fn authority_chain_snapshot(&self) -> Result<AuthorityChainSnapshot> {
 		let (generation, head_sequence, genesis_hash, head_hash) = self.connection.query_row(
 			"SELECT generation, sequence, genesis_hash, event_hash
 			 FROM authority_event_chain_head WHERE singleton = 1",
@@ -106,7 +116,7 @@ impl SqliteStateStore {
 		{
 			eyre::bail!("Authority event chain head does not match persisted events.");
 		}
-		Ok(events)
+		Ok(AuthorityChainSnapshot { generation: u64::try_from(generation)?, genesis_hash, events })
 	}
 }
 

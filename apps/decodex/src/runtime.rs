@@ -40,10 +40,12 @@ pub(crate) fn open_runtime_store_for_origin(origin: InvocationOrigin) -> Result<
 	let root = decodex_home_dir()?;
 	let generation = generation::selected_runtime_generation_from(&root)?;
 	let invocation = authority_broker::local_process_invocation_identity(origin, generation)?;
-	StateStore::open_with_invocation(
+	let mut store = StateStore::open_with_invocation(
 		generation::selected_runtime_db_path_from(&root)?,
 		invocation,
-	)
+	)?;
+	store.attach_authority_anchor(&root)?;
+	Ok(store)
 }
 
 /// Open the global runtime database without preloading all durable rows.
@@ -55,10 +57,12 @@ pub(crate) fn open_runtime_store_lazy_for_origin(origin: InvocationOrigin) -> Re
 	let root = decodex_home_dir()?;
 	let generation = generation::selected_runtime_generation_from(&root)?;
 	let invocation = authority_broker::local_process_invocation_identity(origin, generation)?;
-	StateStore::open_lazy_with_invocation(
+	let mut store = StateStore::open_lazy_with_invocation(
 		generation::selected_runtime_db_path_from(&root)?,
 		invocation,
-	)
+	)?;
+	store.attach_authority_anchor(&root)?;
+	Ok(store)
 }
 
 pub(crate) fn initialize_fresh_runtime_generation(generation: u64) -> Result<PathBuf> {

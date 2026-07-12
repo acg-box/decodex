@@ -1,8 +1,16 @@
+use std::{path::Path, sync::Mutex};
+
 use crate::{
 	lane_authority::{AuthorityEvent, AuthorityEventDraft},
 	prelude::{Result, eyre},
 	state::StateStore,
 };
+
+pub(crate) struct AuthorityChainSnapshot {
+	pub(crate) generation: u64,
+	pub(crate) genesis_hash: Vec<u8>,
+	pub(crate) events: Vec<AuthorityEvent>,
+}
 
 impl StateStore {
 	pub fn initialize_authority_generation(
@@ -34,6 +42,57 @@ impl StateStore {
 			.lock()
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
 			.verify_authority_events()
+	}
+
+	pub(crate) fn authority_chain_snapshot(&self) -> Result<AuthorityChainSnapshot> {
+		let snapshot = self
+			.sqlite
+			.as_ref()
+			.ok_or_else(|| eyre::eyre!("Authority events require a persistent StateStore."))?
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
+			.authority_chain_snapshot()?;
+		Ok(AuthorityChainSnapshot {
+			generation: snapshot.generation,
+			genesis_hash: snapshot.genesis_hash,
+			events: snapshot.events,
+		})
+	}
+
+	pub(crate) fn attach_authority_anchor(&mut self, runtime_root: &Path) -> Result<()> {
+		if self.authority_anchor.is_some() {
+			eyre::bail!("authority_anchor_already_attached");
+		}
+		let snapshot = self.authority_chain_snapshot()?;
+		#[cfg(not(test))]
+		let anchor = crate::lane_authority::protected_head::AuthorityAnchor::open(
+			runtime_root,
+			snapshot.generation,
+			&snapshot.genesis_hash,
+			&snapshot.events,
+		)?;
+		#[cfg(test)]
+		let anchor = crate::lane_authority::protected_head::AuthorityAnchor::open_for_test(
+			runtime_root,
+			snapshot.generation,
+			&snapshot.genesis_hash,
+			&snapshot.events,
+		)?;
+		self.authority_anchor = Some(Mutex::new(anchor));
+		Ok(())
+	}
+
+	pub(crate) fn advance_authority_anchor(&self) -> Result<()> {
+		let Some(anchor) = &self.authority_anchor else {
+			return Ok(());
+		};
+		let snapshot = self.authority_chain_snapshot()?;
+		anchor.lock().map_err(|_| eyre::eyre!("authority_anchor_mutex_poisoned"))?.reconcile(
+			snapshot.generation,
+			&snapshot.genesis_hash,
+			&snapshot.events,
+		)?;
+		Ok(())
 	}
 }
 

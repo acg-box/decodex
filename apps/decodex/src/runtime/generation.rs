@@ -139,9 +139,24 @@ fn initialize_fresh_runtime_generation_locked(
 	let prepare = (|| -> Result<()> {
 		let store = StateStore::open(&database)?;
 		store.initialize_authority_generation(generation, genesis_hash)?;
-		if !store.verify_authority_events()?.is_empty() {
+		let events = store.verify_authority_events()?;
+		if !events.is_empty() {
 			eyre::bail!("fresh_runtime_authority_chain_not_empty");
 		}
+		#[cfg(not(test))]
+		crate::lane_authority::protected_head::AuthorityAnchor::initialize(
+			runtime_root,
+			generation,
+			genesis_hash,
+			&events,
+		)?;
+		#[cfg(test)]
+		crate::lane_authority::protected_head::AuthorityAnchor::initialize_for_test(
+			runtime_root,
+			generation,
+			genesis_hash,
+			&events,
+		)?;
 		drop(store);
 		OpenOptions::new().read(true).open(&database)?.sync_all()?;
 		OpenOptions::new().read(true).open(&generation_root)?.sync_all()?;

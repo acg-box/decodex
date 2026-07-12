@@ -42,6 +42,11 @@ tracing            = { workspace = true }
 tracing-appender   = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# HostAuthorityKey seed material is stored only in the macOS data-protection keychain.
+security-framework = { version = "3.7", features = ["OSX_10_15"] }
+security-framework-sys = { version = "2.17" }
+
 [dev-dependencies]
 # crates.io
 tempfile = { workspace = true }

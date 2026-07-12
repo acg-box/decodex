@@ -8,7 +8,7 @@ mod invocation;
 mod kernel;
 mod no_effective_delta;
 mod patch_set;
-#[cfg_attr(not(test), allow(dead_code))]
+#[allow(dead_code)]
 pub(crate) mod protected_head;
 mod supersession;
 

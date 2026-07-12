@@ -87,6 +87,7 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("State lock poisoned."))?
 			.lanes
 			.insert(id, next.clone());
+		self.advance_authority_anchor()?;
 		Ok(next)
 	}
 
@@ -171,11 +172,13 @@ impl StateStore {
 					authority_event,
 				) {
 					Ok(next) => {
+						drop(sqlite);
 						self.inner
 							.lock()
 							.map_err(|_| eyre::eyre!("State lock poisoned."))?
 							.lanes
 							.insert(id, next.clone());
+						self.advance_authority_anchor()?;
 						return Ok(next);
 					},
 					Err(error) if error.to_string().contains("EpochMismatch") => continue,
@@ -375,12 +378,17 @@ mod tests {
 		let database = temp_dir.path().join("state.sqlite");
 		let store = StateStore::open(&database).expect("prepare store");
 		store.initialize_authority_generation(1, &[7_u8; 32]).expect("generation");
+		crate::lane_authority::protected_head::AuthorityAnchor::initialize_for_test(
+			temp_dir.path(), 1, &[7_u8; 32], &[],
+		)
+		.expect("anchor");
 		drop(store);
-		let store = StateStore::open_with_invocation(
+		let mut store = StateStore::open_with_invocation(
 			&database,
 			crate::authority_broker::test_invocation_identity(),
 		)
 		.expect("store");
+		store.attach_authority_anchor(temp_dir.path()).expect("attach anchor");
 		let id = LaneId::new("pubfi", "PUB-1711").expect("lane");
 		store
 			.apply_lane_command(
@@ -395,6 +403,11 @@ mod tests {
 		assert_eq!(events[0].draft.tracker_issue_id.as_deref(), Some("PUB-1711"));
 		assert_eq!(events[0].draft.event_type, AuthorityEventType::TransitionCommitted);
 		assert_eq!(events[0].draft.decision, AuthorityDecision::Committed);
+		assert_eq!(
+			crate::lane_authority::protected_head::protected_head_sequence_for_test(temp_dir.path())
+				.expect("protected head"),
+			1
+		);
 	}
 
 	fn authority_context(event_id: &str) -> AuthorityTransitionContext {
