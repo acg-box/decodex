@@ -92,7 +92,7 @@ fn lane_effect_journal_survives_restart_and_revalidates_lane_epoch() {
 }
 
 #[test]
-fn no_effective_delta_recovery_survives_restart_and_replays_exactly_once() {
+fn lane_authority_v2_c6_adj_04() {
 	let temp_dir = TempDir::new().expect("tempdir");
 	let path = temp_dir.path().join("state.sqlite");
 	let store = StateStore::open(&path).expect("store");

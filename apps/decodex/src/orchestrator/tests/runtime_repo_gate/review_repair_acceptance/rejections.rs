@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[test]
-fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
+fn lane_authority_v2_c6_adj_01() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let issue = tests::sample_issue(
 		"In Progress",

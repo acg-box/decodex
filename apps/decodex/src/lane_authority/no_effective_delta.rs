@@ -5,6 +5,65 @@ use super::LaneId;
 use crate::prelude::{Result, eyre};
 
 pub const NO_EFFECTIVE_DELTA_RECOVERY_SCHEMA: &str = "decodex/no-effective-delta-recovery/1";
+pub const INDEPENDENT_VALIDATION_RECEIPT_SCHEMA: &str =
+	"decodex/independent-validation-receipt/1";
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct IndependentValidationReceipt {
+	schema: String,
+	receipt_id: String,
+	validator_invocation_fingerprint: String,
+	admitted_base_oid: String,
+	acceptance_criteria_digest: String,
+	validation_results_digest: String,
+	issue_mutation_required: bool,
+}
+impl IndependentValidationReceipt {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new(
+		receipt_id: &str,
+		validator_invocation_fingerprint: &str,
+		admitted_base_oid: &str,
+		acceptance_criteria_digest: &str,
+		validation_results_digest: &str,
+		issue_mutation_required: bool,
+	) -> Result<Self> {
+		let receipt = Self {
+			schema: String::from(INDEPENDENT_VALIDATION_RECEIPT_SCHEMA),
+			receipt_id: receipt_id.to_owned(),
+			validator_invocation_fingerprint: validator_invocation_fingerprint.to_owned(),
+			admitted_base_oid: admitted_base_oid.to_ascii_lowercase(),
+			acceptance_criteria_digest: acceptance_criteria_digest.to_owned(),
+			validation_results_digest: validation_results_digest.to_owned(),
+			issue_mutation_required,
+		};
+		receipt.validate()?;
+		Ok(receipt)
+	}
+
+	pub fn receipt_id(&self) -> &str {
+		&self.receipt_id
+	}
+
+	pub fn acceptance_criteria_digest(&self) -> &str {
+		&self.acceptance_criteria_digest
+	}
+
+	fn validate(&self) -> Result<()> {
+		if self.schema != INDEPENDENT_VALIDATION_RECEIPT_SCHEMA
+			|| self.receipt_id.trim().is_empty()
+			|| self.validator_invocation_fingerprint.trim().is_empty()
+			|| self.admitted_base_oid.len() != 40
+			|| !self.admitted_base_oid.bytes().all(|byte| byte.is_ascii_hexdigit())
+			|| self.acceptance_criteria_digest.trim().is_empty()
+			|| self.validation_results_digest.trim().is_empty()
+			|| self.issue_mutation_required
+		{
+			eyre::bail!("Independent validation receipt is invalid.");
+		}
+		Ok(())
+	}
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -159,8 +218,7 @@ pub enum NoEffectiveDeltaCommand {
 		facts: NoEffectiveDeltaFacts,
 	},
 	ProveAlreadySatisfied {
-		independent_validator_receipt: String,
-		acceptance_criteria_digest: String,
+		receipt: IndependentValidationReceipt,
 	},
 }
 
@@ -184,17 +242,15 @@ pub fn decide_no_effective_delta(
 ) -> Result<NoEffectiveDeltaDecision, NoEffectiveDeltaRejection> {
 	match command {
 		NoEffectiveDeltaCommand::ProveAlreadySatisfied {
-			independent_validator_receipt,
-			acceptance_criteria_digest,
+			receipt,
 		} => {
 			if current.is_some()
-				|| independent_validator_receipt.trim().is_empty()
-				|| acceptance_criteria_digest.trim().is_empty()
+				|| receipt.validate().is_err()
 			{
 				return Err(NoEffectiveDeltaRejection::InvalidEvidence);
 			}
 			Ok(NoEffectiveDeltaDecision::AlreadySatisfied {
-				validator_receipt: independent_validator_receipt,
+				validator_receipt: receipt.receipt_id,
 			})
 		},
 		NoEffectiveDeltaCommand::Observe { operation_id, lane_id, attempt_number, facts } => {
@@ -401,18 +457,35 @@ mod tests {
 	}
 
 	#[test]
-	fn already_satisfied_requires_independent_evidence_before_recovery() {
+	fn lane_authority_v2_c6_adj_03() {
+		let receipt = IndependentValidationReceipt::new(
+			"validator-receipt",
+			"invocation-fingerprint",
+			"0123456789abcdef0123456789abcdef01234567",
+			"acceptance",
+			"validation-results",
+			false,
+		)
+		.expect("receipt");
 		assert_eq!(
 			decide_no_effective_delta(
 				None,
-				NoEffectiveDeltaCommand::ProveAlreadySatisfied {
-					independent_validator_receipt: String::from("validator-receipt"),
-					acceptance_criteria_digest: String::from("acceptance"),
-				},
+				NoEffectiveDeltaCommand::ProveAlreadySatisfied { receipt },
 			),
 			Ok(NoEffectiveDeltaDecision::AlreadySatisfied {
 				validator_receipt: String::from("validator-receipt")
 			})
+		);
+		assert!(
+			IndependentValidationReceipt::new(
+				"validator-receipt",
+				"invocation-fingerprint",
+				"0123456789abcdef0123456789abcdef01234567",
+				"acceptance",
+				"validation-results",
+				true,
+			)
+			.is_err()
 		);
 	}
 }

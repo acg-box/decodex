@@ -3,7 +3,7 @@ use clap::Parser;
 use crate::cli::Cli;
 
 #[test]
-fn rejects_land_related_before_execution() {
+fn lane_authority_v2_c6_adj_02() {
 	let error = Cli::try_parse_from([
 		"decodex",
 		"land",

@@ -27,7 +27,8 @@ pub use kernel::{
 	LaneAggregate, LaneClaim, LaneCommand, LanePhase, LaneTransitionRejection, transition,
 };
 pub use no_effective_delta::{
-	NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,
+	IndependentValidationReceipt, NoEffectiveDeltaCommand, NoEffectiveDeltaDecision,
+	NoEffectiveDeltaFacts,
 	NoEffectiveDeltaRecovery, NoEffectiveDeltaRecoveryState, NoEffectiveDeltaRejection,
 	decide_no_effective_delta,
 };
