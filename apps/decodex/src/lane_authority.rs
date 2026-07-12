@@ -4,11 +4,12 @@ mod effect;
 mod intake;
 mod kernel;
 mod no_effective_delta;
+mod patch_set;
 mod supersession;
 
 pub use effect::{
-	EffectAuthority, EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect, LaneEffectKind,
-	LaneEffectRejection, apply_effect_command,
+	EffectAuthority, EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect,
+	LaneEffectKind, LaneEffectRejection, apply_effect_command,
 };
 pub use intake::{IntakeAuthority, IntakeAuthorityKind};
 pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
@@ -16,12 +17,12 @@ pub use no_effective_delta::{
 	NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,
 	NoEffectiveDeltaRecovery, NoEffectiveDeltaRejection, decide_no_effective_delta,
 };
+pub use patch_set::{CanonicalPatchSet, PatchSetBuildError, build_canonical_patch_set};
 pub use supersession::{
 	CloseoutEffectPlanItem, PatchDisposition, RepairHandoffAuthority, RepairHandoffState,
-	SupersessionAcceptance, SupersessionEdge,
 	SupersededCloseoutCommand, SupersededCloseoutOperation, SupersededCloseoutRejection,
-	SupersededCloseoutStage, SupersessionRejection, accept_supersession,
-	transition_superseded_closeout,
+	SupersededCloseoutStage, SupersessionAcceptance, SupersessionEdge, SupersessionRejection,
+	accept_supersession, transition_superseded_closeout,
 };
 
 use crate::prelude::{Result, eyre};

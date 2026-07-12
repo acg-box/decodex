@@ -25,6 +25,7 @@ base64             = { workspace = true }
 clap               = { workspace = true }
 color-eyre         = { workspace = true }
 globset            = { workspace = true }
+gix                = { workspace = true }
 libc               = { workspace = true }
 reqwest            = { workspace = true }
 rusqlite           = { workspace = true }

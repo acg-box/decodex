@@ -1115,6 +1115,15 @@ tests and all-target checking pass. The fixture's PatchSet disposition remains s
 until the canonical raw-object PatchSet builder lands, so this is lineage proof rather
 than full C4 fixture completion.
 
+Canonical PatchSet construction has started behind a separate authority module using
+`gix` with default features disabled and only revision plus SHA-1/SHA-256 object support.
+The first vertical slice opens the repository in process, rejects non-unique best merge
+bases, recursively reads raw tree entries, sorts raw path bytes, represents renames as
+delete plus add, and length-delimits endpoint path-delta evidence and unit digests. Its
+fixture proves stable binary OIDs, mode-only changes, delete/add behavior, and a path
+containing a newline. Commit DAG ordering, commit evidence, empty/merge units, net-zero
+history, and handoff integration remain mandatory before C4 can be called complete.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
