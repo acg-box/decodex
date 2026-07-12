@@ -361,7 +361,7 @@ mod tests {
 			)
 			.expect("attach worktree");
 		let predecessor_epoch = store.lane(&predecessor).expect("read").expect("lane").epoch();
-		let handoff = RepairHandoffAuthority::new(
+		let handoff = RepairHandoffAuthority::new_for_test(
 			"handoff-1",
 			"github:helixbox/pubfi-mono",
 			predecessor.clone(),
@@ -570,7 +570,7 @@ mod tests {
 		successor: LaneId,
 		epoch: u64,
 	) -> RepairHandoffAuthority {
-		RepairHandoffAuthority::new(
+		RepairHandoffAuthority::new_for_test(
 			id,
 			"github:helixbox/pubfi-mono",
 			predecessor,

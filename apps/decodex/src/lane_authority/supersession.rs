@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::{LaneEffect, LaneEffectKind, LaneId};
+use super::{CanonicalPatchSet, LaneEffect, LaneEffectKind, LaneId};
 use crate::prelude::{Result, eyre};
 
 pub const REPAIR_HANDOFF_SCHEMA: &str = "decodex/repair-handoff-authority/1";
@@ -41,6 +41,10 @@ pub struct RepairHandoffAuthority {
 	predecessor_pr_url: String,
 	predecessor_head_oid: String,
 	predecessor_epoch: u64,
+	target_base_ref: String,
+	target_base_oid: String,
+	merge_base_oid: String,
+	ordered_commit_oids: Vec<String>,
 	predecessor_patch_set_digest: String,
 	predecessor_patch_unit_digests: BTreeSet<String>,
 	successor_lane_id: LaneId,
@@ -53,6 +57,55 @@ pub struct RepairHandoffAuthority {
 impl RepairHandoffAuthority {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
+		handoff_id: &str,
+		repository_key: &str,
+		predecessor_lane_id: LaneId,
+		predecessor_issue_identifier: &str,
+		predecessor_pr_url: &str,
+		predecessor_head_oid: &str,
+		predecessor_epoch: u64,
+		target_base_ref: &str,
+		target_base_oid: &str,
+		predecessor_patch_set: &CanonicalPatchSet,
+		successor_lane_id: LaneId,
+		successor_issue_identifier: &str,
+		accepted_findings_fingerprint: &str,
+		source_review_checkpoint_id: &str,
+		actor: &str,
+		event_id: &str,
+	) -> Result<Self> {
+		if predecessor_head_oid != predecessor_patch_set.head_oid_hex() {
+			eyre::bail!("Repair handoff predecessor head does not match its canonical PatchSet.");
+		}
+		let handoff = Self {
+			schema: String::from(REPAIR_HANDOFF_SCHEMA),
+			handoff_id: handoff_id.to_owned(),
+			repository_key: repository_key.to_owned(),
+			predecessor_lane_id,
+			predecessor_issue_identifier: predecessor_issue_identifier.to_owned(),
+			predecessor_pr_url: predecessor_pr_url.to_owned(),
+			predecessor_head_oid: predecessor_head_oid.to_owned(),
+			predecessor_epoch,
+			target_base_ref: target_base_ref.to_owned(),
+			target_base_oid: target_base_oid.to_owned(),
+			merge_base_oid: predecessor_patch_set.merge_base_oid_hex(),
+			ordered_commit_oids: predecessor_patch_set.ordered_commit_oids_hex(),
+			predecessor_patch_set_digest: predecessor_patch_set.digest.clone(),
+			predecessor_patch_unit_digests: predecessor_patch_set.patch_unit_digests(),
+			successor_lane_id,
+			successor_issue_identifier: successor_issue_identifier.to_owned(),
+			accepted_findings_fingerprint: accepted_findings_fingerprint.to_owned(),
+			source_review_checkpoint_id: source_review_checkpoint_id.to_owned(),
+			actor: actor.to_owned(),
+			event_id: event_id.to_owned(),
+		};
+		handoff.validate()?;
+		Ok(handoff)
+	}
+
+	#[cfg(test)]
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn new_for_test(
 		handoff_id: &str,
 		repository_key: &str,
 		predecessor_lane_id: LaneId,
@@ -78,6 +131,10 @@ impl RepairHandoffAuthority {
 			predecessor_pr_url: predecessor_pr_url.to_owned(),
 			predecessor_head_oid: predecessor_head_oid.to_owned(),
 			predecessor_epoch,
+			target_base_ref: String::from("refs/heads/main"),
+			target_base_oid: String::from("fixture-base"),
+			merge_base_oid: String::from("fixture-merge-base"),
+			ordered_commit_oids: vec![predecessor_head_oid.to_owned()],
 			predecessor_patch_set_digest: predecessor_patch_set_digest.to_owned(),
 			predecessor_patch_unit_digests,
 			successor_lane_id,
@@ -112,6 +169,7 @@ impl RepairHandoffAuthority {
 			|| self.predecessor_lane_id.project_key() != self.successor_lane_id.project_key()
 			|| self.predecessor_lane_id == self.successor_lane_id
 			|| self.predecessor_patch_unit_digests.is_empty()
+			|| self.ordered_commit_oids.is_empty()
 			|| !pr_matches_repository(&self.predecessor_pr_url, &self.repository_key)
 		{
 			eyre::bail!("Repair handoff authority is invalid.");
@@ -122,6 +180,9 @@ impl RepairHandoffAuthority {
 			self.predecessor_issue_identifier.as_str(),
 			self.predecessor_pr_url.as_str(),
 			self.predecessor_head_oid.as_str(),
+			self.target_base_ref.as_str(),
+			self.target_base_oid.as_str(),
+			self.merge_base_oid.as_str(),
 			self.predecessor_patch_set_digest.as_str(),
 			self.successor_issue_identifier.as_str(),
 			self.accepted_findings_fingerprint.as_str(),
@@ -602,7 +663,7 @@ mod tests {
 	use serde::Deserialize;
 
 	fn handoff() -> RepairHandoffAuthority {
-		RepairHandoffAuthority::new(
+		RepairHandoffAuthority::new_for_test(
 			"handoff-1",
 			"github:helixbox/pubfi-mono",
 			LaneId::new("pubfi", "predecessor").expect("lane"),
@@ -806,7 +867,7 @@ mod tests {
 
 		let predecessor_lane = LaneId::new("pubfi", &fixture.predecessor.issue_id).expect("lane");
 		let successor_lane = LaneId::new("pubfi", &fixture.successor.issue_id).expect("lane");
-		let handoff = RepairHandoffAuthority::new(
+		let handoff = RepairHandoffAuthority::new_for_test(
 			"pub-1704-to-pub-1705",
 			&fixture.repository_key,
 			predecessor_lane,

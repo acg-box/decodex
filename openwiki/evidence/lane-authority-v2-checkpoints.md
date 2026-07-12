@@ -1124,6 +1124,20 @@ fixture proves stable binary OIDs, mode-only changes, delete/add behavior, and a
 containing a newline. Commit DAG ordering, commit evidence, empty/merge units, net-zero
 history, and handoff integration remain mandatory before C4 can be called complete.
 
+The second PatchSet slice now computes the exact head-minus-merge-base commit set from
+raw objects, orders it parents-first with Kahn/raw-OID priority, and freezes ordered
+parent/tree evidence. First-parent transitions emit exactly endpoint path deltas or
+endpoint-net-zero histories; tree-equal commits emit empty units and multi-parent commits
+emit ordered merge-topology units. A combined branch fixture proves repeated edits back
+to base, an empty commit, sibling topological ordering, ordered merge parents, and the
+full deterministic digest; the endpoint fixture additionally proves a gitlink/submodule
+entry. Production `RepairHandoffAuthority::new` now accepts only this canonical PatchSet
+and freezes target base ref/OID, selected merge base, ordered commits, PatchSet digest,
+and its complete unit digest set. Arbitrary digest/unit construction is test-only. Eleven
+supersession tests, two focused PatchSet fixtures, and all-target checking pass. Explicit
+multiple-best-base, shallow/missing-object, byte-level root/octopus/non-first-parent
+fixtures and the named PUB incident's real object replay remain before C4 completion.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
