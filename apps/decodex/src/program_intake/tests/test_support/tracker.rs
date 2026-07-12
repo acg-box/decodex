@@ -20,6 +20,7 @@ pub(crate) struct FakeTracker {
 	next_issue_number: RefCell<usize>,
 	created_issues: RefCell<Vec<TrackerIssue>>,
 	updated_issues: RefCell<Vec<TrackerIssue>>,
+	label_query_snapshots: RefCell<HashMap<String, Vec<Vec<TrackerIssue>>>>,
 	fail_create_after_successes: RefCell<Option<usize>>,
 	fail_update_after_successes: RefCell<Option<usize>>,
 }
@@ -44,6 +45,15 @@ impl FakeTracker {
 		self
 	}
 
+	pub(crate) fn with_label_query_snapshots(
+		self,
+		label_name: &str,
+		snapshots: Vec<Vec<TrackerIssue>>,
+	) -> Self {
+		self.label_query_snapshots.borrow_mut().insert(label_name.to_owned(), snapshots);
+		self
+	}
+
 	pub(crate) fn created_issue_count(&self) -> usize {
 		self.created_issues.borrow().len()
 	}
@@ -59,6 +69,11 @@ impl FakeTracker {
 
 impl IssueTracker for FakeTracker {
 	fn list_issues_with_label(&self, label_name: &str) -> Result<Vec<TrackerIssue>> {
+		if let Some(snapshots) = self.label_query_snapshots.borrow_mut().get_mut(label_name)
+			&& !snapshots.is_empty()
+		{
+			return Ok(snapshots.remove(0));
+		}
 		Ok(self
 			.issues
 			.borrow()

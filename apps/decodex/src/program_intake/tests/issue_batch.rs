@@ -246,6 +246,55 @@ fn lane_authority_v2_c2_adm_06() {
 }
 
 #[test]
+fn lane_authority_v2_c2_adm_08() {
+	let workflow = test_support::workflow();
+	let config = test_support::test_config();
+	let mut hidden_forbidden = test_support::issue("XY-1", "Todo");
+	hidden_forbidden.labels_complete = false;
+	let stable_tracker = FakeTracker::default()
+		.with_issues([hidden_forbidden.clone()])
+		.with_label_query_snapshots(
+			"decodex:manual-only",
+			vec![vec![hidden_forbidden.clone()], vec![hidden_forbidden.clone()]],
+		);
+	let stable_store = StateStore::open_in_memory().expect("stable store");
+	let report = program_intake::run_issue_batch_intake(
+		&stable_store,
+		&stable_tracker,
+		&config,
+		&workflow,
+		vec![String::from("XY-1")],
+		true,
+		false,
+	)
+	.expect("two stable full traversals");
+	assert_eq!(report.issues[0].classification, IssueBatchIntakeClassification::Held);
+
+	let mut changed = hidden_forbidden.clone();
+	changed.updated_at = String::from("2026-07-13T00:00:00Z");
+	let torn_tracker = FakeTracker::default()
+		.with_issues([hidden_forbidden.clone()])
+		.with_label_query_snapshots(
+			"decodex:manual-only",
+			vec![vec![hidden_forbidden], vec![changed]],
+		);
+	let torn_store = StateStore::open_in_memory().expect("torn store");
+	let error = program_intake::run_issue_batch_intake(
+		&torn_store,
+		&torn_tracker,
+		&config,
+		&workflow,
+		vec![String::from("XY-1")],
+		false,
+		true,
+	)
+	.expect_err("torn label traversal must reject before persistence");
+	assert!(error.to_string().contains("version-bracketed pagination"));
+	assert!(torn_store.list_execution_programs("decodex").expect("programs").is_empty());
+	assert_eq!(torn_store.intake_authority_count().expect("authorities"), 0);
+}
+
+#[test]
 fn issue_batch_reapply_keeps_stable_program_identity_and_removes_exact_legacy_duplicates() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");

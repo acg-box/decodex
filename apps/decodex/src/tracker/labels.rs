@@ -31,10 +31,28 @@ where
 		return Ok(false);
 	}
 
-	Ok(tracker
+	let first = tracker
 		.list_issues_with_label(label_name)?
 		.into_iter()
-		.any(|candidate| candidate.id == issue.id))
+		.find(|candidate| candidate.id == issue.id);
+	let second = tracker
+		.list_issues_with_label(label_name)?
+		.into_iter()
+		.find(|candidate| candidate.id == issue.id);
+	match (first, second) {
+		(None, None) => Ok(false),
+		(Some(first), Some(second))
+			if first.id == second.id
+				&& first.identifier == second.identifier
+				&& first.team.id == second.team.id
+				&& first.updated_at == second.updated_at =>
+		{
+			Ok(true)
+		},
+		_ => eyre::bail!(
+			"Tracker label confirmation changed across version-bracketed pagination passes."
+		),
+	}
 }
 
 pub(crate) fn issue_team_label_id_with_server_confirmation<T>(
