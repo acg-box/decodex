@@ -17,7 +17,7 @@ mod execution_failure;
 mod execution_lifecycle;
 mod execution_phase_goal;
 mod execution_thread_archive;
-mod git_ops;
+pub(crate) mod git_ops;
 mod harness_improvement;
 mod lane_control;
 mod lane_decision;

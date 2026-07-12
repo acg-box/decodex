@@ -318,15 +318,15 @@ fn validate_closeout_receipt_gate(
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeSet;
+	use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, path::Path, process::Command};
 
 	use tempfile::TempDir;
 
 	use super::*;
 	use crate::{
 		lane_authority::{
-		CloseoutEffectPlanItem, EffectCommand, EffectReceipt, LaneCommand,
-			LaneId, LanePhase, PatchDisposition, ProjectBinding,
+			CloseoutEffectPlanItem, EffectCommand, EffectReceipt, LaneCommand, LaneId, LanePhase,
+			PatchDisposition, ProjectBinding,
 		},
 		state::ProjectRegistration,
 	};
@@ -337,6 +337,25 @@ mod tests {
 		let database = temp.path().join("state.sqlite");
 		let store = StateStore::open(&database).expect("store");
 		store.upsert_project(&project(&temp)).expect("project");
+		let repo_root = temp.path().join("repo");
+		std::fs::create_dir_all(&repo_root).expect("repo root");
+		git(&repo_root, &["init", "-q"]);
+		git(&repo_root, &["config", "user.name", "Fixture"]);
+		git(&repo_root, &["config", "user.email", "fixture@example.com"]);
+		git(&repo_root, &["config", "core.hooksPath", ".git/no-hooks"]);
+		std::fs::write(repo_root.join("README.md"), b"fixture\n").expect("fixture file");
+		git(&repo_root, &["add", "README.md"]);
+		git(&repo_root, &["commit", "-qm", "fixture"]);
+		let expected_oid = git_output(&repo_root, &["rev-parse", "HEAD"]);
+		git(&repo_root, &["branch", "x/pubfi-pub-1704", &expected_oid]);
+		let fake_gh = temp.path().join("fake-gh");
+		std::fs::write(
+			&fake_gh,
+			"#!/bin/sh\nprintf '%s' 'HTTP 422: Reference does not exist' >&2\nexit 1\n",
+		)
+		.expect("fake gh");
+		std::fs::set_permissions(&fake_gh, std::fs::Permissions::from_mode(0o755))
+			.expect("fake gh mode");
 		store
 			.try_acquire_registered_lease("pubfi", "predecessor", "run-1", "In Progress")
 			.expect("predecessor claim");
@@ -438,6 +457,28 @@ mod tests {
 						),
 					)
 					.expect("worktree effect"),
+					CloseoutEffectPlanItem::new(
+						crate::lane_authority::CloseoutEffectTarget::RemoteRef {
+							repository_key: String::from("github:helixbox/pubfi-mono"),
+							branch_name: String::from("x/pubfi-pub-1704"),
+							expected_oid: expected_oid.clone(),
+						},
+						"remote-ref-request",
+						"remote-ref-absent",
+						&expected_oid,
+					)
+					.expect("remote ref effect"),
+					CloseoutEffectPlanItem::new(
+						crate::lane_authority::CloseoutEffectTarget::LocalRef {
+							repository_path: repo_root.clone(),
+							branch_name: String::from("x/pubfi-pub-1704"),
+							expected_oid: expected_oid.clone(),
+						},
+						"local-ref-request",
+						"local-ref-absent",
+						&expected_oid,
+					)
+					.expect("local ref effect"),
 				],
 			)
 			.expect("attest operation");
@@ -478,6 +519,25 @@ mod tests {
 			.expect("remove worktree");
 		assert!(!worktree_path.exists());
 		assert!(store.worktree_for_issue("predecessor").expect("mapping read").is_none());
+		let remote_ref_effect_id = format!("{}:2", operation.operation_id());
+		store
+			.execute_remote_ref_delete_effect(
+				&remote_ref_effect_id,
+				"2026-07-12T00:00:00Z",
+				1,
+				"token",
+				Some(&fake_gh),
+				&repo_root,
+			)
+			.expect("reconcile absent remote ref");
+		let local_ref_effect_id = format!("{}:3", operation.operation_id());
+		store
+			.execute_local_ref_delete_effect(&local_ref_effect_id, "2026-07-12T00:00:00Z", 1)
+			.expect("delete local ref");
+		assert!(!git_status(
+			&repo_root,
+			&["show-ref", "--verify", "--quiet", "refs/heads/x/pubfi-pub-1704"]
+		));
 		store
 			.advance_superseded_closeout(
 				operation.operation_id(),
@@ -663,5 +723,30 @@ mod tests {
 			updated_at: String::from("2026-07-12T00:00:00Z"),
 			updated_at_unix: 1_783_814_400,
 		}
+	}
+
+	fn git(repository: &Path, args: &[&str]) {
+		assert!(git_status(repository, args), "git {args:?} failed");
+	}
+
+	fn git_status(repository: &Path, args: &[&str]) -> bool {
+		Command::new("git")
+			.args(args)
+			.current_dir(repository)
+			.env("LC_ALL", "C")
+			.status()
+			.expect("git command")
+			.success()
+	}
+
+	fn git_output(repository: &Path, args: &[&str]) -> String {
+		let output = Command::new("git")
+			.args(args)
+			.current_dir(repository)
+			.env("LC_ALL", "C")
+			.output()
+			.expect("git command");
+		assert!(output.status.success(), "git {args:?} failed");
+		String::from_utf8(output.stdout).expect("ASCII output").trim().to_owned()
 	}
 }

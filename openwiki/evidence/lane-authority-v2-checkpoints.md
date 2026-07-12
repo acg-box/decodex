@@ -1170,6 +1170,16 @@ operation plan digest therefore covers every executor argument across restart, a
 operation exposes target lookup by immutable ordinal. Existing supersession and
 persistent worktree fixtures pass. Provider executor wiring is next.
 
+Terminal-operation ref executors are now wired through StateStore. Both load the frozen
+target by effect ordinal, revalidate closeout stage authority, durably enter invoking,
+and then use exact provider readback. Local refs execute Git's expected-OID
+compare-and-delete and turn deleted/already-absent into receipts; remote refs turn
+GitHub absence into a receipt while conditional-mutation-unsupported or drift becomes
+`NeedsAttention` without DELETE. External errors become reconciliation-required. The
+persistent closeout fixture now performs worktree removal, fake-GitHub remote absence,
+real local-ref CAS deletion, receipt-gated terminalization, and SQLite reopen. The
+process-level adapter tests continue to prove no unconditional GitHub DELETE.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

@@ -5,16 +5,16 @@ mod landing_state;
 mod locator;
 mod merge_readback;
 mod pr_close;
-mod repository;
 mod ref_cleanup;
+mod repository;
 mod status;
 
+pub(crate) use self::ref_cleanup::{RemoteRefDeleteReadback, reconcile_remote_ref_delete};
 #[cfg(test)]
 pub(crate) use self::{
 	branch::{gh_delete_ref_missing_branch, github_api_ref_path},
 	command::{GH_FALLBACK_PATHS, GhCommandDiscoveryTier, gh_command_resolution_from_env},
 	pr_close::{PullRequestCloseReadback, reconcile_pull_request_close},
-	ref_cleanup::{RemoteRefDeleteReadback, reconcile_remote_ref_delete},
 };
 pub(crate) use self::{
 	command::{
@@ -42,4 +42,5 @@ pub(crate) use merge_readback::{
 pub(crate) use repository::{
 	RepositoryContext, inspect_repository_context, pull_request_matches_repository,
 };
-#[cfg(test)] mod tests;
+#[cfg(test)]
+mod tests;

@@ -7,6 +7,7 @@ mod rewrite;
 mod runner;
 mod selection;
 
+pub(crate) use self::branch::{LocalRefDeleteReadback, delete_local_branch_at_oid};
 #[cfg(test)]
 pub(crate) use self::command::{
 	repo_gate_shell_from_env, run_repo_gate_cleanliness_check_with_git,

@@ -3,10 +3,12 @@ use std::{os::unix::ffi::OsStrExt, path::Path};
 use sha2::{Digest, Sha256};
 
 use crate::{
+	github::{RemoteRefDeleteReadback, reconcile_remote_ref_delete},
 	lane_authority::{
-		EffectAuthority, EffectCommand, EffectReceipt, EffectState, LaneEffect, LaneEffectKind,
-		apply_effect_command,
+		CloseoutEffectTarget, EffectAuthority, EffectCommand, EffectReceipt, EffectState,
+		LaneEffect, LaneEffectKind, apply_effect_command,
 	},
+	orchestrator::git_ops::{LocalRefDeleteReadback, delete_local_branch_at_oid},
 	prelude::{Result, eyre},
 	state::StateStore,
 };
@@ -174,6 +176,166 @@ impl StateStore {
 		state.lane_effects.insert(effect_id.to_owned(), succeeded.clone());
 		debug_assert_eq!(succeeded.state(), EffectState::Succeeded);
 		Ok(succeeded)
+	}
+
+	pub fn execute_local_ref_delete_effect(
+		&self,
+		effect_id: &str,
+		observed_at: &str,
+		observed_at_unix: i64,
+	) -> Result<LaneEffect> {
+		let (current, repository_path, branch_name, expected_oid) = {
+			let state = self.lock_without_refresh()?;
+			let current = state
+				.lane_effects
+				.get(effect_id)
+				.cloned()
+				.ok_or_else(|| eyre::eyre!("Local ref cleanup effect does not exist."))?;
+			if current.kind() != LaneEffectKind::LocalRefDelete {
+				eyre::bail!("Effect is not a local ref cleanup effect.");
+			}
+			validate_effect_lane(&state, &current)?;
+			let EffectAuthority::TerminalOperation { operation_id, .. } = current.authority()
+			else {
+				eyre::bail!("Local ref cleanup requires terminal-operation authority.");
+			};
+			let operation = state
+				.superseded_closeout_operations
+				.get(operation_id)
+				.ok_or_else(|| eyre::eyre!("Local ref cleanup operation is missing."))?;
+			let Some(CloseoutEffectTarget::LocalRef { repository_path, branch_name, expected_oid }) =
+				operation.planned_effect_target(current.ordinal())
+			else {
+				eyre::bail!("Local ref cleanup target does not match its effect.");
+			};
+			(current, repository_path.clone(), branch_name.clone(), expected_oid.clone())
+		};
+		let invoking = self.apply_lane_effect_command(
+			effect_id,
+			current.journal_epoch(),
+			EffectCommand::BeginInvocation {
+				authority_epoch: current.authority_epoch(),
+				facts_fingerprint: current.facts_fingerprint().to_owned(),
+			},
+		)?;
+		let readback = match delete_local_branch_at_oid(
+			&repository_path,
+			&branch_name,
+			&expected_oid,
+			invoking.request_digest(),
+			observed_at,
+			observed_at_unix,
+		) {
+			Ok(readback) => readback,
+			Err(error) => {
+				let _ = self.apply_lane_effect_command(
+					effect_id,
+					invoking.journal_epoch(),
+					EffectCommand::MarkOutcomeUnknown,
+				);
+				return Err(error);
+			},
+		};
+		match readback {
+			LocalRefDeleteReadback::AlreadyAbsent(receipt)
+			| LocalRefDeleteReadback::Deleted(receipt) => self.apply_lane_effect_command(
+				effect_id,
+				invoking.journal_epoch(),
+				EffectCommand::RecordReceipt { receipt },
+			),
+			LocalRefDeleteReadback::PrerequisiteDrift { .. } => self.apply_lane_effect_command(
+				effect_id,
+				invoking.journal_epoch(),
+				EffectCommand::RequireAttention,
+			),
+		}
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn execute_remote_ref_delete_effect(
+		&self,
+		effect_id: &str,
+		observed_at: &str,
+		observed_at_unix: i64,
+		github_token: &str,
+		gh_command_path: Option<&Path>,
+		cwd: &Path,
+	) -> Result<LaneEffect> {
+		let (current, repository_key, branch_name, expected_oid) = {
+			let state = self.lock_without_refresh()?;
+			let current = state
+				.lane_effects
+				.get(effect_id)
+				.cloned()
+				.ok_or_else(|| eyre::eyre!("Remote ref cleanup effect does not exist."))?;
+			if current.kind() != LaneEffectKind::RemoteRefDelete {
+				eyre::bail!("Effect is not a remote ref cleanup effect.");
+			}
+			validate_effect_lane(&state, &current)?;
+			let EffectAuthority::TerminalOperation { operation_id, .. } = current.authority()
+			else {
+				eyre::bail!("Remote ref cleanup requires terminal-operation authority.");
+			};
+			let operation = state
+				.superseded_closeout_operations
+				.get(operation_id)
+				.ok_or_else(|| eyre::eyre!("Remote ref cleanup operation is missing."))?;
+			let Some(CloseoutEffectTarget::RemoteRef { repository_key, branch_name, expected_oid }) =
+				operation.planned_effect_target(current.ordinal())
+			else {
+				eyre::bail!("Remote ref cleanup target does not match its effect.");
+			};
+			(current, repository_key.clone(), branch_name.clone(), expected_oid.clone())
+		};
+		let repository = repository_key
+			.strip_prefix("github:")
+			.ok_or_else(|| eyre::eyre!("Remote ref cleanup repository key is invalid."))?;
+		let (owner, repository) = repository
+			.split_once('/')
+			.ok_or_else(|| eyre::eyre!("Remote ref cleanup repository key is invalid."))?;
+		let invoking = self.apply_lane_effect_command(
+			effect_id,
+			current.journal_epoch(),
+			EffectCommand::BeginInvocation {
+				authority_epoch: current.authority_epoch(),
+				facts_fingerprint: current.facts_fingerprint().to_owned(),
+			},
+		)?;
+		let readback = match reconcile_remote_ref_delete(
+			cwd,
+			owner,
+			repository,
+			&branch_name,
+			&expected_oid,
+			invoking.request_digest(),
+			observed_at,
+			observed_at_unix,
+			github_token,
+			gh_command_path,
+		) {
+			Ok(readback) => readback,
+			Err(error) => {
+				let _ = self.apply_lane_effect_command(
+					effect_id,
+					invoking.journal_epoch(),
+					EffectCommand::MarkOutcomeUnknown,
+				);
+				return Err(error);
+			},
+		};
+		match readback {
+			RemoteRefDeleteReadback::AlreadyAbsent(receipt) => self.apply_lane_effect_command(
+				effect_id,
+				invoking.journal_epoch(),
+				EffectCommand::RecordReceipt { receipt },
+			),
+			RemoteRefDeleteReadback::ConditionalMutationUnsupported { .. }
+			| RemoteRefDeleteReadback::PrerequisiteDrift { .. } => self.apply_lane_effect_command(
+				effect_id,
+				invoking.journal_epoch(),
+				EffectCommand::RequireAttention,
+			),
+		}
 	}
 }
 
