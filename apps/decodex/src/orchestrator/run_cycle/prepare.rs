@@ -23,6 +23,7 @@ where
 		.unwrap_or_else(|| context.worktree_manager.plan_for_issue(&issue.identifier));
 	let Some((attempt_number, run_id)) = identity::resolve_prepare_run_identity(
 		context.state_store,
+		context.project.service_id(),
 		&issue,
 		context.preferred_run_identity,
 	)?

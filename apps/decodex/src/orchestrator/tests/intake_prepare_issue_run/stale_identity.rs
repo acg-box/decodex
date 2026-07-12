@@ -18,7 +18,7 @@ fn prepare_issue_run_rejects_stale_preferred_identity_after_attempt_advance() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 
 	state_store
-		.record_run_attempt("other-run", &issue.id, 1, "succeeded")
+		.record_lane_run_attempt(config.service_id(), "other-run", &issue.id, 1, "succeeded")
 		.expect("existing run attempt should record");
 
 	let issue_run = orchestrator::prepare_issue_run(

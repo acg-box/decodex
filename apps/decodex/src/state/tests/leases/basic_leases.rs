@@ -47,6 +47,8 @@ fn registered_lease_is_a_retryable_projection_of_canonical_lane_claim() {
 	let claimed = store.lane(&lane_id).expect("lane read").expect("lane");
 	assert_eq!(claimed.phase(), LanePhase::Claimed);
 	assert_eq!(claimed.claim_run_id(), Some("run-1"));
+	store.record_lane_run_attempt("pubfi", "run-1", "PUB-101", 3, "running").expect("lane attempt");
+	assert_eq!(store.next_lane_attempt_number("pubfi", "PUB-101").expect("next attempt"), 4);
 	store
 		.upsert_claimed_worktree("pubfi", "PUB-101", "xv/pub-101", "/tmp/pubfi/.worktrees/PUB-101")
 		.expect("attach worktree");
@@ -83,6 +85,11 @@ fn registered_lease_is_a_retryable_projection_of_canonical_lane_claim() {
 				LEASE_IN_PROGRESS_STATE,
 			)
 			.expect("released issue may move to another project")
+	);
+	assert_eq!(
+		store.next_lane_attempt_number("pubfi-insight", "PUB-101").expect("next attempt"),
+		1,
+		"another project must not inherit the source lane attempt sequence",
 	);
 	store.clear_lease("PUB-101").expect("release alternate claim");
 	assert!(

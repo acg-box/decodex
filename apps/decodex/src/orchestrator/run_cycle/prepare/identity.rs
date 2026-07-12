@@ -4,10 +4,11 @@ use crate::orchestrator::run_cycle::{
 
 pub(in crate::orchestrator::run_cycle::prepare) fn resolve_prepare_run_identity(
 	state_store: &StateStore,
+	project_id: &str,
 	issue: &TrackerIssue,
 	preferred_run_identity: Option<PreferredRunIdentity<'_>>,
 ) -> Result<Option<(i64, String)>> {
-	let next_attempt_number = state_store.next_attempt_number(&issue.id)?;
+	let next_attempt_number = state_store.next_lane_attempt_number(project_id, &issue.id)?;
 
 	match preferred_run_identity {
 		Some(preferred_run_identity) => {

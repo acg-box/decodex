@@ -16,13 +16,11 @@ impl StateStore {
 	) -> Result<()> {
 		let lane_id = LaneId::new(project_id, issue_id)?;
 		let lane = self.lane(&lane_id)?;
-		let Some(lane) = lane else {
+		if lane.is_none() {
 			#[cfg(not(test))]
 			eyre::bail!("Run attempt lane is not admitted.");
-			#[cfg(test)]
-			return self.record_run_attempt(run_id, issue_id, attempt_number, status);
-		};
-		if lane.intake_authority_id().is_none() {
+		}
+		if lane.as_ref().is_some_and(|lane| lane.intake_authority_id().is_none()) {
 			eyre::bail!("Run attempt lane has no Intake Authority.");
 		}
 
@@ -117,6 +115,7 @@ impl StateStore {
 	}
 
 	/// Compute the next attempt number for one issue.
+	#[cfg(test)]
 	pub fn next_attempt_number(&self, issue_id: &str) -> Result<i64> {
 		let state = self.lock()?;
 		let next_attempt = state
@@ -128,6 +127,22 @@ impl StateStore {
 			.unwrap_or(0)
 			+ 1;
 
+		Ok(next_attempt)
+	}
+
+	/// Compute the next attempt number within one canonical project lane.
+	pub fn next_lane_attempt_number(&self, project_id: &str, issue_id: &str) -> Result<i64> {
+		let state = self.lock()?;
+		let next_attempt = state
+			.run_attempts
+			.values()
+			.filter(|attempt| {
+				attempt.project_id.as_deref() == Some(project_id) && attempt.issue_id == issue_id
+			})
+			.map(|attempt| attempt.attempt_number)
+			.max()
+			.unwrap_or(0)
+			+ 1;
 		Ok(next_attempt)
 	}
 
