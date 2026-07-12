@@ -50,6 +50,13 @@ fn registered_lease_is_a_retryable_projection_of_canonical_lane_claim() {
 	store.record_lane_run_attempt("pubfi", "run-1", "PUB-101", 3, "running").expect("lane attempt");
 	assert_eq!(store.next_lane_attempt_number("pubfi", "PUB-101").expect("next attempt"), 4);
 	store
+		.record_lane_run_attempt("pubfi", "run-1", "PUB-101", 3, "failed")
+		.expect("failed attempt");
+	assert_eq!(
+		store.retry_budget_attempt_count_for_lane("pubfi", "PUB-101").expect("retry count"),
+		1
+	);
+	store
 		.upsert_claimed_worktree("pubfi", "PUB-101", "xv/pub-101", "/tmp/pubfi/.worktrees/PUB-101")
 		.expect("attach worktree");
 	let attached = store.lane(&lane_id).expect("lane read").expect("lane");
@@ -90,6 +97,12 @@ fn registered_lease_is_a_retryable_projection_of_canonical_lane_claim() {
 		store.next_lane_attempt_number("pubfi-insight", "PUB-101").expect("next attempt"),
 		1,
 		"another project must not inherit the source lane attempt sequence",
+	);
+	assert_eq!(
+		store
+			.retry_budget_attempt_count_for_lane("pubfi-insight", "PUB-101")
+			.expect("alternate retry count"),
+		0,
 	);
 	store.clear_lease("PUB-101").expect("release alternate claim");
 	assert!(

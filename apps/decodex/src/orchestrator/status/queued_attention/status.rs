@@ -42,8 +42,12 @@ where
 
 	let OperatorQueuedIssueWorktreeContext { path: worktree_path, marker, marker_unreadable } =
 		context::operator_queued_issue_worktree_context(project, state_store, issue)?;
-	let retry_budget_attempts =
-		retry::operator_queued_issue_retry_budget_attempts(state_store, issue, marker.as_ref())?;
+	let retry_budget_attempts = retry::operator_queued_issue_retry_budget_attempts(
+		state_store,
+		project.service_id(),
+		issue,
+		marker.as_ref(),
+	)?;
 	let retry_budget_max_attempts = i64::from(workflow.frontmatter().execution().max_attempts());
 	let auto_retry_blocked_reason = retry::operator_queued_issue_auto_retry_blocked_reason(reason);
 	let attention_record = records::operator_queued_issue_latest_attention_record(

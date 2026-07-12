@@ -147,6 +147,33 @@ impl StateStore {
 	}
 
 	/// Count attempts that consume the retry budget for one issue.
+	pub fn retry_budget_attempt_count_for_lane(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<i64> {
+		if let Some(sqlite) = self.sqlite.as_ref() {
+			let sqlite =
+				sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+			return sqlite.retry_budget_attempt_count_for_lane(project_id, issue_id);
+		}
+
+		let state = self.lock_without_refresh()?;
+		Ok(state
+			.run_attempts
+			.values()
+			.filter(|attempt| {
+				attempt.project_id.as_deref() == Some(project_id)
+					&& attempt.issue_id == issue_id
+					&& matches!(
+						attempt.status.as_str(),
+						"failed" | "interrupted" | "terminal_guarded"
+					)
+			})
+			.count() as i64)
+	}
+
+	/// Count attempts that consume the retry budget for one issue.
 	pub fn retry_budget_attempt_count(&self, issue_id: &str) -> Result<i64> {
 		if let Some(sqlite) = self.sqlite.as_ref() {
 			let sqlite =
