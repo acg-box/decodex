@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS lanes (
 	phase TEXT NOT NULL,
 	intake_authority_id TEXT,
 	claim_run_id TEXT,
+	admitted_base_oid TEXT,
 	branch_name TEXT,
 	worktree_path TEXT,
 	updated_at_unix INTEGER NOT NULL,

@@ -338,6 +338,16 @@ mod tests {
 				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
 			)
 			.expect("claim");
+		first
+			.transition_lane(
+				id.clone(),
+				2,
+				"binding-1",
+				LaneCommand::FreezeAdmittedBase {
+					oid: String::from("0123456789abcdef0123456789abcdef01234567"),
+				},
+			)
+			.expect("freeze admitted base");
 
 		let error = stale
 			.transition_lane(
@@ -351,9 +361,10 @@ mod tests {
 
 		let reopened = StateStore::open(&database).expect("reopened store");
 		let lane = reopened.lane(&id).expect("read").expect("lane");
-		assert_eq!(lane.epoch(), 2);
+		assert_eq!(lane.epoch(), 3);
 		assert_eq!(lane.intake_authority_id(), Some("authority-1"));
 		assert_eq!(lane.claim_run_id(), Some("run-1"));
+		assert_eq!(lane.admitted_base_oid(), Some("0123456789abcdef0123456789abcdef01234567"));
 	}
 
 	#[test]

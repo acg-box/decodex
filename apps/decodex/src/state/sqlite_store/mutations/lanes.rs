@@ -30,7 +30,7 @@ impl SqliteStateStore {
 		let transaction = self.connection.transaction()?;
 		let persisted = transaction
 			.query_row(
-				"SELECT binding_fingerprint, epoch, phase, intake_authority_id, claim_run_id, branch_name, worktree_path \
+				"SELECT binding_fingerprint, epoch, phase, intake_authority_id, claim_run_id, admitted_base_oid, branch_name, worktree_path \
 				 FROM lanes WHERE project_key = ?1 AND tracker_issue_id = ?2",
 				params![id.project_key(), id.tracker_issue_id()],
 				|row| {
@@ -53,7 +53,8 @@ impl SqliteStateStore {
 						row.get(3)?,
 						row.get(4)?,
 						row.get(5)?,
-						row.get::<_, Option<String>>(6)?.map(PathBuf::from),
+						row.get(6)?,
+						row.get::<_, Option<String>>(7)?.map(PathBuf::from),
 					))
 				},
 			)
@@ -88,10 +89,10 @@ impl SqliteStateStore {
 
 		let changed = if persisted.is_some() {
 			transaction.execute(
-				"UPDATE lanes SET epoch = ?3, phase = ?4, intake_authority_id = ?5, claim_run_id = ?6, branch_name = ?7, \
-				 worktree_path = ?8, updated_at_unix = ?9 \
-				 WHERE project_key = ?1 AND tracker_issue_id = ?2 AND epoch = ?10 \
-				 AND binding_fingerprint = ?11",
+				"UPDATE lanes SET epoch = ?3, phase = ?4, intake_authority_id = ?5, claim_run_id = ?6, admitted_base_oid = ?7, branch_name = ?8, \
+				 worktree_path = ?9, updated_at_unix = ?10 \
+				 WHERE project_key = ?1 AND tracker_issue_id = ?2 AND epoch = ?11 \
+				 AND binding_fingerprint = ?12",
 				params![
 					id.project_key(),
 					id.tracker_issue_id(),
@@ -99,6 +100,7 @@ impl SqliteStateStore {
 					next.phase().as_str(),
 					next.intake_authority_id(),
 					next.claim_run_id(),
+					next.admitted_base_oid(),
 					next.branch_name(),
 					next.worktree_path().map(|path| path.to_string_lossy().into_owned()),
 					updated_at_unix,
@@ -109,8 +111,8 @@ impl SqliteStateStore {
 		} else {
 			transaction.execute(
 				"INSERT INTO lanes (project_key, tracker_issue_id, binding_fingerprint, epoch, phase, \
-				 intake_authority_id, claim_run_id, branch_name, worktree_path, updated_at_unix) \
-				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+				 intake_authority_id, claim_run_id, admitted_base_oid, branch_name, worktree_path, updated_at_unix) \
+				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
 				params![
 					id.project_key(),
 					id.tracker_issue_id(),
@@ -119,6 +121,7 @@ impl SqliteStateStore {
 					next.phase().as_str(),
 					next.intake_authority_id(),
 					next.claim_run_id(),
+					next.admitted_base_oid(),
 					next.branch_name(),
 					next.worktree_path().map(|path| path.to_string_lossy().into_owned()),
 					updated_at_unix,

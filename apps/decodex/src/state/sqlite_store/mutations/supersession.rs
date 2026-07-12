@@ -206,7 +206,7 @@ impl SqliteStateStore {
 		let id = handoff.predecessor_lane_id();
 		let current = transaction.query_row(
 			"SELECT binding_fingerprint, epoch, phase, intake_authority_id, claim_run_id,
-			 branch_name, worktree_path FROM lanes
+			 admitted_base_oid, branch_name, worktree_path FROM lanes
 			 WHERE project_key = ?1 AND tracker_issue_id = ?2",
 			params![id.project_key(), id.tracker_issue_id()],
 			|row| {
@@ -228,7 +228,8 @@ impl SqliteStateStore {
 					row.get(3)?,
 					row.get(4)?,
 					row.get(5)?,
-					row.get::<_, Option<String>>(6)?.map(PathBuf::from),
+					row.get(6)?,
+					row.get::<_, Option<String>>(7)?.map(PathBuf::from),
 				))
 			},
 		)?;

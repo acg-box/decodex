@@ -70,6 +70,7 @@ pub struct LaneAggregate {
 	phase: LanePhase,
 	intake_authority_id: Option<String>,
 	claim_run_id: Option<String>,
+	admitted_base_oid: Option<String>,
 	branch_name: Option<String>,
 	worktree_path: Option<PathBuf>,
 }
@@ -101,6 +102,7 @@ impl LaneAggregate {
 			phase: LanePhase::Unclaimed,
 			intake_authority_id: None,
 			claim_run_id: None,
+			admitted_base_oid: None,
 			branch_name: None,
 			worktree_path: None,
 		}
@@ -113,6 +115,7 @@ impl LaneAggregate {
 		phase: LanePhase,
 		intake_authority_id: Option<String>,
 		claim_run_id: Option<String>,
+		admitted_base_oid: Option<String>,
 		branch_name: Option<String>,
 		worktree_path: Option<PathBuf>,
 	) -> Self {
@@ -123,6 +126,7 @@ impl LaneAggregate {
 			phase,
 			intake_authority_id,
 			claim_run_id,
+			admitted_base_oid,
 			branch_name,
 			worktree_path,
 		}
@@ -152,6 +156,10 @@ impl LaneAggregate {
 		self.claim_run_id.as_deref()
 	}
 
+	pub fn admitted_base_oid(&self) -> Option<&str> {
+		self.admitted_base_oid.as_deref()
+	}
+
 	pub fn branch_name(&self) -> Option<&str> {
 		self.branch_name.as_deref()
 	}
@@ -166,6 +174,7 @@ impl LaneAggregate {
 pub enum LaneCommand {
 	Admit { intake_authority_id: String },
 	AcquireClaim { run_id: String },
+	FreezeAdmittedBase { oid: String },
 	ReleaseClaim { run_id: String },
 	AttachWorktree { branch_name: String, worktree_path: PathBuf },
 	DetachWorktree { branch_name: String, worktree_path: PathBuf },
@@ -233,6 +242,19 @@ pub fn transition(
 			},
 			Some(existing) if existing == run_id => {},
 			Some(_) | None => return Err(LaneTransitionRejection::ConflictingClaim),
+		},
+		LaneCommand::FreezeAdmittedBase { oid } => {
+			if !matches!(current.phase, LanePhase::Claimed | LanePhase::Running)
+				|| oid.len() != 40
+				|| !oid.bytes().all(|byte| byte.is_ascii_hexdigit())
+			{
+				return Err(LaneTransitionRejection::InvalidPhase);
+			}
+			match current.admitted_base_oid.as_deref() {
+				None => next.admitted_base_oid = Some(oid.to_ascii_lowercase()),
+				Some(existing) if existing.eq_ignore_ascii_case(&oid) => {},
+				Some(_) => return Err(LaneTransitionRejection::ConflictingWorktree),
+			}
 		},
 		LaneCommand::ReleaseClaim { run_id } => match current.claim_run_id.as_deref() {
 			Some(existing)
@@ -331,6 +353,7 @@ mod tests {
 			None,
 			None,
 			None,
+			None,
 		)
 	}
 
@@ -354,6 +377,46 @@ mod tests {
 				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
 			),
 			Err(LaneTransitionRejection::EpochMismatch),
+		);
+	}
+
+	#[test]
+	fn admitted_base_is_frozen_once_under_lane_epoch_cas() {
+		let claimed = transition(
+			&lane(),
+			0,
+			"binding-1",
+			LaneCommand::AcquireClaim { run_id: String::from("run-1") },
+		)
+		.expect("claim");
+		let base = "0123456789abcdef0123456789abcdef01234567";
+		let frozen = transition(
+			&claimed,
+			claimed.epoch(),
+			"binding-1",
+			LaneCommand::FreezeAdmittedBase { oid: base.to_uppercase() },
+		)
+		.expect("freeze base");
+		assert_eq!(frozen.admitted_base_oid(), Some(base));
+		assert_eq!(
+			transition(
+				&frozen,
+				frozen.epoch(),
+				"binding-1",
+				LaneCommand::FreezeAdmittedBase { oid: base.to_owned() },
+			),
+			Ok(frozen.clone())
+		);
+		assert_eq!(
+			transition(
+				&frozen,
+				frozen.epoch(),
+				"binding-1",
+				LaneCommand::FreezeAdmittedBase {
+					oid: String::from("ffffffffffffffffffffffffffffffffffffffff"),
+				},
+			),
+			Err(LaneTransitionRejection::ConflictingWorktree)
 		);
 	}
 

@@ -17,7 +17,7 @@ impl SqliteStateStore {
 	pub(in crate::state) fn lane(&self, id: &LaneId) -> Result<Option<LaneAggregate>> {
 		self.connection
 			.query_row(
-				"SELECT binding_fingerprint, epoch, phase, intake_authority_id, claim_run_id, branch_name, worktree_path \
+				"SELECT binding_fingerprint, epoch, phase, intake_authority_id, claim_run_id, admitted_base_oid, branch_name, worktree_path \
 				 FROM lanes WHERE project_key = ?1 AND tracker_issue_id = ?2",
 				queries::params![id.project_key(), id.tracker_issue_id()],
 				|row| {
@@ -40,7 +40,8 @@ impl SqliteStateStore {
 						row.get(3)?,
 						row.get(4)?,
 						row.get(5)?,
-						row.get::<_, Option<String>>(6)?.map(PathBuf::from),
+						row.get(6)?,
+						row.get::<_, Option<String>>(7)?.map(PathBuf::from),
 					))
 				},
 			)
@@ -51,7 +52,7 @@ impl SqliteStateStore {
 	pub(in crate::state) fn load_lanes(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_key, tracker_issue_id, binding_fingerprint, epoch, phase, \
-			 intake_authority_id, claim_run_id, branch_name, worktree_path FROM lanes",
+			 intake_authority_id, claim_run_id, admitted_base_oid, branch_name, worktree_path FROM lanes",
 		)?;
 		let rows = statement.query_map([], |row| {
 			let project_key: String = row.get(0)?;
@@ -73,7 +74,7 @@ impl SqliteStateStore {
 			})?;
 			let epoch = u64::try_from(row.get::<_, i64>(3)?)
 				.map_err(|_| rusqlite::Error::IntegralValueOutOfRange(3, -1))?;
-			let worktree_path = row.get::<_, Option<String>>(8)?.map(PathBuf::from);
+			let worktree_path = row.get::<_, Option<String>>(9)?.map(PathBuf::from);
 			let aggregate = LaneAggregate::from_persisted_parts(
 				id.clone(),
 				row.get(2)?,
@@ -82,6 +83,7 @@ impl SqliteStateStore {
 				row.get(5)?,
 				row.get(6)?,
 				row.get(7)?,
+				row.get(8)?,
 				worktree_path,
 			);
 			Ok((id, aggregate))
