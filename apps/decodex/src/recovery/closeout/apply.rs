@@ -40,8 +40,9 @@ pub(super) fn write_legacy_closeout_audit(
 		validation.issue.identifier,
 		validation.worktree.provenance().source()
 	);
-	let retry_budget_attempt_count =
-		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count = context
+		.state_store
+		.retry_budget_attempt_count_for_lane(context.config.service_id(), &validation.issue.id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
 	let body = format!(
@@ -126,8 +127,9 @@ fn write_merged_closeout_event(
 	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
 		context.config.privacy_classifier(),
 	)?;
-	let retry_budget_attempt_count =
-		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count = context
+		.state_store
+		.retry_budget_attempt_count_for_lane(context.config.service_id(), &validation.issue.id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
 	let body = format!(

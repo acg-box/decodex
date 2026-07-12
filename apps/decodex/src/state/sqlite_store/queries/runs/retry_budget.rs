@@ -36,6 +36,7 @@ impl SqliteStateStore {
 		Ok(count > 0)
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn retry_budget_attempt_count(&self, issue_id: &str) -> Result<i64> {
 		self.connection
 			.query_row(

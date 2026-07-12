@@ -18,8 +18,9 @@ pub(in crate::recovery::review_handoff_apply) fn write_rebind_audit(
 		validation.issue.identifier,
 		recovery::landing_url(&validation.landing_state)
 	);
-	let retry_budget_attempt_count =
-		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count = context
+		.state_store
+		.retry_budget_attempt_count_for_lane(context.config.service_id(), &validation.issue.id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
 	let body = format!(
@@ -51,8 +52,9 @@ pub(in crate::recovery::review_handoff_apply) fn write_adopt_audit(
 		recovery::landing_url(&validation.landing_state),
 		validation.issue.identifier,
 	);
-	let retry_budget_attempt_count =
-		context.state_store.retry_budget_attempt_count(&validation.issue.id)?;
+	let retry_budget_attempt_count = context
+		.state_store
+		.retry_budget_attempt_count_for_lane(context.config.service_id(), &validation.issue.id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
 	let body = format!(

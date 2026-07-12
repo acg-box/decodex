@@ -174,6 +174,7 @@ impl StateStore {
 	}
 
 	/// Count attempts that consume the retry budget for one issue.
+	#[cfg(test)]
 	pub fn retry_budget_attempt_count(&self, issue_id: &str) -> Result<i64> {
 		if let Some(sqlite) = self.sqlite.as_ref() {
 			let sqlite =

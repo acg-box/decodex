@@ -44,8 +44,9 @@ pub(in crate::manual::closeout::ledger) fn write_manual_land_lifecycle_event<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let retry_budget_attempt_count =
-		ledger.state_store.retry_budget_attempt_count(&ledger.issue.id)?;
+	let retry_budget_attempt_count = ledger
+		.state_store
+		.retry_budget_attempt_count_for_lane(ledger.service_id, &ledger.issue.id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
 	let body =

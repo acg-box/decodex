@@ -161,13 +161,15 @@ impl<'a> TrackerToolBridge<'a> {
 		let retry_budget_line = self
 			.state_store
 			.map(|state_store| {
-				state_store.retry_budget_attempt_count(&self.issue.id).map(|count| {
-					if count > 0 {
-						format!("\n- retry_budget_attempts_consumed: `{count}`")
-					} else {
-						String::new()
-					}
-				})
+				state_store
+					.retry_budget_attempt_count_for_lane(&review_context.service_id, &self.issue.id)
+					.map(|count| {
+						if count > 0 {
+							format!("\n- retry_budget_attempts_consumed: `{count}`")
+						} else {
+							String::new()
+						}
+					})
 			})
 			.transpose()?
 			.unwrap_or_default();
