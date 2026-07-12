@@ -1,4 +1,5 @@
 use crate::{
+	lane_authority::LaneId,
 	orchestrator::status::{
 		RunActivityMarker, ServiceConfig, StateStore, TrackerIssue, WorktreeSpec,
 	},
@@ -42,7 +43,15 @@ pub(crate) fn record_recovered_activity_lease(
 	issue: &TrackerIssue,
 	marker: &RunActivityMarker,
 ) -> Result<()> {
-	state_store.record_run_attempt(
+	let lane_id = LaneId::new(project.service_id(), &issue.id)?;
+	let lane = state_store.lane(&lane_id)?.ok_or_else(|| {
+		color_eyre::eyre::eyre!("Runtime recovery requires canonical lane authority.")
+	})?;
+	if lane.intake_authority_id().is_none() || lane.claim_run_id() != Some(marker.run_id()) {
+		color_eyre::eyre::bail!("Runtime recovery marker does not match canonical lane authority.");
+	}
+	state_store.record_lane_run_attempt(
+		project.service_id(),
 		marker.run_id(),
 		&issue.id,
 		marker.attempt_number(),

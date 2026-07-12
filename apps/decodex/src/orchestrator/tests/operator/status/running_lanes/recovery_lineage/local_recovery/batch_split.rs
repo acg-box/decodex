@@ -1,9 +1,12 @@
-use crate::orchestrator::tests::{
-	operator::status::{
-		running_lanes,
-		running_lanes::{FakeTracker, StateStore, fs, orchestrator, state},
+use crate::{
+	lane_authority::{LaneCommand, LaneId},
+	orchestrator::tests::{
+		operator::status::{
+			running_lanes,
+			running_lanes::{FakeTracker, StateStore, fs, orchestrator, state},
+		},
+		recovery_terminal_support,
 	},
-	recovery_terminal_support,
 };
 
 #[test]
@@ -23,6 +26,22 @@ fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
 	fs::create_dir_all(&worktree_path).expect("active worktree path should exist");
 	state::write_run_activity_marker(&worktree_path, "run-101", 1)
 		.expect("activity marker should write");
+	let binding = config.project_binding("test-config-fingerprint");
+	let lane_id = LaneId::new(config.service_id(), &issue.id).expect("lane id");
+	state_store
+		.apply_lane_command(
+			lane_id.clone(),
+			binding.config_fingerprint(),
+			LaneCommand::Admit { intake_authority_id: String::from("authority-101") },
+		)
+		.expect("admit lane");
+	state_store
+		.apply_lane_command(
+			lane_id,
+			binding.config_fingerprint(),
+			LaneCommand::AcquireClaim { run_id: String::from("run-101") },
+		)
+		.expect("claim lane");
 
 	state_store
 		.upsert_worktree(

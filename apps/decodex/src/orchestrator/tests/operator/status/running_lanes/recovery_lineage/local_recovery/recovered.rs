@@ -1,9 +1,12 @@
-use crate::orchestrator::tests::{
-	operator::status::{
-		running_lanes,
-		running_lanes::{FakeTracker, StateStore, fs, orchestrator, state},
+use crate::{
+	lane_authority::{LaneCommand, LaneId},
+	orchestrator::tests::{
+		operator::status::{
+			running_lanes,
+			running_lanes::{FakeTracker, StateStore, fs, orchestrator, state},
+		},
+		recovery_terminal_support,
 	},
-	recovery_terminal_support,
 };
 
 #[test]
@@ -17,6 +20,22 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 	fs::create_dir_all(&worktree_path).expect("active worktree path should exist");
 	state::write_run_activity_marker(&worktree_path, "run-1", 1)
 		.expect("activity marker should write");
+	let binding = config.project_binding("test-config-fingerprint");
+	let lane_id = LaneId::new(config.service_id(), &issue.id).expect("lane id");
+	state_store
+		.apply_lane_command(
+			lane_id.clone(),
+			binding.config_fingerprint(),
+			LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+		)
+		.expect("admit lane");
+	state_store
+		.apply_lane_command(
+			lane_id,
+			binding.config_fingerprint(),
+			LaneCommand::AcquireClaim { run_id: String::from("run-1") },
+		)
+		.expect("claim lane");
 
 	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
 		.expect("activity marker should load")
@@ -47,4 +66,42 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 	assert_eq!(mapping.provenance().created_at_unix(), Some(observed_at_unix));
 	assert_eq!(mapping.provenance().updated_at_unix(), Some(observed_at_unix));
 	assert_eq!(lease.run_id(), "run-1");
+}
+
+#[test]
+fn runtime_recovery_refuses_marker_that_does_not_match_canonical_claim() {
+	let (_temp_dir, config, workflow) = running_lanes::temp_project_layout();
+	let issue = recovery_terminal_support::sample_active_issue("In Progress");
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store");
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+	fs::create_dir_all(&worktree_path).expect("worktree path");
+	state::write_run_activity_marker(&worktree_path, "marker-run", 1).expect("marker");
+	let binding = config.project_binding("test-config-fingerprint");
+	let lane_id = LaneId::new(config.service_id(), &issue.id).expect("lane id");
+	state_store
+		.apply_lane_command(
+			lane_id.clone(),
+			binding.config_fingerprint(),
+			LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+		)
+		.expect("admit");
+	state_store
+		.apply_lane_command(
+			lane_id,
+			binding.config_fingerprint(),
+			LaneCommand::AcquireClaim { run_id: String::from("canonical-run") },
+		)
+		.expect("claim");
+
+	let error = orchestrator::recover_runtime_state_from_tracker_and_worktrees(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+	)
+	.err()
+	.expect("mismatched marker must fail closed");
+	assert!(error.to_string().contains("does not match canonical lane authority"));
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease read").is_none());
 }
