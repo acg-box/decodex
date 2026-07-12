@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 pub(crate) const WORKTREE_PROVENANCE_FILESYSTEM_SCAN: &str = "filesystem_scan";
 pub(crate) const WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN: &str = "git_hygiene_scan";
 pub(crate) const WORKTREE_PROVENANCE_LEGACY_UNKNOWN: &str = "legacy_unknown";
+#[cfg(test)]
 pub(crate) const WORKTREE_PROVENANCE_RUNTIME_RECOVERED: &str = "runtime_recovered";
 pub(crate) const WORKTREE_PROVENANCE_RUNTIME_RECORDED: &str = "runtime_recorded";
 

@@ -14,7 +14,7 @@ pub(crate) use self::{
 	worktree::{
 		WORKTREE_PROVENANCE_FILESYSTEM_SCAN, WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
 		WORKTREE_PROVENANCE_LEGACY_UNKNOWN, WORKTREE_PROVENANCE_RUNTIME_RECORDED,
-		WORKTREE_PROVENANCE_RUNTIME_RECOVERED, WorktreeMapping, WorktreeProvenance,
-		worktree_provenance,
+		WorktreeMapping, WorktreeProvenance, worktree_provenance,
 	},
 };
+#[cfg(test)] pub(crate) use worktree::WORKTREE_PROVENANCE_RUNTIME_RECOVERED;

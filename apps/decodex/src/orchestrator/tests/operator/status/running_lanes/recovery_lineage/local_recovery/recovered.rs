@@ -70,6 +70,7 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 	assert_eq!(mapping.provenance().created_at_unix(), Some(observed_at_unix));
 	assert_eq!(mapping.provenance().updated_at_unix(), Some(observed_at_unix));
 	assert_eq!(lane.claim_run_id(), Some("run-1"));
+	assert_eq!(lane.worktree_path(), Some(&worktree_path));
 	assert_eq!(attempt.project_id(), Some(config.service_id()));
 	assert_eq!(attempt.issue_id(), issue.id);
 }

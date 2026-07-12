@@ -32,8 +32,7 @@ pub(crate) use self::{
 		RunActivityMarker, RunAttempt, RunControlActionOutcomeRequest, RunControlActionReceipt,
 		RunControlActionRequest, RunControlChannel, WORKTREE_PROVENANCE_FILESYSTEM_SCAN,
 		WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN, WORKTREE_PROVENANCE_LEGACY_UNKNOWN,
-		WORKTREE_PROVENANCE_RUNTIME_RECORDED, WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
-		WorktreeMapping, worktree_provenance,
+		WORKTREE_PROVENANCE_RUNTIME_RECORDED, WorktreeMapping, worktree_provenance,
 	},
 	run_activity_marker::{
 		clear_run_retry_schedule, current_host_boot_id, process_start_identity,
@@ -52,6 +51,7 @@ pub(crate) use self::{
 		ReviewPolicyCheckpointInput,
 	},
 };
+#[cfg(test)] pub(crate) use models::WORKTREE_PROVENANCE_RUNTIME_RECOVERED;
 pub(crate) use internal::{CodexAccountMarker, EffectiveRuntimeMarker, ProtocolActivityMarker};
 #[allow(unused_imports)] pub(crate) use models::WorktreeProvenance;
 #[cfg(test)]

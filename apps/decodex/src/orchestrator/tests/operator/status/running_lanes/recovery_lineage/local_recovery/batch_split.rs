@@ -84,6 +84,7 @@ fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
 	);
 	assert_eq!(recovered_mapping.issue_id(), issue.id);
 	assert_eq!(lane.claim_run_id(), Some("run-101"));
+	assert_eq!(lane.worktree_path(), Some(&worktree_path));
 	assert_eq!(attempt.project_id(), Some(config.service_id()));
 	assert_eq!(attempt.issue_id(), issue.id);
 }

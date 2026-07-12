@@ -6,10 +6,11 @@ use crate::{
 	lane_authority::{LaneCommand, LaneId},
 	prelude::{Result, eyre},
 	state::{
-		StateStore, WORKTREE_PROVENANCE_RUNTIME_RECORDED, WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
-		WorktreeMapping, runtime_records::WorktreeMappingRecord,
+		StateStore, WORKTREE_PROVENANCE_RUNTIME_RECORDED, WorktreeMapping,
+		runtime_records::WorktreeMappingRecord,
 	},
 };
+#[cfg(test)] use crate::state::WORKTREE_PROVENANCE_RUNTIME_RECOVERED;
 
 impl StateStore {
 	/// Attach a worktree to an already claimed canonical lane, then update its legacy projection.
@@ -154,37 +155,62 @@ impl StateStore {
 		worktree_path: &str,
 		observed_at_unix: Option<i64>,
 	) -> Result<()> {
-		let mut state = self.lock_without_refresh()?;
-		let existing = state.worktrees.get(issue_id);
-		let existing_provenance_source = existing.map(|mapping| mapping.provenance_source.as_str());
-		let provenance_source = match existing_provenance_source {
-			Some(WORKTREE_PROVENANCE_RUNTIME_RECORDED) => WORKTREE_PROVENANCE_RUNTIME_RECORDED,
-			Some(WORKTREE_PROVENANCE_RUNTIME_RECOVERED) => WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
-			_ => WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
+		#[cfg(not(test))]
+		let _ = observed_at_unix;
+		let lane_id = LaneId::new(project_id, issue_id)?;
+		let lane = self
+			.lane(&lane_id)?
+			.ok_or_else(|| eyre::eyre!("Recovered worktree requires canonical lane authority."))?;
+		if lane.claim_run_id().is_none() {
+			eyre::bail!("Recovered worktree requires an active canonical lane claim.");
 		}
-		.to_owned();
-		let existing_created_at_unix = existing.and_then(|mapping| mapping.created_at_unix);
-		let existing_updated_at_unix = existing.and_then(|mapping| mapping.updated_at_unix);
-		let created_at_unix = existing_created_at_unix.or(observed_at_unix);
-		let updated_at_unix = match (existing_updated_at_unix, observed_at_unix) {
-			(Some(existing), Some(observed)) => Some(existing.max(observed)),
-			(Some(existing), None) => Some(existing),
-			(None, observed) => observed,
-		};
-		let mapping = WorktreeMappingRecord {
-			project_id: project_id.to_owned(),
-			issue_id: issue_id.to_owned(),
-			branch_name: branch_name.to_owned(),
-			worktree_path: PathBuf::from(worktree_path),
-			provenance_source,
-			created_at_unix,
-			updated_at_unix,
-		};
+		self.apply_lane_command(
+			lane_id,
+			lane.binding_fingerprint(),
+			LaneCommand::AttachWorktree {
+				branch_name: branch_name.to_owned(),
+				worktree_path: PathBuf::from(worktree_path),
+			},
+		)?;
+		#[cfg(not(test))]
+		return Ok(());
 
-		state.worktrees.insert(issue_id.to_owned(), mapping.clone());
-		state.remember_run_project(project_id, issue_id, None);
+		#[cfg(test)]
+		{
+			let mut state = self.lock_without_refresh()?;
+			let existing = state.worktrees.get(issue_id);
+			let existing_provenance_source =
+				existing.map(|mapping| mapping.provenance_source.as_str());
+			let provenance_source = match existing_provenance_source {
+				Some(WORKTREE_PROVENANCE_RUNTIME_RECORDED) => WORKTREE_PROVENANCE_RUNTIME_RECORDED,
+				Some(WORKTREE_PROVENANCE_RUNTIME_RECOVERED) => WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
+				_ => WORKTREE_PROVENANCE_RUNTIME_RECOVERED,
+			}
+			.to_owned();
+			let existing_created_at_unix = existing.and_then(|mapping| mapping.created_at_unix);
+			let existing_updated_at_unix = existing.and_then(|mapping| mapping.updated_at_unix);
+			let created_at_unix = existing_created_at_unix.or(observed_at_unix);
+			let updated_at_unix = match (existing_updated_at_unix, observed_at_unix) {
+				(Some(existing), Some(observed)) => Some(existing.max(observed)),
+				(Some(existing), None) => Some(existing),
+				(None, observed) => observed,
+			};
+			let mapping = WorktreeMappingRecord {
+				project_id: project_id.to_owned(),
+				issue_id: issue_id.to_owned(),
+				branch_name: branch_name.to_owned(),
+				worktree_path: PathBuf::from(worktree_path),
+				provenance_source,
+				created_at_unix,
+				updated_at_unix,
+			};
 
-		self.upsert_worktree_and_remember_run_project_locked(&mapping)
+			state.worktrees.insert(issue_id.to_owned(), mapping.clone());
+			state.remember_run_project(project_id, issue_id, None);
+
+			self.upsert_worktree_and_remember_run_project_locked(&mapping)?;
+			Ok(())
+		}
 	}
 
 	/// Read the worktree mapping for one issue.

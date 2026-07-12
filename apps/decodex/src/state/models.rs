@@ -21,8 +21,7 @@ pub(crate) use self::{
 		PrivateExecutionEvent, ProjectRegistration, ProjectRunStatus,
 		WORKTREE_PROVENANCE_FILESYSTEM_SCAN, WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
 		WORKTREE_PROVENANCE_LEGACY_UNKNOWN, WORKTREE_PROVENANCE_RUNTIME_RECORDED,
-		WORKTREE_PROVENANCE_RUNTIME_RECOVERED, WorktreeMapping, WorktreeProvenance,
-		worktree_provenance,
+		WorktreeMapping, WorktreeProvenance, worktree_provenance,
 	},
 	review::{
 		LoopGuardrailCheckpoint, ReviewLifecycleHandoffInput, ReviewLifecycleReadback,
@@ -33,4 +32,5 @@ pub(crate) use self::{
 		RunControlActionReceipt, RunControlActionRequest, RunControlChannel,
 	},
 };
+#[cfg(test)] pub(crate) use project::WORKTREE_PROVENANCE_RUNTIME_RECOVERED;
 #[cfg(test)] pub(crate) use review::ReviewLifecycleHandoffFixture;
