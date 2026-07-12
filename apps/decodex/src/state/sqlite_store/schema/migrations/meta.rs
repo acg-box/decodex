@@ -10,7 +10,7 @@ impl SqliteStateStore {
 		if !has_meta {
 			return Ok(());
 		}
-		if self.schema_version()?.is_some_and(|version| version > 14) {
+		if self.schema_version()?.is_some_and(|version| version > 15) {
 			crate::prelude::eyre::bail!("Runtime schema was created by a newer Decodex binary.");
 		}
 		Ok(())
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	pub(in crate::state) fn run_schema_migrations(&self) -> Result<()> {
 		let version = self.schema_version()?.unwrap_or(0);
 
-		if version > 14 {
+		if version > 15 {
 			crate::prelude::eyre::bail!("Runtime schema was created by a newer Decodex binary.");
 		}
 
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '14')
+VALUES ('schema_version', '15')
 ON CONFLICT(key) DO UPDATE SET value =
 	CASE
 		WHEN CAST(schema_meta.value AS INTEGER) < CAST(excluded.value AS INTEGER)

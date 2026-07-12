@@ -1021,6 +1021,17 @@ extra patch units. Six supersession-focused tests and
 terminal-authority/conflict-release transaction, canonical PatchSet construction, and
 closeout effects remain before C4 is complete.
 
+C4 now persists active handoffs and terminal edges and commits the first irreversible
+local boundary atomically. One SQLite transaction CASes the active handoff and frozen
+predecessor epoch, inserts the immutable edge, moves the predecessor Lane to
+non-executable `terminal_cleanup_pending`, clears its claimant, and releases only the
+exact matching project/run conflict lease. Restart readback preserves the edge and
+terminal-cleanup phase. Schema 15 rejects newer state before bootstrap. Seven
+supersession tests, the persistent atomic-boundary fixture, and
+`cargo check -p decodex --all-targets` pass. External effects still do not run; closeout
+operation stages, cleanup receipts, PatchSet canonicalization, handoff replacement, and
+crash-point coverage remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

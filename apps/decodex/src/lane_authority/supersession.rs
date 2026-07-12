@@ -77,6 +77,10 @@ impl RepairHandoffAuthority {
 		&self.predecessor_lane_id
 	}
 
+	pub fn successor_lane_id(&self) -> &LaneId {
+		&self.successor_lane_id
+	}
+
 	pub const fn predecessor_epoch(&self) -> u64 {
 		self.predecessor_epoch
 	}
@@ -202,6 +206,30 @@ pub struct SupersessionEdge {
 impl SupersessionEdge {
 	pub fn edge_id(&self) -> &str {
 		&self.edge_id
+	}
+
+	pub fn handoff_id(&self) -> &str {
+		&self.handoff_id
+	}
+
+	pub fn predecessor_lane_id(&self) -> &LaneId {
+		&self.predecessor_lane_id
+	}
+
+	pub const fn predecessor_epoch(&self) -> u64 {
+		self.predecessor_epoch
+	}
+
+	pub fn validate(&self) -> Result<()> {
+		if self.schema != SUPERSESSION_EDGE_SCHEMA
+			|| self.edge_id.trim().is_empty()
+			|| self.handoff_id.trim().is_empty()
+			|| self.predecessor_lane_id == self.successor_lane_id
+			|| self.successor_merge_oid.trim().is_empty()
+		{
+			eyre::bail!("Supersession edge is invalid.");
+		}
+		Ok(())
 	}
 }
 

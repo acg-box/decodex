@@ -7,6 +7,7 @@ mod registry;
 mod review;
 mod runs;
 mod snapshot;
+mod supersession;
 
 use std::path::PathBuf;
 

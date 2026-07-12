@@ -9,13 +9,22 @@ pub enum LanePhase {
 	Claimed,
 	Running,
 	WaitingReview,
+	TerminalCleanupPending,
+	Terminal,
 	Landed,
 	Canceled,
 	NeedsAttention,
 }
 impl LanePhase {
 	pub const fn is_terminal(self) -> bool {
-		matches!(self, Self::Landed | Self::Canceled | Self::NeedsAttention)
+		matches!(
+			self,
+			Self::TerminalCleanupPending
+				| Self::Terminal
+				| Self::Landed
+				| Self::Canceled
+				| Self::NeedsAttention
+		)
 	}
 
 	pub const fn holds_active_authority(self) -> bool {
@@ -28,6 +37,8 @@ impl LanePhase {
 			Self::Claimed => "claimed",
 			Self::Running => "running",
 			Self::WaitingReview => "waiting_review",
+			Self::TerminalCleanupPending => "terminal_cleanup_pending",
+			Self::Terminal => "terminal",
 			Self::Landed => "landed",
 			Self::Canceled => "canceled",
 			Self::NeedsAttention => "needs_attention",
@@ -40,6 +51,8 @@ impl LanePhase {
 			"claimed" => Some(Self::Claimed),
 			"running" => Some(Self::Running),
 			"waiting_review" => Some(Self::WaitingReview),
+			"terminal_cleanup_pending" => Some(Self::TerminalCleanupPending),
+			"terminal" => Some(Self::Terminal),
 			"landed" => Some(Self::Landed),
 			"canceled" => Some(Self::Canceled),
 			"needs_attention" => Some(Self::NeedsAttention),
@@ -142,6 +155,8 @@ pub enum LaneCommand {
 	Land,
 	Cancel,
 	RequireAttention,
+	BeginSupersededCleanup,
+	CompleteTerminalCleanup,
 }
 
 /// Fail-closed transition rejection suitable for durable reason telemetry.
@@ -169,7 +184,10 @@ pub fn transition(
 	if current.epoch != expected_epoch {
 		return Err(LaneTransitionRejection::EpochMismatch);
 	}
-	if current.phase.is_terminal() {
+	if current.phase.is_terminal()
+		&& !(current.phase == LanePhase::TerminalCleanupPending
+			&& command == LaneCommand::CompleteTerminalCleanup)
+	{
 		return Err(LaneTransitionRejection::InvalidPhase);
 	}
 
@@ -249,7 +267,24 @@ pub fn transition(
 		},
 		LaneCommand::Cancel => next.phase = LanePhase::Canceled,
 		LaneCommand::RequireAttention => next.phase = LanePhase::NeedsAttention,
+		LaneCommand::BeginSupersededCleanup
+			if matches!(
+				current.phase,
+				LanePhase::Claimed | LanePhase::Running | LanePhase::WaitingReview
+			) =>
+		{
+			next.phase = LanePhase::TerminalCleanupPending;
+			next.claim_run_id = None;
+		},
+		LaneCommand::CompleteTerminalCleanup
+			if current.phase == LanePhase::TerminalCleanupPending =>
+		{
+			next.phase = LanePhase::Terminal;
+		},
 		LaneCommand::BeginRun | LaneCommand::BeginReview | LaneCommand::Land => {
+			return Err(LaneTransitionRejection::InvalidPhase);
+		},
+		LaneCommand::BeginSupersededCleanup | LaneCommand::CompleteTerminalCleanup => {
 			return Err(LaneTransitionRejection::InvalidPhase);
 		},
 	}

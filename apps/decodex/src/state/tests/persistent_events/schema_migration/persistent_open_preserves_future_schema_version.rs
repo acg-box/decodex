@@ -13,7 +13,7 @@ fn persistent_open_rejects_future_schema_version() {
 	let connection = Connection::open(&state_path).expect("sqlite should open");
 
 	connection
-		.execute("UPDATE schema_meta SET value = '15' WHERE key = 'schema_version'", [])
+		.execute("UPDATE schema_meta SET value = '16' WHERE key = 'schema_version'", [])
 		.expect("future schema version should set");
 
 	let error = match StateStore::open(&state_path) {
@@ -28,5 +28,5 @@ fn persistent_open_rejects_future_schema_version() {
 		})
 		.expect("schema version should read");
 
-	assert_eq!(version, "15");
+	assert_eq!(version, "16");
 }

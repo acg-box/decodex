@@ -11,6 +11,7 @@ impl SqliteStateStore {
 		self.load_lanes(&mut state)?;
 		self.load_lane_effects(&mut state)?;
 		self.load_no_effective_delta_recoveries(&mut state)?;
+		self.load_supersession_authority(&mut state)?;
 		self.load_leases(&mut state)?;
 		self.load_run_attempts(&mut state)?;
 		self.load_run_control_channels(&mut state)?;

@@ -85,6 +85,37 @@ CREATE TABLE IF NOT EXISTS no_effective_delta_recoveries (
 );
 CREATE INDEX IF NOT EXISTS no_effective_delta_recoveries_lane_idx
 ON no_effective_delta_recoveries (project_key, tracker_issue_id, operation_id);
+CREATE TABLE IF NOT EXISTS repair_handoffs (
+	handoff_id TEXT PRIMARY KEY NOT NULL,
+	predecessor_project_key TEXT NOT NULL,
+	predecessor_issue_id TEXT NOT NULL,
+	predecessor_epoch INTEGER NOT NULL,
+	successor_project_key TEXT NOT NULL,
+	successor_issue_id TEXT NOT NULL,
+	state TEXT NOT NULL CHECK (state IN ('active', 'accepted', 'rejected_stale')),
+	payload_json TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	FOREIGN KEY (predecessor_project_key, predecessor_issue_id)
+		REFERENCES lanes (project_key, tracker_issue_id),
+	FOREIGN KEY (successor_project_key, successor_issue_id)
+		REFERENCES lanes (project_key, tracker_issue_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS repair_handoffs_active_idx
+ON repair_handoffs (predecessor_project_key, predecessor_issue_id, predecessor_epoch)
+WHERE state = 'active';
+CREATE TABLE IF NOT EXISTS supersession_edges (
+	edge_id TEXT PRIMARY KEY NOT NULL,
+	handoff_id TEXT UNIQUE NOT NULL,
+	predecessor_project_key TEXT NOT NULL,
+	predecessor_issue_id TEXT NOT NULL,
+	predecessor_epoch INTEGER NOT NULL,
+	payload_json TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	UNIQUE (predecessor_project_key, predecessor_issue_id),
+	FOREIGN KEY (handoff_id) REFERENCES repair_handoffs (handoff_id),
+	FOREIGN KEY (predecessor_project_key, predecessor_issue_id)
+		REFERENCES lanes (project_key, tracker_issue_id)
+);
 CREATE TABLE IF NOT EXISTS run_attempts (
 	run_id TEXT PRIMARY KEY NOT NULL,
 	project_id TEXT,
