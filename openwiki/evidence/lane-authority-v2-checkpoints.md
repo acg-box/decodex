@@ -87,6 +87,24 @@ exist and are the next removal slice, so fresh v2 schema publication remains dis
 Five C1 generation tests, persistent Lane round-trip, `cargo check -p decodex
 --all-targets --all-features`, and `git diff --check` pass.
 
+The ownership cutover advanced through commits `77d3017e`, `ea3e5ad0`, `548f7471`,
+`2f8208bb`, `0313c1ee`, `935d1ea6`, `d2b807f8`, `03a87d9e`, `1fafae76`, and
+`b835f0ae`. Normal dispatch, runtime recovery, stale-active diagnosis/release, closeout,
+manual commit guard, daemon cleanup, retained review, project reconciliation, run-status
+ownership, and worktree projections now consume canonical Lane/LaneClaim state. An
+identifier-keyed legacy lease is explicitly non-authoritative. Production builds no
+longer compile the issue-only lease readers or create/load/write the `leases` and
+`worktrees` tables; test-only legacy fixtures remain while their remaining tests are
+converted.
+
+`scripts/verify_lane_authority_v2_fresh_schema.sh` builds the production binary, starts
+it under a disposable HOME with a tombstoned legacy path and generation manifest, and
+inspects the resulting SQLite schema. It proves `lanes` exists, `leases` and `worktrees`
+are absent, and schema version 17 is selected. The script emits no retained audit
+artifact. Fresh evidence: 65 stale-active tests, 37 reconciliation tests, closeout,
+daemon-child, retryable-failure, Lane Authority, persistent-open, production fresh-schema,
+all-target check, and diff check passed.
+
 Fresh focused evidence on this runtime branch:
 
 - lane authority tests: 7 passed;

@@ -158,6 +158,7 @@ cargo test -p decodex migration_v13 --all-features --quiet
 cargo test -p decodex effect_protocol_core --all-features --quiet
 cargo test -p decodex authority_output_boundary --all-features --quiet
 cargo check --all-features --all-targets --workspace
+scripts/verify_lane_authority_v2_fresh_schema.sh
 scripts/verify_lane_authority_v2_gates.sh C1
 scripts/verify_lane_authority_v2_legacy_authority.sh --checkpoint C1
 scripts/verify_lane_authority_v2_mutations.sh --checkpoint C1
