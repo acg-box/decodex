@@ -18,6 +18,10 @@ impl LanePhase {
 		matches!(self, Self::Landed | Self::Canceled | Self::NeedsAttention)
 	}
 
+	pub const fn holds_active_authority(self) -> bool {
+		matches!(self, Self::Claimed | Self::Running | Self::WaitingReview)
+	}
+
 	pub(crate) const fn as_str(self) -> &'static str {
 		match self {
 			Self::Unclaimed => "unclaimed",
@@ -113,6 +117,7 @@ impl LaneAggregate {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LaneCommand {
 	AcquireClaim { run_id: String },
+	ReleaseClaim { run_id: String },
 	AttachWorktree { branch_name: String, worktree_path: PathBuf },
 	BeginRun,
 	BeginReview,
@@ -158,6 +163,17 @@ pub fn transition(
 			},
 			Some(existing) if existing == run_id => {},
 			Some(_) | None => return Err(LaneTransitionRejection::ConflictingClaim),
+		},
+		LaneCommand::ReleaseClaim { run_id } => match current.claim_run_id.as_deref() {
+			Some(existing)
+				if existing == run_id
+					&& matches!(current.phase, LanePhase::Claimed | LanePhase::Running) =>
+			{
+				next.claim_run_id = None;
+				next.phase = LanePhase::Unclaimed;
+			},
+			None if current.phase == LanePhase::Unclaimed => {},
+			_ => return Err(LaneTransitionRejection::ConflictingClaim),
 		},
 		LaneCommand::AttachWorktree { branch_name, worktree_path } => {
 			if !matches!(current.phase, LanePhase::Claimed | LanePhase::Running) {
@@ -286,6 +302,36 @@ mod tests {
 		assert_eq!(
 			transition(&landed, 5, "binding-1", LaneCommand::Cancel),
 			Err(LaneTransitionRejection::InvalidPhase),
+		);
+	}
+
+	#[test]
+	fn claim_release_is_retry_safe_and_preserves_lane_identity() {
+		let claimed = transition(
+			&lane(),
+			0,
+			"binding-1",
+			LaneCommand::AcquireClaim { run_id: String::from("run-1") },
+		)
+		.expect("claim");
+		let released = transition(
+			&claimed,
+			1,
+			"binding-1",
+			LaneCommand::ReleaseClaim { run_id: String::from("run-1") },
+		)
+		.expect("release");
+		assert_eq!(released.phase(), LanePhase::Unclaimed);
+		assert_eq!(released.claim_run_id(), None);
+		assert_eq!(
+			transition(
+				&released,
+				2,
+				"binding-1",
+				LaneCommand::ReleaseClaim { run_id: String::from("run-1") },
+			)
+			.expect("release replay"),
+			released,
 		);
 	}
 }

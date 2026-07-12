@@ -52,9 +52,10 @@ CREATE TABLE IF NOT EXISTS lanes (
 	updated_at_unix INTEGER NOT NULL,
 	PRIMARY KEY (project_key, tracker_issue_id)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS lanes_active_tracker_issue_idx
+DROP INDEX IF EXISTS lanes_active_tracker_issue_idx;
+CREATE UNIQUE INDEX lanes_active_tracker_issue_idx
 ON lanes (tracker_issue_id)
-WHERE phase NOT IN ('landed', 'canceled', 'needs_attention');
+WHERE phase IN ('claimed', 'running', 'waiting_review');
 CREATE TABLE IF NOT EXISTS run_attempts (
 	run_id TEXT PRIMARY KEY NOT NULL,
 	project_id TEXT,

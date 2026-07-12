@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+	lane_authority::{LaneCommand, LaneId},
 	prelude::{Result, eyre},
 	state::{
 		runtime_records::GuardRetention,
@@ -12,8 +13,77 @@ use crate::{
 };
 
 impl StateStore {
+	/// Acquire the canonical project-qualified lane claim, then materialize its legacy lease
+	/// projection.
+	pub fn try_acquire_registered_lease(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		issue_state: &str,
+	) -> Result<bool> {
+		let binding = match self.registered_project_binding(project_id)? {
+			Some(binding) => binding,
+			None => {
+				#[cfg(not(test))]
+				eyre::bail!("Project is not registered; lane claim is forbidden.");
+				#[cfg(test)]
+				crate::lane_authority::ProjectBinding::new(
+					project_id,
+					"test-owner",
+					"test-repository",
+					"team-test",
+					&format!("decodex:queued:{project_id}"),
+					&format!("test-binding:{project_id}"),
+				)?
+			},
+		};
+		let lane_id = LaneId::new(project_id, issue_id)?;
+		let previous = self.lane(&lane_id)?;
+		self.apply_lane_command(
+			lane_id.clone(),
+			binding.config_fingerprint(),
+			LaneCommand::AcquireClaim { run_id: run_id.to_owned() },
+		)?;
+		let acquired = self.try_acquire_lease_projection(project_id, issue_id, run_id, issue_state);
+		match acquired {
+			Ok(true) => Ok(true),
+			Ok(false) => {
+				if previous.as_ref().and_then(|lane| lane.claim_run_id()).is_none() {
+					self.apply_lane_command(
+						lane_id,
+						binding.config_fingerprint(),
+						LaneCommand::ReleaseClaim { run_id: run_id.to_owned() },
+					)?;
+				}
+				Ok(false)
+			},
+			Err(error) => {
+				if previous.as_ref().and_then(|lane| lane.claim_run_id()).is_none() {
+					let _ = self.apply_lane_command(
+						lane_id,
+						binding.config_fingerprint(),
+						LaneCommand::ReleaseClaim { run_id: run_id.to_owned() },
+					);
+				}
+				Err(error)
+			},
+		}
+	}
+
 	/// Try to acquire one issue claim plus one shared dispatch slot for one issue.
+	#[cfg(test)]
 	pub fn try_acquire_lease(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		issue_state: &str,
+	) -> Result<bool> {
+		self.try_acquire_lease_projection(project_id, issue_id, run_id, issue_state)
+	}
+
+	fn try_acquire_lease_projection(
 		&self,
 		project_id: &str,
 		issue_id: &str,

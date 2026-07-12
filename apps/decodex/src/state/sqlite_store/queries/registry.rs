@@ -1,3 +1,5 @@
+use rusqlite::OptionalExtension;
+
 use crate::{
 	lane_authority::{LaneAggregate, LaneId, LanePhase, ProjectBinding},
 	state::sqlite_store::{
@@ -10,6 +12,39 @@ use crate::{
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn lane(&self, id: &LaneId) -> Result<Option<LaneAggregate>> {
+		self.connection
+			.query_row(
+				"SELECT binding_fingerprint, epoch, phase, claim_run_id, branch_name, worktree_path \
+				 FROM lanes WHERE project_key = ?1 AND tracker_issue_id = ?2",
+				queries::params![id.project_key(), id.tracker_issue_id()],
+				|row| {
+					let phase_value: String = row.get(2)?;
+					let phase = LanePhase::from_str(&phase_value).ok_or_else(|| {
+						rusqlite::Error::InvalidColumnType(
+							2,
+							String::from("phase"),
+							rusqlite::types::Type::Text,
+						)
+					})?;
+					let epoch_value: i64 = row.get(1)?;
+					let epoch = u64::try_from(epoch_value)
+						.map_err(|_| rusqlite::Error::IntegralValueOutOfRange(1, epoch_value))?;
+					Ok(LaneAggregate::from_persisted_parts(
+						id.clone(),
+						row.get(0)?,
+						epoch,
+						phase,
+						row.get(3)?,
+						row.get(4)?,
+						row.get::<_, Option<String>>(5)?.map(PathBuf::from),
+					))
+				},
+			)
+			.optional()
+			.map_err(Into::into)
+	}
+
 	pub(in crate::state) fn load_lanes(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_key, tracker_issue_id, binding_fingerprint, epoch, phase, \

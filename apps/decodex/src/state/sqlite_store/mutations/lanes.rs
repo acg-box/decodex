@@ -62,12 +62,12 @@ impl SqliteStateStore {
 			return Ok(next);
 		}
 
-		if !next.phase().is_terminal() {
+		if next.phase().holds_active_authority() {
 			let conflicting_project = transaction
 				.query_row(
 					"SELECT project_key FROM lanes WHERE tracker_issue_id = ?1 \
 					 AND project_key <> ?2 \
-					 AND phase NOT IN ('landed', 'canceled', 'needs_attention') LIMIT 1",
+					 AND phase IN ('claimed', 'running', 'waiting_review') LIMIT 1",
 					params![id.tracker_issue_id(), id.project_key()],
 					|row| row.get::<_, String>(0),
 				)

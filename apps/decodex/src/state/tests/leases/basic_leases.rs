@@ -1,8 +1,121 @@
 use tempfile::TempDir;
 
-use crate::state::StateStore;
+use crate::{
+	lane_authority::{LaneId, LanePhase, ProjectBinding},
+	state::{ProjectRegistration, StateStore},
+};
 
 const LEASE_IN_PROGRESS_STATE: &str = "In Progress";
+
+fn registered_project(temp_dir: &TempDir) -> ProjectRegistration {
+	ProjectRegistration {
+		service_id: String::from("pubfi"),
+		config_path: temp_dir.path().join("project.toml"),
+		repo_root: temp_dir.path().join("repo"),
+		worktree_root: temp_dir.path().join("repo/.worktrees"),
+		workflow_path: temp_dir.path().join("WORKFLOW.md"),
+		tracker_api_key_env_var: String::from("LINEAR_API_KEY"),
+		github_token_env_var: String::from("GITHUB_TOKEN"),
+		enabled: true,
+		config_fingerprint: String::from("binding-1"),
+		binding: ProjectBinding::new(
+			"pubfi",
+			"helixbox",
+			"pubfi-mono",
+			"team-pubfi",
+			"decodex:queued:pubfi",
+			"binding-1",
+		)
+		.expect("binding"),
+		updated_at: String::from("2026-07-12T00:00:00Z"),
+		updated_at_unix: 1_783_814_400,
+	}
+}
+
+#[test]
+fn registered_lease_is_a_retryable_projection_of_canonical_lane_claim() {
+	let temp_dir = TempDir::new().expect("tempdir");
+	let store = StateStore::open(temp_dir.path().join("state.sqlite")).expect("store");
+	store.upsert_project(&registered_project(&temp_dir)).expect("register project");
+	let lane_id = LaneId::new("pubfi", "PUB-101").expect("lane id");
+
+	assert!(
+		store
+			.try_acquire_registered_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE,)
+			.expect("claim")
+	);
+	let claimed = store.lane(&lane_id).expect("lane read").expect("lane");
+	assert_eq!(claimed.phase(), LanePhase::Claimed);
+	assert_eq!(claimed.claim_run_id(), Some("run-1"));
+
+	store.clear_lease("PUB-101").expect("release claim");
+	let released = store.lane(&lane_id).expect("lane read").expect("lane");
+	assert_eq!(released.phase(), LanePhase::Unclaimed);
+	assert_eq!(released.claim_run_id(), None);
+	let mut alternate = registered_project(&temp_dir);
+	alternate.service_id = String::from("pubfi-insight");
+	alternate.config_fingerprint = String::from("binding-2");
+	alternate.binding = ProjectBinding::new(
+		"pubfi-insight",
+		"helixbox",
+		"pubfi-insight",
+		"team-pubfi",
+		"decodex:queued:pubfi-insight",
+		"binding-2",
+	)
+	.expect("alternate binding");
+	store.upsert_project(&alternate).expect("register alternate project");
+	assert!(
+		store
+			.try_acquire_registered_lease(
+				"pubfi-insight",
+				"PUB-101",
+				"alternate-run",
+				LEASE_IN_PROGRESS_STATE,
+			)
+			.expect("released issue may move to another project")
+	);
+	store.clear_lease("PUB-101").expect("release alternate claim");
+	assert!(
+		store
+			.try_acquire_registered_lease("pubfi", "PUB-101", "run-2", LEASE_IN_PROGRESS_STATE,)
+			.expect("retry claim")
+	);
+}
+
+#[test]
+fn registered_lease_rejects_same_active_tracker_issue_in_another_project() {
+	let temp_dir = TempDir::new().expect("tempdir");
+	let store = StateStore::open(temp_dir.path().join("state.sqlite")).expect("store");
+	let first = registered_project(&temp_dir);
+	let mut second = first.clone();
+	second.service_id = String::from("pubfi-insight");
+	second.config_fingerprint = String::from("binding-2");
+	second.binding = ProjectBinding::new(
+		"pubfi-insight",
+		"helixbox",
+		"pubfi-insight",
+		"team-pubfi",
+		"decodex:queued:pubfi-insight",
+		"binding-2",
+	)
+	.expect("second binding");
+	store.upsert_project(&first).expect("register first");
+	store.upsert_project(&second).expect("register second");
+	assert!(
+		store
+			.try_acquire_registered_lease("pubfi", "PUB-1711", "run-1", LEASE_IN_PROGRESS_STATE,)
+			.expect("first claim")
+	);
+	let error = store
+		.try_acquire_registered_lease("pubfi-insight", "PUB-1711", "run-2", LEASE_IN_PROGRESS_STATE)
+		.expect_err("second project claim must fail");
+	assert!(error.to_string().contains("TrackerIssueAlreadyActive"));
+	assert!(
+		store.list_leases("pubfi-insight").expect("leases").is_empty(),
+		"rejected project must not persist a lease projection"
+	);
+}
 
 #[test]
 fn manages_issue_leases() {

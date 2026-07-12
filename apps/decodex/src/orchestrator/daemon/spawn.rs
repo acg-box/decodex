@@ -92,7 +92,7 @@ where
 	{
 		return Ok(false);
 	}
-	if !state_store.try_acquire_lease(
+	if !state_store.try_acquire_registered_lease(
 		context.project.service_id(),
 		&summary.issue_id,
 		&summary.run_id,

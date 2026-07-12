@@ -48,7 +48,7 @@ where
 
 	if !context.dry_run
 		&& !context.lease_preacquired
-		&& !context.state_store.try_acquire_lease(
+		&& !context.state_store.try_acquire_registered_lease(
 			context.project.service_id(),
 			&issue.id,
 			&run_id,

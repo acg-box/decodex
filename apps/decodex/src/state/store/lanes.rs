@@ -1,5 +1,6 @@
+#[cfg(test)] use crate::lane_authority::LaneTransitionRejection;
 use crate::{
-	lane_authority::{LaneAggregate, LaneCommand, LaneId, LaneTransitionRejection, transition},
+	lane_authority::{LaneAggregate, LaneCommand, LaneId, transition},
 	prelude::{Result, eyre},
 	state::StateStore,
 };
@@ -15,6 +16,7 @@ impl StateStore {
 			.cloned())
 	}
 
+	#[cfg(test)]
 	pub(crate) fn transition_lane(
 		&self,
 		id: LaneId,
@@ -43,11 +45,11 @@ impl StateStore {
 		let next = transition(&current, expected_epoch, binding_fingerprint, command)
 			.map_err(|rejection| eyre::eyre!("lane_transition_rejected:{rejection:?}"))?;
 
-		if next.phase().is_terminal() == false
+		if next.phase().holds_active_authority()
 			&& state.lanes.values().any(|lane| {
 				lane.id() != &id
 					&& lane.id().tracker_issue_id() == id.tracker_issue_id()
-					&& !lane.phase().is_terminal()
+					&& lane.phase().holds_active_authority()
 			}) {
 			return Err(eyre::eyre!(
 				"lane_transition_rejected:{:?}",
@@ -58,6 +60,50 @@ impl StateStore {
 		if next == current {
 			return Ok(next);
 		}
+		state.lanes.insert(id, next.clone());
+		Ok(next)
+	}
+
+	pub(crate) fn apply_lane_command(
+		&self,
+		id: LaneId,
+		binding_fingerprint: &str,
+		command: LaneCommand,
+	) -> Result<LaneAggregate> {
+		if let Some(sqlite) = &self.sqlite {
+			let mut sqlite =
+				sqlite.lock().map_err(|_| eyre::eyre!("SQLite state lock poisoned."))?;
+			for _ in 0..3 {
+				let expected_epoch = sqlite.lane(&id)?.map_or(0, |lane| lane.epoch());
+				match sqlite.transition_lane(
+					&id,
+					expected_epoch,
+					binding_fingerprint,
+					command.clone(),
+				) {
+					Ok(next) => {
+						self.inner
+							.lock()
+							.map_err(|_| eyre::eyre!("State lock poisoned."))?
+							.lanes
+							.insert(id, next.clone());
+						return Ok(next);
+					},
+					Err(error) if error.to_string().contains("EpochMismatch") => continue,
+					Err(error) => return Err(error),
+				}
+			}
+			eyre::bail!("lane_compare_and_swap_retry_exhausted");
+		}
+
+		let mut state = self.inner.lock().map_err(|_| eyre::eyre!("State lock poisoned."))?;
+		let current = state
+			.lanes
+			.get(&id)
+			.cloned()
+			.unwrap_or_else(|| LaneAggregate::new(id.clone(), binding_fingerprint));
+		let next = transition(&current, current.epoch(), binding_fingerprint, command)
+			.map_err(|rejection| eyre::eyre!("lane_transition_rejected:{rejection:?}"))?;
 		state.lanes.insert(id, next.clone());
 		Ok(next)
 	}

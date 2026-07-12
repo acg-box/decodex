@@ -2,6 +2,7 @@ use std::fs::File;
 #[cfg(unix)] use std::os::fd::FromRawFd;
 
 use crate::{
+	lane_authority::{LaneCommand, LaneId},
 	prelude::{Result, eyre},
 	state::{
 		runtime_records::GuardRetention,
@@ -25,7 +26,7 @@ impl StateStore {
 				Some(store::acquire_shared_lock_coordinator(guard.lock_root()?)?),
 			(None, None) => None,
 		};
-		let removed_lease = state.leases.remove(issue_id).is_some();
+		let removed_lease = state.leases.remove(issue_id);
 		let issue_claim_guard = state.issue_claim_guards.remove(issue_id);
 		let dispatch_slot_guard = state.dispatch_slot_guards.remove(issue_id);
 
@@ -36,11 +37,27 @@ impl StateStore {
 			guard.release_for_clear()?;
 		}
 
-		if removed_lease {
+		if removed_lease.is_some() {
 			self.persist_runtime_state_locked(&state)?;
 		}
 
-		self.delete_lease_locked(issue_id)
+		self.delete_lease_locked(issue_id)?;
+		drop(state);
+
+		if let Some(lease) = removed_lease {
+			let lane_id = LaneId::new(lease.project_id(), lease.issue_id())?;
+			if let Some(lane) = self.lane(&lane_id)?
+				&& lane.claim_run_id() == Some(lease.run_id())
+			{
+				self.apply_lane_command(
+					lane_id,
+					lane.binding_fingerprint(),
+					LaneCommand::ReleaseClaim { run_id: lease.run_id().to_owned() },
+				)?;
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Drop the current process-local dispatch-slot guard while keeping the local lease record.
