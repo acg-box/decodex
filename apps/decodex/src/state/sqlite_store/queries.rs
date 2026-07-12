@@ -18,7 +18,6 @@ use crate::{
 	prelude::Result,
 	state::{
 		ConnectorBackoff, IssueLease, ProjectRegistration, ProtocolEventSummaryRecord, StateData,
-		WorktreeMappingRecord,
 		runtime_records::{
 			EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, LinearExecutionEventRuntimeRecord,
 			LoopGuardrailKey, LoopGuardrailRuntimeRecord, PrivateExecutionEventRuntimeRecord,

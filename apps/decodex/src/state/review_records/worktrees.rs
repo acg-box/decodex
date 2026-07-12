@@ -6,10 +6,10 @@ use crate::{
 	lane_authority::{LaneCommand, LaneId},
 	prelude::{Result, eyre},
 	state::{
-		StateStore, WorktreeMapping, runtime_records::WorktreeMappingRecord,
+		StateStore, WORKTREE_PROVENANCE_RUNTIME_RECORDED, WorktreeMapping,
+		runtime_records::WorktreeMappingRecord,
 	},
 };
-#[cfg(test)] use crate::state::WORKTREE_PROVENANCE_RUNTIME_RECORDED;
 #[cfg(test)] use crate::state::WORKTREE_PROVENANCE_RUNTIME_RECOVERED;
 
 impl StateStore {
@@ -219,35 +219,71 @@ impl StateStore {
 
 	/// Read the worktree mapping for one issue.
 	pub fn worktree_for_issue(&self, issue_id: &str) -> Result<Option<WorktreeMapping>> {
-		if let Some(sqlite) = &self.sqlite {
-			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
-
-			return sqlite
-				.worktree_for_issue(issue_id)
-				.map(|mapping| mapping.map(|mapping| mapping.as_public()));
+		#[cfg(not(test))]
+		{
+			let state = self.lock()?;
+			let mut matches = state
+				.lanes
+				.values()
+				.filter(|lane| lane.id().tracker_issue_id() == issue_id)
+				.filter_map(canonical_worktree_projection);
+			let mapping = matches.next();
+			if matches.next().is_some() {
+				eyre::bail!("ambiguous_canonical_worktree_projection");
+			}
+			return Ok(mapping.map(|mapping| mapping.as_public()));
 		}
 
-		let state = self.lock()?;
+		#[cfg(test)]
+		{
+			if let Some(sqlite) = &self.sqlite {
+				let sqlite =
+					sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
 
-		Ok(state.worktrees.get(issue_id).map(WorktreeMappingRecord::as_public))
+				return sqlite
+					.worktree_for_issue(issue_id)
+					.map(|mapping| mapping.map(|mapping| mapping.as_public()));
+			}
+
+			let state = self.lock()?;
+
+			Ok(state.worktrees.get(issue_id).map(WorktreeMappingRecord::as_public))
+		}
 	}
 
 	/// List all known worktree mappings.
 	pub fn list_worktrees(&self, project_id: &str) -> Result<Vec<WorktreeMapping>> {
-		let mut state = self.lock_without_refresh()?;
+		#[cfg(not(test))]
+		{
+			let state = self.lock()?;
+			let mut mappings = state
+				.lanes
+				.values()
+				.filter(|lane| lane.id().project_key() == project_id)
+				.filter_map(canonical_worktree_projection)
+				.map(|mapping| mapping.as_public())
+				.collect::<Vec<_>>();
+			mappings.sort_by(|left, right| left.issue_id().cmp(right.issue_id()));
+			return Ok(mappings);
+		}
 
-		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
+		#[cfg(test)]
+		{
+			let mut state = self.lock_without_refresh()?;
 
-		let mut mappings = state
-			.worktrees
-			.values()
-			.filter(|mapping| mapping.project_id == project_id)
-			.map(WorktreeMappingRecord::as_public)
-			.collect::<Vec<_>>();
+			self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
 
-		mappings.sort_by(|left, right| left.issue_id.cmp(&right.issue_id));
+			let mut mappings = state
+				.worktrees
+				.values()
+				.filter(|mapping| mapping.project_id == project_id)
+				.map(WorktreeMappingRecord::as_public)
+				.collect::<Vec<_>>();
 
-		Ok(mappings)
+			mappings.sort_by(|left, right| left.issue_id.cmp(&right.issue_id));
+
+			Ok(mappings)
+		}
 	}
 
 	/// Remove the worktree mapping for one issue.
@@ -273,4 +309,19 @@ impl StateStore {
 
 		self.delete_worktree_mapping_locked(issue_id)
 	}
+}
+
+#[cfg(not(test))]
+fn canonical_worktree_projection(
+	lane: &crate::lane_authority::LaneAggregate,
+) -> Option<WorktreeMappingRecord> {
+	Some(WorktreeMappingRecord {
+		project_id: lane.id().project_key().to_owned(),
+		issue_id: lane.id().tracker_issue_id().to_owned(),
+		branch_name: lane.branch_name()?.to_owned(),
+		worktree_path: lane.worktree_path()?.clone(),
+		provenance_source: WORKTREE_PROVENANCE_RUNTIME_RECORDED.to_owned(),
+		created_at_unix: None,
+		updated_at_unix: None,
+	})
 }

@@ -6,10 +6,10 @@ use crate::{
 		SqliteStateStore,
 		queries::{
 			self, ConnectorBackoff, IssueLease, PathBuf, ProjectRegistration, Result, StateData,
-			WorktreeMappingRecord,
 		},
 	},
 };
+#[cfg(test)] use crate::state::WorktreeMappingRecord;
 
 impl SqliteStateStore {
 	pub(in crate::state) fn lane(&self, id: &LaneId) -> Result<Option<LaneAggregate>> {
@@ -188,6 +188,7 @@ impl SqliteStateStore {
 		Ok(())
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn worktree_for_issue(
 		&self,
 		issue_id: &str,
