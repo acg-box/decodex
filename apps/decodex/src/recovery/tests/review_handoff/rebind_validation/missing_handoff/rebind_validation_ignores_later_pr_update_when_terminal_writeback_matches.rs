@@ -25,7 +25,13 @@ fn rebind_validation_ignores_later_pr_update_when_terminal_writeback_matches() {
 
 	context
 		.state_store
-		.record_run_attempt("pub-718-attempt-1", &issue.id, 1, "failed")
+		.record_lane_run_attempt(
+			context.config.service_id(),
+			"pub-718-attempt-1",
+			&issue.id,
+			1,
+			"failed",
+		)
 		.expect("failed attempt should record");
 	context
 		.state_store

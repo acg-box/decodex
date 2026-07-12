@@ -80,7 +80,7 @@ pub(crate) fn issue_is_terminal_retry_guarded(
 	state_store: &StateStore,
 ) -> Result<bool> {
 	Ok(state_store
-		.latest_run_attempt_for_issue(&issue.id)?
+		.latest_run_attempt_for_lane(project.service_id(), &issue.id)?
 		.is_some_and(|attempt| attempt.status() == TERMINAL_GUARDED_RUN_STATUS)
 		|| terminal_guard_marker_path(project, &issue.identifier).exists())
 }

@@ -40,6 +40,7 @@ impl StateStore {
 	}
 
 	/// Read the latest run attempt for one issue.
+	#[cfg(test)]
 	pub fn latest_run_attempt_for_issue(&self, issue_id: &str) -> Result<Option<RunAttempt>> {
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -58,6 +59,30 @@ impl StateStore {
 			.map(RunAttemptRecord::as_public);
 
 		Ok(attempt)
+	}
+
+	/// Read the latest run attempt for one canonical lane.
+	pub fn latest_run_attempt_for_lane(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<Option<RunAttempt>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			return sqlite
+				.latest_run_attempt_for_lane(project_id, issue_id)
+				.map(|attempt| attempt.map(|attempt| attempt.as_public()));
+		}
+
+		let state = self.lock()?;
+		Ok(state
+			.run_attempts
+			.values()
+			.filter(|attempt| {
+				attempt.project_id.as_deref() == Some(project_id) && attempt.issue_id == issue_id
+			})
+			.max_by(|left, right| runtime_row_parsers::compare_attempt_records(left, right))
+			.map(RunAttemptRecord::as_public))
 	}
 
 	/// List all locally recorded run attempts for one issue.

@@ -19,8 +19,10 @@ pub(in crate::recovery) fn validate_rebind_existing_handoff(
 	local_head_oid: &str,
 ) -> Result<(String, i64, RebindMode)> {
 	let Some(existing_lifecycle) = existing_lifecycle else {
-		let attempt =
-			context.state_store.latest_run_attempt_for_issue(&issue.id)?.ok_or_else(|| {
+		let attempt = context
+			.state_store
+			.latest_run_attempt_for_lane(context.config.service_id(), &issue.id)?
+			.ok_or_else(|| {
 				eyre::eyre!("Issue `{}` has no recorded run attempt to rebind.", issue.identifier)
 			})?;
 

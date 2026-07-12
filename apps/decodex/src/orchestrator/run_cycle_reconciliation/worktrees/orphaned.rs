@@ -75,7 +75,9 @@ where
 		return Ok(None);
 	}
 
-	let Some(run_attempt) = context.state_store.latest_run_attempt_for_issue(&issue.id)? else {
+	let Some(run_attempt) =
+		context.state_store.latest_run_attempt_for_lane(context.project.service_id(), &issue.id)?
+	else {
 		return Ok(None);
 	};
 	let Some(idle_for) = orphaned_run_lease_idle_duration(

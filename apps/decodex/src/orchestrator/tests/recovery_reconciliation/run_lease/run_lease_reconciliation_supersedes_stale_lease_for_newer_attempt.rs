@@ -28,10 +28,10 @@ fn run_lease_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
 
 	state_store
-		.record_run_attempt(stale_run_id, &issue.id, 1, "running")
+		.record_lane_run_attempt(config.service_id(), stale_run_id, &issue.id, 1, "running")
 		.expect("stale run should record");
 	state_store
-		.record_run_attempt(newer_run_id, &issue.id, 2, "succeeded")
+		.record_lane_run_attempt(config.service_id(), newer_run_id, &issue.id, 2, "succeeded")
 		.expect("newer run should record");
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, stale_run_id, "In Progress")

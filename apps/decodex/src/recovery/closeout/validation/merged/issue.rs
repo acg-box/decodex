@@ -83,7 +83,9 @@ pub(in crate::recovery) fn merged_closeout_retained_context(
 		.filter(|record| !record.run_id.trim().is_empty() && record.attempt_number >= 1)
 	{
 		(record.run_id.clone(), record.attempt_number)
-	} else if let Some(attempt) = context.state_store.latest_run_attempt_for_issue(&issue.id)? {
+	} else if let Some(attempt) =
+		context.state_store.latest_run_attempt_for_lane(context.config.service_id(), &issue.id)?
+	{
 		(attempt.run_id().to_owned(), attempt.attempt_number())
 	} else {
 		(format!("merged-closeout-{}", issue.identifier.to_ascii_lowercase()), 1)

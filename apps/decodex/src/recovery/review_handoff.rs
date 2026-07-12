@@ -112,7 +112,7 @@ fn validate_adopt_request(
 	let success_state_transition = validate_adopt_issue_state(context, &issue)?;
 	let attempt_number = context
 		.state_store
-		.latest_run_attempt_for_issue(&issue.id)?
+		.latest_run_attempt_for_lane(context.config.service_id(), &issue.id)?
 		.map_or(1, |attempt| attempt.attempt_number().saturating_add(1));
 	let run_id = events::manual_adopt_run_id(&issue.identifier, attempt_number, &local_head_oid);
 	let worktree_path_for_event =

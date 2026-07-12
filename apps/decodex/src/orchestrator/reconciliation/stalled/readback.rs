@@ -37,7 +37,11 @@ pub(crate) fn superseded_run_disposition(
 	state_store: &StateStore,
 	run_attempt: &RunAttempt,
 ) -> Result<Option<RunLeaseDisposition>> {
-	let Some(latest_attempt) = state_store.latest_run_attempt_for_issue(run_attempt.issue_id())?
+	let Some(project_id) = run_attempt.project_id() else {
+		return Ok(None);
+	};
+	let Some(latest_attempt) =
+		state_store.latest_run_attempt_for_lane(project_id, run_attempt.issue_id())?
 	else {
 		return Ok(None);
 	};

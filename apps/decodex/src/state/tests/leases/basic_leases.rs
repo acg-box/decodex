@@ -98,6 +98,13 @@ fn registered_lease_is_a_retryable_projection_of_canonical_lane_claim() {
 		1,
 		"another project must not inherit the source lane attempt sequence",
 	);
+	assert!(
+		store
+			.latest_run_attempt_for_lane("pubfi-insight", "PUB-101")
+			.expect("alternate latest attempt")
+			.is_none(),
+		"another project must not inherit source lane history",
+	);
 	assert_eq!(
 		store
 			.retry_budget_attempt_count_for_lane("pubfi-insight", "PUB-101")

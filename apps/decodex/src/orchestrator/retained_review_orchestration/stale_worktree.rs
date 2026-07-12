@@ -32,7 +32,9 @@ pub(crate) fn worktree_mapping_is_stale_terminal_local_residue(
 		return Ok(false);
 	}
 
-	let Some(attempt) = state_store.latest_run_attempt_for_issue(mapping.issue_id())? else {
+	let Some(attempt) =
+		state_store.latest_run_attempt_for_lane(project.service_id(), mapping.issue_id())?
+	else {
 		return Ok(false);
 	};
 

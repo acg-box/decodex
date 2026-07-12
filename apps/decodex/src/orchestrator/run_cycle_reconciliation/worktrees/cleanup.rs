@@ -37,23 +37,33 @@ where
 			continue;
 		};
 
-		if orchestrator::issue_has_service_ownership(
+		let service_owned = orchestrator::issue_has_service_ownership(
 			context.tracker,
 			issue,
 			context.project.service_id(),
-		)? || issue.has_label(context.workflow.frontmatter().tracker().needs_attention_label())
-			|| context
-				.state_store
-				.issue_has_active_shared_claim(context.project.service_id(), &issue.id)?
-			|| issue_has_running_attempt(context.state_store, &issue.id)?
-			|| context
-				.state_store
-				.review_lifecycle_record(
-					context.project.service_id(),
-					mapping.issue_id(),
-					mapping.branch_name(),
-				)?
-				.is_some()
+		)?;
+		let has_active_claim = context
+			.state_store
+			.issue_has_active_shared_claim(context.project.service_id(), &issue.id)?;
+		let has_running_attempt = issue_has_running_attempt(
+			context.state_store,
+			context.project.service_id(),
+			&issue.id,
+		)?;
+		let has_review_lifecycle = context
+			.state_store
+			.review_lifecycle_record(
+				context.project.service_id(),
+				mapping.issue_id(),
+				mapping.branch_name(),
+			)?
+			.is_some();
+
+		if service_owned
+			|| issue.has_label(context.workflow.frontmatter().tracker().needs_attention_label())
+			|| has_active_claim
+			|| has_running_attempt
+			|| has_review_lifecycle
 		{
 			continue;
 		}
@@ -68,8 +78,12 @@ fn worktree_mapping_path_is_missing(worktree_path: &Path) -> bool {
 	matches!(worktree_path.try_exists(), Ok(false))
 }
 
-fn issue_has_running_attempt(state_store: &StateStore, issue_id: &str) -> Result<bool> {
+fn issue_has_running_attempt(
+	state_store: &StateStore,
+	project_id: &str,
+	issue_id: &str,
+) -> Result<bool> {
 	Ok(state_store
-		.latest_run_attempt_for_issue(issue_id)?
+		.latest_run_attempt_for_lane(project_id, issue_id)?
 		.is_some_and(|attempt| matches!(attempt.status(), "starting" | "running")))
 }

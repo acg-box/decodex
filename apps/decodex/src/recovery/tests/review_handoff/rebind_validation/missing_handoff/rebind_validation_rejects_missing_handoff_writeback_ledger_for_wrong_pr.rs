@@ -32,7 +32,13 @@ fn rebind_validation_rejects_missing_handoff_writeback_ledger_for_wrong_pr() {
 
 	context
 		.state_store
-		.record_run_attempt("pub-718-attempt-1", &issue.id, 1, "failed")
+		.record_lane_run_attempt(
+			context.config.service_id(),
+			"pub-718-attempt-1",
+			&issue.id,
+			1,
+			"failed",
+		)
 		.expect("failed attempt should record");
 	context
 		.state_store
