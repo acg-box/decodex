@@ -31,6 +31,7 @@ impl RunAttemptRecord {
 	pub(in crate::state) fn as_public(&self) -> RunAttempt {
 		RunAttempt {
 			run_id: self.run_id.clone(),
+			project_id: self.project_id.clone(),
 			issue_id: self.issue_id.clone(),
 			attempt_number: self.attempt_number,
 			status: self.status.clone(),

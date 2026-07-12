@@ -240,6 +240,7 @@ fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 
 #[test]
 fn retained_closeout_identity_reuse_respects_attempt_history() {
+	let project_id = "pubfi";
 	{
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let issue = support::candidate_selection_service_owned_issue("In Review");
@@ -251,6 +252,7 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 		assert!(
 			orchestrator::retained_closeout_run_identity_is_reusable(
 				&state_store,
+				project_id,
 				&issue.id,
 				&identity,
 			)
@@ -258,12 +260,19 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 		);
 
 		state_store
-			.record_run_attempt(&identity.run_id, &issue.id, identity.attempt_number, "failed")
+			.record_lane_run_attempt(
+				project_id,
+				&identity.run_id,
+				&issue.id,
+				identity.attempt_number,
+				"failed",
+			)
 			.expect("failed attempt should record");
 
 		assert!(
 			!orchestrator::retained_closeout_run_identity_is_reusable(
 				&state_store,
+				project_id,
 				&issue.id,
 				&identity,
 			)
@@ -284,15 +293,22 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 		};
 
 		state_store
-			.record_run_attempt(&identity.run_id, &issue.id, identity.attempt_number, "succeeded")
+			.record_lane_run_attempt(
+				project_id,
+				&identity.run_id,
+				&issue.id,
+				identity.attempt_number,
+				"succeeded",
+			)
 			.expect("completed handoff attempt should record");
 		state_store
-			.record_run_attempt("pub-101-attempt-2-222", &issue.id, 2, "succeeded")
+			.record_lane_run_attempt(project_id, "pub-101-attempt-2-222", &issue.id, 2, "succeeded")
 			.expect("later non-retry attempt should record");
 
 		assert!(
 			orchestrator::retained_closeout_run_identity_is_reusable(
 				&state_store,
+				project_id,
 				&issue.id,
 				&identity,
 			)
@@ -315,15 +331,22 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 		let retry_run_id = format!("pub-101-attempt-2-{status}");
 
 		state_store
-			.record_run_attempt(&identity.run_id, &issue.id, identity.attempt_number, "succeeded")
+			.record_lane_run_attempt(
+				project_id,
+				&identity.run_id,
+				&issue.id,
+				identity.attempt_number,
+				"succeeded",
+			)
 			.expect("completed handoff attempt should record");
 		state_store
-			.record_run_attempt(&retry_run_id, &issue.id, 2, status)
+			.record_lane_run_attempt(project_id, &retry_run_id, &issue.id, 2, status)
 			.expect("later closeout retry should record");
 
 		assert!(
 			!orchestrator::retained_closeout_run_identity_is_reusable(
 				&state_store,
+				project_id,
 				&issue.id,
 				&identity,
 			)
@@ -334,6 +357,37 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 			state_store.next_attempt_number(&issue.id).expect("next attempt should calculate"),
 			3,
 			"real `{status}` closeout retries should keep incrementing"
+		);
+	}
+
+	{
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = support::candidate_selection_service_owned_issue("In Review");
+		let identity = RetainedReviewRunIdentity {
+			run_id: String::from("pub-101-attempt-1-111"),
+			attempt_number: 1,
+		};
+		state_store
+			.record_lane_run_attempt(
+				project_id,
+				&identity.run_id,
+				&issue.id,
+				identity.attempt_number,
+				"succeeded",
+			)
+			.expect("source attempt should record");
+		state_store
+			.record_lane_run_attempt("other-project", "other-run", &issue.id, 2, "failed")
+			.expect("colliding project attempt should record");
+
+		assert!(
+			orchestrator::retained_closeout_run_identity_is_reusable(
+				&state_store,
+				project_id,
+				&issue.id,
+				&identity,
+			)
+			.expect("other project history must not block source lane closeout")
 		);
 	}
 }

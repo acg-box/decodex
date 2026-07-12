@@ -27,9 +27,10 @@ pub(crate) fn retained_closeout_preferred_run_identity(
 		attempt_number: lifecycle_record.attempt_number(),
 	};
 
-	if retained_closeout_run_identity_is_reusable(state_store, &issue.id, &identity)?
+	if retained_closeout_run_identity_is_reusable(state_store, project_id, &issue.id, &identity)?
 		|| retained_closeout_handoff_identity_can_reuse(
 			state_store,
+			project_id,
 			&issue.id,
 			&identity,
 			&worktree,
@@ -42,10 +43,15 @@ pub(crate) fn retained_closeout_preferred_run_identity(
 
 pub(crate) fn retained_closeout_run_identity_is_reusable(
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 	identity: &RetainedReviewRunIdentity,
 ) -> Result<bool> {
-	if state_store.issue_has_retry_budget_attempt_after(issue_id, identity.attempt_number)? {
+	if state_store.lane_has_retry_budget_attempt_after(
+		project_id,
+		issue_id,
+		identity.attempt_number,
+	)? {
 		return Ok(false);
 	}
 
@@ -53,7 +59,8 @@ pub(crate) fn retained_closeout_run_identity_is_reusable(
 		return Ok(true);
 	};
 
-	if existing_attempt.issue_id() != issue_id
+	if existing_attempt.project_id() != Some(project_id)
+		|| existing_attempt.issue_id() != issue_id
 		|| existing_attempt.attempt_number() != identity.attempt_number
 	{
 		return Ok(false);
@@ -64,11 +71,16 @@ pub(crate) fn retained_closeout_run_identity_is_reusable(
 
 fn retained_closeout_handoff_identity_can_reuse(
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 	identity: &RetainedReviewRunIdentity,
 	worktree: &WorktreeMapping,
 ) -> Result<bool> {
-	if state_store.issue_has_retry_budget_attempt_after(issue_id, identity.attempt_number)? {
+	if state_store.lane_has_retry_budget_attempt_after(
+		project_id,
+		issue_id,
+		identity.attempt_number,
+	)? {
 		return Ok(false);
 	}
 
@@ -76,7 +88,8 @@ fn retained_closeout_handoff_identity_can_reuse(
 		return Ok(false);
 	};
 
-	if existing_attempt.issue_id() != issue_id
+	if existing_attempt.project_id() != Some(project_id)
+		|| existing_attempt.issue_id() != issue_id
 		|| existing_attempt.attempt_number() != identity.attempt_number
 	{
 		return Ok(false);

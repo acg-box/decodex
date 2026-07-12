@@ -198,7 +198,34 @@ impl StateStore {
 		Ok(retry_budget_attempts)
 	}
 
+	/// Return whether a later attempt in one canonical lane consumed retry budget.
+	pub fn lane_has_retry_budget_attempt_after(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		attempt_number: i64,
+	) -> Result<bool> {
+		if let Some(sqlite) = self.sqlite.as_ref() {
+			let sqlite =
+				sqlite.lock().map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+			return sqlite.lane_has_retry_budget_attempt_after(
+				project_id,
+				issue_id,
+				attempt_number,
+			);
+		}
+
+		let state = self.lock_without_refresh()?;
+		Ok(state.run_attempts.values().any(|attempt| {
+			attempt.project_id.as_deref() == Some(project_id)
+				&& attempt.issue_id == issue_id
+				&& attempt.attempt_number > attempt_number
+				&& matches!(attempt.status.as_str(), "failed" | "interrupted" | "terminal_guarded")
+		}))
+	}
+
 	/// Return whether a later attempt for one issue consumed retry budget.
+	#[cfg(test)]
 	pub fn issue_has_retry_budget_attempt_after(
 		&self,
 		issue_id: &str,

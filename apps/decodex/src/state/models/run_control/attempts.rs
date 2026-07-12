@@ -2,6 +2,7 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunAttempt {
 	pub(in crate::state) run_id: String,
+	pub(in crate::state) project_id: Option<String>,
 	pub(in crate::state) issue_id: String,
 	pub(in crate::state) attempt_number: i64,
 	pub(in crate::state) status: String,
@@ -12,6 +13,11 @@ impl RunAttempt {
 	/// Stable run identifier.
 	pub fn run_id(&self) -> &str {
 		&self.run_id
+	}
+
+	/// Canonical project lane for the run, absent only on unmigrated legacy evidence.
+	pub fn project_id(&self) -> Option<&str> {
+		self.project_id.as_deref()
 	}
 
 	/// Issue identifier for the run.
