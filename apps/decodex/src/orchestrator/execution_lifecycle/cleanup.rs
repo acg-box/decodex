@@ -40,6 +40,7 @@ where
 	writer::write_lifecycle_event(
 		tracker,
 		state_store,
+		project.service_id(),
 		&issue_run.issue.id,
 		&record,
 		&privacy_classifier,

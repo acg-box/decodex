@@ -29,12 +29,15 @@ pub(crate) fn loop_guardrail_stop_unless_terminal_attention(
 
 pub(crate) fn retry_budget_attempts_for_current_failure(
 	state_store: &StateStore,
+	project_id: &str,
 	issue_run: &IssueRunPlan,
 ) -> Result<i64> {
-	let state_attempts = state_store.retry_budget_attempt_count(&issue_run.issue.id)?;
+	let state_attempts =
+		state_store.retry_budget_attempt_count_for_lane(project_id, &issue_run.issue.id)?;
 	let current_attempt_counts =
 		state_store.run_attempt(&issue_run.run_id)?.is_some_and(|attempt| {
-			attempt.issue_id() == issue_run.issue.id
+			attempt.project_id() == Some(project_id)
+				&& attempt.issue_id() == issue_run.issue.id
 				&& matches!(attempt.status(), "failed" | "interrupted" | "terminal_guarded")
 		});
 	let previous_state_attempts = state_attempts.saturating_sub(i64::from(current_attempt_counts));

@@ -9,6 +9,7 @@ use crate::{
 pub(crate) fn write_lifecycle_event<T>(
 	tracker: &T,
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 	record: &LinearExecutionEventRecord,
 	privacy_classifier: &dyn PublicProjectionPrivacyClassifier,
@@ -16,7 +17,8 @@ pub(crate) fn write_lifecycle_event<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let retry_budget_attempt_count = state_store.retry_budget_attempt_count(issue_id)?;
+	let retry_budget_attempt_count =
+		state_store.retry_budget_attempt_count_for_lane(project_id, issue_id)?;
 	let retry_budget_attempt_count =
 		(retry_budget_attempt_count > 0).then_some(retry_budget_attempt_count);
 	let body =

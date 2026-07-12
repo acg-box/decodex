@@ -27,8 +27,11 @@ where
 	let requires_terminal_attention =
 		execution_failure::run_failure_requires_terminal_attention(error);
 	let worktree_path = execution_failure::relative_worktree_path(project, &issue_run.worktree);
-	let retry_budget_attempts =
-		retry::retry_budget_attempts_for_current_failure(state_store, issue_run)?;
+	let retry_budget_attempts = retry::retry_budget_attempts_for_current_failure(
+		state_store,
+		project.service_id(),
+		issue_run,
+	)?;
 	let failure_context = FailureHandlingContext {
 		tracker,
 		project,
@@ -71,17 +74,19 @@ where
 			execution_failure::loop_guardrail_stop_from_review_policy(review_policy_stop),
 			error,
 		)? {
-			LoopGuardrailRecoveryDecision::Start(recovery) =>
+			LoopGuardrailRecoveryDecision::Start(recovery) => {
 				writeback::apply_architecture_recovery_retry_writeback(
 					&failure_context,
 					recovery,
 					max_attempts,
-				),
-			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				)
+			},
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
 				writeback::apply_loop_guardrail_failure_writeback(
 					&failure_context,
 					loop_guardrail_stop,
-				),
+				)
+			},
 		};
 	}
 	if let Some(loop_guardrail_stop) = loop_guardrail_stop {
@@ -92,17 +97,19 @@ where
 			loop_guardrail_stop,
 			error,
 		)? {
-			LoopGuardrailRecoveryDecision::Start(recovery) =>
+			LoopGuardrailRecoveryDecision::Start(recovery) => {
 				writeback::apply_architecture_recovery_retry_writeback(
 					&failure_context,
 					recovery,
 					max_attempts,
-				),
-			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				)
+			},
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
 				writeback::apply_loop_guardrail_failure_writeback(
 					&failure_context,
 					loop_guardrail_stop,
-				),
+				)
+			},
 		};
 	}
 

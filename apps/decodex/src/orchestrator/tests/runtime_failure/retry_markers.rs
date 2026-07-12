@@ -127,15 +127,31 @@ fn retry_budget_current_failure_does_not_double_count_handed_off_base() {
 	};
 
 	state_store
-		.record_run_attempt("pub-101-attempt-1-123", &issue.id, 1, "failed")
+		.record_lane_run_attempt(
+			config.service_id(),
+			"pub-101-attempt-1-123",
+			&issue.id,
+			1,
+			"failed",
+		)
 		.expect("previous failed attempt should record");
 	state_store
-		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.record_lane_run_attempt(
+			config.service_id(),
+			&issue_run.run_id,
+			&issue.id,
+			issue_run.attempt_number,
+			"failed",
+		)
 		.expect("current failed attempt should record");
 
 	assert_eq!(
-		orchestrator::retry_budget_attempts_for_current_failure(&state_store, &issue_run)
-			.expect("retry budget should compute"),
+		orchestrator::retry_budget_attempts_for_current_failure(
+			&state_store,
+			config.service_id(),
+			&issue_run,
+		)
+		.expect("retry budget should compute"),
 		2,
 		"the daemon handoff base already includes the previous persisted failed attempt"
 	);
