@@ -97,6 +97,7 @@ pub(crate) fn reconcile_not_dispatchable_run_lease(
 			action.run_attempt.attempt_number(),
 			reconciliation::retry_budget_base_for_issue_worktree(
 				state_store,
+				project.service_id(),
 				&action.issue.id,
 				&worktree_path,
 			)?,

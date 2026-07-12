@@ -38,7 +38,12 @@ where
 	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
 	state_store.clear_lease(&action.issue.id)?;
 
-	let issue_run = plan::stalled_reconciliation_issue_run(state_store, worktree_manager, action)?;
+	let issue_run = plan::stalled_reconciliation_issue_run(
+		state_store,
+		project.service_id(),
+		worktree_manager,
+		action,
+	)?;
 
 	markers::write_reconciliation_operation_marker_best_effort(
 		&issue_run.worktree.path,
@@ -83,7 +88,12 @@ where
 		"Reconciling stalled run with retained partial progress."
 	);
 
-	let issue_run = plan::stalled_reconciliation_issue_run(state_store, worktree_manager, action)?;
+	let issue_run = plan::stalled_reconciliation_issue_run(
+		state_store,
+		project.service_id(),
+		worktree_manager,
+		action,
+	)?;
 	let recovered = match phase_goal::try_recover_stalled_retained_phase_goal(
 		project,
 		&action.workflow,

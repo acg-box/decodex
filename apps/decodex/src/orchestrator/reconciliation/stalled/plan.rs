@@ -5,6 +5,7 @@ use crate::orchestrator::reconciliation::{
 
 pub(super) fn stalled_reconciliation_issue_run(
 	state_store: &StateStore,
+	project_id: &str,
 	worktree_manager: &WorktreeManager,
 	action: &RunLeaseReconciliation,
 ) -> Result<IssueRunPlan> {
@@ -19,6 +20,7 @@ pub(super) fn stalled_reconciliation_issue_run(
 	);
 	let retry_budget_base = reconciliation::retry_budget_base_for_issue_worktree(
 		state_store,
+		project_id,
 		&action.issue.id,
 		&worktree.path,
 	)?;

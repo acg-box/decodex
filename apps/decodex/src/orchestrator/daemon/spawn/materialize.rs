@@ -15,6 +15,7 @@ pub(crate) fn materialize_daemon_spawn_state(
 	let worktree = materialize_run_summary_worktree(project, workflow, summary)?;
 	let retry_budget_base = orchestrator::retry_budget_base_for_dispatch_mode(
 		state_store,
+		project.service_id(),
 		&summary.issue_id,
 		&worktree.path,
 		summary.dispatch_mode,

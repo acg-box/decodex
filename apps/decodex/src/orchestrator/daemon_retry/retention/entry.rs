@@ -54,8 +54,12 @@ where
 	}
 	if entry.lifecycle != RetryEntryLifecycle::Active {
 		if entry.lifecycle == RetryEntryLifecycle::ReviewRepair
-			&& daemon_retry::issue_retry_budget_exhausted(workflow, state_store, &issue.id)?
-		{
+			&& daemon_retry::issue_retry_budget_exhausted(
+				workflow,
+				state_store,
+				project.service_id(),
+				&issue.id,
+			)? {
 			return Ok(RetryEntryRetentionDecision::Drop);
 		}
 

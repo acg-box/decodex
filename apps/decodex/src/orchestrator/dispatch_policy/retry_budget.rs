@@ -114,16 +114,18 @@ pub(crate) fn write_retry_budget_marker(
 
 pub(crate) fn retry_budget_base_for_issue_worktree(
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 	worktree_path: &Path,
 ) -> Result<i64> {
 	Ok(state_store
-		.retry_budget_attempt_count(issue_id)?
+		.retry_budget_attempt_count_for_lane(project_id, issue_id)?
 		.max(state::read_run_retry_budget_attempt_count(worktree_path)?.unwrap_or(0)))
 }
 
 pub(crate) fn retry_budget_base_for_dispatch_mode(
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 	worktree_path: &Path,
 	dispatch_mode: IssueDispatchMode,
@@ -137,6 +139,7 @@ pub(crate) fn retry_budget_base_for_dispatch_mode(
 
 	Ok(preferred_retry_budget_base.max(retry_budget_base_for_issue_worktree(
 		state_store,
+		project_id,
 		issue_id,
 		worktree_path,
 	)?))
@@ -145,18 +148,21 @@ pub(crate) fn retry_budget_base_for_dispatch_mode(
 pub(crate) fn issue_retry_budget_exhausted(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 ) -> Result<bool> {
 	if let Some(mapping) = state_store.worktree_for_issue(issue_id)? {
 		return issue_retry_budget_exhausted_for_worktree(
 			workflow,
 			state_store,
+			project_id,
 			issue_id,
 			mapping.worktree_path(),
 		);
 	}
 
-	let retry_budget_attempts = state_store.retry_budget_attempt_count(issue_id)?;
+	let retry_budget_attempts =
+		state_store.retry_budget_attempt_count_for_lane(project_id, issue_id)?;
 
 	Ok(retry_budget_attempts >= i64::from(workflow.frontmatter().execution().max_attempts()))
 }
@@ -164,11 +170,12 @@ pub(crate) fn issue_retry_budget_exhausted(
 pub(crate) fn issue_retry_budget_exhausted_for_worktree(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 	worktree_path: &Path,
 ) -> Result<bool> {
 	let retry_budget_attempts =
-		retry_budget_base_for_issue_worktree(state_store, issue_id, worktree_path)?;
+		retry_budget_base_for_issue_worktree(state_store, project_id, issue_id, worktree_path)?;
 
 	Ok(retry_budget_attempts >= i64::from(workflow.frontmatter().execution().max_attempts()))
 }

@@ -69,6 +69,7 @@ where
 	let retry_budget_exhausted = post_review::issue_retry_budget_exhausted_for_worktree(
 		context.workflow,
 		context.state_store,
+		context.project.service_id(),
 		&issue.id,
 		worktree.worktree_path(),
 	)?;

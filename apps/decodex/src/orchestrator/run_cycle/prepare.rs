@@ -32,6 +32,7 @@ where
 	};
 	let retry_budget_base = run_cycle::retry_budget_base_for_dispatch_mode(
 		context.state_store,
+		context.project.service_id(),
 		&issue.id,
 		&planned_worktree.path,
 		context.dispatch_mode,
