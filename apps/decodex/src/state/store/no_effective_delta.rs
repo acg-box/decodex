@@ -19,19 +19,25 @@ impl StateStore {
 			decide_no_effective_delta(current.as_ref(), command).map_err(|rejection| {
 				eyre::eyre!("No-effective-delta decision rejected: {rejection:?}")
 			})?;
-		let NoEffectiveDeltaDecision::Retry(recovery) = &decision else {
-			return Ok(decision);
+		let recovery = match &decision {
+			NoEffectiveDeltaDecision::Retry(recovery)
+			| NoEffectiveDeltaDecision::AttentionRequired { recovery, .. } => recovery,
+			NoEffectiveDeltaDecision::Blocked | NoEffectiveDeltaDecision::AlreadySatisfied { .. } =>
+				return Ok(decision),
 		};
 		validate_recovery_lane(&state, recovery)?;
-		if current.is_none() {
-			if recovery.operation_id() != operation_id {
-				eyre::bail!("No-effective-delta operation key does not match the command.");
-			}
+		if recovery.operation_id() != operation_id {
+			eyre::bail!("No-effective-delta operation key does not match the command.");
+		}
+		if current.as_ref() != Some(recovery) {
 			if let Some(sqlite) = self.sqlite.as_ref() {
-				sqlite
+				let sqlite = sqlite
 					.lock()
-					.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
-					.insert_no_effective_delta_recovery(recovery)?;
+					.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+				match current.as_ref() {
+					Some(current) => sqlite.replace_no_effective_delta_recovery(current, recovery)?,
+					None => sqlite.insert_no_effective_delta_recovery(recovery)?,
+				}
 			}
 			state.no_effective_delta_recoveries.insert(operation_id.to_owned(), recovery.clone());
 		}

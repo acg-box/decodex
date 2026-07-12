@@ -117,6 +117,17 @@ fn no_effective_delta_recovery_survives_restart_and_replays_exactly_once() {
 			.ordinal(),
 		1
 	);
+	let attention = reopened
+		.decide_no_effective_delta("operation-1", no_effective_delta_retry_result())
+		.expect("terminal attention");
+	assert!(matches!(attention, NoEffectiveDeltaDecision::AttentionRequired { .. }));
+	drop(reopened);
+
+	let reopened = StateStore::open(&path).expect("reopen terminal recovery");
+	let terminal_replay = reopened
+		.decide_no_effective_delta("operation-1", no_effective_delta_observation())
+		.expect("terminal replay");
+	assert_eq!(terminal_replay, attention);
 }
 
 #[test]
@@ -173,6 +184,15 @@ fn no_effective_delta_observation() -> NoEffectiveDeltaCommand {
 		)
 		.expect("facts"),
 	}
+}
+
+fn no_effective_delta_retry_result() -> NoEffectiveDeltaCommand {
+	let NoEffectiveDeltaCommand::Observe { operation_id, lane_id, facts } =
+		no_effective_delta_observation()
+	else {
+		unreachable!();
+	};
+	NoEffectiveDeltaCommand::ObserveRetryResult { operation_id, lane_id, facts }
 }
 
 #[test]

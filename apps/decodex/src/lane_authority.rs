@@ -28,7 +28,8 @@ pub use kernel::{
 };
 pub use no_effective_delta::{
 	NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,
-	NoEffectiveDeltaRecovery, NoEffectiveDeltaRejection, decide_no_effective_delta,
+	NoEffectiveDeltaRecovery, NoEffectiveDeltaRecoveryState, NoEffectiveDeltaRejection,
+	decide_no_effective_delta,
 };
 pub use patch_set::{CanonicalPatchSet, PatchSetBuildError, build_canonical_patch_set};
 pub use supersession::{

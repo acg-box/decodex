@@ -36,4 +36,30 @@ impl SqliteStateStore {
 		}
 		Ok(())
 	}
+
+	pub(in crate::state) fn replace_no_effective_delta_recovery(
+		&self,
+		current: &NoEffectiveDeltaRecovery,
+		next: &NoEffectiveDeltaRecovery,
+	) -> Result<()> {
+		current.validate()?;
+		next.validate()?;
+		if current.operation_id() != next.operation_id()
+			|| current.lane_id() != next.lane_id()
+			|| current.ordinal() != next.ordinal()
+		{
+			eyre::bail!("No-effective-delta recovery identity cannot change.");
+		}
+		let current_payload = serde_json::to_string(current)?;
+		let next_payload = serde_json::to_string(next)?;
+		let updated = self.connection.execute(
+			"UPDATE no_effective_delta_recoveries SET payload_json = ?1
+			 WHERE operation_id = ?2 AND payload_json = ?3",
+			params![next_payload, next.operation_id(), current_payload],
+		)?;
+		if updated != 1 {
+			eyre::bail!("No-effective-delta recovery compare-and-swap failed.");
+		}
+		Ok(())
+	}
 }

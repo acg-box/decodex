@@ -6,6 +6,13 @@ use crate::prelude::{Result, eyre};
 
 pub const NO_EFFECTIVE_DELTA_RECOVERY_SCHEMA: &str = "decodex/no-effective-delta-recovery/1";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoEffectiveDeltaRecoveryState {
+	RetryScheduled,
+	AttentionRequired,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct NoEffectiveDeltaFacts {
 	base_oid: String,
@@ -85,6 +92,7 @@ pub struct NoEffectiveDeltaRecovery {
 	operation_id: String,
 	lane_id: LaneId,
 	ordinal: u8,
+	state: NoEffectiveDeltaRecoveryState,
 	facts: NoEffectiveDeltaFacts,
 	fact_digest: String,
 	idempotency_key: String,
@@ -104,6 +112,10 @@ impl NoEffectiveDeltaRecovery {
 
 	pub const fn facts(&self) -> &NoEffectiveDeltaFacts {
 		&self.facts
+	}
+
+	pub const fn state(&self) -> NoEffectiveDeltaRecoveryState {
+		self.state
 	}
 
 	pub fn idempotency_key(&self) -> &str {
@@ -149,7 +161,7 @@ pub enum NoEffectiveDeltaDecision {
 	Blocked,
 	AlreadySatisfied { validator_receipt: String },
 	Retry(NoEffectiveDeltaRecovery),
-	AttentionRequired { reason_code: &'static str },
+	AttentionRequired { reason_code: &'static str, recovery: NoEffectiveDeltaRecovery },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -193,7 +205,15 @@ pub fn decide_no_effective_delta(
 				{
 					return Err(NoEffectiveDeltaRejection::OperationDrift);
 				}
-				return Ok(NoEffectiveDeltaDecision::Retry(recovery.clone()));
+				return Ok(match recovery.state {
+					NoEffectiveDeltaRecoveryState::RetryScheduled =>
+						NoEffectiveDeltaDecision::Retry(recovery.clone()),
+					NoEffectiveDeltaRecoveryState::AttentionRequired =>
+						NoEffectiveDeltaDecision::AttentionRequired {
+							reason_code: "no_effective_delta_unresolved",
+							recovery: recovery.clone(),
+						},
+				});
 			}
 
 			let idempotency_key = recovery_idempotency_key(&operation_id, &lane_id, &facts)
@@ -203,6 +223,7 @@ pub fn decide_no_effective_delta(
 				operation_id,
 				lane_id,
 				ordinal: 1,
+				state: NoEffectiveDeltaRecoveryState::RetryScheduled,
 				facts,
 				fact_digest,
 				idempotency_key,
@@ -220,8 +241,11 @@ pub fn decide_no_effective_delta(
 			{
 				return Err(NoEffectiveDeltaRejection::OperationDrift);
 			}
+			let mut recovery = recovery.clone();
+			recovery.state = NoEffectiveDeltaRecoveryState::AttentionRequired;
 			Ok(NoEffectiveDeltaDecision::AttentionRequired {
 				reason_code: "no_effective_delta_unresolved",
+				recovery,
 			})
 		},
 	}
@@ -322,10 +346,16 @@ mod tests {
 			},
 		)
 		.expect("attention");
+		let NoEffectiveDeltaDecision::AttentionRequired { reason_code, recovery } = decision else {
+			panic!("expected attention");
+		};
+		assert_eq!(reason_code, "no_effective_delta_unresolved");
+		assert_eq!(recovery.state(), NoEffectiveDeltaRecoveryState::AttentionRequired);
 		assert_eq!(
-			decision,
+			decide_no_effective_delta(Some(&recovery), observe(facts(false))).expect("replay"),
 			NoEffectiveDeltaDecision::AttentionRequired {
-				reason_code: "no_effective_delta_unresolved"
+				reason_code: "no_effective_delta_unresolved",
+				recovery,
 			}
 		);
 	}
