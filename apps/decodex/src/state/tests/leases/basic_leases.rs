@@ -3,7 +3,8 @@ use tempfile::TempDir;
 use crate::{
 	lane_authority::{
 		EffectClass, EffectCommand, EffectState, LaneCommand, LaneEffect, LaneEffectKind, LaneId,
-		LanePhase, ProjectBinding,
+		LanePhase, NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,
+		ProjectBinding,
 	},
 	state::{ProjectRegistration, StateStore},
 };
@@ -88,6 +89,55 @@ fn lane_effect_journal_survives_restart_and_revalidates_lane_epoch() {
 		.apply_lane_effect_command("effect-1", 1, EffectCommand::MarkOutcomeUnknown)
 		.expect_err("stale lane epoch must reject journal mutation");
 	assert!(error.to_string().contains("prerequisites drifted"));
+}
+
+#[test]
+fn no_effective_delta_recovery_survives_restart_and_replays_exactly_once() {
+	let temp_dir = TempDir::new().expect("tempdir");
+	let path = temp_dir.path().join("state.sqlite");
+	let store = StateStore::open(&path).expect("store");
+	store.upsert_project(&registered_project(&temp_dir)).expect("register project");
+	store
+		.try_acquire_registered_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
+		.expect("claim");
+	let command = no_effective_delta_observation();
+	let first =
+		store.decide_no_effective_delta("operation-1", command.clone()).expect("first retry");
+	assert!(matches!(first, NoEffectiveDeltaDecision::Retry(_)));
+	drop(store);
+
+	let reopened = StateStore::open(&path).expect("reopen");
+	let replay = reopened.decide_no_effective_delta("operation-1", command).expect("replay");
+	assert_eq!(replay, first);
+	assert_eq!(
+		reopened
+			.no_effective_delta_recovery("operation-1")
+			.expect("read")
+			.expect("recovery")
+			.ordinal(),
+		1
+	);
+}
+
+fn no_effective_delta_observation() -> NoEffectiveDeltaCommand {
+	NoEffectiveDeltaCommand::Observe {
+		operation_id: String::from("operation-1"),
+		lane_id: LaneId::new("pubfi", "PUB-101").expect("lane"),
+		facts: NoEffectiveDeltaFacts::new(
+			"base",
+			"head",
+			"merge-base",
+			"patch",
+			"names",
+			"status",
+			"surface",
+			"acceptance",
+			"checkpoints",
+			"validation",
+			false,
+		)
+		.expect("facts"),
+	}
 }
 
 #[test]

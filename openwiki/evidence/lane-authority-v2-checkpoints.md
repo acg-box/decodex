@@ -1003,6 +1003,14 @@ tests and `cargo check -p decodex --all-targets` pass. Persistence, continuation
 wiring, independent validator execution, and runtime cutover remain before C6 is
 complete.
 
+No-effective-delta ordinal-1 recovery is now durable in the canonical SQLite store.
+Schema 14 adds an immutable operation-keyed record with a canonical-lane foreign key;
+the StateStore validates the lane before insertion, exact replay survives restart, and a
+future schema is rejected before bootstrap mutation. Five no-effective-delta tests, the
+future-schema test, and `cargo check -p decodex --all-targets` pass. The adapter is
+deliberately dormant until the continuation-attempt path consumes it; no v12 scheduler
+behavior changed.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

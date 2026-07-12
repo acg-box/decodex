@@ -1,6 +1,7 @@
 mod autonomy_program;
 mod effects;
 mod events;
+mod no_effective_delta;
 mod protocol;
 mod registry;
 mod review;

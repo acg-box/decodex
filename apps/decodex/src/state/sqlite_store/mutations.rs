@@ -2,6 +2,8 @@ mod autonomy;
 mod cleanup;
 mod effects;
 mod lanes;
+#[cfg_attr(not(test), allow(dead_code))]
+mod no_effective_delta;
 mod project;
 mod runs;
 

@@ -7,6 +7,8 @@ mod execution_evidence;
 mod inputs;
 mod lanes;
 mod leases;
+#[cfg_attr(not(test), allow(dead_code))]
+mod no_effective_delta;
 mod persistence;
 mod programs;
 mod projects;

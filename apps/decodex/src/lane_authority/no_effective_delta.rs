@@ -88,6 +88,31 @@ pub struct NoEffectiveDeltaRecovery {
 	fact_digest: String,
 	idempotency_key: String,
 }
+impl NoEffectiveDeltaRecovery {
+	pub fn operation_id(&self) -> &str {
+		&self.operation_id
+	}
+
+	pub fn lane_id(&self) -> &LaneId {
+		&self.lane_id
+	}
+
+	pub const fn ordinal(&self) -> u8 {
+		self.ordinal
+	}
+
+	pub fn validate(&self) -> Result<()> {
+		if self.schema != NO_EFFECTIVE_DELTA_RECOVERY_SCHEMA
+			|| self.operation_id.trim().is_empty()
+			|| self.ordinal != 1
+			|| self.fact_digest.trim().is_empty()
+			|| self.idempotency_key.trim().is_empty()
+		{
+			eyre::bail!("No-effective-delta recovery record is invalid.");
+		}
+		Ok(())
+	}
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NoEffectiveDeltaCommand {
