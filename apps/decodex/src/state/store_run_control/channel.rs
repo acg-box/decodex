@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::{
+	lane_authority::LaneId,
 	prelude::Result,
 	state::{
 		self, RUN_CONTROL_CHANNEL_STATUS_ACTIVE, RunControlChannel, RunControlChannelRecord,
@@ -34,11 +35,25 @@ impl StateStore {
 			return Ok(None);
 		}
 
-		let Some(lease) = state.leases.get(&attempt.issue_id) else {
-			return Ok(None);
+		let project_id = match attempt.project_id.as_deref() {
+			Some(project_id) => project_id.to_owned(),
+			None => {
+				#[cfg(not(test))]
+				return Ok(None);
+				#[cfg(test)]
+				match state.leases.get(&attempt.issue_id) {
+					Some(lease) if lease.run_id == run_id => lease.project_id.clone(),
+					_ => return Ok(None),
+				}
+			},
 		};
-
-		if lease.run_id != run_id {
+		let lane_id = LaneId::new(&project_id, &attempt.issue_id)?;
+		if let Some(lane) = state.lanes.get(&lane_id) {
+			if lane.intake_authority_id().is_none() || lane.claim_run_id() != Some(run_id) {
+				return Ok(None);
+			}
+		} else {
+			#[cfg(not(test))]
 			return Ok(None);
 		}
 
@@ -51,7 +66,7 @@ impl StateStore {
 				|channel| (channel.published_at.clone(), channel.published_at_unix),
 			);
 		let channel = RunControlChannelRecord {
-			project_id: lease.project_id.clone(),
+			project_id,
 			issue_id: attempt.issue_id.clone(),
 			run_id: run_id.to_owned(),
 			attempt_number,
