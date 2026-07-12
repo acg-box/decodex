@@ -1282,6 +1282,18 @@ Fresh focused evidence: `cargo test -p decodex lane_authority_v2_c5`,
 typed operator projections/output sinks, metrics, production caller migration, and the
 missing scenario gate script.
 
+C6 evidence was tightened at commits `f98574c8`, `3769682c`, and `559c9cd0`.
+`decodex land ... --related` now has an explicit negative Clap fixture and rejects before
+repository/provider execution. A no-effective-delta recovery now persists the complete
+diagnostic fact set, not only its digest, while retaining a deterministic ordinal-1
+idempotency key. Both creation and SQLite reload validate that the diagnostics rehash to
+the immutable fact digest; a durable tamper fixture rewrites the stored head and proves
+startup fails closed. Seven filtered no-effective-delta tests, the land parser fixture,
+and `cargo check --all-targets --all-features` pass. This still does not complete C6:
+the production continuation scheduler must consume the recovery through the canonical
+Lane operation, schedule exactly one repair attempt, and terminalize a repeated result
+as reason-coded attention.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
