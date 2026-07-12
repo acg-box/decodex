@@ -17,7 +17,7 @@ use serde_json::Value;
 use crate::{
 	prelude::Result,
 	state::{
-		ConnectorBackoff, IssueLease, ProjectRegistration, ProtocolEventSummaryRecord, StateData,
+		ConnectorBackoff, ProjectRegistration, ProtocolEventSummaryRecord, StateData,
 		runtime_records::{
 			EvidenceArtifactKey, EvidenceArtifactRuntimeRecord, LinearExecutionEventRuntimeRecord,
 			LoopGuardrailKey, LoopGuardrailRuntimeRecord, PrivateExecutionEventRuntimeRecord,
@@ -26,7 +26,6 @@ use crate::{
 		},
 		runtime_row_parsers::{
 			run_activity_summary_record_from_row, run_attempt_record_from_row, timestamp_parts,
-			worktree_mapping_record_from_row,
 		},
 	},
 	tracker::records::LinearExecutionEventRecord,

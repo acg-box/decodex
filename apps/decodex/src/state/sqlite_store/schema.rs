@@ -35,12 +35,6 @@ CREATE TABLE IF NOT EXISTS projects (
 	updated_at TEXT NOT NULL,
 	updated_at_unix INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS leases (
-	issue_id TEXT PRIMARY KEY NOT NULL,
-	project_id TEXT NOT NULL,
-	run_id TEXT NOT NULL,
-	issue_state TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS lanes (
 	project_key TEXT NOT NULL,
 	tracker_issue_id TEXT NOT NULL,
@@ -169,17 +163,6 @@ CREATE TABLE IF NOT EXISTS run_activity_summaries (
 	updated_at TEXT NOT NULL,
 	updated_at_unix INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS worktrees (
-	issue_id TEXT PRIMARY KEY NOT NULL,
-	project_id TEXT NOT NULL,
-	branch_name TEXT NOT NULL,
-	worktree_path TEXT NOT NULL,
-	provenance_source TEXT NOT NULL DEFAULT 'runtime_recorded',
-	created_at_unix INTEGER,
-	updated_at_unix INTEGER
-);
-CREATE INDEX IF NOT EXISTS worktrees_project_issue_idx
-ON worktrees (project_id, issue_id);
 CREATE TABLE IF NOT EXISTS linear_execution_events (
 	idempotency_key TEXT PRIMARY KEY NOT NULL,
 	service_id TEXT NOT NULL,
@@ -195,7 +178,8 @@ CREATE INDEX IF NOT EXISTS linear_execution_events_issue_idx
 ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 "#,
 		)?;
-		self.bootstrap_worktree_schema()?;
+		#[cfg(test)]
+		self.bootstrap_legacy_projection_schema()?;
 		self.bootstrap_authority_event_schema()?;
 		self.bootstrap_lane_schema()?;
 		self.bootstrap_review_schema()?;
@@ -217,5 +201,31 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.connection.execute_batch("PRAGMA optimize=0x10002;")?;
 
 		Ok(())
+	}
+
+	#[cfg(test)]
+	fn bootstrap_legacy_projection_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS leases (
+	issue_id TEXT PRIMARY KEY NOT NULL,
+	project_id TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	issue_state TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS worktrees (
+	issue_id TEXT PRIMARY KEY NOT NULL,
+	project_id TEXT NOT NULL,
+	branch_name TEXT NOT NULL,
+	worktree_path TEXT NOT NULL,
+	provenance_source TEXT NOT NULL DEFAULT 'runtime_recorded',
+	created_at_unix INTEGER,
+	updated_at_unix INTEGER
+);
+CREATE INDEX IF NOT EXISTS worktrees_project_issue_idx
+ON worktrees (project_id, issue_id);
+"#,
+		)?;
+		self.bootstrap_worktree_schema()
 	}
 }

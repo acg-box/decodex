@@ -83,8 +83,9 @@ use runtime_records::{
 	ExecutionProgramRuntimeRecord, ExecutionProgramRuntimeRowParts,
 	LinearExecutionEventRuntimeRecord, PrivateExecutionEventRuntimeRecord, ProtocolEventRecord,
 	ProtocolEventSummaryRecord, RunActivitySummaryRecord, RunAttemptRecord,
-	RunControlChannelRecord, TimestampParts, WorktreeMappingRecord,
+	RunControlChannelRecord, TimestampParts,
 };
+#[cfg(test)] use runtime_records::WorktreeMappingRecord;
 use runtime_row_parsers::{
 	compare_autonomy_signal_runtime_records, compare_decision_contract_runtime_records,
 	compare_execution_program_runtime_records, compare_linear_execution_event_runtime_records,

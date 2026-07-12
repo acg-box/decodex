@@ -9,6 +9,7 @@ impl SqliteStateStore {
 		)
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn bootstrap_worktree_schema(&self) -> Result<()> {
 		self.ensure_column(
 			"worktrees",

@@ -1,11 +1,13 @@
-use std::{cmp::Ordering, path::PathBuf};
+use std::cmp::Ordering;
+#[cfg(test)] use std::path::PathBuf;
 
 use rusqlite::{self, Error, Row};
 
 use crate::state::{
-	ChildAgentActivitySummary, RunActivitySummaryRecord, RunAttemptRecord, WorktreeMappingRecord,
+	ChildAgentActivitySummary, RunActivitySummaryRecord, RunAttemptRecord,
 	runtime_row_parsers::common,
 };
+#[cfg(test)] use crate::state::WorktreeMappingRecord;
 
 pub(in crate::state) fn compare_attempt_records(
 	left: &RunAttemptRecord,
@@ -47,6 +49,7 @@ pub(in crate::state) fn run_activity_summary_record_from_row(
 	})
 }
 
+#[cfg(test)]
 pub(in crate::state) fn worktree_mapping_record_from_row(
 	row: &Row<'_>,
 ) -> std::result::Result<WorktreeMappingRecord, Error> {

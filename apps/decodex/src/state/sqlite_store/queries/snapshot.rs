@@ -12,11 +12,13 @@ impl SqliteStateStore {
 		self.load_lane_effects(&mut state)?;
 		self.load_no_effective_delta_recoveries(&mut state)?;
 		self.load_supersession_authority(&mut state)?;
+		#[cfg(test)]
 		self.load_leases(&mut state)?;
 		self.load_run_attempts(&mut state)?;
 		self.load_run_control_channels(&mut state)?;
 		self.load_protocol_event_summaries(&mut state)?;
 		self.load_run_activity_summaries(&mut state)?;
+		#[cfg(test)]
 		self.load_worktrees(&mut state)?;
 		self.load_linear_execution_events(&mut state)?;
 		self.load_private_execution_events(&mut state)?;
@@ -43,9 +45,11 @@ impl SqliteStateStore {
 	) -> Result<StateData> {
 		let mut state = StateData::default();
 
+		#[cfg(test)]
 		self.load_leases(&mut state)?;
 		self.load_run_attempts_for_project(&mut state, project_id)?;
 		self.load_run_activity_summaries_for_loaded_runs(&mut state)?;
+		#[cfg(test)]
 		self.load_worktrees(&mut state)?;
 		self.load_run_control_channels_for_project(&mut state, project_id)?;
 

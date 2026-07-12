@@ -375,7 +375,6 @@ impl StateStore {
 				.complete_worktree_remove_effect(
 					invoking.journal_epoch(),
 					&succeeded,
-					&mapping.issue_id,
 				)?;
 		}
 		state.worktrees.remove(&mapping.issue_id);

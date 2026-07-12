@@ -9,7 +9,6 @@ mod programs;
 pub(super) use self::{
 	activity::{
 		compare_attempt_records, run_activity_summary_record_from_row, run_attempt_record_from_row,
-		worktree_mapping_record_from_row,
 	},
 	autonomy::{
 		autonomy_objective_record_from_row_parts, autonomy_objective_runtime_row_parts,
@@ -39,3 +38,4 @@ pub(super) use self::{
 		program_intake_plan_row, program_issue_mapping_row,
 	},
 };
+#[cfg(test)] pub(super) use activity::worktree_mapping_record_from_row;

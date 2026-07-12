@@ -34,15 +34,18 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		let transaction = self.connection.transaction()?;
 
+		#[cfg(test)]
 		transaction.execute(
 			"INSERT OR IGNORE INTO leases (issue_id, project_id, run_id, issue_state)
 			 SELECT ?2, project_id, run_id, issue_state FROM leases WHERE issue_id = ?1",
 			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
+		#[cfg(test)]
 		transaction.execute(
 			"DELETE FROM leases WHERE issue_id = ?1",
 			mutations::params![previous_issue_id],
 		)?;
+		#[cfg(test)]
 		transaction.execute(
 			"INSERT OR IGNORE INTO worktrees (
 				issue_id, project_id, branch_name, worktree_path,
@@ -53,6 +56,7 @@ impl SqliteStateStore {
 			 FROM worktrees WHERE issue_id = ?1",
 			mutations::params![previous_issue_id, canonical_issue_id],
 		)?;
+		#[cfg(test)]
 		transaction.execute(
 			"DELETE FROM worktrees WHERE issue_id = ?1",
 			mutations::params![previous_issue_id],
@@ -163,6 +167,7 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		let transaction = self.connection.transaction()?;
 
+		#[cfg(test)]
 		transaction
 			.execute("DELETE FROM worktrees WHERE issue_id = ?1", mutations::params![issue_id])?;
 		transaction.execute(
@@ -229,6 +234,9 @@ impl SqliteStateStore {
 	}
 
 	pub(in crate::state) fn delete_lease(&mut self, issue_id: &str) -> Result<()> {
+		#[cfg(not(test))]
+		let _ = issue_id;
+		#[cfg(test)]
 		self.connection
 			.execute("DELETE FROM leases WHERE issue_id = ?1", mutations::params![issue_id])?;
 
@@ -236,6 +244,9 @@ impl SqliteStateStore {
 	}
 
 	pub(in crate::state) fn delete_worktree_mapping(&mut self, issue_id: &str) -> Result<()> {
+		#[cfg(not(test))]
+		let _ = issue_id;
+		#[cfg(test)]
 		self.connection
 			.execute("DELETE FROM worktrees WHERE issue_id = ?1", mutations::params![issue_id])?;
 

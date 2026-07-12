@@ -320,15 +320,6 @@ impl SqliteStateStore {
 		if operation_changed != 1 {
 			eyre::bail!("Superseded closeout operation stage CAS failed.");
 		}
-		if let Some(run_id) = current.claim_run_id() {
-			let released = transaction.execute(
-				"DELETE FROM leases WHERE issue_id = ?1 AND project_id = ?2 AND run_id = ?3",
-				params![id.tracker_issue_id(), id.project_key(), run_id],
-			)?;
-			if released != 1 {
-				eyre::bail!("Supersession exact conflict lease release failed.");
-			}
-		}
 		transaction.commit()?;
 		Ok(next)
 	}

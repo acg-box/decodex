@@ -5,10 +5,12 @@ use crate::{
 	state::sqlite_store::{
 		SqliteStateStore,
 		queries::{
-			self, ConnectorBackoff, IssueLease, PathBuf, ProjectRegistration, Result, StateData,
+			self, ConnectorBackoff, PathBuf, ProjectRegistration, Result, StateData,
 		},
 	},
 };
+#[cfg(test)] use crate::state::IssueLease;
+#[cfg(test)] use crate::state::runtime_row_parsers::worktree_mapping_record_from_row;
 #[cfg(test)] use crate::state::WorktreeMappingRecord;
 
 impl SqliteStateStore {
@@ -140,6 +142,7 @@ impl SqliteStateStore {
 		Ok(())
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn load_leases(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self
 			.connection
@@ -167,6 +170,7 @@ impl SqliteStateStore {
 		Ok(())
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn load_worktrees(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT issue_id, project_id, branch_name, worktree_path,
@@ -174,7 +178,7 @@ impl SqliteStateStore {
 				 FROM worktrees",
 		)?;
 		let rows = statement.query_map([], |row| {
-			let mapping = queries::worktree_mapping_record_from_row(row)?;
+			let mapping = worktree_mapping_record_from_row(row)?;
 
 			Ok((mapping.issue_id.clone(), mapping))
 		})?;
@@ -204,7 +208,7 @@ impl SqliteStateStore {
 
 		Ok(rows
 			.next()?
-			.map(crate::state::sqlite_store::queries::worktree_mapping_record_from_row)
+			.map(worktree_mapping_record_from_row)
 			.transpose()?)
 	}
 
