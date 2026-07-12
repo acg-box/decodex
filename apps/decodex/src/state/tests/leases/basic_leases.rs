@@ -65,6 +65,16 @@ fn registered_lease_is_a_retryable_projection_of_canonical_lane_claim() {
 		attached.worktree_path().map(|path| path.as_path()),
 		Some(std::path::Path::new("/tmp/pubfi/.worktrees/PUB-101")),
 	);
+	store
+		.detach_claimed_worktree("pubfi", "PUB-101", "xv/pub-101", "/tmp/pubfi/.worktrees/PUB-101")
+		.expect("detach worktree");
+	let detached = store.lane(&lane_id).expect("lane read").expect("lane");
+	assert_eq!(detached.branch_name(), None);
+	assert_eq!(detached.worktree_path(), None);
+	assert!(store.worktree_for_issue("PUB-101").expect("projection read").is_none());
+	store
+		.upsert_claimed_worktree("pubfi", "PUB-101", "xv/pub-101", "/tmp/pubfi/.worktrees/PUB-101")
+		.expect("reattach worktree");
 
 	store.clear_lease("PUB-101").expect("release claim");
 	let released = store.lane(&lane_id).expect("lane read").expect("lane");

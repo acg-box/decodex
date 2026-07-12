@@ -32,7 +32,7 @@ pub(in crate::recovery::tests) fn sample_worktree_at(
 		.expect("worktree should exist")
 }
 
-pub(in crate::recovery::tests) fn sample_landing_state(
+pub(in crate::recovery) fn sample_landing_state(
 	pr_url: &str,
 	branch_name: &str,
 	head_oid: &str,
@@ -98,7 +98,7 @@ Test workflow.
 	.expect("sample workflow should parse")
 }
 
-pub(in crate::recovery::tests) fn sample_recovery_context(
+pub(in crate::recovery) fn sample_recovery_context(
 	temp_dir: &TempDir,
 	runtime_mutation_policy: RecoveryRuntimeMutationPolicy,
 ) -> RecoveryContext {
@@ -135,7 +135,7 @@ repository = "test-repository"
 	}
 }
 
-pub(in crate::recovery::tests) fn sample_issue(state_name: &str) -> TrackerIssue {
+pub(in crate::recovery) fn sample_issue(state_name: &str) -> TrackerIssue {
 	let states = vec![
 		TrackerState { id: String::from("state-todo"), name: String::from("Todo") },
 		TrackerState { id: String::from("state-progress"), name: String::from("In Progress") },

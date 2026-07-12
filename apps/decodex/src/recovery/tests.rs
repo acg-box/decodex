@@ -9,10 +9,13 @@ mod review_handoff;
 mod stale_active;
 mod trackers;
 
+pub(in crate::recovery) use self::fixtures::{
+	sample_issue, sample_landing_state, sample_recovery_context,
+};
+
 pub(in crate::recovery::tests) use self::{
 	fixtures::{
-		sample_issue, sample_issue_with_labels, sample_landing_state, sample_recovery_context,
-		sample_workflow, sample_worktree, sample_worktree_at,
+		sample_issue_with_labels, sample_workflow, sample_worktree, sample_worktree_at,
 	},
 	git_fixtures::{
 		commit_test_file, init_clean_git_repo_with_remote_default, init_git_repo, run_git,

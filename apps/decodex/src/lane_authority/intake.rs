@@ -19,6 +19,10 @@ pub enum IntakeAuthorityKind {
 		accepted_intake_id: String,
 		batch_fingerprint: String,
 	},
+	RecoveryAdoption {
+		recovery_request_id: String,
+		evidence_fingerprint: String,
+	},
 	Transfer {
 		transfer_authority_id: String,
 		source_lane_id: LaneId,
@@ -32,6 +36,7 @@ impl IntakeAuthorityKind {
 		match self {
 			Self::DecisionContract { .. } => "decision_contract",
 			Self::IssueBatch { .. } => "issue_batch",
+			Self::RecoveryAdoption { .. } => "recovery_adoption",
 			Self::Transfer { .. } => "transfer",
 		}
 	}
@@ -188,6 +193,12 @@ fn validate_kind(authority: &IntakeAuthorityKind) -> Result<()> {
 				("batch_fingerprint", batch_fingerprint),
 			]
 		},
+		IntakeAuthorityKind::RecoveryAdoption { recovery_request_id, evidence_fingerprint } => {
+			vec![
+				("recovery_request_id", recovery_request_id),
+				("evidence_fingerprint", evidence_fingerprint),
+			]
+		},
 		IntakeAuthorityKind::Transfer {
 			transfer_authority_id,
 			source_intake_authority_id,
@@ -252,6 +263,29 @@ mod tests {
 		let authority = issue_batch_authority();
 		authority.validate().expect("valid authority");
 		assert!(matches!(authority.authority(), IntakeAuthorityKind::IssueBatch { .. }));
+	}
+
+	#[test]
+	fn recovery_adoption_requires_explicit_evidence() {
+		let authority = IntakeAuthority::new(
+			"authority-recovery-1",
+			"pubfi",
+			attestation(),
+			"recovery-plan-1",
+			"recovery-program-1",
+			"operator",
+			"review_handoff_adopt",
+			"correlation-recovery-1",
+			"2026-07-12T00:00:00Z",
+			1,
+			IntakeAuthorityKind::RecoveryAdoption {
+				recovery_request_id: String::from("adopt-run-1"),
+				evidence_fingerprint: String::from("sha256:evidence"),
+			},
+		)
+		.expect("recovery authority");
+		authority.validate().expect("valid recovery authority");
+		assert_eq!(authority.authority().as_str(), "recovery_adoption");
 	}
 
 	#[test]

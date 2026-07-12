@@ -65,18 +65,7 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 	let active_label_restored = match labels::restore_adopt_active_label(context, validation) {
 		Ok(active_label_restored) => active_label_restored,
 		Err(error) => {
-			failure::mark_adopt_attempt_failed(context, validation);
-
-			context.state_store.clear_review_lifecycle_for_identity(
-				context.config.service_id(),
-				&validation.issue.id,
-				handoff_input.branch_name,
-				handoff_input.run_id,
-				handoff_input.attempt_number,
-			)?;
-
-			rollback::rollback_adopt_worktree_mapping(context, validation)?;
-
+			failure::guard_adopt_lane_after_external_failure(context, validation)?;
 			return Err(error);
 		},
 	};
@@ -85,36 +74,28 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 	if let Err(error) = audit::write_adopt_audit(context, validation, &event)
 		.and_then(|()| context.state_store.record_linear_execution_event(&event))
 	{
-		failure::mark_adopt_attempt_failed(context, validation);
-
-		context.state_store.clear_review_lifecycle_for_identity(
-			context.config.service_id(),
-			&validation.issue.id,
-			handoff_input.branch_name,
-			handoff_input.run_id,
-			handoff_input.attempt_number,
-		)?;
-
-		labels::rollback_adopt_active_label_restoration(
-			context,
-			validation,
-			active_label_restored,
-		)?;
-		rollback::rollback_adopt_worktree_mapping(context, validation)?;
-
+		failure::guard_adopt_lane_after_external_failure(context, validation)?;
 		return Err(error);
 	}
 	if let Some(transition) = validation.success_state_transition.as_ref() {
-		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
+		if let Err(error) =
+			context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)
+		{
+			failure::guard_adopt_lane_after_external_failure(context, validation)?;
+			return Err(error);
+		}
 	}
 
-	recovery::append_review_handoff_adopt_private_event(
+	if let Err(error) = recovery::append_review_handoff_adopt_private_event(
 		&context.state_store,
 		context.config.service_id(),
 		validation,
 		"active_label_checked",
 		active_label_restored,
-	)?;
+	) {
+		failure::guard_adopt_lane_after_external_failure(context, validation)?;
+		return Err(error);
+	}
 
 	Ok(())
 }

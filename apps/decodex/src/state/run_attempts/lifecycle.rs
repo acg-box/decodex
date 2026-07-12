@@ -64,6 +64,7 @@ impl StateStore {
 	}
 
 	/// Insert or update a run attempt record.
+	#[cfg(test)]
 	pub fn record_run_attempt(
 		&self,
 		run_id: &str,

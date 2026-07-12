@@ -136,6 +136,7 @@ pub enum LaneCommand {
 	AcquireClaim { run_id: String },
 	ReleaseClaim { run_id: String },
 	AttachWorktree { branch_name: String, worktree_path: PathBuf },
+	DetachWorktree { branch_name: String, worktree_path: PathBuf },
 	BeginRun,
 	BeginReview,
 	Land,
@@ -221,12 +222,28 @@ pub fn transition(
 				_ => return Err(LaneTransitionRejection::ConflictingWorktree),
 			}
 		},
+		LaneCommand::DetachWorktree { branch_name, worktree_path } => {
+			if !matches!(current.phase, LanePhase::Claimed | LanePhase::Running) {
+				return Err(LaneTransitionRejection::InvalidPhase);
+			}
+			match (current.branch_name.as_deref(), current.worktree_path.as_ref()) {
+				(Some(existing_branch), Some(existing_path))
+					if existing_branch == branch_name && existing_path == &worktree_path =>
+				{
+					next.branch_name = None;
+					next.worktree_path = None;
+				},
+				_ => return Err(LaneTransitionRejection::ConflictingWorktree),
+			}
+		},
 		LaneCommand::BeginRun if current.phase == LanePhase::Claimed => {
 			next.phase = LanePhase::Running;
 		},
+		LaneCommand::BeginRun if current.phase == LanePhase::Running => {},
 		LaneCommand::BeginReview if current.phase == LanePhase::Running => {
 			next.phase = LanePhase::WaitingReview;
 		},
+		LaneCommand::BeginReview if current.phase == LanePhase::WaitingReview => {},
 		LaneCommand::Land if current.phase == LanePhase::WaitingReview => {
 			next.phase = LanePhase::Landed;
 		},
@@ -368,8 +385,16 @@ mod tests {
 		.expect("worktree");
 		let running =
 			transition(&attached, 2, "binding-1", LaneCommand::BeginRun).expect("running");
+		assert_eq!(
+			transition(&running, 3, "binding-1", LaneCommand::BeginRun).expect("running replay"),
+			running,
+		);
 		let review =
 			transition(&running, 3, "binding-1", LaneCommand::BeginReview).expect("review");
+		assert_eq!(
+			transition(&review, 4, "binding-1", LaneCommand::BeginReview).expect("review replay"),
+			review,
+		);
 		let landed = transition(&review, 4, "binding-1", LaneCommand::Land).expect("land");
 		assert_eq!(landed.phase(), LanePhase::Landed);
 		assert_eq!(landed.epoch(), 5);

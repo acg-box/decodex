@@ -16,6 +16,7 @@ pub(crate) struct ReviewLifecycleTransitionFixture {
 }
 
 /// Runtime lifecycle transition projection used by active post-review writers.
+#[derive(Clone, Copy)]
 pub(crate) struct ReviewLifecycleTransitionInput<'a> {
 	pub(crate) run_id: &'a str,
 	pub(crate) attempt_number: i64,

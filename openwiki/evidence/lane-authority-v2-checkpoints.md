@@ -948,6 +948,24 @@ migration invariants. C1 must not preserve global issue-keyed ownership behind a
 
 ## Program Checkpoint Table
 
+### Runtime checkpoint: project-qualified attempt authority and recovery adoption
+
+PR #1092 now project-qualifies production attempt sequencing, retry accounting, latest
+attempt reads, closeout identity reuse, thread archive history, daemon retry, recovery,
+and operator projections. The old issue-only attempt APIs are test-only; the remaining
+production legacy writer in review-handoff adoption has been replaced by an explicit
+`RecoveryAdoption` Intake Authority, binding attestation, canonical claim, lane worktree
+attachment, lane-qualified attempt, and `Claimed -> Running -> WaitingReview` transitions.
+
+Recovery adoption external failures no longer erase accepted local authority. They mark
+the attempt failed and transition the lane to `NeedsAttention`; pre-commit local failures
+detach the exact adopted worktree under CAS and release the claim. `DetachWorktree` rejects
+stale branch/path or phase evidence. Focused evidence: 11 lane-authority tests, 17 lease
+tests, 128 recovery tests, the recovery-adoption authority/lane fixture, and
+`cargo check -p decodex --all-targets` all pass. Migration/quarantine, effect journal,
+typed supersession, telemetry, and adjacent XY-1249 fixes remain incomplete, so C1/C2 are
+not complete.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

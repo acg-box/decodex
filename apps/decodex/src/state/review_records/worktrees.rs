@@ -74,6 +74,46 @@ impl StateStore {
 		self.upsert_worktree(project_id, issue_id, branch_name, worktree_path)
 	}
 
+	/// Detach the exact worktree owned by a claimed canonical lane and clear its projection.
+	pub fn detach_claimed_worktree(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		branch_name: &str,
+		worktree_path: &str,
+	) -> Result<()> {
+		let lane_id = LaneId::new(project_id, issue_id)?;
+		#[cfg(test)]
+		let existing_lane = self.lane(&lane_id)?;
+		let binding = match self.registered_project_binding(project_id)? {
+			Some(binding) => binding,
+			None => {
+				#[cfg(not(test))]
+				eyre::bail!("Project is not registered; worktree detachment is forbidden.");
+				#[cfg(test)]
+				crate::lane_authority::ProjectBinding::new(
+					project_id,
+					"test-owner",
+					"test-repository",
+					"team-test",
+					&format!("decodex:queued:{project_id}"),
+					existing_lane
+						.as_ref()
+						.map_or("test-binding", |lane| lane.binding_fingerprint()),
+				)?
+			},
+		};
+		self.apply_lane_command(
+			lane_id,
+			binding.config_fingerprint(),
+			LaneCommand::DetachWorktree {
+				branch_name: branch_name.to_owned(),
+				worktree_path: PathBuf::from(worktree_path),
+			},
+		)?;
+		self.clear_worktree_mapping(issue_id)
+	}
+
 	/// Create or replace the worktree mapping for one issue.
 	pub fn upsert_worktree(
 		&self,

@@ -66,7 +66,7 @@ pub(crate) use self::{
 		TRACKER_TRANSIENT_TIMEOUT_WARNING,
 	},
 	dispatch_policy::{
-		CloseoutDispatchEligibility, REVIEW_HANDOFF_BLOCK_REASON,
+		CloseoutDispatchEligibility, REVIEW_HANDOFF_BLOCK_REASON, attest_issue_project_binding,
 		cleanup_completed_post_review_lane, cleanup_terminal_worktree, cleanup_worktree_mapping,
 		clear_recovered_issue_lease, clear_terminal_guard_marker, clear_worktree_retry_schedule,
 		closeout_dispatch_block_reason, evaluate_closeout_dispatch_policy_with_inspector,
