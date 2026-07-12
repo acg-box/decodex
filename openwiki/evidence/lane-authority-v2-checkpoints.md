@@ -1066,6 +1066,15 @@ fixture proves pre-receipt rejection, ordered receipt progression, restart, and 
 Lane terminalization. Nine supersession tests, four effect tests, and all-target checking
 pass. Provider adapters/readback and individual resource ownership receipts remain.
 
+The first closeout provider adapter performs exact GitHub PR readback without claiming
+unsupported mutation semantics. Exact-head/base already-closed state yields an immutable
+effect receipt; head/base drift yields typed prerequisite drift; an exact open PR yields
+`conditional_mutation_unsupported` and no PATCH/close command. The process-level fixture
+records the invoked `gh api --method GET` arguments and proves no unconditional mutation
+is attempted. Two adapter tests and all-target checking pass. This deliberately leaves
+the predecessor internally terminal with typed close debt when GitHub cannot prove CAS,
+rather than reviving executable authority or guessing from stale snapshots.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

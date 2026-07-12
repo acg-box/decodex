@@ -4,6 +4,7 @@ mod comments;
 mod landing_state;
 mod locator;
 mod merge_readback;
+mod pr_close;
 mod repository;
 mod status;
 
@@ -11,6 +12,7 @@ mod status;
 pub(crate) use self::{
 	branch::{gh_delete_ref_missing_branch, github_api_ref_path},
 	command::{GH_FALLBACK_PATHS, GhCommandDiscoveryTier, gh_command_resolution_from_env},
+	pr_close::{PullRequestCloseReadback, reconcile_pull_request_close},
 };
 pub(crate) use self::{
 	command::{

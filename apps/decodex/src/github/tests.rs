@@ -10,6 +10,7 @@ mod gh_command_resolution_prefers_path_candidate;
 mod gh_command_resolution_uses_configured_path_as_authority;
 mod github_api_ref_path_preserves_ref_slashes_and_encodes_segments;
 mod issue_comment_pagination;
+mod pull_request_close_readback;
 mod merge_commit_wait_retries_only_visibility_errors;
 mod missing_remote_ref_errors_are_idempotent_cleanup;
 mod parses_pull_request_url;
