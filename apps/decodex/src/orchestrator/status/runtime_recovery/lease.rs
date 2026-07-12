@@ -57,12 +57,6 @@ pub(crate) fn record_recovered_activity_lease(
 		marker.attempt_number(),
 		"running",
 	)?;
-	state_store.upsert_lease(
-		project.service_id(),
-		&issue.id,
-		marker.run_id(),
-		&issue.state.name,
-	)?;
 
 	Ok(())
 }

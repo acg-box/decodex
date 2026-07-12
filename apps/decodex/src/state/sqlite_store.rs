@@ -10,7 +10,7 @@ use rusqlite::{self, Connection, OptionalExtension, Transaction, params};
 use crate::{
 	prelude::{Result, eyre},
 	state::{
-		ChildAgentActivitySummary, ConnectorBackoff, IssueLease, ProjectRegistration, StateData,
+		ChildAgentActivitySummary, ConnectorBackoff, ProjectRegistration, StateData,
 		derived_program_intake_plan_records, derived_program_issue_mapping_records,
 		runtime_records::{
 			AutonomyObjectiveRuntimeRecord, AutonomyProposalRuntimeRecord,

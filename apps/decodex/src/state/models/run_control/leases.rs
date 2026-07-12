@@ -23,6 +23,7 @@ impl IssueLease {
 	}
 
 	/// Tracker state representing the dispatched run.
+	#[cfg(test)]
 	pub fn issue_state(&self) -> &str {
 		&self.issue_state
 	}

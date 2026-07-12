@@ -1,7 +1,8 @@
 use crate::{
 	prelude::Result,
-	state::{IssueLease, StateStore, store::retarget},
+	state::{StateStore, store::retarget},
 };
+#[cfg(test)] use crate::state::IssueLease;
 
 impl StateStore {
 	/// Retarget runtime records from a visible issue identifier to the canonical tracker id.
@@ -93,6 +94,7 @@ impl StateStore {
 	}
 
 	/// Create or replace the run lease for one issue.
+	#[cfg(test)]
 	pub fn upsert_lease(
 		&self,
 		project_id: &str,

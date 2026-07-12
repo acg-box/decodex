@@ -53,10 +53,14 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 		.worktree_for_issue(&issue.id)
 		.expect("mapping lookup should succeed")
 		.expect("recovered mapping should exist");
-	let lease = state_store
-		.lease_for_issue(&issue.id)
-		.expect("lease lookup should succeed")
-		.expect("fresh active marker should recover the lease");
+	let lane = state_store
+		.lane(&LaneId::new(config.service_id(), &issue.id).expect("lane id"))
+		.expect("lane lookup")
+		.expect("canonical lane remains");
+	let attempt = state_store
+		.run_attempt("run-1")
+		.expect("attempt lookup")
+		.expect("recovered attempt");
 
 	assert!(
 		recovered_state.recoverable_issues.is_empty(),
@@ -65,7 +69,9 @@ fn runtime_recovery_records_recovered_provenance_for_fresh_active_worktree() {
 	assert_eq!(mapping.provenance().source(), "runtime_recovered");
 	assert_eq!(mapping.provenance().created_at_unix(), Some(observed_at_unix));
 	assert_eq!(mapping.provenance().updated_at_unix(), Some(observed_at_unix));
-	assert_eq!(lease.run_id(), "run-1");
+	assert_eq!(lane.claim_run_id(), Some("run-1"));
+	assert_eq!(attempt.project_id(), Some(config.service_id()));
+	assert_eq!(attempt.issue_id(), issue.id);
 }
 
 #[test]

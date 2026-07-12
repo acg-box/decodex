@@ -17,12 +17,13 @@ pub(super) use rusqlite::params;
 use crate::state::sqlite_store::{
 	AutonomyObjectiveRuntimeRecord, AutonomyProposalRuntimeRecord,
 	AutonomyRuntimePolicyRuntimeRecord, AutonomySignalRuntimeRecord, ChildAgentActivitySummary,
-	ConnectorBackoff, DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord, IssueLease,
+	ConnectorBackoff, DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord,
 	LinearExecutionEventRuntimeRecord, OptionalExtension, PrivateExecutionEventRuntimeRecord,
 	ProjectRegistration, ProtocolEventRecord, Result, RunActivitySummaryRecord, RunAttemptRecord,
 	RunControlChannelRecord, SqliteStateStore, StateData, WorktreeMappingRecord,
 	connector_backoff_from_row, eyre, persist, protocol_event_record_from_row,
 };
+#[cfg(test)] use crate::state::IssueLease;
 
 impl SqliteStateStore {
 	pub(in crate::state) fn begin_program_intake_attempt(

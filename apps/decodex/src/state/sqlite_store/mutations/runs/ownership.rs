@@ -1,8 +1,10 @@
 use crate::state::sqlite_store::mutations::{
-	self, IssueLease, Result, SqliteStateStore, WorktreeMappingRecord, persist,
+	self, Result, SqliteStateStore, WorktreeMappingRecord, persist,
 };
+#[cfg(test)] use crate::state::sqlite_store::mutations::IssueLease;
 
 impl SqliteStateStore {
+	#[cfg(test)]
 	pub(in crate::state) fn upsert_lease_and_remember_run_project(
 		&mut self,
 		lease: &IssueLease,

@@ -69,18 +69,23 @@ fn runtime_recovery_splits_invalid_local_id_batch_without_losing_valid_issue() {
 		.worktree_for_issue(&issue.id)
 		.expect("mapping lookup should succeed")
 		.expect("valid issue mapping should remain");
-	let lease = state_store
-		.lease_for_issue(&issue.id)
-		.expect("lease lookup should succeed")
-		.expect("valid issue lease should recover");
+	let lane = state_store
+		.lane(&LaneId::new(config.service_id(), &issue.id).expect("lane id"))
+		.expect("lane lookup")
+		.expect("canonical lane remains");
+	let attempt = state_store
+		.run_attempt("run-101")
+		.expect("attempt lookup")
+		.expect("valid run attempt should recover");
 
 	assert!(
 		recovered_state.recoverable_issues.is_empty(),
 		"fresh valid issue should recover as active lease rather than disappear"
 	);
 	assert_eq!(recovered_mapping.issue_id(), issue.id);
-	assert_eq!(lease.issue_id(), issue.id);
-	assert_eq!(lease.run_id(), "run-101");
+	assert_eq!(lane.claim_run_id(), Some("run-101"));
+	assert_eq!(attempt.project_id(), Some(config.service_id()));
+	assert_eq!(attempt.issue_id(), issue.id);
 }
 
 #[test]
