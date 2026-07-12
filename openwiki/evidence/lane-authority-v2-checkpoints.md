@@ -979,6 +979,12 @@ fixtures prove journal reload and fail-closed revalidation. This is not C3 compl
 remaining external adapters, provider capability gates, pagination, ordinal enforcement,
 authority-event transactions, and PONR fencing remain.
 
+The XY-1250 pagination prerequisite now has an all-page GitHub issue-comment readback
+adapter using `gh api --paginate --slurp`, a deterministic marker match, and a page-two
+process-level fixture proving that retry returns the existing comment instead of posting.
+It is intentionally not yet wired to a superseded-closeout writer because C4 typed
+supersession does not exist; the adapter remains staged and cannot be used as authority.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
