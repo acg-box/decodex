@@ -5,13 +5,13 @@ mod stale;
 pub(crate) use self::closeout::retained_closeout_lease_has_fresh_activity;
 
 use crate::orchestrator::run_cycle_reconciliation::{
-	self, HashMap, HashSet, IssueLease, IssueTracker, ProjectStateReconciliationContext, Result,
+	self, HashMap, HashSet, IssueTracker, LaneClaim, ProjectStateReconciliationContext, Result,
 	ServiceConfig, StateStore, TrackerIssue, WorkflowDocument, leases, tracker,
 };
 
 pub(super) fn reconcile_active_project_leases<T>(
 	context: &ProjectStateReconciliationContext<'_, T>,
-	leases: &[IssueLease],
+	leases: &[LaneClaim],
 	issues_by_id: &HashMap<String, TrackerIssue>,
 	now_unix_epoch: i64,
 	cleared_terminal_lane_issue_ids: &mut HashSet<String>,

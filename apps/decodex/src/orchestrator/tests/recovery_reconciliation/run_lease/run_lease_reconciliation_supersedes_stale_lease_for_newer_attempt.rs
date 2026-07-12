@@ -33,6 +33,7 @@ fn run_lease_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 	state_store
 		.record_lane_run_attempt(config.service_id(), newer_run_id, &issue.id, 2, "succeeded")
 		.expect("newer run should record");
+	tests::seed_test_lane_claim(&state_store, config.service_id(), &issue.id, stale_run_id);
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, stale_run_id, "In Progress")
 		.expect("stale lease should record");
@@ -65,7 +66,12 @@ fn run_lease_reconciliation_supersedes_stale_lease_for_newer_attempt() {
 	)
 	.expect("superseded reconciliation should succeed");
 
-	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none());
+	assert!(
+		state_store
+			.claim_for_lane(config.service_id(), &issue.id)
+			.expect("claim lookup")
+			.is_none()
+	);
 	assert_eq!(
 		state_store
 			.run_attempt(stale_run_id)

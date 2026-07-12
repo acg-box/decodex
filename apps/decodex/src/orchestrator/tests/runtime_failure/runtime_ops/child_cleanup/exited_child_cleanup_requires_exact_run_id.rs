@@ -1,6 +1,6 @@
 use crate::orchestrator::tests::{
 	self,
-	runtime_failure::{ChildRunRef, StateStore, orchestrator},
+	runtime_failure::{ChildRunRef, StateStore, orchestrator, seed_runtime_failure_lane_claim},
 };
 
 #[test]
@@ -8,12 +8,10 @@ fn exited_child_cleanup_requires_exact_run_id() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Progress", &[]);
 
+	seed_runtime_failure_lane_claim(&state_store, &issue.id, "other-run");
 	state_store
 		.record_run_attempt("other-run", &issue.id, 1, "running")
 		.expect("other run attempt should record");
-	state_store
-		.upsert_lease("pubfi", &issue.id, "other-run", "In Progress")
-		.expect("lease should record");
 
 	orchestrator::clear_orphaned_daemon_child_state(
 		&state_store,
@@ -24,9 +22,9 @@ fn exited_child_cleanup_requires_exact_run_id() {
 
 	assert_eq!(
 		state_store
-			.lease_for_issue(&issue.id)
-			.expect("lease lookup should succeed")
-			.expect("lease should remain attached to the other run")
+			.claim_for_lane("pubfi", &issue.id)
+			.expect("claim lookup")
+			.expect("claim should remain attached to the other run")
 			.run_id(),
 		"other-run"
 	);

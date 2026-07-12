@@ -1,6 +1,8 @@
 use crate::orchestrator::tests::{
 	self,
-	runtime_failure::{ChildRunRef, StateStore, TempDir, orchestrator},
+	runtime_failure::{
+		ChildRunRef, StateStore, TempDir, orchestrator, seed_runtime_failure_lane_claim,
+	},
 };
 
 #[test]
@@ -10,15 +12,13 @@ fn exited_child_cleanup_keeps_other_run_lease_and_worktree_mapping() {
 	let issue = tests::sample_issue("In Progress", &[]);
 	let removed_worktree_path = temp_dir.path().join("removed-lane");
 
+	seed_runtime_failure_lane_claim(&state_store, &issue.id, "other-run");
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
 		.expect("run attempt should record");
 	state_store
 		.record_run_attempt("other-run", &issue.id, 2, "running")
 		.expect("other run attempt should record");
-	state_store
-		.upsert_lease("pubfi", &issue.id, "other-run", "In Progress")
-		.expect("lease should record");
 	state_store
 		.upsert_worktree(
 			"pubfi",
@@ -37,9 +37,9 @@ fn exited_child_cleanup_keeps_other_run_lease_and_worktree_mapping() {
 
 	assert_eq!(
 		state_store
-			.lease_for_issue(&issue.id)
-			.expect("lease lookup should succeed")
-			.expect("lease should remain attached to the other run")
+			.claim_for_lane("pubfi", &issue.id)
+			.expect("claim lookup")
+			.expect("claim should remain attached to the other run")
 			.run_id(),
 		"other-run"
 	);

@@ -17,6 +17,7 @@ use time::OffsetDateTime;
 
 use crate::{
 	agent::CodexAccountAuthFailure,
+	lane_authority::{LaneCommand, LaneId},
 	orchestrator,
 	orchestrator::tests::{
 		self, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
@@ -36,6 +37,35 @@ use crate::{
 	},
 	state, test_support, tracker,
 };
+
+pub(super) fn seed_runtime_failure_lane_claim(
+	store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+) {
+	let lane_id = LaneId::new("pubfi", issue_id).expect("lane id");
+	store
+		.apply_lane_command(
+			lane_id.clone(),
+			"test-binding:pubfi",
+			LaneCommand::Admit { intake_authority_id: String::from("test-authority") },
+		)
+		.expect("lane admission");
+	store
+		.apply_lane_command(
+			lane_id,
+			"test-binding:pubfi",
+			LaneCommand::AcquireClaim { run_id: run_id.to_owned() },
+		)
+		.expect("lane claim");
+	let existing = store.run_attempt(run_id).expect("run attempt lookup");
+	let (attempt_number, status) = existing
+		.as_ref()
+		.map_or((1, "running"), |attempt| (attempt.attempt_number(), attempt.status()));
+	store
+		.record_lane_run_attempt("pubfi", run_id, issue_id, attempt_number, status)
+		.expect("lane run attempt");
+}
 
 pub(super) fn loop_guardrail_issue_run(
 	config: &ServiceConfig,

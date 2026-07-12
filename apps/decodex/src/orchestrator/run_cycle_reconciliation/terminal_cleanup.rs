@@ -1,16 +1,19 @@
 use crate::orchestrator::run_cycle_reconciliation::{
-	self, HashSet, IssueLease, Result, ServiceConfig, StateStore, TERMINAL_GUARDED_RUN_STATUS,
+	self, HashSet, LaneClaim, Result, ServiceConfig, StateStore, TERMINAL_GUARDED_RUN_STATUS,
 	WorktreeMapping,
 };
 
 pub(super) fn clear_stale_terminal_local_worktree_mappings(
 	project: &ServiceConfig,
 	state_store: &StateStore,
-	leases: &[IssueLease],
+	claims: &[LaneClaim],
 	worktrees: &mut Vec<WorktreeMapping>,
 ) -> Result<()> {
 	let active_issue_ids =
-		leases.iter().map(|lease| lease.issue_id().to_owned()).collect::<HashSet<_>>();
+		claims
+			.iter()
+			.map(|claim| claim.id().tracker_issue_id().to_owned())
+			.collect::<HashSet<_>>();
 	let mut cleared_issue_ids = Vec::new();
 
 	for mapping in worktrees.iter() {

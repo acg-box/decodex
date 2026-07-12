@@ -30,10 +30,14 @@ pub(crate) fn reconcile_superseded_run_lease(
 		"interrupted",
 	)?;
 
-	if let Some(lease) = state_store.lease_for_issue(&action.issue.id)?
-		&& lease.run_id() == action.run_attempt.run_id()
+	if let Some(claim) = state_store.claim_for_lane(project.service_id(), &action.issue.id)?
+		&& claim.run_id() == action.run_attempt.run_id()
 	{
-		state_store.clear_lease(&action.issue.id)?;
+		state_store.release_lane_claim(
+			project.service_id(),
+			&action.issue.id,
+			action.run_attempt.run_id(),
+		)?;
 	}
 
 	Ok(())
@@ -59,7 +63,11 @@ pub(crate) fn reconcile_retained_review_complete_run_lease(
 		"succeeded",
 	)?;
 
-	state_store.clear_lease(&action.issue.id)?;
+	state_store.release_lane_claim(
+		project.service_id(),
+		&action.issue.id,
+		action.run_attempt.run_id(),
+	)?;
 
 	Ok(())
 }
@@ -104,7 +112,11 @@ pub(crate) fn reconcile_not_dispatchable_run_lease(
 		)?;
 	}
 
-	state_store.clear_lease(&action.issue.id)?;
+	state_store.release_lane_claim(
+		project.service_id(),
+		&action.issue.id,
+		action.run_attempt.run_id(),
+	)?;
 
 	Ok(())
 }

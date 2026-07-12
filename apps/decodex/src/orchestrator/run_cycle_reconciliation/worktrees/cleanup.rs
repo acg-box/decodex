@@ -8,7 +8,8 @@ use crate::{
 		self, IssueTracker, run_cycle_reconciliation::ProjectStateReconciliationContext,
 	},
 	prelude::Result,
-	state::{IssueLease, StateStore, WorktreeMapping},
+	state::{StateStore, WorktreeMapping},
+	lane_authority::LaneClaim,
 	tracker::TrackerIssue,
 };
 
@@ -16,14 +17,15 @@ pub(in crate::orchestrator::run_cycle_reconciliation) fn cleanup_missing_orphane
 	T,
 >(
 	context: &ProjectStateReconciliationContext<'_, T>,
-	leases: &[IssueLease],
+	claims: &[LaneClaim],
 	worktrees: &[WorktreeMapping],
 	issues_by_id: &HashMap<String, TrackerIssue>,
 ) -> Result<()>
 where
 	T: IssueTracker,
 {
-	let leased_issue_ids = leases.iter().map(IssueLease::issue_id).collect::<HashSet<_>>();
+	let leased_issue_ids =
+		claims.iter().map(|claim| claim.id().tracker_issue_id()).collect::<HashSet<_>>();
 
 	for mapping in worktrees {
 		if leased_issue_ids.contains(mapping.issue_id())

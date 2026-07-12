@@ -35,6 +35,7 @@ fn run_lease_reconciliation_treats_completed_retained_handoff_as_success() {
 	state_store
 		.record_run_attempt(run_id, &issue.id, 1, "running")
 		.expect("run attempt should record");
+	tests::seed_test_lane_claim(&state_store, config.service_id(), &issue.id, run_id);
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, run_id, "In Progress")
 		.expect("lease should record");
@@ -81,7 +82,12 @@ fn run_lease_reconciliation_treats_completed_retained_handoff_as_success() {
 	)
 	.expect("completed retained handoff reconciliation should succeed");
 
-	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none());
+	assert!(
+		state_store
+			.claim_for_lane(config.service_id(), &issue.id)
+			.expect("claim lookup")
+			.is_none()
+	);
 	assert!(
 		state_store
 			.worktree_for_issue(&issue.id)

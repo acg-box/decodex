@@ -1,6 +1,8 @@
 use crate::orchestrator::tests::{
 	self,
-	runtime_failure::{ChildRunRef, StateStore, TempDir, fs, orchestrator},
+	runtime_failure::{
+		ChildRunRef, StateStore, TempDir, fs, orchestrator, seed_runtime_failure_lane_claim,
+	},
 };
 
 #[test]
@@ -11,13 +13,11 @@ fn exited_child_cleanup_handles_worktree_mapping_ownership() {
 		let issue = tests::sample_issue("Done", &[]);
 		let removed_worktree_path = temp_dir.path().join("removed-lane");
 
+		seed_runtime_failure_lane_claim(&state_store, &issue.id, "run-1");
 		state_store
 			.record_run_attempt("run-1", &issue.id, 1, "running")
 			.expect("run attempt should record");
 		state_store.update_run_status("run-1", "succeeded").expect("run status should update");
-		state_store
-			.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
-			.expect("lease should record");
 		state_store
 			.upsert_worktree(
 				"pubfi",
@@ -35,7 +35,7 @@ fn exited_child_cleanup_handles_worktree_mapping_ownership() {
 		.expect("removed worktree cleanup should succeed");
 
 		assert!(
-			state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none()
+			state_store.claim_for_lane("pubfi", &issue.id).expect("claim lookup").is_none()
 		);
 		assert!(
 			state_store
@@ -60,12 +60,10 @@ fn exited_child_cleanup_handles_worktree_mapping_ownership() {
 
 		fs::create_dir_all(&existing_worktree_path).expect("worktree path should exist");
 
+		seed_runtime_failure_lane_claim(&state_store, &issue.id, "run-1");
 		state_store
 			.record_run_attempt("run-1", &issue.id, 1, "running")
 			.expect("run attempt should record");
-		state_store
-			.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
-			.expect("lease should record");
 		state_store
 			.upsert_worktree(
 				"pubfi",

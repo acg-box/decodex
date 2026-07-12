@@ -17,6 +17,7 @@ fn reconciliation_clears_stale_leases_and_terminal_worktrees() {
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
 		.expect("run attempt should record");
+	tests::seed_test_lane_claim(&state_store, config.service_id(), &issue.id, "run-1");
 	state_store
 		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
 		.expect("lease should record");
@@ -33,7 +34,12 @@ fn reconciliation_clears_stale_leases_and_terminal_worktrees() {
 		.expect("reconciliation should succeed");
 
 	assert!(summary.is_none());
-	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should work").is_none());
+	assert!(
+		state_store
+			.claim_for_lane(config.service_id(), &issue.id)
+			.expect("claim lookup")
+			.is_none()
+	);
 	assert!(
 		state_store.worktree_for_issue(&issue.id).expect("worktree lookup should work").is_none()
 	);
@@ -71,6 +77,7 @@ fn reconciliation_runs_without_project_validation() {
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
 		.expect("run attempt should record");
+	tests::seed_test_lane_claim(&state_store, config.service_id(), &issue.id, "run-1");
 	state_store
 		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
 		.expect("lease should record");
@@ -79,7 +86,12 @@ fn reconciliation_runs_without_project_validation() {
 		.expect("reconciliation should still succeed without any project validation");
 
 	assert!(summary.is_none(), "reconciliation-only startup should not dispatch a new lane here");
-	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should work").is_none());
+	assert!(
+		state_store
+			.claim_for_lane(config.service_id(), &issue.id)
+			.expect("claim lookup")
+			.is_none()
+	);
 	assert_eq!(
 		state_store
 			.run_attempt("run-1")

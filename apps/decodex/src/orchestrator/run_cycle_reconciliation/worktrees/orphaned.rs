@@ -5,8 +5,9 @@ use crate::{
 		self, IssueTracker, RunAttempt, RunLeaseDisposition, RunLeaseReconciliation,
 		run_cycle_reconciliation::ProjectStateReconciliationContext,
 	},
+	lane_authority::LaneClaim,
 	prelude::Result,
-	state::{self, IssueLease, StateStore, WorktreeMapping},
+	state::{self, StateStore, WorktreeMapping},
 	tracker::TrackerIssue,
 };
 
@@ -14,7 +15,7 @@ pub(in crate::orchestrator::run_cycle_reconciliation) fn reconcile_orphaned_acti
 	T,
 >(
 	context: &ProjectStateReconciliationContext<'_, T>,
-	leases: &[IssueLease],
+	claims: &[LaneClaim],
 	worktrees: &[WorktreeMapping],
 	issues_by_id: &HashMap<String, TrackerIssue>,
 	now_unix_epoch: i64,
@@ -25,7 +26,7 @@ where
 	let mut orphaned_actions = Vec::new();
 
 	for mapping in worktrees {
-		if leases.iter().any(|lease| lease.issue_id() == mapping.issue_id()) {
+		if claims.iter().any(|claim| claim.id().tracker_issue_id() == mapping.issue_id()) {
 			continue;
 		}
 

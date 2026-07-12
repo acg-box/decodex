@@ -107,6 +107,7 @@ use crate::{
 		ReviewPolicyStopRequested,
 	},
 	config::{ReviewLevel, ServiceConfig},
+	lane_authority::{LaneCommand, LaneId},
 	github,
 	orchestrator::{
 		AuthorityBoundaryChangedSurface, AuthorityBoundaryCheckInput, AuthorityBoundaryDisposition,
@@ -136,6 +137,29 @@ use crate::{
 	workflow::WorkflowDocument,
 	worktree::{WorktreeManager, WorktreeSpec},
 };
+
+pub(super) fn seed_test_lane_claim(
+	store: &StateStore,
+	project_id: &str,
+	issue_id: &str,
+	run_id: &str,
+) {
+	let lane_id = LaneId::new(project_id, issue_id).expect("lane id");
+	store
+		.apply_lane_command(
+			lane_id.clone(),
+			&format!("test-binding:{project_id}"),
+			LaneCommand::Admit { intake_authority_id: String::from("test-authority") },
+		)
+		.expect("lane admission");
+	store
+		.apply_lane_command(
+			lane_id,
+			&format!("test-binding:{project_id}"),
+			LaneCommand::AcquireClaim { run_id: run_id.to_owned() },
+		)
+		.expect("lane claim");
+}
 
 const TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID: i64 = 991;
 const TEST_EXTERNAL_REVIEW_REQUEST_CREATED_AT: i64 = 1_763_600_000;

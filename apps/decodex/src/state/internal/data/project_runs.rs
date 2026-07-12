@@ -91,10 +91,17 @@ impl StateData {
 		issue_id: &str,
 		run_id: &str,
 	) -> Option<String> {
-		self.leases
+		self.lanes
+			.values()
+			.find(|lane| {
+				lane.id().tracker_issue_id() == issue_id
+					&& lane.claim_run_id() == Some(run_id)
+			})
+			.map(|lane| lane.id().project_key().to_owned())
+			.or_else(|| self.leases
 			.get(issue_id)
 			.filter(|lease| lease.run_id == run_id)
-			.map(|lease| lease.project_id.clone())
+			.map(|lease| lease.project_id.clone()))
 			.or_else(|| self.worktrees.get(issue_id).map(|mapping| mapping.project_id.clone()))
 	}
 

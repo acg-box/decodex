@@ -22,7 +22,7 @@ use crate::{
 		worktree_mapping_is_stale_terminal_local_residue,
 	},
 	prelude::Result,
-	state::IssueLease,
+	lane_authority::LaneClaim,
 	tracker,
 };
 use leases::clear_terminal_lane_labels_once;
@@ -48,7 +48,7 @@ pub(crate) fn reconcile_project_state<T>(
 where
 	T: IssueTracker,
 {
-	let leases = state_store.list_leases(project.service_id())?;
+	let leases = state_store.list_lane_claims(project.service_id())?;
 	let mut worktrees = state_store.list_worktrees(project.service_id())?;
 
 	if leases.is_empty() && worktrees.is_empty() {
@@ -69,7 +69,7 @@ where
 	let mut issue_ids = HashSet::new();
 
 	for lease in &leases {
-		issue_ids.insert(lease.issue_id().to_owned());
+		issue_ids.insert(lease.id().tracker_issue_id().to_owned());
 	}
 	for mapping in &worktrees {
 		issue_ids.insert(mapping.issue_id().to_owned());

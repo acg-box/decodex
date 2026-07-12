@@ -26,6 +26,7 @@ fn run_lease_reconciliation_ignores_startable_preclaim_states() {
 	state_store
 		.record_run_attempt("run-startable", &issue.id, 1, "running")
 		.expect("run attempt should record");
+	tests::seed_test_lane_claim(&state_store, config.service_id(), &issue.id, "run-startable");
 	state_store
 		.upsert_lease("pubfi", &issue.id, "run-startable", "In Progress")
 		.expect("lease should record");
@@ -58,6 +59,7 @@ fn run_lease_reconciliation_clears_terminal_lane_labels() {
 	state_store
 		.record_run_attempt(run_id, &issue.id, 1, "running")
 		.expect("run attempt should record");
+	tests::seed_test_lane_claim(&state_store, config.service_id(), &issue.id, run_id);
 	state_store
 		.upsert_lease("pubfi", &issue.id, run_id, "In Progress")
 		.expect("lease should record");
@@ -92,7 +94,12 @@ fn run_lease_reconciliation_clears_terminal_lane_labels() {
 	)
 	.expect("terminal reconciliation should succeed");
 
-	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none());
+	assert!(
+		state_store
+			.claim_for_lane(config.service_id(), &issue.id)
+			.expect("claim lookup")
+			.is_none()
+	);
 	assert_eq!(
 		tracker.label_removals.borrow().as_slice(),
 		[
@@ -116,6 +123,7 @@ fn run_lease_reconciliation_keeps_nonterminal_not_dispatchable_worktrees() {
 	state_store
 		.record_run_attempt(run_id, &issue.id, 1, "running")
 		.expect("run attempt should record");
+	tests::seed_test_lane_claim(&state_store, config.service_id(), &issue.id, run_id);
 	state_store
 		.upsert_lease("pubfi", &issue.id, run_id, "In Progress")
 		.expect("lease should record");
@@ -150,7 +158,12 @@ fn run_lease_reconciliation_keeps_nonterminal_not_dispatchable_worktrees() {
 	)
 	.expect("reconciliation should succeed");
 
-	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none());
+	assert!(
+		state_store
+			.claim_for_lane(config.service_id(), &issue.id)
+			.expect("claim lookup")
+			.is_none()
+	);
 	assert!(
 		state_store
 			.worktree_for_issue(&issue.id)

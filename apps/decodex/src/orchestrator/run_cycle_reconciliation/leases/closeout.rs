@@ -2,7 +2,7 @@ use crate::{
 	orchestrator::{
 		run_cycle_reconciliation,
 		run_cycle_reconciliation::{
-			HashMap, HashSet, IssueLease, IssueTracker, ProjectStateReconciliationContext, Result,
+			HashMap, HashSet, IssueTracker, LaneClaim, ProjectStateReconciliationContext, Result,
 			ServiceConfig, TrackerIssue, WorktreeManager,
 		},
 	},
@@ -13,7 +13,7 @@ pub(in crate::orchestrator::run_cycle_reconciliation::leases) fn reconcile_termi
 	T,
 >(
 	context: &ProjectStateReconciliationContext<'_, T>,
-	lease: &IssueLease,
+	claim: &LaneClaim,
 	issues_by_id: &HashMap<String, TrackerIssue>,
 	now_unix_epoch: i64,
 	cleared_terminal_lane_issue_ids: &mut HashSet<String>,
@@ -21,7 +21,7 @@ pub(in crate::orchestrator::run_cycle_reconciliation::leases) fn reconcile_termi
 where
 	T: IssueTracker,
 {
-	let Some(issue) = issues_by_id.get(lease.issue_id()) else {
+	let Some(issue) = issues_by_id.get(claim.id().tracker_issue_id()) else {
 		return Ok(false);
 	};
 
@@ -35,7 +35,7 @@ where
 		return Ok(false);
 	}
 	if retained_closeout_lease_has_fresh_activity(
-		lease.run_id(),
+		claim.run_id(),
 		issue,
 		context.project,
 		now_unix_epoch,
@@ -51,11 +51,15 @@ where
 	)?;
 	run_cycle_reconciliation::mark_run_attempt_if_active(
 		context.state_store,
-		lease.run_id(),
+		claim.run_id(),
 		"interrupted",
 	)?;
 
-	context.state_store.clear_lease(lease.issue_id())?;
+	context.state_store.release_lane_claim(
+		context.project.service_id(),
+		claim.id().tracker_issue_id(),
+		claim.run_id(),
+	)?;
 
 	Ok(true)
 }

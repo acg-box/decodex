@@ -19,16 +19,23 @@ pub(crate) fn clear_orphaned_daemon_child_state(
 		daemon::mark_run_attempt_if_active(state_store, run_attempt.run_id(), "interrupted")?;
 	}
 
-	let existing_lease = state_store.lease_for_issue(child.issue_id)?;
-	let issue_unowned_or_matches_run = existing_lease.as_ref().is_none_or(|lease| {
-		resolved_run_attempt
-			.as_ref()
-			.is_some_and(|run_attempt| lease.run_id() == run_attempt.run_id())
-			|| lease.run_id() == child.run_id
-	});
+	let existing_claim = resolved_run_attempt
+		.as_ref()
+		.and_then(|attempt| attempt.project_id())
+		.map(|project_id| state_store.claim_for_lane(project_id, child.issue_id))
+		.transpose()?
+		.flatten();
+	let issue_unowned_or_matches_run =
+		existing_claim.as_ref().is_none_or(|claim| claim.run_id() == child.run_id);
 
-	if existing_lease.is_some() && issue_unowned_or_matches_run {
-		state_store.clear_lease(child.issue_id)?;
+	if let Some(claim) = existing_claim
+		&& issue_unowned_or_matches_run
+	{
+		state_store.release_lane_claim(
+			claim.id().project_key(),
+			child.issue_id,
+			claim.run_id(),
+		)?;
 	}
 	if resolved_run_attempt.is_some()
 		&& issue_unowned_or_matches_run

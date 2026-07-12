@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 use crate::{
 	prelude::Result,
 	state::{IssueLease, StateStore},
