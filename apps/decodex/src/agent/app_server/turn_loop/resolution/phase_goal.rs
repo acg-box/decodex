@@ -122,6 +122,16 @@ fn resolve_completed_phase_goal_turn(
 
 			Ok(None)
 		},
+		PhaseGoalTransition::ScheduleContinuation(next_goal) => {
+			phase_goal::set_thread_phase_goal(
+				context.client,
+				context.recorder,
+				context.thread_id,
+				&next_goal,
+			)?;
+			runtime.active_goal = next_goal;
+			Ok(Some((true, Some(observed_status))))
+		},
 		PhaseGoalTransition::CompleteRun => {
 			if signals.status == TurnCompletionStatus::Complete && signals.terminal_signal {
 				phase_goal::clear_thread_phase_goal_best_effort(

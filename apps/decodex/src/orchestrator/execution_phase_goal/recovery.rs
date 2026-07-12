@@ -83,7 +83,8 @@ pub(crate) fn recover_phase_goal_continuation(
 	let controller = RepoGatePhaseGoalController { project, workflow, state_store, issue_run };
 	let transition = controller.validate_phase_goal_output(source_phase)?;
 	let next_phase = match transition {
-		PhaseGoalTransition::Continue(next_goal) => next_goal.phase,
+		PhaseGoalTransition::Continue(next_goal)
+		| PhaseGoalTransition::ScheduleContinuation(next_goal) => next_goal.phase,
 		PhaseGoalTransition::CompleteRun => return Ok(None),
 	};
 	let prior_recovery_count = records::matching_phase_goal_recovery_count(

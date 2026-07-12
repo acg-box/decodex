@@ -31,6 +31,8 @@ impl PhaseGoalKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum PhaseGoalTransition {
 	Continue(PhaseGoalSpec),
+	#[cfg_attr(not(test), allow(dead_code))]
+	ScheduleContinuation(PhaseGoalSpec),
 	CompleteRun,
 }
 
