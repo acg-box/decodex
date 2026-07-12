@@ -1396,6 +1396,21 @@ repository binding before Lane, lease, worktree, or attempt persistence. Reposit
 selector rejection is not treated as the final global routing/quarantine solution:
 zero/multiple candidate resolution and durable unbound rejection telemetry remain.
 
+Commits `11c6a3f5`, `10cb9ea3`, and `2542f955` close the first global-catalog slice.
+RepositoryKey uniqueness is enforced both by the StateStore decision and a SQLite unique
+index; active tracker-scope/routing-label overlap is likewise rejected at registration
+and resume. Admission resolves every enabled ProjectBinding in deterministic ProjectKey
+order and evaluates tracker scope, routing selector, and optional `repo:*` selector
+before a LaneId exists. Zero match, multiple match, and malformed/multiple selectors
+create one immutable TrackerIssueKey quarantine reservation. On brokered production
+stores, reservation insert and an unbound `LaneQuarantined` authority event commit in
+the same SQLite transaction and then advance the protected head. Reopen retains the
+reservation, and even corrected selectors cannot readmit until typed adjudication exists.
+Exact ID-01 and QUA-01 now pass, taking C1 exact coverage to `5/65`; ADM-01 continues to
+prove the PUB-1711 wrong-repository request leaves no Lane, lease, worktree, or attempt.
+Typed adjudication/transfer, candidate-rich operator projection, and the exact ADM-02
+zero/multiple quarantine fixture remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
