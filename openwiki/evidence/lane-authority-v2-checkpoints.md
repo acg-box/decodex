@@ -1294,6 +1294,13 @@ the production continuation scheduler must consume the recovery through the cano
 Lane operation, schedule exactly one repair attempt, and terminalize a repeated result
 as reason-coded attention.
 
+Commit `49c4c487` makes the bounded outcome itself durable. Recovery state is now a
+strict two-state FSM (`retry_scheduled` to `attention_required`), the second matching
+result advances it with an exact-payload SQLite CAS, and initial-observation replay can
+never recreate a retry after terminal attention. Restart evidence proves both the
+ordinal-1 retry and terminal reason-coded outcome replay exactly. Scheduler consumption
+and the canonical Lane operation transition remain the C6 completion boundary.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
