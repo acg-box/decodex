@@ -104,7 +104,11 @@ where
 	if !validation::failure_precedes_effective_agent_execution(error) {
 		return Ok(false);
 	}
-	if context.state_store.lease_for_issue(&context.issue_run.issue.id)?.is_some() {
+	if context
+		.state_store
+		.claim_for_lane(context.project.service_id(), &context.issue_run.issue.id)?
+		.is_some()
+	{
 		return Ok(false);
 	}
 	if context.state_store.issue_has_review_lifecycle_record(

@@ -64,9 +64,7 @@ fn stale_active_diagnose_allows_dead_process_leased_claim_cleanup() {
 
 	stale_active::seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
 
-	store
-		.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
-		.expect("dead run lease should remain recorded");
+	stale_active::seed_lane_claim(&store, &issue.id, "run-1626");
 
 	stale_active::append_dead_process_interrupt_control_telemetry(&store, &issue.id);
 
@@ -113,9 +111,7 @@ fn stale_active_diagnose_blocks_dead_marker_for_different_leased_run() {
 	store
 		.record_run_attempt("run-latest", &issue.id, 2, "running")
 		.expect("latest run should record");
-	store
-		.upsert_lease("pubfi", &issue.id, "run-latest", "In Progress")
-		.expect("dead run lease should remain recorded");
+	stale_active::seed_lane_claim(&store, &issue.id, "run-latest");
 
 	stale_active::append_dead_process_interrupt_control_telemetry(&store, &issue.id);
 
@@ -159,9 +155,7 @@ fn stale_active_diagnose_blocks_dead_marker_for_same_run_different_attempt() {
 	store
 		.record_run_attempt("run-1626", &issue.id, 2, "running")
 		.expect("later attempt should record");
-	store
-		.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
-		.expect("dead run lease should remain recorded");
+	stale_active::seed_lane_claim(&store, &issue.id, "run-1626");
 
 	stale_active::append_dead_process_interrupt_control_telemetry(&store, &issue.id);
 
@@ -213,9 +207,7 @@ fn stale_active_diagnose_blocks_external_shared_claim_over_dead_local_lease() {
 
 	stale_active::seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
 
-	store
-		.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
-		.expect("dead run lease should remain recorded");
+	stale_active::seed_lane_claim(&store, &issue.id, "run-1626");
 
 	stale_active::append_dead_process_interrupt_control_telemetry(&store, &issue.id);
 

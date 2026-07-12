@@ -12,7 +12,7 @@ pub(in crate::recovery::tests::stale_active) use self::support::{
 	append_no_diff_guardrail_event, append_no_diff_guardrail_event_with_source_error_class,
 	append_phase_goal_recovery_event, append_stale_active_release_audit,
 	append_stale_active_release_audit_for_run, seed_dead_orphan_runtime_telemetry,
-	seed_dead_orphan_runtime_telemetry_without_control_channel,
+	seed_dead_orphan_runtime_telemetry_without_control_channel, seed_lane_claim,
 };
 pub(in crate::recovery::tests::stale_active) use crate::recovery::{
 	apply_stale_active_release_with_tracker, diagnose_stale_active_issues,

@@ -45,10 +45,7 @@ fn stale_active_final_label_guard_rejects_late_run_lease() {
 
 	assert!(diagnostic.recoverable());
 
-	context
-		.state_store
-		.upsert_lease(context.config.service_id(), &issue.id, "run-1626", "In Progress")
-		.expect("late lease should record");
+	stale_active::seed_lane_claim(&context.state_store, &issue.id, "run-1626");
 
 	let error = super::ensure_stale_active_run_claim_guard(
 		&context.config,
@@ -77,9 +74,7 @@ fn stale_active_release_clears_only_matching_dead_process_run_lease() {
 
 	stale_active::seed_dead_orphan_runtime_telemetry(&store, &issue, &worktree_path);
 
-	store
-		.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress")
-		.expect("dead run lease should remain recorded");
+	stale_active::seed_lane_claim(&store, &issue.id, "run-1626");
 
 	stale_active::append_dead_process_interrupt_control_telemetry(&store, &issue.id);
 
@@ -106,7 +101,7 @@ fn stale_active_release_clears_only_matching_dead_process_run_lease() {
 		.expect("dead matching run lease cleanup should run");
 
 	assert!(cleared);
-	assert!(store.lease_for_issue(&issue.id).expect("matching lease should read").is_none());
+	assert!(store.claim_for_lane("pubfi", &issue.id).expect("matching claim read").is_none());
 	assert_eq!(
 		store
 			.lease_for_issue(&issue.identifier)
@@ -130,7 +125,7 @@ fn stale_active_diagnose_blocks_when_run_lease_is_present() {
 	store
 		.record_run_attempt("run-1626", &issue.id, 1, "running")
 		.expect("run attempt should record");
-	store.upsert_lease("pubfi", &issue.id, "run-1626", "In Progress").expect("lease should record");
+	stale_active::seed_lane_claim(&store, &issue.id, "run-1626");
 
 	let tracker = GhostLaneTestTracker::with_issues(vec![issue]);
 	let diagnostics = super::diagnose_stale_active_issues(

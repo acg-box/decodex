@@ -68,6 +68,9 @@ impl StateStore {
 		issue_id: &str,
 		cleanup_unlocked_claim: bool,
 	) -> Result<bool> {
+		if self.claim_for_lane(project_id, issue_id)?.is_some() {
+			return Ok(true);
+		}
 		let state = self.lock_without_refresh()?;
 
 		if state.leases.contains_key(issue_id) {

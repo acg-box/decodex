@@ -10,11 +10,12 @@ impl StateData {
 		project_id: &str,
 		attempt: &RunAttemptRecord,
 	) -> Option<ProjectRunStatus> {
+		let lane = self.lanes.values().find(|lane| {
+			lane.id().project_key() == project_id
+				&& lane.id().tracker_issue_id() == attempt.issue_id
+		});
 		let worktree = self.worktrees.get(&attempt.issue_id);
-		let run_lease = self
-			.leases
-			.get(&attempt.issue_id)
-			.is_some_and(|lease| lease.project_id == project_id && lease.run_id == attempt.run_id);
+		let run_lease = lane.is_some_and(|lane| lane.claim_run_id() == Some(attempt.run_id.as_str()));
 		let remembered_project = attempt.project_id.as_deref() == Some(project_id);
 		let in_project = remembered_project
 			|| worktree.is_some_and(|mapping| mapping.project_id == project_id)
@@ -63,8 +64,12 @@ impl StateData {
 			turn_id: attempt.turn_id.clone(),
 			updated_at: attempt.updated_at.clone(),
 			updated_at_unix: attempt.updated_at_unix,
-			branch_name: worktree.map(|mapping| mapping.branch_name.clone()),
-			worktree_path: worktree.map(|mapping| mapping.worktree_path.clone()),
+			branch_name: lane
+				.and_then(|lane| lane.branch_name().map(ToOwned::to_owned))
+				.or_else(|| worktree.map(|mapping| mapping.branch_name.clone())),
+			worktree_path: lane
+				.and_then(|lane| lane.worktree_path().cloned())
+				.or_else(|| worktree.map(|mapping| mapping.worktree_path.clone())),
 			run_lease,
 			event_count: event_summary.event_count,
 			last_event_type: event_summary.last_event_type,

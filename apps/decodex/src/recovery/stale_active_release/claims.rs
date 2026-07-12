@@ -21,14 +21,16 @@ pub(super) fn clear_stale_active_dead_run_claims_before_release(
 	let mut cleared = false;
 
 	for issue_key in stale_active_labels::stale_active_diagnostic_issue_keys(diagnostic) {
-		let Some(lease) = state_store.lease_for_issue(&issue_key)? else {
+		let Some(claim) = state_store.claim_for_lane(&diagnostic.project_id, &issue_key)? else {
 			continue;
 		};
 
-		if lease.project_id() == diagnostic.project_id && lease.run_id() == run_id {
-			state_store.clear_lease(&issue_key)?;
-
-			cleared = true;
+		if claim.run_id() == run_id {
+			cleared |= state_store.release_lane_claim(
+				&diagnostic.project_id,
+				&issue_key,
+				claim.run_id(),
+			)?;
 		}
 	}
 

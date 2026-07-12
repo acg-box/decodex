@@ -65,7 +65,7 @@ fn stale_active_diagnose_blocks_shared_claim_lock_file() {
 }
 
 #[test]
-fn stale_active_diagnose_blocks_identifier_keyed_run_lease() {
+fn stale_active_diagnose_does_not_grant_authority_to_identifier_keyed_legacy_lease() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let workflow = tests::sample_workflow();
@@ -104,7 +104,7 @@ fn stale_active_diagnose_blocks_identifier_keyed_run_lease() {
 	let diagnostic = diagnostics.first().expect("diagnostic should exist");
 
 	assert_eq!(diagnostic.latest_run_id.as_deref(), Some("run-identifier"));
-	assert!(diagnostic.run_lease);
-	assert!(diagnostic.blockers.contains(&String::from("run_lease_present")));
-	assert!(!diagnostic.recoverable());
+	assert!(!diagnostic.run_lease);
+	assert!(diagnostic.evidence.contains(&String::from("run_lease_missing")));
+	assert!(!diagnostic.blockers.contains(&String::from("run_lease_present")));
 }

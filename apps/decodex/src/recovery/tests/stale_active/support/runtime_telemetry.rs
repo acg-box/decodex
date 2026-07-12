@@ -1,6 +1,7 @@
 use std::{fs, path::Path};
 
 use crate::{
+	lane_authority::{LaneCommand, LaneId},
 	recovery::tests,
 	state::{
 		self, ChildAgentActivitySummary, PROGRESS_CHECKPOINT_EVENT_TYPE,
@@ -8,6 +9,28 @@ use crate::{
 	},
 	tracker::TrackerIssue,
 };
+
+pub(in crate::recovery::tests::stale_active) fn seed_lane_claim(
+	store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+) {
+	let lane_id = LaneId::new("pubfi", issue_id).expect("lane id");
+	store
+		.apply_lane_command(
+			lane_id.clone(),
+			"test-binding:pubfi",
+			LaneCommand::Admit { intake_authority_id: String::from("test-authority") },
+		)
+		.expect("lane admission");
+	store
+		.apply_lane_command(
+			lane_id,
+			"test-binding:pubfi",
+			LaneCommand::AcquireClaim { run_id: run_id.to_owned() },
+		)
+		.expect("lane claim");
+}
 
 pub(in crate::recovery::tests::stale_active) fn seed_dead_orphan_runtime_telemetry(
 	store: &StateStore,

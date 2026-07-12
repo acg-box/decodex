@@ -74,10 +74,10 @@ fn stale_active_dead_local_claims_for_run(
 	let mut claims = StaleActiveDeadLocalClaims::default();
 
 	for issue_key in issue_keys {
-		let local_claim_matches =
-			state_store.lease_for_issue(issue_key)?.as_ref().is_some_and(|lease| {
-				lease.project_id() == project_id && lease.run_id() == run.run_id()
-			});
+		let local_claim_matches = state_store
+			.claim_for_lane(project_id, issue_key)?
+			.as_ref()
+			.is_some_and(|claim| claim.run_id() == run.run_id());
 		let active_claim =
 			state_store.issue_has_active_shared_claim_read_only(project_id, issue_key)?;
 		let external_claim =

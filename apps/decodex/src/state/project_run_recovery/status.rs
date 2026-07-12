@@ -11,10 +11,13 @@ pub(in crate::state) fn project_run_status_from_recovery_candidate(
 		return None;
 	}
 
-	let worktree = state.worktrees.get(&candidate.issue_id);
-	let run_lease = state.leases.get(&candidate.issue_id).is_some_and(|lease| {
-		lease.project_id == candidate.project_id && lease.run_id == candidate.run_id
+	let lane = state.lanes.values().find(|lane| {
+		lane.id().project_key() == candidate.project_id
+			&& lane.id().tracker_issue_id() == candidate.issue_id
 	});
+	let worktree = state.worktrees.get(&candidate.issue_id);
+	let run_lease =
+		lane.is_some_and(|lane| lane.claim_run_id() == Some(candidate.run_id.as_str()));
 	let event_summary = state.protocol_event_summary(&candidate.run_id);
 	let run_activity_summary = state.run_activity_summaries.get(&candidate.run_id);
 	let control_channel = state
@@ -36,8 +39,12 @@ pub(in crate::state) fn project_run_status_from_recovery_candidate(
 		turn_id: candidate.turn_id.clone(),
 		updated_at: candidate.updated_at.clone(),
 		updated_at_unix: candidate.updated_at_unix,
-		branch_name: worktree.map(|mapping| mapping.branch_name.clone()),
-		worktree_path: worktree.map(|mapping| mapping.worktree_path.clone()),
+		branch_name: lane
+			.and_then(|lane| lane.branch_name().map(ToOwned::to_owned))
+			.or_else(|| worktree.map(|mapping| mapping.branch_name.clone())),
+		worktree_path: lane
+			.and_then(|lane| lane.worktree_path().cloned())
+			.or_else(|| worktree.map(|mapping| mapping.worktree_path.clone())),
 		run_lease,
 		event_count: event_summary.event_count,
 		last_event_type: event_summary.last_event_type,

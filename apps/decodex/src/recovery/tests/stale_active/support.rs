@@ -12,6 +12,6 @@ pub(in crate::recovery::tests::stale_active) use self::{
 	release_audit::{append_stale_active_release_audit, append_stale_active_release_audit_for_run},
 	runtime_telemetry::{
 		append_dead_process_interrupt_control_telemetry, seed_dead_orphan_runtime_telemetry,
-		seed_dead_orphan_runtime_telemetry_without_control_channel,
+		seed_dead_orphan_runtime_telemetry_without_control_channel, seed_lane_claim,
 	},
 };
