@@ -1138,6 +1138,14 @@ supersession tests, two focused PatchSet fixtures, and all-target checking pass.
 multiple-best-base, shallow/missing-object, byte-level root/octopus/non-first-parent
 fixtures and the named PUB incident's real object replay remain before C4 completion.
 
+PatchSet rejection and topology fixtures now cover criss-cross history with two best
+merge bases, octopus parent preservation, raw-OID sibling priority, a merge tree equal
+only to a non-first parent, a missing loose tree object, and an explicitly shallow clone.
+Criss-cross and incomplete histories reject without emitting partial authority; the
+octopus merge retains all parents in object order and is not misclassified as empty.
+Five focused PatchSet fixtures pass. The named PUB incident still needs real object replay
+and force-push/base-change invalidation evidence before the C4 gate is complete.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

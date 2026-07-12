@@ -114,6 +114,7 @@ pub enum PatchSetBuildError {
 	MultipleBestMergeBases,
 	NoMergeBase,
 	CommitGraphCycle,
+	ShallowRepository,
 	UnsupportedObjectFormat(String),
 }
 impl std::fmt::Display for PatchSetBuildError {
@@ -130,6 +131,9 @@ impl std::fmt::Display for PatchSetBuildError {
 			Self::NoMergeBase => formatter.write_str("commits have no merge base"),
 			Self::CommitGraphCycle => {
 				formatter.write_str("commit graph did not produce a complete topological order")
+			},
+			Self::ShallowRepository => {
+				formatter.write_str("shallow Git repositories cannot produce canonical PatchSets")
 			},
 			Self::UnsupportedObjectFormat(format) => {
 				write!(formatter, "unsupported Git object format `{format}`")
@@ -152,6 +156,9 @@ pub fn build_canonical_patch_set(
 	head_oid: &str,
 ) -> Result<CanonicalPatchSet, PatchSetBuildError> {
 	let repo = gix::open(repository_path).map_err(PatchSetBuildError::Open)?;
+	if repo.is_shallow() {
+		return Err(PatchSetBuildError::ShallowRepository);
+	}
 	let base = parse_oid("base", base_oid)?;
 	let head = parse_oid("head", head_oid)?;
 	let bases = repo
@@ -731,6 +738,126 @@ mod tests {
 				})
 				.collect::<Vec<_>>()
 		);
+	}
+
+	#[test]
+	fn multiple_best_merge_bases_are_rejected() {
+		let fixture = initialized_repository();
+		let base = git_output(fixture.path(), &["rev-parse", "HEAD"]);
+		git(fixture.path(), &["checkout", "-qb", "left"]);
+		fs::write(fixture.path().join("left"), b"left\n").expect("left file");
+		git(fixture.path(), &["add", "left"]);
+		git(fixture.path(), &["commit", "-qm", "left"]);
+		let left = git_output(fixture.path(), &["rev-parse", "HEAD"]);
+		git(fixture.path(), &["checkout", "-q", "--detach", &base]);
+		fs::write(fixture.path().join("right"), b"right\n").expect("right file");
+		git(fixture.path(), &["add", "right"]);
+		git(fixture.path(), &["commit", "-qm", "right"]);
+		let right = git_output(fixture.path(), &["rev-parse", "HEAD"]);
+		let tree = git_output(fixture.path(), &["rev-parse", &format!("{left}^{{tree}}")]);
+		let merge_one = git_output(
+			fixture.path(),
+			&["commit-tree", &tree, "-p", &left, "-p", &right, "-m", "merge one"],
+		);
+		let merge_two = git_output(
+			fixture.path(),
+			&["commit-tree", &tree, "-p", &right, "-p", &left, "-m", "merge two"],
+		);
+		assert!(matches!(
+			build_canonical_patch_set(fixture.path(), &merge_two, &merge_one),
+			Err(PatchSetBuildError::MultipleBestMergeBases)
+		));
+	}
+
+	#[test]
+	fn octopus_parent_order_and_non_first_parent_empty_rule_are_canonical() {
+		let fixture = initialized_repository();
+		let base = git_output(fixture.path(), &["rev-parse", "HEAD"]);
+		let mut parents = Vec::new();
+		for branch in ["one", "two", "three"] {
+			git(fixture.path(), &["checkout", "-q", "--detach", &base]);
+			fs::write(fixture.path().join(branch), format!("{branch}\n")).expect("branch file");
+			git(fixture.path(), &["add", branch]);
+			git(fixture.path(), &["commit", "-qm", branch]);
+			parents.push(git_output(fixture.path(), &["rev-parse", "HEAD"]));
+		}
+		let second_parent_tree =
+			git_output(fixture.path(), &["rev-parse", &format!("{}^{{tree}}", parents[1])]);
+		let head = git_output(
+			fixture.path(),
+			&[
+				"commit-tree",
+				&second_parent_tree,
+				"-p",
+				&parents[0],
+				"-p",
+				&parents[1],
+				"-p",
+				&parents[2],
+				"-m",
+				"octopus",
+			],
+		);
+		let patch_set = build_canonical_patch_set(fixture.path(), &base, &head).expect("patch set");
+		let head_bytes = oid_bytes(&head);
+		let merge = patch_set
+			.merge_topologies
+			.iter()
+			.find(|unit| unit.commit_oid == head_bytes)
+			.expect("octopus topology");
+		assert_eq!(merge.parent_oids, parents.iter().map(|oid| oid_bytes(oid)).collect::<Vec<_>>());
+		assert!(!patch_set.empty_commits.iter().any(|unit| unit.commit_oid == head_bytes));
+		let sibling_order =
+			patch_set.commits[..3].iter().map(|commit| commit.oid.clone()).collect::<Vec<_>>();
+		let mut sorted_parent_oids = parents.iter().map(|oid| oid_bytes(oid)).collect::<Vec<_>>();
+		sorted_parent_oids.sort();
+		assert_eq!(sibling_order, sorted_parent_oids);
+	}
+
+	#[test]
+	fn shallow_and_missing_object_histories_are_rejected() {
+		let source = initialized_repository();
+		let base = git_output(source.path(), &["rev-parse", "HEAD"]);
+		fs::write(source.path().join("second"), b"second\n").expect("second file");
+		git(source.path(), &["add", "second"]);
+		git(source.path(), &["commit", "-qm", "second"]);
+		let head = git_output(source.path(), &["rev-parse", "HEAD"]);
+		let head_tree = git_output(source.path(), &["rev-parse", "HEAD^{tree}"]);
+		let tree_object =
+			source.path().join(".git/objects").join(&head_tree[..2]).join(&head_tree[2..]);
+		fs::remove_file(tree_object).expect("remove loose tree object");
+		assert!(matches!(
+			build_canonical_patch_set(source.path(), &base, &head),
+			Err(PatchSetBuildError::Object(_))
+		));
+
+		let complete = initialized_repository();
+		let shallow_parent = tempfile::tempdir().expect("shallow parent");
+		let shallow = shallow_parent.path().join("shallow");
+		let source_url = format!("file://{}", complete.path().display());
+		let shallow_path = shallow.to_string_lossy().into_owned();
+		git(shallow_parent.path(), &["clone", "-q", "--depth", "1", &source_url, &shallow_path]);
+		let shallow_head = git_output(&shallow, &["rev-parse", "HEAD"]);
+		assert!(matches!(
+			build_canonical_patch_set(&shallow, &shallow_head, &shallow_head),
+			Err(PatchSetBuildError::ShallowRepository)
+		));
+	}
+
+	fn initialized_repository() -> tempfile::TempDir {
+		let fixture = tempfile::tempdir().expect("temporary repository");
+		git(fixture.path(), &["init", "-q"]);
+		git(fixture.path(), &["config", "user.name", "Fixture"]);
+		git(fixture.path(), &["config", "user.email", "fixture@example.com"]);
+		git(fixture.path(), &["config", "core.hooksPath", ".git/no-hooks"]);
+		fs::write(fixture.path().join("base"), b"base\n").expect("base file");
+		git(fixture.path(), &["add", "base"]);
+		git(fixture.path(), &["commit", "-qm", "base"]);
+		fixture
+	}
+
+	fn oid_bytes(oid: &str) -> Vec<u8> {
+		gix::ObjectId::from_hex(oid.as_bytes()).expect("object id").as_bytes().to_vec()
 	}
 
 	fn git(repository: &Path, args: &[&str]) {
