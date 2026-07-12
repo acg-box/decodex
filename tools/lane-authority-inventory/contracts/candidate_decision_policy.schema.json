@@ -1,0 +1,30 @@
+{
+  "$id": "https://decodex.space/schemas/lane-authority-v2-candidate-decision-policy-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "entry": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_category": {"minLength": 1, "type": "string"},
+        "candidate_count": {"minimum": 1, "type": "integer"},
+        "candidate_set_digest": {"$ref": "#/$defs/digest"},
+        "disposition": {"const": "covered_by_sites"},
+        "id": {"pattern": "^candidate-policy:[a-z0-9][a-z0-9._:-]*$", "type": "string"},
+        "reason_code": {"const": "ast_site_coverage_required"}
+      },
+      "required": ["id", "candidate_category", "candidate_count", "candidate_set_digest", "disposition", "reason_code"],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "entries": {"items": {"$ref": "#/$defs/entry"}, "minItems": 1, "type": "array"},
+    "policy_semantic_digest": {"$ref": "#/$defs/digest"},
+    "policy_status": {"const": "p3_machine_validated_review_pending"},
+    "schema": {"const": "decodex/lane-authority-v2-candidate-decision-policy/1"}
+  },
+  "required": ["schema", "policy_status", "policy_semantic_digest", "entries"],
+  "title": "Lane Authority v2 candidate decision policy",
+  "type": "object"
+}

@@ -402,11 +402,12 @@
         "candidate_id": {"$ref": "#/$defs/id"},
         "disposition": {"enum": ["covered_by_sites", "regex_false_positive", "declarative_document", "supporting_input", "deleted_since_c0"]},
         "evidence_digest": {"$ref": "#/$defs/digest"},
+        "policy_digest": {"$ref": "#/$defs/digest"},
+        "policy_entry_id": {"pattern": "^candidate-policy:[a-z0-9][a-z0-9._:-]*$", "type": "string"},
         "reason_code": {"pattern": "^(?!.*(?:unknown|unresolved|pending|todo|missing|error))[a-z0-9][a-z0-9._:-]*$", "type": "string"},
-        "related_site_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array", "uniqueItems": true},
-        "review_receipt_digest": {"$ref": "#/$defs/digest"}
+        "related_site_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array", "uniqueItems": true}
       },
-      "required": ["candidate_id", "candidate_category", "related_site_ids", "disposition", "evidence_digest", "reason_code", "review_receipt_digest"],
+      "required": ["candidate_id", "candidate_category", "related_site_ids", "disposition", "evidence_digest", "reason_code", "policy_entry_id", "policy_digest"],
       "type": "object"
     },
     "cfg_projection": {

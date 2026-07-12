@@ -95,8 +95,10 @@ def materialize(root: Path) -> dict[str, Any]:
     immutable_before = immutable_input_digests(root)
     policy = contract.load_json(root, contract.EXTERNAL_SYMBOL_POLICY_PATH)
     authority_policy = contract.load_json(root, contract.AUTHORITY_SYMBOL_POLICY_PATH)
+    candidate_policy = contract.load_json(root, contract.CANDIDATE_DECISION_POLICY_PATH)
     contract.validate_external_symbol_policy(policy)
     contract.validate_authority_symbol_policy(authority_policy)
+    contract.validate_candidate_decision_policy(candidate_policy)
     symbol_manifest = contract.load_json(root, SYMBOLS_PATH)
     policy_sets = (
         (
@@ -244,6 +246,71 @@ def materialize(root: Path) -> dict[str, Any]:
         )
     symbol_dispositions.sort(key=lambda item: item["disposition_id"])
 
+    candidate_records = contract.load_json(root, contract.CANDIDATE_RECORDS_PATH)[
+        "records"
+    ]
+    candidate_edges = contract.load_json(root, contract.CANDIDATE_SITE_EDGES_PATH)[
+        "records"
+    ]
+    candidates_by_category: dict[str, list[dict[str, Any]]] = {}
+    for candidate in candidate_records:
+        candidates_by_category.setdefault(candidate["candidate_category"], []).append(
+            candidate
+        )
+    candidate_policy_by_category = {
+        entry["candidate_category"]: entry for entry in candidate_policy["entries"]
+    }
+    if set(candidate_policy_by_category) != set(candidates_by_category):
+        raise contract.ContractError(
+            "candidate decision policy category coverage is incomplete"
+        )
+    for category, candidates in candidates_by_category.items():
+        entry = candidate_policy_by_category[category]
+        candidate_ids = {candidate["candidate_id"] for candidate in candidates}
+        if entry["candidate_count"] != len(candidate_ids) or entry[
+            "candidate_set_digest"
+        ] != contract.stable_id_set_digest(
+            "decodex/lane-authority-v2-candidate-policy-set/1", candidate_ids
+        ):
+            raise contract.ContractError(
+                f"candidate decision policy set drifted: {category}"
+            )
+    related_sites_by_candidate: dict[str, list[str]] = {}
+    for edge in candidate_edges:
+        related_sites_by_candidate.setdefault(edge["candidate_id"], []).append(
+            edge["site_id"]
+        )
+    candidate_adjudications: list[dict[str, Any]] = []
+    for candidate in candidate_records:
+        entry = candidate_policy_by_category[candidate["candidate_category"]]
+        related_site_ids = sorted(
+            related_sites_by_candidate.get(candidate["candidate_id"], [])
+        )
+        if not related_site_ids:
+            raise contract.ContractError(
+                "covered candidate policy entry lacks syntax-site evidence"
+            )
+        evidence_digest = contract.stable_parts_id(
+            "decodex/lane-authority-v2-candidate-adjudication-evidence/1",
+            candidate_policy["policy_semantic_digest"],
+            entry["id"],
+            candidate["candidate_id"],
+            *related_site_ids,
+        )
+        candidate_adjudications.append(
+            {
+                "candidate_category": candidate["candidate_category"],
+                "candidate_id": candidate["candidate_id"],
+                "disposition": entry["disposition"],
+                "evidence_digest": evidence_digest,
+                "policy_digest": candidate_policy["policy_semantic_digest"],
+                "policy_entry_id": entry["id"],
+                "reason_code": entry["reason_code"],
+                "related_site_ids": related_site_ids,
+            }
+        )
+    candidate_adjudications.sort(key=lambda item: item["candidate_id"])
+
     write_json(root, contract.CATALOG_PATH, catalog)
     write_json(
         root,
@@ -254,6 +321,13 @@ def materialize(root: Path) -> dict[str, Any]:
         root,
         contract.SYMBOL_DISPOSITIONS_PATH,
         relation("symbol_dispositions", symbol_dispositions),
+    )
+    write_json(
+        root,
+        Path(
+            "tools/lane-authority-inventory/manifests/relations/candidate_adjudications.json"
+        ),
+        relation("candidate_adjudications", candidate_adjudications),
     )
     assert_immutable_inputs(root, immutable_before)
     evidence = contract.verify_p3(root)

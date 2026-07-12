@@ -1,0 +1,87 @@
+{
+  "entries": [
+    {
+      "candidate_category": "authority_state_or_path",
+      "candidate_count": 17647,
+      "candidate_set_digest": "6f2bb09ce44c37025f2821f91279d6252e8ec245b7ad17de1ff0c9919949b431",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:authority-state-or-path",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "credential_config_or_automation",
+      "candidate_count": 11073,
+      "candidate_set_digest": "9db034629080da2b1523a9761f59232a0bc8c7d7278996e619dc0fbf30211200",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:credential-config-or-automation",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "filesystem_mutation",
+      "candidate_count": 693,
+      "candidate_set_digest": "72df8a8a9fa263aec44709e2d8a12a745e5550fd26b406cd77a83e16b18e9510",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:filesystem-mutation",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "git_mutation_or_discovery",
+      "candidate_count": 8987,
+      "candidate_set_digest": "64979dce72db9c8e926bb85df04698f7686809169e75f841a3eae9f9050c3611",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:git-mutation-or-discovery",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "launcher",
+      "candidate_count": 203,
+      "candidate_set_digest": "e90f5930cd5233f6477d5f58b171a13410559fc18745be3338d2a7642d8aad1c",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:launcher",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "process_or_signal_mutation",
+      "candidate_count": 150,
+      "candidate_set_digest": "98f4d78fc5bae61fc4ec934783483f409eb21407c0912c7132bcab2b101891e5",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:process-or-signal-mutation",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "provider_authority_read",
+      "candidate_count": 1052,
+      "candidate_set_digest": "aa2e2edb65e14e4b66130a09ee8e8233609c0409830c075c8871aee92983b8ab",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:provider-authority-read",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "provider_mutation",
+      "candidate_count": 543,
+      "candidate_set_digest": "b9e1cb69df5446ee827d31e66c954a6e43b53cb3b15cf838e626fd47048a47f6",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:provider-mutation",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "sqlite_read_or_schema_discovery",
+      "candidate_count": 286,
+      "candidate_set_digest": "cac3ef3c3822d9bb8a52f32d0b8de9b0949429eb418d81741c256fd909feee2b",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:sqlite-read-or-schema-discovery",
+      "reason_code": "ast_site_coverage_required"
+    },
+    {
+      "candidate_category": "sqlite_write",
+      "candidate_count": 423,
+      "candidate_set_digest": "1263c8d4d8e3c73d1267f61a083242e8517c1ba40469a5fe5cc1abb5edc2de07",
+      "disposition": "covered_by_sites",
+      "id": "candidate-policy:sqlite-write",
+      "reason_code": "ast_site_coverage_required"
+    }
+  ],
+  "policy_semantic_digest": "d0a6514a6c73dae1b8ae7bf9212308431869d83139bd7c48a8987b0240dbc347",
+  "policy_status": "p3_machine_validated_review_pending",
+  "schema": "decodex/lane-authority-v2-candidate-decision-policy/1"
+}

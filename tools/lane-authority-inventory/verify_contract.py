@@ -25,6 +25,9 @@ AUTHORITY_SYMBOL_POLICY_PATH = Path(
 EXTERNAL_SYMBOL_POLICY_PATH = Path(
     "tools/lane-authority-inventory/catalog/external_symbol_policy.json"
 )
+CANDIDATE_DECISION_POLICY_PATH = Path(
+    "tools/lane-authority-inventory/catalog/candidate_decision_policy.json"
+)
 DATAFLOW_PATH = Path("tools/lane-authority-inventory/contracts/dataflow_contract.json")
 OUTPUT_POLICY_PATH = Path(
     "tools/lane-authority-inventory/contracts/output_artifact_policy.json"
@@ -76,6 +79,7 @@ SCHEMA_PATHS = (
     Path("tools/lane-authority-inventory/contracts/analysis_cut.schema.json"),
     Path("tools/lane-authority-inventory/contracts/authority_symbol_policy.schema.json"),
     Path("tools/lane-authority-inventory/contracts/authority_surface_catalog.schema.json"),
+    Path("tools/lane-authority-inventory/contracts/candidate_decision_policy.schema.json"),
     Path("tools/lane-authority-inventory/contracts/external_symbol_policy.schema.json"),
     Path("tools/lane-authority-inventory/contracts/dataflow_contract.schema.json"),
     Path("tools/lane-authority-inventory/contracts/cfg_coverage.schema.json"),
@@ -989,6 +993,41 @@ def authority_symbol_policy_semantic_digest(value: dict[str, Any]) -> str:
             + canonical_json(semantic_value)
         ).encode("utf-8")
     ).hexdigest()
+
+
+def candidate_decision_policy_semantic_digest(value: dict[str, Any]) -> str:
+    semantic_value = {
+        "entries": value["entries"],
+        "policy_status": value["policy_status"],
+        "schema": value["schema"],
+    }
+    return hashlib.sha256(
+        (
+            "decodex/lane-authority-v2-candidate-decision-policy/1\n"
+            + canonical_json(semantic_value)
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def validate_candidate_decision_policy(value: dict[str, Any]) -> None:
+    expected_keys = {"entries", "policy_semantic_digest", "policy_status", "schema"}
+    if set(value) != expected_keys:
+        raise ContractError("candidate decision policy fields do not match its closed schema")
+    if value.get("schema") != "decodex/lane-authority-v2-candidate-decision-policy/1":
+        raise ContractError("unexpected candidate decision policy schema")
+    if value.get("policy_status") != "p3_machine_validated_review_pending":
+        raise ContractError("candidate decision policy must remain review-pending before P5")
+    entries = value.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ContractError("candidate decision policy must be non-empty")
+    categories = [entry["candidate_category"] for entry in entries]
+    if categories != sorted(categories) or len(set(categories)) != len(categories):
+        raise ContractError("candidate decision policy categories must be unique and sorted")
+    ids = [entry["id"] for entry in entries]
+    if len(set(ids)) != len(ids):
+        raise ContractError("candidate decision policy contains a duplicate id")
+    if value["policy_semantic_digest"] != candidate_decision_policy_semantic_digest(value):
+        raise ContractError("candidate decision policy semantic digest disagrees")
 
 
 def validate_authority_symbol_policy(value: dict[str, Any]) -> None:
@@ -2603,6 +2642,7 @@ def contract_digests(root: Path) -> dict[str, str]:
         CHECKPOINT_PATH,
         CATALOG_PATH,
         AUTHORITY_SYMBOL_POLICY_PATH,
+        CANDIDATE_DECISION_POLICY_PATH,
         EXTERNAL_SYMBOL_POLICY_PATH,
         DATAFLOW_PATH,
         OUTPUT_POLICY_PATH,
@@ -2624,6 +2664,7 @@ def verify_p0(
     checkpoint = load_json(root, CHECKPOINT_PATH)
     catalog = load_json(root, CATALOG_PATH)
     authority_symbol_policy = load_json(root, AUTHORITY_SYMBOL_POLICY_PATH)
+    candidate_decision_policy = load_json(root, CANDIDATE_DECISION_POLICY_PATH)
     external_symbol_policy = load_json(root, EXTERNAL_SYMBOL_POLICY_PATH)
     dataflow = load_json(root, DATAFLOW_PATH)
     validate_json_schema_documents(root)
@@ -2648,6 +2689,13 @@ def verify_p0(
     )
     validate_instance(
         root,
+        CANDIDATE_DECISION_POLICY_PATH,
+        Path(
+            "tools/lane-authority-inventory/contracts/candidate_decision_policy.schema.json"
+        ),
+    )
+    validate_instance(
+        root,
         EXTERNAL_SYMBOL_POLICY_PATH,
         Path(
             "tools/lane-authority-inventory/contracts/external_symbol_policy.schema.json"
@@ -2660,6 +2708,7 @@ def verify_p0(
     )
     validate_rejection_contract(root)
     validate_authority_symbol_policy(authority_symbol_policy)
+    validate_candidate_decision_policy(candidate_decision_policy)
     validate_external_symbol_policy(external_symbol_policy)
     if allow_later_catalog and catalog.get("catalog_status") == "p3_machine_validated_incomplete":
         validate_catalog_p3_policy_projection(
@@ -4166,6 +4215,8 @@ def verify_p3(root: Path) -> dict[str, Any]:
     catalog = load_json(root, CATALOG_PATH)
     policy = load_json(root, EXTERNAL_SYMBOL_POLICY_PATH)
     authority_policy = load_json(root, AUTHORITY_SYMBOL_POLICY_PATH)
+    candidate_policy = load_json(root, CANDIDATE_DECISION_POLICY_PATH)
+    validate_candidate_decision_policy(candidate_policy)
     validate_catalog_p3_policy_projection(catalog, policy, authority_policy)
     disposition_manifest = load_json(root, CATALOG_DISPOSITIONS_PATH)
     relation_schema = load_json(
@@ -4326,6 +4377,74 @@ def verify_p3(root: Path) -> dict[str, Any]:
         }
     if symbol_dispositions != expected_symbol_dispositions:
         raise ContractError("P3 symbol dispositions are not the exact call-target projection")
+    candidate_manifest = load_json(root, CANDIDATE_RECORDS_PATH)
+    candidate_edge_manifest = load_json(root, CANDIDATE_SITE_EDGES_PATH)
+    candidate_adjudication_manifest = load_json(
+        root,
+        Path(
+            "tools/lane-authority-inventory/manifests/relations/candidate_adjudications.json"
+        ),
+    )
+    validate_typed_relation_manifest(
+        candidate_adjudication_manifest, "candidate_adjudications", relation_schema
+    )
+    candidates = _unique_index(
+        candidate_manifest["records"], "candidate_id", "P3 candidate records"
+    )
+    candidates_by_category: dict[str, set[str]] = {}
+    for candidate in candidates.values():
+        candidates_by_category.setdefault(candidate["candidate_category"], set()).add(
+            candidate["candidate_id"]
+        )
+    policy_by_category = {
+        entry["candidate_category"]: entry for entry in candidate_policy["entries"]
+    }
+    if set(policy_by_category) != set(candidates_by_category):
+        raise ContractError("P3 candidate policy category coverage is incomplete")
+    for category, candidate_ids in candidates_by_category.items():
+        entry = policy_by_category[category]
+        if entry["candidate_count"] != len(candidate_ids) or entry[
+            "candidate_set_digest"
+        ] != stable_id_set_digest(
+            "decodex/lane-authority-v2-candidate-policy-set/1", candidate_ids
+        ):
+            raise ContractError(f"P3 candidate policy set drifted: {category}")
+    related_sites_by_candidate: dict[str, set[str]] = {}
+    for edge in candidate_edge_manifest["records"]:
+        related_sites_by_candidate.setdefault(edge["candidate_id"], set()).add(
+            edge["site_id"]
+        )
+    expected_adjudications: dict[str, dict[str, Any]] = {}
+    for candidate in candidates.values():
+        entry = policy_by_category[candidate["candidate_category"]]
+        related_site_ids = sorted(
+            related_sites_by_candidate.get(candidate["candidate_id"], set())
+        )
+        if not related_site_ids:
+            raise ContractError("P3 covered candidate lacks syntax-site evidence")
+        expected_adjudications[candidate["candidate_id"]] = {
+            "candidate_category": candidate["candidate_category"],
+            "candidate_id": candidate["candidate_id"],
+            "disposition": entry["disposition"],
+            "evidence_digest": stable_parts_id(
+                "decodex/lane-authority-v2-candidate-adjudication-evidence/1",
+                candidate_policy["policy_semantic_digest"],
+                entry["id"],
+                candidate["candidate_id"],
+                *related_site_ids,
+            ),
+            "policy_digest": candidate_policy["policy_semantic_digest"],
+            "policy_entry_id": entry["id"],
+            "reason_code": entry["reason_code"],
+            "related_site_ids": related_site_ids,
+        }
+    adjudications = _unique_index(
+        candidate_adjudication_manifest["records"],
+        "candidate_id",
+        "P3 candidate adjudications",
+    )
+    if adjudications != expected_adjudications:
+        raise ContractError("P3 candidate adjudications are not the exact policy projection")
     expected_used_digest = stable_id_set_digest(
         "decodex/lane-authority-v2-used-external-symbol-sites/1", external_sites
     )
@@ -4340,6 +4459,8 @@ def verify_p3(root: Path) -> dict[str, Any]:
         "authority_symbol_count": len(authority_sites),
         "catalog_disposition_count": len(dispositions),
         "catalog_status": catalog["catalog_status"],
+        "candidate_adjudication_count": len(adjudications),
+        "candidate_policy_entry_count": len(candidate_policy["entries"]),
         "external_policy_entry_count": len(policy["entries"]),
         "external_symbol_count": len(external_sites),
         "non_authority_external_symbol_count": len(external_sites - authority_sites),
