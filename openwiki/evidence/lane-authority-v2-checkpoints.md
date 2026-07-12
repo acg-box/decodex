@@ -1723,6 +1723,27 @@ then passed both P2 and P3 with zero parser errors and analysis-cut digest
 `cc48ebb2128a7dfbc252be2417fcc1b60f54fd969bc91588d50f1894692b329f`.
 Readiness remains literal `C1I_INCOMPLETE`, and migration remains not started.
 
+#### Authored candidate decision authority
+
+Commit `88b95154` introduces the separately authored
+`catalog/candidate_decision_policy.json` and its closed schema. Ten category entries bind
+all 41,057 candidate identities through category-specific set digests and counts. Every
+entry requires AST-site coverage; P3 may project the policy but may not derive a semantic
+decision from scanner output or fabricate review receipts.
+
+The generated `candidate_adjudications` relation contains exactly one policy-bound record
+for each candidate and exactly the candidate's immutable site-edge targets. Each record
+binds the policy semantic digest, policy entry id, candidate id, and sorted related-site
+set. P3 independently reconstructs all ten candidate sets and all 41,057 projections.
+Commit `e7a02d26` proves that deleting one adjudication or changing a candidate-set digest
+and recomputing the outer policy digest is rejected.
+
+P2 and P3 pass on implementation cut `88b95154648652ea01afd01fc5ca814e7bcfa842`;
+P3 reports 10 policy entries and 41,057 adjudications. Candidate closure does not claim
+that every covered syntax site has the same authority meaning. The separate authored
+site-classification policy and supporting-input closure remain required before dataflow
+interpretation. Readiness remains `C1I_INCOMPLETE`; migration remains not started.
+
 ### C0 evidence commands
 
 ```sh
