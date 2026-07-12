@@ -1668,6 +1668,37 @@ slice extends Rust name authority from type-only bindings to distinct type, valu
 macro namespaces; it cannot change semantic policy or classify a dynamic target as
 non-authority.
 
+Commit `3dbef483` completes that namespace split. Rust declarations, imports,
+re-exports, aliases, and glob candidates now carry an explicit `type`, `value`, or
+`macro` namespace. Intermediate module hops are replayed through the type namespace;
+the terminal binding is queried in the requested namespace. Free-function and
+`macro_rules!` declarations have canonical definition identities, while associated
+methods remain owned by the existing qualified-owner relation. Same-spelling type and
+value declarations resolve independently, and macro lookups cannot borrow authority
+from either namespace.
+
+The exact source cut `3dbef483e35d85c62e584dab71d4ae267afe516c` contains 84,983
+Rust name bindings and 74,541 path resolutions across the three namespaces. It retains
+24,400 qualified-owner resolutions, 6,026 receiver-type resolutions, and 11,585 local
+call edges. The complete call-target disposition domain is 98,492 records: 11,585
+canonical local calls, 1,160 authority-policy externals, 16,015 reviewed
+non-authority-policy externals, and 69,732 rejected dynamic targets. The count changes
+are consequences of exact namespace separation, not new semantic-policy grants.
+
+Machine evidence for this cut:
+
+- all 11 Rust parser tests and all 12 focused materializer/verifier tests pass,
+  including same-name type/value separation and macro non-substitution;
+- P2 and P3 independently verify the exact generated relations with analysis-cut digest
+  `4392c89186cfc2732af717b73fd9df24047b50ed6f47290fa3bcfe384f79cae5`;
+- both phases report zero parser errors and literal `C1I_INCOMPLETE`;
+- the authored policy remains unchanged, and migration remains not started.
+
+Namespace closure removes name-kind aliasing as a source of false local authority. It
+does not resolve dynamic/generic/object dispatch, authorize candidate classifications,
+or prove authority dataflow. Those remain separate fail-closed steps before P3 may
+advance.
+
 ### C0 evidence commands
 
 ```sh
