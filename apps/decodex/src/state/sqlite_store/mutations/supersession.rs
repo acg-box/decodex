@@ -12,6 +12,56 @@ use crate::{
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn replace_repair_handoff(
+		&mut self,
+		current: &RepairHandoffAuthority,
+		replacement: &RepairHandoffAuthority,
+	) -> Result<()> {
+		if current.handoff_id() == replacement.handoff_id()
+			|| current.predecessor_lane_id() != replacement.predecessor_lane_id()
+			|| current.predecessor_epoch() != replacement.predecessor_epoch()
+		{
+			eyre::bail!("Repair handoff replacement changes frozen predecessor authority.");
+		}
+		let transaction = self.connection.transaction()?;
+		let current_epoch = transaction.query_row(
+			"SELECT epoch FROM lanes WHERE project_key = ?1 AND tracker_issue_id = ?2",
+			params![
+				current.predecessor_lane_id().project_key(),
+				current.predecessor_lane_id().tracker_issue_id()
+			],
+			|row| row.get::<_, i64>(0),
+		)?;
+		if u64::try_from(current_epoch)? != current.predecessor_epoch() {
+			eyre::bail!("Repair handoff replacement predecessor epoch is stale.");
+		}
+		let replaced = transaction.execute(
+			"UPDATE repair_handoffs SET state = 'replaced'
+			 WHERE handoff_id = ?1 AND state = 'active' AND predecessor_epoch = ?2",
+			params![current.handoff_id(), i64::try_from(current.predecessor_epoch())?],
+		)?;
+		if replaced != 1 {
+			eyre::bail!("Repair handoff replacement lost the active-handoff CAS.");
+		}
+		transaction.execute(
+			"INSERT INTO repair_handoffs (
+				handoff_id, predecessor_project_key, predecessor_issue_id, predecessor_epoch,
+				successor_project_key, successor_issue_id, state, payload_json, created_at_unix
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, unixepoch())",
+			params![
+				replacement.handoff_id(),
+				replacement.predecessor_lane_id().project_key(),
+				replacement.predecessor_lane_id().tracker_issue_id(),
+				i64::try_from(replacement.predecessor_epoch())?,
+				replacement.successor_lane_id().project_key(),
+				replacement.successor_lane_id().tracker_issue_id(),
+				serde_json::to_string(replacement)?,
+			],
+		)?;
+		transaction.commit()?;
+		Ok(())
+	}
+
 	pub(in crate::state) fn advance_superseded_closeout(
 		&mut self,
 		current: &SupersededCloseoutOperation,

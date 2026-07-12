@@ -1,5 +1,7 @@
 use crate::{
-	lane_authority::{RepairHandoffAuthority, SupersededCloseoutOperation, SupersessionEdge},
+	lane_authority::{
+		RepairHandoffAuthority, RepairHandoffState, SupersededCloseoutOperation, SupersessionEdge,
+	},
 	prelude::Result,
 	state::{StateData, sqlite_store::SqliteStateStore},
 };
@@ -11,10 +13,16 @@ impl SqliteStateStore {
 	) -> Result<()> {
 		let mut handoffs = self
 			.connection
-			.prepare("SELECT payload_json FROM repair_handoffs ORDER BY handoff_id")?;
-		for payload in handoffs.query_map([], |row| row.get::<_, String>(0))? {
-			let handoff = serde_json::from_str::<RepairHandoffAuthority>(&payload?)?;
+			.prepare("SELECT payload_json, state FROM repair_handoffs ORDER BY handoff_id")?;
+		for row in handoffs
+			.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+		{
+			let (payload, state_text) = row?;
+			let handoff = serde_json::from_str::<RepairHandoffAuthority>(&payload)?;
 			handoff.validate()?;
+			let handoff_state = RepairHandoffState::from_str(&state_text)
+				.ok_or_else(|| crate::prelude::eyre::eyre!("Invalid repair handoff state."))?;
+			state.repair_handoff_states.insert(handoff.handoff_id().to_owned(), handoff_state);
 			state.repair_handoffs.insert(handoff.handoff_id().to_owned(), handoff);
 		}
 		let mut edges = self

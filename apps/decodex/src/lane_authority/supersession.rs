@@ -10,6 +10,27 @@ pub const REPAIR_HANDOFF_SCHEMA: &str = "decodex/repair-handoff-authority/1";
 pub const SUPERSESSION_EDGE_SCHEMA: &str = "decodex/supersession-edge/1";
 pub const SUPERSEDED_CLOSEOUT_SCHEMA: &str = "decodex/superseded-closeout-operation/1";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepairHandoffState {
+	Active,
+	Replaced,
+	Cancelled,
+	Accepted,
+	RejectedStale,
+}
+impl RepairHandoffState {
+	pub(crate) fn from_str(value: &str) -> Option<Self> {
+		match value {
+			"active" => Some(Self::Active),
+			"replaced" => Some(Self::Replaced),
+			"cancelled" => Some(Self::Cancelled),
+			"accepted" => Some(Self::Accepted),
+			"rejected_stale" => Some(Self::RejectedStale),
+			_ => None,
+		}
+	}
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RepairHandoffAuthority {
 	schema: String,

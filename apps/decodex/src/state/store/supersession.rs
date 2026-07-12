@@ -31,6 +31,8 @@ impl StateStore {
 		if state.repair_handoffs.values().any(|existing| {
 			existing.predecessor_lane_id() == handoff.predecessor_lane_id()
 				&& existing.predecessor_epoch() == handoff.predecessor_epoch()
+				&& state.repair_handoff_states.get(existing.handoff_id())
+					== Some(&crate::lane_authority::RepairHandoffState::Active)
 		}) {
 			eyre::bail!("An active repair handoff already owns the predecessor epoch.");
 		}
@@ -40,7 +42,56 @@ impl StateStore {
 				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
 				.insert_repair_handoff(&handoff)?;
 		}
-		state.repair_handoffs.insert(handoff.handoff_id().to_owned(), handoff);
+		let handoff_id = handoff.handoff_id().to_owned();
+		state.repair_handoffs.insert(handoff_id.clone(), handoff);
+		state
+			.repair_handoff_states
+			.insert(handoff_id, crate::lane_authority::RepairHandoffState::Active);
+		Ok(())
+	}
+
+	pub fn replace_repair_handoff(
+		&self,
+		current_handoff_id: &str,
+		replacement: RepairHandoffAuthority,
+	) -> Result<()> {
+		replacement.validate()?;
+		let mut state = self.lock_without_refresh()?;
+		let current = state
+			.repair_handoffs
+			.get(current_handoff_id)
+			.cloned()
+			.ok_or_else(|| eyre::eyre!("Active repair handoff does not exist."))?;
+		if state.repair_handoff_states.get(current_handoff_id)
+			!= Some(&crate::lane_authority::RepairHandoffState::Active)
+		{
+			eyre::bail!("Repair handoff replacement lost the active-handoff CAS.");
+		}
+		let predecessor = state
+			.lanes
+			.get(current.predecessor_lane_id())
+			.ok_or_else(|| eyre::eyre!("Repair handoff predecessor lane does not exist."))?;
+		if predecessor.epoch() != current.predecessor_epoch() {
+			eyre::bail!("Repair handoff replacement predecessor epoch is stale.");
+		}
+		if !state.lanes.contains_key(replacement.successor_lane_id()) {
+			eyre::bail!("Repair handoff replacement successor lane does not exist.");
+		}
+		if let Some(sqlite) = self.sqlite.as_ref() {
+			sqlite
+				.lock()
+				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
+				.replace_repair_handoff(&current, &replacement)?;
+		}
+		state.repair_handoff_states.insert(
+			current_handoff_id.to_owned(),
+			crate::lane_authority::RepairHandoffState::Replaced,
+		);
+		state.repair_handoff_states.insert(
+			replacement.handoff_id().to_owned(),
+			crate::lane_authority::RepairHandoffState::Active,
+		);
+		state.repair_handoffs.insert(replacement.handoff_id().to_owned(), replacement);
 		Ok(())
 	}
 
@@ -57,6 +108,11 @@ impl StateStore {
 			.get(handoff_id)
 			.cloned()
 			.ok_or_else(|| eyre::eyre!("Repair handoff does not exist."))?;
+		if state.repair_handoff_states.get(handoff_id)
+			!= Some(&crate::lane_authority::RepairHandoffState::Active)
+		{
+			eyre::bail!("Repair handoff is no longer active.");
+		}
 		let predecessor = state
 			.lanes
 			.get(handoff.predecessor_lane_id())
@@ -142,6 +198,10 @@ impl StateStore {
 		};
 		state.lanes.insert(handoff.predecessor_lane_id().clone(), next);
 		state.supersession_edges.insert(handoff.predecessor_lane_id().clone(), edge.clone());
+		state.repair_handoff_states.insert(
+			handoff.handoff_id().to_owned(),
+			crate::lane_authority::RepairHandoffState::Accepted,
+		);
 		for effect in planned_effects {
 			state.lane_effects.insert(effect.effect_id().to_owned(), effect);
 		}
@@ -403,6 +463,101 @@ mod tests {
 			reopened.lane(&predecessor).expect("read").expect("lane").phase(),
 			LanePhase::Terminal
 		);
+	}
+
+	#[test]
+	fn repair_handoff_replacement_has_one_cas_winner_and_preserves_history() {
+		let temp = TempDir::new().expect("tempdir");
+		let database = temp.path().join("state.sqlite");
+		let store = StateStore::open(&database).expect("store");
+		let predecessor = LaneId::new("pubfi", "predecessor").expect("lane");
+		let first_successor = LaneId::new("pubfi", "successor-1").expect("lane");
+		let second_successor = LaneId::new("pubfi", "successor-2").expect("lane");
+		for lane in [&predecessor, &first_successor, &second_successor] {
+			store
+				.transition_lane(
+					lane.clone(),
+					0,
+					"binding-1",
+					LaneCommand::Admit {
+						intake_authority_id: format!("authority-{}", lane.tracker_issue_id()),
+					},
+				)
+				.expect("admit lane");
+		}
+		store
+			.transition_lane(
+				predecessor.clone(),
+				1,
+				"binding-1",
+				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
+			)
+			.expect("claim predecessor");
+		let first = repair_handoff("handoff-1", predecessor.clone(), first_successor, 2);
+		let replacement = repair_handoff("handoff-2", predecessor.clone(), second_successor, 2);
+		store.record_repair_handoff(first).expect("record handoff");
+		store.replace_repair_handoff("handoff-1", replacement).expect("replace handoff");
+		let state = store.lock().expect("state");
+		assert_eq!(
+			state.repair_handoff_states.get("handoff-1"),
+			Some(&crate::lane_authority::RepairHandoffState::Replaced)
+		);
+		assert_eq!(
+			state.repair_handoff_states.get("handoff-2"),
+			Some(&crate::lane_authority::RepairHandoffState::Active)
+		);
+		drop(state);
+		assert!(
+			store
+				.replace_repair_handoff(
+					"handoff-1",
+					repair_handoff(
+						"handoff-3",
+						predecessor,
+						LaneId::new("pubfi", "successor-2").expect("lane"),
+						2,
+					),
+				)
+				.is_err(),
+			"losing replacement cannot replace history"
+		);
+		drop(store);
+		let reopened = StateStore::open(&database).expect("reopen");
+		let state = reopened.lock().expect("state");
+		assert_eq!(
+			state.repair_handoff_states.get("handoff-1"),
+			Some(&crate::lane_authority::RepairHandoffState::Replaced)
+		);
+		assert_eq!(
+			state.repair_handoff_states.get("handoff-2"),
+			Some(&crate::lane_authority::RepairHandoffState::Active)
+		);
+	}
+
+	fn repair_handoff(
+		id: &str,
+		predecessor: LaneId,
+		successor: LaneId,
+		epoch: u64,
+	) -> RepairHandoffAuthority {
+		RepairHandoffAuthority::new(
+			id,
+			"github:helixbox/pubfi-mono",
+			predecessor,
+			"PUB-1704",
+			"https://github.com/helixbox/pubfi-mono/pull/826",
+			"predecessor-head",
+			epoch,
+			"patch-set",
+			BTreeSet::from([String::from("patch-a")]),
+			successor,
+			"PUB-1705",
+			"findings",
+			"review-checkpoint",
+			"actor",
+			"event",
+		)
+		.expect("handoff")
 	}
 
 	fn succeed_effect(store: &StateStore, operation_id: &str, ordinal: u32, request: &str) {

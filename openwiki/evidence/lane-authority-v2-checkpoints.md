@@ -1075,6 +1075,15 @@ is attempted. Two adapter tests and all-target checking pass. This deliberately 
 the predecessor internally terminal with typed close debt when GitHub cannot prove CAS,
 rather than reviving executable authority or guessing from stale snapshots.
 
+Repair-handoff replacement now uses immutable history plus a single active-row CAS.
+Replacement must preserve the exact predecessor Lane and frozen epoch; one SQLite
+transaction marks the current row `replaced` and inserts the new `active` handoff.
+Stale/second replacement attempts fail without changing either row or releasing any
+conflict. State reload preserves active/replaced/accepted/cancelled/rejected-stale typed
+states. Ten supersession tests, including a persistent competing-replacement fixture,
+and all-target checking pass. This closes the XY-1250 successor-lineage race at the local
+authority boundary; provider effects still require fresh readback independently.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

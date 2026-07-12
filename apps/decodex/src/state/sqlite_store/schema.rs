@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS repair_handoffs (
 	predecessor_epoch INTEGER NOT NULL,
 	successor_project_key TEXT NOT NULL,
 	successor_issue_id TEXT NOT NULL,
-	state TEXT NOT NULL CHECK (state IN ('active', 'accepted', 'rejected_stale')),
+	state TEXT NOT NULL CHECK (state IN ('active', 'replaced', 'cancelled', 'accepted', 'rejected_stale')),
 	payload_json TEXT NOT NULL,
 	created_at_unix INTEGER NOT NULL,
 	FOREIGN KEY (predecessor_project_key, predecessor_issue_id)
