@@ -1,5 +1,6 @@
 mod autonomy;
 mod cleanup;
+#[cfg_attr(not(test), allow(dead_code))]
 mod effects;
 mod lanes;
 #[cfg_attr(not(test), allow(dead_code))]

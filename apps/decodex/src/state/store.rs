@@ -2,6 +2,7 @@ pub(in crate::state) mod retarget;
 
 mod autonomy;
 mod decision_contracts;
+#[cfg_attr(not(test), allow(dead_code))]
 mod effects;
 mod execution_evidence;
 mod inputs;

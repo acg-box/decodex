@@ -1,3 +1,5 @@
+#[cfg(test)]
+use super::effects::worktree_remove_facts_fingerprint;
 use crate::{
 	lane_authority::{
 		RepairHandoffAuthority, SupersededCloseoutCommand, SupersededCloseoutOperation,
@@ -348,6 +350,16 @@ mod tests {
 				LaneCommand::Admit { intake_authority_id: String::from("successor-authority") },
 			)
 			.expect("successor lane");
+		let worktree_path = temp.path().join("repo/.worktrees/PUB-1704");
+		std::fs::create_dir_all(&worktree_path).expect("worktree fixture");
+		store
+			.upsert_claimed_worktree(
+				"pubfi",
+				"predecessor",
+				"x/pubfi-pub-1704",
+				worktree_path.to_str().expect("UTF-8 path"),
+			)
+			.expect("attach worktree");
 		let predecessor_epoch = store.lane(&predecessor).expect("read").expect("lane").epoch();
 		let handoff = RepairHandoffAuthority::new(
 			"handoff-1",
@@ -401,7 +413,12 @@ mod tests {
 						LaneEffectKind::WorktreeRemove,
 						"worktree-request",
 						"worktree-removed",
-						"worktree-facts",
+						&worktree_remove_facts_fingerprint(
+							"pubfi",
+							"predecessor",
+							"x/pubfi-pub-1704",
+							&worktree_path,
+						),
 					)
 					.expect("worktree effect"),
 				],
@@ -430,7 +447,20 @@ mod tests {
 				SupersededCloseoutCommand::ReconcilePredecessorPr,
 			)
 			.expect("advance PR reconciliation");
-		succeed_effect(&store, operation.operation_id(), 1, "worktree-request");
+		let worktree_effect_id = format!("{}:1", operation.operation_id());
+		store
+			.execute_worktree_remove_effect(
+				&worktree_effect_id,
+				"2026-07-12T00:00:00Z",
+				1,
+				|path| {
+					std::fs::remove_dir_all(path)?;
+					Ok(true)
+				},
+			)
+			.expect("remove worktree");
+		assert!(!worktree_path.exists());
+		assert!(store.worktree_for_issue("predecessor").expect("mapping read").is_none());
 		store
 			.advance_superseded_closeout(
 				operation.operation_id(),

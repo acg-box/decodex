@@ -5,6 +5,38 @@ use crate::{
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn complete_worktree_remove_effect(
+		&mut self,
+		expected_journal_epoch: u64,
+		effect: &LaneEffect,
+		issue_id: &str,
+	) -> Result<()> {
+		let transaction = self.connection.transaction()?;
+		let updated = transaction.execute(
+			"UPDATE lane_effects
+			 SET journal_epoch = ?1, payload_json = ?2, updated_at_unix = unixepoch()
+			 WHERE effect_id = ?3 AND journal_epoch = ?4",
+			params![
+				i64::try_from(effect.journal_epoch())?,
+				serde_json::to_string(effect)?,
+				effect.effect_id(),
+				i64::try_from(expected_journal_epoch)?,
+			],
+		)?;
+		if updated != 1 {
+			eyre::bail!("Worktree cleanup effect receipt CAS rejected a stale writer.");
+		}
+		let deleted = transaction.execute(
+			"DELETE FROM worktrees WHERE issue_id = ?1 AND project_id = ?2",
+			params![issue_id, effect.lane_id().project_key()],
+		)?;
+		if deleted != 1 {
+			eyre::bail!("Worktree cleanup ownership mapping CAS failed.");
+		}
+		transaction.commit()?;
+		Ok(())
+	}
+
 	pub(in crate::state) fn insert_lane_effect(&self, effect: &LaneEffect) -> Result<()> {
 		let payload = serde_json::to_string(effect)?;
 		let inserted = self.connection.execute(

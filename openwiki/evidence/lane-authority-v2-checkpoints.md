@@ -1084,6 +1084,16 @@ states. Ten supersession tests, including a persistent competing-replacement fix
 and all-target checking pass. This closes the XY-1250 successor-lineage race at the local
 authority boundary; provider effects still require fresh readback independently.
 
+The first local resource executor now handles worktree cleanup with exact ownership
+fencing. Before invocation it revalidates terminal-operation stage, canonical Lane,
+project/issue mapping, branch, path, and a length-delimited facts digest. Filesystem
+failure records unknown outcome and preserves the ownership mapping. Success commits the
+effect receipt and deletes the exact durable worktree mapping in one SQLite transaction;
+only then may the resource stage advance. The persistent supersession fixture now creates
+and removes a real temporary worktree directory, proves pre-receipt blocking, mapping
+removal, restart, and terminalization. Ten supersession tests, the effect restart test,
+and all-target checking pass. Control and ref executors remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
