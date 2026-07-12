@@ -19,9 +19,10 @@ timeout_seconds = 60
 	let planned = manager.plan_for_issue("PUB-101");
 
 	fs::create_dir_all(&worktree_root).expect("worktree root should exist");
+	let source_head = manager.source_head_oid().expect("source head");
 
 	manager
-		.create_linked_worktree(&planned, Some(&hooks))
+		.create_linked_worktree(&planned, Some(&hooks), &source_head)
 		.expect("linked worktree should be created");
 	manager.validate_worktree_boundary(&planned.path).expect("created worktree should validate");
 

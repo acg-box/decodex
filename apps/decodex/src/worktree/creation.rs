@@ -17,7 +17,7 @@ impl WorktreeManager {
 		issue_identifier: &str,
 		dry_run: bool,
 	) -> Result<WorktreeSpec> {
-		self.ensure_worktree_internal(issue_identifier, dry_run, None)
+		self.ensure_worktree_internal(issue_identifier, dry_run, None, None)
 	}
 
 	pub(crate) fn ensure_worktree_with_hooks(
@@ -26,7 +26,30 @@ impl WorktreeManager {
 		dry_run: bool,
 		hooks: &WorkflowWorkspaceHooks,
 	) -> Result<WorktreeSpec> {
-		self.ensure_worktree_internal(issue_identifier, dry_run, Some(hooks))
+		self.ensure_worktree_internal(issue_identifier, dry_run, Some(hooks), None)
+	}
+
+	pub(crate) fn ensure_worktree_with_hooks_at_base(
+		&self,
+		issue_identifier: &str,
+		dry_run: bool,
+		hooks: &WorkflowWorkspaceHooks,
+		admitted_base_oid: &str,
+	) -> Result<WorktreeSpec> {
+		self.ensure_worktree_internal(
+			issue_identifier,
+			dry_run,
+			Some(hooks),
+			Some(admitted_base_oid),
+		)
+	}
+
+	pub(crate) fn source_head_oid(&self) -> Result<String> {
+		git::git_stdout(
+			&self.repo_root,
+			["rev-parse", "HEAD"],
+			"read the source repository HEAD",
+		)
 	}
 
 	fn ensure_worktree_internal(
@@ -34,6 +57,7 @@ impl WorktreeManager {
 		issue_identifier: &str,
 		dry_run: bool,
 		hooks: Option<&WorkflowWorkspaceHooks>,
+		admitted_base_oid: Option<&str>,
 	) -> Result<WorktreeSpec> {
 		let spec = self.plan_for_issue(issue_identifier);
 
@@ -42,6 +66,13 @@ impl WorktreeManager {
 		}
 		if spec.reused_existing {
 			self.validate_worktree_boundary(&spec.path)?;
+			if let Some(base_oid) = admitted_base_oid {
+				git::run_git(
+					&spec.path,
+					["merge-base", "--is-ancestor", base_oid, "HEAD"],
+					"verify the frozen admitted base is an ancestor of the retained lane head",
+				)?;
+			}
 
 			git::normalize_origin_remote_for_worktrees(&self.repo_root)?;
 
@@ -52,7 +83,11 @@ impl WorktreeManager {
 
 		fs::create_dir_all(&self.worktree_root)?;
 
-		self.create_linked_worktree(&spec, hooks)?;
+		let source_head = match admitted_base_oid {
+			Some(oid) => oid.to_owned(),
+			None => self.source_head_oid()?,
+		};
+		self.create_linked_worktree(&spec, hooks, &source_head)?;
 		self.validate_worktree_boundary(&spec.path)?;
 		self.run_after_create_hooks(&spec, hooks)?;
 
@@ -63,13 +98,8 @@ impl WorktreeManager {
 		&self,
 		spec: &WorktreeSpec,
 		hooks: Option<&WorkflowWorkspaceHooks>,
+		source_head: &str,
 	) -> Result<()> {
-		let source_head = git::git_stdout(
-			&self.repo_root,
-			["rev-parse", "HEAD"],
-			"read the source repository HEAD",
-		)?;
-
 		if spec.path.exists() {
 			eyre::bail!(
 				"Worktree path `{}` already exists but does not look reusable.",
@@ -82,7 +112,7 @@ impl WorktreeManager {
 			.arg(&self.repo_root)
 			.args(["worktree", "add", "--quiet", "--detach"])
 			.arg(&spec.path)
-			.arg(&source_head)
+			.arg(source_head)
 			.output()?;
 
 		if !create_output.status.success() {
@@ -98,7 +128,12 @@ impl WorktreeManager {
 
 		let setup_result =
 			git::normalize_origin_remote_for_worktrees(&self.repo_root).and_then(|_| {
-				self.checkout_worktree_branch(&spec.path, spec.branch_name.as_str(), &source_head)
+				self.checkout_worktree_branch(&spec.path, spec.branch_name.as_str(), source_head)?;
+				git::run_git(
+					&spec.path,
+					["merge-base", "--is-ancestor", source_head, "HEAD"],
+					"verify the lane head descends from its frozen admitted base",
+				)
 			});
 
 		if let Err(error) = setup_result {

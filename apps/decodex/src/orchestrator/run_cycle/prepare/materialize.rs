@@ -2,6 +2,7 @@ use crate::orchestrator::run_cycle::{
 	self, IssueRunPlan, IssueTracker, PrepareIssueRunContext, Result, TrackerIssue, WorktreeSpec,
 	prepare::{dispatch, lifecycle},
 };
+use crate::lane_authority::{LaneCommand, LaneId};
 
 pub(in crate::orchestrator::run_cycle::prepare) struct MaterializeIssueRunAfterLease<
 	'a,
@@ -29,10 +30,12 @@ where
 	let worktree = if let Some(worktree) = request.retained_closeout_worktree {
 		worktree
 	} else {
-		request.context.worktree_manager.ensure_worktree_with_hooks(
+		let admitted_base_oid = admitted_base_for_materialization(&request)?;
+		request.context.worktree_manager.ensure_worktree_with_hooks_at_base(
 			&request.issue.identifier,
 			request.context.dry_run,
 			request.context.workflow.frontmatter().execution().workspace_hooks(),
+			&admitted_base_oid,
 		)?
 	};
 
@@ -99,4 +102,34 @@ where
 	}
 
 	Ok(Some(issue_run))
+}
+
+fn admitted_base_for_materialization<T>(
+	request: &MaterializeIssueRunAfterLease<'_, '_, T>,
+) -> Result<String>
+where
+	T: IssueTracker,
+{
+	let source_head = request.context.worktree_manager.source_head_oid()?;
+	if request.context.dry_run {
+		return Ok(source_head);
+	}
+	let lane_id = LaneId::new(request.context.project.service_id(), request.lease_issue_id)?;
+	let Some(lane) = request.context.state_store.lane(&lane_id)? else {
+		#[cfg(test)]
+		return Ok(source_head);
+		#[cfg(not(test))]
+		crate::orchestrator::eyre::bail!("Claimed lane is missing.");
+	};
+	if let Some(admitted_base_oid) = lane.admitted_base_oid() {
+		return Ok(admitted_base_oid.to_owned());
+	}
+	let lane = request.context.state_store.apply_lane_command(
+		lane_id,
+		lane.binding_fingerprint(),
+		LaneCommand::FreezeAdmittedBase { oid: source_head },
+	)?;
+	lane.admitted_base_oid()
+		.map(str::to_owned)
+		.ok_or_else(|| crate::orchestrator::eyre::eyre!("Lane admitted base was not frozen."))
 }
