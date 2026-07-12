@@ -1699,6 +1699,30 @@ does not resolve dynamic/generic/object dispatch, authorize candidate classifica
 or prove authority dataflow. Those remain separate fail-closed steps before P3 may
 advance.
 
+#### Exact Rust callable queries
+
+Commit `895ee80a` adds the closed `rust_callable_resolutions` relation for every bare
+Rust value call and every Rust macro invocation. Each query binds the call site, Cargo
+target, innermost lexical scope, value-or-macro namespace, surface path, complete
+binding chain, and canonical definition identity. Macro declarations are now first-class
+symbol declarations. Qualified associated/module calls remain owned by the existing
+qualified-owner relation rather than acquiring a second authority path.
+
+The exact implementation cut contains 22,967 callable queries and 14,233 canonical
+local call edges, an increase of 2,648 edges over the namespace-only cut. P3 contains
+98,563 call-target dispositions: 14,233 canonical local calls, 1,160 authority-policy
+externals, 16,015 reviewed non-authority-policy externals, and 67,155 rejected dynamic
+targets. The rejected backlog fell by 2,577 after accounting for 71 newly represented
+macro call/declaration facts; no authored external or authority policy changed.
+
+Commit `dde97367` makes the verifier independently reconstruct each synthetic callable
+query, recompute its lexical scope and namespace, replay every binding hop, compare the
+terminal canonical definition, and derive the expected call-edge set. The first real
+replay rejected the incomplete verifier projection before P3; the corrected verifier
+then passed both P2 and P3 with zero parser errors and analysis-cut digest
+`cc48ebb2128a7dfbc252be2417fcc1b60f54fd969bc91588d50f1894692b329f`.
+Readiness remains literal `C1I_INCOMPLETE`, and migration remains not started.
+
 ### C0 evidence commands
 
 ```sh
