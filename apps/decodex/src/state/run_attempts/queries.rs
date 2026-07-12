@@ -61,6 +61,7 @@ impl StateStore {
 	}
 
 	/// List all locally recorded run attempts for one issue.
+	#[cfg(test)]
 	pub fn list_run_attempts_for_issue(&self, issue_id: &str) -> Result<Vec<RunAttempt>> {
 		if let Some(sqlite) = &self.sqlite {
 			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
@@ -87,6 +88,38 @@ impl StateStore {
 				.then_with(|| left.run_id().cmp(right.run_id()))
 		});
 
+		Ok(attempts)
+	}
+
+	/// List all locally recorded run attempts for one canonical lane.
+	pub fn list_run_attempts_for_lane(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<Vec<RunAttempt>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			return Ok(sqlite
+				.list_run_attempts_for_lane(project_id, issue_id)?
+				.into_iter()
+				.map(|attempt| attempt.as_public())
+				.collect());
+		}
+
+		let state = self.lock()?;
+		let mut attempts = state
+			.run_attempts
+			.values()
+			.filter(|attempt| {
+				attempt.project_id.as_deref() == Some(project_id) && attempt.issue_id == issue_id
+			})
+			.map(RunAttemptRecord::as_public)
+			.collect::<Vec<_>>();
+		attempts.sort_by(|left, right| {
+			left.attempt_number()
+				.cmp(&right.attempt_number())
+				.then_with(|| left.run_id().cmp(right.run_id()))
+		});
 		Ok(attempts)
 	}
 

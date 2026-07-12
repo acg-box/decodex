@@ -10,19 +10,20 @@ use crate::{
 
 #[test]
 fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
+	let project_id = "decodex";
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = tests::sample_issue("In Progress", &[]);
 
 	state_store
-		.record_run_attempt("run-old", &issue.id, 1, "failed")
+		.record_lane_run_attempt(project_id, "run-old", &issue.id, 1, "failed")
 		.expect("old attempt should record");
 	state_store.update_run_thread("run-old", "thread-old").expect("old thread should attach");
 	state_store
 		.append_event("run-old", 1, "turn/completed", "{}")
 		.expect("old event should record");
 	state_store
-		.record_run_attempt("run-current", &issue.id, 2, "succeeded")
+		.record_lane_run_attempt(project_id, "run-current", &issue.id, 2, "succeeded")
 		.expect("current attempt should record");
 	state_store
 		.update_run_thread("run-current", "thread-current")
@@ -31,13 +32,19 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 		.append_event("run-current", 1, "turn/completed", "{}")
 		.expect("current event should record");
 	state_store
-		.record_run_attempt("run-active", &issue.id, 3, "running")
+		.record_lane_run_attempt(project_id, "run-active", &issue.id, 3, "running")
 		.expect("active attempt should record");
 	state_store
 		.update_run_thread("run-active", "thread-active")
 		.expect("active thread should attach");
 	state_store
-		.record_run_attempt("run-archived", &issue.id, 4, TERMINAL_GUARDED_RUN_STATUS)
+		.record_lane_run_attempt(
+			project_id,
+			"run-archived",
+			&issue.id,
+			4,
+			TERMINAL_GUARDED_RUN_STATUS,
+		)
 		.expect("archived attempt should record");
 	state_store
 		.update_run_thread("run-archived", "thread-archived")
@@ -45,6 +52,15 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 	state_store
 		.append_event("run-archived", 1, "thread/archive", "{}")
 		.expect("archive event should record");
+	state_store
+		.record_lane_run_attempt("other-project", "run-other", &issue.id, 5, "failed")
+		.expect("colliding project attempt should record");
+	state_store
+		.update_run_thread("run-other", "thread-other")
+		.expect("colliding thread should attach");
+	state_store
+		.append_event("run-other", 1, "turn/completed", "{}")
+		.expect("colliding event should record");
 
 	let issue_run = IssueRunPlan {
 		issue,
@@ -75,6 +91,7 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 	};
 	let candidates = orchestrator::completed_issue_thread_archive_candidates(
 		&state_store,
+		project_id,
 		&issue_run,
 		&run_result,
 	)

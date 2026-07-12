@@ -1,4 +1,5 @@
-#[cfg(not(test))] use crate::agent;
+#[cfg(not(test))]
+use crate::agent;
 use crate::{
 	agent::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest},
 	orchestrator::{
@@ -82,6 +83,7 @@ fn archive_issue_threads_best_effort(
 	let fallback_candidate = current.clone();
 	let candidates = match candidates::issue_thread_archive_candidates(
 		state_store,
+		project.service_id(),
 		issue_id,
 		issue_identifier,
 		current,

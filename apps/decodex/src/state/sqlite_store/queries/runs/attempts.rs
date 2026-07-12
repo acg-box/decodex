@@ -93,6 +93,7 @@ impl SqliteStateStore {
 		Ok(rows.next()?.map(run_attempt_record_from_row).transpose()?)
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn list_run_attempts_for_issue(
 		&self,
 		issue_id: &str,
@@ -105,6 +106,22 @@ impl SqliteStateStore {
 		)?;
 		let rows = statement.query_map(queries::params![issue_id], run_attempt_record_from_row)?;
 
+		rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+	}
+
+	pub(in crate::state) fn list_run_attempts_for_lane(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> queries::Result<Vec<RunAttemptRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
+			 updated_at, updated_at_unix FROM run_attempts \
+			 WHERE project_id = ?1 AND issue_id = ?2 \
+			 ORDER BY attempt_number ASC, run_id ASC",
+		)?;
+		let rows = statement
+			.query_map(queries::params![project_id, issue_id], run_attempt_record_from_row)?;
 		rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
 	}
 

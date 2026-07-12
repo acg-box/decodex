@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-#[cfg(test)] use crate::orchestrator::{AppServerRunResult, IssueRunPlan};
+#[cfg(test)]
+use crate::orchestrator::{AppServerRunResult, IssueRunPlan};
 use crate::orchestrator::{
 	Result, StateStore, TERMINAL_GUARDED_RUN_STATUS,
 	execution_thread_archive::model::{ThreadArchiveCandidate, ThreadArchiveCandidateSource},
@@ -9,11 +10,13 @@ use crate::orchestrator::{
 #[cfg(test)]
 pub(in crate::orchestrator) fn completed_issue_thread_archive_candidates(
 	state_store: &StateStore,
+	project_id: &str,
 	issue_run: &IssueRunPlan,
 	run_result: &AppServerRunResult,
 ) -> Result<Vec<ThreadArchiveCandidate>> {
 	issue_thread_archive_candidates(
 		state_store,
+		project_id,
 		&issue_run.issue.id,
 		&issue_run.issue.identifier,
 		Some(ThreadArchiveCandidate {
@@ -29,6 +32,7 @@ pub(in crate::orchestrator) fn completed_issue_thread_archive_candidates(
 
 pub(in crate::orchestrator) fn issue_thread_archive_candidates(
 	state_store: &StateStore,
+	project_id: &str,
 	issue_id: &str,
 	issue_identifier: &str,
 	current: Option<ThreadArchiveCandidate>,
@@ -52,7 +56,7 @@ pub(in crate::orchestrator) fn issue_thread_archive_candidates(
 		)?;
 	}
 
-	for attempt in state_store.list_run_attempts_for_issue(issue_id)? {
+	for attempt in state_store.list_run_attempts_for_lane(project_id, issue_id)? {
 		if !completed_issue_archive_attempt_status(attempt.status()) {
 			continue;
 		}
