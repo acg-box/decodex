@@ -1423,6 +1423,15 @@ survives. C2 exact coverage is now `5/11`. Admit/transfer racing, provider-idemp
 issue creation, version-bracketed paginated labels, workspace-qualified identity, and
 the orphan archive effect remain.
 
+Commit `8c1c909c` binds ADM-08. Incomplete provider label snapshots are no longer
+accepted after one traversal: Decodex performs two independently version-bracketed
+pagination passes and requires the exact label identity, team, and update version to
+match. A forbidden label hidden beyond the first nested page is observed, while a torn
+snapshot changing between passes rejects before Program or authority persistence.
+Focused ADM-08 and existing occupancy tests, the all-target/all-feature check, and the
+diff check pass. C2 exact coverage is now `6/11`; ADM-04, ADM-07, ADM-09, EFX-17, and
+ID-17 remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
