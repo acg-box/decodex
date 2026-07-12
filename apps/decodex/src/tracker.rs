@@ -5,6 +5,7 @@ pub(crate) mod records;
 
 mod comments;
 mod errors;
+#[allow(dead_code)] mod identity;
 mod labels;
 mod types;
 
