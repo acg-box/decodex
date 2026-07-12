@@ -1213,8 +1213,22 @@ only the CBOR payload, but cross-checks generation, sequence, event id, previous
 hashes, and timestamp index columns against decoded canonical bytes, and rejects rows
 from an extra generation. Persistent tamper tests now cover canonical-byte rewrite,
 delete/truncate, indexed-hash rewrite, and fork insertion. Transition integration is
-intentionally deferred until sealed `InvocationIdentity` exists; manufacturing a default
-actor/correlation inside the current lane API would create false audit authority.
+now proven behind a sealed `InvocationIdentity`: only the private authority broker can
+mint an identity from authenticated transport/principal facts, while persisted events
+receive only its deterministic opaque fingerprint. The authority transition API builds
+the event from that identity and commits Lane CAS plus event append/head CAS in the same
+SQLite transaction. A failure before authority-generation initialization leaves both
+Lane and chain unchanged; the successful retry commits Lane epoch 1 and event sequence 1
+together. The legacy transition entrypoint still passes no event and production broker
+wiring is not complete, so this proves the transaction and identity boundary but does not
+yet establish sole-writer telemetry coverage.
+
+Fresh focused evidence: `cargo test -p decodex lane_authority_v2_c5`,
+`cargo test -p decodex authority_operator_readback`,
+`cargo test -p decodex persistent_lane_round_trips`, `cargo check`, and
+`git diff --check` passed. Full C5 remains blocked on signed protected-head recovery,
+typed operator projections/output sinks, metrics, production caller migration, and the
+missing scenario gate script.
 
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |

@@ -3,6 +3,8 @@
 mod effect;
 mod event;
 mod intake;
+#[cfg_attr(not(test), allow(dead_code))]
+mod invocation;
 mod kernel;
 mod no_effective_delta;
 mod patch_set;
@@ -14,9 +16,13 @@ pub use effect::{
 };
 pub use event::{
 	AuthorityDecision, AuthorityEvent, AuthorityEventDraft, AuthorityEventType,
-	AuthorityReasonCode, verify_authority_event_chain,
+	AuthorityReasonCode, AuthorityTransitionContext, verify_authority_event_chain,
 };
 pub use intake::{IntakeAuthority, IntakeAuthorityKind};
+pub use invocation::{
+	AccountabilityRootFingerprint, InvocationIdentity, InvocationOrigin, PrincipalKind,
+	PrincipalRefNamespace, PrincipalRefToken,
+};
 pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
 pub use no_effective_delta::{
 	NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,

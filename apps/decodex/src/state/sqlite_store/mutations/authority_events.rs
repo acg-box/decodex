@@ -1,4 +1,4 @@
-use rusqlite::OptionalExtension;
+use rusqlite::{OptionalExtension, Transaction};
 
 use crate::{
 	lane_authority::{AuthorityEvent, AuthorityEventDraft, verify_authority_event_chain},
@@ -40,47 +40,7 @@ impl SqliteStateStore {
 		draft: AuthorityEventDraft,
 	) -> Result<AuthorityEvent> {
 		let transaction = self.connection.transaction()?;
-		let (generation, sequence, previous_hash) = transaction
-			.query_row(
-				"SELECT generation, sequence, event_hash
-				 FROM authority_event_chain_head WHERE singleton = 1",
-				[],
-				|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, Vec<u8>>(2)?)),
-			)
-			.optional()?
-			.ok_or_else(|| eyre::eyre!("Authority generation is not initialized."))?;
-		let next_sequence = sequence
-			.checked_add(1)
-			.ok_or_else(|| eyre::eyre!("Authority event sequence overflow."))?;
-		let event = AuthorityEvent::append(
-			u64::try_from(generation)?,
-			u64::try_from(next_sequence)?,
-			&previous_hash,
-			draft,
-		)?;
-		transaction.execute(
-			"INSERT INTO authority_events
-			 (generation, sequence, event_id, previous_event_hash, event_hash,
-			  event_cbor, recorded_at_unix_micros)
-			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-			params![
-				generation,
-				next_sequence,
-				&event.draft.event_id,
-				&event.previous_event_hash,
-				&event.event_hash,
-				event.canonical_bytes()?,
-				event.draft.recorded_at_unix_micros,
-			],
-		)?;
-		let advanced = transaction.execute(
-			"UPDATE authority_event_chain_head SET sequence = ?1, event_hash = ?2
-			 WHERE singleton = 1 AND generation = ?3 AND sequence = ?4 AND event_hash = ?5",
-			params![next_sequence, &event.event_hash, generation, sequence, &previous_hash],
-		)?;
-		if advanced != 1 {
-			eyre::bail!("Authority event chain head CAS rejected a stale writer.");
-		}
+		let event = append_authority_event_in_transaction(&transaction, draft)?;
 		transaction.commit()?;
 		Ok(event)
 	}
@@ -148,4 +108,51 @@ impl SqliteStateStore {
 		}
 		Ok(events)
 	}
+}
+
+pub(in crate::state::sqlite_store::mutations) fn append_authority_event_in_transaction(
+	transaction: &Transaction<'_>,
+	draft: AuthorityEventDraft,
+) -> Result<AuthorityEvent> {
+	let (generation, sequence, previous_hash) = transaction
+		.query_row(
+			"SELECT generation, sequence, event_hash
+				 FROM authority_event_chain_head WHERE singleton = 1",
+			[],
+			|row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, Vec<u8>>(2)?)),
+		)
+		.optional()?
+		.ok_or_else(|| eyre::eyre!("Authority generation is not initialized."))?;
+	let next_sequence =
+		sequence.checked_add(1).ok_or_else(|| eyre::eyre!("Authority event sequence overflow."))?;
+	let event = AuthorityEvent::append(
+		u64::try_from(generation)?,
+		u64::try_from(next_sequence)?,
+		&previous_hash,
+		draft,
+	)?;
+	transaction.execute(
+		"INSERT INTO authority_events
+			 (generation, sequence, event_id, previous_event_hash, event_hash,
+			  event_cbor, recorded_at_unix_micros)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+		params![
+			generation,
+			next_sequence,
+			&event.draft.event_id,
+			&event.previous_event_hash,
+			&event.event_hash,
+			event.canonical_bytes()?,
+			event.draft.recorded_at_unix_micros,
+		],
+	)?;
+	let advanced = transaction.execute(
+		"UPDATE authority_event_chain_head SET sequence = ?1, event_hash = ?2
+			 WHERE singleton = 1 AND generation = ?3 AND sequence = ?4 AND event_hash = ?5",
+		params![next_sequence, &event.event_hash, generation, sequence, &previous_hash],
+	)?;
+	if advanced != 1 {
+		eyre::bail!("Authority event chain head CAS rejected a stale writer.");
+	}
+	Ok(event)
 }

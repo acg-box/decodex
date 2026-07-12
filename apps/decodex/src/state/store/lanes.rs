@@ -6,6 +6,32 @@ use crate::{
 };
 
 impl StateStore {
+	#[cfg_attr(not(test), allow(dead_code))]
+	pub(crate) fn transition_lane_with_authority(
+		&self,
+		id: LaneId,
+		expected_epoch: u64,
+		binding_fingerprint: &str,
+		command: LaneCommand,
+		context: crate::lane_authority::AuthorityTransitionContext,
+	) -> Result<LaneAggregate> {
+		let event = context.into_lane_event(&id, binding_fingerprint)?;
+		let sqlite = self
+			.sqlite
+			.as_ref()
+			.ok_or_else(|| eyre::eyre!("Authority transitions require a persistent StateStore."))?;
+		let next = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("SQLite state lock poisoned."))?
+			.transition_lane(&id, expected_epoch, binding_fingerprint, command, Some(event))?;
+		self.inner
+			.lock()
+			.map_err(|_| eyre::eyre!("State lock poisoned."))?
+			.lanes
+			.insert(id, next.clone());
+		Ok(next)
+	}
+
 	pub(crate) fn lane(&self, id: &LaneId) -> Result<Option<LaneAggregate>> {
 		Ok(self
 			.inner
@@ -28,7 +54,7 @@ impl StateStore {
 			let next = sqlite
 				.lock()
 				.map_err(|_| eyre::eyre!("SQLite state lock poisoned."))?
-				.transition_lane(&id, expected_epoch, binding_fingerprint, command)?;
+				.transition_lane(&id, expected_epoch, binding_fingerprint, command, None)?;
 			self.inner
 				.lock()
 				.map_err(|_| eyre::eyre!("State lock poisoned."))?
@@ -80,6 +106,7 @@ impl StateStore {
 					expected_epoch,
 					binding_fingerprint,
 					command.clone(),
+					None,
 				) {
 					Ok(next) => {
 						self.inner
@@ -114,6 +141,63 @@ mod tests {
 	use tempfile::TempDir;
 
 	use super::*;
+	use crate::lane_authority::{
+		AuthorityDecision, AuthorityEventType, AuthorityReasonCode, AuthorityTransitionContext,
+	};
+
+	#[test]
+	fn lane_authority_v2_c5_lane_and_event_commit_or_rollback_together() {
+		let temp_dir = TempDir::new().expect("tempdir");
+		let database = temp_dir.path().join("state.sqlite");
+		let store = StateStore::open(&database).expect("store");
+		let id = LaneId::new("pubfi", "PUB-1711").expect("lane");
+		let command = LaneCommand::Admit { intake_authority_id: String::from("authority-1") };
+		assert!(
+			store
+				.transition_lane_with_authority(
+					id.clone(),
+					0,
+					"binding-1",
+					command.clone(),
+					authority_context("event-without-generation"),
+				)
+				.is_err()
+		);
+		assert!(store.lane(&id).expect("lane read").is_none());
+		store.initialize_authority_generation(1, &[5_u8; 32]).expect("generation");
+		let lane = store
+			.transition_lane_with_authority(
+				id.clone(),
+				0,
+				"binding-1",
+				command,
+				authority_context("event-1"),
+			)
+			.expect("atomic authority transition");
+		assert_eq!(lane.epoch(), 1);
+		let events = store.verify_authority_events().expect("event chain");
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0].draft.event_id, "event-1");
+	}
+
+	fn authority_context(event_id: &str) -> AuthorityTransitionContext {
+		AuthorityTransitionContext {
+			invocation: crate::authority_broker::test_invocation_identity(),
+			event_id: event_id.to_owned(),
+			event_type: AuthorityEventType::TransitionCommitted,
+			transition_id: String::from("transition-1"),
+			correlation_id: String::from("correlation-1"),
+			causation_id: String::from("causation-1"),
+			observed_facts_fingerprint: String::from("facts-1"),
+			decision: AuthorityDecision::Committed,
+			reason_codes: vec![AuthorityReasonCode::BindingMatched],
+			operation_id: None,
+			runtime_version: String::from("0.2.0"),
+			recorded_at_unix_micros: 1,
+			boot_id_fingerprint: String::from("boot-1"),
+			monotonic_nanos: 1,
+		}
+	}
 
 	#[test]
 	fn rejects_same_active_tracker_issue_across_projects() {

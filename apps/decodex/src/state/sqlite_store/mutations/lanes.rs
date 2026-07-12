@@ -7,9 +7,13 @@ use rusqlite::OptionalExtension;
 
 use crate::{
 	lane_authority::{
-		LaneAggregate, LaneCommand, LaneId, LanePhase, LaneTransitionRejection, transition,
+		AuthorityEventDraft, LaneAggregate, LaneCommand, LaneId, LanePhase,
+		LaneTransitionRejection, transition,
 	},
-	state::sqlite_store::{Result, SqliteStateStore, eyre, params},
+	state::sqlite_store::{
+		Result, SqliteStateStore, eyre,
+		mutations::{authority_events::append_authority_event_in_transaction, params},
+	},
 };
 
 impl SqliteStateStore {
@@ -19,6 +23,7 @@ impl SqliteStateStore {
 		expected_epoch: u64,
 		binding_fingerprint: &str,
 		command: LaneCommand,
+		authority_event: Option<AuthorityEventDraft>,
 	) -> Result<LaneAggregate> {
 		let updated_at_unix =
 			i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())?;
@@ -122,6 +127,9 @@ impl SqliteStateStore {
 		};
 		if changed != 1 {
 			eyre::bail!("lane_compare_and_swap_failed");
+		}
+		if let Some(event) = authority_event {
+			append_authority_event_in_transaction(&transaction, event)?;
 		}
 		transaction.commit()?;
 		Ok(next)

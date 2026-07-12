@@ -10,6 +10,8 @@ mod accounts;
 mod active_run_env;
 mod agent;
 mod archive_hygiene;
+#[cfg_attr(not(test), allow(dead_code))]
+mod authority_broker;
 mod autonomy_objective;
 mod autonomy_proposal;
 mod autonomy_runtime_policy;

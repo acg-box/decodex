@@ -3,6 +3,7 @@
 use minicbor::{Decode, Encode};
 use sha2::{Digest, Sha256};
 
+use super::{InvocationIdentity, LaneId};
 use crate::prelude::{Result, eyre};
 
 const AUTHORITY_EVENT_DOMAIN: &[u8] = b"decodex.authority-event/1";
@@ -80,6 +81,57 @@ pub enum AuthorityReasonCode {
 	ConflictReleased,
 	#[n(9)]
 	QuarantinedAmbiguousLegacyState,
+}
+
+#[derive(Clone, Debug)]
+pub struct AuthorityTransitionContext {
+	pub invocation: InvocationIdentity,
+	pub event_id: String,
+	pub event_type: AuthorityEventType,
+	pub transition_id: String,
+	pub correlation_id: String,
+	pub causation_id: String,
+	pub observed_facts_fingerprint: String,
+	pub decision: AuthorityDecision,
+	pub reason_codes: Vec<AuthorityReasonCode>,
+	pub operation_id: Option<String>,
+	pub runtime_version: String,
+	pub recorded_at_unix_micros: i64,
+	pub boot_id_fingerprint: String,
+	pub monotonic_nanos: u64,
+}
+impl AuthorityTransitionContext {
+	pub fn into_lane_event(
+		self,
+		lane_id: &LaneId,
+		binding_fingerprint: &str,
+	) -> Result<AuthorityEventDraft> {
+		let invocation_identity_fingerprint =
+			self.invocation.fingerprint()?.iter().map(|byte| format!("{byte:02x}")).collect();
+		let draft = AuthorityEventDraft {
+			event_id: self.event_id,
+			event_type: self.event_type,
+			transition_id: self.transition_id,
+			correlation_id: self.correlation_id,
+			causation_id: self.causation_id,
+			project_key: Some(lane_id.project_key().to_owned()),
+			tracker_issue_id: Some(lane_id.tracker_issue_id().to_owned()),
+			project_binding_fingerprint: Some(binding_fingerprint.to_owned()),
+			invocation_identity_fingerprint,
+			observed_facts_fingerprint: self.observed_facts_fingerprint,
+			decision: self.decision,
+			reason_codes: self.reason_codes,
+			operation_id: self.operation_id,
+			effect_id: None,
+			receipt_ref: None,
+			runtime_version: self.runtime_version,
+			recorded_at_unix_micros: self.recorded_at_unix_micros,
+			boot_id_fingerprint: self.boot_id_fingerprint,
+			monotonic_nanos: self.monotonic_nanos,
+		};
+		draft.validate()?;
+		Ok(draft)
+	}
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq)]
