@@ -1208,6 +1208,14 @@ delete/truncation, indexed-hash rewrite, reorder/fork, and verify exact reopen. 
 KeyProtector-signed protected head, legitimate DB-ahead recovery window, transition
 transaction integration, typed projections, and output-sink privacy remain.
 
+The persisted verifier was tightened after implementation review: it no longer trusts
+only the CBOR payload, but cross-checks generation, sequence, event id, previous/event
+hashes, and timestamp index columns against decoded canonical bytes, and rejects rows
+from an extra generation. Persistent tamper tests now cover canonical-byte rewrite,
+delete/truncate, indexed-hash rewrite, and fork insertion. Transition integration is
+intentionally deferred until sealed `InvocationIdentity` exists; manufacturing a default
+actor/correlation inside the current lane API would create false audit authority.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
