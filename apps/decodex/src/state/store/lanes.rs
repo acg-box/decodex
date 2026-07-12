@@ -122,8 +122,24 @@ mod tests {
 		let second = LaneId::new("second", "issue-1").expect("second lane");
 		store
 			.transition_lane(
-				first,
+				first.clone(),
 				0,
+				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+			)
+			.expect("first admit");
+		store
+			.transition_lane(
+				second.clone(),
+				0,
+				"binding-2",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-2") },
+			)
+			.expect("second admit");
+		store
+			.transition_lane(
+				first,
+				1,
 				"binding-1",
 				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
 			)
@@ -131,7 +147,7 @@ mod tests {
 		let error = store
 			.transition_lane(
 				second,
-				0,
+				1,
 				"binding-2",
 				LaneCommand::AcquireClaim { run_id: String::from("run-2") },
 			)
@@ -148,12 +164,20 @@ mod tests {
 				id.clone(),
 				0,
 				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+			)
+			.expect("admit");
+		store
+			.transition_lane(
+				id.clone(),
+				1,
+				"binding-1",
 				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
 			)
 			.expect("claim");
-		assert!(store.transition_lane(id.clone(), 0, "binding-1", LaneCommand::BeginRun).is_err());
-		assert!(store.transition_lane(id.clone(), 1, "binding-2", LaneCommand::BeginRun).is_err());
-		assert_eq!(store.lane(&id).expect("read").expect("lane").epoch(), 1);
+		assert!(store.transition_lane(id.clone(), 1, "binding-1", LaneCommand::BeginRun).is_err());
+		assert!(store.transition_lane(id.clone(), 2, "binding-2", LaneCommand::BeginRun).is_err());
+		assert_eq!(store.lane(&id).expect("read").expect("lane").epoch(), 2);
 	}
 
 	#[test]
@@ -203,18 +227,36 @@ mod tests {
 		let database = temp_dir.path().join("state.sqlite");
 		let first = StateStore::open(&database).expect("first store");
 		let second = StateStore::open(&database).expect("second store");
+		let first_id = LaneId::new("first", "issue-1").expect("lane");
+		let second_id = LaneId::new("second", "issue-1").expect("lane");
 		first
 			.transition_lane(
-				LaneId::new("first", "issue-1").expect("lane"),
+				first_id.clone(),
 				0,
+				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+			)
+			.expect("first admit");
+		second
+			.transition_lane(
+				second_id.clone(),
+				0,
+				"binding-2",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-2") },
+			)
+			.expect("second admit");
+		first
+			.transition_lane(
+				first_id,
+				1,
 				"binding-1",
 				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
 			)
 			.expect("first claim");
 		let error = second
 			.transition_lane(
-				LaneId::new("second", "issue-1").expect("lane"),
-				0,
+				second_id,
+				1,
 				"binding-2",
 				LaneCommand::AcquireClaim { run_id: String::from("run-2") },
 			)

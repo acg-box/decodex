@@ -53,6 +53,13 @@ impl StateStore {
 			self.apply_lane_command(
 				lane_id.clone(),
 				binding.config_fingerprint(),
+				LaneCommand::Admit {
+					intake_authority_id: format!("test-intake-authority:{project_id}:{issue_id}"),
+				},
+			)?;
+			self.apply_lane_command(
+				lane_id.clone(),
+				binding.config_fingerprint(),
 				LaneCommand::AcquireClaim { run_id: lease.run_id().to_owned() },
 			)?;
 		}

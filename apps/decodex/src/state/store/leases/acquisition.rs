@@ -46,6 +46,16 @@ impl StateStore {
 				)?
 			},
 		};
+		#[cfg(test)]
+		if previous.as_ref().and_then(|lane| lane.intake_authority_id()).is_none() {
+			self.apply_lane_command(
+				lane_id.clone(),
+				binding.config_fingerprint(),
+				LaneCommand::Admit {
+					intake_authority_id: format!("test-intake-authority:{project_id}:{issue_id}"),
+				},
+			)?;
+		}
 		self.apply_lane_command(
 			lane_id.clone(),
 			binding.config_fingerprint(),

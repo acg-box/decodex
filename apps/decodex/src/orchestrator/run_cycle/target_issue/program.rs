@@ -18,6 +18,18 @@ where
 	let dry_run = context.dry_run;
 	let state_store = context.state_store;
 	let project_id = context.project.service_id().to_owned();
+	if !dry_run && let Some(program_dispatch) = program_dispatch.as_ref() {
+		let attestation = orchestrator::dispatch_policy::attest_issue_project_binding(
+			state_store,
+			context.project,
+			&selected.issue,
+		)?;
+		orchestrator::dispatch_policy::admit_program_lane(
+			state_store,
+			&attestation,
+			&program_dispatch.program_id,
+		)?;
+	}
 	let mut summary = target_issue::run_target_issue_once_after_prepare(context, |issue_run| {
 		if !dry_run && let Some(program_dispatch) = program_dispatch.as_ref() {
 			orchestrator::record_program_dispatch_selected(
@@ -44,6 +56,10 @@ pub(crate) fn select_target_status_visible_program_candidate<T>(
 where
 	T: IssueTracker,
 {
+	let _project_binding = orchestrator::dispatch_policy::attest_project_binding(
+		context.state_store,
+		context.project,
+	)?;
 	let worktree_manager = WorktreeManager::new(
 		context.project.service_id(),
 		context.project.repo_root(),

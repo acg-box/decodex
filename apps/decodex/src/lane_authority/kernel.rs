@@ -187,7 +187,9 @@ pub fn transition(
 			}
 		},
 		LaneCommand::AcquireClaim { run_id } => match current.claim_run_id.as_deref() {
-			None if current.phase == LanePhase::Unclaimed => {
+			None if current.phase == LanePhase::Unclaimed
+				&& current.intake_authority_id.is_some() =>
+			{
 				next.claim_run_id = Some(run_id);
 				next.phase = LanePhase::Claimed;
 			},
@@ -249,7 +251,16 @@ mod tests {
 	use crate::lane_authority::LaneId;
 
 	fn lane() -> LaneAggregate {
-		LaneAggregate::new(LaneId::new("pubfi", "issue-1").expect("lane"), "binding-1")
+		LaneAggregate::from_persisted_parts(
+			LaneId::new("pubfi", "issue-1").expect("lane"),
+			String::from("binding-1"),
+			0,
+			LanePhase::Unclaimed,
+			Some(String::from("authority-1")),
+			None,
+			None,
+			None,
+		)
 	}
 
 	#[test]
@@ -277,8 +288,10 @@ mod tests {
 
 	#[test]
 	fn admission_is_immutable_and_retry_safe() {
+		let unadmitted =
+			LaneAggregate::new(LaneId::new("pubfi", "issue-1").expect("lane"), "binding-1");
 		let admitted = transition(
-			&lane(),
+			&unadmitted,
 			0,
 			"binding-1",
 			LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
