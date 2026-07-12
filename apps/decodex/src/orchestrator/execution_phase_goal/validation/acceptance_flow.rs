@@ -153,15 +153,16 @@ impl RepoGatePhaseGoalController<'_> {
 			&acceptance_criteria_digest,
 			&checkpoint_facts_digest,
 			&validation_results_digest,
-			self.issue_run.issue.blockers.iter().any(|blocker| {
-				!self
-					.workflow
-					.frontmatter()
-					.tracker()
-					.terminal_states()
-					.iter()
-					.any(|state| state == &blocker.state.name)
-			}),
+			checkpoint_payload.map_or(0, validation_evidence_blocker_count) > 0
+				|| self.issue_run.issue.blockers.iter().any(|blocker| {
+					!self
+						.workflow
+						.frontmatter()
+						.tracker()
+						.terminal_states()
+						.iter()
+						.any(|state| state == &blocker.state.name)
+				}),
 		)?;
 		let operation_id = format!(
 			"no-effective-delta:{}",
