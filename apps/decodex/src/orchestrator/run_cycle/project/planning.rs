@@ -45,6 +45,8 @@ pub(crate) fn plan_project_issue_run_with_program_dispatch<T>(
 where
 	T: IssueTracker,
 {
+	let _project_binding =
+		orchestrator::dispatch_policy::attest_project_binding(state_store, project)?;
 	let worktree_manager =
 		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
 
@@ -103,6 +105,9 @@ where
 	)? {
 		return Ok(replanned);
 	}
+
+	let _binding_attestation =
+		orchestrator::dispatch_policy::attest_issue_project_binding(state_store, project, &issue)?;
 
 	if orchestrator::ensure_clean_baseline_before_dispatch(
 		project,

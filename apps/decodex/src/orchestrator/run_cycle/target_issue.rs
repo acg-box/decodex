@@ -92,6 +92,10 @@ fn plan_target_issue_run<T>(context: &TargetIssueRunContext<'_, T>) -> Result<Op
 where
 	T: IssueTracker,
 {
+	let _project_binding = crate::orchestrator::dispatch_policy::attest_project_binding(
+		context.state_store,
+		context.project,
+	)?;
 	let worktree_manager = WorktreeManager::new(
 		context.project.service_id(),
 		context.project.repo_root(),
@@ -157,6 +161,12 @@ where
 
 		return Ok(None);
 	}
+
+	let _binding_attestation = crate::orchestrator::dispatch_policy::attest_issue_project_binding(
+		context.state_store,
+		context.project,
+		&issue,
+	)?;
 
 	let reuses_existing_closeout_claim =
 		closeout::target_issue_reuses_existing_closeout_claim(context, &issue_id, &issue)?;

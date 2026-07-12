@@ -32,6 +32,7 @@ pub(crate) use closeout::{
 pub(crate) use description::description_is_machine_only_fenced_block;
 
 use crate::{
+	lane_authority::{BindingAttestation, ProjectBinding},
 	orchestrator::{
 		ErrorKind, GhPullRequestReviewStateInspector, GitCredentialSource, IssueDispatchMode,
 		IssueRunPlan, IssueTracker, Path, PathBuf, PullRequestReviewStateInspector, Result,
@@ -51,6 +52,48 @@ pub(crate) fn issue_matches_project_tracker_scope(
 	project: &ServiceConfig,
 ) -> bool {
 	issue.team.id == project.tracker().team_id()
+}
+
+pub(crate) fn attest_issue_project_binding(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	issue: &TrackerIssue,
+) -> Result<BindingAttestation> {
+	let binding = attest_project_binding(state_store, project)?;
+	BindingAttestation::new(&binding, &issue.id, &issue.team.id)
+}
+
+pub(crate) fn attest_project_binding(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+) -> Result<ProjectBinding> {
+	let binding = match state_store.registered_project_binding(project.service_id())? {
+		Some(binding) => binding,
+		None => {
+			#[cfg(not(test))]
+			eyre::bail!("Project is not registered; lane admission is forbidden.");
+			#[cfg(test)]
+			ProjectBinding::new(
+				project.service_id(),
+				project.github().owner(),
+				project.github().repository(),
+				project.tracker().team_id(),
+				&tracker::automation_queue_label(project.service_id()),
+				"test-config-fingerprint",
+			)?
+		},
+	};
+
+	if binding.project_key() != project.service_id()
+		|| binding.github_owner() != project.github().owner()
+		|| binding.github_repository() != project.github().repository()
+		|| binding.tracker_team_id() != project.tracker().team_id()
+		|| binding.routing_label() != tracker::automation_queue_label(project.service_id())
+	{
+		eyre::bail!("Current project config does not match its registered immutable binding.");
+	}
+
+	Ok(binding)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

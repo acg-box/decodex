@@ -98,6 +98,49 @@ pub struct LaneId {
 	project_key: String,
 	tracker_issue_id: String,
 }
+
+/// Immutable proof that an observed tracker issue belongs to one registered project binding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BindingAttestation {
+	lane_id: LaneId,
+	binding_fingerprint: String,
+	tracker_team_id: String,
+	routing_label: String,
+}
+impl BindingAttestation {
+	pub fn new(
+		binding: &ProjectBinding,
+		tracker_issue_id: &str,
+		observed_team_id: &str,
+	) -> Result<Self> {
+		if observed_team_id != binding.tracker_team_id() {
+			eyre::bail!("Tracker issue is outside the registered project binding.");
+		}
+
+		Ok(Self {
+			lane_id: LaneId::new(binding.project_key(), tracker_issue_id)?,
+			binding_fingerprint: binding.config_fingerprint().to_owned(),
+			tracker_team_id: observed_team_id.to_owned(),
+			routing_label: binding.routing_label().to_owned(),
+		})
+	}
+
+	pub fn lane_id(&self) -> &LaneId {
+		&self.lane_id
+	}
+
+	pub fn binding_fingerprint(&self) -> &str {
+		&self.binding_fingerprint
+	}
+
+	pub fn tracker_team_id(&self) -> &str {
+		&self.tracker_team_id
+	}
+
+	pub fn routing_label(&self) -> &str {
+		&self.routing_label
+	}
+}
 impl LaneId {
 	pub fn new(project_key: &str, tracker_issue_id: &str) -> Result<Self> {
 		if project_key.trim().is_empty() || tracker_issue_id.trim().is_empty() {
@@ -121,7 +164,7 @@ impl LaneId {
 
 #[cfg(test)]
 mod tests {
-	use super::{LaneId, ProjectBinding};
+	use super::{BindingAttestation, LaneId, ProjectBinding};
 
 	#[test]
 	fn lane_identity_is_project_qualified() {
@@ -135,5 +178,21 @@ mod tests {
 		let error = ProjectBinding::new("pubfi", "helixbox", "", "team", "queue", "fp")
 			.expect_err("missing repository must fail");
 		assert!(error.to_string().contains("github_repository"));
+	}
+
+	#[test]
+	fn binding_attestation_rejects_foreign_tracker_team() {
+		let binding = ProjectBinding::new(
+			"pubfi",
+			"helixbox",
+			"pubfi-mono",
+			"pubfi-team",
+			"decodex:queued:pubfi",
+			"fingerprint",
+		)
+		.expect("binding");
+		let error = BindingAttestation::new(&binding, "issue-1", "foreign-team")
+			.expect_err("foreign team must fail");
+		assert!(error.to_string().contains("outside the registered project binding"));
 	}
 }

@@ -69,6 +69,8 @@ fn spawn_planned_next_daemon_child<T>(
 where
 	T: IssueTracker,
 {
+	let _project_binding =
+		orchestrator::dispatch_policy::attest_project_binding(state_store, context.project)?;
 	if summary.dispatch_mode != IssueDispatchMode::Closeout {
 		orchestrator::ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
 	}

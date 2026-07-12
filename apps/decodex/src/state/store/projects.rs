@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::{
+	lane_authority::ProjectBinding,
 	prelude::{Result, eyre},
 	state::store::{
 		self, ConnectorBackoff, ConnectorBackoffInput, DispatchSlotConfig, ProjectRegistration,
@@ -9,6 +10,15 @@ use crate::{
 };
 
 impl StateStore {
+	pub(crate) fn registered_project_binding(
+		&self,
+		service_id: &str,
+	) -> Result<Option<ProjectBinding>> {
+		let mut state = self.lock_without_refresh()?;
+		self.refresh_project_registry_state_locked(&mut state)?;
+		Ok(state.projects.get(service_id).map(|project| project.binding().clone()))
+	}
+
 	pub(crate) fn upsert_project(
 		&self,
 		registration: &ProjectRegistration,
