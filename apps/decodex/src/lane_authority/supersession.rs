@@ -909,6 +909,77 @@ mod tests {
 		assert!(edge.edge_id().starts_with("sha256:"));
 	}
 
+	#[test]
+	#[ignore = "requires DECODEX_PUBFI_MONO_REPO with the frozen public incident objects"]
+	fn pub_1704_predecessor_replays_from_real_git_objects() {
+		let fixture = serde_json::from_str::<IncidentFixture>(include_str!(
+			"../recovery/tests/fixtures/lane_authority_v2/pub_1704_superseded.json"
+		))
+		.expect("incident fixture");
+		let repository = std::env::var_os("DECODEX_PUBFI_MONO_REPO")
+			.map(std::path::PathBuf::from)
+			.expect("DECODEX_PUBFI_MONO_REPO");
+		let patch_set = super::super::build_canonical_patch_set(
+			&repository,
+			&fixture.predecessor.base_oid,
+			&fixture.predecessor.head_oid,
+		)
+		.expect("real canonical PatchSet");
+		assert_eq!(patch_set.schema, fixture.patch_set.schema);
+		assert_eq!(patch_set.digest, fixture.patch_set.digest);
+		assert_eq!(patch_set.merge_base_oid_hex(), fixture.patch_set.merge_base_oid);
+		assert_eq!(patch_set.ordered_commit_oids_hex(), fixture.patch_set.ordered_commit_oids);
+		assert_eq!(patch_set.patch_unit_digests(), fixture.patch_set.patch_unit_digests);
+		let predecessor_lane = LaneId::new("pubfi", &fixture.predecessor.issue_id).expect("lane");
+		let successor_lane = LaneId::new("pubfi", &fixture.successor.issue_id).expect("lane");
+		let handoff = RepairHandoffAuthority::new(
+			"pub-1704-to-pub-1705-real",
+			&fixture.repository_key,
+			predecessor_lane,
+			&fixture.predecessor.issue_id,
+			&fixture.predecessor.pr_url,
+			&fixture.predecessor.head_oid,
+			7,
+			&format!("refs/heads/{}", fixture.predecessor.base_ref),
+			&fixture.predecessor.base_oid,
+			&patch_set,
+			successor_lane.clone(),
+			&fixture.successor.issue_id,
+			"accepted-findings",
+			"review-checkpoint",
+			"operator",
+			"event",
+		)
+		.expect("real handoff");
+		let dispositions = fixture
+			.patch_set
+			.patch_unit_digests
+			.iter()
+			.map(|digest| PatchDisposition::LandedInSuccessor {
+				predecessor_patch_unit_digest: digest.clone(),
+				reachability_evidence: String::from("fixture-default-branch-reachability"),
+			})
+			.collect();
+		accept_supersession(
+			&handoff,
+			&SupersessionAcceptance {
+				handoff_id: String::from("pub-1704-to-pub-1705-real"),
+				repository_key: fixture.repository_key,
+				successor_lane_id: successor_lane,
+				successor_pr_url: fixture.successor.pr_url,
+				successor_head_oid: fixture.successor.head_oid,
+				successor_merge_oid: fixture.successor.merge_oid,
+				default_branch_reachability: String::from("fixture-default-branch-reachability"),
+				landed_successor: true,
+				predecessor_operation_active: false,
+				dispositions,
+			},
+			7,
+			None,
+		)
+		.expect("real typed edge");
+	}
+
 	#[derive(Deserialize)]
 	struct IncidentFixture {
 		schema: String,
@@ -916,6 +987,7 @@ mod tests {
 		repository_key: String,
 		predecessor: IncidentPredecessor,
 		successor: IncidentSuccessor,
+		patch_set: IncidentPatchSet,
 	}
 
 	#[derive(Deserialize)]
@@ -924,6 +996,7 @@ mod tests {
 		pr_url: String,
 		pr_state: String,
 		base_ref: String,
+		base_oid: String,
 		branch: String,
 		head_oid: String,
 	}
@@ -937,5 +1010,14 @@ mod tests {
 		branch: String,
 		head_oid: String,
 		merge_oid: String,
+	}
+
+	#[derive(Deserialize)]
+	struct IncidentPatchSet {
+		schema: String,
+		digest: String,
+		merge_base_oid: String,
+		ordered_commit_oids: Vec<String>,
+		patch_unit_digests: BTreeSet<String>,
 	}
 }

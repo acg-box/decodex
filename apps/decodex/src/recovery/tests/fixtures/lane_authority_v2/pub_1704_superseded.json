@@ -7,6 +7,7 @@
     "pr_url": "https://github.com/helixbox/pubfi-mono/pull/826",
     "pr_state": "OPEN",
     "base_ref": "main",
+    "base_oid": "aa057af13bca1bd69572eb640d125229d7e748fd",
     "branch": "x/pubfi-mono-pub-1704",
     "head_oid": "f5e89318b8539088121a58ebbb2731bb085f0ae9"
   },
@@ -18,5 +19,27 @@
     "branch": "x/pubfi-mono-pub-1705",
     "head_oid": "798eb431ec04a78b44e9da889b36a455cf51c202",
     "merge_oid": "4c3fdc38bb86e8ce683a117fc720b656ba3674ff"
+  },
+  "patch_set": {
+    "schema": "decodex.patch_set/1",
+    "digest": "9a872a36ed72f00ce4dd65a6730e762e3ca284afc265cdd2155d7a9c6061f760",
+    "merge_base_oid": "aa057af13bca1bd69572eb640d125229d7e748fd",
+    "ordered_commit_oids": [
+      "f5e89318b8539088121a58ebbb2731bb085f0ae9"
+    ],
+    "patch_unit_digests": [
+      "0442db1be707fb4dd0b5ee8da1f75abdb761c8873a0759206d8ff430d670743e",
+      "0d78588993c32a481d0234ea598797e57627427014f67d4cf86d4fcc09aed978",
+      "340481add7c0edb823eec7770b8b79433194dcee56c2829e65c1494e15f4113f",
+      "4cec55154e63a6d1605b0338be2afa00b0c7a278cce37c678223e6c122e17cd5",
+      "4e2c7cf4c572fe2d2d0f27d1a643fab23d6621b935429f01df582cf11e1e3caf",
+      "6492be847a53d068bba4936634ff06fb2e03a5fb86c07e61ddf619c20063658b",
+      "6723be8ca87eab37bee635bd8f83d22a00368108541bbce3974a9e1ee220f069",
+      "679ed6fa289ce8e2ae34e7beda1b3f09085d72d96abc62599077cc328a2206b5",
+      "86079711c40a195ebfe2f79686703522266b0f4181f0c9f6afc6f3c45e8ab966",
+      "9d4a68de50dafcb7e6844fcd3ce14bc64f63188e208e159e4804b1d33fe11fd5",
+      "be85e8bd71babe9ec9571de3b9eb5b926bc08b6728bf0054c3bf2d8e1fe89cdd",
+      "ea9acdfdf74a10d7092ee115dbc62c963af74939135e2cfcb9b4defad812e879"
+    ]
   }
 }

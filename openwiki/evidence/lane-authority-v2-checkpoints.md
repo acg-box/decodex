@@ -1146,6 +1146,15 @@ octopus merge retains all parents in object order and is not misclassified as em
 Five focused PatchSet fixtures pass. The named PUB incident still needs real object replay
 and force-push/base-change invalidation evidence before the C4 gate is complete.
 
+The named PUB-1704/#826 predecessor now freezes its real GitHub base
+`aa057af13bca1bd69572eb640d125229d7e748fd`, canonical PatchSet digest
+`9a872a36ed72f00ce4dd65a6730e762e3ca284afc265cdd2155d7a9c6061f760`, one ordered
+commit, and twelve unit digests. An explicit external-replay test rejects the existing
+shallow checkout, then passes against a temporary complete public clone: it rebuilds the
+same raw-object PatchSet and takes it through production `RepairHandoffAuthority` plus
+complete `SupersessionAcceptance`. The fixture embeds only compact identities/digests,
+not a base-tree bundle. Force-push/base-change runtime revalidation remains.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
