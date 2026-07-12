@@ -91,6 +91,7 @@ pub struct NoEffectiveDeltaRecovery {
 	schema: String,
 	operation_id: String,
 	lane_id: LaneId,
+	source_attempt_number: i64,
 	ordinal: u8,
 	state: NoEffectiveDeltaRecoveryState,
 	facts: NoEffectiveDeltaFacts,
@@ -104,6 +105,10 @@ impl NoEffectiveDeltaRecovery {
 
 	pub fn lane_id(&self) -> &LaneId {
 		&self.lane_id
+	}
+
+	pub const fn source_attempt_number(&self) -> i64 {
+		self.source_attempt_number
 	}
 
 	pub const fn ordinal(&self) -> u8 {
@@ -125,6 +130,7 @@ impl NoEffectiveDeltaRecovery {
 	pub fn validate(&self) -> Result<()> {
 		if self.schema != NO_EFFECTIVE_DELTA_RECOVERY_SCHEMA
 			|| self.operation_id.trim().is_empty()
+			|| self.source_attempt_number <= 0
 			|| self.ordinal != 1
 			|| self.fact_digest.trim().is_empty()
 			|| self.idempotency_key.trim().is_empty()
@@ -143,11 +149,13 @@ pub enum NoEffectiveDeltaCommand {
 	Observe {
 		operation_id: String,
 		lane_id: LaneId,
+		attempt_number: i64,
 		facts: NoEffectiveDeltaFacts,
 	},
 	ObserveRetryResult {
 		operation_id: String,
 		lane_id: LaneId,
+		attempt_number: i64,
 		facts: NoEffectiveDeltaFacts,
 	},
 	ProveAlreadySatisfied {
@@ -189,8 +197,8 @@ pub fn decide_no_effective_delta(
 				validator_receipt: independent_validator_receipt,
 			})
 		},
-		NoEffectiveDeltaCommand::Observe { operation_id, lane_id, facts } => {
-			if operation_id.trim().is_empty() || facts.validate().is_err() {
+		NoEffectiveDeltaCommand::Observe { operation_id, lane_id, attempt_number, facts } => {
+			if operation_id.trim().is_empty() || attempt_number <= 0 || facts.validate().is_err() {
 				return Err(NoEffectiveDeltaRejection::InvalidEvidence);
 			}
 			if facts.explicit_blocker {
@@ -201,6 +209,7 @@ pub fn decide_no_effective_delta(
 			if let Some(recovery) = current {
 				if recovery.operation_id != operation_id
 					|| recovery.lane_id != lane_id
+					|| recovery.source_attempt_number != attempt_number
 					|| recovery.fact_digest != fact_digest
 				{
 					return Err(NoEffectiveDeltaRejection::OperationDrift);
@@ -216,12 +225,14 @@ pub fn decide_no_effective_delta(
 				});
 			}
 
-			let idempotency_key = recovery_idempotency_key(&operation_id, &lane_id, &facts)
+			let idempotency_key =
+				recovery_idempotency_key(&operation_id, &lane_id, attempt_number, &facts)
 				.map_err(|_| NoEffectiveDeltaRejection::InvalidEvidence)?;
 			Ok(NoEffectiveDeltaDecision::Retry(NoEffectiveDeltaRecovery {
 				schema: String::from(NO_EFFECTIVE_DELTA_RECOVERY_SCHEMA),
 				operation_id,
 				lane_id,
+				source_attempt_number: attempt_number,
 				ordinal: 1,
 				state: NoEffectiveDeltaRecoveryState::RetryScheduled,
 				facts,
@@ -229,7 +240,12 @@ pub fn decide_no_effective_delta(
 				idempotency_key,
 			}))
 		},
-		NoEffectiveDeltaCommand::ObserveRetryResult { operation_id, lane_id, facts } => {
+		NoEffectiveDeltaCommand::ObserveRetryResult {
+			operation_id,
+			lane_id,
+			attempt_number,
+			facts,
+		} => {
 			let Some(recovery) = current else {
 				return Err(NoEffectiveDeltaRejection::InvalidEvidence);
 			};
@@ -237,6 +253,7 @@ pub fn decide_no_effective_delta(
 				facts.digest().map_err(|_| NoEffectiveDeltaRejection::InvalidEvidence)?;
 			if recovery.operation_id != operation_id
 				|| recovery.lane_id != lane_id
+				|| attempt_number <= recovery.source_attempt_number
 				|| recovery.fact_digest != fact_digest
 			{
 				return Err(NoEffectiveDeltaRejection::OperationDrift);
@@ -254,11 +271,13 @@ pub fn decide_no_effective_delta(
 fn recovery_idempotency_key(
 	operation_id: &str,
 	lane_id: &LaneId,
+	attempt_number: i64,
 	facts: &NoEffectiveDeltaFacts,
 ) -> Result<String> {
 	let material = serde_json::json!({
 		"lane_id": lane_id,
 		"operation_id": operation_id,
+		"source_attempt_number": attempt_number,
 		"validation_phase": "implementation",
 		"base_oid": facts.base_oid,
 		"head_oid": facts.head_oid,
@@ -298,6 +317,7 @@ mod tests {
 		NoEffectiveDeltaCommand::Observe {
 			operation_id: String::from("operation-1"),
 			lane_id: LaneId::new("project", "issue").expect("lane"),
+			attempt_number: 1,
 			facts,
 		}
 	}
@@ -342,6 +362,7 @@ mod tests {
 			NoEffectiveDeltaCommand::ObserveRetryResult {
 				operation_id: String::from("operation-1"),
 				lane_id: LaneId::new("project", "issue").expect("lane"),
+				attempt_number: 2,
 				facts: facts(false),
 			},
 		)

@@ -2,6 +2,7 @@ use std::fs;
 
 use crate::{
 	agent::PhaseGoalController,
+	lane_authority::{LaneCommand, LaneId, NoEffectiveDeltaRecoveryState},
 	orchestrator::{
 		IssueDispatchMode, IssueRunPlan, ManualAttentionRequested, PhaseGoalKind, PhaseGoalSpec,
 		PhaseGoalTransition, RepoGatePhaseGoalController, StateStore,
@@ -20,6 +21,32 @@ fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 		&[tracker::automation_active_label(TEST_SERVICE_ID).as_str()],
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let lane_id = LaneId::new(TEST_SERVICE_ID, &issue.id).expect("lane");
+	let base_oid = tests::git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	state_store
+		.transition_lane(
+			lane_id.clone(),
+			0,
+			"binding-1",
+			LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+		)
+		.expect("admit lane");
+	state_store
+		.transition_lane(
+			lane_id.clone(),
+			1,
+			"binding-1",
+			LaneCommand::AcquireClaim { run_id: String::from("pub-101-attempt-1") },
+		)
+		.expect("claim lane");
+	state_store
+		.transition_lane(
+			lane_id,
+			2,
+			"binding-1",
+			LaneCommand::FreezeAdmittedBase { oid: base_oid },
+		)
+		.expect("freeze base");
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: String::from("In Progress"),
@@ -53,7 +80,7 @@ fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 
 	assert!(matches!(
 		transition,
-		PhaseGoalTransition::Continue(PhaseGoalSpec {
+		PhaseGoalTransition::ScheduleContinuation(PhaseGoalSpec {
 			phase: PhaseGoalKind::RepairValidationFailures,
 			..
 		})
@@ -65,18 +92,47 @@ fn phase_goal_acceptance_rejects_repo_gate_pass_without_effective_delta() {
 	}));
 	assert!(events.iter().any(|event| {
 		event.event_type() == "phase_goal_transition"
-			&& event.payload()["signal"] == "validation_fail"
-			&& event.payload()["payload"]["errorClass"] == "validation_evidence_failed"
-			&& event.payload()["payload"]["laneDecision"] == "retry_failure"
-	}));
-	assert!(events.iter().any(|event| {
-		event.event_type() == "lane_decision"
-			&& event.payload()["next_action"] == "retry_failure"
-			&& event.payload()["validation_evidence_failure"] == true
+			&& event.payload()["signal"] == "no_effective_delta_retry_scheduled"
+			&& event.payload()["payload"]["ordinal"] == 1
 	}));
 	assert!(events.iter().all(|event| {
 		event.event_type() != "phase_goal_next" || event.payload()["phase"] != "handoff_evidence"
 	}));
+
+	let retry_run = IssueRunPlan {
+		attempt_number: 2,
+		run_id: String::from("pub-101-attempt-2"),
+		..issue_run.clone()
+	};
+	support::record_validation_evidence_progress_checkpoint(
+		&config,
+		&state_store,
+		&retry_run,
+		&[],
+	);
+	let error = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &retry_run,
+	}
+	.phase_goal_completed(PhaseGoalKind::RepairValidationFailures)
+	.expect_err("second no-effective-delta result must require attention");
+	let attention = error.downcast_ref::<ManualAttentionRequested>().expect("manual attention");
+	assert_eq!(attention.error_class.as_deref(), Some("no_effective_delta_unresolved"));
+	let operation_id = events
+		.iter()
+		.find(|event| {
+			event.event_type() == "phase_goal_transition"
+				&& event.payload()["signal"] == "no_effective_delta_retry_scheduled"
+		})
+		.and_then(|event| event.payload()["payload"]["operationId"].as_str())
+		.expect("operation id");
+	let recovery = state_store
+		.no_effective_delta_recovery(operation_id)
+		.expect("read recovery")
+		.expect("recovery");
+	assert_eq!(recovery.state(), NoEffectiveDeltaRecoveryState::AttentionRequired);
 }
 
 #[test]

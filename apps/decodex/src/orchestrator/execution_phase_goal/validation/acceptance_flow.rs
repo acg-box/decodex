@@ -4,8 +4,10 @@ mod failure;
 use serde_json::Value;
 
 use crate::{
+	lane_authority::{LaneId, NoEffectiveDeltaFacts, build_canonical_patch_set},
 	orchestrator::{
 		self, PhaseGoalKind, RepoGateCommandOutcome, ResolvedRepoGate, Result,
+		execution_failure::LoopGuardrailWorktreeFingerprint,
 		execution_phase_goal::{
 			acceptance::{
 				self, ValidationDecision, ValidationEvidence, validation_evidence_blocker_count,
@@ -63,6 +65,9 @@ impl RepoGatePhaseGoalController<'_> {
 		} else {
 			ValidationDecision::Fail
 		};
+		let no_effective_delta = (reason_code == "no_effective_delta")
+			.then(|| self.no_effective_delta_authority_facts(repo_gate, repo_gate_outcome, &fingerprint, checkpoint_payload))
+			.transpose()?;
 
 		Ok(ValidationEvidence {
 			phase,
@@ -81,6 +86,93 @@ impl RepoGatePhaseGoalController<'_> {
 			checkpoint_head_sha,
 			worktree_head_sha: head_sha,
 			blocker_count,
+			no_effective_delta_operation_id: no_effective_delta
+				.as_ref()
+				.map(|(operation_id, _)| operation_id.clone()),
+			no_effective_delta_facts: no_effective_delta.map(|(_, facts)| facts),
 		})
+	}
+
+	fn no_effective_delta_authority_facts(
+		&self,
+		repo_gate: &ResolvedRepoGate<'_>,
+		repo_gate_outcome: &RepoGateCommandOutcome,
+		fingerprint: &Option<LoopGuardrailWorktreeFingerprint>,
+		checkpoint_payload: Option<&Value>,
+	) -> Result<(String, NoEffectiveDeltaFacts)> {
+		let lane_id = LaneId::new(self.project.service_id(), &self.issue_run.issue.id)?;
+		let lane = self
+			.state_store
+			.lane(&lane_id)?
+			.ok_or_else(|| orchestrator::eyre::eyre!("No-effective-delta lane authority is missing."))?;
+		let admitted_base_oid = lane.admitted_base_oid().ok_or_else(|| {
+			orchestrator::eyre::eyre!("No-effective-delta admitted base authority is missing.")
+		})?;
+		let fingerprint = fingerprint.as_ref().ok_or_else(|| {
+			orchestrator::eyre::eyre!("No-effective-delta worktree fingerprint is unavailable.")
+		})?;
+		let patch_set = build_canonical_patch_set(
+			&self.issue_run.worktree.path,
+			admitted_base_oid,
+			&fingerprint.head_sha,
+		)
+		.map_err(|error| orchestrator::eyre::eyre!("Canonical PatchSet failed: {error}"))?;
+		let expected_surface_digest = orchestrator::loop_guardrail_text_hash(
+			&serde_json::to_string(&orchestrator::json!({
+				"title": self.issue_run.issue.title,
+				"description": self.issue_run.issue.description,
+			}))?,
+		);
+		let acceptance_criteria_digest = orchestrator::loop_guardrail_text_hash(
+			&format!("acceptance:{}", self.issue_run.issue.description),
+		);
+		let checkpoint_facts_digest = orchestrator::loop_guardrail_text_hash(
+			&serde_json::to_string(&checkpoint_payload.cloned().unwrap_or(Value::Null))?,
+		);
+		let validation_results_digest = orchestrator::loop_guardrail_text_hash(
+			&serde_json::to_string(&orchestrator::json!({
+				"profile": repo_gate.profile_name(),
+				"canonicalize": repo_gate.canonicalize_commands(),
+				"verify": repo_gate.verify_commands(),
+				"tracked_rewrites": repo_gate_outcome.tracked_rewrite_decision().map(|value| value.to_json()),
+			}))?,
+		);
+		let name_only_digest = orchestrator::loop_guardrail_text_hash(
+			&serde_json::to_string(&acceptance::validation_evidence_changed_surfaces(
+				&self.issue_run.worktree.path,
+			))?,
+		);
+		let facts = NoEffectiveDeltaFacts::new(
+			admitted_base_oid,
+			&patch_set.head_oid_hex(),
+			&patch_set.merge_base_oid_hex(),
+			&patch_set.digest,
+			&name_only_digest,
+			&fingerprint.effective_status_hash,
+			&expected_surface_digest,
+			&acceptance_criteria_digest,
+			&checkpoint_facts_digest,
+			&validation_results_digest,
+			self.issue_run.issue.blockers.iter().any(|blocker| {
+				!self
+					.workflow
+					.frontmatter()
+					.tracker()
+					.terminal_states()
+					.iter()
+					.any(|state| state == &blocker.state.name)
+			}),
+		)?;
+		let operation_id = format!(
+			"no-effective-delta:{}",
+			orchestrator::loop_guardrail_text_hash(&format!(
+				"{}:{}:{}:{}",
+				lane_id.project_key(),
+				lane_id.tracker_issue_id(),
+				admitted_base_oid,
+				acceptance_criteria_digest,
+			)),
+		);
+		Ok((operation_id, facts))
 	}
 }

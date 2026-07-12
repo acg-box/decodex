@@ -3,7 +3,11 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use crate::{agent::PhaseGoalKind, orchestrator::RepoGateTrackedRewriteDecision};
+use crate::{
+	agent::PhaseGoalKind,
+	lane_authority::NoEffectiveDeltaFacts,
+	orchestrator::RepoGateTrackedRewriteDecision,
+};
 
 #[derive(Debug)]
 pub(crate) struct ValidationEvidenceFailure {
@@ -44,6 +48,8 @@ pub(crate) struct ValidationEvidence {
 	pub(crate) checkpoint_head_sha: Option<String>,
 	pub(crate) worktree_head_sha: Option<String>,
 	pub(crate) blocker_count: usize,
+	pub(crate) no_effective_delta_operation_id: Option<String>,
+	pub(crate) no_effective_delta_facts: Option<NoEffectiveDeltaFacts>,
 }
 impl ValidationEvidence {
 	pub(crate) fn next_action(&self) -> &'static str {

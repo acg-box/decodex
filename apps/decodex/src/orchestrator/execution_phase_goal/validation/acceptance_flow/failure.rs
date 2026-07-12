@@ -6,6 +6,9 @@ use crate::orchestrator::{
 		controller::RepoGatePhaseGoalController,
 	},
 };
+use crate::lane_authority::{
+	LaneId, NoEffectiveDeltaCommand, NoEffectiveDeltaDecision,
+};
 
 impl RepoGatePhaseGoalController<'_> {
 	pub(in crate::orchestrator::execution_phase_goal) fn continue_after_validation_evidence_failure(
@@ -16,6 +19,11 @@ impl RepoGatePhaseGoalController<'_> {
 		let failure = ValidationEvidenceFailure::new(acceptance_check.reason_code);
 		let error_class = failure.error_class();
 		let error = Report::new(failure);
+		if acceptance_check.reason_code == "no_effective_delta"
+			&& let Some(transition) = self.continue_after_no_effective_delta(phase, acceptance_check)?
+		{
+			return Ok(transition);
+		}
 		let lane_snapshot = LaneDecisionSnapshot::validation_evidence(
 			self.issue_run.issue.identifier.clone(),
 			self.issue_run.run_id.clone(),
@@ -93,6 +101,80 @@ impl RepoGatePhaseGoalController<'_> {
 		self.persist_next_phase_goal(&next_goal, "validation_evidence_fail")?;
 
 		Ok(PhaseGoalTransition::Continue(next_goal))
+	}
+
+	fn continue_after_no_effective_delta(
+		&self,
+		phase: PhaseGoalKind,
+		acceptance_check: &ValidationEvidence,
+	) -> Result<Option<PhaseGoalTransition>> {
+		let operation_id = acceptance_check
+			.no_effective_delta_operation_id
+			.as_ref()
+			.ok_or_else(|| orchestrator::eyre::eyre!("No-effective-delta operation is missing."))?;
+		let facts = acceptance_check
+			.no_effective_delta_facts
+			.clone()
+			.ok_or_else(|| orchestrator::eyre::eyre!("No-effective-delta facts are missing."))?;
+		let lane_id = LaneId::new(self.project.service_id(), &self.issue_run.issue.id)?;
+		let current = self.state_store.no_effective_delta_recovery(operation_id)?;
+		let command = if current.as_ref().is_some_and(|recovery| {
+			self.issue_run.attempt_number > recovery.source_attempt_number()
+		}) {
+			NoEffectiveDeltaCommand::ObserveRetryResult {
+				operation_id: operation_id.clone(),
+				lane_id,
+				attempt_number: self.issue_run.attempt_number,
+				facts,
+			}
+		} else {
+			NoEffectiveDeltaCommand::Observe {
+				operation_id: operation_id.clone(),
+				lane_id,
+				attempt_number: self.issue_run.attempt_number,
+				facts,
+			}
+		};
+		match self.state_store.decide_no_effective_delta(operation_id, command)? {
+			NoEffectiveDeltaDecision::Retry(recovery) => {
+				let next_phase = acceptance::validation_evidence_repair_phase(phase);
+				let detail = format!(
+					"No effective delta was observed. Run the one bounded repair continuation with recovery `{}` and preserve its complete diagnostics.",
+					recovery.idempotency_key(),
+				);
+				let next_goal = self.phase_goal_spec(next_phase, Some(&detail));
+				self.record_phase_goal_transition(
+					phase,
+					"no_effective_delta_retry_scheduled",
+					orchestrator::json!({
+						"operationId": operation_id,
+						"ordinal": recovery.ordinal(),
+						"idempotencyKey": recovery.idempotency_key(),
+					}),
+				)?;
+				self.persist_next_phase_goal(&next_goal, "no_effective_delta_retry_scheduled")?;
+				Ok(Some(PhaseGoalTransition::ScheduleContinuation(next_goal)))
+			},
+			NoEffectiveDeltaDecision::AttentionRequired { reason_code, .. } => {
+				self.record_phase_goal_transition(
+					phase,
+					"no_effective_delta_attention_required",
+					orchestrator::json!({
+						"operationId": operation_id,
+						"reasonCode": reason_code,
+					}),
+				)?;
+				self.manual_attention_requested(
+					reason_code,
+					Report::new(ValidationEvidenceFailure::new(reason_code)),
+				)
+				.map(Some)
+			},
+			NoEffectiveDeltaDecision::Blocked => Ok(None),
+			NoEffectiveDeltaDecision::AlreadySatisfied { .. } => {
+				orchestrator::eyre::bail!("Already-satisfied authority cannot originate from no-delta observation.")
+			},
+		}
 	}
 
 	fn manual_attention_requested(

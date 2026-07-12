@@ -169,6 +169,7 @@ fn no_effective_delta_observation() -> NoEffectiveDeltaCommand {
 	NoEffectiveDeltaCommand::Observe {
 		operation_id: String::from("operation-1"),
 		lane_id: LaneId::new("pubfi", "PUB-101").expect("lane"),
+		attempt_number: 1,
 		facts: NoEffectiveDeltaFacts::new(
 			"base",
 			"head",
@@ -187,12 +188,17 @@ fn no_effective_delta_observation() -> NoEffectiveDeltaCommand {
 }
 
 fn no_effective_delta_retry_result() -> NoEffectiveDeltaCommand {
-	let NoEffectiveDeltaCommand::Observe { operation_id, lane_id, facts } =
+	let NoEffectiveDeltaCommand::Observe { operation_id, lane_id, facts, .. } =
 		no_effective_delta_observation()
 	else {
 		unreachable!();
 	};
-	NoEffectiveDeltaCommand::ObserveRetryResult { operation_id, lane_id, facts }
+	NoEffectiveDeltaCommand::ObserveRetryResult {
+		operation_id,
+		lane_id,
+		attempt_number: 2,
+		facts,
+	}
 }
 
 #[test]

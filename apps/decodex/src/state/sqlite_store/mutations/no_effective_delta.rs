@@ -46,6 +46,7 @@ impl SqliteStateStore {
 		next.validate()?;
 		if current.operation_id() != next.operation_id()
 			|| current.lane_id() != next.lane_id()
+			|| current.source_attempt_number() != next.source_attempt_number()
 			|| current.ordinal() != next.ordinal()
 		{
 			eyre::bail!("No-effective-delta recovery identity cannot change.");
