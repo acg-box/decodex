@@ -119,6 +119,41 @@ fn no_effective_delta_recovery_survives_restart_and_replays_exactly_once() {
 	);
 }
 
+#[test]
+fn no_effective_delta_recovery_rejects_tampered_durable_diagnostics_on_open() {
+	let temp_dir = TempDir::new().expect("tempdir");
+	let path = temp_dir.path().join("state.sqlite");
+	let store = StateStore::open(&path).expect("store");
+	store.upsert_project(&registered_project(&temp_dir)).expect("register project");
+	store
+		.try_acquire_registered_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
+		.expect("claim");
+	store
+		.decide_no_effective_delta("operation-1", no_effective_delta_observation())
+		.expect("persist recovery");
+	drop(store);
+
+	let connection = rusqlite::Connection::open(&path).expect("open sqlite");
+	let payload = connection
+		.query_row(
+			"SELECT payload_json FROM no_effective_delta_recoveries WHERE operation_id = 'operation-1'",
+			[],
+			|row| row.get::<_, String>(0),
+		)
+		.expect("read recovery");
+	let mut payload = serde_json::from_str::<serde_json::Value>(&payload).expect("decode recovery");
+	payload["facts"]["head_oid"] = serde_json::Value::String(String::from("tampered"));
+	connection
+		.execute(
+			"UPDATE no_effective_delta_recoveries SET payload_json = ?1 WHERE operation_id = 'operation-1'",
+			[serde_json::to_string(&payload).expect("encode recovery")],
+		)
+		.expect("tamper recovery");
+	drop(connection);
+
+	assert!(StateStore::open(&path).is_err());
+}
+
 fn no_effective_delta_observation() -> NoEffectiveDeltaCommand {
 	NoEffectiveDeltaCommand::Observe {
 		operation_id: String::from("operation-1"),

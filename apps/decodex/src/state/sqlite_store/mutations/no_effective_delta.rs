@@ -9,6 +9,7 @@ impl SqliteStateStore {
 		&self,
 		recovery: &NoEffectiveDeltaRecovery,
 	) -> Result<()> {
+		recovery.validate()?;
 		let payload = serde_json::to_string(recovery)?;
 		let inserted = self.connection.execute(
 			"INSERT OR IGNORE INTO no_effective_delta_recoveries (
