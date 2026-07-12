@@ -1329,6 +1329,16 @@ next attempt's matching no-delta result CASes to `attention_required` and raises
 third scheduling path. C6 still requires the independent deterministic
 `already_satisfied` validator path and final scenario-gate binding before completion.
 
+Commit `62806065` binds ADJ-01 through ADJ-04 to their exact manifest test names and
+introduces `scripts/verify_lane_authority_v2_gates.sh`. The verifier reads the frozen
+scenario manifest, rejects missing/duplicate definitions, and runs every named test for
+the requested checkpoint; `C6` verifies all four scenarios. `already_satisfied` no
+longer accepts an arbitrary string: it requires a typed validation receipt binding an
+opaque validator invocation fingerprint, admitted base, acceptance digest, validation
+result digest, and an explicit proof that no issue-owned mutation is required. This
+closes the C6 contract/gate surface; production generation activation remains gated by
+C1-C5 and C7 rather than treating a checkpoint-local gate as whole-system readiness.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
@@ -1337,5 +1347,5 @@ third scheduling path. C6 still requires the independent deterministic
 | C3 transition and effects | In progress on PR #1092 | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
 | C4 supersession and conflicts | Pending | Typed edge, deterministic closeout crash/replay, conflict release, obsolete scan, PUB-1704/PUB-1705 fixture/recovery |
 | C5 telemetry and operator audit | Pending | Signed chain audit/recovery, diagnose/timeline/audit, metrics, full bounded projections while preserving C1 privacy boundary |
-| C6 adjacent defects | Pending | Already-satisfied/bounded-retry/attention outcomes and parser-level manual `--related` rejection |
+| C6 adjacent defects | Behavior and checkpoint gate complete; held for C7 integration | ADJ-01..04 pass: typed already-satisfied receipt, one bounded continuation, durable attention, and parser-level manual `--related` rejection |
 | C7 final validation and cleanup | Pending | Attested activation binary, full gates, review, exact-head landing, issue/PR/worktree/authority audit |
