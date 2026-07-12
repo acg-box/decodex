@@ -19,10 +19,10 @@ pub use no_effective_delta::{
 };
 pub use patch_set::{CanonicalPatchSet, PatchSetBuildError, build_canonical_patch_set};
 pub use supersession::{
-	CloseoutEffectPlanItem, PatchDisposition, RepairHandoffAuthority, RepairHandoffState,
-	SupersededCloseoutCommand, SupersededCloseoutOperation, SupersededCloseoutRejection,
-	SupersededCloseoutStage, SupersessionAcceptance, SupersessionEdge, SupersessionRejection,
-	accept_supersession, transition_superseded_closeout,
+	CloseoutEffectPlanItem, PatchDisposition, PredecessorPatchReadback, RepairHandoffAuthority,
+	RepairHandoffState, SupersededCloseoutCommand, SupersededCloseoutOperation,
+	SupersededCloseoutRejection, SupersededCloseoutStage, SupersessionAcceptance, SupersessionEdge,
+	SupersessionRejection, accept_supersession, transition_superseded_closeout,
 };
 
 use crate::prelude::{Result, eyre};

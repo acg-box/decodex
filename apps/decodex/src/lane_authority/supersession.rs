@@ -263,6 +263,15 @@ impl PatchDisposition {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PredecessorPatchReadback {
+	pub target_base_ref: String,
+	pub target_base_oid: String,
+	pub merge_base_oid: String,
+	pub head_oid: String,
+	pub patch_set_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SupersessionAcceptance {
 	pub handoff_id: String,
 	pub repository_key: String,
@@ -273,6 +282,7 @@ pub struct SupersessionAcceptance {
 	pub default_branch_reachability: String,
 	pub landed_successor: bool,
 	pub predecessor_operation_active: bool,
+	pub predecessor_patch_readback: PredecessorPatchReadback,
 	pub dispositions: Vec<PatchDisposition>,
 }
 
@@ -571,6 +581,7 @@ pub enum SupersessionRejection {
 	SuccessorNotLanded,
 	SuccessorNotReachable,
 	PredecessorOperationActive,
+	PredecessorPatchChanged,
 	IncompletePatchDisposition,
 	ExistingEdge,
 }
@@ -610,6 +621,15 @@ pub fn accept_supersession(
 	}
 	if acceptance.predecessor_operation_active {
 		return Err(SupersessionRejection::PredecessorOperationActive);
+	}
+	let readback = &acceptance.predecessor_patch_readback;
+	if readback.target_base_ref != handoff.target_base_ref
+		|| readback.target_base_oid != handoff.target_base_oid
+		|| readback.merge_base_oid != handoff.merge_base_oid
+		|| readback.head_oid != handoff.predecessor_head_oid
+		|| readback.patch_set_digest != handoff.predecessor_patch_set_digest
+	{
+		return Err(SupersessionRejection::PredecessorPatchChanged);
 	}
 	let dispositions = acceptance
 		.dispositions
@@ -694,6 +714,13 @@ mod tests {
 			default_branch_reachability: String::from("reachable-at-version"),
 			landed_successor: true,
 			predecessor_operation_active: false,
+			predecessor_patch_readback: PredecessorPatchReadback {
+				target_base_ref: String::from("refs/heads/main"),
+				target_base_oid: String::from("fixture-base"),
+				merge_base_oid: String::from("fixture-merge-base"),
+				head_oid: String::from("predecessor-head"),
+				patch_set_digest: String::from("patch-set"),
+			},
 			dispositions: vec![
 				PatchDisposition::LandedInSuccessor {
 					predecessor_patch_unit_digest: String::from("patch-a"),
@@ -767,6 +794,26 @@ mod tests {
 			accept_supersession(&handoff(), &incomplete, 7, None),
 			Err(SupersessionRejection::IncompletePatchDisposition)
 		);
+	}
+
+	#[test]
+	fn force_push_base_and_patch_set_readback_changes_fail_closed() {
+		let mut force_push = acceptance();
+		force_push.predecessor_patch_readback.head_oid = String::from("force-pushed");
+		let mut base_change = acceptance();
+		base_change.predecessor_patch_readback.target_base_oid = String::from("advanced-base");
+		let mut merge_base_change = acceptance();
+		merge_base_change.predecessor_patch_readback.merge_base_oid =
+			String::from("changed-merge-base");
+		let mut patch_change = acceptance();
+		patch_change.predecessor_patch_readback.patch_set_digest =
+			String::from("changed-patch-set");
+		for changed in [force_push, base_change, merge_base_change, patch_change] {
+			assert_eq!(
+				accept_supersession(&handoff(), &changed, 7, None),
+				Err(SupersessionRejection::PredecessorPatchChanged)
+			);
+		}
 	}
 
 	#[test]
@@ -897,6 +944,13 @@ mod tests {
 				default_branch_reachability: String::from("fixture-default-branch-reachability"),
 				landed_successor: true,
 				predecessor_operation_active: false,
+				predecessor_patch_readback: PredecessorPatchReadback {
+					target_base_ref: String::from("refs/heads/main"),
+					target_base_oid: String::from("fixture-base"),
+					merge_base_oid: String::from("fixture-merge-base"),
+					head_oid: fixture.predecessor.head_oid.clone(),
+					patch_set_digest: String::from("fixture-patch-set"),
+				},
 				dispositions: vec![PatchDisposition::LandedInSuccessor {
 					predecessor_patch_unit_digest: String::from("fixture-patch-unit"),
 					reachability_evidence: String::from("fixture-default-branch-reachability"),
@@ -972,6 +1026,13 @@ mod tests {
 				default_branch_reachability: String::from("fixture-default-branch-reachability"),
 				landed_successor: true,
 				predecessor_operation_active: false,
+				predecessor_patch_readback: PredecessorPatchReadback {
+					target_base_ref: format!("refs/heads/{}", fixture.predecessor.base_ref),
+					target_base_oid: fixture.predecessor.base_oid,
+					merge_base_oid: fixture.patch_set.merge_base_oid,
+					head_oid: fixture.predecessor.head_oid,
+					patch_set_digest: fixture.patch_set.digest,
+				},
 				dispositions,
 			},
 			7,

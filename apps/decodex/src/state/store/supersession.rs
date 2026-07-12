@@ -395,6 +395,13 @@ mod tests {
 					default_branch_reachability: String::from("reachable"),
 					landed_successor: true,
 					predecessor_operation_active: false,
+					predecessor_patch_readback: crate::lane_authority::PredecessorPatchReadback {
+						target_base_ref: String::from("refs/heads/main"),
+						target_base_oid: String::from("fixture-base"),
+						merge_base_oid: String::from("fixture-merge-base"),
+						head_oid: String::from("predecessor-head"),
+						patch_set_digest: String::from("patch-set"),
+					},
 					dispositions: vec![PatchDisposition::LandedInSuccessor {
 						predecessor_patch_unit_digest: String::from("patch-a"),
 						reachability_evidence: String::from("reachable"),

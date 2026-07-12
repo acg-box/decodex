@@ -1155,6 +1155,13 @@ same raw-object PatchSet and takes it through production `RepairHandoffAuthority
 complete `SupersessionAcceptance`. The fixture embeds only compact identities/digests,
 not a base-tree bundle. Force-push/base-change runtime revalidation remains.
 
+Supersession acceptance now requires a fresh typed predecessor PatchSet readback. Target
+base ref/OID, selected merge base, predecessor head, and canonical PatchSet digest must
+all equal the immutable handoff; any force-push, base advance, merge-base shift, or object
+change returns `PredecessorPatchChanged` before disposition or terminal authority can be
+accepted. Twelve supersession tests pass (plus the explicit real-object replay test,
+ignored unless its complete external checkout is supplied).
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
