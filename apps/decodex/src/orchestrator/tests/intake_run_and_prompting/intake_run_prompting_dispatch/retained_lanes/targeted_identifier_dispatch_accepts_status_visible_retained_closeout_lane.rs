@@ -1,4 +1,5 @@
 use crate::{
+	lane_authority::{LaneCommand, LaneId},
 	orchestrator::{
 		self, IssueDispatchMode, TargetIssueRunContext,
 		tests::{self, FakeTracker, intake_run_and_prompting, recovery_terminal_support},
@@ -20,6 +21,22 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
 	let head_oid = tests::git_output(&worktree.path, &["rev-parse", "HEAD"]);
 	let pr_url = "https://github.com/hack-ink/decodex/pull/181";
+	let binding = config.project_binding("test-config-fingerprint");
+	let lane_id = LaneId::new(config.service_id(), &issue.id).expect("lane id");
+	for command in [
+		LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+		LaneCommand::AcquireClaim { run_id: String::from("run-1") },
+		LaneCommand::AttachWorktree {
+			branch_name: worktree.branch_name.clone(),
+			worktree_path: worktree.path.clone(),
+		},
+		LaneCommand::BeginRun,
+		LaneCommand::BeginReview,
+	] {
+		state_store
+			.apply_lane_command(lane_id.clone(), binding.config_fingerprint(), command)
+			.expect("canonical retained lane");
+	}
 
 	state_store
 		.upsert_worktree(

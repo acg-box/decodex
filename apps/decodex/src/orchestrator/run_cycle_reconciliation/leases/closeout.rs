@@ -34,7 +34,12 @@ where
 	)? {
 		return Ok(false);
 	}
-	if retained_closeout_lease_has_fresh_activity(lease, issue, context.project, now_unix_epoch)? {
+	if retained_closeout_lease_has_fresh_activity(
+		lease.run_id(),
+		issue,
+		context.project,
+		now_unix_epoch,
+	)? {
 		return Ok(true);
 	}
 
@@ -56,7 +61,7 @@ where
 }
 
 pub(crate) fn retained_closeout_lease_has_fresh_activity(
-	lease: &IssueLease,
+	run_id: &str,
 	issue: &TrackerIssue,
 	project: &ServiceConfig,
 	now_unix_epoch: i64,
@@ -68,6 +73,6 @@ pub(crate) fn retained_closeout_lease_has_fresh_activity(
 		return Ok(false);
 	};
 
-	Ok(marker.run_id() == lease.run_id()
+	Ok(marker.run_id() == run_id
 		&& run_cycle_reconciliation::worktree_activity_marker_is_fresh(&marker, now_unix_epoch))
 }

@@ -168,14 +168,17 @@ impl StateStore {
 		if lane.claim_run_id().is_none() {
 			eyre::bail!("Recovered worktree requires an active canonical lane claim.");
 		}
-		self.apply_lane_command(
-			lane_id,
-			lane.binding_fingerprint(),
-			LaneCommand::AttachWorktree {
-				branch_name: branch_name.to_owned(),
-				worktree_path: PathBuf::from(worktree_path),
-			},
-		)?;
+		let recovered_path = PathBuf::from(worktree_path);
+		if lane.branch_name() != Some(branch_name) || lane.worktree_path() != Some(&recovered_path) {
+			self.apply_lane_command(
+				lane_id,
+				lane.binding_fingerprint(),
+				LaneCommand::AttachWorktree {
+					branch_name: branch_name.to_owned(),
+					worktree_path: recovered_path,
+				},
+			)?;
+		}
 		#[cfg(not(test))]
 		return Ok(());
 

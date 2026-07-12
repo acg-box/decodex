@@ -37,12 +37,17 @@ pub(crate) fn closeout_lane_active_claim_blocks_dispatch(
 		return Ok(false);
 	}
 
-	let Some(lease) = state_store.lease_for_issue(&issue.id)? else {
+	let Some(claim) = state_store.claim_for_lane(project.service_id(), &issue.id)? else {
 		return Ok(true);
 	};
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 
-	run_cycle::retained_closeout_lease_has_fresh_activity(&lease, issue, project, now_unix_epoch)
+	run_cycle::retained_closeout_lease_has_fresh_activity(
+		claim.run_id(),
+		issue,
+		project,
+		now_unix_epoch,
+	)
 }
 
 pub(crate) fn target_closeout_preferred_run_identity<T>(
@@ -93,7 +98,11 @@ where
 	if !context.state_store.issue_has_active_shared_claim(context.project.service_id(), issue_id)? {
 		return Ok(false);
 	}
-	if context.state_store.lease_for_issue(&issue.id)?.is_none() {
+	if context
+		.state_store
+		.claim_for_lane(context.project.service_id(), &issue.id)?
+		.is_none()
+	{
 		return Ok(false);
 	}
 
