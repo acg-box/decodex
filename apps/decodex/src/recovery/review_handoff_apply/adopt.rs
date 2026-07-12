@@ -1,3 +1,4 @@
+mod effects;
 mod failure;
 mod labels;
 mod local_state;
@@ -71,9 +72,23 @@ pub(in crate::recovery) fn apply_review_handoff_adopt(
 	};
 	let event = recovery::review_handoff_adopt_event(context, validation, active_label_restored);
 
-	if let Err(error) = audit::write_adopt_audit(context, validation, &event)
-		.and_then(|()| context.state_store.record_linear_execution_event(&event))
-	{
+	let audit_effect = effects::plan_adopt_audit_effect(context, validation, &event)?;
+	let invoking = effects::begin_adopt_audit_effect(context, &audit_effect)?;
+	let audit_created = if invoking.state() == crate::lane_authority::EffectState::Succeeded {
+		false
+	} else {
+		match audit::write_adopt_audit(context, validation, &event) {
+			Ok(created) => created,
+			Err(error) => {
+				effects::mark_adopt_audit_outcome_unknown(context, &invoking)?;
+				return Err(error);
+			},
+		}
+	};
+	if invoking.state() != crate::lane_authority::EffectState::Succeeded {
+		effects::record_adopt_audit_receipt(context, &invoking, audit_created)?;
+	}
+	if let Err(error) = context.state_store.record_linear_execution_event(&event) {
 		failure::guard_adopt_lane_after_external_failure(context, validation)?;
 		return Err(error);
 	}

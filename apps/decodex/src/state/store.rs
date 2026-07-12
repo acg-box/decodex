@@ -2,6 +2,7 @@ pub(in crate::state) mod retarget;
 
 mod autonomy;
 mod decision_contracts;
+mod effects;
 mod execution_evidence;
 mod inputs;
 mod lanes;

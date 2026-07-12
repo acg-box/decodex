@@ -1,4 +1,5 @@
 mod autonomy_program;
+mod effects;
 mod events;
 mod protocol;
 mod registry;

@@ -43,6 +43,7 @@ impl SqliteStateStore {
 
 		let store = Self { connection };
 
+		store.reject_future_schema_version()?;
 		store.bootstrap_schema()?;
 
 		Ok(store)

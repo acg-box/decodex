@@ -1,7 +1,10 @@
 use tempfile::TempDir;
 
 use crate::{
-	lane_authority::{LaneId, LanePhase, ProjectBinding},
+	lane_authority::{
+		EffectClass, EffectCommand, EffectState, LaneCommand, LaneEffect, LaneEffectKind, LaneId,
+		LanePhase, ProjectBinding,
+	},
 	state::{ProjectRegistration, StateStore},
 };
 
@@ -30,6 +33,61 @@ fn registered_project(temp_dir: &TempDir) -> ProjectRegistration {
 		updated_at: String::from("2026-07-12T00:00:00Z"),
 		updated_at_unix: 1_783_814_400,
 	}
+}
+
+#[test]
+fn lane_effect_journal_survives_restart_and_revalidates_lane_epoch() {
+	let temp_dir = TempDir::new().expect("tempdir");
+	let path = temp_dir.path().join("state.sqlite");
+	let store = StateStore::open(&path).expect("store");
+	store.upsert_project(&registered_project(&temp_dir)).expect("register project");
+	store
+		.try_acquire_registered_lease("pubfi", "PUB-101", "run-1", LEASE_IN_PROGRESS_STATE)
+		.expect("claim");
+	let lane_id = LaneId::new("pubfi", "PUB-101").expect("lane id");
+	let lane = store.lane(&lane_id).expect("lane read").expect("lane");
+	let effect = LaneEffect::plan(
+		"effect-1",
+		"operation-1",
+		0,
+		lane_id.clone(),
+		lane.binding_fingerprint(),
+		"run-1",
+		lane.epoch(),
+		LaneEffectKind::LinearIssueCommentCreate,
+		EffectClass::DurablePublication,
+		"operation-1:comment",
+		"sha256:request",
+		"sha256:desired",
+		"sha256:facts",
+	)
+	.expect("effect");
+	store.plan_lane_effect(effect).expect("plan effect");
+	let invoking = store
+		.apply_lane_effect_command(
+			"effect-1",
+			0,
+			EffectCommand::BeginInvocation {
+				lane_epoch: lane.epoch(),
+				facts_fingerprint: String::from("sha256:facts"),
+			},
+		)
+		.expect("begin effect");
+	assert_eq!(invoking.state(), EffectState::Invoking);
+	drop(store);
+
+	let reopened = StateStore::open(&path).expect("reopen");
+	assert_eq!(
+		reopened.lane_effect("effect-1").expect("effect read").expect("effect").state(),
+		EffectState::Invoking,
+	);
+	reopened
+		.apply_lane_command(lane_id, lane.binding_fingerprint(), LaneCommand::BeginRun)
+		.expect("advance lane");
+	let error = reopened
+		.apply_lane_effect_command("effect-1", 1, EffectCommand::MarkOutcomeUnknown)
+		.expect_err("stale lane epoch must reject journal mutation");
+	assert!(error.to_string().contains("prerequisites drifted"));
 }
 
 #[test]

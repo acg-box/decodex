@@ -57,6 +57,22 @@ DROP INDEX IF EXISTS lanes_active_tracker_issue_idx;
 CREATE UNIQUE INDEX lanes_active_tracker_issue_idx
 ON lanes (tracker_issue_id)
 WHERE phase IN ('claimed', 'running', 'waiting_review');
+CREATE TABLE IF NOT EXISTS lane_effects (
+	effect_id TEXT PRIMARY KEY NOT NULL,
+	operation_id TEXT NOT NULL,
+	ordinal INTEGER NOT NULL,
+	project_key TEXT NOT NULL,
+	tracker_issue_id TEXT NOT NULL,
+	journal_epoch INTEGER NOT NULL,
+	kind TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	UNIQUE (operation_id, ordinal),
+	FOREIGN KEY (project_key, tracker_issue_id)
+		REFERENCES lanes (project_key, tracker_issue_id)
+);
+CREATE INDEX IF NOT EXISTS lane_effects_lane_idx
+ON lane_effects (project_key, tracker_issue_id, operation_id, ordinal);
 CREATE TABLE IF NOT EXISTS run_attempts (
 	run_id TEXT PRIMARY KEY NOT NULL,
 	project_id TEXT,

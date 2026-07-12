@@ -957,21 +957,34 @@ production legacy writer in review-handoff adoption has been replaced by an expl
 `RecoveryAdoption` Intake Authority, binding attestation, canonical claim, lane worktree
 attachment, lane-qualified attempt, and `Claimed -> Running -> WaitingReview` transitions.
 
-Recovery adoption external failures no longer erase accepted local authority. They mark
-the attempt failed and transition the lane to `NeedsAttention`; pre-commit local failures
-detach the exact adopted worktree under CAS and release the claim. `DetachWorktree` rejects
-stale branch/path or phase evidence. Focused evidence: 11 lane-authority tests, 17 lease
+Recovery adoption external failures no longer erase accepted local authority. Known
+post-publication local failures mark the attempt failed and transition the lane to
+`NeedsAttention`; unknown comment outcomes remain `WaitingReview` with a durable
+`ReconciliationRequired` effect instead of being retried. Pre-commit local failures detach
+the exact adopted worktree under CAS and release the claim. `DetachWorktree` rejects stale
+branch/path or phase evidence. Focused evidence: 11 lane-authority tests, 17 lease
 tests, 128 recovery tests, the recovery-adoption authority/lane fixture, and
 `cargo check -p decodex --all-targets` all pass. Migration/quarantine, effect journal,
 typed supersession, telemetry, and adjacent XY-1249 fixes remain incomplete, so C1/C2 are
 not complete.
+
+The first C3 slice adds the canonical effect transition kernel and persistent SQLite
+journal with immutable `(operation_id, ordinal)`, lane/binding/claim/epoch prerequisites,
+journal CAS, request/facts/desired-state digests, typed compensation class, unknown-outcome
+reconciliation, and immutable receipts. Runtime schema 13 rejects a future schema before
+bootstrap mutation. Recovery-adoption audit comments now plan and begin a durable-publication
+effect before provider invocation, reconcile an existing idempotency marker after unknown
+outcome, and record the receipt before the local Linear projection. Restart and stale-lane
+fixtures prove journal reload and fail-closed revalidation. This is not C3 completion: all
+remaining external adapters, provider capability gates, pagination, ordinal enforcement,
+authority-event transactions, and PONR fencing remain.
 
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
 | C1 project/lane identity and migration | In progress on PR #1092 | ProjectBinding/LaneId and transactional lane CAS exist; sole-writer cutover, migration/quarantine, and old issue-only API removal remain |
 | C2 intake and dispatch authority | New-admission core complete; full gate pending C3 effects | Typed authority, binding attestations, claim fencing, and PUB-1711 replay exist; issue create/archive outbox receipts and remaining gate evidence remain |
-| C3 transition and effects | Pending | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
+| C3 transition and effects | In progress on PR #1092 | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
 | C4 supersession and conflicts | Pending | Typed edge, deterministic closeout crash/replay, conflict release, obsolete scan, PUB-1704/PUB-1705 fixture/recovery |
 | C5 telemetry and operator audit | Pending | Signed chain audit/recovery, diagnose/timeline/audit, metrics, full bounded projections while preserving C1 privacy boundary |
 | C6 adjacent defects | Pending | Already-satisfied/bounded-retry/attention outcomes and parser-level manual `--related` rejection |

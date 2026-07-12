@@ -1,5 +1,6 @@
 mod autonomy;
 mod cleanup;
+mod effects;
 mod lanes;
 mod project;
 mod runs;

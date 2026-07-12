@@ -46,7 +46,7 @@ pub(in crate::recovery::review_handoff_apply) fn write_adopt_audit(
 	context: &RecoveryContext,
 	validation: &AdoptValidation,
 	event: &LinearExecutionEventRecord,
-) -> Result<()> {
+) -> Result<bool> {
 	let recovery_body = format!(
 		"Decodex operator recovery: adopted human-owned PR `{}` for `{}` into retained review handoff state. This does not land the pull request.",
 		recovery::landing_url(&validation.landing_state),
@@ -71,7 +71,5 @@ pub(in crate::recovery::review_handoff_apply) fn write_adopt_audit(
 		&context.tracker,
 		&validation.issue.id,
 		&projection,
-	)?;
-
-	Ok(())
+	)
 }

@@ -196,6 +196,18 @@ impl LaneEffect {
 		&self.effect_id
 	}
 
+	pub fn operation_id(&self) -> &str {
+		&self.operation_id
+	}
+
+	pub const fn ordinal(&self) -> u32 {
+		self.ordinal
+	}
+
+	pub const fn kind(&self) -> LaneEffectKind {
+		self.kind
+	}
+
 	pub fn lane_id(&self) -> &LaneId {
 		&self.lane_id
 	}
@@ -220,8 +232,46 @@ impl LaneEffect {
 		&self.binding_fingerprint
 	}
 
+	pub fn request_digest(&self) -> &str {
+		&self.request_digest
+	}
+
+	pub fn facts_fingerprint(&self) -> &str {
+		&self.facts_fingerprint
+	}
+
 	pub fn receipt(&self) -> Option<&EffectReceipt> {
 		self.receipt.as_ref()
+	}
+
+	pub fn validate(&self) -> Result<()> {
+		if self.schema != LANE_EFFECT_SCHEMA || self.class != self.kind.required_class() {
+			eyre::bail!("Lane effect schema or registry class is invalid.");
+		}
+		if let Some(receipt) = self.receipt.as_ref()
+			&& (receipt.schema != EFFECT_RECEIPT_SCHEMA
+				|| receipt.request_digest != self.request_digest)
+		{
+			eyre::bail!("Lane effect receipt is not bound to its request.");
+		}
+		Ok(())
+	}
+
+	pub fn has_same_plan_identity(&self, other: &Self) -> bool {
+		self.schema == other.schema
+			&& self.effect_id == other.effect_id
+			&& self.operation_id == other.operation_id
+			&& self.ordinal == other.ordinal
+			&& self.lane_id == other.lane_id
+			&& self.binding_fingerprint == other.binding_fingerprint
+			&& self.claim_run_id == other.claim_run_id
+			&& self.expected_lane_epoch == other.expected_lane_epoch
+			&& self.kind == other.kind
+			&& self.class == other.class
+			&& self.idempotency_key == other.idempotency_key
+			&& self.request_digest == other.request_digest
+			&& self.desired_state_digest == other.desired_state_digest
+			&& self.facts_fingerprint == other.facts_fingerprint
 	}
 }
 
