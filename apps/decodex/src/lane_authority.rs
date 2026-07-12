@@ -3,6 +3,7 @@
 mod effect;
 mod intake;
 mod kernel;
+mod no_effective_delta;
 
 pub use effect::{
 	EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect, LaneEffectKind,
@@ -10,6 +11,10 @@ pub use effect::{
 };
 pub use intake::{IntakeAuthority, IntakeAuthorityKind};
 pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
+pub use no_effective_delta::{
+	NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,
+	NoEffectiveDeltaRecovery, NoEffectiveDeltaRejection, decide_no_effective_delta,
+};
 
 use crate::prelude::{Result, eyre};
 

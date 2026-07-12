@@ -993,6 +993,16 @@ commit-message tests, 14 core CLI tests, 41 manual-command tests, and
 `cargo check -p decodex --all-targets` pass. This satisfies only the parser half of C6;
 the no-effective-delta outcome FSM and its bounded retry evidence remain incomplete.
 
+The first no-effective-delta v2 slice adds a dormant pure decision kernel over complete
+digested diagnostics. It separates initial observation from retry-result observation:
+the first creates ordinal-1 recovery, exact command replay returns the same recovery,
+fact or lane drift fails closed, and the retry result converges to
+`no_effective_delta_unresolved`. Explicit blockers bypass recovery and
+`already_satisfied` requires a non-empty independent-validator receipt. Four focused
+tests and `cargo check -p decodex --all-targets` pass. Persistence, continuation attempt
+wiring, independent validator execution, and runtime cutover remain before C6 is
+complete.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
