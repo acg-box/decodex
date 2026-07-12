@@ -1055,6 +1055,17 @@ all-target checking pass. This removes the architectural pressure to retain a fa
 claim after terminal conflict release; actual closeout effect planning and stage receipt
 gates are next.
 
+Superseded closeout now freezes the complete typed effect plan at attestation. The plan
+must begin with exact predecessor PR close, then follows registry-ordered control,
+worktree, remote-ref, and local-ref cleanup kinds; its canonical JSON digest is validated
+on reload. The terminal-authority transaction creates every effect journal row with
+fixed operation ordinal and the stage epoch at which it may invoke. PR reconciliation
+cannot advance without the PR receipt, resource reconciliation cannot advance without
+all required cleanup receipts, and terminal cannot bypass either gate. The persistent
+fixture proves pre-receipt rejection, ordered receipt progression, restart, and final
+Lane terminalization. Nine supersession tests, four effect tests, and all-target checking
+pass. Provider adapters/readback and individual resource ownership receipts remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

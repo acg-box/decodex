@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::LaneId;
+use super::{LaneEffect, LaneEffectKind, LaneId};
 use crate::prelude::{Result, eyre};
 
 pub const REPAIR_HANDOFF_SCHEMA: &str = "decodex/repair-handoff-authority/1";
@@ -263,24 +263,54 @@ pub struct SupersededCloseoutOperation {
 	predecessor_pr_version_digest: String,
 	successor_reachability_digest: String,
 	resource_plan_digest: String,
+	effect_plan: Vec<CloseoutEffectPlanItem>,
 	stage: SupersededCloseoutStage,
 	stage_epoch: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct CloseoutEffectPlanItem {
+	kind: LaneEffectKind,
+	request_digest: String,
+	desired_state_digest: String,
+	facts_fingerprint: String,
+}
+impl CloseoutEffectPlanItem {
+	pub fn new(
+		kind: LaneEffectKind,
+		request_digest: &str,
+		desired_state_digest: &str,
+		facts_fingerprint: &str,
+	) -> Result<Self> {
+		if [request_digest, desired_state_digest, facts_fingerprint]
+			.iter()
+			.any(|value| value.trim().is_empty())
+		{
+			eyre::bail!("Closeout effect plan digest cannot be empty.");
+		}
+		Ok(Self {
+			kind,
+			request_digest: request_digest.to_owned(),
+			desired_state_digest: desired_state_digest.to_owned(),
+			facts_fingerprint: facts_fingerprint.to_owned(),
+		})
+	}
 }
 impl SupersededCloseoutOperation {
 	pub fn attest(
 		edge: SupersessionEdge,
 		predecessor_pr_version_digest: &str,
 		successor_reachability_digest: &str,
-		resource_plan_digest: &str,
+		effect_plan: Vec<CloseoutEffectPlanItem>,
 	) -> Result<Self> {
-		for value in
-			[predecessor_pr_version_digest, successor_reachability_digest, resource_plan_digest]
-		{
+		for value in [predecessor_pr_version_digest, successor_reachability_digest] {
 			if value.trim().is_empty() {
 				eyre::bail!("Superseded closeout prerequisite digest cannot be empty.");
 			}
 		}
 		edge.validate()?;
+		validate_closeout_effect_plan(&effect_plan)?;
+		let resource_plan_digest = sha256_json(&effect_plan)?;
 		let digest = Sha256::digest(
 			[
 				b"superseded-closeout/1".as_slice(),
@@ -298,7 +328,8 @@ impl SupersededCloseoutOperation {
 			edge,
 			predecessor_pr_version_digest: predecessor_pr_version_digest.to_owned(),
 			successor_reachability_digest: successor_reachability_digest.to_owned(),
-			resource_plan_digest: resource_plan_digest.to_owned(),
+			resource_plan_digest,
+			effect_plan,
 			stage: SupersededCloseoutStage::AcceptanceAttested,
 			stage_epoch: 0,
 		})
@@ -326,6 +357,33 @@ impl SupersededCloseoutOperation {
 			&& self.predecessor_pr_version_digest == other.predecessor_pr_version_digest
 			&& self.successor_reachability_digest == other.successor_reachability_digest
 			&& self.resource_plan_digest == other.resource_plan_digest
+			&& self.effect_plan == other.effect_plan
+	}
+
+	pub fn planned_effects(&self, binding_fingerprint: &str) -> Result<Vec<LaneEffect>> {
+		self.effect_plan
+			.iter()
+			.enumerate()
+			.map(|(ordinal, item)| {
+				let ordinal = u32::try_from(ordinal)?;
+				let expected_stage_epoch =
+					if item.kind == LaneEffectKind::GithubPrClose { 1 } else { 2 };
+				LaneEffect::plan_for_terminal_operation(
+					&format!("{}:{ordinal}", self.operation_id),
+					&self.operation_id,
+					ordinal,
+					self.edge.predecessor_lane_id.clone(),
+					binding_fingerprint,
+					expected_stage_epoch,
+					item.kind,
+					item.kind.required_class(),
+					&format!("{}:{ordinal}", self.operation_id),
+					&item.request_digest,
+					&item.desired_state_digest,
+					&item.facts_fingerprint,
+				)
+			})
+			.collect()
 	}
 
 	pub fn validate(&self) -> Result<()> {
@@ -334,11 +392,40 @@ impl SupersededCloseoutOperation {
 			|| self.predecessor_pr_version_digest.trim().is_empty()
 			|| self.successor_reachability_digest.trim().is_empty()
 			|| self.resource_plan_digest.trim().is_empty()
+			|| sha256_json(&self.effect_plan).ok().as_deref()
+				!= Some(self.resource_plan_digest.as_str())
 		{
 			eyre::bail!("Superseded closeout operation is invalid.");
 		}
 		self.edge.validate()
 	}
+}
+
+fn validate_closeout_effect_plan(plan: &[CloseoutEffectPlanItem]) -> Result<()> {
+	if plan.is_empty() || plan[0].kind != LaneEffectKind::GithubPrClose {
+		eyre::bail!("Closeout effect plan must begin with the predecessor PR close effect.");
+	}
+	let mut previous_rank = 0;
+	for (index, item) in plan.iter().enumerate() {
+		let rank = match item.kind {
+			LaneEffectKind::GithubPrClose if index == 0 => 0,
+			LaneEffectKind::ControlResourceRetire => 1,
+			LaneEffectKind::WorktreeRemove => 2,
+			LaneEffectKind::RemoteRefDelete => 3,
+			LaneEffectKind::LocalRefDelete => 4,
+			_ => eyre::bail!("Closeout effect plan contains an unsupported effect kind."),
+		};
+		if rank < previous_rank {
+			eyre::bail!("Closeout effect plan is outside registry order.");
+		}
+		previous_rank = rank;
+	}
+	Ok(())
+}
+
+fn sha256_json<T: Serialize>(value: &T) -> Result<String> {
+	let digest = Sha256::digest(serde_json::to_vec(value)?);
+	Ok(format!("sha256:{}", digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>()))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -538,6 +625,25 @@ mod tests {
 		}
 	}
 
+	fn closeout_plan() -> Vec<CloseoutEffectPlanItem> {
+		vec![
+			CloseoutEffectPlanItem::new(
+				LaneEffectKind::GithubPrClose,
+				"pr-request",
+				"pr-closed",
+				"pr-facts",
+			)
+			.expect("PR effect"),
+			CloseoutEffectPlanItem::new(
+				LaneEffectKind::WorktreeRemove,
+				"worktree-request",
+				"worktree-removed",
+				"worktree-facts",
+			)
+			.expect("worktree effect"),
+		]
+	}
+
 	#[test]
 	fn exact_handoff_and_complete_disposition_create_terminal_edge() {
 		let edge = accept_supersession(&handoff(), &acceptance(), 7, None).expect("edge");
@@ -596,21 +702,29 @@ mod tests {
 			edge.clone(),
 			"pr-version",
 			"reachability",
-			"resources",
+			closeout_plan(),
 		)
 		.expect("operation");
 		let replay = SupersededCloseoutOperation::attest(
 			edge.clone(),
 			"pr-version",
 			"reachability",
-			"resources",
+			closeout_plan(),
 		)
 		.expect("replay");
 		let drift = SupersededCloseoutOperation::attest(
 			edge,
 			"changed-pr-version",
 			"reachability",
-			"resources",
+			vec![
+				CloseoutEffectPlanItem::new(
+					LaneEffectKind::GithubPrClose,
+					"changed-request",
+					"pr-closed",
+					"pr-facts",
+				)
+				.expect("changed plan"),
+			],
 		)
 		.expect("drift plan");
 		assert_eq!(first.operation_id(), replay.operation_id());
@@ -622,9 +736,13 @@ mod tests {
 	#[test]
 	fn closeout_stages_are_ordered_and_epoch_fenced() {
 		let edge = accept_supersession(&handoff(), &acceptance(), 7, None).expect("edge");
-		let operation =
-			SupersededCloseoutOperation::attest(edge, "pr-version", "reachability", "resources")
-				.expect("operation");
+		let operation = SupersededCloseoutOperation::attest(
+			edge,
+			"pr-version",
+			"reachability",
+			closeout_plan(),
+		)
+		.expect("operation");
 		assert_eq!(
 			transition_superseded_closeout(
 				&operation,

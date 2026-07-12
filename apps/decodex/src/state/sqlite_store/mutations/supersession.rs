@@ -237,6 +237,24 @@ impl SqliteStateStore {
 			SupersededCloseoutCommand::CommitTerminalAuthority,
 		)
 		.map_err(|rejection| eyre::eyre!("superseded_closeout_stage_rejected:{rejection:?}"))?;
+		for effect in operation.planned_effects(binding_fingerprint)? {
+			transaction.execute(
+				"INSERT INTO lane_effects (
+					effect_id, operation_id, ordinal, project_key, tracker_issue_id,
+					journal_epoch, kind, payload_json, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch())",
+				params![
+					effect.effect_id(),
+					effect.operation_id(),
+					i64::from(effect.ordinal()),
+					effect.lane_id().project_key(),
+					effect.lane_id().tracker_issue_id(),
+					i64::try_from(effect.journal_epoch())?,
+					effect.kind().registry_name(),
+					serde_json::to_string(&effect)?,
+				],
+			)?;
+		}
 		let operation_changed = transaction.execute(
 			"UPDATE superseded_closeout_operations
 			 SET stage = ?2, stage_epoch = ?3, payload_json = ?4, updated_at_unix = unixepoch()

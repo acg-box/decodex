@@ -17,7 +17,8 @@ pub use no_effective_delta::{
 	NoEffectiveDeltaRecovery, NoEffectiveDeltaRejection, decide_no_effective_delta,
 };
 pub use supersession::{
-	PatchDisposition, RepairHandoffAuthority, SupersessionAcceptance, SupersessionEdge,
+	CloseoutEffectPlanItem, PatchDisposition, RepairHandoffAuthority, SupersessionAcceptance,
+	SupersessionEdge,
 	SupersededCloseoutCommand, SupersededCloseoutOperation, SupersededCloseoutRejection,
 	SupersededCloseoutStage, SupersessionRejection, accept_supersession,
 	transition_superseded_closeout,

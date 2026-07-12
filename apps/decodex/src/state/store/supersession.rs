@@ -49,7 +49,7 @@ impl StateStore {
 		handoff_id: &str,
 		acceptance: &SupersessionAcceptance,
 		predecessor_pr_version_digest: &str,
-		resource_plan_digest: &str,
+		effect_plan: Vec<crate::lane_authority::CloseoutEffectPlanItem>,
 	) -> Result<SupersededCloseoutOperation> {
 		let mut state = self.lock_without_refresh()?;
 		let handoff = state
@@ -69,7 +69,7 @@ impl StateStore {
 			edge,
 			predecessor_pr_version_digest,
 			&acceptance.default_branch_reachability,
-			resource_plan_digest,
+			effect_plan,
 		)?;
 		if let Some(existing) = state.superseded_closeout_operations.get(operation.operation_id()) {
 			if existing.has_same_plan(&operation) {
@@ -107,6 +107,7 @@ impl StateStore {
 			.get(handoff.predecessor_lane_id())
 			.cloned()
 			.ok_or_else(|| eyre::eyre!("Repair handoff predecessor lane does not exist."))?;
+		let planned_effects = operation.planned_effects(predecessor.binding_fingerprint())?;
 		if let Some(run_id) = predecessor.claim_run_id() {
 			let lease = state
 				.leases
@@ -141,6 +142,9 @@ impl StateStore {
 		};
 		state.lanes.insert(handoff.predecessor_lane_id().clone(), next);
 		state.supersession_edges.insert(handoff.predecessor_lane_id().clone(), edge.clone());
+		for effect in planned_effects {
+			state.lane_effects.insert(effect.effect_id().to_owned(), effect);
+		}
 		let next_operation = transition_superseded_closeout(
 			&operation,
 			operation.stage_epoch(),
@@ -172,6 +176,7 @@ impl StateStore {
 			.get(operation_id)
 			.cloned()
 			.ok_or_else(|| eyre::eyre!("Superseded closeout operation does not exist."))?;
+		validate_closeout_receipt_gate(&state, &current, command)?;
 		let next = transition_superseded_closeout(&current, current.stage_epoch(), command)
 			.map_err(|rejection| {
 				eyre::eyre!("Superseded closeout stage rejected: {rejection:?}")
@@ -220,6 +225,35 @@ impl StateStore {
 	}
 }
 
+fn validate_closeout_receipt_gate(
+	state: &crate::state::StateData,
+	operation: &SupersededCloseoutOperation,
+	command: SupersededCloseoutCommand,
+) -> Result<()> {
+	let mut effects = state
+		.lane_effects
+		.values()
+		.filter(|effect| effect.operation_id() == operation.operation_id())
+		.collect::<Vec<_>>();
+	effects.sort_by_key(|effect| effect.ordinal());
+	let required = match command {
+		SupersededCloseoutCommand::CommitTerminalAuthority => return Ok(()),
+		SupersededCloseoutCommand::ReconcilePredecessorPr => effects.get(..1),
+		SupersededCloseoutCommand::ReconcileResources | SupersededCloseoutCommand::Complete => {
+			Some(effects.as_slice())
+		},
+	}
+	.ok_or_else(|| eyre::eyre!("Superseded closeout required effect is missing."))?;
+	if required.is_empty()
+		|| required.iter().any(|effect| {
+			effect.state() != crate::lane_authority::EffectState::Succeeded
+				|| effect.receipt().is_none()
+		}) {
+		eyre::bail!("Superseded closeout stage requires durable effect receipts.");
+	}
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 	use std::collections::BTreeSet;
@@ -228,7 +262,10 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		lane_authority::{LaneCommand, LaneId, LanePhase, PatchDisposition, ProjectBinding},
+		lane_authority::{
+			CloseoutEffectPlanItem, EffectCommand, EffectReceipt, LaneCommand, LaneEffectKind,
+			LaneId, LanePhase, PatchDisposition, ProjectBinding,
+		},
 		state::ProjectRegistration,
 	};
 
@@ -292,7 +329,22 @@ mod tests {
 					}],
 				},
 				"predecessor-pr-version",
-				"resource-plan",
+				vec![
+					CloseoutEffectPlanItem::new(
+						LaneEffectKind::GithubPrClose,
+						"pr-request",
+						"pr-closed",
+						"pr-facts",
+					)
+					.expect("PR effect"),
+					CloseoutEffectPlanItem::new(
+						LaneEffectKind::WorktreeRemove,
+						"worktree-request",
+						"worktree-removed",
+						"worktree-facts",
+					)
+					.expect("worktree effect"),
+				],
 			)
 			.expect("attest operation");
 		let edge =
@@ -302,15 +354,35 @@ mod tests {
 			LanePhase::TerminalCleanupPending
 		);
 		assert!(!store.lock().expect("state").leases.contains_key("predecessor"));
-		for command in [
-			SupersededCloseoutCommand::ReconcilePredecessorPr,
-			SupersededCloseoutCommand::ReconcileResources,
-			SupersededCloseoutCommand::Complete,
-		] {
+		assert!(
 			store
-				.advance_superseded_closeout(operation.operation_id(), command)
-				.expect("advance closeout");
-		}
+				.advance_superseded_closeout(
+					operation.operation_id(),
+					SupersededCloseoutCommand::ReconcilePredecessorPr,
+				)
+				.is_err(),
+			"stage cannot advance before the PR receipt"
+		);
+		succeed_effect(&store, operation.operation_id(), 0, "pr-request");
+		store
+			.advance_superseded_closeout(
+				operation.operation_id(),
+				SupersededCloseoutCommand::ReconcilePredecessorPr,
+			)
+			.expect("advance PR reconciliation");
+		succeed_effect(&store, operation.operation_id(), 1, "worktree-request");
+		store
+			.advance_superseded_closeout(
+				operation.operation_id(),
+				SupersededCloseoutCommand::ReconcileResources,
+			)
+			.expect("advance resources");
+		store
+			.advance_superseded_closeout(
+				operation.operation_id(),
+				SupersededCloseoutCommand::Complete,
+			)
+			.expect("complete closeout");
 		assert_eq!(
 			store.lane(&predecessor).expect("read").expect("lane").phase(),
 			LanePhase::Terminal
@@ -331,6 +403,39 @@ mod tests {
 			reopened.lane(&predecessor).expect("read").expect("lane").phase(),
 			LanePhase::Terminal
 		);
+	}
+
+	fn succeed_effect(store: &StateStore, operation_id: &str, ordinal: u32, request: &str) {
+		let effect_id = format!("{operation_id}:{ordinal}");
+		let effect = store.lane_effect(&effect_id).expect("effect read").expect("effect");
+		let invoking = store
+			.apply_lane_effect_command(
+				&effect_id,
+				effect.journal_epoch(),
+				EffectCommand::BeginInvocation {
+					authority_epoch: effect.authority_epoch(),
+					facts_fingerprint: effect.facts_fingerprint().to_owned(),
+				},
+			)
+			.expect("invoke effect");
+		store
+			.apply_lane_effect_command(
+				&effect_id,
+				invoking.journal_epoch(),
+				EffectCommand::RecordReceipt {
+					receipt: EffectReceipt::new(
+						&format!("receipt-{ordinal}"),
+						request,
+						"result",
+						None,
+						Some("version"),
+						"2026-07-12T00:00:00Z",
+						1,
+					)
+					.expect("receipt"),
+				},
+			)
+			.expect("record receipt");
 	}
 
 	fn project(temp: &TempDir) -> ProjectRegistration {
