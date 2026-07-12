@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use crate::{
 	lane_authority::{
 		IntakeAuthority, LaneAggregate, LaneEffect, LaneId, NoEffectiveDeltaRecovery,
-		RepairHandoffAuthority, RepairHandoffState, SupersededCloseoutOperation, SupersessionEdge,
+		RepairHandoffAuthority, RepairHandoffState, RoutingQuarantine,
+		SupersededCloseoutOperation, SupersessionEdge,
 	},
 	state::{
 		ProgramIntakeAttemptStatus,
@@ -35,6 +36,7 @@ use crate::{
 #[derive(Default)]
 pub(in crate::state) struct StateData {
 	pub(in crate::state) projects: HashMap<String, ProjectRegistration>,
+	pub(in crate::state) routing_quarantines: HashMap<String, RoutingQuarantine>,
 	pub(in crate::state) lanes: HashMap<LaneId, LaneAggregate>,
 	pub(in crate::state) lane_effects: HashMap<String, LaneEffect>,
 	pub(in crate::state) no_effective_delta_recoveries: HashMap<String, NoEffectiveDeltaRecovery>,

@@ -9,6 +9,7 @@ mod lanes;
 mod no_effective_delta;
 mod project;
 mod runs;
+mod routing_quarantines;
 #[cfg_attr(not(test), allow(dead_code))]
 mod supersession;
 

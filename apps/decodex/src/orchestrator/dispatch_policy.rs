@@ -65,6 +65,9 @@ pub(crate) fn attest_issue_project_binding(
 	project: &ServiceConfig,
 	issue: &TrackerIssue,
 ) -> Result<BindingAttestation> {
+	if state_store.routing_quarantine(&issue.id)?.is_some() {
+		eyre::bail!("TrackerIssueKey is reserved by active routing quarantine.");
+	}
 	let binding = attest_project_binding(state_store, project)?;
 	let catalog = state_store
 		.list_projects()?
@@ -75,21 +78,47 @@ pub(crate) fn attest_issue_project_binding(
 	#[cfg(test)]
 	let catalog = if catalog.is_empty() { vec![binding.clone()] } else { catalog };
 	let labels = issue.labels.iter().map(|label| label.name.clone()).collect::<Vec<_>>();
-	match resolve_project_binding(
+	let resolution = resolve_project_binding(
 		catalog,
 		&issue.team.id,
 		binding.routing_label(),
 		&labels,
-	) {
-		RoutingResolution::Selected { binding: selected, .. } if selected == binding => {},
+	);
+	match &resolution {
+		RoutingResolution::Selected { binding: selected, .. } if selected == &binding => {},
 		RoutingResolution::Selected { .. } =>
 			eyre::bail!("Global routing selected a different immutable ProjectBinding."),
-		RoutingResolution::NoMatch { .. } =>
-			eyre::bail!("Issue repository selector does not match any active project binding."),
-		RoutingResolution::Ambiguous { .. } =>
-			eyre::bail!("Issue routing matches multiple active project bindings."),
-		RoutingResolution::InvalidSelector =>
-			eyre::bail!("Issue routing selector is ambiguous or invalid."),
+		RoutingResolution::NoMatch { .. }
+		| RoutingResolution::Ambiguous { .. }
+		| RoutingResolution::InvalidSelector => {
+			let mut selector_digest = Sha256::new();
+			for value in [issue.team.id.as_str(), binding.routing_label()]
+				.into_iter()
+				.chain(labels.iter().map(String::as_str))
+			{
+				selector_digest.update((value.len() as u64).to_be_bytes());
+				selector_digest.update(value.as_bytes());
+			}
+			let selector_fingerprint = selector_digest
+				.finalize()
+				.iter()
+				.map(|byte| format!("{byte:02x}"))
+				.collect::<String>();
+			let quarantine = resolution
+				.quarantine(&issue.id, &selector_fingerprint)
+				.ok_or_else(|| eyre::eyre!("routing_quarantine_not_constructible"))?;
+			state_store.record_routing_quarantine(quarantine)?;
+			match resolution {
+				RoutingResolution::NoMatch { .. } => eyre::bail!(
+					"Issue repository selector does not match any active project binding."
+				),
+				RoutingResolution::Ambiguous { .. } =>
+					eyre::bail!("Issue routing matches multiple active project bindings."),
+				RoutingResolution::InvalidSelector =>
+					eyre::bail!("Issue routing selector is ambiguous or invalid."),
+				RoutingResolution::Selected { .. } => unreachable!(),
+			}
+		},
 	}
 	BindingAttestation::new(&binding, &issue.id, &issue.team.id)
 }

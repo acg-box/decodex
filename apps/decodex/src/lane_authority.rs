@@ -36,7 +36,9 @@ pub use no_effective_delta::{
 	decide_no_effective_delta,
 };
 pub use patch_set::{CanonicalPatchSet, PatchSetBuildError, build_canonical_patch_set};
-pub(crate) use routing::{RoutingResolution, resolve_project_binding};
+pub(crate) use routing::{
+	RoutingQuarantine, RoutingQuarantineReason, RoutingResolution, resolve_project_binding,
+};
 pub use supersession::{
 	CloseoutEffectPlanItem, CloseoutEffectTarget, PatchDisposition, PredecessorPatchReadback,
 	RepairHandoffAuthority, RepairHandoffState, SupersededCloseoutCommand,

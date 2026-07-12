@@ -243,7 +243,14 @@ impl AuthorityEventDraft {
 		if self.reason_codes.is_empty()
 			|| self.reason_codes.windows(2).any(|pair| pair[0] >= pair[1])
 			|| self.project_key.is_some() != self.project_binding_fingerprint.is_some()
-			|| self.tracker_issue_id.is_some() && self.project_key.is_none()
+			|| self.tracker_issue_id.is_some()
+				&& self.project_key.is_none()
+				&& !matches!(
+					self.event_type,
+					AuthorityEventType::BindingRequested
+						| AuthorityEventType::BindingRejected
+						| AuthorityEventType::LaneQuarantined
+				)
 		{
 			eyre::bail!("Authority event scope or reason codes are invalid.");
 		}

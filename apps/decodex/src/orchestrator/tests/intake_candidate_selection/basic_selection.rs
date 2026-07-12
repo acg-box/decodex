@@ -78,6 +78,38 @@ fn pub_1711_repo_binding_drift_rejects_before_lane_side_effects() {
 	assert!(state_store.lease_for_issue(&issue.id).expect("lease read").is_none());
 	assert!(state_store.worktree_for_issue(&issue.id).expect("worktree read").is_none());
 	assert!(state_store.list_run_attempts_for_issue(&issue.id).expect("attempts").is_empty());
+	assert!(state_store.routing_quarantine(&issue.id).expect("quarantine").is_some());
+}
+
+#[test]
+fn lane_authority_v2_c1_qua_01() {
+	let (temp_dir, config, workflow) = tests::temp_project_layout();
+	let database = temp_dir.path().join("routing-quarantine.sqlite3");
+	let state_store = StateStore::open(&database).expect("state store");
+	crate::runtime::register_project_config(&state_store, config.config_path(), true)
+		.expect("register binding");
+	let rejected = tests::sample_issue(
+		"Todo",
+		&["decodex:queued:pubfi", "repo:pubfi-mono"],
+	);
+	let tracker = FakeTracker::new(vec![rejected.clone()]);
+	let _error = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+		.expect_err("seed quarantine");
+	drop(state_store);
+	let state_store = StateStore::open(&database).expect("reopen state store");
+
+	let corrected = tests::sample_issue(
+		"Todo",
+		&["decodex:queued:pubfi", "repo:test-repository"],
+	);
+	let tracker = FakeTracker::new(vec![corrected]);
+	let error = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+		.expect_err("active quarantine must reserve TrackerIssueKey");
+	assert!(error.to_string().contains("active routing quarantine"));
+	assert!(state_store.lane(&crate::lane_authority::LaneId::new(
+		config.service_id(),
+		&rejected.id,
+	).expect("lane id")).expect("lane read").is_none());
 }
 
 #[test]

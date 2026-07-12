@@ -1,6 +1,7 @@
 //! Deterministic global ProjectBinding resolution before Lane identity exists.
 
 use super::ProjectBinding;
+use sha2::{Digest as _, Sha256};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RoutingPredicateResult {
@@ -22,6 +23,64 @@ pub(crate) enum RoutingResolution {
 	NoMatch { candidates: Vec<RoutingCandidate> },
 	Ambiguous { candidates: Vec<RoutingCandidate> },
 	InvalidSelector,
+}
+impl RoutingResolution {
+	pub(crate) fn quarantine(
+		&self,
+		tracker_issue_id: &str,
+		selector_fingerprint: &str,
+	) -> Option<RoutingQuarantine> {
+		let (reason, candidates): (_, &[_]) = match self {
+			Self::NoMatch { candidates } => (RoutingQuarantineReason::NoMatch, candidates),
+			Self::Ambiguous { candidates } => (RoutingQuarantineReason::Ambiguous, candidates),
+			Self::InvalidSelector => (RoutingQuarantineReason::InvalidSelector, &[]),
+			Self::Selected { .. } => return None,
+		};
+		Some(RoutingQuarantine::new(tracker_issue_id, reason, selector_fingerprint, candidates))
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RoutingQuarantineReason {
+	NoMatch,
+	Ambiguous,
+	InvalidSelector,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+pub(crate) struct RoutingQuarantine {
+	pub(crate) tracker_issue_id: String,
+	pub(crate) epoch: u64,
+	pub(crate) reason: RoutingQuarantineReason,
+	pub(crate) selector_fingerprint: String,
+	pub(crate) candidate_fingerprints: Vec<String>,
+}
+impl RoutingQuarantine {
+	fn new(
+		tracker_issue_id: &str,
+		reason: RoutingQuarantineReason,
+		selector_fingerprint: &str,
+		candidates: &[RoutingCandidate],
+	) -> Self {
+		let candidate_fingerprints = candidates
+			.iter()
+			.map(|candidate| {
+				let mut digest = Sha256::new();
+				digest.update(candidate.binding.project_key().as_bytes());
+				digest.update(candidate.binding.config_fingerprint().as_bytes());
+				digest.update(format!("{:?}", candidate.result).as_bytes());
+				digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+			})
+			.collect();
+		Self {
+			tracker_issue_id: tracker_issue_id.to_owned(),
+			epoch: 1,
+			reason,
+			selector_fingerprint: selector_fingerprint.to_owned(),
+			candidate_fingerprints,
+		}
+	}
 }
 
 pub(crate) fn resolve_project_binding(

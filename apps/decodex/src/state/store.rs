@@ -15,6 +15,7 @@ mod no_effective_delta;
 mod persistence;
 mod programs;
 mod projects;
+mod routing_quarantines;
 #[cfg_attr(not(test), allow(dead_code))]
 mod supersession;
 mod validation;
