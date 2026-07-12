@@ -1,6 +1,8 @@
 use crate::{
 	lane_authority::{
-		RepairHandoffAuthority, SupersessionAcceptance, SupersessionEdge, accept_supersession,
+		RepairHandoffAuthority, SupersededCloseoutCommand, SupersededCloseoutOperation,
+		SupersessionAcceptance, SupersessionEdge, accept_supersession,
+		transition_superseded_closeout,
 	},
 	prelude::{Result, eyre},
 	state::StateStore,
@@ -42,11 +44,13 @@ impl StateStore {
 		Ok(())
 	}
 
-	pub fn commit_supersession(
+	pub fn attest_superseded_closeout(
 		&self,
 		handoff_id: &str,
 		acceptance: &SupersessionAcceptance,
-	) -> Result<SupersessionEdge> {
+		predecessor_pr_version_digest: &str,
+		resource_plan_digest: &str,
+	) -> Result<SupersededCloseoutOperation> {
 		let mut state = self.lock_without_refresh()?;
 		let handoff = state
 			.repair_handoffs
@@ -61,6 +65,48 @@ impl StateStore {
 		let existing = state.supersession_edges.get(handoff.predecessor_lane_id());
 		let edge = accept_supersession(&handoff, acceptance, predecessor.epoch(), existing)
 			.map_err(|rejection| eyre::eyre!("Supersession acceptance rejected: {rejection:?}"))?;
+		let operation = SupersededCloseoutOperation::attest(
+			edge,
+			predecessor_pr_version_digest,
+			&acceptance.default_branch_reachability,
+			resource_plan_digest,
+		)?;
+		if let Some(existing) = state.superseded_closeout_operations.get(operation.operation_id()) {
+			if existing.has_same_plan(&operation) {
+				return Ok(existing.clone());
+			}
+			eyre::bail!("Superseded closeout operation authority-key collision.");
+		}
+		if let Some(sqlite) = self.sqlite.as_ref() {
+			sqlite
+				.lock()
+				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
+				.insert_superseded_closeout_operation(&operation)?;
+		}
+		state
+			.superseded_closeout_operations
+			.insert(operation.operation_id().to_owned(), operation.clone());
+		Ok(operation)
+	}
+
+	pub fn commit_supersession(&self, operation_id: &str) -> Result<SupersessionEdge> {
+		let mut state = self.lock_without_refresh()?;
+		let operation = state
+			.superseded_closeout_operations
+			.get(operation_id)
+			.cloned()
+			.ok_or_else(|| eyre::eyre!("Superseded closeout operation does not exist."))?;
+		let edge = operation.edge().clone();
+		let handoff = state
+			.repair_handoffs
+			.get(edge.handoff_id())
+			.cloned()
+			.ok_or_else(|| eyre::eyre!("Repair handoff does not exist."))?;
+		let predecessor = state
+			.lanes
+			.get(handoff.predecessor_lane_id())
+			.cloned()
+			.ok_or_else(|| eyre::eyre!("Repair handoff predecessor lane does not exist."))?;
 		if let Some(run_id) = predecessor.claim_run_id() {
 			let lease = state
 				.leases
@@ -76,7 +122,12 @@ impl StateStore {
 			sqlite
 				.lock()
 				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
-				.commit_supersession(&handoff, &edge, predecessor.binding_fingerprint())?
+				.commit_supersession(
+					&handoff,
+					&edge,
+					&operation,
+					predecessor.binding_fingerprint(),
+				)?
 		} else {
 			crate::lane_authority::transition(
 				&predecessor,
@@ -90,10 +141,75 @@ impl StateStore {
 		};
 		state.lanes.insert(handoff.predecessor_lane_id().clone(), next);
 		state.supersession_edges.insert(handoff.predecessor_lane_id().clone(), edge.clone());
+		let next_operation = transition_superseded_closeout(
+			&operation,
+			operation.stage_epoch(),
+			SupersededCloseoutCommand::CommitTerminalAuthority,
+		)
+		.map_err(|rejection| eyre::eyre!("Superseded closeout stage rejected: {rejection:?}"))?;
+		state.superseded_closeout_operations.insert(operation_id.to_owned(), next_operation);
 		if predecessor.claim_run_id().is_some() {
 			state.leases.remove(handoff.predecessor_lane_id().tracker_issue_id());
 		}
 		Ok(edge)
+	}
+
+	pub fn superseded_closeout_operation(
+		&self,
+		operation_id: &str,
+	) -> Result<Option<SupersededCloseoutOperation>> {
+		Ok(self.lock()?.superseded_closeout_operations.get(operation_id).cloned())
+	}
+
+	pub fn advance_superseded_closeout(
+		&self,
+		operation_id: &str,
+		command: SupersededCloseoutCommand,
+	) -> Result<SupersededCloseoutOperation> {
+		let mut state = self.lock_without_refresh()?;
+		let current = state
+			.superseded_closeout_operations
+			.get(operation_id)
+			.cloned()
+			.ok_or_else(|| eyre::eyre!("Superseded closeout operation does not exist."))?;
+		let next = transition_superseded_closeout(&current, current.stage_epoch(), command)
+			.map_err(|rejection| {
+				eyre::eyre!("Superseded closeout stage rejected: {rejection:?}")
+			})?;
+		if next == current {
+			return Ok(current);
+		}
+		let terminal_lane =
+			if next.stage() == crate::lane_authority::SupersededCloseoutStage::Terminal {
+				let lane_id = next.edge().predecessor_lane_id();
+				let lane = state.lanes.get(lane_id).ok_or_else(|| {
+					eyre::eyre!("Superseded closeout predecessor lane is missing.")
+				})?;
+				Some(
+					crate::lane_authority::transition(
+						lane,
+						lane.epoch(),
+						lane.binding_fingerprint(),
+						crate::lane_authority::LaneCommand::CompleteTerminalCleanup,
+					)
+					.map_err(|rejection| {
+						eyre::eyre!("Terminal cleanup Lane transition rejected: {rejection:?}")
+					})?,
+				)
+			} else {
+				None
+			};
+		if let Some(sqlite) = self.sqlite.as_ref() {
+			sqlite
+				.lock()
+				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?
+				.advance_superseded_closeout(&current, &next)?;
+		}
+		if let Some(terminal) = terminal_lane {
+			state.lanes.insert(terminal.id().clone(), terminal);
+		}
+		state.superseded_closeout_operations.insert(operation_id.to_owned(), next.clone());
+		Ok(next)
 	}
 
 	pub fn supersession_edge(
@@ -155,8 +271,8 @@ mod tests {
 		)
 		.expect("handoff");
 		store.record_repair_handoff(handoff).expect("record handoff");
-		let edge = store
-			.commit_supersession(
+		let operation = store
+			.attest_superseded_closeout(
 				"handoff-1",
 				&SupersessionAcceptance {
 					handoff_id: String::from("handoff-1"),
@@ -175,20 +291,45 @@ mod tests {
 						reachability_evidence: String::from("reachable"),
 					}],
 				},
+				"predecessor-pr-version",
+				"resource-plan",
 			)
-			.expect("commit supersession");
+			.expect("attest operation");
+		let edge =
+			store.commit_supersession(operation.operation_id()).expect("commit supersession");
 		assert_eq!(
 			store.lane(&predecessor).expect("read").expect("lane").phase(),
 			LanePhase::TerminalCleanupPending
 		);
 		assert!(!store.lock().expect("state").leases.contains_key("predecessor"));
+		for command in [
+			SupersededCloseoutCommand::ReconcilePredecessorPr,
+			SupersededCloseoutCommand::ReconcileResources,
+			SupersededCloseoutCommand::Complete,
+		] {
+			store
+				.advance_superseded_closeout(operation.operation_id(), command)
+				.expect("advance closeout");
+		}
+		assert_eq!(
+			store.lane(&predecessor).expect("read").expect("lane").phase(),
+			LanePhase::Terminal
+		);
 		drop(store);
 
 		let reopened = StateStore::open(&database).expect("reopen");
 		assert_eq!(reopened.supersession_edge(&predecessor).expect("edge read"), Some(edge));
 		assert_eq!(
+			reopened
+				.superseded_closeout_operation(operation.operation_id())
+				.expect("operation read")
+				.expect("operation")
+				.stage(),
+			crate::lane_authority::SupersededCloseoutStage::Terminal
+		);
+		assert_eq!(
 			reopened.lane(&predecessor).expect("read").expect("lane").phase(),
-			LanePhase::TerminalCleanupPending
+			LanePhase::Terminal
 		);
 	}
 

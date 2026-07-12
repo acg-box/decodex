@@ -8,6 +8,7 @@ use crate::prelude::{Result, eyre};
 
 pub const REPAIR_HANDOFF_SCHEMA: &str = "decodex/repair-handoff-authority/1";
 pub const SUPERSESSION_EDGE_SCHEMA: &str = "decodex/supersession-edge/1";
+pub const SUPERSEDED_CLOSEOUT_SCHEMA: &str = "decodex/superseded-closeout-operation/1";
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RepairHandoffAuthority {
@@ -233,6 +234,164 @@ impl SupersessionEdge {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SupersededCloseoutStage {
+	AcceptanceAttested,
+	TerminalAuthorityCommitted,
+	PredecessorPrReconciled,
+	ResourcesReconciled,
+	Terminal,
+}
+impl SupersededCloseoutStage {
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::AcceptanceAttested => "acceptance_attested",
+			Self::TerminalAuthorityCommitted => "terminal_authority_committed",
+			Self::PredecessorPrReconciled => "predecessor_pr_reconciled",
+			Self::ResourcesReconciled => "resources_reconciled",
+			Self::Terminal => "terminal",
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct SupersededCloseoutOperation {
+	schema: String,
+	operation_id: String,
+	edge: SupersessionEdge,
+	predecessor_pr_version_digest: String,
+	successor_reachability_digest: String,
+	resource_plan_digest: String,
+	stage: SupersededCloseoutStage,
+	stage_epoch: u64,
+}
+impl SupersededCloseoutOperation {
+	pub fn attest(
+		edge: SupersessionEdge,
+		predecessor_pr_version_digest: &str,
+		successor_reachability_digest: &str,
+		resource_plan_digest: &str,
+	) -> Result<Self> {
+		for value in
+			[predecessor_pr_version_digest, successor_reachability_digest, resource_plan_digest]
+		{
+			if value.trim().is_empty() {
+				eyre::bail!("Superseded closeout prerequisite digest cannot be empty.");
+			}
+		}
+		edge.validate()?;
+		let digest = Sha256::digest(
+			[
+				b"superseded-closeout/1".as_slice(),
+				edge.edge_id.as_bytes(),
+				&edge.predecessor_epoch.to_be_bytes(),
+			]
+			.concat(),
+		);
+		Ok(Self {
+			schema: String::from(SUPERSEDED_CLOSEOUT_SCHEMA),
+			operation_id: format!(
+				"sha256:{}",
+				digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+			),
+			edge,
+			predecessor_pr_version_digest: predecessor_pr_version_digest.to_owned(),
+			successor_reachability_digest: successor_reachability_digest.to_owned(),
+			resource_plan_digest: resource_plan_digest.to_owned(),
+			stage: SupersededCloseoutStage::AcceptanceAttested,
+			stage_epoch: 0,
+		})
+	}
+
+	pub fn operation_id(&self) -> &str {
+		&self.operation_id
+	}
+
+	pub fn edge(&self) -> &SupersessionEdge {
+		&self.edge
+	}
+
+	pub const fn stage(&self) -> SupersededCloseoutStage {
+		self.stage
+	}
+
+	pub const fn stage_epoch(&self) -> u64 {
+		self.stage_epoch
+	}
+
+	pub fn has_same_plan(&self, other: &Self) -> bool {
+		self.operation_id == other.operation_id
+			&& self.edge == other.edge
+			&& self.predecessor_pr_version_digest == other.predecessor_pr_version_digest
+			&& self.successor_reachability_digest == other.successor_reachability_digest
+			&& self.resource_plan_digest == other.resource_plan_digest
+	}
+
+	pub fn validate(&self) -> Result<()> {
+		if self.schema != SUPERSEDED_CLOSEOUT_SCHEMA
+			|| self.operation_id.trim().is_empty()
+			|| self.predecessor_pr_version_digest.trim().is_empty()
+			|| self.successor_reachability_digest.trim().is_empty()
+			|| self.resource_plan_digest.trim().is_empty()
+		{
+			eyre::bail!("Superseded closeout operation is invalid.");
+		}
+		self.edge.validate()
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SupersededCloseoutCommand {
+	CommitTerminalAuthority,
+	ReconcilePredecessorPr,
+	ReconcileResources,
+	Complete,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SupersededCloseoutRejection {
+	StageEpochMismatch,
+	InvalidStage,
+}
+
+pub fn transition_superseded_closeout(
+	current: &SupersededCloseoutOperation,
+	expected_stage_epoch: u64,
+	command: SupersededCloseoutCommand,
+) -> std::result::Result<SupersededCloseoutOperation, SupersededCloseoutRejection> {
+	if current.stage_epoch != expected_stage_epoch {
+		return Err(SupersededCloseoutRejection::StageEpochMismatch);
+	}
+	let expected = match command {
+		SupersededCloseoutCommand::CommitTerminalAuthority => (
+			SupersededCloseoutStage::AcceptanceAttested,
+			SupersededCloseoutStage::TerminalAuthorityCommitted,
+		),
+		SupersededCloseoutCommand::ReconcilePredecessorPr => (
+			SupersededCloseoutStage::TerminalAuthorityCommitted,
+			SupersededCloseoutStage::PredecessorPrReconciled,
+		),
+		SupersededCloseoutCommand::ReconcileResources => (
+			SupersededCloseoutStage::PredecessorPrReconciled,
+			SupersededCloseoutStage::ResourcesReconciled,
+		),
+		SupersededCloseoutCommand::Complete => {
+			(SupersededCloseoutStage::ResourcesReconciled, SupersededCloseoutStage::Terminal)
+		},
+	};
+	if current.stage == expected.1 {
+		return Ok(current.clone());
+	}
+	if current.stage != expected.0 {
+		return Err(SupersededCloseoutRejection::InvalidStage);
+	}
+	let mut next = current.clone();
+	next.stage = expected.1;
+	next.stage_epoch += 1;
+	Ok(next)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SupersessionRejection {
 	InvalidHandoff,
@@ -427,6 +586,67 @@ mod tests {
 		assert_eq!(
 			accept_supersession(&handoff(), &acceptance(), 7, Some(&edge)),
 			Err(SupersessionRejection::ExistingEdge)
+		);
+	}
+
+	#[test]
+	fn closeout_operation_id_is_deterministic_and_plan_collision_is_detected() {
+		let edge = accept_supersession(&handoff(), &acceptance(), 7, None).expect("edge");
+		let first = SupersededCloseoutOperation::attest(
+			edge.clone(),
+			"pr-version",
+			"reachability",
+			"resources",
+		)
+		.expect("operation");
+		let replay = SupersededCloseoutOperation::attest(
+			edge.clone(),
+			"pr-version",
+			"reachability",
+			"resources",
+		)
+		.expect("replay");
+		let drift = SupersededCloseoutOperation::attest(
+			edge,
+			"changed-pr-version",
+			"reachability",
+			"resources",
+		)
+		.expect("drift plan");
+		assert_eq!(first.operation_id(), replay.operation_id());
+		assert!(first.has_same_plan(&replay));
+		assert_eq!(first.operation_id(), drift.operation_id());
+		assert!(!first.has_same_plan(&drift));
+	}
+
+	#[test]
+	fn closeout_stages_are_ordered_and_epoch_fenced() {
+		let edge = accept_supersession(&handoff(), &acceptance(), 7, None).expect("edge");
+		let operation =
+			SupersededCloseoutOperation::attest(edge, "pr-version", "reachability", "resources")
+				.expect("operation");
+		assert_eq!(
+			transition_superseded_closeout(
+				&operation,
+				0,
+				SupersededCloseoutCommand::ReconcilePredecessorPr,
+			),
+			Err(SupersededCloseoutRejection::InvalidStage)
+		);
+		let committed = transition_superseded_closeout(
+			&operation,
+			0,
+			SupersededCloseoutCommand::CommitTerminalAuthority,
+		)
+		.expect("commit stage");
+		assert_eq!(committed.stage(), SupersededCloseoutStage::TerminalAuthorityCommitted);
+		assert_eq!(
+			transition_superseded_closeout(
+				&committed,
+				0,
+				SupersededCloseoutCommand::ReconcilePredecessorPr,
+			),
+			Err(SupersededCloseoutRejection::StageEpochMismatch)
 		);
 	}
 }

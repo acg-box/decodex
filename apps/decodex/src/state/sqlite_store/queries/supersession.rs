@@ -1,5 +1,5 @@
 use crate::{
-	lane_authority::{RepairHandoffAuthority, SupersessionEdge},
+	lane_authority::{RepairHandoffAuthority, SupersededCloseoutOperation, SupersessionEdge},
 	prelude::Result,
 	state::{StateData, sqlite_store::SqliteStateStore},
 };
@@ -24,6 +24,16 @@ impl SqliteStateStore {
 			let edge = serde_json::from_str::<SupersessionEdge>(&payload?)?;
 			edge.validate()?;
 			state.supersession_edges.insert(edge.predecessor_lane_id().clone(), edge);
+		}
+		let mut operations = self.connection.prepare(
+			"SELECT payload_json FROM superseded_closeout_operations ORDER BY operation_id",
+		)?;
+		for payload in operations.query_map([], |row| row.get::<_, String>(0))? {
+			let operation = serde_json::from_str::<SupersededCloseoutOperation>(&payload?)?;
+			operation.validate()?;
+			state
+				.superseded_closeout_operations
+				.insert(operation.operation_id().to_owned(), operation);
 		}
 		Ok(())
 	}

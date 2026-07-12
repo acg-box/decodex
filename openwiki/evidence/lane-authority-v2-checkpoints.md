@@ -1032,6 +1032,18 @@ supersession tests, the persistent atomic-boundary fixture, and
 operation stages, cleanup receipts, PatchSet canonicalization, handoff replacement, and
 crash-point coverage remain.
 
+The superseded-closeout operation is now a durable stage-CAS saga instead of a
+reconstructed retry. Its deterministic id binds the immutable edge and predecessor
+epoch; prerequisite PR-version, successor-reachability, and resource-plan digests are
+persisted at `acceptance_attested` before terminal authority. The terminal-authority
+transaction consumes that exact operation and advances it atomically. Subsequent
+`predecessor_pr_reconciled -> resources_reconciled -> terminal` transitions are ordered,
+epoch-fenced, restart-safe, and idempotent; the final transition moves the Lane from
+`terminal_cleanup_pending` to `terminal` in the same transaction. Nine supersession
+tests, three schema-migration tests, and all-target checking pass. Provider effect
+receipts and per-resource cleanup ordinals are still required before these stages can be
+wired to external execution.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

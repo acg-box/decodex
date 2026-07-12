@@ -116,6 +116,18 @@ CREATE TABLE IF NOT EXISTS supersession_edges (
 	FOREIGN KEY (predecessor_project_key, predecessor_issue_id)
 		REFERENCES lanes (project_key, tracker_issue_id)
 );
+CREATE TABLE IF NOT EXISTS superseded_closeout_operations (
+	operation_id TEXT PRIMARY KEY NOT NULL,
+	edge_id TEXT UNIQUE NOT NULL,
+	predecessor_project_key TEXT NOT NULL,
+	predecessor_issue_id TEXT NOT NULL,
+	stage TEXT NOT NULL,
+	stage_epoch INTEGER NOT NULL,
+	payload_json TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	FOREIGN KEY (predecessor_project_key, predecessor_issue_id)
+		REFERENCES lanes (project_key, tracker_issue_id)
+);
 CREATE TABLE IF NOT EXISTS run_attempts (
 	run_id TEXT PRIMARY KEY NOT NULL,
 	project_id TEXT,

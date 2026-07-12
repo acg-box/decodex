@@ -4,13 +4,90 @@ use rusqlite::OptionalExtension;
 
 use crate::{
 	lane_authority::{
-		LaneAggregate, LaneCommand, LanePhase, RepairHandoffAuthority, SupersessionEdge, transition,
+		LaneAggregate, LaneCommand, LanePhase, RepairHandoffAuthority, SupersededCloseoutCommand,
+		SupersededCloseoutOperation, SupersessionEdge, transition, transition_superseded_closeout,
 	},
 	prelude::{Result, eyre},
 	state::sqlite_store::{SqliteStateStore, mutations::params},
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn advance_superseded_closeout(
+		&mut self,
+		current: &SupersededCloseoutOperation,
+		next: &SupersededCloseoutOperation,
+	) -> Result<()> {
+		if current == next {
+			return Ok(());
+		}
+		let transaction = self.connection.transaction()?;
+		if next.stage() == crate::lane_authority::SupersededCloseoutStage::Terminal {
+			let lane = current.edge().predecessor_lane_id();
+			let lane_changed = transaction.execute(
+				"UPDATE lanes SET phase = 'terminal', epoch = epoch + 1, updated_at_unix = unixepoch()
+				 WHERE project_key = ?1 AND tracker_issue_id = ?2
+				 AND phase = 'terminal_cleanup_pending'",
+				params![lane.project_key(), lane.tracker_issue_id()],
+			)?;
+			if lane_changed != 1 {
+				eyre::bail!("Superseded closeout terminal Lane CAS failed.");
+			}
+		}
+		let changed = transaction.execute(
+			"UPDATE superseded_closeout_operations
+			 SET stage = ?2, stage_epoch = ?3, payload_json = ?4, updated_at_unix = unixepoch()
+			 WHERE operation_id = ?1 AND stage = ?5 AND stage_epoch = ?6",
+			params![
+				current.operation_id(),
+				next.stage().as_str(),
+				i64::try_from(next.stage_epoch())?,
+				serde_json::to_string(next)?,
+				current.stage().as_str(),
+				i64::try_from(current.stage_epoch())?,
+			],
+		)?;
+		if changed != 1 {
+			eyre::bail!("Superseded closeout operation stage CAS failed.");
+		}
+		transaction.commit()?;
+		Ok(())
+	}
+
+	pub(in crate::state) fn insert_superseded_closeout_operation(
+		&self,
+		operation: &SupersededCloseoutOperation,
+	) -> Result<()> {
+		let payload = serde_json::to_string(operation)?;
+		let edge = operation.edge();
+		let inserted = self.connection.execute(
+			"INSERT OR IGNORE INTO superseded_closeout_operations (
+				operation_id, edge_id, predecessor_project_key, predecessor_issue_id,
+				stage, stage_epoch, payload_json, updated_at_unix
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())",
+			params![
+				operation.operation_id(),
+				edge.edge_id(),
+				edge.predecessor_lane_id().project_key(),
+				edge.predecessor_lane_id().tracker_issue_id(),
+				operation.stage().as_str(),
+				i64::try_from(operation.stage_epoch())?,
+				payload,
+			],
+		)?;
+		if inserted == 1 {
+			return Ok(());
+		}
+		let existing = self.connection.query_row(
+			"SELECT payload_json FROM superseded_closeout_operations WHERE operation_id = ?1",
+			params![operation.operation_id()],
+			|row| row.get::<_, String>(0),
+		)?;
+		if existing != serde_json::to_string(operation)? {
+			eyre::bail!("Superseded closeout operation authority-key collision.");
+		}
+		Ok(())
+	}
+
 	pub(in crate::state) fn insert_repair_handoff(
 		&mut self,
 		handoff: &RepairHandoffAuthority,
@@ -72,6 +149,7 @@ impl SqliteStateStore {
 		&mut self,
 		handoff: &RepairHandoffAuthority,
 		edge: &SupersessionEdge,
+		operation: &SupersededCloseoutOperation,
 		binding_fingerprint: &str,
 	) -> Result<LaneAggregate> {
 		let transaction = self.connection.transaction()?;
@@ -152,6 +230,27 @@ impl SqliteStateStore {
 		)?;
 		if lane_changed != 1 {
 			eyre::bail!("Supersession lane CAS failed.");
+		}
+		let next_operation = transition_superseded_closeout(
+			operation,
+			operation.stage_epoch(),
+			SupersededCloseoutCommand::CommitTerminalAuthority,
+		)
+		.map_err(|rejection| eyre::eyre!("superseded_closeout_stage_rejected:{rejection:?}"))?;
+		let operation_changed = transaction.execute(
+			"UPDATE superseded_closeout_operations
+			 SET stage = ?2, stage_epoch = ?3, payload_json = ?4, updated_at_unix = unixepoch()
+			 WHERE operation_id = ?1 AND stage = 'acceptance_attested' AND stage_epoch = ?5",
+			params![
+				operation.operation_id(),
+				next_operation.stage().as_str(),
+				i64::try_from(next_operation.stage_epoch())?,
+				serde_json::to_string(&next_operation)?,
+				i64::try_from(operation.stage_epoch())?,
+			],
+		)?;
+		if operation_changed != 1 {
+			eyre::bail!("Superseded closeout operation stage CAS failed.");
 		}
 		if let Some(run_id) = current.claim_run_id() {
 			let released = transaction.execute(
