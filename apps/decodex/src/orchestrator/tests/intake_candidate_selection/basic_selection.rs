@@ -52,6 +52,35 @@ fn project_tracker_scope_rejects_same_routing_label_from_another_team() {
 }
 
 #[test]
+fn pub_1711_repo_binding_drift_rejects_before_lane_side_effects() {
+	let (_temp_dir, registered_config, workflow) = tests::temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store");
+	crate::runtime::register_project_config(&state_store, registered_config.config_path(), true)
+		.expect("register original binding");
+
+	let config_text =
+		std::fs::read_to_string(registered_config.config_path()).expect("read config");
+	std::fs::write(
+		registered_config.config_path(),
+		config_text
+			.replace("repository = \"test-repository\"", "repository = \"wrong-pubfi-repository\""),
+	)
+	.expect("write drifted config");
+	let drifted_config = crate::config::ServiceConfig::from_path(registered_config.config_path())
+		.expect("load drifted config");
+	let issue = tests::sample_issue("Todo", &[]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	let error =
+		orchestrator::run_project_once(&tracker, &drifted_config, &workflow, &state_store, false)
+			.expect_err("repository binding drift must fail closed");
+	assert!(error.to_string().contains("immutable binding"));
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease read").is_none());
+	assert!(state_store.worktree_for_issue(&issue.id).expect("worktree read").is_none());
+	assert!(state_store.list_run_attempts_for_issue(&issue.id).expect("attempts").is_empty());
+}
+
+#[test]
 fn blocks_ordinary_dispatch_for_retained_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

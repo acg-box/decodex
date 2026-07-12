@@ -34,6 +34,13 @@ implemented and pushed:
 - `449b5197`: normal dispatch lease acquisition/release projected from canonical lane
   claim commands, including retry and cross-project collision tests.
 - `541a79e6`: normal dispatch worktree attachment through the canonical lane command.
+- `fcced4aa`: immutable typed Intake Authority union and deterministic tamper-evident
+  fingerprint.
+- `b7c4a56a`: issue-batch Intake Authority persisted atomically with its Execution
+  Program; reapply preserves the original accepted authority and restart validates it.
+- `6ca0f718`: accepted Decision Contract actor/source/time/fingerprint and project
+  binding persisted as typed Intake Authority; Program dispatch rejects missing,
+  wrong-kind, or stale-binding authority outside test-only legacy fixtures.
 
 Fresh focused evidence on this runtime branch:
 
@@ -41,6 +48,9 @@ Fresh focused evidence on this runtime branch:
 - state tests: 114 passed;
 - lease tests: 17 passed;
 - intake tests: 93 passed;
+- issue-batch Program Intake tests: 7 passed;
+- goal Program Intake tests: 13 passed;
+- Program reconciler tests: 18 passed;
 - `cargo check -p decodex --all-targets`: passed;
 - `git diff --check`: passed before each runtime commit.
 
@@ -50,6 +60,13 @@ projections and many recovery/read surfaces still use issue-only keys. Typed
 and adjacent XY-1249 fixes are not complete. No C1 or C2 completion claim is valid until
 those old authority writers are removed or converted, PUB-1711 is replayed end to end,
 and the one-shot migration gate proves no executable ambiguity.
+
+PUB-1711 now has an end-to-end runtime regression: after registering one repository
+binding, rewriting the same service config to another GitHub repository makes normal
+intake fail at project binding attestation. The fixture verifies that no lease, worktree,
+or run attempt is persisted. This proves the pre-side-effect rejection path; C2 remains
+open until every admitted lane stores its exact Intake Authority reference and normal
+queue intake receives typed authority rather than relying only on routing labels.
 
 Next implementation checkpoint: carry binding/intake authority into the lane aggregate,
 convert attempts/control/review/Program references and recovery worktree adoption to
