@@ -26,12 +26,14 @@ use crate::{prelude::Result, state::StateStore};
 
 /// Open the global single-machine runtime database.
 pub(crate) fn open_runtime_store() -> Result<StateStore> {
-	StateStore::open(runtime_db_path()?)
+	let root = decodex_home_dir()?;
+	StateStore::open(generation::selected_runtime_db_path_from(&root)?)
 }
 
 /// Open the global runtime database without preloading all durable rows.
 pub(crate) fn open_runtime_store_lazy() -> Result<StateStore> {
-	StateStore::open_lazy(runtime_db_path()?)
+	let root = decodex_home_dir()?;
+	StateStore::open_lazy(generation::selected_runtime_db_path_from(&root)?)
 }
 
 #[cfg(test)] mod tests;

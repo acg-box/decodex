@@ -71,6 +71,22 @@ compatibility reader. Independently proven current external resources can enter 
 new typed intake/recovery authority. This host reset removes live legacy-row ambiguity
 but does not by itself prove the source-level sole-writer or old-binary generation gates.
 
+The old host path is now a mode-0500 tombstone directory after an observed launchd race:
+the enabled v12 App restarted after shutdown and recreated an empty legacy database.
+`org.nixos.decodex-app` and `org.nixos.decodex-serve` were disabled, the recreated file
+was removed, and no App/serve process remains. Runtime generation selection now rejects
+a legacy database, unknown/escaping/mismatched manifest paths, and absent selected
+databases. Publication requires the tombstone plus a prepared generation database,
+fsyncs a create-new manifest, renames it last, fsyncs the runtime directory, and refuses
+republish. Production runtime-store opens now use only that manifest-selected path.
+
+The first source-level legacy-writer contraction is also in place: production full-state
+persistence no longer writes `leases` or `worktrees`; those projection writers compile
+only for existing test fixtures. Direct lease/worktree mutation methods and readers still
+exist and are the next removal slice, so fresh v2 schema publication remains disabled.
+Five C1 generation tests, persistent Lane round-trip, `cargo check -p decodex
+--all-targets --all-features`, and `git diff --check` pass.
+
 Fresh focused evidence on this runtime branch:
 
 - lane authority tests: 7 passed;

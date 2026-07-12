@@ -10,10 +10,9 @@ pub(super) use self::{
 		upsert_autonomy_runtime_policy_record,
 	},
 	base::{
-		persist_leases, persist_linear_execution_events, persist_private_execution_events,
-		persist_projects, persist_protocol_events, persist_run_activity_summaries,
-		persist_run_attempts, persist_run_control_channels, persist_worktrees,
-		update_run_attempt_project,
+		persist_linear_execution_events, persist_private_execution_events, persist_projects,
+		persist_protocol_events, persist_run_activity_summaries, persist_run_attempts,
+		persist_run_control_channels, update_run_attempt_project,
 	},
 	program::{
 		insert_program_intake_state, persist_intake_authorities, persist_program_intake_state,
@@ -23,6 +22,8 @@ pub(super) use self::{
 		persist_review_lifecycle_records, persist_review_policy_checkpoints,
 	},
 };
+#[cfg(test)]
+pub(super) use self::base::{persist_leases, persist_worktrees};
 
 use crate::state::sqlite_store::{
 	ChildAgentActivitySummary, Connection, ExecutionProgramRuntimeRecord, Result, StateData,

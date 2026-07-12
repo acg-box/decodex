@@ -59,6 +59,7 @@ pub(in crate::state::sqlite_store) fn update_run_attempt_project(
 	Ok(())
 }
 
+#[cfg(test)]
 pub(in crate::state::sqlite_store) fn persist_leases(
 	transaction: &Transaction<'_>,
 	state: &StateData,
@@ -79,6 +80,7 @@ pub(in crate::state::sqlite_store) fn persist_leases(
 	Ok(())
 }
 
+#[cfg(test)]
 pub(in crate::state::sqlite_store) fn persist_worktrees(
 	transaction: &Transaction<'_>,
 	state: &StateData,

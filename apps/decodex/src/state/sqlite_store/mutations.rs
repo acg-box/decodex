@@ -124,11 +124,13 @@ impl SqliteStateStore {
 		let transaction = self.connection.transaction()?;
 
 		persist::persist_projects(&transaction, state)?;
+		#[cfg(test)]
 		persist::persist_leases(&transaction, state)?;
 		persist::persist_run_attempts(&transaction, state)?;
 		persist::persist_run_control_channels(&transaction, state)?;
 		persist::persist_protocol_events(&transaction, state)?;
 		persist::persist_run_activity_summaries(&transaction, state)?;
+		#[cfg(test)]
 		persist::persist_worktrees(&transaction, state)?;
 		persist::persist_linear_execution_events(&transaction, state)?;
 		persist::persist_private_execution_events(&transaction, state)?;
