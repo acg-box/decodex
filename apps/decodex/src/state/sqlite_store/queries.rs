@@ -8,6 +8,7 @@ mod review;
 mod runs;
 mod snapshot;
 mod supersession;
+mod tracker_workspace_directory;
 
 use std::path::PathBuf;
 

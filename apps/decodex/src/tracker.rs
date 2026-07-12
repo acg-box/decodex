@@ -8,6 +8,7 @@ mod errors;
 #[allow(dead_code)] mod identity;
 mod labels;
 mod types;
+mod workspace_directory;
 
 pub(crate) use self::{
 	comments::{
@@ -24,5 +25,8 @@ pub(crate) use self::{
 	types::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerIssueBriefUpdate,
 		TrackerIssueCreate, TrackerLabel, TrackerState, TrackerTeam,
+	},
+	workspace_directory::{
+		TrackerCredentialAttestation, TrackerWorkspaceDirectory, TrackerWorkspaceEntry,
 	},
 };

@@ -18,6 +18,8 @@ mod projects;
 mod routing_quarantines;
 #[cfg_attr(not(test), allow(dead_code))]
 mod supersession;
+#[cfg_attr(not(test), allow(dead_code))]
+mod tracker_workspace_directory;
 mod validation;
 
 pub(crate) use self::{

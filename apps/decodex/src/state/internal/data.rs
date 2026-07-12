@@ -31,11 +31,13 @@ use crate::{
 			WorktreeMappingRecord,
 		},
 	},
+	tracker::TrackerWorkspaceDirectory,
 };
 
 #[derive(Default)]
 pub(in crate::state) struct StateData {
 	pub(in crate::state) projects: HashMap<String, ProjectRegistration>,
+	pub(in crate::state) tracker_workspace_directory: TrackerWorkspaceDirectory,
 	pub(in crate::state) routing_quarantines: HashMap<String, RoutingQuarantine>,
 	pub(in crate::state) lanes: HashMap<LaneId, LaneAggregate>,
 	pub(in crate::state) lane_effects: HashMap<String, LaneEffect>,

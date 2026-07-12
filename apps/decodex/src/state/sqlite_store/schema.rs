@@ -39,6 +39,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS projects_repository_key_idx
 ON projects (github_owner, github_repository);
 CREATE UNIQUE INDEX IF NOT EXISTS projects_active_routing_predicate_idx
 ON projects (tracker_team_id, routing_label) WHERE enabled = 1;
+CREATE TABLE IF NOT EXISTS tracker_workspace_directory (
+	singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
+	payload_json TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS routing_quarantines (
 	tracker_issue_id TEXT PRIMARY KEY NOT NULL,
 	epoch INTEGER NOT NULL CHECK (epoch > 0),

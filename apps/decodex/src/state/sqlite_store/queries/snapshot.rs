@@ -8,6 +8,7 @@ impl SqliteStateStore {
 		let mut state = StateData::default();
 
 		self.load_projects(&mut state)?;
+		self.load_tracker_workspace_directory(&mut state)?;
 		self.load_lanes(&mut state)?;
 		self.load_lane_effects(&mut state)?;
 		self.load_no_effective_delta_recoveries(&mut state)?;
