@@ -41,6 +41,17 @@ implemented and pushed:
 - `6ca0f718`: accepted Decision Contract actor/source/time/fingerprint and project
   binding persisted as typed Intake Authority; Program dispatch rejects missing,
   wrong-kind, or stale-binding authority outside test-only legacy fixtures.
+- `0f78ef5c`: canonical lane aggregate persists immutable Intake Authority identity.
+- `53570a7c`: normal queue intake creates deterministic typed issue-batch authority and
+  seals it into the lane before lease/worktree effects.
+- `1f9f01da`: Program dispatch admits the lane only through its persisted Program
+  authority.
+- `f66d6b65`: production lane claims reject unless immutable typed admission already
+  succeeded; targeted Program selection attests binding before recovery side effects.
+- `af9fc6cd`: normal runtime attempt writes require project-qualified admitted LaneId and
+  refuse movement of a run id between lanes.
+- `e4f9d7fb`: run-control publication resolves ownership from the project-qualified
+  attempt and active canonical lane claim instead of the legacy lease projection.
 
 Fresh focused evidence on this runtime branch:
 
@@ -64,9 +75,19 @@ and the one-shot migration gate proves no executable ambiguity.
 PUB-1711 now has an end-to-end runtime regression: after registering one repository
 binding, rewriting the same service config to another GitHub repository makes normal
 intake fail at project binding attestation. The fixture verifies that no lease, worktree,
-or run attempt is persisted. This proves the pre-side-effect rejection path; C2 remains
-open until every admitted lane stores its exact Intake Authority reference and normal
-queue intake receives typed authority rather than relying only on routing labels.
+or run attempt is persisted. This proves the pre-side-effect rejection path that now
+feeds the completed new-admission behavior below.
+
+C2 new-admission behavior is now complete: normal queue and Program Intake both persist
+typed authority, exact authority identity is sealed into the canonical lane, and the
+kernel refuses claims without admission. C2 does not adjudicate pre-v2 rows; legacy or
+ambiguous runtime rows remain blocked on the C1 one-shot migration/quarantine work.
+
+The current sole-writer cutover has started but is not complete. Normal runtime attempt
+and run-control writes are lane-qualified. Recovery review-handoff adoption and runtime
+activity recovery still contain issue-only attempt/lease writers; retry-budget and thread
+archive reads are still issue-only; legacy lease/worktree projections and tables still
+exist. None of those paths may be treated as v2 authority or used to claim C1 complete.
 
 Next implementation checkpoint: carry binding/intake authority into the lane aggregate,
 convert attempts/control/review/Program references and recovery worktree adoption to
@@ -931,7 +952,7 @@ migration invariants. C1 must not preserve global issue-keyed ownership behind a
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
 | C1 project/lane identity and migration | In progress on PR #1092 | ProjectBinding/LaneId and transactional lane CAS exist; sole-writer cutover, migration/quarantine, and old issue-only API removal remain |
-| C2 intake and dispatch authority | Pending | Host workspace credential directory, unbound issue resolution, Typed IntakeAuthority, binding attestations, issue create/archive effects, PUB-1711 rejection replay |
+| C2 intake and dispatch authority | New-admission core complete; full gate pending C3 effects | Typed authority, binding attestations, claim fencing, and PUB-1711 replay exist; issue create/archive outbox receipts and remaining gate evidence remain |
 | C3 transition and effects | Pending | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
 | C4 supersession and conflicts | Pending | Typed edge, deterministic closeout crash/replay, conflict release, obsolete scan, PUB-1704/PUB-1705 fixture/recovery |
 | C5 telemetry and operator audit | Pending | Signed chain audit/recovery, diagnose/timeline/audit, metrics, full bounded projections while preserving C1 privacy boundary |
