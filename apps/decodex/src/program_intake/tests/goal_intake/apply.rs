@@ -126,6 +126,14 @@ fn goal_intake_apply_creates_updates_and_persists_links() {
 
 	test_support::assert_goal_intake_apply_report(&report, &tracker);
 	test_support::assert_goal_intake_runtime_links(&store, &report);
+	let authority = store
+		.intake_authority_for_program("decodex", &report.program_id)
+		.expect("authority read")
+		.expect("goal authority");
+	assert!(matches!(
+		authority.authority(),
+		crate::lane_authority::IntakeAuthorityKind::DecisionContract { .. }
+	));
 
 	assert_eq!(
 		autonomy_runtime_policy::program_intake_state_for_contract(

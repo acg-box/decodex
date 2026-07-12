@@ -140,6 +140,38 @@ where
 			else {
 				continue;
 			};
+			let authority = state_store.intake_authority_for_program(
+				project.service_id(),
+				refreshed.record.program_id(),
+			)?;
+			if authority.is_none() {
+				#[cfg(not(test))]
+				return Err(eyre::eyre!(
+					"Decision Contract Program `{}` has no typed Intake Authority.",
+					refreshed.record.program_id()
+				));
+			}
+			if let Some(authority) = authority.as_ref() {
+				match authority.authority() {
+					IntakeAuthorityKind::DecisionContract { accepted_contract_id, .. }
+						if accepted_contract_id == source_contract_id => {},
+					_ => eyre::bail!(
+						"Decision Contract Program `{}` has the wrong Intake Authority.",
+						refreshed.record.program_id()
+					),
+				}
+				let binding = state_store
+					.registered_project_binding(project.service_id())?
+					.ok_or_else(|| eyre::eyre!("Program dispatch project is not registered."))?;
+				if authority.binding_attestation().binding_fingerprint()
+					!= binding.config_fingerprint()
+				{
+					eyre::bail!(
+						"Decision Contract Program `{}` has stale project binding authority.",
+						refreshed.record.program_id()
+					);
+				}
+			}
 
 			refreshed.program.evaluate(contract.contract(), &policy, &context)?
 		} else {
