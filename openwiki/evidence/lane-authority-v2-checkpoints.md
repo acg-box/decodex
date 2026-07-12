@@ -1311,6 +1311,24 @@ boundary. Production no-effective-delta wiring is intentionally not guessed: the
 complete base/head/merge-base/PatchSet diagnostics. C2/C3 must freeze and propagate that
 identity before C6 can consume this transition without reconstructing authority from Git.
 
+Commits `16a8de02` and `8ef8f720` close that authority gap. The canonical Lane now
+freezes one immutable admitted base OID under epoch CAS before workspace creation; a
+different base is rejected, SQLite restart preserves it, and worktree creation uses that
+exact object even if the source checkout advances between admission and materialization.
+Retained heads must prove the frozen base is an ancestor. Production preparation fails
+closed when the claimed Lane is absent; only legacy test fixtures retain a test-only
+fallback.
+
+Commit `b74ba945` connects the bounded no-effective-delta FSM to production validation.
+Diagnostics are built from the Lane's admitted base, current head, raw-object canonical
+PatchSet/merge base, status and name-only digests, issue/acceptance surface, checkpoint
+facts, and repo-gate results. Attempt 1 durably schedules exactly one
+`ScheduleContinuation`; exact same-attempt replay returns the same recovery, while the
+next attempt's matching no-delta result CASes to `attention_required` and raises
+`no_effective_delta_unresolved`. The focused runtime fixture proves both attempts and no
+third scheduling path. C6 still requires the independent deterministic
+`already_satisfied` validator path and final scenario-gate binding before completion.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
