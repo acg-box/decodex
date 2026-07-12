@@ -16,6 +16,7 @@ version     = "0.2.0"
 base64             = { version = "0.22" }
 clap               = { version = "4.6", features = ["derive"] }
 color-eyre         = { version = "0.6" }
+ed25519-dalek      = { version = "2.2" }
 globset            = { version = "0.4" }
 gix                = { version = "=0.85.0", default-features = false, features = ["revision", "sha1", "sha256"] }
 libc               = { version = "0.2" }

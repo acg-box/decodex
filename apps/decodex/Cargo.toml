@@ -24,6 +24,7 @@ vergen-gitcl = { workspace = true }
 base64             = { workspace = true }
 clap               = { workspace = true }
 color-eyre         = { workspace = true }
+ed25519-dalek      = { workspace = true }
 globset            = { workspace = true }
 gix                = { workspace = true }
 libc               = { workspace = true }
