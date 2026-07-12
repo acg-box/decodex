@@ -168,6 +168,14 @@ mod tests {
 				id.clone(),
 				0,
 				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+			)
+			.expect("admit");
+		first
+			.transition_lane(
+				id.clone(),
+				1,
+				"binding-1",
 				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
 			)
 			.expect("claim");
@@ -184,7 +192,8 @@ mod tests {
 
 		let reopened = StateStore::open(&database).expect("reopened store");
 		let lane = reopened.lane(&id).expect("read").expect("lane");
-		assert_eq!(lane.epoch(), 1);
+		assert_eq!(lane.epoch(), 2);
+		assert_eq!(lane.intake_authority_id(), Some("authority-1"));
 		assert_eq!(lane.claim_run_id(), Some("run-1"));
 	}
 

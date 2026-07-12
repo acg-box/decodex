@@ -25,7 +25,7 @@ impl SqliteStateStore {
 		let transaction = self.connection.transaction()?;
 		let persisted = transaction
 			.query_row(
-				"SELECT binding_fingerprint, epoch, phase, claim_run_id, branch_name, worktree_path \
+				"SELECT binding_fingerprint, epoch, phase, intake_authority_id, claim_run_id, branch_name, worktree_path \
 				 FROM lanes WHERE project_key = ?1 AND tracker_issue_id = ?2",
 				params![id.project_key(), id.tracker_issue_id()],
 				|row| {
@@ -47,7 +47,8 @@ impl SqliteStateStore {
 						phase,
 						row.get(3)?,
 						row.get(4)?,
-						row.get::<_, Option<String>>(5)?.map(PathBuf::from),
+						row.get(5)?,
+						row.get::<_, Option<String>>(6)?.map(PathBuf::from),
 					))
 				},
 			)
@@ -82,15 +83,16 @@ impl SqliteStateStore {
 
 		let changed = if persisted.is_some() {
 			transaction.execute(
-				"UPDATE lanes SET epoch = ?3, phase = ?4, claim_run_id = ?5, branch_name = ?6, \
-				 worktree_path = ?7, updated_at_unix = ?8 \
-				 WHERE project_key = ?1 AND tracker_issue_id = ?2 AND epoch = ?9 \
-				 AND binding_fingerprint = ?10",
+				"UPDATE lanes SET epoch = ?3, phase = ?4, intake_authority_id = ?5, claim_run_id = ?6, branch_name = ?7, \
+				 worktree_path = ?8, updated_at_unix = ?9 \
+				 WHERE project_key = ?1 AND tracker_issue_id = ?2 AND epoch = ?10 \
+				 AND binding_fingerprint = ?11",
 				params![
 					id.project_key(),
 					id.tracker_issue_id(),
 					i64::try_from(next.epoch())?,
 					next.phase().as_str(),
+					next.intake_authority_id(),
 					next.claim_run_id(),
 					next.branch_name(),
 					next.worktree_path().map(|path| path.to_string_lossy().into_owned()),
@@ -102,14 +104,15 @@ impl SqliteStateStore {
 		} else {
 			transaction.execute(
 				"INSERT INTO lanes (project_key, tracker_issue_id, binding_fingerprint, epoch, phase, \
-				 claim_run_id, branch_name, worktree_path, updated_at_unix) \
-				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+				 intake_authority_id, claim_run_id, branch_name, worktree_path, updated_at_unix) \
+				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
 				params![
 					id.project_key(),
 					id.tracker_issue_id(),
 					next.binding_fingerprint(),
 					i64::try_from(next.epoch())?,
 					next.phase().as_str(),
+					next.intake_authority_id(),
 					next.claim_run_id(),
 					next.branch_name(),
 					next.worktree_path().map(|path| path.to_string_lossy().into_owned()),

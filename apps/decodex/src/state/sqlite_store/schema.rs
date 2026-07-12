@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS lanes (
 	binding_fingerprint TEXT NOT NULL,
 	epoch INTEGER NOT NULL,
 	phase TEXT NOT NULL,
+	intake_authority_id TEXT,
 	claim_run_id TEXT,
 	branch_name TEXT,
 	worktree_path TEXT,
@@ -123,6 +124,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 "#,
 		)?;
 		self.bootstrap_worktree_schema()?;
+		self.bootstrap_lane_schema()?;
 		self.bootstrap_review_schema()?;
 		self.bootstrap_evidence_artifact_schema()?;
 		self.bootstrap_run_control_channels_schema()?;

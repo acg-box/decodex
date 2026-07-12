@@ -55,6 +55,7 @@ pub struct LaneAggregate {
 	binding_fingerprint: String,
 	epoch: u64,
 	phase: LanePhase,
+	intake_authority_id: Option<String>,
 	claim_run_id: Option<String>,
 	branch_name: Option<String>,
 	worktree_path: Option<PathBuf>,
@@ -66,6 +67,7 @@ impl LaneAggregate {
 			binding_fingerprint: binding_fingerprint.to_owned(),
 			epoch: 0,
 			phase: LanePhase::Unclaimed,
+			intake_authority_id: None,
 			claim_run_id: None,
 			branch_name: None,
 			worktree_path: None,
@@ -77,11 +79,21 @@ impl LaneAggregate {
 		binding_fingerprint: String,
 		epoch: u64,
 		phase: LanePhase,
+		intake_authority_id: Option<String>,
 		claim_run_id: Option<String>,
 		branch_name: Option<String>,
 		worktree_path: Option<PathBuf>,
 	) -> Self {
-		Self { id, binding_fingerprint, epoch, phase, claim_run_id, branch_name, worktree_path }
+		Self {
+			id,
+			binding_fingerprint,
+			epoch,
+			phase,
+			intake_authority_id,
+			claim_run_id,
+			branch_name,
+			worktree_path,
+		}
 	}
 
 	pub fn id(&self) -> &LaneId {
@@ -100,6 +112,10 @@ impl LaneAggregate {
 		self.phase
 	}
 
+	pub fn intake_authority_id(&self) -> Option<&str> {
+		self.intake_authority_id.as_deref()
+	}
+
 	pub fn claim_run_id(&self) -> Option<&str> {
 		self.claim_run_id.as_deref()
 	}
@@ -116,6 +132,7 @@ impl LaneAggregate {
 /// Typed transition request. Callers cannot directly choose an output phase.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LaneCommand {
+	Admit { intake_authority_id: String },
 	AcquireClaim { run_id: String },
 	ReleaseClaim { run_id: String },
 	AttachWorktree { branch_name: String, worktree_path: PathBuf },
@@ -134,6 +151,7 @@ pub enum LaneTransitionRejection {
 	InvalidPhase,
 	ConflictingClaim,
 	ConflictingWorktree,
+	ConflictingIntakeAuthority,
 	TrackerIssueAlreadyActive,
 }
 
@@ -156,6 +174,18 @@ pub fn transition(
 
 	let mut next = current.clone();
 	match command {
+		LaneCommand::Admit { intake_authority_id } => {
+			if intake_authority_id.trim().is_empty() {
+				return Err(LaneTransitionRejection::ConflictingIntakeAuthority);
+			}
+			match current.intake_authority_id.as_deref() {
+				None if current.phase == LanePhase::Unclaimed => {
+					next.intake_authority_id = Some(intake_authority_id);
+				},
+				Some(existing) if existing == intake_authority_id => {},
+				_ => return Err(LaneTransitionRejection::ConflictingIntakeAuthority),
+			}
+		},
 		LaneCommand::AcquireClaim { run_id } => match current.claim_run_id.as_deref() {
 			None if current.phase == LanePhase::Unclaimed => {
 				next.claim_run_id = Some(run_id);
@@ -242,6 +272,37 @@ mod tests {
 				LaneCommand::AcquireClaim { run_id: String::from("run-1") },
 			),
 			Err(LaneTransitionRejection::EpochMismatch),
+		);
+	}
+
+	#[test]
+	fn admission_is_immutable_and_retry_safe() {
+		let admitted = transition(
+			&lane(),
+			0,
+			"binding-1",
+			LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+		)
+		.expect("admit");
+		assert_eq!(admitted.intake_authority_id(), Some("authority-1"));
+		assert_eq!(
+			transition(
+				&admitted,
+				1,
+				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-1") },
+			)
+			.expect("replay"),
+			admitted,
+		);
+		assert_eq!(
+			transition(
+				&admitted,
+				1,
+				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("authority-2") },
+			),
+			Err(LaneTransitionRejection::ConflictingIntakeAuthority),
 		);
 	}
 
