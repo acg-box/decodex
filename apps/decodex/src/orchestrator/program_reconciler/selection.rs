@@ -1,5 +1,6 @@
 use crate::{
 	execution_program::ExecutionWorkflowPolicy,
+	lane_authority::IntakeAuthorityKind,
 	orchestrator::{
 		self, IssueDispatchMode, IssueRunPlan, IssueTracker, PROGRAM_DISPATCH_SELECTED_EVENT_TYPE,
 		PROGRAM_DISPATCH_SELECTED_SCHEMA, ProgramDispatchSelection, ProgramSchedulerSelection,
@@ -142,6 +143,38 @@ where
 
 			refreshed.program.evaluate(contract.contract(), &policy, &context)?
 		} else {
+			let authority = state_store.intake_authority_for_program(
+				project.service_id(),
+				refreshed.record.program_id(),
+			)?;
+			if authority.is_none() {
+				#[cfg(not(test))]
+				return Err(eyre::eyre!(
+					"Issue-batch Program `{}` has no typed Intake Authority.",
+					refreshed.record.program_id()
+				));
+			}
+			if let Some(authority) = authority.as_ref()
+				&& !matches!(authority.authority(), IntakeAuthorityKind::IssueBatch { .. })
+			{
+				eyre::bail!(
+					"Issue-batch Program `{}` has the wrong Intake Authority kind.",
+					refreshed.record.program_id()
+				);
+			}
+			if let Some(authority) = authority.as_ref() {
+				let binding = state_store
+					.registered_project_binding(project.service_id())?
+					.ok_or_else(|| eyre::eyre!("Program dispatch project is not registered."))?;
+				if authority.binding_attestation().binding_fingerprint()
+					!= binding.config_fingerprint()
+				{
+					eyre::bail!(
+						"Issue-batch Program `{}` has stale project binding authority.",
+						refreshed.record.program_id()
+					);
+				}
+			}
 			refreshed.program.evaluate_issue_batch(&policy, &context)?
 		};
 

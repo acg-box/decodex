@@ -193,6 +193,14 @@ fn issue_batch_persist_writes_program_and_adjacent_intake_state() {
 	assert!(rendered.contains("persisted=true"));
 	assert!(rendered.contains("scheduler_visible=true"));
 	assert_eq!(store.list_execution_programs("decodex").expect("programs").len(), 1);
+	let authority = store
+		.intake_authority_for_program("decodex", &report.program_id)
+		.expect("authority read")
+		.expect("authority");
+	assert!(matches!(
+		authority.authority(),
+		crate::lane_authority::IntakeAuthorityKind::IssueBatch { .. }
+	));
 	assert_eq!(store.list_program_intake_plans("decodex").expect("plans").len(), 1);
 	assert_eq!(
 		store.list_program_issue_mappings("decodex", &report.program_id).expect("mappings").len(),
@@ -226,6 +234,12 @@ fn issue_batch_reapply_keeps_stable_program_identity_and_removes_exact_legacy_du
 		.execution_program("decodex", &first.program_id)
 		.expect("program lookup should read")
 		.expect("program should exist");
+	let first_authority_fingerprint = store
+		.intake_authority_for_program("decodex", &first.program_id)
+		.expect("authority read")
+		.expect("authority")
+		.fingerprint()
+		.to_owned();
 	let legacy = ExecutionProgram::from_issue_batch_intake(
 		"issue-batch-decodex-legacy",
 		"decodex",
@@ -255,6 +269,15 @@ fn issue_batch_reapply_keeps_stable_program_identity_and_removes_exact_legacy_du
 	.expect("reapply should replace exact duplicates");
 
 	assert_eq!(reapplied.program_id, first.program_id);
+	assert_eq!(
+		store
+			.intake_authority_for_program("decodex", &reapplied.program_id)
+			.expect("authority read")
+			.expect("authority")
+			.fingerprint(),
+		first_authority_fingerprint,
+		"reapply must not rewrite accepted Intake Authority",
+	);
 	assert_eq!(store.list_execution_programs("decodex").expect("programs").len(), 1);
 	assert!(
 		store
@@ -269,6 +292,11 @@ fn issue_batch_reapply_keeps_stable_program_identity_and_removes_exact_legacy_du
 	let reopened = StateStore::open(&state_path).expect("store should reopen");
 
 	assert_eq!(reopened.list_execution_programs("decodex").expect("programs").len(), 1);
+	let authority = reopened
+		.intake_authority_for_program("decodex", &reapplied.program_id)
+		.expect("authority read")
+		.expect("authority should survive restart");
+	authority.validate().expect("restarted authority should validate");
 	assert!(
 		reopened
 			.execution_program("decodex", "issue-batch-decodex-legacy")

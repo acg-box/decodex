@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	config::ServiceConfig,
 	execution_program::{ExecutionProgram, ExecutionWorkflowPolicy},
+	lane_authority::{IntakeAuthority, IntakeAuthorityKind, ProjectBindingAttestation},
 	prelude::{Result, eyre},
 	program_intake::{
 		IssueBatchIntakeReport,
@@ -122,10 +124,58 @@ where
 	let counts = reporting::classify_counts(&rows);
 
 	if persist {
+		let binding = match state_store.registered_project_binding(config.service_id())? {
+			Some(binding) => binding,
+			None => {
+				#[cfg(not(test))]
+				eyre::bail!("Project is not registered; issue-batch intake is forbidden.");
+				#[cfg(test)]
+				config.project_binding("test-config-fingerprint")
+			},
+		};
+		for issue in resolved.values() {
+			if issue.team.id != binding.tracker_team_id() {
+				eyre::bail!(
+					"Issue `{}` is outside the registered project binding.",
+					issue.identifier
+				);
+			}
+		}
+		let plan = program.program_intake_plan().ok_or_else(|| {
+			eyre::eyre!("Issue-batch Execution Program is missing its intake plan.")
+		})?;
+		let authority = if let Some(existing) =
+			state_store.intake_authority_for_program(config.service_id(), program.program_id())?
+		{
+			existing
+		} else {
+			let now = OffsetDateTime::now_utc();
+			let accepted_at = now.format(&Rfc3339)?;
+			IntakeAuthority::new(
+				&format!("intake-authority-{}", &batch_identity_fingerprint[..16]),
+				config.service_id(),
+				ProjectBindingAttestation::new(&binding),
+				plan.plan_id(),
+				program.program_id(),
+				"local_operator",
+				"issue_batch_intake",
+				&format!("issue-batch:{batch_identity_fingerprint}"),
+				&accepted_at,
+				now.unix_timestamp(),
+				IntakeAuthorityKind::IssueBatch {
+					accepted_intake_id: program.program_id().to_owned(),
+					batch_fingerprint: batch_fingerprint.clone(),
+				},
+			)?
+		};
 		let duplicate_program_ids =
 			exact_issue_batch_duplicate_program_ids(state_store, config.service_id(), &program)?;
 
-		state_store.upsert_execution_program(config.service_id(), program)?;
+		state_store.upsert_execution_program_with_intake_authority(
+			config.service_id(),
+			program,
+			authority,
+		)?;
 
 		for duplicate_program_id in duplicate_program_ids {
 			state_store.delete_execution_program(config.service_id(), &duplicate_program_id)?;

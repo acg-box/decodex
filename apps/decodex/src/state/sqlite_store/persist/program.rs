@@ -2,6 +2,36 @@ use crate::state::sqlite_store::persist::{
 	self, Connection, ExecutionProgramRuntimeRecord, Result, StateData, Transaction,
 };
 
+pub(in crate::state::sqlite_store) fn persist_intake_authorities(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for authority in state.intake_authorities.values() {
+		authority.validate()?;
+		transaction.execute(
+			"INSERT INTO intake_authorities (
+				project_key, authority_id, program_id, plan_id, kind, binding_fingerprint,
+				correlation_id, fingerprint, payload_json, accepted_at, accepted_at_unix
+			) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+			ON CONFLICT(project_key, authority_id) DO NOTHING",
+			persist::params![
+				authority.project_key(),
+				authority.authority_id(),
+				authority.program_id(),
+				authority.plan_id(),
+				authority.authority().as_str(),
+				authority.binding_attestation().binding_fingerprint(),
+				authority.correlation_id(),
+				authority.fingerprint(),
+				serde_json::to_string(authority)?,
+				authority.accepted_at(),
+				authority.accepted_at_unix(),
+			],
+		)?;
+	}
+	Ok(())
+}
+
 pub(in crate::state::sqlite_store) fn persist_program_intake_state(
 	transaction: &Transaction<'_>,
 	state: &StateData,

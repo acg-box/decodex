@@ -3,6 +3,7 @@ mod query;
 
 use crate::{
 	execution_program::ExecutionProgram,
+	lane_authority::IntakeAuthority,
 	prelude::Result,
 	state::store::{
 		ExecutionProgramRecord, ProgramIntakePlanRecord, ProgramIssueMappingRecord, StateStore,
@@ -66,6 +67,32 @@ impl StateStore {
 		program: ExecutionProgram,
 	) -> Result<ExecutionProgramRecord> {
 		mutation::upsert_execution_program(self, project_id, program)
+	}
+
+	pub(crate) fn upsert_execution_program_with_intake_authority(
+		&self,
+		project_id: &str,
+		program: ExecutionProgram,
+		authority: IntakeAuthority,
+	) -> Result<ExecutionProgramRecord> {
+		mutation::upsert_execution_program_with_intake_authority(
+			self, project_id, program, authority,
+		)
+	}
+
+	pub(crate) fn intake_authority_for_program(
+		&self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<Option<IntakeAuthority>> {
+		let state = self.lock()?;
+		Ok(state
+			.intake_authorities
+			.values()
+			.find(|authority| {
+				authority.project_key() == project_id && authority.program_id() == program_id
+			})
+			.cloned())
 	}
 
 	/// Delete one superseded private Execution Program and its derived intake state.

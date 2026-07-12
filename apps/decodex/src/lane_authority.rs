@@ -107,9 +107,42 @@ pub struct LaneId {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct BindingAttestation {
 	lane_id: LaneId,
+	project: ProjectBindingAttestation,
+	tracker_team_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct ProjectBindingAttestation {
+	project_key: String,
 	binding_fingerprint: String,
 	tracker_team_id: String,
 	routing_label: String,
+}
+impl ProjectBindingAttestation {
+	pub fn new(binding: &ProjectBinding) -> Self {
+		Self {
+			project_key: binding.project_key().to_owned(),
+			binding_fingerprint: binding.config_fingerprint().to_owned(),
+			tracker_team_id: binding.tracker_team_id().to_owned(),
+			routing_label: binding.routing_label().to_owned(),
+		}
+	}
+
+	pub fn project_key(&self) -> &str {
+		&self.project_key
+	}
+
+	pub fn binding_fingerprint(&self) -> &str {
+		&self.binding_fingerprint
+	}
+
+	pub fn tracker_team_id(&self) -> &str {
+		&self.tracker_team_id
+	}
+
+	pub fn routing_label(&self) -> &str {
+		&self.routing_label
+	}
 }
 impl BindingAttestation {
 	pub fn new(
@@ -123,9 +156,8 @@ impl BindingAttestation {
 
 		Ok(Self {
 			lane_id: LaneId::new(binding.project_key(), tracker_issue_id)?,
-			binding_fingerprint: binding.config_fingerprint().to_owned(),
+			project: ProjectBindingAttestation::new(binding),
 			tracker_team_id: observed_team_id.to_owned(),
-			routing_label: binding.routing_label().to_owned(),
 		})
 	}
 
@@ -134,7 +166,7 @@ impl BindingAttestation {
 	}
 
 	pub fn binding_fingerprint(&self) -> &str {
-		&self.binding_fingerprint
+		self.project.binding_fingerprint()
 	}
 
 	pub fn tracker_team_id(&self) -> &str {
@@ -142,7 +174,11 @@ impl BindingAttestation {
 	}
 
 	pub fn routing_label(&self) -> &str {
-		&self.routing_label
+		self.project.routing_label()
+	}
+
+	pub fn project(&self) -> &ProjectBindingAttestation {
+		&self.project
 	}
 }
 impl LaneId {

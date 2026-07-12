@@ -5,7 +5,7 @@ mod replacements;
 use std::collections::HashMap;
 
 use crate::{
-	lane_authority::{LaneAggregate, LaneId},
+	lane_authority::{IntakeAuthority, LaneAggregate, LaneId},
 	state::{
 		ProgramIntakeAttemptStatus,
 		internal::guards::{DispatchSlotConfig, DispatchSlotGuard, IssueClaimGuard},
@@ -54,6 +54,7 @@ pub(in crate::state) struct StateData {
 		HashMap<AutonomyRuntimePolicyKey, AutonomyRuntimePolicyRuntimeRecord>,
 	pub(in crate::state) execution_programs:
 		HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
+	pub(in crate::state) intake_authorities: HashMap<(String, String), IntakeAuthority>,
 	pub(in crate::state) program_intake_plans:
 		HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
 	pub(in crate::state) program_issue_mappings:

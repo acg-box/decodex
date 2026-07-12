@@ -1,4 +1,5 @@
 use crate::{
+	lane_authority::IntakeAuthority,
 	prelude::Result,
 	state::{
 		StateData, runtime_records::ExecutionProgramRuntimeRecord, runtime_row_parsers,
@@ -7,6 +8,28 @@ use crate::{
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn load_intake_authorities(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_key, authority_id, payload_json FROM intake_authorities \
+			 ORDER BY project_key, authority_id",
+		)?;
+		let rows = statement.query_map([], |row| {
+			Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+		})?;
+		for row in rows {
+			let (project_key, authority_id, payload_json) = row?;
+			let authority = serde_json::from_str::<IntakeAuthority>(&payload_json)?;
+			authority.validate()?;
+			if authority.project_key() != project_key || authority.authority_id() != authority_id {
+				color_eyre::eyre::bail!(
+					"Persisted Intake Authority key does not match its payload."
+				);
+			}
+			state.intake_authorities.insert((project_key, authority_id), authority);
+		}
+		Ok(())
+	}
+
 	pub(in crate::state) fn load_execution_programs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \

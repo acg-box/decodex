@@ -23,6 +23,7 @@ impl SqliteStateStore {
 		self.load_autonomy_signals(&mut state)?;
 		self.load_autonomy_proposals(&mut state)?;
 		self.load_execution_programs(&mut state)?;
+		self.load_intake_authorities(&mut state)?;
 		self.load_program_intake_state(&mut state)?;
 		self.load_review_lifecycle_records(&mut state)?;
 		self.load_review_policy_checkpoints(&mut state)?;

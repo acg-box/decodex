@@ -130,6 +130,7 @@ impl SqliteStateStore {
 		persist::persist_autonomy_signals(&transaction, state)?;
 		persist::persist_autonomy_proposals(&transaction, state)?;
 		persist::persist_execution_programs(&transaction, state)?;
+		persist::persist_intake_authorities(&transaction, state)?;
 		persist::persist_program_intake_state(&transaction, state)?;
 		persist::persist_review_lifecycle_records(&transaction, state)?;
 		persist::persist_review_policy_checkpoints(&transaction, state)?;

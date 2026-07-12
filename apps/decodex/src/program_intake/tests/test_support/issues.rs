@@ -13,7 +13,7 @@ pub(crate) fn issue(identifier: &str, state: &str) -> TrackerIssue {
 		updated_at: String::from("2026-06-01T00:00:00Z"),
 		state: TrackerState { id: format!("state-{state}"), name: state.to_owned() },
 		team: TrackerTeam {
-			id: String::from("team"),
+			id: String::from("team-test"),
 			name: String::from("Team"),
 			states: vec![
 				TrackerState { id: String::from("state-Todo"), name: String::from("Todo") },

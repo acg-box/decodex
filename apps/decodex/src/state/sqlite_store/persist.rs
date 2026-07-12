@@ -15,7 +15,9 @@ pub(super) use self::{
 		persist_run_attempts, persist_run_control_channels, persist_worktrees,
 		update_run_attempt_project,
 	},
-	program::{insert_program_intake_state, persist_program_intake_state},
+	program::{
+		insert_program_intake_state, persist_intake_authorities, persist_program_intake_state,
+	},
 	review::{
 		persist_connector_backoffs, persist_evidence_artifacts, persist_loop_guardrail_checkpoints,
 		persist_review_lifecycle_records, persist_review_policy_checkpoints,

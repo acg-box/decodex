@@ -2,6 +2,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{
 	execution_program::ExecutionProgram,
+	lane_authority::IntakeAuthority,
 	prelude::{Result, eyre},
 	state::{
 		runtime_records::{ExecutionProgramKey, ExecutionProgramRuntimeRecord},
@@ -186,6 +187,60 @@ pub(in crate::state::store::programs) fn upsert_execution_program(
 
 	store.upsert_execution_program_locked(&record)?;
 
+	Ok(record.as_public())
+}
+
+pub(in crate::state::store::programs) fn upsert_execution_program_with_intake_authority(
+	store: &StateStore,
+	project_id: &str,
+	program: ExecutionProgram,
+	authority: IntakeAuthority,
+) -> Result<ExecutionProgramRecord> {
+	validation::validate_execution_program_record_inputs(project_id, &program)?;
+	authority.validate()?;
+	let plan = program.program_intake_plan().ok_or_else(|| {
+		eyre::eyre!("Execution Program with Intake Authority requires a Program Intake Plan.")
+	})?;
+	if authority.project_key() != project_id
+		|| authority.program_id() != program.program_id()
+		|| authority.plan_id() != plan.plan_id()
+	{
+		eyre::bail!("Intake Authority does not match its Execution Program and plan.");
+	}
+
+	let now = store::timestamp_parts();
+	let mut state = store.lock_without_refresh()?;
+	let key = ExecutionProgramKey::new(project_id, program.program_id());
+	let (created_at, created_at_unix) = state.execution_programs.get(&key).map_or_else(
+		|| (now.text.clone(), now.unix),
+		|record| (record.created_at.clone(), record.created_at_unix),
+	);
+	let record = ExecutionProgramRuntimeRecord {
+		project_id: project_id.to_owned(),
+		source_contract_id: program.source_contract_id().map(str::to_owned),
+		program,
+		created_at,
+		created_at_unix,
+		updated_at: now.text,
+		updated_at_unix: now.unix,
+	};
+	let authority_key = (project_id.to_owned(), authority.authority_id().to_owned());
+	if let Some(existing) = state.intake_authorities.get(&authority_key)
+		&& existing != &authority
+	{
+		eyre::bail!("Immutable Intake Authority cannot be replaced.");
+	}
+	if state.intake_authorities.values().any(|existing| {
+		existing.project_key() == project_id
+			&& existing.program_id() == authority.program_id()
+			&& existing.authority_id() != authority.authority_id()
+	}) {
+		eyre::bail!("Execution Program already has a different Intake Authority.");
+	}
+	state.execution_programs.insert(record.key(), record.clone());
+	state.intake_authorities.insert(authority_key, authority);
+	store::apply_derived_program_intake_state(&mut state, &record);
+	store.persist_runtime_state_locked(&state)?;
 	Ok(record.as_public())
 }
 

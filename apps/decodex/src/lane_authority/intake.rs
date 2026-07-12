@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-	lane_authority::{BindingAttestation, LaneId},
+	lane_authority::{LaneId, ProjectBindingAttestation},
 	prelude::{Result, eyre},
 };
 
@@ -27,13 +27,22 @@ pub enum IntakeAuthorityKind {
 		transfer_causation_event_id: String,
 	},
 }
+impl IntakeAuthorityKind {
+	pub const fn as_str(&self) -> &'static str {
+		match self {
+			Self::DecisionContract { .. } => "decision_contract",
+			Self::IssueBatch { .. } => "issue_batch",
+			Self::Transfer { .. } => "transfer",
+		}
+	}
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct IntakeAuthority {
 	schema: String,
 	authority_id: String,
 	project_key: String,
-	binding_attestation: BindingAttestation,
+	binding_attestation: ProjectBindingAttestation,
 	plan_id: String,
 	program_id: String,
 	actor: String,
@@ -49,7 +58,7 @@ impl IntakeAuthority {
 	pub fn new(
 		authority_id: &str,
 		project_key: &str,
-		binding_attestation: BindingAttestation,
+		binding_attestation: ProjectBindingAttestation,
 		plan_id: &str,
 		program_id: &str,
 		actor: &str,
@@ -73,7 +82,7 @@ impl IntakeAuthority {
 				eyre::bail!("Intake authority `{field}` cannot be empty.");
 			}
 		}
-		if binding_attestation.lane_id().project_key() != project_key {
+		if binding_attestation.project_key() != project_key {
 			eyre::bail!("Intake authority project does not match its binding attestation.");
 		}
 		validate_kind(&authority)?;
@@ -124,7 +133,7 @@ impl IntakeAuthority {
 		&self.project_key
 	}
 
-	pub fn binding_attestation(&self) -> &BindingAttestation {
+	pub fn binding_attestation(&self) -> &ProjectBindingAttestation {
 		&self.binding_attestation
 	}
 
@@ -203,9 +212,9 @@ fn validate_kind(authority: &IntakeAuthorityKind) -> Result<()> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::lane_authority::ProjectBinding;
+	use crate::lane_authority::{ProjectBinding, ProjectBindingAttestation};
 
-	fn attestation() -> BindingAttestation {
+	fn attestation() -> ProjectBindingAttestation {
 		let binding = ProjectBinding::new(
 			"pubfi",
 			"helixbox",
@@ -215,7 +224,7 @@ mod tests {
 			"binding",
 		)
 		.expect("binding");
-		BindingAttestation::new(&binding, "issue-1", "team").expect("attestation")
+		ProjectBindingAttestation::new(&binding)
 	}
 
 	fn issue_batch_authority() -> IntakeAuthority {

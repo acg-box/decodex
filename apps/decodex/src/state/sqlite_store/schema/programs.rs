@@ -19,6 +19,23 @@ CREATE TABLE IF NOT EXISTS execution_programs (
 );
 CREATE INDEX IF NOT EXISTS execution_programs_source_contract_idx
 ON execution_programs (project_id, source_contract_id, updated_at_unix);
+CREATE TABLE IF NOT EXISTS intake_authorities (
+	project_key TEXT NOT NULL,
+	authority_id TEXT NOT NULL,
+	program_id TEXT NOT NULL,
+	plan_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	binding_fingerprint TEXT NOT NULL,
+	correlation_id TEXT NOT NULL,
+	fingerprint TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	accepted_at TEXT NOT NULL,
+	accepted_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_key, authority_id),
+	UNIQUE (project_key, program_id)
+);
+CREATE INDEX IF NOT EXISTS intake_authorities_correlation_idx
+ON intake_authorities (correlation_id, accepted_at_unix);
 "#,
 		)?;
 		self.ensure_execution_program_source_contract_nullable()?;
