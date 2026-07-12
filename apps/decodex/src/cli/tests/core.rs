@@ -7,6 +7,7 @@ mod parses_commit_with_authority_related_and_breaking;
 mod parses_git_hook_commands;
 mod parses_land_with_pr_override;
 mod parses_manual_authority_commands;
+mod rejects_land_related_before_execution;
 mod rejects_radar_as_runtime_subcommand;
 mod root_command_surface_is_exact;
 mod verify_publish_status_e2e;
