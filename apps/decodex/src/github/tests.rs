@@ -18,3 +18,4 @@ mod rejects_missing_number;
 mod rejects_non_pull_github_url;
 mod repository_match_accepts_case_insensitive_pull_request_url;
 mod repository_match_rejects_foreign_pull_request_url;
+mod remote_ref_delete_readback;

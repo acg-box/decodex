@@ -1094,6 +1094,16 @@ and removes a real temporary worktree directory, proves pre-receipt blocking, ma
 removal, restart, and terminalization. Ten supersession tests, the effect restart test,
 and all-target checking pass. Control and ref executors remain.
 
+Ref cleanup now distinguishes provider capability from local CAS. GitHub remote-ref
+readback returns an absence receipt, prerequisite drift on OID/type/ref mismatch, or
+`conditional_mutation_unsupported` for an exact existing ref; it never issues
+unconditional DELETE. Local refs use Git's native `update-ref -d <ref> <expected-oid>`
+compare-and-delete, verify absence afterward, and return idempotent absent/deleted
+receipts while preserving a changed ref. Four process-level tests cover exact delete,
+replay, drift, remote absence, and the no-DELETE command boundary; all-target checking
+passes. These adapters are not yet wired into the closeout executor, and remote cleanup
+remains detachable capability debt when GitHub cannot fence deletion.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
