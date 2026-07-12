@@ -95,7 +95,6 @@ impl StateStore {
 			.cloned())
 	}
 
-	#[cfg(test)]
 	pub(crate) fn intake_authority(
 		&self,
 		project_id: &str,

@@ -170,6 +170,48 @@ fn normal_queue_planning_seals_typed_intake_authority_into_lane() {
 }
 
 #[test]
+fn lane_authority_v2_c2_adm_03() {
+	let (_temp_dir, config, _workflow) = tests::temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store");
+	let issue = tests::sample_issue("Todo", &[]);
+	let original = orchestrator::dispatch_policy::attest_issue_project_binding(
+		&state_store,
+		&config,
+		&issue,
+	)
+	.expect("original attestation");
+	orchestrator::dispatch_policy::admit_normal_queue_lane(&state_store, &original, &issue)
+		.expect("initial admission");
+	let revised_binding = crate::lane_authority::ProjectBinding::new(
+		config.service_id(),
+		config.github().owner(),
+		config.github().repository(),
+		config.tracker().team_id(),
+		original.routing_label(),
+		"revised-binding-fingerprint",
+	)
+	.expect("revised binding");
+	let revised = crate::lane_authority::BindingAttestation::new(
+		&revised_binding,
+		&issue.id,
+		&issue.team.id,
+	)
+	.expect("revised attestation");
+	let error = orchestrator::dispatch_policy::admit_normal_queue_lane(
+		&state_store,
+		&revised,
+		&issue,
+	)
+	.expect_err("binding revision drift must reject dispatch");
+	assert!(error.to_string().contains("binding drift"));
+	let lane = state_store.lane(original.lane_id()).expect("lane read").expect("lane");
+	assert_eq!(lane.epoch(), 1);
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease").is_none());
+	assert!(state_store.worktree_for_issue(&issue.id).expect("worktree").is_none());
+	assert!(state_store.list_run_attempts_for_issue(&issue.id).expect("attempts").is_empty());
+}
+
+#[test]
 fn blocks_ordinary_dispatch_for_retained_authority() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

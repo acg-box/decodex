@@ -130,7 +130,16 @@ pub(crate) fn admit_normal_queue_lane(
 ) -> Result<()> {
 	let lane_id = attestation.lane_id().clone();
 	if let Some(lane) = state_store.lane(&lane_id)? {
-		if lane.intake_authority_id().is_some() {
+		if let Some(authority_id) = lane.intake_authority_id() {
+			let authority = state_store
+				.intake_authority(lane_id.project_key(), authority_id)?
+				.ok_or_else(|| eyre::eyre!("Lane IntakeAuthority is missing."))?;
+			if lane.binding_fingerprint() != attestation.binding_fingerprint()
+				|| authority.binding_attestation().binding_fingerprint()
+					!= attestation.binding_fingerprint()
+			{
+				eyre::bail!("Lane admission binding drift requires fresh authority.");
+			}
 			return Ok(());
 		}
 	}
