@@ -1,6 +1,8 @@
 pub(in crate::state) mod retarget;
 
 mod autonomy;
+#[cfg_attr(not(test), allow(dead_code))]
+mod authority_events;
 mod decision_contracts;
 #[cfg_attr(not(test), allow(dead_code))]
 mod effects;

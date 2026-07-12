@@ -1,4 +1,6 @@
 mod autonomy;
+#[cfg_attr(not(test), allow(dead_code))]
+mod authority_events;
 mod cleanup;
 #[cfg_attr(not(test), allow(dead_code))]
 mod effects;

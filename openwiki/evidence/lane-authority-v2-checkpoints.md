@@ -1191,6 +1191,23 @@ uses canonical Admit/Claim/Attempt setup and executes PR, control, worktree, rem
 and local-ref effects before receipt-gated terminalization and reopen. Supersession,
 PR-close, remote-ref, local-ref, and all-target checks pass.
 
+C3/C4 gate audit found that `scripts/verify_lane_authority_v2_gates.sh` does not yet
+exist and no scenario IDs are registered in tests. Broad filtered tests therefore cannot
+be treated as full checkpoint evidence; the eventual gate manifest must bind every EFX
+and SUP id to an actual fixture. The spec does not authorize reconstructing obsolete
+authority from labels/relations, so no projection-based "obsolete scan" was introduced.
+
+C5 authority telemetry now has its canonical storage core. Closed event/decision/reason
+enums encode with pinned `minicbor` numeric keys; generation, global sequence, previous
+hash, deterministic CBOR draft bytes, and the `decodex.authority-event/1` domain produce
+the SHA-256 chain. Schema 17 adds a singleton chain head and append-only event rows.
+Generation initialization is immutable, append inserts the event and CAS-advances the
+head in one SQLite transaction, and readback cross-checks every indexed column against
+canonical CBOR before verifying the full chain/head. Tests detect draft rewrite, row
+delete/truncation, indexed-hash rewrite, reorder/fork, and verify exact reopen. The
+KeyProtector-signed protected head, legitimate DB-ahead recovery window, transition
+transaction integration, typed projections, and output-sink privacy remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

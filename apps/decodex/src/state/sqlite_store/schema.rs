@@ -1,4 +1,5 @@
 mod autonomy;
+mod authority;
 mod base;
 mod control;
 mod migrations;
@@ -195,6 +196,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 "#,
 		)?;
 		self.bootstrap_worktree_schema()?;
+		self.bootstrap_authority_event_schema()?;
 		self.bootstrap_lane_schema()?;
 		self.bootstrap_review_schema()?;
 		self.bootstrap_evidence_artifact_schema()?;

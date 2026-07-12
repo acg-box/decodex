@@ -1,6 +1,7 @@
 //! Canonical project and lane identities for the Lane Authority v2 runtime.
 
 mod effect;
+mod event;
 mod intake;
 mod kernel;
 mod no_effective_delta;
@@ -10,6 +11,10 @@ mod supersession;
 pub use effect::{
 	EffectAuthority, EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect,
 	LaneEffectKind, LaneEffectRejection, apply_effect_command,
+};
+pub use event::{
+	AuthorityDecision, AuthorityEvent, AuthorityEventDraft, AuthorityEventType,
+	AuthorityReasonCode, verify_authority_event_chain,
 };
 pub use intake::{IntakeAuthority, IntakeAuthorityKind};
 pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
