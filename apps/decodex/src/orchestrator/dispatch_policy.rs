@@ -65,6 +65,25 @@ pub(crate) fn attest_issue_project_binding(
 	issue: &TrackerIssue,
 ) -> Result<BindingAttestation> {
 	let binding = attest_project_binding(state_store, project)?;
+	let mut repository_selectors = issue
+		.labels
+		.iter()
+		.filter_map(|label| label.name.strip_prefix("repo:"))
+		.collect::<Vec<_>>();
+	repository_selectors.sort_unstable();
+	repository_selectors.dedup();
+	if repository_selectors.iter().any(|selector| selector.is_empty())
+		|| repository_selectors.len() > 1
+	{
+		eyre::bail!("Issue repository selector is ambiguous; binding attestation rejected.");
+	}
+	if let Some(selector) = repository_selectors.first()
+		&& *selector != binding.github_repository()
+	{
+		eyre::bail!(
+			"Issue repository selector does not match the immutable project binding."
+		);
+	}
 	BindingAttestation::new(&binding, &issue.id, &issue.team.id)
 }
 

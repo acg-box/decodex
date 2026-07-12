@@ -81,6 +81,30 @@ fn pub_1711_repo_binding_drift_rejects_before_lane_side_effects() {
 }
 
 #[test]
+fn lane_authority_v2_c2_adm_01() {
+	let (_temp_dir, config, workflow) = tests::temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store");
+	crate::runtime::register_project_config(&state_store, config.config_path(), true)
+		.expect("register binding");
+	let issue = tests::sample_issue(
+		"Todo",
+		&["decodex:queued:pubfi", "repo:pubfi-mono"],
+	);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	let error = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+		.expect_err("foreign repository selector must reject before admission");
+	assert!(error.to_string().contains("repository selector"));
+	assert!(state_store.lane(&crate::lane_authority::LaneId::new(
+		config.service_id(),
+		&issue.id,
+	).expect("lane id")).expect("lane read").is_none());
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease read").is_none());
+	assert!(state_store.worktree_for_issue(&issue.id).expect("worktree read").is_none());
+	assert!(state_store.list_run_attempts_for_issue(&issue.id).expect("attempts").is_empty());
+}
+
+#[test]
 fn normal_queue_planning_seals_typed_intake_authority_into_lane() {
 	let (_temp_dir, config, workflow) = tests::temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store");
