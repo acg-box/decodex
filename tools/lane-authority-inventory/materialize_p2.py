@@ -1097,6 +1097,147 @@ def resolve_rust_binding_paths(
     return resolutions
 
 
+def materialize_rust_callable_resolutions(
+    syntax_sites: list[dict[str, Any]],
+    symbol_sites: list[dict[str, Any]],
+    rust_module_scopes: list[dict[str, Any]],
+    rust_name_bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    syntax_by_id = {site["site_id"]: site for site in syntax_sites}
+    scopes_by_source: dict[str, list[dict[str, Any]]] = {}
+    for scope in rust_module_scopes:
+        scopes_by_source.setdefault(scope["source_node_id"], []).append(scope)
+
+    synthetic_by_id: dict[str, dict[str, Any]] = {}
+    callable_by_binding_id: dict[str, dict[str, Any]] = {}
+    for symbol in symbol_sites:
+        if symbol["language"] != "rust" or symbol["role"] != "call_target":
+            continue
+        syntax = syntax_by_id[symbol["syntax_site_id"]]
+        if syntax["node_kind"] == "macro_invocation":
+            namespace = "macro"
+        elif symbol["resolution_hint"] == "exact":
+            namespace = "value"
+        else:
+            continue
+        query_path = symbol["signature"]
+        candidates = [
+            scope
+            for scope in scopes_by_source.get(syntax["source_node_id"], [])
+            if scope["byte_start"] <= syntax["byte_start"]
+            and syntax["byte_end"] <= scope["byte_end"]
+        ]
+        by_target: dict[str, list[dict[str, Any]]] = {}
+        for scope in candidates:
+            by_target.setdefault(scope["crate_target_id"], []).append(scope)
+        if not by_target:
+            raise contract.ContractError(
+                f"Rust callable has no Cargo-target lexical scope: {symbol['site_id']}"
+            )
+        for target_id, target_scopes in by_target.items():
+            target_scopes.sort(
+                key=lambda scope: (
+                    scope["byte_end"] - scope["byte_start"],
+                    -scope["byte_start"],
+                    scope["scope_id"],
+                )
+            )
+            lexical_scope = target_scopes[0]
+            best_identity = (
+                lexical_scope["byte_end"] - lexical_scope["byte_start"],
+                lexical_scope["byte_start"],
+            )
+            if sum(
+                (scope["byte_end"] - scope["byte_start"], scope["byte_start"])
+                == best_identity
+                for scope in target_scopes
+            ) != 1:
+                raise contract.ContractError(
+                    f"Rust callable lexical scope is ambiguous: {symbol['site_id']}"
+                )
+            query_binding_id = canonical_id(
+                "decodex/lane-authority-v2-rust-callable-query/1",
+                symbol["site_id"],
+                target_id,
+                lexical_scope["scope_id"],
+                namespace,
+                query_path,
+            )
+            query = {
+                "binding_id": query_binding_id,
+                "binding_kind": "use",
+                "crate_target_id": target_id,
+                "local_name": f"__callable_{symbol['site_id']}",
+                "namespace": namespace,
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "unresolved",
+                "scope_id": lexical_scope["scope_id"],
+                "source_node_id": syntax["source_node_id"],
+                "surface_target_path": query_path,
+                "syntax_site_id": symbol["syntax_site_id"],
+                "target_scope_id": None,
+                "target_symbol_site_id": None,
+                "visibility": "private",
+                "visibility_path": None,
+            }
+            synthetic_by_id[query_binding_id] = query
+            callable_by_binding_id[query_binding_id] = symbol
+
+    working_bindings = [dict(binding) for binding in rust_name_bindings]
+    working_bindings.extend(dict(binding) for binding in synthetic_by_id.values())
+    path_resolutions = resolve_rust_binding_paths(rust_module_scopes, working_bindings)
+    path_by_source = {
+        resolution["source_binding_id"]: resolution
+        for resolution in path_resolutions
+        if resolution["source_binding_id"] in synthetic_by_id
+    }
+    if set(path_by_source) != set(synthetic_by_id):
+        raise contract.ContractError("Rust callable path coverage is incomplete")
+
+    records: list[dict[str, Any]] = []
+    for query_binding_id, query in synthetic_by_id.items():
+        path = path_by_source[query_binding_id]
+        symbol = callable_by_binding_id[query_binding_id]
+        resolution_id = canonical_id(
+            "decodex/lane-authority-v2-rust-callable-resolution/1",
+            symbol["site_id"],
+            query["crate_target_id"],
+            query["scope_id"],
+            query["namespace"],
+            query["surface_target_path"],
+            path["status"],
+            path.get("canonical_path") or "",
+        )
+        record = {
+            "binding_ids": path["binding_ids"][1:],
+            "canonical_definition_site_id": (
+                path.get("canonical_value_definition_site_id")
+                if query["namespace"] == "value"
+                else path.get("canonical_macro_definition_site_id")
+            ),
+            "canonical_module_scope_id": path.get("canonical_module_scope_id"),
+            "canonical_path": path.get("canonical_path"),
+            "crate_target_id": query["crate_target_id"],
+            "lexical_scope_id": query["scope_id"],
+            "namespace": query["namespace"],
+            "purpose": "callable",
+            "query_binding_id": query_binding_id,
+            "query_path": query["surface_target_path"],
+            "reason_code": path["reason_code"],
+            "resolution_id": resolution_id,
+            "source_symbol_site_id": symbol["site_id"],
+            "source_syntax_site_id": symbol["syntax_site_id"],
+            "status": path["status"],
+            "surface_path": symbol["signature"],
+        }
+        record["resolution_digest"] = hashlib.sha256(
+            contract.canonical_json(record).encode("utf-8")
+        ).hexdigest()
+        records.append(record)
+    records.sort(key=lambda record: record["resolution_id"])
+    return records
+
+
 def materialize_rust_receiver_type_resolutions(
     syntax_sites: list[dict[str, Any]],
     symbol_sites: list[dict[str, Any]],
@@ -1770,6 +1911,12 @@ def materialize(root: Path) -> dict[str, Any]:
     rust_path_resolutions = resolve_rust_binding_paths(
         rust_module_scopes, rust_name_bindings
     )
+    rust_callable_resolutions = materialize_rust_callable_resolutions(
+        parsed["syntax_sites"],
+        symbol_sites,
+        rust_module_scopes,
+        rust_name_bindings,
+    )
     rust_receiver_type_resolutions = materialize_rust_receiver_type_resolutions(
         parsed["syntax_sites"],
         symbol_sites,
@@ -1827,6 +1974,30 @@ def materialize(root: Path) -> dict[str, Any]:
             declarations_by_canonical_module.setdefault(
                 (target_id, lexical_scope["scope_id"], declaration["signature"]), []
             ).append(declaration["site_id"])
+    for resolution in rust_callable_resolutions:
+        definition_site_id = resolution["canonical_definition_site_id"]
+        expected_status = f"resolved_local_{resolution['namespace']}"
+        if resolution["status"] != expected_status or definition_site_id is None:
+            continue
+        call = symbol_sites_by_id[resolution["source_symbol_site_id"]]
+        if call["definition_site_ids"] and call["definition_site_ids"] != [definition_site_id]:
+            raise contract.ContractError(
+                f"Rust callable has conflicting canonical targets: {call['site_id']}"
+            )
+        call["definition_site_ids"] = [definition_site_id]
+        call["external"] = False
+        call["resolution"] = "local"
+        call_edges.append(
+            {
+                "edge_id": canonical_id(
+                    "decodex/lane-authority-v2-call-edge/1",
+                    call["site_id"],
+                    definition_site_id,
+                ),
+                "from_site_id": call["site_id"],
+                "to_site_id": definition_site_id,
+            }
+        )
     for resolution in rust_receiver_type_resolutions:
         owner_site_id = resolution["canonical_type_definition_site_id"]
         if resolution["status"] != "resolved_local_type" or owner_site_id is None:
@@ -2035,6 +2206,11 @@ def materialize(root: Path) -> dict[str, Any]:
             rust_path_resolutions,
         ),
         (
+            "rust_callable_resolutions",
+            "decodex/lane-authority-v2-c1i-rust-callable-resolutions/1",
+            rust_callable_resolutions,
+        ),
+        (
             "rust_receiver_type_resolutions",
             "decodex/lane-authority-v2-c1i-rust-receiver-type-resolutions/1",
             rust_receiver_type_resolutions,
@@ -2110,6 +2286,7 @@ def materialize(root: Path) -> dict[str, Any]:
         "rust_module_scopes": len(rust_module_scopes),
         "rust_name_bindings": len(rust_name_bindings),
         "rust_path_resolutions": len(rust_path_resolutions),
+        "rust_callable_resolutions": len(rust_callable_resolutions),
         "rust_receiver_type_resolutions": len(rust_receiver_type_resolutions),
         "rust_method_owner_resolutions": len(rust_method_owner_resolutions),
         "rust_qualified_owner_resolutions": len(rust_qualified_owner_resolutions),

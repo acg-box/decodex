@@ -802,6 +802,56 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         )
         self.assertEqual("unresolved", by_source["binding:use-macro"]["status"])
 
+        callables = self.materializer.materialize_rust_callable_resolutions(
+            [
+                {
+                    "byte_end": 20,
+                    "byte_start": 10,
+                    "node_kind": "call_expression",
+                    "site_id": "syntax:value-call",
+                    "source_node_id": "source:root",
+                },
+                {
+                    "byte_end": 30,
+                    "byte_start": 21,
+                    "node_kind": "macro_invocation",
+                    "site_id": "syntax:macro-call",
+                    "source_node_id": "source:root",
+                },
+            ],
+            [
+                {
+                    "language": "rust",
+                    "resolution_hint": "exact",
+                    "role": "call_target",
+                    "signature": "Item",
+                    "site_id": "symbol:value-call",
+                    "syntax_site_id": "syntax:value-call",
+                },
+                {
+                    "language": "rust",
+                    "resolution_hint": "exact",
+                    "role": "call_target",
+                    "signature": "Item",
+                    "site_id": "symbol:macro-call",
+                    "syntax_site_id": "syntax:macro-call",
+                },
+            ],
+            scopes,
+            bindings,
+        )
+        callables_by_symbol = {
+            record["source_symbol_site_id"]: record for record in callables
+        }
+        value_call = callables_by_symbol["symbol:value-call"]
+        self.assertEqual("value", value_call["namespace"])
+        self.assertEqual("resolved_local_value", value_call["status"])
+        self.assertEqual("symbol:value", value_call["canonical_definition_site_id"])
+        macro_call = callables_by_symbol["symbol:macro-call"]
+        self.assertEqual("macro", macro_call["namespace"])
+        self.assertEqual("unresolved", macro_call["status"])
+        self.assertIsNone(macro_call["canonical_definition_site_id"])
+
     def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
         scopes = [
             {

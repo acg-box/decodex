@@ -102,6 +102,35 @@
       "required": ["resolution_id", "purpose", "crate_target_id", "lexical_scope_id", "namespace", "surface_path", "canonical_path", "canonical_module_scope_id", "canonical_type_definition_site_id", "canonical_value_definition_site_id", "canonical_macro_definition_site_id", "source_binding_id", "source_symbol_site_id", "binding_ids", "status", "reason_code", "resolution_digest"],
       "type": "object"
     },
+    "rust_callable_resolution": {
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"status": {"enum": ["resolved_local_value", "resolved_local_macro"]}}, "required": ["status"]}, "then": {"properties": {"canonical_definition_site_id": {"$ref": "#/$defs/id"}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}}}},
+        {"if": {"properties": {"status": {"const": "external"}}, "required": ["status"]}, "then": {"properties": {"canonical_definition_site_id": {"const": null}, "canonical_path": {"minLength": 1, "maxLength": 512, "type": "string"}}}},
+        {"if": {"properties": {"status": {"enum": ["ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]}}, "required": ["status"]}, "then": {"properties": {"canonical_definition_site_id": {"const": null}, "canonical_module_scope_id": {"const": null}, "canonical_path": {"const": null}}}}
+      ],
+      "properties": {
+        "binding_ids": {"items": {"$ref": "#/$defs/id"}, "type": "array"},
+        "canonical_definition_site_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "canonical_module_scope_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "canonical_path": {"type": ["string", "null"], "maxLength": 512},
+        "crate_target_id": {"$ref": "#/$defs/id"},
+        "lexical_scope_id": {"$ref": "#/$defs/id"},
+        "namespace": {"enum": ["value", "macro"]},
+        "purpose": {"const": "callable"},
+        "query_binding_id": {"$ref": "#/$defs/id"},
+        "query_path": {"minLength": 1, "maxLength": 512, "type": "string"},
+        "reason_code": {"enum": ["rust_path_ambiguous_binding", "rust_path_reexport_cycle", "rust_path_external_crate", "rust_path_unique_local_value", "rust_path_unique_local_macro", "rust_path_target_unresolved", "rust_path_unsupported_construct", "rust_path_visibility_denied"]},
+        "resolution_digest": {"$ref": "#/$defs/digest"},
+        "resolution_id": {"$ref": "#/$defs/id"},
+        "source_symbol_site_id": {"$ref": "#/$defs/id"},
+        "source_syntax_site_id": {"$ref": "#/$defs/id"},
+        "status": {"enum": ["resolved_local_value", "resolved_local_macro", "external", "ambiguous", "cycle", "inaccessible", "unresolved", "unsupported"]},
+        "surface_path": {"minLength": 1, "maxLength": 512, "type": "string"}
+      },
+      "required": ["resolution_id", "purpose", "crate_target_id", "lexical_scope_id", "namespace", "surface_path", "query_path", "canonical_path", "canonical_module_scope_id", "canonical_definition_site_id", "query_binding_id", "source_symbol_site_id", "source_syntax_site_id", "binding_ids", "status", "reason_code", "resolution_digest"],
+      "type": "object"
+    },
     "rust_receiver_type_resolution": {
       "additionalProperties": false,
       "allOf": [
@@ -497,6 +526,7 @@
     {"properties": {"relation": {"const": "rust_module_scopes"}, "records": {"items": {"$ref": "#/$defs/rust_module_scope"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-module-scopes/1"}}},
     {"properties": {"relation": {"const": "rust_name_bindings"}, "records": {"items": {"$ref": "#/$defs/rust_name_binding"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-name-bindings/1"}}},
     {"properties": {"relation": {"const": "rust_path_resolutions"}, "records": {"items": {"$ref": "#/$defs/rust_path_resolution"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-path-resolutions/1"}}},
+    {"properties": {"relation": {"const": "rust_callable_resolutions"}, "records": {"items": {"$ref": "#/$defs/rust_callable_resolution"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-callable-resolutions/1"}}},
     {"properties": {"relation": {"const": "rust_receiver_type_resolutions"}, "records": {"items": {"$ref": "#/$defs/rust_receiver_type_resolution"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-receiver-type-resolutions/1"}}},
     {"properties": {"relation": {"const": "rust_method_owner_resolutions"}, "records": {"items": {"$ref": "#/$defs/rust_method_owner_resolution"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-method-owner-resolutions/1"}}},
     {"properties": {"relation": {"const": "rust_qualified_owner_resolutions"}, "records": {"items": {"$ref": "#/$defs/rust_qualified_owner_resolution"}, "minItems": 1}, "schema": {"const": "decodex/lane-authority-v2-c1i-rust-qualified-owner-resolutions/1"}}},
@@ -513,7 +543,7 @@
   ],
   "properties": {
     "records": {"type": "array"},
-    "relation": {"enum": ["source_nodes", "cfg_projections", "syntax_sites", "symbol_sites", "symbol_dispositions", "rust_module_scopes", "rust_name_bindings", "rust_path_resolutions", "rust_receiver_type_resolutions", "rust_method_owner_resolutions", "rust_qualified_owner_resolutions", "data_sites", "call_edges", "dataflow_edges", "catalog_entry_dispositions", "candidate_records", "candidate_site_edges", "candidate_adjudications", "site_classifications", "supporting_inputs", "toolchain_receipts"]},
+    "relation": {"enum": ["source_nodes", "cfg_projections", "syntax_sites", "symbol_sites", "symbol_dispositions", "rust_module_scopes", "rust_name_bindings", "rust_path_resolutions", "rust_callable_resolutions", "rust_receiver_type_resolutions", "rust_method_owner_resolutions", "rust_qualified_owner_resolutions", "data_sites", "call_edges", "dataflow_edges", "catalog_entry_dispositions", "candidate_records", "candidate_site_edges", "candidate_adjudications", "site_classifications", "supporting_inputs", "toolchain_receipts"]},
     "schema": {"pattern": "^decodex/lane-authority-v2-c1i-[a-z0-9-]+/1$", "type": "string"}
   },
   "required": ["schema", "relation", "records"],

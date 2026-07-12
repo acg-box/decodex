@@ -180,7 +180,12 @@ fn declaration_name_node<'tree>(language: &str, node: Node<'tree>) -> Option<Nod
 		"python" => matches!(node.kind(), "class_definition" | "function_definition"),
 		"rust" => matches!(
 			node.kind(),
-			"enum_item" | "function_item" | "struct_item" | "trait_item" | "type_item"
+			"enum_item"
+				| "function_item"
+				| "macro_definition"
+				| "struct_item"
+				| "trait_item"
+				| "type_item"
 		),
 		"shell" => node.kind() == "function_definition",
 		"swift" => matches!(node.kind(), "class_declaration" | "function_declaration"),

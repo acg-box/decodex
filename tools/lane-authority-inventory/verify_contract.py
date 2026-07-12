@@ -170,6 +170,7 @@ EXPECTED_RELATIONS = {
     "rust_module_scopes",
     "rust_name_bindings",
     "rust_path_resolutions",
+    "rust_callable_resolutions",
     "rust_receiver_type_resolutions",
     "rust_method_owner_resolutions",
     "rust_qualified_owner_resolutions",
@@ -193,6 +194,7 @@ RELATION_DEFINITIONS = {
     "rust_module_scopes": "rust_module_scope",
     "rust_name_bindings": "rust_name_binding",
     "rust_path_resolutions": "rust_path_resolution",
+    "rust_callable_resolutions": "rust_callable_resolution",
     "rust_receiver_type_resolutions": "rust_receiver_type_resolution",
     "rust_method_owner_resolutions": "rust_method_owner_resolution",
     "rust_qualified_owner_resolutions": "rust_qualified_owner_resolution",
@@ -209,6 +211,7 @@ NONEMPTY_RELATIONS = {
     "rust_module_scopes",
     "rust_name_bindings",
     "rust_path_resolutions",
+    "rust_callable_resolutions",
     "rust_receiver_type_resolutions",
     "rust_method_owner_resolutions",
     "rust_qualified_owner_resolutions",
@@ -2830,6 +2833,7 @@ def verify_p2(
                 "rust_module_scopes",
                 "rust_name_bindings",
                 "rust_path_resolutions",
+                "rust_callable_resolutions",
                 "rust_receiver_type_resolutions",
                 "rust_method_owner_resolutions",
                 "rust_qualified_owner_resolutions",
@@ -3296,6 +3300,147 @@ def verify_p2(
     ):
         raise ContractError("P2 Rust path resolution coverage is incomplete")
 
+    callable_resolutions = _unique_index(
+        manifests["rust_callable_resolutions"]["records"],
+        "resolution_id",
+        "P2 Rust callable resolutions",
+    )
+    callable_resolutions_by_symbol: dict[str, list[dict[str, Any]]] = {}
+    callable_reason_by_status = {
+        "ambiguous": "rust_path_ambiguous_binding",
+        "cycle": "rust_path_reexport_cycle",
+        "external": "rust_path_external_crate",
+        "inaccessible": "rust_path_visibility_denied",
+        "resolved_local_value": "rust_path_unique_local_value",
+        "resolved_local_macro": "rust_path_unique_local_macro",
+        "unresolved": "rust_path_target_unresolved",
+        "unsupported": "rust_path_unsupported_construct",
+    }
+    scopes_by_source: dict[str, list[dict[str, Any]]] = {}
+    for scope in rust_scopes.values():
+        scopes_by_source.setdefault(scope["source_node_id"], []).append(scope)
+    for resolution in callable_resolutions.values():
+        symbol = symbol_sites.get(resolution["source_symbol_site_id"])
+        syntax_site = syntax.get(resolution["source_syntax_site_id"])
+        lexical_scope = rust_scopes.get(resolution["lexical_scope_id"])
+        expected_namespace = (
+            "macro" if syntax_site is not None and syntax_site["node_kind"] == "macro_invocation"
+            else "value"
+        )
+        if (
+            symbol is None
+            or symbol["language"] != "rust"
+            or symbol["role"] != "call_target"
+            or syntax_site is None
+            or symbol["syntax_site_id"] != syntax_site["site_id"]
+            or (expected_namespace == "value" and symbol["resolution_hint"] != "exact")
+            or lexical_scope is None
+            or lexical_scope["crate_target_id"] != resolution["crate_target_id"]
+            or lexical_scope["source_node_id"] != syntax_site["source_node_id"]
+            or resolution["namespace"] != expected_namespace
+            or resolution["surface_path"] != symbol["signature"]
+            or resolution["query_path"] != symbol["signature"]
+            or resolution["reason_code"] != callable_reason_by_status[resolution["status"]]
+            or any(binding_id not in rust_bindings for binding_id in resolution["binding_ids"])
+        ):
+            raise ContractError("P2 Rust callable source evidence drifted")
+        scope_candidates = [
+            scope
+            for scope in scopes_by_source[syntax_site["source_node_id"]]
+            if scope["crate_target_id"] == resolution["crate_target_id"]
+            and scope["byte_start"] <= syntax_site["byte_start"]
+            and syntax_site["byte_end"] <= scope["byte_end"]
+        ]
+        scope_candidates.sort(
+            key=lambda scope: (
+                scope["byte_end"] - scope["byte_start"],
+                -scope["byte_start"],
+                scope["scope_id"],
+            )
+        )
+        if not scope_candidates or scope_candidates[0]["scope_id"] != lexical_scope["scope_id"]:
+            raise ContractError("P2 Rust callable lexical scope drifted")
+        expected_query_id = stable_parts_id(
+            "decodex/lane-authority-v2-rust-callable-query/1",
+            symbol["site_id"],
+            resolution["crate_target_id"],
+            lexical_scope["scope_id"],
+            resolution["namespace"],
+            resolution["query_path"],
+        )
+        expected_resolution_id = stable_parts_id(
+            "decodex/lane-authority-v2-rust-callable-resolution/1",
+            symbol["site_id"],
+            resolution["crate_target_id"],
+            lexical_scope["scope_id"],
+            resolution["namespace"],
+            resolution["query_path"],
+            resolution["status"],
+            resolution["canonical_path"] or "",
+        )
+        if resolution["query_binding_id"] != expected_query_id or resolution["resolution_id"] != expected_resolution_id:
+            raise ContractError("P2 Rust callable identity drifted")
+        digest_payload = {key: value for key, value in resolution.items() if key != "resolution_digest"}
+        if resolution["resolution_digest"] != hashlib.sha256(
+            canonical_json(digest_payload).encode("utf-8")
+        ).hexdigest():
+            raise ContractError("P2 Rust callable digest drifted")
+        query = {
+            "binding_id": expected_query_id,
+            "binding_kind": "use",
+            "crate_target_id": resolution["crate_target_id"],
+            "local_name": f"__callable_{symbol['site_id']}",
+            "namespace": resolution["namespace"],
+            "reason_code": "rust_binding_path_resolution_pending",
+            "resolution": "unresolved",
+            "scope_id": lexical_scope["scope_id"],
+            "source_node_id": syntax_site["source_node_id"],
+            "surface_target_path": resolution["query_path"],
+            "syntax_site_id": symbol["syntax_site_id"],
+            "target_scope_id": None,
+            "target_symbol_site_id": None,
+            "visibility": "private",
+            "visibility_path": None,
+        }
+        replay_record = {
+            **resolution,
+            "binding_ids": [expected_query_id, *resolution["binding_ids"]],
+            "source_binding_id": expected_query_id,
+        }
+        rust_bindings[expected_query_id] = query
+        replay_key = (query["crate_target_id"], query["scope_id"], query["namespace"], query["local_name"])
+        rust_path_replay_index["bindings_by_scope_name"][replay_key] = [expected_query_id]
+        try:
+            replay_rust_type_path_resolution(
+                replay_record, rust_scopes, rust_bindings, rust_path_replay_index
+            )
+        finally:
+            del rust_bindings[expected_query_id]
+            del rust_path_replay_index["bindings_by_scope_name"][replay_key]
+        terminal = rust_bindings.get(resolution["binding_ids"][-1]) if resolution["binding_ids"] else None
+        if resolution["status"] in {"resolved_local_value", "resolved_local_macro"}:
+            if (
+                terminal is None
+                or resolution["canonical_definition_site_id"] != terminal["target_symbol_site_id"]
+            ):
+                raise ContractError("P2 Rust callable canonical definition drifted")
+        elif resolution["canonical_definition_site_id"] is not None:
+            raise ContractError("P2 non-local Rust callable retained a definition")
+        callable_resolutions_by_symbol.setdefault(symbol["site_id"], []).append(resolution)
+
+    expected_callable_symbols = {
+        symbol["site_id"]
+        for symbol in symbol_sites.values()
+        if symbol["language"] == "rust"
+        and symbol["role"] == "call_target"
+        and (
+            syntax[symbol["syntax_site_id"]]["node_kind"] == "macro_invocation"
+            or symbol["resolution_hint"] == "exact"
+        )
+    }
+    if set(callable_resolutions_by_symbol) != expected_callable_symbols:
+        raise ContractError("P2 Rust callable query coverage is incomplete")
+
     receiver_resolutions = _unique_index(
         manifests["rust_receiver_type_resolutions"]["records"],
         "resolution_id",
@@ -3313,9 +3458,6 @@ def verify_p2(
         "unresolved": "rust_path_target_unresolved",
         "unsupported": "rust_path_unsupported_construct",
     }
-    scopes_by_source: dict[str, list[dict[str, Any]]] = {}
-    for scope in rust_scopes.values():
-        scopes_by_source.setdefault(scope["source_node_id"], []).append(scope)
     for resolution in receiver_resolutions.values():
         symbol = symbol_sites.get(resolution["source_symbol_site_id"])
         syntax_site = syntax.get(resolution["source_syntax_site_id"])
