@@ -212,7 +212,7 @@ impl AuthorityAnchor {
 		events: &[AuthorityEvent],
 	) -> Result<Self> {
 		let authority_dir = runtime_root.join(AUTHORITY_DIR);
-		fs::create_dir(&authority_dir)?;
+		fs::create_dir_all(&authority_dir)?;
 		let host_id = create_host_id(&authority_dir)?;
 		let key = load_or_create_host_authority_key(&host_id)?;
 		Self::initialize_with_key(runtime_root, generation, genesis_hash, events, host_id, key)
@@ -227,12 +227,27 @@ impl AuthorityAnchor {
 		key: Ed25519HostAuthorityKey,
 	) -> Result<Self> {
 		let authority_dir = runtime_root.join(AUTHORITY_DIR);
-		write_create_once(&authority_dir.join(PUBLIC_KEY_FILE), &key.public_key())?;
+		write_once_or_verify(&authority_dir.join(PUBLIC_KEY_FILE), &key.public_key())?;
 		let digest = authority_database_digest(generation, genesis_hash, events)?;
 		let event_hash = events.last().map_or(genesis_hash, |event| event.event_hash.as_slice());
 		let head =
 			key.sign(&host_id, generation, u64::try_from(events.len())?, event_hash, &digest)?;
-		write_create_once(&authority_dir.join(PROTECTED_HEAD_FILE), &minicbor::to_vec(head)?)?;
+		let head_bytes = minicbor::to_vec(head)?;
+		let head_path = authority_dir.join(PROTECTED_HEAD_FILE);
+		if head_path.exists() {
+			let existing: ProtectedAuthorityHead = minicbor::decode(&fs::read(&head_path)?)?;
+			reconcile_protected_head(
+				&host_id,
+				&key,
+				&existing,
+				generation,
+				genesis_hash,
+				events,
+				&digest,
+			)?;
+		} else {
+			write_create_once(&head_path, &head_bytes)?;
+		}
 		fsync_dir(&authority_dir)?;
 		Ok(Self { authority_dir, host_id, key })
 	}
@@ -275,7 +290,7 @@ impl AuthorityAnchor {
 		events: &[AuthorityEvent],
 	) -> Result<Self> {
 		let authority_dir = runtime_root.join(AUTHORITY_DIR);
-		fs::create_dir(&authority_dir)?;
+		fs::create_dir_all(&authority_dir)?;
 		let host_id = create_host_id(&authority_dir)?;
 		let key = Ed25519HostAuthorityKey::from_seed("test-key", [11_u8; 32]);
 		Self::initialize_with_key(runtime_root, generation, genesis_hash, events, host_id, key)
@@ -337,12 +352,25 @@ fn authority_database_digest(
 
 fn create_host_id(authority_dir: &Path) -> Result<String> {
 	let path = authority_dir.join(HOST_ID_FILE);
+	if path.exists() {
+		return read_nonempty_utf8(&path);
+	}
 	let mut random = [0_u8; 32];
 	File::open("/dev/urandom")?.read_exact(&mut random)?;
 	let host_id =
 		Sha256::digest(random).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
 	write_create_once(&path, host_id.as_bytes())?;
 	Ok(host_id)
+}
+
+fn write_once_or_verify(path: &Path, bytes: &[u8]) -> Result<()> {
+	if path.exists() {
+		if fs::read(path)? != bytes {
+			eyre::bail!("create_once_artifact_mismatch");
+		}
+		return Ok(());
+	}
+	write_create_once(path, bytes)
 }
 
 fn read_nonempty_utf8(path: &Path) -> Result<String> {
@@ -366,6 +394,9 @@ fn write_create_once(path: &Path, bytes: &[u8]) -> Result<()> {
 
 fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<()> {
 	let temp = path.with_extension(format!("tmp.{}", std::process::id()));
+	if temp.exists() {
+		fs::remove_file(&temp)?;
+	}
 	let mut options = OpenOptions::new();
 	options.create_new(true).write(true);
 	#[cfg(unix)]
