@@ -1180,6 +1180,17 @@ persistent closeout fixture now performs worktree removal, fake-GitHub remote ab
 real local-ref CAS deletion, receipt-gated terminalization, and SQLite reopen. The
 process-level adapter tests continue to prove no unconditional GitHub DELETE.
 
+The remaining superseded-closeout executors now consume frozen targets through the same
+journal boundary. PR close performs exact repository/number/head/base GET readback and
+only an already-closed match produces a receipt; open/unsupported or drift becomes
+attention and no PATCH is issued. Control ownership is no longer a generic token: the
+plan freezes project, issue, run, attempt, channel path, transport, and terminal status.
+Retirement removes the exact local channel path, then atomically CASes the active channel
+to retired status together with the effect receipt in SQLite. The persistent fixture now
+uses canonical Admit/Claim/Attempt setup and executes PR, control, worktree, remote-ref,
+and local-ref effects before receipt-gated terminalization and reopen. Supersession,
+PR-close, remote-ref, local-ref, and all-target checks pass.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

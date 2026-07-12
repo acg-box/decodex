@@ -1,5 +1,5 @@
 #[cfg(test)]
-use super::effects::worktree_remove_facts_fingerprint;
+use super::effects::{control_resource_facts_fingerprint, worktree_remove_facts_fingerprint};
 use crate::{
 	lane_authority::{
 		RepairHandoffAuthority, SupersededCloseoutCommand, SupersededCloseoutOperation,
@@ -325,8 +325,8 @@ mod tests {
 	use super::*;
 	use crate::{
 		lane_authority::{
-			CloseoutEffectPlanItem, EffectCommand, EffectReceipt, LaneCommand, LaneId, LanePhase,
-			PatchDisposition, ProjectBinding,
+			CloseoutEffectPlanItem, LaneCommand, LaneId, LanePhase, PatchDisposition,
+			ProjectBinding,
 		},
 		state::ProjectRegistration,
 	};
@@ -351,15 +351,41 @@ mod tests {
 		let fake_gh = temp.path().join("fake-gh");
 		std::fs::write(
 			&fake_gh,
-			"#!/bin/sh\nprintf '%s' 'HTTP 422: Reference does not exist' >&2\nexit 1\n",
+			concat!(
+				"#!/bin/sh\n",
+				"case \"$*\" in\n",
+				"  *repos/helixbox/pubfi-mono/pulls/826*)\n",
+				"    printf '%s' '{\"id\":826,\"number\":826,\"state\":\"closed\",",
+				"\"updated_at\":\"2026-07-12T00:00:00Z\",",
+				"\"head\":{\"sha\":\"predecessor-head\"},\"base\":{\"ref\":\"main\"}}' ;;\n",
+				"  *) printf '%s' 'HTTP 422: Reference does not exist' >&2; exit 1 ;;\n",
+				"esac\n",
+			),
 		)
 		.expect("fake gh");
 		std::fs::set_permissions(&fake_gh, std::fs::Permissions::from_mode(0o755))
 			.expect("fake gh mode");
+		let predecessor = LaneId::new("pubfi", "predecessor").expect("lane");
+		store
+			.transition_lane(
+				predecessor.clone(),
+				0,
+				"binding-1",
+				LaneCommand::Admit { intake_authority_id: String::from("predecessor-authority") },
+			)
+			.expect("predecessor admission");
 		store
 			.try_acquire_registered_lease("pubfi", "predecessor", "run-1", "In Progress")
 			.expect("predecessor claim");
-		let predecessor = LaneId::new("pubfi", "predecessor").expect("lane");
+		store
+			.record_run_attempt("run-1", "predecessor", 1, "running")
+			.expect("run attempt");
+		let control_path = temp.path().join("run-1.control");
+		std::fs::write(&control_path, b"control").expect("control fixture");
+		store
+			.publish_run_control_channel_for_active_attempt("run-1", 1, &control_path, "file")
+			.expect("publish control")
+			.expect("owned control");
 		let successor = LaneId::new("pubfi", "successor").expect("lane");
 		store
 			.transition_lane(
@@ -441,6 +467,28 @@ mod tests {
 					)
 					.expect("PR effect"),
 					CloseoutEffectPlanItem::new(
+						crate::lane_authority::CloseoutEffectTarget::ControlResource {
+							project_key: String::from("pubfi"),
+							issue_id: String::from("predecessor"),
+							run_id: String::from("run-1"),
+							attempt_number: 1,
+							channel_path: control_path.clone(),
+							transport: String::from("file"),
+							retired_status: String::from("failed"),
+						},
+						"control-request",
+						"control-retired",
+						&control_resource_facts_fingerprint(
+							"pubfi",
+							"predecessor",
+							"run-1",
+							1,
+							&control_path,
+							"file",
+						),
+					)
+					.expect("control effect"),
+					CloseoutEffectPlanItem::new(
 						crate::lane_authority::CloseoutEffectTarget::Worktree {
 							project_key: String::from("pubfi"),
 							issue_id: String::from("predecessor"),
@@ -498,14 +546,22 @@ mod tests {
 				.is_err(),
 			"stage cannot advance before the PR receipt"
 		);
-		succeed_effect(&store, operation.operation_id(), 0, "pr-request");
+		let pr_effect_id = format!("{}:0", operation.operation_id());
+		store
+			.execute_pull_request_close_effect(&pr_effect_id, "token", Some(&fake_gh), &repo_root)
+			.expect("reconcile closed predecessor PR");
 		store
 			.advance_superseded_closeout(
 				operation.operation_id(),
 				SupersededCloseoutCommand::ReconcilePredecessorPr,
 			)
 			.expect("advance PR reconciliation");
-		let worktree_effect_id = format!("{}:1", operation.operation_id());
+		let control_effect_id = format!("{}:1", operation.operation_id());
+		store
+			.execute_control_resource_retire_effect(&control_effect_id, "2026-07-12T00:00:00Z", 1)
+			.expect("retire control resource");
+		assert!(!control_path.exists());
+		let worktree_effect_id = format!("{}:2", operation.operation_id());
 		store
 			.execute_worktree_remove_effect(
 				&worktree_effect_id,
@@ -519,7 +575,7 @@ mod tests {
 			.expect("remove worktree");
 		assert!(!worktree_path.exists());
 		assert!(store.worktree_for_issue("predecessor").expect("mapping read").is_none());
-		let remote_ref_effect_id = format!("{}:2", operation.operation_id());
+		let remote_ref_effect_id = format!("{}:3", operation.operation_id());
 		store
 			.execute_remote_ref_delete_effect(
 				&remote_ref_effect_id,
@@ -530,7 +586,7 @@ mod tests {
 				&repo_root,
 			)
 			.expect("reconcile absent remote ref");
-		let local_ref_effect_id = format!("{}:3", operation.operation_id());
+		let local_ref_effect_id = format!("{}:4", operation.operation_id());
 		store
 			.execute_local_ref_delete_effect(&local_ref_effect_id, "2026-07-12T00:00:00Z", 1)
 			.expect("delete local ref");
@@ -665,39 +721,6 @@ mod tests {
 			"event",
 		)
 		.expect("handoff")
-	}
-
-	fn succeed_effect(store: &StateStore, operation_id: &str, ordinal: u32, request: &str) {
-		let effect_id = format!("{operation_id}:{ordinal}");
-		let effect = store.lane_effect(&effect_id).expect("effect read").expect("effect");
-		let invoking = store
-			.apply_lane_effect_command(
-				&effect_id,
-				effect.journal_epoch(),
-				EffectCommand::BeginInvocation {
-					authority_epoch: effect.authority_epoch(),
-					facts_fingerprint: effect.facts_fingerprint().to_owned(),
-				},
-			)
-			.expect("invoke effect");
-		store
-			.apply_lane_effect_command(
-				&effect_id,
-				invoking.journal_epoch(),
-				EffectCommand::RecordReceipt {
-					receipt: EffectReceipt::new(
-						&format!("receipt-{ordinal}"),
-						request,
-						"result",
-						None,
-						Some("version"),
-						"2026-07-12T00:00:00Z",
-						1,
-					)
-					.expect("receipt"),
-				},
-			)
-			.expect("record receipt");
 	}
 
 	fn project(temp: &TempDir) -> ProjectRegistration {

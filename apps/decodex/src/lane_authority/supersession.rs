@@ -380,8 +380,13 @@ pub enum CloseoutEffectTarget {
 		expected_base_ref: String,
 	},
 	ControlResource {
-		resource_id: String,
-		owner_token: String,
+		project_key: String,
+		issue_id: String,
+		run_id: String,
+		attempt_number: i64,
+		channel_path: PathBuf,
+		transport: String,
+		retired_status: String,
 	},
 	Worktree {
 		project_key: String,
@@ -424,8 +429,22 @@ impl CloseoutEffectTarget {
 					&& !expected_head_oid.trim().is_empty()
 					&& !expected_base_ref.trim().is_empty()
 			},
-			Self::ControlResource { resource_id, owner_token } => {
-				!resource_id.trim().is_empty() && !owner_token.trim().is_empty()
+			Self::ControlResource {
+				project_key,
+				issue_id,
+				run_id,
+				attempt_number,
+				channel_path,
+				transport,
+				retired_status,
+			} => {
+				!project_key.trim().is_empty()
+					&& !issue_id.trim().is_empty()
+					&& !run_id.trim().is_empty()
+					&& *attempt_number > 0
+					&& channel_path.is_absolute()
+					&& !transport.trim().is_empty()
+					&& matches!(retired_status.as_str(), "completed" | "failed")
 			},
 			Self::Worktree { project_key, issue_id, branch_name, worktree_path } => {
 				!project_key.trim().is_empty()

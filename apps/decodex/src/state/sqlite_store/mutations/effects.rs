@@ -1,10 +1,60 @@
 use crate::prelude::{Result, eyre};
 use crate::{
 	lane_authority::LaneEffect,
-	state::sqlite_store::{SqliteStateStore, mutations::params},
+	state::{
+		RUN_CONTROL_CHANNEL_STATUS_ACTIVE, RunControlChannelRecord,
+		sqlite_store::{SqliteStateStore, mutations::params},
+	},
 };
 
 impl SqliteStateStore {
+	pub(in crate::state) fn complete_control_resource_retire_effect(
+		&mut self,
+		expected_journal_epoch: u64,
+		effect: &LaneEffect,
+		channel: &RunControlChannelRecord,
+	) -> Result<()> {
+		let transaction = self.connection.transaction()?;
+		let updated = transaction.execute(
+			"UPDATE lane_effects
+			 SET journal_epoch = ?1, payload_json = ?2, updated_at_unix = unixepoch()
+			 WHERE effect_id = ?3 AND journal_epoch = ?4",
+			params![
+				i64::try_from(effect.journal_epoch())?,
+				serde_json::to_string(effect)?,
+				effect.effect_id(),
+				i64::try_from(expected_journal_epoch)?,
+			],
+		)?;
+		if updated != 1 {
+			eyre::bail!("Control cleanup effect receipt CAS rejected a stale writer.");
+		}
+		let retired = transaction.execute(
+			"UPDATE run_control_channels
+			 SET status = ?1, updated_at = ?2, updated_at_unix = ?3
+			 WHERE run_id = ?4 AND project_id = ?5 AND issue_id = ?6
+			   AND attempt_number = ?7 AND transport = ?8 AND channel_path = ?9
+			   AND status = ?10",
+			params![
+				&channel.status,
+				&channel.updated_at,
+				channel.updated_at_unix,
+				&channel.run_id,
+				&channel.project_id,
+				&channel.issue_id,
+				channel.attempt_number,
+				&channel.transport,
+				channel.channel_path.to_string_lossy().as_ref(),
+				RUN_CONTROL_CHANNEL_STATUS_ACTIVE,
+			],
+		)?;
+		if retired != 1 {
+			eyre::bail!("Control cleanup ownership CAS failed.");
+		}
+		transaction.commit()?;
+		Ok(())
+	}
+
 	pub(in crate::state) fn complete_worktree_remove_effect(
 		&mut self,
 		expected_journal_epoch: u64,

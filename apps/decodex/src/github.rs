@@ -14,8 +14,8 @@ pub(crate) use self::ref_cleanup::{RemoteRefDeleteReadback, reconcile_remote_ref
 pub(crate) use self::{
 	branch::{gh_delete_ref_missing_branch, github_api_ref_path},
 	command::{GH_FALLBACK_PATHS, GhCommandDiscoveryTier, gh_command_resolution_from_env},
-	pr_close::{PullRequestCloseReadback, reconcile_pull_request_close},
 };
+pub(crate) use self::pr_close::{PullRequestCloseReadback, reconcile_pull_request_close};
 pub(crate) use self::{
 	command::{
 		GhCommandResolution, configure_gh_command, gh_command_resolution, gh_command_with_config,
