@@ -213,6 +213,39 @@ fn issue_batch_persist_writes_program_and_adjacent_intake_state() {
 }
 
 #[test]
+fn lane_authority_v2_c2_adm_06() {
+	let temp_dir = TempDir::new().expect("tempdir");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("store");
+	let connection = rusqlite::Connection::open(&state_path).expect("failure injector");
+	connection
+		.execute_batch(
+			"CREATE TRIGGER fail_program_intake_authority
+			 BEFORE INSERT ON execution_programs
+			 BEGIN SELECT RAISE(ABORT, 'injected authority ledger failure'); END;",
+		)
+		.expect("trigger");
+	let workflow = test_support::workflow();
+	let config = test_support::test_config();
+	let tracker = FakeTracker::default().with_issues([test_support::issue("XY-1", "Todo")]);
+	let error = program_intake::run_issue_batch_intake(
+		&store,
+		&tracker,
+		&config,
+		&workflow,
+		vec![String::from("XY-1")],
+		false,
+		true,
+	)
+	.expect_err("ledger failure must reject the complete intake transaction");
+	assert!(error.to_string().contains("injected authority ledger failure"));
+	assert!(store.list_execution_programs("decodex").expect("programs").is_empty());
+	assert!(store.list_program_intake_plans("decodex").expect("plans").is_empty());
+	assert_eq!(store.program_issue_mapping_count().expect("mappings"), 0);
+	assert_eq!(store.intake_authority_count().expect("authorities"), 0);
+}
+
+#[test]
 fn issue_batch_reapply_keeps_stable_program_identity_and_removes_exact_legacy_duplicates() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");

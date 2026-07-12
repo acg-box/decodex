@@ -104,6 +104,16 @@ impl StateStore {
 		Ok(state.intake_authorities.get(&(project_id.to_owned(), authority_id.to_owned())).cloned())
 	}
 
+	#[cfg(test)]
+	pub(crate) fn intake_authority_count(&self) -> Result<usize> {
+		Ok(self.lock()?.intake_authorities.len())
+	}
+
+	#[cfg(test)]
+	pub(crate) fn program_issue_mapping_count(&self) -> Result<usize> {
+		Ok(self.lock()?.program_issue_mappings.len())
+	}
+
 	pub(crate) fn persist_intake_authority(
 		&self,
 		authority: IntakeAuthority,

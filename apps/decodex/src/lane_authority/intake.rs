@@ -259,7 +259,7 @@ mod tests {
 	}
 
 	#[test]
-	fn issue_batch_is_typed_without_contract_id() {
+	fn lane_authority_v2_c2_adm_05() {
 		let authority = issue_batch_authority();
 		authority.validate().expect("valid authority");
 		assert!(matches!(authority.authority(), IntakeAuthorityKind::IssueBatch { .. }));

@@ -225,6 +225,8 @@ pub(in crate::state::store::programs) fn upsert_execution_program_with_intake_au
 		updated_at_unix: now.unix,
 	};
 	let authority_key = (project_id.to_owned(), authority.authority_id().to_owned());
+	let previous_record = state.execution_programs.get(&record.key()).cloned();
+	let previous_authority = state.intake_authorities.get(&authority_key).cloned();
 	if let Some(existing) = state.intake_authorities.get(&authority_key)
 		&& existing != &authority
 	{
@@ -238,9 +240,28 @@ pub(in crate::state::store::programs) fn upsert_execution_program_with_intake_au
 		eyre::bail!("Execution Program already has a different Intake Authority.");
 	}
 	state.execution_programs.insert(record.key(), record.clone());
-	state.intake_authorities.insert(authority_key, authority);
+	state.intake_authorities.insert(authority_key.clone(), authority);
 	store::apply_derived_program_intake_state(&mut state, &record);
-	store.persist_runtime_state_locked(&state)?;
+	if let Err(error) = store.persist_runtime_state_locked(&state) {
+		state.execution_programs.remove(&record.key());
+		state.intake_authorities.remove(&authority_key);
+		store::remove_derived_program_intake_state(
+			&mut state,
+			project_id,
+			record.program.program_id(),
+		);
+		if let Some(previous) = previous_record {
+			state.execution_programs.insert(previous.key(), previous.clone());
+			store::apply_derived_program_intake_state(&mut state, &previous);
+		}
+		if let Some(previous) = previous_authority {
+			state.intake_authorities.insert(
+				(previous.project_key().to_owned(), previous.authority_id().to_owned()),
+				previous,
+			);
+		}
+		return Err(error);
+	}
 	Ok(record.as_public())
 }
 
