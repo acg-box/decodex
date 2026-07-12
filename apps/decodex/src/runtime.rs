@@ -1,6 +1,8 @@
 //! Local Decodex control-plane runtime paths and project registry helpers.
 
 mod global_config;
+#[cfg_attr(not(test), allow(dead_code))]
+mod generation;
 mod paths;
 mod projects;
 

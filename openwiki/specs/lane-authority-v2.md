@@ -1207,6 +1207,30 @@ serialization; an unclassifiable cwd rejects evidence publication.
 
 ## Migration Contract
 
+### Selected host cutover: archive and reinitialize
+
+The production host uses a destructive one-shot reset rather than legacy-row import.
+The stopped v12 runtime is reduced to a private, integrity-manifested archive; no lease,
+worktree, attempt, review, Program, control, receipt, event, or inferred ownership row is
+copied into v2. Registered `project.toml` and `WORKFLOW.md` files are retained only as
+untrusted registration inputs. Every project must be independently re-attested against
+its repository and tracker scope before v2 publishes a new ProjectKey and paused binding.
+The existence, path, service id, or recency of a retained contract never grants authority.
+
+Current external resources may be re-registered only through a new typed intake or
+recovery operation with fresh immutable provider readback and accountable identity.
+Everything else remains offline history. An unresolved legacy resource is therefore not
+a quarantined executable row in v2: it is an opaque archive/inventory reference that
+blocks explicit re-registration of the same immutable issue/resource until adjudicated.
+This satisfies the no-inference rule without carrying legacy authority into the new
+runtime.
+
+The final runtime contains no general legacy-row migration path. Startup accepts either
+an empty generation directory or the exact current v2 runtime format. Discovery of a v12
+database, detached WAL/SHM, legacy manifest, or unknown authority table fails closed and
+requires the offline archive-and-reset maintenance path. This is a one-shot cutover, not
+a compatibility reader.
+
 - Migration runs only with the daemon stopped, the supervisor generation lock exclusive,
   and a SQLite `BEGIN EXCLUSIVE` transaction held on the legacy database through atomic
   v12 path detachment.

@@ -52,6 +52,24 @@ implemented and pushed:
   refuse movement of a run id between lanes.
 - `e4f9d7fb`: run-control publication resolves ownership from the project-qualified
   attempt and active canonical lane claim instead of the legacy lease projection.
+- `d0028b23`: sealed broker-minted InvocationIdentity and atomic Lane/event persistence.
+
+The production-host C1 cutover strategy changed by explicit operator decision on
+2026-07-12. The running Decodex App/daemon was stopped and the old
+`~/.codex/decodex` runtime was removed. Only `config.toml` plus eleven projects'
+`project.toml`/`WORKFLOW.md` files were restored as untrusted registration inputs. The
+account pool was restored byte-exact at mode 0600 as credential input, not lifecycle
+authority; runtime SQLite/WAL/SHM, logs, usage history, evidence, locks, and serve output
+were not restored. The current runtime
+directory has no database and no active Decodex App/serve process. Both `pubfi` and
+`pubfi-mono` retained contracts remain non-authoritative until independent v2 binding
+attestation; their coexistence cannot select a repository.
+
+C1 therefore uses archive-and-reinitialize, not row reconstruction. Final code must
+refuse any discovered legacy database/runtime format and must not contain a normal
+compatibility reader. Independently proven current external resources can enter only via
+new typed intake/recovery authority. This host reset removes live legacy-row ambiguity
+but does not by itself prove the source-level sole-writer or old-binary generation gates.
 
 Fresh focused evidence on this runtime branch:
 
