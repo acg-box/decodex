@@ -1389,6 +1389,13 @@ old-binary tombstone refusal and resume from every durable activation stage. Thi
 selected host's empty archive/reset activation path; encrypted legacy archive, rollback
 restore, PONR fencing, and the remaining MIG scenarios are still required.
 
+The latest exact-definition count is C1 `3/65`, C2 `1/11`, C3 `0/20`, C4 `0/19`,
+C5 `1/4`, C6 `4/4`, and C7 `0/6`. C1's increase is TEL-09 plus MIG-04/MIG-05; C2's
+ADM-01 replay now rejects a foreign `repo:*` selector against the immutable GitHub
+repository binding before Lane, lease, worktree, or attempt persistence. Repository
+selector rejection is not treated as the final global routing/quarantine solution:
+zero/multiple candidate resolution and durable unbound rejection telemetry remain.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
