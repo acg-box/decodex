@@ -1,5 +1,9 @@
 //! Canonical project and lane identities for the Lane Authority v2 runtime.
 
+mod kernel;
+
+pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
+
 use crate::prelude::{Result, eyre};
 
 /// Immutable project identity attested at registration and checked at admission.
