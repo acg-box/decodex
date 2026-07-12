@@ -551,10 +551,10 @@ def materialize_rust_name_bindings(
                 [],
             ).append(scope["scope_id"])
 
-    type_symbols_by_syntax: dict[tuple[str, str], list[str]] = {}
+    declaration_symbols_by_syntax: dict[tuple[str, str], list[str]] = {}
     for symbol in symbol_sites:
         if symbol["language"] == "rust" and symbol["role"] == "declaration":
-            type_symbols_by_syntax.setdefault(
+            declaration_symbols_by_syntax.setdefault(
                 (symbol["syntax_site_id"], symbol["signature"]), []
             ).append(symbol["site_id"])
 
@@ -597,7 +597,7 @@ def materialize_rust_name_bindings(
                 else:
                     reason_code = "rust_binding_module_target_unresolved"
             elif fact["binding_kind"] == "type_declaration":
-                targets = type_symbols_by_syntax.get(
+                targets = declaration_symbols_by_syntax.get(
                     (fact["syntax_site_id"], fact["local_name"]), []
                 )
                 if len(targets) == 1:
@@ -609,6 +609,20 @@ def materialize_rust_name_bindings(
                     reason_code = "rust_binding_ambiguous_type_declaration"
                 else:
                     reason_code = "rust_binding_type_symbol_unresolved"
+            elif fact["binding_kind"] in {"value_declaration", "macro_declaration"}:
+                targets = declaration_symbols_by_syntax.get(
+                    (fact["syntax_site_id"], fact["local_name"]), []
+                )
+                namespace = fact["namespace"]
+                if len(targets) == 1:
+                    target_symbol_site_id = targets[0]
+                    resolution = "resolved"
+                    reason_code = f"rust_binding_exact_{namespace}_declaration"
+                elif len(targets) > 1:
+                    resolution = "ambiguous"
+                    reason_code = f"rust_binding_ambiguous_{namespace}_declaration"
+                else:
+                    reason_code = f"rust_binding_{namespace}_symbol_unresolved"
 
             binding_id = canonical_id(
                 "decodex/lane-authority-v2-rust-name-binding/1",
@@ -616,7 +630,7 @@ def materialize_rust_name_bindings(
                 lexical_scope["scope_id"],
                 fact["syntax_site_id"],
                 fact["binding_kind"],
-                "type",
+                fact["namespace"],
                 fact["local_name"],
                 fact["surface_target_path"] or "",
             )
@@ -625,7 +639,7 @@ def materialize_rust_name_bindings(
                 "binding_kind": fact["binding_kind"],
                 "crate_target_id": lexical_scope["crate_target_id"],
                 "local_name": fact["local_name"],
-                "namespace": "type",
+                "namespace": fact["namespace"],
                 "reason_code": reason_code,
                 "resolution": resolution,
                 "scope_id": lexical_scope["scope_id"],
@@ -644,17 +658,20 @@ def materialize_rust_name_bindings(
                 )
             bindings_by_id[binding_id] = record
 
-    bindings_by_identity: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    bindings_by_identity: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
     for binding in bindings_by_id.values():
         if binding["local_name"] == "_" or binding["binding_kind"] not in {
             "module",
             "type_declaration",
+            "value_declaration",
+            "macro_declaration",
         }:
             continue
         bindings_by_identity.setdefault(
             (
                 binding["crate_target_id"],
                 binding["scope_id"],
+                binding["namespace"],
                 binding["local_name"],
             ),
             [],
@@ -679,12 +696,13 @@ def resolve_rust_binding_paths(
     bindings = {
         binding["binding_id"]: binding for binding in rust_name_bindings
     }
-    bindings_by_scope_name: dict[tuple[str, str, str], list[str]] = {}
+    bindings_by_scope_name: dict[tuple[str, str, str, str], list[str]] = {}
     for binding in rust_name_bindings:
         bindings_by_scope_name.setdefault(
             (
                 binding["crate_target_id"],
                 binding["scope_id"],
+                binding["namespace"],
                 binding["local_name"],
             ),
             [],
@@ -758,6 +776,7 @@ def resolve_rust_binding_paths(
     def lookup(
         target_id: str,
         scope_id: str,
+        namespace: str,
         name: str,
         *,
         accessing_scope_id: str,
@@ -770,7 +789,12 @@ def resolve_rust_binding_paths(
             all_candidate_ids = [
                 binding_id
                 for binding_id in bindings_by_scope_name.get(
-                    (target_id, current_id, name), []
+                    (
+                        target_id,
+                        current_id,
+                        "type" if require_module else namespace,
+                        name,
+                    ), []
                 )
                 if binding_id != excluded_binding_id
                 and bindings[binding_id]["local_name"] != "_"
@@ -788,6 +812,8 @@ def resolve_rust_binding_paths(
                 if bindings[binding_id]["binding_kind"] in {
                     "module",
                     "type_declaration",
+                    "value_declaration",
+                    "macro_declaration",
                 }
             ]
             if require_module:
@@ -829,17 +855,26 @@ def resolve_rust_binding_paths(
                 "canonical_module_scope_id": target_scope_id,
                 "canonical_path": scopes[target_scope_id]["canonical_module_path"],
                 "canonical_type_definition_site_id": None,
+                "canonical_value_definition_site_id": None,
+                "canonical_macro_definition_site_id": None,
                 "status": "resolved_local_module",
             }
         target_symbol_id = binding["target_symbol_site_id"]
         if target_symbol_id is None:
             return {"status": "unresolved", "binding_ids": [binding["binding_id"]]}
+        namespace = binding["namespace"]
+        canonical_fields = {
+            "canonical_type_definition_site_id": None,
+            "canonical_value_definition_site_id": None,
+            "canonical_macro_definition_site_id": None,
+        }
+        canonical_fields[f"canonical_{namespace}_definition_site_id"] = target_symbol_id
         return {
             "binding_ids": [binding["binding_id"]],
             "canonical_module_scope_id": None,
             "canonical_path": f"{scope['canonical_module_path']}::{binding['local_name']}",
-            "canonical_type_definition_site_id": target_symbol_id,
-            "status": "resolved_local_type",
+            **canonical_fields,
+            "status": f"resolved_local_{namespace}",
         }
 
     def follow(binding_id: str, stack: tuple[str, ...]) -> dict[str, Any]:
@@ -852,7 +887,12 @@ def resolve_rust_binding_paths(
             return {"status": "ambiguous", "binding_ids": [binding_id]}
         if binding["visibility"] == "unsupported" or binding["binding_kind"] == "glob":
             return {"status": "unsupported", "binding_ids": [binding_id]}
-        if binding["binding_kind"] in {"module", "type_declaration"}:
+        if binding["binding_kind"] in {
+            "module",
+            "type_declaration",
+            "value_declaration",
+            "macro_declaration",
+        }:
             result = terminal_for_declaration(binding)
             cache[binding_id] = result
             return result
@@ -887,6 +927,7 @@ def resolve_rust_binding_paths(
             state, found = lookup(
                 target_id,
                 binding["scope_id"],
+                binding["namespace"],
                 segments[0],
                 accessing_scope_id=binding["scope_id"],
                 lexical=True,
@@ -910,6 +951,8 @@ def resolve_rust_binding_paths(
                     "canonical_module_scope_id": None,
                     "canonical_path": surface,
                     "canonical_type_definition_site_id": None,
+                    "canonical_value_definition_site_id": None,
+                    "canonical_macro_definition_site_id": None,
                     "status": "external",
                 }
             terminal = follow(found, stack)
@@ -933,6 +976,7 @@ def resolve_rust_binding_paths(
             state, found = lookup(
                 target_id,
                 current_scope["scope_id"],
+                binding["namespace"],
                 segments[index],
                 accessing_scope_id=binding["scope_id"],
                 lexical=False,
@@ -955,6 +999,8 @@ def resolve_rust_binding_paths(
                 "canonical_module_scope_id": current_scope["scope_id"],
                 "canonical_path": current_scope["canonical_module_path"],
                 "canonical_type_definition_site_id": None,
+                "canonical_value_definition_site_id": None,
+                "canonical_macro_definition_site_id": None,
                 "status": "resolved_local_module",
             }
         return {**terminal, "binding_ids": path_binding_ids}
@@ -967,6 +1013,8 @@ def resolve_rust_binding_paths(
         "inaccessible": "rust_path_visibility_denied",
         "resolved_local_module": "rust_path_unique_local_module",
         "resolved_local_type": "rust_path_unique_local_type",
+        "resolved_local_value": "rust_path_unique_local_value",
+        "resolved_local_macro": "rust_path_unique_local_macro",
         "unresolved": "rust_path_target_unresolved",
         "unsupported": "rust_path_unsupported_construct",
     }
@@ -991,6 +1039,12 @@ def resolve_rust_binding_paths(
             "canonical_type_definition_site_id": result.get(
                 "canonical_type_definition_site_id"
             ),
+            "canonical_value_definition_site_id": result.get(
+                "canonical_value_definition_site_id"
+            ),
+            "canonical_macro_definition_site_id": result.get(
+                "canonical_macro_definition_site_id"
+            ),
             "crate_target_id": binding["crate_target_id"],
             "lexical_scope_id": binding["scope_id"],
             "namespace": binding["namespace"],
@@ -1006,12 +1060,19 @@ def resolve_rust_binding_paths(
             contract.canonical_json(record).encode("utf-8")
         ).hexdigest()
         resolutions.append(record)
-        if status in {"resolved_local_module", "resolved_local_type"}:
+        if status in {
+            "resolved_local_module",
+            "resolved_local_type",
+            "resolved_local_value",
+            "resolved_local_macro",
+        }:
             binding["resolution"] = "resolved"
             binding["reason_code"] = "rust_binding_exact_path_resolution"
             binding["target_scope_id"] = result.get("canonical_module_scope_id")
             binding["target_symbol_site_id"] = result.get(
                 "canonical_type_definition_site_id"
+            ) or result.get("canonical_value_definition_site_id") or result.get(
+                "canonical_macro_definition_site_id"
             )
         elif status == "external":
             binding["resolution"] = "external"

@@ -319,6 +319,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                     "binding_kind": "module",
                     "lexical_scope_syntax_site_id": "syntax:root",
                     "local_name": "state",
+                    "namespace": "type",
                     "source_node_id": "source:lib",
                     "surface_target_path": None,
                     "syntax_site_id": "syntax:module",
@@ -329,6 +330,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                     "binding_kind": "type_declaration",
                     "lexical_scope_syntax_site_id": "syntax:root",
                     "local_name": "Store",
+                    "namespace": "type",
                     "source_node_id": "source:lib",
                     "surface_target_path": None,
                     "syntax_site_id": "syntax:type",
@@ -339,6 +341,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
                     "binding_kind": "use",
                     "lexical_scope_syntax_site_id": "syntax:root",
                     "local_name": "Row",
+                    "namespace": "type",
                     "source_node_id": "source:lib",
                     "surface_target_path": "rusqlite::Row",
                     "syntax_site_id": "syntax:use",
@@ -488,6 +491,7 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
         resolved = by_source["binding:use"]
         self.assertEqual("resolved_local_type", resolved["status"])
         self.assertEqual("symbol:state-store", resolved["canonical_type_definition_site_id"])
+
         self.assertEqual(
             "target::one::state::store::StateStore", resolved["canonical_path"]
         )
@@ -721,6 +725,82 @@ class LaneAuthorityV2C1IMaterializeP2Tests(unittest.TestCase):
             "resolved_local_type",
             qualified_by_symbol["symbol:self-qualified-call"]["status"],
         )
+
+    def test_rust_path_resolution_separates_same_name_namespaces(self):
+        scopes = [
+            {
+                "byte_end": 100,
+                "byte_start": 0,
+                "canonical_module_path": "target::one",
+                "crate_target_id": "target:one",
+                "parent_scope_id": None,
+                "scope_id": "scope:root",
+                "scope_kind": "crate_root",
+                "source_node_id": "source:root",
+                "target_extern_crate_names": ["core", "std"],
+            },
+            {
+                "byte_end": 100,
+                "byte_start": 0,
+                "canonical_module_path": "target::one::m",
+                "crate_target_id": "target:one",
+                "parent_scope_id": "scope:root",
+                "scope_id": "scope:m",
+                "scope_kind": "file_module",
+                "source_node_id": "source:m",
+            },
+        ]
+
+        def binding(binding_id, kind, scope_id, name, namespace, surface=None, target=None):
+            return {
+                "binding_id": binding_id,
+                "binding_kind": kind,
+                "crate_target_id": "target:one",
+                "local_name": name,
+                "namespace": namespace,
+                "reason_code": "rust_binding_path_resolution_pending",
+                "resolution": "resolved" if target else "unresolved",
+                "scope_id": scope_id,
+                "surface_target_path": surface,
+                "target_scope_id": target if kind == "module" else None,
+                "target_symbol_site_id": target if kind != "module" else None,
+                "visibility": "crate",
+            }
+
+        bindings = [
+            binding("binding:m", "module", "scope:root", "m", "type", target="scope:m"),
+            binding(
+                "binding:type", "type_declaration", "scope:m", "Item", "type",
+                target="symbol:type",
+            ),
+            binding(
+                "binding:value", "value_declaration", "scope:m", "Item", "value",
+                target="symbol:value",
+            ),
+            binding("binding:use-type", "use", "scope:root", "Item", "type", "m::Item"),
+            binding("binding:use-value", "use", "scope:root", "Item", "value", "m::Item"),
+            binding("binding:use-macro", "use", "scope:root", "Item", "macro", "m::Item"),
+        ]
+
+        resolutions = self.materializer.resolve_rust_binding_paths(scopes, bindings)
+        for resolution in resolutions:
+            self.verifier.replay_rust_type_path_resolution(
+                resolution,
+                {scope["scope_id"]: scope for scope in scopes},
+                {binding["binding_id"]: binding for binding in bindings},
+            )
+        by_source = {record["source_binding_id"]: record for record in resolutions}
+        self.assertEqual("resolved_local_type", by_source["binding:use-type"]["status"])
+        self.assertEqual(
+            "symbol:type",
+            by_source["binding:use-type"]["canonical_type_definition_site_id"],
+        )
+        self.assertEqual("resolved_local_value", by_source["binding:use-value"]["status"])
+        self.assertEqual(
+            "symbol:value",
+            by_source["binding:use-value"]["canonical_value_definition_site_id"],
+        )
+        self.assertEqual("unresolved", by_source["binding:use-macro"]["status"])
 
     def test_rust_path_resolution_uses_module_boundary_and_cargo_extern_attestation(self):
         scopes = [

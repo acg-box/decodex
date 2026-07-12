@@ -1313,12 +1313,13 @@ def replay_rust_type_path_resolution(
     chain = resolution["binding_ids"]
     cursor = 0
     if replay_index is None:
-        bindings_by_scope_name: dict[tuple[str, str, str], list[str]] = {}
+        bindings_by_scope_name: dict[tuple[str, str, str, str], list[str]] = {}
         for binding in bindings.values():
             bindings_by_scope_name.setdefault(
                 (
                     binding["crate_target_id"],
                     binding["scope_id"],
+                    binding["namespace"],
                     binding["local_name"],
                 ),
                 [],
@@ -1396,6 +1397,7 @@ def replay_rust_type_path_resolution(
         target_id: str,
         scope_id: str,
         accessing_scope_id: str,
+        namespace: str,
         name: str,
         *,
         lexical: bool,
@@ -1407,7 +1409,12 @@ def replay_rust_type_path_resolution(
             all_candidates = [
                 binding_id
                 for binding_id in bindings_by_scope_name.get(
-                    (target_id, current_id, name), []
+                    (
+                        target_id,
+                        current_id,
+                        "type" if require_module else namespace,
+                        name,
+                    ), []
                 )
                 if binding_id != excluded_binding_id
                 and bindings[binding_id]["local_name"] != "_"
@@ -1423,7 +1430,7 @@ def replay_rust_type_path_resolution(
                 binding_id
                 for binding_id in candidates
                 if bindings[binding_id]["binding_kind"]
-                in {"module", "type_declaration"}
+                in {"module", "type_declaration", "value_declaration", "macro_declaration"}
             ]
             if require_module:
                 modules = [
@@ -1440,7 +1447,8 @@ def replay_rust_type_path_resolution(
             if len(candidates) == 1:
                 candidate = bindings[candidates[0]]
                 if (
-                    candidate["binding_kind"] in {"module", "type_declaration"}
+                    candidate["binding_kind"]
+                    in {"module", "type_declaration", "value_declaration", "macro_declaration"}
                     and candidate["resolution"] == "ambiguous"
                 ):
                     return "ambiguous", None
@@ -1468,20 +1476,33 @@ def replay_rust_type_path_resolution(
                 "canonical_module_scope_id": target_scope_id,
                 "canonical_path": scopes[target_scope_id]["canonical_module_path"],
                 "canonical_type_definition_site_id": None,
+                "canonical_value_definition_site_id": None,
+                "canonical_macro_definition_site_id": None,
                 "status": "resolved_local_module",
             }
-        if binding["binding_kind"] == "type_declaration":
+        if binding["binding_kind"] in {
+            "type_declaration",
+            "value_declaration",
+            "macro_declaration",
+        }:
             target_symbol_id = binding["target_symbol_site_id"]
             if target_symbol_id is None:
                 return {"status": binding["resolution"]}
+            namespace = binding["namespace"]
+            canonical_fields = {
+                "canonical_type_definition_site_id": None,
+                "canonical_value_definition_site_id": None,
+                "canonical_macro_definition_site_id": None,
+            }
+            canonical_fields[f"canonical_{namespace}_definition_site_id"] = target_symbol_id
             return {
                 "canonical_module_scope_id": None,
                 "canonical_path": (
                     f"{module_scope(binding['scope_id'])['canonical_module_path']}"
                     f"::{binding['local_name']}"
                 ),
-                "canonical_type_definition_site_id": target_symbol_id,
-                "status": "resolved_local_type",
+                **canonical_fields,
+                "status": f"resolved_local_{namespace}",
             }
 
         surface = binding["surface_target_path"] or ""
@@ -1509,6 +1530,7 @@ def replay_rust_type_path_resolution(
                 target_id,
                 binding["scope_id"],
                 binding["scope_id"],
+                binding["namespace"],
                 segments[0],
                 lexical=True,
                 require_module=len(segments) > 1,
@@ -1521,6 +1543,8 @@ def replay_rust_type_path_resolution(
                         "canonical_module_scope_id": None,
                         "canonical_path": surface,
                         "canonical_type_definition_site_id": None,
+                        "canonical_value_definition_site_id": None,
+                        "canonical_macro_definition_site_id": None,
                         "status": "external",
                     }
                 return {"status": "unresolved"}
@@ -1546,6 +1570,7 @@ def replay_rust_type_path_resolution(
                 target_id,
                 current_scope["scope_id"],
                 binding["scope_id"],
+                binding["namespace"],
                 segments[index],
                 lexical=False,
                 require_module=index < len(segments) - 1,
@@ -1560,6 +1585,8 @@ def replay_rust_type_path_resolution(
             "canonical_module_scope_id": current_scope["scope_id"],
             "canonical_path": current_scope["canonical_module_path"],
             "canonical_type_definition_site_id": None,
+            "canonical_value_definition_site_id": None,
+            "canonical_macro_definition_site_id": None,
             "status": "resolved_local_module",
         }
 
@@ -1570,9 +1597,11 @@ def replay_rust_type_path_resolution(
         "canonical_module_scope_id",
         "canonical_path",
         "canonical_type_definition_site_id",
+        "canonical_value_definition_site_id",
+        "canonical_macro_definition_site_id",
         "status",
     ):
-        if resolution[field] != replayed.get(field):
+        if resolution.get(field) != replayed.get(field):
             raise ContractError("P2 Rust path resolution replay disagrees")
 
 
@@ -3061,7 +3090,7 @@ def verify_p2(
         "binding_id",
         "P2 Rust name bindings",
     )
-    bindings_by_identity: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    bindings_by_identity: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
     for binding in rust_bindings.values():
         scope = rust_scopes.get(binding["scope_id"])
         site = syntax.get(binding["syntax_site_id"])
@@ -3105,20 +3134,27 @@ def verify_p2(
                 or target_symbol["role"] != "declaration"
             ):
                 raise ContractError("P2 Rust type binding target drifted")
-            if binding["binding_kind"] == "type_declaration" and (
+            if binding["binding_kind"] in {
+                "type_declaration",
+                "value_declaration",
+                "macro_declaration",
+            } and (
                 target_symbol["syntax_site_id"] != binding["syntax_site_id"]
                 or target_symbol["signature"] != binding["local_name"]
             ):
-                raise ContractError("P2 Rust type declaration target drifted")
+                raise ContractError("P2 Rust declaration target drifted")
         if binding["local_name"] == "_" or binding["binding_kind"] not in {
             "module",
             "type_declaration",
+            "value_declaration",
+            "macro_declaration",
         }:
             continue
         bindings_by_identity.setdefault(
             (
                 binding["crate_target_id"],
                 binding["scope_id"],
+                binding["namespace"],
                 binding["local_name"],
             ),
             [],
@@ -3131,12 +3167,13 @@ def verify_p2(
         ):
             raise ContractError("P2 Rust same-scope binding ambiguity was accepted")
 
-    replay_bindings_by_scope_name: dict[tuple[str, str, str], list[str]] = {}
+    replay_bindings_by_scope_name: dict[tuple[str, str, str, str], list[str]] = {}
     for binding in rust_bindings.values():
         replay_bindings_by_scope_name.setdefault(
             (
                 binding["crate_target_id"],
                 binding["scope_id"],
+                binding["namespace"],
                 binding["local_name"],
             ),
             [],
@@ -3222,6 +3259,25 @@ def verify_p2(
                 or terminal_binding["target_symbol_site_id"] != target["site_id"]
             ):
                 raise ContractError("P2 Rust local type path resolution drifted")
+        elif resolution["status"] in {
+            "resolved_local_value",
+            "resolved_local_macro",
+        }:
+            field = (
+                "canonical_value_definition_site_id"
+                if resolution["status"] == "resolved_local_value"
+                else "canonical_macro_definition_site_id"
+            )
+            target = symbol_sites.get(resolution[field])
+            if (
+                target is None
+                or target["language"] != "rust"
+                or target["role"] != "declaration"
+                or source_binding["resolution"] != "resolved"
+                or source_binding["target_symbol_site_id"] != target["site_id"]
+                or terminal_binding["target_symbol_site_id"] != target["site_id"]
+            ):
+                raise ContractError("P2 Rust local callable path resolution drifted")
         elif resolution["status"] == "external":
             if source_binding["resolution"] != "external":
                 raise ContractError("P2 Rust external path resolution drifted")
@@ -3374,6 +3430,7 @@ def verify_p2(
         replay_key = (
             query["crate_target_id"],
             query["scope_id"],
+            query["namespace"],
             query["local_name"],
         )
         rust_path_replay_index["bindings_by_scope_name"][replay_key] = [
@@ -3518,7 +3575,12 @@ def verify_p2(
             "source_binding_id": expected_query_id,
         }
         rust_bindings[expected_query_id] = query
-        replay_key = (query["crate_target_id"], query["scope_id"], query["local_name"])
+        replay_key = (
+            query["crate_target_id"],
+            query["scope_id"],
+            query["namespace"],
+            query["local_name"],
+        )
         rust_path_replay_index["bindings_by_scope_name"][replay_key] = [expected_query_id]
         try:
             replay_rust_type_path_resolution(
@@ -3670,7 +3732,12 @@ def verify_p2(
             "status": resolution["path_status"],
         }
         rust_bindings[expected_query_id] = query
-        replay_key = (query["crate_target_id"], query["scope_id"], query["local_name"])
+        replay_key = (
+            query["crate_target_id"],
+            query["scope_id"],
+            query["namespace"],
+            query["local_name"],
+        )
         rust_path_replay_index["bindings_by_scope_name"][replay_key] = [expected_query_id]
         try:
             replay_rust_type_path_resolution(

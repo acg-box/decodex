@@ -111,6 +111,7 @@ struct RustNameBindingFact {
 	binding_kind: String,
 	lexical_scope_syntax_site_id: String,
 	local_name: String,
+	namespace: String,
 	source_node_id: String,
 	surface_target_path: Option<String>,
 	syntax_site_id: String,
@@ -646,6 +647,19 @@ fn enclosing_rust_scope(mut node: Node<'_>) -> Option<Node<'_>> {
 	None
 }
 
+fn is_rust_associated_item(mut node: Node<'_>) -> bool {
+	while let Some(parent) = node.parent() {
+		if matches!(parent.kind(), "impl_item" | "trait_item") {
+			return true;
+		}
+		if rust_scope_kind(parent).is_some() {
+			return false;
+		}
+		node = parent;
+	}
+	false
+}
+
 fn rust_scope_facts(source_id: &str, nodes: &[Node<'_>]) -> Vec<RustScopeFact> {
 	let mut facts = nodes
 		.iter()
@@ -816,6 +830,7 @@ fn rust_name_binding_facts(
 						binding_kind: "module".to_owned(),
 						lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
 						local_name: name.to_owned(),
+						namespace: "type".to_owned(),
 						source_node_id: source_id.to_owned(),
 						surface_target_path: None,
 						syntax_site_id: syntax_site_id.clone(),
@@ -832,6 +847,42 @@ fn rust_name_binding_facts(
 						binding_kind: "type_declaration".to_owned(),
 						lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
 						local_name: name.to_owned(),
+						namespace: "type".to_owned(),
+						source_node_id: source_id.to_owned(),
+						surface_target_path: None,
+						syntax_site_id: syntax_site_id.clone(),
+						visibility: visibility.clone(),
+						visibility_path: visibility_path.clone(),
+					});
+				}
+			}
+		} else if node.kind() == "function_item" && !is_rust_associated_item(node)
+		{
+			if let Some(name) = node.child_by_field_name("name") {
+				let name = name.utf8_text(bytes).unwrap_or_default().trim();
+				if !name.is_empty() {
+					facts.push(RustNameBindingFact {
+						binding_kind: "value_declaration".to_owned(),
+						lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
+						local_name: name.to_owned(),
+						namespace: "value".to_owned(),
+						source_node_id: source_id.to_owned(),
+						surface_target_path: None,
+						syntax_site_id: syntax_site_id.clone(),
+						visibility: visibility.clone(),
+						visibility_path: visibility_path.clone(),
+					});
+				}
+			}
+		} else if node.kind() == "macro_definition" {
+			if let Some(name) = node.child_by_field_name("name") {
+				let name = name.utf8_text(bytes).unwrap_or_default().trim();
+				if !name.is_empty() {
+					facts.push(RustNameBindingFact {
+						binding_kind: "macro_declaration".to_owned(),
+						lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
+						local_name: name.to_owned(),
+						namespace: "macro".to_owned(),
 						source_node_id: source_id.to_owned(),
 						surface_target_path: None,
 						syntax_site_id: syntax_site_id.clone(),
@@ -845,7 +896,8 @@ fn rust_name_binding_facts(
 			let mut leaves = Vec::new();
 			collect_rust_use_binding_leaves(bytes, argument, None, &mut leaves);
 			for (leaf_kind, local_name, surface_target_path) in leaves {
-				facts.push(RustNameBindingFact {
+				for namespace in ["type", "value", "macro"] {
+					facts.push(RustNameBindingFact {
 					binding_kind: if leaf_kind == "glob" {
 						"glob".to_owned()
 					} else if visibility == "private" {
@@ -854,13 +906,15 @@ fn rust_name_binding_facts(
 						"reexport".to_owned()
 					},
 					lexical_scope_syntax_site_id: lexical_scope_syntax_site_id.clone(),
-					local_name,
+					local_name: local_name.clone(),
+					namespace: namespace.to_owned(),
 					source_node_id: source_id.to_owned(),
-					surface_target_path: Some(surface_target_path),
+					surface_target_path: Some(surface_target_path.clone()),
 					syntax_site_id: syntax_site_id.clone(),
 					visibility: visibility.clone(),
 					visibility_path: visibility_path.clone(),
-				});
+					});
+				}
 			}
 		}
 	}
@@ -868,6 +922,7 @@ fn rust_name_binding_facts(
 		left.syntax_site_id
 			.cmp(&right.syntax_site_id)
 			.then(left.binding_kind.cmp(&right.binding_kind))
+			.then(left.namespace.cmp(&right.namespace))
 			.then(left.local_name.cmp(&right.local_name))
 			.then(left.surface_target_path.cmp(&right.surface_target_path))
 	});
@@ -1252,7 +1307,7 @@ mod tests {
 
 	#[test]
 	fn records_structured_rust_name_bindings_and_visibility() {
-		let source = b"pub(crate) mod state; pub use self::{store::StateStore, model::Thing as Alias}; use local::{self, Item}; use external::*; pub(in crate) struct Scoped;";
+		let source = b"pub(crate) mod state; pub use self::{store::StateStore, model::Thing as Alias}; use local::{self, Item}; use external::*; pub(in crate) struct Scoped; fn run() {} impl Scoped { fn method() {} } macro_rules! local_macro { () => {} }";
 		let mut parser = Parser::new();
 		parser.set_language(&language("rust").expect("Rust grammar")).expect("set Rust grammar");
 		let tree = parser.parse(source, None).expect("Rust syntax tree");
@@ -1266,6 +1321,14 @@ mod tests {
 		let store = facts.iter().find(|fact| fact.local_name == "StateStore").expect("store");
 		assert_eq!("reexport", store.binding_kind);
 		assert_eq!(Some("self::store::StateStore"), store.surface_target_path.as_deref());
+		assert_eq!(
+			std::collections::BTreeSet::from(["macro", "type", "value"]),
+			facts
+				.iter()
+				.filter(|fact| fact.local_name == "StateStore")
+				.map(|fact| fact.namespace.as_str())
+				.collect(),
+		);
 		let alias = facts.iter().find(|fact| fact.local_name == "Alias").expect("alias");
 		assert_eq!(Some("self::model::Thing"), alias.surface_target_path.as_deref());
 		let local = facts
@@ -1281,6 +1344,18 @@ mod tests {
 			.expect("type binding");
 		assert_eq!("in", scoped.visibility);
 		assert_eq!(Some("crate"), scoped.visibility_path.as_deref());
+		let values = facts
+			.iter()
+			.filter(|fact| fact.binding_kind == "value_declaration")
+			.map(|fact| fact.local_name.as_str())
+			.collect::<Vec<_>>();
+		assert_eq!(vec!["run"], values);
+		let macros = facts
+			.iter()
+			.filter(|fact| fact.binding_kind == "macro_declaration")
+			.map(|fact| fact.local_name.as_str())
+			.collect::<Vec<_>>();
+		assert_eq!(vec!["local_macro"], macros);
 	}
 
 	#[test]
