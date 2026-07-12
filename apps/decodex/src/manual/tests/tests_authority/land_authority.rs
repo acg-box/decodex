@@ -94,6 +94,10 @@ fn manual_land_manual_authority_with_config_does_not_refresh_project_registry() 
 		("PATH", format!("{}:{path_env}", fake_gh_dir.display())),
 	]);
 	let repo_root = tests::init_git_checkout(&temp_dir, "repo");
+	let runtime_root = temp_dir.path().join(".codex/decodex");
+	fs::create_dir_all(&runtime_root).expect("runtime root");
+	fs::create_dir(runtime_root.join("runtime.sqlite3")).expect("legacy tombstone");
+	runtime::initialize_fresh_runtime_generation(1).expect("initialize v2 runtime");
 	let config_dir = temp_dir.path().join(".codex/decodex/projects/decodex");
 	let config_path = config_dir.join("project.toml");
 	let request = ManualLandRequest {

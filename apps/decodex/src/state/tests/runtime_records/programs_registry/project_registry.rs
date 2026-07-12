@@ -35,6 +35,48 @@ fn project_registry_rejects_binding_fingerprint_drift() {
 }
 
 #[test]
+fn lane_authority_v2_c1_id_01() {
+	let temp_dir = TempDir::new().expect("tempdir");
+	let store = StateStore::open(temp_dir.path().join("runtime.db")).expect("store");
+	let first = project_registration(&temp_dir, "pubfi", "pubfi-mono", "binding-1");
+	let second = project_registration(&temp_dir, "pubfi-insight", "pubfi-mono", "binding-2");
+	store.upsert_project(&first).expect("first binding");
+	let error = store.upsert_project(&second).expect_err("duplicate RepositoryKey must reject");
+	assert!(error.to_string().contains("RepositoryKey"));
+	assert_eq!(store.list_projects().expect("projects"), vec![first]);
+}
+
+fn project_registration(
+	temp_dir: &TempDir,
+	service_id: &str,
+	repository: &str,
+	fingerprint: &str,
+) -> ProjectRegistration {
+	ProjectRegistration {
+		service_id: service_id.to_owned(),
+		config_path: temp_dir.path().join(format!("{service_id}/project.toml")),
+		repo_root: temp_dir.path().join(format!("{service_id}/repo")),
+		worktree_root: temp_dir.path().join(format!("{service_id}/repo/.worktrees")),
+		workflow_path: temp_dir.path().join(format!("{service_id}/repo/WORKFLOW.md")),
+		tracker_api_key_env_var: String::from("LINEAR_API_KEY_HACKINK"),
+		github_token_env_var: String::from("GITHUB_PAT_Y"),
+		enabled: true,
+		config_fingerprint: fingerprint.to_owned(),
+		binding: crate::lane_authority::ProjectBinding::new(
+			service_id,
+			"helixbox",
+			repository,
+			"team-pubfi",
+			&format!("decodex:queued:{service_id}"),
+			fingerprint,
+		)
+		.expect("binding"),
+		updated_at: String::from("2026-07-12T00:00:00Z"),
+		updated_at_unix: 1_783_814_400,
+	}
+}
+
+#[test]
 fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.db");

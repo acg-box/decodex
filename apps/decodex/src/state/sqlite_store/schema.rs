@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS projects (
 	updated_at TEXT NOT NULL,
 	updated_at_unix INTEGER NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS projects_repository_key_idx
+ON projects (github_owner, github_repository);
 CREATE TABLE IF NOT EXISTS lanes (
 	project_key TEXT NOT NULL,
 	tracker_issue_id TEXT NOT NULL,

@@ -36,6 +36,14 @@ impl StateStore {
 		{
 			registration.set_enabled(enabled);
 		}
+		if state.projects.values().any(|existing| {
+			existing.service_id() != registration.service_id()
+				&& existing.binding().github_owner() == registration.binding().github_owner()
+				&& existing.binding().github_repository()
+					== registration.binding().github_repository()
+		}) {
+			eyre::bail!("RepositoryKey is already bound to another immutable ProjectBinding.");
+		}
 
 		state.projects.insert(registration.service_id().to_owned(), registration.clone());
 		self.upsert_project_locked(&registration)?;
