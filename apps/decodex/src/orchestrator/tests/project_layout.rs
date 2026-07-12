@@ -16,7 +16,7 @@ pub(super) use self::{
 
 use crate::orchestrator::tests::{self, ReviewLevel, ServiceConfig, TempDir, WorkflowDocument, fs};
 
-pub(super) fn temp_project_layout() -> (TempDir, ServiceConfig, WorkflowDocument) {
+pub(crate) fn temp_project_layout() -> (TempDir, ServiceConfig, WorkflowDocument) {
 	temp_project_layout_with_tracker_project_slug_and_read_first(
 		"pubfi",
 		&[],

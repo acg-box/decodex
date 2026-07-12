@@ -5,8 +5,8 @@ use clap::{Args, Subcommand};
 use crate::{
 	cli::ProjectConfigArgs,
 	orchestrator::{
-		self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneInspectRequest, LaneInterruptRequest,
-		LaneSteerReport, LaneSteerRequest,
+		self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneAuthorityReadbackRequest,
+		LaneInspectRequest, LaneInterruptRequest, LaneSteerReport, LaneSteerRequest,
 	},
 	prelude::{Result, eyre},
 };
@@ -21,6 +21,12 @@ pub(in crate::cli) struct LaneCommand {
 impl LaneCommand {
 	pub(in crate::cli) fn run(&self) -> Result<()> {
 		match &self.command {
+			LaneSubcommand::Audit(args) =>
+				orchestrator::print_lane_authority_audit(LaneAuthorityReadbackRequest {
+					config_path: self.project_config.as_path(),
+					issue: &args.issue,
+					json: args.json,
+				}),
 			LaneSubcommand::Inspect(args) => orchestrator::print_lane_inspect(LaneInspectRequest {
 				config_path: self.project_config.as_path(),
 				issue: &args.issue,
@@ -38,8 +44,24 @@ impl LaneCommand {
 			})
 			.map(|_report| ()),
 			LaneSubcommand::Steer(args) => args.run(self.project_config.as_path()),
+			LaneSubcommand::Timeline(args) =>
+				orchestrator::print_lane_authority_timeline(LaneAuthorityReadbackRequest {
+					config_path: self.project_config.as_path(),
+					issue: &args.issue,
+					json: args.json,
+				}),
 		}
 	}
+}
+
+#[derive(Debug, Args)]
+pub(in crate::cli) struct LaneAuthorityReadbackCommand {
+	/// Issue identifier or immutable tracker issue id to inspect.
+	#[arg(value_name = "ISSUE")]
+	pub(in crate::cli) issue: String,
+	/// Emit the privacy-safe typed projection as JSON.
+	#[arg(long)]
+	pub(in crate::cli) json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -127,12 +149,16 @@ impl LaneSteerCommand {
 
 #[derive(Debug, Subcommand)]
 pub(in crate::cli) enum LaneSubcommand {
+	/// Verify the private authority chain and summarize one Lane's coverage.
+	Audit(LaneAuthorityReadbackCommand),
 	/// Inspect one local lane by issue identifier or tracker issue id.
 	Inspect(LaneInspectCommand),
 	/// Soft-interrupt an active app-server turn, with optional hard fallback.
 	Interrupt(LaneInterruptCommand),
 	/// Send operator-supplied text to an active steerable turn.
 	Steer(LaneSteerCommand),
+	/// Show the privacy-safe authority transition timeline for one Lane.
+	Timeline(LaneAuthorityReadbackCommand),
 }
 
 fn default_lane_steer_wait_timeout_ms() -> u64 {

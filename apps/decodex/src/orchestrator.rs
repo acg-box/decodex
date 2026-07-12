@@ -104,8 +104,9 @@ pub(crate) use self::{
 	},
 	execution::{planned_issue_state_for_dispatch, run_summary_from_issue_run},
 	lane_control::{
-		DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneInspectRequest, LaneInterruptRequest,
-		interrupt_lane, print_lane_inspect, steer_lane,
+		DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneAuthorityReadbackRequest, LaneInspectRequest,
+		LaneInterruptRequest, interrupt_lane, print_lane_authority_audit,
+		print_lane_authority_timeline, print_lane_inspect, steer_lane,
 	},
 	operator_http::{
 		DashboardEventHub, operator_snapshot_json_value,

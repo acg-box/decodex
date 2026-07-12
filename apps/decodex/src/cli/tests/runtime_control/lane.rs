@@ -6,7 +6,10 @@ use crate::cli::{
 	Cli, Command, ProjectConfigArgs,
 	control_commands::{
 		LaneCommand,
-		lane::{LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand},
+		lane::{
+			LaneAuthorityReadbackCommand, LaneInspectCommand, LaneInterruptCommand,
+			LaneSteerCommand, LaneSubcommand,
+		},
 	},
 };
 
@@ -37,6 +40,30 @@ fn parses_lane_inspect_with_run_id_and_project_config() {
 			&& issue == "XY-703"
 			&& run_id == "xy-703-attempt-1"
 	));
+}
+
+#[test]
+fn parses_lane_timeline_and_audit_as_privacy_safe_readbacks() {
+	for subcommand in ["timeline", "audit"] {
+		let cli = Cli::parse_from([
+			"decodex",
+			"lane",
+			"--config",
+			"./project.toml",
+			subcommand,
+			"XY-703",
+			"--json",
+		]);
+		assert!(matches!(
+			cli.command,
+			Command::Lane(LaneCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command:
+					LaneSubcommand::Timeline(LaneAuthorityReadbackCommand { issue, json: true })
+					| LaneSubcommand::Audit(LaneAuthorityReadbackCommand { issue, json: true }),
+			}) if config == Path::new("./project.toml") && issue == "XY-703"
+		));
+	}
 }
 
 #[test]

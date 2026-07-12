@@ -373,12 +373,14 @@ mod tests {
 	fn broker_owned_store_appends_event_for_production_lane_writer() {
 		let temp_dir = TempDir::new().expect("tempdir");
 		let database = temp_dir.path().join("state.sqlite");
+		let store = StateStore::open(&database).expect("prepare store");
+		store.initialize_authority_generation(1, &[7_u8; 32]).expect("generation");
+		drop(store);
 		let store = StateStore::open_with_invocation(
 			&database,
 			crate::authority_broker::test_invocation_identity(),
 		)
 		.expect("store");
-		store.initialize_authority_generation(1, &[7_u8; 32]).expect("generation");
 		let id = LaneId::new("pubfi", "PUB-1711").expect("lane");
 		store
 			.apply_lane_command(

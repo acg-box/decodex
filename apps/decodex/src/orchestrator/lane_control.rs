@@ -7,12 +7,14 @@ mod reports;
 mod requests;
 mod selection;
 mod steer;
+mod authority;
 
 pub(crate) use self::{
 	constants::DEFAULT_STEER_RESULT_WAIT_TIMEOUT,
 	reports::{LaneInspectReport, LaneInterruptReport},
-	requests::{LaneInspectRequest, LaneInterruptRequest},
+	requests::{LaneAuthorityReadbackRequest, LaneInspectRequest, LaneInterruptRequest},
 };
+pub(crate) use authority::{print_lane_authority_audit, print_lane_authority_timeline};
 
 use self::reports::LaneRunInspect;
 use crate::{

@@ -42,6 +42,27 @@ pub enum AuthorityEventType {
 	#[n(14)]
 	LaneReleased,
 }
+impl AuthorityEventType {
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::BindingRequested => "binding_requested",
+			Self::BindingAttested => "binding_attested",
+			Self::BindingRejected => "binding_rejected",
+			Self::DispatchSelected => "dispatch_selected",
+			Self::TransitionPlanned => "transition_planned",
+			Self::PrerequisiteRevalidated => "prerequisite_revalidated",
+			Self::PrerequisiteDrifted => "prerequisite_drifted",
+			Self::EffectStarted => "effect_started",
+			Self::EffectSucceeded => "effect_succeeded",
+			Self::EffectFailed => "effect_failed",
+			Self::EffectReconciled => "effect_reconciled",
+			Self::TransitionCommitted => "transition_committed",
+			Self::LaneQuarantined => "lane_quarantined",
+			Self::LaneTransferred => "lane_transferred",
+			Self::LaneReleased => "lane_released",
+		}
+	}
+}
 
 #[derive(Clone, Copy, Debug, Decode, Encode, Eq, PartialEq)]
 #[cbor(index_only)]
@@ -56,6 +77,17 @@ pub enum AuthorityDecision {
 	Reconciled,
 	#[n(4)]
 	AttentionRequired,
+}
+impl AuthorityDecision {
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Accepted => "accepted",
+			Self::Rejected => "rejected",
+			Self::Committed => "committed",
+			Self::Reconciled => "reconciled",
+			Self::AttentionRequired => "attention_required",
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, Decode, Encode, Eq, PartialEq, Ord, PartialOrd)]
@@ -81,6 +113,22 @@ pub enum AuthorityReasonCode {
 	ConflictReleased,
 	#[n(9)]
 	QuarantinedAmbiguousLegacyState,
+}
+impl AuthorityReasonCode {
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::BindingMatched => "binding_matched",
+			Self::BindingMismatch => "binding_mismatch",
+			Self::AmbiguousRouting => "ambiguous_routing",
+			Self::StaleAuthorityEpoch => "stale_authority_epoch",
+			Self::PrerequisiteDrift => "prerequisite_drift",
+			Self::EffectReceiptRecorded => "effect_receipt_recorded",
+			Self::ConditionalMutationUnsupported => "conditional_mutation_unsupported",
+			Self::SupersessionAccepted => "supersession_accepted",
+			Self::ConflictReleased => "conflict_released",
+			Self::QuarantinedAmbiguousLegacyState => "quarantined_ambiguous_legacy_state",
+		}
+	}
 }
 
 #[derive(Clone, Debug)]

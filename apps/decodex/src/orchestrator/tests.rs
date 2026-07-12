@@ -73,7 +73,7 @@ use self::{
 		service_config_toml_for_config, service_config_toml_for_config_with_github_command_path,
 		service_config_with_github_token_env_var,
 		service_config_with_github_token_env_var_and_command_path,
-		service_config_with_review_level, service_workflow_path, temp_project_layout,
+		service_config_with_review_level, service_workflow_path,
 		temp_project_layout_with_max_turns, temp_project_layout_with_read_first,
 		temp_project_layout_with_tracker_project_slug,
 		temp_project_layout_with_tracker_project_slug_and_read_first,
@@ -99,6 +99,7 @@ use self::{
 	},
 	runtime_failure::loop_guardrail_issue_run,
 };
+pub(crate) use self::project_layout::temp_project_layout;
 use crate::{
 	agent::{
 		AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,

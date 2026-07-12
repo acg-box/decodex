@@ -9,6 +9,13 @@ pub(crate) struct LaneInspectRequest<'a> {
 }
 
 #[derive(Clone, Copy)]
+pub(crate) struct LaneAuthorityReadbackRequest<'a> {
+	pub(crate) config_path: Option<&'a Path>,
+	pub(crate) issue: &'a str,
+	pub(crate) json: bool,
+}
+
+#[derive(Clone, Copy)]
 pub(crate) struct LaneInterruptRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
 	pub(crate) issue: &'a str,
