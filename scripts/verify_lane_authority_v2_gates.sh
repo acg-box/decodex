@@ -36,7 +36,7 @@ PY
 )
 
 for test_name in "${test_names[@]}"; do
-	match_count=$(rg -l --glob '*.rs' "fn ${test_name}\\(" apps/decodex/src | wc -l | tr -d ' ')
+	match_count=$({ rg -l --glob '*.rs' "fn ${test_name}\\(" apps/decodex/src || true; } | wc -l | tr -d ' ')
 	if [[ $match_count != 1 ]]; then
 		printf 'scenario test %s must have exactly one Rust definition; found %s\n' \
 			"$test_name" "$match_count" >&2

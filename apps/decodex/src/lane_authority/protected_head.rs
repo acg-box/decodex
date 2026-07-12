@@ -482,7 +482,8 @@ mod tests {
 	};
 
 	#[test]
-	fn lane_authority_v2_c1_tel_09_signed_head_freezes_tamper_and_ahead_state() {
+	fn lane_authority_v2_c1_tel_09() {
+		assert_persisted_chain_tamper_freezes();
 		let key = Ed25519HostAuthorityKey::from_seed("key-1", [3_u8; 32]);
 		let genesis = [5_u8; 32];
 		let first = AuthorityEvent::append(1, 1, &genesis, draft("event-1")).expect("event");
@@ -518,8 +519,58 @@ mod tests {
 		);
 	}
 
+	fn assert_persisted_chain_tamper_freezes() {
+		for mutation in ["rewrite", "delete", "indexed_hash", "reorder", "replay"] {
+			let temp = tempfile::tempdir().expect("tempdir");
+			let database = temp.path().join("state.sqlite");
+			let store = crate::state::StateStore::open(&database).expect("store");
+			store.initialize_authority_generation(1, &[3_u8; 32]).expect("genesis");
+			store.append_authority_event(draft("event-1")).expect("first");
+			let mut second = draft("event-2");
+			second.recorded_at_unix_micros = 0;
+			store.append_authority_event(second).expect("clock rollback is diagnostic only");
+			drop(store);
+			let connection = rusqlite::Connection::open(&database).expect("tamper connection");
+			match mutation {
+				"rewrite" => connection
+					.execute(
+						"UPDATE authority_events SET event_cbor = x'00' WHERE sequence = 1",
+						[],
+					)
+					.expect("rewrite row"),
+				"delete" => connection
+					.execute("DELETE FROM authority_events WHERE sequence = 1", [])
+					.expect("delete row"),
+				"indexed_hash" => connection
+					.execute(
+						"UPDATE authority_events SET event_hash = zeroblob(32) WHERE sequence = 1",
+						[],
+					)
+					.expect("rewrite hash"),
+				"reorder" => connection
+					.execute("UPDATE authority_events SET sequence = -1 WHERE sequence = 2", [])
+					.expect("reorder row"),
+				"replay" => connection
+					.execute(
+						"INSERT INTO authority_events
+						 (generation, sequence, event_id, previous_event_hash, event_hash,
+						  event_cbor, recorded_at_unix_micros)
+						 SELECT 2, 1, 'replayed-event', previous_event_hash, event_hash,
+						        event_cbor, recorded_at_unix_micros
+						 FROM authority_events WHERE generation = 1 AND sequence = 1",
+						[],
+					)
+					.expect("replay row"),
+				_ => unreachable!(),
+			};
+			drop(connection);
+			let reopened = crate::state::StateStore::open(&database).expect("reopen");
+			assert!(reopened.verify_authority_events().is_err(), "{mutation} must freeze");
+		}
+	}
+
 	#[test]
-	fn lane_authority_v2_c5_tel_10_recovers_only_database_ahead_suffix() {
+	fn protected_head_recovers_only_database_ahead_suffix() {
 		let key = Ed25519HostAuthorityKey::from_seed("key-1", [7_u8; 32]);
 		let genesis = [2_u8; 32];
 		let first = AuthorityEvent::append(4, 1, &genesis, draft("event-1")).expect("first");
@@ -541,7 +592,7 @@ mod tests {
 	}
 
 	#[test]
-	fn lane_authority_v2_c5_tel_10_runtime_anchor_recovers_post_commit_crash_once() {
+	fn lane_authority_v2_c5_tel_10() {
 		let temp = tempfile::tempdir().expect("tempdir");
 		let genesis = [2_u8; 32];
 		AuthorityAnchor::initialize_for_test(temp.path(), 4, &genesis, &[]).expect("initialize");
@@ -556,6 +607,29 @@ mod tests {
 			reopened.reconcile(4, &genesis, std::slice::from_ref(&first)).expect("current"),
 			ProtectedHeadDisposition::Current
 		);
+		for mismatch in ["ahead", "hash"] {
+			let temp = tempfile::tempdir().expect("tempdir");
+			AuthorityAnchor::initialize_for_test(temp.path(), 4, &genesis, &[])
+				.expect("initialize mismatch fixture");
+			let host_id = read_nonempty_utf8(&temp.path().join(AUTHORITY_DIR).join(HOST_ID_FILE))
+				.expect("host id");
+			let key = Ed25519HostAuthorityKey::from_seed("test-key", [11_u8; 32]);
+			let (sequence, hash) = match mismatch {
+				"ahead" => (1, genesis),
+				"hash" => (0, [99_u8; 32]),
+				_ => unreachable!(),
+			};
+			let invalid = key.sign(&host_id, 4, sequence, &hash, &[7_u8; 32]).expect("signed");
+			atomic_replace(
+				&temp.path().join(AUTHORITY_DIR).join(PROTECTED_HEAD_FILE),
+				&minicbor::to_vec(invalid).expect("encode"),
+			)
+			.expect("replace");
+			assert!(
+				AuthorityAnchor::open_for_test(temp.path(), 4, &genesis, &[]).is_err(),
+				"{mismatch} must freeze"
+			);
+		}
 	}
 
 	fn draft(event_id: &str) -> AuthorityEventDraft {
