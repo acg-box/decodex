@@ -1,7 +1,9 @@
 //! Canonical project and lane identities for the Lane Authority v2 runtime.
 
+mod intake;
 mod kernel;
 
+pub use intake::{IntakeAuthority, IntakeAuthorityKind};
 pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
 
 use crate::prelude::{Result, eyre};
@@ -93,14 +95,16 @@ impl ProjectBinding {
 }
 
 /// Sole identity for one tracker lane within one project.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+	Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub struct LaneId {
 	project_key: String,
 	tracker_issue_id: String,
 }
 
 /// Immutable proof that an observed tracker issue belongs to one registered project binding.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct BindingAttestation {
 	lane_id: LaneId,
 	binding_fingerprint: String,
