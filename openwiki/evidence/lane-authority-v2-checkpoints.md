@@ -1408,8 +1408,9 @@ the same SQLite transaction and then advance the protected head. Reopen retains 
 reservation, and even corrected selectors cannot readmit until typed adjudication exists.
 Exact ID-01 and QUA-01 now pass, taking C1 exact coverage to `5/65`; ADM-01 continues to
 prove the PUB-1711 wrong-repository request leaves no Lane, lease, worktree, or attempt.
-Typed adjudication/transfer, candidate-rich operator projection, and the exact ADM-02
-zero/multiple quarantine fixture remain.
+Exact ADM-02 now also proves zero and multiple candidate sets persist quarantine rather
+than selecting a Lane, taking C2 exact coverage to `2/11`. Typed adjudication/transfer
+and candidate-rich operator projection remain.
 
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
