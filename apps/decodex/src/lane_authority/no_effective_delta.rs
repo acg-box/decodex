@@ -85,6 +85,7 @@ pub struct NoEffectiveDeltaRecovery {
 	operation_id: String,
 	lane_id: LaneId,
 	ordinal: u8,
+	facts: NoEffectiveDeltaFacts,
 	fact_digest: String,
 	idempotency_key: String,
 }
@@ -101,6 +102,14 @@ impl NoEffectiveDeltaRecovery {
 		self.ordinal
 	}
 
+	pub const fn facts(&self) -> &NoEffectiveDeltaFacts {
+		&self.facts
+	}
+
+	pub fn idempotency_key(&self) -> &str {
+		&self.idempotency_key
+	}
+
 	pub fn validate(&self) -> Result<()> {
 		if self.schema != NO_EFFECTIVE_DELTA_RECOVERY_SCHEMA
 			|| self.operation_id.trim().is_empty()
@@ -109,6 +118,9 @@ impl NoEffectiveDeltaRecovery {
 			|| self.idempotency_key.trim().is_empty()
 		{
 			eyre::bail!("No-effective-delta recovery record is invalid.");
+		}
+		if self.facts.digest()? != self.fact_digest {
+			eyre::bail!("No-effective-delta recovery fact digest does not match its diagnostics.");
 		}
 		Ok(())
 	}
@@ -191,6 +203,7 @@ pub fn decide_no_effective_delta(
 				operation_id,
 				lane_id,
 				ordinal: 1,
+				facts,
 				fact_digest,
 				idempotency_key,
 			}))
@@ -274,7 +287,23 @@ mod tests {
 		};
 		let replay =
 			decide_no_effective_delta(Some(&recovery), observe(facts(false))).expect("replay");
+		assert_eq!(recovery.facts(), &facts(false));
+		assert!(recovery.idempotency_key().starts_with("sha256:"));
 		assert_eq!(replay, NoEffectiveDeltaDecision::Retry(recovery));
+	}
+
+	#[test]
+	fn persisted_recovery_rejects_diagnostics_that_do_not_match_the_fact_digest() {
+		let NoEffectiveDeltaDecision::Retry(recovery) =
+			decide_no_effective_delta(None, observe(facts(false))).expect("retry")
+		else {
+			panic!("expected retry");
+		};
+		let mut payload = serde_json::to_value(recovery).expect("serialize recovery");
+		payload["facts"]["head_oid"] = serde_json::Value::String(String::from("tampered"));
+		let tampered =
+			serde_json::from_value::<NoEffectiveDeltaRecovery>(payload).expect("decode payload");
+		assert!(tampered.validate().is_err());
 	}
 
 	#[test]
