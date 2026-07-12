@@ -20,10 +20,11 @@ use crate::state::sqlite_store::{
 	ConnectorBackoff, DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord,
 	LinearExecutionEventRuntimeRecord, OptionalExtension, PrivateExecutionEventRuntimeRecord,
 	ProjectRegistration, ProtocolEventRecord, Result, RunActivitySummaryRecord, RunAttemptRecord,
-	RunControlChannelRecord, SqliteStateStore, StateData, WorktreeMappingRecord,
+	RunControlChannelRecord, SqliteStateStore, StateData,
 	connector_backoff_from_row, eyre, persist, protocol_event_record_from_row,
 };
 #[cfg(test)] use crate::state::IssueLease;
+#[cfg(test)] use crate::state::runtime_records::WorktreeMappingRecord;
 
 impl SqliteStateStore {
 	pub(in crate::state) fn begin_program_intake_attempt(

@@ -1,15 +1,15 @@
 use std::path::PathBuf;
 
-use time::OffsetDateTime;
+#[cfg(test)] use time::OffsetDateTime;
 
 use crate::{
 	lane_authority::{LaneCommand, LaneId},
 	prelude::{Result, eyre},
 	state::{
-		StateStore, WORKTREE_PROVENANCE_RUNTIME_RECORDED, WorktreeMapping,
-		runtime_records::WorktreeMappingRecord,
+		StateStore, WorktreeMapping, runtime_records::WorktreeMappingRecord,
 	},
 };
+#[cfg(test)] use crate::state::WORKTREE_PROVENANCE_RUNTIME_RECORDED;
 #[cfg(test)] use crate::state::WORKTREE_PROVENANCE_RUNTIME_RECOVERED;
 
 impl StateStore {
@@ -72,6 +72,9 @@ impl StateStore {
 				worktree_path: PathBuf::from(worktree_path),
 			},
 		)?;
+		#[cfg(not(test))]
+		return Ok(());
+		#[cfg(test)]
 		self.upsert_worktree(project_id, issue_id, branch_name, worktree_path)
 	}
 
@@ -116,6 +119,7 @@ impl StateStore {
 	}
 
 	/// Create or replace the worktree mapping for one issue.
+	#[cfg(test)]
 	pub fn upsert_worktree(
 		&self,
 		project_id: &str,

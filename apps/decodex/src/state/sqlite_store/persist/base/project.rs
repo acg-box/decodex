@@ -35,6 +35,7 @@ pub(in crate::state::sqlite_store) fn persist_projects(
 	Ok(())
 }
 
+#[cfg(test)]
 pub(in crate::state::sqlite_store) fn update_run_attempt_project(
 	transaction: &Transaction<'_>,
 	project_id: &str,

@@ -12,7 +12,7 @@ pub(super) use self::{
 	base::{
 		persist_linear_execution_events, persist_private_execution_events, persist_projects,
 		persist_protocol_events, persist_run_activity_summaries, persist_run_attempts,
-		persist_run_control_channels, update_run_attempt_project,
+		persist_run_control_channels,
 	},
 	program::{
 		insert_program_intake_state, persist_intake_authorities, persist_program_intake_state,
@@ -24,6 +24,8 @@ pub(super) use self::{
 };
 #[cfg(test)]
 pub(super) use self::base::{persist_leases, persist_worktrees};
+#[cfg(test)]
+pub(super) use self::base::update_run_attempt_project;
 
 use crate::state::sqlite_store::{
 	ChildAgentActivitySummary, Connection, ExecutionProgramRuntimeRecord, Result, StateData,

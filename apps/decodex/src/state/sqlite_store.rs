@@ -18,7 +18,7 @@ use crate::{
 			DecisionContractRuntimeRecord, ExecutionProgramRuntimeRecord,
 			LinearExecutionEventRuntimeRecord, PrivateExecutionEventRuntimeRecord,
 			ProtocolEventRecord, RunActivitySummaryRecord, RunAttemptRecord,
-			RunControlChannelRecord, WorktreeMappingRecord,
+			RunControlChannelRecord,
 		},
 		runtime_row_parsers::{
 			connector_backoff_from_row, execution_program_record_from_row_parts,

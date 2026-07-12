@@ -1,14 +1,12 @@
 use crate::{
 	prelude::{Result, eyre},
 	state::{
-		runtime_records::{
-			RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord,
-			WorktreeMappingRecord,
-		},
+		runtime_records::{RunActivitySummaryRecord, RunAttemptRecord, RunControlChannelRecord},
 		store::StateStore,
 	},
 };
 #[cfg(test)] use crate::state::store::IssueLease;
+#[cfg(test)] use crate::state::runtime_records::WorktreeMappingRecord;
 
 impl StateStore {
 	pub(in crate::state) fn upsert_run_attempt_locked(
@@ -64,6 +62,7 @@ impl StateStore {
 		sqlite.upsert_lease_and_remember_run_project(lease)
 	}
 
+	#[cfg(test)]
 	pub(in crate::state) fn upsert_worktree_and_remember_run_project_locked(
 		&self,
 		mapping: &WorktreeMappingRecord,
