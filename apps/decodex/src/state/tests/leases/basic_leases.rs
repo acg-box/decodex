@@ -69,7 +69,7 @@ fn lane_effect_journal_survives_restart_and_revalidates_lane_epoch() {
 			"effect-1",
 			0,
 			EffectCommand::BeginInvocation {
-				lane_epoch: lane.epoch(),
+				authority_epoch: lane.epoch(),
 				facts_fingerprint: String::from("sha256:facts"),
 			},
 		)

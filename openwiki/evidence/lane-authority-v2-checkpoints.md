@@ -1044,6 +1044,17 @@ tests, three schema-migration tests, and all-target checking pass. Provider effe
 receipts and per-resource cleanup ordinals are still required before these stages can be
 wired to external execution.
 
+The canonical effect journal now has one typed authority-owner union rather than
+assuming every effect belongs to an active run claim. Existing dispatch/recovery effects
+use `LaneClaim(run_id, lane_epoch)`; superseded closeout effects use
+`TerminalOperation(operation_id, stage_epoch)`. StateStore revalidates the corresponding
+Lane claim or durable closeout stage before every journal mutation. GitHub PR close and
+ordered control/worktree/remote-ref/local-ref cleanup kinds are registered with explicit
+compensation classes. Four effect-kernel tests, the persistent effect restart test, and
+all-target checking pass. This removes the architectural pressure to retain a fake Lane
+claim after terminal conflict release; actual closeout effect planning and stage receipt
+gates are next.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

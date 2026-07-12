@@ -7,7 +7,7 @@ mod no_effective_delta;
 mod supersession;
 
 pub use effect::{
-	EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect, LaneEffectKind,
+	EffectAuthority, EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect, LaneEffectKind,
 	LaneEffectRejection, apply_effect_command,
 };
 pub use intake::{IntakeAuthority, IntakeAuthorityKind};

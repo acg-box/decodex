@@ -1,5 +1,5 @@
 use crate::{
-	lane_authority::{EffectCommand, LaneEffect, apply_effect_command},
+	lane_authority::{EffectAuthority, EffectCommand, LaneEffect, apply_effect_command},
 	prelude::{Result, eyre},
 	state::StateStore,
 };
@@ -69,11 +69,25 @@ fn validate_effect_lane(state: &crate::state::StateData, effect: &LaneEffect) ->
 		.lanes
 		.get(effect.lane_id())
 		.ok_or_else(|| eyre::eyre!("Lane effect references an unknown canonical lane."))?;
-	if lane.binding_fingerprint() != effect.binding_fingerprint()
-		|| lane.claim_run_id() != Some(effect.claim_run_id())
-		|| lane.epoch() != effect.expected_lane_epoch()
-	{
+	if lane.binding_fingerprint() != effect.binding_fingerprint() {
 		eyre::bail!("Lane effect prerequisites drifted before journal mutation.");
+	}
+	match effect.authority() {
+		EffectAuthority::LaneClaim { claim_run_id, expected_lane_epoch }
+			if lane.claim_run_id() == Some(claim_run_id.as_str())
+				&& lane.epoch() == *expected_lane_epoch => {},
+		EffectAuthority::TerminalOperation { operation_id, expected_stage_epoch } => {
+			let operation = state
+				.superseded_closeout_operations
+				.get(operation_id)
+				.ok_or_else(|| eyre::eyre!("Lane effect terminal operation does not exist."))?;
+			if operation.edge().predecessor_lane_id() != effect.lane_id()
+				|| operation.stage_epoch() != *expected_stage_epoch
+			{
+				eyre::bail!("Lane effect terminal-operation prerequisites drifted.");
+			}
+		},
+		_ => eyre::bail!("Lane effect prerequisites drifted before journal mutation."),
 	}
 	Ok(())
 }

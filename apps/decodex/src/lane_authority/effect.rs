@@ -22,7 +22,12 @@ pub enum LaneEffectKind {
 	LinearIssueLabelRemove,
 	LinearIssueStateSet,
 	GithubPrCommentCreate,
+	GithubPrClose,
 	GithubPrMerge,
+	ControlResourceRetire,
+	WorktreeRemove,
+	RemoteRefDelete,
+	LocalRefDelete,
 	ProcessThreadArchive,
 }
 impl LaneEffectKind {
@@ -33,7 +38,12 @@ impl LaneEffectKind {
 			Self::LinearIssueLabelRemove => "linear.issue.label_remove",
 			Self::LinearIssueStateSet => "linear.issue.state_set",
 			Self::GithubPrCommentCreate => "github.pr.comment_create",
+			Self::GithubPrClose => "github.pr.close",
 			Self::GithubPrMerge => "github.pr.merge",
+			Self::ControlResourceRetire => "control.resource.retire",
+			Self::WorktreeRemove => "git.worktree.remove",
+			Self::RemoteRefDelete => "git.remote_ref.delete",
+			Self::LocalRefDelete => "git.local_ref.delete",
 			Self::ProcessThreadArchive => "process.thread.archive",
 		}
 	}
@@ -45,10 +55,22 @@ impl LaneEffectKind {
 			| Self::ProcessThreadArchive => EffectClass::DurablePublication,
 			Self::LinearIssueLabelAdd
 			| Self::LinearIssueLabelRemove
-			| Self::LinearIssueStateSet => EffectClass::Compensable,
-			Self::GithubPrMerge => EffectClass::IrreversibleTerminal,
+			| Self::LinearIssueStateSet
+			| Self::GithubPrClose => EffectClass::Compensable,
+			Self::GithubPrMerge
+			| Self::ControlResourceRetire
+			| Self::WorktreeRemove
+			| Self::RemoteRefDelete
+			| Self::LocalRefDelete => EffectClass::IrreversibleTerminal,
 		}
 	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum EffectAuthority {
+	LaneClaim { claim_run_id: String, expected_lane_epoch: u64 },
+	TerminalOperation { operation_id: String, expected_stage_epoch: u64 },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -125,8 +147,7 @@ pub struct LaneEffect {
 	ordinal: u32,
 	lane_id: LaneId,
 	binding_fingerprint: String,
-	claim_run_id: String,
-	expected_lane_epoch: u64,
+	authority: EffectAuthority,
 	kind: LaneEffectKind,
 	class: EffectClass,
 	idempotency_key: String,
@@ -178,8 +199,10 @@ impl LaneEffect {
 			ordinal,
 			lane_id,
 			binding_fingerprint: binding_fingerprint.to_owned(),
-			claim_run_id: claim_run_id.to_owned(),
-			expected_lane_epoch,
+			authority: EffectAuthority::LaneClaim {
+				claim_run_id: claim_run_id.to_owned(),
+				expected_lane_epoch,
+			},
 			kind,
 			class,
 			idempotency_key: idempotency_key.to_owned(),
@@ -190,6 +213,43 @@ impl LaneEffect {
 			journal_epoch: 0,
 			receipt: None,
 		})
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn plan_for_terminal_operation(
+		effect_id: &str,
+		operation_id: &str,
+		ordinal: u32,
+		lane_id: LaneId,
+		binding_fingerprint: &str,
+		expected_stage_epoch: u64,
+		kind: LaneEffectKind,
+		class: EffectClass,
+		idempotency_key: &str,
+		request_digest: &str,
+		desired_state_digest: &str,
+		facts_fingerprint: &str,
+	) -> Result<Self> {
+		let mut effect = Self::plan(
+			effect_id,
+			operation_id,
+			ordinal,
+			lane_id,
+			binding_fingerprint,
+			operation_id,
+			expected_stage_epoch,
+			kind,
+			class,
+			idempotency_key,
+			request_digest,
+			desired_state_digest,
+			facts_fingerprint,
+		)?;
+		effect.authority = EffectAuthority::TerminalOperation {
+			operation_id: operation_id.to_owned(),
+			expected_stage_epoch,
+		};
+		Ok(effect)
 	}
 
 	pub fn effect_id(&self) -> &str {
@@ -220,12 +280,15 @@ impl LaneEffect {
 		self.journal_epoch
 	}
 
-	pub const fn expected_lane_epoch(&self) -> u64 {
-		self.expected_lane_epoch
+	pub fn authority(&self) -> &EffectAuthority {
+		&self.authority
 	}
 
-	pub fn claim_run_id(&self) -> &str {
-		&self.claim_run_id
+	pub const fn authority_epoch(&self) -> u64 {
+		match self.authority {
+			EffectAuthority::LaneClaim { expected_lane_epoch, .. } => expected_lane_epoch,
+			EffectAuthority::TerminalOperation { expected_stage_epoch, .. } => expected_stage_epoch,
+		}
 	}
 
 	pub fn binding_fingerprint(&self) -> &str {
@@ -248,6 +311,17 @@ impl LaneEffect {
 		if self.schema != LANE_EFFECT_SCHEMA || self.class != self.kind.required_class() {
 			eyre::bail!("Lane effect schema or registry class is invalid.");
 		}
+		match &self.authority {
+			EffectAuthority::LaneClaim { claim_run_id, .. } if claim_run_id.trim().is_empty() => {
+				eyre::bail!("Lane effect claim authority is invalid.")
+			},
+			EffectAuthority::TerminalOperation { operation_id, .. }
+				if operation_id != &self.operation_id =>
+			{
+				eyre::bail!("Lane effect terminal operation authority is invalid.")
+			},
+			_ => {},
+		}
 		if let Some(receipt) = self.receipt.as_ref()
 			&& (receipt.schema != EFFECT_RECEIPT_SCHEMA
 				|| receipt.request_digest != self.request_digest)
@@ -264,8 +338,7 @@ impl LaneEffect {
 			&& self.ordinal == other.ordinal
 			&& self.lane_id == other.lane_id
 			&& self.binding_fingerprint == other.binding_fingerprint
-			&& self.claim_run_id == other.claim_run_id
-			&& self.expected_lane_epoch == other.expected_lane_epoch
+			&& self.authority == other.authority
 			&& self.kind == other.kind
 			&& self.class == other.class
 			&& self.idempotency_key == other.idempotency_key
@@ -277,7 +350,7 @@ impl LaneEffect {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EffectCommand {
-	BeginInvocation { lane_epoch: u64, facts_fingerprint: String },
+	BeginInvocation { authority_epoch: u64, facts_fingerprint: String },
 	RecordReceipt { receipt: EffectReceipt },
 	MarkOutcomeUnknown,
 	BeginCompensation,
@@ -288,7 +361,7 @@ pub enum EffectCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LaneEffectRejection {
 	JournalEpochMismatch,
-	LaneEpochMismatch,
+	AuthorityEpochMismatch,
 	FactsDrift,
 	InvalidState,
 	ReceiptMismatch,
@@ -305,9 +378,15 @@ pub fn apply_effect_command(
 	}
 	let mut next = current.clone();
 	match command {
-		EffectCommand::BeginInvocation { lane_epoch, facts_fingerprint } => {
+		EffectCommand::BeginInvocation { authority_epoch, facts_fingerprint } => {
+			let expected_authority_epoch = match current.authority {
+				EffectAuthority::LaneClaim { expected_lane_epoch, .. } => expected_lane_epoch,
+				EffectAuthority::TerminalOperation { expected_stage_epoch, .. } => {
+					expected_stage_epoch
+				},
+			};
 			if current.state == EffectState::Invoking
-				&& lane_epoch == current.expected_lane_epoch
+				&& authority_epoch == expected_authority_epoch
 				&& facts_fingerprint == current.facts_fingerprint
 			{
 				return Ok(next);
@@ -315,8 +394,8 @@ pub fn apply_effect_command(
 			if current.state != EffectState::Planned {
 				return Err(LaneEffectRejection::InvalidState);
 			}
-			if lane_epoch != current.expected_lane_epoch {
-				return Err(LaneEffectRejection::LaneEpochMismatch);
+			if authority_epoch != expected_authority_epoch {
+				return Err(LaneEffectRejection::AuthorityEpochMismatch);
 			}
 			if facts_fingerprint != current.facts_fingerprint {
 				return Err(LaneEffectRejection::FactsDrift);
@@ -420,18 +499,18 @@ mod tests {
 				&effect,
 				0,
 				EffectCommand::BeginInvocation {
-					lane_epoch: 6,
+					authority_epoch: 6,
 					facts_fingerprint: String::from("sha256:facts"),
 				},
 			),
-			Err(LaneEffectRejection::LaneEpochMismatch),
+			Err(LaneEffectRejection::AuthorityEpochMismatch),
 		);
 		assert_eq!(
 			apply_effect_command(
 				&effect,
 				0,
 				EffectCommand::BeginInvocation {
-					lane_epoch: 7,
+					authority_epoch: 7,
 					facts_fingerprint: String::from("sha256:stale"),
 				},
 			),
@@ -446,7 +525,7 @@ mod tests {
 			&planned,
 			0,
 			EffectCommand::BeginInvocation {
-				lane_epoch: 7,
+				authority_epoch: 7,
 				facts_fingerprint: String::from("sha256:facts"),
 			},
 		)
@@ -475,7 +554,7 @@ mod tests {
 			&planned,
 			0,
 			EffectCommand::BeginInvocation {
-				lane_epoch: 7,
+				authority_epoch: 7,
 				facts_fingerprint: String::from("sha256:facts"),
 			},
 		)
@@ -486,6 +565,32 @@ mod tests {
 		assert_eq!(
 			apply_effect_command(&succeeded, 2, EffectCommand::BeginCompensation),
 			Err(LaneEffectRejection::CompensationForbidden),
+		);
+	}
+
+	#[test]
+	fn terminal_operation_effect_has_no_active_run_claim_authority() {
+		let effect = LaneEffect::plan_for_terminal_operation(
+			"effect-close",
+			"closeout-1",
+			0,
+			LaneId::new("project", "issue").expect("lane"),
+			"binding",
+			2,
+			LaneEffectKind::GithubPrClose,
+			EffectClass::Compensable,
+			"closeout-1:0",
+			"request",
+			"desired",
+			"facts",
+		)
+		.expect("effect");
+		assert_eq!(
+			effect.authority(),
+			&EffectAuthority::TerminalOperation {
+				operation_id: String::from("closeout-1"),
+				expected_stage_epoch: 2,
+			}
 		);
 	}
 }

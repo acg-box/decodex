@@ -60,7 +60,7 @@ pub(super) fn begin_adopt_audit_effect(
 			effect.effect_id(),
 			effect.journal_epoch(),
 			EffectCommand::BeginInvocation {
-				lane_epoch: effect.expected_lane_epoch(),
+				authority_epoch: effect.authority_epoch(),
 				facts_fingerprint: effect.facts_fingerprint().to_owned(),
 			},
 		),
