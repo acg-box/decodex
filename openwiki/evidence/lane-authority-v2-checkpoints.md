@@ -1275,6 +1275,23 @@ together. The legacy transition entrypoint still passes no event and production 
 wiring is not complete, so this proves the transaction and identity boundary but does not
 yet establish sole-writer telemetry coverage.
 
+Commit `94c08d4e` wires the normal production Lane writer through a broker-owned
+`InvocationIdentity`. Runtime open now attests a nonce-unique local process identity from
+OS audit uid, exact executable digest, process transport facts, explicit CLI/MCP/
+supervisor origin, and selected runtime generation; caller metadata cannot supply those
+fields. `apply_lane_command` deterministically fingerprints the typed command and commits
+the Lane CAS plus private authority event in the same SQLite transaction. Direct
+test/decoder stores remain identity-free and cannot fabricate production events.
+
+The same commit adds the explicit empty-reset initializer selected for this host. Under
+an exclusive create-once operator lock it requires the legacy tombstone, creates a fresh
+generation-specific database, initializes and verifies the empty authority chain, fsyncs
+the database/directories, and publishes `runtime-format.toml` last. The
+`maintenance initialize-runtime --generation N --confirm-empty-reset` process-level smoke
+test initialized generation 3 and reopened it through `project list`. The real host is
+still intentionally unactivated: protected-head signing and remaining C1-C5 sole-writer
+coverage must land before this command is run against preserved project/account config.
+
 Fresh focused evidence: `cargo test -p decodex lane_authority_v2_c5`,
 `cargo test -p decodex authority_operator_readback`,
 `cargo test -p decodex persistent_lane_round_trips`, `cargo check`, and
