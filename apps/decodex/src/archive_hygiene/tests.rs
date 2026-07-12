@@ -110,9 +110,12 @@ service_id = "decodex"
 
 [tracker]
 api_key_env_var = "LINEAR_API_KEY_TEST"
+team_id = "team-test"
 
 [github]
 token_env_var = "GITHUB_TOKEN_TEST"
+owner = "test-owner"
+repository = "test-repository"
 
 [paths]
 repo_root = "."

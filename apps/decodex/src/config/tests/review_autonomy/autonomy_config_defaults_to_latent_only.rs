@@ -12,9 +12,12 @@ fn autonomy_config_defaults_to_latent_only() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 			"#,
 	);
 	let config =

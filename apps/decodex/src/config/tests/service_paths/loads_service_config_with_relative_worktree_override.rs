@@ -14,9 +14,12 @@ fn loads_service_config_with_relative_worktree_override() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[paths]
 				worktree_root = "var/worktrees"

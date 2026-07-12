@@ -16,9 +16,12 @@ fn rejects_legacy_codex_review_fields() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[codex]
 				{removed_field} = {removed_value}

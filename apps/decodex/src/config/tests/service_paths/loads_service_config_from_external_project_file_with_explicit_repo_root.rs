@@ -20,9 +20,12 @@ fn loads_service_config_from_external_project_file_with_explicit_repo_root() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[paths]
 				repo_root = "../../../../target-repo"

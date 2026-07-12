@@ -73,9 +73,12 @@ Read the repo policy first.
 
 [tracker]
 api_key_env_var = "HOME"
+team_id = "team-test"
 
 [github]
 token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 [codex]
 review = "standard"

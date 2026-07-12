@@ -15,9 +15,12 @@ fn rejects_empty_github_token_env_var() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = ""
+owner = "test-owner"
+repository = "test-repository"
 			"#,
 	);
 	let error = ServiceConfig::from_path(&config_path)
@@ -64,9 +67,12 @@ fn rejects_blank_secret_env_var_values_when_resolving() {
 
 				[tracker]
 				api_key_env_var = "{}"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "{}"
+owner = "test-owner"
+repository = "test-repository"
 			"#,
 				match target {
 					SecretTarget::Github => "HOME",
@@ -111,9 +117,12 @@ fn rejects_invalid_service_ids() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 			"#
 			),
 		);
@@ -123,5 +132,35 @@ fn rejects_invalid_service_ids() {
 			error.to_string().contains(expected),
 			"unexpected error for `{case_name}`: {error:?}"
 		);
+	}
+}
+
+#[test]
+fn rejects_incomplete_project_binding_scope() {
+	for (field, tracker_team_id, owner, repository) in [
+		("tracker.team_id", "", "test-owner", "test-repository"),
+		("github.owner", "team-test", "", "test-repository"),
+		("github.repository", "team-test", "test-owner", ""),
+	] {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = tests::write_config_file(
+			temp_dir.path(),
+			&format!(
+				r#"
+service_id = "pubfi"
+
+[tracker]
+api_key_env_var = "HOME"
+team_id = "{tracker_team_id}"
+
+[github]
+token_env_var = "HOME"
+owner = "{owner}"
+repository = "{repository}"
+"#,
+			),
+		);
+		let error = ServiceConfig::from_path(&config_path).expect_err(field);
+		assert!(error.to_string().contains(field), "unexpected error: {error:?}");
 	}
 }

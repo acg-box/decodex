@@ -11,8 +11,11 @@ pub(crate) fn test_config() -> crate::config::ServiceConfig {
 service_id = "decodex"
 [tracker]
 api_key_env_var = "HOME"
+team_id = "team-test"
 [github]
 token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 [codex]
 review = "standard"
 [paths]
@@ -32,8 +35,11 @@ pub(crate) fn write_project_files(project_dir: &Path) -> PathBuf {
 service_id = "decodex"
 [tracker]
 api_key_env_var = "HOME"
+team_id = "team-test"
 [github]
 token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 [codex]
 review = "standard"
 [paths]

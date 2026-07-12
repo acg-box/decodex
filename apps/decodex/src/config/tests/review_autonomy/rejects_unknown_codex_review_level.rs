@@ -16,9 +16,12 @@ fn rejects_unknown_codex_review_level() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[codex]
 				review = "{review_level}"

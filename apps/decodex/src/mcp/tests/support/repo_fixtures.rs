@@ -34,9 +34,12 @@ service_id = "pubfi"
 
 [tracker]
 api_key_env_var = "HOME"
+team_id = "team-test"
 
 [github]
 token_env_var = "PATH"
+owner = "test-owner"
+repository = "test-repository"
 
 [paths]
 repo_root = "{}"
@@ -82,9 +85,12 @@ service_id = "decodex"
 
 [tracker]
 api_key_env_var = "HOME"
+team_id = "team-test"
 
 [github]
 token_env_var = "PATH"
+owner = "test-owner"
+repository = "test-repository"
 
 [codex]
 review = "standard"

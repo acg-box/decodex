@@ -637,8 +637,11 @@ fn runtime_policy_config(repo_root: &Path) -> PathBuf {
 			repo_root = "{}"
 			[tracker]
 			api_key_env_var = "HOME"
+team_id = "team-test"
 			[github]
 			token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 			[autonomy]
 			auto_promote = true
 			auto_intake = true

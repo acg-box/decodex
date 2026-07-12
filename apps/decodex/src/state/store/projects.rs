@@ -13,6 +13,7 @@ impl StateStore {
 		&self,
 		registration: &ProjectRegistration,
 	) -> Result<ProjectRegistration> {
+		registration.validate_binding()?;
 		let mut state = self.lock_without_refresh()?;
 
 		self.refresh_project_registry_state_locked(&mut state)?;

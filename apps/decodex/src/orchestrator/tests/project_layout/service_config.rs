@@ -60,9 +60,12 @@ pub(in crate::orchestrator::tests) fn sample_service_config_toml_with_github_com
 
 [tracker]
 api_key_env_var = "{tracker_api_key_env_var}"
+team_id = "team-test"
 
 [github]
 token_env_var = "{github_token_env_var}"
+owner = "test-owner"
+repository = "test-repository"
 "#
 	);
 

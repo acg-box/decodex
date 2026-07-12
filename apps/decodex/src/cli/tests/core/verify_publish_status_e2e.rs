@@ -96,9 +96,12 @@ service_id = "pubfi"
 
 [tracker]
 api_key_env_var = "HOME"
+team_id = "team-test"
 
 [github]
 token_env_var = "DECODX_VERIFY_STATUS_E2E_TOKEN"
+owner = "test-owner"
+repository = "test-repository"
 command_path = "{}"
 landing_mode = "fast"
 landing_actors = ["decodex-bot"]

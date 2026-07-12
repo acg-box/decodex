@@ -47,9 +47,12 @@ fn rejects_autonomy_execution_flags_without_required_authority_references() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				{autonomy_body}
 			"#

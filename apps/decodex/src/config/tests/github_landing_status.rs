@@ -12,9 +12,12 @@ fn github_landing_defaults_to_standard() {
 
 		[tracker]
 		api_key_env_var = "HOME"
+team_id = "team-test"
 
 		[github]
 		token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 	"#,
 	);
 	let config = ServiceConfig::from_path(&config_path).expect("config should parse");
@@ -34,9 +37,12 @@ fn parses_github_fast_landing_mode_and_actors() {
 
 		[tracker]
 		api_key_env_var = "HOME"
+team_id = "team-test"
 
 		[github]
 		token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 		landing_mode = "fast"
 		landing_actors = ["aurexav", "yvette-carlisle"]
 	"#,
@@ -64,9 +70,12 @@ fn fast_landing_requires_at_least_one_actor() {
 
 		[tracker]
 		api_key_env_var = "HOME"
+team_id = "team-test"
 
 		[github]
 		token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 		landing_mode = "fast"
 	"#,
 	);
@@ -86,9 +95,12 @@ fn standard_landing_rejects_actors() {
 
 		[tracker]
 		api_key_env_var = "HOME"
+team_id = "team-test"
 
 		[github]
 		token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 		landing_actors = ["aurexav"]
 	"#,
 	);

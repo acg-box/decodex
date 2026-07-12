@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::{config::ServiceConfig, state};
+use crate::{config::ServiceConfig, lane_authority::ProjectBinding, prelude::Result, state};
 
 /// Registered repo target managed by the local Decodex control plane.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14,6 +14,7 @@ pub(crate) struct ProjectRegistration {
 	pub(in crate::state) github_token_env_var: String,
 	pub(in crate::state) enabled: bool,
 	pub(in crate::state) config_fingerprint: String,
+	pub(in crate::state) binding: ProjectBinding,
 	pub(in crate::state) updated_at: String,
 	pub(in crate::state) updated_at_unix: i64,
 }
@@ -27,6 +28,7 @@ impl ProjectRegistration {
 		config_fingerprint: &str,
 	) -> Self {
 		let now = state::timestamp_parts();
+		let binding = config.project_binding(config_fingerprint);
 
 		Self {
 			service_id: service_id.to_owned(),
@@ -38,6 +40,7 @@ impl ProjectRegistration {
 			github_token_env_var: config.github().token_env_var().to_owned(),
 			enabled,
 			config_fingerprint: config_fingerprint.to_owned(),
+			binding,
 			updated_at: now.text,
 			updated_at_unix: now.unix,
 		}
@@ -86,6 +89,23 @@ impl ProjectRegistration {
 	/// Last config fingerprint registered for this project.
 	pub(crate) fn config_fingerprint(&self) -> &str {
 		&self.config_fingerprint
+	}
+
+	/// Immutable repository and tracker authority bound at registration.
+	pub(crate) fn binding(&self) -> &ProjectBinding {
+		&self.binding
+	}
+
+	pub(in crate::state) fn validate_binding(&self) -> Result<()> {
+		if self.binding.project_key() != self.service_id
+			|| self.binding.config_fingerprint() != self.config_fingerprint
+		{
+			color_eyre::eyre::bail!(
+				"Project registration does not match its immutable project binding."
+			);
+		}
+
+		Ok(())
 	}
 
 	/// Last registry update timestamp.

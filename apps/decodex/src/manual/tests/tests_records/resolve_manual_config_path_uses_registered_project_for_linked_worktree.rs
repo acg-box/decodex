@@ -66,9 +66,12 @@ fn resolve_manual_config_path_uses_registered_project_for_linked_worktree() {
 
 			[tracker]
 			api_key_env_var = "HOME"
+team_id = "team-test"
 
 			[github]
 			token_env_var = "PATH"
+owner = "test-owner"
+repository = "test-repository"
 
 			[paths]
 			repo_root = "{}"

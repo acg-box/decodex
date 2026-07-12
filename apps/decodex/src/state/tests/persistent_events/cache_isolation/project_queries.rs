@@ -113,6 +113,15 @@ fn persistent_project_listing_does_not_refresh_full_event_journal() {
 		github_token_env_var: String::from("GITHUB_PAT_Y"),
 		enabled: true,
 		config_fingerprint: String::from("abc123"),
+		binding: crate::lane_authority::ProjectBinding::new(
+			"pubfi",
+			"hack-ink",
+			"pubfi",
+			"team-pubfi",
+			"decodex:queued:pubfi",
+			"abc123",
+		)
+		.expect("binding"),
 		updated_at: String::from("2026-05-25T00:00:00Z"),
 		updated_at_unix: 1_779_667_200,
 	};

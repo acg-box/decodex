@@ -2,6 +2,7 @@
 
 pub mod app_bridge;
 pub mod config;
+pub mod lane_authority;
 pub mod state;
 pub mod workflow;
 

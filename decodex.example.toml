@@ -2,9 +2,12 @@ service_id = "your-service-id"
 
 [tracker]
 api_key_env_var = "LINEAR_API_KEY"
+team_id = "your-linear-team-id"
 
 [github]
 token_env_var = "GITHUB_TOKEN"
+owner = "your-github-owner"
+repository = "your-github-repository"
 # Optional explicit GitHub CLI authority. Use an absolute path when GUI-launched
 # Decodex processes do not inherit the shell PATH that contains `gh`.
 # command_path = "/opt/homebrew/bin/gh"

@@ -20,9 +20,12 @@ fn ensure_cli_repo_context_rejects_foreign_config_repo_root() {
 
 			[tracker]
 			api_key_env_var = "HOME"
+team_id = "team-test"
 
 			[github]
 			token_env_var = "PATH"
+owner = "test-owner"
+repository = "test-repository"
 
 			[paths]
 			repo_root = "."

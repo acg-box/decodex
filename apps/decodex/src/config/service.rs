@@ -9,6 +9,7 @@ use crate::{
 		ProjectPrivacyClassifierConfig, ProjectTrackerConfig, document::ServiceConfigDocument,
 		path_resolution, path_resolution::PROJECT_CONFIG_FILE_NAME, validation,
 	},
+	lane_authority::ProjectBinding,
 	prelude::Result,
 };
 
@@ -101,6 +102,18 @@ impl ServiceConfig {
 	/// Optional local classifier for Linear public projection text.
 	pub fn privacy_classifier(&self) -> &ProjectPrivacyClassifierConfig {
 		&self.privacy_classifier
+	}
+
+	/// Bind this configuration to one immutable repository and tracker routing scope.
+	pub fn project_binding(&self, config_fingerprint: &str) -> ProjectBinding {
+		ProjectBinding::from_validated_parts(
+			self.service_id(),
+			self.github().owner(),
+			self.github().repository(),
+			self.tracker().team_id(),
+			&format!("decodex:queued:{}", self.service_id()),
+			config_fingerprint,
+		)
 	}
 
 	fn from_document(

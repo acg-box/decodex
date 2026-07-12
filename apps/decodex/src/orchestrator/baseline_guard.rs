@@ -1380,9 +1380,12 @@ mod tests {
 
 [tracker]
 api_key_env_var = "BASELINE_GUARD_TEST_LINEAR_TOKEN"
+team_id = "team-test"
 
 [github]
 token_env_var = "BASELINE_GUARD_TEST_GITHUB_TOKEN"
+owner = "test-owner"
+repository = "test-repository"
 {github_command_path_line}
 
 [paths]

@@ -33,6 +33,8 @@ impl ProjectGitHubLandingMode {
 #[serde(deny_unknown_fields)]
 pub struct ProjectGitHubConfig {
 	token_env_var: String,
+	owner: String,
+	repository: String,
 	command_path: Option<PathBuf>,
 	#[serde(default)]
 	landing_mode: ProjectGitHubLandingMode,
@@ -43,6 +45,16 @@ impl ProjectGitHubConfig {
 	/// Name of the environment variable that stores the GitHub token.
 	pub fn token_env_var(&self) -> &str {
 		&self.token_env_var
+	}
+
+	/// Immutable GitHub owner accepted by this project.
+	pub fn owner(&self) -> &str {
+		&self.owner
+	}
+
+	/// Immutable GitHub repository name accepted by this project.
+	pub fn repository(&self) -> &str {
+		&self.repository
 	}
 
 	/// Optional configured GitHub CLI command path.
@@ -87,6 +99,8 @@ impl ProjectGitHubConfig {
 
 	pub(super) fn validate(&self) -> Result<()> {
 		validation::validate_env_var_name("github.token_env_var", self.token_env_var())?;
+		validation::validate_required_config_string("github.owner", self.owner())?;
+		validation::validate_required_config_string("github.repository", self.repository())?;
 
 		if let Some(command_path) = self.command_path.as_deref() {
 			validation::validate_nonempty_path("github.command_path", command_path)?;

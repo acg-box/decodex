@@ -12,9 +12,12 @@ fn project_privacy_classifier_defaults_to_disabled() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 			"#,
 	);
 	let config =
@@ -34,9 +37,12 @@ fn parses_loopback_privacy_classifier_endpoint() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[privacy_classifier]
 				endpoint = "http://127.0.0.1:9123/classify"
@@ -60,9 +66,12 @@ fn rejects_remote_privacy_classifier_endpoint() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[privacy_classifier]
 				endpoint = "https://example.com/classify"
@@ -87,9 +96,12 @@ fn parses_codex_accounts_settings() {
 
 				[tracker]
 					api_key_env_var = "HOME"
+team_id = "team-test"
 
 					[github]
 					token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 						[codex.accounts]
 						usage_endpoint = "http://127.0.0.1:1234/wham/usage"
@@ -125,9 +137,12 @@ fn rejects_removed_project_scoped_codex_account_fields() {
 
 				[tracker]
 					api_key_env_var = "HOME"
+team_id = "team-test"
 
 					[github]
 					token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 					[codex.accounts]
 					{removed_field}

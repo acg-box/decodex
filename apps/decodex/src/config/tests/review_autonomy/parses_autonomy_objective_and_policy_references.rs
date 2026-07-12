@@ -12,9 +12,12 @@ fn parses_autonomy_objective_and_policy_references() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[autonomy]
 				auto_promote = true

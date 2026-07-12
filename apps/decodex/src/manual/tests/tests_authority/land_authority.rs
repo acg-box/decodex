@@ -115,9 +115,12 @@ fn manual_land_manual_authority_with_config_does_not_refresh_project_registry() 
 
 			[tracker]
 			api_key_env_var = "GH_TOKEN"
+team_id = "team-test"
 
 			[github]
 			token_env_var = "GH_TOKEN"
+owner = "test-owner"
+repository = "test-repository"
 
 			[paths]
 			repo_root = "{}"

@@ -3,6 +3,38 @@ use tempfile::TempDir;
 use crate::state::{AutonomyRuntimePolicyRecord, ProjectRegistration, StateStore};
 
 #[test]
+fn project_registry_rejects_binding_fingerprint_drift() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let store = StateStore::open(temp_dir.path().join("runtime.db")).expect("store");
+	let registration = ProjectRegistration {
+		service_id: String::from("pubfi"),
+		config_path: temp_dir.path().join("project.toml"),
+		repo_root: temp_dir.path().join("repo"),
+		worktree_root: temp_dir.path().join("repo/.worktrees"),
+		workflow_path: temp_dir.path().join("repo/WORKFLOW.md"),
+		tracker_api_key_env_var: String::from("LINEAR_API_KEY_HACKINK"),
+		github_token_env_var: String::from("GITHUB_PAT_Y"),
+		enabled: true,
+		config_fingerprint: String::from("new"),
+		binding: crate::lane_authority::ProjectBinding::new(
+			"pubfi",
+			"hack-ink",
+			"pubfi",
+			"team-pubfi",
+			"decodex:queued:pubfi",
+			"old",
+		)
+		.expect("binding"),
+		updated_at: String::from("2026-04-29T00:00:00Z"),
+		updated_at_unix: 1_777_392_000,
+	};
+
+	let error = store.upsert_project(&registration).expect_err("drift must fail");
+	assert!(error.to_string().contains("immutable project binding"));
+	assert!(store.list_projects().expect("projects").is_empty());
+}
+
+#[test]
 fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.db");
@@ -25,6 +57,15 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		github_token_env_var: String::from("GITHUB_PAT_Y"),
 		enabled: true,
 		config_fingerprint: String::from("abc123"),
+		binding: crate::lane_authority::ProjectBinding::new(
+			"pubfi",
+			"hack-ink",
+			"pubfi",
+			"team-pubfi",
+			"decodex:queued:pubfi",
+			"abc123",
+		)
+		.expect("binding"),
 		updated_at: String::from("2026-04-29T00:00:00Z"),
 		updated_at_unix: 1_777_392_000,
 	};
@@ -38,6 +79,15 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		github_token_env_var: String::from("GITHUB_PAT_Y"),
 		enabled: true,
 		config_fingerprint: String::from("def456"),
+		binding: crate::lane_authority::ProjectBinding::new(
+			"pubfi",
+			"hack-ink",
+			"pubfi",
+			"team-pubfi",
+			"decodex:queued:pubfi",
+			"def456",
+		)
+		.expect("binding"),
 		updated_at: String::from("2026-04-30T00:00:00Z"),
 		updated_at_unix: 1_777_478_400,
 	};
@@ -84,6 +134,9 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		refreshed_workflow_path.as_path(),
 		"pubfi refresh should replace the stale workflow path"
 	);
+	assert_eq!(project.binding(), refreshed_registration.binding());
+	assert_eq!(project.binding().github_owner(), "hack-ink");
+	assert_eq!(project.binding().tracker_team_id(), "team-pubfi");
 }
 
 #[test]
@@ -101,11 +154,29 @@ fn lazy_project_registry_refresh_preserves_runtime_rows() {
 		github_token_env_var: String::from("GITHUB_PAT_Y"),
 		enabled: true,
 		config_fingerprint: String::from("abc123"),
+		binding: crate::lane_authority::ProjectBinding::new(
+			"pubfi",
+			"hack-ink",
+			"pubfi",
+			"team-pubfi",
+			"decodex:queued:pubfi",
+			"abc123",
+		)
+		.expect("binding"),
 		updated_at: String::from("2026-04-29T00:00:00Z"),
 		updated_at_unix: 1_777_392_000,
 	};
 	let refreshed_registration = ProjectRegistration {
 		config_fingerprint: String::from("def456"),
+		binding: crate::lane_authority::ProjectBinding::new(
+			"pubfi",
+			"hack-ink",
+			"pubfi",
+			"team-pubfi",
+			"decodex:queued:pubfi",
+			"def456",
+		)
+		.expect("binding"),
 		updated_at: String::from("2026-04-30T00:00:00Z"),
 		updated_at_unix: 1_777_478_400,
 		..registration.clone()
@@ -163,6 +234,15 @@ fn remove_project_deletes_persistent_registry_row() {
 		github_token_env_var: String::from("GITHUB_PAT_Y"),
 		enabled: true,
 		config_fingerprint: String::from("abc123"),
+		binding: crate::lane_authority::ProjectBinding::new(
+			"vibe-mono",
+			"hack-ink",
+			"vibe-mono",
+			"team-vibe",
+			"decodex:queued:vibe-mono",
+			"abc123",
+		)
+		.expect("binding"),
 		updated_at: String::from("2026-05-25T00:00:00Z"),
 		updated_at_unix: 1_779_667_200,
 	};

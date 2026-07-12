@@ -8,9 +8,10 @@ pub(in crate::state::sqlite_store) fn persist_projects(
 		transaction.execute(
 			"INSERT OR REPLACE INTO projects (
 					service_id, config_path, repo_root, worktree_root, workflow_path,
-					tracker_api_key_env_var, github_token_env_var, enabled, config_fingerprint,
-					updated_at, updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+					tracker_api_key_env_var, github_token_env_var, github_owner,
+					github_repository, tracker_team_id, routing_label, enabled,
+					config_fingerprint, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
 			persist::params![
 				project.service_id(),
 				project.config_path().to_string_lossy().as_ref(),
@@ -19,6 +20,10 @@ pub(in crate::state::sqlite_store) fn persist_projects(
 				project.workflow_path().to_string_lossy().as_ref(),
 				project.tracker_api_key_env_var(),
 				project.github_token_env_var(),
+				project.binding().github_owner(),
+				project.binding().github_repository(),
+				project.binding().tracker_team_id(),
+				project.binding().routing_label(),
 				if project.enabled() { 1_i64 } else { 0_i64 },
 				project.config_fingerprint(),
 				project.updated_at(),

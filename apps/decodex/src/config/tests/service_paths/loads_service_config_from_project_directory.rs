@@ -12,9 +12,12 @@ fn loads_service_config_from_project_directory() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 			"#,
 	);
 	let config = ServiceConfig::from_path(temp_dir.path())

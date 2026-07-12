@@ -35,9 +35,12 @@ service_id = "mock"
 
 [tracker]
 api_key_env_var = "MOCK_LINEAR_API_KEY"
+team_id = "team-test"
 
 [github]
 token_env_var = "MOCK_GITHUB_TOKEN"
+owner = "test-owner"
+repository = "test-repository"
 
 [codex]
 review = "strict"

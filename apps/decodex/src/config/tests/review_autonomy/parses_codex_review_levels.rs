@@ -19,9 +19,12 @@ fn parses_codex_review_levels() {
 
 				[tracker]
 				api_key_env_var = "HOME"
+team_id = "team-test"
 
 				[github]
 				token_env_var = "HOME"
+owner = "test-owner"
+repository = "test-repository"
 
 				[codex]
 				{codex_body}

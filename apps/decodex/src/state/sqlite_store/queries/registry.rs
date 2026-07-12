@@ -1,8 +1,11 @@
-use crate::state::sqlite_store::{
-	SqliteStateStore,
-	queries::{
-		self, ConnectorBackoff, IssueLease, PathBuf, ProjectRegistration, Result, StateData,
-		WorktreeMappingRecord,
+use crate::{
+	lane_authority::ProjectBinding,
+	state::sqlite_store::{
+		SqliteStateStore,
+		queries::{
+			self, ConnectorBackoff, IssueLease, PathBuf, ProjectRegistration, Result, StateData,
+			WorktreeMappingRecord,
+		},
 	},
 };
 
@@ -10,11 +13,21 @@ impl SqliteStateStore {
 	pub(in crate::state) fn load_projects(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT service_id, config_path, repo_root, worktree_root, workflow_path, \
-			 tracker_api_key_env_var, github_token_env_var, enabled, config_fingerprint, \
+			 tracker_api_key_env_var, github_token_env_var, github_owner, github_repository, \
+			 tracker_team_id, routing_label, enabled, config_fingerprint, \
 			 updated_at, updated_at_unix FROM projects",
 		)?;
 		let rows = statement.query_map([], |row| {
 			let service_id: String = row.get(0)?;
+			let config_fingerprint: String = row.get(12)?;
+			let binding = ProjectBinding::from_validated_parts(
+				&service_id,
+				&row.get::<_, String>(7)?,
+				&row.get::<_, String>(8)?,
+				&row.get::<_, String>(9)?,
+				&row.get::<_, String>(10)?,
+				&config_fingerprint,
+			);
 
 			Ok((
 				service_id.clone(),
@@ -26,16 +39,18 @@ impl SqliteStateStore {
 					workflow_path: PathBuf::from(row.get::<_, String>(4)?),
 					tracker_api_key_env_var: row.get(5)?,
 					github_token_env_var: row.get(6)?,
-					enabled: row.get::<_, i64>(7)? != 0,
-					config_fingerprint: row.get(8)?,
-					updated_at: row.get(9)?,
-					updated_at_unix: row.get(10)?,
+					enabled: row.get::<_, i64>(11)? != 0,
+					config_fingerprint,
+					binding,
+					updated_at: row.get(13)?,
+					updated_at_unix: row.get(14)?,
 				},
 			))
 		})?;
 
 		for row in rows {
 			let (service_id, project) = row?;
+			project.validate_binding()?;
 
 			state.projects.insert(service_id, project);
 		}
