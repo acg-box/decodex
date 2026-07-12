@@ -1104,6 +1104,17 @@ replay, drift, remote absence, and the no-DELETE command boundary; all-target ch
 passes. These adapters are not yet wired into the closeout executor, and remote cleanup
 remains detachable capability debt when GitHub cannot fence deletion.
 
+The named PUB-1704/#826 -> PUB-1705/#827 incident fixture now records fresh public
+GitHub readback: predecessor #826 is open at
+`f5e89318b8539088121a58ebbb2731bb085f0ae9`; successor #827 is merged from
+`798eb431ec04a78b44e9da889b36a455cf51c202` as
+`4c3fdc38bb86e8ce683a117fc720b656ba3674ff`. A focused test feeds those exact identities
+through `RepairHandoffAuthority` and `SupersessionAcceptance` to create the typed edge,
+without reading labels/comments/worktrees or using PR #1073 code. Eleven supersession
+tests and all-target checking pass. The fixture's PatchSet disposition remains synthetic
+until the canonical raw-object PatchSet builder lands, so this is lineage proof rather
+than full C4 fixture completion.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |

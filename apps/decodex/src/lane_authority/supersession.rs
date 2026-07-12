@@ -599,6 +599,7 @@ fn pr_matches_repository(pr_url: &str, repository_key: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use serde::Deserialize;
 
 	fn handoff() -> RepairHandoffAuthority {
 		RepairHandoffAuthority::new(
@@ -787,5 +788,93 @@ mod tests {
 			),
 			Err(SupersededCloseoutRejection::StageEpochMismatch)
 		);
+	}
+
+	#[test]
+	fn pub_1704_to_pub_1705_fixture_uses_typed_lineage_not_projection_reconstruction() {
+		let fixture = serde_json::from_str::<IncidentFixture>(include_str!(
+			"../recovery/tests/fixtures/lane_authority_v2/pub_1704_superseded.json"
+		))
+		.expect("incident fixture");
+		assert_eq!(fixture.schema, "decodex/supersession-incident-fixture/1");
+		assert_eq!(fixture.predecessor.pr_state, "OPEN");
+		assert_eq!(fixture.successor.pr_state, "MERGED");
+		assert_eq!(fixture.predecessor.base_ref, fixture.successor.base_ref);
+		assert!(fixture.observed_at.starts_with("2026-"));
+		assert!(fixture.predecessor.branch.contains("pub-1704"));
+		assert!(fixture.successor.branch.contains("pub-1705"));
+
+		let predecessor_lane = LaneId::new("pubfi", &fixture.predecessor.issue_id).expect("lane");
+		let successor_lane = LaneId::new("pubfi", &fixture.successor.issue_id).expect("lane");
+		let handoff = RepairHandoffAuthority::new(
+			"pub-1704-to-pub-1705",
+			&fixture.repository_key,
+			predecessor_lane,
+			&fixture.predecessor.issue_id,
+			&fixture.predecessor.pr_url,
+			&fixture.predecessor.head_oid,
+			7,
+			"fixture-patch-set",
+			BTreeSet::from([String::from("fixture-patch-unit")]),
+			successor_lane.clone(),
+			&fixture.successor.issue_id,
+			"accepted-findings",
+			"review-checkpoint",
+			"operator",
+			"event",
+		)
+		.expect("handoff");
+		let edge = accept_supersession(
+			&handoff,
+			&SupersessionAcceptance {
+				handoff_id: String::from("pub-1704-to-pub-1705"),
+				repository_key: fixture.repository_key,
+				successor_lane_id: successor_lane,
+				successor_pr_url: fixture.successor.pr_url,
+				successor_head_oid: fixture.successor.head_oid,
+				successor_merge_oid: fixture.successor.merge_oid,
+				default_branch_reachability: String::from("fixture-default-branch-reachability"),
+				landed_successor: true,
+				predecessor_operation_active: false,
+				dispositions: vec![PatchDisposition::LandedInSuccessor {
+					predecessor_patch_unit_digest: String::from("fixture-patch-unit"),
+					reachability_evidence: String::from("fixture-default-branch-reachability"),
+				}],
+			},
+			7,
+			None,
+		)
+		.expect("typed edge");
+		assert!(edge.edge_id().starts_with("sha256:"));
+	}
+
+	#[derive(Deserialize)]
+	struct IncidentFixture {
+		schema: String,
+		observed_at: String,
+		repository_key: String,
+		predecessor: IncidentPredecessor,
+		successor: IncidentSuccessor,
+	}
+
+	#[derive(Deserialize)]
+	struct IncidentPredecessor {
+		issue_id: String,
+		pr_url: String,
+		pr_state: String,
+		base_ref: String,
+		branch: String,
+		head_oid: String,
+	}
+
+	#[derive(Deserialize)]
+	struct IncidentSuccessor {
+		issue_id: String,
+		pr_url: String,
+		pr_state: String,
+		base_ref: String,
+		branch: String,
+		head_oid: String,
+		merge_oid: String,
 	}
 }

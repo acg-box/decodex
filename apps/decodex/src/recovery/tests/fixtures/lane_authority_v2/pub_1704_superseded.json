@@ -1,0 +1,22 @@
+{
+  "schema": "decodex/supersession-incident-fixture/1",
+  "observed_at": "2026-07-12",
+  "repository_key": "github:helixbox/pubfi-mono",
+  "predecessor": {
+    "issue_id": "PUB-1704",
+    "pr_url": "https://github.com/helixbox/pubfi-mono/pull/826",
+    "pr_state": "OPEN",
+    "base_ref": "main",
+    "branch": "x/pubfi-mono-pub-1704",
+    "head_oid": "f5e89318b8539088121a58ebbb2731bb085f0ae9"
+  },
+  "successor": {
+    "issue_id": "PUB-1705",
+    "pr_url": "https://github.com/helixbox/pubfi-mono/pull/827",
+    "pr_state": "MERGED",
+    "base_ref": "main",
+    "branch": "x/pubfi-mono-pub-1705",
+    "head_oid": "798eb431ec04a78b44e9da889b36a455cf51c202",
+    "merge_oid": "4c3fdc38bb86e8ce683a117fc720b656ba3674ff"
+  }
+}
