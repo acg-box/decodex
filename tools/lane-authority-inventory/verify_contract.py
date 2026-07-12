@@ -3405,15 +3405,31 @@ def verify_p2(
         replay_record = {
             **resolution,
             "binding_ids": [expected_query_id, *resolution["binding_ids"]],
+            "canonical_type_definition_site_id": None,
+            "canonical_value_definition_site_id": (
+                resolution["canonical_definition_site_id"]
+                if resolution["namespace"] == "value"
+                else None
+            ),
+            "canonical_macro_definition_site_id": (
+                resolution["canonical_definition_site_id"]
+                if resolution["namespace"] == "macro"
+                else None
+            ),
             "source_binding_id": expected_query_id,
         }
         rust_bindings[expected_query_id] = query
         replay_key = (query["crate_target_id"], query["scope_id"], query["namespace"], query["local_name"])
         rust_path_replay_index["bindings_by_scope_name"][replay_key] = [expected_query_id]
         try:
-            replay_rust_type_path_resolution(
-                replay_record, rust_scopes, rust_bindings, rust_path_replay_index
-            )
+            try:
+                replay_rust_type_path_resolution(
+                    replay_record, rust_scopes, rust_bindings, rust_path_replay_index
+                )
+            except ContractError as error:
+                raise ContractError(
+                    f"P2 Rust callable replay disagrees: {resolution['resolution_id']}"
+                ) from error
         finally:
             del rust_bindings[expected_query_id]
             del rust_path_replay_index["bindings_by_scope_name"][replay_key]
@@ -3988,6 +4004,17 @@ def verify_p2(
                 (target_id, lexical_scope["scope_id"], declaration["signature"]), set()
             ).add(declaration["site_id"])
     expected_rust_targets: dict[str, set[str]] = {}
+    for resolution in callable_resolutions.values():
+        definition_site_id = resolution["canonical_definition_site_id"]
+        if resolution["status"] not in {
+            "resolved_local_value",
+            "resolved_local_macro",
+        } or definition_site_id is None:
+            continue
+        call = symbol_sites[resolution["source_symbol_site_id"]]
+        expected_rust_targets.setdefault(call["site_id"], set()).add(
+            definition_site_id
+        )
     for resolution in receiver_resolutions.values():
         owner_site_id = resolution["canonical_type_definition_site_id"]
         if resolution["status"] != "resolved_local_type" or owner_site_id is None:
@@ -4116,6 +4143,7 @@ def verify_p2(
         "rust_module_scope_count": len(rust_scopes),
         "rust_name_binding_count": len(rust_bindings),
         "rust_path_resolution_count": len(rust_resolutions),
+        "rust_callable_resolution_count": len(callable_resolutions),
         "rust_receiver_type_resolution_count": len(receiver_resolutions),
         "rust_method_owner_resolution_count": len(owner_resolutions),
         "rust_qualified_owner_resolution_count": len(qualified_resolutions),
