@@ -115,6 +115,16 @@ where
 			&issue,
 		)?;
 	}
+	if !dry_run
+		&& dispatch_mode == IssueDispatchMode::Program
+		&& let Some(program_dispatch) = program_dispatch.as_ref()
+	{
+		orchestrator::dispatch_policy::admit_program_lane(
+			state_store,
+			&binding_attestation,
+			&program_dispatch.program_id,
+		)?;
+	}
 
 	if orchestrator::ensure_clean_baseline_before_dispatch(
 		project,

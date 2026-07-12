@@ -129,6 +129,33 @@ pub(crate) fn admit_normal_queue_lane(
 	Ok(())
 }
 
+pub(crate) fn admit_program_lane(
+	state_store: &StateStore,
+	attestation: &BindingAttestation,
+	program_id: &str,
+) -> Result<()> {
+	let authority = state_store
+		.intake_authority_for_program(attestation.lane_id().project_key(), program_id)?;
+	let Some(authority) = authority else {
+		#[cfg(not(test))]
+		eyre::bail!("Program dispatch has no typed Intake Authority.");
+		#[cfg(test)]
+		return Ok(());
+	};
+	if authority.project_key() != attestation.lane_id().project_key()
+		|| authority.binding_attestation().binding_fingerprint()
+			!= attestation.binding_fingerprint()
+	{
+		eyre::bail!("Program Intake Authority does not match lane binding attestation.");
+	}
+	state_store.apply_lane_command(
+		attestation.lane_id().clone(),
+		attestation.binding_fingerprint(),
+		LaneCommand::Admit { intake_authority_id: authority.authority_id().to_owned() },
+	)?;
+	Ok(())
+}
+
 pub(crate) fn attest_project_binding(
 	state_store: &StateStore,
 	project: &ServiceConfig,
