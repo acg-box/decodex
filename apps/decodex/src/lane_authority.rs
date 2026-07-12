@@ -4,6 +4,7 @@ mod effect;
 mod intake;
 mod kernel;
 mod no_effective_delta;
+mod supersession;
 
 pub use effect::{
 	EffectClass, EffectCommand, EffectReceipt, EffectState, LaneEffect, LaneEffectKind,
@@ -14,6 +15,10 @@ pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection,
 pub use no_effective_delta::{
 	NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,
 	NoEffectiveDeltaRecovery, NoEffectiveDeltaRejection, decide_no_effective_delta,
+};
+pub use supersession::{
+	PatchDisposition, RepairHandoffAuthority, SupersessionAcceptance, SupersessionEdge,
+	SupersessionRejection, accept_supersession,
 };
 
 use crate::prelude::{Result, eyre};

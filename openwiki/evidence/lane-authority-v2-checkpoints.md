@@ -1011,6 +1011,16 @@ future-schema test, and `cargo check -p decodex --all-targets` pass. The adapter
 deliberately dormant until the continuation-attempt path consumes it; no v12 scheduler
 behavior changed.
 
+The first C4 slice adds immutable typed `RepairHandoffAuthority`, exact successor
+acceptance, complete one-per-patch disposition validation, and deterministic
+`SupersessionEdge` creation. Acceptance rejects stale predecessor epochs, active
+predecessor operations, duplicate terminal edges, wrong successor lanes, foreign
+repository PRs, unlanded/unreachable successors, duplicate dispositions, and missing or
+extra patch units. Six supersession-focused tests and
+`cargo check -p decodex --all-targets` pass. Persistence, active-handoff CAS,
+terminal-authority/conflict-release transaction, canonical PatchSet construction, and
+closeout effects remain before C4 is complete.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
