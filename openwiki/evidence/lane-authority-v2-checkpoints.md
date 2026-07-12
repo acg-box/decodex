@@ -1356,13 +1356,33 @@ result digest, and an explicit proof that no issue-owned mutation is required. T
 closes the C6 contract/gate surface; production generation activation remains gated by
 C1-C5 and C7 rather than treating a checkpoint-local gate as whole-system readiness.
 
+Commits `4da5810a`, `06e9a123`, and `4764daa2` advance C5 readback and the C1 tamper
+boundary without claiming either checkpoint complete. `lane timeline` and `lane audit`
+render an explicit typed allowlist rather than serializing private event records. The
+authority chain now has an Ed25519 protected-head protocol, a macOS data-protection
+Keychain-backed host key, create-once host/public-key pins, mode-0600 atomic head
+publication, cross-process `flock` serialization, and production runtime attachment.
+Normal brokered Lane commits advance the protected head after the atomic SQLite
+transition; a verified DB-ahead suffix is recovered once after a post-commit crash,
+while signature, generation, hash, protected-head-ahead, and equal-sequence digest
+mismatches fail closed. Focused TEL-09/TEL-10, broker-writer, C1-filtered tests, and
+all-target checking pass.
+
+The exact scenario-manifest audit remains the controlling completion evidence, not the
+number of broad filtered tests. Current exact-definition coverage is C1 `0/65`, C2
+`0/11`, C3 `0/20`, C4 `0/19`, C5 `0/4`, C6 `4/4`, and C7 `0/6`. Some underlying
+behaviors have focused tests under non-manifest names, but those are not accepted as
+checkpoint closure. Next C1 work is the offline migration/quarantine state machine and
+its exact scenario bindings; KeyProtector initialization also still needs to be folded
+into that journal so a crash cannot leave unclassified partial cutover artifacts.
+
 | Checkpoint | Status | Required completion evidence |
 | --- | --- | --- |
 | C0 baseline and architecture freeze | Frozen evidence; proof PR #1090 must not land | Runtime PR #1092 consumes only accepted contracts, incident fixtures, scenario ids, and directly useful inventories |
-| C1 project/lane identity and migration | In progress on PR #1092 | ProjectBinding/LaneId and transactional lane CAS exist; sole-writer cutover, migration/quarantine, and old issue-only API removal remain |
+| C1 project/lane identity and migration | In progress on PR #1092 | ProjectBinding/LaneId, transactional lane CAS, brokered writer, and protected-head anchoring exist; journaled migration/quarantine and old issue-only API removal remain |
 | C2 intake and dispatch authority | New-admission core complete; full gate pending C3 effects | Typed authority, binding attestations, claim fencing, and PUB-1711 replay exist; issue create/archive outbox receipts and remaining gate evidence remain |
 | C3 transition and effects | In progress on PR #1092 | Complete mutation registry, receipts, crash replay, per-invocation revalidation, publication handoff, provider capabilities |
 | C4 supersession and conflicts | Pending | Typed edge, deterministic closeout crash/replay, conflict release, obsolete scan, PUB-1704/PUB-1705 fixture/recovery |
-| C5 telemetry and operator audit | Pending | Signed chain audit/recovery, diagnose/timeline/audit, metrics, full bounded projections while preserving C1 privacy boundary |
+| C5 telemetry and operator audit | In progress | Signed chain audit/recovery and timeline/audit readback cores exist; diagnose, metrics, exact TEL bindings, and full bounded projections remain |
 | C6 adjacent defects | Behavior and checkpoint gate complete; held for C7 integration | ADJ-01..04 pass: typed already-satisfied receipt, one bounded continuation, durable attention, and parser-level manual `--related` rejection |
 | C7 final validation and cleanup | Pending | Attested activation binary, full gates, review, exact-head landing, issue/PR/worktree/authority audit |
