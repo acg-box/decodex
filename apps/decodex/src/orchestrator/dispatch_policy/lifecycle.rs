@@ -22,18 +22,15 @@ pub(crate) fn clear_recovered_issue_lease(
 	expected_run_id: Option<&str>,
 	state_store: &StateStore,
 ) -> Result<()> {
-	let Some(lease) = state_store.lease_for_issue(issue_id)? else {
+	let Some(claim) = state_store.claim_for_lane(project_id, issue_id)? else {
 		return Ok(());
 	};
 
-	if lease.project_id() != project_id {
-		return Ok(());
-	}
-	if expected_run_id.is_some_and(|run_id| lease.run_id() != run_id) {
+	if expected_run_id.is_some_and(|run_id| claim.run_id() != run_id) {
 		return Ok(());
 	}
 
-	state_store.clear_lease(issue_id)
+	state_store.release_lane_claim(project_id, issue_id, claim.run_id()).map(|_| ())
 }
 
 pub(crate) fn is_issue_eligible<T>(
@@ -60,7 +57,7 @@ where
 		return Ok(false);
 	}
 
-	Ok(state_store.lease_for_issue(&issue.id)?.is_none())
+	Ok(state_store.claim_for_lane(project_id, &issue.id)?.is_none())
 }
 
 pub(crate) fn todo_blocker_rule_passes(issue: &TrackerIssue, workflow: &WorkflowDocument) -> bool {

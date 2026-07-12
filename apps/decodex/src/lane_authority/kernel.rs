@@ -73,6 +73,25 @@ pub struct LaneAggregate {
 	branch_name: Option<String>,
 	worktree_path: Option<PathBuf>,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LaneClaim {
+	id: LaneId,
+	run_id: String,
+}
+impl LaneClaim {
+	pub fn from_lane(lane: &LaneAggregate) -> Option<Self> {
+		Some(Self { id: lane.id().clone(), run_id: lane.claim_run_id()?.to_owned() })
+	}
+
+	pub fn id(&self) -> &LaneId {
+		&self.id
+	}
+
+	pub fn run_id(&self) -> &str {
+		&self.run_id
+	}
+}
 impl LaneAggregate {
 	pub fn new(id: LaneId, binding_fingerprint: &str) -> Self {
 		Self {

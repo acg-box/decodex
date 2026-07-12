@@ -23,7 +23,9 @@ pub use invocation::{
 	AccountabilityRootFingerprint, InvocationIdentity, InvocationOrigin, PrincipalKind,
 	PrincipalRefNamespace, PrincipalRefToken,
 };
-pub use kernel::{LaneAggregate, LaneCommand, LanePhase, LaneTransitionRejection, transition};
+pub use kernel::{
+	LaneAggregate, LaneClaim, LaneCommand, LanePhase, LaneTransitionRejection, transition,
+};
 pub use no_effective_delta::{
 	NoEffectiveDeltaCommand, NoEffectiveDeltaDecision, NoEffectiveDeltaFacts,
 	NoEffectiveDeltaRecovery, NoEffectiveDeltaRejection, decide_no_effective_delta,

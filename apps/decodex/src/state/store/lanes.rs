@@ -1,11 +1,62 @@
 #[cfg(test)] use crate::lane_authority::LaneTransitionRejection;
 use crate::{
-	lane_authority::{LaneAggregate, LaneCommand, LaneId, transition},
+	lane_authority::{LaneAggregate, LaneClaim, LaneCommand, LaneId, transition},
 	prelude::{Result, eyre},
 	state::StateStore,
 };
 
 impl StateStore {
+	pub(crate) fn claim_for_lane(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<Option<LaneClaim>> {
+		let lane_id = LaneId::new(project_id, issue_id)?;
+		Ok(self.lane(&lane_id)?.as_ref().and_then(LaneClaim::from_lane))
+	}
+
+	pub(crate) fn list_lane_claims(&self, project_id: &str) -> Result<Vec<LaneClaim>> {
+		let state = self
+			.inner
+			.lock()
+			.map_err(|_| eyre::eyre!("State lock poisoned."))?;
+		let mut claims = state
+			.lanes
+			.values()
+			.filter(|lane| lane.id().project_key() == project_id)
+			.filter_map(LaneClaim::from_lane)
+			.collect::<Vec<_>>();
+		claims.sort_by(|left, right| {
+			left.id().tracker_issue_id().cmp(right.id().tracker_issue_id())
+		});
+		Ok(claims)
+	}
+
+	pub(crate) fn release_lane_claim(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		expected_run_id: &str,
+	) -> Result<bool> {
+		let Some(claim) = self.claim_for_lane(project_id, issue_id)? else {
+			return Ok(false);
+		};
+		if claim.run_id() != expected_run_id {
+			return Ok(false);
+		}
+		self.clear_lease(issue_id)?;
+		if self.claim_for_lane(project_id, issue_id)?.is_some() {
+			let lane_id = LaneId::new(project_id, issue_id)?;
+			let lane = self.lane(&lane_id)?.ok_or_else(|| eyre::eyre!("Lane disappeared."))?;
+			self.apply_lane_command(
+				lane_id,
+				lane.binding_fingerprint(),
+				LaneCommand::ReleaseClaim { run_id: expected_run_id.to_owned() },
+			)?;
+		}
+		Ok(true)
+	}
+
 	#[cfg_attr(not(test), allow(dead_code))]
 	pub(crate) fn transition_lane_with_authority(
 		&self,

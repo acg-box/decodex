@@ -147,11 +147,11 @@ fn active_run_commit_context_allows_claimed_lane_commit(
 		return Ok(false);
 	}
 
-	let Some(lease) = state_store.lease_for_issue(issue_id)? else {
+	let Some(claim) = state_store.claim_for_lane(service_id, issue_id)? else {
 		return Ok(false);
 	};
 
-	if lease.project_id() != service_id || lease.run_id() != context.run_id() {
+	if claim.run_id() != context.run_id() {
 		return Ok(false);
 	}
 

@@ -77,9 +77,9 @@ where
 	R: RuntimeStandardReviewRunner,
 {
 	let active_issue_ids = state_store
-		.list_active_shared_leases(project.service_id())?
+		.list_lane_claims(project.service_id())?
 		.into_iter()
-		.map(|lease| lease.issue_id().to_owned())
+		.map(|claim| claim.id().tracker_issue_id().to_owned())
 		.collect::<HashSet<_>>();
 	let worktrees = state_store
 		.list_worktrees(project.service_id())?
@@ -129,7 +129,7 @@ where
 		)? {
 			continue;
 		}
-		if state_store.lease_for_issue(&issue.id)?.is_some() {
+		if state_store.claim_for_lane(project.service_id(), &issue.id)?.is_some() {
 			continue;
 		}
 
