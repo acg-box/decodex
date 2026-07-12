@@ -13,7 +13,10 @@ pub(crate) fn child_exit_retry_budget_attempt_count<T>(
 where
 	T: IssueTracker,
 {
-	let state_attempts = context.state_store.retry_budget_attempt_count(&issue.id)?.max(1);
+	let state_attempts = context
+		.state_store
+		.retry_budget_attempt_count_for_lane(context.project.service_id(), &issue.id)?
+		.max(1);
 	let worktree = child_exit_worktree_spec(context, issue)?;
 	let Some(marker) = state::read_run_activity_marker_snapshot(&worktree.path)? else {
 		return Ok(u32::try_from(state_attempts).unwrap_or(u32::MAX).max(1));
@@ -21,7 +24,11 @@ where
 	let marker_attempts = state::read_run_retry_budget_attempt_count(&worktree.path)?.unwrap_or(0);
 	let marker_is_current_child =
 		marker.run_id() == child.run_id && marker.attempt_number() == child.attempt_number;
-	let marker_attempt_is_local = context.state_store.run_attempt(marker.run_id())?.is_some();
+	let marker_attempt_is_local =
+		context.state_store.run_attempt(marker.run_id())?.is_some_and(|attempt| {
+			attempt.project_id() == Some(context.project.service_id())
+				&& attempt.issue_id() == issue.id
+		});
 	let retry_budget_attempts =
 		if marker_attempts > 0 && !marker_is_current_child && !marker_attempt_is_local {
 			marker_attempts.saturating_add(state_attempts)
