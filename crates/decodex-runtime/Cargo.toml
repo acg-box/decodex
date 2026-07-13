@@ -9,7 +9,14 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
+axum             = { workspace = true }
 decodex-codex    = { workspace = true }
 decodex-core     = { workspace = true }
 decodex-postgres = { workspace = true }
 decodex-protocol = { workspace = true }
+futures-util     = { workspace = true }
+serde_json       = { workspace = true }
+tokio            = { workspace = true }
+
+[dev-dependencies]
+tokio-tungstenite = { workspace = true }

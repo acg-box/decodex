@@ -13,12 +13,16 @@ Local-first agent workspace orchestration.
 
 ## vNext foundation status
 
-The active Rust workspace is the product-incomplete vNext foundation. `decodexd`, the
-`decodex` client, and the GPUI composition root compile, but PostgreSQL, Codex,
-WebSocket, CLI operations, and product UI behavior are deliberately unavailable until
-their owning implementation slices land. The frozen v0.2 source remains under
-`apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is
-not a compatibility runtime.
+The active Rust workspace is the product-incomplete vNext foundation. `decodexd` now
+serves the versioned structured-JSON WebSocket protocol at loopback-only
+`ws://127.0.0.1:49152/v1/ws`. It negotiates protocol V1 current/previous minor,
+publishes bounded snapshots and resumable ordered events, deduplicates commands for one
+server lifetime in a fixed-capacity ledger, and disconnects clients whose bounded
+outbound queue fills. PostgreSQL,
+Codex, CLI operations, authentication/TLS, remote binding, and product UI behavior are
+still unavailable until their owning slices land. The frozen v0.2 source remains under
+`apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is not
+a compatibility runtime.
 
 ## Frozen v0.2 runtime reference
 
@@ -76,7 +80,8 @@ runtime.
   `crates/decodex-codex/`, and `crates/decodex-runtime/` are the five active vNext
   library owners.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are the active vNext
-  composition roots; all currently report unavailable or disabled capability.
+  composition roots. `decodexd` owns the loopback server; the client roots still report
+  unavailable or disabled capability.
 - `apps/decodex/` preserves the frozen v0.2 package outside the active Cargo workspace.
 - `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
   release-delta, signal rendering, validation, and local ledger workflows.
@@ -91,11 +96,13 @@ runtime.
   are the portable Codex app automation source; install live local configs from a
   clone with `python3 automations/decodex/scripts/config/sync_automations.py --apply`.
 
-No vNext product-state runtime is active yet. PostgreSQL becomes product-state authority
-under XY-1267, the Decodex-owned local layout moves under `~/.decodex` under XY-1268,
-and shared `~/.codex` remains Codex-owned. OpenWiki explains those contracts for
-maintainers and agents but is not a runtime input. Public site authority stays in
-`site/`.
+No vNext product-state runtime is active yet. The protocol's foundation application
+returns an explicit unavailable result and uses only bounded in-memory replay/idempotency state;
+a changed server ID after restart forces snapshot fallback. PostgreSQL becomes
+product-state authority under XY-1267, the Decodex-owned local layout moves under
+`~/.decodex` under XY-1268, and shared `~/.codex` remains Codex-owned. OpenWiki explains
+those contracts for maintainers and agents but is not a runtime input. Public site
+authority stays in `site/`.
 
 ## Frozen v0.2 runtime platform support
 

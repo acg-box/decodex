@@ -53,10 +53,13 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 ## Runtime in one minute
 
 `apps/decodexd` composes the PostgreSQL and Codex adapter boundaries through
-`decodex-runtime` and reports both adapters as unavailable. It selects no endpoint and
-opens no socket, database, repository, or Codex process. The protocol crate owns the
-loopback-only endpoint seam for XY-1266. The `decodex` and GPUI roots compile against
-`decodex-protocol` only and report their unsupported or disabled state.
+`decodex-runtime` and serves the typed V1 protocol at loopback-only
+`ws://127.0.0.1:49152/v1/ws`. It opens no database, repository, or Codex process. The
+protocol supports current/previous-minor negotiation, typed command receipt/result and
+event envelopes, bounded snapshots/queues/wire text, fixed-capacity in-lifetime
+idempotency, cursor resume, and snapshot fallback. The `decodex` and GPUI roots compile
+against `decodex-protocol` only
+and still report their unsupported or disabled state.
 
 No vNext product state is persisted yet. PostgreSQL is the accepted future product-state
 authority, `~/.codex` remains Codex-owned shared continuation state, and the accepted
@@ -64,8 +67,10 @@ Decodex-owned target is `~/.decodex`. XY-1267 and XY-1268 own those implementati
 The legacy `~/.codex/decodex` SQLite/config layout is frozen provenance, not a vNext
 input or fallback.
 
-There is no active scheduling, WebSocket, CLI operation, account routing, Codex adapter,
-PostgreSQL store, or GPUI product behavior in this slice.
+There is no active scheduling, CLI operation, account routing, Codex adapter, PostgreSQL
+store, authenticated HTTP artifact path, remote binding, or GPUI product behavior in
+this slice. Authentication and TLS are disabled; loopback refusal is the enforced
+network boundary until the later remote-security gate.
 
 ## First commands
 
@@ -79,8 +84,9 @@ cargo make test-vnext-architecture
 cargo make check
 ```
 
-The three binaries report foundation/unavailability state and exit; they do not start a
-production service. For a targeted Rust gate, prefer
+`decodexd` starts the loopback protocol service and runs until stopped. The client and
+GPUI binaries report foundation/unavailability state and exit. For a targeted Rust gate,
+prefer
 `cargo check --all-features --all-targets --workspace` or
 `cargo nextest run --workspace --all-targets --all-features` (`Makefile.toml`,
 `openwiki/operations/commands-and-validation.md`).
@@ -95,7 +101,8 @@ production service. For a targeted Rust gate, prefer
 
 ## Recent development context
 
-XY-1265 establishes compile-time ownership and composition only. XY-1266 may implement
-the loopback protocol, XY-1267 the PostgreSQL store, and XY-1268 the API-only CLI/path
-cutover after this foundation merges. Codex behavior, account routing, and GPUI product
-work remain with their later owners and gates.
+XY-1265 established compile-time ownership and composition. XY-1266 implements the
+loopback protocol foundation; XY-1267 owns PostgreSQL-backed product state and durable
+transactions, and XY-1268 owns the API-only CLI/path cutover. Codex behavior, account
+routing, remote security, HTTP artifacts, and GPUI product work remain with their later
+owners and gates.
