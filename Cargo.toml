@@ -1,6 +1,22 @@
 [workspace]
-exclude  = ["apps/decodex-app", "spikes/gpui"]
-members  = ["apps/*", "spikes/vnext-storage"]
+exclude = [
+	"apps/decodex",
+	"apps/decodex-app",
+	"spikes/gpui",
+]
+members = [
+	"apps/decodex-cli",
+	"apps/decodex-gpui",
+	"apps/decodex-publisher",
+	"apps/decodexd",
+	"apps/radar",
+	"crates/decodex-codex",
+	"crates/decodex-core",
+	"crates/decodex-postgres",
+	"crates/decodex-protocol",
+	"crates/decodex-runtime",
+	"spikes/vnext-storage",
+]
 resolver = "3"
 
 [workspace.package]
@@ -13,6 +29,12 @@ repository  = "https://github.com/hack-ink/decodex"
 version     = "0.2.0"
 
 [workspace.dependencies]
+decodex-codex    = { path = "crates/decodex-codex" }
+decodex-core     = { path = "crates/decodex-core" }
+decodex-postgres = { path = "crates/decodex-postgres" }
+decodex-protocol = { path = "crates/decodex-protocol" }
+decodex-runtime  = { path = "crates/decodex-runtime" }
+
 base64             = { version = "0.22" }
 clap               = { version = "4.6", features = ["derive"] }
 color-eyre         = { version = "0.6" }

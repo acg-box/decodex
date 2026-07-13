@@ -1,0 +1,9 @@
+[package]
+authors.workspace    = true
+description          = "Pure Decodex vNext domain and application contracts."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-core"
+repository.workspace = true
+version.workspace    = true

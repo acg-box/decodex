@@ -1,0 +1,16 @@
+[package]
+authors.workspace    = true
+description          = "Decodex vNext command-line client composition root."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-cli"
+repository.workspace = true
+version.workspace    = true
+
+[[bin]]
+name = "decodex"
+path = "src/main.rs"
+
+[dependencies]
+decodex-protocol = { workspace = true }
