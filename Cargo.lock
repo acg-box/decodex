@@ -510,7 +510,15 @@ dependencies = [
 name = "decodex-postgres"
 version = "0.2.0"
 dependencies = [
+ "deadpool-postgres",
  "decodex-core",
+ "refinery",
+ "regex",
+ "serde_json",
+ "sha2",
+ "time",
+ "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]

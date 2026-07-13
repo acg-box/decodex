@@ -36,7 +36,11 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 
 - `crates/decodex-core/` owns pure domain/application authority contracts and ports; it has no dependencies.
 - `crates/decodex-protocol/` owns the vNext version and loopback-only endpoint contract shared with clients.
-- `crates/decodex-postgres/` owns the PostgreSQL product-state adapter boundary; its production implementation remains unavailable until XY-1267.
+- `crates/decodex-postgres/` owns the PostgreSQL product-state adapter: explicit
+  connection configuration, embedded immutable migrations, optimistic transactions,
+  leases, append-only activity, transactional outbox delivery, and inert account/window
+  metadata. The composition root remains fail-closed until XY-1268 supplies owned paths
+  and explicit configuration.
 - `crates/decodex-codex/` owns the shared-normal-`~/.codex` adapter boundary; runner behavior remains unavailable until XY-1270.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while XY-1263 is failed.
@@ -61,16 +65,18 @@ idempotency, cursor resume, and snapshot fallback. The `decodex` and GPUI roots 
 against `decodex-protocol` only
 and still report their unsupported or disabled state.
 
-No vNext product state is persisted yet. PostgreSQL is the accepted future product-state
-authority, `~/.codex` remains Codex-owned shared continuation state, and the accepted
-Decodex-owned target is `~/.decodex`. XY-1267 and XY-1268 own those implementations.
+The PostgreSQL adapter can persist its XY-1267 foundation when a caller supplies explicit,
+verified PostgreSQL 18 configuration. The active composition root still supplies no
+connection configuration and persists nothing. `~/.codex` remains Codex-owned shared
+continuation state, and the accepted Decodex-owned target is `~/.decodex`; XY-1268 owns
+that path and bootstrap integration.
 The legacy `~/.codex/decodex` SQLite/config layout is frozen provenance, not a vNext
 input or fallback.
 
-There is no active scheduling, CLI operation, account routing, Codex adapter, PostgreSQL
-store, authenticated HTTP artifact path, remote binding, or GPUI product behavior in
-this slice. Authentication and TLS are disabled; loopback refusal is the enforced
-network boundary until the later remote-security gate.
+There is no active scheduling, CLI operation, account routing, configured PostgreSQL
+service, Codex adapter, authenticated HTTP artifact path, remote binding, or GPUI product
+behavior in this slice. Authentication and TLS are disabled; loopback refusal is the
+enforced network boundary until the later remote-security gate.
 
 ## First commands
 
@@ -81,6 +87,7 @@ cargo run -p decodexd
 cargo run -p decodex-cli
 cargo run -p decodex-gpui
 cargo make test-vnext-architecture
+cargo make test-vnext-postgres-store
 cargo make check
 ```
 
@@ -101,8 +108,8 @@ prefer
 
 ## Recent development context
 
-XY-1265 established compile-time ownership and composition. XY-1266 implements the
-loopback protocol foundation; XY-1267 owns PostgreSQL-backed product state and durable
+XY-1265 established compile-time ownership and composition. XY-1266 established the
+loopback protocol foundation; XY-1267 adds PostgreSQL-backed product state and durable
 transactions, and XY-1268 owns the API-only CLI/path cutover. Codex behavior, account
 routing, remote security, HTTP artifacts, and GPUI product work remain with their later
 owners and gates.
