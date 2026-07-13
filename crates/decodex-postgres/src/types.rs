@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use crate::{StoreError, ensure_credential_negative_text};
+use crate::StoreError;
 
 /// Stable UUID-shaped account identity. The database validates its exact UUID syntax.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -162,7 +162,8 @@ impl CommandIdentity {
 		if key.is_empty() || key.len() > 256 {
 			return Err(StoreError::InvalidInput("idempotency key must contain 1..=256 bytes"));
 		}
-		ensure_credential_negative_text(&key)?;
+
+		crate::ensure_credential_negative_text(&key)?;
 
 		let request_hash =
 			Sha256::digest(request).iter().map(|byte| format!("{byte:02x}")).collect();
