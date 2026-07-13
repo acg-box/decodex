@@ -1,0 +1,117 @@
+{
+  "schema": "decodex/vnext-codex-account-inventory/1",
+  "overall_acceptance": false,
+  "observed_at_unix": 1783920480,
+  "repository_head": "fc110cbcbdd1fd33187f597536c3faada6eb6cbc",
+  "codex_cli": "codex-cli 0.144.0-alpha.4",
+  "sources": [
+    "python3 scripts/vnext/codex_app_server_probe.py inventory",
+    "codex_app.list_threads(exact retained title query)"
+  ],
+  "configured_account_count": 6,
+  "accounts": [
+    {
+      "alias": "R1",
+      "disabled": false,
+      "authentication": "authenticated",
+      "quota_state": "unknown",
+      "quota_windows": [
+        { "duration_minutes": 10080, "used_percent": 37, "resets_at": 1784488409 },
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784525281 }
+      ],
+      "same_thread_resume_without_turn": "permitted",
+      "plugins": { "marketplace_count": 5, "plugin_count": 198, "installed_count": 27, "enabled_count": 27, "load_error_count": 0 },
+      "skills": { "cwd_entry_present": true, "skill_count": 51, "enabled_count": 51, "scan_error_count": 0 }
+    },
+    {
+      "alias": "R2",
+      "disabled": false,
+      "authentication": "authenticated",
+      "quota_state": "unknown",
+      "quota_windows": [
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522323 },
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784525293 }
+      ],
+      "same_thread_resume_without_turn": "permitted",
+      "plugins": { "marketplace_count": 5, "plugin_count": 198, "installed_count": 27, "enabled_count": 27, "load_error_count": 0 },
+      "skills": { "cwd_entry_present": true, "skill_count": 248, "enabled_count": 248, "scan_error_count": 0 }
+    },
+    {
+      "alias": "R3",
+      "disabled": false,
+      "authentication": "authenticated",
+      "quota_state": "unknown",
+      "quota_windows": [
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522381 },
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784525304 }
+      ],
+      "same_thread_resume_without_turn": "permitted",
+      "plugins": { "marketplace_count": 5, "plugin_count": 198, "installed_count": 27, "enabled_count": 27, "load_error_count": 0 },
+      "skills": { "cwd_entry_present": true, "skill_count": 248, "enabled_count": 248, "scan_error_count": 0 }
+    },
+    {
+      "alias": "R4",
+      "disabled": false,
+      "authentication": "authenticated",
+      "quota_state": "unknown",
+      "quota_windows": [
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522304 },
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784525310 }
+      ],
+      "same_thread_resume_without_turn": "permitted",
+      "plugins": { "marketplace_count": 5, "plugin_count": 198, "installed_count": 27, "enabled_count": 27, "load_error_count": 0 },
+      "skills": { "cwd_entry_present": true, "skill_count": 248, "enabled_count": 248, "scan_error_count": 0 }
+    },
+    {
+      "alias": "R5",
+      "disabled": false,
+      "authentication": "authenticated",
+      "quota_state": "unknown",
+      "quota_windows": [
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522699 },
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784525317 }
+      ],
+      "same_thread_resume_without_turn": "permitted",
+      "plugins": { "marketplace_count": 5, "plugin_count": 198, "installed_count": 27, "enabled_count": 27, "load_error_count": 0 },
+      "skills": { "cwd_entry_present": true, "skill_count": 189, "enabled_count": 189, "scan_error_count": 0 }
+    },
+    {
+      "alias": "R6",
+      "disabled": false,
+      "authentication": "authenticated",
+      "quota_state": "unknown",
+      "quota_windows": [
+        { "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784525323 }
+      ],
+      "same_thread_resume_without_turn": "permitted",
+      "plugins": { "marketplace_count": 5, "plugin_count": 198, "installed_count": 27, "enabled_count": 27, "load_error_count": 0 },
+      "skills": { "cwd_entry_present": true, "skill_count": 189, "enabled_count": 189, "scan_error_count": 0 }
+    }
+  ],
+  "app_server_title_discovery": {
+    "thread_list_found": true,
+    "thread_search_found": false
+  },
+  "codex_desktop_title_discovery": {
+    "global_title_query_found": false,
+    "unavailable_host_count": 0
+  },
+  "normal_state_unchanged": {
+    "auth": true,
+    "plugin_tree": true,
+    "account_pool": true
+  },
+  "plugin_state_scope": "non-transient plugin tree; app-server executable cache excluded",
+  "turns_started": 0,
+  "quota_deliberately_consumed": false,
+  "identities_emitted": false,
+  "selectors_emitted": false,
+  "credentials_emitted": false,
+  "conclusions": {
+    "naturally_depleted_account_observed": false,
+    "provider_quota_failure_exercised": false,
+    "quota_exclusion_failover_exercised": false,
+    "same_thread_resume_denied_or_incompatible_observed": false,
+    "gate_remains_failed": true
+  }
+}
