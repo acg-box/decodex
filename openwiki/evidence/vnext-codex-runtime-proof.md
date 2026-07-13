@@ -112,3 +112,89 @@ an executable input-only quota classifier, redaction validation, auth-integrity 
 and separate pre-/post-submit crash rules. After a material re-review and a targeted
 final confirmation, the reviewer reported no remaining blocker and accepted this as a
 focused failed-gate evidence commit, not as a passing XY-1262 gate.
+
+## Gate reconciliation follow-up
+
+Observed 2026-07-13 from merged evidence revision
+`fc110cbcbdd1fd33187f597536c3faada6eb6cbc`. The redacted receipt is
+[`fixtures/xy-1262-gate-reconciliation.json`](fixtures/xy-1262-gate-reconciliation.json).
+The inventory authenticated all six configured Decodex account records through separate
+process-scoped app-server children without starting a turn. It recorded only opaque
+aliases and duration-typed quota windows. All six returned usable plugin/skill
+inventories with no scan/load errors and permitted a no-turn resume of the retained
+proof thread. Normal `auth.json`, the non-transient plugin tree, and the Decodex account
+pool hashed identically before and after; each process also returned the same plugin
+inventory counts. The app-server executable cache refreshed on the first broad tree
+check; it is transient process machinery and was excluded from the plugin-tree integrity
+scope. The receipt is a normalized multi-source bundle: the inventory command supplied
+account/app-server facts and the supported Codex Desktop read supplied the global-title
+result.
+
+No account had both duration classes and no observed duration-typed window was depleted.
+Every account therefore remained `unknown`, not `available` or `depleted`; no turn was
+submitted and no quota was deliberately consumed. There was consequently no honest way
+to exercise provider quota failure, exclusion-before-fallback persistence, crash
+readback, or selection/continuation on a different eligible account. Likewise, every
+safe account permitted same-thread resume, so no genuine denied/incompatible boundary
+existed for a Context-Pack transition.
+
+Delayed discovery also remained split: app-server `thread/list(searchTerm=...)` found
+the retained title, while app-server `thread/search` and a supported Codex Desktop
+global title query returned no match without restarting or mutating Codex Desktop or the
+Manager task. The visibility sub-gate remains failed.
+
+### Proposed gate split — not accepted authority
+
+The current [gate manifest](../specs/vnext-gates.md) still makes the complete XY-1262
+gate an M0 prerequisite and says a failing owning gate freezes the affected milestone.
+Nothing in this follow-up changes that authority. The following is a repository-owned
+proposal for explicit Manager acceptance and a corresponding normative manifest edit:
+
+1. Define an **XY-1262 foundation gate** from already observed evidence. It permits
+   shared-home and one-account-per-process boundaries; creation-receipt ownership;
+   typed schema plus live capability negotiation; exact-ID/list/read/archive behavior;
+   lossy-read/divergence policy; native run-local collaboration normalization;
+   process-scoped auth and redaction; read-only plugin/skill inventory; and pure quota
+   policy keyed only by duration 300/10080.
+2. Allow M1 foundations after their own M0 gates pass: workspace owners (XY-1265),
+   loopback protocol/idempotency/reconnect foundations (XY-1266), PostgreSQL
+   transactions/leases/outbox and inert account/window schemas (XY-1267), owned paths
+   plus API-only diagnostics (XY-1268), and the GPUI shell after the separate GPUI gate
+   (XY-1269). These surfaces must expose unavailable/unknown states honestly.
+3. Allow bounded M2 foundations, without enabling routing: generated typed app-server
+   contracts and process supervision (XY-1270); Conversation/RuntimeSession/history and
+   inspectable Context-Pack persistence (XY-1271); transactional creation mappings,
+   exact-ID reconciliation, explicit retention, and the ManagedRun `diverged` stop
+   transition (XY-1272); credential-vault metadata and immutable runner binding without
+   automatic assignment (XY-1273); pure duration-typed quota/wake calculations and
+   durable exclusion transaction tests with synthetic fixtures only (XY-1274); and
+   user-owned profiles plus read-only readiness audits (XY-1275).
+4. Keep **all live account-routing features disabled by default**: sticky or policy
+   account selection, quota-triggered exclusion driving another assignment,
+   `waiting_usage` scheduling/wakeup, automatic cross-account same-thread resume,
+   automatic Context-Pack fallback, and any replay after uncertain side effects. Keep
+   XY-1276 Quick Task failover/release acceptance blocked. Do not claim global Codex
+   title discovery; exact-ID/list visibility is the only proven contract.
+5. Create a later **XY-1262 live enablement gate**. On a naturally depleted configured
+   account, a fixed no-tool marker must return a typed provider quota failure. Durable
+   readback must then show the submitted turn and unknown side-effect state, followed by
+   the specific 300/10080 account/window exclusion committed and crash-recoverable
+   before any fallback assignment. A different fresh eligible account must produce
+   exactly one useful continuation on the same thread when permitted; otherwise a real
+   denied/incompatible response must end the old RuntimeSession and create exactly one
+   Context-Pack RuntimeSession. After an injected crash at each boundary, readback must
+   show one continuation, correct `waiting_usage`/ready time when applicable, and no
+   duplicate tool, worktree, Git, or artifact effect. Auth, account-pool, and installed/
+   enabled plugin state must remain unchanged. Separately, the retained title must be
+   returned by supported Codex Desktop discovery after normal indexing before the
+   visibility claim or XY-1276 acceptance is enabled.
+
+Continuity classification: `same_decision_changed_context`. The current authority,
+merged XY-1262 evidence, its Linear issue/comments, the accepted design baseline, and
+XY-1265 through XY-1276 scopes were checked. Newly observed evidence strengthens safe
+process isolation and inventory coverage from two selected accounts to all six
+configured accounts, but it does not close any failed live gate. Decision impact remains
+blocked under current authority; authority action is `propose_update`, not implicit
+supersession. The proposal is falsified if the foundation surfaces cannot remain
+mechanically disabled from live routing, or if later natural depletion shows that the
+transaction ordering or continuity model cannot produce exactly one safe continuation.
