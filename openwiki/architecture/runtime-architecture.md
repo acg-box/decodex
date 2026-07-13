@@ -80,8 +80,9 @@ at 365 days; stored lease functions enforce the same fixed-millisecond boundary,
 cannot exceed it relative to their update time, and in-flight outbox leases carry a persisted
 claim-or-renewal timestamp anchor. Delivered outbox retention is finite, positive,
 whole-millisecond, chronological, and capped at 365 days. Delivered rows are terminal and
-immutable until retention pruning is due; no other outbox state is deletable. Direct SQL
-therefore cannot delete and recreate a completed external effect as replayable work.
+immutable until retention pruning is due; no other outbox state is deletable, and table
+truncation is forbidden. Direct SQL therefore cannot delete and recreate a completed external
+effect as replayable work.
 Operation-time triggers reject caller-shifted anchors and
 deadlines beyond the same 365-day horizon; relative-duration `CHECK` constraints remain
 wall-clock independent. Quota mutation responses and command receipts use PostgreSQL's
