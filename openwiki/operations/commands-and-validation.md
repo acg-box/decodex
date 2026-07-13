@@ -52,7 +52,8 @@ Use the owner path to choose the first validation surface:
 - `crates/decodex-core/`: pure vNext domain/application contracts and authority ports.
 - `crates/decodex-protocol/`: version and loopback network boundary shared by service and clients.
 - `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated real-PostgreSQL integration tests; the runtime composition seam remains unavailable until configured by its later owner.
-- `crates/decodex-codex/`: default-unavailable shared-home Codex adapter boundary.
+- `crates/decodex-codex/`: typed shared-home Codex adapter foundation; live dispatch is
+  default-disabled by the failed XY-1304 gate.
 - `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/`: active vNext composition roots.
 - `apps/decodex/`: frozen v0.2 source excluded from the workspace; provenance only.
@@ -168,10 +169,23 @@ For app-server integration work:
 
 ```sh
 codex app-server generate-json-schema --experimental --out target/decodex-app-server-schema-check
-decodex probe stdio://
+cargo test -p decodex-codex --all-targets --all-features
+cargo test -p decodex-codex live_read_only_probe_negotiates_without_dispatch -- --ignored
 ```
 
-Compatibility is capability-gated on the live app-server contract, not on a Codex version string: schema generation must retain Decodex's required method/event/dynamic-tool markers, `decodex probe stdio://` must finish with `PROBE_OK`, and runtime preflight must leave no blocked checks for config, model selection, provider capabilities, skills, plugins, or MCP state. When reviewing probe evidence, pay attention to missing schema markers, final probe output, `command/exec` health output (`COMMAND_EXEC_OK` when that check is enabled), and preflight check statuses/details such as configured/default model, provider capability flags, enabled skill/plugin counts, marketplace load errors, MCP login blockers, or the explicit MCP timeout degradation path (`apps/decodex/src/agent/app_server/preflight.rs`, `apps/decodex/src/agent/app_server/preflight/checks/`, `apps/decodex/src/agent/app_server/schema_probe/constants.rs`). Also run relevant Rust tests under `apps/decodex/src/agent/app_server/tests/` and MCP/tracker bridge tests when dynamic tool behavior changes; changes to dynamic tool dispatch or phase-goal lifecycle need matching app-server tests such as `dynamic_tools` or `phase_goal_tests` coverage, not just a passing probe.
+The adapter validates the accepted receipt, resolves and digests the exact executable,
+then structurally validates canonical generated-schema digests before app-server spawn.
+Markers are not capability promises. Focused tests cover the golden, exact-build cache
+conflicts, scripted fake server, structural history/collaboration-schema rejection, fixed
+production command construction, bounded executable/preflight/schema/frame/queue/result
+inputs, timeout and descendant/orphan cleanup, typed or hashed untrusted event strings,
+shared-home/account re-attestation, redacted debug surfaces, and default-disabled dispatch.
+The ignored live test is strictly read-only: `initialize`, `initialized`, `account/read`,
+bounded `thread/list(useStateDbOnly=true)`, optional exact-ID
+`thread/read(includeTurns=false)`, and fixed-nonmatching-term bounded `thread/search`.
+The optional probes prove method availability only and do not establish global title
+discovery. Do not replace the live test with excluded v0.2 `decodex probe stdio://`, which
+starts a proof turn.
 
 ## Plugin and automation checks
 
