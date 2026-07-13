@@ -77,16 +77,20 @@ fenced by a token rotated on every claim or reclaim. Any effect that may have be
 reconciled through a meaningful receipt and authoritative readback after claim expiry or
 restart. Lease, retry, and retention durations are exact positive whole milliseconds capped
 at 365 days; stored lease functions enforce the same fixed-millisecond boundary, lease rows
-cannot exceed it relative to their update time, and delivered outbox retention is finite,
-positive, and capped at 365 days. Invalid schedules therefore fail before or at the owning
-PostgreSQL boundary without wall-clock `CHECK` constraints. Quota mutation responses and
-command receipts use PostgreSQL's persisted, microsecond-rounded UTC timestamps rather than
-caller timestamp text.
+cannot exceed it relative to their update time, and in-flight outbox leases carry a persisted
+claim-or-renewal timestamp anchor. Delivered outbox retention is finite, positive,
+whole-millisecond, chronological, and capped at 365 days. Delivered rows are terminal and
+immutable until retention pruning, so direct SQL cannot turn a completed external effect back
+into replayable work. Invalid schedules therefore fail before or at the owning PostgreSQL
+boundary without wall-clock `CHECK` constraints. Quota mutation responses and command receipts use
+PostgreSQL's persisted, microsecond-rounded UTC timestamps rather than caller timestamp text.
 Account and quota-window rows are
 inert observations with recursive credential-material rejection across normalized keys and
 recognizable secret-bearing value encodings. PostgreSQL explicitly normalizes Rust's full
-Unicode `White_Space` set before credential and meaningful-evidence checks, so locale-specific
-POSIX classes cannot weaken the direct-SQL boundary; this crate exposes no
+Unicode `White_Space` set, applies an explicit ASCII case fold, and evaluates the remaining
+case-sensitive regular expressions under the built-in `C` collation. The integration gate
+repeats credential vectors in a Turkish ICU database so database-default case rules cannot
+weaken the direct-SQL boundary; this crate exposes no
 eligibility, account selection, fallback, wake scheduling, or credential storage.
 
 ## Frozen v0.2 runtime provenance
