@@ -1,4 +1,30 @@
-//! Pure domain and application contracts for Decodex vNext.
+//! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
+
+mod blob;
+mod cache;
+mod config;
+mod identity;
+#[cfg(unix)] mod path_unix;
+mod paths;
+mod storage;
+
+pub use self::{
+	blob::{BlobHash, BlobStore, MAX_BLOB_BYTES},
+	cache::{
+		BoundedCache, CacheLimits, CacheUsage, MAX_CACHE_BYTES, MAX_CACHE_ENTRIES,
+		MAX_CACHE_ENTRY_BYTES,
+	},
+	config::{
+		CacheConfig, ConfigError, DecodexConfig, LocalProfile, MAX_CONFIG_BYTES,
+		PostgresConnectionConfig, ProfileName, RemoteProfile, RepositoryName, ServerHostConfig,
+		ServerProfile, ServerRepositoryPath,
+	},
+	identity::ServerIdentity,
+	paths::{DecodexPaths, DecodexRoot, PathError},
+	storage::StorageError,
+};
+
+#[cfg(test)] use tempfile as _;
 
 /// Application-facing product-state port.
 pub trait ProductState {
