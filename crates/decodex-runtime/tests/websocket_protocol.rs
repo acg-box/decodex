@@ -10,7 +10,10 @@ use std::{
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::{net::TcpStream, time};
-use tokio_tungstenite::{self, MaybeTlsStream, WebSocketStream, tungstenite::Message};
+use tokio_tungstenite::{
+	self, MaybeTlsStream, WebSocketStream,
+	tungstenite::{Message, protocol::frame::coding::CloseCode},
+};
 
 use decodex_protocol::{
 	CURRENT_VERSION, CausationId, Channel, ClientCommandId, ClientHello, ClientMessage,
@@ -22,6 +25,8 @@ use decodex_protocol::{
 use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
 
 type Client = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+const OVERFLOW_STRESS_RUNS: u64 = 16;
 
 #[derive(Clone, Default)]
 struct FixtureApplication {
@@ -169,6 +174,22 @@ async fn receive(client: &mut Client) -> ServerMessage {
 	};
 
 	serde_json::from_str(&text).expect("decode typed server message")
+}
+
+async fn receive_close_code(client: &mut Client) -> Option<CloseCode> {
+	time::timeout(Duration::from_secs(3), async {
+		while let Some(message) = client.next().await {
+			match message {
+				Ok(Message::Close(frame)) => return frame.map(|frame| frame.code),
+				Ok(_) => {},
+				Err(_) => return None,
+			}
+		}
+
+		None
+	})
+	.await
+	.expect("overflow did not close the connection")
 }
 
 async fn receive_initial(client: &mut Client) -> (ServerId, Cursor, ReconnectMode) {
@@ -445,33 +466,25 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 
 #[tokio::test]
 async fn bounded_outbound_queue_disconnects_a_slow_real_client() {
+	for run in 0..OVERFLOW_STRESS_RUNS {
+		assert_initiator_overflow(run).await;
+	}
+}
+
+async fn assert_initiator_overflow(run: u64) {
 	let config = ServerConfig { outbound_queue_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let bound = server("backpressure-server", application.clone(), config)
+	let server_id = format!("backpressure-server-{run}");
+	let bound = server(&server_id, application.clone(), config)
 		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
 		.await
-		.unwrap();
+		.expect("bind initiator-overflow server");
 	let mut client = connect(bound.address(), CURRENT_VERSION).await;
 	let (server_id, cursor, _) = receive_initial(&mut client).await;
 
 	send(&mut client, command(CURRENT_VERSION, 1, "slow-1")).await;
 
-	let close_code = time::timeout(Duration::from_secs(3), async {
-		while let Some(message) = client.next().await {
-			if let Ok(Message::Close(frame)) = message {
-				return frame.map(|frame| frame.code);
-			}
-		}
-
-		None
-	})
-	.await
-	.unwrap();
-
-	assert_eq!(
-		close_code,
-		Some(tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Again)
-	);
+	assert_eq!(receive_close_code(&mut client).await, Some(CloseCode::Again));
 	assert_eq!(application.executions(), 1);
 
 	drop(client);
@@ -492,14 +505,21 @@ async fn bounded_outbound_queue_disconnects_a_slow_real_client() {
 
 	drop(resumed);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("shutdown initiator-overflow server");
 }
 
 #[tokio::test]
 async fn event_overflow_stops_pipelined_commands_and_retains_the_first_event() {
+	for run in 0..OVERFLOW_STRESS_RUNS {
+		assert_event_overflow(run).await;
+	}
+}
+
+async fn assert_event_overflow(run: u64) {
 	let config = ServerConfig { outbound_queue_capacity: 2, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let bound = server("event-overflow", application.clone(), config)
+	let server_id = format!("event-overflow-{run}");
+	let bound = server(&server_id, application.clone(), config)
 		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
 		.await
 		.expect("bind event-overflow server");
@@ -509,22 +529,7 @@ async fn event_overflow_stops_pipelined_commands_and_retains_the_first_event() {
 	send(&mut client, command(CURRENT_VERSION, 1, "overflow-first")).await;
 	send(&mut client, command(CURRENT_VERSION, 2, "must-not-execute")).await;
 
-	let close_code = time::timeout(Duration::from_secs(3), async {
-		while let Some(message) = client.next().await {
-			if let Ok(Message::Close(frame)) = message {
-				return frame.map(|frame| frame.code);
-			}
-		}
-
-		None
-	})
-	.await
-	.expect("event overflow did not close");
-
-	assert_eq!(
-		close_code,
-		Some(tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Again)
-	);
+	assert_eq!(receive_close_code(&mut client).await, Some(CloseCode::Again));
 	assert_eq!(application.executions(), 1);
 
 	drop(client);
