@@ -9,7 +9,9 @@ Project configs live outside target checkouts under `~/.codex/decodex/projects/<
 - `project.toml` for service id, tracker/GitHub credential env-var names, optional Codex/autonomy/privacy settings, and repo/worktree paths.
 - `WORKFLOW.md` for execution policy.
 
-Use the redacted example as the setup shape (`decodex.example.toml`). Do not document or read live token values.
+This is frozen v0.2 workflow provenance. The current `decodex.example.toml` now models
+vNext global configuration, not this legacy project shape; inspect the trusted v0.2 tag
+when auditing the historical template. Do not document or read live token values.
 
 Commands (`apps/decodex/src/cli/control_commands/project.rs`):
 
