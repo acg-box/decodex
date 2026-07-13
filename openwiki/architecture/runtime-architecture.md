@@ -10,12 +10,15 @@ The root manifest enumerates the active members explicitly. Five library owners 
 vNext runtime boundary:
 
 - `decodex-core`: pure domain/application contracts and ports; no dependencies.
-- `decodex-protocol`: V1 version and loopback endpoint policy; depends only on core.
+- `decodex-protocol`: V1 typed wire contracts, current/previous-minor negotiation, and
+  loopback endpoint policy; depends only on core plus structured serialization.
 - `decodex-postgres`: the product-state adapter boundary; depends only on core and is
   unavailable until XY-1267.
 - `decodex-codex`: the shared-normal-home adapter boundary; depends only on core and is
   unavailable until XY-1270.
-- `decodex-runtime`: service lifecycle/composition; depends on the other four owners.
+- `decodex-runtime`: service lifecycle, connection/session execution, resumable event
+  publication, idempotency receipts, and adapter composition; depends on the other four
+  owners plus the maintained Axum/Tokio transport stack.
 
 `apps/decodexd` depends only on runtime. The `apps/decodex-cli` and
 `apps/decodex-gpui` client roots depend only on protocol, so they cannot reach stores,
@@ -23,12 +26,38 @@ Codex, repositories, or orchestration directly. Radar and Publisher remain indep
 auxiliary workspace members. `tests/scripts/test_vnext_architecture.py` checks the exact
 dependency graph and exclusion of the legacy package through Cargo metadata.
 
-The current `decodexd` assembly returns a typed V1 foundation announcement without
-selecting an endpoint. The protocol owner exposes a loopback-only endpoint seam for
-XY-1266, but XY-1265 opens no transport and defines no default address. Both
-infrastructure adapters are explicitly unavailable. The CLI has no operational
-commands, and the GPUI root is default-disabled because the XY-1263 accessibility gate
-remains failed.
+`decodexd` is the only V1 server composition root. It binds
+`ws://127.0.0.1:49152/v1/ws`, and the endpoint type refuses every non-loopback address
+before opening a socket. The single physical WebSocket uses structured JSON and typed
+hello, command, receipt, result, snapshot, event, and refusal envelopes. Major versions
+must match exactly; this build accepts minors 1 and 0. Events carry server ID, monotonic
+cursor, entity revision, correlation, and causation. A reconnect to the same server ID
+resumes retained ordered deltas; a stale cursor or changed server ID receives a bounded
+snapshot fallback. Only a snapshot or event cursor fully applied by the client is a
+resume checkpoint; the Welcome cursor is an informational server high-water mark and
+must not advance client progress before following replay deltas are applied.
+
+Runtime idempotency is keyed by the command's idempotency key plus its typed payload and
+optional expected revision. A duplicate returns the original command identity and the
+same stored result without a second application execution; conflicting reuse is
+rejected. The receipt ledger has a fixed lifetime capacity: accepted keys are never
+evicted, duplicates remain readable at capacity, and new keys are refused before
+application execution once full. Replay buffers, snapshot item counts, human-readable
+wire scalars, inbound and outbound message sizes, writes, and per-client outbound queues
+are bounded. Queue overflow disconnects that client with WebSocket close code 1013;
+an oversized outbound frame closes with code 1009. A successful application publication
+is retained even if its initiating client overflows, so cursor resume cannot lose the
+mutation. Once accepted, command execution is shielded from connection-task cancellation;
+a disconnect can suppress delivery but cannot cancel receipt/event recording. Snapshot
+types contain only small state and cannot carry artifact bytes.
+
+This slice deliberately keeps its replay/idempotency ledger in memory. A daemon restart
+changes server identity, loses that transient ledger, and forces snapshot fallback;
+XY-1267 owns durable PostgreSQL product-state and transaction integration. The current
+foundation application reports product state unavailable rather than inventing product
+entities. Authentication, TLS, remote binding, HTTP artifact transfer, MCP, scheduling,
+Codex execution, CLI operations, and GPUI behavior remain disabled and belong to later
+issues.
 
 ## Frozen v0.2 runtime provenance
 
