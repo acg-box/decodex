@@ -7,41 +7,45 @@ use crate::{BuildId, SchemaContract};
 pub enum Capability {
 	/// JSON-RPC initialization handshake.
 	Initialize,
+	/// Active-account readback for one immutable runner binding.
+	AccountRead,
 	/// Bounded thread listing.
 	ThreadList,
 	/// Exact-ID thread readback.
 	ThreadRead,
 	/// Explicit thread archival.
 	ThreadArchive,
-	/// Paginated rather than legacy thread history.
-	PaginatedThreads,
+	/// Paginated rather than legacy persisted thread history.
+	PaginatedHistory,
 	/// Native run-local collaboration event shape.
 	NativeCollaboration,
-	/// Global title search, distinct from filtered thread listing.
-	GlobalTitleSearch,
+	/// Read-only `thread/search` method availability; not a global-discovery claim.
+	ThreadSearch,
 }
 impl Capability {
 	fn schema_method(self) -> Option<&'static str> {
 		match self {
 			Self::Initialize => Some("initialize"),
+			Self::AccountRead => Some("account/read"),
 			Self::ThreadList => Some("thread/list"),
 			Self::ThreadRead => Some("thread/read"),
 			Self::ThreadArchive => Some("thread/archive"),
-			Self::PaginatedThreads => Some("thread/start"),
+			Self::PaginatedHistory => None,
 			Self::NativeCollaboration => None,
-			Self::GlobalTitleSearch => Some("thread/search"),
+			Self::ThreadSearch => Some("thread/search"),
 		}
 	}
 
 	fn all() -> &'static [Self] {
 		&[
 			Self::Initialize,
+			Self::AccountRead,
 			Self::ThreadList,
 			Self::ThreadRead,
 			Self::ThreadArchive,
-			Self::PaginatedThreads,
+			Self::PaginatedHistory,
 			Self::NativeCollaboration,
-			Self::GlobalTitleSearch,
+			Self::ThreadSearch,
 		]
 	}
 }
@@ -117,6 +121,13 @@ pub enum LiveMethodOutcome {
 	},
 }
 
+/// Capability-cache insertion failure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NegotiationError {
+	/// A different profile was already cached for the exact build.
+	EvidenceConflict,
+}
+
 /// One live observation, already stripped of raw protocol data.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MethodObservation {
@@ -163,6 +174,7 @@ impl CapabilityProfile {
 		for capability in Capability::all() {
 			let advertised = match capability {
 				Capability::NativeCollaboration => schema.advertises_collaboration(),
+				Capability::PaginatedHistory => schema.advertises_paginated_history(),
 				_ => capability
 					.schema_method()
 					.is_some_and(|method| schema.advertises_request(method)),
@@ -209,6 +221,37 @@ impl CapabilityProfile {
 		Self { build, schema_fingerprint: schema_fingerprint.into(), states, contradictions }
 	}
 
+	fn merge(self, incoming: Self) -> Result<Self, NegotiationError> {
+		if self.build != incoming.build || self.schema_fingerprint != incoming.schema_fingerprint {
+			return Err(NegotiationError::EvidenceConflict);
+		}
+
+		let mut states = BTreeMap::new();
+
+		for capability in Capability::all() {
+			let current = self.state(*capability);
+			let next = incoming.state(*capability);
+			let merged = merge_state(current, next)?;
+
+			states.insert(*capability, merged);
+		}
+
+		let mut contradictions = self.contradictions;
+
+		for contradiction in incoming.contradictions {
+			if !contradictions.contains(&contradiction) {
+				contradictions.push(contradiction);
+			}
+		}
+
+		Ok(Self {
+			build: incoming.build,
+			schema_fingerprint: incoming.schema_fingerprint,
+			states,
+			contradictions,
+		})
+	}
+
 	/// Exact Codex build owning this profile.
 	pub fn build(&self) -> &BuildId {
 		&self.build
@@ -230,35 +273,62 @@ impl CapabilityProfile {
 	}
 }
 
-/// Capability-cache insertion failure.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum NegotiationError {
-	/// A different profile was already cached for the exact build.
-	EvidenceConflict,
-}
-
 /// In-memory cache keyed only by exact Codex build identity.
 #[derive(Clone, Debug, Default)]
 pub struct CapabilityCache {
 	profiles: BTreeMap<BuildId, CapabilityProfile>,
 }
 impl CapabilityCache {
-	/// Store an attested profile without replacing contradictory exact-build evidence.
-	pub fn insert(&mut self, profile: CapabilityProfile) -> Result<(), NegotiationError> {
+	/// Merge monotonic evidence without replacing contradictory exact-build outcomes.
+	pub fn insert(
+		&mut self,
+		profile: CapabilityProfile,
+	) -> Result<CapabilityProfile, NegotiationError> {
 		let build = profile.build().clone();
+		let profile = match self.profiles.get(&build).cloned() {
+			Some(cached) => cached.merge(profile)?,
+			None => profile,
+		};
 
-		if self.profiles.get(&build).is_some_and(|cached| cached != &profile) {
-			return Err(NegotiationError::EvidenceConflict);
-		}
+		self.profiles.insert(build, profile.clone());
 
-		self.profiles.insert(build, profile);
-
-		Ok(())
+		Ok(profile)
 	}
 
 	/// Look up only an exact build match; stale nearest-build fallback is forbidden.
 	pub fn get(&self, build: &BuildId) -> Option<&CapabilityProfile> {
 		self.profiles.get(build)
+	}
+
+	/// Number of exact-build profiles retained by this cache.
+	pub fn len(&self) -> usize {
+		self.profiles.len()
+	}
+
+	/// Return whether no exact-build evidence has been retained.
+	pub fn is_empty(&self) -> bool {
+		self.profiles.is_empty()
+	}
+}
+
+fn merge_state(
+	current: &CapabilityState,
+	incoming: &CapabilityState,
+) -> Result<CapabilityState, NegotiationError> {
+	if current == incoming {
+		return Ok(current.clone());
+	}
+
+	match (current, incoming) {
+		(CapabilityState::Unavailable { reason: UnavailableReason::NotProbed }, other) =>
+			Ok(other.clone()),
+		(other, CapabilityState::Unavailable { reason: UnavailableReason::NotProbed }) =>
+			Ok(other.clone()),
+		(CapabilityState::Unavailable { reason: UnavailableReason::ProbeFailed }, other) =>
+			Ok(other.clone()),
+		(other, CapabilityState::Unavailable { reason: UnavailableReason::ProbeFailed }) =>
+			Ok(other.clone()),
+		_ => Err(NegotiationError::EvidenceConflict),
 	}
 }
 
@@ -275,19 +345,19 @@ mod tests {
 	#[test]
 	fn schema_advertised_live_rejected_is_recorded_by_exact_build() {
 		let schema = SchemaContract::validate(SchemaMarker::accepted()).unwrap();
-		let build = BuildId::new("codex-cli 0.144.0-alpha.4").unwrap();
+		let build = BuildId::for_test("codex-cli 0.144.0-alpha.4");
 		let profile = CapabilityProfile::negotiate(
 			build.clone(),
 			"schema-a",
 			&schema,
 			[MethodObservation {
-				capability: Capability::PaginatedThreads,
+				capability: Capability::PaginatedHistory,
 				outcome: LiveMethodOutcome::Unsupported { code: -32_601 },
 			}],
 		);
 
 		assert_eq!(
-			profile.state(Capability::PaginatedThreads),
+			profile.state(Capability::PaginatedHistory),
 			&CapabilityState::Unsupported { reason: UnsupportedReason::MethodNotFound }
 		);
 		assert_eq!(profile.contradictions().len(), 1);
@@ -297,8 +367,8 @@ mod tests {
 	#[test]
 	fn cache_never_reuses_a_profile_for_a_different_build() {
 		let schema = SchemaContract::validate(SchemaMarker::accepted()).unwrap();
-		let build_a = BuildId::new("codex-cli build-a").unwrap();
-		let build_b = BuildId::new("codex-cli build-b").unwrap();
+		let build_a = BuildId::for_test("codex-cli build-a");
+		let build_b = BuildId::for_test("codex-cli build-b");
 		let profile = CapabilityProfile::negotiate(build_a.clone(), "schema-a", &schema, []);
 		let mut cache = CapabilityCache::default();
 
@@ -311,7 +381,7 @@ mod tests {
 	#[test]
 	fn cache_rejects_conflicting_evidence_for_the_same_attested_build() {
 		let schema = SchemaContract::validate(SchemaMarker::accepted()).unwrap();
-		let build = BuildId::new("codex-cli build-a").unwrap();
+		let build = BuildId::for_test("codex-cli build-a");
 		let first = CapabilityProfile::negotiate(build.clone(), "schema-a", &schema, []);
 		let second = CapabilityProfile::negotiate(build, "schema-b", &schema, []);
 		let mut cache = CapabilityCache::default();
@@ -325,7 +395,7 @@ mod tests {
 	fn unprobed_optional_methods_are_explicitly_unavailable() {
 		let schema = SchemaContract::validate(SchemaMarker::accepted()).unwrap();
 		let profile = CapabilityProfile::negotiate(
-			BuildId::new("codex-cli build-a").unwrap(),
+			BuildId::for_test("codex-cli build-a"),
 			"schema-a",
 			&schema,
 			[],
@@ -335,5 +405,29 @@ mod tests {
 			profile.state(Capability::ThreadArchive),
 			&CapabilityState::Unavailable { reason: UnavailableReason::NotProbed }
 		);
+	}
+
+	#[test]
+	fn cache_upgrades_not_probed_evidence_without_losing_exact_build_authority() {
+		let schema = SchemaContract::validate(SchemaMarker::accepted()).unwrap();
+		let build = BuildId::for_test("codex-cli build-a");
+		let first = CapabilityProfile::negotiate(build.clone(), "schema-a", &schema, []);
+		let second = CapabilityProfile::negotiate(
+			build.clone(),
+			"schema-a",
+			&schema,
+			[MethodObservation {
+				capability: Capability::ThreadRead,
+				outcome: LiveMethodOutcome::Supported,
+			}],
+		);
+		let mut cache = CapabilityCache::default();
+
+		cache.insert(first).unwrap();
+
+		let merged = cache.insert(second).unwrap();
+
+		assert_eq!(merged.state(Capability::ThreadRead), &CapabilityState::Supported);
+		assert_eq!(cache.get(&build), Some(&merged));
 	}
 }

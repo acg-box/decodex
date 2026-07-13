@@ -1,8 +1,8 @@
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	fs::File,
-	io::Read as _,
-	path::Path,
+	fs::{self, File},
+	io::{ErrorKind, Read as _},
+	path::{Path, PathBuf},
 };
 
 use serde::Deserialize;
@@ -17,8 +17,6 @@ pub const REQUIRED_REQUEST_METHODS: &[&str] = &[
 	"account/read",
 	"thread/start",
 	"thread/list",
-	"thread/search",
-	"thread/read",
 	"thread/resume",
 	"thread/name/set",
 	"turn/start",
@@ -29,9 +27,13 @@ pub const REQUIRED_REQUEST_METHODS: &[&str] = &[
 pub const REQUIRED_NOTIFICATION_METHODS: &[&str] =
 	&["thread/started", "turn/started", "item/started", "item/completed", "turn/completed"];
 
+pub(crate) const MAX_SCHEMA_FILE_BYTES: u64 = 16 * 1_024 * 1_024;
+pub(crate) const MAX_SCHEMA_FILES: usize = 512;
+pub(crate) const MAX_SCHEMA_TOTAL_BYTES: u64 = 32 * 1_024 * 1_024;
+
 const COLLABORATION_MARKERS: &[&str] =
 	&["collabAgentToolCall", "parentThreadId", "agentNickname", "agentRole", "subAgentActivity"];
-const MAX_SCHEMA_FILE_BYTES: u64 = 16 * 1_024 * 1_024;
+const MAX_SCHEMA_DIRECTORY_DEPTH: usize = 8;
 const ACCEPTED_DIGESTS: &[(&str, &str)] = &[
 	("ClientRequest.json", "3f82e5aec5be786c40d21440dfb6d0667d194d872bfa7041bd81c39b4ba56dc3"),
 	("ServerNotification.json", "16ce6adadf33aa182f98840c5d33f6294c3c37b2866bb05545c24e0dbf2cc2d2"),
@@ -52,6 +54,8 @@ pub struct SchemaMarker {
 	notification_methods: BTreeSet<String>,
 	/// Collaboration field markers from `ThreadReadResponse`.
 	collaboration_markers: BTreeSet<String>,
+	/// Whether the accepted thread-start schema includes paginated history.
+	paginated_history: bool,
 	/// Canonical hashes recorded by the accepted XY-1262 receipt.
 	canonical_sha256: BTreeMap<String, String>,
 }
@@ -65,6 +69,7 @@ impl SchemaMarker {
 			request_methods: BTreeSet<String>,
 			notification_methods: BTreeSet<String>,
 			collaboration_markers: BTreeSet<String>,
+			paginated_history: bool,
 			canonical_sha256: BTreeMap<String, String>,
 		}
 
@@ -77,24 +82,27 @@ impl SchemaMarker {
 			request_methods: marker.request_methods,
 			notification_methods: marker.notification_methods,
 			collaboration_markers: marker.collaboration_markers,
+			paginated_history: marker.paginated_history,
 			canonical_sha256: marker.canonical_sha256,
 		}
-	}
-
-	pub(crate) fn canonical_digests(&self) -> &BTreeMap<String, String> {
-		&self.canonical_sha256
 	}
 
 	#[cfg(test)]
 	pub(crate) fn remove_request_method(&mut self, method: &str) {
 		self.request_methods.remove(method);
 	}
+
+	pub(crate) fn canonical_digests(&self) -> &BTreeMap<String, String> {
+		&self.canonical_sha256
+	}
 }
 
 /// Validated generated-schema evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SchemaContract {
-	thread_archive: bool,
+	request_methods: BTreeSet<String>,
+	paginated_history: bool,
+	native_collaboration: bool,
 }
 impl SchemaContract {
 	/// Validate all required markers before any process or side effect is started.
@@ -127,7 +135,37 @@ impl SchemaContract {
 		}
 
 		if missing.is_empty() {
-			Ok(Self { thread_archive: marker.request_methods.contains("thread/archive") })
+			Ok(Self {
+				request_methods: marker.request_methods,
+				paginated_history: marker.paginated_history,
+				native_collaboration: true,
+			})
+		} else {
+			Err(missing)
+		}
+	}
+
+	fn from_generated(
+		request_methods: BTreeSet<String>,
+		notification_methods: BTreeSet<String>,
+		paginated_history: bool,
+		native_collaboration: bool,
+	) -> Result<Self, Vec<String>> {
+		let mut missing = Vec::new();
+
+		for method in REQUIRED_REQUEST_METHODS {
+			if !request_methods.contains(*method) {
+				missing.push(format!("request:{method}"));
+			}
+		}
+		for method in REQUIRED_NOTIFICATION_METHODS {
+			if !notification_methods.contains(*method) {
+				missing.push(format!("notification:{method}"));
+			}
+		}
+
+		if missing.is_empty() {
+			Ok(Self { request_methods, paginated_history, native_collaboration })
 		} else {
 			Err(missing)
 		}
@@ -135,13 +173,17 @@ impl SchemaContract {
 
 	/// Return whether the schema advertises an exact request method.
 	pub fn advertises_request(&self, method: &str) -> bool {
-		REQUIRED_REQUEST_METHODS.contains(&method)
-			|| (method == "thread/archive" && self.thread_archive)
+		self.request_methods.contains(method)
 	}
 
 	/// Return whether an accepted collaboration marker is present.
 	pub fn advertises_collaboration(&self) -> bool {
-		true
+		self.native_collaboration
+	}
+
+	/// Return whether thread-start structurally advertises paginated history.
+	pub fn advertises_paginated_history(&self) -> bool {
+		self.paginated_history
 	}
 }
 
@@ -156,17 +198,22 @@ impl GeneratedSchemaEvidence {
 		directory: &Path,
 		expected_digests: Option<&BTreeMap<String, String>>,
 	) -> Result<Self, Vec<String>> {
+		validate_generated_directory_budget(directory)?;
+
 		let request = read_json(directory.join("ClientRequest.json"))?;
 		let notification = read_json(directory.join("ServerNotification.json"))?;
 		let aggregate_path = directory.join("codex_app_server_protocol.v2.schemas.json");
 		let aggregate = read_json(&aggregate_path)?;
-		let collaboration = read_json(directory.join("v2/ThreadReadResponse.json"))?;
+		let collaboration = read_optional_json(directory.join("v2/ThreadReadResponse.json"))?;
+		let thread_start = read_optional_json(directory.join("v2/ThreadStartParams.json"))?;
 		let request_methods = extract_methods(&request)?;
 		let notification_methods = extract_methods(&notification)?;
-
-		validate_collaboration_schema(&collaboration)?;
-
-		let actual_digests = [
+		let native_collaboration = collaboration
+			.as_ref()
+			.is_some_and(|schema| validate_collaboration_schema(schema).is_ok());
+		let paginated_history =
+			thread_start.as_ref().is_some_and(validate_paginated_history_schema);
+		let mut actual_digests = [
 			("ClientRequest.json", &request),
 			("ServerNotification.json", &notification),
 			("codex_app_server_protocol.v2.schemas.json", &aggregate),
@@ -175,6 +222,12 @@ impl GeneratedSchemaEvidence {
 		.map(|(name, value)| (name.to_owned(), canonical_digest(value)))
 		.collect::<BTreeMap<_, _>>();
 
+		if let Some(value) = collaboration.as_ref() {
+			actual_digests.insert("v2/ThreadReadResponse.json".into(), canonical_digest(value));
+		}
+		if let Some(value) = thread_start.as_ref() {
+			actual_digests.insert("v2/ThreadStartParams.json".into(), canonical_digest(value));
+		}
 		if let Some(expected) = expected_digests {
 			let mismatches = expected
 				.iter()
@@ -187,24 +240,17 @@ impl GeneratedSchemaEvidence {
 			}
 		}
 
-		let marker = SchemaMarker {
-			receipt: ACCEPTED_SCHEMA_RECEIPT.into(),
+		let contract = SchemaContract::from_generated(
 			request_methods,
 			notification_methods,
-			collaboration_markers: COLLABORATION_MARKERS
-				.iter()
-				.map(|value| (*value).into())
-				.collect(),
-			canonical_sha256: ACCEPTED_DIGESTS
-				.iter()
-				.map(|(name, hash)| ((*name).into(), (*hash).into()))
-				.collect(),
-		};
-		let contract = SchemaContract::validate(marker)?;
-		let fingerprint = actual_digests
-			.get("codex_app_server_protocol.v2.schemas.json")
-			.expect("aggregate digest was inserted")
-			.clone();
+			paginated_history,
+			native_collaboration,
+		)?;
+		let fingerprint = canonical_digest(
+			&serde_json::to_value(actual_digests).expect("schema digest map must serialize"),
+		);
+
+		validate_generated_directory_budget(directory)?;
 
 		Ok(Self { fingerprint, contract })
 	}
@@ -220,6 +266,60 @@ enum PropertyShape {
 	StringArray,
 	Reference(&'static str),
 	ReferenceMap(&'static str),
+}
+
+pub(crate) fn validate_generated_directory_budget(directory: &Path) -> Result<(), Vec<String>> {
+	let root_metadata =
+		directory.symlink_metadata().map_err(|_| vec!["schema:directory".into()])?;
+
+	if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+		return Err(vec!["schema:directory".into()]);
+	}
+
+	let mut pending = vec![(directory.to_owned(), 0_usize)];
+	let mut file_count = 0_usize;
+	let mut total_bytes = 0_u64;
+
+	while let Some((path, depth)) = pending.pop() {
+		if depth > MAX_SCHEMA_DIRECTORY_DEPTH {
+			return Err(vec!["schema:directory-depth-limit".into()]);
+		}
+
+		let entries = fs::read_dir(path).map_err(|_| vec!["schema:directory".into()])?;
+
+		for entry in entries {
+			let entry = entry.map_err(|_| vec!["schema:directory".into()])?;
+			let metadata =
+				entry.path().symlink_metadata().map_err(|_| vec!["schema:directory".into()])?;
+
+			if metadata.file_type().is_symlink() {
+				return Err(vec!["schema:symlink".into()]);
+			}
+			if metadata.is_dir() {
+				pending.push((entry.path(), depth + 1));
+
+				continue;
+			}
+			if !metadata.is_file() {
+				return Err(vec!["schema:file-type".into()]);
+			}
+
+			file_count =
+				file_count.checked_add(1).ok_or_else(|| vec!["schema:file-count-limit".into()])?;
+			total_bytes = total_bytes
+				.checked_add(metadata.len())
+				.ok_or_else(|| vec!["schema:directory-byte-limit".into()])?;
+
+			if file_count > MAX_SCHEMA_FILES {
+				return Err(vec!["schema:file-count-limit".into()]);
+			}
+			if metadata.len() > MAX_SCHEMA_FILE_BYTES || total_bytes > MAX_SCHEMA_TOTAL_BYTES {
+				return Err(vec!["schema:directory-byte-limit".into()]);
+			}
+		}
+	}
+
+	Ok(())
 }
 
 pub(crate) fn hex_digest(bytes: &[u8]) -> String {
@@ -248,6 +348,12 @@ fn canonical_digest(value: &Value) -> String {
 
 fn read_json(path: impl AsRef<Path>) -> Result<Value, Vec<String>> {
 	let path = path.as_ref();
+	let path_metadata = path.symlink_metadata().map_err(|_| vec!["schema:document".into()])?;
+
+	if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
+		return Err(vec!["schema:file-type".into()]);
+	}
+
 	let file = File::open(path).map_err(|_| vec!["schema:document".into()])?;
 	let size = file.metadata().map_err(|_| vec!["schema:document".into()])?.len();
 
@@ -266,6 +372,39 @@ fn read_json(path: impl AsRef<Path>) -> Result<Value, Vec<String>> {
 	}
 
 	serde_json::from_slice(&bytes).map_err(|_| vec!["schema:document".into()])
+}
+
+fn read_optional_json(path: PathBuf) -> Result<Option<Value>, Vec<String>> {
+	match path.symlink_metadata() {
+		Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() =>
+			Err(vec!["schema:file-type".into()]),
+		Ok(_) => Ok(read_json(path).ok()),
+		Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+		Err(_) => Err(vec!["schema:document".into()]),
+	}
+}
+
+fn validate_paginated_history_schema(value: &Value) -> bool {
+	let Some(definitions) = value.get("definitions").and_then(Value::as_object) else {
+		return false;
+	};
+	let Some(properties) = value.get("properties").and_then(Value::as_object) else {
+		return false;
+	};
+	let Some(history_mode) = properties.get("historyMode") else {
+		return false;
+	};
+	let Some(values) = definitions
+		.get("ThreadHistoryMode")
+		.and_then(|schema| schema.get("enum"))
+		.and_then(Value::as_array)
+	else {
+		return false;
+	};
+
+	references(history_mode, "ThreadHistoryMode")
+		&& values.iter().any(|value| value.as_str() == Some("legacy"))
+		&& values.iter().any(|value| value.as_str() == Some("paginated"))
 }
 
 fn validate_collaboration_schema(value: &Value) -> Result<(), Vec<String>> {
@@ -456,6 +595,11 @@ fn references(value: &Value, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use std::{
+		fs::{self, File},
+		os::unix::net::UnixListener,
+	};
+
 	use crate::schema::{REQUIRED_REQUEST_METHODS, SchemaContract, SchemaMarker};
 
 	#[test]
@@ -471,6 +615,7 @@ mod tests {
 		}
 
 		assert!(contract.advertises_collaboration());
+		assert!(contract.advertises_paginated_history());
 	}
 
 	#[test]
@@ -525,6 +670,103 @@ mod tests {
 		assert_eq!(
 			super::validate_collaboration_schema(&schema).unwrap_err(),
 			["collaboration:ThreadItem.collabAgentToolCall.receiverThreadIds:type"]
+		);
+	}
+
+	#[test]
+	fn paginated_history_requires_the_exact_history_mode_shape() {
+		let valid = serde_json::json!({
+			"properties": {
+				"historyMode": {"anyOf": [{"$ref": "#/definitions/ThreadHistoryMode"}, {"type": "null"}]}
+			},
+			"definitions": {
+				"ThreadHistoryMode": {"type": "string", "enum": ["legacy", "paginated"]}
+			}
+		});
+		let mut invalid = valid.clone();
+
+		invalid["definitions"]["ThreadHistoryMode"]["enum"] = serde_json::json!(["legacy"]);
+
+		assert!(super::validate_paginated_history_schema(&valid));
+		assert!(!super::validate_paginated_history_schema(&invalid));
+	}
+
+	#[test]
+	fn generated_schema_directory_file_count_is_bounded() {
+		let directory = tempfile::tempdir().unwrap();
+
+		for index in 0..=super::MAX_SCHEMA_FILES {
+			fs::write(directory.path().join(format!("schema-{index}.json")), b"{}").unwrap();
+		}
+
+		assert_eq!(
+			super::validate_generated_directory_budget(directory.path()).unwrap_err(),
+			["schema:file-count-limit"]
+		);
+	}
+
+	#[test]
+	fn generated_schema_directory_bytes_and_file_bytes_are_bounded() {
+		let aggregate = tempfile::tempdir().unwrap();
+
+		for index in 0..3 {
+			File::create(aggregate.path().join(format!("schema-{index}.json")))
+				.unwrap()
+				.set_len(super::MAX_SCHEMA_FILE_BYTES)
+				.unwrap();
+		}
+
+		assert_eq!(
+			super::validate_generated_directory_budget(aggregate.path()).unwrap_err(),
+			["schema:directory-byte-limit"]
+		);
+
+		let per_file = tempfile::tempdir().unwrap();
+
+		File::create(per_file.path().join("oversized.json"))
+			.unwrap()
+			.set_len(super::MAX_SCHEMA_FILE_BYTES + 1)
+			.unwrap();
+
+		assert_eq!(
+			super::validate_generated_directory_budget(per_file.path()).unwrap_err(),
+			["schema:directory-byte-limit"]
+		);
+	}
+
+	#[test]
+	fn generated_schema_depth_symlinks_and_special_files_are_rejected() {
+		let deep = tempfile::tempdir().unwrap();
+		let mut directory = deep.path().to_owned();
+
+		for index in 0..=super::MAX_SCHEMA_DIRECTORY_DEPTH {
+			directory = directory.join(format!("level-{index}"));
+
+			fs::create_dir(&directory).unwrap();
+		}
+
+		assert_eq!(
+			super::validate_generated_directory_budget(deep.path()).unwrap_err(),
+			["schema:directory-depth-limit"]
+		);
+
+		let linked = tempfile::tempdir().unwrap();
+		let target = linked.path().join("target.json");
+
+		fs::write(&target, b"{}").unwrap();
+		std::os::unix::fs::symlink(&target, linked.path().join("linked.json")).unwrap();
+
+		assert_eq!(
+			super::validate_generated_directory_budget(linked.path()).unwrap_err(),
+			["schema:symlink"]
+		);
+
+		let special = tempfile::tempdir().unwrap();
+		let _listener = UnixListener::bind(special.path().join("schema.sock")).unwrap();
+
+		assert_eq!(
+			super::validate_generated_directory_budget(special.path()).unwrap_err(),
+			["schema:file-type"]
 		);
 	}
 

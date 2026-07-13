@@ -173,15 +173,19 @@ cargo test -p decodex-codex --all-targets --all-features
 cargo test -p decodex-codex live_read_only_probe_negotiates_without_dispatch -- --ignored
 ```
 
-The adapter validates the accepted receipt, then obtains the exact build and structurally
-validates canonical generated-schema digests before app-server spawn. Markers are not
-capability promises. Focused tests cover the golden, exact-build cache conflicts,
-scripted fake server, structural collaboration-schema rejection, fixed production command
-construction, bounded preflight outputs/app-server frames/queues/thread lists, timeout and
-orphan cleanup, typed or hashed untrusted event strings, shared-home/account receipt
-checks, and default-disabled dispatch. The ignored live test is strictly
-read-only: `initialize`, `initialized`, `account/read`, and bounded `thread/list`. Do not
-replace it with excluded v0.2 `decodex probe stdio://`, which starts a proof turn.
+The adapter validates the accepted receipt, resolves and digests the exact executable,
+then structurally validates canonical generated-schema digests before app-server spawn.
+Markers are not capability promises. Focused tests cover the golden, exact-build cache
+conflicts, scripted fake server, structural history/collaboration-schema rejection, fixed
+production command construction, bounded executable/preflight/schema/frame/queue/result
+inputs, timeout and descendant/orphan cleanup, typed or hashed untrusted event strings,
+shared-home/account re-attestation, redacted debug surfaces, and default-disabled dispatch.
+The ignored live test is strictly read-only: `initialize`, `initialized`, `account/read`,
+bounded `thread/list(useStateDbOnly=true)`, optional exact-ID
+`thread/read(includeTurns=false)`, and fixed-nonmatching-term bounded `thread/search`.
+The optional probes prove method availability only and do not establish global title
+discovery. Do not replace the live test with excluded v0.2 `decodex probe stdio://`, which
+starts a proof turn.
 
 ## Plugin and automation checks
 
