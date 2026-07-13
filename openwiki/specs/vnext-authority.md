@@ -84,10 +84,13 @@ protocol security gate.
 ## Conversation, context, and communication
 
 Every meaningful Decodex-created thread uses `ephemeral=false`, the shared normal
-`~/.codex`, the repository `cwd`, and discoverable title/provenance. Advisor and Lead
-threads are never auto-archived. Task/Reviewer threads remain searchable and are archived
-only by explicit retention policy; probes may be ephemeral. Decodex never imports
-Codex-created threads and persists mappings only for Decodex-created threads.
+`~/.codex`, the repository `cwd`, and a title/provenance marker retained for supported
+exact-ID and filtered-list ownership readback. Advisor and Lead threads are never
+auto-archived. Task/Reviewer threads remain discoverable through that supported boundary
+and are archived only by explicit retention policy; probes may be ephemeral. Decodex
+never imports Codex-created threads and persists mappings only for Decodex-created
+threads. No global Codex or Codex Desktop title-search/indexing contract is claimed until
+the separate live enablement gate records the required supported discovery readback.
 
 A logical Conversation may span RuntimeSessions when size, resume latency, compatibility,
 or account failure requires it. Each mapping records conversation, session, Codex thread,
@@ -133,6 +136,27 @@ Cross-account resume of the same Codex thread is allowed only after the two-acco
 gate. Otherwise start a new RuntimeSession from a Context Pack while preserving the
 Conversation and ManagedRun. Never replay a possibly side-effecting turn without receipt,
 worktree/Git, and artifact reconciliation.
+
+Those paragraphs define the target behavior, not current enablement. Until the separate
+[XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
+passes and repository authority explicitly enables it, all of the following are hard
+default-disabled in every production, dogfood, cutover, and release configuration:
+
+- sticky-account assignment and policy-based account assignment;
+- a quota-driven exclusion causing selection or assignment of another account;
+- `waiting_usage` scheduling or wakeup;
+- automatic same-thread continuation on another account;
+- automatic creation or dispatch of a Context-Pack fallback RuntimeSession; and
+- replay of a turn after an ambiguous outcome or any possible side effect.
+
+Foundation code may represent these states, persist inert metadata, calculate pure
+decisions, and test transactions with synthetic fixtures only where the gate manifest
+permits it. It must not submit a turn, assign a fallback runner, schedule a wake, or
+transition a live ManagedRun through these paths. Unknown, missing-duration, stale,
+low-confidence, auth-failed, plugin-unready, and disabled account/quota facts never imply
+availability. In particular, unknown or stale quota is fail-closed: no assignment and no
+automatic fallback is permitted; the unavailable/unknown condition must be surfaced for
+human resolution or bounded observation.
 
 Users exclusively select the four global RoleProfiles. Runtime cannot alter model,
 reasoning, or service tier. Each RuntimeSession snapshots its profile. Decodex keeps a
