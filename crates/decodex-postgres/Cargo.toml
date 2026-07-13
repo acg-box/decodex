@@ -1,0 +1,12 @@
+[package]
+authors.workspace    = true
+description          = "PostgreSQL product-state adapter boundary for Decodex vNext."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-postgres"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+decodex-core = { workspace = true }

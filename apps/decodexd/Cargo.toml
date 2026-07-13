@@ -1,0 +1,12 @@
+[package]
+authors.workspace    = true
+description          = "Decodex vNext service composition root."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodexd"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+decodex-runtime = { workspace = true }

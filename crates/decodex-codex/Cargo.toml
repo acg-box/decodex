@@ -1,0 +1,12 @@
+[package]
+authors.workspace    = true
+description          = "Codex app-server adapter boundary for Decodex vNext."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-codex"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+decodex-core = { workspace = true }
