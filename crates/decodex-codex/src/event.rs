@@ -1,6 +1,8 @@
 use serde_json::Value;
 
-use crate::ThreadId;
+use crate::{ThreadId, protocol::MAX_APP_SERVER_FRAME_BYTES};
+
+const MAX_COLLABORATION_RECEIVERS: usize = 64;
 
 /// Opaque, bounded correlation identifier.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -216,10 +218,16 @@ pub enum EventDecodeError {
 	MissingMethod,
 	/// A recognized notification lacked required typed fields.
 	InvalidKnownEvent,
+	/// Input exceeded a mechanical frame or collection bound.
+	LimitExceeded,
 }
 
 /// Decode and normalize one app-server notification without exposing raw JSON.
 pub fn normalize_event(bytes: &[u8]) -> Result<NormalizedEvent, EventDecodeError> {
+	if bytes.len() > MAX_APP_SERVER_FRAME_BYTES {
+		return Err(EventDecodeError::LimitExceeded);
+	}
+
 	let value: Value = serde_json::from_slice(bytes).map_err(|_| EventDecodeError::InvalidJson)?;
 	let method =
 		value.get("method").and_then(Value::as_str).ok_or(EventDecodeError::MissingMethod)?;
@@ -277,10 +285,16 @@ fn normalize_item(params: &Value, completed: bool) -> Result<NormalizedEvent, Ev
 		}));
 	}
 	if item_type == "collabAgentToolCall" {
-		let receivers = item
+		let receiver_values = item
 			.get("receiverThreadIds")
 			.and_then(Value::as_array)
-			.ok_or(EventDecodeError::InvalidKnownEvent)?
+			.ok_or(EventDecodeError::InvalidKnownEvent)?;
+
+		if receiver_values.len() > MAX_COLLABORATION_RECEIVERS {
+			return Err(EventDecodeError::LimitExceeded);
+		}
+
+		let receivers = receiver_values
 			.iter()
 			.map(|value| {
 				value
@@ -413,6 +427,40 @@ mod tests {
 			}
 		);
 		assert!(!format!("{event:?}").contains("secret"));
+	}
+
+	#[test]
+	fn oversized_public_event_input_is_rejected_before_parsing() {
+		let oversized = vec![b' '; super::MAX_APP_SERVER_FRAME_BYTES + 1];
+
+		assert_eq!(event::normalize_event(&oversized), Err(super::EventDecodeError::LimitExceeded));
+	}
+
+	#[test]
+	fn collaboration_receiver_count_is_bounded() {
+		let receivers = (0..=super::MAX_COLLABORATION_RECEIVERS)
+			.map(|index| format!("thread-{index}"))
+			.collect::<Vec<_>>();
+		let event = serde_json::json!({
+			"method": "item/completed",
+			"params": {
+				"threadId": "thread",
+				"turnId": "turn",
+				"item": {
+					"id": "item",
+					"type": "collabAgentToolCall",
+					"receiverThreadIds": receivers,
+					"senderThreadId": "sender",
+					"status": "completed",
+					"tool": "sendInput"
+				}
+			}
+		});
+
+		assert_eq!(
+			event::normalize_event(&serde_json::to_vec(&event).unwrap()),
+			Err(super::EventDecodeError::LimitExceeded)
+		);
 	}
 
 	#[test]

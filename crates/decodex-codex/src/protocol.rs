@@ -1,22 +1,34 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+pub(crate) const MAX_APP_SERVER_FRAME_BYTES: usize = 1_024 * 1_024;
+
 /// Exact Codex CLI build identity used as capability-cache authority.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct BuildId(String);
 impl BuildId {
-	/// Convert bounded version output into an opaque exact-build fingerprint.
-	pub fn new(value: impl Into<String>) -> Result<Self, &'static str> {
-		let value = value.into();
-
-		if value.trim().is_empty() || value.len() > 256 || value.contains(['\r', '\n', '\0']) {
+	pub(crate) fn from_attestation(
+		version: &str,
+		executable_digest: &[u8; 32],
+	) -> Result<Self, &'static str> {
+		if version.trim().is_empty() || version.len() > 256 || version.contains(['\r', '\n', '\0'])
+		{
 			return Err("Codex build identity is invalid");
 		}
 
-		let digest = Sha256::digest(value.as_bytes());
+		let mut digest = Sha256::new();
 
-		Ok(Self(format!("sha256:{}", hex_digest(&digest))))
+		digest.update(version.as_bytes());
+		digest.update([0]);
+		digest.update(executable_digest);
+
+		Ok(Self(format!("sha256:{}", hex_digest(&digest.finalize()))))
+	}
+
+	#[cfg(test)]
+	pub(crate) fn for_test(value: &str) -> Self {
+		Self::from_attestation(value, &[0; 32]).expect("test build identity must be valid")
 	}
 
 	/// Return the opaque exact-build fingerprint.
@@ -106,16 +118,46 @@ pub(crate) struct InitializeResponse {
 	pub user_agent: String,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ThreadListParams {
 	pub limit: u32,
+	pub use_state_db_only: bool,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ThreadListResponse {
 	pub data: Vec<ProtocolThread>,
-	pub next_cursor: Option<String>,
+	#[serde(rename = "nextCursor")]
+	pub _next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ThreadReadParams<'a> {
+	pub thread_id: &'a str,
+	pub include_turns: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ThreadReadResponse {
+	pub thread: ProtocolThread,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ThreadSearchParams<'a> {
+	pub search_term: &'a str,
+	pub limit: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ThreadSearchResponse {
+	pub data: Vec<ProtocolThread>,
+	#[serde(rename = "nextCursor")]
+	pub _next_cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -163,7 +205,8 @@ mod tests {
 
 	#[test]
 	fn build_identity_is_opaque_and_never_exports_credential_shaped_output() {
-		let build = BuildId::new("codex-cli api_key=sk-secretsecretsecret").unwrap();
+		let build =
+			BuildId::from_attestation("codex-cli api_key=sk-secretsecretsecret", &[7; 32]).unwrap();
 		let debug = format!("{build:?}");
 		let serialized = serde_json::to_string(&build).unwrap();
 
@@ -175,7 +218,15 @@ mod tests {
 
 	#[test]
 	fn oversized_or_multiline_build_output_is_rejected() {
-		assert!(BuildId::new("x".repeat(257)).is_err());
-		assert!(BuildId::new("codex-cli 1\napi_key=secret").is_err());
+		assert!(BuildId::from_attestation(&"x".repeat(257), &[0; 32]).is_err());
+		assert!(BuildId::from_attestation("codex-cli 1\napi_key=secret", &[0; 32]).is_err());
+	}
+
+	#[test]
+	fn exact_build_identity_includes_executable_content() {
+		let first = BuildId::from_attestation("codex-cli 1", &[1; 32]).unwrap();
+		let second = BuildId::from_attestation("codex-cli 1", &[2; 32]).unwrap();
+
+		assert_ne!(first, second);
 	}
 }
