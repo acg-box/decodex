@@ -20,6 +20,7 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Rust type check | `cargo make check-rust` or `cargo check --all-features --all-targets --workspace` |
 | Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
 | vNext dependency architecture | `cargo make test-vnext-architecture` |
+| vNext PostgreSQL store integration | `cargo make test-vnext-postgres-store` |
 | vNext storage feasibility proof | `cargo make test-vnext-storage-proof` |
 | Rust formatting | `cargo make fmt-rust-check` |
 | TOML formatting | `cargo make fmt-toml-check` |
@@ -28,7 +29,15 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Site type check | `cargo make check-node` or `npm --prefix site run check` |
 | Site build | `cargo make build` or `npm --prefix site run build` |
 
-`cargo make test` runs both `cargo nextest run --workspace --all-targets --all-features` and the vNext architecture test (`Makefile.toml`). The XY-1264 storage command is intentionally separate: it requires an intended macOS host with one PostgreSQL 18 distribution providing matching `postgres`, `initdb`, `pg_ctl`, `psql`, `pg_dump`, and `pg_restore` binaries. It creates and removes an isolated temporary checksummed cluster with TCP disabled; a passing run is scoped feasibility evidence, not the broad repository gate or a production performance result (`spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
+`cargo make test` runs both `cargo nextest run --workspace --all-targets --all-features` and the vNext architecture test (`Makefile.toml`). The XY-1267 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. XY-1267 exercises fresh C-locale bootstrap, a Turkish ICU credential-boundary database, and populated dump/restore; the XY-1264 proof additionally exercises rollback, blob, and cache behavior (`scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
+
+The XY-1267 integration harness bootstraps the shipped two-migration history (`V1`
+foundation plus `V2` claim indexes), verifies collation-independent credential rejection in
+a Turkish ICU database, dumps the populated primary database, restores it into a fresh
+database, and reruns the restored contract. The primary contract also exercises
+caller-shifted lease/retry/retention anchors, early and due delivered-row deletion, and
+forbidden outbox truncation. Intermediate schemas from unshipped branches are not
+compatibility targets.
 
 ## Validation scope selection
 
@@ -42,7 +51,7 @@ Use the owner path to choose the first validation surface:
 
 - `crates/decodex-core/`: pure vNext domain/application contracts and authority ports.
 - `crates/decodex-protocol/`: version and loopback network boundary shared by service and clients.
-- `crates/decodex-postgres/`: default-unavailable PostgreSQL product-state adapter boundary.
+- `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated real-PostgreSQL integration tests; the runtime composition seam remains unavailable until configured by its later owner.
 - `crates/decodex-codex/`: default-unavailable shared-home Codex adapter boundary.
 - `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/`: active vNext composition roots.
