@@ -57,7 +57,7 @@ pub struct ServerConfig {
 	pub maximum_message_bytes: usize,
 	/// Time allowed for the mandatory first hello message.
 	pub hello_timeout: Duration,
-	/// Time allowed for one WebSocket write.
+	/// Time allowed for one WebSocket write or a peer response to a server-initiated close.
 	pub write_timeout: Duration,
 }
 impl Default for ServerConfig {
@@ -226,19 +226,27 @@ where
 			}
 		}
 
-		let (socket_sender, socket_receiver) = socket.split();
-		let reader = self.read_commands(socket_receiver, connection_id, negotiated);
-		let writer = self.write_messages(socket_sender, receiver);
+		let (mut socket_sender, mut socket_receiver) = socket.split();
+		let close_sent = {
+			let reader = self.read_commands(&mut socket_receiver, connection_id, negotiated);
+			let writer = self.write_messages(&mut socket_sender, receiver);
 
-		tokio::pin!(reader, writer);
+			tokio::pin!(reader, writer);
 
-		tokio::select! {
-			() = &mut writer => {},
-			backpressure = &mut reader => {
-				if backpressure {
-					writer.await;
-				}
-			},
+			tokio::select! {
+				close_sent = &mut writer => close_sent,
+				backpressure = &mut reader => {
+					if backpressure {
+						writer.await
+					} else {
+						false
+					}
+				},
+			}
+		};
+
+		if close_sent {
+			self.await_peer_close(&mut socket_receiver).await;
 		}
 
 		self.remove_subscriber(connection_id).await;
@@ -364,7 +372,7 @@ where
 
 	async fn read_commands(
 		&self,
-		mut receiver: SplitStream<WebSocket>,
+		receiver: &mut SplitStream<WebSocket>,
 		connection_id: u64,
 		negotiated: ProtocolVersion,
 	) -> bool {
@@ -600,19 +608,18 @@ where
 
 	async fn write_messages(
 		&self,
-		mut sender: SplitSink<WebSocket, Message>,
+		sender: &mut SplitSink<WebSocket, Message>,
 		mut receiver: Receiver<ServerMessage>,
-	) {
+	) -> bool {
 		while let Some(message) = receiver.recv().await {
 			let Ok(encoded) = decodex_protocol::encode_server_message(&message) else {
-				return;
+				return false;
 			};
 
 			if encoded.len() > self.inner.config.maximum_message_bytes {
-				self.send_split_close(&mut sender, 1_009, "outbound message exceeds bounded size")
+				return self
+					.send_split_close(sender, 1_009, "outbound message exceeds bounded size")
 					.await;
-
-				return;
 			}
 
 			let write_result = time::timeout(
@@ -622,11 +629,22 @@ where
 			.await;
 
 			if !matches!(write_result, Ok(Ok(()))) {
-				return;
+				return false;
 			}
 		}
 
-		self.send_split_close(&mut sender, 1_013, "bounded outbound queue exceeded").await;
+		self.send_split_close(sender, 1_013, "bounded outbound queue exceeded").await
+	}
+
+	async fn await_peer_close(&self, receiver: &mut SplitStream<WebSocket>) {
+		let handshake = async {
+			while let Some(message) = receiver.next().await {
+				if matches!(message, Ok(Message::Close(_)) | Err(_)) {
+					return;
+				}
+			}
+		};
+		let _ = time::timeout(self.inner.config.write_timeout, handshake).await;
 	}
 
 	async fn send_direct(&self, socket: &mut WebSocket, message: ServerMessage) -> bool {
@@ -650,9 +668,12 @@ where
 		sender: &mut SplitSink<WebSocket, Message>,
 		code: u16,
 		reason: &'static str,
-	) {
+	) -> bool {
 		let close = sender.send(Message::Close(Some(CloseFrame { code, reason: reason.into() })));
-		let _ = time::timeout(self.inner.config.write_timeout, close).await;
+
+		time::timeout(self.inner.config.write_timeout, close)
+			.await
+			.is_ok_and(|result| result.is_ok())
 	}
 
 	async fn send_socket_close(&self, socket: &mut WebSocket, code: u16, reason: &'static str) {
