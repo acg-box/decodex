@@ -28,6 +28,7 @@
     "parentThreadId",
     "subAgentActivity"
   ],
+  "paginated_history": true,
   "canonical_sha256": {
     "ClientRequest.json": "3f82e5aec5be786c40d21440dfb6d0667d194d872bfa7041bd81c39b4ba56dc3",
     "ServerNotification.json": "16ce6adadf33aa182f98840c5d33f6294c3c37b2866bb05545c24e0dbf2cc2d2",

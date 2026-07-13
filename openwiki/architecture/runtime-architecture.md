@@ -120,12 +120,26 @@ digests rather than optional nickname/role fields. Build identity is an exact op
 fingerprint; statuses, activity kinds, tools, capability reasons, and read-only methods
 are closed enums, so protocol text is not exported through debug or serialization paths.
 
-The production command fixes `codex`, app-server, version, and schema arguments; only tests
-can inject a fake executable. Before spawn, the active probe obtains the build and asks the
-same executable to generate its schema. Preflight output/files, app-server frames, the
-stdout queue, and thread-list results are mechanically bounded. Both preflight commands
-use bounded process-group supervision and descendant cleanup. The probe then sends only
-`initialize`, `initialized`, read-only `account/read`, and bounded `thread/list`.
+The production command resolves `codex` once to a canonical absolute executable, reads it
+through a fixed byte limit, includes its digest in the opaque build identity, and rechecks
+the same path and digest before version, schema, and app-server spawn. Only tests can inject
+a fake executable. Preflight output/files, generated-schema file count/per-file/aggregate
+bytes/depth, inbound and outbound app-server frames, the stdout queue, collaboration
+receiver count, and thread-list/search results are mechanically bounded; schema traversal
+rejects symlinks and special files. Both preflight commands use bounded process-group
+supervision and descendant cleanup. Failed bounded cleanup transfers the still-owned child
+and process group to a persistent reaper rather than relinquishing process authority.
+
+The probe sends `initialize`, `initialized`, read-only `account/read`, bounded
+`thread/list(useStateDbOnly=true)`, exact-ID `thread/read(includeTurns=false)` when a listed
+thread exists, and `thread/search` with a fixed nonmatching term and bounded result count.
+The latter two calls establish method availability only; they do not claim global title
+discovery. Account identity is pseudonymized and re-attested after every authority read;
+an identity change discards the in-progress negotiation, and restart retains the expected
+identity for re-attestation. Archive, paginated persisted history, and native collaboration
+remain explicitly `not_probed` while their side-effect/event gates are closed. Paginated
+history schema evidence comes from the structural `ThreadStartParams.historyMode` /
+`ThreadHistoryMode` contract, never from a list cursor.
 `DispatchGate` has no enabled state and denies thread start/resume, turn start/steer/
 interrupt, and approval responses under XY-1304. The composition root therefore still
 reports conversation execution unavailable even though schema validation, read-only
