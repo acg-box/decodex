@@ -424,6 +424,20 @@ CREATE TRIGGER outbox_terminal_retention
 BEFORE UPDATE OR DELETE ON decodex.outbox
 FOR EACH ROW EXECUTE FUNCTION decodex.enforce_outbox_terminal_retention();
 
+CREATE FUNCTION decodex.forbid_outbox_truncate()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	RAISE EXCEPTION 'outbox retention pruning must use bounded row deletion'
+		USING ERRCODE = '55000', CONSTRAINT = 'outbox_truncate_forbidden';
+END
+$$;
+
+CREATE TRIGGER outbox_truncate_forbidden
+BEFORE TRUNCATE ON decodex.outbox
+FOR EACH STATEMENT EXECUTE FUNCTION decodex.forbid_outbox_truncate();
+
 CREATE FUNCTION decodex.lease_ttl_milliseconds(value interval)
 RETURNS bigint
 LANGUAGE plpgsql
