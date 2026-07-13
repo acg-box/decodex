@@ -26,6 +26,10 @@ const WORKER_B: &str = "30000000-0000-0000-0000-000000000002";
 const CREDENTIAL_VALUE_VECTORS: &[&str] = &[
 	"Bearer abcdefghijklmnop",
 	"Bearer\nabcdefghijklmnop",
+	"Bearer\u{a0}abcdefghijklmnop",
+	"Bearer\u{85}abcdefghijklmnop",
+	"Basic\u{202f}dXNlcjpwYXNz",
+	"password\u{3000}=\u{3000}forbidden",
 	"Basic\tdXNlcjpwYXNz",
 	"sk-0123456789abcdef",
 	"sk_live_0123456789abcdef",
@@ -39,6 +43,7 @@ const CREDENTIAL_VALUE_VECTORS: &[&str] = &[
 	"https://user:password@example.invalid/path",
 	"AKIA0123456789ABCDEF",
 ];
+const UNICODE_WHITESPACE_VECTORS: &[&str] = &["\u{a0}", "\u{85}", "\u{202f}", "\u{3000}"];
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires the isolated PostgreSQL 18 harness"]
@@ -124,16 +129,13 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Err
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 3);
+	assert_eq!(history.len(), 2);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
 	assert_eq!(history[1].0, 2);
 	assert_eq!(history[1].1, "claim_indexes");
 	assert!(!history[1].2.is_empty());
-	assert_eq!(history[2].0, 3);
-	assert_eq!(history[2].1, "skeptic_invariants");
-	assert!(!history[2].2.is_empty());
 
 	PostgresStore::connect(Config::from_str(&env::var("DECODEX_TEST_DATABASE_URL")?)?).await?;
 
@@ -393,9 +395,14 @@ async fn assert_quota_timestamp_validation(
 	client: &Client,
 	base: &QuotaWindowMutation,
 ) -> Result<(), Box<dyn Error>> {
-	for (index, (observed_at, resets_at)) in [
-		("2026-07-13T07:00:00.123456789Z", Some("2026-07-13T09:30:00.25+02:30")),
-		("2026-07-13T01:30:00-05:30", None),
+	for (index, (observed_at, resets_at, expected_observed_at, expected_resets_at)) in [
+		(
+			"2026-07-13T07:00:00.123456789Z",
+			Some("2026-07-13T09:30:00.25+02:30"),
+			"2026-07-13T07:00:00.123457Z",
+			Some("2026-07-13T07:00:00.250000Z"),
+		),
+		("2026-07-13T01:30:00-05:30", None, "2026-07-13T07:00:00.000000Z", None),
 	]
 	.into_iter()
 	.enumerate()
@@ -410,8 +417,35 @@ async fn assert_quota_timestamp_validation(
 		let command = CommandIdentity::new(&key, key.as_bytes())?;
 		let stored = store.mutate_quota_window(&command, &valid).await?;
 
-		assert_eq!(stored.observed_at, observed_at);
-		assert_eq!(stored.resets_at.as_deref(), resets_at);
+		assert_eq!(stored.observed_at, expected_observed_at);
+		assert_eq!(stored.resets_at.as_deref(), expected_resets_at);
+
+		let duplicate = store.mutate_quota_window(&command, &valid).await?;
+
+		assert_eq!(duplicate, stored);
+
+		let persisted_row = client
+			.query_one(
+				"SELECT decodex.rfc3339_utc(observed_at), \
+				 CASE WHEN resets_at IS NULL THEN NULL ELSE decodex.rfc3339_utc(resets_at) END \
+				 FROM decodex.quota_windows WHERE account_id = $1::text::uuid \
+				 AND window_class = $2 AND duration_seconds = $3",
+				&[&ACCOUNT_ID, &valid.window_class, &valid.duration_seconds],
+			)
+			.await?;
+		let persisted: (String, Option<String>) = (persisted_row.get(0), persisted_row.get(1));
+		let receipt: Value = client
+			.query_one(
+				"SELECT response FROM decodex.command_receipts WHERE idempotency_key = $1",
+				&[&key],
+			)
+			.await?
+			.get(0);
+
+		assert_eq!(persisted.0, expected_observed_at);
+		assert_eq!(persisted.1.as_deref(), expected_resets_at);
+		assert_eq!(receipt["observed_at"], expected_observed_at);
+		assert_eq!(receipt.get("resets_at").and_then(Value::as_str), expected_resets_at);
 	}
 	for (index, (observed_at, resets_at)) in [
 		("infinity", None),
@@ -419,6 +453,7 @@ async fn assert_quota_timestamp_validation(
 		("2026-07-13 07:00:00Z", None),
 		("2026-07-13T07:00:00", None),
 		("2026-07-13", None),
+		("0000-01-01T00:00:00Z", None),
 		("2026-07-13T07:00:00Z", Some("infinity")),
 		("2026-07-13T07:00:00Z", Some("next monday")),
 	]
@@ -449,6 +484,25 @@ async fn assert_quota_timestamp_validation(
 			.get(0);
 
 		assert_eq!(receipt_count, 0);
+	}
+	for statement in [
+		"UPDATE decodex.quota_windows SET observed_at = 'infinity' \
+		 WHERE account_id = '10000000-0000-0000-0000-000000000001' \
+		 AND window_class = 'usage' AND duration_seconds = 300",
+		"UPDATE decodex.quota_windows SET resets_at = '-infinity' \
+		 WHERE account_id = '10000000-0000-0000-0000-000000000001' \
+		 AND window_class = 'usage' AND duration_seconds = 300",
+		"UPDATE decodex.quota_windows SET updated_at = 'infinity' \
+		 WHERE account_id = '10000000-0000-0000-0000-000000000001' \
+		 AND window_class = 'usage' AND duration_seconds = 300",
+	] {
+		let error =
+			client.execute(statement, &[]).await.expect_err("infinite quota timestamp rejected");
+
+		assert_eq!(
+			error.as_db_error().and_then(|error| error.constraint()),
+			Some("quota_windows_finite_timestamps")
+		);
 	}
 
 	Ok(())
@@ -605,6 +659,24 @@ async fn assert_no_credential_columns_or_routing(client: &Client) -> Result<(), 
 }
 
 async fn assert_direct_delivered_invariant(client: &Client) -> Result<(), Box<dyn Error>> {
+	assert_invalid_delivered_evidence(client).await?;
+	assert_unicode_whitespace_evidence(client).await?;
+	assert_delivered_retention(client).await?;
+
+	let delivered_rows: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.outbox WHERE effect_key LIKE 'direct-delivered-%'",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(delivered_rows, 0);
+
+	Ok(())
+}
+
+async fn assert_invalid_delivered_evidence(client: &Client) -> Result<(), Box<dyn Error>> {
 	let invalid_evidence = [
 		("'receipt_recorded'", "NULL", "'{\"observed\":true}'"),
 		("'receipt_recorded'", "'null'", "'{\"observed\":true}'"),
@@ -635,9 +707,10 @@ async fn assert_direct_delivered_invariant(client: &Client) -> Result<(), Box<dy
 		let statement = format!(
 			"INSERT INTO decodex.outbox \
 			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
-			  effect_state, receipt, reconciliation, delivered_at) \
+			  effect_state, receipt, reconciliation, delivered_at, retain_until) \
 			 VALUES ('direct-delivered-{index}', 'account', 'direct-delivered', 1, '{{}}', \
-			  'delivered', {effect_state}, {receipt}, {reconciliation}, clock_timestamp())"
+			  'delivered', {effect_state}, {receipt}, {reconciliation}, \
+			  statement_timestamp(), statement_timestamp() + interval '1 day')"
 		);
 		let error = client
 			.execute(&statement, &[])
@@ -650,15 +723,83 @@ async fn assert_direct_delivered_invariant(client: &Client) -> Result<(), Box<dy
 		);
 	}
 
-	let delivered_rows: i64 = client
-		.query_one(
-			"SELECT count(*) FROM decodex.outbox WHERE effect_key LIKE 'direct-delivered-%'",
-			&[],
-		)
-		.await?
-		.get(0);
+	Ok(())
+}
 
-	assert_eq!(delivered_rows, 0);
+async fn assert_unicode_whitespace_evidence(client: &Client) -> Result<(), Box<dyn Error>> {
+	for (index, whitespace) in UNICODE_WHITESPACE_VECTORS.iter().enumerate() {
+		let whitespace_evidence = Value::String((*whitespace).into());
+		let meaningful_receipt = serde_json::json!({"provider_receipt": "receipt"});
+		let meaningful_reconciliation = serde_json::json!({"observed": true});
+
+		for (suffix, receipt, reconciliation) in [
+			("receipt", &whitespace_evidence, &meaningful_reconciliation),
+			("reconciliation", &meaningful_receipt, &whitespace_evidence),
+		] {
+			let effect_key = format!("direct-unicode-{index}-{suffix}");
+			let error = client
+				.execute(
+					"INSERT INTO decodex.outbox \
+					 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+					  effect_state, receipt, reconciliation, delivered_at, retain_until) \
+					 VALUES ($1, 'account', 'unicode-whitespace', 1, '{}', 'delivered', \
+					  'receipt_recorded', $2, $3, statement_timestamp(), \
+					  statement_timestamp() + interval '1 day')",
+					&[&effect_key, receipt, reconciliation],
+				)
+				.await
+				.expect_err("Unicode-whitespace-only evidence rejected");
+
+			assert_eq!(
+				error.as_db_error().map(|error| error.code()),
+				Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+			);
+		}
+	}
+
+	Ok(())
+}
+
+async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn Error>> {
+	for (index, retain_until) in [
+		"statement_timestamp()",
+		"statement_timestamp() + 31622400000 * interval '1 millisecond'",
+		"'infinity'::timestamptz",
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let statement = format!(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  effect_state, receipt, reconciliation, delivered_at, retain_until) \
+			 VALUES ('direct-retention-{index}', 'account', 'retention', 1, '{{}}', 'delivered', \
+			  'receipt_recorded', '{{\"provider_receipt\":\"receipt\"}}', '{{\"observed\":true}}', \
+			  statement_timestamp(), {retain_until})"
+		);
+		let error = client
+			.execute(&statement, &[])
+			.await
+			.expect_err("invalid delivered retention rejected");
+
+		assert_eq!(
+			error.as_db_error().map(|error| error.code()),
+			Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+		);
+	}
+
+	client
+		.batch_execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  effect_state, receipt, reconciliation, delivered_at, retain_until) \
+			 VALUES ('direct-retention-valid', 'account', 'retention', 1, '{}', 'delivered', \
+			  'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', '{\"observed\":true}', \
+			  statement_timestamp(), \
+			  statement_timestamp() + 31536000000 * interval '1 millisecond'); \
+			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-retention-valid'",
+		)
+		.await?;
 
 	Ok(())
 }
@@ -764,7 +905,17 @@ async fn assert_duration_validation(
 	let boundary_token =
 		boundary_claim.token.as_deref().expect("acquired boundary lease has token");
 
+	store
+		.renew_lease(
+			"duration/boundary",
+			HOLDER_A,
+			boundary_token,
+			Duration::from_millis(MAX_OPERATION_DURATION_MILLISECONDS),
+		)
+		.await?;
 	store.release_lease("duration/boundary", HOLDER_A, boundary_token).await?;
+
+	assert_direct_lease_duration_boundary(client).await?;
 
 	for duration in
 		[Duration::ZERO, Duration::from_nanos(1), Duration::from_micros(1_500), overflow, huge]
@@ -826,6 +977,76 @@ async fn assert_duration_validation(
 		.await?;
 
 	assert!(valid.acquired);
+
+	Ok(())
+}
+
+async fn assert_direct_lease_duration_boundary(client: &Client) -> Result<(), Box<dyn Error>> {
+	let direct_token: String = client
+		.query_one(
+			"SELECT lease_token::text FROM decodex.try_acquire_lease( \
+			 'duration/direct', $1::text::uuid, interval '365 days') WHERE acquired",
+			&[&HOLDER_A],
+		)
+		.await?
+		.get(0);
+
+	for statement in [
+		"SELECT * FROM decodex.try_acquire_lease( \
+		 'duration/direct-overflow', '20000000-0000-0000-0000-000000000001', interval '366 days')",
+		"SELECT * FROM decodex.try_acquire_lease( \
+		 'duration/direct-fractional', '20000000-0000-0000-0000-000000000001', interval '0.0005 seconds')",
+		"SELECT * FROM decodex.try_acquire_lease( \
+		 'duration/direct-month', '20000000-0000-0000-0000-000000000001', interval '1 month')",
+	] {
+		let error =
+			client.execute(statement, &[]).await.expect_err("invalid direct lease TTL rejected");
+
+		assert_eq!(
+			error.as_db_error().map(|error| error.code()),
+			Some(&tokio_postgres::error::SqlState::INVALID_PARAMETER_VALUE)
+		);
+	}
+	for ttl in ["interval '366 days'", "interval '0.0005 seconds'"] {
+		let statement = format!(
+			"SELECT decodex.renew_lease( \
+			 'duration/direct', '20000000-0000-0000-0000-000000000001', \
+			 '{direct_token}', {ttl})"
+		);
+		let error =
+			client.execute(&statement, &[]).await.expect_err("invalid direct renewal rejected");
+
+		assert_eq!(
+			error.as_db_error().map(|error| error.code()),
+			Some(&tokio_postgres::error::SqlState::INVALID_PARAMETER_VALUE)
+		);
+	}
+	for statement in [
+		"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) \
+			 VALUES ('duration/table-overflow', '20000000-0000-0000-0000-000000000001', \
+			 statement_timestamp() + 31622400000 * interval '1 millisecond', \
+			 statement_timestamp())",
+		"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) \
+			 VALUES ('duration/table-infinity', '20000000-0000-0000-0000-000000000001', \
+			 'infinity', statement_timestamp())",
+	] {
+		let error =
+			client.execute(statement, &[]).await.expect_err("invalid direct lease row rejected");
+
+		assert_eq!(
+			error.as_db_error().map(|error| error.code()),
+			Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+		);
+	}
+
+	client
+		.batch_execute(
+			"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) \
+			 VALUES ('duration/expired-row', '20000000-0000-0000-0000-000000000001', \
+			 statement_timestamp() - interval '1 day', statement_timestamp()); \
+			 DELETE FROM decodex.leases WHERE resource_key IN ('duration/direct', 'duration/expired-row')",
+		)
+		.await?;
 
 	Ok(())
 }
@@ -1043,47 +1264,7 @@ async fn assert_restart_reconciliation(
 		)
 		.await?;
 
-	for readback in [
-		Value::Null,
-		serde_json::json!(" \n "),
-		serde_json::json!({}),
-		serde_json::json!([]),
-		serde_json::json!({"nested": []}),
-	] {
-		assert!(matches!(
-			restarted
-				.reconcile_outbox(
-					recovered.id,
-					WORKER_A,
-					&recovered.claim_token,
-					&OutboxReconciliation {
-						readback,
-						outcome: ReconciliationOutcome::EffectPresent,
-					},
-					Duration::from_millis(1),
-					Duration::from_millis(1),
-				)
-				.await,
-			Err(StoreError::InvalidInput("outbox evidence must contain a non-empty JSON value"))
-		));
-	}
-
-	assert!(matches!(
-		restarted
-			.reconcile_outbox(
-				recovered.id,
-				WORKER_A,
-				&recovered.claim_token,
-				&OutboxReconciliation {
-					readback: serde_json::json!({"Authorization": "forbidden"}),
-					outcome: ReconciliationOutcome::EffectPresent,
-				},
-				Duration::from_millis(1),
-				Duration::from_millis(1),
-			)
-			.await,
-		Err(StoreError::CredentialRejected)
-	));
+	assert_invalid_reconciliation_evidence(&restarted, &recovered).await?;
 
 	restarted
 		.reconcile_outbox(
@@ -1124,6 +1305,59 @@ async fn assert_restart_reconciliation(
 	assert_eq!(restarted.prune_delivered_outbox(10).await?, 1);
 
 	assert_effect_absent_reconciliation(&restarted, client).await?;
+
+	Ok(())
+}
+
+async fn assert_invalid_reconciliation_evidence(
+	store: &PostgresStore,
+	claim: &OutboxClaim,
+) -> Result<(), Box<dyn Error>> {
+	for readback in [
+		Value::Null,
+		serde_json::json!(" \n "),
+		serde_json::json!("\u{a0}"),
+		serde_json::json!("\u{85}"),
+		serde_json::json!("\u{202f}"),
+		serde_json::json!("\u{3000}"),
+		serde_json::json!({}),
+		serde_json::json!([]),
+		serde_json::json!({"nested": []}),
+	] {
+		assert!(matches!(
+			store
+				.reconcile_outbox(
+					claim.id,
+					WORKER_A,
+					&claim.claim_token,
+					&OutboxReconciliation {
+						readback,
+						outcome: ReconciliationOutcome::EffectPresent,
+					},
+					Duration::from_millis(1),
+					Duration::from_millis(1),
+				)
+				.await,
+			Err(StoreError::InvalidInput("outbox evidence must contain a non-empty JSON value"))
+		));
+	}
+
+	assert!(matches!(
+		store
+			.reconcile_outbox(
+				claim.id,
+				WORKER_A,
+				&claim.claim_token,
+				&OutboxReconciliation {
+					readback: serde_json::json!({"Authorization": "forbidden"}),
+					outcome: ReconciliationOutcome::EffectPresent,
+				},
+				Duration::from_millis(1),
+				Duration::from_millis(1),
+			)
+			.await,
+		Err(StoreError::CredentialRejected)
+	));
 
 	Ok(())
 }
@@ -1174,6 +1408,10 @@ async fn assert_stale_outbox_claim_rejected(
 	for evidence in [
 		Value::Null,
 		serde_json::json!(" \t "),
+		serde_json::json!("\u{a0}"),
+		serde_json::json!("\u{85}"),
+		serde_json::json!("\u{202f}"),
+		serde_json::json!("\u{3000}"),
 		serde_json::json!({}),
 		serde_json::json!([]),
 		serde_json::json!({"nested": {}}),
