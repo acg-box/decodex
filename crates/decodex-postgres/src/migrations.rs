@@ -37,8 +37,8 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 	if pgcrypto != "1.4" {
 		return Err(StoreError::Incompatible(format!("pgcrypto version {pgcrypto}, expected 1.4")));
 	}
-	if history != 2 {
-		return Err(StoreError::Incompatible(format!("expected 2 migrations, found {history}")));
+	if history != 3 {
+		return Err(StoreError::Incompatible(format!("expected 3 migrations, found {history}")));
 	}
 
 	Ok(())

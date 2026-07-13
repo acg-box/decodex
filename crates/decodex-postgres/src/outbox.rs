@@ -120,6 +120,7 @@ impl PostgresStore {
 		claim_token: &str,
 		receipt: &Value,
 	) -> Result<(), StoreError> {
+		crate::ensure_meaningful_evidence(receipt)?;
 		crate::ensure_credential_negative_json(receipt)?;
 
 		self.owner_transition(
@@ -179,6 +180,7 @@ impl PostgresStore {
 		delay: Duration,
 		retention: Duration,
 	) -> Result<(), StoreError> {
+		crate::ensure_meaningful_evidence(&reconciliation.readback)?;
 		crate::ensure_credential_negative_json(&reconciliation.readback)?;
 
 		let delay_millis = crate::exact_milliseconds(delay)?;

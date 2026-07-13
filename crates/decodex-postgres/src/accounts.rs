@@ -1,5 +1,6 @@
 use deadpool_postgres::Transaction;
 use serde_json::{self, Value};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio_postgres::Row;
 
 use crate::{
@@ -216,10 +217,24 @@ fn validate_window(mutation: &QuotaWindowMutation) -> Result<(), StoreError> {
 		return Err(StoreError::InvalidInput("expected revision must be positive"));
 	}
 
+	validate_rfc3339(&mutation.observed_at, "quota observed_at must be RFC 3339")?;
+
+	if let Some(resets_at) = &mutation.resets_at {
+		validate_rfc3339(resets_at, "quota resets_at must be RFC 3339")?;
+	}
+
 	crate::ensure_credential_negative_text(&mutation.window_class)?;
 	crate::ensure_credential_negative_json(&mutation.metadata)?;
 
 	Ok(())
+}
+
+fn validate_rfc3339(value: &str, error: &'static str) -> Result<(), StoreError> {
+	if value.as_bytes().get(10) != Some(&b'T') {
+		return Err(StoreError::InvalidInput(error));
+	}
+
+	OffsetDateTime::parse(value, &Rfc3339).map(|_| ()).map_err(|_| StoreError::InvalidInput(error))
 }
 
 fn account_from_row(row: Row) -> Result<AccountMetadata, StoreError> {
