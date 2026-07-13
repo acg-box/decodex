@@ -35,8 +35,9 @@ The XY-1267 integration harness bootstraps the shipped two-migration history (`V
 foundation plus `V2` claim indexes), verifies collation-independent credential rejection in
 a Turkish ICU database, dumps the populated primary database, restores it into a fresh
 database, and reruns the restored contract. The primary contract also exercises
-caller-shifted lease/retry/retention anchors plus early and due delivered-row deletion.
-Intermediate schemas from unshipped branches are not compatibility targets.
+caller-shifted lease/retry/retention anchors, early and due delivered-row deletion, and
+forbidden outbox truncation. Intermediate schemas from unshipped branches are not
+compatibility targets.
 
 ## Validation scope selection
 

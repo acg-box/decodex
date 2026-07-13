@@ -960,6 +960,16 @@ async fn assert_delivered_is_terminal(
 		Some("outbox_retention_pruning_only")
 	);
 
+	let truncate_error = client
+		.batch_execute("TRUNCATE decodex.outbox")
+		.await
+		.expect_err("outbox truncate cannot bypass retained delivery evidence");
+
+	assert_eq!(
+		truncate_error.as_db_error().and_then(|error| error.constraint()),
+		Some("outbox_truncate_forbidden")
+	);
+
 	let reinsert_error = client
 		.execute(
 			"INSERT INTO decodex.outbox \
