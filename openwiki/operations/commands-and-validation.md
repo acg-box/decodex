@@ -29,10 +29,11 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Site type check | `cargo make check-node` or `npm --prefix site run check` |
 | Site build | `cargo make build` or `npm --prefix site run build` |
 
-`cargo make test` runs both `cargo nextest run --workspace --all-targets --all-features` and the vNext architecture test (`Makefile.toml`). The XY-1267 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. XY-1267 exercises fresh bootstrap plus populated dump/restore; the XY-1264 proof additionally exercises rollback, blob, and cache behavior (`scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
+`cargo make test` runs both `cargo nextest run --workspace --all-targets --all-features` and the vNext architecture test (`Makefile.toml`). The XY-1267 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. XY-1267 exercises fresh C-locale bootstrap, a Turkish ICU credential-boundary database, and populated dump/restore; the XY-1264 proof additionally exercises rollback, blob, and cache behavior (`scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
 
 The XY-1267 integration harness bootstraps the shipped two-migration history (`V1`
-foundation plus `V2` claim indexes), dumps the populated database, restores it into a fresh
+foundation plus `V2` claim indexes), verifies collation-independent credential rejection in
+a Turkish ICU database, dumps the populated primary database, restores it into a fresh
 database, and reruns the restored contract. Intermediate schemas from unshipped branches are
 not compatibility targets.
 

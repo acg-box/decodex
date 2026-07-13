@@ -33,13 +33,24 @@ AS $$
 	)
 $$;
 
+CREATE FUNCTION decodex.ascii_lower(value text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+STRICT
+AS $$
+	SELECT translate(value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
+$$;
+
 CREATE FUNCTION decodex.has_credential_material(value text)
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
 STRICT
 AS $$
-	SELECT decodex.normalize_unicode_whitespace(value) ~* '(^|[[:space:][:punct:]])(bearer[[:space:]]+[[:alnum:]_.~+/-]{8,}|basic[[:space:]]+[[:alnum:]+/]{8,}={0,2})|(^|[^[:alnum:]])(sk-[[:alnum:]_-]{8,}|(sk|pk|rk)_(live|test|proj)?[[:alnum:]_-]{8,}|xox[baprs]-[[:alnum:]-]{8,}|glpat-[[:alnum:]_-]{8,}|npm_[[:alnum:]]{8,})|gh[pousr]_[[:alnum:]]{20,}|eyj[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}|-----begin[^-]*private[[:space:]]+key-----|(password|passphrase|secret|token|authorization)[[:space:]]*[:=][[:space:]]*[^[:space:]]{4,}|[a-z][a-z0-9+.-]*://[^/:[:space:]]+:[^@[:space:]]+@|akia[0-9a-z]{16}'
+	SELECT (
+		decodex.ascii_lower(decodex.normalize_unicode_whitespace(value)) COLLATE "C"
+	) ~ '(^|[[:space:][:punct:]])(bearer[[:space:]]+[[:alnum:]_.~+/-]{8,}|basic[[:space:]]+[[:alnum:]+/]{8,}={0,2})|(^|[^[:alnum:]])(sk-[[:alnum:]_-]{8,}|(sk|pk|rk)_(live|test|proj)?[[:alnum:]_-]{8,}|xox[baprs]-[[:alnum:]-]{8,}|glpat-[[:alnum:]_-]{8,}|npm_[[:alnum:]]{8,})|gh[pousr]_[[:alnum:]]{20,}|eyj[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}|-----begin[^-]*private[[:space:]]+key-----|(password|passphrase|secret|token|authorization)[[:space:]]*[:=][[:space:]]*[^[:space:]]{4,}|[a-z][a-z0-9+.-]*://[^/:[:space:]]+:[^@[:space:]]+@|akia[0-9a-z]{16}'
 $$;
 
 CREATE FUNCTION decodex.has_credential_material(document jsonb)
@@ -56,8 +67,13 @@ BEGIN
 		WHEN 'object' THEN
 			FOR entry IN SELECT key, value FROM jsonb_each(document)
 			LOOP
-				normalized_key := regexp_replace(lower(entry.key), '[^a-z0-9]', '', 'g');
-				IF normalized_key ~ '(credentials?|password|passphrase|privatekey|secret|authorization|bearer|apikey|cookie|token|session)$'
+				normalized_key := regexp_replace(
+					decodex.ascii_lower(entry.key) COLLATE "C",
+					'[^a-z0-9]',
+					'',
+					'g'
+				);
+				IF (normalized_key COLLATE "C") ~ '(credentials?|password|passphrase|privatekey|secret|authorization|bearer|apikey|cookie|token|session)$'
 					OR decodex.has_credential_material(entry.value) THEN
 					RETURN true;
 				END IF;
@@ -123,6 +139,18 @@ STABLE
 STRICT
 AS $$
 	SELECT to_char(value AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+$$;
+
+CREATE FUNCTION decodex.is_valid_operation_duration(value interval)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+STRICT
+AS $$
+	SELECT extract(year FROM value) = 0
+		AND extract(month FROM value) = 0
+		AND extract(epoch FROM value) * 1000 BETWEEN 1 AND 31536000000
+		AND extract(epoch FROM value) * 1000 = trunc(extract(epoch FROM value) * 1000)
 $$;
 
 CREATE TABLE decodex.accounts (
@@ -213,7 +241,8 @@ CREATE TABLE decodex.leases (
 	updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
 	CONSTRAINT leases_finite_timestamps CHECK (isfinite(expires_at) AND isfinite(updated_at)),
 	CONSTRAINT leases_bounded_expiration CHECK (
-		expires_at <= updated_at + 31536000000 * interval '1 millisecond'
+		expires_at <= updated_at
+		OR decodex.is_valid_operation_duration(expires_at - updated_at)
 	),
 	CONSTRAINT leases_no_credentials CHECK (
 		NOT decodex.has_credential_material(resource_key)
@@ -234,6 +263,7 @@ CREATE TABLE decodex.outbox (
 	available_at timestamptz NOT NULL DEFAULT clock_timestamp(),
 	lease_holder uuid,
 	claim_token uuid,
+	lease_acquired_at timestamptz,
 	lease_expires_at timestamptz,
 	receipt jsonb,
 	reconciliation jsonb,
@@ -246,6 +276,7 @@ CREATE TABLE decodex.outbox (
 	retain_until timestamptz,
 	CONSTRAINT outbox_finite_timestamps CHECK (
 		isfinite(available_at)
+		AND (lease_acquired_at IS NULL OR isfinite(lease_acquired_at))
 		AND (lease_expires_at IS NULL OR isfinite(lease_expires_at))
 		AND isfinite(created_at)
 		AND (delivered_at IS NULL OR isfinite(delivered_at))
@@ -261,11 +292,18 @@ CREATE TABLE decodex.outbox (
 		AND (reconciliation IS NULL OR NOT decodex.has_credential_material(reconciliation))
 		AND (last_failure_code IS NULL OR NOT decodex.has_credential_material(last_failure_code))
 	),
-	CHECK (
+	CONSTRAINT outbox_claim_shape CHECK (
 		(state = 'in_flight' AND lease_holder IS NOT NULL AND claim_token IS NOT NULL
-			AND lease_expires_at IS NOT NULL)
+			AND lease_acquired_at IS NOT NULL AND lease_expires_at IS NOT NULL)
 		OR (state <> 'in_flight' AND lease_holder IS NULL AND claim_token IS NULL
-			AND lease_expires_at IS NULL)
+			AND lease_acquired_at IS NULL AND lease_expires_at IS NULL)
+	),
+	CONSTRAINT outbox_in_flight_lease_duration CHECK (
+		state <> 'in_flight'
+		OR (
+			lease_acquired_at >= created_at
+			AND decodex.is_valid_operation_duration(lease_expires_at - lease_acquired_at)
+		)
 	),
 	CONSTRAINT outbox_meaningful_receipt_state CHECK (
 		(effect_state = 'receipt_recorded')
@@ -287,10 +325,11 @@ CREATE TABLE decodex.outbox (
 	),
 	CONSTRAINT outbox_delivered_retention CHECK (
 		state <> 'delivered'
-		OR (
-			retain_until > delivered_at
-			AND retain_until <= delivered_at + 31536000000 * interval '1 millisecond'
-		)
+		OR decodex.is_valid_operation_duration(retain_until - delivered_at)
+	),
+	CONSTRAINT outbox_terminal_chronology CHECK (
+		(delivered_at IS NULL OR delivered_at >= created_at)
+		AND (dead_lettered_at IS NULL OR dead_lettered_at >= created_at)
 	),
 	CHECK ((state = 'dead_letter') = (dead_lettered_at IS NOT NULL))
 );
@@ -307,6 +346,24 @@ $$;
 CREATE TRIGGER activity_append_only
 BEFORE UPDATE OR DELETE ON decodex.activity
 FOR EACH ROW EXECUTE FUNCTION decodex.forbid_mutation_of_activity();
+
+CREATE FUNCTION decodex.forbid_delivered_outbox_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	IF OLD.state = 'delivered' AND NEW IS DISTINCT FROM OLD THEN
+		RAISE EXCEPTION 'delivered outbox rows are immutable until retention pruning'
+			USING ERRCODE = '55000';
+	END IF;
+
+	RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER outbox_delivered_is_terminal
+BEFORE UPDATE ON decodex.outbox
+FOR EACH ROW EXECUTE FUNCTION decodex.forbid_delivered_outbox_mutation();
 
 CREATE FUNCTION decodex.lease_ttl_milliseconds(value interval)
 RETURNS bigint
