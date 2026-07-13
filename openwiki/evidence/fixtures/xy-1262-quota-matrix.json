@@ -1,0 +1,132 @@
+{
+  "schema": "decodex/vnext-quota-matrix/1",
+  "window_identity": {
+    "five_hour": { "duration_minutes": 300 },
+    "seven_day": { "duration_minutes": 10080 }
+  },
+  "rules": {
+    "positional_fields_are_identity": false,
+    "account_ready_at": "maximum reset_at among that account's fresh depleted windows",
+    "all_accounts_ready_at": "minimum account_ready_at among accounts excluded only by usage",
+    "elapsed_reset_transition": "unknown until a fresh observation proves availability",
+    "stale_transition": "unknown and bounded probe; never depleted or available by inference"
+  },
+  "cases": [
+    {
+      "id": "available_both_windows",
+      "input": {
+        "auth": "valid",
+        "observed_at": 1000,
+        "now": 1001,
+        "windows": [
+          { "source_field": "primary", "duration_minutes": 300, "remaining_percent": 80, "reset_at": 2000 },
+          { "source_field": "secondary", "duration_minutes": 10080, "remaining_percent": 40, "reset_at": 9000 }
+        ]
+      },
+      "expect": { "state": "available", "decision": "usable", "ready_at": 1001 }
+    },
+    {
+      "id": "depleted_five_hour",
+      "input": {
+        "auth": "valid",
+        "observed_at": 1000,
+        "now": 1001,
+        "windows": [
+          { "source_field": "primary", "duration_minutes": 300, "remaining_percent": 0, "reset_at": 2000 },
+          { "source_field": "secondary", "duration_minutes": 10080, "remaining_percent": 40, "reset_at": 9000 }
+        ]
+      },
+      "expect": { "state": "depleted", "decision": "excluded_usage", "ready_at": 2000 }
+    },
+    {
+      "id": "depleted_seven_day",
+      "input": {
+        "auth": "valid",
+        "observed_at": 1000,
+        "now": 1001,
+        "windows": [
+          { "source_field": "primary", "duration_minutes": 300, "remaining_percent": 80, "reset_at": 2000 },
+          { "source_field": "secondary", "duration_minutes": 10080, "remaining_percent": 0, "reset_at": 9000 }
+        ]
+      },
+      "expect": { "state": "depleted", "decision": "excluded_usage", "ready_at": 9000 }
+    },
+    {
+      "id": "unknown_missing_five_hour",
+      "input": {
+        "auth": "valid",
+        "observed_at": 1000,
+        "now": 1001,
+        "windows": [
+          { "source_field": "primary", "duration_minutes": 10080, "remaining_percent": 40, "reset_at": 9000 }
+        ]
+      },
+      "expect": { "state": "unknown", "decision": "probe_required", "ready_at": null }
+    },
+    {
+      "id": "stale_observation",
+      "input": {
+        "auth": "valid",
+        "observed_at": 1000,
+        "stale_after_seconds": 300,
+        "now": 1401,
+        "windows": [
+          { "source_field": "primary", "duration_minutes": 300, "remaining_percent": 80, "reset_at": 2000 },
+          { "source_field": "secondary", "duration_minutes": 10080, "remaining_percent": 40, "reset_at": 9000 }
+        ]
+      },
+      "expect": { "state": "unknown", "decision": "probe_required", "ready_at": null }
+    },
+    {
+      "id": "reversed_positional_fields",
+      "input": {
+        "auth": "valid",
+        "observed_at": 1000,
+        "now": 1001,
+        "windows": [
+          { "source_field": "primary", "duration_minutes": 10080, "remaining_percent": 0, "reset_at": 9000 },
+          { "source_field": "secondary", "duration_minutes": 300, "remaining_percent": 80, "reset_at": 2000 }
+        ]
+      },
+      "expect": {
+        "state": "depleted",
+        "decision": "excluded_usage",
+        "ready_at": 9000,
+        "classified": { "five_hour_source": "secondary", "seven_day_source": "primary" }
+      }
+    },
+    {
+      "id": "depletion_reset_elapsed",
+      "input": {
+        "auth": "valid",
+        "observed_at": 1000,
+        "now": 2001,
+        "windows": [
+          { "source_field": "primary", "duration_minutes": 300, "remaining_percent": 0, "reset_at": 2000 },
+          { "source_field": "secondary", "duration_minutes": 10080, "remaining_percent": 40, "reset_at": 9000 }
+        ]
+      },
+      "expect": { "state": "unknown", "decision": "probe_required", "ready_at": null }
+    },
+    {
+      "id": "auth_failed",
+      "input": { "auth": "failed", "observed_at": 1000, "now": 1001, "windows": [] },
+      "expect": { "state": "auth_failed", "decision": "excluded_auth", "ready_at": null }
+    },
+    {
+      "id": "all_accounts_depleted",
+      "input": {
+        "accounts": [
+          { "id": "A", "depleted_resets_at": [2000, 9000] },
+          { "id": "B", "depleted_resets_at": [3000] }
+        ]
+      },
+      "expect": {
+        "state": "depleted",
+        "decision": "waiting_usage",
+        "account_ready_at": { "A": 9000, "B": 3000 },
+        "earliest_ready_at": 3000
+      }
+    }
+  ]
+}

@@ -52,6 +52,29 @@ planning metadata, not product/runtime identity.
 12. Remote binding stays disabled until authentication, TLS, authorization, and
     redaction gates pass (XY-1299).
 
+### XY-1262 evidence status
+
+The [Codex runtime proof](../evidence/vnext-codex-runtime-proof.md) at
+`f9d6c4e70198e94e5b9461b8cac7518ae14d41ef` supplies partial evidence for shared-home
+persistence, creation-receipt ownership isolation, exact-ID Codex Desktop readback,
+healthy-account same-thread continuation, Context-Pack mechanics, explicit archive
+readback, live schema negotiation, native run-local collaboration shape, and the
+duration-typed quota decision table.
+
+The full visibility gate remains failed: the persistent probe thread was returned by
+app-server `thread/list(searchTerm=...)` and was readable by exact ID through Codex
+Desktop, but app-server `thread/search` and Codex Desktop global title query did not
+return it during the experiment. Dependent implementation must not equate rollout/list
+visibility with sidebar/global-search discovery. A desktop restart/indexing proof that
+finds the retained title is required before this sub-gate is accepted.
+
+The generated schema also advertised paginated thread history while live
+`thread/start(historyMode=paginated)` returned JSON-RPC `-32601`; adapter capability is
+therefore a negotiated live result keyed by Codex build, not a schema-only inference.
+The full XY-1262 gate also remains failed because the available accounts were not
+depleted: no real quota-failure exclusion/failover was observed, and the Context-Pack
+fallback followed an authentication rejection rather than a same-thread resume denial.
+
 ## Cutover gate
 
 Cutover may occur only after replacement behavior has accepted tests and the v0.2
