@@ -1,8 +1,6 @@
 use std::time::Duration;
 
-use crate::{
-	LeaseClaim, PostgresStore, StoreError, ensure_credential_negative_text, exact_milliseconds,
-};
+use crate::{LeaseClaim, PostgresStore, StoreError};
 
 impl PostgresStore {
 	/// Atomically acquire, reclaim, or renew a lease. A different live holder receives a
@@ -14,7 +12,8 @@ impl PostgresStore {
 		ttl: Duration,
 	) -> Result<LeaseClaim, StoreError> {
 		validate_lease_resource_key(resource_key)?;
-		let ttl_millis = exact_milliseconds(ttl)?;
+
+		let ttl_millis = crate::exact_milliseconds(ttl)?;
 		let row = self
 			.pool()
 			.get()
@@ -38,7 +37,8 @@ impl PostgresStore {
 		ttl: Duration,
 	) -> Result<(), StoreError> {
 		validate_lease_resource_key(resource_key)?;
-		let ttl_millis = exact_milliseconds(ttl)?;
+
+		let ttl_millis = crate::exact_milliseconds(ttl)?;
 		let renewed: Option<bool> = self
 			.pool()
 			.get()
@@ -81,7 +81,8 @@ fn validate_lease_resource_key(resource_key: &str) -> Result<(), StoreError> {
 	if resource_key.is_empty() || resource_key.len() > 256 {
 		return Err(StoreError::InvalidInput("lease resource key must contain 1..=256 bytes"));
 	}
-	ensure_credential_negative_text(resource_key)?;
+
+	crate::ensure_credential_negative_text(resource_key)?;
 
 	Ok(())
 }

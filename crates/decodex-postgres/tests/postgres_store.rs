@@ -4,9 +4,11 @@ use std::{collections::HashSet, env, error::Error, str::FromStr as _, time::Dura
 
 use deadpool_postgres as _;
 use refinery as _;
+use regex as _;
+use serde_json::Value;
 use sha2 as _;
 use tokio::{task::JoinSet, time};
-use tokio_postgres::{Client, Config, NoTls};
+use tokio_postgres::{Client, Config, NoTls, types::ToSql};
 
 use decodex_core::{Availability, ProductState as _};
 use decodex_postgres::{
@@ -233,7 +235,7 @@ async fn assert_inert_window_and_credential_boundary(
 		confidence: 0.0,
 		metadata: serde_json::json!({
 			"observation": "unknown",
-			"token_budget": 8192,
+			"token_budget": 8_192,
 			"session_id": "ordinary-session-id",
 		}),
 		expected_revision: None,
@@ -245,53 +247,8 @@ async fn assert_inert_window_and_credential_boundary(
 	assert_eq!(window.remaining_amount, None);
 	assert_eq!(window.confidence, 0.0);
 	assert!(CommandIdentity::new("token_budget/session_id", b"ordinary-id").is_ok());
-	for value in ["Bearer abcdefghijklmnop", "Basic dXNlcjpwYXNz", "sk-proj-0123456789"] {
-		assert!(matches!(
-			CommandIdentity::new(value, b"forbidden"),
-			Err(StoreError::CredentialRejected)
-		));
-	}
 
-	let forbidden_label = AccountMutation {
-		account_id: AccountId::new("10000000-0000-0000-0000-000000000002")?,
-		display_label: "Basic dXNlcjpwYXNz".into(),
-		state: AccountState::Unknown,
-		metadata: serde_json::json!({}),
-		expected_revision: None,
-	};
-	let safe_command = CommandIdentity::new("forbidden-label", b"forbidden-label")?;
-
-	assert!(matches!(
-		store.mutate_account(&safe_command, &forbidden_label).await,
-		Err(StoreError::CredentialRejected)
-	));
-
-	let mut forbidden_window_class = mutation.clone();
-
-	forbidden_window_class.window_class = "sk_proj_0123456789".into();
-
-	assert!(matches!(
-		store.mutate_quota_window(&safe_command, &forbidden_window_class).await,
-		Err(StoreError::CredentialRejected)
-	));
-	assert!(matches!(
-		store
-			.try_acquire_lease("Bearer abcdefghijklmnop", HOLDER_A, Duration::from_millis(1),)
-			.await,
-		Err(StoreError::CredentialRejected)
-	));
-	assert!(matches!(
-		store
-			.retry_outbox_before_effect(
-				0,
-				WORKER_A,
-				WORKER_A,
-				"sk_proj_0123456789",
-				Duration::from_millis(1),
-			)
-			.await,
-		Err(StoreError::CredentialRejected)
-	));
+	assert_api_credential_boundary(store, &mutation).await?;
 
 	for (key, command_key) in [
 		("refresh_token", "window-credential"),
@@ -345,6 +302,61 @@ async fn assert_inert_window_and_credential_boundary(
 	}
 
 	assert_direct_credential_and_scope_boundary(client).await
+}
+
+async fn assert_api_credential_boundary(
+	store: &PostgresStore,
+	mutation: &QuotaWindowMutation,
+) -> Result<(), Box<dyn Error>> {
+	for value in ["Bearer abcdefghijklmnop", "Basic dXNlcjpwYXNz", "sk-proj-0123456789"] {
+		assert!(matches!(
+			CommandIdentity::new(value, b"forbidden"),
+			Err(StoreError::CredentialRejected)
+		));
+	}
+
+	let forbidden_label = AccountMutation {
+		account_id: AccountId::new("10000000-0000-0000-0000-000000000002")?,
+		display_label: "Basic dXNlcjpwYXNz".into(),
+		state: AccountState::Unknown,
+		metadata: serde_json::json!({}),
+		expected_revision: None,
+	};
+	let safe_command = CommandIdentity::new("forbidden-label", b"forbidden-label")?;
+
+	assert!(matches!(
+		store.mutate_account(&safe_command, &forbidden_label).await,
+		Err(StoreError::CredentialRejected)
+	));
+
+	let mut forbidden_window_class = mutation.clone();
+
+	forbidden_window_class.window_class = "sk_proj_0123456789".into();
+
+	assert!(matches!(
+		store.mutate_quota_window(&safe_command, &forbidden_window_class).await,
+		Err(StoreError::CredentialRejected)
+	));
+	assert!(matches!(
+		store
+			.try_acquire_lease("Bearer abcdefghijklmnop", HOLDER_A, Duration::from_millis(1),)
+			.await,
+		Err(StoreError::CredentialRejected)
+	));
+	assert!(matches!(
+		store
+			.retry_outbox_before_effect(
+				0,
+				WORKER_A,
+				WORKER_A,
+				"sk_proj_0123456789",
+				Duration::from_millis(1),
+			)
+			.await,
+		Err(StoreError::CredentialRejected)
+	));
+
+	Ok(())
 }
 
 async fn assert_direct_credential_and_scope_boundary(
@@ -470,7 +482,7 @@ async fn assert_direct_credential_and_scope_boundary(
 async fn assert_credential_constraint(
 	client: &Client,
 	statement: &str,
-	parameters: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+	parameters: &[&(dyn ToSql + Sync)],
 	constraint: &str,
 ) -> Result<(), Box<dyn Error>> {
 	let error = client.execute(statement, parameters).await.expect_err("credential row rejected");
@@ -743,61 +755,10 @@ async fn assert_restart_reconciliation(
 	assert_eq!(recovered.id, ambiguous.id);
 	assert!(recovered.requires_reconciliation);
 	assert_ne!(recovered.claim_token, ambiguous.claim_token);
-	assert!(matches!(
-		restarted.begin_outbox_effect(recovered.id, WORKER_A, &ambiguous.claim_token).await,
-		Err(StoreError::OwnershipLost("outbox claim"))
-	));
-	assert!(matches!(
-		restarted
-			.renew_outbox_claim(
-				recovered.id,
-				WORKER_A,
-				&ambiguous.claim_token,
-				Duration::from_secs(1),
-			)
-			.await,
-		Err(StoreError::OwnershipLost("outbox claim"))
-	));
-	assert!(matches!(
-		restarted
-			.record_outbox_receipt(
-				recovered.id,
-				WORKER_A,
-				&ambiguous.claim_token,
-				&serde_json::json!({"provider_receipt": "stale"}),
-			)
-			.await,
-		Err(StoreError::OwnershipLost("outbox claim"))
-	));
-	assert!(matches!(
-		restarted
-			.record_outbox_receipt(
-				recovered.id,
-				WORKER_A,
-				&recovered.claim_token,
-				&serde_json::json!({"accessToken": "forbidden"}),
-			)
-			.await,
-		Err(StoreError::CredentialRejected)
-	));
-	assert!(matches!(
-		restarted
-			.reconcile_outbox(
-				recovered.id,
-				WORKER_A,
-				&recovered.claim_token,
-				&OutboxReconciliation {
-					readback: serde_json::json!({"observed": true}),
-					outcome: ReconciliationOutcome::EffectPresent,
-				},
-				Duration::from_millis(1),
-				Duration::from_millis(1),
-			)
-			.await,
-		Err(StoreError::OwnershipLost("outbox claim"))
-	));
 
-	let receiptless_state: (String, String, Option<serde_json::Value>) = {
+	assert_stale_outbox_claim_rejected(&restarted, ambiguous, &recovered).await?;
+
+	let receiptless_state: (String, String, Option<Value>) = {
 		let row = client
 			.query_one(
 				"SELECT state::text, effect_state::text, receipt FROM decodex.outbox WHERE id = $1",
@@ -855,6 +816,68 @@ async fn assert_restart_reconciliation(
 	assert_eq!(restarted.prune_delivered_outbox(10).await?, 1);
 
 	assert_effect_absent_reconciliation(&restarted, client).await?;
+
+	Ok(())
+}
+
+async fn assert_stale_outbox_claim_rejected(
+	store: &PostgresStore,
+	ambiguous: &OutboxClaim,
+	recovered: &OutboxClaim,
+) -> Result<(), Box<dyn Error>> {
+	assert!(matches!(
+		store.begin_outbox_effect(recovered.id, WORKER_A, &ambiguous.claim_token).await,
+		Err(StoreError::OwnershipLost("outbox claim"))
+	));
+	assert!(matches!(
+		store
+			.renew_outbox_claim(
+				recovered.id,
+				WORKER_A,
+				&ambiguous.claim_token,
+				Duration::from_secs(1),
+			)
+			.await,
+		Err(StoreError::OwnershipLost("outbox claim"))
+	));
+	assert!(matches!(
+		store
+			.record_outbox_receipt(
+				recovered.id,
+				WORKER_A,
+				&ambiguous.claim_token,
+				&serde_json::json!({"provider_receipt": "stale"}),
+			)
+			.await,
+		Err(StoreError::OwnershipLost("outbox claim"))
+	));
+	assert!(matches!(
+		store
+			.record_outbox_receipt(
+				recovered.id,
+				WORKER_A,
+				&recovered.claim_token,
+				&serde_json::json!({"accessToken": "forbidden"}),
+			)
+			.await,
+		Err(StoreError::CredentialRejected)
+	));
+	assert!(matches!(
+		store
+			.reconcile_outbox(
+				recovered.id,
+				WORKER_A,
+				&recovered.claim_token,
+				&OutboxReconciliation {
+					readback: serde_json::json!({"observed": true}),
+					outcome: ReconciliationOutcome::EffectPresent,
+				},
+				Duration::from_millis(1),
+				Duration::from_millis(1),
+			)
+			.await,
+		Err(StoreError::OwnershipLost("outbox claim"))
+	));
 
 	Ok(())
 }

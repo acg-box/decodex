@@ -2,10 +2,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::{
-	OutboxClaim, OutboxReconciliation, PostgresStore, ReconciliationOutcome, StoreError,
-	ensure_credential_negative_json, ensure_credential_negative_text, exact_milliseconds,
-};
+use crate::{OutboxClaim, OutboxReconciliation, PostgresStore, ReconciliationOutcome, StoreError};
 
 impl PostgresStore {
 	/// Claim at most `limit` available rows through `FOR UPDATE SKIP LOCKED`. Expired claims
@@ -19,8 +16,9 @@ impl PostgresStore {
 		if limit == 0 || limit > 1_000 {
 			return Err(StoreError::InvalidInput("outbox claim limit must be within 1..=1000"));
 		}
+
 		let limit = i64::from(limit);
-		let lease_millis = exact_milliseconds(lease)?;
+		let lease_millis = crate::exact_milliseconds(lease)?;
 		let mut client = self.pool().get().await?;
 		let transaction = client.transaction().await?;
 		let rows = transaction
@@ -76,7 +74,7 @@ impl PostgresStore {
 		claim_token: &str,
 		lease: Duration,
 	) -> Result<(), StoreError> {
-		let lease_millis = exact_milliseconds(lease)?;
+		let lease_millis = crate::exact_milliseconds(lease)?;
 		let updated = self
 			.pool()
 			.get()
@@ -122,7 +120,7 @@ impl PostgresStore {
 		claim_token: &str,
 		receipt: &Value,
 	) -> Result<(), StoreError> {
-		ensure_credential_negative_json(receipt)?;
+		crate::ensure_credential_negative_json(receipt)?;
 
 		self.owner_transition(
 			"UPDATE decodex.outbox SET effect_state = 'receipt_recorded', receipt = $4 \
@@ -147,7 +145,8 @@ impl PostgresStore {
 		delay: Duration,
 	) -> Result<(), StoreError> {
 		validate_failure_code(failure_code)?;
-		let delay_millis = exact_milliseconds(delay)?;
+
+		let delay_millis = crate::exact_milliseconds(delay)?;
 		let updated = self
 			.pool()
 			.get()
@@ -180,9 +179,10 @@ impl PostgresStore {
 		delay: Duration,
 		retention: Duration,
 	) -> Result<(), StoreError> {
-		ensure_credential_negative_json(&reconciliation.readback)?;
-		let delay_millis = exact_milliseconds(delay)?;
-		let retention_millis = exact_milliseconds(retention)?;
+		crate::ensure_credential_negative_json(&reconciliation.readback)?;
+
+		let delay_millis = crate::exact_milliseconds(delay)?;
+		let retention_millis = crate::exact_milliseconds(retention)?;
 		let outcome = match reconciliation.outcome {
 			ReconciliationOutcome::EffectPresent => "present",
 			ReconciliationOutcome::EffectAbsent => "absent",
@@ -273,7 +273,7 @@ fn validate_failure_code(failure_code: &str) -> Result<(), StoreError> {
 		});
 
 	if valid {
-		ensure_credential_negative_text(failure_code)
+		crate::ensure_credential_negative_text(failure_code)
 	} else {
 		Err(StoreError::InvalidInput("outbox failure code must be lower snake case"))
 	}

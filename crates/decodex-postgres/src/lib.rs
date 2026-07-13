@@ -160,6 +160,7 @@ pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), Store
 				if credential_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
+
 				ensure_credential_negative_json(value)?;
 			},
 		Value::Array(entries) =>
