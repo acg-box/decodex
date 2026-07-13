@@ -40,8 +40,14 @@ pub const REQUIRED_POSTGRES_MAJOR: u32 = 18;
 pub const NOT_CONFIGURED: &str = "PostgreSQL store requires explicit verified configuration";
 /// Stable reason returned after the bounded connection pool is explicitly closed.
 pub const CLOSED: &str = "PostgreSQL store connection pool is closed";
+/// Maximum lease, retry, and retention duration accepted by the product-state adapter.
+/// Operational schedules are bounded to one year so interval multiplication and addition
+/// to PostgreSQL's current timestamp remain far inside both database representations.
+pub const MAX_OPERATION_DURATION_MILLISECONDS: u64 = 365 * 24 * 60 * 60 * 1_000;
 
-const INVALID_DURATION: &str = "duration must be a positive whole number of milliseconds";
+const INVALID_DURATION: &str =
+	"duration must be a positive whole number of milliseconds no greater than 365 days";
+const INVALID_EVIDENCE: &str = "outbox evidence must contain a non-empty JSON value";
 
 /// Product-state authority selected by this infrastructure owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -142,7 +148,26 @@ pub(crate) fn exact_milliseconds(duration: Duration) -> Result<i64, StoreError> 
 		return Err(StoreError::InvalidInput(INVALID_DURATION));
 	}
 
-	i64::try_from(duration.as_millis()).map_err(|_| StoreError::InvalidInput(INVALID_DURATION))
+	let milliseconds = u64::try_from(duration.as_millis())
+		.map_err(|_| StoreError::InvalidInput(INVALID_DURATION))?;
+
+	if milliseconds > MAX_OPERATION_DURATION_MILLISECONDS {
+		return Err(StoreError::InvalidInput(INVALID_DURATION));
+	}
+
+	i64::try_from(milliseconds).map_err(|_| StoreError::InvalidInput(INVALID_DURATION))
+}
+
+pub(crate) fn ensure_meaningful_evidence(value: &Value) -> Result<(), StoreError> {
+	let meaningful = match value {
+		Value::Null => false,
+		Value::Bool(_) | Value::Number(_) => true,
+		Value::String(value) => !value.trim().is_empty(),
+		Value::Array(entries) => entries.iter().any(is_meaningful_evidence),
+		Value::Object(entries) => entries.values().any(is_meaningful_evidence),
+	};
+
+	if meaningful { Ok(()) } else { Err(StoreError::InvalidInput(INVALID_EVIDENCE)) }
 }
 
 pub(crate) fn ensure_credential_negative_text(value: &str) -> Result<(), StoreError> {
@@ -172,6 +197,10 @@ pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), Store
 	}
 
 	Ok(())
+}
+
+fn is_meaningful_evidence(value: &Value) -> bool {
+	ensure_meaningful_evidence(value).is_ok()
 }
 
 fn credential_key(key: &str) -> bool {

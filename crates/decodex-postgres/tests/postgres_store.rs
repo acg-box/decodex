@@ -2,6 +2,7 @@
 
 use std::{collections::HashSet, env, error::Error, str::FromStr as _, time::Duration};
 
+use ::time as _;
 use deadpool_postgres as _;
 use refinery as _;
 use regex as _;
@@ -12,8 +13,9 @@ use tokio_postgres::{Client, Config, NoTls, types::ToSql};
 
 use decodex_core::{Availability, ProductState as _};
 use decodex_postgres::{
-	AccountId, AccountMutation, AccountState, CLOSED, CommandIdentity, OutboxClaim,
-	OutboxReconciliation, PostgresStore, QuotaWindowMutation, ReconciliationOutcome, StoreError,
+	AccountId, AccountMutation, AccountState, CLOSED, CommandIdentity,
+	MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation, PostgresStore,
+	QuotaWindowMutation, ReconciliationOutcome, StoreError,
 };
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
@@ -21,6 +23,22 @@ const HOLDER_A: &str = "20000000-0000-0000-0000-000000000001";
 const HOLDER_B: &str = "20000000-0000-0000-0000-000000000002";
 const WORKER_A: &str = "30000000-0000-0000-0000-000000000001";
 const WORKER_B: &str = "30000000-0000-0000-0000-000000000002";
+const CREDENTIAL_VALUE_VECTORS: &[&str] = &[
+	"Bearer abcdefghijklmnop",
+	"Bearer\nabcdefghijklmnop",
+	"Basic\tdXNlcjpwYXNz",
+	"sk-0123456789abcdef",
+	"sk_live_0123456789abcdef",
+	"xoxb-1234567890-abcdef",
+	"glpat-1234567890abcdef",
+	"npm_1234567890abcdef",
+	"ghp_01234567890123456789",
+	"eyJ0123456789.abcdefghij.klmnopqrst",
+	"-----BEGIN RSA PRIVATE\nKEY-----",
+	"password\n=\nforbidden",
+	"https://user:password@example.invalid/path",
+	"AKIA0123456789ABCDEF",
+];
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires the isolated PostgreSQL 18 harness"]
@@ -36,12 +54,13 @@ async fn postgres_store_contract() -> Result<(), Box<dyn Error>> {
 	assert_bootstrap_and_history(&client).await?;
 	assert_account_idempotency_and_revision(&store, &client).await?;
 	assert_inert_window_and_credential_boundary(&store, &client).await?;
-	assert_duration_validation(&store).await?;
+	assert_duration_validation(&store, &client).await?;
 	assert_lease_contention_and_reclaim(&store).await?;
 	assert_outbox_concurrency_retry_and_restart(&store, &client, &config).await?;
 
 	assert_eq!(store.availability(), Availability::Unavailable { reason: CLOSED });
 
+	assert_closed_pool_behavior(&store).await?;
 	assert_primary_indexes_are_plan_eligible(&client).await?;
 	assert_incompatible_history_fails_closed(&client, &config).await?;
 	drop(client);
@@ -105,13 +124,16 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Err
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 2);
+	assert_eq!(history.len(), 3);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
 	assert_eq!(history[1].0, 2);
 	assert_eq!(history[1].1, "claim_indexes");
 	assert!(!history[1].2.is_empty());
+	assert_eq!(history[2].0, 3);
+	assert_eq!(history[2].1, "skeptic_invariants");
+	assert!(!history[2].2.is_empty());
 
 	PostgresStore::connect(Config::from_str(&env::var("DECODEX_TEST_DATABASE_URL")?)?).await?;
 
@@ -123,6 +145,12 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Err
 		PostgresStore::connect(tcp).await,
 		Err(StoreError::Incompatible(reason)) if reason.contains("Unix socket")
 	));
+
+	let mut missing_database = Config::from_str(&env::var("DECODEX_TEST_DATABASE_URL")?)?;
+
+	missing_database.dbname("decodex_xy1267_missing");
+
+	assert!(matches!(PostgresStore::connect(missing_database).await, Err(StoreError::Pool(_))));
 
 	Ok(())
 }
@@ -249,6 +277,7 @@ async fn assert_inert_window_and_credential_boundary(
 	assert!(CommandIdentity::new("token_budget/session_id", b"ordinary-id").is_ok());
 
 	assert_api_credential_boundary(store, &mutation).await?;
+	assert_quota_timestamp_validation(store, client, &mutation).await?;
 
 	for (key, command_key) in [
 		("refresh_token", "window-credential"),
@@ -308,9 +337,9 @@ async fn assert_api_credential_boundary(
 	store: &PostgresStore,
 	mutation: &QuotaWindowMutation,
 ) -> Result<(), Box<dyn Error>> {
-	for value in ["Bearer abcdefghijklmnop", "Basic dXNlcjpwYXNz", "sk-proj-0123456789"] {
+	for value in CREDENTIAL_VALUE_VECTORS {
 		assert!(matches!(
-			CommandIdentity::new(value, b"forbidden"),
+			CommandIdentity::new(*value, b"forbidden"),
 			Err(StoreError::CredentialRejected)
 		));
 	}
@@ -359,6 +388,72 @@ async fn assert_api_credential_boundary(
 	Ok(())
 }
 
+async fn assert_quota_timestamp_validation(
+	store: &PostgresStore,
+	client: &Client,
+	base: &QuotaWindowMutation,
+) -> Result<(), Box<dyn Error>> {
+	for (index, (observed_at, resets_at)) in [
+		("2026-07-13T07:00:00.123456789Z", Some("2026-07-13T09:30:00.25+02:30")),
+		("2026-07-13T01:30:00-05:30", None),
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let mut valid = base.clone();
+
+		valid.duration_seconds = 301 + i64::try_from(index)?;
+		valid.observed_at = observed_at.into();
+		valid.resets_at = resets_at.map(str::to_owned);
+
+		let key = format!("window-valid-timestamp-{index}");
+		let command = CommandIdentity::new(&key, key.as_bytes())?;
+		let stored = store.mutate_quota_window(&command, &valid).await?;
+
+		assert_eq!(stored.observed_at, observed_at);
+		assert_eq!(stored.resets_at.as_deref(), resets_at);
+	}
+	for (index, (observed_at, resets_at)) in [
+		("infinity", None),
+		("tomorrow", None),
+		("2026-07-13 07:00:00Z", None),
+		("2026-07-13T07:00:00", None),
+		("2026-07-13", None),
+		("2026-07-13T07:00:00Z", Some("infinity")),
+		("2026-07-13T07:00:00Z", Some("next monday")),
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let mut invalid = base.clone();
+
+		invalid.duration_seconds = 400 + i64::try_from(index)?;
+		invalid.observed_at = observed_at.into();
+		invalid.resets_at = resets_at.map(str::to_owned);
+
+		let key = format!("window-invalid-timestamp-{index}");
+		let command = CommandIdentity::new(&key, key.as_bytes())?;
+		let result = store.mutate_quota_window(&command, &invalid).await;
+
+		assert!(
+			matches!(&result, Err(StoreError::InvalidInput(_))),
+			"invalid timestamp vector {index} was accepted: {result:?}"
+		);
+
+		let receipt_count: i64 = client
+			.query_one(
+				"SELECT count(*) FROM decodex.command_receipts WHERE idempotency_key = $1",
+				&[&key],
+			)
+			.await?
+			.get(0);
+
+		assert_eq!(receipt_count, 0);
+	}
+
+	Ok(())
+}
+
 async fn assert_direct_credential_and_scope_boundary(
 	client: &Client,
 ) -> Result<(), Box<dyn Error>> {
@@ -383,6 +478,32 @@ async fn assert_direct_credential_and_scope_boundary(
 	)
 	.await?;
 
+	for (index, candidate) in CREDENTIAL_VALUE_VECTORS.iter().enumerate() {
+		let aggregate_id = format!("credential-vector-{index}");
+		let error = client
+			.execute(
+				"INSERT INTO decodex.activity \
+				 (aggregate_kind, aggregate_id, revision, event_kind, correlation_key, payload) \
+				 VALUES ('account', $1, 1, 'credential_vector_tested', $2, '{}')",
+				&[&aggregate_id, candidate],
+			)
+			.await
+			.expect_err("SQL credential boundary rejected the shared Rust vector");
+
+		assert_eq!(
+			error.as_db_error().and_then(|error| error.constraint()),
+			Some("activity_no_credentials"),
+			"candidate {candidate:?}",
+		);
+	}
+
+	assert_direct_delivered_invariant(client).await?;
+	assert_direct_credential_rows(client).await?;
+
+	assert_no_credential_columns_or_routing(client).await
+}
+
+async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn Error>> {
 	for (statement, constraint) in [
 		(
 			"INSERT INTO decodex.accounts (account_id, display_label) VALUES ('10000000-0000-0000-0000-000000000099', 'Bearer abcdefghijklmnop')",
@@ -452,6 +573,10 @@ async fn assert_direct_credential_and_scope_boundary(
 		)
 		.await?;
 
+	Ok(())
+}
+
+async fn assert_no_credential_columns_or_routing(client: &Client) -> Result<(), Box<dyn Error>> {
 	let forbidden_columns: i64 = client
 		.query_one(
 			"SELECT count(*) FROM information_schema.columns \
@@ -475,6 +600,65 @@ async fn assert_direct_credential_and_scope_boundary(
 
 	assert_eq!(forbidden_columns, 0);
 	assert_eq!(routing_functions, 0);
+
+	Ok(())
+}
+
+async fn assert_direct_delivered_invariant(client: &Client) -> Result<(), Box<dyn Error>> {
+	let invalid_evidence = [
+		("'receipt_recorded'", "NULL", "'{\"observed\":true}'"),
+		("'receipt_recorded'", "'null'", "'{\"observed\":true}'"),
+		("'receipt_recorded'", "'\"   \"'", "'{\"observed\":true}'"),
+		("'receipt_recorded'", "'{}'", "'{\"observed\":true}'"),
+		("'receipt_recorded'", "'[]'", "'{\"observed\":true}'"),
+		("'receipt_recorded'", "'{\"nested\":{}}'", "'{\"observed\":true}'"),
+		("'ambiguous'", "NULL", "'{\"observed\":true}'"),
+		("'receipt_recorded'", "'{\"provider_receipt\":\"receipt\"}'", "NULL"),
+		("'receipt_recorded'", "'{\"provider_receipt\":\"receipt\"}'", "'null'"),
+		("'receipt_recorded'", "'{\"provider_receipt\":\"receipt\"}'", "'{}'"),
+		("'receipt_recorded'", "'{\"provider_receipt\":\"receipt\"}'", "'[]'"),
+		("'receipt_recorded'", "'{\"provider_receipt\":\"receipt\"}'", "'{\"nested\":[]}'"),
+		(
+			"'receipt_recorded'",
+			"'{\"provider_receipt\":\"receipt\"}'",
+			"'{\"Authorization\":\"forbidden\"}'",
+		),
+		(
+			"'receipt_recorded'",
+			"'{\"value\":\"Bearer abcdefghijklmnop\"}'",
+			"'{\"observed\":true}'",
+		),
+	];
+
+	for (index, (effect_state, receipt, reconciliation)) in invalid_evidence.into_iter().enumerate()
+	{
+		let statement = format!(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  effect_state, receipt, reconciliation, delivered_at) \
+			 VALUES ('direct-delivered-{index}', 'account', 'direct-delivered', 1, '{{}}', \
+			  'delivered', {effect_state}, {receipt}, {reconciliation}, clock_timestamp())"
+		);
+		let error = client
+			.execute(&statement, &[])
+			.await
+			.expect_err("delivered outbox evidence invariant rejected direct SQL bypass");
+
+		assert_eq!(
+			error.as_db_error().map(|error| error.code()),
+			Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION),
+		);
+	}
+
+	let delivered_rows: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.outbox WHERE effect_key LIKE 'direct-delivered-%'",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(delivered_rows, 0);
 
 	Ok(())
 }
@@ -550,13 +734,40 @@ async fn assert_lease_contention_and_reclaim(store: &PostgresStore) -> Result<()
 	Ok(())
 }
 
-async fn assert_duration_validation(store: &PostgresStore) -> Result<(), Box<dyn Error>> {
-	const INVALID_DURATION: &str = "duration must be a positive whole number of milliseconds";
+async fn assert_duration_validation(
+	store: &PostgresStore,
+	client: &Client,
+) -> Result<(), Box<dyn Error>> {
+	const INVALID_DURATION: &str =
+		"duration must be a positive whole number of milliseconds no greater than 365 days";
 
-	let overflow = Duration::from_millis(i64::MAX as u64 + 1);
+	let overflow = Duration::from_millis(MAX_OPERATION_DURATION_MILLISECONDS + 1);
+	let huge = Duration::MAX;
+	let boundary = i64::try_from(MAX_OPERATION_DURATION_MILLISECONDS)?;
+	let interval_is_finite: bool = client
+		.query_one("SELECT isfinite($1::bigint * interval '1 millisecond')", &[&boundary])
+		.await?
+		.get(0);
+
+	assert!(interval_is_finite);
+
+	let boundary_claim = store
+		.try_acquire_lease(
+			"duration/boundary",
+			HOLDER_A,
+			Duration::from_millis(MAX_OPERATION_DURATION_MILLISECONDS),
+		)
+		.await?;
+
+	assert!(boundary_claim.acquired);
+
+	let boundary_token =
+		boundary_claim.token.as_deref().expect("acquired boundary lease has token");
+
+	store.release_lease("duration/boundary", HOLDER_A, boundary_token).await?;
 
 	for duration in
-		[Duration::ZERO, Duration::from_nanos(1), Duration::from_micros(1_500), overflow]
+		[Duration::ZERO, Duration::from_nanos(1), Duration::from_micros(1_500), overflow, huge]
 	{
 		assert!(matches!(
 			store.try_acquire_lease("duration/lease", HOLDER_A, duration).await,
@@ -615,6 +826,58 @@ async fn assert_duration_validation(store: &PostgresStore) -> Result<(), Box<dyn
 		.await?;
 
 	assert!(valid.acquired);
+
+	Ok(())
+}
+
+async fn assert_closed_pool_behavior(store: &PostgresStore) -> Result<(), Box<dyn Error>> {
+	assert!(matches!(store.account(&AccountId::new(ACCOUNT_ID)?).await, Err(StoreError::Pool(_))));
+	assert!(matches!(store.activity_after(0, 1).await, Err(StoreError::Pool(_))));
+	assert!(matches!(
+		store
+			.try_acquire_lease(
+				"closed/boundary-duration",
+				HOLDER_A,
+				Duration::from_millis(MAX_OPERATION_DURATION_MILLISECONDS),
+			)
+			.await,
+		Err(StoreError::Pool(_))
+	));
+	assert!(matches!(
+		store
+			.try_acquire_lease(
+				"closed/overflow-duration",
+				HOLDER_A,
+				Duration::from_millis(MAX_OPERATION_DURATION_MILLISECONDS + 1),
+			)
+			.await,
+		Err(StoreError::InvalidInput(
+			"duration must be a positive whole number of milliseconds no greater than 365 days"
+		))
+	));
+	assert!(matches!(
+		store.claim_outbox(WORKER_A, 1, Duration::from_millis(1)).await,
+		Err(StoreError::Pool(_))
+	));
+	assert!(matches!(store.prune_delivered_outbox(1).await, Err(StoreError::Pool(_))));
+
+	let invalid_timestamp = QuotaWindowMutation {
+		account_id: AccountId::new(ACCOUNT_ID)?,
+		window_class: "closed_validation".into(),
+		duration_seconds: 1,
+		remaining_amount: None,
+		resets_at: None,
+		observed_at: "infinity".into(),
+		confidence: 0.0,
+		metadata: serde_json::json!({}),
+		expected_revision: None,
+	};
+	let command = CommandIdentity::new("closed-invalid-timestamp", b"closed-invalid-timestamp")?;
+
+	assert!(matches!(
+		store.mutate_quota_window(&command, &invalid_timestamp).await,
+		Err(StoreError::InvalidInput("quota observed_at must be RFC 3339"))
+	));
 
 	Ok(())
 }
@@ -780,6 +1043,31 @@ async fn assert_restart_reconciliation(
 		)
 		.await?;
 
+	for readback in [
+		Value::Null,
+		serde_json::json!(" \n "),
+		serde_json::json!({}),
+		serde_json::json!([]),
+		serde_json::json!({"nested": []}),
+	] {
+		assert!(matches!(
+			restarted
+				.reconcile_outbox(
+					recovered.id,
+					WORKER_A,
+					&recovered.claim_token,
+					&OutboxReconciliation {
+						readback,
+						outcome: ReconciliationOutcome::EffectPresent,
+					},
+					Duration::from_millis(1),
+					Duration::from_millis(1),
+				)
+				.await,
+			Err(StoreError::InvalidInput("outbox evidence must contain a non-empty JSON value"))
+		));
+	}
+
 	assert!(matches!(
 		restarted
 			.reconcile_outbox(
@@ -810,6 +1098,26 @@ async fn assert_restart_reconciliation(
 			Duration::from_millis(1),
 		)
 		.await?;
+
+	let delivered: (String, String, Value, Value) = {
+		let row = client
+			.query_one(
+				"SELECT state::text, effect_state::text, receipt, reconciliation \
+				 FROM decodex.outbox WHERE id = $1",
+				&[&recovered.id],
+			)
+			.await?;
+
+		(row.get(0), row.get(1), row.get(2), row.get(3))
+	};
+
+	assert_eq!(delivered.0, "delivered");
+	assert_eq!(delivered.1, "receipt_recorded");
+	assert_eq!(delivered.2, serde_json::json!({"provider_receipt": "receipt-1"}));
+	assert_eq!(
+		delivered.3,
+		serde_json::json!({"effect_key": recovered.effect_key, "observed": true})
+	);
 
 	time::sleep(Duration::from_millis(10)).await;
 
@@ -862,6 +1170,22 @@ async fn assert_stale_outbox_claim_rejected(
 			.await,
 		Err(StoreError::CredentialRejected)
 	));
+
+	for evidence in [
+		Value::Null,
+		serde_json::json!(" \t "),
+		serde_json::json!({}),
+		serde_json::json!([]),
+		serde_json::json!({"nested": {}}),
+	] {
+		assert!(matches!(
+			store
+				.record_outbox_receipt(recovered.id, WORKER_A, &recovered.claim_token, &evidence,)
+				.await,
+			Err(StoreError::InvalidInput("outbox evidence must contain a non-empty JSON value"))
+		));
+	}
+
 	assert!(matches!(
 		store
 			.reconcile_outbox(
