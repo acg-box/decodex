@@ -61,6 +61,13 @@ Automations, and starts only vNext. It imports no legacy execution history and e
 dual authority. Removal of old Linear/SQLite/Goal/operator transport follows replacement
 proof, not speculative deletion.
 
+The repository-owned XY-1261 receipt is
+[the v0.2 freeze receipt](../evidence/v0.2-freeze.md). A destructive-removal task must
+verify its exact external readbacks and resolve every recorded stop condition first. In
+particular, the receipt records that the legacy SQLite database was already absent before
+the freeze; its retirement sentinel is not a database backup, and later work must not
+silently treat that acceptance gap as restored evidence.
+
 ## Stop conditions
 
 Stop the owning gate on any contradiction with the authority contract, any unproven
