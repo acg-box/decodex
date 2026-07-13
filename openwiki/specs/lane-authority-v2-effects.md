@@ -1,6 +1,8 @@
 # Lane Authority V2 Effect Registry
 
-Status: normative mutation registry for XY-1251.
+Status: superseded and frozen by the [vNext authority decision](../decisions/vnext-authority.md).
+Historical design and incident provenance only; this is not a normative vNext registry
+and must not be implemented.
 
 Every Decodex mutation of project-, tracker-issue-, lane-, lifecycle-, cleanup-, archive-,
 or authority-relevant state is either a local `commit_transition` transaction or one
