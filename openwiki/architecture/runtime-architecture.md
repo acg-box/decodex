@@ -16,8 +16,9 @@ vNext runtime boundary:
   accepted tokio-postgres/deadpool/refinery stack and owns embedded migrations,
   optimistic transactions, leases, append-only activity, outbox delivery, and inert
   account/window metadata.
-- `decodex-codex`: the shared-normal-home adapter boundary; depends only on core and is
-  unavailable until XY-1270.
+- `decodex-codex`: typed app-server contracts, schema/live capability negotiation,
+  redacted event normalization, and immutable one-account process supervision. Live
+  turn dispatch remains unavailable while XY-1304 is failed.
 - `decodex-runtime`: service lifecycle, connection/session execution, resumable event
   publication, idempotency receipts, and adapter composition; depends on the other four
   owners plus the maintained Axum/Tokio transport stack.
@@ -60,9 +61,9 @@ but the active composition supplies no connection until XY-1268 owns bootstrap a
 integration. The foundation application therefore reports product state unavailable
 rather than inventing product entities. PostgreSQL reports available only after an
 explicit connection passes PostgreSQL 18, checksum, extension, and migration checks.
-Codex remains explicitly unavailable. Authentication, TLS, remote binding, HTTP artifact
-transfer, MCP, scheduling, Codex execution, CLI operations, and GPUI behavior remain
-disabled and belong to later issues.
+The composition also reports conversation execution unavailable. Authentication, TLS,
+remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, CLI
+operations, and GPUI behavior remain disabled and belong to later issues.
 
 The synchronous product-state availability port reflects verified configuration and local
 pool lifecycle: closing the pool makes it unavailable. Live PostgreSQL failures remain
@@ -95,6 +96,40 @@ case-sensitive regular expressions under the built-in `C` collation. The integra
 repeats credential vectors in a Turkish ICU database so database-default case rules cannot
 weaken the direct-SQL boundary; this crate exposes no
 eligibility, account selection, fallback, wake scheduling, or credential storage.
+
+## Active Codex adapter foundation
+
+`crates/decodex-codex/` structurally extracts request/notification methods from generated
+schema, validates native-collaboration object variants, required fields, field types, and
+referenced enums from `ThreadReadResponse`, and compares canonical JSON digests with the
+accepted XY-1262 receipt before spawning an app server.
+Marker presence is only schema evidence: live method outcomes become explicit `supported`,
+`unsupported`, `unavailable`, or `degraded` states. Every successful probe must enter its
+profile into the exact-build cache, which rejects conflicting replacement and has no
+nearest-build or stale fallback.
+
+Each `SupervisedProcess` owns one immutable shared-home account authority. Credential
+environment variables are removed from the child, initialize must report the normal
+`$HOME/.codex`, no credential-switch operation exists, and read-only `account/read` must
+establish a pseudonymous active-account receipt before a successful probe. On Unix the child starts in a new session;
+bounded shutdown checks the entire process group independently of the leader and escalates
+from termination to kill. Raw JSON-RPC, stderr, account details, and free-form model deltas
+stay inside the adapter. Callers receive typed probe results, stable errors, correlation-
+only message events, and run-local collaboration actors identified by validated UUIDs or
+digests rather than optional nickname/role fields. Build identity is an exact opaque
+fingerprint; statuses, activity kinds, tools, capability reasons, and read-only methods
+are closed enums, so protocol text is not exported through debug or serialization paths.
+
+The production command fixes `codex`, app-server, version, and schema arguments; only tests
+can inject a fake executable. Before spawn, the active probe obtains the build and asks the
+same executable to generate its schema. Preflight output/files, app-server frames, the
+stdout queue, and thread-list results are mechanically bounded. Both preflight commands
+use bounded process-group supervision and descendant cleanup. The probe then sends only
+`initialize`, `initialized`, read-only `account/read`, and bounded `thread/list`.
+`DispatchGate` has no enabled state and denies thread start/resume, turn start/steer/
+interrupt, and approval responses under XY-1304. The composition root therefore still
+reports conversation execution unavailable even though schema validation, read-only
+probing, normalization, and supervision are implemented.
 
 ## Frozen v0.2 runtime provenance
 
@@ -177,9 +212,11 @@ Each daemon tick (`apps/decodex/src/orchestrator/daemon.rs`):
 
 `openwiki/workflows/runtime-operator-workflows.md` records the current cadence: operator snapshots publish every 15 seconds, and Linear-backed queue/status scans run at most every 5 minutes per project unless `POST /api/linear-scan` requests a scan.
 
-## App-server execution
+## Frozen app-server execution
 
-`apps/decodex/src/agent/app_server/run.rs` owns direct `codex app-server` execution. One attempt:
+The excluded v0.2 `apps/decodex/src/agent/app_server/run.rs` owned direct live
+`codex app-server` execution. It is provenance only and must not be used by vNext. One
+legacy attempt:
 
 1. Records run attempt status as `starting`.
 2. Writes activity markers when configured.
@@ -235,5 +272,7 @@ MCP is a typed facade over existing runtime and operator controls. It is not a b
 - CLI changes: start in `apps/decodex/src/cli.rs` and the owning submodule under `apps/decodex/src/cli/`; add parser tests under `apps/decodex/src/cli/tests/`.
 - Runtime scheduling changes: start in `apps/decodex/src/orchestrator/run_cycle.rs`, `apps/decodex/src/orchestrator/daemon.rs`, and the lifecycle-specific orchestrator submodule; expect dense tests under `apps/decodex/src/orchestrator/tests/`.
 - State changes: start in `apps/decodex/src/state/sqlite_store/schema.rs`, migrations, row parsers, and `StateStore`; protect replay/idempotency with state tests.
-- App-server changes: start in `apps/decodex/src/agent/app_server/`; run app-server schema/probe tests and avoid relying only on stale handwritten protocol notes.
+- vNext app-server foundation changes: start in `crates/decodex-codex/`; run its schema,
+  fake-process, supervision, redaction, and dispatch-guard tests. The excluded
+  `apps/decodex/src/agent/app_server/` is provenance only.
 - Operator/MCP changes: update HTTP/MCP tests and check public/private projection boundaries before exposing new fields.

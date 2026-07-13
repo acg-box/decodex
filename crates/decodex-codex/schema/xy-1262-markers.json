@@ -1,0 +1,36 @@
+{
+  "receipt": "decodex/vnext-codex-schema-receipt/1",
+  "request_methods": [
+    "account/read",
+    "account/rateLimits/read",
+    "collaborationMode/list",
+    "initialize",
+    "thread/archive",
+    "thread/list",
+    "thread/name/set",
+    "thread/read",
+    "thread/resume",
+    "thread/search",
+    "thread/start",
+    "turn/start"
+  ],
+  "notification_methods": [
+    "item/completed",
+    "item/started",
+    "thread/started",
+    "turn/completed",
+    "turn/started"
+  ],
+  "collaboration_markers": [
+    "agentNickname",
+    "agentRole",
+    "collabAgentToolCall",
+    "parentThreadId",
+    "subAgentActivity"
+  ],
+  "canonical_sha256": {
+    "ClientRequest.json": "3f82e5aec5be786c40d21440dfb6d0667d194d872bfa7041bd81c39b4ba56dc3",
+    "ServerNotification.json": "16ce6adadf33aa182f98840c5d33f6294c3c37b2866bb05545c24e0dbf2cc2d2",
+    "codex_app_server_protocol.v2.schemas.json": "f5e8d20f3a8f9bb5e5b23ab0c5aa6bde7b12e7e0713606c5d0132651a4959d37"
+  }
+}
