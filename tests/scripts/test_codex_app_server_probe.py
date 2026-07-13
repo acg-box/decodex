@@ -102,6 +102,7 @@ class CodexAppServerProbeTests(unittest.TestCase):
 
         self.assertTrue(result["live_bundle_redacted"])
         self.assertEqual(result["quota_cases_validated"], 9)
+        self.assertEqual(result["inventory_accounts_validated"], 6)
         self.assertFalse(result["overall_acceptance"])
 
     def test_missing_selector_error_does_not_repeat_identity(self):
@@ -123,6 +124,23 @@ class CodexAppServerProbeTests(unittest.TestCase):
 
             self.assertEqual(
                 probe.sha256_canonical_json(first), probe.sha256_canonical_json(second)
+            )
+
+    def test_tree_digest_can_exclude_transient_runtime_root(self):
+        probe = load_probe()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stable = root / "cache" / "plugin.json"
+            transient = root / ".plugin-appserver" / "codex"
+            stable.parent.mkdir()
+            transient.parent.mkdir()
+            stable.write_text("stable")
+            transient.write_text("first")
+            before = probe.sha256_tree(root, (".plugin-appserver",))
+            transient.write_text("second")
+
+            self.assertEqual(
+                probe.sha256_tree(root, (".plugin-appserver",)), before
             )
 
     def test_thread_summary_keeps_only_normalization_fields(self):
@@ -152,6 +170,127 @@ class CodexAppServerProbeTests(unittest.TestCase):
         self.assertEqual(summary["turn_count"], 1)
         self.assertNotIn("private input", json.dumps(summary))
         self.assertNotIn("private output", json.dumps(summary))
+
+    def test_quota_state_requires_both_duration_typed_windows(self):
+        probe = load_probe()
+
+        self.assertEqual(
+            probe.quota_state(
+                [
+                    {"duration_minutes": 300, "used_percent": 10, "resets_at": 2000},
+                    {"duration_minutes": 10080, "used_percent": 90, "resets_at": 9000},
+                ],
+                1000,
+            ),
+            "available",
+        )
+        self.assertEqual(
+            probe.quota_state(
+                [
+                    {"duration_minutes": 300, "used_percent": 100, "resets_at": 2000},
+                    {"duration_minutes": 10080, "used_percent": 90, "resets_at": 9000},
+                ],
+                1000,
+            ),
+            "depleted",
+        )
+        self.assertEqual(
+            probe.quota_state(
+                [{"duration_minutes": 10080, "used_percent": 0, "resets_at": 9000}],
+                1000,
+            ),
+            "unknown",
+        )
+        self.assertEqual(
+            probe.quota_state(
+                [
+                    {"duration_minutes": 300, "used_percent": 0, "resets_at": 999},
+                    {"duration_minutes": 10080, "used_percent": 0, "resets_at": 9000},
+                ],
+                1000,
+            ),
+            "unknown",
+        )
+        self.assertEqual(
+            probe.quota_state(
+                [
+                    {"duration_minutes": 300, "used_percent": 0, "resets_at": 2000},
+                    {"duration_minutes": 10080, "used_percent": 0, "resets_at": 9000},
+                    {"duration_minutes": 10080, "used_percent": 100, "resets_at": 8000},
+                ],
+                1000,
+            ),
+            "depleted",
+        )
+        self.assertEqual(
+            probe.quota_state(
+                [
+                    {"duration_minutes": 300, "used_percent": None, "resets_at": 2000},
+                    {"duration_minutes": 10080, "used_percent": 0, "resets_at": 9000},
+                ],
+                1000,
+            ),
+            "unknown",
+        )
+        self.assertEqual(
+            probe.quota_state(
+                [
+                    {"duration_minutes": 300, "used_percent": 100, "resets_at": 999},
+                    {"duration_minutes": 10080, "used_percent": 0, "resets_at": 9000},
+                ],
+                1000,
+            ),
+            "unknown",
+        )
+
+    def test_redaction_rejects_identity_selector_and_credential_keys(self):
+        probe = load_probe()
+
+        for key in (
+            "account_id",
+            "account_identity",
+            "account_selector",
+            "credential_value",
+        ):
+            with self.subTest(key=key), self.assertRaises(probe.ProtocolError):
+                probe.check_redaction({key: "opaque-private-value"})
+        probe.check_redaction(
+            {
+                "identities_emitted": False,
+                "selectors_emitted": False,
+                "credentials_emitted": False,
+            }
+        )
+
+    def test_inventory_validation_requires_explicit_integrity_facts(self):
+        probe = load_probe()
+        names = (
+            "xy-1262-live-receipt.json",
+            "xy-1262-native-collaboration.json",
+            "xy-1262-quota-matrix.json",
+            "xy-1262-gate-reconciliation.json",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            fixture_dir = Path(directory) / "openwiki/evidence/fixtures"
+            fixture_dir.mkdir(parents=True)
+            source_dir = ROOT / "openwiki/evidence/fixtures"
+            for name in names:
+                (fixture_dir / name).write_text((source_dir / name).read_text())
+            path = fixture_dir / "xy-1262-gate-reconciliation.json"
+            receipt = json.loads(path.read_text())
+            receipt["normal_state_unchanged"] = {}
+            path.write_text(json.dumps(receipt))
+
+            with self.assertRaises(probe.ProtocolError):
+                probe.validate_checked_receipts(Path(directory))
+
+    def test_generic_resume_error_is_not_labeled_denied(self):
+        probe = load_probe()
+
+        self.assertEqual(
+            probe.classify_resume_error(probe.ProtocolError("transport timeout")),
+            "probe_error",
+        )
 
 
 if __name__ == "__main__":
