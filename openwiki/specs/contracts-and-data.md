@@ -8,7 +8,10 @@ This page is the primary map for Decodex contracts and data boundaries. Use it t
 
 ## Project contract
 
-A registered project directory contains `project.toml` and `WORKFLOW.md` (`apps/decodex/src/config/service.rs`). The project config parser denies unknown fields (`apps/decodex/src/config/document.rs`). The safe setup model is `decodex.example.toml`.
+A registered project directory contains `project.toml` and `WORKFLOW.md`
+(`apps/decodex/src/config/service.rs`). The project config parser denies unknown fields
+(`apps/decodex/src/config/document.rs`). At freeze, `decodex.example.toml` modeled this
+project config; the current checked-in file now owns the vNext global config shape.
 
 Current `project.toml` shape:
 
@@ -30,7 +33,16 @@ repo_root = "/absolute/path/to/target/repo"
 worktree_root = ".worktrees"
 ```
 
-Optional blocks include `[autonomy]`, `[autonomy.runtime_policy]`, `[codex.accounts]`, and `[privacy_classifier]` (`decodex.example.toml`). Config stores names of environment variables and authority references; it does not embed live credentials, an Objective body, or accepted policy authority. Interactive `decodex project accept-runtime-policy` binds the OS-resolved principal, exact Objective digest, public non-goals, and current RFC3339 timestamp to a typed digest confirmation, then issues and atomically consumes a short-lived single-use receipt into one immutable record keyed by project, policy id, and policy version. MCP may preview but cannot perform acceptance, including through default Admin stdio. An exact accepted-record replay is idempotent and a conflicting replay is refused.
+Optional frozen blocks include `[autonomy]`, `[autonomy.runtime_policy]`,
+`[codex.accounts]`, and `[privacy_classifier]`. Config stores names of environment
+variables and authority references; it does not embed live credentials, an Objective
+body, or accepted policy authority. Interactive `decodex project accept-runtime-policy`
+binds the OS-resolved principal, exact Objective digest, public non-goals, and current
+RFC3339 timestamp to a typed digest confirmation, then issues and atomically consumes a
+short-lived single-use receipt into one immutable record keyed by project, policy id,
+and policy version. MCP may preview but cannot perform acceptance, including through
+default Admin stdio. An exact accepted-record replay is idempotent and a conflicting
+replay is refused.
 `github.landing_mode` defaults to `standard`, which waits for GitHub's status
 rollup. `fast` mode uses the stable `decodex/local-full-check` status and requires
 `github.landing_actors` to name the trusted GitHub users or Apps that can publish and

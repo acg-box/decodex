@@ -9,7 +9,11 @@ authority documents remain authoritative.
 The root manifest enumerates the active members explicitly. Five library owners form the
 vNext runtime boundary:
 
-- `decodex-core`: pure domain/application contracts and ports; no dependencies.
+- `decodex-core`: domain/application contracts and ports plus the XY-1306 typed
+  `~/.decodex` path, configuration, stable-identity, blob, and disposable-cache
+  foundation. Its external dependency set is architecture-tested and limited to
+  bounded TOML/Serde parsing, SHA-256, OS randomness/no-follow filesystem support, and
+  test-only temporary storage.
 - `decodex-protocol`: V1 typed wire contracts, current/previous-minor negotiation, and
   loopback endpoint policy; depends only on core plus structured serialization.
 - `decodex-postgres`: the PostgreSQL 18 product-state adapter; depends on core plus the
@@ -57,8 +61,9 @@ types contain only small state and cannot carry artifact bytes.
 This slice deliberately keeps its replay/idempotency ledger in memory. A daemon restart
 changes server identity, loses that transient ledger, and forces snapshot fallback;
 durable PostgreSQL product-state and transaction primitives live in `decodex-postgres`,
-but the active composition supplies no connection until XY-1268 owns bootstrap and path
-integration. The foundation application therefore reports product state unavailable
+but the active composition supplies no connection. XY-1306 represents explicit
+PostgreSQL Unix-socket connection data without connecting; XY-1307 owns verified daemon
+bootstrap and integration. The foundation application therefore reports product state unavailable
 rather than inventing product entities. PostgreSQL reports available only after an
 explicit connection passes PostgreSQL 18, checksum, extension, and migration checks.
 The composition also reports conversation execution unavailable. Authentication, TLS,
@@ -96,6 +101,48 @@ case-sensitive regular expressions under the built-in `C` collation. The integra
 repeats credential vectors in a Turkish ICU database so database-default case rules cannot
 weaken the direct-SQL boundary; this crate exposes no
 eligibility, account selection, fallback, wake scheduling, or credential storage.
+
+## Owned vNext paths, configuration, blobs, and cache
+
+`crates/decodex-core/src/paths.rs` owns one absolute, lexically normalized Decodex root
+and the typed private-filesystem contract. On Unix, `path_unix.rs` implements that
+contract by opening every component relative to an already validated directory
+descriptor; reads, listing, removal, temporary-file publication, and synchronization
+therefore cannot be redirected by an ancestor rename or symlink swap. `identity.rs`,
+`blob.rs`, and `cache.rs` own their independent persistence/integrity/bounding policies;
+`storage.rs` owns only their shared redacted error contract.
+The platform default is `~/.decodex`; configured roots are bounded to 4 KiB and roots
+below any `.codex` component are rejected before I/O. Existing root ancestors, the root,
+and every owned descendant reject
+symlinks and unexpected file kinds. On Unix, every owned directory and file must belong
+to the effective OS user; directories must be private mode 0700 and files must deny
+group/other and executable access. Owned writes use same-directory
+private temporary files, file and directory synchronization, and atomic rename or
+create-only hard-link publication. Root layout is fixed:
+
+- `config.toml`: at most 64 KiB, UTF-8 TOML, owner-readable and non-executable with
+  no group/other access (normally mode 0600; mode 0400 is also accepted);
+- `logs/`: Decodex log ownership only; no logging runtime is added by XY-1306;
+- `blobs/sha256/<prefix>/<digest>`: at most 64 MiB per in-memory write, atomically
+  published and fully SHA-256-verified on existing writes and reads;
+- `cache/`: disposable hashed entries bounded simultaneously by configured per-entry,
+  aggregate-byte, and entry-count caps under hard ceilings; recovery removes only exact
+  private `.tmp-<32 lowercase hex>` artifacts left by interrupted atomic writes; and
+- `server/identity`: one canonical RFC 9562 UUID version 4 generated from OS randomness,
+  persisted create-only, and stable across concurrent initialization.
+
+`crates/decodex-core/src/config.rs` denies unknown fields and discards parser details and
+input excerpts from typed errors. Debug implementations redact operator-provided profile,
+host, repository, database, role, and credential-reference strings. Profiles are a closed
+`local`/`remote` enum: local addresses must be loopback; remote profiles carry only a
+bounded host, port, and required expected server identity. Repository roots exist only in
+`ServerHostConfig` as absolute, normalized, at-most-4-KiB `ServerRepositoryPath` values,
+so a remote profile has no client-local repository-path field. PostgreSQL configuration
+is explicit bounded Unix-socket directory/database/user plus an optional credential
+environment-variable reference; it is inert data and opens no database.
+`decodex.example.toml` is the redacted canonical shape. No CLI, doctor/status protocol,
+daemon bootstrap, remote listener/security, or credential-vault implementation is part
+of this foundation.
 
 ## Active Codex adapter foundation
 
@@ -192,7 +239,9 @@ A project is not discovered from a checkout. It is explicitly registered from a 
 - optional `[privacy_classifier]`
 - `[paths]`
 
-`decodex.example.toml` is the safe redacted model. It stores env-var names such as `LINEAR_API_KEY` and `GITHUB_TOKEN`, not token values.
+At the v0.2 freeze, `decodex.example.toml` was the safe project-config model. The current
+checked-in file now owns the vNext global config shape above and is not an input or
+compatibility template for the frozen package.
 
 ## One-shot run flow
 

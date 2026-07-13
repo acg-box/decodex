@@ -20,7 +20,10 @@ publishes bounded snapshots and resumable ordered events, deduplicates commands 
 server lifetime in a fixed-capacity ledger, and disconnects clients whose bounded
 outbound queue fills. PostgreSQL,
 Codex, CLI operations, authentication/TLS, remote binding, and product UI behavior are
-still unavailable until their owning slices land. The frozen v0.2 source remains under
+still unavailable until their owning slices land. `decodex-core` now owns the typed
+`~/.decodex` config/log/blob/cache/server-identity foundation, including explicit
+local/remote profiles and inert PostgreSQL connection data; it does not wire the daemon
+or CLI. The frozen v0.2 source remains under
 `apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is not
 a compatibility runtime.
 
@@ -237,7 +240,9 @@ Project contracts are managed outside checkouts under
 - `project.toml` for service paths and credential environment-variable names
 - `WORKFLOW.md` for execution policy
 
-The redacted template for a project config lives at `decodex.example.toml`.
+At freeze, the redacted project-config template occupied `decodex.example.toml`. The
+current checked-in file is the vNext global `~/.decodex/config.toml` template and must
+not be used as a compatibility template for this frozen flow.
 Decodex autonomy is objective-driven project autonomy, not a hidden runtime repair
 loop. `[autonomy]` defaults to latent-only: objective drafts, signal audits, and
 proposal dry-runs may produce evidence, but unattended promotion or intake requires an
