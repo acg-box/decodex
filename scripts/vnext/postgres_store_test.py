@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -223,28 +224,39 @@ def main() -> int:
 		return 0
 	finally:
 		stop_error: Exception | None = None
+		stop_failures: list[str] = []
 		status = postgres_status(data_dir, env) if data_dir.exists() else ClusterStatus.STOPPED
 		if status is ClusterStatus.RUNNING:
 			try:
 				run(["pg_ctl", "-D", str(data_dir), "-m", "fast", "-w", "stop"], env)
-			except Exception:
-				pass
+			except Exception as error:
+				stop_failures.append(f"fast shutdown failed:\n{error}")
 			status = postgres_status(data_dir, env)
 		if status is ClusterStatus.RUNNING:
 			try:
 				run(["pg_ctl", "-D", str(data_dir), "-m", "immediate", "-w", "stop"], env)
-			except Exception:
-				pass
+			except Exception as error:
+				stop_failures.append(f"immediate shutdown failed:\n{error}")
 			status = postgres_status(data_dir, env)
+		stop_diagnostics = "\n\n".join(stop_failures)
+		if stop_diagnostics:
+			stop_diagnostics = f"\n\nShutdown diagnostics:\n{stop_diagnostics}"
 		if status is ClusterStatus.RUNNING:
 			stop_error = TestFailure(
 				f"PostgreSQL is still running; retained isolated cluster at {work}"
+				f"{stop_diagnostics}"
 			)
 		elif status is ClusterStatus.UNKNOWN:
 			stop_error = TestFailure(
 				f"PostgreSQL status is unknown; retained isolated cluster at {work}"
+				f"{stop_diagnostics}"
 			)
 		if status is ClusterStatus.STOPPED:
+			if stop_diagnostics:
+				print(
+					f"PostgreSQL shutdown recovered after an error:{stop_diagnostics}",
+					file=sys.stderr,
+				)
 			shutil.rmtree(work, ignore_errors=True)
 		elif stop_error is not None:
 			raise stop_error
