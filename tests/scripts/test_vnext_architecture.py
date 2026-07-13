@@ -9,7 +9,15 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_DEPENDENCIES = {
     "decodex-core": set(),
     "decodex-protocol": {"decodex-core"},
-    "decodex-postgres": {"decodex-core"},
+    "decodex-postgres": {
+        "deadpool-postgres",
+        "decodex-core",
+        "refinery",
+        "serde_json",
+        "sha2",
+        "tokio",
+        "tokio-postgres",
+    },
     "decodex-codex": {"decodex-core"},
     "decodex-runtime": {
         "decodex-codex",
