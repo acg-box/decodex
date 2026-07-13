@@ -1,0 +1,12 @@
+[package]
+authors.workspace    = true
+description          = "Default-disabled GPUI client composition root for Decodex vNext."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-gpui"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+decodex-protocol = { workspace = true }

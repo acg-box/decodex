@@ -1,0 +1,15 @@
+[package]
+authors.workspace    = true
+description          = "Service lifecycle and adapter composition for Decodex vNext."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-runtime"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+decodex-codex    = { workspace = true }
+decodex-core     = { workspace = true }
+decodex-postgres = { workspace = true }
+decodex-protocol = { workspace = true }
