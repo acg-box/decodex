@@ -23,18 +23,20 @@ impl PostgresStore {
 		let transaction = client.transaction().await?;
 		let rows = transaction
 			.query(
-				"WITH exhausted AS ( \
+				"WITH write_time AS MATERIALIZED (SELECT clock_timestamp() AS value), \
+				 exhausted AS ( \
 				   UPDATE decodex.outbox SET state = 'dead_letter', lease_holder = NULL, \
-				     claim_token = NULL, lease_expires_at = NULL, dead_lettered_at = clock_timestamp() \
-				   WHERE state = 'in_flight' AND lease_expires_at <= clock_timestamp() \
+				     claim_token = NULL, lease_expires_at = NULL, dead_lettered_at = write_time.value \
+				   FROM write_time \
+				   WHERE state = 'in_flight' AND lease_expires_at <= write_time.value \
 				     AND attempt_count >= max_attempts AND effect_state = 'not_started' \
 				   RETURNING id \
 				 ), candidates AS ( \
 				   SELECT id, effect_state <> 'not_started' AS requires_reconciliation \
-				   FROM decodex.outbox \
-				   WHERE available_at <= clock_timestamp() \
+				   FROM decodex.outbox CROSS JOIN write_time \
+				   WHERE available_at <= write_time.value \
 				     AND (attempt_count < max_attempts OR effect_state <> 'not_started') \
-				     AND (state = 'pending' OR (state = 'in_flight' AND lease_expires_at <= clock_timestamp())) \
+				     AND (state = 'pending' OR (state = 'in_flight' AND lease_expires_at <= write_time.value)) \
 				   ORDER BY available_at, id FOR UPDATE SKIP LOCKED LIMIT $2 \
 				 ) \
 				 UPDATE decodex.outbox AS work SET state = 'in_flight', \
@@ -42,8 +44,8 @@ impl PostgresStore {
 				     THEN work.attempt_count + 1 ELSE work.attempt_count END, \
 				   lease_holder = $1::text::uuid, \
 				   claim_token = gen_random_uuid(), \
-				   lease_expires_at = clock_timestamp() + $3::bigint * interval '1 millisecond' \
-				 FROM candidates WHERE work.id = candidates.id \
+				   lease_expires_at = write_time.value + $3::bigint * interval '1 millisecond' \
+				 FROM candidates CROSS JOIN write_time WHERE work.id = candidates.id \
 				 RETURNING work.id, work.claim_token::text, work.effect_key, work.payload, work.attempt_count, \
 				   candidates.requires_reconciliation, work.receipt",
 				&[&worker_id, &limit, &lease_millis],
@@ -80,10 +82,12 @@ impl PostgresStore {
 			.get()
 			.await?
 			.execute(
-				"UPDATE decodex.outbox \
-				 SET lease_expires_at = clock_timestamp() + $4::bigint * interval '1 millisecond' \
+				"WITH write_time AS (SELECT clock_timestamp() AS value) \
+				 UPDATE decodex.outbox \
+				 SET lease_expires_at = write_time.value + $4::bigint * interval '1 millisecond' \
+				 FROM write_time \
 				 WHERE id = $1 AND state = 'in_flight' AND lease_holder = $2::text::uuid \
-				   AND claim_token = $3::text::uuid AND lease_expires_at > clock_timestamp()",
+				   AND claim_token = $3::text::uuid AND lease_expires_at > write_time.value",
 				&[&id, &worker_id, &claim_token, &lease_millis],
 			)
 			.await?;
@@ -153,15 +157,17 @@ impl PostgresStore {
 			.get()
 			.await?
 			.execute(
-				"UPDATE decodex.outbox SET \
+				"WITH write_time AS (SELECT clock_timestamp() AS value) \
+				 UPDATE decodex.outbox SET \
 				 state = CASE WHEN attempt_count >= max_attempts THEN 'dead_letter'::decodex.outbox_state \
 				              ELSE 'pending'::decodex.outbox_state END, \
-				 available_at = clock_timestamp() + $5::bigint * interval '1 millisecond', \
+				 available_at = write_time.value + $5::bigint * interval '1 millisecond', \
 				 lease_holder = NULL, claim_token = NULL, lease_expires_at = NULL, last_failure_code = $4, \
-				 dead_lettered_at = CASE WHEN attempt_count >= max_attempts THEN clock_timestamp() ELSE NULL END \
+				 dead_lettered_at = CASE WHEN attempt_count >= max_attempts THEN write_time.value ELSE NULL END \
+				 FROM write_time \
 				 WHERE id = $1 AND state = 'in_flight' AND lease_holder = $2::text::uuid \
 				   AND claim_token = $3::text::uuid \
-				   AND lease_expires_at > clock_timestamp() AND effect_state = 'not_started'",
+				   AND lease_expires_at > write_time.value AND effect_state = 'not_started'",
 				&[&id, &worker_id, &claim_token, &failure_code, &delay_millis],
 			)
 			.await?;
@@ -194,7 +200,8 @@ impl PostgresStore {
 			.get()
 			.await?
 			.execute(
-				"UPDATE decodex.outbox SET \
+				"WITH write_time AS (SELECT clock_timestamp() AS value) \
+				 UPDATE decodex.outbox SET \
 				 state = CASE \
 				   WHEN $5 = 'present' THEN 'delivered'::decodex.outbox_state \
 				   WHEN attempt_count >= max_attempts THEN 'dead_letter'::decodex.outbox_state \
@@ -202,13 +209,14 @@ impl PostgresStore {
 				 effect_state = CASE WHEN $5 = 'absent' THEN 'not_started'::decodex.effect_state ELSE effect_state END, \
 				 receipt = CASE WHEN $5 = 'absent' THEN NULL ELSE receipt END, \
 				 reconciliation = $4, lease_holder = NULL, claim_token = NULL, lease_expires_at = NULL, \
-				 available_at = CASE WHEN $5 = 'absent' THEN clock_timestamp() + $6::bigint * interval '1 millisecond' ELSE available_at END, \
-				 delivered_at = CASE WHEN $5 = 'present' THEN clock_timestamp() ELSE NULL END, \
-				 dead_lettered_at = CASE WHEN $5 = 'absent' AND attempt_count >= max_attempts THEN clock_timestamp() ELSE NULL END, \
-				 retain_until = CASE WHEN $5 = 'present' THEN clock_timestamp() + $7::bigint * interval '1 millisecond' ELSE retain_until END \
+				 available_at = CASE WHEN $5 = 'absent' THEN write_time.value + $6::bigint * interval '1 millisecond' ELSE available_at END, \
+				 delivered_at = CASE WHEN $5 = 'present' THEN write_time.value ELSE NULL END, \
+				 dead_lettered_at = CASE WHEN $5 = 'absent' AND attempt_count >= max_attempts THEN write_time.value ELSE NULL END, \
+				 retain_until = CASE WHEN $5 = 'present' THEN write_time.value + $7::bigint * interval '1 millisecond' ELSE retain_until END \
+				 FROM write_time \
 				 WHERE id = $1 AND state = 'in_flight' AND lease_holder = $2::text::uuid \
 				   AND claim_token = $3::text::uuid \
-				   AND lease_expires_at > clock_timestamp() \
+				   AND lease_expires_at > write_time.value \
 				   AND (($5 = 'present' AND effect_state = 'receipt_recorded' AND receipt IS NOT NULL) \
 				     OR ($5 = 'absent' AND effect_state <> 'not_started'))",
 				&[
