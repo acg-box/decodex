@@ -8,6 +8,12 @@ use crate::{
 	PostgresStore, QuotaWindow, QuotaWindowMutation, StoreError,
 };
 
+struct PersistedWindowTimestamps {
+	revision: i64,
+	resets_at: Option<String>,
+	observed_at: String,
+}
+
 impl PostgresStore {
 	/// Apply one inert account metadata mutation. The account revision, append-only activity,
 	/// outbox event, and command response commit in one PostgreSQL transaction.
@@ -87,10 +93,11 @@ impl PostgresStore {
 			return Ok(window);
 		}
 
-		let revision = match mutation.expected_revision {
+		let persisted = match mutation.expected_revision {
 			None => create_window(&transaction, mutation).await?,
 			Some(expected) => update_window(&transaction, mutation, expected).await?,
 		};
+		let revision = persisted.revision;
 		let aggregate_id = format!(
 			"{}:{}/{}",
 			mutation.account_id, mutation.window_class, mutation.duration_seconds
@@ -121,8 +128,8 @@ impl PostgresStore {
 			"window_class": mutation.window_class,
 			"duration_seconds": mutation.duration_seconds,
 			"remaining_amount": mutation.remaining_amount,
-			"resets_at": mutation.resets_at,
-			"observed_at": mutation.observed_at,
+			"resets_at": persisted.resets_at,
+			"observed_at": persisted.observed_at,
 			"confidence": mutation.confidence,
 			"metadata": mutation.metadata,
 			"revision": revision,
@@ -234,7 +241,14 @@ fn validate_rfc3339(value: &str, error: &'static str) -> Result<(), StoreError> 
 		return Err(StoreError::InvalidInput(error));
 	}
 
-	OffsetDateTime::parse(value, &Rfc3339).map(|_| ()).map_err(|_| StoreError::InvalidInput(error))
+	let parsed =
+		OffsetDateTime::parse(value, &Rfc3339).map_err(|_| StoreError::InvalidInput(error))?;
+
+	if parsed.year() < 1 {
+		return Err(StoreError::InvalidInput(error));
+	}
+
+	Ok(())
 }
 
 fn account_from_row(row: Row) -> Result<AccountMetadata, StoreError> {
@@ -436,13 +450,15 @@ async fn account_revision(
 async fn create_window(
 	transaction: &Transaction<'_>,
 	mutation: &QuotaWindowMutation,
-) -> Result<i64, StoreError> {
+) -> Result<PersistedWindowTimestamps, StoreError> {
 	let row = transaction
 		.query_opt(
 			"INSERT INTO decodex.quota_windows \
 			 (account_id, window_class, duration_seconds, remaining_amount, resets_at, observed_at, confidence, metadata) \
 			 VALUES ($1::text::uuid, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7, $8) \
-			 ON CONFLICT DO NOTHING RETURNING revision",
+				 ON CONFLICT DO NOTHING RETURNING revision, \
+				 CASE WHEN resets_at IS NULL THEN NULL ELSE decodex.rfc3339_utc(resets_at) END, \
+				 decodex.rfc3339_utc(observed_at)",
 			&[
 				&mutation.account_id.as_str(),
 				&mutation.window_class,
@@ -457,23 +473,29 @@ async fn create_window(
 		.await?;
 
 	if let Some(row) = row {
-		return Ok(row.get(0));
+		return Ok(PersistedWindowTimestamps {
+			revision: row.get(0),
+			resets_at: row.get(1),
+			observed_at: row.get(2),
+		});
 	}
 
-	window_revision(transaction, mutation, None).await
+	Err(window_revision_error(transaction, mutation, None).await?)
 }
 
 async fn update_window(
 	transaction: &Transaction<'_>,
 	mutation: &QuotaWindowMutation,
 	expected: i64,
-) -> Result<i64, StoreError> {
+) -> Result<PersistedWindowTimestamps, StoreError> {
 	let row = transaction
 		.query_opt(
 			"UPDATE decodex.quota_windows SET remaining_amount = $4, resets_at = $5::timestamptz, \
 			 observed_at = $6::timestamptz, confidence = $7, metadata = $8, revision = revision + 1, \
 			 updated_at = clock_timestamp() WHERE account_id = $1::text::uuid AND window_class = $2 \
-			 AND duration_seconds = $3 AND revision = $9 RETURNING revision",
+				 AND duration_seconds = $3 AND revision = $9 RETURNING revision, \
+				 CASE WHEN resets_at IS NULL THEN NULL ELSE decodex.rfc3339_utc(resets_at) END, \
+				 decodex.rfc3339_utc(observed_at)",
 			&[
 				&mutation.account_id.as_str(),
 				&mutation.window_class,
@@ -489,17 +511,21 @@ async fn update_window(
 		.await?;
 
 	if let Some(row) = row {
-		return Ok(row.get(0));
+		return Ok(PersistedWindowTimestamps {
+			revision: row.get(0),
+			resets_at: row.get(1),
+			observed_at: row.get(2),
+		});
 	}
 
-	window_revision(transaction, mutation, Some(expected)).await
+	Err(window_revision_error(transaction, mutation, Some(expected)).await?)
 }
 
-async fn window_revision(
+async fn window_revision_error(
 	transaction: &Transaction<'_>,
 	mutation: &QuotaWindowMutation,
 	expected: Option<i64>,
-) -> Result<i64, StoreError> {
+) -> Result<StoreError, StoreError> {
 	let actual = transaction
 		.query_opt(
 			"SELECT revision FROM decodex.quota_windows WHERE account_id = $1::text::uuid \
@@ -509,7 +535,7 @@ async fn window_revision(
 		.await?
 		.map(|row| row.get(0));
 
-	Err(StoreError::RevisionConflict {
+	Ok(StoreError::RevisionConflict {
 		entity: format!(
 			"quota_window/{}:{}/{}",
 			mutation.account_id, mutation.window_class, mutation.duration_seconds

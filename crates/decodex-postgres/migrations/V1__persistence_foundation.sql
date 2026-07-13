@@ -20,13 +20,26 @@ CREATE TYPE decodex.account_state AS ENUM (
 CREATE TYPE decodex.outbox_state AS ENUM ('pending', 'in_flight', 'delivered', 'dead_letter');
 CREATE TYPE decodex.effect_state AS ENUM ('not_started', 'ambiguous', 'receipt_recorded');
 
+CREATE FUNCTION decodex.normalize_unicode_whitespace(value text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+STRICT
+AS $$
+	SELECT translate(
+		value,
+		U&'\0009\000A\000B\000C\000D\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000',
+		repeat(' ', 25)
+	)
+$$;
+
 CREATE FUNCTION decodex.has_credential_material(value text)
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
 STRICT
 AS $$
-	SELECT value ~* '(^|[[:space:][:punct:]])(bearer[[:space:]]+[[:alnum:]_.~+/-]{8,}|basic[[:space:]]+[[:alnum:]+/]{8,}={0,2})|(^|[^[:alnum:]])(sk-[[:alnum:]_-]{8,}|(sk|pk|rk)_(live|test|proj)?[[:alnum:]_-]{8,}|xox[baprs]-[[:alnum:]-]{8,}|glpat-[[:alnum:]_-]{8,}|npm_[[:alnum:]]{8,})|gh[pousr]_[[:alnum:]]{20,}|eyj[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}|-----begin[^-]*private key-----|(password|passphrase|secret|token|authorization)[[:space:]]*[:=][[:space:]]*[^[:space:]]{4,}|[a-z][a-z0-9+.-]*://[^/:[:space:]]+:[^@[:space:]]+@|akia[0-9a-z]{16}'
+	SELECT decodex.normalize_unicode_whitespace(value) ~* '(^|[[:space:][:punct:]])(bearer[[:space:]]+[[:alnum:]_.~+/-]{8,}|basic[[:space:]]+[[:alnum:]+/]{8,}={0,2})|(^|[^[:alnum:]])(sk-[[:alnum:]_-]{8,}|(sk|pk|rk)_(live|test|proj)?[[:alnum:]_-]{8,}|xox[baprs]-[[:alnum:]-]{8,}|glpat-[[:alnum:]_-]{8,}|npm_[[:alnum:]]{8,})|gh[pousr]_[[:alnum:]]{20,}|eyj[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}|-----begin[^-]*private[[:space:]]+key-----|(password|passphrase|secret|token|authorization)[[:space:]]*[:=][[:space:]]*[^[:space:]]{4,}|[a-z][a-z0-9+.-]*://[^/:[:space:]]+:[^@[:space:]]+@|akia[0-9a-z]{16}'
 $$;
 
 CREATE FUNCTION decodex.has_credential_material(document jsonb)
@@ -67,6 +80,51 @@ BEGIN
 END
 $$;
 
+CREATE FUNCTION decodex.is_meaningful_evidence(document jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+AS $$
+DECLARE
+	entry jsonb;
+BEGIN
+	CASE jsonb_typeof(document)
+		WHEN 'object' THEN
+			FOR entry IN SELECT value FROM jsonb_each(document)
+			LOOP
+				IF decodex.is_meaningful_evidence(entry) THEN
+					RETURN true;
+				END IF;
+			END LOOP;
+		WHEN 'array' THEN
+			FOR entry IN SELECT value FROM jsonb_array_elements(document)
+			LOOP
+				IF decodex.is_meaningful_evidence(entry) THEN
+					RETURN true;
+				END IF;
+			END LOOP;
+		WHEN 'string' THEN
+			RETURN length(btrim(decodex.normalize_unicode_whitespace(document #>> '{}'))) > 0;
+		WHEN 'number', 'boolean' THEN
+			RETURN true;
+		ELSE
+			NULL;
+	END CASE;
+
+	RETURN false;
+END
+$$;
+
+CREATE FUNCTION decodex.rfc3339_utc(value timestamptz)
+RETURNS text
+LANGUAGE sql
+STABLE
+STRICT
+AS $$
+	SELECT to_char(value AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+$$;
+
 CREATE TABLE decodex.accounts (
 	account_id uuid PRIMARY KEY,
 	display_label text NOT NULL CHECK (length(display_label) BETWEEN 1 AND 128),
@@ -75,6 +133,9 @@ CREATE TABLE decodex.accounts (
 	revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
 	observed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
 	updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+	CONSTRAINT accounts_finite_timestamps CHECK (
+		isfinite(observed_at) AND isfinite(updated_at)
+	),
 	CONSTRAINT accounts_no_credentials CHECK (
 		NOT decodex.has_credential_material(display_label)
 		AND NOT decodex.has_credential_material(metadata)
@@ -92,6 +153,11 @@ CREATE TABLE decodex.quota_windows (
 	metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
 	revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
 	updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+	CONSTRAINT quota_windows_finite_timestamps CHECK (
+		(resets_at IS NULL OR isfinite(resets_at))
+		AND isfinite(observed_at)
+		AND isfinite(updated_at)
+	),
 	PRIMARY KEY (account_id, window_class, duration_seconds),
 	CONSTRAINT quota_windows_no_credentials CHECK (
 		NOT decodex.has_credential_material(window_class)
@@ -105,6 +171,12 @@ CREATE TABLE decodex.command_receipts (
 	response jsonb,
 	created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
 	completed_at timestamptz,
+	CONSTRAINT command_receipts_finite_timestamps CHECK (
+		isfinite(created_at) AND (completed_at IS NULL OR isfinite(completed_at))
+	),
+	CONSTRAINT command_receipts_timestamp_order CHECK (
+		completed_at IS NULL OR completed_at >= created_at
+	),
 	CONSTRAINT command_receipts_no_credentials CHECK (
 		NOT decodex.has_credential_material(idempotency_key)
 		AND (response IS NULL OR NOT decodex.has_credential_material(response))
@@ -121,6 +193,7 @@ CREATE TABLE decodex.activity (
 	correlation_key text NOT NULL CHECK (length(correlation_key) BETWEEN 1 AND 256),
 	payload jsonb NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+	CONSTRAINT activity_finite_created_at CHECK (isfinite(created_at)),
 	CONSTRAINT activity_no_credentials CHECK (
 		NOT decodex.has_credential_material(aggregate_kind)
 		AND NOT decodex.has_credential_material(aggregate_id)
@@ -138,6 +211,10 @@ CREATE TABLE decodex.leases (
 	expires_at timestamptz NOT NULL,
 	revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
 	updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+	CONSTRAINT leases_finite_timestamps CHECK (isfinite(expires_at) AND isfinite(updated_at)),
+	CONSTRAINT leases_bounded_expiration CHECK (
+		expires_at <= updated_at + 31536000000 * interval '1 millisecond'
+	),
 	CONSTRAINT leases_no_credentials CHECK (
 		NOT decodex.has_credential_material(resource_key)
 	)
@@ -167,6 +244,14 @@ CREATE TABLE decodex.outbox (
 	delivered_at timestamptz,
 	dead_lettered_at timestamptz,
 	retain_until timestamptz,
+	CONSTRAINT outbox_finite_timestamps CHECK (
+		isfinite(available_at)
+		AND (lease_expires_at IS NULL OR isfinite(lease_expires_at))
+		AND isfinite(created_at)
+		AND (delivered_at IS NULL OR isfinite(delivered_at))
+		AND (dead_lettered_at IS NULL OR isfinite(dead_lettered_at))
+		AND (retain_until IS NULL OR isfinite(retain_until))
+	),
 	CONSTRAINT outbox_no_credentials CHECK (
 		NOT decodex.has_credential_material(effect_key)
 		AND NOT decodex.has_credential_material(aggregate_kind)
@@ -182,10 +267,32 @@ CREATE TABLE decodex.outbox (
 		OR (state <> 'in_flight' AND lease_holder IS NULL AND claim_token IS NULL
 			AND lease_expires_at IS NULL)
 	),
-	CHECK ((state = 'delivered') = (delivered_at IS NOT NULL)),
-	CHECK ((state = 'dead_letter') = (dead_lettered_at IS NOT NULL)),
-	CHECK ((effect_state = 'receipt_recorded') = (receipt IS NOT NULL)),
-	CHECK (state <> 'delivered' OR (effect_state = 'receipt_recorded' AND receipt IS NOT NULL))
+	CONSTRAINT outbox_meaningful_receipt_state CHECK (
+		(effect_state = 'receipt_recorded')
+			= COALESCE(decodex.is_meaningful_evidence(receipt), false)
+	),
+	CONSTRAINT outbox_delivered_evidence CHECK (
+		state <> 'delivered'
+		OR (
+			effect_state = 'receipt_recorded'
+			AND COALESCE(decodex.is_meaningful_evidence(receipt), false)
+			AND COALESCE(decodex.is_meaningful_evidence(reconciliation), false)
+			AND NOT decodex.has_credential_material(receipt)
+			AND NOT decodex.has_credential_material(reconciliation)
+		)
+	),
+	CONSTRAINT outbox_delivered_timestamps CHECK (
+		(state = 'delivered') = (delivered_at IS NOT NULL)
+		AND (state = 'delivered') = (retain_until IS NOT NULL)
+	),
+	CONSTRAINT outbox_delivered_retention CHECK (
+		state <> 'delivered'
+		OR (
+			retain_until > delivered_at
+			AND retain_until <= delivered_at + 31536000000 * interval '1 millisecond'
+		)
+	),
+	CHECK ((state = 'dead_letter') = (dead_lettered_at IS NOT NULL))
 );
 
 CREATE FUNCTION decodex.forbid_mutation_of_activity()
@@ -201,6 +308,33 @@ CREATE TRIGGER activity_append_only
 BEFORE UPDATE OR DELETE ON decodex.activity
 FOR EACH ROW EXECUTE FUNCTION decodex.forbid_mutation_of_activity();
 
+CREATE FUNCTION decodex.lease_ttl_milliseconds(value interval)
+RETURNS bigint
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+AS $$
+DECLARE
+	milliseconds numeric;
+BEGIN
+	IF extract(year FROM value) <> 0 OR extract(month FROM value) <> 0 THEN
+		RAISE EXCEPTION 'lease TTL must be a fixed duration' USING ERRCODE = '22023';
+	END IF;
+
+	milliseconds := extract(epoch FROM value) * 1000;
+
+	IF milliseconds < 1
+		OR milliseconds > 31536000000
+		OR milliseconds <> trunc(milliseconds)
+	THEN
+		RAISE EXCEPTION 'lease TTL must be a positive whole number of milliseconds no greater than 365 days'
+			USING ERRCODE = '22023';
+	END IF;
+
+	RETURN milliseconds::bigint;
+END
+$$;
+
 CREATE FUNCTION decodex.try_acquire_lease(
 	p_resource_key text,
 	p_holder_id uuid,
@@ -209,22 +343,26 @@ CREATE FUNCTION decodex.try_acquire_lease(
 RETURNS TABLE (acquired boolean, lease_token uuid, revision bigint)
 LANGUAGE plpgsql
 AS $$
+DECLARE
+	ttl_milliseconds bigint := decodex.lease_ttl_milliseconds(p_ttl);
+	write_at timestamptz := clock_timestamp();
 BEGIN
-	IF p_ttl <= interval '0 seconds' THEN
-		RAISE EXCEPTION 'lease TTL must be positive' USING ERRCODE = '22023';
-	END IF;
-
 	RETURN QUERY
 	WITH acquired AS (
-		INSERT INTO decodex.leases (resource_key, holder_id, expires_at)
-		VALUES (p_resource_key, p_holder_id, clock_timestamp() + p_ttl)
+		INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at)
+		VALUES (
+			p_resource_key,
+			p_holder_id,
+			write_at + ttl_milliseconds * interval '1 millisecond',
+			write_at
+		)
 		ON CONFLICT (resource_key) DO UPDATE
 		SET holder_id = EXCLUDED.holder_id,
 			lease_token = gen_random_uuid(),
 			expires_at = EXCLUDED.expires_at,
 			revision = decodex.leases.revision + 1,
-			updated_at = clock_timestamp()
-		WHERE decodex.leases.expires_at <= clock_timestamp()
+			updated_at = EXCLUDED.updated_at
+		WHERE decodex.leases.expires_at <= write_at
 			OR decodex.leases.holder_id = EXCLUDED.holder_id
 		RETURNING decodex.leases.lease_token, decodex.leases.revision
 	)
@@ -241,18 +379,26 @@ CREATE FUNCTION decodex.renew_lease(
 	p_ttl interval
 )
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 AS $$
+DECLARE
+	ttl_milliseconds bigint := decodex.lease_ttl_milliseconds(p_ttl);
+	write_at timestamptz := clock_timestamp();
+	updated_count bigint;
+BEGIN
 	UPDATE decodex.leases
-	SET expires_at = clock_timestamp() + p_ttl,
+	SET expires_at = write_at + ttl_milliseconds * interval '1 millisecond',
 		revision = revision + 1,
-		updated_at = clock_timestamp()
+		updated_at = write_at
 	WHERE resource_key = p_resource_key
 		AND holder_id = p_holder_id
 		AND lease_token = p_lease_token
-		AND expires_at > clock_timestamp()
-		AND p_ttl > interval '0 seconds'
-	RETURNING true
+		AND expires_at > write_at;
+
+	GET DIAGNOSTICS updated_count = ROW_COUNT;
+
+	RETURN updated_count = 1;
+END
 $$;
 
 CREATE FUNCTION decodex.release_lease(
@@ -263,13 +409,15 @@ CREATE FUNCTION decodex.release_lease(
 RETURNS boolean
 LANGUAGE sql
 AS $$
+	WITH write_time AS (SELECT clock_timestamp() AS value)
 	UPDATE decodex.leases
-	SET expires_at = clock_timestamp(),
+	SET expires_at = write_time.value,
 		revision = revision + 1,
-		updated_at = clock_timestamp()
+		updated_at = write_time.value
+	FROM write_time
 	WHERE resource_key = p_resource_key
 		AND holder_id = p_holder_id
 		AND lease_token = p_lease_token
-		AND expires_at > clock_timestamp()
+		AND expires_at > write_time.value
 	RETURNING true
 $$;
