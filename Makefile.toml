@@ -238,10 +238,11 @@ args = [
 ]
 
 # Test
-# | task                    | type      | cwd |
-# | ----------------------- | --------- | --- |
-# | test                    | composite |     |
-# | test-rust               | command   |     |
+# | task                     | type      | cwd |
+# | ------------------------ | --------- | --- |
+# | test                     | composite |     |
+# | test-rust                | command   |     |
+# | test-vnext-storage-proof | command   |     |
 
 [tasks.test]
 clear = true
@@ -259,4 +260,11 @@ args = [
 	"--workspace",
 	"--all-targets",
 	"--all-features",
+]
+
+[tasks.test-vnext-storage-proof]
+workspace = false
+command = "python3"
+args = [
+	"spikes/vnext-storage/proof.py",
 ]

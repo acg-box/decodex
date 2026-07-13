@@ -1,6 +1,6 @@
 [workspace]
 exclude  = ["apps/decodex-app", "spikes/gpui"]
-members  = ["apps/*"]
+members  = ["apps/*", "spikes/vnext-storage"]
 resolver = "3"
 
 [workspace.package]
