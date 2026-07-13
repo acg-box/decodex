@@ -1,5 +1,5 @@
 [workspace]
-exclude  = ["apps/decodex-app"]
+exclude  = ["apps/decodex-app", "spikes/gpui"]
 members  = ["apps/*"]
 resolver = "3"
 
