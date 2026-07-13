@@ -1,12 +1,18 @@
-//! `decodexd` lifecycle assembly.
-//!
-//! This owner wires the accepted adapters and validates the service boundary. It does
-//! not open sockets, connect to PostgreSQL, or spawn Codex in XY-1265.
+//! `decodexd` lifecycle assembly and the loopback V1 connection owner.
+
+mod application;
+mod websocket;
+
+pub use application::{Application, ApplicationPublication, FoundationApplication};
+pub use decodex_protocol::ServerId;
+pub use websocket::{BoundServer, ProtocolServer, ServerConfig, ServerError};
+
+#[cfg(test)] use tokio_tungstenite as _;
 
 use decodex_codex::CodexAdapter;
 use decodex_core::FoundationStatus;
 use decodex_postgres::PostgresStore;
-use decodex_protocol::{ProtocolVersion, ServiceAnnouncement};
+use decodex_protocol::{CURRENT_VERSION, ServiceAnnouncement};
 
 /// The vNext service assembly selected by the `decodexd` composition root.
 #[derive(Clone, Copy, Debug)]
@@ -15,17 +21,28 @@ pub struct ServiceComposition {
 	codex: CodexAdapter,
 }
 impl ServiceComposition {
-	/// Select the accepted vNext adapters without selecting a transport or endpoint.
+	/// Select the accepted adapters without enabling either unavailable implementation.
 	pub const fn foundation() -> Self {
 		Self { store: PostgresStore::unavailable(), codex: CodexAdapter::unavailable() }
 	}
 
-	/// Validate and describe the assembled service without enabling later slices.
+	/// Validate and describe the assembled service.
 	pub fn boot(self) -> ServiceAnnouncement {
 		ServiceAnnouncement {
-			version: ProtocolVersion::V1,
+			version: CURRENT_VERSION,
 			foundation: FoundationStatus::assemble(&self.store, &self.codex),
 		}
+	}
+
+	/// Compose the sole V1 server root while later adapters remain unavailable.
+	pub fn protocol_server(
+		self,
+		server_id: ServerId,
+		config: ServerConfig,
+	) -> ProtocolServer<FoundationApplication> {
+		let _ = self.boot();
+
+		ProtocolServer::new(server_id, FoundationApplication, config)
 	}
 }
 
@@ -33,13 +50,13 @@ impl ServiceComposition {
 mod tests {
 	use crate::ServiceComposition;
 	use decodex_core::Availability;
-	use decodex_protocol::ProtocolVersion;
+	use decodex_protocol::CURRENT_VERSION;
 
 	#[test]
 	fn service_boot_wires_v1_without_enabling_unimplemented_adapters() {
 		let announcement = ServiceComposition::foundation().boot();
 
-		assert_eq!(announcement.version, ProtocolVersion::V1);
+		assert_eq!(announcement.version, CURRENT_VERSION);
 		assert_eq!(
 			announcement.foundation.product_state(),
 			Availability::Unavailable { reason: decodex_postgres::NOT_IMPLEMENTED }
