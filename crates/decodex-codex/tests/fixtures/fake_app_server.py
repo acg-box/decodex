@@ -136,7 +136,7 @@ if mode in ("orphan-exit", "orphan-stubborn", "orphan-error", "orphan-timeout"):
         time.sleep(60)
         raise SystemExit(0)
     if mode == "orphan-timeout":
-        for _line in sys.stdin:
+        for _ in sys.stdin:
             time.sleep(60)
         raise SystemExit(0)
     import signal
