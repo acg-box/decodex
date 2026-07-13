@@ -1,6 +1,8 @@
 # Lane Authority V2 Gate Manifest
 
-Status: normative gate manifest for XY-1251.
+Status: superseded and frozen by the [vNext authority decision](../decisions/vnext-authority.md).
+C1-C7 are canceled as implementation gates. The commands and scenarios below are
+retained only as historical design, review, and incident evidence.
 
 This file makes C0-C7 advancement falsifiable. The machine scenario manifest lives at
 `apps/decodex/src/orchestrator/tests/fixtures/lane_authority_v2/scenario_manifest.json`
