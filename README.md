@@ -2,7 +2,7 @@
 
 # Decodex
 
-Repo-native agent orchestration, retained lanes, and local operator control.
+Local-first agent workspace orchestration.
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/hack-ink/decodex)](https://github.com/hack-ink/decodex/tags)
@@ -11,7 +11,24 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 
 </div>
 
-## Feature Highlights
+## vNext foundation status
+
+The active Rust workspace is the product-incomplete vNext foundation. `decodexd`, the
+`decodex` client, and the GPUI composition root compile, but PostgreSQL, Codex,
+WebSocket, CLI operations, and product UI behavior are deliberately unavailable until
+their owning implementation slices land. The frozen v0.2 source remains under
+`apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is
+not a compatibility runtime.
+
+## Frozen v0.2 runtime reference
+
+All runtime, operator, CLI, configuration, and path claims below that describe
+retained lanes, Linear, SQLite, `apps/decodex/`, `~/.codex/decodex`, or
+`decodex serve` are frozen v0.2 reference material regardless of present-tense wording
+or heading level. They are not active vNext capability, authority, aliases, or fallback
+behavior.
+
+### Feature highlights at freeze
 
 - Rust CLI and runtime for repo-native retained coding-agent lanes.
 - Natural-language-first loop-runtime contract with accepted decision intake,
@@ -30,7 +47,7 @@ Repo-native agent orchestration, retained lanes, and local operator control.
 - OpenWiki-backed project knowledge under `openwiki/`, split by architecture,
   workflows, contracts, operations, and integrations.
 
-## Status
+## Frozen v0.2 status
 
 Prototype / in active development.
 
@@ -55,7 +72,12 @@ runtime.
 
 ## Workspace posture
 
-- `apps/decodex/` owns the Rust package that builds the `decodex` CLI and runtime.
+- `crates/decodex-core/`, `crates/decodex-protocol/`, `crates/decodex-postgres/`,
+  `crates/decodex-codex/`, and `crates/decodex-runtime/` are the five active vNext
+  library owners.
+- `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are the active vNext
+  composition roots; all currently report unavailable or disabled capability.
+- `apps/decodex/` preserves the frozen v0.2 package outside the active Cargo workspace.
 - `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
   release-delta, signal rendering, validation, and local ledger workflows.
 - `apps/decodex-publisher/` owns the standalone Publisher auxiliary tool for social
@@ -69,12 +91,13 @@ runtime.
   are the portable Codex app automation source; install live local configs from a
   clone with `python3 automations/decodex/scripts/config/sync_automations.py --apply`.
 
-Runtime authority stays in `apps/decodex/src/`, registered project contracts under
-`~/.codex/decodex/projects/<service-id>/`, and local runtime state. OpenWiki explains
-those contracts for maintainers and agents but is not a runtime input. Public site
-authority stays in `site/`.
+No vNext product-state runtime is active yet. PostgreSQL becomes product-state authority
+under XY-1267, the Decodex-owned local layout moves under `~/.decodex` under XY-1268,
+and shared `~/.codex` remains Codex-owned. OpenWiki explains those contracts for
+maintainers and agents but is not a runtime input. Public site authority stays in
+`site/`.
 
-## Runtime platform support
+## Frozen v0.2 runtime platform support
 
 - The Decodex runtime contract is Unix-only: macOS and Linux.
 - Windows is outside the runtime contract.
@@ -87,7 +110,7 @@ authority stays in `site/`.
   future dispatch rather than deleting visibility or ownership. It does not scan Codex
   history, repo-local config files, or currently open worktrees to infer projects.
 
-## Usage
+## Frozen v0.2 usage
 
 ### Runtime CLI
 
@@ -284,7 +307,7 @@ The static-site boundary and GitHub Pages setup for `https://decodex.space`, inc
 the external automation boundary, are summarized in
 [`openwiki/integrations/plugins-automations-and-auxiliary-tools.md`](openwiki/integrations/plugins-automations-and-auxiliary-tools.md).
 
-## Operator Listener
+## Frozen v0.2 operator listener
 
 `decodex serve` owns the local operator listener. Published snapshots,
 current-lane updates, and local operator controls flow through the
@@ -370,7 +393,10 @@ cargo make build-node
 
 The tracked workspace currently keeps:
 
-- `apps/decodex/` as the Rust package that builds the `decodex` CLI and runtime
+- `crates/decodex-*/` as the five active vNext library owners
+- `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` as active vNext
+  composition roots
+- `apps/decodex/` as frozen v0.2 provenance excluded from the active Cargo workspace
 - `site/` as the Astro static site for the public Decodex product surface
 - `plugins/decodex/` as the canonical installable Decodex plugin source
 - `openwiki/` as the repo-local project knowledge and agent context surface

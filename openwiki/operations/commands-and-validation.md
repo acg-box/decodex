@@ -19,6 +19,7 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Broad repo check | `cargo make check` |
 | Rust type check | `cargo make check-rust` or `cargo check --all-features --all-targets --workspace` |
 | Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
+| vNext dependency architecture | `cargo make test-vnext-architecture` |
 | vNext storage feasibility proof | `cargo make test-vnext-storage-proof` |
 | Rust formatting | `cargo make fmt-rust-check` |
 | TOML formatting | `cargo make fmt-toml-check` |
@@ -27,7 +28,7 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Site type check | `cargo make check-node` or `npm --prefix site run check` |
 | Site build | `cargo make build` or `npm --prefix site run build` |
 
-`cargo make test` uses `cargo nextest run --workspace --all-targets --all-features` (`Makefile.toml`). The XY-1264 storage command is intentionally separate: it requires an intended macOS host with one PostgreSQL 18 distribution providing matching `postgres`, `initdb`, `pg_ctl`, `psql`, `pg_dump`, and `pg_restore` binaries. It creates and removes an isolated temporary checksummed cluster with TCP disabled; a passing run is scoped feasibility evidence, not the broad repository gate or a production performance result (`spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
+`cargo make test` runs both `cargo nextest run --workspace --all-targets --all-features` and the vNext architecture test (`Makefile.toml`). The XY-1264 storage command is intentionally separate: it requires an intended macOS host with one PostgreSQL 18 distribution providing matching `postgres`, `initdb`, `pg_ctl`, `psql`, `pg_dump`, and `pg_restore` binaries. It creates and removes an isolated temporary checksummed cluster with TCP disabled; a passing run is scoped feasibility evidence, not the broad repository gate or a production performance result (`spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
 
 ## Validation scope selection
 
@@ -39,7 +40,13 @@ Good targeted scopes are contract-shaped rather than file-shaped: CLI parsing/ou
 
 Use the owner path to choose the first validation surface:
 
-- `apps/decodex/`: Decodex Rust CLI, runtime, orchestration, tracker/app-server integration, MCP, state, recovery, and operator control-plane behavior.
+- `crates/decodex-core/`: pure vNext domain/application contracts and authority ports.
+- `crates/decodex-protocol/`: version and loopback network boundary shared by service and clients.
+- `crates/decodex-postgres/`: default-unavailable PostgreSQL product-state adapter boundary.
+- `crates/decodex-codex/`: default-unavailable shared-home Codex adapter boundary.
+- `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners.
+- `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/`: active vNext composition roots.
+- `apps/decodex/`: frozen v0.2 source excluded from the workspace; provenance only.
 - `apps/radar/`: Radar auxiliary tool for upstream evidence, release deltas, signal rendering, artifact validation, and ledger workflows.
 - `apps/decodex-publisher/`: Publisher auxiliary tool for social candidate, reservation, post validation, and publication handoff workflows.
 - `plugins/decodex/`: installable Decodex runtime/operator plugin source, including planning, runtime ops, commit, and landing skills/hooks.
@@ -57,12 +64,15 @@ Common targeted commands:
 ```sh
 cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
-cargo test -p decodex <filter>
+cargo make test-vnext-architecture
+cargo test -p decodex-core -p decodex-protocol -p decodex-postgres -p decodex-codex -p decodex-runtime
 cargo test -p radar <filter>
 cargo test -p decodex-publisher <filter>
 ```
 
-Prefer targeted filters while iterating, then run a broader gate before handoff when the change touches shared runtime behavior. Choose filters from the behavior family or module path that owns the observable contract: `review_landing` for merge/review state, `tracker_tool_bridge` for Linear writes and continuation guards, `app_server` or `json_rpc` for protocol payloads, `state` for leases/migrations/runtime rows, `mcp` for operator control tools, `manual`/`github`/`worktree`/`recovery` for Git and landing helpers, and CLI parser names for command output. If one change crosses families, run one focused filter per family rather than a single file-shaped smoke test.
+The remaining test map on this page describes frozen v0.2 provenance and remains useful
+only when later removal work audits preserved behavior. It is not an active vNext test
+surface.
 
 ## Test map
 

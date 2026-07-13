@@ -1,0 +1,12 @@
+[package]
+authors.workspace    = true
+description          = "Version and network-boundary contracts for Decodex vNext clients."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-protocol"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+decodex-core = { workspace = true }
