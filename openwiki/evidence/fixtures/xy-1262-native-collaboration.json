@@ -1,0 +1,30 @@
+{
+  "schema": "decodex/vnext-native-collaboration-receipt/1",
+  "observed_at_unix": 1783918655,
+  "parent_thread_id": "019f59bf-6d96-7512-aebd-6fd36ce5fc58",
+  "child_thread_id": "019f59d3-4222-7e11-9ea2-6b72ca0064e9",
+  "reviewer_identity": "/root/xy1262_reviewer",
+  "readbacks": {
+    "thread_list_ancestor": {
+      "child_returned": true,
+      "parent_thread_id_matches": true,
+      "agent_role": null
+    },
+    "codex_desktop_read_child": {
+      "turn_status": "completed",
+      "item_types": ["agentMessage", "reasoning", "subAgentActivity"],
+      "subagent_activity": {
+        "kind": "interacted",
+        "agent_thread_id": "019f59bf-6d96-7512-aebd-6fd36ce5fc58",
+        "agent_path": "/root"
+      }
+    }
+  },
+  "normalization": {
+    "runtime_actor_id": "child_thread_id",
+    "parent_runtime_actor_id": "parent_thread_id",
+    "activity_kind": "subAgentActivity.kind",
+    "logical_agent_role": "not inferred when agentRole is null",
+    "durability": "run-local runtime actor; Decodex owns cross-run routing"
+  }
+}
