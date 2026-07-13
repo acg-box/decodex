@@ -14,7 +14,6 @@ pub struct ServiceComposition {
 	store: PostgresStore,
 	codex: CodexAdapter,
 }
-
 impl ServiceComposition {
 	/// Select the accepted vNext adapters without selecting a transport or endpoint.
 	pub const fn foundation() -> Self {
@@ -32,11 +31,9 @@ impl ServiceComposition {
 
 #[cfg(test)]
 mod tests {
-	use decodex_codex::NOT_IMPLEMENTED as CODEX_NOT_IMPLEMENTED;
+	use crate::ServiceComposition;
 	use decodex_core::Availability;
-	use decodex_postgres::NOT_IMPLEMENTED as POSTGRES_NOT_IMPLEMENTED;
-
-	use super::*;
+	use decodex_protocol::ProtocolVersion;
 
 	#[test]
 	fn service_boot_wires_v1_without_enabling_unimplemented_adapters() {
@@ -45,11 +42,11 @@ mod tests {
 		assert_eq!(announcement.version, ProtocolVersion::V1);
 		assert_eq!(
 			announcement.foundation.product_state(),
-			Availability::Unavailable { reason: POSTGRES_NOT_IMPLEMENTED }
+			Availability::Unavailable { reason: decodex_postgres::NOT_IMPLEMENTED }
 		);
 		assert_eq!(
 			announcement.foundation.conversation_runtime(),
-			Availability::Unavailable { reason: CODEX_NOT_IMPLEMENTED }
+			Availability::Unavailable { reason: decodex_codex::NOT_IMPLEMENTED }
 		);
 		assert!(!announcement.foundation.is_operational());
 	}
