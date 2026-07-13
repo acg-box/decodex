@@ -1,5 +1,10 @@
 # Design Rationale
 
+Scope: current v0.2 rationale and historical decisions. For vNext target design, the
+[vNext authority decision](vnext-authority.md) and
+[vNext authority contract](../specs/vnext-authority.md) supersede conflicting product,
+runtime, state, identity, transport, migration, and delivery claims on this page.
+
 This page preserves durable "why" decisions that were previously scattered across historical decision records. It is not runtime authority by itself. Current authority lives in source, contracts, tests, checked-in manifests, and local runtime state; this page explains why those authority boundaries exist and where future agents should verify them.
 
 ## Current authority and status

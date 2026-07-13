@@ -1,14 +1,18 @@
 # Lane Authority V2 Checkpoints
 
+Status: frozen historical ledger. [XY-1260](../decisions/vnext-authority.md) superseded
+Lane Authority v2; C1-C7 must not advance. Preserve this file as evidence and provenance.
+
 Tracking issue: [XY-1251](https://linear.app/hack-ink/issue/XY-1251/lane-authority-v2-unify-decodex-project-lane-lifecycle-and-effect-authority)
 
-This is the durable anti-drift ledger for the Lane Authority v2 program. Update it at
-every checkpoint with facts, inferences, exact source/PR identities, validation results,
-migration state, unresolved objections, scope changes, and the next checkpoint.
+This was the durable anti-drift ledger for the Lane Authority v2 program. Its entries are
+frozen snapshots of facts, inferences, exact source/PR identities, validation results,
+migration state, unresolved objections, scope changes, and planned next checkpoints. Do
+not update them as active checkpoint state.
 
 ## C0 Baseline And Architecture Freeze
 
-Status: in progress.
+Historical status at supersession: in progress.
 
 Recorded at: 2026-07-09 (America/New_York).
 
@@ -108,16 +112,17 @@ Refreshed at: 2026-07-10 (America/New_York).
 - Existing overwritten global-key rows cannot be reconstructed safely from the winning
   row alone. Migration must use independent evidence or quarantine them.
 
-### Architecture decisions
+### Architecture decisions recorded at C0 (superseded)
 
-- [Lane Authority v2](../decisions/lane-authority-v2.md) is the accepted target.
-- [Lane Authority v2 target contract](../specs/lane-authority-v2.md) defines records,
+- At C0, [Lane Authority v2](../decisions/lane-authority-v2.md) was the accepted target;
+  XY-1260 later superseded it.
+- The historical [Lane Authority v2 target contract](../specs/lane-authority-v2.md) defines records,
   transitions, migration, telemetry, and the scenario matrix.
 - PR #1073 is not the final implementation path. Its requirements and tests remain
   evidence until replacement capability is proven.
 - Migration is an offline one-shot cutover, not a long-lived dual-authority rollout.
 
-### Unresolved objections
+### Objections unresolved when the program was frozen
 
 - Provider capabilities for conditional PR close/reopen, exact-head merge, and comment
   reconciliation must be verified before C3 implementation. Unsupported semantics are
