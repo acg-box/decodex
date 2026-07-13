@@ -4,8 +4,7 @@ use tokio_postgres::Row;
 
 use crate::{
 	AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
-	PostgresStore, QuotaWindow, QuotaWindowMutation, StoreError, ensure_credential_negative_json,
-	ensure_credential_negative_text,
+	PostgresStore, QuotaWindow, QuotaWindowMutation, StoreError,
 };
 
 impl PostgresStore {
@@ -193,8 +192,9 @@ fn validate_account(mutation: &AccountMutation) -> Result<(), StoreError> {
 	if mutation.expected_revision.is_some_and(|revision| revision < 1) {
 		return Err(StoreError::InvalidInput("expected revision must be positive"));
 	}
-	ensure_credential_negative_text(&mutation.display_label)?;
-	ensure_credential_negative_json(&mutation.metadata)?;
+
+	crate::ensure_credential_negative_text(&mutation.display_label)?;
+	crate::ensure_credential_negative_json(&mutation.metadata)?;
 
 	Ok(())
 }
@@ -215,8 +215,9 @@ fn validate_window(mutation: &QuotaWindowMutation) -> Result<(), StoreError> {
 	if mutation.expected_revision.is_some_and(|revision| revision < 1) {
 		return Err(StoreError::InvalidInput("expected revision must be positive"));
 	}
-	ensure_credential_negative_text(&mutation.window_class)?;
-	ensure_credential_negative_json(&mutation.metadata)?;
+
+	crate::ensure_credential_negative_text(&mutation.window_class)?;
+	crate::ensure_credential_negative_json(&mutation.metadata)?;
 
 	Ok(())
 }
