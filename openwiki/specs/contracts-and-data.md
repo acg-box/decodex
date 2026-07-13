@@ -1,5 +1,9 @@
 # Contracts And Data
 
+Scope: current v0.2 behavior only. For vNext target implementation, the
+[vNext authority contract](vnext-authority.md) supersedes this page's Linear tracker,
+SQLite, Goal, transport, data, and authority model.
+
 This page is the primary map for Decodex contracts and data boundaries. Use it to identify the source file or test area that owns behavior before editing. For the concise runtime authority contract across state ownership, project/`WORKFLOW.md`, app-server, tracker writeback, privacy, and recovery, start with [Runtime contracts](runtime-contracts.md).
 
 ## Project contract

@@ -1,5 +1,9 @@
 # Runtime Lifecycle
 
+Scope: current v0.2 behavior only. For vNext target implementation, the
+[vNext authority contract](vnext-authority.md) supersedes this page's Linear lane,
+SQLite, Goal, transport, lifecycle, and authority model.
+
 This page covers Decodex runtime authority, lane lifecycle, review lifecycle, app-server protocol, tracker tools, agent evidence, loop runtime, and autonomy boundaries. For the compact cross-cutting contract map, see [Runtime contracts](runtime-contracts.md).
 
 ## Authority model

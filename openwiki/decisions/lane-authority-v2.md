@@ -1,6 +1,7 @@
 # Lane Authority V2
 
-Status: accepted target architecture, not yet implemented.
+Status: superseded and frozen by [XY-1260](vnext-authority.md). Historical architecture
+and incident provenance only; do not implement or advance C1-C7.
 
 Tracking issue: [XY-1251](https://linear.app/hack-ink/issue/XY-1251/lane-authority-v2-unify-decodex-project-lane-lifecycle-and-effect-authority)
 

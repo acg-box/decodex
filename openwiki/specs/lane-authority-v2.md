@@ -1,7 +1,8 @@
 # Lane Authority V2 Target Contract
 
-Status: accepted target contract. Current runtime behavior remains documented in
-[Contracts and data](contracts-and-data.md) until each checkpoint lands.
+Status: superseded and frozen by the [vNext authority decision](../decisions/vnext-authority.md).
+Retained as historical design and incident provenance only; do not implement this
+contract or advance C1-C7.
 
 ## Core Records
 
