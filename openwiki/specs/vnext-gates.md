@@ -39,7 +39,8 @@ planning metadata, not product/runtime identity.
 6. App-server capability/schema negotiation, thread read/list, and native collaboration
    behavior (XY-1262).
 7. Empty PostgreSQL bootstrap, backup/rollback, and concurrent lease/outbox tests
-   (XY-1264).
+   (XY-1264). The scoped proof choices, measurements, recovery procedure, and downstream
+   boundary are recorded in [vNext storage feasibility evidence](../evidence/vnext-storage-feasibility.md).
 8. WebSocket reconnect, cursor resume, command idempotency, and current/previous-minor
    compatibility tests (XY-1266 and regression owner XY-1300).
 9. Large-history pagination/cache test proving multi-GB history is never eagerly loaded

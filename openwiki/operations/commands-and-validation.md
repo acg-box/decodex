@@ -19,6 +19,7 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Broad repo check | `cargo make check` |
 | Rust type check | `cargo make check-rust` or `cargo check --all-features --all-targets --workspace` |
 | Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
+| vNext storage feasibility proof | `cargo make test-vnext-storage-proof` |
 | Rust formatting | `cargo make fmt-rust-check` |
 | TOML formatting | `cargo make fmt-toml-check` |
 | Rust lint | `cargo make lint-rust` |
@@ -26,7 +27,7 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Site type check | `cargo make check-node` or `npm --prefix site run check` |
 | Site build | `cargo make build` or `npm --prefix site run build` |
 
-`cargo make test` uses `cargo nextest run --workspace --all-targets --all-features` (`Makefile.toml`).
+`cargo make test` uses `cargo nextest run --workspace --all-targets --all-features` (`Makefile.toml`). The XY-1264 storage command is intentionally separate: it requires an intended macOS host with one PostgreSQL 18 distribution providing matching `postgres`, `initdb`, `pg_ctl`, `psql`, `pg_dump`, and `pg_restore` binaries. It creates and removes an isolated temporary checksummed cluster with TCP disabled; a passing run is scoped feasibility evidence, not the broad repository gate or a production performance result (`spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
 
 ## Validation scope selection
 
@@ -45,6 +46,7 @@ Use the owner path to choose the first validation surface:
 - `automations/radar/` and `automations/decodex/`: repo-local Codex App automation sources; generated Radar and Publisher artifacts stay under `.agent/automations/**/cache`.
 - `site/`: Astro/TypeScript public static site and app download entry; validate with site type/build commands rather than runtime checks.
 - `apps/decodex-app/`: native SwiftPM macOS app for local account-pool management and bundled Decodex helper/server workflows.
+- `spikes/vnext-storage/`: isolated XY-1264 PostgreSQL, blob, and bounded-cache feasibility proof; validate it with `cargo make test-vnext-storage-proof` and use [the evidence record](../evidence/vnext-storage-feasibility.md) for accepted choices and boundaries.
 - `scripts/`: repository helpers; `scripts/assets/` owns checked-in asset generation and `scripts/macos/` owns macOS app packaging checks.
 - `.github/`: repository automation such as CodeQL code scanning ruleset support.
 
