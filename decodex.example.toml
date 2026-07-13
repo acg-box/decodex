@@ -1,70 +1,46 @@
-service_id = "your-service-id"
-
-[tracker]
-api_key_env_var = "LINEAR_API_KEY"
-
-[github]
-token_env_var = "GITHUB_TOKEN"
-# Optional explicit GitHub CLI authority. Use an absolute path when GUI-launched
-# Decodex processes do not inherit the shell PATH that contains `gh`.
-# command_path = "/opt/homebrew/bin/gh"
+# Decodex vNext global configuration.
 #
-# Landing mode defaults to "standard", which waits for the GitHub status rollup and
-# ordinary merge gates. "fast" trusts Decodex's local full-check status
-# (`decodex/local-full-check`) and allows the listed GitHub actors to execute
-# ruleset bypass landing after local validation passes.
-# landing_mode = "standard"
-# landing_mode = "fast"
-# landing_actors = ["decodex-bot"]
+# Install as ~/.decodex/config.toml with mode 0600. Decodex creates its root and
+# owned directories with mode 0700. Shared ~/.codex remains Codex-owned and must
+# not contain any Decodex vNext configuration, logs, blobs, cache, or identity.
+active_profile = "local"
+version        = 1
 
-# Optional Codex-specific runtime policy.
-# Omit this block to use `review = "strict"`.
-[codex]
-review = "strict"
+# Local means the client and decodexd share one host. The address must be loopback.
+[profiles.local]
+address = "127.0.0.1:49152"
+kind    = "local"
+# Optional pin after this host has created ~/.decodex/server/identity.
+# expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"
 
-# Optional Decodex autonomy references. Defaults are latent-only: objective drafts,
-# signal audits, and proposal dry-runs may produce evidence, but serve will not
-# promote proposals or create Program Intake without references to accepted runtime
-# Objective Contract and project-policy authority records.
-# [autonomy]
-# auto_promote = false
-# auto_intake  = false
+# Remote is an explicit data model for a different server host. It contains no
+# repository path and always requires a stable server-identity pin. This profile
+# does not enable a non-loopback listener, authentication, or TLS; those remain
+# gated future work.
+[profiles.remote]
+expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"
+host                     = "decodex-server.example.test"
+kind                     = "remote"
+port                     = 49152
 
-# Required only when `auto_promote = true`. This references-only binding is not
-# authority by itself. An operator must run interactive
-# `decodex project accept-runtime-policy <SERVICE_ID> --public-non-goal <TEXT>...`,
-# inspect the exact candidate digest, and type the digest confirmation. That command
-# issues and atomically consumes a server-stored, principal-bound, single-use
-# 10-minute receipt into the immutable accepted record. MCP can preview the candidate
-# but cannot perform acceptance, including from the default Admin stdio profile.
-# `autonomy_apply_runtime_policy` then runs Decodex's internal challenge and may
-# promote a matching ready proposal; it never performs Program Intake.
-# `team_issue_identifier` is required when `auto_intake = true` so a separate
-# `intake_goal` dry-run/apply sequence can use the registered tracker anchor.
-# [autonomy.runtime_policy]
-# accepted_objective_id = "quality-autonomy"
-# accepted_objective_version = "1"
-# accepted_policy_id = "your-service-autonomy-policy"
-# accepted_policy_version = "1"
-# policy_authority_ref = "decodex.runtime_policy:your-service-autonomy-policy@1"
-# team_issue_identifier = "XY-1000"
+# Repository paths are absolute paths on the decodexd host. They are structurally
+# separate from client profiles and must never be interpreted as client-local paths.
+[server_host.repositories.decodex]
+host_path = "/absolute/path/on/server/to/decodex"
 
-# Optional shared Codex account pool.
-# Uncomment the block to use the global `~/.codex/decodex/accounts.jsonl` pool.
-# Fixed-account mode is global. To pin all account-pool runs, set
-# `[codex.accounts].fixed_account` in `~/.codex/decodex/config.toml`.
-# [codex.accounts]
+# Explicit PostgreSQL connection data for the server host. This issue parses and
+# validates the data only; it does not connect, migrate, install, initialize, start,
+# or provision PostgreSQL. Store no password here: this is only an environment-
+# variable reference for a later credential boundary.
+[postgres]
+credential_env_var = "DECODEX_POSTGRES_PASSWORD"
+database           = "decodex"
+socket_directory   = "/var/run/postgresql"
+user               = "decodex"
 
-# Optional local-only classifier for Linear public projection text.
-# The classifier is a secondary guard; schema-controlled public projections remain
-# the primary privacy boundary. Omit this block to disable classifier calls.
-# [privacy_classifier]
-# endpoint   = "http://127.0.0.1:9123/classify"
-# timeout_ms = 1000
-
-# Required project paths. Project configs are managed outside checkouts, for example under
-# `~/.codex/decodex/projects/<service-id>/project.toml`.
-# Omit `worktree_root` to use `<repo_root>/.worktrees`.
-[paths]
-repo_root     = "/absolute/path/to/target/repo"
-worktree_root = ".worktrees"
+# Disposable cache limits. Cache bytes are never authoritative and may be deleted
+# and rebuilt. Hard ceilings are 10,000 entries, 512 MiB total, and 16 MiB per entry.
+[cache]
+max_bytes       = 134217728
+max_entries     = 2048
+max_entry_bytes = 4194304

@@ -33,6 +33,15 @@ EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
     "tokio-postgres",
 }
 
+EXPECTED_CORE_EXTERNAL_DEPENDENCIES = {
+    "getrandom",
+    "libc",
+    "serde",
+    "sha2",
+    "tempfile",
+    "toml",
+}
+
 EXPECTED_WORKSPACE_MANIFESTS = {
     "apps/decodex-cli/Cargo.toml",
     "apps/decodex-gpui/Cargo.toml",
@@ -84,6 +93,16 @@ class VnextArchitectureTests(unittest.TestCase):
         }
 
         self.assertEqual(actual, EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES)
+
+    def test_core_configuration_and_storage_dependencies_are_exact(self):
+        owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        actual = {
+            dependency["name"]
+            for dependency in self.packages["decodex-core"]["dependencies"]
+            if dependency["name"] not in owned_packages
+        }
+
+        self.assertEqual(actual, EXPECTED_CORE_EXTERNAL_DEPENDENCIES)
 
     def test_workspace_owner_set_is_exact(self):
         actual = {

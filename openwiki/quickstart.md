@@ -34,13 +34,15 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 
 ## Repository map
 
-- `crates/decodex-core/` owns pure domain/application authority contracts and ports; it has no dependencies.
+- `crates/decodex-core/` owns domain/application authority contracts plus the XY-1306
+  typed `~/.decodex` root, bounded/redacted config profiles, stable server identity,
+  content-addressed blobs, and disposable bounded cache foundation.
 - `crates/decodex-protocol/` owns the vNext version and loopback-only endpoint contract shared with clients.
 - `crates/decodex-postgres/` owns the PostgreSQL product-state adapter: explicit
   connection configuration, embedded immutable migrations, optimistic transactions,
   leases, append-only activity, transactional outbox delivery, and inert account/window
-  metadata. The composition root remains fail-closed until XY-1268 supplies owned paths
-  and explicit configuration.
+  metadata. XY-1306 now supplies typed owned paths and explicit connection data, but the
+  composition root remains fail-closed until XY-1307 performs verified bootstrap wiring.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while XY-1263 is failed.
@@ -66,10 +68,11 @@ against `decodex-protocol` only
 and still report their unsupported or disabled state.
 
 The PostgreSQL adapter can persist its XY-1267 foundation when a caller supplies explicit,
-verified PostgreSQL 18 configuration. The active composition root still supplies no
-connection configuration and persists nothing. `~/.codex` remains Codex-owned shared
-continuation state, and the accepted Decodex-owned target is `~/.decodex`; XY-1268 owns
-that path and bootstrap integration.
+verified PostgreSQL 18 configuration. XY-1306 now parses bounded PostgreSQL Unix-socket
+connection data but opens no connection, and the active composition root still supplies
+none and persists nothing. `~/.codex` remains Codex-owned shared continuation state.
+`decodex-core` now owns the typed `~/.decodex` layout for `config.toml`, logs,
+SHA-256 blobs, disposable cache, and atomic server identity; XY-1307 owns daemon bootstrap.
 The legacy `~/.codex/decodex` SQLite/config layout is frozen provenance, not a vNext
 input or fallback.
 
@@ -86,6 +89,7 @@ Use these as discovery and validation entrypoints:
 cargo run -p decodexd
 cargo run -p decodex-cli
 cargo run -p decodex-gpui
+cargo test -p decodex-core --all-targets --all-features
 cargo make test-vnext-architecture
 cargo make test-vnext-postgres-store
 cargo make check
@@ -100,7 +104,9 @@ prefer
 
 ## Authority and safety rules
 
-- Do not read `.env` files or live secret-bearing config. `decodex.example.toml` is the redacted setup model and uses credential environment-variable names, not token values.
+- Do not read `.env` files or live secret-bearing config. `decodex.example.toml` is the
+  bounded vNext setup model and stores only a PostgreSQL credential environment-variable
+  name, never its value.
 - Do not route vNext through `apps/decodex`, legacy SQLite, Linear lanes, or the legacy operator transport.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 - PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.
@@ -111,5 +117,7 @@ prefer
 XY-1265 established compile-time ownership and composition. XY-1266 established the
 loopback protocol foundation; XY-1270 implements the bounded Codex adapter foundation
 without live dispatch. XY-1267 established PostgreSQL-backed product state and durable
-transactions, and XY-1268 owns the API-only CLI/path cutover. Account routing, remote
-security, HTTP artifacts, and GPUI product work remain with their later owners and gates.
+transactions. XY-1306 establishes the typed `~/.decodex` path/config/blob/cache child of
+XY-1268; XY-1307 and XY-1308 still own daemon bootstrap/doctor and the API-only CLI.
+Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
+later owners and gates.
