@@ -865,16 +865,53 @@ async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn Error
 		Some("outbox_terminal_chronology")
 	);
 
+	let shifted_anchor_error = client
+		.execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
+			 VALUES ('direct-retention-shifted-anchor', 'account', 'retention', 1, '{}', \
+			  'delivered', 'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', \
+			  '{\"observed\":true}', statement_timestamp(), \
+			  statement_timestamp() + interval '1000 days', \
+			  statement_timestamp() + interval '1000 days 1 millisecond')",
+			&[],
+		)
+		.await
+		.expect_err("future-shifted retention anchor rejected");
+
+	assert_eq!(
+		shifted_anchor_error.as_db_error().and_then(|error| error.constraint()),
+		Some("outbox_operation_time")
+	);
+
+	let shifted_retry_error = client
+		.execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, available_at) \
+			 VALUES ('direct-outbox-retry-shifted', 'account', 'retry', 1, '{}', \
+			  statement_timestamp() + interval '1000 days')",
+			&[],
+		)
+		.await
+		.expect_err("future-shifted direct retry schedule rejected");
+
+	assert_eq!(
+		shifted_retry_error.as_db_error().and_then(|error| error.constraint()),
+		Some("outbox_operation_time")
+	);
+
 	client
 		.batch_execute(
-			"INSERT INTO decodex.outbox \
+			"BEGIN; \
+			 INSERT INTO decodex.outbox \
 			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
 			  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
 			 VALUES ('direct-retention-valid', 'account', 'retention', 1, '{}', 'delivered', \
 			  'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', '{\"observed\":true}', \
 			  statement_timestamp(), statement_timestamp(), \
 			  statement_timestamp() + 31536000000 * interval '1 millisecond'); \
-			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-retention-valid'",
+			 ROLLBACK",
 		)
 		.await?;
 
@@ -891,7 +928,7 @@ async fn assert_delivered_is_terminal(
 			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
 			  effect_state, receipt, reconciliation, available_at, created_at, delivered_at, \
 			  retain_until) \
-			 VALUES ('direct-delivered-terminal', 'account', 'terminal', 1, '{}', 'delivered', \
+			 VALUES ('terminal-retention-guard', 'account', 'terminal', 1, '{}', 'delivered', \
 			  'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', '{\"observed\":true}', \
 			  '1970-01-01T00:00:00Z', statement_timestamp(), statement_timestamp(), \
 			  statement_timestamp() + interval '1 day')",
@@ -902,7 +939,7 @@ async fn assert_delivered_is_terminal(
 		.execute(
 			"UPDATE decodex.outbox SET state = 'pending', effect_state = 'not_started', \
 			 receipt = NULL, reconciliation = NULL, delivered_at = NULL, retain_until = NULL \
-			 WHERE effect_key = 'direct-delivered-terminal'",
+			 WHERE effect_key = 'terminal-retention-guard'",
 			&[],
 		)
 		.await
@@ -913,14 +950,39 @@ async fn assert_delivered_is_terminal(
 		Some(&tokio_postgres::error::SqlState::OBJECT_NOT_IN_PREREQUISITE_STATE)
 	);
 
+	let early_delete_error = client
+		.execute("DELETE FROM decodex.outbox WHERE effect_key = 'terminal-retention-guard'", &[])
+		.await
+		.expect_err("delivered outbox row cannot be deleted before retention is due");
+
+	assert_eq!(
+		early_delete_error.as_db_error().and_then(|error| error.constraint()),
+		Some("outbox_retention_pruning_only")
+	);
+
+	let reinsert_error = client
+		.execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload) \
+			 VALUES ('terminal-retention-guard', 'account', 'terminal', 2, '{}')",
+			&[],
+		)
+		.await
+		.expect_err("early delete cannot release the effect key for replay");
+
+	assert_eq!(
+		reinsert_error.as_db_error().map(|error| error.code()),
+		Some(&tokio_postgres::error::SqlState::UNIQUE_VIOLATION)
+	);
+
 	let claims = store.claim_outbox(WORKER_B, 1_000, Duration::from_millis(1)).await?;
 
-	assert!(claims.iter().all(|claim| claim.effect_key != "direct-delivered-terminal"));
+	assert!(claims.iter().all(|claim| claim.effect_key != "terminal-retention-guard"));
 
 	let state: String = client
 		.query_one(
 			"SELECT state::text FROM decodex.outbox \
-			 WHERE effect_key = 'direct-delivered-terminal'",
+			 WHERE effect_key = 'terminal-retention-guard'",
 			&[],
 		)
 		.await?
@@ -934,7 +996,15 @@ async fn assert_delivered_is_terminal(
 			 lease_acquired_at = NULL, lease_expires_at = NULL \
 			 WHERE state = 'in_flight' AND lease_holder = \
 			 '30000000-0000-0000-0000-000000000002'; \
-			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-delivered-terminal'",
+			 INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
+			 VALUES ('direct-delivered-prunable', 'account', 'terminal', 1, '{}', 'delivered', \
+			  'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', '{\"observed\":true}', \
+			  statement_timestamp() - interval '2 days', \
+			  statement_timestamp() - interval '2 days', \
+			  statement_timestamp() - interval '1 day'); \
+			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-delivered-prunable'",
 		)
 		.await?;
 
@@ -1180,6 +1250,23 @@ async fn assert_direct_lease_duration_boundary(client: &Client) -> Result<(), Bo
 		);
 	}
 
+	let shifted_anchor_error = client
+		.execute(
+			"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) \
+			 VALUES ('duration/table-shifted-anchor', \
+			 '20000000-0000-0000-0000-000000000001', \
+			 statement_timestamp() + interval '1000 days 1 millisecond', \
+			 statement_timestamp() + interval '1000 days')",
+			&[],
+		)
+		.await
+		.expect_err("future-shifted direct lease anchor rejected");
+
+	assert_eq!(
+		shifted_anchor_error.as_db_error().and_then(|error| error.constraint()),
+		Some("leases_operation_time")
+	);
+
 	client
 		.batch_execute(
 			"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) \
@@ -1223,9 +1310,31 @@ async fn assert_direct_outbox_lease_duration_boundary(
 		);
 	}
 
+	let shifted_anchor_error = client
+		.execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  lease_holder, claim_token, lease_acquired_at, lease_expires_at, created_at) \
+			 VALUES ('direct-outbox-lease-shifted-anchor', 'account', 'lease', 1, '{}', \
+			  'in_flight', '30000000-0000-0000-0000-000000000001', \
+			  '40000000-0000-0000-0000-000000000001', \
+			  statement_timestamp() + interval '1000 days', \
+			  statement_timestamp() + interval '1000 days 1 millisecond', \
+			  statement_timestamp())",
+			&[],
+		)
+		.await
+		.expect_err("future-shifted direct outbox lease anchor rejected");
+
+	assert_eq!(
+		shifted_anchor_error.as_db_error().and_then(|error| error.constraint()),
+		Some("outbox_operation_time")
+	);
+
 	client
 		.batch_execute(
-			"INSERT INTO decodex.outbox \
+			"BEGIN; \
+			 INSERT INTO decodex.outbox \
 			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
 			  lease_holder, claim_token, lease_acquired_at, lease_expires_at, created_at) \
 			 VALUES ('direct-outbox-lease-valid', 'account', 'lease', 1, '{}', 'in_flight', \
@@ -1233,7 +1342,7 @@ async fn assert_direct_outbox_lease_duration_boundary(
 			  '40000000-0000-0000-0000-000000000001', statement_timestamp(), \
 			  statement_timestamp() + 31536000000 * interval '1 millisecond', \
 			  statement_timestamp()); \
-			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-outbox-lease-valid'",
+			 ROLLBACK",
 		)
 		.await?;
 

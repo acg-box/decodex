@@ -334,6 +334,56 @@ CREATE TABLE decodex.outbox (
 	CHECK ((state = 'dead_letter') = (dead_lettered_at IS NOT NULL))
 );
 
+CREATE FUNCTION decodex.enforce_lease_operation_time()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+	write_at timestamptz := clock_timestamp();
+BEGIN
+	IF NEW.updated_at > write_at
+		OR NEW.expires_at > write_at + 31536000000 * interval '1 millisecond'
+	THEN
+		RAISE EXCEPTION 'lease timestamps must be anchored to the database write time'
+			USING ERRCODE = '23514', CONSTRAINT = 'leases_operation_time';
+	END IF;
+
+	RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER leases_operation_time
+BEFORE INSERT OR UPDATE ON decodex.leases
+FOR EACH ROW EXECUTE FUNCTION decodex.enforce_lease_operation_time();
+
+CREATE FUNCTION decodex.enforce_outbox_operation_time()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+	write_at timestamptz := clock_timestamp();
+	latest_deadline timestamptz := write_at + 31536000000 * interval '1 millisecond';
+BEGIN
+	IF NEW.created_at > write_at
+		OR NEW.available_at > latest_deadline
+		OR (NEW.lease_acquired_at IS NOT NULL AND NEW.lease_acquired_at > write_at)
+		OR (NEW.lease_expires_at IS NOT NULL AND NEW.lease_expires_at > latest_deadline)
+		OR (NEW.delivered_at IS NOT NULL AND NEW.delivered_at > write_at)
+		OR (NEW.dead_lettered_at IS NOT NULL AND NEW.dead_lettered_at > write_at)
+		OR (NEW.retain_until IS NOT NULL AND NEW.retain_until > latest_deadline)
+	THEN
+		RAISE EXCEPTION 'outbox timestamps must be anchored to the database write time'
+			USING ERRCODE = '23514', CONSTRAINT = 'outbox_operation_time';
+	END IF;
+
+	RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER outbox_operation_time
+BEFORE INSERT OR UPDATE ON decodex.outbox
+FOR EACH ROW EXECUTE FUNCTION decodex.enforce_outbox_operation_time();
+
 CREATE FUNCTION decodex.forbid_mutation_of_activity()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -347,23 +397,32 @@ CREATE TRIGGER activity_append_only
 BEFORE UPDATE OR DELETE ON decodex.activity
 FOR EACH ROW EXECUTE FUNCTION decodex.forbid_mutation_of_activity();
 
-CREATE FUNCTION decodex.forbid_delivered_outbox_mutation()
+CREATE FUNCTION decodex.enforce_outbox_terminal_retention()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
+	IF TG_OP = 'DELETE' THEN
+		IF OLD.state <> 'delivered' OR OLD.retain_until > clock_timestamp() THEN
+			RAISE EXCEPTION 'outbox rows may be deleted only after delivered retention is due'
+				USING ERRCODE = '55000', CONSTRAINT = 'outbox_retention_pruning_only';
+		END IF;
+
+		RETURN OLD;
+	END IF;
+
 	IF OLD.state = 'delivered' AND NEW IS DISTINCT FROM OLD THEN
 		RAISE EXCEPTION 'delivered outbox rows are immutable until retention pruning'
-			USING ERRCODE = '55000';
+			USING ERRCODE = '55000', CONSTRAINT = 'outbox_delivered_is_terminal';
 	END IF;
 
 	RETURN NEW;
 END
 $$;
 
-CREATE TRIGGER outbox_delivered_is_terminal
-BEFORE UPDATE ON decodex.outbox
-FOR EACH ROW EXECUTE FUNCTION decodex.forbid_delivered_outbox_mutation();
+CREATE TRIGGER outbox_terminal_retention
+BEFORE UPDATE OR DELETE ON decodex.outbox
+FOR EACH ROW EXECUTE FUNCTION decodex.enforce_outbox_terminal_retention();
 
 CREATE FUNCTION decodex.lease_ttl_milliseconds(value interval)
 RETURNS bigint
