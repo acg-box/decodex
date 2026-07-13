@@ -1,0 +1,103 @@
+{
+  "schema": "decodex/vnext-codex-evidence-bundle/1",
+  "overall_acceptance": false,
+  "sources": [
+    "python3 scripts/vnext/codex_app_server_probe.py schema",
+    "python3 scripts/vnext/codex_app_server_probe.py live --account-a <selector-a> --account-b <selector-b>",
+    "codex_app.send_message_to_thread(primary_thread_id, fixed no-tool marker)",
+    "codex_app.read_thread(primary_thread_id)",
+    "codex_app.list_threads(title_query)",
+    "focused app-server thread/list plus archive/unarchive readback"
+  ],
+  "observed_at_unix": 1783917977,
+  "repository_head": "f9d6c4e70198e94e5b9461b8cac7518ae14d41ef",
+  "codex_cli": "codex-cli 0.144.0-alpha.4",
+  "shared_home": "~/.codex",
+  "per_run_codex_home": false,
+  "account_aliases": ["A", "B"],
+  "credentials_emitted": false,
+  "auth_state_unchanged": true,
+  "initialize": {
+    "codexHome": "~/.codex",
+    "platformFamily": "unix",
+    "platformOs": "macos"
+  },
+  "capability_negotiation": [
+    {
+      "capability": "paginated_threads",
+      "schema_result": "advertised",
+      "live_result": "rejected",
+      "error_code": -32601,
+      "fallback": "legacy"
+    }
+  ],
+  "account_windows": {
+    "A": [
+      { "limit_id": "codex", "source_field": "primary", "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522304 },
+      { "limit_id": "codex_bengalfox", "source_field": "primary", "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522796 }
+    ],
+    "B": [
+      { "limit_id": "codex", "source_field": "primary", "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522381 },
+      { "limit_id": "codex_bengalfox", "source_field": "primary", "duration_minutes": 10080, "used_percent": 0, "resets_at": 1784522810 }
+    ]
+  },
+  "experiments": {
+    "runner_a_killed_after_completed_turn": true,
+    "restart_list_title_match": true,
+    "restart_thread_search_match": false,
+    "codex_desktop_read_exact_id": true,
+    "codex_desktop_global_title_query_match": false,
+    "cross_account_same_thread_resume_without_forced_quota": true,
+    "cross_account_second_turn_completed_without_forced_quota": true,
+    "real_quota_failure_failover": false,
+    "auth_failed_before_resume_or_turn": true,
+    "context_pack_new_runtime_session_after_auth_rejection": true,
+    "context_pack_after_resume_denial": false,
+    "external_codex_activity_visible_to_thread_read": true,
+    "managed_run_divergence_transition_executed": false,
+    "native_collaboration_receipt": "xy-1262-native-collaboration.json",
+    "explicit_archive_round_trip": true,
+    "ownership_isolation": {
+      "listed_thread_count_for_cwd": 9,
+      "decodex_created_ids": 2,
+      "ignored_non_decodex_count": 7,
+      "mapping_source": "thread IDs returned by Decodex probe thread/start only"
+    },
+    "primary_thread": {
+      "id": "019f59cc-2ec1-76a1-8eaf-68e572fa204c",
+      "cwd": "/Users/x/.codex/worktrees/e9b9/decodex",
+      "ephemeral": false,
+      "history_mode": "legacy",
+      "name": "Decodex XY-1262 shared-home proof 1783917977",
+      "turn_count_before_resume": 1,
+      "turn_count_after_account_b": 2,
+      "turn_count_after_external_codex_activity": 3,
+      "turn_item_types": ["agentMessage", "userMessage"],
+      "thread_source_before_resume": "decodex.xy1262.probe",
+      "thread_source_after_resume": null
+    },
+    "fallback_thread": {
+      "id": "019f59cc-ca2e-74a3-b69c-e18fdaf026f0",
+      "cwd": "/Users/x/.codex/worktrees/e9b9/decodex",
+      "ephemeral": false,
+      "history_mode": "legacy",
+      "name": "Decodex XY-1262 shared-home proof 1783917977 context-pack fallback",
+      "new_runtime_session": true,
+      "turn_count": 1,
+      "side_effect_reconciliation": "none declared; repository HEAD pinned"
+    }
+  },
+  "schema_receipt": {
+    "digest_encoding": "canonical JSON with recursively sorted object keys",
+    "ClientRequest.json": "3f82e5aec5be786c40d21440dfb6d0667d194d872bfa7041bd81c39b4ba56dc3",
+    "ServerNotification.json": "16ce6adadf33aa182f98840c5d33f6294c3c37b2866bb05545c24e0dbf2cc2d2",
+    "codex_app_server_protocol.v2.schemas.json": "f5e8d20f3a8f9bb5e5b23ab0c5aa6bde7b12e7e0713606c5d0132651a4959d37"
+  },
+  "negative_evidence": [
+    "Two additional stored accounts were rejected by process-scoped account/login/start with invalid ID token format.",
+    "Two authenticated alternate-account attempts resumed local history but did not produce a turn terminal event within the probe timeout.",
+    "A later rerun timed out, so same-thread continuation remains capability/build/account-class gated rather than universal.",
+    "No account was depleted, so quota exclusion persistence and quota-triggered failover were not exercised.",
+    "Context-Pack fallback followed authentication rejection, not a same-thread resume denial."
+  ]
+}
