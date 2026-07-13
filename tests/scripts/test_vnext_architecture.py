@@ -28,6 +28,7 @@ EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
     "regex",
     "serde_json",
     "sha2",
+    "time",
     "tokio",
     "tokio-postgres",
 }

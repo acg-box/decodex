@@ -74,8 +74,10 @@ append activity, enqueue the matching outbox effect, and complete the receipt in
 transaction. Reusing the same idempotency key and request hash reads the committed
 response; reusing the key for different bytes is rejected. Outbox claims are bounded and
 fenced by a token rotated on every claim or reclaim. Any effect that may have begun must be
-reconciled through a receipt and
-authoritative readback after claim expiry or restart. Account and quota-window rows are
+reconciled through a meaningful receipt and authoritative readback after claim expiry or
+restart. Lease, retry, and retention durations are exact positive whole milliseconds capped
+at 365 days, so invalid schedules fail before PostgreSQL interval or timestamp arithmetic.
+Account and quota-window rows are
 inert observations with recursive credential-material rejection across normalized keys and
 recognizable secret-bearing value encodings; this crate exposes no
 eligibility, account selection, fallback, wake scheduling, or credential storage.
