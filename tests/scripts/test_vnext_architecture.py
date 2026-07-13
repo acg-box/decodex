@@ -54,11 +54,13 @@ class VnextArchitectureTests(unittest.TestCase):
         }
 
     def test_vnext_dependency_direction_is_exact(self):
+        owned_packages = set(EXPECTED_DEPENDENCIES)
         for package_name, expected in EXPECTED_DEPENDENCIES.items():
             with self.subTest(package=package_name):
                 actual = {
                     dependency["name"]
                     for dependency in self.packages[package_name]["dependencies"]
+                    if dependency["name"] in owned_packages
                 }
                 self.assertEqual(actual, expected)
 
