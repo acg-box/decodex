@@ -8,16 +8,16 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 
 - [Runtime architecture](architecture/runtime-architecture.md): process topology, CLI bootstrap, app-server runs, operator HTTP/MCP, and state ownership.
 - [Design rationale](decisions/design-rationale.md): why Decodex keeps loop graphs internal, autonomy authority typed, MCP/skills split, the site static, and Radar/Publisher bounded.
-- [Lane Authority v2](decisions/lane-authority-v2.md): accepted target architecture for project binding, canonical lane authority, effect orchestration, migration, and telemetry. This target is not current runtime behavior until its checkpoints land.
+- [vNext authority decision](decisions/vnext-authority.md): the accepted product, ownership, state-authority, cutover, and delivery decision for the rebuild.
+- [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries, protocol, account continuity, non-goals, and migration contract for later implementation.
+- [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates, downstream issue ownership, and decision-changing falsifiers.
+- [Lane Authority v2](decisions/lane-authority-v2.md): superseded historical target retained as architecture and incident provenance; C1-C7 are frozen and must not be implemented.
 - [Drift audits](evidence/drift-audits.md): public-safe evidence notes, current MCP remote-control watched claims, reverse checks, validation commands, and stop conditions.
 - [Runtime operator workflows](workflows/runtime-operator-workflows.md): project registry, run/serve/status, lane control, recovery, intake, commit/land, accounts, and MCP workflows.
-- [Contracts and data](specs/contracts-and-data.md): project config, `WORKFLOW.md`, SQLite state, Decision Contracts, Program Intake, tracker tools, review lifecycle, and commit messages.
-- [Runtime contracts](specs/runtime-contracts.md): runtime state ownership, project/`WORKFLOW.md` contracts, leases/attempts, app-server protocol, tracker writeback, evidence/privacy, and recovery boundaries.
-- [Runtime lifecycle](specs/runtime-lifecycle.md): lane authority, app-server protocol, tracker tools, evidence, loop runtime, review lifecycle, and autonomy control-plane boundaries.
-- [Lane Authority v2 target contract](specs/lane-authority-v2.md): target records, transitions, migration rules, scenario matrix, and checkpoint gates.
-- [Lane Authority v2 gate manifest](specs/lane-authority-v2-gates.md): normative scenario ids, commands, expected assertions, fixture paths, and evidence requirements for C0-C7.
-- [Lane Authority v2 effect registry](specs/lane-authority-v2-effects.md): exhaustive runtime-owned mutation kinds, reconciliation and compensation rules, and adapter enforcement.
-- [Lane Authority v2 checkpoints](evidence/lane-authority-v2-checkpoints.md): durable anti-drift record, review objections, validation evidence, and C0-C7 advancement state.
+- [Contracts and data](specs/contracts-and-data.md): current v0.2 project config, SQLite, Decision Contract, Program Intake, tracker, review, and commit behavior; superseded for vNext target work.
+- [Runtime contracts](specs/runtime-contracts.md): current v0.2 state, app-server, tracker, evidence/privacy, and recovery contracts; superseded for vNext target work.
+- [Runtime lifecycle](specs/runtime-lifecycle.md): current v0.2 lane, app-server, tracker, review, and autonomy lifecycle; superseded for vNext target work.
+- [Lane Authority v2 target contract](specs/lane-authority-v2.md), [effect registry](specs/lane-authority-v2-effects.md), [gate manifest](specs/lane-authority-v2-gates.md), and [checkpoint ledger](evidence/lane-authority-v2-checkpoints.md): superseded provenance only, not active implementation authority.
 - [Commands and validation](operations/commands-and-validation.md): task runner, tests, targeted checks, status publishing, app/site/Radar/Publisher validation.
 - [Operator runbooks](operations/operator-runbooks.md): lane-control recovery, review handoff recovery, release readiness, GitHub operations, and control-plane workflows.
 - [Plugins, automations, and auxiliary tools](integrations/plugins-automations-and-auxiliary-tools.md): installable plugin lifecycle, hook guardrails, automation sync, Radar, Publisher, native App, and site boundaries.
