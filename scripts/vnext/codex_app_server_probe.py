@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import select
 import subprocess
 import tempfile
@@ -173,6 +174,27 @@ def sha256_file(path: Path) -> str | None:
     return digest.hexdigest()
 
 
+def sha256_tree(path: Path, excluded_roots: tuple[str, ...] = ()) -> str | None:
+    """Hash a tree without emitting paths or file contents."""
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    for candidate in sorted(item for item in path.rglob("*") if item.is_file()):
+        relative = candidate.relative_to(path)
+        if relative.parts and relative.parts[0] in excluded_roots:
+            continue
+        file_digest = hashlib.sha256()
+        with candidate.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                file_digest.update(chunk)
+        digest.update(
+            json.dumps(
+                [relative.as_posix(), file_digest.hexdigest()], separators=(",", ":")
+            ).encode()
+        )
+    return digest.hexdigest()
+
+
 def sha256_canonical_json(path: Path) -> str:
     value = json.loads(path.read_text())
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -309,6 +331,206 @@ def rate_limit_windows(server: AppServer) -> list[dict[str, Any]]:
                 }
             )
     return windows
+
+
+def duration_typed_windows(server: AppServer) -> list[dict[str, Any]]:
+    """Return only vNext-recognized windows, identified solely by duration."""
+    windows = []
+    for window in rate_limit_windows(server):
+        duration = window.get("duration_minutes")
+        if duration not in (300, 10080):
+            continue
+        windows.append(
+            {
+                "duration_minutes": duration,
+                "used_percent": window.get("used_percent"),
+                "resets_at": window.get("resets_at"),
+            }
+        )
+    return sorted(windows, key=lambda item: item["duration_minutes"])
+
+
+def quota_state(windows: list[dict[str, Any]], now: int) -> str:
+    durations = {window["duration_minutes"] for window in windows}
+    if 300 not in durations or 10080 not in durations:
+        return "unknown"
+    for window in windows:
+        used_percent = window.get("used_percent")
+        resets_at = window.get("resets_at")
+        if (
+            isinstance(used_percent, bool)
+            or not isinstance(used_percent, (int, float))
+            or not 0 <= used_percent <= 100
+            or isinstance(resets_at, bool)
+            or not isinstance(resets_at, (int, float))
+            or resets_at <= 0
+        ):
+            return "unknown"
+    if any(window["resets_at"] <= now for window in windows):
+        return "unknown"
+    depleted = [window for window in windows if window["used_percent"] >= 100]
+    if depleted:
+        return "depleted"
+    return "available"
+
+
+def classify_resume_error(_error: ProtocolError) -> str:
+    """Do not infer a denial boundary from an untyped protocol/transport failure."""
+    return "probe_error"
+
+
+def plugin_summary(server: AppServer, cwd: Path) -> dict[str, Any]:
+    result = server.request(
+        "plugin/list", {"cwds": [str(cwd)], "marketplaceKinds": ["local"]}
+    )
+    marketplaces = result.get("marketplaces", [])
+    plugins = [
+        plugin
+        for marketplace in marketplaces
+        for plugin in marketplace.get("plugins", [])
+    ]
+    return {
+        "marketplace_count": len(marketplaces),
+        "plugin_count": len(plugins),
+        "installed_count": sum(bool(plugin.get("installed")) for plugin in plugins),
+        "enabled_count": sum(bool(plugin.get("enabled")) for plugin in plugins),
+        "load_error_count": len(result.get("marketplaceLoadErrors", [])),
+    }
+
+
+def skills_summary(server: AppServer, cwd: Path) -> dict[str, Any]:
+    result = server.request(
+        "skills/list",
+        {
+            "cwds": [str(cwd)],
+            "forceReload": False,
+            "perCwdExtraUserRoots": None,
+        },
+    )
+    entries = result.get("data", [])
+    skills = [skill for entry in entries for skill in entry.get("skills", [])]
+    errors = [error for entry in entries for error in entry.get("errors", [])]
+    return {
+        "cwd_entry_present": any(entry.get("cwd") == str(cwd) for entry in entries),
+        "skill_count": len(skills),
+        "enabled_count": sum(bool(skill.get("enabled")) for skill in skills),
+        "scan_error_count": len(errors),
+    }
+
+
+def inventory_probe(args: argparse.Namespace) -> dict[str, Any]:
+    """Authenticate every safe record without starting a turn or consuming quota."""
+    codex_home = Path(args.codex_home).expanduser().resolve()
+    auth_path = codex_home / "auth.json"
+    plugins_path = codex_home / "plugins"
+    accounts_path = Path(args.accounts_file).expanduser().resolve()
+    before = {
+        "auth": sha256_file(auth_path),
+        # app-server may refresh its private executable cache while servicing
+        # plugin/list. That cache is process machinery, not installed/enabled state.
+        "plugins": sha256_tree(plugins_path, (".plugin-appserver",)),
+        "accounts": sha256_file(accounts_path),
+    }
+    accounts = read_accounts(accounts_path)
+    proof = json.loads(
+        (args.cwd / "openwiki/evidence/fixtures/xy-1262-live-receipt.json").read_text()
+    )
+    proof_thread = proof["experiments"]["primary_thread"]
+    receipt: dict[str, Any] = {
+        "schema": "decodex/vnext-codex-account-inventory/1",
+        "observed_at_unix": int(time.time()),
+        "repository_head": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=args.cwd, text=True
+        ).strip(),
+        "codex_cli": subprocess.check_output([args.codex, "--version"], text=True).strip(),
+        "configured_account_count": len(accounts),
+        "accounts": [],
+        "turns_started": 0,
+        "quota_deliberately_consumed": False,
+    }
+    title_readback_recorded = False
+    for index, record in enumerate(accounts, start=1):
+        item: dict[str, Any] = {
+            "alias": f"R{index}",
+            "disabled": bool(record.get("disabled")),
+        }
+        tokens = record.get("tokens") or {}
+        if item["disabled"]:
+            item["authentication"] = "skipped_disabled"
+            receipt["accounts"].append(item)
+            continue
+        if not tokens.get("access_token") or not tokens.get("account_id"):
+            item["authentication"] = "skipped_no_process_scoped_tokens"
+            receipt["accounts"].append(item)
+            continue
+        server = AppServer(args.codex, args.cwd)
+        try:
+            try:
+                server.login(
+                    {
+                        "access_token": tokens["access_token"],
+                        "account_id": tokens["account_id"],
+                        "plan_type": tokens.get("plan_type"),
+                    }
+                )
+            except ProtocolError:
+                item["authentication"] = "rejected"
+                receipt["accounts"].append(item)
+                continue
+            item["authentication"] = "authenticated"
+            windows = duration_typed_windows(server)
+            item["quota_windows"] = windows
+            item["quota_state"] = quota_state(windows, int(time.time()))
+            item["plugins"] = plugin_summary(server, args.cwd)
+            item["skills"] = skills_summary(server, args.cwd)
+            try:
+                resumed = server.request(
+                    "thread/resume", {"threadId": proof_thread["id"]}
+                )["thread"]
+                item["same_thread_resume_without_turn"] = (
+                    "permitted" if resumed.get("id") == proof_thread["id"] else "incompatible"
+                )
+            except ProtocolError as error:
+                item["same_thread_resume_without_turn"] = classify_resume_error(error)
+            if not title_readback_recorded:
+                listed = server.request(
+                    "thread/list",
+                    {"searchTerm": proof_thread["name"], "limit": 20},
+                )
+                searched = server.request(
+                    "thread/search", {"searchTerm": proof_thread["name"], "limit": 20}
+                )
+                receipt["app_server_title_discovery"] = {
+                    "thread_list_found": any(
+                        thread.get("id") == proof_thread["id"]
+                        for thread in listed.get("data", [])
+                    ),
+                    "thread_search_found": any(
+                        thread.get("id") == proof_thread["id"]
+                        for thread in searched.get("data", [])
+                    ),
+                }
+                title_readback_recorded = True
+            receipt["accounts"].append(item)
+        finally:
+            server.close(crash=False)
+    after = {
+        "auth": sha256_file(auth_path),
+        "plugins": sha256_tree(plugins_path, (".plugin-appserver",)),
+        "accounts": sha256_file(accounts_path),
+    }
+    receipt["normal_state_unchanged"] = {
+        "auth": before["auth"] == after["auth"],
+        "plugin_tree": before["plugins"] == after["plugins"],
+        "account_pool": before["accounts"] == after["accounts"],
+    }
+    receipt["plugin_state_scope"] = (
+        "non-transient plugin tree; app-server executable cache excluded"
+    )
+    receipt["identities_emitted"] = False
+    receipt["selectors_emitted"] = False
+    receipt["credentials_emitted"] = False
+    return receipt
 
 
 def summarize_thread(thread: dict[str, Any]) -> dict[str, Any]:
@@ -627,6 +849,34 @@ def classify_quota_case(case: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def check_redaction(value: Any) -> None:
+    forbidden_keys = {"access_token", "refresh_token", "id_token", "email", "account_id"}
+    allowed_safety_assertions = {
+        "credentials_emitted",
+        "identities_emitted",
+        "reviewer_identity",
+        "selectors_emitted",
+    }
+    if isinstance(value, dict):
+        for key, child in value.items():
+            lowered = key.lower()
+            if (
+                lowered in forbidden_keys
+                or "token" in lowered
+                or (
+                    any(marker in lowered for marker in ("credential", "identity", "selector"))
+                    and lowered not in allowed_safety_assertions
+                )
+            ):
+                raise ProtocolError(f"credential/identity-shaped key in evidence: {key}")
+            check_redaction(child)
+    elif isinstance(value, list):
+        for child in value:
+            check_redaction(child)
+    elif isinstance(value, str) and "@" in value:
+        raise ProtocolError("account-like identity in evidence")
+
+
 def validate_checked_receipts(repository: Path) -> dict[str, Any]:
     fixture_dir = repository / "openwiki/evidence/fixtures"
     bundle = json.loads((fixture_dir / "xy-1262-live-receipt.json").read_text())
@@ -634,27 +884,120 @@ def validate_checked_receipts(repository: Path) -> dict[str, Any]:
         (fixture_dir / "xy-1262-native-collaboration.json").read_text()
     )
     quota = json.loads((fixture_dir / "xy-1262-quota-matrix.json").read_text())
+    reconciliation = json.loads(
+        (fixture_dir / "xy-1262-gate-reconciliation.json").read_text()
+    )
     if bundle.get("schema") != "decodex/vnext-codex-evidence-bundle/1":
         raise ProtocolError("checked live evidence bundle has the wrong schema")
     if bundle.get("overall_acceptance") is not False:
         raise ProtocolError("XY-1262 checked evidence must retain the failed gate verdict")
 
-    forbidden_keys = {"access_token", "refresh_token", "id_token", "email", "auth_sha256"}
-
-    def check_redaction(value: Any) -> None:
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key.lower() in forbidden_keys or "token" in key.lower():
-                    raise ProtocolError(f"credential-shaped key in evidence bundle: {key}")
-                check_redaction(child)
-        elif isinstance(value, list):
-            for child in value:
-                check_redaction(child)
-        elif isinstance(value, str) and "@" in value:
-            raise ProtocolError("account-like identity in evidence bundle")
-
     check_redaction(bundle)
     check_redaction(collaboration)
+    check_redaction(reconciliation)
+    if reconciliation.get("overall_acceptance") is not False:
+        raise ProtocolError("XY-1262 reconciliation must retain the failed gate verdict")
+    expected_top_level = {
+        "schema", "overall_acceptance", "observed_at_unix", "repository_head",
+        "codex_cli", "sources", "configured_account_count", "accounts",
+        "app_server_title_discovery", "codex_desktop_title_discovery",
+        "normal_state_unchanged", "plugin_state_scope", "turns_started",
+        "quota_deliberately_consumed", "identities_emitted", "selectors_emitted",
+        "credentials_emitted", "conclusions",
+    }
+    if set(reconciliation) != expected_top_level:
+        raise ProtocolError("account inventory has an unexpected top-level shape")
+    accounts = reconciliation.get("accounts", [])
+    if reconciliation.get("configured_account_count") != len(accounts):
+        raise ProtocolError("account inventory count does not match redacted records")
+    if len(accounts) != 6:
+        raise ProtocolError("account inventory does not cover all six configured records")
+    if reconciliation.get("turns_started") != 0:
+        raise ProtocolError("read-only account inventory unexpectedly started a turn")
+    if reconciliation.get("quota_deliberately_consumed") is not False:
+        raise ProtocolError("account inventory claims deliberate quota consumption")
+    if reconciliation.get("normal_state_unchanged") != {
+        "auth": True,
+        "plugin_tree": True,
+        "account_pool": True,
+    }:
+        raise ProtocolError("account inventory did not preserve normal auth/plugin state")
+    if any(reconciliation.get(key) is not False for key in (
+        "identities_emitted", "selectors_emitted", "credentials_emitted"
+    )):
+        raise ProtocolError("account inventory safety assertions are not false")
+    if reconciliation.get("sources") != [
+        "python3 scripts/vnext/codex_app_server_probe.py inventory",
+        "codex_app.list_threads(exact retained title query)",
+    ]:
+        raise ProtocolError("account inventory source provenance is incomplete")
+    if reconciliation.get("app_server_title_discovery") != {
+        "thread_list_found": True,
+        "thread_search_found": False,
+    } or reconciliation.get("codex_desktop_title_discovery") != {
+        "global_title_query_found": False,
+        "unavailable_host_count": 0,
+    }:
+        raise ProtocolError("account inventory title-discovery facts changed")
+    expected_account_keys = {
+        "alias", "disabled", "authentication", "quota_state", "quota_windows",
+        "same_thread_resume_without_turn", "plugins", "skills",
+    }
+    for index, account in enumerate(accounts, start=1):
+        if set(account) != expected_account_keys:
+            raise ProtocolError("account inventory has an unexpected account shape")
+        if account.get("alias") != f"R{index}" or not re.fullmatch(
+            r"R[1-9][0-9]*", account.get("alias", "")
+        ):
+            raise ProtocolError("account inventory alias is not opaque and sequential")
+        if account.get("disabled") is not False or account.get("authentication") != "authenticated":
+            raise ProtocolError("account inventory overclaims safe authentication coverage")
+        if account.get("quota_state") != "unknown":
+            raise ProtocolError("account inventory overclaims a live quota state")
+        if account.get("same_thread_resume_without_turn") != "permitted":
+            raise ProtocolError("account inventory overclaims a resume boundary")
+        plugins = account.get("plugins", {})
+        skills = account.get("skills", {})
+        if (
+            set(plugins) != {
+                "marketplace_count", "plugin_count", "installed_count",
+                "enabled_count", "load_error_count",
+            }
+            or plugins.get("load_error_count") != 0
+            or set(skills) != {
+                "cwd_entry_present", "skill_count", "enabled_count", "scan_error_count",
+            }
+            or skills.get("cwd_entry_present") is not True
+            or skills.get("scan_error_count") != 0
+        ):
+            raise ProtocolError("account inventory plugin/skill readback is incomplete")
+        for window in account.get("quota_windows", []):
+            if set(window) != {"duration_minutes", "used_percent", "resets_at"}:
+                raise ProtocolError("account inventory retained positional quota fields")
+            if window["duration_minutes"] not in (300, 10080):
+                raise ProtocolError("account inventory retained an untyped quota duration")
+            if (
+                isinstance(window["used_percent"], bool)
+                or not isinstance(window["used_percent"], (int, float))
+                or not 0 <= window["used_percent"] < 100
+                or isinstance(window["resets_at"], bool)
+                or not isinstance(window["resets_at"], (int, float))
+                or window["resets_at"] <= reconciliation["observed_at_unix"]
+            ):
+                raise ProtocolError("account inventory contradicts the no-depletion claim")
+        if any(window["duration_minutes"] == 300 for window in account["quota_windows"]):
+            raise ProtocolError("account inventory no longer supports the missing-window conclusion")
+    plugin_summaries = [account["plugins"] for account in accounts]
+    if any(summary != plugin_summaries[0] for summary in plugin_summaries[1:]):
+        raise ProtocolError("account inventory plugin summaries are not consistent")
+    if reconciliation.get("conclusions") != {
+        "naturally_depleted_account_observed": False,
+        "provider_quota_failure_exercised": False,
+        "quota_exclusion_failover_exercised": False,
+        "same_thread_resume_denied_or_incompatible_observed": False,
+        "gate_remains_failed": True,
+    }:
+        raise ProtocolError("account inventory conclusions do not match the failed gate")
     if collaboration.get("readbacks", {}).get("thread_list_ancestor", {}).get(
         "parent_thread_id_matches"
     ) is not True:
@@ -670,13 +1013,14 @@ def validate_checked_receipts(repository: Path) -> dict[str, Any]:
         "schema": "decodex/vnext-codex-evidence-validation/1",
         "live_bundle_redacted": True,
         "quota_cases_validated": len(quota["cases"]),
+        "inventory_accounts_validated": len(reconciliation["accounts"]),
         "overall_acceptance": False,
     }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("schema", "live", "validate"))
+    parser.add_argument("mode", choices=("schema", "live", "inventory", "validate"))
     parser.add_argument("--codex", default="codex")
     parser.add_argument("--cwd", type=Path, default=Path.cwd())
     parser.add_argument("--codex-home", default=str(Path.home() / ".codex"))
@@ -703,6 +1047,8 @@ def main() -> int:
             receipt = schema_receipt(args)
         elif args.mode == "live":
             receipt = live_probe(args)
+        elif args.mode == "inventory":
+            receipt = inventory_probe(args)
         else:
             receipt = validate_checked_receipts(args.cwd)
     except (OSError, subprocess.SubprocessError, ProtocolError, KeyError) as error:
