@@ -19,6 +19,7 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | Broad repo check | `cargo make check` |
 | Rust type check | `cargo make check-rust` or `cargo check --all-features --all-targets --workspace` |
 | Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
+| XY-1306 path/config/blob/cache foundation | `cargo test -p decodex-core --all-targets --all-features` |
 | vNext dependency architecture | `cargo make test-vnext-architecture` |
 | vNext PostgreSQL store integration | `cargo make test-vnext-postgres-store` |
 | vNext storage feasibility proof | `cargo make test-vnext-storage-proof` |
@@ -49,7 +50,9 @@ Good targeted scopes are contract-shaped rather than file-shaped: CLI parsing/ou
 
 Use the owner path to choose the first validation surface:
 
-- `crates/decodex-core/`: pure vNext domain/application contracts and authority ports.
+- `crates/decodex-core/`: vNext domain/application contracts and authority ports plus
+  the typed `~/.decodex` root, bounded/redacted config, stable server identity,
+  integrity-verifying blobs, and disposable bounded cache.
 - `crates/decodex-protocol/`: version and loopback network boundary shared by service and clients.
 - `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated real-PostgreSQL integration tests; the runtime composition seam remains unavailable until configured by its later owner.
 - `crates/decodex-codex/`: typed shared-home Codex adapter foundation; live dispatch is
@@ -75,6 +78,7 @@ Common targeted commands:
 cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
 cargo make test-vnext-architecture
+cargo test -p decodex-core --all-targets --all-features
 cargo test -p decodex-core -p decodex-protocol -p decodex-postgres -p decodex-codex -p decodex-runtime
 cargo test -p radar <filter>
 cargo test -p decodex-publisher <filter>
@@ -127,7 +131,9 @@ Important source modules:
 
 ## Local validation status gate
 
-Projects choose `[github].landing_mode` in `project.toml` (`decodex.example.toml`).
+Frozen v0.2 projects choose `[github].landing_mode` in their `project.toml`. The current
+`decodex.example.toml` is the vNext global path/config template and no longer models this
+frozen project setting.
 The default `standard` mode waits for GitHub's status rollup and ordinary merge
 gates. `fast` mode trusts the Decodex local full-check status
 `decodex/local-full-check`, requires `landing_actors`, and allows those actors to

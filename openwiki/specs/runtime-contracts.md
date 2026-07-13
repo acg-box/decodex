@@ -112,7 +112,9 @@ Retained review lanes require exact lifecycle authority. Missing or mismatched l
 
 When changing these contracts, validate both source and behavior:
 
-- Project/config parsing: `apps/decodex/src/config/service.rs`, `apps/decodex/src/config/document.rs`, `decodex.example.toml`.
+- Frozen project/config parsing: `apps/decodex/src/config/service.rs` and
+  `apps/decodex/src/config/document.rs`; use the trusted v0.2 tag for its historical
+  example because the current `decodex.example.toml` now owns vNext global config.
 - Workflow parsing and gate policy: `apps/decodex/src/workflow/document.rs`, `apps/decodex/src/workflow/frontmatter.rs`, `apps/decodex/src/workflow/execution.rs`, `apps/decodex/src/workflow/tracker.rs`, and workflow tests under `apps/decodex/src/workflow/tests/`.
 - Runtime state and protocol persistence: `apps/decodex/src/runtime/paths.rs`, `apps/decodex/src/state/sqlite_store/schema.rs`, `apps/decodex/src/state/store.rs`, `apps/decodex/src/state/protocol_events/archive.rs`.
 - App-server compatibility: `apps/decodex/src/agent/app_server/run.rs`, `apps/decodex/src/agent/app_server/preflight.rs`, `apps/decodex/src/agent/app_server/schema_probe/constants.rs`, `apps/decodex/src/agent/app_server/tests/`, and `decodex probe stdio://`.
