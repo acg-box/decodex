@@ -1,5 +1,9 @@
 # Runtime Contracts
 
+Scope: current v0.2 behavior only. For vNext target implementation, the
+[vNext authority contract](vnext-authority.md) supersedes this page's Linear lane,
+SQLite, Goal, transport, lifecycle, and authority model.
+
 This page is the compact contract map for Decodex runtime behavior. It consolidates the checked-in OpenWiki pages with the legacy runtime, app-server, tracker-tool, and workflow-file specs inspected from git history, while treating current Rust source as authority.
 
 Use this page before changing lease ownership, app-server dispatch, tracker writeback, evidence/privacy boundaries, project config, `WORKFLOW.md`, or recovery behavior. For deeper lifecycle detail, continue to [Runtime lifecycle](runtime-lifecycle.md); for schema and row-family detail, continue to [Contracts and data](contracts-and-data.md).
