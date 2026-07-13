@@ -1,11 +1,46 @@
-//! Codex app-server adapter boundary.
+//! Typed, fail-closed Codex app-server adapter foundation.
 //!
-//! XY-1265 preserves the shared normal `~/.codex` contract without spawning a runner.
+//! This crate owns protocol decoding, capability evidence, redaction, and isolated
+//! process supervision. It deliberately has no production turn-dispatch API while
+//! the XY-1304 live-routing gate remains failed.
+
+mod capability;
+mod dispatch;
+mod event;
+mod process;
+mod protocol;
+mod schema;
+
+pub use self::{
+	capability::{
+		Capability, CapabilityCache, CapabilityContradiction, CapabilityProfile, CapabilityState,
+		DegradedReason, LiveMethodOutcome, MethodObservation, NegotiationError, UnavailableReason,
+		UnsupportedReason,
+	},
+	dispatch::{DispatchDenied, DispatchGate, DispatchOperation, LIVE_ROUTING_GATE},
+	event::{
+		CollaborationActivityKind, CollaborationTool, CollaborationToolCall,
+		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
+		RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
+	},
+	process::{
+		AccountBinding, AccountIdentity, AppServerCommand, ProbeError, ReadOnlyMethod,
+		ReadOnlyProbe, ReadOnlyProbeResult, ShutdownOutcome, SupervisedProcess, SupervisionError,
+	},
+	protocol::{BuildId, ThreadId, ThreadSummary},
+	schema::{
+		ACCEPTED_SCHEMA_RECEIPT, REQUIRED_NOTIFICATION_METHODS, REQUIRED_REQUEST_METHODS,
+		SchemaContract, SchemaMarker,
+	},
+};
 
 use decodex_core::{Availability, ConversationRuntime};
 
-/// Stable unavailable reason while Codex process supervision remains outside XY-1265.
-pub const NOT_IMPLEMENTED: &str = "Codex adapter is unavailable until XY-1270";
+/// Live conversation execution remains unavailable until the separate gate passes.
+pub const LIVE_DISPATCH_UNAVAILABLE: &str =
+	"Codex live dispatch is disabled while the XY-1304 gate is failed";
+/// Stable composition-root reason retained while live execution is unavailable.
+pub const NOT_IMPLEMENTED: &str = LIVE_DISPATCH_UNAVAILABLE;
 
 /// Continuation-home policy selected by this infrastructure owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -14,11 +49,16 @@ pub enum CodexContinuity {
 	SharedNormalHome,
 }
 
-/// The sole Codex adapter selected by the vNext composition root.
+/// The bounded Codex foundation selected by the vNext composition root.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CodexAdapter;
 impl CodexAdapter {
-	/// Construct the explicit XY-1265 unavailable adapter.
+	/// Construct the foundation adapter.
+	pub const fn new() -> Self {
+		Self
+	}
+
+	/// Construct the adapter in its current live-dispatch-unavailable state.
 	pub const fn unavailable() -> Self {
 		Self
 	}
@@ -27,24 +67,32 @@ impl CodexAdapter {
 	pub const fn continuity(self) -> CodexContinuity {
 		CodexContinuity::SharedNormalHome
 	}
+
+	/// Return the hard live-dispatch guard.
+	pub const fn dispatch_gate(self) -> DispatchGate {
+		DispatchGate::failed_xy_1304()
+	}
 }
 
 impl ConversationRuntime for CodexAdapter {
 	fn availability(&self) -> Availability {
-		Availability::Unavailable { reason: NOT_IMPLEMENTED }
+		Availability::Unavailable { reason: LIVE_DISPATCH_UNAVAILABLE }
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use crate::{CodexAdapter, CodexContinuity, NOT_IMPLEMENTED};
+	use crate::{CodexAdapter, CodexContinuity, LIVE_DISPATCH_UNAVAILABLE};
 	use decodex_core::{Availability, ConversationRuntime};
 
 	#[test]
-	fn adapter_preserves_shared_home_and_is_explicitly_unavailable() {
-		let adapter = CodexAdapter::unavailable();
+	fn foundation_preserves_shared_home_but_live_execution_is_unavailable() {
+		let adapter = CodexAdapter::new();
 
 		assert_eq!(adapter.continuity(), CodexContinuity::SharedNormalHome);
-		assert_eq!(adapter.availability(), Availability::Unavailable { reason: NOT_IMPLEMENTED });
+		assert_eq!(
+			adapter.availability(),
+			Availability::Unavailable { reason: LIVE_DISPATCH_UNAVAILABLE }
+		);
 	}
 }
