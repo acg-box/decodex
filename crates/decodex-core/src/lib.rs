@@ -1,17 +1,5 @@
 //! Pure domain and application contracts for Decodex vNext.
 
-/// Whether an owned subsystem can currently serve requests.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Availability {
-	/// The subsystem can serve its owned application contract.
-	Available,
-	/// The subsystem is intentionally unable to serve its owned application contract.
-	Unavailable {
-		/// Stable human-readable explanation of the unavailable boundary.
-		reason: &'static str,
-	},
-}
-
 /// Application-facing product-state port.
 pub trait ProductState {
 	/// Report whether the adapter can currently serve product-state requests.
@@ -24,13 +12,24 @@ pub trait ConversationRuntime {
 	fn availability(&self) -> Availability;
 }
 
+/// Whether an owned subsystem can currently serve requests.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Availability {
+	/// The subsystem can serve its owned application contract.
+	Available,
+	/// The subsystem is intentionally unable to serve its owned application contract.
+	Unavailable {
+		/// Stable human-readable explanation of the unavailable boundary.
+		reason: &'static str,
+	},
+}
+
 /// Validated status of the two authority-bearing vNext foundations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FoundationStatus {
 	product_state: Availability,
 	conversation_runtime: Availability,
 }
-
 impl FoundationStatus {
 	/// Assemble the application status through its owned ports.
 	pub fn assemble(
@@ -62,7 +61,7 @@ impl FoundationStatus {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{Availability, ConversationRuntime, FoundationStatus, ProductState};
 
 	struct Store;
 
