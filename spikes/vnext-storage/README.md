@@ -50,9 +50,9 @@ explicitly enables data checksums, then verifies checksums are `on`, server majo
 
 The packaged app must perform the same preflight and provide an actionable PostgreSQL 18
 installation/configuration step when it fails; it must not silently use another global
-service or downgrade the version. XY-1267 should add the daemon bootstrap command and
-configuration field for the resolved binary directory. Package installation itself is
-owned by the later packaging gate.
+service or downgrade the version. XY-1268 owns daemon bootstrap, local paths, and the
+configuration field for the resolved binary directory. Package installation itself is owned
+by the later packaging gate.
 
 The vNext local layout is:
 

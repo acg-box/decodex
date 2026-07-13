@@ -11,19 +11,19 @@ pub use websocket::{BoundServer, ProtocolServer, ServerConfig, ServerError};
 
 use decodex_codex::CodexAdapter;
 use decodex_core::FoundationStatus;
-use decodex_postgres::PostgresStore;
+use decodex_postgres::UnavailablePostgresStore;
 use decodex_protocol::{CURRENT_VERSION, ServiceAnnouncement};
 
 /// The vNext service assembly selected by the `decodexd` composition root.
 #[derive(Clone, Copy, Debug)]
 pub struct ServiceComposition {
-	store: PostgresStore,
+	store: UnavailablePostgresStore,
 	codex: CodexAdapter,
 }
 impl ServiceComposition {
 	/// Select the accepted adapters without enabling either unavailable implementation.
 	pub const fn foundation() -> Self {
-		Self { store: PostgresStore::unavailable(), codex: CodexAdapter::unavailable() }
+		Self { store: UnavailablePostgresStore::new(), codex: CodexAdapter::unavailable() }
 	}
 
 	/// Validate and describe the assembled service.
@@ -59,7 +59,7 @@ mod tests {
 		assert_eq!(announcement.version, CURRENT_VERSION);
 		assert_eq!(
 			announcement.foundation.product_state(),
-			Availability::Unavailable { reason: decodex_postgres::NOT_IMPLEMENTED }
+			Availability::Unavailable { reason: decodex_postgres::NOT_CONFIGURED }
 		);
 		assert_eq!(
 			announcement.foundation.conversation_runtime(),

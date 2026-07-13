@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-EXPECTED_DEPENDENCIES = {
+EXPECTED_OWNER_DEPENDENCIES = {
     "decodex-core": set(),
     "decodex-protocol": {"decodex-core"},
     "decodex-postgres": {"decodex-core"},
@@ -20,6 +20,17 @@ EXPECTED_DEPENDENCIES = {
     "decodexd": {"decodex-runtime"},
     "decodex-cli": {"decodex-protocol"},
     "decodex-gpui": {"decodex-protocol"},
+}
+
+EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
+    "deadpool-postgres",
+    "refinery",
+    "regex",
+    "serde_json",
+    "sha2",
+    "time",
+    "tokio",
+    "tokio-postgres",
 }
 
 EXPECTED_WORKSPACE_MANIFESTS = {
@@ -54,8 +65,8 @@ class VnextArchitectureTests(unittest.TestCase):
         }
 
     def test_vnext_dependency_direction_is_exact(self):
-        owned_packages = set(EXPECTED_DEPENDENCIES)
-        for package_name, expected in EXPECTED_DEPENDENCIES.items():
+        owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        for package_name, expected in EXPECTED_OWNER_DEPENDENCIES.items():
             with self.subTest(package=package_name):
                 actual = {
                     dependency["name"]
@@ -63,6 +74,16 @@ class VnextArchitectureTests(unittest.TestCase):
                     if dependency["name"] in owned_packages
                 }
                 self.assertEqual(actual, expected)
+
+    def test_postgres_dependency_stack_is_exact(self):
+        owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        actual = {
+            dependency["name"]
+            for dependency in self.packages["decodex-postgres"]["dependencies"]
+            if dependency["name"] not in owned_packages
+        }
+
+        self.assertEqual(actual, EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES)
 
     def test_workspace_owner_set_is_exact(self):
         actual = {
