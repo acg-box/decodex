@@ -26,7 +26,8 @@ impl PostgresStore {
 				"WITH write_time AS MATERIALIZED (SELECT clock_timestamp() AS value), \
 				 exhausted AS ( \
 				   UPDATE decodex.outbox SET state = 'dead_letter', lease_holder = NULL, \
-				     claim_token = NULL, lease_expires_at = NULL, dead_lettered_at = write_time.value \
+				     claim_token = NULL, lease_acquired_at = NULL, lease_expires_at = NULL, \
+				     dead_lettered_at = write_time.value \
 				   FROM write_time \
 				   WHERE state = 'in_flight' AND lease_expires_at <= write_time.value \
 				     AND attempt_count >= max_attempts AND effect_state = 'not_started' \
@@ -44,6 +45,7 @@ impl PostgresStore {
 				     THEN work.attempt_count + 1 ELSE work.attempt_count END, \
 				   lease_holder = $1::text::uuid, \
 				   claim_token = gen_random_uuid(), \
+				   lease_acquired_at = write_time.value, \
 				   lease_expires_at = write_time.value + $3::bigint * interval '1 millisecond' \
 				 FROM candidates CROSS JOIN write_time WHERE work.id = candidates.id \
 				 RETURNING work.id, work.claim_token::text, work.effect_key, work.payload, work.attempt_count, \
@@ -84,7 +86,8 @@ impl PostgresStore {
 			.execute(
 				"WITH write_time AS (SELECT clock_timestamp() AS value) \
 				 UPDATE decodex.outbox \
-				 SET lease_expires_at = write_time.value + $4::bigint * interval '1 millisecond' \
+				 SET lease_acquired_at = write_time.value, \
+				   lease_expires_at = write_time.value + $4::bigint * interval '1 millisecond' \
 				 FROM write_time \
 				 WHERE id = $1 AND state = 'in_flight' AND lease_holder = $2::text::uuid \
 				   AND claim_token = $3::text::uuid AND lease_expires_at > write_time.value",
@@ -162,7 +165,8 @@ impl PostgresStore {
 				 state = CASE WHEN attempt_count >= max_attempts THEN 'dead_letter'::decodex.outbox_state \
 				              ELSE 'pending'::decodex.outbox_state END, \
 				 available_at = write_time.value + $5::bigint * interval '1 millisecond', \
-				 lease_holder = NULL, claim_token = NULL, lease_expires_at = NULL, last_failure_code = $4, \
+				 lease_holder = NULL, claim_token = NULL, lease_acquired_at = NULL, \
+				 lease_expires_at = NULL, last_failure_code = $4, \
 				 dead_lettered_at = CASE WHEN attempt_count >= max_attempts THEN write_time.value ELSE NULL END \
 				 FROM write_time \
 				 WHERE id = $1 AND state = 'in_flight' AND lease_holder = $2::text::uuid \
@@ -208,7 +212,8 @@ impl PostgresStore {
 				   ELSE 'pending'::decodex.outbox_state END, \
 				 effect_state = CASE WHEN $5 = 'absent' THEN 'not_started'::decodex.effect_state ELSE effect_state END, \
 				 receipt = CASE WHEN $5 = 'absent' THEN NULL ELSE receipt END, \
-				 reconciliation = $4, lease_holder = NULL, claim_token = NULL, lease_expires_at = NULL, \
+				 reconciliation = $4, lease_holder = NULL, claim_token = NULL, \
+				 lease_acquired_at = NULL, lease_expires_at = NULL, \
 				 available_at = CASE WHEN $5 = 'absent' THEN write_time.value + $6::bigint * interval '1 millisecond' ELSE available_at END, \
 				 delivered_at = CASE WHEN $5 = 'present' THEN write_time.value ELSE NULL END, \
 				 dead_lettered_at = CASE WHEN $5 = 'absent' AND attempt_count >= max_attempts THEN write_time.value ELSE NULL END, \

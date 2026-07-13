@@ -13,6 +13,7 @@ import tempfile
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATABASE = "decodex_xy1267"
+COLLATION_DATABASE = "decodex_xy1267_tr"
 RESTORE_DATABASE = "decodex_xy1267_restore"
 
 
@@ -145,6 +146,39 @@ def main() -> int:
 			],
 			env,
 		)
+		run(
+			[
+				"createdb",
+				"--maintenance-db=postgres",
+				"--template=template0",
+				"--encoding=UTF8",
+				"--locale-provider=icu",
+				"--icu-locale=tr-TR",
+				COLLATION_DATABASE,
+			],
+			env,
+		)
+		env["DECODEX_TEST_COLLATION_DATABASE_URL"] = (
+			f"postgresql://{env['PGUSER']}@/{COLLATION_DATABASE}"
+			f"?host={socket_dir.as_posix()}&port={port}"
+		)
+		collation_output = run(
+			[
+				"cargo",
+				"nextest",
+				"run",
+				"-p",
+				"decodex-postgres",
+				"--test",
+				"postgres_store",
+				"--run-ignored",
+				"all",
+				"--",
+				"postgres_store_turkish_collation_contract",
+				"--exact",
+			],
+			env,
+		)
 		dump_path = work / "decodex_xy1267.dump"
 		run(["pg_dump", "-Fc", "-f", str(dump_path), DATABASE], env)
 		run(
@@ -184,6 +218,7 @@ def main() -> int:
 			env,
 		)
 		print(contract_output)
+		print(collation_output)
 		print(restore_output)
 		return 0
 	finally:

@@ -114,6 +114,57 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 Turkish ICU collation harness"]
+async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn Error>> {
+	let database_url = env::var("DECODEX_TEST_COLLATION_DATABASE_URL")?;
+	let config = Config::from_str(&database_url)?;
+	let store = PostgresStore::connect(config.clone()).await?;
+	let (client, connection) = config.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	let locale = client
+		.query_one(
+			"SELECT datlocprovider::text, datlocale FROM pg_database \
+			 WHERE datname = current_database()",
+			&[],
+		)
+		.await?;
+	let provider: String = locale.get(0);
+	let locale: Option<String> = locale.get(1);
+
+	assert_eq!(provider, "i");
+	assert!(locale.as_deref().is_some_and(|value| value.starts_with("tr")));
+
+	for (index, response) in [
+		serde_json::json!({"AUTHORIZATION": "forbidden"}),
+		serde_json::json!({"HEADER": "BEARER ABCDEFGHIJKLMNOP"}),
+		serde_json::json!({"PRIVATE_KEY": "forbidden"}),
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let key = format!("turkish-collation-{index}");
+
+		assert_credential_constraint(
+			&client,
+			"INSERT INTO decodex.command_receipts \
+			 (idempotency_key, request_hash, response, completed_at) \
+			 VALUES ($1, repeat('a', 64), $2, clock_timestamp())",
+			&[&key, &response],
+			"command_receipts_no_credentials",
+		)
+		.await?;
+	}
+
+	store.close();
+
+	drop(client);
+
+	connection_task.await??;
+
+	Ok(())
+}
+
 async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Error>> {
 	let version: i32 = client
 		.query_one("SELECT current_setting('server_version_num')::integer / 10000", &[])
@@ -332,7 +383,7 @@ async fn assert_inert_window_and_credential_boundary(
 		}
 	}
 
-	assert_direct_credential_and_scope_boundary(client).await
+	assert_direct_credential_and_scope_boundary(store, client).await
 }
 
 async fn assert_api_credential_boundary(
@@ -509,6 +560,7 @@ async fn assert_quota_timestamp_validation(
 }
 
 async fn assert_direct_credential_and_scope_boundary(
+	store: &PostgresStore,
 	client: &Client,
 ) -> Result<(), Box<dyn Error>> {
 	let rejected_receipts: i64 = client
@@ -551,7 +603,7 @@ async fn assert_direct_credential_and_scope_boundary(
 		);
 	}
 
-	assert_direct_delivered_invariant(client).await?;
+	assert_direct_delivered_invariant(store, client).await?;
 	assert_direct_credential_rows(client).await?;
 
 	assert_no_credential_columns_or_routing(client).await
@@ -658,10 +710,14 @@ async fn assert_no_credential_columns_or_routing(client: &Client) -> Result<(), 
 	Ok(())
 }
 
-async fn assert_direct_delivered_invariant(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_direct_delivered_invariant(
+	store: &PostgresStore,
+	client: &Client,
+) -> Result<(), Box<dyn Error>> {
 	assert_invalid_delivered_evidence(client).await?;
 	assert_unicode_whitespace_evidence(client).await?;
 	assert_delivered_retention(client).await?;
+	assert_delivered_is_terminal(store, client).await?;
 
 	let delivered_rows: i64 = client
 		.query_one(
@@ -707,10 +763,11 @@ async fn assert_invalid_delivered_evidence(client: &Client) -> Result<(), Box<dy
 		let statement = format!(
 			"INSERT INTO decodex.outbox \
 			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
-			  effect_state, receipt, reconciliation, delivered_at, retain_until) \
+			  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
 			 VALUES ('direct-delivered-{index}', 'account', 'direct-delivered', 1, '{{}}', \
 			  'delivered', {effect_state}, {receipt}, {reconciliation}, \
-			  statement_timestamp(), statement_timestamp() + interval '1 day')"
+			  statement_timestamp(), statement_timestamp(), \
+			  statement_timestamp() + interval '1 day')"
 		);
 		let error = client
 			.execute(&statement, &[])
@@ -741,9 +798,9 @@ async fn assert_unicode_whitespace_evidence(client: &Client) -> Result<(), Box<d
 				.execute(
 					"INSERT INTO decodex.outbox \
 					 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
-					  effect_state, receipt, reconciliation, delivered_at, retain_until) \
+					  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
 					 VALUES ($1, 'account', 'unicode-whitespace', 1, '{}', 'delivered', \
-					  'receipt_recorded', $2, $3, statement_timestamp(), \
+					  'receipt_recorded', $2, $3, statement_timestamp(), statement_timestamp(), \
 					  statement_timestamp() + interval '1 day')",
 					&[&effect_key, receipt, reconciliation],
 				)
@@ -763,6 +820,7 @@ async fn assert_unicode_whitespace_evidence(client: &Client) -> Result<(), Box<d
 async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn Error>> {
 	for (index, retain_until) in [
 		"statement_timestamp()",
+		"statement_timestamp() + interval '0.0005 seconds'",
 		"statement_timestamp() + 31622400000 * interval '1 millisecond'",
 		"'infinity'::timestamptz",
 	]
@@ -772,10 +830,10 @@ async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn Error
 		let statement = format!(
 			"INSERT INTO decodex.outbox \
 			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
-			  effect_state, receipt, reconciliation, delivered_at, retain_until) \
+			  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
 			 VALUES ('direct-retention-{index}', 'account', 'retention', 1, '{{}}', 'delivered', \
 			  'receipt_recorded', '{{\"provider_receipt\":\"receipt\"}}', '{{\"observed\":true}}', \
-			  statement_timestamp(), {retain_until})"
+			  statement_timestamp(), statement_timestamp(), {retain_until})"
 		);
 		let error = client
 			.execute(&statement, &[])
@@ -788,16 +846,95 @@ async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn Error
 		);
 	}
 
+	let chronology_error = client
+		.execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
+			 VALUES ('direct-retention-chronology', 'account', 'retention', 1, '{}', 'delivered', \
+			  'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', '{\"observed\":true}', \
+			  statement_timestamp(), statement_timestamp() - interval '1 millisecond', \
+			  statement_timestamp() + interval '1 day')",
+			&[],
+		)
+		.await
+		.expect_err("delivered timestamp cannot predate row creation");
+
+	assert_eq!(
+		chronology_error.as_db_error().and_then(|error| error.constraint()),
+		Some("outbox_terminal_chronology")
+	);
+
 	client
 		.batch_execute(
 			"INSERT INTO decodex.outbox \
 			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
-			  effect_state, receipt, reconciliation, delivered_at, retain_until) \
+			  effect_state, receipt, reconciliation, created_at, delivered_at, retain_until) \
 			 VALUES ('direct-retention-valid', 'account', 'retention', 1, '{}', 'delivered', \
 			  'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', '{\"observed\":true}', \
-			  statement_timestamp(), \
+			  statement_timestamp(), statement_timestamp(), \
 			  statement_timestamp() + 31536000000 * interval '1 millisecond'); \
 			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-retention-valid'",
+		)
+		.await?;
+
+	Ok(())
+}
+
+async fn assert_delivered_is_terminal(
+	store: &PostgresStore,
+	client: &Client,
+) -> Result<(), Box<dyn Error>> {
+	client
+		.batch_execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  effect_state, receipt, reconciliation, available_at, created_at, delivered_at, \
+			  retain_until) \
+			 VALUES ('direct-delivered-terminal', 'account', 'terminal', 1, '{}', 'delivered', \
+			  'receipt_recorded', '{\"provider_receipt\":\"receipt\"}', '{\"observed\":true}', \
+			  '1970-01-01T00:00:00Z', statement_timestamp(), statement_timestamp(), \
+			  statement_timestamp() + interval '1 day')",
+		)
+		.await?;
+
+	let error = client
+		.execute(
+			"UPDATE decodex.outbox SET state = 'pending', effect_state = 'not_started', \
+			 receipt = NULL, reconciliation = NULL, delivered_at = NULL, retain_until = NULL \
+			 WHERE effect_key = 'direct-delivered-terminal'",
+			&[],
+		)
+		.await
+		.expect_err("delivered outbox row cannot regress to replayable state");
+
+	assert_eq!(
+		error.as_db_error().map(|error| error.code()),
+		Some(&tokio_postgres::error::SqlState::OBJECT_NOT_IN_PREREQUISITE_STATE)
+	);
+
+	let claims = store.claim_outbox(WORKER_B, 1_000, Duration::from_millis(1)).await?;
+
+	assert!(claims.iter().all(|claim| claim.effect_key != "direct-delivered-terminal"));
+
+	let state: String = client
+		.query_one(
+			"SELECT state::text FROM decodex.outbox \
+			 WHERE effect_key = 'direct-delivered-terminal'",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(state, "delivered");
+
+	client
+		.batch_execute(
+			"UPDATE decodex.outbox SET state = 'pending', lease_holder = NULL, claim_token = NULL, \
+			 lease_acquired_at = NULL, lease_expires_at = NULL \
+			 WHERE state = 'in_flight' AND lease_holder = \
+			 '30000000-0000-0000-0000-000000000002'; \
+			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-delivered-terminal'",
 		)
 		.await?;
 
@@ -916,6 +1053,7 @@ async fn assert_duration_validation(
 	store.release_lease("duration/boundary", HOLDER_A, boundary_token).await?;
 
 	assert_direct_lease_duration_boundary(client).await?;
+	assert_direct_outbox_lease_duration_boundary(client).await?;
 
 	for duration in
 		[Duration::ZERO, Duration::from_nanos(1), Duration::from_micros(1_500), overflow, huge]
@@ -1027,6 +1165,9 @@ async fn assert_direct_lease_duration_boundary(client: &Client) -> Result<(), Bo
 			 statement_timestamp() + 31622400000 * interval '1 millisecond', \
 			 statement_timestamp())",
 		"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) \
+			 VALUES ('duration/table-fractional', '20000000-0000-0000-0000-000000000001', \
+			 statement_timestamp() + interval '0.0005 seconds', statement_timestamp())",
+		"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) \
 			 VALUES ('duration/table-infinity', '20000000-0000-0000-0000-000000000001', \
 			 'infinity', statement_timestamp())",
 	] {
@@ -1045,6 +1186,54 @@ async fn assert_direct_lease_duration_boundary(client: &Client) -> Result<(), Bo
 			 VALUES ('duration/expired-row', '20000000-0000-0000-0000-000000000001', \
 			 statement_timestamp() - interval '1 day', statement_timestamp()); \
 			 DELETE FROM decodex.leases WHERE resource_key IN ('duration/direct', 'duration/expired-row')",
+		)
+		.await?;
+
+	Ok(())
+}
+
+async fn assert_direct_outbox_lease_duration_boundary(
+	client: &Client,
+) -> Result<(), Box<dyn Error>> {
+	for (index, lease_expires_at) in [
+		"statement_timestamp() + interval '0.0005 seconds'",
+		"statement_timestamp() + interval '366 days'",
+		"'infinity'::timestamptz",
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let statement = format!(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  lease_holder, claim_token, lease_acquired_at, lease_expires_at, created_at) \
+			 VALUES ('direct-outbox-lease-{index}', 'account', 'lease', 1, '{{}}', 'in_flight', \
+			  '30000000-0000-0000-0000-000000000001', \
+			  '40000000-0000-0000-0000-000000000001', statement_timestamp(), \
+			  {lease_expires_at}, statement_timestamp())"
+		);
+		let error = client
+			.execute(&statement, &[])
+			.await
+			.expect_err("invalid direct outbox lease rejected");
+
+		assert_eq!(
+			error.as_db_error().map(|error| error.code()),
+			Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+		);
+	}
+
+	client
+		.batch_execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload, state, \
+			  lease_holder, claim_token, lease_acquired_at, lease_expires_at, created_at) \
+			 VALUES ('direct-outbox-lease-valid', 'account', 'lease', 1, '{}', 'in_flight', \
+			  '30000000-0000-0000-0000-000000000001', \
+			  '40000000-0000-0000-0000-000000000001', statement_timestamp(), \
+			  statement_timestamp() + 31536000000 * interval '1 millisecond', \
+			  statement_timestamp()); \
+			 DELETE FROM decodex.outbox WHERE effect_key = 'direct-outbox-lease-valid'",
 		)
 		.await?;
 
@@ -1139,7 +1328,7 @@ async fn assert_outbox_concurrency_retry_and_restart(
 	client
 		.execute(
 			"UPDATE decodex.outbox SET state = 'pending', lease_holder = NULL, claim_token = NULL, \
-			 lease_expires_at = NULL WHERE state = 'in_flight'",
+			 lease_acquired_at = NULL, lease_expires_at = NULL WHERE state = 'in_flight'",
 			&[],
 		)
 		.await?;
