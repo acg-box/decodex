@@ -10,3 +10,4 @@ version.workspace    = true
 
 [dependencies]
 decodex-runtime = { workspace = true }
+tokio           = { workspace = true }

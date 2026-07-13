@@ -1,12 +1,12 @@
 //! Default-unavailable Decodex vNext command-line client composition root.
 
-use decodex_protocol::ProtocolVersion;
+use decodex_protocol::CURRENT_VERSION;
 
 fn main() {
-	let version = ProtocolVersion::V1;
+	let version = CURRENT_VERSION;
 
 	println!(
-		"decodex v{}.{} client unavailable: API transport belongs to XY-1266/XY-1268",
+		"decodex v{}.{} client unavailable: client transport belongs to XY-1268",
 		version.major, version.minor
 	);
 }
