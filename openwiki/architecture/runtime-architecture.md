@@ -12,8 +12,10 @@ vNext runtime boundary:
 - `decodex-core`: pure domain/application contracts and ports; no dependencies.
 - `decodex-protocol`: V1 typed wire contracts, current/previous-minor negotiation, and
   loopback endpoint policy; depends only on core plus structured serialization.
-- `decodex-postgres`: the product-state adapter boundary; depends only on core and is
-  unavailable until XY-1267.
+- `decodex-postgres`: the PostgreSQL 18 product-state adapter; depends on core plus the
+  accepted tokio-postgres/deadpool/refinery stack and owns embedded migrations,
+  optimistic transactions, leases, append-only activity, outbox delivery, and inert
+  account/window metadata.
 - `decodex-codex`: the shared-normal-home adapter boundary; depends only on core and is
   unavailable until XY-1270.
 - `decodex-runtime`: service lifecycle, connection/session execution, resumable event
@@ -53,11 +55,30 @@ types contain only small state and cannot carry artifact bytes.
 
 This slice deliberately keeps its replay/idempotency ledger in memory. A daemon restart
 changes server identity, loses that transient ledger, and forces snapshot fallback;
-XY-1267 owns durable PostgreSQL product-state and transaction integration. The current
-foundation application reports product state unavailable rather than inventing product
-entities. Authentication, TLS, remote binding, HTTP artifact transfer, MCP, scheduling,
-Codex execution, CLI operations, and GPUI behavior remain disabled and belong to later
-issues.
+durable PostgreSQL product-state and transaction primitives live in `decodex-postgres`,
+but the active composition supplies no connection until XY-1268 owns bootstrap and path
+integration. The foundation application therefore reports product state unavailable
+rather than inventing product entities. PostgreSQL reports available only after an
+explicit connection passes PostgreSQL 18, checksum, extension, and migration checks.
+Codex remains explicitly unavailable. Authentication, TLS, remote binding, HTTP artifact
+transfer, MCP, scheduling, Codex execution, CLI operations, and GPUI behavior remain
+disabled and belong to later issues.
+
+The synchronous product-state availability port reflects verified configuration and local
+pool lifecycle: closing the pool makes it unavailable. Live PostgreSQL failures remain
+authoritative at each asynchronous store operation; availability does not claim a synchronous
+network-liveness probe.
+
+The store's owned mutations reserve a command receipt, apply an exact expected revision,
+append activity, enqueue the matching outbox effect, and complete the receipt in one
+transaction. Reusing the same idempotency key and request hash reads the committed
+response; reusing the key for different bytes is rejected. Outbox claims are bounded and
+fenced by a token rotated on every claim or reclaim. Any effect that may have begun must be
+reconciled through a receipt and
+authoritative readback after claim expiry or restart. Account and quota-window rows are
+inert observations with recursive credential-material rejection across normalized keys and
+recognizable secret-bearing value encodings; this crate exposes no
+eligibility, account selection, fallback, wake scheduling, or credential storage.
 
 ## Frozen v0.2 runtime provenance
 

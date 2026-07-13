@@ -1,0 +1,84 @@
+/// Typed failures from the PostgreSQL authority boundary.
+#[derive(Debug)]
+pub enum StoreError {
+	/// A connection could not be checked out of the bounded pool.
+	Pool(deadpool_postgres::PoolError),
+	/// PostgreSQL rejected or could not execute the request.
+	Database(tokio_postgres::Error),
+	/// An embedded migration failed or its immutable history was incompatible.
+	Migration(refinery::Error),
+	/// The server or migration state is incompatible with this store.
+	Incompatible(String),
+	/// A caller reused an idempotency key for a different logical request.
+	IdempotencyConflict,
+	/// The expected entity revision did not match authoritative state.
+	RevisionConflict {
+		/// Stable entity identity used by the attempted mutation.
+		entity: String,
+		/// Revision supplied by the caller.
+		expected: Option<i64>,
+		/// Current authoritative revision, or `None` when the entity is absent.
+		actual: Option<i64>,
+	},
+	/// A lease or outbox transition was attempted by a non-owner or stale token.
+	OwnershipLost(&'static str),
+	/// Credential-shaped material was rejected at the ordinary-row boundary.
+	CredentialRejected,
+	/// A public input violated the store contract before a transaction began.
+	InvalidInput(&'static str),
+}
+impl std::error::Error for StoreError {}
+
+impl std::fmt::Display for StoreError {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Pool(error) => write!(formatter, "PostgreSQL pool error: {error}"),
+			Self::Database(error) => write!(formatter, "PostgreSQL error: {error}"),
+			Self::Migration(error) => write!(formatter, "PostgreSQL migration error: {error}"),
+			Self::Incompatible(reason) => {
+				write!(formatter, "incompatible PostgreSQL state: {reason}")
+			},
+			Self::IdempotencyConflict =>
+				formatter.write_str("idempotency key reused with a different request"),
+			Self::RevisionConflict { entity, expected, actual } => write!(
+				formatter,
+				"revision conflict for {entity}: expected {expected:?}, actual {actual:?}"
+			),
+			Self::OwnershipLost(owner) => write!(formatter, "{owner} ownership was lost"),
+			Self::CredentialRejected =>
+				formatter.write_str("credential material is forbidden in ordinary PostgreSQL rows"),
+			Self::InvalidInput(reason) => write!(formatter, "invalid store input: {reason}"),
+		}
+	}
+}
+
+impl From<deadpool_postgres::PoolError> for StoreError {
+	fn from(error: deadpool_postgres::PoolError) -> Self {
+		Self::Pool(error)
+	}
+}
+
+impl From<deadpool_postgres::BuildError> for StoreError {
+	fn from(error: deadpool_postgres::BuildError) -> Self {
+		Self::Incompatible(error.to_string())
+	}
+}
+
+impl From<refinery::Error> for StoreError {
+	fn from(error: refinery::Error) -> Self {
+		Self::Migration(error)
+	}
+}
+
+impl From<tokio_postgres::Error> for StoreError {
+	fn from(error: tokio_postgres::Error) -> Self {
+		if error.as_db_error().is_some_and(|database| {
+			database.code() == &tokio_postgres::error::SqlState::CHECK_VIOLATION
+				&& database.constraint().is_some_and(|name| name.contains("no_credentials"))
+		}) {
+			Self::CredentialRejected
+		} else {
+			Self::Database(error)
+		}
+	}
+}

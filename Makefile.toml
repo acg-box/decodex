@@ -243,7 +243,8 @@ args = [
 # | test                     | composite |     |
 # | test-rust                | command   |     |
 # | test-vnext-architecture  | command   |     |
-# | test-vnext-storage-proof | command   |     |
+# | test-vnext-postgres-store | command   |     |
+# | test-vnext-storage-proof  | command   |     |
 
 [tasks.test]
 clear = true
@@ -271,6 +272,13 @@ args = [
 	"-m",
 	"unittest",
 	"tests/scripts/test_vnext_architecture.py",
+]
+
+[tasks.test-vnext-postgres-store]
+workspace = false
+command = "python3"
+args = [
+	"scripts/vnext/postgres_store_test.py",
 ]
 
 [tasks.test-vnext-storage-proof]
