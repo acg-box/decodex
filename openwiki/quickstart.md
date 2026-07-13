@@ -41,7 +41,7 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   leases, append-only activity, transactional outbox delivery, and inert account/window
   metadata. The composition root remains fail-closed until XY-1268 supplies owned paths
   and explicit configuration.
-- `crates/decodex-codex/` owns the shared-normal-`~/.codex` adapter boundary; runner behavior remains unavailable until XY-1270.
+- `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while XY-1263 is failed.
 - `apps/decodex/` is the frozen v0.2 package. It remains in Git for provenance but is excluded from Cargo workspace membership and must not be used by vNext.
@@ -74,9 +74,9 @@ The legacy `~/.codex/decodex` SQLite/config layout is frozen provenance, not a v
 input or fallback.
 
 There is no active scheduling, CLI operation, account routing, configured PostgreSQL
-service, Codex adapter, authenticated HTTP artifact path, remote binding, or GPUI product
-behavior in this slice. Authentication and TLS are disabled; loopback refusal is the
-enforced network boundary until the later remote-security gate.
+service, live Codex dispatch, authenticated HTTP artifact path, remote binding, or GPUI
+product behavior in this slice. Authentication and TLS are disabled; loopback refusal
+is the enforced network boundary until the later remote-security gate.
 
 ## First commands
 
@@ -103,13 +103,13 @@ prefer
 - Do not read `.env` files or live secret-bearing config. `decodex.example.toml` is the redacted setup model and uses credential environment-variable names, not token values.
 - Do not route vNext through `apps/decodex`, legacy SQLite, Linear lanes, or the legacy operator transport.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
-- PostgreSQL becomes vNext product-state authority only when its owning gate lands. Until then, unavailable is the only supported service state; there is no fallback authority.
+- PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.
 - For project knowledge work, update OpenWiki directly and keep it aligned with source, tests, and manifests.
 
 ## Recent development context
 
 XY-1265 established compile-time ownership and composition. XY-1266 established the
-loopback protocol foundation; XY-1267 adds PostgreSQL-backed product state and durable
-transactions, and XY-1268 owns the API-only CLI/path cutover. Codex behavior, account
-routing, remote security, HTTP artifacts, and GPUI product work remain with their later
-owners and gates.
+loopback protocol foundation; XY-1270 implements the bounded Codex adapter foundation
+without live dispatch. XY-1267 established PostgreSQL-backed product state and durable
+transactions, and XY-1268 owns the API-only CLI/path cutover. Account routing, remote
+security, HTTP artifacts, and GPUI product work remain with their later owners and gates.
