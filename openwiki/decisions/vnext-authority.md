@@ -6,6 +6,12 @@ Tracking issue: [XY-1260](https://linear.app/hack-ink/issue/XY-1260/promote-the-
 
 Source planning record: [Decodex vNext Design Baseline](https://linear.app/hack-ink/document/decodex-vnext-design-baseline-681f7d8ad284), accepted 2026-07-12 against repository snapshot `5546dcb3b2eb0a8aecf7d6a3b117d2605ea315b8`.
 
+Authority amendment: Manager decision accepted 2026-07-13. The decision accepts the
+conceptual XY-1262 foundation/live-enablement split proposed by merged PR #1098 at
+`687605583817eca32cbdfb1107f3ee18d3106cea`, but only through this independently
+reviewed normative amendment. The merged proposal was evidence, not authority by
+itself. Repository authority remains normative; Linear is planning metadata.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the
@@ -71,6 +77,24 @@ vNext owner and a focused gate/test make that behavior authoritative.
   merge, budget, approval, parallelism, and quiet-period limits remain hard stops.
 - Work lands through focused task branches/PRs directly to `main`; there is no long-lived
   vNext branch.
+
+## XY-1262 gate split
+
+The XY-1262 foundation gate is accepted only for the evidence scope enumerated in the
+[gate manifest](../specs/vnext-gates.md): shared-home and one-account-per-process
+boundaries, creation-receipt ownership, negotiated app-server contracts, supported
+exact-ID/list/read/archive operations, lossy-read/divergence policy, native run-local
+collaboration normalization, process-scoped authentication/redaction, read-only
+plugin/skill inventory, and pure duration-typed quota policy. This acceptance does not
+claim global Codex title search, live quota-driven routing, automatic continuation, or
+release readiness.
+
+The separate [XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
+remains failed and fail-closed. The bounded foundation work named by the manifest may
+proceed after its own dependencies, but no live-routing, managed production execution,
+dogfood, cutover, or release path may use the disabled capabilities until that later gate
+passes through another explicit repository authority amendment. Unknown or stale quota
+facts never establish eligibility.
 
 ## Rejected alternatives and falsifiers
 
