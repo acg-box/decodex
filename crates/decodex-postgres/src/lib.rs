@@ -29,8 +29,7 @@ use std::{
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use regex::Regex;
 use serde_json::Value;
-#[cfg(test)]
-use tokio as _;
+#[cfg(test)] use tokio as _;
 use tokio_postgres::{Config, NoTls, config::Host};
 
 use decodex_core::{Availability, ProductState};
@@ -156,19 +155,17 @@ pub(crate) fn ensure_credential_negative_text(value: &str) -> Result<(), StoreEr
 
 pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 	match value {
-		Value::Object(entries) => {
+		Value::Object(entries) =>
 			for (key, value) in entries {
 				if credential_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
 				ensure_credential_negative_json(value)?;
-			}
-		},
-		Value::Array(entries) => {
+			},
+		Value::Array(entries) =>
 			for value in entries {
 				ensure_credential_negative_json(value)?;
-			}
-		},
+			},
 		Value::String(value) => ensure_credential_negative_text(value)?,
 		_ => {},
 	}
