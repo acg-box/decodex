@@ -1,14 +1,40 @@
 # Runtime Architecture
 
-This page explains how the Decodex runtime is wired so future agents can change it without rediscovering every module. It focuses on current source behavior and uses OpenWiki as a navigation layer over checked-in authority.
+This page explains the active vNext ownership skeleton and preserves a map of the
+excluded v0.2 source for provenance. Checked-in manifests, source, tests, and the vNext
+authority documents remain authoritative.
 
 ## Workspace shape
 
-The Rust workspace includes `apps/*` except `apps/decodex-app` (`Cargo.toml`). The main runtime package is `apps/decodex`, with dependencies on `clap`, `rusqlite`, `reqwest`, `serde`, `toml`, tracing, and hash/time utilities (`apps/decodex/Cargo.toml`). Radar and Publisher are independent Rust CLIs in the same workspace (`apps/radar/Cargo.toml`, `apps/decodex-publisher/Cargo.toml`).
+The root manifest enumerates the active members explicitly. Five library owners form the
+vNext runtime boundary:
 
-The `decodex` crate exposes only a few public modules (`app_bridge`, `config`, `state`, `workflow`) and keeps most runtime machinery private (`apps/decodex/src/lib.rs`). That is intentional: the binary is an operator/runtime control plane, not a general library API.
+- `decodex-core`: pure domain/application contracts and ports; no dependencies.
+- `decodex-protocol`: V1 version and loopback endpoint policy; depends only on core.
+- `decodex-postgres`: the product-state adapter boundary; depends only on core and is
+  unavailable until XY-1267.
+- `decodex-codex`: the shared-normal-home adapter boundary; depends only on core and is
+  unavailable until XY-1270.
+- `decodex-runtime`: service lifecycle/composition; depends on the other four owners.
 
-## CLI bootstrap
+`apps/decodexd` depends only on runtime. The `apps/decodex-cli` and
+`apps/decodex-gpui` client roots depend only on protocol, so they cannot reach stores,
+Codex, repositories, or orchestration directly. Radar and Publisher remain independent
+auxiliary workspace members. `tests/scripts/test_vnext_architecture.py` checks the exact
+dependency graph and exclusion of the legacy package through Cargo metadata.
+
+The current `decodexd` assembly returns a typed V1 foundation announcement without
+selecting an endpoint. The protocol owner exposes a loopback-only endpoint seam for
+XY-1266, but XY-1265 opens no transport and defines no default address. Both
+infrastructure adapters are explicitly unavailable. The CLI has no operational
+commands, and the GPUI root is default-disabled because the XY-1263 accessibility gate
+remains failed.
+
+## Frozen v0.2 runtime provenance
+
+Everything below this heading maps the preserved `apps/decodex/` source. That package
+is excluded from the active Cargo workspace and is not a runtime, fallback, compatibility
+facade, or implementation authority for vNext.
 
 `apps/decodex/src/main.rs` calls `decodex::run()`. `run()` does four things (`apps/decodex/src/lib.rs`):
 
