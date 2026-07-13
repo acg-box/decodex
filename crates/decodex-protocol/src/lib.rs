@@ -1,6 +1,10 @@
 //! Version and network-boundary contracts shared by vNext clients and `decodexd`.
 
-use std::{error::Error, fmt, net::SocketAddr};
+use std::{
+	error::Error,
+	fmt::{Display, Formatter},
+	net::SocketAddr,
+};
 
 use decodex_core::FoundationStatus;
 
@@ -12,7 +16,6 @@ pub struct ProtocolVersion {
 	/// Compatible protocol revision within a generation.
 	pub minor: u16,
 }
-
 impl ProtocolVersion {
 	/// Initial vNext protocol identifier.
 	pub const V1: Self = Self { major: 1, minor: 0 };
@@ -21,7 +24,6 @@ impl ProtocolVersion {
 /// A local endpoint that has passed the V1 loopback-only policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LoopbackEndpoint(SocketAddr);
-
 impl LoopbackEndpoint {
 	/// Validate an address against the V1 loopback-only policy.
 	pub fn new(address: SocketAddr) -> Result<Self, EndpointPolicyError> {
@@ -43,14 +45,13 @@ impl LoopbackEndpoint {
 pub struct EndpointPolicyError {
 	address: SocketAddr,
 }
+impl Error for EndpointPolicyError {}
 
-impl fmt::Display for EndpointPolicyError {
-	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for EndpointPolicyError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(formatter, "non-loopback endpoint is disabled: {}", self.address)
 	}
 }
-
-impl Error for EndpointPolicyError {}
 
 /// The compile-time service announcement; no transport is implemented in XY-1265.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -63,9 +64,9 @@ pub struct ServiceAnnouncement {
 
 #[cfg(test)]
 mod tests {
-	use std::net::{IpAddr, Ipv4Addr};
+	use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-	use super::*;
+	use crate::LoopbackEndpoint;
 
 	#[test]
 	fn loopback_endpoint_accepts_local_v1_composition() {

@@ -4,6 +4,9 @@
 
 use decodex_core::{Availability, ConversationRuntime};
 
+/// Stable unavailable reason while Codex process supervision remains outside XY-1265.
+pub const NOT_IMPLEMENTED: &str = "Codex adapter is unavailable until XY-1270";
+
 /// Continuation-home policy selected by this infrastructure owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CodexContinuity {
@@ -11,13 +14,9 @@ pub enum CodexContinuity {
 	SharedNormalHome,
 }
 
-/// Stable unavailable reason while Codex process supervision remains outside XY-1265.
-pub const NOT_IMPLEMENTED: &str = "Codex adapter is unavailable until XY-1270";
-
 /// The sole Codex adapter selected by the vNext composition root.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CodexAdapter;
-
 impl CodexAdapter {
 	/// Construct the explicit XY-1265 unavailable adapter.
 	pub const fn unavailable() -> Self {
@@ -38,7 +37,8 @@ impl ConversationRuntime for CodexAdapter {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::{CodexAdapter, CodexContinuity, NOT_IMPLEMENTED};
+	use decodex_core::{Availability, ConversationRuntime};
 
 	#[test]
 	fn adapter_preserves_shared_home_and_is_explicitly_unavailable() {
