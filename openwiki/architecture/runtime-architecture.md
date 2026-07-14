@@ -33,6 +33,26 @@ Codex, repositories, or orchestration directly. Radar and Publisher remain indep
 auxiliary workspace members. `tests/scripts/test_vnext_architecture.py` checks the exact
 dependency graph and exclusion of the legacy package through Cargo metadata.
 
+`decodex-protocol` owns the reusable bounded WebSocket client alongside the shared wire
+contract. It reads only the client projection of typed configuration: profile data is
+validated, while server-host repositories, PostgreSQL data, and cache policy are consumed
+as opaque TOML and never represented by the client profile. A local profile uses its
+explicit identity pin or the shared-host stable identity file; a remote profile requires
+its explicit pin and carries only host and port. The client sends a pinned V1.2 hello,
+verifies welcome and snapshot version/identity, issues `get_doctor_status`, and re-verifies
+the result, embedded report, and exact complete current component set before returning status.
+Report ordering is not authority. Reads, writes, frames, messages,
+interleaved events, and deadlines are bounded; socket, parser, HTTP, and server-provided
+text collapse into closed redacted failure classes.
+
+`apps/decodex-cli` exposes the canonical `status` and `doctor` commands with active or
+`--profile NAME` selection and human or `--output json` rendering. Both commands cross the
+same V1.2 query; `status` is compact and `doctor` is line-oriented, while each retains every
+typed check. JSON uses `decodex/cli-diagnostics/1`. Exit code 0 means every check is ready,
+1 means a complete report contains unavailable or unknown checks, and 2 means a closed
+client/configuration/protocol failure. The CLI has no mutation command or infrastructure
+dependency.
+
 `decodexd` is the only V1 server composition root. It binds
 `ws://127.0.0.1:49152/v1/ws`, and the endpoint type refuses every non-loopback address
 before opening a socket. The single physical WebSocket uses structured JSON and typed
@@ -166,8 +186,8 @@ database-unreachable; directory/socket replacement or peer-identity drift is uns
 PostgreSQL socket recreation after restart therefore requires a daemon restart under the explicit
 operator authority instead of silently adopting the replacement.
 The composition also reports conversation execution unavailable. Authentication, TLS,
-remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, CLI
-operations, and GPUI behavior remain disabled and belong to later issues.
+remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, mutating
+CLI operations, and GPUI behavior remain disabled and belong to later issues.
 
 The synchronous product-state availability port reflects verified configuration and local
 pool lifecycle: closing the pool makes it unavailable. Live PostgreSQL failures remain

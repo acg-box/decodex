@@ -6,6 +6,12 @@
 active_profile = "local"
 version        = 1
 
+# The API-only CLI uses the active profile unless `--profile NAME` is supplied:
+#   decodex status
+#   decodex doctor --output json
+# It verifies the negotiated V1.2 contract and stable server identity before accepting
+# status. `--root PATH` selects another typed Decodex root for isolated operation/tests.
+
 # Local means the client and decodexd share one host. The address must be loopback.
 [profiles.local]
 address = "127.0.0.1:49152"
