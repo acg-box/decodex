@@ -17,10 +17,12 @@ use tokio_tungstenite::{
 
 use decodex_protocol::{
 	CURRENT_VERSION, CausationId, Channel, ClientCommandId, ClientHello, ClientMessage,
-	CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor, EntityId, EntityRevision,
-	EventPayload, IdempotencyKey, PREVIOUS_MINOR_VERSION, ProtocolVersion, ReceiptDisposition,
-	ReconnectMode, Refusal, ResultPayload, ResumeCursor, ServerId, ServerMessage, SnapshotItem,
-	VersionRefusal, WireText,
+	CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor, DoctorCheck,
+	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
+	EventPayload, IdempotencyKey, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResultPayload,
+	ResumeCursor, ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal,
+	WireText,
 };
 use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
 
@@ -36,6 +38,10 @@ struct FixtureApplication {
 impl FixtureApplication {
 	fn executions(&self) -> u64 {
 		self.state.lock().expect("test state mutex poisoned").executions
+	}
+
+	fn queries(&self) -> u64 {
+		self.state.lock().expect("test state mutex poisoned").queries
 	}
 
 	fn with_status(status: WireText) -> Self {
@@ -94,11 +100,37 @@ impl Application for FixtureApplication {
 			event: EventPayload::SystemObservationRefreshed { status: state.status.clone() },
 		})
 	}
+
+	fn query<'a>(
+		&'a self,
+		query: &'a QueryEnvelope,
+	) -> impl Future<Output = QueryResultPayload> + Send + 'a {
+		let QueryPayload::GetDoctorStatus = query.payload;
+		let mut state = self.state.lock().expect("test state mutex poisoned");
+
+		state.queries += 1;
+
+		let database = if state.queries == 1 {
+			DoctorStatus::Ready
+		} else {
+			DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
+		};
+
+		future::ready(QueryResultPayload::DoctorStatus(
+			DoctorReport::new(
+				ServerId::new("fixture-server").expect("bounded fixture server ID"),
+				CURRENT_VERSION,
+				vec![DoctorCheck::new(DoctorComponent::Database, database)],
+			)
+			.expect("empty fixture doctor is bounded"),
+		))
+	}
 }
 
 struct FixtureState {
 	revision: u64,
 	executions: u64,
+	queries: u64,
 	status: WireText,
 }
 impl Default for FixtureState {
@@ -106,6 +138,7 @@ impl Default for FixtureState {
 		Self {
 			revision: 0,
 			executions: 0,
+			queries: 0,
 			status: WireText::new("").expect("empty fixture status is bounded"),
 		}
 	}
@@ -137,12 +170,24 @@ fn command(version: ProtocolVersion, number: u64, key: &str) -> ClientMessage {
 	})
 }
 
+fn doctor_query(number: u64) -> ClientMessage {
+	ClientMessage::Query(QueryEnvelope {
+		version: CURRENT_VERSION,
+		query_id: QueryId::new(format!("query-{number}")).expect("bounded fixture query ID"),
+		payload: QueryPayload::GetDoctorStatus,
+	})
+}
+
 async fn connect(address: SocketAddr, version: ProtocolVersion) -> Client {
 	let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{address}/v1/ws"))
 		.await
 		.expect("connect real WebSocket client");
 
-	send(&mut client, ClientMessage::Hello(ClientHello { version, resume: None })).await;
+	send(
+		&mut client,
+		ClientMessage::Hello(ClientHello { version, expected_server_id: None, resume: None }),
+	)
+	.await;
 
 	client
 }
@@ -152,7 +197,15 @@ async fn reconnect(address: SocketAddr, version: ProtocolVersion, cursor: Resume
 		.await
 		.expect("connect real slow WebSocket client");
 
-	send(&mut client, ClientMessage::Hello(ClientHello { version, resume: Some(cursor) })).await;
+	send(
+		&mut client,
+		ClientMessage::Hello(ClientHello {
+			version,
+			expected_server_id: None,
+			resume: Some(cursor),
+		}),
+	)
+	.await;
 
 	client
 }
@@ -192,14 +245,16 @@ async fn receive_close_code(client: &mut Client) -> Option<CloseCode> {
 	.expect("overflow did not close the connection")
 }
 
-async fn receive_initial(client: &mut Client) -> (ServerId, Cursor, ReconnectMode) {
+async fn receive_initial(
+	client: &mut Client,
+) -> (ServerId, Option<ServerInstanceId>, Cursor, ReconnectMode) {
 	let ServerMessage::Welcome(welcome) = receive(client).await else {
 		panic!("expected welcome");
 	};
 
 	assert!(matches!(receive(client).await, ServerMessage::Snapshot(_)));
 
-	(welcome.server_id, welcome.cursor, welcome.reconnect)
+	(welcome.server_id, welcome.instance_id, welcome.cursor, welcome.reconnect)
 }
 
 async fn execute_and_receive_event(
@@ -207,7 +262,16 @@ async fn execute_and_receive_event(
 	version: ProtocolVersion,
 	number: u64,
 ) -> Cursor {
-	send(client, command(version, number, &format!("key-{number}"))).await;
+	execute_key_and_receive_event(client, version, number, &format!("key-{number}")).await
+}
+
+async fn execute_key_and_receive_event(
+	client: &mut Client,
+	version: ProtocolVersion,
+	number: u64,
+	key: &str,
+) -> Cursor {
+	send(client, command(version, number, key)).await;
 
 	assert!(matches!(receive(client).await, ServerMessage::CommandReceipt(_)));
 	assert!(matches!(receive(client).await, ServerMessage::CommandResult(_)));
@@ -250,6 +314,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 		};
 
 		assert_eq!(welcome.version, version);
+		assert_eq!(welcome.instance_id.is_some(), version == CURRENT_VERSION);
 		assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 
 		execute_and_receive_event(&mut client, version, index as u64 + 1).await;
@@ -292,8 +357,8 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 		.await
 		.unwrap();
 	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let (_, instance_id, _, _) = receive_initial(&mut client).await;
 
-	receive_initial(&mut client).await;
 	send(&mut client, command(CURRENT_VERSION, 1, "same-key")).await;
 
 	let ServerMessage::CommandReceipt(first) = receive(&mut client).await else {
@@ -315,8 +380,12 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 
 	drop(client);
 
-	let mut client =
-		reconnect(bound.address(), CURRENT_VERSION, ResumeCursor { server_id, cursor }).await;
+	let mut client = reconnect(
+		bound.address(),
+		CURRENT_VERSION,
+		ResumeCursor { server_id, instance_id, cursor },
+	)
+	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
 		panic!("expected reconnect welcome");
 	};
@@ -399,7 +468,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 		.await
 		.unwrap();
 	let mut first = connect(bound.address(), CURRENT_VERSION).await;
-	let (server_id, _, _) = receive_initial(&mut first).await;
+	let (server_id, instance_id, _, _) = receive_initial(&mut first).await;
 	let persisted = execute_and_receive_event(&mut first, CURRENT_VERSION, 1).await;
 
 	execute_and_receive_event(&mut first, CURRENT_VERSION, 2).await;
@@ -409,7 +478,11 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	let mut resumed = reconnect(
 		bound.address(),
 		CURRENT_VERSION,
-		ResumeCursor { server_id: server_id.clone(), cursor: persisted },
+		ResumeCursor {
+			server_id: server_id.clone(),
+			instance_id: instance_id.clone(),
+			cursor: persisted,
+		},
 	)
 	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut resumed).await else {
@@ -424,7 +497,11 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	let mut resumed = reconnect(
 		bound.address(),
 		CURRENT_VERSION,
-		ResumeCursor { server_id: server_id.clone(), cursor: persisted },
+		ResumeCursor {
+			server_id: server_id.clone(),
+			instance_id: instance_id.clone(),
+			cursor: persisted,
+		},
 	)
 	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut resumed).await else {
@@ -444,9 +521,12 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 
 	drop(resumed);
 
-	let mut stale =
-		reconnect(bound.address(), CURRENT_VERSION, ResumeCursor { server_id, cursor: Cursor(0) })
-			.await;
+	let mut stale = reconnect(
+		bound.address(),
+		CURRENT_VERSION,
+		ResumeCursor { server_id: server_id.clone(), instance_id, cursor: Cursor(0) },
+	)
+	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut stale).await else {
 		panic!("expected fallback welcome");
 	};
@@ -460,6 +540,22 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	assert_eq!(snapshot.cursor, Cursor(3));
 
 	drop(stale);
+
+	let mut previous = reconnect(
+		bound.address(),
+		PREVIOUS_MINOR_VERSION,
+		ResumeCursor { server_id, instance_id: None, cursor: persisted },
+	)
+	.await;
+	let ServerMessage::Welcome(welcome) = receive(&mut previous).await else {
+		panic!("expected previous-minor fallback welcome");
+	};
+
+	assert_eq!(welcome.instance_id, None);
+	assert_eq!(welcome.reconnect, ReconnectMode::SnapshotFallback);
+	assert!(matches!(receive(&mut previous).await, ServerMessage::Snapshot(_)));
+
+	drop(previous);
 
 	bound.shutdown().await.unwrap();
 }
@@ -480,7 +576,7 @@ async fn assert_initiator_overflow(run: u64) {
 		.await
 		.expect("bind initiator-overflow server");
 	let mut client = connect(bound.address(), CURRENT_VERSION).await;
-	let (server_id, cursor, _) = receive_initial(&mut client).await;
+	let (server_id, instance_id, cursor, _) = receive_initial(&mut client).await;
 
 	send(&mut client, command(CURRENT_VERSION, 1, "slow-1")).await;
 
@@ -489,8 +585,12 @@ async fn assert_initiator_overflow(run: u64) {
 
 	drop(client);
 
-	let mut resumed =
-		reconnect(bound.address(), CURRENT_VERSION, ResumeCursor { server_id, cursor }).await;
+	let mut resumed = reconnect(
+		bound.address(),
+		CURRENT_VERSION,
+		ResumeCursor { server_id, instance_id, cursor },
+	)
+	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut resumed).await else {
 		panic!("expected resume welcome after initiator overflow");
 	};
@@ -524,7 +624,7 @@ async fn assert_event_overflow(run: u64) {
 		.await
 		.expect("bind event-overflow server");
 	let mut client = connect(bound.address(), CURRENT_VERSION).await;
-	let (server_id, cursor, _) = receive_initial(&mut client).await;
+	let (server_id, instance_id, cursor, _) = receive_initial(&mut client).await;
 
 	send(&mut client, command(CURRENT_VERSION, 1, "overflow-first")).await;
 	send(&mut client, command(CURRENT_VERSION, 2, "must-not-execute")).await;
@@ -534,8 +634,12 @@ async fn assert_event_overflow(run: u64) {
 
 	drop(client);
 
-	let mut resumed =
-		reconnect(bound.address(), CURRENT_VERSION, ResumeCursor { server_id, cursor }).await;
+	let mut resumed = reconnect(
+		bound.address(),
+		CURRENT_VERSION,
+		ResumeCursor { server_id, instance_id, cursor },
+	)
+	.await;
 
 	assert!(matches!(receive(&mut resumed).await, ServerMessage::Welcome(_)));
 
@@ -633,6 +737,168 @@ async fn full_idempotency_ledger_keeps_duplicates_and_refuses_new_keys() {
 }
 
 #[tokio::test]
+async fn repeated_live_queries_are_fresh_ordered_and_do_not_consume_receipts() {
+	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
+	let application = FixtureApplication::default();
+	let bound = server("live-query", application.clone(), config)
+		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+		.await
+		.expect("bind live-query server");
+	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+
+	receive_initial(&mut client).await;
+	send(&mut client, doctor_query(1)).await;
+	send(&mut client, doctor_query(2)).await;
+
+	let ServerMessage::QueryResult(first) = receive(&mut client).await else {
+		panic!("expected first live query result");
+	};
+	let ServerMessage::QueryResult(second) = receive(&mut client).await else {
+		panic!("expected second live query result");
+	};
+	let QueryResultPayload::DoctorStatus(first_report) = first.payload;
+	let QueryResultPayload::DoctorStatus(second_report) = second.payload;
+
+	assert_eq!(first.query_id, QueryId::new("query-1").expect("bounded query ID"));
+	assert_eq!(second.query_id, QueryId::new("query-2").expect("bounded query ID"));
+	assert_eq!(
+		first_report.check(DoctorComponent::Database).expect("database check").status,
+		DoctorStatus::Ready
+	);
+	assert_eq!(
+		second_report.check(DoctorComponent::Database).expect("database check").status,
+		DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
+	);
+	assert_eq!(application.queries(), 2);
+
+	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
+	send(&mut client, command(CURRENT_VERSION, 2, "query-independent-capacity")).await;
+
+	let ServerMessage::CommandReceipt(receipt) = receive(&mut client).await else {
+		panic!("expected mutation capacity receipt");
+	};
+	let ServerMessage::CommandResult(result) = receive(&mut client).await else {
+		panic!("expected mutation capacity result");
+	};
+
+	assert_eq!(receipt.disposition, ReceiptDisposition::Refused);
+	assert!(matches!(
+		result.error,
+		Some(CommandError::IdempotencyCapacityExceeded { capacity: 1 })
+	));
+	assert_eq!(application.executions(), 1);
+
+	drop(client);
+
+	bound.shutdown().await.expect("shutdown live-query server");
+}
+
+#[tokio::test]
+async fn independent_connections_can_observe_live_doctor_concurrently() {
+	let application = FixtureApplication::default();
+	let bound = server("concurrent-query", application.clone(), ServerConfig::default())
+		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+		.await
+		.expect("bind concurrent-query server");
+	let mut first = connect(bound.address(), CURRENT_VERSION).await;
+	let mut second = connect(bound.address(), CURRENT_VERSION).await;
+
+	receive_initial(&mut first).await;
+	receive_initial(&mut second).await;
+
+	let ((), ()) =
+		tokio::join!(send(&mut first, doctor_query(1)), send(&mut second, doctor_query(2)));
+	let (first_result, second_result) = tokio::join!(receive(&mut first), receive(&mut second));
+
+	assert!(matches!(first_result, ServerMessage::QueryResult(_)));
+	assert!(matches!(second_result, ServerMessage::QueryResult(_)));
+	assert_eq!(application.queries(), 2);
+
+	drop((first, second));
+
+	bound.shutdown().await.expect("shutdown concurrent-query server");
+}
+
+#[tokio::test]
+async fn receipt_capacity_is_independent_in_both_protocol_version_orderings() {
+	for (case, first_version, second_version) in [
+		("previous-then-current", PREVIOUS_MINOR_VERSION, CURRENT_VERSION),
+		("current-then-previous", CURRENT_VERSION, PREVIOUS_MINOR_VERSION),
+	] {
+		assert_cross_version_receipt_capacity(case, first_version, second_version).await;
+	}
+}
+
+async fn assert_cross_version_receipt_capacity(
+	case: &str,
+	first_version: ProtocolVersion,
+	second_version: ProtocolVersion,
+) {
+	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
+	let application = FixtureApplication::default();
+	let bound = server(case, application.clone(), config)
+		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+		.await
+		.expect("bind cross-version receipt-capacity server");
+	let mut first = connect(bound.address(), first_version).await;
+
+	receive_initial(&mut first).await;
+	execute_and_receive_event(&mut first, first_version, 1).await;
+	send(&mut first, command(first_version, 2, "key-1")).await;
+
+	let ServerMessage::CommandReceipt(duplicate) = receive(&mut first).await else {
+		panic!("expected same-version duplicate at capacity");
+	};
+
+	assert_eq!(duplicate.disposition, ReceiptDisposition::Duplicate);
+	assert!(matches!(receive(&mut first).await, ServerMessage::CommandResult(_)));
+
+	let mut conflict_message = command(first_version, 3, "key-1");
+	let ClientMessage::Command(ref mut conflict) = conflict_message else { unreachable!() };
+
+	conflict.expected_revision = Some(EntityRevision(999));
+
+	send(&mut first, conflict_message).await;
+
+	let ServerMessage::CommandReceipt(conflict_receipt) = receive(&mut first).await else {
+		panic!("expected same-version conflict receipt at capacity");
+	};
+	let ServerMessage::CommandResult(conflict_result) = receive(&mut first).await else {
+		panic!("expected same-version conflict result at capacity");
+	};
+
+	assert_eq!(conflict_receipt.disposition, ReceiptDisposition::Duplicate);
+	assert!(matches!(conflict_result.error, Some(CommandError::IdempotencyConflict)));
+	assert_eq!(application.executions(), 1);
+
+	drop(first);
+
+	let mut second = connect(bound.address(), second_version).await;
+
+	receive_initial(&mut second).await;
+	execute_key_and_receive_event(&mut second, second_version, 2, "key-1").await;
+	send(&mut second, command(second_version, 4, "second-version-capacity")).await;
+
+	let ServerMessage::CommandReceipt(refused) = receive(&mut second).await else {
+		panic!("expected second-version capacity refusal");
+	};
+	let ServerMessage::CommandResult(result) = receive(&mut second).await else {
+		panic!("expected second-version capacity result");
+	};
+
+	assert_eq!(refused.disposition, ReceiptDisposition::Refused);
+	assert!(matches!(
+		result.error,
+		Some(CommandError::IdempotencyCapacityExceeded { capacity: 1 })
+	));
+	assert_eq!(application.executions(), 2);
+
+	drop(second);
+
+	bound.shutdown().await.expect("shutdown cross-version receipt-capacity server");
+}
+
+#[tokio::test]
 async fn oversized_outbound_snapshot_is_closed_before_transmission() {
 	let config = ServerConfig { maximum_message_bytes: 512, ..ServerConfig::default() };
 	let application = FixtureApplication::with_status(
@@ -708,33 +974,65 @@ async fn oversized_wire_identifier_is_refused_without_execution() {
 }
 
 #[tokio::test]
-async fn restart_changes_server_identity_and_forces_snapshot_fallback() {
+async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_epoch_cursors() {
 	let application = FixtureApplication::default();
-	let first = server("before-restart", application.clone(), ServerConfig::default())
+	let first = server("stable-restart", application.clone(), ServerConfig::default())
 		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
 		.await
 		.unwrap();
 	let address = first.address();
 	let mut client = connect(address, CURRENT_VERSION).await;
-	let (server_id, _, _) = receive_initial(&mut client).await;
-	let cursor = execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
+	let (server_id, old_instance_id, initial_cursor, _) = receive_initial(&mut client).await;
+	let overlapping_cursor = execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
 
 	drop(client);
 
 	first.shutdown().await.unwrap();
 
 	let restarted =
-		server("after-restart", application, ServerConfig::default()).bind(address).await.unwrap();
-	let mut client =
-		reconnect(restarted.address(), CURRENT_VERSION, ResumeCursor { server_id, cursor }).await;
+		server("stable-restart", application, ServerConfig::default()).bind(address).await.unwrap();
+	let mut client = reconnect(
+		restarted.address(),
+		CURRENT_VERSION,
+		ResumeCursor {
+			server_id: server_id.clone(),
+			instance_id: old_instance_id.clone(),
+			cursor: initial_cursor,
+		},
+	)
+	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
 		panic!("expected restart welcome");
 	};
 
+	assert_eq!(welcome.server_id, server_id);
+	assert_ne!(welcome.instance_id, old_instance_id);
+	assert_eq!(welcome.reconnect, ReconnectMode::SnapshotFallback);
+	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
+
+	drop(client);
+
+	let mut current = connect(restarted.address(), CURRENT_VERSION).await;
+
+	receive_initial(&mut current).await;
+
 	assert_eq!(
-		welcome.server_id,
-		ServerId::new("after-restart").expect("bounded fixture server ID")
+		execute_and_receive_event(&mut current, CURRENT_VERSION, 2).await,
+		overlapping_cursor
 	);
+
+	drop(current);
+
+	let mut client = reconnect(
+		restarted.address(),
+		CURRENT_VERSION,
+		ResumeCursor { server_id, instance_id: old_instance_id, cursor: overlapping_cursor },
+	)
+	.await;
+	let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
+		panic!("expected overlapping-cursor restart welcome");
+	};
+
 	assert_eq!(welcome.reconnect, ReconnectMode::SnapshotFallback);
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 

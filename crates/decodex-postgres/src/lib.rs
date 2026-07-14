@@ -6,14 +6,16 @@
 //! work, store credentials, or expose protocol/client behavior.
 
 mod accounts;
+mod authority;
 mod error;
 mod leases;
 mod migrations;
 mod outbox;
+#[cfg(unix)] mod socket;
 mod types;
 
 pub use self::{
-	error::StoreError,
+	error::{BootstrapFailure, StoreError},
 	types::{
 		AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
 		LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState, QuotaWindow,
@@ -26,13 +28,14 @@ use std::{
 	time::Duration,
 };
 
-use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
+use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use regex::Regex;
 use serde_json::Value;
 #[cfg(test)] use tokio as _;
-use tokio_postgres::{Config, NoTls, config::Host};
+use tokio_postgres::{Config, config::Host};
 
-use decodex_core::{Availability, ProductState};
+#[cfg(unix)] use self::socket::VerifiedSocketConnect;
+use decodex_core::{Availability, PostgresConnectionConfig, PostgresIdentityConfig, ProductState};
 
 /// PostgreSQL major accepted by the vNext storage authority.
 pub const REQUIRED_POSTGRES_MAJOR: u32 = 18;
@@ -60,38 +63,109 @@ pub enum ProductStateAuthority {
 #[derive(Clone)]
 pub struct PostgresStore {
 	pool: Arc<Pool>,
+	#[cfg(unix)]
+	connector: VerifiedSocketConnect,
 }
 impl PostgresStore {
-	/// Connect using explicit configuration, run embedded forward migrations, and prewarm
-	/// two connections. Failure leaves no usable store and must be surfaced by the caller.
-	pub async fn connect(config: Config) -> Result<Self, StoreError> {
-		if config.get_hosts().len() != 1
-			|| !matches!(config.get_hosts().first(), Some(Host::Unix(_)))
-		{
-			return Err(StoreError::Incompatible(
-				"PostgreSQL must use one explicit Unix socket host".into(),
-			));
-		}
+	/// Run migration/verification through the migration identity, close it, then retain
+	/// only a separately verified least-privilege runtime pool.
+	pub async fn connect_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+		runtime_password: Option<&str>,
+	) -> Result<Self, StoreError> {
+		let migration = connection_config(config, config.migration(), migration_password);
+		let runtime = connection_config(config, config.runtime(), runtime_password);
 
-		let manager = Manager::from_config(
-			config,
-			NoTls,
+		Self::connect(migration, runtime, config.expected_peer_uid()).await
+	}
+
+	/// Connect two explicit identities to one Unix-socket endpoint. The migration
+	/// connection is never placed in or retained by the runtime pool.
+	#[cfg(unix)]
+	pub async fn connect(
+		migration: Config,
+		runtime: Config,
+		expected_peer_uid: u32,
+	) -> Result<Self, StoreError> {
+		validate_connection(&migration)?;
+		validate_connection(&runtime)?;
+		validate_separation(&migration, &runtime)?;
+
+		let connector = verified_socket_connect(&migration, expected_peer_uid)?;
+
+		Self::migrate_with_connector(migration, connector.clone()).await?;
+
+		let manager = Manager::from_connect(
+			runtime,
+			connector.clone(),
 			ManagerConfig { recycling_method: RecyclingMethod::Fast },
 		);
 		let pool = Pool::builder(manager).max_size(32).build()?;
-		let mut client = pool.get().await?;
+		let client = checkout(&pool, &connector).await?;
 
-		migrations::run(&mut client).await?;
+		authority::verify_runtime(&client).await?;
 		migrations::verify(&client).await?;
 
 		drop(client);
 
-		let first = pool.get().await?;
-		let second = pool.get().await?;
+		let first = checkout(&pool, &connector).await?;
+		let second = checkout(&pool, &connector).await?;
 
 		drop((first, second));
 
-		Ok(Self { pool: Arc::new(pool) })
+		Ok(Self { pool: Arc::new(pool), connector })
+	}
+
+	#[cfg(not(unix))]
+	pub async fn connect(
+		_migration: Config,
+		_runtime: Config,
+		_expected_peer_uid: u32,
+	) -> Result<Self, StoreError> {
+		Err(StoreError::Incompatible("PostgreSQL Unix sockets require a Unix host".into()))
+	}
+
+	/// Run embedded forward migrations and migration-state verification through one
+	/// single-use connection. This connection is closed before a live store is returned.
+	#[cfg(unix)]
+	pub async fn migrate(config: Config, expected_peer_uid: u32) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		Self::migrate_with_connector(config, connector).await
+	}
+
+	#[cfg(not(unix))]
+	pub async fn migrate(_config: Config, _expected_peer_uid: u32) -> Result<(), StoreError> {
+		Err(StoreError::Incompatible("PostgreSQL Unix sockets require a Unix host".into()))
+	}
+
+	#[cfg(unix)]
+	async fn migrate_with_connector(
+		config: Config,
+		connector: VerifiedSocketConnect,
+	) -> Result<(), StoreError> {
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = async {
+			migrations::run(&mut client).await?;
+
+			migrations::verify(&client).await
+		}
+		.await;
+
+		drop(client);
+
+		pool.close();
+
+		result
 	}
 
 	/// Report the concrete authority owned by this adapter.
@@ -102,6 +176,27 @@ impl PostgresStore {
 	/// Close the bounded pool. Existing checked-out connections finish before closure.
 	pub fn close(&self) {
 		self.pool.close();
+	}
+
+	/// Revalidate the retained endpoint, live runtime session, immutable migrations, and
+	/// least-privilege authority without reconnecting migration credentials or running DDL.
+	#[cfg(unix)]
+	pub async fn revalidate(&self) -> Result<(), StoreError> {
+		let client = checkout(&self.pool, &self.connector).await?;
+
+		client.simple_query("SELECT 1").await?;
+
+		authority::verify_runtime(&client).await?;
+		migrations::verify(&client).await?;
+
+		self.connector.verify()?;
+
+		Ok(())
+	}
+
+	#[cfg(not(unix))]
+	pub async fn revalidate(&self) -> Result<(), StoreError> {
+		Err(StoreError::Incompatible("PostgreSQL Unix sockets require a Unix host".into()))
 	}
 
 	pub(crate) fn pool(&self) -> &Pool {
@@ -199,6 +294,71 @@ pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), Store
 	Ok(())
 }
 
+#[cfg(unix)]
+fn verified_socket_connect(
+	config: &Config,
+	expected_peer_uid: u32,
+) -> Result<VerifiedSocketConnect, StoreError> {
+	let Some(Host::Unix(directory)) = config.get_hosts().first() else {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL must use one explicit Unix socket host".into(),
+		));
+	};
+	let port = config.get_ports().first().copied().unwrap_or(5_432);
+
+	VerifiedSocketConnect::new(directory, port, expected_peer_uid)
+}
+
+fn connection_config(
+	config: &PostgresConnectionConfig,
+	identity: &PostgresIdentityConfig,
+	password: Option<&str>,
+) -> Config {
+	let mut connection = Config::new();
+
+	connection
+		.host_path(config.socket_directory())
+		.port(config.port())
+		.dbname(config.database())
+		.user(identity.user());
+
+	if let Some(password) = password {
+		connection.password(password);
+	}
+
+	connection
+}
+
+fn validate_connection(config: &Config) -> Result<(), StoreError> {
+	if config.get_hosts().len() == 1 && matches!(config.get_hosts().first(), Some(Host::Unix(_))) {
+		Ok(())
+	} else {
+		Err(StoreError::Incompatible("PostgreSQL must use one explicit Unix socket host".into()))
+	}
+}
+
+fn validate_separation(migration: &Config, runtime: &Config) -> Result<(), StoreError> {
+	let same_endpoint = migration.get_hosts() == runtime.get_hosts()
+		&& migration.get_ports() == runtime.get_ports()
+		&& migration.get_dbname() == runtime.get_dbname();
+	let distinct_identity = migration.get_user().is_some()
+		&& runtime.get_user().is_some()
+		&& migration.get_user() != runtime.get_user();
+
+	if !same_endpoint {
+		return Err(StoreError::Incompatible(
+			"migration and runtime identities must use one PostgreSQL endpoint".into(),
+		));
+	}
+	if !distinct_identity {
+		Err(StoreError::UnsafeAuthority(
+			"migration and runtime PostgreSQL identities must be distinct",
+		))
+	} else {
+		Ok(())
+	}
+}
+
 fn is_meaningful_evidence(value: &Value) -> bool {
 	ensure_meaningful_evidence(value).is_ok()
 }
@@ -242,4 +402,11 @@ fn credential_value_pattern() -> &'static Regex {
 		)
 		.expect("credential material regex is valid")
 	})
+}
+
+#[cfg(unix)]
+async fn checkout(pool: &Pool, connector: &VerifiedSocketConnect) -> Result<Client, StoreError> {
+	connector.verify()?;
+
+	pool.get().await.map_err(StoreError::Pool)
 }

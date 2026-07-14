@@ -312,9 +312,11 @@ impl Debug for ServerHostConfig {
 #[derive(Clone, Eq, PartialEq)]
 pub struct PostgresConnectionConfig {
 	socket_directory: PathBuf,
+	expected_peer_uid: u32,
+	port: u16,
 	database: String,
-	user: String,
-	credential_env_var: Option<String>,
+	migration: PostgresIdentityConfig,
+	runtime: PostgresIdentityConfig,
 }
 impl PostgresConnectionConfig {
 	/// Absolute server-host Unix socket directory.
@@ -322,19 +324,29 @@ impl PostgresConnectionConfig {
 		&self.socket_directory
 	}
 
+	/// Operator-pinned Unix credential expected from the PostgreSQL server peer.
+	pub const fn expected_peer_uid(&self) -> u32 {
+		self.expected_peer_uid
+	}
+
+	/// Explicit PostgreSQL port selecting the Unix-socket filename.
+	pub const fn port(&self) -> u16 {
+		self.port
+	}
+
 	/// Explicit database name.
 	pub fn database(&self) -> &str {
 		&self.database
 	}
 
-	/// Explicit database role.
-	pub fn user(&self) -> &str {
-		&self.user
+	/// Migration/DDL identity used only during forward migration and verification.
+	pub const fn migration(&self) -> &PostgresIdentityConfig {
+		&self.migration
 	}
 
-	/// Optional environment-variable reference. Configuration never stores its value.
-	pub fn credential_env_var(&self) -> Option<&str> {
-		self.credential_env_var.as_deref()
+	/// Least-privilege identity retained by the live adapter.
+	pub const fn runtime(&self) -> &PostgresIdentityConfig {
+		&self.runtime
 	}
 }
 
@@ -343,7 +355,37 @@ impl Debug for PostgresConnectionConfig {
 		formatter
 			.debug_struct("PostgresConnectionConfig")
 			.field("socket_directory", &"<server-host-only>")
+			.field("expected_peer_uid", &self.expected_peer_uid)
+			.field("port", &self.port)
 			.field("database", &"<redacted>")
+			.field("migration", &self.migration)
+			.field("runtime", &self.runtime)
+			.finish()
+	}
+}
+
+/// One explicit, redacted PostgreSQL role identity.
+#[derive(Clone, Eq, PartialEq)]
+pub struct PostgresIdentityConfig {
+	user: String,
+	credential_env_var: Option<String>,
+}
+impl PostgresIdentityConfig {
+	/// Explicit database role name.
+	pub fn user(&self) -> &str {
+		&self.user
+	}
+
+	/// Optional credential environment-variable reference; its value is never stored.
+	pub fn credential_env_var(&self) -> Option<&str> {
+		self.credential_env_var.as_deref()
+	}
+}
+
+impl Debug for PostgresIdentityConfig {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("PostgresIdentityConfig")
 			.field("user", &"<redacted>")
 			.field("credential_reference", &self.credential_env_var.is_some())
 			.finish()
@@ -382,7 +424,9 @@ pub enum ConfigError {
 	InvalidServerIdentity,
 	/// A server-host repository path was unsafe or relative.
 	InvalidServerHostPath,
-	/// PostgreSQL connection data was missing, unsafe, or unbounded.
+	/// The PostgreSQL Unix-socket directory was unsafe or relative.
+	InvalidPostgresHostPath,
+	/// PostgreSQL connection data was missing, malformed, or unbounded.
 	InvalidPostgres,
 	/// Cache bounds were invalid or exceeded hard limits.
 	InvalidCache,
@@ -401,6 +445,7 @@ impl Display for ConfigError {
 			Self::InvalidProfile => formatter.write_str("server profile is invalid"),
 			Self::InvalidServerIdentity => formatter.write_str("server identity is invalid"),
 			Self::InvalidServerHostPath => formatter.write_str("server-host path is invalid"),
+			Self::InvalidPostgresHostPath => formatter.write_str("PostgreSQL host path is invalid"),
 			Self::InvalidPostgres => formatter.write_str("PostgreSQL configuration is invalid"),
 			Self::InvalidCache => formatter.write_str("cache configuration is invalid"),
 			Self::RandomnessUnavailable =>
@@ -491,29 +536,65 @@ struct RawServerRepository {
 #[serde(deny_unknown_fields)]
 struct RawPostgresConnectionConfig {
 	socket_directory: PathBuf,
+	expected_peer_uid: u32,
+	#[serde(default = "RawPostgresConnectionConfig::default_port")]
+	port: u16,
 	database: String,
-	user: String,
-
-	credential_env_var: Option<String>,
+	migration: RawPostgresIdentityConfig,
+	runtime: RawPostgresIdentityConfig,
 }
 impl RawPostgresConnectionConfig {
+	const fn default_port() -> u16 {
+		5_432
+	}
+
 	fn validate(self) -> Result<PostgresConnectionConfig, ConfigError> {
 		let socket_directory = normalize_absolute_host_path(self.socket_directory)
-			.map_err(|_| ConfigError::InvalidPostgres)?;
+			.map_err(|_| ConfigError::InvalidPostgresHostPath)?;
 
-		if !valid_database_field(&self.database) || !valid_database_field(&self.user) {
+		if self.port == 0 || !valid_database_field(&self.database) {
 			return Err(ConfigError::InvalidPostgres);
 		}
-		if self.credential_env_var.as_deref().is_some_and(|value| !valid_environment_name(value)) {
+
+		let migration = self.migration.validate()?;
+		let runtime = self.runtime.validate()?;
+
+		if migration.user == runtime.user
+			|| migration.credential_env_var.is_some()
+				&& migration.credential_env_var == runtime.credential_env_var
+		{
 			return Err(ConfigError::InvalidPostgres);
 		}
 
 		Ok(PostgresConnectionConfig {
 			socket_directory,
+			expected_peer_uid: self.expected_peer_uid,
+			port: self.port,
 			database: self.database,
-			user: self.user,
-			credential_env_var: self.credential_env_var,
+			migration,
+			runtime,
 		})
+	}
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPostgresIdentityConfig {
+	user: String,
+	credential_env_var: Option<String>,
+}
+impl RawPostgresIdentityConfig {
+	fn validate(self) -> Result<PostgresIdentityConfig, ConfigError> {
+		if !valid_database_field(&self.user)
+			|| self
+				.credential_env_var
+				.as_deref()
+				.is_some_and(|value| !valid_environment_name(value))
+		{
+			return Err(ConfigError::InvalidPostgres);
+		}
+
+		Ok(PostgresIdentityConfig { user: self.user, credential_env_var: self.credential_env_var })
 	}
 }
 
