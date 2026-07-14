@@ -41,8 +41,8 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 - `crates/decodex-postgres/` owns the PostgreSQL product-state adapter: explicit
   connection configuration, embedded immutable migrations, optimistic transactions,
   leases, append-only activity, transactional outbox delivery, and inert account/window
-  metadata. XY-1306 now supplies typed owned paths and explicit connection data, but the
-  composition root remains fail-closed until XY-1307 performs verified bootstrap wiring.
+  metadata. XY-1307 wires the typed connection data through runtime composition into the
+  existing verification/migration boundary; every bootstrap failure remains fail-closed.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while XY-1263 is failed.
@@ -60,24 +60,75 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 
 `apps/decodexd` composes the PostgreSQL and Codex adapter boundaries through
 `decodex-runtime` and serves the typed V1 protocol at loopback-only
-`ws://127.0.0.1:49152/v1/ws`. It opens no database, repository, or Codex process. The
-protocol supports current/previous-minor negotiation, typed command receipt/result and
-event envelopes, bounded snapshots/queues/wire text, fixed-capacity in-lifetime
-idempotency, cursor resume, and snapshot fallback. The `decodex` and GPUI roots compile
-against `decodex-protocol` only
-and still report their unsupported or disabled state.
+`ws://127.0.0.1:49152/v1/ws`. It opens no repository or Codex process. It attempts only
+the explicitly configured PostgreSQL Unix socket and otherwise retains a typed unavailable
+adapter. The protocol supports V1.2/V1.1 negotiation, typed command receipt/result and
+event envelopes, bounded snapshots/queues/wire text, fixed per-version-capacity in-lifetime
+idempotency whose lookup and capacity namespace are bound to the negotiated protocol version (so V1.2
+and V1.1 mutation keys cannot consume or poison one another),
+publication-epoch-bound cursor resume,
+snapshot fallback, stable
+server-identity pinning, and one bounded doctor/status result. The `decodex` and GPUI roots
+compile against `decodex-protocol` only and still report their unsupported or disabled state.
 
-The PostgreSQL adapter can persist its XY-1267 foundation when a caller supplies explicit,
-verified PostgreSQL 18 configuration. XY-1306 now parses bounded PostgreSQL Unix-socket
-connection data but opens no connection, and the active composition root still supplies
-none and persists nothing. `~/.codex` remains Codex-owned shared continuation state.
-`decodex-core` now owns the typed `~/.decodex` layout for `config.toml`, logs,
-SHA-256 blobs, disposable cache, and atomic server identity; XY-1307 owns daemon bootstrap.
+The PostgreSQL adapter persists its XY-1267 foundation when `decodexd` receives one explicit
+PostgreSQL 18 Unix-socket endpoint, an operator-pinned expected server UID, and distinct migration
+and runtime identities. The socket directory must be owned by that UID and not group/other-writable.
+The adapter retains descriptor identities for the directory and socket, rejects replacement, and
+verifies the connected kernel peer UID before sending either identity's authentication data. Optional,
+separate environment-variable references supply their credentials without entering config,
+wire data, logs, or ordinary PostgreSQL rows. The migration identity is used only for forward
+migration and migration verification and is closed before the live adapter retains the runtime
+pool. The runtime identity must have the exact adapter DML/function/sequence contract. The audit
+covers the login role and every NOINHERIT or inherited role reachable with `SET ROLE`, rejecting
+membership admin option, ownership of any PostgreSQL 18 object class in the Decodex namespace,
+superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
+grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
+retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
+of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
+source bodies matching the canonical immutable V1 migration. The five expected safety/retention
+triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
+additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
+indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
+attests every shipped relation/column, default, constraint, index, enum label, and internal
+constraint-trigger binding together with each stable catalog dependency identity. It includes
+foreign keys whose Decodex relation is either the child or
+the referenced parent, so external cascades and internally generated execution paths fail closed.
+Extension authority follows `pg_depend` membership,
+not extension schema, so a runtime-controlled extension cannot own or drop a Decodex member.
+`public.refinery_schema_history` is always schema-qualified and must have table SELECT only. Its
+ordered versions, names, and checksums must exactly equal the embedded migration inventory;
+missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
+options, writes, and table DDL privileges are unsafe. The two bound identity sequences require
+USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
+are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.
+Missing, malformed, unsafe,
+unreachable, authentication-failed, and incompatible inputs remain typed unavailable with no
+fallback.
+Host repository paths reject symbolic links at any component. PostgreSQL socket paths additionally
+use descriptor-pinned component traversal, immutable directory/socket identity checks, explicit
+operator UID authority, and kernel peer credentials rather than trusting an observed pathname.
+`~/.codex` remains Codex-owned shared continuation state. `decodex-core` owns the typed
+`~/.decodex` layout for `config.toml`, logs, SHA-256 blobs, disposable cache, and atomic
+server identity.
+
+Doctor/status is a V1.2 read-only query served only by `decodexd`. Queries have client observation
+identities but no mutation receipt, deduplication, replay, event, or receipt-capacity effect. Its closed report
+covers configuration, database, protocol and version, stable server identity, shared
+Codex home, each typed app-server capability, aggregate server-host repository readiness,
+blob integrity, credential-vault readiness, and plugin readiness. It carries no repository
+path/name, credential text, parser detail, database/socket/user text, or raw app-server
+payload. Checks that are not yet safely probed report `unknown`; they never imply ready.
+Every doctor read revalidates the pinned socket, a live runtime connection, the closed database
+authority contract, and immutable migration history without rerunning migration or repinning the
+endpoint. A secure stale listener is database-unreachable; endpoint replacement is unsafe-host-path.
+PostgreSQL socket recreation requires restarting `decodexd` so bootstrap can establish a new explicit
+operator-authorized pin.
 The legacy `~/.codex/decodex` SQLite/config layout is frozen provenance, not a vNext
 input or fallback.
 
-There is no active scheduling, CLI operation, account routing, configured PostgreSQL
-service, live Codex dispatch, authenticated HTTP artifact path, remote binding, or GPUI
+There is no active scheduling, CLI operation, account routing, PostgreSQL installation or
+administration plane, live Codex dispatch, authenticated HTTP artifact path, remote binding, or GPUI
 product behavior in this slice. Authentication and TLS are disabled; loopback refusal
 is the enforced network boundary until the later remote-security gate.
 
@@ -118,6 +169,6 @@ XY-1265 established compile-time ownership and composition. XY-1266 established 
 loopback protocol foundation; XY-1270 implements the bounded Codex adapter foundation
 without live dispatch. XY-1267 established PostgreSQL-backed product state and durable
 transactions. XY-1306 establishes the typed `~/.decodex` path/config/blob/cache child of
-XY-1268; XY-1307 and XY-1308 still own daemon bootstrap/doctor and the API-only CLI.
+XY-1268; XY-1307 supplies daemon bootstrap/doctor, while XY-1308 still owns the API-only CLI.
 Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
 later owners and gates.

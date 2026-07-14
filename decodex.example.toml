@@ -28,15 +28,32 @@ port                     = 49152
 [server_host.repositories.decodex]
 host_path = "/absolute/path/on/server/to/decodex"
 
-# Explicit PostgreSQL connection data for the server host. This issue parses and
-# validates the data only; it does not connect, migrate, install, initialize, start,
-# or provision PostgreSQL. Store no password here: this is only an environment-
-# variable reference for a later credential boundary.
+# Explicit PostgreSQL endpoint data for the server host. decodexd uses the migration
+# identity only for forward migration and verification, then retains a separately
+# configured least-privilege runtime identity. It does not install, initialize, start,
+# or provision PostgreSQL. Store no password here: only named environment variables are
+# resolved at daemon bootstrap, and their values are never reported. Runtime readiness
+# also requires a closed exact-signature function inventory whose metadata and bodies match the
+# immutable migration, an exact trigger/rule/policy execution-path inventory, dependency-based
+# extension-control closure, intact enabled safety triggers, no forbidden authority through any
+# SET-reachable role, exactly read-only
+# access to public.refinery_schema_history, and USAGE-only access to identity sequences. Pin the
+# PostgreSQL server's host UID explicitly; socket ownership is evidence, never its own trust root.
+# Use a dedicated directory owned by that UID with no group/other write bits; a conventional shared
+# PostgreSQL socket directory is unsuitable when it is group- or world-writable.
 [postgres]
-credential_env_var = "DECODEX_POSTGRES_PASSWORD"
-database           = "decodex"
-socket_directory   = "/var/run/postgresql"
-user               = "decodex"
+database          = "decodex"
+expected_peer_uid = 70                                    # `id -u postgres` on this server host; do not infer from the socket.
+port              = 5432
+socket_directory  = "/absolute/private/postgresql-socket"
+
+[postgres.migration]
+credential_env_var = "DECODEX_POSTGRES_MIGRATION_PASSWORD"
+user               = "decodex_migration"
+
+[postgres.runtime]
+credential_env_var = "DECODEX_POSTGRES_RUNTIME_PASSWORD"
+user               = "decodex_runtime"
 
 # Disposable cache limits. Cache bytes are never authoritative and may be deleted
 # and rebuilt. Hard ceilings are 10,000 entries, 512 MiB total, and 16 MiB per entry.
