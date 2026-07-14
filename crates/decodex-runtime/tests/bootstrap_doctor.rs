@@ -10,7 +10,7 @@ use std::{
 	io::Write as _,
 	net::{Ipv4Addr, SocketAddr},
 	path::{Path, PathBuf},
-	process,
+	process::{self, Command},
 	time::Duration,
 };
 
@@ -23,11 +23,13 @@ use tokio::{
 };
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
-use decodex_core::{Availability, DecodexRoot};
+use decodex_core::{Availability, BlobHash, BlobStore, DecodexRoot};
 use decodex_protocol::{
-	AppServerCapability, CURRENT_VERSION, ClientHello, ClientMessage, DoctorComponent, DoctorIssue,
-	DoctorStatus, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultPayload, Refusal, ServerId, ServerMessage,
+	AppServerCapability, CURRENT_VERSION, ClientHello, ClientMessage, ConversationHistoryPage,
+	ConversationHistoryResult, DoctorComponent, DoctorIssue, DoctorStatus, EntityId,
+	HistoryCursorToken, HistoryItemKindDto, HistoryMetadataValue, HistoryPayloadDto,
+	HistoryQueryError, MAX_HISTORY_PAGE_SIZE, PREVIOUS_MINOR_VERSION, ProtocolVersion,
+	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, Refusal, ServerId, ServerMessage,
 };
 use decodex_runtime::{ServerConfig, ServiceBootstrap, ServiceComposition};
 
@@ -60,6 +62,7 @@ impl SocketDirectoryReplacement {
 		Self { configured, pinned, listener: Some(listener) }
 	}
 }
+
 #[cfg(unix)]
 impl Drop for SocketDirectoryReplacement {
 	fn drop(&mut self) {
@@ -161,6 +164,106 @@ fn doctor_query(version: ProtocolVersion, query_id: &str) -> QueryEnvelope {
 		query_id: QueryId::new(query_id).expect("bounded query ID"),
 		payload: QueryPayload::GetDoctorStatus,
 	}
+}
+
+fn history_query(id: &str, after: Option<&str>, page_size: u16) -> ClientMessage {
+	history_query_for(id, "40000000-0000-4000-8000-000000000001", after, page_size)
+}
+
+fn history_query_for(
+	id: &str,
+	conversation_id: &str,
+	after: Option<&str>,
+	page_size: u16,
+) -> ClientMessage {
+	ClientMessage::Query(QueryEnvelope {
+		version: CURRENT_VERSION,
+		query_id: QueryId::new(id).expect("history query identity is bounded"),
+		payload: QueryPayload::GetConversationHistory {
+			conversation_id: EntityId::new(conversation_id)
+				.expect("history Conversation identity is bounded"),
+			after: after.map(|value| {
+				HistoryCursorToken::new(value).expect("history cursor fixture is bounded")
+			}),
+			page_size,
+		},
+	})
+}
+
+fn expire_isolated_history_cursor(cursor: &str) {
+	let cursor = cursor.strip_prefix("v1:").expect("fixture cursor is versioned");
+	let statement = format!(
+		"UPDATE decodex.history_cursors \
+		 SET created_at=clock_timestamp()-interval '2 hours', \
+		 expires_at=clock_timestamp()-interval '1 hour' \
+		 WHERE cursor_id='{cursor}'::uuid"
+	);
+
+	run_isolated_sql(&statement);
+}
+
+fn exhaust_isolated_history_cursor_capacity() {
+	run_isolated_sql(
+		"DO $$ DECLARE parent uuid; BEGIN \
+		 FOR position IN 1..511 LOOP \
+		  parent := decodex.issue_history_cursor( \
+		   '49000000-0000-4000-8000-000000000010',parent,1); \
+		 END LOOP; END $$; \
+		 DO $$ BEGIN IF (SELECT count(*) FROM decodex.history_cursors) <> 4096 \
+		  OR (SELECT count(*) FROM decodex.history_cursors \
+		  WHERE conversation_id='49000000-0000-4000-8000-000000000010') <> 511 \
+		 THEN RAISE EXCEPTION 'cursor capacity fixture is incomplete'; END IF; END $$",
+	);
+}
+
+fn run_isolated_sql(statement: &str) {
+	let database_url =
+		env::var("DECODEX_TEST_MIGRATION_DATABASE_URL").expect("isolated migration URL is present");
+	let output = Command::new("psql")
+		.arg(database_url)
+		.args(["-v", "ON_ERROR_STOP=1", "-Atqc", statement])
+		.output()
+		.expect("run isolated cursor expiry fixture");
+
+	assert!(output.status.success(), "isolated cursor SQL fixture failed");
+}
+
+fn assert_history_projection(page: &ConversationHistoryPage) {
+	let offloaded = page
+		.items
+		.iter()
+		.find(|item| matches!(item.payload, HistoryPayloadDto::Blob(_)))
+		.expect("offloaded history projection");
+
+	assert_eq!(offloaded.media_type.as_str(), "text/plain");
+	assert_eq!(
+		offloaded.metadata.as_map().get("source"),
+		Some(&HistoryMetadataValue::Text("synthetic".into())),
+	);
+
+	let json_item = page
+		.items
+		.iter()
+		.find(|item| item.media_type.as_str() == "application/json")
+		.expect("inline JSON history projection");
+
+	assert!(matches!(json_item.payload, HistoryPayloadDto::Inline { .. }));
+	assert_eq!(
+		json_item.metadata.as_map().get("correlation"),
+		Some(&HistoryMetadataValue::Text("synthetic-stream".into())),
+	);
+	assert_eq!(
+		json_item.metadata.as_map().get("visible"),
+		Some(&HistoryMetadataValue::Boolean(true)),
+	);
+	assert_eq!(
+		json_item.metadata.as_map().get("note"),
+		Some(&HistoryMetadataValue::Text("secret sauce".into())),
+	);
+	assert_eq!(
+		json_item.metadata.as_map().get("summary"),
+		Some(&HistoryMetadataValue::Text("token budget".into())),
+	);
 }
 
 #[tokio::test]
@@ -480,10 +583,31 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
 		panic!("expected doctor result");
 	};
-	let QueryResultPayload::DoctorStatus(report) = result.payload;
+	let QueryResultPayload::DoctorStatus(report) = result.payload else {
+		panic!("expected doctor result");
+	};
 
 	assert_eq!(report.server_id(), &server_id);
 	assert_eq!(report.version(), CURRENT_VERSION);
+
+	send(
+		&mut client,
+		ClientMessage::Query(QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: QueryId::new("history-unavailable").unwrap(),
+			payload: QueryPayload::GetConversationHistory {
+				conversation_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				after: None,
+				page_size: 1,
+			},
+		}),
+	)
+	.await;
+
+	assert!(
+		matches!(receive(&mut client).await, ServerMessage::QueryResult(result) if matches!(result.payload,
+		QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable { error: HistoryQueryError::ProductStateUnavailable })))
+	);
 
 	assert_cross_version_doctor_queries(&url, &server_id).await;
 	drop((wrong, client));
@@ -554,7 +678,9 @@ async fn assert_cross_version_doctor_queries(url: &str, server_id: &ServerId) {
 	let ServerMessage::QueryResult(result) = receive(&mut current).await else {
 		panic!("expected inverse current-version doctor result");
 	};
-	let QueryResultPayload::DoctorStatus(report) = result.payload;
+	let QueryResultPayload::DoctorStatus(report) = result.payload else {
+		panic!("expected doctor result");
+	};
 
 	assert_eq!(report.server_id(), server_id);
 	assert_eq!(report.version(), CURRENT_VERSION);
@@ -578,10 +704,17 @@ async fn isolated_postgres_bootstrap_is_available_through_the_daemon() {
 	let root_path = PathBuf::from(
 		env::var("DECODEX_TEST_BOOTSTRAP_ROOT").expect("isolated bootstrap root environment"),
 	);
-	let bootstrap = ServiceComposition::bootstrap(
-		DecodexRoot::new(root_path).expect("isolated bootstrap root is safe"),
-	)
-	.await;
+	let decodex_root = DecodexRoot::new(root_path).expect("isolated bootstrap root is safe");
+	let blob_store = BlobStore::open(decodex_root.paths()).expect("open daemon blob store");
+	let large_text = "large-history-payload-".repeat(900);
+	let large_hash = blob_store.put(large_text.as_bytes()).expect("publish fixture blob");
+
+	blob_store.put(b"artifact provenance bytes").expect("publish referenced Artifact fixture blob");
+	blob_store
+		.put(&b"writer-reclaimer-race".repeat(1_000))
+		.expect("publish racing history fixture blob");
+
+	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 
 	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
 	assert_eq!(
@@ -589,6 +722,185 @@ async fn isolated_postgres_bootstrap_is_available_through_the_daemon() {
 		DoctorStatus::Unknown(DoctorIssue::NotProbed)
 	);
 	assert_eq!(bootstrap.product_state_availability(), Availability::Available);
+
+	let server_id = bootstrap.server_id().clone();
+	let bound = bootstrap
+		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
+		.await
+		.expect("bind PostgreSQL history daemon");
+	let (mut client, _) =
+		tokio_tungstenite::connect_async(format!("ws://{}/v1/ws", bound.address()))
+			.await
+			.expect("connect history client");
+
+	send(
+		&mut client,
+		ClientMessage::Hello(ClientHello {
+			version: CURRENT_VERSION,
+			expected_server_id: Some(server_id),
+			resume: None,
+		}),
+	)
+	.await;
+
+	assert!(matches!(receive(&mut client).await, ServerMessage::Welcome(_)));
+	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
+
+	assert_postgres_history_queries(&mut client, &blob_store, large_hash).await;
+
+	bound.shutdown().await.expect("shutdown PostgreSQL history daemon");
+}
+
+async fn assert_postgres_history_queries<S>(
+	client: &mut WebSocketStream<S>,
+	blob_store: &BlobStore,
+	large_hash: BlobHash,
+) where
+	S: AsyncRead + AsyncWrite + Unpin,
+{
+	send(client, history_query("history-first-page", None, 4)).await;
+
+	let ServerMessage::QueryResult(result) = receive(client).await else {
+		panic!("expected first history page");
+	};
+	let QueryResultPayload::ConversationHistory(ConversationHistoryResult::Page(first_page)) =
+		result.payload
+	else {
+		panic!("expected first history page payload");
+	};
+	let issued_cursor =
+		first_page.next_cursor.as_ref().expect("issued continuation").as_str().to_owned();
+
+	assert_history_projection(&first_page);
+	send(client, history_query("history-success", Some(&issued_cursor), 4)).await;
+
+	let artifact_response = receive(client).await;
+	let ServerMessage::QueryResult(result) = artifact_response else {
+		panic!("expected continuation result: {artifact_response:?}");
+	};
+	let QueryResultPayload::ConversationHistory(ConversationHistoryResult::Page(page)) =
+		result.payload
+	else {
+		panic!("expected Artifact history page: {:?}", result.payload);
+	};
+	let item = page.items.first().expect("Artifact history item");
+	let artifact = item.artifact.as_ref().expect("typed Artifact reference");
+
+	assert_eq!(item.kind, HistoryItemKindDto::Artifact);
+	assert_eq!(artifact.artifact_id.as_str(), "48000000-0000-4000-8000-000000000001");
+	assert_eq!(artifact.revision.get(), 1);
+
+	send(client, history_query("history-size-mismatch", Some(&issued_cursor), 1)).await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::InvalidRequest})))
+	);
+
+	expire_isolated_history_cursor(&issued_cursor);
+	send(client, history_query("history-expired", Some(&issued_cursor), 4)).await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::InvalidRequest})))
+	);
+
+	assert_postgres_cursor_capacity(client).await;
+	send(client, history_query("history-bound", None, MAX_HISTORY_PAGE_SIZE + 1)).await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::InvalidRequest})))
+	);
+
+	send(client, history_query("history-malformed", Some("x"), 1)).await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::InvalidRequest})))
+	);
+
+	for (query_id, cursor) in [
+		("history-never-issued", "v1:44000000-0000-4000-8000-000000000099"),
+		("history-edited-boundary", "v1:44000000-0000-4000-8000-000000000098:1"),
+	] {
+		send(client, history_query(query_id, Some(cursor), 1)).await;
+
+		assert!(
+			matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::InvalidRequest})))
+		);
+	}
+
+	// The PostgreSQL contract attempted and rejected an invalid media-type write in this same
+	// isolated database. A fresh first-page query remains readable rather than integrity-poisoned.
+	send(client, history_query("history-still-readable-after-invalid-media", None, 1)).await;
+
+	let readable = receive(client).await;
+	let ServerMessage::QueryResult(readable) = readable else {
+		panic!("valid history was poisoned after rejected media: {readable:?}");
+	};
+	let payload = readable.payload;
+	let QueryResultPayload::ConversationHistory(ConversationHistoryResult::Page(readable)) =
+		payload
+	else {
+		panic!("valid history was poisoned after rejected media: {payload:?}");
+	};
+	let fresh_cursor = readable.next_cursor.expect("fresh readable page has a continuation");
+
+	send(
+		client,
+		history_query_for(
+			"history-cross",
+			"40000000-0000-4000-8000-000000000099",
+			Some(fresh_cursor.as_str()),
+			1,
+		),
+	)
+	.await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::InvalidRequest})))
+	);
+
+	fs::write(blob_store.path_for(large_hash), b"tampered").expect("tamper history blob");
+
+	send(client, history_query("history-tampered", None, 1)).await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::IntegrityUnavailable})))
+	);
+
+	fs::remove_file(blob_store.path_for(large_hash)).expect("remove tampered history blob");
+
+	send(client, history_query("history-missing", None, 1)).await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::IntegrityUnavailable})))
+	);
+}
+
+async fn assert_postgres_cursor_capacity<S>(client: &mut WebSocketStream<S>)
+where
+	S: AsyncRead + AsyncWrite + Unpin,
+{
+	exhaust_isolated_history_cursor_capacity();
+	send(
+		client,
+		history_query_for(
+			"history-resource-exhausted",
+			"49000000-0000-4000-8000-000000000010",
+			None,
+			8,
+		),
+	)
+	.await;
+
+	assert!(
+		matches!(receive(client).await,ServerMessage::QueryResult(result) if matches!(result.payload,QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable{error:HistoryQueryError::ResourceExhausted})))
+	);
+
+	run_isolated_sql(
+		"UPDATE decodex.history_cursors \
+		 SET created_at=clock_timestamp()-interval '2 hours', \
+		 expires_at=clock_timestamp()-interval '1 hour' \
+		 WHERE conversation_id='49000000-0000-4000-8000-000000000010'",
+	);
 }
 
 #[cfg(unix)]
@@ -640,7 +952,9 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 	let ServerMessage::QueryResult(ready_result) = receive(&mut client).await else {
 		panic!("expected live doctor result before endpoint replacement");
 	};
-	let QueryResultPayload::DoctorStatus(ready_report) = ready_result.payload;
+	let QueryResultPayload::DoctorStatus(ready_report) = ready_result.payload else {
+		panic!("expected doctor result");
+	};
 
 	assert_eq!(
 		ready_report.check(DoctorComponent::Database).expect("database check is present").status,
@@ -656,7 +970,9 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 		let ServerMessage::QueryResult(result) = receive(&mut client).await else {
 			panic!("expected live doctor result after endpoint replacement");
 		};
-		let QueryResultPayload::DoctorStatus(report) = result.payload;
+		let QueryResultPayload::DoctorStatus(report) = result.payload else {
+			panic!("expected doctor result");
+		};
 
 		assert_eq!(
 			report.check(DoctorComponent::Database).expect("database check is present").status,
@@ -714,7 +1030,9 @@ async fn isolated_postgres_live_doctor_detects_database_incompatibility() {
 	let ServerMessage::QueryResult(ready) = receive(&mut client).await else {
 		panic!("expected ready live database observation");
 	};
-	let QueryResultPayload::DoctorStatus(ready) = ready.payload;
+	let QueryResultPayload::DoctorStatus(ready) = ready.payload else {
+		panic!("expected doctor result");
+	};
 
 	assert_eq!(
 		ready.check(DoctorComponent::Database).expect("database check").status,
@@ -735,7 +1053,9 @@ async fn isolated_postgres_live_doctor_detects_database_incompatibility() {
 	let ServerMessage::QueryResult(changed) = receive(&mut client).await else {
 		panic!("expected changed live database observation");
 	};
-	let QueryResultPayload::DoctorStatus(changed) = changed.payload;
+	let QueryResultPayload::DoctorStatus(changed) = changed.payload else {
+		panic!("expected doctor result");
+	};
 
 	assert_eq!(
 		changed.check(DoctorComponent::Database).expect("database check").status,
@@ -869,7 +1189,9 @@ async fn isolated_postgres_hostile_search_path_is_available() {
 	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
 		panic!("expected hostile-search doctor result");
 	};
-	let QueryResultPayload::DoctorStatus(report) = result.payload;
+	let QueryResultPayload::DoctorStatus(report) = result.payload else {
+		panic!("expected doctor result");
+	};
 
 	assert_eq!(
 		report.check(DoctorComponent::Database).expect("database status is present").status,

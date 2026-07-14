@@ -26,7 +26,6 @@ EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
     "deadpool-postgres",
     "libc",
     "refinery",
-    "regex",
     "serde_json",
     "sha2",
     "time",
@@ -37,6 +36,7 @@ EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
 EXPECTED_CORE_EXTERNAL_DEPENDENCIES = {
     "getrandom",
     "libc",
+    "regex",
     "serde",
     "sha2",
     "tempfile",

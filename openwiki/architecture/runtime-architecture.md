@@ -9,7 +9,8 @@ authority documents remain authoritative.
 The root manifest enumerates the active members explicitly. Five library owners form the
 vNext runtime boundary:
 
-- `decodex-core`: domain/application contracts and ports plus the XY-1306 typed
+- `decodex-core`: domain/application contracts and ports, including logical
+  Conversation/RuntimeSession/history and deterministic Context Pack compilation, plus the XY-1306 typed
   `~/.decodex` path, configuration, stable-identity, blob, and disposable-cache
   foundation. Its external dependency set is architecture-tested and limited to
   bounded TOML/Serde parsing, SHA-256, OS randomness/no-follow filesystem support, and
@@ -18,8 +19,9 @@ vNext runtime boundary:
   loopback endpoint policy; depends only on core plus structured serialization.
 - `decodex-postgres`: the PostgreSQL 18 product-state adapter; depends on core plus the
   accepted tokio-postgres/deadpool/refinery stack and owns embedded migrations,
-  optimistic transactions, leases, append-only activity, outbox delivery, and inert
-  account/window metadata.
+  optimistic transactions, leases, append-only activity, outbox delivery, inert
+  account/window metadata, normalized history, immutable session snapshots, blob metadata,
+  Context Pack revisions, and inert transition proposals.
 - `decodex-codex`: typed app-server contracts, schema/live capability negotiation,
   redacted event normalization, and immutable one-account process supervision. Live
   turn dispatch remains unavailable while XY-1304 is failed.
@@ -115,21 +117,23 @@ runtime-effective, regardless of `pg_extension.extnamespace`.
 Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
 TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
 `session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
-in any reachable authority state. The audit verifies all five shipped safety/retention triggers
+in any reachable authority state. The audit verifies all twenty-nine shipped safety/state/retention triggers
 by table, event mask, row/statement level, regular non-constraint and non-deferrable shape,
 origin-enabled mode, and function binding, then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable V1 migration. It additionally closes the entire runtime-callable `decodex` function
+the immutable V1 or forward-only V3 migration. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
-parallel/strict/set behavior, planner metadata, security-invoker state, empty per-function settings,
+parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
 are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
 are unsafe; a replaced same-signature safety-function body is incompatible.
-Every non-internal trigger on a Decodex runtime relation must be one of those five exact bindings.
+Every non-internal trigger on a Decodex runtime relation must be one of those twenty-nine exact bindings.
 The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
 on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
 generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
-sixteen canonical functions. A trigger cannot therefore invoke an adjacent public owner-executed
+thirty-four canonical functions. Every canonical function has the exact function-local
+`pg_catalog, decodex` search path, so runtime-selected callable or operator shadows cannot redirect
+trigger or constraint execution. A trigger cannot therefore invoke an adjacent public owner-executed
 function merely because runtime DML fires it.
 One version-specific canonical PostgreSQL 18 manifest additionally closes all Decodex relations,
 columns, defaults, constraints, indexes, enum labels, and internally generated constraint triggers.
@@ -144,21 +148,27 @@ exactly table SELECT. Ownership, SET-reachable authority, table or column grant 
 TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN are unsafe; missing SELECT is incompatible before the
 history row query runs. The ordered ledger must exactly match every embedded migration version,
 name, and checksum; missing, extra, duplicate, reordered, or tampered identity is incompatible.
-The two bound identity sequences must be exact and grant the login role
-USAGE only: SELECT, UPDATE/`setval`, ownership, grant options, and SET-reachable surplus authority
-are unsafe. Every string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
+The three bound identity sequences must be exact. Runtime receives USAGE only on the activity and
+outbox sequences; the migration-owned history-version sequence remains inaccessible. SELECT,
+UPDATE/`setval`, ownership, grant options, and SET-reachable surplus authority are unsafe. Every
+string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
 authority audit and schema-qualified migration-ledger verification remain correct under a hostile
 runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
 table, sequence, function, or ledger-read authority is incompatible.
-The additional-function adversarial fixture creates a seventeenth migration-owned,
+Three narrowly scoped canonical `SECURITY DEFINER` functions issue history cursors, prune expired
+cursor snapshots, and append immutable history-item versions. The issuer derives Conversation,
+snapshot version, parent, page size, position, item identity, and expiry under serialized
+Conversation authority; the bounded pruner is callable by runtime, while the capture function is
+trigger-only and runtime cannot execute it directly. Runtime has no cursor-table INSERT authority.
+All other canonical functions are security invokers. The additional-function adversarial fixture creates a thirty-fifth migration-owned,
 runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
 trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
 and restores the trigger before the independent doctor rejection. A separate public-function trigger
 fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
-table `UPDATE`, or `TRIGGER`; the exact five-trigger inventory rejects that path. A public,
+table `UPDATE`, or `TRIGGER`; the exact twenty-nine-trigger inventory rejects that path. A public,
 runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
 proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
-closed sixteen-function inventory remains independent of the distinct same-signature canonical-source
+closed thirty-four-function inventory remains independent of the distinct same-signature canonical-source
 substitution fixture. Missing, malformed, unsafe, unreachable,
 authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
 there is no ambient/default database or alternate state authority. Repository and
@@ -185,6 +195,101 @@ credentials, runs migration, or repins an endpoint. A stale but securely bound l
 database-unreachable; directory/socket replacement or peer-identity drift is unsafe-host-path.
 PostgreSQL socket recreation after restart therefore requires a daemon restart under the explicit
 operator authority instead of silently adopting the replacement.
+
+V1.2 also carries `get_conversation_history`. Its request contains a logical Conversation UUID,
+an optional opaque PostgreSQL-issued Conversation-bound snapshot cursor, and a page size capped at
+eight on the wire (the repository's internal cap is 100). PostgreSQL assigns append-only
+per-Conversation positions and derives the next position and snapshot high-water from indexed
+history while holding the Conversation lock; there is no runtime-writable stored counter. The first
+page also pins the current append-only history-version sequence. Later pages fetch only `limit + 1`
+immutable item versions at or before that sequence and through the high-water position. Concurrent
+appends are neither duplicated nor silently skipped, and later streaming updates cannot change an
+issued page or its replay.
+
+Every continuation is a random identifier resolved only through an immutable persisted issuance row
+that binds Conversation, positive high-water, immutable version sequence, fixed page size, positive
+item position, exact item identity, and optional issued parent. The canonical issuer derives and
+extends the chain under serialized authority; ordinary runtime DML cannot mint one. A page exposes
+at most one continuation. Chains expire after one hour and are capped at 512 rows per Conversation
+and 4,096 globally; canonical retries reuse an existing row, while new issuance at capacity returns
+typed `resource_exhausted`. Bounded pruning removes expired chains and obsolete history versions but
+retains current versions, active-cursor versions, and versions required for exact command replay.
+Never-issued, expired, cross-Conversation, edited, zero-position, changed-page-size, and forged
+truncation tokens fail closed.
+
+Each command first commits an immutable pending receipt containing protocol version, operation,
+project and scope identity, entity identity, idempotency key, canonical request digest, expected
+revision, and every payload hash and length. The receipt owns a fenced claim token and finite expiry.
+Conflicting reuse fails before filesystem or metadata effects; exact completed replay returns the
+stored original response bytes, and the first successful caller decodes that same stored response
+rather than rereading mutable current state after commit. An expired claim can be reassigned, but a stale token cannot complete
+it. Blob-backed writers then acquire sorted session-level hash locks in namespace 1273 on dedicated
+non-pooled connections, followed by sorted per-shard capacity locks in namespace 1274. After byte
+publication, transaction B acquires hierarchy key 1271 and required parent/child rows, registers
+metadata/references/activity/outbox, persists the exact response, and completes the fenced receipt
+atomically. Database triggers never acquire hash or shard locks. Cancellation or uncertain unlock
+closes the dedicated session and releases its locks.
+
+Cursor paths use hierarchy 1271, cursor key 1272, then rows; they never acquire hash locks in that
+transaction. Garbage collection uses hash then shard coordination, rechecks every live-reference
+table and grace age in a short transaction, commits metadata deletion, and unlinks afterward.
+Filesystem publication, verification, scans, and unlinking occur outside hierarchy, cursor, and
+database transactions. `decodexd`, its daemon-private runtime identity, and BlobStore access are one
+trusted service boundary; arbitrary/manual use of that credential is unsupported and equivalent to
+daemon compromise. PostgreSQL owns committed metadata/domain/receipt authority but does not itself
+attest external bytes.
+
+Inline text is capped at 16 KiB. Larger payloads are published create-only and atomically, fully
+hash/length verified, and synchronized with their containing directory before transaction B. Direct
+and transitive bytes are reverified on every successful read. Bounded grace-aged inventory
+reclamation is deterministic and resumable and removes only hashes absent from live history,
+immutable replay versions, Artifact revisions, and Context Packs. A crash can leave only
+inventory-visible unreferenced bytes; metadata deletion commits before orphan unlink. Missing,
+length-mismatched, or tampered content fails closed.
+
+The typed history projection carries one canonical media type for both inline and offloaded payloads
+plus a flat credential-negative metadata map. It accepts at most 32 fields, 64 UTF-8 bytes per key,
+and only booleans or strings of at most 256 UTF-8 bytes; nested or credential-shaped forms fail
+before persistence or wire decode. Core owns both opaque types and their serde validation.
+Credential-bearing normalized key suffixes and concrete authorization/token/assignment/key patterns
+fail closed, while benign prose such as `secret sauce`, `token budget`, and `session summary` remains
+valid. PostgreSQL's closed projection predicate mirrors that classification, so store-created rows
+cannot become unreadable at the protocol boundary. This is normalized provenance, not raw app-server
+JSON.
+
+V3 state triggers author creation/update timestamps at persistence. Starting or active
+RuntimeSessions always begin with `ended_at = NULL`, active Turns always begin with
+`completed_at = NULL`, and terminal RuntimeSession or Turn states cannot be inserted. Immutable
+snapshot, blob-verification, Artifact-revision, Context-Pack, and transition-proposal creation times
+are database-authored rather than caller-authored.
+
+Logical Conversation identity has no Codex-thread or account component. One Conversation can have
+multiple explicitly manual or synthetic RuntimeSessions, each bound to immutable non-secret account
+and profile snapshots. A RuntimeSession's Codex-thread and last-known-turn correlations are also
+immutable across every lifecycle transition. Composite foreign keys prevent sessions, Context Packs, transition proposals,
+history items, and typed Artifact revisions from crossing that boundary. History-item Artifact
+identity/revision correlation is immutable after insertion and an update carrying a different valid
+reference fails rather than reporting an ignored mutation. Each Artifact parent revision is tied by
+a deferred composite foreign key to an exact immutable revision row. Before every parent advance,
+the state guard requires the exact old revision row; every new revision requires revision 1 or the
+exact immutable predecessor plus a legal predecessor-state transition. Typed and direct-SQL
+transactions therefore cannot skip history, commit a parent advance without its matching revision,
+or manufacture a revision the parent has not selected.
+Database triggers take
+conflicting parent row locks in child-write and terminal-transition directions, enforcing parent
+eligibility and terminal immutability under concurrent runtime SQL. History-item create/update,
+activity, outbox evidence, exact response, and fenced receipt completion are one transaction B after
+the pending receipt and any blob publication. Context Packs separate the mandatory
+pinned revision, use canonical length-delimited binary encoding, bind policy/Conversation/side
+effects/complete provenance/bytes/digests in one opaque verified value, and reconstruct that complete
+immutable value on read. Source rows are staged before the parent under a transaction advisory lock;
+the parent seals their exact contiguous count, and database triggers reject subsequent source or pack
+insert/update/delete poisoning while the deferred parent reference prevents orphan commits. Persisted
+rollover/fallback rows are proposals only: their schema
+forces dispatch disabled. This slice exposes no account selection, live turn start/resume/steer,
+automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake; XY-1304 remains the
+separate failed enablement gate and XY-1272 owns thread-ownership reconciliation.
+
 The composition also reports conversation execution unavailable. Authentication, TLS,
 remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, mutating
 CLI operations, and GPUI behavior remain disabled and belong to later issues.
@@ -194,10 +299,12 @@ pool lifecycle: closing the pool makes it unavailable. Live PostgreSQL failures 
 authoritative at each asynchronous store operation; availability does not claim a synchronous
 network-liveness probe.
 
-The store's owned mutations reserve a command receipt, apply an exact expected revision,
-append activity, enqueue the matching outbox effect, and complete the receipt in one
-transaction. Reusing the same idempotency key and request hash reads the committed
-response; reusing the key for different bytes is rejected. Outbox claims are bounded and
+The store's owned mutations commit an immutable pending command receipt before effects. A fenced
+claim then applies the exact expected revision, appends activity, enqueues the matching outbox
+effect, stores the exact response bytes, and completes the receipt atomically in transaction B.
+Reusing the same complete command identity returns those original bytes; changing operation, scope,
+entity, expected revision, payload, or canonical request is rejected before effects. Durable exact
+history replay retains its immutable version and referenced blob while the receipt exists. Outbox claims are bounded and
 fenced by a token rotated on every claim or reclaim. Any effect that may have begun must be
 reconciled through a meaningful receipt and authoritative readback after claim expiry or
 restart. Lease, retry, and retention durations are exact positive whole milliseconds capped

@@ -214,7 +214,9 @@ impl DoctorClient {
 						return Err(ClientFailure::ProtocolMalformed);
 					}
 
-					let QueryResultPayload::DoctorStatus(report) = result.payload;
+					let QueryResultPayload::DoctorStatus(report) = result.payload else {
+						return Err(ClientFailure::ProtocolMalformed);
+					};
 
 					if report.version() != CURRENT_VERSION {
 						return Err(version_failure(report.version()));
