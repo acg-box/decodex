@@ -485,7 +485,11 @@ dependencies = [
 name = "decodex-cli"
 version = "0.2.0"
 dependencies = [
+ "clap",
  "decodex-protocol",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -540,8 +544,12 @@ name = "decodex-protocol"
 version = "0.2.0"
 dependencies = [
  "decodex-core",
+ "futures-util",
  "serde",
  "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
