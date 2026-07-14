@@ -6,6 +6,7 @@ use std::{fs, sync::Arc, thread};
 
 use getrandom as _;
 #[cfg(unix)] use libc as _;
+use regex as _;
 use serde as _;
 use sha2 as _;
 use tempfile::NamedTempFile;

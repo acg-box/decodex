@@ -1,12 +1,14 @@
 //! PostgreSQL product-state authority for Decodex vNext.
 //!
-//! This crate owns only the XY-1267 persistence foundation: immutable migrations,
-//! idempotent optimistic transactions, expiring leases, a transactional activity/outbox
-//! boundary, and inert account/quota-window metadata. It does not select accounts, route
-//! work, store credentials, or expose protocol/client behavior.
+//! This crate owns the XY-1267 persistence foundation and XY-1271 Conversation history:
+//! immutable migrations, idempotent optimistic transactions, expiring leases, transactional
+//! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
+//! references, Context Packs, and inert transition proposals. It does not select accounts,
+//! route work, store credentials, dispatch transitions, or expose protocol/client behavior.
 
 mod accounts;
 mod authority;
+mod conversations;
 mod error;
 mod leases;
 mod migrations;
@@ -15,6 +17,12 @@ mod outbox;
 mod types;
 
 pub use self::{
+	conversations::{
+		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation,
+		CreateRuntimeSession, HistoryCursor, HistoryEntry, HistoryPage, PersistContextPack,
+		ProposeTransition, RecordHistoryItem, StoredArtifact, StoredConversation,
+		StoredRuntimeSession,
+	},
 	error::{BootstrapFailure, StoreError},
 	types::{
 		AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
@@ -23,13 +31,9 @@ pub use self::{
 	},
 };
 
-use std::{
-	sync::{Arc, OnceLock},
-	time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
-use regex::Regex;
 use serde_json::Value;
 #[cfg(test)] use tokio as _;
 use tokio_postgres::{Config, config::Host};
@@ -266,7 +270,7 @@ pub(crate) fn ensure_meaningful_evidence(value: &Value) -> Result<(), StoreError
 }
 
 pub(crate) fn ensure_credential_negative_text(value: &str) -> Result<(), StoreError> {
-	if credential_value_pattern().is_match(value) {
+	if decodex_core::contains_credential_material(value) {
 		Err(StoreError::CredentialRejected)
 	} else {
 		Ok(())
@@ -277,7 +281,7 @@ pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), Store
 	match value {
 		Value::Object(entries) =>
 			for (key, value) in entries {
-				if credential_key(key) {
+				if decodex_core::is_credential_metadata_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
 
@@ -361,47 +365,6 @@ fn validate_separation(migration: &Config, runtime: &Config) -> Result<(), Store
 
 fn is_meaningful_evidence(value: &Value) -> bool {
 	ensure_meaningful_evidence(value).is_ok()
-}
-
-fn credential_key(key: &str) -> bool {
-	let normalized: String =
-		key.chars().filter(char::is_ascii_alphanumeric).flat_map(char::to_lowercase).collect();
-
-	[
-		"credential",
-		"credentials",
-		"password",
-		"passphrase",
-		"privatekey",
-		"secret",
-		"authorization",
-		"bearer",
-		"apikey",
-		"cookie",
-		"token",
-		"session",
-	]
-	.iter()
-	.any(|suffix| normalized.ends_with(suffix))
-}
-
-fn credential_value_pattern() -> &'static Regex {
-	static PATTERN: OnceLock<Regex> = OnceLock::new();
-
-	PATTERN.get_or_init(|| {
-		Regex::new(
-			r"(?ix)
-			(?:^|[\s[:punct:]])(?:bearer\s+[[:alnum:]_.~+/-]{8,}|basic\s+[[:alnum:]+/]{8,}={0,2})
-			|(?:^|[^[:alnum:]])(?:sk-[[:alnum:]_-]{8,}|(?:sk|pk|rk)_(?:live|test|proj)?[[:alnum:]_-]{8,}|xox[baprs]-[[:alnum:]-]{8,}|glpat-[[:alnum:]_-]{8,}|npm_[[:alnum:]]{8,})
-			|gh[pousr]_[[:alnum:]]{20,}
-			|eyj[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}\.[[:alnum:]_-]{8,}
-			|-----begin[^-]*private\s+key-----
-			|(?:password|passphrase|secret|token|authorization)\s*[:=]\s*[^\s]{4,}
-			|[a-z][a-z0-9+.-]*://[^/:\s]+:[^@\s]+@
-			|akia[0-9a-z]{16}",
-		)
-		.expect("credential material regex is valid")
-	})
 }
 
 #[cfg(unix)]
