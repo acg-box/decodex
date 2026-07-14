@@ -59,6 +59,15 @@ impl DoctorReport {
 	pub fn check(&self, component: DoctorComponent) -> Option<&DoctorCheck> {
 		self.checks.iter().find(|check| check.component == component)
 	}
+
+	/// Whether this report contains exactly the complete current component set.
+	///
+	/// Ordering is not authoritative. Construction and decoding separately enforce
+	/// boundedness and uniqueness.
+	pub fn has_current_component_set(&self) -> bool {
+		self.checks.len() == DoctorComponent::ALL.len()
+			&& DoctorComponent::ALL.into_iter().all(|component| self.check(component).is_some())
+	}
 }
 
 impl<'de> Deserialize<'de> for DoctorReport {
@@ -120,6 +129,29 @@ pub enum DoctorComponent {
 	CredentialVault,
 	/// Required plugin inventory/readiness.
 	PluginReadiness,
+}
+impl DoctorComponent {
+	/// Complete closed component set in stable diagnostic order.
+	pub const ALL: [Self; 18] = [
+		Self::Configuration,
+		Self::Database,
+		Self::Protocol,
+		Self::ProtocolVersion,
+		Self::ServerIdentity,
+		Self::SharedCodexHome,
+		Self::AppServerCapability(AppServerCapability::Initialize),
+		Self::AppServerCapability(AppServerCapability::AccountRead),
+		Self::AppServerCapability(AppServerCapability::ThreadList),
+		Self::AppServerCapability(AppServerCapability::ThreadRead),
+		Self::AppServerCapability(AppServerCapability::ThreadArchive),
+		Self::AppServerCapability(AppServerCapability::PaginatedHistory),
+		Self::AppServerCapability(AppServerCapability::NativeCollaboration),
+		Self::AppServerCapability(AppServerCapability::ThreadSearch),
+		Self::ServerRepositories,
+		Self::BlobIntegrity,
+		Self::CredentialVault,
+		Self::PluginReadiness,
+	];
 }
 
 /// App-server capabilities exposed without raw method or schema text.
@@ -210,6 +242,29 @@ pub enum DoctorIssue {
 	/// The capability is intentionally disabled by an active gate.
 	Disabled,
 }
+impl DoctorIssue {
+	/// Complete closed issue set in stable diagnostic order.
+	pub const ALL: [Self; 18] = [
+		Self::Authentication,
+		Self::Plugin,
+		Self::ConfigurationMissing,
+		Self::ConfigurationMalformed,
+		Self::ConfigurationVersion,
+		Self::DatabaseNotConfigured,
+		Self::DatabaseMalformedConfig,
+		Self::DatabaseUnreachable,
+		Self::DatabaseIncompatible,
+		Self::UnsafeDatabaseAuthority,
+		Self::ProtocolDisconnected,
+		Self::ProtocolVersionMismatch,
+		Self::ServerIdentityMismatch,
+		Self::ServerIdentityUnavailable,
+		Self::UnsafeHostPath,
+		Self::Integrity,
+		Self::NotProbed,
+		Self::Disabled,
+	];
+}
 
 /// A report violated its mechanical boundedness or uniqueness contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -291,6 +346,31 @@ mod tests {
 		});
 
 		assert!(serde_json::from_value::<DoctorReport>(raw).is_err());
+	}
+
+	#[test]
+	fn current_component_set_is_exact_and_order_independent() {
+		let server = || ServerId::new("server").unwrap();
+		let checks = || {
+			DoctorComponent::ALL
+				.into_iter()
+				.map(|component| DoctorCheck::new(component, DoctorStatus::Ready))
+				.collect::<Vec<_>>()
+		};
+
+		for incomplete in [Vec::new(), vec![checks()[0]], checks()[1..].to_vec()] {
+			let report = DoctorReport::new(server(), CURRENT_VERSION, incomplete).unwrap();
+
+			assert!(!report.has_current_component_set());
+		}
+
+		let mut arbitrary_order = checks();
+
+		arbitrary_order.reverse();
+
+		let report = DoctorReport::new(server(), CURRENT_VERSION, arbitrary_order).unwrap();
+
+		assert!(report.has_current_component_set());
 	}
 
 	#[test]

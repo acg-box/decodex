@@ -6,7 +6,7 @@ use std::{
 	str,
 };
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de::IgnoredAny};
 
 use crate::{CacheLimits, DecodexPaths, PathError, ServerIdentity, paths};
 
@@ -44,11 +44,7 @@ impl DecodexConfig {
 			return Err(ConfigError::UnsupportedVersion);
 		}
 
-		let profiles = raw
-			.profiles
-			.into_iter()
-			.map(|(name, profile)| profile.validate().map(|profile| (name, profile)))
-			.collect::<Result<BTreeMap<_, _>, _>>()?;
+		let profiles = validate_profiles(raw.profiles)?;
 
 		if !profiles.contains_key(&raw.active_profile) {
 			return Err(ConfigError::MissingActiveProfile);
@@ -122,6 +118,93 @@ impl Debug for DecodexConfig {
 	}
 }
 
+/// Client-visible projection of the global configuration.
+///
+/// Server-host repositories, PostgreSQL data, and cache policy are consumed as
+/// opaque TOML values. A client therefore validates only profile authority and
+/// cannot reinterpret a server path on its own host.
+#[derive(Clone)]
+pub struct DecodexClientConfig {
+	version: u32,
+	active_profile: ProfileName,
+	profiles: BTreeMap<ProfileName, ServerProfile>,
+}
+impl DecodexClientConfig {
+	/// Parse the bounded client projection without validating server-host-only data.
+	pub fn parse(bytes: &[u8]) -> Result<Self, ConfigError> {
+		if bytes.len() > MAX_CONFIG_BYTES {
+			return Err(ConfigError::Oversized { limit: MAX_CONFIG_BYTES });
+		}
+
+		let input = str::from_utf8(bytes).map_err(|_| ConfigError::Malformed)?;
+		let raw: RawClientConfig = toml::from_str(input).map_err(|_| ConfigError::Malformed)?;
+
+		if raw.version != CONFIG_VERSION {
+			return Err(ConfigError::UnsupportedVersion);
+		}
+
+		let profiles = validate_profiles(raw.profiles)?;
+
+		if !profiles.contains_key(&raw.active_profile) {
+			return Err(ConfigError::MissingActiveProfile);
+		}
+
+		Ok(Self { version: raw.version, active_profile: raw.active_profile, profiles })
+	}
+
+	/// Read and parse the private client configuration projection.
+	pub fn load(paths: &DecodexPaths) -> Result<Self, ConfigError> {
+		let bytes = paths::read_private_file(paths, &paths.config_file(), MAX_CONFIG_BYTES)?;
+
+		Self::parse(&bytes)
+	}
+
+	/// Schema version accepted by this build.
+	pub const fn version(&self) -> u32 {
+		self.version
+	}
+
+	/// Explicitly selected profile name.
+	pub fn active_profile_name(&self) -> &ProfileName {
+		&self.active_profile
+	}
+
+	/// Resolve either an explicit named profile or the configured active profile.
+	pub fn selected_profile(
+		&self,
+		name: Option<&str>,
+	) -> Result<(&ProfileName, &ServerProfile), ConfigError> {
+		let selected = match name {
+			Some(name) => self
+				.profiles
+				.iter()
+				.find(|(candidate, _)| candidate.as_str() == name)
+				.ok_or(ConfigError::MissingProfile)?,
+			None => {
+				let profile = self
+					.profiles
+					.get(&self.active_profile)
+					.expect("validated active profile is present");
+
+				(&self.active_profile, profile)
+			},
+		};
+
+		Ok(selected)
+	}
+}
+
+impl Debug for DecodexClientConfig {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("DecodexClientConfig")
+			.field("version", &self.version)
+			.field("active_profile", &self.active_profile)
+			.field("profile_count", &self.profiles.len())
+			.finish()
+	}
+}
+
 /// Validated profile-map key.
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ProfileName(String);
@@ -156,24 +239,6 @@ impl TryFrom<String> for ProfileName {
 		validate_name(&value).map_err(|_| "invalid profile name")?;
 
 		Ok(Self(value))
-	}
-}
-
-/// Explicit local or remote server selection. Neither variant carries a repository
-/// path; repository paths are server-host-only data owned by `ServerHostConfig`.
-#[derive(Clone)]
-pub enum ServerProfile {
-	/// Loopback client and server live on the same host.
-	Local(LocalProfile),
-	/// Client and server live on different hosts.
-	Remote(RemoteProfile),
-}
-impl Debug for ServerProfile {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Local(profile) => profile.fmt(formatter),
-			Self::Remote(profile) => profile.fmt(formatter),
-		}
 	}
 }
 
@@ -404,65 +469,6 @@ impl CacheConfig {
 	}
 }
 
-/// Typed redacted configuration failures.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConfigError {
-	/// Input exceeded the parser limit.
-	Oversized {
-		/// Maximum accepted configuration bytes.
-		limit: usize,
-	},
-	/// TOML, UTF-8, unknown fields, or shape was invalid.
-	Malformed,
-	/// Configuration schema version is unsupported.
-	UnsupportedVersion,
-	/// The selected profile was not declared.
-	MissingActiveProfile,
-	/// A local or remote profile violated its closed contract.
-	InvalidProfile,
-	/// A server identity was not canonical UUID version 4 text.
-	InvalidServerIdentity,
-	/// A server-host repository path was unsafe or relative.
-	InvalidServerHostPath,
-	/// The PostgreSQL Unix-socket directory was unsafe or relative.
-	InvalidPostgresHostPath,
-	/// PostgreSQL connection data was missing, malformed, or unbounded.
-	InvalidPostgres,
-	/// Cache bounds were invalid or exceeded hard limits.
-	InvalidCache,
-	/// The operating-system random source failed.
-	RandomnessUnavailable,
-	/// Private owned-path validation or I/O failed.
-	Path(PathError),
-}
-impl Display for ConfigError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Oversized { limit } => write!(formatter, "configuration exceeds {limit} bytes"),
-			Self::Malformed => formatter.write_str("configuration is malformed"),
-			Self::UnsupportedVersion => formatter.write_str("configuration version is unsupported"),
-			Self::MissingActiveProfile => formatter.write_str("active profile is not declared"),
-			Self::InvalidProfile => formatter.write_str("server profile is invalid"),
-			Self::InvalidServerIdentity => formatter.write_str("server identity is invalid"),
-			Self::InvalidServerHostPath => formatter.write_str("server-host path is invalid"),
-			Self::InvalidPostgresHostPath => formatter.write_str("PostgreSQL host path is invalid"),
-			Self::InvalidPostgres => formatter.write_str("PostgreSQL configuration is invalid"),
-			Self::InvalidCache => formatter.write_str("cache configuration is invalid"),
-			Self::RandomnessUnavailable =>
-				formatter.write_str("operating-system randomness is unavailable"),
-			Self::Path(error) => Display::fmt(error, formatter),
-		}
-	}
-}
-
-impl std::error::Error for ConfigError {}
-
-impl From<PathError> for ConfigError {
-	fn from(error: PathError) -> Self {
-		Self::Path(error)
-	}
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
@@ -475,30 +481,17 @@ struct RawConfig {
 }
 
 #[derive(Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum RawProfile {
-	Local { address: SocketAddr, expected_server_identity: Option<ServerIdentity> },
-	Remote { host: String, port: u16, expected_server_identity: ServerIdentity },
-}
-impl RawProfile {
-	fn validate(self) -> Result<ServerProfile, ConfigError> {
-		match self {
-			Self::Local { address, expected_server_identity } => {
-				if !address.ip().is_loopback() || address.port() == 0 {
-					return Err(ConfigError::InvalidProfile);
-				}
-
-				Ok(ServerProfile::Local(LocalProfile { address, expected_server_identity }))
-			},
-			Self::Remote { host, port, expected_server_identity } => {
-				if !valid_remote_host(&host) || port == 0 {
-					return Err(ConfigError::InvalidProfile);
-				}
-
-				Ok(ServerProfile::Remote(RemoteProfile { host, port, expected_server_identity }))
-			},
-		}
-	}
+#[serde(deny_unknown_fields)]
+struct RawClientConfig {
+	version: u32,
+	active_profile: ProfileName,
+	profiles: BTreeMap<ProfileName, RawProfile>,
+	#[serde(rename = "server_host")]
+	_server_host: IgnoredAny,
+	#[serde(rename = "postgres")]
+	_postgres: IgnoredAny,
+	#[serde(rename = "cache")]
+	_cache: IgnoredAny,
 }
 
 #[derive(Deserialize)]
@@ -612,6 +605,122 @@ impl RawCacheConfig {
 
 		Ok(CacheConfig { limits })
 	}
+}
+
+/// Explicit local or remote server selection. Neither variant carries a repository
+/// path; repository paths are server-host-only data owned by `ServerHostConfig`.
+#[derive(Clone)]
+pub enum ServerProfile {
+	/// Loopback client and server live on the same host.
+	Local(LocalProfile),
+	/// Client and server live on different hosts.
+	Remote(RemoteProfile),
+}
+impl Debug for ServerProfile {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Local(profile) => profile.fmt(formatter),
+			Self::Remote(profile) => profile.fmt(formatter),
+		}
+	}
+}
+
+/// Typed redacted configuration failures.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConfigError {
+	/// Input exceeded the parser limit.
+	Oversized {
+		/// Maximum accepted configuration bytes.
+		limit: usize,
+	},
+	/// TOML, UTF-8, unknown fields, or shape was invalid.
+	Malformed,
+	/// Configuration schema version is unsupported.
+	UnsupportedVersion,
+	/// The selected profile was not declared.
+	MissingActiveProfile,
+	/// An explicitly selected profile was not declared.
+	MissingProfile,
+	/// A local or remote profile violated its closed contract.
+	InvalidProfile,
+	/// A server identity was not canonical UUID version 4 text.
+	InvalidServerIdentity,
+	/// A server-host repository path was unsafe or relative.
+	InvalidServerHostPath,
+	/// The PostgreSQL Unix-socket directory was unsafe or relative.
+	InvalidPostgresHostPath,
+	/// PostgreSQL connection data was missing, malformed, or unbounded.
+	InvalidPostgres,
+	/// Cache bounds were invalid or exceeded hard limits.
+	InvalidCache,
+	/// The operating-system random source failed.
+	RandomnessUnavailable,
+	/// Private owned-path validation or I/O failed.
+	Path(PathError),
+}
+impl Display for ConfigError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Oversized { limit } => write!(formatter, "configuration exceeds {limit} bytes"),
+			Self::Malformed => formatter.write_str("configuration is malformed"),
+			Self::UnsupportedVersion => formatter.write_str("configuration version is unsupported"),
+			Self::MissingActiveProfile => formatter.write_str("active profile is not declared"),
+			Self::MissingProfile => formatter.write_str("selected profile is not declared"),
+			Self::InvalidProfile => formatter.write_str("server profile is invalid"),
+			Self::InvalidServerIdentity => formatter.write_str("server identity is invalid"),
+			Self::InvalidServerHostPath => formatter.write_str("server-host path is invalid"),
+			Self::InvalidPostgresHostPath => formatter.write_str("PostgreSQL host path is invalid"),
+			Self::InvalidPostgres => formatter.write_str("PostgreSQL configuration is invalid"),
+			Self::InvalidCache => formatter.write_str("cache configuration is invalid"),
+			Self::RandomnessUnavailable =>
+				formatter.write_str("operating-system randomness is unavailable"),
+			Self::Path(error) => Display::fmt(error, formatter),
+		}
+	}
+}
+
+impl std::error::Error for ConfigError {}
+
+impl From<PathError> for ConfigError {
+	fn from(error: PathError) -> Self {
+		Self::Path(error)
+	}
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum RawProfile {
+	Local { address: SocketAddr, expected_server_identity: Option<ServerIdentity> },
+	Remote { host: String, port: u16, expected_server_identity: ServerIdentity },
+}
+impl RawProfile {
+	fn validate(self) -> Result<ServerProfile, ConfigError> {
+		match self {
+			Self::Local { address, expected_server_identity } => {
+				if !address.ip().is_loopback() || address.port() == 0 {
+					return Err(ConfigError::InvalidProfile);
+				}
+
+				Ok(ServerProfile::Local(LocalProfile { address, expected_server_identity }))
+			},
+			Self::Remote { host, port, expected_server_identity } => {
+				if !valid_remote_host(&host) || port == 0 {
+					return Err(ConfigError::InvalidProfile);
+				}
+
+				Ok(ServerProfile::Remote(RemoteProfile { host, port, expected_server_identity }))
+			},
+		}
+	}
+}
+
+fn validate_profiles(
+	profiles: BTreeMap<ProfileName, RawProfile>,
+) -> Result<BTreeMap<ProfileName, ServerProfile>, ConfigError> {
+	profiles
+		.into_iter()
+		.map(|(name, profile)| profile.validate().map(|profile| (name, profile)))
+		.collect()
 }
 
 fn validate_name(value: &str) -> Result<(), ConfigError> {

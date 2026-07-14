@@ -15,9 +15,9 @@ pub use self::{
 		MAX_CACHE_ENTRY_BYTES,
 	},
 	config::{
-		CacheConfig, ConfigError, DecodexConfig, LocalProfile, MAX_CONFIG_BYTES,
-		PostgresConnectionConfig, PostgresIdentityConfig, ProfileName, RemoteProfile,
-		RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
+		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
+		MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig, ProfileName,
+		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
 	},
 	identity::ServerIdentity,
 	paths::{DecodexPaths, DecodexRoot, PathError},
