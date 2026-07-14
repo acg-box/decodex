@@ -26,6 +26,15 @@ downstream storage implementation may use these choices after this evidence land
   sockets. `~/.codex` remains Codex-owned. Credentials stay in the host vault; ordinary
   proof JSON rejects credential-shaped keys and account rows expose metadata only.
 
+XY-1271 continuity: this feasibility proof predates the complete Conversation-history service
+boundary. The implementation retains PostgreSQL metadata plus local CAS bytes, but strengthens
+blob-backed commands to a durable receipt-first saga. A pending fenced receipt commits before byte
+publication; dedicated session hash and per-shard locks coordinate synchronized create-only CAS
+publication; transaction B registers references/evidence and stores the exact replay response;
+garbage collection commits metadata deletion before unlink. PostgreSQL does not independently
+attest external bytes, so successful service reads verify all direct and transitive content while
+`decodexd`, its private runtime identity, and BlobStore access remain one trusted boundary.
+
 SQLx 0.8.6 and 0.9.0 were tested and rejected for this gate: enabling their migration
 macro selected `sqlx-sqlite`, whose `libsqlite3-sys` link range conflicts with the
 workspace's v0.2 `rusqlite 0.40` link version. The selected tokio-postgres stack proves

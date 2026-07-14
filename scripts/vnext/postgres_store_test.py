@@ -93,6 +93,70 @@ def run(command: list[str], env: dict[str, str]) -> str:
 	return completed.stdout.strip() or completed.stderr.strip()
 
 
+def run_blob_session_restart_contract(
+	data_dir: Path,
+	log_path: Path,
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	env: dict[str, str],
+) -> str:
+	"""Restart PostgreSQL under an in-flight Rust BlobSession and prove fenced recovery."""
+	sync = work / "blob-session-restart"
+	sync.mkdir()
+	test_env = env.copy()
+	test_env["DECODEX_TEST_BLOB_RESTART_SYNC"] = str(sync)
+	process = subprocess.Popen(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
+			"postgres_store", "--run-ignored", "all", "--",
+			"postgres_blob_session_restart_contract", "--exact",
+		],
+		text=True,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+		env=test_env,
+		cwd=REPO_ROOT,
+	)
+	try:
+		deadline = time.monotonic() + 30
+		while time.monotonic() < deadline:
+			if (sync / "ready").exists():
+				break
+			if process.poll() is not None:
+				stdout, stderr = process.communicate()
+				raise TestFailure(f"BlobSession restart fixture exited early\n{stdout}\n{stderr}")
+			time.sleep(0.02)
+		else:
+			raise TestFailure("BlobSession restart fixture did not reach publication barrier")
+
+		run(["pg_ctl", "-D", str(data_dir), "-m", "immediate", "-w", "stop"], env)
+		run(
+			[
+				"pg_ctl", "-D", str(data_dir), "-l", str(log_path), "-o",
+				f"-k {socket_dir} -p {port} -h '' -F", "-w", "start",
+			],
+			env,
+		)
+		psql(
+			DATABASE,
+			"ALTER TABLE decodex.command_receipts DISABLE TRIGGER command_receipts_state_guard; "
+			"UPDATE decodex.command_receipts SET claim_expires_at=created_at+interval '1 microsecond' "
+			"WHERE idempotency_key='restart-artifact' AND receipt_state='pending'; "
+			"ALTER TABLE decodex.command_receipts ENABLE TRIGGER command_receipts_state_guard",
+			env,
+		)
+		(sync / "restarted").write_text("restarted", encoding="utf-8")
+		stdout, stderr = process.communicate(timeout=60)
+		if process.returncode != 0:
+			raise TestFailure(f"BlobSession restart contract failed\n{stdout}\n{stderr}")
+		return stdout.strip() or stderr.strip()
+	finally:
+		if process.poll() is None:
+			process.terminate()
+			process.wait(timeout=10)
+
+
 def run_live_doctor_mutation(
 	root: Path,
 	database: str,
@@ -253,11 +317,18 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"GRANT SELECT ON TABLE public.refinery_schema_history TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE ON TABLE "
 		f"decodex.accounts, decodex.quota_windows, decodex.command_receipts, "
-		f"decodex.leases TO {role}; "
+		f"decodex.leases, decodex.conversations, decodex.runtime_sessions, "
+		f"decodex.artifacts, decodex.turns, decodex.history_items TO {role}; "
+		f"GRANT SELECT, INSERT ON TABLE decodex.profile_snapshots, "
+		f"decodex.account_snapshots, decodex.blob_objects, decodex.artifact_revisions, decodex.context_packs, "
+		f"decodex.context_pack_sources, decodex.transition_proposals TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.history_cursors, decodex.history_item_versions TO {role}; "
+		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
-		f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA decodex TO {role}; "
-		f"GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA decodex TO {role}",
+		f"GRANT USAGE ON SEQUENCE decodex.activity_sequence_seq, decodex.outbox_id_seq TO {role}; "
+		f"GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA decodex TO {role}; "
+		f"REVOKE ALL ON FUNCTION decodex.capture_history_item_version() FROM {role}",
 		env,
 	)
 
@@ -323,6 +394,7 @@ def main() -> int:
 			"PGHOST": str(socket_dir),
 			"PGPORT": str(port),
 			"PGUSER": os.environ.get("USER", "postgres"),
+			"DECODEX_TEST_BLOB_ROOT": str(work / "blob-root"),
 		}
 	)
 	try:
@@ -385,6 +457,9 @@ def main() -> int:
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		migration_output = run_migration(env)
 		provision_runtime(DATABASE, RUNTIME_ROLE, env)
+		restart_output = run_blob_session_restart_contract(
+			data_dir, log_path, socket_dir, port, work, env
+		)
 		if psql_as(
 			RUNTIME_ROLE,
 			DATABASE,
@@ -797,7 +872,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 17",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 35",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -1081,8 +1156,9 @@ def main() -> int:
 			"created_at, delivered_at, retain_until) OVERRIDING SYSTEM VALUE VALUES (920001, "
 			"'external-cascade', 'account', 'fixture', 1, '{}', 'delivered', "
 			"'receipt_recorded', '{\"ok\":true}', '{\"ok\":true}', "
-			"clock_timestamp() - interval '2 days', "
-			"clock_timestamp() - interval '1 day', clock_timestamp() - interval '1 second'); "
+			"date_trunc('milliseconds', clock_timestamp()) - interval '2 days', "
+			"date_trunc('milliseconds', clock_timestamp()) - interval '1 day', "
+			"date_trunc('milliseconds', clock_timestamp()) - interval '1 second'); "
 			"INSERT INTO public.external_outbox_child(child_id, outbox_id) "
 			"VALUES (1, 920001)",
 			env,
@@ -1143,7 +1219,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "2|1":
+		) != "3|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
@@ -1202,8 +1278,14 @@ def main() -> int:
 			f"CREATE TABLE hostile.refinery_schema_history (sentinel text); "
 			f"CREATE TABLE hostile.pg_proc (sentinel text); "
 			f"CREATE TABLE hostile.pg_class (sentinel text); "
+			f"CREATE FUNCTION hostile.clock_timestamp() RETURNS timestamptz "
+			f"LANGUAGE sql IMMUTABLE AS 'SELECT ''infinity''::timestamptz'; "
+			f"CREATE FUNCTION hostile.octet_length(text) RETURNS integer "
+			f"LANGUAGE sql IMMUTABLE AS 'SELECT 1'; "
 			f"GRANT USAGE ON SCHEMA hostile TO {HOSTILE_SEARCH_ROLE}; "
 			f"GRANT SELECT ON TABLE hostile.refinery_schema_history TO {HOSTILE_SEARCH_ROLE}; "
+			f"GRANT EXECUTE ON FUNCTION hostile.clock_timestamp(), "
+			f"hostile.octet_length(text) TO {HOSTILE_SEARCH_ROLE}; "
 			f"ALTER ROLE {HOSTILE_SEARCH_ROLE} IN DATABASE {HOSTILE_SEARCH_DATABASE} "
 			f"SET search_path = hostile, public, pg_catalog",
 			env,
@@ -1223,6 +1305,25 @@ def main() -> int:
 			raise TestFailure(
 				"hostile search_path fixture does not shadow ledger and catalog names"
 			)
+		if psql_as(
+			HOSTILE_SEARCH_ROLE,
+			HOSTILE_SEARCH_DATABASE,
+			"SELECT clock_timestamp() = 'infinity'::timestamptz, octet_length('abc') = 1, "
+			"NOT decodex.is_canonical_media_type('not a media type')",
+			env,
+		) != "t|t|t":
+			raise TestFailure("secure Decodex function path did not resist callable shadowing")
+		if psql_as(
+			HOSTILE_SEARCH_ROLE,
+			HOSTILE_SEARCH_DATABASE,
+			"INSERT INTO decodex.conversations (conversation_id,title) VALUES "
+			"('4f000000-0000-4000-8000-000000000001','hostile callable fixture'); "
+			"UPDATE decodex.conversations SET status='archived',revision=2 "
+			"WHERE conversation_id='4f000000-0000-4000-8000-000000000001' "
+			"RETURNING isfinite(updated_at)",
+			env,
+		) != "t":
+			raise TestFailure("hostile callable shadow reached Decodex runtime DML")
 		hostile_search_root = work / "decodex-hostile-search-path"
 		write_bootstrap_config(
 			hostile_search_root,
@@ -1265,6 +1366,7 @@ def main() -> int:
 			env,
 		)
 		print(migration_output)
+		print(restart_output)
 		print(contract_output)
 		print(bootstrap_output)
 		print(live_doctor_output)

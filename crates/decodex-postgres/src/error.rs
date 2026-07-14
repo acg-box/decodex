@@ -32,6 +32,10 @@ pub enum StoreError {
 	CredentialRejected,
 	/// A public input violated the store contract before a transaction began.
 	InvalidInput(&'static str),
+	/// The bounded PostgreSQL resource inventory cannot issue another durable handle yet.
+	CapacityExhausted(&'static str),
+	/// Content-addressed bytes were missing, tampered, unsafe, or could not be persisted.
+	Blob(decodex_core::StorageError),
 }
 impl StoreError {
 	/// Classify bootstrap without exporting database, socket, role, or credential text.
@@ -85,7 +89,16 @@ impl std::fmt::Display for StoreError {
 			Self::CredentialRejected =>
 				formatter.write_str("credential material is forbidden in ordinary PostgreSQL rows"),
 			Self::InvalidInput(reason) => write!(formatter, "invalid store input: {reason}"),
+			Self::CapacityExhausted(resource) =>
+				write!(formatter, "{resource} capacity is exhausted"),
+			Self::Blob(error) => write!(formatter, "content-addressed blob error: {error}"),
 		}
+	}
+}
+
+impl From<decodex_core::StorageError> for StoreError {
+	fn from(error: decodex_core::StorageError) -> Self {
+		Self::Blob(error)
 	}
 }
 
@@ -114,6 +127,8 @@ impl From<tokio_postgres::Error> for StoreError {
 				&& database.constraint().is_some_and(|name| name.contains("no_credentials"))
 		}) {
 			Self::CredentialRejected
+		} else if error.as_db_error().is_some_and(|database| database.code().code() == "54000") {
+			Self::CapacityExhausted("history cursor")
 		} else {
 			Self::Database(error)
 		}

@@ -34,14 +34,16 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 
 ## Repository map
 
-- `crates/decodex-core/` owns domain/application authority contracts plus the XY-1306
+- `crates/decodex-core/` owns domain/application authority contracts, including logical
+  Conversation/RuntimeSession/history and deterministic inspectable Context Pack types, plus the XY-1306
   typed `~/.decodex` root, bounded/redacted config profiles, stable server identity,
   content-addressed blobs, and disposable bounded cache foundation.
 - `crates/decodex-protocol/` owns the vNext version and loopback-only endpoint contract shared with clients.
 - `crates/decodex-postgres/` owns the PostgreSQL product-state adapter: explicit
   connection configuration, embedded immutable migrations, optimistic transactions,
-  leases, append-only activity, transactional outbox delivery, and inert account/window
-  metadata. XY-1307 wires the typed connection data through runtime composition into the
+  leases, append-only activity, transactional outbox delivery, inert account/window
+  metadata, bounded history pagination, immutable snapshots, blob references, Context Pack
+  revisions, and inert rollover/fallback proposals. XY-1307 wires the typed connection data through runtime composition into the
   existing verification/migration boundary; every bootstrap failure remains fail-closed.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
@@ -68,11 +70,12 @@ idempotency whose lookup and capacity namespace are bound to the negotiated prot
 and V1.1 mutation keys cannot consume or poison one another),
 publication-epoch-bound cursor resume,
 snapshot fallback, stable
-server-identity pinning, and one bounded doctor/status result. The `decodex` and GPUI roots
+server-identity pinning, bounded doctor/status results, and a bounded typed Conversation-history
+query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
 API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
 
-The PostgreSQL adapter persists its XY-1267 foundation when `decodexd` receives one explicit
+The PostgreSQL adapter persists its XY-1267 foundation and forward-only XY-1271 history schema when `decodexd` receives one explicit
 PostgreSQL 18 Unix-socket endpoint, an operator-pinned expected server UID, and distinct migration
 and runtime identities. The socket directory must be owned by that UID and not group/other-writable.
 The adapter retains descriptor identities for the directory and socket, rejects replacement, and
@@ -87,7 +90,7 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical immutable V1 migration. The five expected safety/retention
+source bodies matching the canonical embedded migrations. The twenty-nine expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
 indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
@@ -100,7 +103,12 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 `public.refinery_schema_history` is always schema-qualified and must have table SELECT only. Its
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
-options, writes, and table DDL privileges are unsafe. The two bound identity sequences require
+options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
+function-local `pg_catalog, decodex` search path. Exactly three narrowly scoped functions are
+security definers: bounded cursor issuance inserts opaque issued-only continuations, bounded snapshot
+pruning removes expired cursor/version chains under serialized caps, and trigger-only history-version
+capture appends immutable item versions. Runtime cannot insert cursor rows or execute capture directly.
+The two bound identity sequences require
 USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
 are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.
 Missing, malformed, unsafe,
@@ -127,6 +135,42 @@ PostgreSQL socket recreation requires restarting `decodexd` so bootstrap can est
 operator-authorized pin.
 The legacy `~/.codex/decodex` SQLite/config layout is frozen provenance, not a vNext
 input or fallback.
+
+The daemon history query is read-only, uses opaque PostgreSQL-issued cursors whose persisted rows bind
+the Conversation, high-water snapshot, page size, positive position, exact item, and issued-parent chain, returns
+at most eight items per WebSocket result, and verifies referenced blob bytes before returning
+metadata. Only the page-level next cursor is exposed; page size is fixed for its chain. Cursor rows
+expire after one hour, subsequent issuance prunes expired chains, and serialized hard limits cap
+storage at 512 rows per Conversation and 4,096 globally. Never-issued, expired, cross-Conversation,
+changed-size, and edited tokens fail closed; capacity refusal is typed. Domain, PostgreSQL, adapter
+read/write, and wire boundaries enforce one canonical bounded
+`type/subtype` media-type invariant. Wire decode bounds page cardinality, blob length, SHA-256 text,
+media type, and a core-owned flat credential-negative metadata projection of at most 32 fields
+(64-byte keys; string or boolean values; 256-byte string limit). Credential-bearing key suffixes and
+concrete authorization/token/assignment/key patterns are rejected; ordinary text such as `secret
+sauce`, `token budget`, and `session summary` remains valid. Inline and offloaded entries both carry
+the same media type and projection. Bounded grace-aged orphan reclamation is deterministic and resumable, treats only
+history, Artifact revisions, and Context Packs as live references, commits metadata deletion before
+a lock-coordinated live-reference recheck and byte removal, and coordinates with writers through
+PostgreSQL. Cursor issuance follows the canonical lock order: command receipt for mutations,
+statement-level hierarchy coordinator 1271 before executor tuple selection, cursor coordinator
+1272, then the Conversation and child rows. Hash-scoped blob coordination uses namespace 1273 and
+never nests an outer hierarchy/cursor lock around filesystem I/O. Row-level hierarchy triggers do
+not acquire the outer coordinator; their statement-level `BEFORE` guards run before PostgreSQL can
+lock an update tuple.
+RuntimeSession and Turn insert triggers author their creation/update timestamps, clear terminal
+timestamps for legal nonterminal creation, and reject direct terminal creation, so runtime SQL cannot
+persist a lifecycle state that typed services cannot represent.
+Clients
+cannot query PostgreSQL or local blob paths directly. No client mutation or artifact-download route
+is exposed by this slice.
+
+Artifact parents are transactionally coherent with one exact immutable current revision through a
+deferred composite foreign key and state guard. Revision 1 must exist before an advance, and every
+later immutable revision requires its exact legal predecessor, preventing direct-SQL gaps. Context
+Pack source manifests are staged under the
+writer lock and sealed by the immutable parent with an exact contiguous source count; runtime SQL
+cannot append, alter, delete, or commit an incomplete source manifest after persistence.
 
 The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
 Unsupported or mutating product CLI operations remain unavailable and belong to later slices, as do

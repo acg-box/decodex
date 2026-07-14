@@ -12,6 +12,14 @@ conceptual XY-1262 foundation/live-enablement split proposed by merged PR #1098 
 reviewed normative amendment. The merged proposal was evidence, not authority by
 itself. Repository authority remains normative; Linear is planning metadata.
 
+XY-1271 storage-boundary amendment accepted 2026-07-14: retain the migration and
+daemon-private runtime identities, and treat `decodexd`, that identity, and BlobStore access as one
+trusted service boundary. PostgreSQL owns committed metadata/domain/receipt/activity/outbox state;
+local CAS owns large bytes, which PostgreSQL alone cannot attest. Blob-backed commands use a
+receipt-first, fenced, exact-response saga and dedicated session-level hash plus per-shard
+coordination around create-only synchronized CAS publication. Arbitrary/manual use of the private
+runtime credential is unsupported and equivalent to daemon compromise.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the
