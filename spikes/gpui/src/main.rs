@@ -1,25 +1,31 @@
 use std::time::Duration;
 
-use decodex_gpui_spike::{WorkspaceSpike, text_input};
+use decodex_gpui_spike::WorkspaceSpike;
 use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_platform::application;
 
 fn main() {
 	application().run(|cx: &mut App| {
-		text_input::bind_keys(cx);
+		decodex_gpui_spike::bind_keys(cx);
 		let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
-		cx.open_window(
-			WindowOptions {
-				titlebar: Some(gpui::TitlebarOptions {
-					title: Some("Decodex GPUI Feasibility".into()),
+		let window = cx
+			.open_window(
+				WindowOptions {
+					titlebar: Some(gpui::TitlebarOptions {
+						title: Some("Decodex GPUI Feasibility".into()),
+						..Default::default()
+					}),
+					window_bounds: Some(WindowBounds::Windowed(bounds)),
+					focus: false,
+					show: false,
 					..Default::default()
-				}),
-				window_bounds: Some(WindowBounds::Windowed(bounds)),
-				..Default::default()
-			},
-			|window, cx| cx.new(|cx| WorkspaceSpike::new(window, cx)),
-		)
-		.expect("open GPUI spike window");
+				},
+				|window, cx| cx.new(|cx| WorkspaceSpike::new(window, cx)),
+			)
+			.expect("open GPUI spike window");
+		window
+			.update(cx, |_, window, _| window.activate_window())
+			.expect("activate GPUI spike after accessibility adapter installation");
 		cx.activate(true);
 
 		if let Ok(milliseconds) =
