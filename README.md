@@ -33,8 +33,15 @@ either identity authenticates. Missing, malformed, unsafe, unreachable, authenti
 or incompatible configuration remains typed unavailable with no fallback. Protocol V1.2
 adds one bounded, redacted doctor/status query outside mutation receipts that live-revalidates the retained PostgreSQL
 endpoint and authority without migration or repinning; V1.1 remains the previous-minor window.
-Codex live dispatch, CLI operations, authentication/TLS, remote binding, and product UI
-behavior are still unavailable until their owning slices land. The frozen v0.2 source remains under
+The active `decodex status` and `decodex doctor` commands are API-only clients of that
+V1.2 query. They select the active or `--profile NAME` typed profile without echoing its
+name, pin the stable server identity before accepting a snapshot or report, and emit human text or
+`--output json` under `decodex/cli-diagnostics/1`. Exit status is 0 only when all checks
+are ready, 1 for a complete report containing unavailable or unknown checks, and 2 for a
+closed client/configuration/protocol failure, including an incomplete current component set.
+Codex live dispatch, authentication/TLS,
+remote binding, and product UI behavior are still unavailable until their owning slices land.
+The frozen v0.2 source remains under
 `apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is not
 a compatibility runtime.
 
@@ -94,8 +101,8 @@ runtime.
   `crates/decodex-codex/`, and `crates/decodex-runtime/` are the five active vNext
   library owners.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are the active vNext
-  composition roots. `decodexd` owns the loopback server; the client roots still report
-  unavailable or disabled capability.
+  composition roots. `decodexd` owns the loopback server; the CLI is the bounded API-only
+  diagnostic client, while GPUI still reports disabled capability.
 - `apps/decodex/` preserves the frozen v0.2 package outside the active Cargo workspace.
 - `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
   release-delta, signal rendering, validation, and local ledger workflows.
