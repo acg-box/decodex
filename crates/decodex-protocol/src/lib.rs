@@ -1,15 +1,24 @@
 //! Typed vNext wire contracts and loopback endpoint policy shared by clients and
 //! `decodexd`.
 
+mod doctor;
 mod wire;
 
-pub use wire::{
-	CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
-	CommandError, CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
-	CorrelationId, Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
-	MAX_WIRE_TEXT_BYTES, ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope,
-	ResultPayload, ResumeCursor, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
-	SnapshotItem, WireScalarTooLong, WireText, decode_client_message, encode_server_message,
+pub use self::{
+	doctor::{
+		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
+		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,
+	},
+	wire::{
+		CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
+		CommandError, CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
+		CorrelationId, Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload,
+		IdempotencyKey, MAX_WIRE_TEXT_BYTES, QueryEnvelope, QueryId, QueryPayload,
+		QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
+		RefusalEnvelope, ResultPayload, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
+		ServerWelcome, SnapshotEnvelope, SnapshotItem, WireScalarTooLong, WireText,
+		decode_client_message, encode_server_message,
+	},
 };
 
 use std::{
@@ -23,12 +32,12 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// Current protocol generation and minor revision.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 1 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
 /// Oldest protocol revision accepted during a rolling client/server update.
-pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 0 };
+pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 1 };
 
 /// A version of the Decodex application protocol.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
 	/// Breaking protocol generation.
 	pub major: u16,
@@ -151,7 +160,7 @@ mod tests {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
 		assert_eq!(PREVIOUS_MINOR_VERSION.negotiate(), Ok(PREVIOUS_MINOR_VERSION));
 		assert!(matches!(
-			ProtocolVersion { major: 1, minor: 2 }.negotiate(),
+			ProtocolVersion { major: 1, minor: 3 }.negotiate(),
 			Err(VersionRefusal::UnsupportedMinor { .. })
 		));
 	}

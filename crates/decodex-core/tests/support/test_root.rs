@@ -48,9 +48,17 @@ host_path = "/srv/repos/decodex"
 
 [postgres]
 socket_directory = "/var/run/postgresql"
+expected_peer_uid = 70
+port = 5432
 database = "decodex"
-user = "decodex"
-credential_env_var = "DECODEX_POSTGRES_PASSWORD"
+
+[postgres.migration]
+user = "decodex_migration"
+credential_env_var = "DECODEX_POSTGRES_MIGRATION_PASSWORD"
+
+[postgres.runtime]
+user = "decodex_runtime"
+credential_env_var = "DECODEX_POSTGRES_RUNTIME_PASSWORD"
 
 [cache]
 max_entries = 128
