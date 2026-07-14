@@ -16,8 +16,8 @@ pub use self::{
 	},
 	config::{
 		CacheConfig, ConfigError, DecodexConfig, LocalProfile, MAX_CONFIG_BYTES,
-		PostgresConnectionConfig, ProfileName, RemoteProfile, RepositoryName, ServerHostConfig,
-		ServerProfile, ServerRepositoryPath,
+		PostgresConnectionConfig, PostgresIdentityConfig, ProfileName, RemoteProfile,
+		RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
 	},
 	identity::ServerIdentity,
 	paths::{DecodexPaths, DecodexRoot, PathError},

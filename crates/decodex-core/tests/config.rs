@@ -57,10 +57,47 @@ fn valid_configuration_keeps_profiles_and_server_host_paths_explicit() {
 
 	assert_eq!(repository.as_server_path().to_str(), Some("/srv/repos/decodex"));
 	assert_eq!(config.postgres().socket_directory().to_str(), Some("/var/run/postgresql"));
+	assert_eq!(config.postgres().expected_peer_uid(), 70);
+	assert_eq!(config.postgres().port(), 5_432);
 	assert_eq!(config.postgres().database(), "decodex");
-	assert_eq!(config.postgres().user(), "decodex");
-	assert_eq!(config.postgres().credential_env_var(), Some("DECODEX_POSTGRES_PASSWORD"));
+	assert_eq!(config.postgres().migration().user(), "decodex_migration");
+	assert_eq!(
+		config.postgres().migration().credential_env_var(),
+		Some("DECODEX_POSTGRES_MIGRATION_PASSWORD")
+	);
+	assert_eq!(config.postgres().runtime().user(), "decodex_runtime");
+	assert_eq!(
+		config.postgres().runtime().credential_env_var(),
+		Some("DECODEX_POSTGRES_RUNTIME_PASSWORD")
+	);
 	assert_eq!(config.cache().limits().max_entries(), 128);
+}
+
+#[test]
+fn landed_portless_postgres_config_keeps_the_standard_typed_default() {
+	let input = support::valid_config().replace("port = 5432\n", "");
+	let config = DecodexConfig::parse(input.as_bytes()).unwrap();
+
+	assert_eq!(config.postgres().port(), 5_432);
+}
+
+#[test]
+fn migration_and_runtime_postgres_identities_must_be_distinct() {
+	let same_role = support::valid_config()
+		.replace("user = \"decodex_runtime\"", "user = \"decodex_migration\"");
+
+	assert_eq!(
+		DecodexConfig::parse(same_role.as_bytes()).unwrap_err(),
+		ConfigError::InvalidPostgres
+	);
+
+	let same_credential = support::valid_config()
+		.replace("DECODEX_POSTGRES_RUNTIME_PASSWORD", "DECODEX_POSTGRES_MIGRATION_PASSWORD");
+
+	assert_eq!(
+		DecodexConfig::parse(same_credential.as_bytes()).unwrap_err(),
+		ConfigError::InvalidPostgres
+	);
 }
 
 #[test]
@@ -115,7 +152,7 @@ fn relative_or_escaping_server_host_paths_are_rejected() {
 
 	assert_eq!(
 		DecodexConfig::parse(relative_socket.as_bytes()).unwrap_err(),
-		ConfigError::InvalidPostgres,
+		ConfigError::InvalidPostgresHostPath,
 	);
 
 	let oversized_repository = support::valid_config()
@@ -131,7 +168,24 @@ fn relative_or_escaping_server_host_paths_are_rejected() {
 
 	assert_eq!(
 		DecodexConfig::parse(oversized_socket.as_bytes()).unwrap_err(),
+		ConfigError::InvalidPostgresHostPath,
+	);
+}
+
+#[test]
+fn malformed_postgres_fields_are_distinct_from_unsafe_host_paths() {
+	let invalid_port = support::valid_config().replace("port = 5432", "port = 0");
+
+	assert_eq!(
+		DecodexConfig::parse(invalid_port.as_bytes()).unwrap_err(),
 		ConfigError::InvalidPostgres,
+	);
+
+	let missing_peer_uid = support::valid_config().replace("expected_peer_uid = 70\n", "");
+
+	assert_eq!(
+		DecodexConfig::parse(missing_peer_uid.as_bytes()).unwrap_err(),
+		ConfigError::Malformed,
 	);
 }
 

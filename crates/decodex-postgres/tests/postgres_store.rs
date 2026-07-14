@@ -45,32 +45,102 @@ const CREDENTIAL_VALUE_VECTORS: &[&str] = &[
 ];
 const UNICODE_WHITESPACE_VECTORS: &[&str] = &["\u{a0}", "\u{85}", "\u{202f}", "\u{3000}"];
 
+fn expected_peer_uid() -> u32 {
+	// SAFETY: `geteuid` has no arguments, retained pointers, or failure mode.
+	unsafe { libc::geteuid() }
+}
+
+fn separated_configs(prefix: &str) -> Result<(Config, Config), Box<dyn Error>> {
+	let migration = Config::from_str(&env::var(format!("{prefix}_MIGRATION_DATABASE_URL"))?)?;
+	let runtime = Config::from_str(&env::var(format!("{prefix}_RUNTIME_DATABASE_URL"))?)?;
+
+	Ok((migration, runtime))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 migration harness"]
+async fn postgres_migration_contract() -> Result<(), Box<dyn Error>> {
+	let (migration, _) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::migrate(migration, expected_peer_uid()).await?;
+
+	Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires the isolated PostgreSQL 18 harness"]
 async fn postgres_store_contract() -> Result<(), Box<dyn Error>> {
-	let database_url = env::var("DECODEX_TEST_DATABASE_URL")?;
-	let config = Config::from_str(&database_url)?;
-	let store = PostgresStore::connect(config.clone()).await?;
-	let (client, connection) = config.connect(NoTls).await?;
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+	let (client, connection) = migration.clone().connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
+	let (runtime_client, runtime_connection) = runtime.connect(NoTls).await?;
+	let runtime_connection_task = tokio::spawn(runtime_connection);
 
 	assert_eq!(store.availability(), Availability::Available);
 
 	assert_bootstrap_and_history(&client).await?;
+	assert_runtime_is_least_privilege(&runtime_client).await?;
 	assert_account_idempotency_and_revision(&store, &client).await?;
 	assert_inert_window_and_credential_boundary(&store, &client).await?;
 	assert_duration_validation(&store, &client).await?;
 	assert_lease_contention_and_reclaim(&store).await?;
-	assert_outbox_concurrency_retry_and_restart(&store, &client, &config).await?;
+	assert_outbox_concurrency_retry_and_restart(&store, &client, &migration, &runtime).await?;
 
 	assert_eq!(store.availability(), Availability::Unavailable { reason: CLOSED });
 
 	assert_closed_pool_behavior(&store).await?;
 	assert_primary_indexes_are_plan_eligible(&client).await?;
-	assert_incompatible_history_fails_closed(&client, &config).await?;
+	assert_incompatible_history_fails_closed(&client, &migration, &runtime).await?;
 	drop(client);
+	drop(runtime_client);
 
 	connection_task.await??;
+
+	runtime_connection_task.await??;
+
+	Ok(())
+}
+
+async fn assert_runtime_is_least_privilege(client: &Client) -> Result<(), Box<dyn Error>> {
+	let attributes: (bool, bool) = client
+		.query_one("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user", &[])
+		.await
+		.map(|row| (row.get(0), row.get(1)))?;
+	let owned: bool = client
+		.query_one(
+			"SELECT EXISTS (SELECT 1 FROM pg_class AS class \
+			 JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace \
+			 WHERE namespace.nspname = 'decodex' AND class.relowner = \
+			 (SELECT oid FROM pg_roles WHERE rolname = current_user))",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(attributes, (false, false));
+	assert!(!owned);
+
+	for statement in [
+		"CREATE TABLE decodex.runtime_must_not_migrate (id bigint)",
+		"ALTER TABLE decodex.outbox ADD COLUMN runtime_must_not_own bigint",
+		"TRUNCATE decodex.outbox",
+		"SET session_replication_role = replica",
+		"UPDATE public.refinery_schema_history SET name = name WHERE version = 1",
+		"SELECT pg_catalog.setval('decodex.activity_sequence_seq', 1, false)",
+	] {
+		let error = client
+			.batch_execute(statement)
+			.await
+			.expect_err("least-privilege runtime operation is rejected");
+
+		assert_eq!(
+			error.as_db_error().map(|database| database.code()),
+			Some(&tokio_postgres::error::SqlState::INSUFFICIENT_PRIVILEGE),
+			"statement: {statement}",
+		);
+	}
 
 	Ok(())
 }
@@ -78,10 +148,9 @@ async fn postgres_store_contract() -> Result<(), Box<dyn Error>> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 restore harness"]
 async fn postgres_store_restored_contract() -> Result<(), Box<dyn Error>> {
-	let database_url = env::var("DECODEX_TEST_DATABASE_URL")?;
-	let config = Config::from_str(&database_url)?;
-	let store = PostgresStore::connect(config.clone()).await?;
-	let (client, connection) = config.connect(NoTls).await?;
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 
 	assert_eq!(store.availability(), Availability::Available);
@@ -117,10 +186,9 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn Error>> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 Turkish ICU collation harness"]
 async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn Error>> {
-	let database_url = env::var("DECODEX_TEST_COLLATION_DATABASE_URL")?;
-	let config = Config::from_str(&database_url)?;
-	let store = PostgresStore::connect(config.clone()).await?;
-	let (client, connection) = config.connect(NoTls).await?;
+	let (migration, runtime) = separated_configs("DECODEX_TEST_COLLATION")?;
+	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let locale = client
 		.query_one(
@@ -173,7 +241,11 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Err
 	let checksums: String =
 		client.query_one("SELECT current_setting('data_checksums')", &[]).await?.get(0);
 	let rows = client
-		.query("SELECT version, name, checksum FROM refinery_schema_history ORDER BY version", &[])
+		.query(
+			"SELECT version, name, checksum \
+			 FROM public.refinery_schema_history ORDER BY version",
+			&[],
+		)
 		.await?;
 	let history: Vec<(i32, String, String)> =
 		rows.into_iter().map(|row| (row.get(0), row.get(1), row.get(2))).collect();
@@ -188,22 +260,29 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Err
 	assert_eq!(history[1].1, "claim_indexes");
 	assert!(!history[1].2.is_empty());
 
-	PostgresStore::connect(Config::from_str(&env::var("DECODEX_TEST_DATABASE_URL")?)?).await?;
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 
 	let mut tcp = Config::new();
 
 	tcp.host("127.0.0.1");
 
 	assert!(matches!(
-		PostgresStore::connect(tcp).await,
+		PostgresStore::connect(tcp.clone(), tcp, expected_peer_uid()).await,
 		Err(StoreError::Incompatible(reason)) if reason.contains("Unix socket")
 	));
 
-	let mut missing_database = Config::from_str(&env::var("DECODEX_TEST_DATABASE_URL")?)?;
+	let mut missing_migration = migration;
+	let mut missing_runtime = runtime;
 
-	missing_database.dbname("decodex_xy1267_missing");
+	missing_migration.dbname("decodex_xy1267_missing");
+	missing_runtime.dbname("decodex_xy1267_missing");
 
-	assert!(matches!(PostgresStore::connect(missing_database).await, Err(StoreError::Pool(_))));
+	assert!(matches!(
+		PostgresStore::connect(missing_migration, missing_runtime, expected_peer_uid()).await,
+		Err(StoreError::Pool(_))
+	));
 
 	Ok(())
 }
@@ -648,7 +727,7 @@ async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn Er
 			"command_receipts_no_credentials",
 		),
 		(
-			"INSERT INTO decodex.leases (resource_key, holder_id, expires_at) VALUES ('Basic dXNlcjpwYXNz', '20000000-0000-0000-0000-000000000099', clock_timestamp() + interval '1 minute')",
+			"INSERT INTO decodex.leases (resource_key, holder_id, expires_at, updated_at) VALUES ('Basic dXNlcjpwYXNz', '20000000-0000-0000-0000-000000000099', statement_timestamp() + interval '1 minute', statement_timestamp())",
 			"leases_no_credentials",
 		),
 		(
@@ -1414,7 +1493,8 @@ async fn assert_closed_pool_behavior(store: &PostgresStore) -> Result<(), Box<dy
 async fn assert_outbox_concurrency_retry_and_restart(
 	store: &PostgresStore,
 	client: &Client,
-	config: &Config,
+	migration: &Config,
+	runtime: &Config,
 ) -> Result<(), Box<dyn Error>> {
 	seed_outbox_accounts(store).await?;
 
@@ -1452,7 +1532,7 @@ async fn assert_outbox_concurrency_retry_and_restart(
 		)
 		.await?;
 
-	assert_outbox_retry_and_restart(store, client, config).await
+	assert_outbox_retry_and_restart(store, client, migration, runtime).await
 }
 
 async fn seed_outbox_accounts(store: &PostgresStore) -> Result<(), Box<dyn Error>> {
@@ -1479,7 +1559,8 @@ async fn seed_outbox_accounts(store: &PostgresStore) -> Result<(), Box<dyn Error
 async fn assert_outbox_retry_and_restart(
 	store: &PostgresStore,
 	client: &Client,
-	config: &Config,
+	migration: &Config,
+	runtime: &Config,
 ) -> Result<(), Box<dyn Error>> {
 	let retry = store.claim_outbox(WORKER_A, 1, Duration::from_secs(1)).await?.remove(0);
 
@@ -1531,17 +1612,19 @@ async fn assert_outbox_retry_and_restart(
 	store.begin_outbox_effect(ambiguous.id, WORKER_A, &ambiguous.claim_token).await?;
 	store.close();
 
-	assert_restart_reconciliation(client, config, &ambiguous).await
+	assert_restart_reconciliation(client, migration, runtime, &ambiguous).await
 }
 
 async fn assert_restart_reconciliation(
 	client: &Client,
-	config: &Config,
+	migration: &Config,
+	runtime: &Config,
 	ambiguous: &OutboxClaim,
 ) -> Result<(), Box<dyn Error>> {
 	time::sleep(Duration::from_millis(60)).await;
 
-	let restarted = PostgresStore::connect(config.clone()).await?;
+	let restarted =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 	let recovered = restarted.claim_outbox(WORKER_A, 1, Duration::from_secs(1)).await?.remove(0);
 
 	assert_eq!(recovered.id, ambiguous.id);
@@ -1887,31 +1970,37 @@ async fn assert_effect_absent_dead_letter(
 
 async fn assert_incompatible_history_fails_closed(
 	client: &Client,
-	config: &Config,
+	migration: &Config,
+	runtime: &Config,
 ) -> Result<(), Box<dyn Error>> {
+	let live =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+
 	client
 		.execute(
-			"UPDATE refinery_schema_history \
-			 SET checksum = (checksum::numeric + 1)::text WHERE version = 1",
+			"UPDATE public.refinery_schema_history SET name = name || '_tampered' \
+			 WHERE version = 1",
 			&[],
 		)
 		.await?;
 
-	let incompatible = PostgresStore::connect(config.clone()).await;
+	assert!(matches!(live.revalidate().await, Err(StoreError::Incompatible(_))));
 
 	client
 		.execute(
-			"UPDATE refinery_schema_history \
-			 SET checksum = (checksum::numeric - 1)::text WHERE version = 1",
+			"UPDATE public.refinery_schema_history SET name = \
+			 regexp_replace(name, '_tampered$', '') WHERE version = 1",
 			&[],
 		)
 		.await?;
+	live.revalidate().await?;
+	client.batch_execute("DROP EXTENSION pgcrypto CASCADE").await?;
 
-	assert!(incompatible.is_err());
+	assert!(matches!(live.revalidate().await, Err(StoreError::Incompatible(_))));
 
-	let recovered = PostgresStore::connect(config.clone()).await?;
-
-	recovered.close();
+	client.batch_execute("CREATE EXTENSION pgcrypto").await?;
+	live.revalidate().await?;
+	live.close();
 
 	Ok(())
 }
