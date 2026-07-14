@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Error;
 
-use crate::{ProtocolVersion, SupportedVersions, VersionRefusal};
+use crate::{DoctorReport, ProtocolVersion, SupportedVersions, VersionRefusal};
 
 /// Maximum UTF-8 size of any human-readable text carried by V1.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
@@ -57,7 +57,7 @@ impl Display for WireScalarTooLong {
 	}
 }
 
-/// Identity generated for one server lifetime.
+/// Stable server-host identity retained across daemon lifetimes.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct ServerId(String);
@@ -68,6 +68,25 @@ impl ServerId {
 	}
 }
 impl<'de> Deserialize<'de> for ServerId {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		WireText::deserialize(deserializer).map(|value| Self(value.0))
+	}
+}
+
+/// Ephemeral identity for one in-memory publication/replay epoch.
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct ServerInstanceId(String);
+impl ServerInstanceId {
+	/// Validate and construct a bounded server-instance identity.
+	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
+		WireText::new(value).map(|value| Self(value.0))
+	}
+}
+impl<'de> Deserialize<'de> for ServerInstanceId {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
@@ -87,6 +106,25 @@ impl ClientCommandId {
 	}
 }
 impl<'de> Deserialize<'de> for ClientCommandId {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		WireText::deserialize(deserializer).map(|value| Self(value.0))
+	}
+}
+
+/// Client-generated identity for one live query observation.
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct QueryId(String);
+impl QueryId {
+	/// Validate and construct a bounded query identity.
+	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
+		WireText::new(value).map(|value| Self(value.0))
+	}
+}
+impl<'de> Deserialize<'de> for QueryId {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: Deserializer<'de>,
@@ -171,7 +209,7 @@ impl<'de> Deserialize<'de> for CausationId {
 	}
 }
 
-/// Monotonic cursor in one server lifetime.
+/// Monotonic cursor in one in-memory publication epoch.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Cursor(pub u64);
@@ -189,6 +227,8 @@ pub enum ClientMessage {
 	Hello(ClientHello),
 	/// Execute one typed application command after negotiation.
 	Command(CommandEnvelope),
+	/// Observe current typed state after negotiation without creating a receipt.
+	Query(QueryEnvelope),
 }
 
 /// First client message and optional reconnect position.
@@ -196,15 +236,23 @@ pub enum ClientMessage {
 pub struct ClientHello {
 	/// Client protocol revision.
 	pub version: ProtocolVersion,
+	/// Optional stable server-host identity pin. It is enforced before status or commands.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub expected_server_id: Option<ServerId>,
 	/// Previously observed server/cursor pair, when reconnecting.
 	pub resume: Option<ResumeCursor>,
 }
 
-/// A cursor is meaningful only for the server lifetime that issued it.
+/// A cursor is meaningful only for the publication epoch that issued it.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ResumeCursor {
-	/// Server lifetime that issued the cursor.
+	/// Stable server host that issued the cursor.
 	pub server_id: ServerId,
+	/// Ephemeral publication epoch that issued the cursor.
+	///
+	/// V1.1 clients omit this field and therefore receive a snapshot fallback.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub instance_id: Option<ServerInstanceId>,
 	/// Last snapshot or event cursor fully applied by the client.
 	///
 	/// A welcome high-water mark is informational and is not an applied checkpoint.
@@ -228,6 +276,25 @@ pub struct CommandEnvelope {
 	pub causation_id: Option<CausationId>,
 	/// Typed application command.
 	pub payload: CommandPayload,
+}
+
+/// A live read envelope. Queries are observations, not idempotent mutations.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct QueryEnvelope {
+	/// Negotiated protocol revision.
+	pub version: ProtocolVersion,
+	/// Identity echoed with this observation; it is not a deduplication key.
+	pub query_id: QueryId,
+	/// Typed live query.
+	pub payload: QueryPayload,
+}
+
+/// Live queries available in V1.2.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "name", content = "arguments", rename_all = "snake_case")]
+pub enum QueryPayload {
+	/// Revalidate and return the bounded authoritative doctor/status report.
+	GetDoctorStatus,
 }
 
 /// Commands available before product-specific application services land.
@@ -255,6 +322,8 @@ pub enum ServerMessage {
 	CommandReceipt(CommandReceipt),
 	/// Deterministic command result.
 	CommandResult(CommandResultEnvelope),
+	/// Fresh result of one live query observation.
+	QueryResult(QueryResultEnvelope),
 	/// Explicit protocol refusal.
 	Refusal(RefusalEnvelope),
 }
@@ -266,8 +335,13 @@ pub struct ServerWelcome {
 	pub version: ProtocolVersion,
 	/// Server compatibility window.
 	pub supported: SupportedVersions,
-	/// Identity of this server lifetime.
+	/// Stable identity of this server host.
 	pub server_id: ServerId,
+	/// Ephemeral identity of the in-memory publication epoch.
+	///
+	/// This is present for V1.2 and omitted for the compatible V1.1 shape.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
 	pub cursor: Cursor,
 	/// Reconnect strategy selected by the server.
@@ -291,7 +365,7 @@ pub enum ReconnectMode {
 pub struct SnapshotEnvelope {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
-	/// Identity of the server lifetime producing the snapshot.
+	/// Stable identity of the server host producing the snapshot.
 	pub server_id: ServerId,
 	/// Cursor represented by the snapshot.
 	pub cursor: Cursor,
@@ -341,7 +415,7 @@ pub enum Channel {
 pub struct EventEnvelope {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
-	/// Identity of the publishing server lifetime.
+	/// Stable identity of the publishing server host.
 	pub server_id: ServerId,
 	/// Monotonic publication cursor.
 	pub cursor: Cursor,
@@ -370,7 +444,7 @@ pub enum EventPayload {
 	},
 }
 
-/// Server-lifetime receipt disposition for one command attempt.
+/// Publication-epoch receipt disposition for one command attempt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptDisposition {
@@ -382,12 +456,12 @@ pub enum ReceiptDisposition {
 	Refused,
 }
 
-/// Server-lifetime receipt returned before deterministic result readback.
+/// Publication-epoch receipt returned before deterministic result readback.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct CommandReceipt {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
-	/// Identity of the receiving server lifetime.
+	/// Stable identity of the receiving server host.
 	pub server_id: ServerId,
 	/// Identity of this command attempt.
 	pub client_command_id: ClientCommandId,
@@ -404,7 +478,7 @@ pub struct CommandReceipt {
 pub struct CommandResultEnvelope {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
-	/// Identity of the receiving server lifetime.
+	/// Stable identity of the receiving server host.
 	pub server_id: ServerId,
 	/// Identity of this command attempt.
 	pub client_command_id: ClientCommandId,
@@ -441,6 +515,27 @@ pub enum ResultPayload {
 	},
 }
 
+/// Fresh live-query result. Reusing a query identity performs another observation.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct QueryResultEnvelope {
+	/// Negotiated protocol revision.
+	pub version: ProtocolVersion,
+	/// Stable identity of the server host producing the observation.
+	pub server_id: ServerId,
+	/// Client identity for this observation.
+	pub query_id: QueryId,
+	/// Typed current result.
+	pub payload: QueryResultPayload,
+}
+
+/// Typed live-query results available in V1.2.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "name", content = "data", rename_all = "snake_case")]
+pub enum QueryResultPayload {
+	/// Bounded authoritative doctor/status readback.
+	DoctorStatus(DoctorReport),
+}
+
 /// Typed command rejection details.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "reason", rename_all = "snake_case")]
@@ -469,7 +564,7 @@ pub enum CommandError {
 /// A refusal that leaves no ambiguous application mutation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RefusalEnvelope {
-	/// Identity of the refusing server lifetime.
+	/// Stable identity of the refusing server host.
 	pub server_id: ServerId,
 	/// Typed refusal detail.
 	pub refusal: Refusal,
@@ -481,6 +576,13 @@ pub struct RefusalEnvelope {
 pub enum Refusal {
 	/// The requested version falls outside the compatibility window.
 	UnsupportedVersion(VersionRefusal),
+	/// The client pinned a different stable server host.
+	ServerIdentityMismatch {
+		/// Identity required by the client profile.
+		expected: ServerId,
+		/// Identity presented by this server.
+		actual: ServerId,
+	},
 	/// The client violated connection or message ordering rules.
 	ProtocolViolation {
 		/// Bounded explanation of the violated rule.
@@ -507,10 +609,10 @@ pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 mod tests {
 	use crate::{
 		CURRENT_VERSION, CausationId, ClientCommandId, CorrelationId, EntityId, IdempotencyKey,
-		MAX_WIRE_TEXT_BYTES, ServerId, WireText,
+		MAX_WIRE_TEXT_BYTES, QueryId, ServerId, ServerInstanceId, WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
-			ResumeCursor,
+			QueryEnvelope, QueryPayload, ResumeCursor,
 		},
 	};
 
@@ -535,11 +637,29 @@ mod tests {
 	}
 
 	#[test]
+	fn query_wire_shape_is_live_and_round_trips() {
+		let message = ClientMessage::Query(QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: QueryId::new("query-1").expect("bounded fixture ID"),
+			payload: QueryPayload::GetDoctorStatus,
+		});
+		let encoded = serde_json::to_string(&message).unwrap();
+
+		assert!(encoded.contains("\"type\":\"query\""));
+		assert!(encoded.contains("\"name\":\"get_doctor_status\""));
+		assert_eq!(serde_json::from_str::<ClientMessage>(&encoded).unwrap(), message);
+	}
+
+	#[test]
 	fn hello_wire_shape_is_a_stable_json_golden() {
 		let message = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
+			expected_server_id: None,
 			resume: Some(ResumeCursor {
 				server_id: ServerId::new("server-a").expect("bounded fixture ID"),
+				instance_id: Some(
+					ServerInstanceId::new("instance-a").expect("bounded fixture instance ID"),
+				),
 				cursor: Cursor(42),
 			}),
 		});
@@ -547,10 +667,24 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":1,"minor":1},"#,
-				r#""resume":{"server_id":"server-a","cursor":42}}}"#,
+				r#"{"type":"hello","body":{"version":{"major":1,"minor":2},"#,
+				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
+	}
+
+	#[test]
+	fn previous_minor_hello_without_publication_epoch_decodes_compatibly() {
+		let encoded = concat!(
+			r#"{"type":"hello","body":{"version":{"major":1,"minor":1},"#,
+			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
+		);
+		let ClientMessage::Hello(hello) = serde_json::from_str(encoded).unwrap() else {
+			panic!("expected hello");
+		};
+		let resume = hello.resume.expect("expected previous-minor resume cursor");
+
+		assert_eq!(resume.instance_id, None);
 	}
 
 	#[test]
