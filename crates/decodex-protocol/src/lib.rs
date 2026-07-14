@@ -1,10 +1,12 @@
 //! Typed vNext wire contracts and loopback endpoint policy shared by clients and
 //! `decodexd`.
 
+mod client;
 mod doctor;
 mod wire;
 
 pub use self::{
+	client::{ClientFailure, ClientProfile, DoctorClient, ProfileKind},
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,

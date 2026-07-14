@@ -66,6 +66,11 @@ impl ServerId {
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
 		WireText::new(value).map(|value| Self(value.0))
 	}
+
+	/// Borrow the bounded stable identity text.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
 }
 impl<'de> Deserialize<'de> for ServerId {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

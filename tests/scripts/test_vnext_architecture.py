@@ -43,6 +43,22 @@ EXPECTED_CORE_EXTERNAL_DEPENDENCIES = {
     "toml",
 }
 
+EXPECTED_PROTOCOL_EXTERNAL_DEPENDENCIES = {
+    "futures-util",
+    "serde",
+    "serde_json",
+    "tempfile",
+    "tokio",
+    "tokio-tungstenite",
+}
+
+EXPECTED_CLI_EXTERNAL_DEPENDENCIES = {
+    "clap",
+    "serde",
+    "serde_json",
+    "tokio",
+}
+
 EXPECTED_WORKSPACE_MANIFESTS = {
     "apps/decodex-cli/Cargo.toml",
     "apps/decodex-gpui/Cargo.toml",
@@ -105,6 +121,26 @@ class VnextArchitectureTests(unittest.TestCase):
 
         self.assertEqual(actual, EXPECTED_CORE_EXTERNAL_DEPENDENCIES)
 
+    def test_protocol_client_transport_dependencies_are_exact(self):
+        owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        actual = {
+            dependency["name"]
+            for dependency in self.packages["decodex-protocol"]["dependencies"]
+            if dependency["name"] not in owned_packages
+        }
+
+        self.assertEqual(actual, EXPECTED_PROTOCOL_EXTERNAL_DEPENDENCIES)
+
+    def test_cli_external_dependencies_are_exact(self):
+        owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        actual = {
+            dependency["name"]
+            for dependency in self.packages["decodex-cli"]["dependencies"]
+            if dependency["name"] not in owned_packages
+        }
+
+        self.assertEqual(actual, EXPECTED_CLI_EXTERNAL_DEPENDENCIES)
+
     def test_workspace_owner_set_is_exact(self):
         actual = {
             str(
@@ -138,6 +174,26 @@ class VnextArchitectureTests(unittest.TestCase):
                 for dependency in self.packages[package_name]["dependencies"]
             }
             self.assertTrue(dependencies.isdisjoint(forbidden))
+
+    def test_cli_source_has_no_direct_mutation_or_infrastructure_escape(self):
+        cli_root = ROOT / "apps/decodex-cli"
+        source = "\n".join(
+            path.read_text()
+            for path in sorted(cli_root.rglob("*.rs"))
+        )
+        forbidden = {
+            "decodex_core",
+            "decodex_runtime",
+            "decodex_postgres",
+            "decodex_codex",
+            "tokio_postgres",
+            "rusqlite",
+            "std::fs",
+            "OpenOptions",
+            "std::process::Command",
+        }
+
+        self.assertEqual({token for token in forbidden if token in source}, set())
 
 
 if __name__ == "__main__":
