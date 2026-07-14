@@ -48,7 +48,9 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		)
 		.await?;
 	let runner = migrations::runner();
-	let expected = runner.get_migrations();
+	let mut expected = runner.get_migrations().iter().collect::<Vec<_>>();
+
+	expected.sort_by_key(|migration| migration.version());
 
 	if actual.len() != expected.len() {
 		return Err(StoreError::Incompatible(format!(

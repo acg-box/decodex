@@ -34,6 +34,7 @@ pub struct ServiceBootstrap {
 	server_id: ServerId,
 	address: SocketAddr,
 	store: ProductStore,
+	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
 }
 impl ServiceBootstrap {
@@ -60,7 +61,12 @@ impl ServiceBootstrap {
 	fn protocol_server(self, config: ServerConfig) -> ProtocolServer<ServiceApplication> {
 		ProtocolServer::new(
 			self.server_id,
-			ServiceApplication::new(self.store, CodexAdapter::unavailable(), self.doctor),
+			ServiceApplication::new(
+				self.store,
+				CodexAdapter::unavailable(),
+				self.blob_store,
+				self.doctor,
+			),
 			config,
 		)
 	}
@@ -117,7 +123,8 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	let repositories = loaded
 		.as_ref()
 		.map_or_else(|error| DoctorStatus::Unavailable(config_issue(*error)), server_repositories);
-	let blob_integrity = match BlobStore::open(paths.clone()) {
+	let blob_store = BlobStore::open(paths.clone());
+	let blob_integrity = match &blob_store {
 		Ok(_) => DoctorStatus::Unknown(DoctorIssue::NotProbed),
 		Err(_) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	};
@@ -148,7 +155,13 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		},
 	);
 
-	ServiceBootstrap { server_id, address: DEFAULT_ADDRESS, store, doctor }
+	ServiceBootstrap {
+		server_id,
+		address: DEFAULT_ADDRESS,
+		store,
+		blob_store: blob_store.ok(),
+		doctor,
+	}
 }
 
 fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
@@ -170,6 +183,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		server_id,
 		address: DEFAULT_ADDRESS,
 		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
+		blob_store: None,
 		doctor,
 	}
 }

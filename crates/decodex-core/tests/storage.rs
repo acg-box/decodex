@@ -2,10 +2,11 @@
 
 #[path = "support/test_root.rs"] mod support;
 
-use std::fs;
+use std::{collections::BTreeSet, fs, thread, time::Duration};
 
 use getrandom as _;
 #[cfg(unix)] use libc as _;
+use regex as _;
 use serde as _;
 use sha2 as _;
 use tempfile::NamedTempFile;
@@ -67,6 +68,41 @@ fn blob_inputs_and_hash_text_are_mechanically_bounded() {
 		store.put(&oversized).unwrap_err(),
 		StorageError::BlobTooLarge { limit: MAX_BLOB_BYTES },
 	);
+}
+
+#[test]
+fn blob_inventory_is_bounded_resumable_and_complete_beyond_4096_files() {
+	let fixture = TestRoot::new();
+	let store = BlobStore::open(fixture.paths.clone()).expect("blob store");
+	let expected = (0_u32..4_100)
+		.map(|index| store.put(&index.to_be_bytes()).expect("inventory blob"))
+		.collect::<BTreeSet<_>>();
+
+	thread::sleep(Duration::from_millis(5));
+
+	let mut cursor = None;
+	let mut observed = BTreeSet::new();
+	let mut passes = 0_usize;
+
+	loop {
+		let page = store
+			.old_inventory(Duration::from_millis(1), 17, cursor)
+			.expect("bounded inventory page");
+
+		assert!(page.entries.len() <= 17);
+
+		observed.extend(page.entries.into_iter().map(|entry| entry.hash));
+
+		cursor = page.next_cursor;
+		passes += 1;
+
+		if cursor.is_none() {
+			break;
+		}
+	}
+
+	assert!(passes > 256, "small pages require resumable within-shard continuation");
+	assert_eq!(observed, expected);
 }
 
 #[cfg(unix)]

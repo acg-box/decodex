@@ -81,6 +81,17 @@ never read PostgreSQL, rollout files, blobs, or repositories directly. V1 is sin
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
 
+`decodexd`, its daemon-private PostgreSQL runtime identity, and its BlobStore access form one
+trusted service boundary. PostgreSQL owns committed metadata, domain state, command receipts,
+activity, and outbox records; local content-addressed storage owns large bytes. PostgreSQL alone
+does not attest external bytes, and arbitrary/manual use of the daemon credential is unsupported
+and equivalent to daemon compromise. Blob-backed commands use a durable receipt-first saga: a
+committed pending receipt binds protocol, operation, project/scope/entity, request digest, expected
+revision, and payload hashes/lengths before publication; sorted session hash locks and per-shard
+admission serialize create-only verified publication; transaction B atomically registers
+metadata/domain references/evidence, stores the exact response bytes, and completes the fenced
+receipt. Exact replay returns those bytes; conflicting reuse fails before effects.
+
 ## Conversation, context, and communication
 
 Every meaningful Decodex-created thread uses `ephemeral=false`, the shared normal
@@ -95,7 +106,20 @@ the separate live enablement gate records the required supported discovery readb
 A logical Conversation may span RuntimeSessions when size, resume latency, compatibility,
 or account failure requires it. Each mapping records conversation, session, Codex thread,
 account, profile snapshot, and last known turn. Decodex persists normalized visible
-messages/items for UI and remote access and offloads large payloads to blobs.
+messages/items for UI and remote access and offloads large payloads to blobs. Issued history cursors
+bind both membership high-water and an append-only immutable item-version sequence, so later
+streaming mutation cannot change a page or replay. Cursor chains are opaque, Conversation-bound,
+fixed-page-size, one-hour expiring, and bounded to 512 rows per Conversation and 4,096 globally;
+bounded pruning retains versions required by active cursors or exact receipt replay. Successful
+reads verify every direct and transitive referenced blob before returning typed metadata.
+The daemon preserves a canonical media type for inline and offloaded entries and exposes only a
+flat credential-negative metadata map: at most 32 fields, 64-byte keys, and boolean or 256-byte
+string values. Core owns this typed representation and every Rust boundary reuses it. Keys whose
+ASCII-alphanumeric normalized form ends in a credential-bearing suffix are rejected, as are concrete
+authorization schemes, known token/key formats, credential assignments, embedded URL passwords, and
+private-key headers. Ordinary prose containing words such as `secret`, `token`, or `session` is not
+credential material. PostgreSQL enforces the equivalent closed predicate. Nested/raw app-server JSON
+and unsupported, oversized, or credential-shaped forms are rejected.
 `thread/read(includeTurns=true)` is a lossy reconciliation source. External Codex activity
 may be provenance-imported for ordinary Quick/Advisor/Lead conversations; on an active
 ManagedRun it marks the session `diverged` and blocks side effects until tool/repository
