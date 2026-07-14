@@ -6,7 +6,32 @@ use sha2::{Digest as _, Sha256};
 use crate::StoreError;
 
 const FOUNDATION_MIGRATION: &str = include_str!("../migrations/V1__persistence_foundation.sql");
-const FUNCTION_CONTRACTS: [FunctionContract; 16] = [
+const CONVERSATION_MIGRATION: &str = include_str!("../migrations/V3__conversation_history.sql");
+const FUNCTION_CONTRACTS: [FunctionContract; 34] = [
+	FunctionContract {
+		name: "is_canonical_media_type",
+		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
+		migration_signature: "is_canonical_media_type(value text)",
+		arguments: "value text",
+		result: "boolean",
+		language: "sql",
+		volatility: "i",
+		strict: true,
+		returns_set: false,
+		rows: 0.0,
+	},
+	FunctionContract {
+		name: "is_history_metadata_projection",
+		lookup_signature: "decodex.is_history_metadata_projection(pg_catalog.jsonb)",
+		migration_signature: "is_history_metadata_projection(document jsonb)",
+		arguments: "document jsonb",
+		result: "boolean",
+		language: "plpgsql",
+		volatility: "i",
+		strict: true,
+		returns_set: false,
+		rows: 0.0,
+	},
 	FunctionContract {
 		name: "normalize_unicode_whitespace",
 		lookup_signature: "decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -199,14 +224,119 @@ const FUNCTION_CONTRACTS: [FunctionContract; 16] = [
 		returns_set: false,
 		rows: 0.0,
 	},
+	FunctionContract {
+		name: "prune_history_snapshots",
+		lookup_signature: "decodex.prune_history_snapshots()",
+		migration_signature: "prune_history_snapshots()",
+		arguments: "",
+		result: "bigint",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: false,
+		rows: 0.0,
+	},
+	FunctionContract {
+		name: "issue_history_cursor",
+		lookup_signature: "decodex.issue_history_cursor(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int4)",
+		migration_signature: "issue_history_cursor(\n\tp_conversation_id uuid,\n\tp_parent_cursor_id uuid,\n\tp_page_size integer\n)",
+		arguments: "p_conversation_id uuid, p_parent_cursor_id uuid, p_page_size integer",
+		result: "uuid",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: false,
+		rows: 0.0,
+	},
+	trigger_contract(
+		"enforce_command_receipt_state",
+		"decodex.enforce_command_receipt_state()",
+		"enforce_command_receipt_state()",
+	),
+	trigger_contract(
+		"acquire_hierarchy_coordinator",
+		"decodex.acquire_hierarchy_coordinator()",
+		"acquire_hierarchy_coordinator()",
+	),
+	trigger_contract(
+		"canonicalize_created_at",
+		"decodex.canonicalize_created_at()",
+		"canonicalize_created_at()",
+	),
+	trigger_contract(
+		"enforce_blob_object_state",
+		"decodex.enforce_blob_object_state()",
+		"enforce_blob_object_state()",
+	),
+	trigger_contract(
+		"enforce_conversation_state",
+		"decodex.enforce_conversation_state()",
+		"enforce_conversation_state()",
+	),
+	trigger_contract(
+		"enforce_runtime_session_state",
+		"decodex.enforce_runtime_session_state()",
+		"enforce_runtime_session_state()",
+	),
+	trigger_contract("enforce_turn_state", "decodex.enforce_turn_state()", "enforce_turn_state()"),
+	trigger_contract(
+		"enforce_history_item_state",
+		"decodex.enforce_history_item_state()",
+		"enforce_history_item_state()",
+	),
+	trigger_contract(
+		"capture_history_item_version",
+		"decodex.capture_history_item_version()",
+		"capture_history_item_version()",
+	),
+	trigger_contract(
+		"enforce_artifact_state",
+		"decodex.enforce_artifact_state()",
+		"enforce_artifact_state()",
+	),
+	trigger_contract(
+		"enforce_artifact_revision_state",
+		"decodex.enforce_artifact_revision_state()",
+		"enforce_artifact_revision_state()",
+	),
+	trigger_contract(
+		"enforce_context_pack_state",
+		"decodex.enforce_context_pack_state()",
+		"enforce_context_pack_state()",
+	),
+	trigger_contract(
+		"enforce_context_pack_source_state",
+		"decodex.enforce_context_pack_source_state()",
+		"enforce_context_pack_source_state()",
+	),
+	trigger_contract(
+		"enforce_history_cursor_state",
+		"decodex.enforce_history_cursor_state()",
+		"enforce_history_cursor_state()",
+	),
 ];
-const SAFETY_FUNCTIONS: [&str; 5] = [
+const SAFETY_FUNCTIONS: [&str; 19] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"forbid_mutation_of_activity",
 	"enforce_outbox_terminal_retention",
 	"forbid_outbox_truncate",
+	"enforce_command_receipt_state",
+	"acquire_hierarchy_coordinator",
+	"canonicalize_created_at",
+	"enforce_blob_object_state",
+	"enforce_conversation_state",
+	"enforce_runtime_session_state",
+	"enforce_turn_state",
+	"enforce_history_item_state",
+	"capture_history_item_version",
+	"enforce_artifact_state",
+	"enforce_artifact_revision_state",
+	"enforce_context_pack_state",
+	"enforce_context_pack_source_state",
+	"enforce_history_cursor_state",
 ];
+const SAFETY_TRIGGER_COUNT: usize = 29;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -363,7 +493,21 @@ WITH set_roles AS (
   ('command_receipts', true, true, true, false),
   ('activity', true, true, false, false),
   ('leases', true, true, true, false),
-  ('outbox', true, true, true, true)
+  ('outbox', true, true, true, true),
+  ('conversations', true, true, true, false),
+  ('profile_snapshots', true, true, false, false),
+  ('account_snapshots', true, true, false, false),
+  ('runtime_sessions', true, true, true, false),
+  ('blob_objects', true, true, false, true),
+  ('artifacts', true, true, true, false),
+  ('artifact_revisions', true, true, false, false),
+  ('turns', true, true, true, false),
+  ('history_items', true, true, true, false),
+  ('history_item_versions', true, false, false, false),
+  ('history_cursors', true, false, false, false),
+  ('context_packs', true, true, false, false),
+  ('context_pack_sources', true, true, false, false),
+  ('transition_proposals', true, true, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -372,7 +516,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 6
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 20
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -472,9 +616,10 @@ WITH set_roles AS (
   FROM pg_catalog.pg_roles AS role
   WHERE role.rolname = session_user
      OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
-), expected(table_name, column_name) AS (VALUES
-  ('activity', 'sequence'),
-  ('outbox', 'id')
+), expected(table_name, column_name, required_usage) AS (VALUES
+  ('activity', 'sequence', true),
+  ('outbox', 'id', true),
+  ('history_item_versions', 'version_sequence', false)
 ), expected_sequences AS (
   SELECT
     expected.*,
@@ -490,15 +635,15 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind = 'S'
 )
 SELECT
-  (SELECT count(*) FROM actual_sequences) = 2
-    AND (SELECT count(*) FROM expected_sequences WHERE oid IS NOT NULL) = 2
+  (SELECT count(*) FROM actual_sequences) = 3
+    AND (SELECT count(*) FROM expected_sequences WHERE oid IS NOT NULL) = 3
     AND NOT EXISTS (
       SELECT 1 FROM actual_sequences
       WHERE oid NOT IN (SELECT oid FROM expected_sequences)
     ),
   COALESCE((
     SELECT pg_catalog.bool_and(
-      pg_catalog.has_sequence_privilege(session_user, oid, 'USAGE')
+      pg_catalog.has_sequence_privilege(session_user, oid, 'USAGE') = required_usage
     ) FROM expected_sequences
   ), false),
   EXISTS (
@@ -531,7 +676,31 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('outbox', 'outbox_operation_time', 'enforce_outbox_operation_time', 23),
   ('activity', 'activity_append_only', 'forbid_mutation_of_activity', 27),
   ('outbox', 'outbox_terminal_retention', 'enforce_outbox_terminal_retention', 27),
-  ('outbox', 'outbox_truncate_forbidden', 'forbid_outbox_truncate', 34)
+  ('outbox', 'outbox_truncate_forbidden', 'forbid_outbox_truncate', 34),
+  ('command_receipts', 'command_receipts_state_guard', 'enforce_command_receipt_state', 31),
+  ('conversations', 'conversations_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('conversations', 'conversations_state_guard', 'enforce_conversation_state', 23),
+  ('profile_snapshots', 'profile_snapshots_created_at_guard', 'canonicalize_created_at', 7),
+  ('account_snapshots', 'account_snapshots_created_at_guard', 'canonicalize_created_at', 7),
+  ('runtime_sessions', 'runtime_sessions_state_guard', 'enforce_runtime_session_state', 23),
+  ('runtime_sessions', 'runtime_sessions_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('blob_objects', 'blob_objects_state_guard', 'enforce_blob_object_state', 7),
+  ('turns', 'turns_state_guard', 'enforce_turn_state', 23),
+  ('turns', 'turns_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('history_items', 'history_items_state_guard', 'enforce_history_item_state', 23),
+  ('history_items', 'history_items_version_capture', 'capture_history_item_version', 21),
+  ('history_items', 'history_items_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('history_cursors', 'history_cursors_state_guard', 'enforce_history_cursor_state', 7),
+  ('artifacts', 'artifacts_state_guard', 'enforce_artifact_state', 23),
+  ('artifacts', 'artifacts_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('artifact_revisions', 'artifact_revisions_state_guard', 'enforce_artifact_revision_state', 7),
+  ('artifact_revisions', 'artifact_revisions_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('context_packs', 'context_packs_state_guard', 'enforce_context_pack_state', 31),
+  ('context_packs', 'context_packs_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('context_pack_sources', 'context_pack_sources_state_guard', 'enforce_context_pack_source_state', 31),
+  ('context_pack_sources', 'context_pack_sources_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('transition_proposals', 'transition_proposals_created_at_guard', 'canonicalize_created_at', 7),
+  ('transition_proposals', 'transition_proposals_coordinator', 'acquire_hierarchy_coordinator', 30)
 )
 SELECT
   expected.function_name,
@@ -551,7 +720,7 @@ SELECT
     AND trigger.tgnewtable IS NULL
     AND function_namespace.nspname = 'decodex'
     AND proc.proname = expected.function_name,
-  proc.oid IS NOT NULL
+  COALESCE(proc.oid IS NOT NULL
     AND function_namespace.nspname = 'decodex'
     AND proc.pronargs = 0
     AND proc.prorettype = 'pg_catalog.trigger'::pg_catalog.regtype
@@ -559,13 +728,13 @@ SELECT
     AND language.lanname = 'plpgsql'
     AND proc.provolatile = 'v'
     AND proc.proparallel = 'u'
-    AND NOT proc.prosecdef
+    AND proc.prosecdef = (expected.function_name = 'capture_history_item_version')
     AND NOT proc.proleakproof
     AND NOT proc.proisstrict
     AND NOT proc.proretset
-    AND proc.proconfig IS NULL
+    AND proc.proconfig = ARRAY['search_path=pg_catalog, decodex']
     AND proc.probin IS NULL
-    AND proc.prosqlbody IS NULL,
+    AND proc.prosqlbody IS NULL, false),
   proc.prosrc
 FROM expected
 JOIN pg_catalog.pg_namespace AS table_namespace ON table_namespace.nspname = 'decodex'
@@ -595,9 +764,7 @@ SELECT
   proc.procost,
   proc.prorows,
   proc.prokind <> 'f'
-    OR proc.prosecdef
     OR proc.proleakproof
-    OR proc.proconfig IS NOT NULL
     OR proc.probin IS NOT NULL
     OR proc.prosqlbody IS NOT NULL
     OR proc.prosupport <> 0
@@ -605,6 +772,8 @@ SELECT
     OR proc.protrftypes IS NOT NULL
     OR proc.pronargdefaults <> 0
     OR proc.proargdefaults IS NOT NULL,
+  proc.prosecdef,
+  proc.proconfig,
   proc.prosrc,
   pg_catalog.has_function_privilege(session_user, proc.oid, 'EXECUTE')
 FROM pg_catalog.pg_proc AS proc
@@ -631,7 +800,31 @@ WITH catalog_context AS MATERIALIZED (
   ('outbox', 'outbox_operation_time', 'decodex.enforce_outbox_operation_time()'),
   ('activity', 'activity_append_only', 'decodex.forbid_mutation_of_activity()'),
   ('outbox', 'outbox_terminal_retention', 'decodex.enforce_outbox_terminal_retention()'),
-  ('outbox', 'outbox_truncate_forbidden', 'decodex.forbid_outbox_truncate()')
+  ('outbox', 'outbox_truncate_forbidden', 'decodex.forbid_outbox_truncate()'),
+  ('command_receipts', 'command_receipts_state_guard', 'decodex.enforce_command_receipt_state()'),
+  ('conversations', 'conversations_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('conversations', 'conversations_state_guard', 'decodex.enforce_conversation_state()'),
+  ('profile_snapshots', 'profile_snapshots_created_at_guard', 'decodex.canonicalize_created_at()'),
+  ('account_snapshots', 'account_snapshots_created_at_guard', 'decodex.canonicalize_created_at()'),
+  ('runtime_sessions', 'runtime_sessions_state_guard', 'decodex.enforce_runtime_session_state()'),
+  ('runtime_sessions', 'runtime_sessions_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('blob_objects', 'blob_objects_state_guard', 'decodex.enforce_blob_object_state()'),
+  ('turns', 'turns_state_guard', 'decodex.enforce_turn_state()'),
+  ('turns', 'turns_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('history_items', 'history_items_state_guard', 'decodex.enforce_history_item_state()'),
+  ('history_items', 'history_items_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('history_items', 'history_items_version_capture', 'decodex.capture_history_item_version()'),
+  ('history_cursors', 'history_cursors_state_guard', 'decodex.enforce_history_cursor_state()'),
+  ('artifacts', 'artifacts_state_guard', 'decodex.enforce_artifact_state()'),
+  ('artifacts', 'artifacts_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('artifact_revisions', 'artifact_revisions_state_guard', 'decodex.enforce_artifact_revision_state()'),
+  ('artifact_revisions', 'artifact_revisions_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('context_packs', 'context_packs_state_guard', 'decodex.enforce_context_pack_state()'),
+  ('context_packs', 'context_packs_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('context_pack_sources', 'context_pack_sources_state_guard', 'decodex.enforce_context_pack_source_state()'),
+  ('context_pack_sources', 'context_pack_sources_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('transition_proposals', 'transition_proposals_created_at_guard', 'decodex.canonicalize_created_at()'),
+  ('transition_proposals', 'transition_proposals_coordinator', 'decodex.acquire_hierarchy_coordinator()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -936,8 +1129,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0xd8, 0xe2, 0x0a, 0x1b, 0x83, 0xc5, 0x1c, 0xdd, 0x8f, 0xa5, 0xe7, 0x6a, 0x92, 0x83, 0x7e, 0x8e,
-	0xd8, 0xcb, 0xd1, 0xd5, 0xe5, 0x75, 0xef, 0x3b, 0xce, 0xd1, 0x93, 0x63, 0xbf, 0x38, 0x27, 0x48,
+	0x51, 0xb1, 0xb0, 0x56, 0xc4, 0x95, 0xf2, 0x1e, 0x94, 0x3a, 0xe0, 0xb0, 0xc2, 0x10, 0x24, 0x4e,
+	0xa6, 0x56, 0x30, 0xc6, 0x2a, 0x52, 0xcf, 0xd1, 0xe0, 0x9e, 0xaa, 0x64, 0x5c, 0xc9, 0xdd, 0x28,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -1084,6 +1277,25 @@ pub(crate) async fn verify_runtime(client: &Client) -> Result<(), StoreError> {
 	verify_required_authority(client).await
 }
 
+const fn trigger_contract(
+	name: &'static str,
+	lookup_signature: &'static str,
+	migration_signature: &'static str,
+) -> FunctionContract {
+	FunctionContract {
+		name,
+		lookup_signature,
+		migration_signature,
+		arguments: "",
+		result: "trigger",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: false,
+		rows: 0.0,
+	}
+}
+
 fn canonical_safety_function_source(function_name: &str) -> Option<&'static str> {
 	if !SAFETY_FUNCTIONS.contains(&function_name) {
 		return None;
@@ -1096,7 +1308,10 @@ fn canonical_safety_function_source(function_name: &str) -> Option<&'static str>
 
 fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str> {
 	let declaration = format!("CREATE FUNCTION decodex.{}", contract.migration_signature);
-	let (_, declaration_and_tail) = FOUNDATION_MIGRATION.split_once(&declaration)?;
+	let migration = [FOUNDATION_MIGRATION, CONVERSATION_MIGRATION]
+		.into_iter()
+		.find(|migration| migration.contains(&declaration))?;
+	let (_, declaration_and_tail) = migration.split_once(&declaration)?;
 	let (_, source_and_tail) = declaration_and_tail.split_once("\nAS $$")?;
 	let (source, _) = source_and_tail.split_once("$$;")?;
 
@@ -1111,9 +1326,11 @@ async fn verify_schema_contract(client: &Client) -> Result<(), StoreError> {
 	let digest = Sha256::digest(manifest.as_bytes());
 
 	if digest.as_slice() != SCHEMA_CONTRACT_SHA256 {
-		return Err(StoreError::Incompatible(
-			"PostgreSQL Decodex schema contract differs from the shipped PG18 inventory".into(),
-		));
+		let actual = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+
+		return Err(StoreError::Incompatible(format!(
+			"PostgreSQL Decodex schema contract differs from the shipped PG18 inventory ({actual})"
+		)));
 	}
 
 	Ok(())
@@ -1181,10 +1398,20 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 		let cost: f32 = row.get(7);
 		let rows: f32 = row.get(8);
 		let unsafe_metadata: bool = row.get(9);
-		let installed_source: String = row.get(10);
-		let executable: bool = row.get(11);
+		let security_definer: bool = row.get(10);
+		let settings: Option<Vec<String>> = row.get(11);
+		let installed_source: String = row.get(12);
+		let executable: bool = row.get(13);
+		let expected_security_definer = matches!(
+			contract.name,
+			"issue_history_cursor" | "prune_history_snapshots" | "capture_history_item_version"
+		);
+		let expected_executable = contract.name != "capture_history_item_version";
+		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
 
 		if unsafe_metadata
+			|| security_definer != expected_security_definer
+			|| settings.as_ref() != Some(&expected_settings)
 			|| arguments != contract.arguments
 			|| result != contract.result
 			|| language != contract.language
@@ -1209,9 +1436,9 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				"PostgreSQL function semantics differ from the shipped migration".into(),
 			));
 		}
-		if !executable {
+		if executable != expected_executable {
 			return Err(StoreError::Incompatible(
-				"runtime identity lacks a required PostgreSQL function privilege".into(),
+				"runtime identity has an incorrect PostgreSQL function privilege".into(),
 			));
 		}
 	}
@@ -1292,7 +1519,7 @@ async fn verify_required_authority(client: &Client) -> Result<(), StoreError> {
 async fn verify_retention_contract(client: &Client) -> Result<(), StoreError> {
 	let rows = client.query(TRIGGER_CONTRACT_SQL, &[]).await?;
 
-	if rows.len() != SAFETY_FUNCTIONS.len() {
+	if rows.len() != SAFETY_TRIGGER_COUNT {
 		return Err(StoreError::Incompatible(
 			"PostgreSQL retention function contract is incomplete".into(),
 		));
@@ -1329,8 +1556,8 @@ mod tests {
 	use std::collections::HashSet;
 
 	use crate::authority::{
-		FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, OWNED_OBJECT_CATALOGS, ROLE_AUTHORITY_SQL,
-		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		CONVERSATION_MIGRATION, FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, OWNED_OBJECT_CATALOGS,
+		ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 	};
 
 	#[test]
@@ -1369,7 +1596,10 @@ mod tests {
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
 		assert_eq!(
-			FOUNDATION_MIGRATION.matches("CREATE FUNCTION decodex.").count(),
+			[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION]
+				.into_iter()
+				.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
+				.sum::<usize>(),
 			FUNCTION_CONTRACTS.len()
 		);
 
@@ -1378,9 +1608,15 @@ mod tests {
 		for contract in FUNCTION_CONTRACTS {
 			assert!(lookup_signatures.insert(contract.lookup_signature));
 			assert_eq!(
-				FOUNDATION_MIGRATION
-					.matches(&format!("CREATE FUNCTION decodex.{}", contract.migration_signature))
-					.count(),
+				[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION]
+					.into_iter()
+					.map(|migration| migration
+						.matches(&format!(
+							"CREATE FUNCTION decodex.{}",
+							contract.migration_signature
+						))
+						.count())
+					.sum::<usize>(),
 				1
 			);
 
@@ -1400,7 +1636,7 @@ mod tests {
 				.expect("shipped safety function has a canonical migration body");
 
 			assert!(source.starts_with('\n'));
-			assert!(source.ends_with("END\n"));
+			assert!(source.ends_with("END\n") || source.ends_with("END;\n"));
 			assert!(!source.trim().is_empty());
 		}
 	}

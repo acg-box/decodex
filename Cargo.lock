@@ -510,6 +510,7 @@ version = "0.2.0"
 dependencies = [
  "getrandom 0.4.2",
  "libc",
+ "regex",
  "serde",
  "sha2",
  "tempfile",
@@ -531,7 +532,6 @@ dependencies = [
  "decodex-core",
  "libc",
  "refinery",
- "regex",
  "serde_json",
  "sha2",
  "time",

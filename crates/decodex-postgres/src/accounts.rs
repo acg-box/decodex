@@ -1,6 +1,9 @@
-use deadpool_postgres::Transaction;
+use std::time::Duration;
+
+use deadpool_postgres::{Client, Transaction};
 use serde_json::{self, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use tokio::time::Instant;
 use tokio_postgres::Row;
 
 use crate::{
@@ -8,10 +11,35 @@ use crate::{
 	PostgresStore, QuotaWindow, QuotaWindowMutation, StoreError,
 };
 
+/// Immutable identity bound to one durable command receipt before side effects begin.
+pub(crate) struct CommandDescriptor {
+	pub protocol_version: &'static str,
+	pub operation: &'static str,
+	pub project_scope: &'static str,
+	pub scope_id: String,
+	pub entity_id: String,
+	pub expected_revision: Option<i64>,
+	pub payload_hash: Option<String>,
+	pub payload_length: Option<i64>,
+}
+
+/// Fenced ownership of one pending receipt.
+pub(crate) struct CommandReservation {
+	key: String,
+	request_hash: String,
+	claim_token: String,
+}
+
 struct PersistedWindowTimestamps {
 	revision: i64,
 	resets_at: Option<String>,
 	observed_at: String,
+}
+
+/// A reservation either owns the pending saga or replays its exact completed response bytes.
+pub(crate) enum CommandClaim {
+	Owned(CommandReservation),
+	Completed(Value),
 }
 
 impl PostgresStore {
@@ -25,16 +53,21 @@ impl PostgresStore {
 		validate_account(mutation)?;
 
 		let mut client = self.pool().get().await?;
+		let descriptor = CommandDescriptor {
+			protocol_version: "decodex/store-command/1",
+			operation: "mutate_account",
+			project_scope: "global",
+			scope_id: "accounts".into(),
+			entity_id: mutation.account_id.as_str().into(),
+			expected_revision: mutation.expected_revision,
+			payload_hash: None,
+			payload_length: None,
+		};
+		let reservation = match reserve_command(&mut client, command, &descriptor).await? {
+			CommandClaim::Completed(response) => return account_from_response(response),
+			CommandClaim::Owned(reservation) => reservation,
+		};
 		let transaction = client.transaction().await?;
-
-		if let Some(response) = begin_command(&transaction, command).await? {
-			let account = account_from_response(response)?;
-
-			transaction.commit().await?;
-
-			return Ok(account);
-		}
-
 		let revision = match mutation.expected_revision {
 			None => create_account(&transaction, mutation).await?,
 			Some(expected) => update_account(&transaction, mutation, expected).await?,
@@ -66,7 +99,7 @@ impl PostgresStore {
 			"revision": revision,
 		});
 
-		finish_command(&transaction, command, &response).await?;
+		finish_command(&transaction, &reservation, &response).await?;
 
 		transaction.commit().await?;
 
@@ -83,16 +116,25 @@ impl PostgresStore {
 		validate_window(mutation)?;
 
 		let mut client = self.pool().get().await?;
+		let entity_id = format!(
+			"{}:{}/{}",
+			mutation.account_id, mutation.window_class, mutation.duration_seconds
+		);
+		let descriptor = CommandDescriptor {
+			protocol_version: "decodex/store-command/1",
+			operation: "mutate_quota_window",
+			project_scope: "global",
+			scope_id: "quota_windows".into(),
+			entity_id: entity_id.clone(),
+			expected_revision: mutation.expected_revision,
+			payload_hash: None,
+			payload_length: None,
+		};
+		let reservation = match reserve_command(&mut client, command, &descriptor).await? {
+			CommandClaim::Completed(response) => return window_from_response(response),
+			CommandClaim::Owned(reservation) => reservation,
+		};
 		let transaction = client.transaction().await?;
-
-		if let Some(response) = begin_command(&transaction, command).await? {
-			let window = window_from_response(response)?;
-
-			transaction.commit().await?;
-
-			return Ok(window);
-		}
-
 		let persisted = match mutation.expected_revision {
 			None => create_window(&transaction, mutation).await?,
 			Some(expected) => update_window(&transaction, mutation, expected).await?,
@@ -135,7 +177,7 @@ impl PostgresStore {
 			"revision": revision,
 		});
 
-		finish_command(&transaction, command, &response).await?;
+		finish_command(&transaction, &reservation, &response).await?;
 
 		transaction.commit().await?;
 
@@ -191,6 +233,207 @@ impl PostgresStore {
 			})
 			.collect())
 	}
+}
+
+pub(crate) async fn reserve_command(
+	client: &mut Client,
+	command: &CommandIdentity,
+	descriptor: &CommandDescriptor,
+) -> Result<CommandClaim, StoreError> {
+	let wait_deadline = Instant::now() + Duration::from_secs(30);
+
+	loop {
+		let transaction = client.transaction().await?;
+		let inserted = transaction
+			.query_opt(
+				"INSERT INTO decodex.command_receipts \
+			 (idempotency_key, request_hash, protocol_version, operation, project_scope, scope_id, \
+			  entity_id, expected_revision, payload_hash, payload_length, receipt_state, \
+			  claim_token, claim_expires_at) \
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',gen_random_uuid(), \
+			  clock_timestamp()+interval '5 minutes') \
+			 ON CONFLICT DO NOTHING RETURNING claim_token::text",
+				&[
+					&command.key,
+					&command.request_hash,
+					&descriptor.protocol_version,
+					&descriptor.operation,
+					&descriptor.project_scope,
+					&descriptor.scope_id,
+					&descriptor.entity_id,
+					&descriptor.expected_revision,
+					&descriptor.payload_hash,
+					&descriptor.payload_length,
+				],
+			)
+			.await?;
+
+		if let Some(row) = inserted {
+			let claim_token = row.get(0);
+
+			transaction.commit().await?;
+
+			return Ok(CommandClaim::Owned(CommandReservation {
+				key: command.key.clone(),
+				request_hash: command.request_hash.clone(),
+				claim_token,
+			}));
+		}
+
+		let row = transaction
+			.query_one(
+				"SELECT request_hash, protocol_version, operation, project_scope, scope_id, entity_id, \
+			 expected_revision, payload_hash, payload_length, receipt_state::text, response_bytes, \
+			 claim_expires_at <= clock_timestamp() \
+			 FROM decodex.command_receipts \
+			 WHERE idempotency_key = $1 FOR UPDATE",
+				&[&command.key],
+			)
+			.await?;
+
+		if !receipt_descriptor_matches(&row, command, descriptor) {
+			return Err(StoreError::IdempotencyConflict);
+		}
+		if row.get::<_, &str>(9) == "completed" {
+			let bytes = row.get::<_, Option<Vec<u8>>>(10).ok_or_else(|| {
+				StoreError::Incompatible("completed command receipt lost response bytes".into())
+			})?;
+			let response: Value = serde_json::from_slice(&bytes).map_err(|_| {
+				StoreError::Incompatible("completed command response bytes are invalid".into())
+			})?;
+			let stored_response: Value = transaction
+				.query_one(
+					"SELECT response FROM decodex.command_receipts WHERE idempotency_key=$1",
+					&[&command.key],
+				)
+				.await?
+				.get(0);
+
+			if response != stored_response {
+				return Err(StoreError::Incompatible(
+					"completed command response bytes differ from committed response".into(),
+				));
+			}
+
+			transaction.commit().await?;
+
+			return Ok(CommandClaim::Completed(response));
+		}
+		if !row.get::<_, bool>(11) {
+			transaction.rollback().await?;
+
+			if Instant::now() >= wait_deadline {
+				return Err(StoreError::OwnershipLost("command receipt claim is active"));
+			}
+
+			tokio::time::sleep(Duration::from_millis(10)).await;
+
+			continue;
+		}
+
+		let claim_token: String = transaction
+			.query_one(
+				"UPDATE decodex.command_receipts SET claim_token=gen_random_uuid(), \
+			 claim_expires_at=clock_timestamp()+interval '5 minutes' \
+			 WHERE idempotency_key=$1 AND receipt_state='pending' \
+			 RETURNING claim_token::text",
+				&[&command.key],
+			)
+			.await?
+			.get(0);
+
+		transaction.commit().await?;
+
+		return Ok(CommandClaim::Owned(CommandReservation {
+			key: command.key.clone(),
+			request_hash: command.request_hash.clone(),
+			claim_token,
+		}));
+	}
+}
+
+pub(crate) async fn finish_command(
+	transaction: &Transaction<'_>,
+	reservation: &CommandReservation,
+	response: &Value,
+) -> Result<(), StoreError> {
+	let response_bytes = serde_json::to_vec(response)
+		.map_err(|_| StoreError::InvalidInput("command response cannot be serialized"))?;
+	let updated = transaction
+		.execute(
+			"UPDATE decodex.command_receipts SET response=$2, response_bytes=$3, \
+			 receipt_state='completed', completed_at=clock_timestamp(), \
+			 completion_claim_token=$5::text::uuid, claim_token=NULL, \
+			 claim_expires_at=NULL \
+			 WHERE idempotency_key=$1 AND request_hash=$4 AND receipt_state='pending' \
+			 AND claim_token=$5::text::uuid AND claim_expires_at > clock_timestamp()",
+			&[
+				&reservation.key,
+				response,
+				&response_bytes,
+				&reservation.request_hash,
+				&reservation.claim_token,
+			],
+		)
+		.await?;
+
+	if updated == 1 { Ok(()) } else { Err(StoreError::OwnershipLost("command receipt claim")) }
+}
+
+pub(crate) async fn append_activity_and_outbox(
+	transaction: &Transaction<'_>,
+	aggregate_kind: &str,
+	aggregate_id: &str,
+	revision: i64,
+	event_kind: &str,
+	correlation_key: &str,
+	payload: &Value,
+) -> Result<(), StoreError> {
+	let sequence: i64 = transaction
+		.query_one(
+			"INSERT INTO decodex.activity \
+			 (aggregate_kind, aggregate_id, revision, event_kind, correlation_key, payload) \
+			 VALUES ($1, $2, $3, $4, $5, $6) RETURNING sequence",
+			&[&aggregate_kind, &aggregate_id, &revision, &event_kind, &correlation_key, payload],
+		)
+		.await?
+		.get(0);
+	let outbox_payload = serde_json::json!({
+		"activity_sequence": sequence,
+		"event_kind": event_kind,
+		"aggregate_kind": aggregate_kind,
+		"aggregate_id": aggregate_id,
+		"revision": revision,
+		"payload": payload,
+	});
+	let effect_key = format!("activity/{sequence}");
+
+	transaction
+		.execute(
+			"INSERT INTO decodex.outbox \
+			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload) \
+			 VALUES ($1, $2, $3, $4, $5)",
+			&[&effect_key, &aggregate_kind, &aggregate_id, &revision, &outbox_payload],
+		)
+		.await?;
+
+	Ok(())
+}
+
+fn receipt_descriptor_matches(
+	row: &Row,
+	command: &CommandIdentity,
+	descriptor: &CommandDescriptor,
+) -> bool {
+	row.get::<_, String>(0) == command.request_hash
+		&& row.get::<_, String>(1) == descriptor.protocol_version
+		&& row.get::<_, String>(2) == descriptor.operation
+		&& row.get::<_, String>(3) == descriptor.project_scope
+		&& row.get::<_, String>(4) == descriptor.scope_id
+		&& row.get::<_, String>(5) == descriptor.entity_id
+		&& row.get::<_, Option<i64>>(6) == descriptor.expected_revision
+		&& row.get::<_, Option<String>>(7) == descriptor.payload_hash
+		&& row.get::<_, Option<i64>>(8) == descriptor.payload_length
 }
 
 fn validate_account(mutation: &AccountMutation) -> Result<(), StoreError> {
@@ -314,59 +557,6 @@ fn required_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
 		.get(key)
 		.and_then(Value::as_i64)
 		.ok_or_else(|| StoreError::Incompatible(format!("command response missing {key}")))
-}
-
-async fn begin_command(
-	transaction: &Transaction<'_>,
-	command: &CommandIdentity,
-) -> Result<Option<Value>, StoreError> {
-	let inserted = transaction
-		.query_opt(
-			"INSERT INTO decodex.command_receipts (idempotency_key, request_hash) \
-			 VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING true",
-			&[&command.key, &command.request_hash],
-		)
-		.await?
-		.is_some();
-
-	if inserted {
-		return Ok(None);
-	}
-
-	let row = transaction
-		.query_one(
-			"SELECT request_hash, response FROM decodex.command_receipts \
-			 WHERE idempotency_key = $1 FOR UPDATE",
-			&[&command.key],
-		)
-		.await?;
-	let existing_hash: String = row.get(0);
-	let response: Option<Value> = row.get(1);
-
-	if existing_hash != command.request_hash {
-		return Err(StoreError::IdempotencyConflict);
-	}
-
-	response.map_or_else(
-		|| Err(StoreError::Incompatible("incomplete committed command receipt".into())),
-		|response| Ok(Some(response)),
-	)
-}
-
-async fn finish_command(
-	transaction: &Transaction<'_>,
-	command: &CommandIdentity,
-	response: &Value,
-) -> Result<(), StoreError> {
-	let updated = transaction
-		.execute(
-			"UPDATE decodex.command_receipts SET response = $2, completed_at = clock_timestamp() \
-			 WHERE idempotency_key = $1 AND request_hash = $3 AND response IS NULL",
-			&[&command.key, response, &command.request_hash],
-		)
-		.await?;
-
-	if updated == 1 { Ok(()) } else { Err(StoreError::IdempotencyConflict) }
 }
 
 async fn create_account(
@@ -543,44 +733,4 @@ async fn window_revision_error(
 		expected,
 		actual,
 	})
-}
-
-async fn append_activity_and_outbox(
-	transaction: &Transaction<'_>,
-	aggregate_kind: &str,
-	aggregate_id: &str,
-	revision: i64,
-	event_kind: &str,
-	correlation_key: &str,
-	payload: &Value,
-) -> Result<(), StoreError> {
-	let sequence: i64 = transaction
-		.query_one(
-			"INSERT INTO decodex.activity \
-			 (aggregate_kind, aggregate_id, revision, event_kind, correlation_key, payload) \
-			 VALUES ($1, $2, $3, $4, $5, $6) RETURNING sequence",
-			&[&aggregate_kind, &aggregate_id, &revision, &event_kind, &correlation_key, payload],
-		)
-		.await?
-		.get(0);
-	let outbox_payload = serde_json::json!({
-		"activity_sequence": sequence,
-		"event_kind": event_kind,
-		"aggregate_kind": aggregate_kind,
-		"aggregate_id": aggregate_id,
-		"revision": revision,
-		"payload": payload,
-	});
-	let effect_key = format!("activity/{sequence}");
-
-	transaction
-		.execute(
-			"INSERT INTO decodex.outbox \
-			 (effect_key, aggregate_kind, aggregate_id, aggregate_revision, payload) \
-			 VALUES ($1, $2, $3, $4, $5)",
-			&[&effect_key, &aggregate_kind, &aggregate_id, &revision, &outbox_payload],
-		)
-		.await?;
-
-	Ok(())
 }
