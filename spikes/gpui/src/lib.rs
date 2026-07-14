@@ -4,7 +4,7 @@ pub mod text_input;
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-	Context, FocusHandle, Focusable, Render, Role, ScrollStrategy, SharedString,
+	Context, FocusHandle, Focusable, KeyBinding, Render, Role, ScrollStrategy, SharedString,
 	UniformListScrollHandle, Window, div, prelude::*, px, rgb, text, uniform_list,
 };
 
@@ -13,10 +13,23 @@ use text_input::TextInput;
 
 pub const GPUI_REVISION: &str = "aeeacf5439b2d30d01e38d65d767e6f31b255ecc";
 
+gpui::actions!(workspace_spike, [FocusNext, FocusPrevious]);
+
+pub fn bind_keys(cx: &mut gpui::App) {
+	text_input::bind_keys(cx);
+	cx.bind_keys([
+		KeyBinding::new("tab", FocusNext, None),
+		KeyBinding::new("tab", FocusNext, Some("TextInput")),
+		KeyBinding::new("shift-tab", FocusPrevious, None),
+		KeyBinding::new("shift-tab", FocusPrevious, Some("TextInput")),
+	]);
+}
+
 pub struct WorkspaceSpike {
 	history: Rc<RefCell<PagedHistory>>,
 	input: gpui::Entity<TextInput>,
 	root_focus: FocusHandle,
+	clear_focus: FocusHandle,
 	history_scroll: UniformListScrollHandle,
 	async_event_count: usize,
 }
@@ -30,6 +43,7 @@ impl WorkspaceSpike {
 			history: Rc::new(RefCell::new(PagedHistory::new(HistorySpec::large_fixture()))),
 			input,
 			root_focus: cx.focus_handle(),
+			clear_focus: cx.focus_handle().tab_index(1).tab_stop(true),
 			history_scroll: UniformListScrollHandle::new(),
 			async_event_count: 0,
 		}
@@ -69,6 +83,8 @@ impl Render for WorkspaceSpike {
 			.role(Role::Application)
 			.aria_label("Decodex GPUI feasibility workspace")
 			.track_focus(&self.root_focus)
+			.on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
+			.on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
 			.size_full()
 			.flex()
 			.flex_col()
@@ -159,7 +175,27 @@ impl Render for WorkspaceSpike {
 								.p_3()
 								.border_t_1()
 								.border_color(rgb(0x374151))
-								.child(self.input.clone()),
+								.flex()
+								.tab_group()
+								.gap_2()
+								.child(self.input.clone())
+								.child(
+									div()
+										.id("clear-composer")
+										.role(Role::Button)
+										.aria_label("Clear composer")
+										.track_focus(&self.clear_focus)
+										.px_3()
+										.rounded_md()
+										.bg(rgb(0x374151))
+										.on_click({
+											let input = self.input.clone();
+											move |_, _, cx| {
+												input.update(cx, |input, cx| input.clear(cx));
+											}
+										})
+										.child("Clear"),
+								),
 						),
 					),
 			)
@@ -208,7 +244,7 @@ mod tests {
 	fn open_workspace(
 		cx: &mut TestAppContext,
 	) -> (gpui::Entity<WorkspaceSpike>, &mut VisualTestContext) {
-		cx.update(text_input::bind_keys);
+		cx.update(bind_keys);
 		cx.add_window_view(WorkspaceSpike::new)
 	}
 
@@ -229,6 +265,24 @@ mod tests {
 
 		workspace.update(visual, |workspace, cx| workspace.schedule_async_probe(cx)).await;
 		assert_eq!(workspace.read_with(visual, |workspace, _| workspace.async_event_count()), 1);
+	}
+
+	#[gpui::test]
+	fn workspace_keyboard_focus_order_is_deterministic(cx: &mut TestAppContext) {
+		let (workspace, visual) = open_workspace(cx);
+		let input_focus =
+			workspace.read_with(visual, |workspace, cx| workspace.input.read(cx).focus_handle(cx));
+		let clear_focus = workspace.read_with(visual, |workspace, _| workspace.clear_focus.clone());
+		assert!(visual.update(|window, _| input_focus.is_focused(window)));
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		visual.simulate_keystrokes("tab");
+		assert!(visual.update(|window, _| clear_focus.is_focused(window)));
+
+		visual.simulate_keystrokes("shift-tab");
+		assert!(visual.update(|window, _| input_focus.is_focused(window)));
 	}
 
 	#[gpui::test]
