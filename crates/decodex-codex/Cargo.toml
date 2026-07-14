@@ -8,6 +8,9 @@ name                 = "decodex-codex"
 repository.workspace = true
 version.workspace    = true
 
+[features]
+preserve-order-regression = ["serde_json/preserve_order"]
+
 [dependencies]
 decodex-core = { workspace = true }
 libc         = { workspace = true }
