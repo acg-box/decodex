@@ -525,6 +525,7 @@ version = "0.2.0"
 dependencies = [
  "deadpool-postgres",
  "decodex-core",
+ "libc",
  "refinery",
  "regex",
  "serde_json",
@@ -566,6 +567,7 @@ dependencies = [
  "decodex-protocol",
  "futures-util",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
 ]

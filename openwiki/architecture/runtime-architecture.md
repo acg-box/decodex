@@ -37,18 +37,26 @@ dependency graph and exclusion of the legacy package through Cargo metadata.
 `ws://127.0.0.1:49152/v1/ws`, and the endpoint type refuses every non-loopback address
 before opening a socket. The single physical WebSocket uses structured JSON and typed
 hello, command, receipt, result, snapshot, event, and refusal envelopes. Major versions
-must match exactly; this build accepts minors 1 and 0. Events carry server ID, monotonic
-cursor, entity revision, correlation, and causation. A reconnect to the same server ID
-resumes retained ordered deltas; a stale cursor or changed server ID receives a bounded
-snapshot fallback. Only a snapshot or event cursor fully applied by the client is a
-resume checkpoint; the Welcome cursor is an informational server high-water mark and
-must not advance client progress before following replay deltas are applied.
+must match exactly; this build accepts minors 2 and 1. Events carry server ID, monotonic
+cursor, entity revision, correlation, and causation. The stable server-host ID supports
+operator pinning, while each daemon process creates a distinct bounded publication-epoch
+ID. A reconnect resumes retained ordered deltas only when both IDs match; an absent or
+changed epoch, stale cursor, or changed server ID receives a bounded snapshot fallback.
+Only a snapshot or event cursor fully applied by the client is a resume checkpoint; the
+Welcome cursor is an informational server high-water mark and must not advance client
+progress before following replay deltas are applied.
 
-Runtime idempotency is keyed by the command's idempotency key plus its typed payload and
-optional expected revision. A duplicate returns the original command identity and the
-same stored result without a second application execution; conflicting reuse is
-rejected. The receipt ledger has a fixed lifetime capacity: accepted keys are never
-evicted, duplicates remain readable at capacity, and new keys are refused before
+Runtime receipt lookup is keyed by the negotiated protocol version and command idempotency key;
+the stored request fingerprint additionally covers that version, typed payload, and optional
+expected revision. A same-version duplicate returns the original command identity and stored
+result without a second application execution. Reusing a mutation key across V1.1/V1.2 executes
+once in each version namespace and retains each version's native command outcome; neither outcome
+replays, conflicts with, or poisons the other namespace. Other same-version conflicting reuse is
+rejected.
+Each negotiated protocol-version namespace has its own fixed lifetime receipt capacity, so one
+minor version cannot consume another version's slots. Total memory remains bounded by the finite
+supported-version window times that per-version capacity. Accepted keys are never evicted,
+duplicates remain readable at capacity, and new same-version keys are refused before
 application execution once full. Replay buffers, snapshot item counts, human-readable
 wire scalars, inbound and outbound message sizes, writes, and per-client outbound queues
 are bounded. Queue overflow disconnects that client with WebSocket close code 1013;
@@ -59,13 +67,104 @@ a disconnect can suppress delivery but cannot cancel receipt/event recording. Sn
 types contain only small state and cannot carry artifact bytes.
 
 This slice deliberately keeps its replay/idempotency ledger in memory. A daemon restart
-changes server identity, loses that transient ledger, and forces snapshot fallback;
-durable PostgreSQL product-state and transaction primitives live in `decodex-postgres`,
-but the active composition supplies no connection. XY-1306 represents explicit
-PostgreSQL Unix-socket connection data without connecting; XY-1307 owns verified daemon
-bootstrap and integration. The foundation application therefore reports product state unavailable
-rather than inventing product entities. PostgreSQL reports available only after an
-explicit connection passes PostgreSQL 18, checksum, extension, and migration checks.
+loses that transient ledger; the stable server-host identity remains persisted, while a
+fresh publication-epoch ID makes every old cursor fall back even when restarted cursor
+values are equal or overlap. Durable PostgreSQL product-state and transaction primitives
+live in `decodex-postgres`.
+`decodexd` loads only the typed `~/.decodex/config.toml` and passes its explicit Unix-socket
+directory, port, database, operator-pinned expected PostgreSQL peer UID, and distinct
+migration/runtime identities with independently resolved optional credentials to that adapter.
+The adapter opens each directory component relative to a retained descriptor, pins the directory
+and socket device/inode identities, requires the final directory and socket to be owned by the
+configured UID with no group/other directory write access, and verifies the connected kernel peer
+UID before PostgreSQL authentication starts. It repeats path binding and peer verification for
+every migration and runtime-pool connection, so a pre-planted endpoint cannot select its own trust
+root and later ancestor or endpoint replacement cannot redirect credentials. A single-use migration pool performs only
+forward migration and migration verification and is closed before the runtime pool is built.
+The adapter reports available only after PostgreSQL 18, checksum, pgcrypto, immutable migration,
+two-connection pool checks, and an exact steady-state authority audit pass. The audit starts from
+the original `session_user` and evaluates both its immediately effective authority and every role
+reachable through `SET ROLE`, including NOINHERIT/SET-only chains; membership admin option is
+itself unsafe because it could create a new SET path. Effective ownership is one closed PostgreSQL
+18 inventory covering the Decodex schema, relations, functions, types, collations, conversions,
+operators, operator classes/families, extended statistics, and text-search
+configurations/dictionaries. Extension control is audited separately from extension schema:
+`pg_depend` extension-membership edges for every Decodex object and dependent execution object,
+plus extension members referenced by those objects, are unsafe whenever the extension owner is
+runtime-effective, regardless of `pg_extension.extnamespace`.
+Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
+TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
+`session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
+in any reachable authority state. The audit verifies all five shipped safety/retention triggers
+by table, event mask, row/statement level, regular non-constraint and non-deferrable shape,
+origin-enabled mode, and function binding, then compares
+each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
+the immutable V1 migration. It additionally closes the entire runtime-callable `decodex` function
+namespace over exact signatures and overloads, argument/result shape, language, volatility,
+parallel/strict/set behavior, planner metadata, security-invoker state, empty per-function settings,
+and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
+are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
+are unsafe; a replaced same-signature safety-function body is incompatible.
+Every non-internal trigger on a Decodex runtime relation must be one of those five exact bindings.
+The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
+on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
+generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
+sixteen canonical functions. A trigger cannot therefore invoke an adjacent public owner-executed
+function merely because runtime DML fires it.
+One version-specific canonical PostgreSQL 18 manifest additionally closes all Decodex relations,
+columns, defaults, constraints, indexes, enum labels, and internally generated constraint triggers.
+Defaults, constraints, indexes, and internal triggers include their exact stable catalog dependency
+identities rather than raw OIDs.
+Constraint inventory covers both `conrelid` in Decodex and external constraints whose `confrelid`
+references Decodex. Internal trigger identity is tied to the exact canonical constraint, relation
+side, trigger function, event semantics, deferral state, and referenced relation/index rather than
+generated trigger names or OIDs.
+`public.refinery_schema_history` is always schema-qualified and must have
+exactly table SELECT. Ownership, SET-reachable authority, table or column grant option, writes,
+TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN are unsafe; missing SELECT is incompatible before the
+history row query runs. The ordered ledger must exactly match every embedded migration version,
+name, and checksum; missing, extra, duplicate, reordered, or tampered identity is incompatible.
+The two bound identity sequences must be exact and grant the login role
+USAGE only: SELECT, UPDATE/`setval`, ownership, grant options, and SET-reachable surplus authority
+are unsafe. Every string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
+authority audit and schema-qualified migration-ledger verification remain correct under a hostile
+runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
+table, sequence, function, or ledger-read authority is incompatible.
+The additional-function adversarial fixture creates a seventeenth migration-owned,
+runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
+trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
+and restores the trigger before the independent doctor rejection. A separate public-function trigger
+fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
+table `UPDATE`, or `TRIGGER`; the exact five-trigger inventory rejects that path. A public,
+runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
+proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
+closed sixteen-function inventory remains independent of the distinct same-signature canonical-source
+substitution fixture. Missing, malformed, unsafe, unreachable,
+authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
+there is no ambient/default database or alternate state authority. Repository and
+PostgreSQL socket validation rejects a symbolic link or non-directory at every descriptor-opened
+component, a non-socket endpoint, untrusted directory permissions/ownership, an endpoint owner or
+kernel peer that differs from the operator UID pin, and any directory/socket identity replacement.
+
+Protocol V1.2 adds `get_doctor_status` as a read-only query/result with a client query identity and
+no mutation receipt, deduplication, replay, receipt-capacity use, event publication, or entity
+revision. Reusing a query identity performs a new ordered observation. V1.1 remains
+the rolling previous minor, receives only its existing wire shapes, and safely falls back
+to a snapshot because it cannot present an epoch ID. `ClientHello` may pin the stable
+server identity before snapshot, query, or command access. The doctor report is mechanically
+capped at 32 unique typed checks and has no free-form external text. Server repository
+paths are an aggregate typed check only, so
+remote clients receive neither host paths nor repository names and cannot reinterpret
+them locally. App-server capabilities are closed enum values; current unprobed capability,
+plugin, vault, and blob-content observations remain honestly `unknown` rather than ready.
+Each V1.2 doctor read revalidates the retained socket binding, obtains a runtime connection through
+the verified connector, performs a live query, reruns the complete runtime-authority and immutable
+migration checks—including the exact embedded ledger and required `pgcrypto` extension—and reports
+any failure as typed unavailable. It never reconnects migration
+credentials, runs migration, or repins an endpoint. A stale but securely bound listener refusal is
+database-unreachable; directory/socket replacement or peer-identity drift is unsafe-host-path.
+PostgreSQL socket recreation after restart therefore requires a daemon restart under the explicit
+operator authority instead of silently adopting the replacement.
 The composition also reports conversation execution unavailable. Authentication, TLS,
 remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, CLI
 operations, and GPUI behavior remain disabled and belong to later issues.
@@ -138,11 +237,12 @@ host, repository, database, role, and credential-reference strings. Profiles are
 bounded host, port, and required expected server identity. Repository roots exist only in
 `ServerHostConfig` as absolute, normalized, at-most-4-KiB `ServerRepositoryPath` values,
 so a remote profile has no client-local repository-path field. PostgreSQL configuration
-is explicit bounded Unix-socket directory/database/user plus an optional credential
-environment-variable reference; it is inert data and opens no database.
-`decodex.example.toml` is the redacted canonical shape. No CLI, doctor/status protocol,
-daemon bootstrap, remote listener/security, or credential-vault implementation is part
-of this foundation.
+is one explicit bounded Unix-socket directory/port/database, an expected server peer UID, plus
+distinct migration/runtime users and optional, distinct credential environment-variable references.
+`decodex.example.toml` is the redacted canonical shape.
+XY-1307 consumes that data at the runtime composition boundary; core itself still opens
+no database. No CLI, remote listener/security, or credential-vault implementation is part
+of the core foundation.
 
 ## Active Codex adapter foundation
 

@@ -18,12 +18,23 @@ serves the versioned structured-JSON WebSocket protocol at loopback-only
 `ws://127.0.0.1:49152/v1/ws`. It negotiates protocol V1 current/previous minor,
 publishes bounded snapshots and resumable ordered events, deduplicates commands for one
 server lifetime in a fixed-capacity ledger, and disconnects clients whose bounded
-outbound queue fills. PostgreSQL,
-Codex, CLI operations, authentication/TLS, remote binding, and product UI behavior are
-still unavailable until their owning slices land. `decodex-core` now owns the typed
-`~/.decodex` config/log/blob/cache/server-identity foundation, including explicit
-local/remote profiles and inert PostgreSQL connection data; it does not wire the daemon
-or CLI. The frozen v0.2 source remains under
+outbound queue fills. It loads the typed `~/.decodex/config.toml`, retains the stable
+server-host identity, and makes PostgreSQL product state available only after a dedicated
+migration identity completes PostgreSQL 18 forward migration/verification and a distinct,
+least-privilege runtime identity passes the adapter authority boundary. The live pool never
+retains migration credentials; runtime readiness also requires safe trigger/function ownership,
+an effective `origin` replication role, a closed exact-signature inventory with canonical metadata
+and source for every runtime-callable function, intact
+retention triggers with no additional trigger/rule/policy execution path, dependency-based
+extension control closure, read-only migration history, and USAGE-only identity sequences across the
+login role and every SET-reachable role. The operator must also pin the expected PostgreSQL
+Unix-peer UID; descriptor-pinned socket metadata and kernel peer credentials are verified before
+either identity authenticates. Missing, malformed, unsafe, unreachable, authentication-failed,
+or incompatible configuration remains typed unavailable with no fallback. Protocol V1.2
+adds one bounded, redacted doctor/status query outside mutation receipts that live-revalidates the retained PostgreSQL
+endpoint and authority without migration or repinning; V1.1 remains the previous-minor window.
+Codex live dispatch, CLI operations, authentication/TLS, remote binding, and product UI
+behavior are still unavailable until their owning slices land. The frozen v0.2 source remains under
 `apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is not
 a compatibility runtime.
 
@@ -99,11 +110,11 @@ runtime.
   are the portable Codex app automation source; install live local configs from a
   clone with `python3 automations/decodex/scripts/config/sync_automations.py --apply`.
 
-No vNext product-state runtime is active yet. The protocol's foundation application
-returns an explicit unavailable result and uses only bounded in-memory replay/idempotency state;
-a changed server ID after restart forces snapshot fallback. PostgreSQL becomes
-product-state authority under XY-1267, the Decodex-owned local layout moves under
-`~/.decodex` under XY-1268, and shared `~/.codex` remains Codex-owned. OpenWiki explains
+No product-specific command service is active yet. The protocol uses bounded in-memory
+replay/idempotency state while the PostgreSQL adapter owns durable product-state
+transactions when its explicit configuration verifies successfully. The stable
+server-host identity is persisted under `~/.decodex`; stale or impossible cursors still
+force snapshot fallback after restart. Shared `~/.codex` remains Codex-owned. OpenWiki explains
 those contracts for maintainers and agents but is not a runtime input. Public site
 authority stays in `site/`.
 

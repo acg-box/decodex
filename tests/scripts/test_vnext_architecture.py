@@ -24,6 +24,7 @@ EXPECTED_OWNER_DEPENDENCIES = {
 
 EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
     "deadpool-postgres",
+    "libc",
     "refinery",
     "regex",
     "serde_json",

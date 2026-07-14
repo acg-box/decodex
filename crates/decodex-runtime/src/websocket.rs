@@ -32,12 +32,14 @@ use tokio::{
 };
 
 use crate::{Application, ApplicationPublication};
+use decodex_core::ServerIdentity;
 use decodex_protocol::{
-	self, CausationId, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
-	CommandOutcome, CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor,
-	EndpointPolicyError, EventEnvelope, IdempotencyKey, LoopbackEndpoint, ProtocolVersion,
-	ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId,
-	ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
+	self, CURRENT_VERSION, CausationId, ClientCommandId, ClientHello, ClientMessage,
+	CommandEnvelope, CommandError, CommandOutcome, CommandReceipt, CommandResultEnvelope,
+	CorrelationId, Cursor, EndpointPolicyError, EventEnvelope, IdempotencyKey, LoopbackEndpoint,
+	ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReceiptDisposition, ReconnectMode,
+	Refusal, RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
+	ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
 };
 
 const WS_PATH: &str = "/v1/ws";
@@ -129,7 +131,7 @@ impl<A> ProtocolServer<A>
 where
 	A: Application,
 {
-	/// Build a server with one lifetime identity and application owner.
+	/// Build a server with a stable host identity and a fresh in-memory publication epoch.
 	pub fn new(server_id: ServerId, application: A, config: ServerConfig) -> Self {
 		assert!(config.replay_capacity > 0, "replay capacity must be non-zero");
 		assert!(config.outbound_queue_capacity > 0, "outbound queue capacity must be non-zero");
@@ -138,6 +140,9 @@ where
 		Self {
 			inner: Arc::new(ServerInner {
 				server_id,
+				instance_id: ServerIdentity::generate()
+					.ok()
+					.and_then(|identity| ServerInstanceId::new(identity.as_str()).ok()),
 				application,
 				config,
 				connection_ids: AtomicU64::new(1),
@@ -199,6 +204,26 @@ where
 				return;
 			},
 		};
+
+		if let Some(expected) = hello.expected_server_id.as_ref()
+			&& expected != &self.inner.server_id
+		{
+			let _ = self
+				.send_direct(
+					&mut socket,
+					ServerMessage::Refusal(RefusalEnvelope {
+						server_id: self.inner.server_id.clone(),
+						refusal: Refusal::ServerIdentityMismatch {
+							expected: expected.clone(),
+							actual: self.inner.server_id.clone(),
+						},
+					}),
+				)
+				.await;
+
+			return;
+		}
+
 		let connection_id = self.inner.connection_ids.fetch_add(1, Ordering::Relaxed);
 		let (sender, receiver) = mpsc::channel(self.inner.config.outbound_queue_capacity);
 		let initial = match self.prepare_session(connection_id, sender, hello, negotiated).await {
@@ -228,7 +253,7 @@ where
 
 		let (mut socket_sender, mut socket_receiver) = socket.split();
 		let close_sent = {
-			let reader = self.read_commands(&mut socket_receiver, connection_id, negotiated);
+			let reader = self.read_messages(&mut socket_receiver, connection_id, negotiated);
 			let writer = self.write_messages(&mut socket_sender, receiver);
 
 			tokio::pin!(reader, writer);
@@ -273,6 +298,13 @@ where
 
 				None
 			},
+			Ok(ClientMessage::Query(_)) => {
+				let refusal =
+					protocol_refusal(&self.inner.server_id, "hello is required before a query");
+				let _ = self.send_direct(socket, refusal).await;
+
+				None
+			},
 			Err(_) => {
 				let refusal = protocol_refusal(
 					&self.inner.server_id,
@@ -311,6 +343,9 @@ where
 				version: negotiated,
 				supported: SupportedVersions::current(),
 				server_id: self.inner.server_id.clone(),
+				instance_id: (negotiated == CURRENT_VERSION)
+					.then(|| self.inner.instance_id.clone())
+					.flatten(),
 				cursor: state.cursor,
 				reconnect,
 			}),
@@ -328,7 +363,10 @@ where
 		snapshot_items: Vec<SnapshotItem>,
 	) -> (ReconnectMode, Vec<ServerMessage>) {
 		let can_resume = resume.is_some_and(|resume| {
-			resume.server_id == self.inner.server_id
+			version == CURRENT_VERSION
+				&& self.inner.instance_id.as_ref() == resume.instance_id.as_ref()
+				&& self.inner.instance_id.is_some()
+				&& resume.server_id == self.inner.server_id
 				&& resume.cursor <= state.cursor
 				&& state
 					.events
@@ -370,7 +408,7 @@ where
 		)
 	}
 
-	async fn read_commands(
+	async fn read_messages(
 		&self,
 		receiver: &mut SplitStream<WebSocket>,
 		connection_id: u64,
@@ -434,10 +472,48 @@ where
 						return true;
 					}
 				},
+				ClientMessage::Query(query) => {
+					if negotiated != CURRENT_VERSION || query.version != negotiated {
+						if !self
+							.enqueue(
+								connection_id,
+								protocol_refusal(
+									&self.inner.server_id,
+									"query requires negotiated protocol 1.2",
+								),
+							)
+							.await
+						{
+							return true;
+						}
+
+						continue;
+					}
+					if !self.execute_query(connection_id, query, negotiated).await {
+						return true;
+					}
+				},
 			}
 		}
 
 		false
+	}
+
+	async fn execute_query(
+		&self,
+		connection_id: u64,
+		query: QueryEnvelope,
+		version: ProtocolVersion,
+	) -> bool {
+		let payload = self.inner.application.query(&query).await;
+		let result = QueryResultEnvelope {
+			version,
+			server_id: self.inner.server_id.clone(),
+			query_id: query.query_id,
+			payload,
+		};
+
+		self.enqueue(connection_id, ServerMessage::QueryResult(result)).await
 	}
 
 	async fn execute_command(
@@ -460,11 +536,13 @@ where
 		command: CommandEnvelope,
 		version: ProtocolVersion,
 	) -> bool {
-		let fingerprint = serde_json::to_vec(&(&command.expected_revision, &command.payload))
-			.expect("typed command serialization cannot fail");
+		let fingerprint =
+			serde_json::to_vec(&(version, &command.expected_revision, &command.payload))
+				.expect("typed command serialization cannot fail");
+		let receipt_key = (version, command.idempotency_key.clone());
 		let mut state = self.inner.state.lock().await;
 
-		if let Some(stored) = state.receipts.get(&command.idempotency_key).cloned() {
+		if let Some(stored) = state.receipts.get(&receipt_key).cloned() {
 			let receipt = CommandReceipt {
 				version,
 				server_id: self.inner.server_id.clone(),
@@ -476,7 +554,7 @@ where
 			let mut result = stored.result;
 
 			result.version = version;
-			result.client_command_id = command.client_command_id;
+			result.client_command_id = command.client_command_id.clone();
 
 			if stored.fingerprint != fingerprint {
 				result.outcome = CommandOutcome::Rejected;
@@ -496,7 +574,10 @@ where
 			);
 		}
 
-		if state.receipts.len() >= self.inner.config.receipt_capacity {
+		let version_receipt_count =
+			state.receipts.keys().filter(|(stored_version, _)| stored_version == &version).count();
+
+		if version_receipt_count >= self.inner.config.receipt_capacity {
 			let receipt = CommandReceipt {
 				version,
 				server_id: self.inner.server_id.clone(),
@@ -539,7 +620,7 @@ where
 			result: result.clone(),
 		};
 
-		state.receipts.insert(command.idempotency_key.clone(), stored);
+		state.receipts.insert(receipt_key, stored);
 
 		let receipt = CommandReceipt {
 			version,
@@ -696,6 +777,7 @@ where
 	A: Application,
 {
 	server_id: ServerId,
+	instance_id: Option<ServerInstanceId>,
 	application: A,
 	config: ServerConfig,
 	connection_ids: AtomicU64,
@@ -706,7 +788,7 @@ where
 struct PublicationState {
 	cursor: Cursor,
 	events: VecDeque<EventEnvelope>,
-	receipts: HashMap<IdempotencyKey, StoredCommand>,
+	receipts: HashMap<(ProtocolVersion, IdempotencyKey), StoredCommand>,
 	subscribers: HashMap<u64, Subscriber>,
 }
 
