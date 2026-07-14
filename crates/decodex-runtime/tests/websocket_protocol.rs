@@ -105,7 +105,9 @@ impl Application for FixtureApplication {
 		&'a self,
 		query: &'a QueryEnvelope,
 	) -> impl Future<Output = QueryResultPayload> + Send + 'a {
-		let QueryPayload::GetDoctorStatus = query.payload;
+		let QueryPayload::GetDoctorStatus = query.payload else {
+			panic!("test application supports only doctor queries");
+		};
 		let mut state = self.state.lock().expect("test state mutex poisoned");
 
 		state.queries += 1;
@@ -756,8 +758,12 @@ async fn repeated_live_queries_are_fresh_ordered_and_do_not_consume_receipts() {
 	let ServerMessage::QueryResult(second) = receive(&mut client).await else {
 		panic!("expected second live query result");
 	};
-	let QueryResultPayload::DoctorStatus(first_report) = first.payload;
-	let QueryResultPayload::DoctorStatus(second_report) = second.payload;
+	let QueryResultPayload::DoctorStatus(first_report) = first.payload else {
+		panic!("expected doctor result");
+	};
+	let QueryResultPayload::DoctorStatus(second_report) = second.payload else {
+		panic!("expected doctor result");
+	};
 
 	assert_eq!(first.query_id, QueryId::new("query-1").expect("bounded query ID"));
 	assert_eq!(second.query_id, QueryId::new("query-2").expect("bounded query ID"));

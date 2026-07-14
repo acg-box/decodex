@@ -1,21 +1,40 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
-use std::{collections::HashSet, env, error::Error, str::FromStr as _, time::Duration};
+use std::{
+	collections::HashSet,
+	env,
+	fs::{self, Permissions},
+	os::unix::fs::PermissionsExt as _,
+	path::{Path, PathBuf},
+	str::FromStr as _,
+	time::Duration,
+};
 
 use ::time as _;
 use deadpool_postgres as _;
 use refinery as _;
-use regex as _;
 use serde_json::Value;
-use sha2 as _;
-use tokio::{task::JoinSet, time};
+use sha2::{self as _, Digest as _, Sha256};
+use tokio::{
+	task::{self, JoinSet},
+	time,
+};
 use tokio_postgres::{Client, Config, NoTls, types::ToSql};
 
-use decodex_core::{Availability, ProductState as _};
+use decodex_core::{
+	self, AccountSnapshot, ArtifactId, ArtifactStatus, Availability, BlobHash, BlobStore,
+	ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceKind,
+	ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
+	HistoryMetadataValue, ItemStatus, PinnedContextSource, PossibleSideEffects, ProductState as _,
+	ProfileSnapshot, ProposedTransitionKind, RuntimeSessionId, RuntimeSessionState, TurnId,
+	TurnRole, TurnStatus,
+};
 use decodex_postgres::{
-	AccountId, AccountMutation, AccountState, CLOSED, CommandIdentity,
-	MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation, PostgresStore,
-	QuotaWindowMutation, ReconciliationOutcome, StoreError,
+	AccountId, AccountMutation, AccountState, CLOSED, CommandIdentity, ContextPackRecord,
+	CreateArtifact, CreateConversation, CreateRuntimeSession, HistoryCursor,
+	MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation, PersistContextPack,
+	PostgresStore, ProposeTransition, QuotaWindowMutation, ReconciliationOutcome,
+	RecordHistoryItem, StoreError,
 };
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
@@ -45,21 +64,51 @@ const CREDENTIAL_VALUE_VECTORS: &[&str] = &[
 ];
 const UNICODE_WHITESPACE_VECTORS: &[&str] = &["\u{a0}", "\u{85}", "\u{202f}", "\u{3000}"];
 
+struct ConversationFixture {
+	blob_store: BlobStore,
+	conversation_id: ConversationId,
+	session_a_id: RuntimeSessionId,
+	session_b_id: RuntimeSessionId,
+}
+
 fn expected_peer_uid() -> u32 {
 	// SAFETY: `geteuid` has no arguments, retained pointers, or failure mode.
 	unsafe { libc::geteuid() }
 }
 
-fn separated_configs(prefix: &str) -> Result<(Config, Config), Box<dyn Error>> {
+fn separated_configs(prefix: &str) -> Result<(Config, Config), Box<dyn std::error::Error>> {
 	let migration = Config::from_str(&env::var(format!("{prefix}_MIGRATION_DATABASE_URL"))?)?;
 	let runtime = Config::from_str(&env::var(format!("{prefix}_RUNTIME_DATABASE_URL"))?)?;
 
 	Ok((migration, runtime))
 }
 
+fn isolated_blob_store() -> Result<BlobStore, Box<dyn std::error::Error>> {
+	let blob_root = env::var("DECODEX_TEST_BLOB_ROOT")?;
+
+	Ok(BlobStore::open(DecodexRoot::new(blob_root)?.paths())?)
+}
+
+fn history_media_type(value: &str) -> HistoryMediaType {
+	HistoryMediaType::new(value).expect("fixture media type is canonical")
+}
+
+fn history_metadata(value: Value) -> HistoryMetadata {
+	serde_json::from_value(value).expect("fixture metadata is canonical")
+}
+
+fn blob_shard_path(blob_store: &BlobStore, hash: BlobHash) -> Result<PathBuf, std::io::Error> {
+	let candidate_path = blob_store.path_for(hash);
+
+	candidate_path
+		.parent()
+		.map(Path::to_path_buf)
+		.ok_or_else(|| std::io::Error::other("blob path has no shard parent"))
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 migration harness"]
-async fn postgres_migration_contract() -> Result<(), Box<dyn Error>> {
+async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, _) = separated_configs("DECODEX_TEST")?;
 
 	PostgresStore::migrate(migration, expected_peer_uid()).await?;
@@ -69,7 +118,7 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn Error>> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires the isolated PostgreSQL 18 harness"]
-async fn postgres_store_contract() -> Result<(), Box<dyn Error>> {
+async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 	let store =
 		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
@@ -83,7 +132,11 @@ async fn postgres_store_contract() -> Result<(), Box<dyn Error>> {
 	assert_bootstrap_and_history(&client).await?;
 	assert_runtime_is_least_privilege(&runtime_client).await?;
 	assert_account_idempotency_and_revision(&store, &client).await?;
+	assert_receipt_first_saga(&store, &client).await?;
+	assert_concurrent_shard_capacity(&store, &client).await?;
 	assert_inert_window_and_credential_boundary(&store, &client).await?;
+	assert_conversation_history_context_and_blob_contract(&store, &client, &runtime_client).await?;
+	assert_concurrent_hierarchy_serialization(&store, &client, &runtime).await?;
 	assert_duration_validation(&store, &client).await?;
 	assert_lease_contention_and_reclaim(&store).await?;
 	assert_outbox_concurrency_retry_and_restart(&store, &client, &migration, &runtime).await?;
@@ -103,7 +156,1401 @@ async fn postgres_store_contract() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-async fn assert_runtime_is_least_privilege(client: &Client) -> Result<(), Box<dyn Error>> {
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the isolated PostgreSQL 18 restart harness"]
+async fn postgres_blob_session_restart_contract() -> Result<(), Box<dyn std::error::Error>> {
+	let sync = PathBuf::from(env::var("DECODEX_TEST_BLOB_RESTART_SYNC")?);
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+	let blob_store = isolated_blob_store()?;
+	let conversation_id = ConversationId::new("4b000000-0000-4000-8000-000000000001")?;
+
+	store
+		.create_conversation(
+			&CommandIdentity::new("restart-conversation", b"restart-conversation-v1")?,
+			&CreateConversation {
+				conversation_id: conversation_id.clone(),
+				title: "Restart fixture".into(),
+			},
+		)
+		.await?;
+
+	let artifact_id = ArtifactId::new("4b000000-0000-4000-8000-000000000002")?;
+	let command = CommandIdentity::new("restart-artifact", b"restart-artifact-v1")?;
+	let create = CreateArtifact {
+		artifact_id: artifact_id.clone(),
+		conversation_id,
+		bytes: b"restart-fenced-content-addressed-bytes".repeat(1_000),
+		media_type: "application/octet-stream".into(),
+		display_name: Some("Restart fixture".into()),
+	};
+	let first_store = store.clone();
+	let first_blob_store = blob_store.clone();
+	let first_command = command.clone();
+	let first_create = create.clone();
+	let worker = tokio::spawn(async move {
+		first_store.create_artifact(&first_blob_store, &first_command, &first_create).await
+	});
+
+	wait_for_path(&sync.join("published")).await?;
+
+	let (observer, observer_connection) = migration.clone().connect(NoTls).await?;
+	let observer_task = tokio::spawn(observer_connection);
+	let pending = observer
+		.query_one(
+			"SELECT claim_token::text, receipt_state='pending', \
+		 NOT EXISTS (SELECT 1 FROM decodex.blob_objects WHERE blob_hash=$2), \
+		 NOT EXISTS (SELECT 1 FROM decodex.artifacts WHERE artifact_id=$3::text::uuid) \
+		 FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[
+				&"restart-artifact",
+				&BlobHash::digest(&create.bytes).to_hex(),
+				&artifact_id.as_str(),
+			],
+		)
+		.await?;
+	let old_claim: String = pending.get(0);
+
+	assert!(pending.get::<_, bool>(1));
+	assert!(pending.get::<_, bool>(2));
+	assert!(pending.get::<_, bool>(3));
+
+	fs::write(sync.join("ready"), b"ready")?;
+
+	drop(observer);
+
+	let _ = observer_task.await;
+
+	wait_for_path(&sync.join("restarted")).await?;
+
+	fs::write(sync.join("continue"), b"continue")?;
+
+	assert!(worker.await?.is_err(), "the pre-restart BlobSession cannot complete transaction B");
+
+	let retry_store =
+		PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let completed = retry_store.create_artifact(&blob_store, &command, &create).await?;
+
+	assert_eq!(completed.artifact_id, artifact_id);
+
+	let (observer, observer_connection) = migration.connect(NoTls).await?;
+	let observer_task = tokio::spawn(observer_connection);
+	let receipt = observer
+		.query_one(
+			"SELECT receipt_state='completed', completion_claim_token::text<>$2, \
+		 EXISTS (SELECT 1 FROM decodex.blob_objects WHERE blob_hash=$3), \
+		 EXISTS (SELECT 1 FROM decodex.artifacts WHERE artifact_id=$4::text::uuid) \
+		 FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[
+				&"restart-artifact",
+				&old_claim,
+				&BlobHash::digest(&create.bytes).to_hex(),
+				&artifact_id.as_str(),
+			],
+		)
+		.await?;
+
+	assert!(receipt.get::<_, bool>(0));
+	assert!(receipt.get::<_, bool>(1));
+	assert!(receipt.get::<_, bool>(2));
+	assert!(receipt.get::<_, bool>(3));
+
+	drop(observer);
+
+	observer_task.await??;
+
+	Ok(())
+}
+
+async fn wait_for_path(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+	for _ in 0..3_000 {
+		if path.exists() {
+			return Ok(());
+		}
+
+		time::sleep(Duration::from_millis(10)).await;
+	}
+
+	Err(format!("timed out waiting for {}", path.display()).into())
+}
+
+async fn assert_receipt_first_saga(
+	store: &PostgresStore,
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let blob_store = isolated_blob_store()?;
+	let conversation_id = ConversationId::new("49600000-0000-4000-8000-000000000010")?;
+	let command = CommandIdentity::new("saga-create-conversation", b"saga-create-conversation-v1")?;
+	let create = CreateConversation {
+		conversation_id: conversation_id.clone(),
+		title: "receipt-first saga".into(),
+	};
+	let original = store.create_conversation(&command, &create).await?;
+	let replay = store.create_conversation(&command, &create).await?;
+
+	assert_eq!(replay.conversation_id, original.conversation_id);
+	assert_eq!(replay.title, original.title);
+
+	let response_is_exact: bool = client
+		.query_one(
+			"SELECT convert_from(response_bytes,'UTF8')::jsonb=response \
+			 AND receipt_state='completed' AND completion_claim_token IS NOT NULL \
+			 FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[&"saga-create-conversation"],
+		)
+		.await?
+		.get(0);
+
+	assert!(response_is_exact);
+
+	let conflicting_bytes = b"conflict must precede publication".to_vec();
+	let conflicting_hash = BlobHash::digest(&conflicting_bytes);
+	let conflict = store
+		.create_artifact(
+			&blob_store,
+			&CommandIdentity::new("saga-create-conversation", b"cross-operation-conflict")?,
+			&CreateArtifact {
+				artifact_id: ArtifactId::new("49610000-0000-4000-8000-000000000010")?,
+				conversation_id: conversation_id.clone(),
+				bytes: conflicting_bytes,
+				media_type: "application/octet-stream".into(),
+				display_name: None,
+			},
+		)
+		.await;
+
+	assert!(matches!(conflict, Err(StoreError::IdempotencyConflict)));
+	assert!(!blob_store.path_for(conflicting_hash).exists());
+
+	let conflict_metadata: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.blob_objects WHERE blob_hash=$1",
+			&[&conflicting_hash.to_hex()],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(conflict_metadata, 0);
+
+	let stale_id = "49600000-0000-4000-8000-000000000011";
+	let stale_key = "saga-stale-claim";
+	let request_hash = Sha256::digest(b"saga-stale-claim-v1")
+		.iter()
+		.map(|byte| format!("{byte:02x}"))
+		.collect::<String>();
+
+	client
+		.execute(
+			"INSERT INTO decodex.command_receipts \
+			 (idempotency_key,request_hash,operation,project_scope,scope_id,entity_id, \
+			 claim_token,claim_expires_at) VALUES \
+			 ($1,$2,'create_conversation','global','conversations',$3, \
+			 '49620000-0000-4000-8000-000000000011',clock_timestamp()+interval '5 minutes')",
+			&[&stale_key, &request_hash, &stale_id],
+		)
+		.await?;
+	client
+		.batch_execute(
+			"ALTER TABLE decodex.command_receipts DISABLE TRIGGER command_receipts_state_guard; \
+			 UPDATE decodex.command_receipts SET created_at=clock_timestamp()-interval '10 minutes', \
+			 claim_expires_at=clock_timestamp()-interval '1 second' \
+			 WHERE idempotency_key='saga-stale-claim'; \
+			 ALTER TABLE decodex.command_receipts ENABLE TRIGGER command_receipts_state_guard",
+		)
+		.await?;
+
+	let stale_create = CreateConversation {
+		conversation_id: ConversationId::new(stale_id)?,
+		title: "reclaimed stale saga".into(),
+	};
+
+	store
+		.create_conversation(
+			&CommandIdentity::new(stale_key, b"saga-stale-claim-v1")?,
+			&stale_create,
+		)
+		.await?;
+
+	let fenced: bool = client
+		.query_one(
+			"SELECT receipt_state='completed' \
+			 AND completion_claim_token<>'49620000-0000-4000-8000-000000000011'::uuid \
+			 AND claim_token IS NULL FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[&stale_key],
+		)
+		.await?
+		.get(0);
+
+	assert!(fenced);
+	assert!(
+		client
+			.execute(
+				"UPDATE decodex.command_receipts SET entity_id='forged' WHERE idempotency_key=$1",
+				&[&stale_key],
+			)
+			.await
+			.is_err()
+	);
+
+	Ok(())
+}
+
+async fn assert_concurrent_shard_capacity(
+	store: &PostgresStore,
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let base = env::var("DECODEX_TEST_BLOB_ROOT")?;
+	let capacity_root = DecodexRoot::new(format!("{base}-capacity"))?;
+	let blob_store = BlobStore::open(capacity_root.paths())?;
+	let conversation_id = ConversationId::new("49600000-0000-4000-8000-000000000020")?;
+
+	store
+		.create_conversation(
+			&CommandIdentity::new("shard-capacity-conversation", b"shard-capacity-v1")?,
+			&CreateConversation {
+				conversation_id: conversation_id.clone(),
+				title: "shard capacity concurrency".into(),
+			},
+		)
+		.await?;
+
+	let mut payloads = Vec::new();
+
+	for candidate in 0_u64..100_000 {
+		let bytes = format!("capacity-candidate-{candidate}").into_bytes();
+
+		if BlobHash::digest(&bytes).to_hex().starts_with("aa") {
+			payloads.push(bytes);
+
+			if payloads.len() == 2 {
+				break;
+			}
+		}
+	}
+
+	assert_eq!(payloads.len(), 2, "bounded search finds two same-shard payloads");
+
+	let candidate_hashes = payloads.iter().map(|bytes| BlobHash::digest(bytes)).collect::<Vec<_>>();
+	let shard = blob_shard_path(&blob_store, candidate_hashes[0])?;
+
+	fs::create_dir_all(&shard)?;
+	fs::set_permissions(&shard, Permissions::from_mode(0o700))?;
+
+	let mut inserted = 0_usize;
+	let mut suffix = 0_u64;
+
+	while inserted < 4_095 {
+		let name = format!("aa{suffix:062x}");
+
+		suffix += 1;
+
+		if candidate_hashes.iter().any(|hash| hash.to_hex() == name) {
+			continue;
+		}
+
+		fs::write(shard.join(name), [])?;
+
+		inserted += 1;
+	}
+
+	let first_store = store.clone();
+	let first_blob_store = blob_store.clone();
+	let first_conversation = conversation_id.clone();
+	let first_bytes = payloads.remove(0);
+	let first_artifact_id = ArtifactId::new("49610000-0000-4000-8000-000000000020")?;
+	let first = tokio::spawn(async move {
+		first_store
+			.create_artifact(
+				&first_blob_store,
+				&CommandIdentity::new("shard-capacity-first", b"shard-capacity-first-v1")?,
+				&CreateArtifact {
+					artifact_id: first_artifact_id,
+					conversation_id: first_conversation,
+					bytes: first_bytes,
+					media_type: "application/octet-stream".into(),
+					display_name: None,
+				},
+			)
+			.await
+	});
+	let second_store = store.clone();
+	let second_blob_store = blob_store.clone();
+	let second_bytes = payloads.remove(0);
+	let second_artifact_id = ArtifactId::new("49610000-0000-4000-8000-000000000021")?;
+	let second = tokio::spawn(async move {
+		second_store
+			.create_artifact(
+				&second_blob_store,
+				&CommandIdentity::new("shard-capacity-second", b"shard-capacity-second-v1")?,
+				&CreateArtifact {
+					artifact_id: second_artifact_id,
+					conversation_id,
+					bytes: second_bytes,
+					media_type: "application/octet-stream".into(),
+					display_name: None,
+				},
+			)
+			.await
+	});
+	let (first, second) =
+		time::timeout(Duration::from_secs(10), async { tokio::join!(first, second) }).await?;
+	let first = first?;
+	let second = second?;
+
+	assert_ne!(
+		first.is_ok(),
+		second.is_ok(),
+		"exactly one capacity contender commits: first={first:?}, second={second:?}"
+	);
+	assert_eq!(fs::read_dir(&shard)?.count(), 4_096);
+
+	let committed: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.artifacts WHERE artifact_id IN \
+			 ('49610000-0000-4000-8000-000000000020','49610000-0000-4000-8000-000000000021')",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(committed, 1);
+
+	Ok(())
+}
+
+async fn assert_concurrent_hierarchy_serialization(
+	store: &PostgresStore,
+	setup: &Client,
+	runtime: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let (client_a, connection_a) = runtime.clone().connect(NoTls).await?;
+	let (client_b, connection_b) = runtime.clone().connect(NoTls).await?;
+	let connection_a = tokio::spawn(connection_a);
+	let connection_b = tokio::spawn(connection_b);
+	let profile = "42000000-0000-4000-8000-000000000001";
+	let account = "43000000-0000-4000-8000-000000000001";
+	let session = |suffix: u8| format!("49100000-0000-4000-8000-{suffix:012x}");
+	let turn = |suffix: u8| format!("49200000-0000-4000-8000-{suffix:012x}");
+	let artifact = |suffix: u8| format!("49300000-0000-4000-8000-{suffix:012x}");
+	let pack = |suffix: u8| format!("49400000-0000-4000-8000-{suffix:012x}");
+
+	for suffix in 1_u8..=9 {
+		let suffix_number = i16::from(suffix);
+
+		setup
+			.execute(
+				"INSERT INTO decodex.conversations (conversation_id,title) \
+				 VALUES (format('49000000-0000-4000-8000-%s', lpad($1::smallint::text,12,'0'))::uuid, \
+				 'concurrency fixture')",
+				&[&suffix_number],
+			)
+			.await?;
+	}
+
+	setup.batch_execute("INSERT INTO decodex.blob_objects (blob_hash,byte_length,verified_at) VALUES (repeat('a',64),1,clock_timestamp() + interval '1 second') ON CONFLICT DO NOTHING").await?;
+
+	assert_parent_child_race(
+		setup,
+		&client_a,
+		&client_b,
+		&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000001','{profile}','{account}','active')", session(1)),
+		"UPDATE decodex.conversations SET status='archived',revision=revision+1 WHERE conversation_id='49000000-0000-4000-8000-000000000001'",
+		"SELECT status='archived' AND NOT EXISTS (SELECT 1 FROM decodex.runtime_sessions WHERE conversation_id='49000000-0000-4000-8000-000000000001') FROM decodex.conversations WHERE conversation_id='49000000-0000-4000-8000-000000000001'",
+	).await?;
+
+	setup.execute(&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000002','{profile}','{account}','active')", session(2)), &[]).await?;
+
+	assert_parent_child_race(
+		setup, &client_a, &client_b,
+		&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000002','{}',1,'assistant')", turn(2), session(2)),
+		&format!("UPDATE decodex.runtime_sessions SET state='ended',revision=revision+1 WHERE runtime_session_id='{}'", session(2)),
+		&format!("SELECT state='ended' AND NOT EXISTS (SELECT 1 FROM decodex.turns WHERE runtime_session_id='{}') FROM decodex.runtime_sessions WHERE runtime_session_id='{}'", session(2), session(2)),
+	).await?;
+
+	setup.execute(&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000003','{profile}','{account}','active')", session(3)), &[]).await?;
+	setup.execute(&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000003','{}',1,'assistant')", turn(3), session(3)), &[]).await?;
+
+	assert_parent_child_race(
+		setup, &client_a, &client_b,
+		&format!("INSERT INTO decodex.history_items (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type) VALUES ('49500000-0000-4000-8000-000000000003','49000000-0000-4000-8000-000000000003',1,'{}',0,'message','completed','race','text/plain')", turn(3)),
+		&format!("UPDATE decodex.turns SET status='completed',revision=revision+1 WHERE turn_id='{}'", turn(3)),
+		"SELECT status='completed' AND NOT EXISTS (SELECT 1 FROM decodex.history_items WHERE conversation_id='49000000-0000-4000-8000-000000000003') FROM decodex.turns WHERE turn_id='49200000-0000-4000-8000-000000000003'",
+	).await?;
+	assert_parent_child_race(
+		setup, &client_a, &client_b,
+		&format!("INSERT INTO decodex.artifacts (artifact_id,conversation_id) VALUES ('{}','49000000-0000-4000-8000-000000000004'); INSERT INTO decodex.artifact_revisions (artifact_id,conversation_id,revision,blob_hash,media_type,status) VALUES ('{}','49000000-0000-4000-8000-000000000004',1,repeat('a',64),'application/octet-stream','active')", artifact(4), artifact(4)),
+		"UPDATE decodex.conversations SET status='archived',revision=revision+1 WHERE conversation_id='49000000-0000-4000-8000-000000000004'",
+		"SELECT status='archived' AND NOT EXISTS (SELECT 1 FROM decodex.artifacts WHERE conversation_id='49000000-0000-4000-8000-000000000004') FROM decodex.conversations WHERE conversation_id='49000000-0000-4000-8000-000000000004'",
+	).await?;
+
+	setup.batch_execute(&format!("INSERT INTO decodex.artifacts (artifact_id,conversation_id) VALUES ('{}','49000000-0000-4000-8000-000000000005'); INSERT INTO decodex.artifact_revisions (artifact_id,conversation_id,revision,blob_hash,media_type,status) VALUES ('{}','49000000-0000-4000-8000-000000000005',1,repeat('a',64),'application/octet-stream','active')", artifact(5), artifact(5))).await?;
+
+	assert_artifact_revision_coherence_race(setup, &client_a, &client_b, &artifact(5)).await?;
+	assert_parent_child_race(
+		setup, &client_a, &client_b,
+		&format!("INSERT INTO decodex.context_pack_sources (context_pack_id,conversation_id,position,kind,source_id,source_revision,content_digest,original_byte_length,included_byte_length,included_digest,disposition) VALUES ('{}','49000000-0000-4000-8000-000000000006',0,'pinned_revision','pinned',1,repeat('d',64),1,1,repeat('d',64),'complete'); INSERT INTO decodex.context_packs (context_pack_id,conversation_id,pack_revision,compiled_digest,manifest_digest,inline_bytes,byte_length,max_bytes,recent_item_limit,possible_side_effects,truncated,omitted_source_count,source_count) VALUES ('{}','49000000-0000-4000-8000-000000000006',1,repeat('b',64),repeat('c',64),'x',1,1024,1,'none',false,0,1)", pack(6), pack(6)),
+		"UPDATE decodex.conversations SET status='archived',revision=revision+1 WHERE conversation_id='49000000-0000-4000-8000-000000000006'",
+		"SELECT status='archived' AND NOT EXISTS (SELECT 1 FROM decodex.context_packs WHERE conversation_id='49000000-0000-4000-8000-000000000006') FROM decodex.conversations WHERE conversation_id='49000000-0000-4000-8000-000000000006'",
+	).await?;
+
+	setup.execute(&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000007','{profile}','{account}','active')", session(7)), &[]).await?;
+	setup.execute(&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000007','{}',1,'tool')", turn(7), session(7)), &[]).await?;
+	setup.batch_execute(&format!("INSERT INTO decodex.artifacts (artifact_id,conversation_id) VALUES ('{}','49000000-0000-4000-8000-000000000007'); INSERT INTO decodex.artifact_revisions (artifact_id,conversation_id,revision,blob_hash,media_type,status) VALUES ('{}','49000000-0000-4000-8000-000000000007',1,repeat('a',64),'application/octet-stream','active')", artifact(7), artifact(7))).await?;
+
+	assert_parent_child_race(
+		setup, &client_a, &client_b,
+		&format!("INSERT INTO decodex.history_items (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type,artifact_id,artifact_revision) VALUES ('49500000-0000-4000-8000-000000000007','49000000-0000-4000-8000-000000000007',1,'{}',0,'artifact','completed','race','text/plain','{}',1)", turn(7), artifact(7)),
+		&format!("UPDATE decodex.artifacts SET status='expired',revision=revision+1 WHERE artifact_id='{}'; INSERT INTO decodex.artifact_revisions (artifact_id,conversation_id,revision,blob_hash,media_type,status) SELECT artifact_id,conversation_id,2,blob_hash,media_type,'expired' FROM decodex.artifact_revisions WHERE artifact_id='{}' AND revision=1", artifact(7), artifact(7)),
+		&format!("SELECT status='expired' AND NOT EXISTS (SELECT 1 FROM decodex.history_items WHERE artifact_id='{}') FROM decodex.artifacts WHERE artifact_id='{}'", artifact(7), artifact(7)),
+	).await?;
+
+	setup.batch_execute(&format!("INSERT INTO decodex.artifacts (artifact_id,conversation_id) VALUES ('{}','49000000-0000-4000-8000-000000000008'); INSERT INTO decodex.artifact_revisions (artifact_id,conversation_id,revision,blob_hash,media_type,status) VALUES ('{}','49000000-0000-4000-8000-000000000008',1,repeat('a',64),'application/octet-stream','active')", artifact(8), artifact(8))).await?;
+
+	assert_parent_child_race(
+		setup, &client_a, &client_b,
+		&format!("INSERT INTO decodex.context_pack_sources (context_pack_id,conversation_id,position,kind,source_id,source_revision,content_digest,original_byte_length,included_byte_length,included_digest,disposition) VALUES ('{}','49000000-0000-4000-8000-000000000008',0,'pinned_revision','pinned',1,repeat('d',64),1,1,repeat('d',64),'complete'); INSERT INTO decodex.context_pack_sources (context_pack_id,conversation_id,position,kind,source_id,source_revision,content_digest,original_byte_length,included_byte_length,included_digest,disposition,artifact_id,artifact_revision) VALUES ('{}','49000000-0000-4000-8000-000000000008',1,'artifact','{}',1,repeat('e',64),1,1,repeat('e',64),'complete','{}',1); INSERT INTO decodex.context_packs (context_pack_id,conversation_id,pack_revision,compiled_digest,manifest_digest,inline_bytes,byte_length,max_bytes,recent_item_limit,possible_side_effects,truncated,omitted_source_count,source_count) VALUES ('{}','49000000-0000-4000-8000-000000000008',1,repeat('b',64),repeat('c',64),'x',1,1024,1,'none',false,0,2)", pack(8), pack(8), artifact(8), artifact(8), pack(8)),
+		&format!("UPDATE decodex.artifacts SET status='expired',revision=revision+1 WHERE artifact_id='{}'; INSERT INTO decodex.artifact_revisions (artifact_id,conversation_id,revision,blob_hash,media_type,status) SELECT artifact_id,conversation_id,2,blob_hash,media_type,'expired' FROM decodex.artifact_revisions WHERE artifact_id='{}' AND revision=1", artifact(8), artifact(8)),
+		&format!("SELECT status='expired' AND NOT EXISTS (SELECT 1 FROM decodex.context_pack_sources WHERE artifact_id='{}') FROM decodex.artifacts WHERE artifact_id='{}'", artifact(8), artifact(8)),
+	).await?;
+
+	setup.execute(&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000009','{profile}','{account}','active')", session(9)), &[]).await?;
+	setup.execute(&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000009','{}',1,'assistant')", turn(9), session(9)), &[]).await?;
+
+	assert_concurrent_history_positions(setup, &client_a, &client_b, &turn(9)).await?;
+	assert_cursor_capacity_and_retention(setup, &client_a, &client_b, profile, account).await?;
+	assert_mixed_history_artifact_lock_order(store, setup).await?;
+	assert_executor_prelock_order(setup, &client_a, &client_b).await?;
+	assert_receipt_precedes_hierarchy(store, setup, &client_a).await?;
+	assert_transition_writer_lock_order(store, setup, &client_a).await?;
+	assert_typed_mixed_operation_progress(store, setup).await?;
+	assert_direct_transition_cursor_lock_order(store, setup, &client_a).await?;
+	assert_global_cursor_capacity_and_expiry(store, setup, &client_a, profile, account).await?;
+	drop(client_a);
+	drop(client_b);
+
+	connection_a.await??;
+
+	connection_b.await??;
+
+	Ok(())
+}
+
+async fn assert_executor_prelock_order(
+	observer: &Client,
+	holder: &Client,
+	opponent: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let blob_store = isolated_blob_store()?;
+	let (conversation_id, artifact_id, session_id, turn_id) =
+		seed_lock_order_fixture(observer, &blob_store, 24).await?;
+	let history_item_id: String = observer
+		.query_one(
+			"SELECT history_item_id::text FROM decodex.history_items \
+			 WHERE conversation_id=$1::text::uuid ORDER BY history_position LIMIT 1",
+			&[&conversation_id.as_str()],
+		)
+		.await?
+		.get(0);
+	let statements = [
+		format!(
+			"UPDATE decodex.conversations SET revision=revision WHERE conversation_id='{conversation_id}'"
+		),
+		format!(
+			"UPDATE decodex.runtime_sessions SET revision=revision WHERE runtime_session_id='{session_id}'"
+		),
+		format!("UPDATE decodex.turns SET revision=revision WHERE turn_id='{turn_id}'"),
+		format!(
+			"UPDATE decodex.history_items SET revision=revision WHERE history_item_id='{history_item_id}'"
+		),
+		format!("UPDATE decodex.artifacts SET revision=revision WHERE artifact_id='{artifact_id}'"),
+	];
+	let lock_queries = [
+		format!(
+			"SELECT 1 FROM decodex.conversations WHERE conversation_id='{conversation_id}' FOR UPDATE"
+		),
+		format!(
+			"SELECT 1 FROM decodex.runtime_sessions WHERE runtime_session_id='{session_id}' FOR UPDATE"
+		),
+		format!("SELECT 1 FROM decodex.turns WHERE turn_id='{turn_id}' FOR UPDATE"),
+		format!(
+			"SELECT 1 FROM decodex.history_items WHERE history_item_id='{history_item_id}' FOR UPDATE"
+		),
+		format!("SELECT 1 FROM decodex.artifacts WHERE artifact_id='{artifact_id}' FOR UPDATE"),
+	];
+	let holder_pid: i32 = holder.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+	let opponent_pid: i32 = opponent.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+
+	for (statement, lock_query) in statements.iter().zip(lock_queries.iter()) {
+		holder.batch_execute("BEGIN; SELECT pg_advisory_xact_lock(1271)").await?;
+
+		let update = opponent.execute(statement, &[]);
+
+		tokio::pin!(update);
+
+		let observed = wait_for_blocker(observer, holder_pid, opponent_pid);
+
+		tokio::pin!(observed);
+
+		tokio::select! {
+			result = &mut update => panic!("hierarchy statement passed its pre-tuple coordinator: {result:?}"),
+			result = &mut observed => assert!(result?, "opposing DML never reached the coordinator"),
+		}
+
+		holder.query_one(lock_query, &[]).await?;
+		holder.batch_execute("COMMIT").await?;
+
+		let error = time::timeout(Duration::from_secs(2), &mut update)
+			.await?
+			.expect_err("the deliberately illegal post-barrier update is rejected");
+
+		assert_ne!(error.code().map(|code| code.code()), Some("40P01"));
+	}
+
+	Ok(())
+}
+
+async fn wait_for_blocker(
+	observer: &Client,
+	blocker_pid: i32,
+	blocked_pid: i32,
+) -> Result<bool, tokio_postgres::Error> {
+	for _ in 0..10_000 {
+		let blocked: bool = observer
+			.query_one(
+				"SELECT $1 = ANY(pg_catalog.pg_blocking_pids($2))",
+				&[&blocker_pid, &blocked_pid],
+			)
+			.await?
+			.get(0);
+
+		if blocked {
+			return Ok(true);
+		}
+
+		task::yield_now().await;
+	}
+
+	Ok(false)
+}
+
+async fn wait_for_any_blocked_by(
+	observer: &Client,
+	blocker_pid: i32,
+) -> Result<bool, tokio_postgres::Error> {
+	for _ in 0..10_000 {
+		let blocked: bool = observer
+			.query_one(
+				"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity \
+				 WHERE $1 = ANY(pg_catalog.pg_blocking_pids(pid)))",
+				&[&blocker_pid],
+			)
+			.await?
+			.get(0);
+
+		if blocked {
+			return Ok(true);
+		}
+
+		task::yield_now().await;
+	}
+
+	Ok(false)
+}
+
+async fn assert_receipt_precedes_hierarchy(
+	store: &PostgresStore,
+	observer: &Client,
+	holder: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let key = "receipt-before-hierarchy-regression";
+
+	holder.batch_execute("BEGIN").await?;
+	holder
+		.execute(
+			"INSERT INTO decodex.command_receipts \
+			 (idempotency_key,request_hash,claim_token,claim_expires_at) \
+			 VALUES ($1,repeat('a',64),gen_random_uuid(),clock_timestamp()+interval '5 minutes')",
+			&[&key],
+		)
+		.await?;
+
+	let holder_pid: i32 = holder.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+	let task_store = store.clone();
+	let command = CommandIdentity::new(key, b"different-request")?;
+	let create = CreateConversation {
+		conversation_id: ConversationId::new("49600000-0000-4000-8000-000000000001")?,
+		title: "receipt ordering fixture".into(),
+	};
+	let task = tokio::spawn(async move { task_store.create_conversation(&command, &create).await });
+
+	assert!(
+		wait_for_any_blocked_by(observer, holder_pid).await?,
+		"typed mutation reached and waited on its receipt before hierarchy authority"
+	);
+
+	holder.query_one("SELECT pg_advisory_xact_lock(1271)", &[]).await?;
+	holder.batch_execute("COMMIT").await?;
+
+	let result = time::timeout(Duration::from_secs(2), task).await??;
+	let error = result.expect_err("cross-operation receipt reuse is an exact conflict");
+
+	assert!(matches!(error, StoreError::IdempotencyConflict));
+
+	Ok(())
+}
+
+async fn assert_cursor_capacity_and_retention(
+	setup: &Client,
+	first: &Client,
+	second: &Client,
+	profile: &str,
+	account: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let conversation_id = "49000000-0000-4000-8000-000000000010";
+
+	seed_cursor_capacity_fixture(setup, conversation_id, profile, account).await?;
+
+	let parent = issue_cursor_chain(first, conversation_id, 511).await?;
+
+	first.batch_execute("BEGIN").await?;
+
+	let final_cursor: String = first
+		.query_one(
+			"SELECT decodex.issue_history_cursor( \
+			 $1::text::uuid,$2::text::uuid,1)::text",
+			&[&conversation_id, &Some(parent.as_str())],
+		)
+		.await?
+		.get(0);
+
+	second.batch_execute("SET lock_timeout='100ms'").await?;
+
+	let blocked = second
+		.query_one(
+			"SELECT decodex.issue_history_cursor($1::text::uuid,NULL,2)",
+			&[&conversation_id],
+		)
+		.await
+		.expect_err("concurrent cursor issuance is globally serialized");
+
+	assert_eq!(
+		blocked.as_db_error().map(|error| error.code()),
+		Some(&tokio_postgres::error::SqlState::LOCK_NOT_AVAILABLE),
+	);
+
+	first.batch_execute("COMMIT").await?;
+	second.batch_execute("SET lock_timeout='2s'").await?;
+
+	let exhausted = second
+		.query_one(
+			"SELECT decodex.issue_history_cursor($1::text::uuid,NULL,2)",
+			&[&conversation_id],
+		)
+		.await
+		.expect_err("per-Conversation cursor capacity is enforced");
+
+	assert_eq!(exhausted.as_db_error().map(|error| error.code().code()), Some("54000"));
+
+	let canonical_retry: String = second
+		.query_one(
+			"SELECT decodex.issue_history_cursor( \
+			 $1::text::uuid,$2::text::uuid,1)::text",
+			&[&conversation_id, &Some(parent.as_str())],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(canonical_retry, final_cursor);
+
+	let bounded_inventory: bool = setup
+		.query_one(
+			"SELECT count(*)=512 \
+			 AND pg_catalog.pg_get_functiondef( \
+			  'decodex.issue_history_cursor(uuid,uuid,integer)'::pg_catalog.regprocedure \
+			 ) LIKE '%global_cursor_count >= 4096%' \
+			 FROM decodex.history_cursors WHERE conversation_id=$1::text::uuid",
+			&[&conversation_id],
+		)
+		.await?
+		.get(0);
+
+	assert!(bounded_inventory);
+
+	setup
+		.execute(
+			"UPDATE decodex.history_cursors \
+			 SET created_at=clock_timestamp()-interval '2 hours', \
+			 expires_at=clock_timestamp()-interval '1 hour' \
+			 WHERE conversation_id=$1::text::uuid",
+			&[&conversation_id],
+		)
+		.await?;
+
+	let replacement: String = second
+		.query_one(
+			"SELECT decodex.issue_history_cursor($1::text::uuid,NULL,2)::text",
+			&[&conversation_id],
+		)
+		.await?
+		.get(0);
+	let retention_result = setup
+		.query_one(
+			"SELECT count(*)=1 AND bool_and(expires_at>clock_timestamp()) \
+			 AND NOT EXISTS (SELECT 1 FROM decodex.history_cursors WHERE cursor_id=$2::text::uuid) \
+			 FROM decodex.history_cursors WHERE conversation_id=$1::text::uuid",
+			&[&conversation_id, &final_cursor],
+		)
+		.await?
+		.get::<_, bool>(0);
+
+	assert!(retention_result);
+	assert_ne!(replacement, final_cursor);
+
+	Ok(())
+}
+
+async fn assert_mixed_history_artifact_lock_order(
+	store: &PostgresStore,
+	setup: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let blob_store = isolated_blob_store()?;
+	let (conversation_id, _, _, _) = seed_lock_order_fixture(setup, &blob_store, 20).await?;
+	let command = CommandIdentity::new("lock-order-create", b"lock-order-create-v1")?;
+	let create = CreateArtifact {
+		artifact_id: ArtifactId::new("49300000-0000-4000-8000-000000000120")?,
+		conversation_id: conversation_id.clone(),
+		bytes: b"concurrent Artifact bytes".to_vec(),
+		media_type: "application/octet-stream".into(),
+		display_name: None,
+	};
+	let history = store.conversation_history(&blob_store, &conversation_id, None, 2);
+	let create = store.create_artifact(&blob_store, &command, &create);
+	let (history, created) =
+		time::timeout(Duration::from_secs(3), async { tokio::join!(history, create) }).await?;
+
+	assert!(history?.next_cursor.is_some());
+	assert_eq!(created?.revision, 1);
+
+	Ok(())
+}
+
+async fn assert_transition_writer_lock_order(
+	store: &PostgresStore,
+	setup: &Client,
+	transition_client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let blob_store = isolated_blob_store()?;
+	let (conversation_id, artifact_id, session_id, turn_id) =
+		seed_lock_order_fixture(setup, &blob_store, 21).await?;
+
+	transition_client.batch_execute("BEGIN").await?;
+	transition_client
+		.execute(
+			"UPDATE decodex.artifacts SET status='expired',revision=2 \
+			 WHERE artifact_id=$1::text::uuid",
+			&[&artifact_id.as_str()],
+		)
+		.await?;
+
+	let writer_store = store.clone();
+	let writer_blob_store = blob_store.clone();
+	let history_item_id = HistoryItemId::new("49500000-0000-4000-8000-000000000121")?;
+	let writer_task = tokio::spawn(async move {
+		writer_store
+			.record_history_item(
+				&writer_blob_store,
+				&CommandIdentity::new("lock-order-history", b"lock-order-history-v1")?,
+				&RecordHistoryItem {
+					conversation_id,
+					runtime_session_id: session_id,
+					turn_id,
+					turn_sequence: 1,
+					turn_role: TurnRole::Assistant,
+					possible_side_effects: PossibleSideEffects::None,
+					history_item_id,
+					ordinal: 100,
+					kind: HistoryItemKind::Message,
+					status: ItemStatus::Completed,
+					text: "concurrent history writer".into(),
+					media_type: history_media_type("text/plain"),
+					metadata: HistoryMetadata::empty(),
+					expected_revision: None,
+					artifact: None,
+				},
+			)
+			.await
+	});
+	let transition_pid: i32 =
+		transition_client.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+
+	assert!(
+		wait_for_any_blocked_by(setup, transition_pid).await?,
+		"history writer reached and waited on the transition coordinator"
+	);
+
+	transition_client
+		.execute(
+			"INSERT INTO decodex.artifact_revisions \
+			 (artifact_id,conversation_id,revision,blob_hash,media_type,display_name,status) \
+			 SELECT artifact_id,conversation_id,2,blob_hash,media_type,display_name,'expired' \
+			 FROM decodex.artifact_revisions WHERE artifact_id=$1::text::uuid AND revision=1",
+			&[&artifact_id.as_str()],
+		)
+		.await?;
+	transition_client.batch_execute("COMMIT").await?;
+
+	time::timeout(Duration::from_secs(3), writer_task).await???;
+
+	let coherent: bool = setup
+		.query_one(
+			"SELECT a.status='expired' AND a.revision=2 AND ar.status=a.status \
+			 AND EXISTS (SELECT 1 FROM decodex.history_items WHERE conversation_id=a.conversation_id \
+			 AND ordinal=100) FROM decodex.artifacts a JOIN decodex.artifact_revisions ar \
+			 ON (ar.artifact_id,ar.conversation_id,ar.revision)=(a.artifact_id,a.conversation_id,a.revision) \
+			 WHERE a.artifact_id=$1::text::uuid",
+			&[&artifact_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	assert!(coherent);
+
+	Ok(())
+}
+
+async fn assert_typed_mixed_operation_progress(
+	store: &PostgresStore,
+	setup: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let blob_store = isolated_blob_store()?;
+	let (conversation_id, artifact_id, _, _) =
+		seed_lock_order_fixture(setup, &blob_store, 22).await?;
+	let transition_command =
+		CommandIdentity::new("typed-lock-transition", b"typed-lock-transition-v1")?;
+	let create_command = CommandIdentity::new("typed-lock-create", b"typed-lock-create-v1")?;
+	let create_artifact = CreateArtifact {
+		artifact_id: ArtifactId::new("49300000-0000-4000-8000-000000000122")?,
+		conversation_id: conversation_id.clone(),
+		bytes: b"typed concurrent Artifact".to_vec(),
+		media_type: "application/octet-stream".into(),
+		display_name: None,
+	};
+	let history = store.conversation_history(&blob_store, &conversation_id, None, 2);
+	let transition = store.transition_artifact(
+		&blob_store,
+		&transition_command,
+		&artifact_id,
+		1,
+		ArtifactStatus::Expired,
+	);
+	let create = store.create_artifact(&blob_store, &create_command, &create_artifact);
+	let (history, transition, created) =
+		time::timeout(Duration::from_secs(5), async { tokio::join!(history, transition, create) })
+			.await?;
+
+	assert!(history?.next_cursor.is_some());
+	assert_eq!(transition?.status, ArtifactStatus::Expired);
+	assert_eq!(created?.revision, 1);
+
+	Ok(())
+}
+
+async fn assert_direct_transition_cursor_lock_order(
+	store: &PostgresStore,
+	setup: &Client,
+	transition_client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let blob_store = isolated_blob_store()?;
+	let (conversation_id, artifact_id, _, _) =
+		seed_lock_order_fixture(setup, &blob_store, 23).await?;
+
+	transition_client.batch_execute("BEGIN").await?;
+	transition_client
+		.execute(
+			"UPDATE decodex.artifacts SET status='expired',revision=2 \
+			 WHERE artifact_id=$1::text::uuid",
+			&[&artifact_id.as_str()],
+		)
+		.await?;
+
+	let history_store = store.clone();
+	let history_blob_store = blob_store.clone();
+	let query_conversation = conversation_id.clone();
+	let history_task = tokio::spawn(async move {
+		history_store.conversation_history(&history_blob_store, &query_conversation, None, 2).await
+	});
+	let transition_pid: i32 =
+		transition_client.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+
+	assert!(
+		wait_for_any_blocked_by(setup, transition_pid).await?,
+		"history query reached and waited on the hierarchy coordinator"
+	);
+
+	let issued: String = time::timeout(
+		Duration::from_secs(1),
+		transition_client.query_one(
+			"SELECT decodex.issue_history_cursor($1::text::uuid,NULL,1)::text",
+			&[&conversation_id.as_str()],
+		),
+	)
+	.await??
+	.get(0);
+
+	assert!(!issued.is_empty());
+
+	transition_client
+		.execute(
+			"INSERT INTO decodex.artifact_revisions \
+			 (artifact_id,conversation_id,revision,blob_hash,media_type,display_name,status) \
+			 SELECT artifact_id,conversation_id,2,blob_hash,media_type,display_name,'expired' \
+			 FROM decodex.artifact_revisions WHERE artifact_id=$1::text::uuid AND revision=1",
+			&[&artifact_id.as_str()],
+		)
+		.await?;
+	transition_client.batch_execute("COMMIT").await?;
+
+	let page = time::timeout(Duration::from_secs(3), history_task).await???;
+
+	assert!(page.next_cursor.is_some());
+
+	Ok(())
+}
+
+async fn seed_lock_order_fixture(
+	setup: &Client,
+	blob_store: &BlobStore,
+	suffix: u16,
+) -> Result<(ConversationId, ArtifactId, RuntimeSessionId, TurnId), Box<dyn std::error::Error>> {
+	let conversation_id = ConversationId::new(format!("49000000-0000-4000-8000-{suffix:012x}"))?;
+	let session_id = RuntimeSessionId::new(format!("49100000-0000-4000-8000-{suffix:012x}"))?;
+	let turn_id = TurnId::new(format!("49200000-0000-4000-8000-{suffix:012x}"))?;
+	let artifact_id = ArtifactId::new(format!("49300000-0000-4000-8000-{suffix:012x}"))?;
+	let bytes = format!("lock-order-artifact-{suffix}").into_bytes();
+	let hash = blob_store.put(&bytes)?;
+
+	setup
+		.execute(
+			"INSERT INTO decodex.blob_objects (blob_hash,byte_length,verified_at) \
+			 VALUES ($1,$2,clock_timestamp()) ON CONFLICT DO NOTHING",
+			&[&hash.to_hex(), &i64::try_from(bytes.len())?],
+		)
+		.await?;
+	setup
+		.batch_execute(&format!(
+			"INSERT INTO decodex.conversations (conversation_id,title) \
+			 VALUES ('{conversation_id}','mixed lock fixture'); \
+			 INSERT INTO decodex.runtime_sessions \
+			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) \
+			 VALUES ('{session_id}','{conversation_id}','42000000-0000-4000-8000-000000000001', \
+			 '43000000-0000-4000-8000-000000000001','active'); \
+			 INSERT INTO decodex.turns \
+			 (turn_id,conversation_id,runtime_session_id,sequence,role) \
+			 VALUES ('{turn_id}','{conversation_id}','{session_id}',1,'assistant'); \
+			 INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type) \
+			 SELECT md5('{conversation_id}' || position::text)::uuid,'{conversation_id}',999, \
+			 '{turn_id}',position,'message','completed',position::text,'text/plain' \
+			 FROM generate_series(1,4) AS position; \
+			 INSERT INTO decodex.artifacts (artifact_id,conversation_id) \
+			 VALUES ('{artifact_id}','{conversation_id}'); \
+			 INSERT INTO decodex.artifact_revisions \
+			 (artifact_id,conversation_id,revision,blob_hash,media_type,status) \
+			 VALUES ('{artifact_id}','{conversation_id}',1,'{hash}','application/octet-stream','active')"
+		))
+		.await?;
+
+	Ok((conversation_id, artifact_id, session_id, turn_id))
+}
+
+async fn assert_global_cursor_capacity_and_expiry(
+	store: &PostgresStore,
+	setup: &Client,
+	issuer: &Client,
+	profile: &str,
+	account: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	setup
+		.batch_execute(
+			"UPDATE decodex.history_cursors \
+			 SET created_at=clock_timestamp()-interval '1 hour',expires_at=clock_timestamp()",
+		)
+		.await?;
+
+	seed_global_cursor_fixtures(setup, profile, account).await?;
+
+	for suffix in 1_u16..=8 {
+		let conversation_id = format!("4a000000-0000-4000-8000-{suffix:012x}");
+
+		issue_cursor_chain_recursive(issuer, &conversation_id, 512).await?;
+	}
+
+	let at_capacity: bool = setup
+		.query_one(
+			"SELECT sum(per_conversation)=4096 AND count(*)=8 \
+			 AND min(per_conversation)=512 AND max(per_conversation)=512 FROM ( \
+			 SELECT conversation_id,count(*) AS per_conversation \
+			 FROM decodex.history_cursors GROUP BY conversation_id) AS counts",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(at_capacity);
+
+	let ninth = "4a000000-0000-4000-8000-000000000009";
+	let exhausted = issuer
+		.query_one("SELECT decodex.issue_history_cursor($1::text::uuid,NULL,2)", &[&ninth])
+		.await
+		.expect_err("the real multi-Conversation global capacity is enforced");
+
+	assert_eq!(exhausted.as_db_error().map(|error| error.code().code()), Some("54000"));
+
+	setup
+		.execute(
+			"UPDATE decodex.history_cursors \
+			 SET created_at=clock_timestamp()-interval '1 hour',expires_at=clock_timestamp() \
+			 WHERE conversation_id='4a000000-0000-4000-8000-000000000001'",
+			&[],
+		)
+		.await?;
+
+	let blob_store = isolated_blob_store()?;
+	let create_command = CommandIdentity::new("global-cap-writer", b"global-cap-writer-v1")?;
+	let create = CreateArtifact {
+		artifact_id: ArtifactId::new("4a300000-0000-4000-8000-000000000010")?,
+		conversation_id: ConversationId::new("4a000000-0000-4000-8000-00000000000a")?,
+		bytes: b"writer independent from global cursor pruning".to_vec(),
+		media_type: "application/octet-stream".into(),
+		display_name: None,
+	};
+	let issue_parameters: [&(dyn ToSql + Sync); 1] = [&ninth];
+	let issue = issuer.query_one(
+		"SELECT decodex.issue_history_cursor($1::text::uuid,NULL,2)::text",
+		&issue_parameters,
+	);
+	let write = store.create_artifact(&blob_store, &create_command, &create);
+	let (issued, written) =
+		time::timeout(Duration::from_secs(5), async { tokio::join!(issue, write) }).await?;
+
+	assert!(!issued?.get::<_, String>(0).is_empty());
+	assert_eq!(written?.revision, 1);
+
+	let after_pruning: bool = setup
+		.query_one(
+			"SELECT count(*)=3585 \
+			 AND NOT EXISTS (SELECT 1 FROM decodex.history_cursors \
+			 WHERE conversation_id='4a000000-0000-4000-8000-000000000001') \
+			 AND EXISTS (SELECT 1 FROM decodex.history_cursors \
+			 WHERE conversation_id='4a000000-0000-4000-8000-000000000009') \
+			 FROM decodex.history_cursors",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(after_pruning);
+
+	Ok(())
+}
+
+async fn seed_global_cursor_fixtures(
+	setup: &Client,
+	profile: &str,
+	account: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	for suffix in 1_u16..=10 {
+		let conversation = format!("4a000000-0000-4000-8000-{suffix:012x}");
+		let session = format!("4a100000-0000-4000-8000-{suffix:012x}");
+		let turn = format!("4a200000-0000-4000-8000-{suffix:012x}");
+
+		setup
+			.batch_execute(&format!(
+				"INSERT INTO decodex.conversations (conversation_id,title) \
+				 VALUES ('{conversation}','global cursor capacity fixture'); \
+				 INSERT INTO decodex.runtime_sessions \
+				 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) \
+				 VALUES ('{session}','{conversation}','{profile}','{account}','active'); \
+				 INSERT INTO decodex.turns \
+				 (turn_id,conversation_id,runtime_session_id,sequence,role) \
+				 VALUES ('{turn}','{conversation}','{session}',1,'system'); \
+				 INSERT INTO decodex.history_items \
+				 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status, \
+				 inline_text,media_type) \
+				 SELECT md5('{conversation}' || position::text)::uuid,'{conversation}',999, \
+				 '{turn}',position,'status','completed',position::text,'text/plain' \
+				 FROM generate_series(1,513) AS position"
+			))
+			.await?;
+	}
+
+	Ok(())
+}
+
+async fn issue_cursor_chain_recursive(
+	client: &Client,
+	conversation_id: &str,
+	length: i32,
+) -> Result<String, Box<dyn std::error::Error>> {
+	let cursor = client
+		.query_one(
+			"WITH RECURSIVE chain(depth,cursor_id) AS ( \
+			 SELECT 1,decodex.issue_history_cursor($1::text::uuid,NULL,1) \
+			 UNION ALL SELECT depth+1,decodex.issue_history_cursor($1::text::uuid,cursor_id,1) \
+			 FROM chain WHERE depth<$2) \
+			 SELECT cursor_id::text FROM chain WHERE depth=$2",
+			&[&conversation_id, &length],
+		)
+		.await?
+		.get(0);
+
+	Ok(cursor)
+}
+
+async fn seed_cursor_capacity_fixture(
+	setup: &Client,
+	conversation_id: &str,
+	profile: &str,
+	account: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let session_id = "49100000-0000-4000-8000-000000000010";
+	let turn_id = "49200000-0000-4000-8000-000000000010";
+
+	setup
+		.batch_execute(&format!(
+			"INSERT INTO decodex.conversations (conversation_id,title) \
+			 VALUES ('{conversation_id}','cursor capacity fixture'); \
+			 INSERT INTO decodex.runtime_sessions \
+			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) \
+			 VALUES ('{session_id}','{conversation_id}','{profile}','{account}','active'); \
+			 INSERT INTO decodex.turns \
+			 (turn_id,conversation_id,runtime_session_id,sequence,role) \
+			 VALUES ('{turn_id}','{conversation_id}','{session_id}',1,'system'); \
+			 INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status, \
+			  inline_text,media_type) \
+			 SELECT md5('cursor-capacity-' || position::text)::uuid,'{conversation_id}',999, \
+			  '{turn_id}',position,'status','completed',position::text,'text/plain' \
+			 FROM generate_series(1,513) AS position"
+		))
+		.await?;
+
+	Ok(())
+}
+
+async fn issue_cursor_chain(
+	client: &Client,
+	conversation_id: &str,
+	length: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+	let mut parent: Option<String> = None;
+
+	for _ in 0..length {
+		parent = Some(
+			client
+				.query_one(
+					"SELECT decodex.issue_history_cursor( \
+					 $1::text::uuid,$2::text::uuid,1)::text",
+					&[&conversation_id, &parent.as_deref()],
+				)
+				.await?
+				.get(0),
+		);
+	}
+
+	Ok(parent.expect("positive cursor chain length issues one parent"))
+}
+
+async fn assert_concurrent_history_positions(
+	setup: &Client,
+	first: &Client,
+	second: &Client,
+	turn_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let conversation_id = "49000000-0000-4000-8000-000000000009";
+
+	first.batch_execute("BEGIN").await?;
+	first
+		.execute(
+			"INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type) \
+			 VALUES ('49500000-0000-4000-8000-000000000091',$1::text::uuid,999, \
+			 $2::text::uuid,0,'message','completed','first','text/plain')",
+			&[&conversation_id, &turn_id],
+		)
+		.await?;
+	second.batch_execute("SET lock_timeout='100ms'").await?;
+
+	let blocked = second
+		.execute(
+			"INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type) \
+			 VALUES ('49500000-0000-4000-8000-000000000092',$1::text::uuid,999, \
+			 $2::text::uuid,1,'message','completed','second','text/plain')",
+			&[&conversation_id, &turn_id],
+		)
+		.await
+		.expect_err("concurrent history append waits for canonical position allocation");
+
+	assert_eq!(
+		blocked.as_db_error().map(|error| error.code()),
+		Some(&tokio_postgres::error::SqlState::LOCK_NOT_AVAILABLE),
+	);
+
+	first.batch_execute("COMMIT").await?;
+	second.batch_execute("SET lock_timeout='2s'").await?;
+	second
+		.execute(
+			"INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type) \
+			 VALUES ('49500000-0000-4000-8000-000000000092',$1::text::uuid,999, \
+			 $2::text::uuid,1,'message','completed','second','text/plain')",
+			&[&conversation_id, &turn_id],
+		)
+		.await?;
+
+	let positions: Vec<i64> = setup
+		.query_one(
+			"SELECT array_agg(history_position ORDER BY history_position) \
+			 FROM decodex.history_items WHERE conversation_id=$1::text::uuid",
+			&[&conversation_id],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(positions, vec![1, 2]);
+
+	let cursor_id: String = second
+		.query_one(
+			"SELECT decodex.issue_history_cursor($1::text::uuid,NULL,1)::text",
+			&[&conversation_id],
+		)
+		.await?
+		.get(0);
+	let canonical_cursor: bool = setup
+		.query_one(
+			"SELECT snapshot_high_water=2 AND last_position=1 AND page_size=1 \
+			 AND expires_at>created_at AND expires_at<=created_at+interval '1 hour' \
+			 FROM decodex.history_cursors WHERE cursor_id=$1::text::uuid",
+			&[&cursor_id],
+		)
+		.await?
+		.get(0);
+
+	assert!(canonical_cursor);
+
+	Ok(())
+}
+
+async fn assert_artifact_revision_coherence_race(
+	setup: &Client,
+	parent_client: &Client,
+	revision_client: &Client,
+	artifact_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	parent_client.batch_execute("BEGIN").await?;
+	parent_client
+		.execute(
+			"UPDATE decodex.artifacts SET status='expired',revision=2,updated_at=clock_timestamp() \
+			 WHERE artifact_id=$1::text::uuid",
+			&[&artifact_id],
+		)
+		.await?;
+	revision_client.batch_execute("SET lock_timeout='100ms'").await?;
+
+	let blocked = revision_client
+		.execute(
+			"INSERT INTO decodex.artifact_revisions \
+			 (artifact_id,conversation_id,revision,blob_hash,media_type,status) \
+			 SELECT artifact_id,conversation_id,2,blob_hash,media_type,'expired' \
+			 FROM decodex.artifact_revisions WHERE artifact_id=$1::text::uuid AND revision=1",
+			&[&artifact_id],
+		)
+		.await
+		.expect_err("revision insertion blocks behind its parent transition");
+
+	assert_eq!(
+		blocked.as_db_error().map(|error| error.code()),
+		Some(&tokio_postgres::error::SqlState::LOCK_NOT_AVAILABLE),
+	);
+
+	parent_client
+		.batch_execute("COMMIT")
+		.await
+		.expect_err("a parent transition without its exact revision cannot commit");
+	revision_client.batch_execute("SET lock_timeout='2s'").await?;
+
+	assert!(
+		revision_client
+			.execute(
+				"INSERT INTO decodex.artifact_revisions \
+				 (artifact_id,conversation_id,revision,blob_hash,media_type,status) \
+				 SELECT artifact_id,conversation_id,2,blob_hash,media_type,'expired' \
+				 FROM decodex.artifact_revisions WHERE artifact_id=$1::text::uuid AND revision=1",
+				&[&artifact_id],
+			)
+			.await
+			.is_err()
+	);
+
+	let coherent: bool = setup
+		.query_one(
+			"SELECT a.revision=1 AND a.status='active' \
+			 AND EXISTS (SELECT 1 FROM decodex.artifact_revisions ar \
+			 WHERE ar.artifact_id=a.artifact_id AND ar.conversation_id=a.conversation_id \
+			 AND ar.revision=a.revision AND ar.status=a.status) \
+			 FROM decodex.artifacts a WHERE artifact_id=$1::text::uuid",
+			&[&artifact_id],
+		)
+		.await?
+		.get(0);
+
+	assert!(coherent, "no incoherent parent/revision state committed after the race");
+
+	Ok(())
+}
+
+async fn assert_parent_child_race(
+	setup: &Client,
+	child_client: &Client,
+	parent_client: &Client,
+	child_insert: &str,
+	parent_terminal: &str,
+	valid_final_state: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	child_client.batch_execute("BEGIN").await?;
+	child_client.batch_execute(child_insert).await?;
+	parent_client.batch_execute("SET lock_timeout='100ms'").await?;
+
+	let blocked = parent_client
+		.batch_execute(parent_terminal)
+		.await
+		.expect_err("parent transition must conflict with an uncommitted child write");
+
+	assert_eq!(
+		blocked.as_db_error().map(|error| error.code()),
+		Some(&tokio_postgres::error::SqlState::LOCK_NOT_AVAILABLE),
+	);
+
+	child_client.batch_execute("ROLLBACK").await?;
+	parent_client.batch_execute("SET lock_timeout='2s'").await?;
+	parent_client.batch_execute(parent_terminal).await?;
+	child_client
+		.batch_execute(child_insert)
+		.await
+		.expect_err("terminal parent must reject a later child write");
+
+	let valid: bool = setup.query_one(valid_final_state, &[]).await?.get(0);
+
+	assert!(valid, "no ineligible parent/child state may commit");
+
+	Ok(())
+}
+
+async fn assert_runtime_is_least_privilege(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let attributes: (bool, bool) = client
 		.query_one("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user", &[])
 		.await
@@ -129,6 +1576,10 @@ async fn assert_runtime_is_least_privilege(client: &Client) -> Result<(), Box<dy
 		"SET session_replication_role = replica",
 		"UPDATE public.refinery_schema_history SET name = name WHERE version = 1",
 		"SELECT pg_catalog.setval('decodex.activity_sequence_seq', 1, false)",
+		"INSERT INTO decodex.history_cursors \
+		 (conversation_id,snapshot_high_water,page_size,last_position,history_item_id) VALUES \
+		 ('40000000-0000-4000-8000-000000000001',1,1,1, \
+		 '44000000-0000-4000-8000-000000000001')",
 	] {
 		let error = client
 			.batch_execute(statement)
@@ -147,7 +1598,7 @@ async fn assert_runtime_is_least_privilege(client: &Client) -> Result<(), Box<dy
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 restore harness"]
-async fn postgres_store_restored_contract() -> Result<(), Box<dyn Error>> {
+async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
@@ -185,7 +1636,7 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn Error>> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 Turkish ICU collation harness"]
-async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn Error>> {
+async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, runtime) = separated_configs("DECODEX_TEST_COLLATION")?;
 	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
@@ -213,11 +1664,21 @@ async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn Error
 	{
 		let key = format!("turkish-collation-{index}");
 
+		client
+			.execute(
+				"INSERT INTO decodex.command_receipts \
+				 (idempotency_key,request_hash,claim_token,claim_expires_at) \
+				 VALUES ($1,repeat('a',64),gen_random_uuid(),clock_timestamp()+interval '5 minutes')",
+				&[&key],
+			)
+			.await?;
+
 		assert_credential_constraint(
 			&client,
-			"INSERT INTO decodex.command_receipts \
-			 (idempotency_key, request_hash, response, completed_at) \
-			 VALUES ($1, repeat('a', 64), $2, clock_timestamp())",
+			"UPDATE decodex.command_receipts SET response=$2, \
+			 response_bytes=convert_to('{}','UTF8'), receipt_state='completed', \
+			 completed_at=clock_timestamp(),completion_claim_token=claim_token, \
+			 claim_token=NULL,claim_expires_at=NULL WHERE idempotency_key=$1",
 			&[&key, &response],
 			"command_receipts_no_credentials",
 		)
@@ -233,7 +1694,7 @@ async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn Error
 	Ok(())
 }
 
-async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
 	let version: i32 = client
 		.query_one("SELECT current_setting('server_version_num')::integer / 10000", &[])
 		.await?
@@ -252,13 +1713,16 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Err
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 2);
+	assert_eq!(history.len(), 3);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
 	assert_eq!(history[1].0, 2);
 	assert_eq!(history[1].1, "claim_indexes");
 	assert!(!history[1].2.is_empty());
+	assert_eq!(history[2].0, 3);
+	assert_eq!(history[2].1, "conversation_history");
+	assert!(!history[2].2.is_empty());
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -290,7 +1754,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn Err
 async fn assert_account_idempotency_and_revision(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	let account_id = AccountId::new(ACCOUNT_ID)?;
 	let mutation = AccountMutation {
 		account_id: account_id.clone(),
@@ -384,7 +1848,7 @@ async fn assert_account_idempotency_and_revision(
 async fn assert_inert_window_and_credential_boundary(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	let mutation = QuotaWindowMutation {
 		account_id: AccountId::new(ACCOUNT_ID)?,
 		window_class: "usage".into(),
@@ -468,7 +1932,7 @@ async fn assert_inert_window_and_credential_boundary(
 async fn assert_api_credential_boundary(
 	store: &PostgresStore,
 	mutation: &QuotaWindowMutation,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	for value in CREDENTIAL_VALUE_VECTORS {
 		assert!(matches!(
 			CommandIdentity::new(*value, b"forbidden"),
@@ -524,7 +1988,7 @@ async fn assert_quota_timestamp_validation(
 	store: &PostgresStore,
 	client: &Client,
 	base: &QuotaWindowMutation,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	for (index, (observed_at, resets_at, expected_observed_at, expected_resets_at)) in [
 		(
 			"2026-07-13T07:00:00.123456789Z",
@@ -641,7 +2105,7 @@ async fn assert_quota_timestamp_validation(
 async fn assert_direct_credential_and_scope_boundary(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	let rejected_receipts: i64 = client
 		.query_one(
 			"SELECT count(*) FROM decodex.command_receipts \
@@ -688,7 +2152,16 @@ async fn assert_direct_credential_and_scope_boundary(
 	assert_no_credential_columns_or_routing(client).await
 }
 
-async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+	client
+		.batch_execute(
+			"INSERT INTO decodex.command_receipts \
+			 (idempotency_key,request_hash,claim_token,claim_expires_at) VALUES \
+			 ('direct-credential',repeat('a',64),gen_random_uuid(),clock_timestamp()+interval '5 minutes'), \
+			 ('direct-value-credential',repeat('b',64),gen_random_uuid(),clock_timestamp()+interval '5 minutes')",
+		)
+		.await?;
+
 	for (statement, constraint) in [
 		(
 			"INSERT INTO decodex.accounts (account_id, display_label) VALUES ('10000000-0000-0000-0000-000000000099', 'Bearer abcdefghijklmnop')",
@@ -699,7 +2172,7 @@ async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn Er
 			"quota_windows_no_credentials",
 		),
 		(
-			"INSERT INTO decodex.command_receipts (idempotency_key, request_hash) VALUES ('Basic dXNlcjpwYXNz', repeat('c', 64))",
+			"INSERT INTO decodex.command_receipts (idempotency_key, request_hash, claim_token, claim_expires_at) VALUES ('Basic dXNlcjpwYXNz', repeat('c', 64), gen_random_uuid(), clock_timestamp()+interval '5 minutes')",
 			"command_receipts_no_credentials",
 		),
 		(
@@ -719,11 +2192,11 @@ async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn Er
 			"activity_no_credentials",
 		),
 		(
-			"INSERT INTO decodex.command_receipts (idempotency_key, request_hash, response, completed_at) VALUES ('direct-credential', repeat('a', 64), '{\"Authorization\":\"forbidden\"}', clock_timestamp())",
+			"UPDATE decodex.command_receipts SET response='{\"Authorization\":\"forbidden\"}',response_bytes=convert_to('{}','UTF8'),receipt_state='completed',completed_at=clock_timestamp(),completion_claim_token=claim_token,claim_token=NULL,claim_expires_at=NULL WHERE idempotency_key='direct-credential'",
 			"command_receipts_no_credentials",
 		),
 		(
-			"INSERT INTO decodex.command_receipts (idempotency_key, request_hash, response, completed_at) VALUES ('direct-value-credential', repeat('b', 64), '{\"value\":\"xoxb-1234567890-abcdef\"}', clock_timestamp())",
+			"UPDATE decodex.command_receipts SET response='{\"value\":\"xoxb-1234567890-abcdef\"}',response_bytes=convert_to('{}','UTF8'),receipt_state='completed',completed_at=clock_timestamp(),completion_claim_token=claim_token,claim_token=NULL,claim_expires_at=NULL WHERE idempotency_key='direct-value-credential'",
 			"command_receipts_no_credentials",
 		),
 		(
@@ -761,7 +2234,9 @@ async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn Er
 	Ok(())
 }
 
-async fn assert_no_credential_columns_or_routing(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_no_credential_columns_or_routing(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let forbidden_columns: i64 = client
 		.query_one(
 			"SELECT count(*) FROM information_schema.columns \
@@ -792,7 +2267,7 @@ async fn assert_no_credential_columns_or_routing(client: &Client) -> Result<(), 
 async fn assert_direct_delivered_invariant(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	assert_invalid_delivered_evidence(client).await?;
 	assert_unicode_whitespace_evidence(client).await?;
 	assert_delivered_retention(client).await?;
@@ -811,7 +2286,9 @@ async fn assert_direct_delivered_invariant(
 	Ok(())
 }
 
-async fn assert_invalid_delivered_evidence(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_invalid_delivered_evidence(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let invalid_evidence = [
 		("'receipt_recorded'", "NULL", "'{\"observed\":true}'"),
 		("'receipt_recorded'", "'null'", "'{\"observed\":true}'"),
@@ -862,7 +2339,9 @@ async fn assert_invalid_delivered_evidence(client: &Client) -> Result<(), Box<dy
 	Ok(())
 }
 
-async fn assert_unicode_whitespace_evidence(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_unicode_whitespace_evidence(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
 	for (index, whitespace) in UNICODE_WHITESPACE_VECTORS.iter().enumerate() {
 		let whitespace_evidence = Value::String((*whitespace).into());
 		let meaningful_receipt = serde_json::json!({"provider_receipt": "receipt"});
@@ -896,7 +2375,7 @@ async fn assert_unicode_whitespace_evidence(client: &Client) -> Result<(), Box<d
 	Ok(())
 }
 
-async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
 	for (index, retain_until) in [
 		"statement_timestamp()",
 		"statement_timestamp() + interval '0.0005 seconds'",
@@ -1000,7 +2479,7 @@ async fn assert_delivered_retention(client: &Client) -> Result<(), Box<dyn Error
 async fn assert_delivered_is_terminal(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	client
 		.batch_execute(
 			"INSERT INTO decodex.outbox \
@@ -1105,15 +2584,21 @@ async fn assert_credential_constraint(
 	statement: &str,
 	parameters: &[&(dyn ToSql + Sync)],
 	constraint: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	let error = client.execute(statement, parameters).await.expect_err("credential row rejected");
 
-	assert_eq!(error.as_db_error().and_then(|error| error.constraint()), Some(constraint));
+	assert_eq!(
+		error.as_db_error().and_then(|error| error.constraint()),
+		Some(constraint),
+		"unexpected PostgreSQL rejection: {error:?}"
+	);
 
 	Ok(())
 }
 
-async fn assert_lease_contention_and_reclaim(store: &PostgresStore) -> Result<(), Box<dyn Error>> {
+async fn assert_lease_contention_and_reclaim(
+	store: &PostgresStore,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let mut tasks = JoinSet::new();
 
 	for contender in 0..32 {
@@ -1171,10 +2656,2054 @@ async fn assert_lease_contention_and_reclaim(store: &PostgresStore) -> Result<()
 	Ok(())
 }
 
+async fn assert_conversation_history_context_and_blob_contract(
+	store: &PostgresStore,
+	client: &Client,
+	runtime_client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let blob_root = env::var("DECODEX_TEST_BLOB_ROOT")?;
+	let blob_store = BlobStore::open(DecodexRoot::new(blob_root)?.paths())?;
+	let conversation_id = ConversationId::new("40000000-0000-4000-8000-000000000001")?;
+	let create = CreateConversation {
+		conversation_id: conversation_id.clone(),
+		title: "Synthetic conversation fixture".into(),
+	};
+	let create_command = CommandIdentity::new("conversation-create", b"conversation-create-v1")?;
+	let first = store.create_conversation(&create_command, &create).await?;
+	let duplicate = store.create_conversation(&create_command, &create).await?;
+
+	assert_eq!(first, duplicate);
+
+	let profile = ProfileSnapshot::new(
+		"task-default",
+		"task",
+		"test-model",
+		"medium",
+		"standard",
+		BlobHash::digest(b"fixture instructions"),
+		4,
+	)?;
+	let account = AccountSnapshot::new("manual-account-a", "Manual A", "unknown", 3)?;
+	let session_a_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000001")?;
+	let session_b_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000002")?;
+
+	for (index, session_id) in [session_a_id.clone(), session_b_id.clone()].into_iter().enumerate()
+	{
+		let create_session = CreateRuntimeSession {
+			runtime_session_id: session_id,
+			conversation_id: conversation_id.clone(),
+			profile_snapshot_id: format!("42000000-0000-4000-8000-{:012x}", index + 1),
+			account_snapshot_id: format!("43000000-0000-4000-8000-{:012x}", index + 1),
+			profile_snapshot: profile.clone(),
+			account_snapshot: account.clone(),
+			codex_thread_id: None,
+			state: RuntimeSessionState::Active,
+		};
+
+		store
+			.create_runtime_session(
+				&CommandIdentity::new(
+					format!("manual-session-{index}"),
+					format!("manual-session-{index}-v1").as_bytes(),
+				)?,
+				&create_session,
+			)
+			.await?;
+	}
+
+	let null_thread_sessions: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.runtime_sessions \
+			 WHERE conversation_id = $1::text::uuid AND codex_thread_id IS NULL",
+			&[&conversation_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(null_thread_sessions, 2, "manual fixtures may span multiple RuntimeSessions");
+
+	assert_initial_lifecycle_timestamps_are_canonical(runtime_client, &conversation_id).await?;
+	assert_runtime_session_correlation_is_immutable(
+		store,
+		runtime_client,
+		&conversation_id,
+		&profile,
+		&account,
+	)
+	.await?;
+
+	let fixture = ConversationFixture { blob_store, conversation_id, session_a_id, session_b_id };
+
+	assert_history_blob_crash_contract(store, client, &fixture).await?;
+	assert_stream_revision_and_pagination(store, client, runtime_client, &fixture).await?;
+	assert_context_pack_and_transition(store, client, runtime_client, &fixture).await?;
+	assert_blob_writer_reclaimer_race(store, client, runtime_client, &fixture).await?;
+
+	let root = store
+		.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 4)
+		.await?
+		.next_cursor
+		.expect("four-item page has an Artifact continuation");
+	let artifact_page = store
+		.conversation_history(&fixture.blob_store, &fixture.conversation_id, Some(&root), 4)
+		.await?;
+
+	assert_eq!(artifact_page.entries.len(), 2);
+	assert!(artifact_page.entries[0].artifact.is_some());
+
+	assert_exact_receipt_responses_survive_later_mutation(
+		store,
+		runtime_client,
+		&fixture,
+		&profile,
+		&account,
+	)
+	.await?;
+
+	Ok(())
+}
+
+async fn assert_exact_receipt_responses_survive_later_mutation(
+	store: &PostgresStore,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+	profile: &ProfileSnapshot,
+	account: &AccountSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let sync = PathBuf::from(env::var("DECODEX_TEST_BLOB_ROOT")?).join("post-commit-sync");
+
+	fs::create_dir(&sync)?;
+
+	// SAFETY: the isolated contract is one test process and removes this test-only variable below.
+	unsafe { env::set_var("DECODEX_TEST_POST_COMMIT_SYNC", &sync) };
+
+	let session_id =
+		assert_session_receipt_response(store, runtime_client, fixture, profile, account, &sync)
+			.await?;
+
+	assert_history_receipt_response(store, runtime_client, fixture, &session_id, &sync).await?;
+
+	// SAFETY: paired with the isolated test-only set above after all barrier users finish.
+	unsafe { env::remove_var("DECODEX_TEST_POST_COMMIT_SYNC") };
+
+	fs::remove_dir_all(sync)?;
+
+	Ok(())
+}
+
+async fn assert_session_receipt_response(
+	store: &PostgresStore,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+	profile: &ProfileSnapshot,
+	account: &AccountSnapshot,
+	sync: &Path,
+) -> Result<RuntimeSessionId, Box<dyn std::error::Error>> {
+	let session_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000088")?;
+	let create_session = CreateRuntimeSession {
+		runtime_session_id: session_id.clone(),
+		conversation_id: fixture.conversation_id.clone(),
+		profile_snapshot_id: "42000000-0000-4000-8000-000000000088".into(),
+		account_snapshot_id: "43000000-0000-4000-8000-000000000088".into(),
+		profile_snapshot: profile.clone(),
+		account_snapshot: account.clone(),
+		codex_thread_id: Some("receipt-response-thread".into()),
+		state: RuntimeSessionState::Starting,
+	};
+	let first_store = store.clone();
+	let first_create = create_session.clone();
+	let session_committed = sync.join("runtime_session.committed");
+	let mut session_worker = tokio::spawn(async move {
+		first_store
+			.create_runtime_session(
+				&CommandIdentity::new("receipt-response-session", b"receipt-response-session-v1")?,
+				&first_create,
+			)
+			.await
+	});
+
+	tokio::select! {
+		result = &mut session_worker => return Err(format!("session response worker exited before barrier: {result:?}").into()),
+		result = wait_for_path(&session_committed) => result?,
+	}
+
+	runtime_client.execute(
+		"UPDATE decodex.runtime_sessions SET state='active',revision=revision+1,updated_at=clock_timestamp() \
+		 WHERE runtime_session_id=$1::text::uuid",
+		&[&session_id.as_str()],
+	).await?;
+
+	fs::write(sync.join("runtime_session.continue"), b"continue")?;
+
+	let first_session = session_worker.await??;
+	let replay_session = store
+		.create_runtime_session(
+			&CommandIdentity::new("receipt-response-session", b"receipt-response-session-v1")?,
+			&create_session,
+		)
+		.await?;
+
+	assert_eq!(first_session, replay_session);
+	assert_eq!(first_session.state, RuntimeSessionState::Starting);
+
+	let current_session: String = runtime_client
+		.query_one(
+			"SELECT state::text FROM decodex.runtime_sessions WHERE runtime_session_id=$1::text::uuid",
+			&[&session_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(current_session, "active");
+
+	fs::remove_file(sync.join("runtime_session.committed"))?;
+	fs::remove_file(sync.join("runtime_session.continue"))?;
+
+	Ok(session_id)
+}
+
+async fn assert_history_receipt_response(
+	store: &PostgresStore,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+	session_id: &RuntimeSessionId,
+	sync: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let item_id = HistoryItemId::new("44000000-0000-4000-8000-000000000088")?;
+	let mutation = RecordHistoryItem {
+		conversation_id: fixture.conversation_id.clone(),
+		runtime_session_id: session_id.clone(),
+		turn_id: TurnId::new("45000000-0000-4000-8000-000000000088")?,
+		turn_sequence: 88,
+		turn_role: TurnRole::Assistant,
+		possible_side_effects: PossibleSideEffects::None,
+		history_item_id: item_id.clone(),
+		ordinal: 0,
+		kind: HistoryItemKind::Message,
+		status: ItemStatus::Streaming,
+		text: "{\"phase\":\"first\"}".into(),
+		media_type: history_media_type("application/json"),
+		metadata: history_metadata(serde_json::json!({
+			"source":"normalized",
+			"visible":true,
+			"note":"secret sauce",
+			"summary":"token budget",
+			"context":"session summary"
+		})),
+		expected_revision: None,
+		artifact: None,
+	};
+	let first_store = store.clone();
+	let first_blob_store = fixture.blob_store.clone();
+	let first_mutation = mutation.clone();
+	let history_committed = sync.join("history_item.committed");
+	let mut history_worker = tokio::spawn(async move {
+		first_store
+			.record_history_item(
+				&first_blob_store,
+				&CommandIdentity::new("receipt-response-history", b"receipt-response-history-v1")?,
+				&first_mutation,
+			)
+			.await
+	});
+
+	tokio::select! {
+		result = &mut history_worker => return Err(format!("history response worker exited before barrier: {result:?}").into()),
+		result = wait_for_path(&history_committed) => result?,
+	}
+
+	runtime_client
+		.execute(
+			"UPDATE decodex.history_items SET status='completed',inline_text='{\"phase\":\"later\"}', \
+		 metadata='{\"source\":\"later\",\"visible\":true}'::jsonb,revision=revision+1, \
+		 updated_at=clock_timestamp() WHERE history_item_id=$1::text::uuid",
+			&[&item_id.as_str()],
+		)
+		.await?;
+
+	fs::write(sync.join("history_item.continue"), b"continue")?;
+
+	let first_history = history_worker.await??;
+	let replay_history = store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("receipt-response-history", b"receipt-response-history-v1")?,
+			&mutation,
+		)
+		.await?;
+
+	assert_eq!(first_history, replay_history);
+	assert_eq!(first_history.status, ItemStatus::Streaming);
+	assert_eq!(first_history.inline_text.as_deref(), Some("{\"phase\":\"first\"}"));
+	assert_eq!(first_history.media_type.as_str(), "application/json");
+	assert_eq!(
+		first_history.metadata.as_map().get("source"),
+		Some(&HistoryMetadataValue::Text("normalized".into())),
+	);
+	assert_eq!(
+		first_history.metadata.as_map().get("visible"),
+		Some(&HistoryMetadataValue::Boolean(true)),
+	);
+	assert_eq!(
+		first_history.metadata.as_map().get("note"),
+		Some(&HistoryMetadataValue::Text("secret sauce".into())),
+	);
+
+	let current_history: String = runtime_client
+		.query_one(
+			"SELECT status::text FROM decodex.history_items WHERE history_item_id=$1::text::uuid",
+			&[&item_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(current_history, "completed");
+
+	Ok(())
+}
+
+async fn assert_initial_lifecycle_timestamps_are_canonical(
+	runtime_client: &Client,
+	conversation_id: &ConversationId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	runtime_client
+		.batch_execute(
+			"INSERT INTO decodex.profile_snapshots \
+			 (profile_snapshot_id,source_profile_id,role,model,reasoning_effort,service_tier, \
+			  instructions_digest,source_revision,created_at) \
+			 VALUES ('42000000-0000-4000-8000-000000000099','timestamp-profile','task', \
+			 'test-model','medium','standard',repeat('a',64),1,'2000-01-01Z'); \
+			 INSERT INTO decodex.account_snapshots \
+			 (account_snapshot_id,source_account_id,display_label,observed_state,source_revision,created_at) \
+			 VALUES ('43000000-0000-4000-8000-000000000099','timestamp-account', \
+			 'Timestamp fixture','unknown',1,'2000-01-01Z')",
+		)
+		.await?;
+
+	let snapshot_times_canonical: bool = runtime_client
+		.query_one(
+			"SELECT (SELECT created_at>'2020-01-01Z' FROM decodex.profile_snapshots \
+			 WHERE profile_snapshot_id='42000000-0000-4000-8000-000000000099') \
+			 AND (SELECT created_at>'2020-01-01Z' FROM decodex.account_snapshots \
+			 WHERE account_snapshot_id='43000000-0000-4000-8000-000000000099')",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(snapshot_times_canonical);
+
+	for (session_id, state) in [
+		("41000000-0000-4000-8000-000000000004", "active"),
+		("41000000-0000-4000-8000-000000000005", "starting"),
+	] {
+		let statement = format!(
+			"INSERT INTO decodex.runtime_sessions \
+			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state, \
+			  created_at,updated_at,ended_at) \
+			 VALUES ($1::text::uuid,$2::text::uuid, \
+			 '42000000-0000-4000-8000-000000000099', \
+			 '43000000-0000-4000-8000-000000000099','{state}', \
+			 '2000-01-01Z','2099-01-01Z','2001-01-01Z')"
+		);
+
+		runtime_client.execute(&statement, &[&session_id, &conversation_id.as_str()]).await?;
+
+		let canonical: bool = runtime_client
+			.query_one(
+				"SELECT created_at=updated_at AND ended_at IS NULL \
+				 AND created_at>'2020-01-01Z' FROM decodex.runtime_sessions \
+				 WHERE runtime_session_id=$1::text::uuid",
+				&[&session_id],
+			)
+			.await?
+			.get(0);
+
+		assert!(canonical, "{state} RuntimeSession timestamps are canonical");
+	}
+	for (session_id, state) in [
+		("41000000-0000-4000-8000-000000000006", "ended"),
+		("41000000-0000-4000-8000-000000000007", "diverged"),
+	] {
+		let statement = format!(
+			"INSERT INTO decodex.runtime_sessions \
+			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state,ended_at) \
+			 VALUES ($1::text::uuid,$2::text::uuid, \
+			 '42000000-0000-4000-8000-000000000099', \
+			 '43000000-0000-4000-8000-000000000099','{state}',clock_timestamp())"
+		);
+
+		assert!(
+			runtime_client
+				.execute(&statement, &[&session_id, &conversation_id.as_str()])
+				.await
+				.is_err()
+		);
+	}
+
+	runtime_client
+		.execute(
+			"INSERT INTO decodex.turns \
+			 (turn_id,conversation_id,runtime_session_id,sequence,role,status, \
+			  created_at,updated_at,completed_at) \
+			 VALUES ('45000000-0000-4000-8000-000000000099',$1::text::uuid, \
+			 '41000000-0000-4000-8000-000000000004',99,'system','active', \
+			 '2000-01-01Z','2099-01-01Z','2001-01-01Z')",
+			&[&conversation_id.as_str()],
+		)
+		.await?;
+
+	let active_turn_canonical: bool = runtime_client
+		.query_one(
+			"SELECT created_at=updated_at AND completed_at IS NULL \
+			 AND created_at>'2020-01-01Z' FROM decodex.turns \
+			 WHERE turn_id='45000000-0000-4000-8000-000000000099'",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(active_turn_canonical);
+
+	for status in ["completed", "failed"] {
+		let statement = format!(
+			"INSERT INTO decodex.turns \
+			 (turn_id,conversation_id,runtime_session_id,sequence,role,status,completed_at) \
+			 VALUES (gen_random_uuid(),$1::text::uuid, \
+			 '41000000-0000-4000-8000-000000000004',100,'system','{status}',clock_timestamp())"
+		);
+
+		assert!(runtime_client.execute(&statement, &[&conversation_id.as_str()]).await.is_err());
+	}
+
+	Ok(())
+}
+
+async fn assert_runtime_session_correlation_is_immutable(
+	store: &PostgresStore,
+	runtime_client: &Client,
+	conversation_id: &ConversationId,
+	profile: &ProfileSnapshot,
+	account: &AccountSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let session_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000003")?;
+	let original_thread = "manual-thread-c";
+	let create = CreateRuntimeSession {
+		runtime_session_id: session_id.clone(),
+		conversation_id: conversation_id.clone(),
+		profile_snapshot_id: "42000000-0000-4000-8000-000000000003".into(),
+		account_snapshot_id: "43000000-0000-4000-8000-000000000003".into(),
+		profile_snapshot: profile.clone(),
+		account_snapshot: account.clone(),
+		codex_thread_id: Some(original_thread.into()),
+		state: RuntimeSessionState::Starting,
+	};
+
+	store
+		.create_runtime_session(
+			&CommandIdentity::new("manual-session-c", b"manual-session-c-v1")?,
+			&create,
+		)
+		.await?;
+
+	for forged_assignment in [
+		"codex_thread_id='forged-thread'",
+		"last_known_turn_id='forged-turn'",
+		"created_at=created_at - interval '1 second'",
+	] {
+		let statement = format!(
+			"UPDATE decodex.runtime_sessions SET state='active', revision=revision+1, \
+			 {forged_assignment} WHERE runtime_session_id=$1::text::uuid"
+		);
+
+		assert!(runtime_client.execute(&statement, &[&session_id.as_str()]).await.is_err());
+	}
+
+	let unchanged_starting: bool = runtime_client
+		.query_one(
+			"SELECT state='starting' AND revision=1 AND codex_thread_id=$2 \
+			 AND last_known_turn_id IS NULL FROM decodex.runtime_sessions \
+			 WHERE runtime_session_id=$1::text::uuid",
+			&[&session_id.as_str(), &original_thread],
+		)
+		.await?
+		.get(0);
+
+	assert!(unchanged_starting);
+
+	let active = store
+		.transition_runtime_session(
+			&CommandIdentity::new("manual-session-c-active", b"manual-session-c-active-v1")?,
+			&session_id,
+			1,
+			RuntimeSessionState::Active,
+		)
+		.await?;
+
+	assert_eq!(active.codex_thread_id.as_deref(), Some(original_thread));
+	assert_eq!(active.revision, 2);
+
+	for forged_assignment in [
+		"codex_thread_id='forged-terminal-thread'",
+		"last_known_turn_id='forged-terminal-turn'",
+		"created_at=created_at - interval '1 second'",
+	] {
+		let statement = format!(
+			"UPDATE decodex.runtime_sessions SET state='ended', revision=revision+1, \
+			 {forged_assignment} WHERE runtime_session_id=$1::text::uuid"
+		);
+
+		assert!(runtime_client.execute(&statement, &[&session_id.as_str()]).await.is_err());
+	}
+
+	let ended = store
+		.transition_runtime_session(
+			&CommandIdentity::new("manual-session-c-ended", b"manual-session-c-ended-v1")?,
+			&session_id,
+			2,
+			RuntimeSessionState::Ended,
+		)
+		.await?;
+
+	assert_eq!(ended.codex_thread_id.as_deref(), Some(original_thread));
+	assert_eq!(ended.revision, 3);
+
+	let canonical_terminal: bool = runtime_client
+		.query_one(
+			"SELECT state='ended' AND codex_thread_id=$2 AND last_known_turn_id IS NULL \
+			 AND ended_at=updated_at AND updated_at>=created_at \
+			 FROM decodex.runtime_sessions WHERE runtime_session_id=$1::text::uuid",
+			&[&session_id.as_str(), &original_thread],
+		)
+		.await?
+		.get(0);
+
+	assert!(canonical_terminal);
+
+	Ok(())
+}
+
+async fn assert_blob_writer_reclaimer_race(
+	store: &PostgresStore,
+	client: &Client,
+	observer: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let bytes = b"writer-reclaimer-race".repeat(1_000);
+	let hash = fixture.blob_store.put(&bytes)?;
+
+	client
+		.execute(
+			"INSERT INTO decodex.blob_objects (blob_hash,byte_length,verified_at) \
+			 VALUES ($1,$2,clock_timestamp() + interval '1 second')",
+			&[&hash.to_hex(), &i64::try_from(bytes.len())?],
+		)
+		.await?;
+	client
+		.execute(
+			"INSERT INTO decodex.turns \
+			 (turn_id,conversation_id,runtime_session_id,sequence,role) \
+			 VALUES ('45000000-0000-4000-8000-000000000006',$1::text::uuid,$2::text::uuid,6,'assistant')",
+			&[&fixture.conversation_id.as_str(), &fixture.session_b_id.as_str()],
+		)
+		.await?;
+
+	time::sleep(Duration::from_millis(2)).await;
+
+	let mut inventoried = false;
+	let mut cursor = None;
+	let mut reclaim_after = None;
+
+	loop {
+		let page_after = cursor;
+		let page = fixture.blob_store.old_inventory(Duration::from_millis(1), 256, cursor)?;
+
+		if page.entries.iter().any(|entry| entry.hash == hash) {
+			inventoried = true;
+			reclaim_after = page_after;
+		}
+
+		cursor = page.next_cursor;
+
+		if inventoried || cursor.is_none() {
+			break;
+		}
+	}
+
+	assert!(inventoried, "racing blob is present in the bounded old inventory");
+
+	client.batch_execute("BEGIN").await?;
+	client
+		.execute(
+			"INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,blob_hash,media_type) \
+			 VALUES ('44000000-0000-4000-8000-000000000006',$1::text::uuid,6, \
+			 '45000000-0000-4000-8000-000000000006',0,'message','completed',$2,'text/plain')",
+			&[&fixture.conversation_id.as_str(), &hash.to_hex()],
+		)
+		.await?;
+
+	let reclaim = store.reclaim_orphan_blobs(
+		&fixture.blob_store,
+		Duration::from_millis(1),
+		256,
+		reclaim_after,
+	);
+
+	tokio::pin!(reclaim);
+
+	let holder_pid: i32 = client.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+	let blocked = wait_for_any_blocked_by(observer, holder_pid);
+
+	tokio::pin!(blocked);
+
+	tokio::select! {
+		result = &mut reclaim => panic!("reclaimer bypassed the racing writer lock: {result:?}"),
+		result = &mut blocked => assert!(result?, "reclaimer never reached the writer-held resource"),
+	}
+
+	client.batch_execute("COMMIT").await?;
+
+	time::timeout(Duration::from_secs(2), &mut reclaim).await??;
+
+	assert!(fixture.blob_store.path_for(hash).exists());
+
+	let referenced: bool = client
+		.query_one(
+			"SELECT EXISTS (SELECT 1 FROM decodex.history_items WHERE blob_hash=$1) \
+			 AND EXISTS (SELECT 1 FROM decodex.blob_objects WHERE blob_hash=$1)",
+			&[&hash.to_hex()],
+		)
+		.await?
+		.get(0);
+
+	assert!(referenced, "a committed racing reference retains verified bytes and metadata");
+
+	Ok(())
+}
+
+async fn assert_history_blob_crash_contract(
+	store: &PostgresStore,
+	client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<BlobHash, Box<dyn std::error::Error>> {
+	let large_text = "large-history-payload-".repeat(900);
+	let large_item_id = HistoryItemId::new("44000000-0000-4000-8000-000000000001")?;
+	let large_mutation = RecordHistoryItem {
+		conversation_id: fixture.conversation_id.clone(),
+		runtime_session_id: fixture.session_a_id.clone(),
+		turn_id: TurnId::new("45000000-0000-4000-8000-000000000001")?,
+		turn_sequence: 1,
+		turn_role: TurnRole::User,
+		possible_side_effects: PossibleSideEffects::None,
+		history_item_id: large_item_id.clone(),
+		ordinal: 0,
+		kind: HistoryItemKind::Message,
+		status: ItemStatus::Completed,
+		text: large_text.clone(),
+		media_type: history_media_type("text/plain"),
+		metadata: history_metadata(serde_json::json!({"source": "synthetic"})),
+		expected_revision: None,
+		artifact: None,
+	};
+	let large_command = CommandIdentity::new("large-history-item", b"large-history-item-v1")?;
+	let large_entry =
+		store.record_history_item(&fixture.blob_store, &large_command, &large_mutation).await?;
+	let large_hash = large_entry.blob_hash.expect("large history is offloaded");
+
+	assert!(large_entry.inline_text.is_none());
+	assert_eq!(large_entry.media_type.as_str(), "text/plain");
+	assert_eq!(
+		large_entry.metadata.as_map().get("source"),
+		Some(&HistoryMetadataValue::Text("synthetic".into())),
+	);
+	assert!(client
+		.execute(
+			"INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type) \
+			 VALUES ('44000000-0000-4000-8000-000000000099',$1::text::uuid,99, \
+			 '45000000-0000-4000-8000-000000000001',1,'message','completed','invalid','not a media type')",
+			&[&fixture.conversation_id.as_str()],
+		)
+		.await
+		.is_err());
+
+	assert_direct_history_metadata_rejected(client, fixture).await?;
+
+	let orphan_hash = fixture.blob_store.put(b"crash-before-database-transaction")?;
+	let orphan_rows: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.blob_objects WHERE blob_hash = $1",
+			&[&orphan_hash.to_hex()],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(orphan_rows, 0, "pre-transaction crash leaves a harmless orphan");
+
+	time::sleep(Duration::from_millis(5)).await;
+
+	let mut cursor = None;
+	let mut removed = 0_u16;
+
+	loop {
+		let page = store
+			.reclaim_orphan_blobs(&fixture.blob_store, Duration::from_millis(1), 16, cursor)
+			.await?;
+
+		removed += page.removed;
+		cursor = page.next_cursor;
+
+		if cursor.is_none() {
+			break;
+		}
+	}
+
+	assert_eq!(removed, 1);
+	assert!(!fixture.blob_store.path_for(orphan_hash).exists());
+	assert!(
+		fixture.blob_store.path_for(large_hash).exists(),
+		"referenced bytes survive collection"
+	);
+
+	assert_post_metadata_commit_crash_is_reclaimable(store, client, fixture).await?;
+
+	let blob_path = fixture.blob_store.path_for(large_hash);
+
+	fs::write(&blob_path, b"tampered")?;
+
+	let tampered_history =
+		store.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 1).await;
+
+	assert!(
+		matches!(&tampered_history, Err(StoreError::Blob(_))),
+		"unexpected tampered-history result: {tampered_history:?}"
+	);
+
+	fs::remove_file(&blob_path)?;
+
+	assert!(matches!(
+		store.record_history_item(&fixture.blob_store, &large_command, &large_mutation).await,
+		Err(StoreError::Blob(_))
+	));
+
+	fixture.blob_store.put(large_text.as_bytes())?;
+
+	fs::remove_file(&blob_path)?;
+
+	assert!(matches!(
+		store.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 1).await,
+		Err(StoreError::Blob(_))
+	));
+
+	fixture.blob_store.put(large_text.as_bytes())?;
+
+	Ok(large_hash)
+}
+
+async fn assert_direct_history_metadata_rejected(
+	client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let benign = serde_json::json!({
+		"note": "secret sauce",
+		"summary": "token budget",
+		"context": "session summary",
+		"visible": true,
+	});
+	let maximum = Value::Object(
+		(0..32)
+			.map(|index| {
+				let key = if index == 0 { "é".repeat(32) } else { format!("field-{index}") };
+				let value =
+					if index == 0 { Value::String("é".repeat(128)) } else { Value::Bool(true) };
+
+				(key, value)
+			})
+			.collect(),
+	);
+
+	for accepted in [&benign, &maximum] {
+		let accepted: bool = client
+			.query_one("SELECT decodex.is_history_metadata_projection($1::jsonb)", &[accepted])
+			.await?
+			.get(0);
+
+		assert!(accepted);
+	}
+	for rejected in [
+		serde_json::json!({"token": "ordinary"}),
+		serde_json::json!({"auth_session": "ordinary"}),
+		serde_json::json!({"note": "Bearer abcdefgh"}),
+		serde_json::json!({"note": "secret=abcd"}),
+		serde_json::json!({"nested": {"unsafe": true}}),
+		serde_json::json!({"number": 1}),
+		serde_json::json!({"é".repeat(33): true}),
+		serde_json::json!({"note": "é".repeat(129)}),
+	] {
+		let rejected: bool = client
+			.query_one("SELECT decodex.is_history_metadata_projection($1::jsonb)", &[&rejected])
+			.await?
+			.get(0);
+
+		assert!(!rejected);
+	}
+
+	client.batch_execute("BEGIN").await?;
+	client
+		.execute(
+			"INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type,metadata) \
+			 VALUES ('44000000-0000-4000-8000-000000000097',$1::text::uuid,97, \
+			 '45000000-0000-4000-8000-000000000001',97,'message','completed','benign', \
+			 'application/json',$2::jsonb)",
+			&[&fixture.conversation_id.as_str(), &benign],
+		)
+		.await?;
+	client.batch_execute("ROLLBACK").await?;
+
+	let result = client.execute(
+		"INSERT INTO decodex.history_items \
+		 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type,metadata) \
+		 VALUES ('44000000-0000-4000-8000-000000000098',$1::text::uuid,98, \
+		 '45000000-0000-4000-8000-000000000001',2,'message','completed','invalid', \
+		 'application/json','{\"nested\":{\"unsafe\":true}}'::jsonb)",
+		&[&fixture.conversation_id.as_str()],
+	).await;
+
+	assert!(result.is_err());
+
+	let result = client
+		.execute(
+			"INSERT INTO decodex.history_items \
+			 (history_item_id,conversation_id,history_position,turn_id,ordinal,kind,status,inline_text,media_type,metadata) \
+			 VALUES ('44000000-0000-4000-8000-000000000096',$1::text::uuid,96, \
+			 '45000000-0000-4000-8000-000000000001',96,'message','completed','invalid', \
+			 'application/json','{\"token\":\"ordinary\"}'::jsonb)",
+			&[&fixture.conversation_id.as_str()],
+		)
+		.await;
+
+	assert!(result.is_err());
+
+	Ok(())
+}
+
+async fn assert_post_metadata_commit_crash_is_reclaimable(
+	store: &PostgresStore,
+	client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let hash = fixture.blob_store.put(b"crash-after-metadata-commit")?;
+
+	client
+		.execute(
+			"INSERT INTO decodex.blob_objects (blob_hash,byte_length,verified_at) \
+			 VALUES ($1,27,clock_timestamp())",
+			&[&hash.to_hex()],
+		)
+		.await?;
+	client
+		.execute("DELETE FROM decodex.blob_objects WHERE blob_hash=$1", &[&hash.to_hex()])
+		.await?;
+
+	assert!(fixture.blob_store.path_for(hash).exists());
+
+	time::sleep(Duration::from_millis(5)).await;
+
+	let mut cursor = None;
+
+	loop {
+		let page = store
+			.reclaim_orphan_blobs(&fixture.blob_store, Duration::from_millis(1), 16, cursor)
+			.await?;
+
+		cursor = page.next_cursor;
+
+		if cursor.is_none() {
+			break;
+		}
+	}
+
+	assert!(
+		!fixture.blob_store.path_for(hash).exists(),
+		"a crash after metadata commit leaves reclaimable orphan bytes"
+	);
+
+	Ok(())
+}
+
+async fn assert_stream_revision_and_pagination(
+	store: &PostgresStore,
+	client: &Client,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let streaming_id = HistoryItemId::new("44000000-0000-4000-8000-000000000002")?;
+	let mut streaming = RecordHistoryItem {
+		conversation_id: fixture.conversation_id.clone(),
+		runtime_session_id: fixture.session_b_id.clone(),
+		turn_id: TurnId::new("45000000-0000-4000-8000-000000000002")?,
+		turn_sequence: 2,
+		turn_role: TurnRole::Assistant,
+		possible_side_effects: PossibleSideEffects::Unknown,
+		history_item_id: streaming_id,
+		ordinal: 0,
+		kind: HistoryItemKind::Message,
+		status: ItemStatus::Streaming,
+		text: "streaming-one-".repeat(1_500),
+		media_type: history_media_type("text/plain"),
+		metadata: history_metadata(serde_json::json!({"correlation": "synthetic-stream"})),
+		expected_revision: None,
+		artifact: None,
+	};
+	let streamed = store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("stream-item", b"stream-item-v1")?,
+			&streaming,
+		)
+		.await?;
+
+	assert_eq!(streamed.revision, 1);
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.history_items SET revision=revision+1, \
+				 created_at=created_at - interval '1 second' \
+				 WHERE history_item_id=$1::text::uuid",
+				&[&streaming.history_item_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+
+	let mut superseded = vec![streamed.blob_hash.expect("streaming payload is offloaded")];
+
+	for revision in 1_i64..=3 {
+		streaming.text = format!("streaming-{}-", revision + 1).repeat(1_500);
+		streaming.expected_revision = Some(revision);
+
+		let updated = store
+			.record_history_item(
+				&fixture.blob_store,
+				&CommandIdentity::new(
+					format!("stream-replace-{revision}"),
+					format!("stream-replace-{revision}-v1").as_bytes(),
+				)?,
+				&streaming,
+			)
+			.await?;
+
+		assert_eq!(updated.revision, revision + 1);
+
+		superseded.push(updated.blob_hash.expect("streaming payload is offloaded"));
+	}
+
+	streaming.status = ItemStatus::Completed;
+	streaming.text = "{\"complete\":true}".into();
+	streaming.media_type = history_media_type("application/json");
+	streaming.metadata = history_metadata(serde_json::json!({
+		"correlation":"synthetic-stream",
+		"visible":true,
+		"note":"secret sauce",
+		"summary":"token budget",
+		"context":"session summary"
+	}));
+	streaming.expected_revision = Some(4);
+
+	let completed = store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("complete-item", b"complete-item-v1")?,
+			&streaming,
+		)
+		.await?;
+
+	assert_eq!(completed.revision, 5);
+
+	assert_superseded_stream_blobs_reclaimed(store, client, fixture, superseded).await?;
+
+	let third = RecordHistoryItem {
+		conversation_id: fixture.conversation_id.clone(),
+		runtime_session_id: fixture.session_b_id.clone(),
+		turn_id: TurnId::new("45000000-0000-4000-8000-000000000003")?,
+		turn_sequence: 3,
+		turn_role: TurnRole::System,
+		possible_side_effects: PossibleSideEffects::Possible,
+		history_item_id: HistoryItemId::new("44000000-0000-4000-8000-000000000003")?,
+		ordinal: 0,
+		kind: HistoryItemKind::Status,
+		status: ItemStatus::Streaming,
+		text: "manual boundary".into(),
+		media_type: history_media_type("text/plain"),
+		metadata: HistoryMetadata::empty(),
+		expected_revision: None,
+		artifact: None,
+	};
+
+	store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("third-item", b"third-item-v1")?,
+			&third,
+		)
+		.await?;
+
+	assert_snapshot_pagination(store, client, runtime_client, fixture).await
+}
+
+async fn assert_superseded_stream_blobs_reclaimed(
+	store: &PostgresStore,
+	client: &Client,
+	fixture: &ConversationFixture,
+	superseded: Vec<BlobHash>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	time::sleep(Duration::from_millis(5)).await;
+
+	let mut cursor = None;
+
+	loop {
+		let page = store
+			.reclaim_orphan_blobs(&fixture.blob_store, Duration::from_millis(1), 2, cursor)
+			.await?;
+
+		cursor = page.next_cursor;
+
+		if cursor.is_none() {
+			break;
+		}
+	}
+
+	for hash in superseded {
+		assert!(fixture.blob_store.path_for(hash).exists());
+
+		let metadata_exists: bool = client
+			.query_one(
+				"SELECT EXISTS (SELECT 1 FROM decodex.blob_objects WHERE blob_hash=$1)",
+				&[&hash.to_hex()],
+			)
+			.await?
+			.get(0);
+
+		assert!(metadata_exists, "durable exact-replay receipts retain referenced bytes");
+	}
+
+	Ok(())
+}
+
+async fn assert_snapshot_pagination(
+	store: &PostgresStore,
+	client: &Client,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let first_page =
+		store.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 2).await?;
+
+	assert_eq!(first_page.entries.len(), 2);
+
+	let issued = first_page.next_cursor.as_ref().expect("first page continuation");
+	let issued_token = issued.encode();
+	let issued_binding = client
+		.query_one(
+			"SELECT conversation_id::text,snapshot_high_water,last_position,history_item_id::text \
+			 FROM decodex.history_cursors WHERE cursor_id=$1::text::uuid",
+			&[&issued_token.trim_start_matches("v1:")],
+		)
+		.await?;
+
+	assert_eq!(issued_binding.get::<_, String>(0), fixture.conversation_id.as_str());
+	assert_eq!(issued_binding.get::<_, i64>(1), 3);
+	assert_eq!(issued_binding.get::<_, i64>(2), 2);
+	assert_eq!(issued_binding.get::<_, String>(3), first_page.entries[1].history_item_id);
+
+	let completed_after_snapshot = RecordHistoryItem {
+		conversation_id: fixture.conversation_id.clone(),
+		runtime_session_id: fixture.session_b_id.clone(),
+		turn_id: TurnId::new("45000000-0000-4000-8000-000000000003")?,
+		turn_sequence: 3,
+		turn_role: TurnRole::System,
+		possible_side_effects: PossibleSideEffects::Possible,
+		history_item_id: HistoryItemId::new("44000000-0000-4000-8000-000000000003")?,
+		ordinal: 0,
+		kind: HistoryItemKind::Status,
+		status: ItemStatus::Completed,
+		text: "manual boundary completed".into(),
+		media_type: history_media_type("text/plain"),
+		metadata: HistoryMetadata::empty(),
+		expected_revision: Some(1),
+		artifact: None,
+	};
+
+	store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("third-item-complete", b"third-item-complete-v1")?,
+			&completed_after_snapshot,
+		)
+		.await?;
+
+	let late = RecordHistoryItem {
+		conversation_id: fixture.conversation_id.clone(),
+		runtime_session_id: fixture.session_b_id.clone(),
+		turn_id: TurnId::new("45000000-0000-4000-8000-000000000004")?,
+		turn_sequence: 4,
+		turn_role: TurnRole::System,
+		possible_side_effects: PossibleSideEffects::None,
+		history_item_id: HistoryItemId::new("44000000-0000-4000-8000-000000000004")?,
+		ordinal: 0,
+		kind: HistoryItemKind::Status,
+		status: ItemStatus::Completed,
+		text: "late append".into(),
+		media_type: history_media_type("text/plain"),
+		metadata: HistoryMetadata::empty(),
+		expected_revision: None,
+		artifact: None,
+	};
+
+	store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("late-item", b"late-item-v1")?,
+			&late,
+		)
+		.await?;
+
+	assert_cursor_attack_rejection(store, runtime_client, fixture, issued, &issued_token).await?;
+
+	let second_page = store
+		.conversation_history(
+			&fixture.blob_store,
+			&fixture.conversation_id,
+			first_page.next_cursor.as_ref(),
+			2,
+		)
+		.await?;
+
+	assert_eq!(second_page.entries.len(), 1);
+	assert!(second_page.next_cursor.is_none());
+	assert_eq!(second_page.entries[0].revision, 1);
+	assert_eq!(second_page.entries[0].status, ItemStatus::Streaming);
+	assert_eq!(second_page.entries[0].inline_text.as_deref(), Some("manual boundary"));
+
+	let replayed_second_page = store
+		.conversation_history(
+			&fixture.blob_store,
+			&fixture.conversation_id,
+			first_page.next_cursor.as_ref(),
+			2,
+		)
+		.await?;
+
+	assert_eq!(replayed_second_page.entries, second_page.entries);
+	assert_eq!(
+		store
+			.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 10)
+			.await?
+			.entries
+			.len(),
+		4
+	);
+
+	assert_cursor_parent_provenance(store, client, fixture).await?;
+
+	Ok(())
+}
+
+async fn assert_cursor_attack_rejection(
+	store: &PostgresStore,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+	issued: &HistoryCursor,
+	issued_token: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	assert_cursor_counter_forgery_rejected(store, runtime_client, fixture).await?;
+
+	assert!(
+		runtime_client
+			.execute(
+				"INSERT INTO decodex.history_cursors \
+				 (cursor_id,conversation_id,snapshot_high_water,page_size,last_position,history_item_id) \
+				 VALUES ('44000000-0000-4000-8000-000000000099',$1::text::uuid,4,3,3, \
+				 '44000000-0000-4000-8000-000000000003')",
+				&[&fixture.conversation_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+	assert!(
+		runtime_client
+			.execute(
+				"INSERT INTO decodex.history_cursors \
+				 (cursor_id,conversation_id,snapshot_high_water,page_size,last_position,history_item_id,parent_cursor_id) \
+				 VALUES ('44000000-0000-4000-8000-000000000097',$1::text::uuid,4,1,3, \
+				 '44000000-0000-4000-8000-000000000003',$2::text::uuid)",
+				&[&fixture.conversation_id.as_str(), &issued_token.trim_start_matches("v1:")],
+			)
+			.await
+			.is_err()
+	);
+
+	let other = ConversationId::new("40000000-0000-4000-8000-000000000099")?;
+
+	assert!(
+		store.conversation_history(&fixture.blob_store, &other, Some(issued), 2).await.is_err()
+	);
+	assert!(
+		store
+			.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 0)
+			.await
+			.is_err()
+	);
+	assert!(
+		store
+			.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 101)
+			.await
+			.is_err()
+	);
+
+	for forged in
+		["v1:44000000-0000-4000-8000-000000000098", "v1:44000000-0000-4000-8000-000000000099"]
+	{
+		let forged = HistoryCursor::parse(forged)?;
+
+		assert!(
+			store
+				.conversation_history(
+					&fixture.blob_store,
+					&fixture.conversation_id,
+					Some(&forged),
+					2
+				)
+				.await
+				.is_err()
+		);
+	}
+
+	assert!(HistoryCursor::parse(&format!("{}:edited-boundary", issued.encode())).is_err());
+
+	Ok(())
+}
+
+async fn assert_cursor_counter_forgery_rejected(
+	store: &PostgresStore,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let stored_counter_absent: bool = runtime_client
+		.query_one(
+			"SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute \
+			 WHERE attrelid='decodex.conversations'::pg_catalog.regclass \
+			 AND attname='next_history_position' AND NOT attisdropped)",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(stored_counter_absent);
+
+	let derived_fixture = "40000000-0000-4000-8000-000000000098";
+
+	runtime_client
+		.execute(
+			"INSERT INTO decodex.conversations (conversation_id,title) \
+			 VALUES ($1::text::uuid,'derived field fixture')",
+			&[&derived_fixture],
+		)
+		.await?;
+
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.conversations SET status='archived',revision=2, \
+				 created_at=created_at - interval '1 second' WHERE conversation_id=$1::text::uuid",
+				&[&derived_fixture],
+			)
+			.await
+			.is_err()
+	);
+
+	runtime_client
+		.execute(
+			"UPDATE decodex.conversations SET status='archived',revision=2,updated_at='infinity' \
+			 WHERE conversation_id=$1::text::uuid",
+			&[&derived_fixture],
+		)
+		.await?;
+
+	let canonical_archive: bool = runtime_client
+		.query_one(
+			"SELECT status='archived' AND revision=2 AND isfinite(updated_at) \
+			 AND updated_at>=created_at FROM decodex.conversations WHERE conversation_id=$1::text::uuid",
+			&[&derived_fixture],
+		)
+		.await?
+		.get(0);
+
+	assert!(canonical_archive);
+
+	let cursor_count_before: i64 = runtime_client
+		.query_one(
+			"SELECT count(*) FROM decodex.history_cursors WHERE conversation_id=$1::text::uuid",
+			&[&fixture.conversation_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	runtime_client.batch_execute("BEGIN").await?;
+
+	let lowered = runtime_client
+		.execute(
+			"UPDATE decodex.conversations SET next_history_position=3, revision=revision+1 \
+			 WHERE conversation_id=$1::text::uuid",
+			&[&fixture.conversation_id.as_str()],
+		)
+		.await;
+	let forged_issuance = runtime_client
+		.query_one(
+			"SELECT decodex.issue_history_cursor($1::text::uuid,NULL,2)",
+			&[&fixture.conversation_id.as_str()],
+		)
+		.await;
+	let restored = runtime_client
+		.execute(
+			"UPDATE decodex.conversations SET next_history_position=5, revision=revision+1 \
+			 WHERE conversation_id=$1::text::uuid",
+			&[&fixture.conversation_id.as_str()],
+		)
+		.await;
+
+	runtime_client.batch_execute("ROLLBACK").await?;
+
+	assert!(lowered.is_err());
+	assert!(forged_issuance.is_err());
+	assert!(restored.is_err());
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.conversations SET revision=revision+1 \
+				 WHERE conversation_id=$1::text::uuid",
+				&[&fixture.conversation_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+
+	let cursor_count_after: i64 = runtime_client
+		.query_one(
+			"SELECT count(*) FROM decodex.history_cursors WHERE conversation_id=$1::text::uuid",
+			&[&fixture.conversation_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(cursor_count_after, cursor_count_before);
+	assert_eq!(
+		store
+			.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 8)
+			.await?
+			.entries
+			.len(),
+		4
+	);
+
+	Ok(())
+}
+
+async fn assert_cursor_parent_provenance(
+	store: &PostgresStore,
+	client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let root_one = store
+		.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 1)
+		.await?
+		.next_cursor
+		.expect("one-item first page has a continuation");
+	let from_one = store
+		.conversation_history(&fixture.blob_store, &fixture.conversation_id, Some(&root_one), 1)
+		.await?
+		.next_cursor
+		.expect("same-size continuation has another page");
+	let repeated = store
+		.conversation_history(&fixture.blob_store, &fixture.conversation_id, Some(&root_one), 1)
+		.await?
+		.next_cursor
+		.expect("same continuation retry has another page");
+	let root_two = store
+		.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 2)
+		.await?
+		.next_cursor
+		.expect("two-item first page has a continuation");
+
+	assert_eq!(from_one, repeated);
+	assert_ne!(from_one, root_two);
+	assert!(
+		store
+			.conversation_history(&fixture.blob_store, &fixture.conversation_id, Some(&root_one), 2)
+			.await
+			.is_err()
+	);
+
+	let bindings = client
+		.query(
+			"SELECT cursor_id::text,parent_cursor_id::text,page_size,last_position \
+			 FROM decodex.history_cursors WHERE cursor_id = ANY($1::text[]::uuid[]) \
+			 ORDER BY last_position,cursor_id",
+			&[&vec![
+				root_one.encode().trim_start_matches("v1:").to_owned(),
+				from_one.encode().trim_start_matches("v1:").to_owned(),
+				root_two.encode().trim_start_matches("v1:").to_owned(),
+			]],
+		)
+		.await?;
+
+	assert_eq!(bindings.len(), 3);
+	assert!(bindings.iter().any(|row| {
+		row.get::<_, Option<String>>(1).as_deref()
+			== Some(root_one.encode().trim_start_matches("v1:"))
+			&& row.get::<_, i32>(2) == 1
+			&& row.get::<_, i64>(3) == 2
+	}));
+	assert!(bindings.iter().any(|row| {
+		row.get::<_, Option<String>>(1).is_none()
+			&& row.get::<_, i32>(2) == 2
+			&& row.get::<_, i64>(3) == 2
+	}));
+
+	Ok(())
+}
+
+async fn assert_context_pack_and_transition(
+	store: &PostgresStore,
+	client: &Client,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let artifact_id = ArtifactId::new("48000000-0000-4000-8000-000000000001")?;
+	let artifact = store
+		.create_artifact(
+			&fixture.blob_store,
+			&CommandIdentity::new("artifact-create", b"artifact-create-v1")?,
+			&CreateArtifact {
+				artifact_id: artifact_id.clone(),
+				conversation_id: fixture.conversation_id.clone(),
+				bytes: b"artifact provenance bytes".to_vec(),
+				media_type: "application/octet-stream".into(),
+				display_name: Some("evidence.bin".into()),
+			},
+		)
+		.await?;
+
+	assert_eq!(artifact.bytes, b"artifact provenance bytes");
+
+	let policy = ContextPackPolicy::new(70_000, 8)?;
+	let input = ContextPackInput {
+		conversation_id: fixture.conversation_id.clone(),
+		possible_side_effects: PossibleSideEffects::Unknown,
+		policy,
+		pinned: PinnedContextSource::new(
+			"project-revision",
+			9,
+			"pinned-context-line\n".repeat(2_000),
+		)?,
+		optional_sources: vec![
+			ContextPackSource::new(
+				ContextSourceKind::Decision,
+				"decision-1",
+				2,
+				"keep routing disabled\n".repeat(3_000),
+			)?,
+			ContextPackSource::artifact(
+				artifact_id.clone(),
+				1,
+				b"artifact provenance bytes".to_vec(),
+			)?,
+			ContextPackSource::new(ContextSourceKind::RecentRaw, "turn-2", 2, "complete")?,
+		],
+	};
+	let pack = decodex_core::compile_context_pack(input.clone())?;
+
+	assert_eq!(pack, decodex_core::compile_context_pack(input)?);
+	assert!(pack.truncated());
+	assert!(pack.bytes().len() <= policy.max_bytes());
+
+	let context_pack_id = "46000000-0000-4000-8000-000000000001".to_owned();
+	let context_request =
+		PersistContextPack { context_pack_id: context_pack_id.clone(), pack_revision: 1 };
+	let context_command = CommandIdentity::new("context-pack-1", b"context-pack-1-v1")?;
+	let stored_pack = store
+		.persist_context_pack(&fixture.blob_store, &context_command, &context_request, &pack)
+		.await?;
+
+	assert_eq!(stored_pack.compiled_digest, pack.digest());
+
+	let source_rows: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.context_pack_sources WHERE context_pack_id = $1::text::uuid",
+			&[&context_pack_id],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(usize::try_from(source_rows)?, pack.source_manifest().len());
+
+	assert_context_pack_integrity_and_sealing(store, client, fixture, &pack, &stored_pack).await?;
+
+	assert_artifact_and_transition_matrix(
+		store,
+		client,
+		runtime_client,
+		fixture,
+		artifact_id,
+		context_pack_id,
+	)
+	.await
+}
+
+async fn assert_context_pack_integrity_and_sealing(
+	store: &PostgresStore,
+	client: &Client,
+	fixture: &ConversationFixture,
+	pack: &ContextPack,
+	stored_pack: &ContextPackRecord,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let context_pack_id = &stored_pack.context_pack_id;
+	let pack_blob: String = client
+		.query_one(
+			"SELECT blob_hash FROM decodex.context_packs WHERE context_pack_id = $1::text::uuid",
+			&[&context_pack_id],
+		)
+		.await?
+		.get(0);
+	let pack_blob_hash = BlobHash::parse(&pack_blob)?;
+	let pack_path = fixture.blob_store.path_for(pack_blob_hash);
+
+	fs::write(&pack_path, b"tampered-context-pack")?;
+
+	assert!(store.context_pack(&fixture.blob_store, context_pack_id).await.is_err());
+
+	fs::remove_file(&pack_path)?;
+
+	fixture.blob_store.put(pack.bytes())?;
+
+	assert_eq!(&store.context_pack(&fixture.blob_store, context_pack_id).await?, stored_pack);
+	assert!(client.execute("UPDATE decodex.context_packs SET possible_side_effects='none' WHERE context_pack_id=$1::text::uuid", &[&context_pack_id]).await.is_err());
+	assert!(client.execute("UPDATE decodex.context_pack_sources SET content_digest=repeat('0',64), included_digest=repeat('0',64) WHERE context_pack_id=$1::text::uuid AND position=0", &[&context_pack_id]).await.is_err());
+	assert!(
+		client
+			.execute(
+				"DELETE FROM decodex.context_pack_sources WHERE context_pack_id=$1::text::uuid AND position=0",
+				&[&context_pack_id]
+			)
+			.await
+			.is_err()
+	);
+	assert!(client.execute(
+		"INSERT INTO decodex.context_pack_sources \
+		 (context_pack_id,conversation_id,position,kind,source_id,source_revision,content_digest, \
+		 original_byte_length,included_byte_length,included_digest,disposition) \
+		 VALUES ($1::text::uuid,$2::text::uuid,511,'fact','poison',1,repeat('f',64),1,1,repeat('f',64),'complete')",
+		&[&context_pack_id, &fixture.conversation_id.as_str()],
+	).await.is_err());
+	assert_eq!(&store.context_pack(&fixture.blob_store, context_pack_id).await?, stored_pack);
+
+	let source_artifact_path =
+		fixture.blob_store.path_for(BlobHash::digest(b"artifact provenance bytes"));
+
+	fs::write(&source_artifact_path, b"tampered Context Pack source")?;
+
+	assert!(matches!(
+		store.context_pack(&fixture.blob_store, context_pack_id).await,
+		Err(StoreError::Blob(_)) | Err(StoreError::Incompatible(_))
+	));
+
+	fs::remove_file(&source_artifact_path)?;
+
+	assert!(matches!(
+		store.context_pack(&fixture.blob_store, context_pack_id).await,
+		Err(StoreError::Blob(_))
+	));
+
+	fixture.blob_store.put(b"artifact provenance bytes")?;
+
+	let incomplete_pack_id = "46000000-0000-4000-8000-000000000009";
+
+	client.batch_execute("BEGIN").await?;
+
+	let incomplete = client
+		.batch_execute(&format!(
+			"INSERT INTO decodex.context_pack_sources \
+			 (context_pack_id,conversation_id,position,kind,source_id,source_revision,content_digest, \
+			 original_byte_length,included_byte_length,included_digest,disposition) VALUES \
+			 ('{incomplete_pack_id}','{}',0,'pinned_revision','pinned',1,repeat('d',64),1,1,repeat('d',64),'complete'), \
+			 ('{incomplete_pack_id}','{}',2,'fact','gapped',1,repeat('e',64),1,1,repeat('e',64),'complete'); \
+			 INSERT INTO decodex.context_packs \
+			 (context_pack_id,conversation_id,pack_revision,compiled_digest,manifest_digest,inline_bytes, \
+			 byte_length,max_bytes,recent_item_limit,possible_side_effects,truncated,omitted_source_count,source_count) \
+			 VALUES ('{incomplete_pack_id}','{}',1,repeat('b',64),repeat('c',64),'x',1,1024,1,'none',false,0,2)",
+			fixture.conversation_id.as_str(),
+			fixture.conversation_id.as_str(),
+			fixture.conversation_id.as_str(),
+		))
+		.await;
+
+	assert!(incomplete.is_err());
+
+	client.batch_execute("ROLLBACK").await?;
+
+	let incomplete_rows: i64 = client
+		.query_one(
+			"SELECT (SELECT count(*) FROM decodex.context_packs WHERE context_pack_id=$1::text::uuid) \
+			 + (SELECT count(*) FROM decodex.context_pack_sources WHERE context_pack_id=$1::text::uuid)",
+			&[&incomplete_pack_id],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(incomplete_rows, 0);
+
+	Ok(())
+}
+
+async fn assert_artifact_and_transition_matrix(
+	store: &PostgresStore,
+	client: &Client,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+	artifact_id: ArtifactId,
+	context_pack_id: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let second_artifact_id =
+		assert_second_artifact_media_authority(store, client, runtime_client, fixture).await?;
+	let artifact_history = assert_artifact_history_correlation(
+		store,
+		client,
+		fixture,
+		&artifact_id,
+		&second_artifact_id,
+	)
+	.await?;
+
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.artifacts SET status='expired',revision=2, \
+				 created_at=created_at - interval '1 second' \
+				 WHERE artifact_id=$1::text::uuid",
+				&[&artifact_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+
+	let expired = store
+		.transition_artifact(
+			&fixture.blob_store,
+			&CommandIdentity::new("artifact-expire", b"artifact-expire-v1")?,
+			&artifact_id,
+			1,
+			ArtifactStatus::Expired,
+		)
+		.await?;
+
+	assert_eq!(expired.revision, 2);
+	assert_eq!(
+		store.artifact(&fixture.blob_store, &artifact_id, Some(1)).await?.status,
+		ArtifactStatus::Active
+	);
+	assert!(client.batch_execute("UPDATE decodex.artifacts SET conversation_id='40000000-0000-4000-8000-000000000099', revision=revision+1 WHERE artifact_id='48000000-0000-4000-8000-000000000001'").await.is_err());
+	assert!(client.batch_execute("UPDATE decodex.history_items SET status='streaming', revision=revision+1 WHERE history_item_id='44000000-0000-4000-8000-000000000005'").await.is_err());
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.turns SET status='completed',revision=2, \
+				 created_at=created_at - interval '1 second' \
+				 WHERE turn_id=$1::text::uuid",
+				&[&artifact_history.turn_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+	assert_eq!(
+		store
+			.transition_turn(
+				&CommandIdentity::new("artifact-turn-complete", b"artifact-turn-complete-v1")?,
+				&artifact_history.turn_id,
+				1,
+				decodex_core::TurnStatus::Completed
+			)
+			.await?,
+		2
+	);
+	assert!(client.batch_execute("UPDATE decodex.turns SET status='active', revision=revision+1 WHERE turn_id='45000000-0000-4000-8000-000000000005'").await.is_err());
+
+	assert_transition_proposal_and_session_terminalization(store, client, fixture, context_pack_id)
+		.await
+}
+
+async fn assert_second_artifact_media_authority(
+	store: &PostgresStore,
+	client: &Client,
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+) -> Result<ArtifactId, Box<dyn std::error::Error>> {
+	let artifact_id = ArtifactId::new("48000000-0000-4000-8000-000000000002")?;
+
+	store
+		.create_artifact(
+			&fixture.blob_store,
+			&CommandIdentity::new("artifact-create-second", b"artifact-create-second-v1")?,
+			&CreateArtifact {
+				artifact_id: artifact_id.clone(),
+				conversation_id: fixture.conversation_id.clone(),
+				bytes: b"second artifact provenance".to_vec(),
+				media_type: "application/octet-stream".into(),
+				display_name: None,
+			},
+		)
+		.await?;
+
+	assert!(
+		client
+			.execute(
+				"INSERT INTO decodex.artifact_revisions \
+				 (artifact_id,conversation_id,revision,blob_hash,media_type,status) \
+				 SELECT artifact_id,conversation_id,2,blob_hash,'not a media type',status \
+				 FROM decodex.artifact_revisions WHERE artifact_id=$1::text::uuid AND revision=1",
+				&[&artifact_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+	assert!(
+		client
+			.execute(
+				"INSERT INTO decodex.artifact_revisions \
+				 (artifact_id,conversation_id,revision,blob_hash,media_type,status) \
+				 SELECT artifact_id,conversation_id,2,blob_hash,'application/octet-stream',status \
+				 FROM decodex.artifact_revisions WHERE artifact_id=$1::text::uuid AND revision=1",
+				&[&artifact_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+	assert!(
+		client
+			.execute(
+				"UPDATE decodex.artifacts SET status='expired',revision=2,updated_at=clock_timestamp() \
+				 WHERE artifact_id=$1::text::uuid",
+				&[&artifact_id.as_str()],
+			)
+			.await
+			.is_err()
+	);
+
+	let coherent_parent = client
+		.query_one(
+			"SELECT status::text,revision,EXISTS (SELECT 1 FROM decodex.artifact_revisions ar \
+			 WHERE ar.artifact_id=a.artifact_id AND ar.conversation_id=a.conversation_id \
+			 AND ar.revision=a.revision AND ar.status=a.status) \
+			 FROM decodex.artifacts a WHERE artifact_id=$1::text::uuid",
+			&[&artifact_id.as_str()],
+		)
+		.await?;
+
+	assert_eq!(coherent_parent.get::<_, &str>(0), "active");
+	assert_eq!(coherent_parent.get::<_, i64>(1), 1);
+	assert!(coherent_parent.get::<_, bool>(2));
+
+	assert_noncontiguous_artifact_attacks(runtime_client, fixture, &artifact_id).await?;
+
+	Ok(artifact_id)
+}
+
+async fn assert_noncontiguous_artifact_attacks(
+	runtime_client: &Client,
+	fixture: &ConversationFixture,
+	source_artifact_id: &ArtifactId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let missing_first = "48000000-0000-4000-8000-000000000003";
+
+	runtime_client.batch_execute("BEGIN").await?;
+	runtime_client
+		.execute(
+			"INSERT INTO decodex.artifacts (artifact_id,conversation_id) \
+			 VALUES ($1::text::uuid,$2::text::uuid)",
+			&[&missing_first, &fixture.conversation_id.as_str()],
+		)
+		.await?;
+
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.artifacts SET status='expired',revision=2 \
+			 WHERE artifact_id=$1::text::uuid",
+				&[&missing_first],
+			)
+			.await
+			.is_err()
+	);
+
+	runtime_client.batch_execute("ROLLBACK").await?;
+
+	let missing_middle = "48000000-0000-4000-8000-000000000004";
+
+	runtime_client.batch_execute("BEGIN").await?;
+	runtime_client
+		.execute(
+			"INSERT INTO decodex.artifacts (artifact_id,conversation_id) \
+			 VALUES ($1::text::uuid,$2::text::uuid)",
+			&[&missing_middle, &fixture.conversation_id.as_str()],
+		)
+		.await?;
+	runtime_client
+		.execute(
+			"INSERT INTO decodex.artifact_revisions \
+			 (artifact_id,conversation_id,revision,blob_hash,media_type,status) \
+			 SELECT $1::text::uuid,$2::text::uuid,1,blob_hash,media_type,'active' \
+			 FROM decodex.artifact_revisions \
+			 WHERE artifact_id=$3::text::uuid AND revision=1",
+			&[&missing_middle, &fixture.conversation_id.as_str(), &source_artifact_id.as_str()],
+		)
+		.await?;
+	runtime_client
+		.execute(
+			"UPDATE decodex.artifacts SET status='expired',revision=2 \
+			 WHERE artifact_id=$1::text::uuid",
+			&[&missing_middle],
+		)
+		.await?;
+
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.artifacts SET status='deleted',revision=3 \
+			 WHERE artifact_id=$1::text::uuid",
+				&[&missing_middle],
+			)
+			.await
+			.is_err()
+	);
+
+	runtime_client.batch_execute("ROLLBACK").await?;
+
+	let attack_rows: i64 = runtime_client
+		.query_one(
+			"SELECT count(*) FROM decodex.artifacts \
+			 WHERE artifact_id IN ($1::text::uuid,$2::text::uuid)",
+			&[&missing_first, &missing_middle],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(attack_rows, 0);
+
+	Ok(())
+}
+
+async fn assert_artifact_history_correlation(
+	store: &PostgresStore,
+	client: &Client,
+	fixture: &ConversationFixture,
+	artifact_id: &ArtifactId,
+	second_artifact_id: &ArtifactId,
+) -> Result<RecordHistoryItem, Box<dyn std::error::Error>> {
+	let mut mutation = RecordHistoryItem {
+		conversation_id: fixture.conversation_id.clone(),
+		runtime_session_id: fixture.session_a_id.clone(),
+		turn_id: TurnId::new("45000000-0000-4000-8000-000000000005")?,
+		turn_sequence: 5,
+		turn_role: TurnRole::Tool,
+		possible_side_effects: PossibleSideEffects::None,
+		history_item_id: HistoryItemId::new("44000000-0000-4000-8000-000000000005")?,
+		ordinal: 0,
+		kind: HistoryItemKind::Artifact,
+		status: ItemStatus::Streaming,
+		text: "artifact reference".into(),
+		media_type: history_media_type("text/plain"),
+		metadata: HistoryMetadata::empty(),
+		expected_revision: None,
+		artifact: Some((artifact_id.clone(), 1)),
+	};
+	let stored = store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("artifact-history", b"artifact-history-v1")?,
+			&mutation,
+		)
+		.await?;
+
+	assert_eq!(stored.artifact, Some((artifact_id.clone(), 1)));
+
+	let mut mismatch = mutation.clone();
+
+	mismatch.status = ItemStatus::Completed;
+	mismatch.expected_revision = Some(1);
+	mismatch.artifact = Some((second_artifact_id.clone(), 1));
+
+	assert!(matches!(
+		store
+			.record_history_item(
+				&fixture.blob_store,
+				&CommandIdentity::new(
+					"artifact-history-mismatch",
+					b"artifact-history-mismatch-v1"
+				)?,
+				&mismatch,
+			)
+			.await,
+		Err(StoreError::RevisionConflict { actual: Some(1), .. })
+	));
+	assert!(client.execute("UPDATE decodex.history_items SET artifact_id=$2::text::uuid, artifact_revision=1,revision=revision+1 WHERE history_item_id=$1::text::uuid", &[&mutation.history_item_id.as_str(), &second_artifact_id.as_str()]).await.is_err());
+
+	let retained = client
+		.query_one(
+			"SELECT artifact_id::text,artifact_revision,revision, EXISTS (SELECT 1 FROM decodex.command_receipts WHERE idempotency_key='artifact-history-mismatch' AND receipt_state='pending') FROM decodex.history_items WHERE history_item_id=$1::text::uuid",
+			&[&mutation.history_item_id.as_str()],
+		)
+		.await?;
+
+	assert_eq!(retained.get::<_, String>(0), artifact_id.as_str());
+	assert_eq!(retained.get::<_, i64>(1), 1);
+	assert_eq!(retained.get::<_, i64>(2), 1);
+	assert!(retained.get::<_, bool>(3));
+
+	mutation.status = ItemStatus::Completed;
+	mutation.expected_revision = Some(1);
+
+	let stored = store
+		.record_history_item(
+			&fixture.blob_store,
+			&CommandIdentity::new("artifact-history-complete", b"artifact-history-complete-v1")?,
+			&mutation,
+		)
+		.await?;
+
+	assert_eq!(stored.revision, 2);
+	assert_eq!(stored.artifact, Some((artifact_id.clone(), 1)));
+
+	let history = store
+		.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 100)
+		.await?;
+	let readback = history
+		.entries
+		.iter()
+		.find(|entry| entry.history_item_id == mutation.history_item_id.as_str())
+		.expect("typed Artifact history readback");
+
+	assert_eq!(readback.artifact, Some((artifact_id.clone(), 1)));
+
+	let artifact_path = fixture.blob_store.path_for(BlobHash::digest(b"artifact provenance bytes"));
+
+	fs::write(&artifact_path, b"tampered transitive Artifact bytes")?;
+
+	assert!(matches!(
+		store.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 100).await,
+		Err(StoreError::Blob(_))
+	));
+
+	fs::remove_file(&artifact_path)?;
+
+	assert!(matches!(
+		store.conversation_history(&fixture.blob_store, &fixture.conversation_id, None, 100).await,
+		Err(StoreError::Blob(_))
+	));
+
+	fixture.blob_store.put(b"artifact provenance bytes")?;
+
+	Ok(mutation)
+}
+
+async fn assert_transition_proposal_and_session_terminalization(
+	store: &PostgresStore,
+	client: &Client,
+	fixture: &ConversationFixture,
+	context_pack_id: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let proposal = ProposeTransition {
+		transition_id: "47000000-0000-4000-8000-000000000001".into(),
+		conversation_id: fixture.conversation_id.clone(),
+		from_runtime_session_id: fixture.session_a_id.clone(),
+		context_pack_id,
+		kind: ProposedTransitionKind::Fallback,
+		reason: "manual proposal fixture".into(),
+	};
+
+	store
+		.propose_transition(
+			&CommandIdentity::new("transition-proposal", b"transition-proposal-v1")?,
+			&proposal,
+		)
+		.await?;
+
+	let dispatch_enabled: bool = client
+		.query_one(
+			"SELECT dispatch_enabled FROM decodex.transition_proposals \
+			 WHERE transition_id = $1::text::uuid",
+			&[&proposal.transition_id],
+		)
+		.await?
+		.get(0);
+
+	assert!(!dispatch_enabled);
+
+	client.execute("INSERT INTO decodex.conversations (conversation_id,title) VALUES ('40000000-0000-4000-8000-000000000099','Other conversation')", &[]).await?;
+
+	assert!(client.batch_execute("INSERT INTO decodex.transition_proposals (transition_id,conversation_id,from_runtime_session_id,context_pack_id,kind,reason) VALUES ('47000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','41000000-0000-4000-8000-000000000001','46000000-0000-4000-8000-000000000001','fallback','cross conversation')").await.is_err());
+	assert!(client.batch_execute("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('41000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','42000000-0000-4000-8000-000000000001','43000000-0000-4000-8000-000000000001','ended')").await.is_err());
+	assert!(
+		store
+			.transition_runtime_session(
+				&CommandIdentity::new("session-a-end-too-early", b"session-a-end-too-early-v1")?,
+				&fixture.session_a_id,
+				1,
+				RuntimeSessionState::Ended
+			)
+			.await
+			.is_err()
+	);
+
+	store
+		.transition_turn(
+			&CommandIdentity::new("large-turn-complete", b"large-turn-complete-v1")?,
+			&TurnId::new("45000000-0000-4000-8000-000000000001")?,
+			1,
+			TurnStatus::Completed,
+		)
+		.await?;
+
+	assert_eq!(
+		store
+			.transition_runtime_session(
+				&CommandIdentity::new("session-a-end", b"session-a-end-v1")?,
+				&fixture.session_a_id,
+				1,
+				RuntimeSessionState::Ended
+			)
+			.await?
+			.state,
+		RuntimeSessionState::Ended
+	);
+	assert!(client.batch_execute("UPDATE decodex.runtime_sessions SET state='active', revision=revision+1 WHERE runtime_session_id='41000000-0000-4000-8000-000000000001'").await.is_err());
+	assert!(
+		client
+			.batch_execute(
+				"UPDATE decodex.transition_proposals SET dispatch_enabled = true \
+			 WHERE transition_id = '47000000-0000-4000-8000-000000000001'",
+			)
+			.await
+			.is_err()
+	);
+
+	Ok(())
+}
+
 async fn assert_duration_validation(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	const INVALID_DURATION: &str =
 		"duration must be a positive whole number of milliseconds no greater than 365 days";
 
@@ -1278,7 +4807,9 @@ async fn assert_duration_validation(
 	Ok(())
 }
 
-async fn assert_direct_lease_duration_boundary(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_direct_lease_duration_boundary(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let direct_token: String = client
 		.query_one(
 			"SELECT lease_token::text FROM decodex.try_acquire_lease( \
@@ -1370,7 +4901,7 @@ async fn assert_direct_lease_duration_boundary(client: &Client) -> Result<(), Bo
 
 async fn assert_direct_outbox_lease_duration_boundary(
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	for (index, lease_expires_at) in [
 		"statement_timestamp() + interval '0.0005 seconds'",
 		"statement_timestamp() + interval '366 days'",
@@ -1438,7 +4969,9 @@ async fn assert_direct_outbox_lease_duration_boundary(
 	Ok(())
 }
 
-async fn assert_closed_pool_behavior(store: &PostgresStore) -> Result<(), Box<dyn Error>> {
+async fn assert_closed_pool_behavior(
+	store: &PostgresStore,
+) -> Result<(), Box<dyn std::error::Error>> {
 	assert!(matches!(store.account(&AccountId::new(ACCOUNT_ID)?).await, Err(StoreError::Pool(_))));
 	assert!(matches!(store.activity_after(0, 1).await, Err(StoreError::Pool(_))));
 	assert!(matches!(
@@ -1495,7 +5028,7 @@ async fn assert_outbox_concurrency_retry_and_restart(
 	client: &Client,
 	migration: &Config,
 	runtime: &Config,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	seed_outbox_accounts(store).await?;
 
 	let available: i64 = client
@@ -1535,7 +5068,7 @@ async fn assert_outbox_concurrency_retry_and_restart(
 	assert_outbox_retry_and_restart(store, client, migration, runtime).await
 }
 
-async fn seed_outbox_accounts(store: &PostgresStore) -> Result<(), Box<dyn Error>> {
+async fn seed_outbox_accounts(store: &PostgresStore) -> Result<(), Box<dyn std::error::Error>> {
 	for index in 0..96 {
 		let account_id = AccountId::new(format!("50000000-0000-0000-0000-{index:012}"))?;
 		let mutation = AccountMutation {
@@ -1561,7 +5094,7 @@ async fn assert_outbox_retry_and_restart(
 	client: &Client,
 	migration: &Config,
 	runtime: &Config,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	let retry = store.claim_outbox(WORKER_A, 1, Duration::from_secs(1)).await?.remove(0);
 
 	client
@@ -1620,7 +5153,7 @@ async fn assert_restart_reconciliation(
 	migration: &Config,
 	runtime: &Config,
 	ambiguous: &OutboxClaim,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	time::sleep(Duration::from_millis(60)).await;
 
 	let restarted =
@@ -1703,7 +5236,7 @@ async fn assert_restart_reconciliation(
 async fn assert_invalid_reconciliation_evidence(
 	store: &PostgresStore,
 	claim: &OutboxClaim,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	for readback in [
 		Value::Null,
 		serde_json::json!(" \n "),
@@ -1757,7 +5290,7 @@ async fn assert_stale_outbox_claim_rejected(
 	store: &PostgresStore,
 	ambiguous: &OutboxClaim,
 	recovered: &OutboxClaim,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	assert!(matches!(
 		store.begin_outbox_effect(recovered.id, WORKER_A, &ambiguous.claim_token).await,
 		Err(StoreError::OwnershipLost("outbox claim"))
@@ -1838,7 +5371,7 @@ async fn assert_stale_outbox_claim_rejected(
 async fn assert_effect_absent_reconciliation(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	client
 		.execute(
 			"INSERT INTO decodex.outbox \
@@ -1930,7 +5463,7 @@ async fn assert_effect_absent_reconciliation(
 async fn assert_effect_absent_dead_letter(
 	store: &PostgresStore,
 	client: &Client,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	client
 		.execute(
 			"INSERT INTO decodex.outbox \
@@ -1972,7 +5505,7 @@ async fn assert_incompatible_history_fails_closed(
 	client: &Client,
 	migration: &Config,
 	runtime: &Config,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error>> {
 	let live =
 		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 
@@ -2005,7 +5538,9 @@ async fn assert_incompatible_history_fails_closed(
 	Ok(())
 }
 
-async fn assert_primary_indexes_are_plan_eligible(client: &Client) -> Result<(), Box<dyn Error>> {
+async fn assert_primary_indexes_are_plan_eligible(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
 	client
 		.batch_execute("ANALYZE decodex.activity; ANALYZE decodex.outbox; SET enable_seqscan = off")
 		.await?;

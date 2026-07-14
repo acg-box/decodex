@@ -3,13 +3,17 @@
 mod blob;
 mod cache;
 mod config;
+mod conversation;
 mod identity;
 #[cfg(unix)] mod path_unix;
 mod paths;
 mod storage;
 
 pub use self::{
-	blob::{BlobHash, BlobStore, MAX_BLOB_BYTES},
+	blob::{
+		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
+		MAX_BLOB_BYTES,
+	},
 	cache::{
 		BoundedCache, CacheLimits, CacheUsage, MAX_CACHE_BYTES, MAX_CACHE_ENTRIES,
 		MAX_CACHE_ENTRY_BYTES,
@@ -18,6 +22,20 @@ pub use self::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
 		MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig, ProfileName,
 		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
+	},
+	conversation::{
+		AccountSnapshot, ArtifactId, ArtifactReference, ArtifactStatus, ContextPack,
+		ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceDisposition,
+		ContextSourceKind, ContextSourceManifest, Conversation, ConversationError, ConversationId,
+		ConversationStatus, HistoryItem, HistoryItemId, HistoryItemKind, HistoryMediaType,
+		HistoryMetadata, HistoryMetadataValue, ItemStatus, MAX_CONTEXT_PACK_BYTES,
+		MAX_CONTEXT_RECENT_ITEMS, MAX_CONTEXT_SOURCE_INPUT_BYTES, MAX_CONTEXT_SOURCES,
+		MAX_CONVERSATION_TITLE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_INLINE_HISTORY_BYTES, MIN_CONTEXT_PACK_BYTES,
+		NormalizedPayload, PinnedContextSource, PossibleSideEffects, ProfileSnapshot,
+		ProposedTransition, ProposedTransitionKind, RuntimeSession, RuntimeSessionId,
+		RuntimeSessionState, Turn, TurnId, TurnRole, TurnStatus, compile_context_pack,
+		contains_credential_material, is_canonical_media_type, is_credential_metadata_key,
 	},
 	identity::ServerIdentity,
 	paths::{DecodexPaths, DecodexRoot, PathError},
