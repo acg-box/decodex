@@ -5,7 +5,10 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use serde::Deserialize;
+use serde::{
+	Deserialize, Serialize, Serializer,
+	ser::{SerializeMap as _, SerializeSeq as _},
+};
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
@@ -260,6 +263,43 @@ impl GeneratedSchemaEvidence {
 	}
 }
 
+struct CanonicalJson<'a>(&'a Value);
+impl Serialize for CanonicalJson<'_> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		match self.0 {
+			Value::Null => serializer.serialize_unit(),
+			Value::Bool(value) => serializer.serialize_bool(*value),
+			Value::Number(value) => value.serialize(serializer),
+			Value::String(value) => serializer.serialize_str(value),
+			Value::Array(values) => {
+				let mut sequence = serializer.serialize_seq(Some(values.len()))?;
+
+				for value in values {
+					sequence.serialize_element(&Self(value))?;
+				}
+
+				sequence.end()
+			},
+			Value::Object(values) => {
+				let mut entries = values.iter().collect::<Vec<_>>();
+
+				entries.sort_unstable_by_key(|(key, _)| *key);
+
+				let mut map = serializer.serialize_map(Some(entries.len()))?;
+
+				for (key, value) in entries {
+					map.serialize_entry(key, &Self(value))?;
+				}
+
+				map.end()
+			},
+		}
+	}
+}
+
 #[derive(Clone, Copy)]
 enum PropertyShape {
 	String,
@@ -341,7 +381,7 @@ fn extract_methods(value: &Value) -> Result<BTreeSet<String>, Vec<String>> {
 }
 
 fn canonical_digest(value: &Value) -> String {
-	let bytes = serde_json::to_vec(value).expect("parsed JSON must serialize");
+	let bytes = serde_json::to_vec(&CanonicalJson(value)).expect("parsed JSON must serialize");
 
 	hex_digest(Sha256::digest(bytes).as_ref())
 }
@@ -641,10 +681,38 @@ mod tests {
 
 	#[test]
 	fn canonical_digest_ignores_json_object_order() {
-		let first: serde_json::Value = serde_json::from_str(r#"{"b":2,"a":1}"#).unwrap();
-		let second: serde_json::Value = serde_json::from_str(r#"{"a":1,"b":2}"#).unwrap();
+		let first: serde_json::Value =
+			serde_json::from_str(r#"{"b":2,"a":{"d":4,"c":3}}"#).unwrap();
+		let second: serde_json::Value =
+			serde_json::from_str(r#"{"a":{"c":3,"d":4},"b":2}"#).unwrap();
 
 		assert_eq!(super::canonical_digest(&first), super::canonical_digest(&second));
+		assert_eq!(
+			super::canonical_digest(&first),
+			"c461c47a913352f1a21e3f2ea49e1fd34754c0dc12cb7366e4636d5e186c6c6e"
+		);
+	}
+
+	#[test]
+	fn canonical_digest_preserves_json_array_order_and_scalar_values() {
+		let baseline: serde_json::Value =
+			serde_json::from_str(r#"{"array":[1,2],"scalar":true}"#).unwrap();
+		let reordered_array: serde_json::Value =
+			serde_json::from_str(r#"{"array":[2,1],"scalar":true}"#).unwrap();
+		let changed_scalar: serde_json::Value =
+			serde_json::from_str(r#"{"array":[1,2],"scalar":false}"#).unwrap();
+
+		assert_ne!(super::canonical_digest(&baseline), super::canonical_digest(&reordered_array));
+		assert_ne!(super::canonical_digest(&baseline), super::canonical_digest(&changed_scalar));
+	}
+
+	#[cfg(feature = "preserve-order-regression")]
+	#[test]
+	fn preserve_order_regression_configuration_retains_insertion_order() {
+		let value: serde_json::Value = serde_json::from_str(r#"{"b":2,"a":1}"#).unwrap();
+		let keys = value.as_object().unwrap().keys().map(String::as_str).collect::<Vec<_>>();
+
+		assert_eq!(keys, ["b", "a"]);
 	}
 
 	#[test]
