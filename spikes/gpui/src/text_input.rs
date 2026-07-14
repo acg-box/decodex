@@ -32,7 +32,30 @@ pub struct TextInput {
 
 impl TextInput {
 	pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-		Self { focus_handle: cx.focus_handle(), content: String::new(), cursor: 0 }
+		Self {
+			focus_handle: cx.focus_handle().tab_index(0).tab_stop(true),
+			content: String::new(),
+			cursor: 0,
+		}
+	}
+
+	pub fn clear(&mut self, cx: &mut Context<Self>) {
+		self.content.clear();
+		self.cursor = 0;
+		cx.notify();
+	}
+
+	fn set_accessible_value(
+		&mut self,
+		data: Option<&gpui::accesskit::ActionData>,
+		cx: &mut Context<Self>,
+	) {
+		let Some(gpui::accesskit::ActionData::Value(value)) = data else {
+			return;
+		};
+		self.content = value.to_string();
+		self.cursor = self.content.len();
+		cx.notify();
 	}
 
 	pub fn content(&self) -> &str {
@@ -172,6 +195,12 @@ impl Render for TextInput {
 			.aria_placeholder("Type a message")
 			.aria_value(value)
 			.track_focus(&focus_handle)
+			.on_a11y_action(gpui::AccessibleAction::SetValue, {
+				let entity = entity.clone();
+				move |data, _window, cx| {
+					entity.update(cx, |input, cx| input.set_accessible_value(data, cx));
+				}
+			})
 			.on_mouse_down(
 				gpui::MouseButton::Left,
 				move |_: &gpui::MouseDownEvent, window: &mut Window, cx: &mut App| {
