@@ -240,9 +240,10 @@ args = [
 # Test
 # | task                     | type      | cwd |
 # | ------------------------ | --------- | --- |
-# | test                     | composite |     |
-# | test-rust                | command   |     |
-# | test-vnext-architecture  | command   |     |
+# | test                       | composite |     |
+# | test-rust                  | command   |     |
+# | test-vnext-architecture    | command   |     |
+# | test-vnext-cli-diagnostics | command   |     |
 # | test-vnext-postgres-store | command   |     |
 # | test-vnext-storage-proof  | command   |     |
 
@@ -252,6 +253,7 @@ workspace = false
 dependencies = [
 	"test-rust",
 	"test-vnext-architecture",
+	"test-vnext-cli-diagnostics",
 ]
 
 [tasks.test-rust]
@@ -272,6 +274,13 @@ args = [
 	"-m",
 	"unittest",
 	"tests/scripts/test_vnext_architecture.py",
+]
+
+[tasks.test-vnext-cli-diagnostics]
+workspace = false
+command = "python3"
+args = [
+	"scripts/vnext/cli_diagnostics_test.py",
 ]
 
 [tasks.test-vnext-postgres-store]

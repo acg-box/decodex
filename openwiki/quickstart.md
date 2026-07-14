@@ -69,7 +69,8 @@ and V1.1 mutation keys cannot consume or poison one another),
 publication-epoch-bound cursor resume,
 snapshot fallback, stable
 server-identity pinning, and one bounded doctor/status result. The `decodex` and GPUI roots
-compile against `decodex-protocol` only and still report their unsupported or disabled state.
+compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
+API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
 
 The PostgreSQL adapter persists its XY-1267 foundation when `decodexd` receives one explicit
 PostgreSQL 18 Unix-socket endpoint, an operator-pinned expected server UID, and distinct migration
@@ -127,10 +128,11 @@ operator-authorized pin.
 The legacy `~/.codex/decodex` SQLite/config layout is frozen provenance, not a vNext
 input or fallback.
 
-There is no active scheduling, CLI operation, account routing, PostgreSQL installation or
-administration plane, live Codex dispatch, authenticated HTTP artifact path, remote binding, or GPUI
-product behavior in this slice. Authentication and TLS are disabled; loopback refusal
-is the enforced network boundary until the later remote-security gate.
+The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
+Unsupported or mutating product CLI operations remain unavailable and belong to later slices, as do
+scheduling, account routing, a PostgreSQL installation or administration plane, live Codex dispatch,
+an authenticated HTTP artifact path, remote binding, and GPUI product behavior. Authentication and
+TLS are disabled; loopback refusal is the enforced network boundary until the later remote-security gate.
 
 ## First commands
 
@@ -138,7 +140,8 @@ Use these as discovery and validation entrypoints:
 
 ```sh
 cargo run -p decodexd
-cargo run -p decodex-cli
+cargo run -p decodex-cli -- status
+cargo run -p decodex-cli -- doctor --output json
 cargo run -p decodex-gpui
 cargo test -p decodex-core --all-targets --all-features
 cargo make test-vnext-architecture
@@ -146,8 +149,11 @@ cargo make test-vnext-postgres-store
 cargo make check
 ```
 
-`decodexd` starts the loopback protocol service and runs until stopped. The client and
-GPUI binaries report foundation/unavailability state and exit. For a targeted Rust gate,
+`decodexd` starts the loopback protocol service and runs until stopped. The CLI selects
+the configured active profile by default; `--profile NAME` selects an explicit declared
+profile and `--root PATH` selects a typed Decodex root. Human output is the default and
+`--output json` emits `decodex/cli-diagnostics/1`. GPUI still reports its disabled state.
+For a targeted Rust gate,
 prefer
 `cargo check --all-features --all-targets --workspace` or
 `cargo nextest run --workspace --all-targets --all-features` (`Makefile.toml`,
@@ -168,7 +174,8 @@ prefer
 XY-1265 established compile-time ownership and composition. XY-1266 established the
 loopback protocol foundation; XY-1270 implements the bounded Codex adapter foundation
 without live dispatch. XY-1267 established PostgreSQL-backed product state and durable
-transactions. XY-1306 establishes the typed `~/.decodex` path/config/blob/cache child of
-XY-1268; XY-1307 supplies daemon bootstrap/doctor, while XY-1308 still owns the API-only CLI.
+transactions. XY-1306 established the typed `~/.decodex` path/config/blob/cache child of
+XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only CLI and
+end-to-end diagnostic matrix.
 Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
 later owners and gates.

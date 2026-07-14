@@ -12,7 +12,8 @@ use tempfile::NamedTempFile;
 use toml as _;
 
 use decodex_core::{
-	ConfigError, DecodexConfig, MAX_CONFIG_BYTES, PathError, ServerIdentity, ServerProfile,
+	ConfigError, DecodexClientConfig, DecodexConfig, MAX_CONFIG_BYTES, PathError, ServerIdentity,
+	ServerProfile,
 };
 use support::{SERVER_ID, TestRoot};
 
@@ -108,6 +109,41 @@ fn remote_profiles_have_no_client_local_repository_path_field() {
 	);
 
 	assert_eq!(DecodexConfig::parse(input.as_bytes()).unwrap_err(), ConfigError::Malformed);
+}
+
+#[test]
+fn remote_client_projection_never_validates_server_host_paths() {
+	let input = support::valid_config()
+		.replace("active_profile = \"local\"", "active_profile = \"remote\"")
+		.replace("host_path = \"/srv/repos/decodex\"", "host_path = \"../server-only\"")
+		.replace(
+			"socket_directory = \"/var/run/postgresql\"",
+			"socket_directory = \"../server-only\"",
+		);
+	let client = DecodexClientConfig::parse(input.as_bytes())
+		.expect("client projection treats server-host data as opaque");
+	let (_, profile) = client.selected_profile(None).expect("active remote profile");
+
+	assert!(matches!(profile, ServerProfile::Remote(_)));
+	assert_eq!(
+		DecodexConfig::parse(input.as_bytes()).unwrap_err(),
+		ConfigError::InvalidServerHostPath,
+	);
+}
+
+#[test]
+fn client_profile_selection_supports_active_and_explicit_names() {
+	let client = DecodexClientConfig::parse(support::valid_config().as_bytes()).unwrap();
+	let (active_name, active) = client.selected_profile(None).unwrap();
+	let (remote_name, remote) = client.selected_profile(Some("remote")).unwrap();
+
+	assert_eq!(client.version(), 1);
+	assert_eq!(client.active_profile_name().as_str(), "local");
+	assert_eq!(active_name.as_str(), "local");
+	assert!(matches!(active, ServerProfile::Local(_)));
+	assert_eq!(remote_name.as_str(), "remote");
+	assert!(matches!(remote, ServerProfile::Remote(_)));
+	assert_eq!(client.selected_profile(Some("missing")).unwrap_err(), ConfigError::MissingProfile,);
 }
 
 #[test]
