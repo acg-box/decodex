@@ -9,6 +9,7 @@ mod conversation;
 mod identity;
 #[cfg(unix)] mod path_unix;
 mod paths;
+mod policy;
 mod project;
 mod quota;
 mod storage;
@@ -48,6 +49,12 @@ pub use self::{
 	},
 	identity::ServerIdentity,
 	paths::{DecodexPaths, DecodexRoot, PathError},
+	policy::{
+		AcceptedPolicyRevision, MAX_POLICY_PROVENANCE_BYTES, MAX_POLICY_SNAPSHOT_FIELDS,
+		MAX_POLICY_SNAPSHOT_KEY_BYTES, MAX_POLICY_SNAPSHOT_VALUE_BYTES, Policy, PolicyError,
+		PolicyId, PolicyProvenance, PolicyRepository, PolicyRevision, PolicyRevisionAcceptance,
+		PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp,
+	},
 	project::{
 		MAX_PROJECT_METADATA_FIELDS, MAX_PROJECT_METADATA_KEY_BYTES,
 		MAX_PROJECT_METADATA_VALUE_BYTES, MAX_PROJECT_PATH_BYTES, MAX_REPOSITORY_IDENTITY_BYTES,

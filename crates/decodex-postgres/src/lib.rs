@@ -13,6 +13,7 @@ mod error;
 mod leases;
 mod migrations;
 mod outbox;
+mod policies;
 mod project_agents;
 #[cfg(unix)] mod socket;
 mod types;
@@ -32,7 +33,9 @@ pub use self::{
 	},
 };
 pub use decodex_core::{
-	AccountId, AccountState, Agent, AgentId, AgentRole, AgentStatus, Project, ProjectAuthority,
+	AcceptedPolicyRevision, AccountId, AccountState, Agent, AgentId, AgentRole, AgentStatus,
+	Policy, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
+	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, Project, ProjectAuthority,
 	ProjectId, ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding, ProjectStatus,
 	RepositoryIdentity,
 };
