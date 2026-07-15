@@ -1,7 +1,7 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
 use std::{
-	collections::HashSet,
+	collections::{BTreeMap, HashSet},
 	env,
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
@@ -26,15 +26,16 @@ use decodex_core::{
 	ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceKind,
 	ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
 	HistoryMetadataValue, ItemStatus, PinnedContextSource, PossibleSideEffects, ProductState as _,
-	ProfileSnapshot, ProposedTransitionKind, RuntimeSessionId, RuntimeSessionState, TurnId,
-	TurnRole, TurnStatus,
+	ProfileSnapshot, Project, ProjectId, ProjectMetadata, ProjectMetadataValue,
+	ProjectRepositoryBinding, ProjectStatus, ProposedTransitionKind, RepositoryIdentity,
+	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 use decodex_postgres::{
-	AccountId, AccountMutation, AccountState, CLOSED, CommandIdentity, ContextPackRecord,
-	CreateArtifact, CreateConversation, CreateRuntimeSession, HistoryCursor,
-	MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation, PersistContextPack,
-	PostgresStore, ProposeTransition, QuotaWindowMutation, ReconciliationOutcome,
-	RecordHistoryItem, StoreError,
+	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus, CLOSED,
+	CommandIdentity, ContextPackRecord, CreateArtifact, CreateConversation, CreateProject,
+	CreateRuntimeSession, HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim,
+	OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition,
+	QuotaWindowMutation, ReconciliationOutcome, RecordHistoryItem, StoreError,
 };
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
@@ -63,6 +64,125 @@ const CREDENTIAL_VALUE_VECTORS: &[&str] = &[
 	"AKIA0123456789ABCDEF",
 ];
 const UNICODE_WHITESPACE_VECTORS: &[&str] = &["\u{a0}", "\u{85}", "\u{202f}", "\u{3000}"];
+const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
+	"decodex.is_canonical_media_type(pg_catalog.text)",
+	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
+	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
+	"decodex.ascii_lower(pg_catalog.text)",
+	"decodex.has_credential_material(pg_catalog.text)",
+	"decodex.has_credential_material(pg_catalog.jsonb)",
+	"decodex.is_meaningful_evidence(pg_catalog.jsonb)",
+	"decodex.rfc3339_utc(pg_catalog.timestamptz)",
+	"decodex.is_valid_operation_duration(pg_catalog.interval)",
+	"decodex.lease_ttl_milliseconds(pg_catalog.interval)",
+	"decodex.try_acquire_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.interval)",
+	"decodex.renew_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.interval)",
+	"decodex.release_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.prune_history_snapshots()",
+	"decodex.issue_history_cursor(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int4)",
+	"decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
+	"decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
+	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
+];
+const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
+	"decodex.enforce_lease_operation_time()",
+	"decodex.enforce_outbox_operation_time()",
+	"decodex.forbid_mutation_of_activity()",
+	"decodex.enforce_outbox_terminal_retention()",
+	"decodex.forbid_outbox_truncate()",
+	"decodex.enforce_command_receipt_state()",
+	"decodex.acquire_hierarchy_coordinator()",
+	"decodex.canonicalize_created_at()",
+	"decodex.enforce_blob_object_state()",
+	"decodex.enforce_conversation_state()",
+	"decodex.enforce_runtime_session_state()",
+	"decodex.enforce_turn_state()",
+	"decodex.enforce_history_item_state()",
+	"decodex.capture_history_item_version()",
+	"decodex.enforce_artifact_state()",
+	"decodex.enforce_artifact_revision_state()",
+	"decodex.enforce_context_pack_state()",
+	"decodex.enforce_context_pack_source_state()",
+	"decodex.enforce_history_cursor_state()",
+];
+const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
+	(
+		"SELECT * FROM decodex.bootstrap_advisor('00000000-0000-0000-0000-000000000000')",
+		"canonical_uuid_v4_text_exact",
+	),
+	(
+		"SELECT * FROM decodex.bootstrap_advisor('21000000-0000-1000-8000-000000000099')",
+		"canonical_uuid_v4_text_exact",
+	),
+	(
+		"SELECT * FROM decodex.create_project('00000000-0000-0000-0000-000000000000',\
+		 'hack-ink/invalid-project-id','/srv/repos/invalid-project-id',\
+		 '/srv/repos/invalid-project-id','{}','22000000-0000-4000-8000-000000000020')",
+		"canonical_uuid_v4_text_exact",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000021',\
+		 'hack-ink/invalid-lead-id','/srv/repos/invalid-lead-id',\
+		 '/srv/repos/invalid-lead-id','{}','22000000-0000-1000-8000-000000000021')",
+		"canonical_uuid_v4_text_exact",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000022',\
+		 'hack-ink/backslash-path',E'/srv/repos/bad\\\\path',E'/srv/repos/bad\\\\path',\
+		 '{}','22000000-0000-4000-8000-000000000022')",
+		"projects_paths_bounded_absolute",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000023',\
+		 'hack-ink/dot-dot-path','/srv/repos/canonical','/srv/repos/canonical/../bad',\
+		 '{}','22000000-0000-4000-8000-000000000023')",
+		"projects_paths_bounded_absolute",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000030',\
+		 'hack-ink/dot-path','/srv/./repos/dot','/srv/./repos/dot',\
+		 '{}','22000000-0000-4000-8000-000000000030')",
+		"projects_paths_bounded_absolute",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000031',\
+		 'hack-ink/lf-path',E'/srv/repos/line\\nfeed',E'/srv/repos/line\\nfeed',\
+		 '{}','22000000-0000-4000-8000-000000000031')",
+		"projects_paths_bounded_absolute",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000032',\
+		 'hack-ink/del-path',U&'/srv/repos/del\\007Fcontrol',U&'/srv/repos/del\\007Fcontrol',\
+		 '{}','22000000-0000-4000-8000-000000000032')",
+		"projects_paths_bounded_absolute",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000033',\
+		 'hack-ink/c1-path',U&'/srv/repos/c1\\0085control',U&'/srv/repos/c1\\0085control',\
+		 '{}','22000000-0000-4000-8000-000000000033')",
+		"projects_paths_bounded_absolute",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000024',\
+		 'hack-ink/unicode-path','/' || repeat('é',2048),\
+		 '/' || repeat('é',2048),'{}','22000000-0000-4000-8000-000000000024')",
+		"projects_paths_bounded_absolute",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000025',\
+		 'hack-ink/control-metadata','/srv/repos/control-metadata',\
+		 '/srv/repos/control-metadata',jsonb_build_object('note',E'line\\nfeed'),\
+		 '22000000-0000-4000-8000-000000000025')",
+		"projects_metadata_bounded",
+	),
+	(
+		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000027',\
+		 'hack-ink/unicode-control-metadata','/srv/repos/unicode-control-metadata',\
+		 '/srv/repos/unicode-control-metadata',jsonb_build_object('note',U&'before\\0085after'),\
+		 '22000000-0000-4000-8000-000000000027')",
+		"projects_metadata_bounded",
+	),
+];
 
 struct ConversationFixture {
 	blob_store: BlobStore,
@@ -106,6 +226,30 @@ fn blob_shard_path(blob_store: &BlobStore, hash: BlobHash) -> Result<PathBuf, st
 		.ok_or_else(|| std::io::Error::other("blob path has no shard parent"))
 }
 
+fn project_request(
+	project_id: &str,
+	lead_id: &str,
+	repository_identity: &str,
+	repository_root: &str,
+) -> CreateProject {
+	let project_id = ProjectId::new(project_id).expect("Project fixture ID is canonical");
+	let project = Project::new(
+		project_id.clone(),
+		ProjectRepositoryBinding::new(
+			RepositoryIdentity::new(repository_identity)
+				.expect("repository fixture identity is canonical"),
+			PathBuf::from(repository_root),
+			PathBuf::from(repository_root),
+		)
+		.expect("repository fixture paths are canonical"),
+		ProjectMetadata::empty(),
+	);
+	let lead =
+		Agent::lead(AgentId::new(lead_id).expect("Lead fixture ID is canonical"), project_id);
+
+	CreateProject { project, lead }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 migration harness"]
 async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>> {
@@ -131,6 +275,7 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 
 	assert_bootstrap_and_history(&client).await?;
 	assert_runtime_is_least_privilege(&runtime_client).await?;
+	assert_project_agent_authority(&store, &client, &migration, &runtime).await?;
 	assert_account_idempotency_and_revision(&store, &client).await?;
 	assert_receipt_first_saga(&store, &client).await?;
 	assert_concurrent_shard_capacity(&store, &client).await?;
@@ -1580,6 +1725,11 @@ async fn assert_runtime_is_least_privilege(
 		 (conversation_id,snapshot_high_water,page_size,last_position,history_item_id) VALUES \
 		 ('40000000-0000-4000-8000-000000000001',1,1,1, \
 		 '44000000-0000-4000-8000-000000000001')",
+		"INSERT INTO decodex.projects \
+		 (project_id,repository_identity,repository_root,default_cwd) VALUES \
+		 ('10000000-0000-4000-8000-000000000099','forbidden/project','/srv/forbidden','/srv/forbidden')",
+		"INSERT INTO decodex.agents (agent_id,role) VALUES \
+		 ('20000000-0000-4000-8000-000000000099','advisor')",
 	] {
 		let error = client
 			.batch_execute(statement)
@@ -1610,6 +1760,67 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 
 	assert!(store.account(&AccountId::new(ACCOUNT_ID)?).await?.is_some());
 
+	let advisor = store.advisor().await?.expect("restored global Advisor exists");
+
+	assert!(matches!(
+		advisor.id().as_str(),
+		"21000000-0000-4000-8000-000000000001" | "21000000-0000-4000-8000-000000000002"
+	));
+	assert_eq!(advisor.role(), AgentRole::Advisor);
+	assert_eq!(advisor.project_id(), None);
+	assert_eq!(advisor.status(), AgentStatus::Active);
+	assert_eq!(advisor.revision(), 1);
+
+	let restored_project_id: String = client
+		.query_one(
+			"SELECT project_id::text FROM decodex.projects \
+			 WHERE repository_identity='hack-ink/decodex'",
+			&[],
+		)
+		.await?
+		.get(0);
+	let restored = store
+		.project(&ProjectId::new(restored_project_id)?)
+		.await?
+		.expect("restored Project and canonical Lead exist");
+
+	assert!(matches!(
+		restored.project.id().as_str(),
+		"11000000-0000-4000-8000-000000000001" | "11000000-0000-4000-8000-000000000002"
+	));
+	assert_eq!(restored.project.repository().identity().as_str(), "hack-ink/decodex");
+	assert_eq!(
+		restored.project.repository().root().as_server_path(),
+		Path::new("/srv/repos/decodex")
+	);
+	assert_eq!(
+		restored.project.repository().default_cwd().as_server_path(),
+		Path::new("/srv/repos/decodex")
+	);
+	assert_eq!(
+		restored.project.metadata().as_map().get("managed"),
+		Some(&ProjectMetadataValue::Boolean(true))
+	);
+	assert_eq!(restored.project.status(), ProjectStatus::Paused);
+	assert_eq!(restored.project.revision(), 2);
+	assert_eq!(restored.lead.role(), AgentRole::Lead);
+	assert_eq!(restored.lead.project_id(), Some(restored.project.id()));
+	assert_eq!(restored.lead.status(), AgentStatus::Paused);
+	assert_eq!(restored.lead.revision(), 2);
+
+	let restored_fk: bool = client
+		.query_one(
+			"SELECT lead.project_id = project.project_id \
+			 FROM decodex.projects AS project \
+			 JOIN decodex.agents AS lead ON lead.project_id=project.project_id AND lead.role='lead' \
+			 WHERE project.project_id=$1::text::uuid",
+			&[&restored.project.id().as_str()],
+		)
+		.await?
+		.get(0);
+
+	assert!(restored_fk);
+
 	let ordinary_rows: i64 = client
 		.query_one(
 			"SELECT (SELECT count(*) FROM decodex.accounts) \
@@ -1632,6 +1843,32 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 	connection_task.await??;
 
 	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 populated restore harness"]
+async fn postgres_store_rejects_schema_scoped_default_acl_restore()
+-> Result<(), Box<dyn std::error::Error>> {
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+
+	match PostgresStore::connect(migration, runtime, expected_peer_uid()).await {
+		Err(StoreError::Incompatible(_)) => Ok(()),
+		Err(error) => panic!("unexpected schema-scoped default-ACL restore error: {error:?}"),
+		Ok(_) => panic!("schema-scoped default-ACL restore was accepted"),
+	}
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 authority harness"]
+async fn postgres_store_rejects_implicit_uuid_to_text_cast()
+-> Result<(), Box<dyn std::error::Error>> {
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+
+	match PostgresStore::connect(migration, runtime, expected_peer_uid()).await {
+		Err(StoreError::UnsafeAuthority(_)) => Ok(()),
+		Err(error) => panic!("unexpected implicit UUID-to-text cast error: {error:?}"),
+		Ok(_) => panic!("implicit UUID-to-text cast authority was accepted"),
+	}
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1713,7 +1950,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 4);
+	assert_eq!(history.len(), 5);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
@@ -1726,6 +1963,9 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 	assert_eq!(history[3].0, 4);
 	assert_eq!(history[3].1, "account_readiness");
 	assert!(!history[3].2.is_empty());
+	assert_eq!(history[4].0, 5);
+	assert_eq!(history[4].1, "project_agent_authority");
+	assert!(!history[4].2.is_empty());
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -1752,6 +1992,580 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 	));
 
 	Ok(())
+}
+
+async fn assert_project_agent_authority(
+	store: &PostgresStore,
+	client: &Client,
+	migration: &Config,
+	runtime: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let advisor_ids =
+		["21000000-0000-4000-8000-000000000001", "21000000-0000-4000-8000-000000000002"];
+	let mut advisor_tasks = JoinSet::new();
+
+	for id in advisor_ids {
+		let store = store.clone();
+
+		advisor_tasks.spawn(async move {
+			store
+				.bootstrap_advisor(Agent::advisor(
+					AgentId::new(id).expect("Advisor fixture ID is canonical"),
+				))
+				.await
+		});
+	}
+
+	let mut advisors = Vec::new();
+
+	while let Some(result) = advisor_tasks.join_next().await {
+		advisors.push(result??);
+	}
+
+	assert_eq!(advisors[0], advisors[1]);
+	assert_eq!(store.advisor().await?, Some(advisors[0].clone()));
+
+	let candidates = [
+		("11000000-0000-4000-8000-000000000001", "22000000-0000-4000-8000-000000000001"),
+		("11000000-0000-4000-8000-000000000002", "22000000-0000-4000-8000-000000000002"),
+	];
+	let mut project_tasks = JoinSet::new();
+
+	for (project_id, lead_id) in candidates {
+		let store = store.clone();
+
+		project_tasks.spawn(async move {
+			let project_id = ProjectId::new(project_id).expect("Project fixture ID is canonical");
+			let project = Project::new(
+				project_id.clone(),
+				ProjectRepositoryBinding::new(
+					RepositoryIdentity::new("hack-ink/decodex")
+						.expect("repository fixture identity is canonical"),
+					PathBuf::from("/srv/repos/decodex"),
+					PathBuf::from("/srv/repos/decodex"),
+				)
+				.expect("repository fixture paths are canonical"),
+				ProjectMetadata::new(BTreeMap::from([(
+					"managed".into(),
+					ProjectMetadataValue::Boolean(true),
+				)]))
+				.expect("Project metadata fixture is bounded"),
+			);
+			let lead = Agent::lead(
+				AgentId::new(lead_id).expect("Lead fixture ID is canonical"),
+				project_id,
+			);
+
+			store.create_project(CreateProject { project, lead }).await
+		});
+	}
+
+	let mut authorities = Vec::new();
+
+	while let Some(result) = project_tasks.join_next().await {
+		authorities.push(result??);
+	}
+
+	assert_eq!(authorities[0], authorities[1]);
+
+	let winner = authorities.pop().expect("concurrent Project creation returned a winner");
+
+	assert_eq!(store.project(winner.project.id()).await?, Some(winner.clone()));
+
+	let paused = store.transition_project(winner.project.id(), 1, ProjectStatus::Paused).await?;
+
+	assert_eq!(paused.project.revision(), 2);
+	assert_eq!(paused.lead.revision(), 2);
+	assert!(matches!(
+		store.transition_project(winner.project.id(), 1, ProjectStatus::Archived).await,
+		Err(StoreError::RevisionConflict { actual: Some(2), .. })
+	));
+
+	assert_project_agent_canonical_sql_boundary(client, runtime).await?;
+	assert_project_identity_pair_conflicts(store, client, runtime).await?;
+
+	client
+		.batch_execute(
+			"INSERT INTO decodex.agents (agent_id,role,project_id) VALUES \
+			 ('22000000-0000-4000-8000-000000000099','lead', \
+			 '11000000-0000-4000-8000-000000000099')",
+		)
+		.await
+		.expect_err("Lead foreign key rejects an unknown Project");
+	client
+		.batch_execute(
+			"INSERT INTO decodex.agents (agent_id,role) VALUES \
+			 ('21000000-0000-4000-8000-000000000099','advisor')",
+		)
+		.await
+		.expect_err("global Advisor uniqueness is durable");
+
+	let restarted =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+
+	assert_eq!(restarted.project(paused.project.id()).await?, Some(paused));
+	assert_eq!(restarted.advisor().await?, store.advisor().await?);
+
+	Ok(())
+}
+
+async fn assert_project_identity_pair_conflicts(
+	store: &PostgresStore,
+	client: &Client,
+	runtime: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let first = project_request(
+		"11000000-0000-4000-8000-000000000010",
+		"22000000-0000-4000-8000-000000000010",
+		"hack-ink/identity-a",
+		"/srv/repos/identity-a",
+	);
+	let second = project_request(
+		"11000000-0000-4000-8000-000000000011",
+		"22000000-0000-4000-8000-000000000011",
+		"hack-ink/identity-b",
+		"/srv/repos/identity-b",
+	);
+
+	store.create_project(first.clone()).await?;
+	store.create_project(second.clone()).await?;
+
+	let rows_before: i64 = client
+		.query_one(
+			"SELECT (SELECT count(*) FROM decodex.projects) + (SELECT count(*) FROM decodex.agents)",
+			&[],
+		)
+		.await?
+		.get(0);
+	let split_pair = project_request(
+		first.project.id().as_str(),
+		"22000000-0000-4000-8000-000000000012",
+		second.project.repository().identity().as_str(),
+		"/srv/repos/identity-b",
+	);
+	let rebound_id = project_request(
+		first.project.id().as_str(),
+		"22000000-0000-4000-8000-000000000013",
+		"hack-ink/identity-c",
+		"/srv/repos/identity-c",
+	);
+
+	for request in [split_pair, rebound_id] {
+		assert!(matches!(
+			store.create_project(request).await,
+			Err(StoreError::InvalidInput(
+				"Project and repository identities are already bound differently"
+			))
+		));
+	}
+
+	let (runtime_client, runtime_connection) = runtime.connect(NoTls).await?;
+	let runtime_task = tokio::spawn(runtime_connection);
+	let error = runtime_client
+		.query(
+			"SELECT * FROM decodex.create_project(\
+			 '11000000-0000-4000-8000-000000000010','hack-ink/identity-b',\
+			 '/srv/repos/identity-b','/srv/repos/identity-b','{}',\
+			 '22000000-0000-4000-8000-000000000014')",
+			&[],
+		)
+		.await
+		.expect_err("direct SQL rejects a split Project/repository identity pair");
+
+	assert_eq!(
+		error.as_db_error().and_then(tokio_postgres::error::DbError::constraint),
+		Some("projects_identity_pair")
+	);
+
+	drop(runtime_client);
+
+	runtime_task.await??;
+
+	let rows_after: i64 = client
+		.query_one(
+			"SELECT (SELECT count(*) FROM decodex.projects) + (SELECT count(*) FROM decodex.agents)",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(rows_after, rows_before, "identity conflicts commit no partial rows");
+
+	Ok(())
+}
+
+async fn assert_project_metadata_credential_sql_boundary(
+	runtime_client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	for (statement, exposed_value) in [
+		(
+			"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000026',\
+			 'hack-ink/credential-key','/srv/repos/credential-key','/srv/repos/credential-key',\
+			 '{\"refresh_token\":\"sk-proj-0123456789abcdef\"}',\
+			 '22000000-0000-4000-8000-000000000026')",
+			"sk-proj",
+		),
+		(
+			"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000028',\
+			 'hack-ink/credential-value','/srv/repos/credential-value',\
+			 '/srv/repos/credential-value','{\"note\":\"Bearer abcdefghijklmnop\"}',\
+			 '22000000-0000-4000-8000-000000000028')",
+			"Bearer",
+		),
+	] {
+		let error = runtime_client
+			.query(statement, &[])
+			.await
+			.expect_err("credential-shaped Project metadata is rejected");
+
+		assert_eq!(
+			error.as_db_error().and_then(tokio_postgres::error::DbError::constraint),
+			Some("projects_metadata_no_credentials"),
+		);
+
+		let closed_error = StoreError::from(error);
+
+		assert!(matches!(closed_error, StoreError::CredentialRejected));
+		assert!(!closed_error.to_string().contains(exposed_value));
+	}
+
+	Ok(())
+}
+
+async fn assert_project_path_sql_acceptance(
+	runtime_client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let row = runtime_client
+		.query_one(
+			"SELECT repository_root,default_cwd FROM decodex.create_project(\
+			 '11000000-0000-4000-8000-000000000029','hack-ink/international-path',\
+			 '/srv/répos/décodex','/srv/répos/décodex/crates','{}',\
+			 '22000000-0000-4000-8000-000000000029')",
+			&[],
+		)
+		.await?;
+
+	assert_eq!(row.get::<_, &str>(0), "/srv/répos/décodex");
+	assert_eq!(row.get::<_, &str>(1), "/srv/répos/décodex/crates");
+
+	Ok(())
+}
+
+async fn assert_project_agent_canonical_sql_boundary(
+	client: &Client,
+	runtime: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let (runtime_client, runtime_connection) = runtime.connect(NoTls).await?;
+	let runtime_task = tokio::spawn(runtime_connection);
+
+	assert_identity_ingress_authority(&runtime_client).await?;
+	assert_project_path_sql_acceptance(&runtime_client).await?;
+
+	let rows_before: i64 = client
+		.query_one(
+			"SELECT (SELECT count(*) FROM decodex.projects) + (SELECT count(*) FROM decodex.agents)",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	for &(statement, constraint) in INVALID_PROJECT_AGENT_SQL_CALLS {
+		let error = runtime_client
+			.query(statement, &[])
+			.await
+			.expect_err("canonical SQL authority rejects invalid Project/Agent input");
+
+		assert_eq!(
+			error.as_db_error().and_then(tokio_postgres::error::DbError::constraint),
+			Some(constraint),
+			"statement: {statement}",
+		);
+	}
+
+	assert_project_metadata_credential_sql_boundary(&runtime_client).await?;
+	drop(runtime_client);
+
+	runtime_task.await??;
+
+	let rows_after: i64 = client
+		.query_one(
+			"SELECT (SELECT count(*) FROM decodex.projects) + (SELECT count(*) FROM decodex.agents)",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(rows_after, rows_before, "invalid SQL calls commit no partial rows");
+
+	Ok(())
+}
+
+async fn assert_identity_ingress_authority(
+	runtime: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	assert_identity_ingress_catalog(runtime).await?;
+	assert_identity_ingress_exact_domain(runtime).await;
+	assert_identity_ingress_unknown_literal(runtime).await;
+	assert_identity_ingress_explicit_text(runtime).await;
+	assert_identity_ingress_prepared_bound_text(runtime).await;
+	assert_identity_ingress_invalid_text(runtime).await;
+	assert_identity_ingress_null(runtime).await;
+	assert_identity_ingress_bare_uuid(runtime).await;
+	assert_identity_ingress_explicit_normalization(runtime).await;
+
+	let exact_execute_count: i64 = runtime
+		.query_one(
+			"SELECT count(*) FROM pg_catalog.pg_proc AS proc
+			 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=proc.pronamespace
+			 WHERE namespace.nspname='decodex'
+			 AND pg_catalog.has_function_privilege(session_user,proc.oid,'EXECUTE')",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(exact_execute_count, RUNTIME_EXECUTE_SIGNATURES.len() as i64);
+
+	for signature in RUNTIME_EXECUTE_SIGNATURES {
+		let executable: bool = runtime
+			.query_one(
+				"SELECT pg_catalog.has_function_privilege(
+				 session_user,pg_catalog.to_regprocedure($1),'EXECUTE')",
+				&[signature],
+			)
+			.await?
+			.get(0);
+
+		assert!(executable, "runtime lacks {signature}");
+	}
+	for signature in TRIGGER_ONLY_SIGNATURES {
+		let executable: bool = runtime
+			.query_one(
+				"SELECT pg_catalog.has_function_privilege(
+				 session_user,pg_catalog.to_regprocedure($1),'EXECUTE')",
+				&[signature],
+			)
+			.await?
+			.get(0);
+
+		assert!(!executable, "runtime executes trigger-only {signature}");
+	}
+
+	let public_and_defaults_closed: bool = runtime
+		.query_one(
+			"SELECT
+			 NOT EXISTS (
+			  SELECT 1 FROM pg_catalog.pg_proc AS proc
+			  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=proc.pronamespace
+			  CROSS JOIN LATERAL pg_catalog.aclexplode(
+			   COALESCE(proc.proacl,pg_catalog.acldefault('f',proc.proowner))) AS privilege
+			  WHERE namespace.nspname='decodex' AND privilege.grantee=0
+			   AND privilege.privilege_type='EXECUTE')
+			 AND NOT EXISTS (
+			  SELECT 1 FROM pg_catalog.pg_type AS type
+			  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=type.typnamespace
+			  CROSS JOIN LATERAL pg_catalog.aclexplode(
+			   COALESCE(type.typacl,pg_catalog.acldefault('T',type.typowner))) AS privilege
+			  WHERE namespace.nspname='decodex' AND type.typtype IN ('e','d')
+			   AND privilege.grantee=0
+			   AND privilege.privilege_type='USAGE')
+			 AND (
+			  SELECT count(*)=2
+			   AND bool_and(default_acl.defaclnamespace=0)
+			   AND count(*) FILTER (WHERE default_acl.defaclobjtype='f')=1
+			   AND count(*) FILTER (WHERE default_acl.defaclobjtype='T')=1
+			   AND bool_and(NOT EXISTS (
+			    SELECT 1 FROM pg_catalog.aclexplode(default_acl.defaclacl) AS privilege
+			    WHERE privilege.grantee=0))
+			  FROM pg_catalog.pg_default_acl AS default_acl
+			  JOIN pg_catalog.pg_namespace AS namespace ON namespace.nspowner=default_acl.defaclrole
+			  WHERE default_acl.defaclnamespace IN (0,namespace.oid)
+			   AND default_acl.defaclobjtype IN ('f','T'))",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(public_and_defaults_closed);
+
+	Ok(())
+}
+
+async fn assert_identity_ingress_catalog(
+	runtime: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	const SQL: &str = "SELECT
+	 pg_catalog.to_regprocedure('decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)') IS NOT NULL
+	 AND pg_catalog.to_regprocedure('decodex.bootstrap_advisor(pg_catalog.uuid)') IS NULL
+	 AND pg_catalog.to_regprocedure('decodex.bootstrap_advisor(pg_catalog.text)') IS NULL
+	 AND pg_catalog.to_regprocedure('decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)') IS NOT NULL
+	 AND pg_catalog.to_regprocedure('decodex.create_project(pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,pg_catalog.uuid)') IS NULL
+	 AND pg_catalog.to_regprocedure('decodex.create_project(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,pg_catalog.text)') IS NULL
+	 AND pg_catalog.to_regprocedure('decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)') IS NOT NULL
+	 AND pg_catalog.to_regprocedure('decodex.transition_project(pg_catalog.uuid,pg_catalog.int8,decodex.project_status)') IS NULL
+	 AND pg_catalog.to_regprocedure('decodex.transition_project(pg_catalog.text,pg_catalog.int8,decodex.project_status)') IS NULL
+	 AND NOT EXISTS (
+	  SELECT 1 FROM pg_catalog.pg_cast AS conversion
+	  WHERE conversion.castsource='pg_catalog.uuid'::pg_catalog.regtype
+	   AND conversion.casttarget='pg_catalog.text'::pg_catalog.regtype
+	   AND conversion.castcontext='i')";
+
+	let signatures_are_domain_only: bool = runtime.query_one(SQL, &[]).await?.get(0);
+
+	assert!(signatures_are_domain_only, "catalog identity contract; SQL: {SQL}");
+
+	Ok(())
+}
+
+async fn assert_identity_ingress_exact_domain(runtime: &Client) {
+	const SQL: &str = "SELECT * FROM decodex.bootstrap_advisor(
+	 '21000000-0000-4000-8000-000000000040'::decodex.canonical_uuid_v4_text)";
+
+	let result = runtime.query(SQL, &[]).await;
+
+	assert!(result.is_ok(), "exact-domain expression; SQL: {SQL}; result: {result:?}");
+}
+
+async fn assert_identity_ingress_unknown_literal(runtime: &Client) {
+	const SQL: &str = "SELECT * FROM decodex.bootstrap_advisor(
+	 '21000000-0000-4000-8000-000000000040')";
+
+	let result = runtime.query(SQL, &[]).await;
+
+	assert!(result.is_ok(), "unknown-literal expression; SQL: {SQL}; result: {result:?}");
+}
+
+async fn assert_identity_ingress_explicit_text(runtime: &Client) {
+	const SQL: &str = "SELECT * FROM decodex.bootstrap_advisor(
+	 '21000000-0000-4000-8000-000000000040'::pg_catalog.text)";
+
+	let result = runtime.query(SQL, &[]).await;
+
+	assert!(result.is_ok(), "explicit-text expression; SQL: {SQL}; result: {result:?}");
+}
+
+async fn assert_identity_ingress_prepared_bound_text(runtime: &Client) {
+	const SQL: &str = "SELECT * FROM decodex.bootstrap_advisor($1::pg_catalog.text)";
+
+	let id = "21000000-0000-4000-8000-000000000040";
+	let result = runtime.query(SQL, &[&id]).await;
+
+	assert!(
+		result.is_ok(),
+		"prepared/bound-text expression; SQL: {SQL}; bound value: canonical UUID-v4; result: {result:?}"
+	);
+}
+
+async fn assert_identity_ingress_invalid_text(runtime: &Client) {
+	const SQL: &str = "SELECT * FROM decodex.bootstrap_advisor($1::pg_catalog.text)";
+
+	for invalid in [
+		"21000000-0000-4000-8000-0000000000AA",
+		"00000000-0000-0000-0000-000000000000",
+		"21000000-0000-1000-8000-000000000099",
+		"21000000000040008000000000000099",
+	] {
+		let error = runtime
+			.query(SQL, &[&invalid])
+			.await
+			.expect_err(&format!("invalid-text expression; SQL: {SQL}; input: {invalid}"));
+		let database = error.as_db_error().expect("invalid-text expression has PostgreSQL detail");
+
+		assert_eq!(
+			database.code(),
+			&tokio_postgres::error::SqlState::CHECK_VIOLATION,
+			"invalid-text expression; SQL: {SQL}; input: {invalid}"
+		);
+		assert_eq!(
+			database.constraint(),
+			Some("canonical_uuid_v4_text_exact"),
+			"invalid-text expression; SQL: {SQL}; input: {invalid}"
+		);
+	}
+}
+
+async fn assert_identity_ingress_null(runtime: &Client) {
+	for (case, statement) in [
+		(
+			"bootstrap Advisor empty scalar subquery",
+			"SELECT * FROM decodex.bootstrap_advisor(
+			 (SELECT value FROM (VALUES(NULL::decodex.canonical_uuid_v4_text)) AS empty(value)
+			  WHERE false))",
+		),
+		(
+			"create Project empty project-ID scalar subquery",
+			"SELECT * FROM decodex.create_project(
+			 (SELECT value FROM (VALUES(NULL::decodex.canonical_uuid_v4_text)) AS empty(value)
+			  WHERE false),
+			 'hack-ink/null-project','/srv/repos/null-project','/srv/repos/null-project','{}',
+			 '22000000-0000-4000-8000-000000000040'::pg_catalog.text::decodex.canonical_uuid_v4_text)",
+		),
+		(
+			"create Project empty Lead-ID scalar subquery",
+			"SELECT * FROM decodex.create_project(
+			 '11000000-0000-4000-8000-000000000040'::pg_catalog.text::decodex.canonical_uuid_v4_text,
+			 'hack-ink/null-lead','/srv/repos/null-lead','/srv/repos/null-lead','{}',
+			 (SELECT value FROM (VALUES(NULL::decodex.canonical_uuid_v4_text)) AS empty(value)
+			  WHERE false))",
+		),
+		(
+			"transition Project empty project-ID scalar subquery",
+			"SELECT * FROM decodex.transition_project(
+			 (SELECT value FROM (VALUES(NULL::decodex.canonical_uuid_v4_text)) AS empty(value)
+			  WHERE false),1,'paused')",
+		),
+	] {
+		let error = runtime
+			.query(statement, &[])
+			.await
+			.expect_err(&format!("null expression case: {case}; SQL: {statement}"));
+		let database = error.as_db_error().expect("null expression has PostgreSQL detail");
+
+		assert_eq!(
+			database.code(),
+			&tokio_postgres::error::SqlState::CHECK_VIOLATION,
+			"null expression case: {case}; SQL: {statement}"
+		);
+		assert_eq!(
+			database.constraint(),
+			Some("canonical_uuid_v4_text_ingress"),
+			"null expression case: {case}; SQL: {statement}"
+		);
+		assert_eq!(
+			database.message(),
+			"identity ingress requires canonical UUID-v4 text",
+			"null expression case: {case}; SQL: {statement}"
+		);
+	}
+}
+
+async fn assert_identity_ingress_bare_uuid(runtime: &Client) {
+	const SQL: &str = "SELECT * FROM decodex.bootstrap_advisor(
+	 '21000000-0000-4000-8000-000000000040'::pg_catalog.uuid)";
+
+	let error = runtime
+		.query(SQL, &[])
+		.await
+		.expect_err(&format!("bare-UUID expression must not resolve; SQL: {SQL}"));
+
+	assert_eq!(
+		error.as_db_error().map(tokio_postgres::error::DbError::code),
+		Some(&tokio_postgres::error::SqlState::UNDEFINED_FUNCTION),
+		"bare-UUID expression; SQL: {SQL}"
+	);
+}
+
+async fn assert_identity_ingress_explicit_normalization(runtime: &Client) {
+	const SQL: &str = "SET search_path=pg_temp,public;
+	 SELECT * FROM decodex.bootstrap_advisor(
+	 '21000000-0000-4000-8000-000000000040'::pg_catalog.uuid::pg_catalog.text::decodex.canonical_uuid_v4_text)";
+
+	let result = runtime.batch_execute(SQL).await;
+
+	assert!(
+		result.is_ok(),
+		"explicit uuid::text::domain normalization; SQL: {SQL}; result: {result:?}"
+	);
 }
 
 async fn assert_account_idempotency_and_revision(
