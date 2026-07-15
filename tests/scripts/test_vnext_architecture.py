@@ -371,5 +371,77 @@ class VnextArchitectureTests(unittest.TestCase):
         ):
             self.assertNotIn(conversation_surface, migration)
 
+    def test_project_policy_identity_and_exact_revision_have_one_inert_owner(self):
+        core_lib = (ROOT / "crates/decodex-core/src/lib.rs").read_text()
+        policy = (ROOT / "crates/decodex-core/src/policy.rs").read_text()
+        postgres = (ROOT / "crates/decodex-postgres/src/policies.rs").read_text()
+        migration = (
+            ROOT
+            / "crates/decodex-postgres/migrations/V6__project_policy_authority.sql"
+        ).read_text()
+
+        self.assertIn("PolicyId", core_lib)
+        self.assertIn("PolicyRevisionId", core_lib)
+        self.assertIn("pub struct PolicyId", policy)
+        self.assertIn("pub struct PolicyRevisionId", policy)
+        self.assertIn("use decodex_core", postgres)
+        self.assertNotIn("pub struct PolicyId", postgres)
+        self.assertNotIn("pub struct PolicyRevisionId", postgres)
+        self.assertIn("CREATE TABLE decodex.policies", migration)
+        self.assertIn("CREATE TABLE decodex.policy_revisions", migration)
+        self.assertIn("policy_revisions_policy_project_fk", migration)
+        self.assertIn("policy_revisions_accepting_agent_project_fk", migration)
+        self.assertIn("policy_revisions_supersedes_fk", migration)
+        self.assertIn("policy_revisions_immutable", migration)
+        self.assertEqual(migration.count("CREATE FUNCTION decodex.create_policy("), 1)
+        self.assertEqual(
+            migration.count("CREATE FUNCTION decodex.accept_policy_revision("), 1
+        )
+
+        for path in (ROOT / "crates").rglob("*.rs"):
+            if path == ROOT / "crates/decodex-core/src/policy.rs":
+                continue
+            self.assertNotIn("pub struct PolicyId", path.read_text(), str(path))
+            self.assertNotIn("pub struct PolicyRevisionId", path.read_text(), str(path))
+
+    def test_project_policy_slice_enables_no_effective_policy_behavior(self):
+        live_roots = [
+            ROOT / "crates/decodex-codex/src",
+            ROOT / "crates/decodex-protocol/src",
+            ROOT / "crates/decodex-runtime/src",
+            ROOT / "apps/decodexd/src",
+            ROOT / "apps/decodex-cli/src",
+            ROOT / "apps/decodex-gpui/src",
+        ]
+        source = "\n".join(
+            path.read_text()
+            for root in live_roots
+            for path in sorted(root.rglob("*.rs"))
+        )
+
+        for token in (
+            "PolicyRepository",
+            "accept_policy_revision",
+            "policies_for_project",
+        ):
+            self.assertNotIn(token, source)
+
+        migration = (
+            ROOT
+            / "crates/decodex-postgres/migrations/V6__project_policy_authority.sql"
+        ).read_text().lower()
+        for live_token in (
+            "approval routing",
+            "budget enforcement",
+            "quiet period",
+            "tool enforcement",
+            "path enforcement",
+            "network enforcement",
+            "dispatch",
+            "wakeup",
+            "codex process",
+        ):
+            self.assertNotIn(live_token, migration)
+
 if __name__ == "__main__":
     unittest.main()

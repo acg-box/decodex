@@ -84,6 +84,8 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
 	"decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
 	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
+	"decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
+	"decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -105,6 +107,8 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_context_pack_state()",
 	"decodex.enforce_context_pack_source_state()",
 	"decodex.enforce_history_cursor_state()",
+	"decodex.enforce_policy_identity_state()",
+	"decodex.forbid_policy_revision_mutation()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -392,7 +396,8 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"decodex.account_snapshots, decodex.blob_objects, decodex.artifact_revisions, decodex.context_packs, "
 		f"decodex.context_pack_sources, decodex.transition_proposals TO {role}; "
 		f"GRANT SELECT ON TABLE decodex.history_cursors, decodex.history_item_versions TO {role}; "
-		f"GRANT SELECT ON TABLE decodex.projects, decodex.agents TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.projects, decodex.agents, "
+		f"decodex.policies, decodex.policy_revisions TO {role}; "
 		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
@@ -960,7 +965,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 39",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 44",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -1338,7 +1343,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "5|1":
+		) != "6|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
