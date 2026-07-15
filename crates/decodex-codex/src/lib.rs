@@ -32,7 +32,14 @@ pub use self::{
 		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
 		RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
 	},
-	protocol::{BuildId, ThreadId, ThreadSummary},
+	protocol::{
+		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, DecodexThreadSearchTerm,
+		ExactThreadFacts, ExactThreadId, ExactThreadListFilter, ExactThreadListResult,
+		ExactThreadReadResult, LossyThreadHistory, MAX_EXACT_THREAD_ID_BYTES,
+		MAX_EXACT_THREAD_LIST_RESULTS, MAX_THREAD_CWD_BYTES, MAX_THREAD_PROVENANCE_BYTES,
+		MAX_THREAD_SEARCH_TERM_BYTES, MAX_THREAD_TITLE_BYTES, ThreadArchivedFilter,
+		ThreadCreatedAt, ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
+	},
 	schema::{
 		ACCEPTED_SCHEMA_RECEIPT, REQUIRED_NOTIFICATION_METHODS, REQUIRED_REQUEST_METHODS,
 		SchemaContract, SchemaMarker,
