@@ -1,0 +1,910 @@
+//! Private bounded composition of the retained session and disposable client cache.
+
+use std::{
+	collections::{HashMap, HashSet},
+	path::{Path, PathBuf},
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
+};
+
+use tokio::sync::Notify;
+
+use decodex_protocol::{
+	ApplicationConfirmation, CURRENT_VERSION, Cursor, EntityId, EntityRevision, EventEnvelope,
+	RetainedSession, RetainedSessionConfig, RetainedSessionFailure, ServerId, SessionCancellation,
+	SessionCheckpoint, SessionDelivery, SnapshotEnvelope, SnapshotItem,
+};
+
+use crate::client_cache::{
+	CacheAuthority, CacheError, CacheLimits, ClientCache, GenerationInspection, ObjectCertainty,
+	ObjectInput,
+};
+
+const RETRY_DELAYS: [Duration; 4] = [
+	Duration::from_millis(100),
+	Duration::from_millis(250),
+	Duration::from_millis(500),
+	Duration::from_secs(1),
+];
+const MAX_CONNECTION_ATTEMPTS: u8 = 5;
+
+/// State rendered by the later shell without exposing transport or cache internals.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ConnectionView {
+	/// One caller-owned connection attempt is in progress.
+	Connecting { attempt: u8 },
+	/// A verified retained session is online.
+	Online { generation: u64, applied: Option<Cursor> },
+	/// A transient failure is waiting for its deterministic retry.
+	OfflineRetrying { next_attempt: u8, delay: Duration },
+	/// Protocol compatibility is closed until client or server replacement.
+	Incompatible(CompatibilityReason),
+	/// Data or identity is isolated under an explicit recovery lifetime.
+	Quarantined { reason: QuarantineReason, recovery: QuarantineRecovery },
+	/// Cooperative terminal shutdown is closing the owned session.
+	ShuttingDown,
+	/// No connection attempt or retained session remains owned.
+	Stopped,
+}
+
+/// Closed compatibility states that deterministic retry cannot repair.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CompatibilityReason {
+	InvalidEndpoint,
+	ProtocolMajor,
+	ProtocolMinor,
+	PublicationIdentityUnavailable,
+}
+
+/// Why checkpoint and cache reuse lost authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QuarantineReason {
+	StableServerIdentity,
+	AuthorityChanged,
+	PublicationInstanceChanged,
+	CheckpointMismatch,
+	CacheCorrupt,
+	CacheRootUnsafe,
+	ContentAttestation,
+	ApplicationOrder,
+	ApplicationConfirmation,
+	StaleConnectionGeneration,
+}
+
+/// Exact lifetime and replacement rule for quarantined material.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QuarantineRecovery {
+	/// Keep the old immutable generation for inspection, but never reuse its checkpoint.
+	VerifiedSnapshotReplacement,
+	/// The complete disposable cache was removed before an empty rebuild.
+	DisposedBeforeRebuild,
+	/// The filesystem root or stable identity is unsafe and requires operator replacement.
+	OperatorRequired,
+}
+
+/// Terminal result of the caller-owned lifecycle future.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RunResult {
+	Stopped,
+	RetryExhausted,
+	Incompatible,
+	Quarantined,
+}
+
+/// Construction failures that occur before any connection attempt.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum LifecycleBuildError {
+	Session(RetainedSessionFailure),
+	Cache(CacheError),
+}
+
+/// Cloneable cooperative shutdown handle for the one caller-owned run future.
+#[derive(Clone, Debug)]
+pub(crate) struct LifecycleCancellation {
+	inner: Arc<CancellationInner>,
+}
+
+#[derive(Debug)]
+struct CancellationInner {
+	cancelled: AtomicBool,
+	notify: Notify,
+	session: SessionCancellation,
+}
+
+impl LifecycleCancellation {
+	fn new() -> Self {
+		Self {
+			inner: Arc::new(CancellationInner {
+				cancelled: AtomicBool::new(false),
+				notify: Notify::new(),
+				session: SessionCancellation::new(),
+			}),
+		}
+	}
+
+	/// Request terminal shutdown during connect, receive, or backoff.
+	pub(crate) fn cancel(&self) {
+		if !self.inner.cancelled.swap(true, Ordering::AcqRel) {
+			self.inner.session.cancel();
+			self.inner.notify.notify_waiters();
+		}
+	}
+
+	fn is_cancelled(&self) -> bool {
+		self.inner.cancelled.load(Ordering::Acquire)
+	}
+
+	fn session(&self) -> SessionCancellation {
+		self.inner.session.clone()
+	}
+
+	async fn cancelled(&self) {
+		loop {
+			let notified = self.inner.notify.notified();
+
+			if self.is_cancelled() {
+				return;
+			}
+
+			notified.await;
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AppliedEntity {
+	entity_id: EntityId,
+	revision: EntityRevision,
+	bytes: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CacheBinding {
+	checkpoint: SessionCheckpoint,
+	generation: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Quarantine {
+	reason: QuarantineReason,
+	recovery: QuarantineRecovery,
+}
+
+struct CachedFact {
+	entity_id: EntityId,
+	revision: EntityRevision,
+	bytes: Vec<u8>,
+}
+
+enum Delivery<C> {
+	Snapshot { snapshot: SnapshotEnvelope, confirmation: C },
+	Event { event: EventEnvelope, confirmation: C },
+	Other,
+}
+
+/// The single private seam around retained-session operations and retry time.
+trait LifecycleIo {
+	type Confirmation;
+
+	async fn connect(
+		&mut self,
+		config: &RetainedSessionConfig,
+		checkpoint: Option<SessionCheckpoint>,
+		cancellation: &LifecycleCancellation,
+	) -> Result<Option<SessionCheckpoint>, RetainedSessionFailure>;
+	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure>;
+	fn confirm_applied(
+		&mut self,
+		confirmation: Self::Confirmation,
+	) -> Result<SessionCheckpoint, RetainedSessionFailure>;
+	async fn close(&mut self) -> Result<(), RetainedSessionFailure>;
+
+	async fn backoff(
+		&mut self,
+		delay: Duration,
+		cancellation: &LifecycleCancellation,
+	) -> Result<(), RetainedSessionFailure>;
+}
+
+struct TokioIo {
+	session: Option<RetainedSession>,
+}
+
+impl LifecycleIo for TokioIo {
+	type Confirmation = ApplicationConfirmation;
+
+	async fn connect(
+		&mut self,
+		config: &RetainedSessionConfig,
+		checkpoint: Option<SessionCheckpoint>,
+		cancellation: &LifecycleCancellation,
+	) -> Result<Option<SessionCheckpoint>, RetainedSessionFailure> {
+		let session =
+			RetainedSession::connect(config.clone(), checkpoint, cancellation.session()).await?;
+		let checkpoint = session.checkpoint().cloned();
+
+		self.session = Some(session);
+
+		Ok(checkpoint)
+	}
+
+	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure> {
+		match self.session.as_mut().ok_or(RetainedSessionFailure::Closed)?.next().await? {
+			SessionDelivery::Snapshot { snapshot, confirmation } => {
+				Ok(Delivery::Snapshot { snapshot, confirmation })
+			},
+			SessionDelivery::Event { event, confirmation } => {
+				Ok(Delivery::Event { event, confirmation })
+			},
+			SessionDelivery::CommandReceipt(_)
+			| SessionDelivery::CommandResult(_)
+			| SessionDelivery::QueryResult(_) => Ok(Delivery::Other),
+		}
+	}
+
+	fn confirm_applied(
+		&mut self,
+		confirmation: Self::Confirmation,
+	) -> Result<SessionCheckpoint, RetainedSessionFailure> {
+		self.session
+			.as_mut()
+			.ok_or(RetainedSessionFailure::Closed)?
+			.confirm_applied(confirmation)
+			.cloned()
+	}
+
+	async fn close(&mut self) -> Result<(), RetainedSessionFailure> {
+		let Some(session) = self.session.take() else {
+			return Ok(());
+		};
+
+		session.close().await
+	}
+
+	async fn backoff(
+		&mut self,
+		delay: Duration,
+		cancellation: &LifecycleCancellation,
+	) -> Result<(), RetainedSessionFailure> {
+		tokio::select! {
+			() = tokio::time::sleep(delay) => Ok(()),
+			() = cancellation.cancelled() => Err(RetainedSessionFailure::Cancelled),
+		}
+	}
+}
+
+/// Private lifecycle owner. The disabled composition root does not construct it yet.
+pub(crate) struct ClientLifecycle {
+	config: RetainedSessionConfig,
+	server_id: ServerId,
+	cache_root: PathBuf,
+	cache_limits: CacheLimits,
+	cache_authority: CacheAuthority,
+	cache: Option<ClientCache>,
+	state: HashMap<String, AppliedEntity>,
+	last_cursor: Option<Cursor>,
+	binding: Option<CacheBinding>,
+	quarantine: Option<Quarantine>,
+	connection_generation: u64,
+	view: ConnectionView,
+	cancellation: LifecycleCancellation,
+}
+
+impl ClientLifecycle {
+	/// Bind the lifecycle to one exact stable server, protocol/schema generation, and cache root.
+	pub(crate) fn new(
+		endpoint: impl AsRef<str>,
+		server_id: ServerId,
+		cache_root: impl Into<PathBuf>,
+		cache_limits: CacheLimits,
+		schema_generation: u64,
+	) -> Result<Self, LifecycleBuildError> {
+		let config = RetainedSessionConfig::new(endpoint, server_id.clone())
+			.map_err(LifecycleBuildError::Session)?;
+		let cache_authority = CacheAuthority::new(&server_id, CURRENT_VERSION, schema_generation)
+			.map_err(LifecycleBuildError::Cache)?;
+		let cache_root = cache_root.into();
+		let (cache, quarantine) =
+			initialize_cache(&cache_root, cache_limits, cache_authority.clone());
+		let view = quarantine.map_or(ConnectionView::Stopped, |quarantine| {
+			ConnectionView::Quarantined { reason: quarantine.reason, recovery: quarantine.recovery }
+		});
+
+		Ok(Self {
+			config,
+			server_id,
+			cache_root,
+			cache_limits,
+			cache_authority,
+			cache,
+			state: HashMap::new(),
+			last_cursor: None,
+			binding: None,
+			quarantine,
+			connection_generation: 0,
+			view,
+			cancellation: LifecycleCancellation::new(),
+		})
+	}
+
+	/// Current narrow shell-facing state.
+	pub(crate) const fn view(&self) -> ConnectionView {
+		self.view
+	}
+
+	/// Cooperative handle that can terminate the caller-owned run future.
+	pub(crate) fn cancellation(&self) -> LifecycleCancellation {
+		self.cancellation.clone()
+	}
+
+	/// Run the bounded lifecycle without spawning or detaching any work.
+	pub(crate) async fn run(&mut self) -> RunResult {
+		self.run_with_io(&mut TokioIo { session: None }).await
+	}
+
+	async fn run_with_io<I>(&mut self, io: &mut I) -> RunResult
+	where
+		I: LifecycleIo,
+	{
+		if self.cache.is_none() {
+			return RunResult::Quarantined;
+		}
+		if self.cancellation.is_cancelled() {
+			return self.finish_shutdown().await;
+		}
+
+		for attempt in 1..=MAX_CONNECTION_ATTEMPTS {
+			let generation = match self.begin_attempt(attempt) {
+				Ok(generation) => generation,
+				Err(()) => return RunResult::Quarantined,
+			};
+			let checkpoint = self.reusable_checkpoint();
+			let requested_checkpoint = checkpoint.clone();
+			let connected_checkpoint =
+				io.connect(&self.config, checkpoint, &self.cancellation).await;
+
+			if self.ensure_generation(generation).is_err() {
+				return RunResult::Quarantined;
+			}
+
+			let connected_checkpoint = match connected_checkpoint {
+				Ok(checkpoint) => checkpoint,
+				Err(failure) => {
+					if let Some(result) = self.closed_failure(failure) {
+						return result;
+					}
+
+					if !self.retry(io, attempt, generation).await {
+						return self.retry_terminal(attempt);
+					}
+
+					continue;
+				},
+			};
+
+			self.connection_established(
+				generation,
+				requested_checkpoint.is_some(),
+				connected_checkpoint.as_ref(),
+			);
+			let mut requires_snapshot = connected_checkpoint.is_none();
+
+			let failure = loop {
+				let delivery = io.next().await;
+
+				if self.ensure_generation(generation).is_err() {
+					break RetainedSessionFailure::PublicationOrder;
+				}
+
+				match delivery {
+					Ok(Delivery::Snapshot { snapshot, confirmation }) => {
+						let cursor = snapshot.cursor;
+						let inspection = match self.apply_snapshot(generation, snapshot) {
+							Ok(inspection) => inspection,
+							Err(failure) => break failure,
+						};
+						let checkpoint = match io.confirm_applied(confirmation) {
+							Ok(checkpoint) => checkpoint,
+							Err(_) => break self.confirmation_failure(),
+						};
+
+						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
+						{
+							break RetainedSessionFailure::ApplicationConfirmationMismatch;
+						}
+						requires_snapshot = false;
+					},
+					Ok(Delivery::Event { event, confirmation }) => {
+						if requires_snapshot {
+							self.enter_quarantine(
+								QuarantineReason::ApplicationOrder,
+								QuarantineRecovery::VerifiedSnapshotReplacement,
+							);
+
+							break RetainedSessionFailure::PublicationOrder;
+						}
+						let cursor = event.cursor;
+						let inspection = match self.apply_event(generation, event) {
+							Ok(inspection) => inspection,
+							Err(failure) => break failure,
+						};
+						let checkpoint = match io.confirm_applied(confirmation) {
+							Ok(checkpoint) => checkpoint,
+							Err(_) => break self.confirmation_failure(),
+						};
+
+						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
+						{
+							break RetainedSessionFailure::ApplicationConfirmationMismatch;
+						}
+					},
+					Ok(Delivery::Other) => {},
+					Err(failure) => break failure,
+				}
+			};
+
+			if self.quarantine.is_none() {
+				self.view = ConnectionView::ShuttingDown;
+			}
+			let _ = io.close().await;
+
+			if self.ensure_generation(generation).is_err() {
+				return RunResult::Quarantined;
+			}
+			if let Some(result) = self.closed_failure(failure) {
+				return result;
+			}
+			if !self.retry(io, attempt, generation).await {
+				return self.retry_terminal(attempt);
+			}
+		}
+
+		if self.quarantine.is_some() {
+			RunResult::Quarantined
+		} else {
+			self.view = ConnectionView::Stopped;
+
+			RunResult::RetryExhausted
+		}
+	}
+
+	fn begin_attempt(&mut self, attempt: u8) -> Result<u64, ()> {
+		self.connection_generation =
+			self.connection_generation.checked_add(1).ok_or_else(|| {
+				self.enter_quarantine(
+					QuarantineReason::StaleConnectionGeneration,
+					QuarantineRecovery::OperatorRequired,
+				);
+			})?;
+		if self.quarantine.is_none() {
+			self.view = ConnectionView::Connecting { attempt };
+		}
+
+		Ok(self.connection_generation)
+	}
+
+	fn connection_established(
+		&mut self,
+		generation: u64,
+		requested_checkpoint: bool,
+		connected_checkpoint: Option<&SessionCheckpoint>,
+	) {
+		if requested_checkpoint && connected_checkpoint.is_none() {
+			self.enter_quarantine(
+				QuarantineReason::PublicationInstanceChanged,
+				QuarantineRecovery::VerifiedSnapshotReplacement,
+			);
+		}
+		if self.quarantine.is_none() {
+			self.view = ConnectionView::Online {
+				generation,
+				applied: connected_checkpoint.map(SessionCheckpoint::cursor),
+			};
+		}
+	}
+
+	fn reusable_checkpoint(&mut self) -> Option<SessionCheckpoint> {
+		let binding = self.binding.clone()?;
+		let inspection = self.cache.as_ref()?.inspect_current();
+
+		match inspection {
+			Ok(Some(inspection))
+				if inspection.generation == binding.generation
+					&& inspection.authority == self.cache_authority =>
+			{
+				Some(binding.checkpoint)
+			},
+			_ => {
+				self.enter_quarantine(
+					QuarantineReason::ContentAttestation,
+					QuarantineRecovery::VerifiedSnapshotReplacement,
+				);
+
+				None
+			},
+		}
+	}
+
+	fn apply_snapshot(
+		&mut self,
+		generation: u64,
+		snapshot: SnapshotEnvelope,
+	) -> Result<GenerationInspection, RetainedSessionFailure> {
+		self.ensure_generation(generation)?;
+		if snapshot.version != CURRENT_VERSION || snapshot.server_id != self.server_id {
+			return self.application_failure(QuarantineReason::ApplicationOrder);
+		}
+
+		let mut seen = HashSet::new();
+		let mut next_state = HashMap::new();
+		let mut facts = Vec::with_capacity(snapshot.items.len());
+
+		for item in snapshot.items {
+			let (entity_id, revision) = snapshot_identity(&item);
+			if !seen.insert(entity_id.as_str().to_owned()) {
+				return self.application_failure(QuarantineReason::ApplicationOrder);
+			}
+			let bytes = serde_json::to_vec(&item).map_err(|_| RetainedSessionFailure::Malformed)?;
+
+			next_state.insert(
+				entity_id.as_str().to_owned(),
+				AppliedEntity { entity_id: entity_id.clone(), revision, bytes: bytes.clone() },
+			);
+			facts.push(CachedFact { entity_id, revision, bytes });
+		}
+
+		let inspection = self.publish(&facts)?;
+
+		self.state = next_state;
+		self.last_cursor = Some(snapshot.cursor);
+
+		Ok(inspection)
+	}
+
+	fn apply_event(
+		&mut self,
+		generation: u64,
+		event: EventEnvelope,
+	) -> Result<GenerationInspection, RetainedSessionFailure> {
+		self.ensure_generation(generation)?;
+		if event.version != CURRENT_VERSION
+			|| event.server_id != self.server_id
+			|| self.last_cursor.and_then(next_cursor) != Some(event.cursor)
+			|| self
+				.state
+				.get(event.entity_id.as_str())
+				.is_some_and(|current| event.entity_revision <= current.revision)
+		{
+			return self.application_failure(QuarantineReason::ApplicationOrder);
+		}
+
+		let bytes =
+			serde_json::to_vec(&event.payload).map_err(|_| RetainedSessionFailure::Malformed)?;
+		let mut next_state = self.state.clone();
+
+		next_state.insert(
+			event.entity_id.as_str().to_owned(),
+			AppliedEntity { entity_id: event.entity_id, revision: event.entity_revision, bytes },
+		);
+		let facts = next_state
+			.values()
+			.map(|entity| CachedFact {
+				entity_id: entity.entity_id.clone(),
+				revision: entity.revision,
+				bytes: entity.bytes.clone(),
+			})
+			.collect::<Vec<_>>();
+		let inspection = self.publish(&facts)?;
+
+		self.state = next_state;
+		self.last_cursor = Some(event.cursor);
+
+		Ok(inspection)
+	}
+
+	fn publish(
+		&mut self,
+		facts: &[CachedFact],
+	) -> Result<GenerationInspection, RetainedSessionFailure> {
+		let inputs = facts
+			.iter()
+			.map(|fact| {
+				ObjectInput::new(
+					&fact.entity_id,
+					fact.revision,
+					&fact.bytes,
+					ObjectCertainty::Authoritative,
+				)
+			})
+			.collect::<Vec<_>>();
+		let result =
+			self.cache.as_ref().ok_or(RetainedSessionFailure::Closed)?.publish(&inputs, &[]);
+
+		match result {
+			Ok(inspection) => Ok(inspection),
+			Err(error) => {
+				self.handle_cache_failure(error);
+
+				Err(RetainedSessionFailure::Malformed)
+			},
+		}
+	}
+
+	fn bind_checkpoint(
+		&mut self,
+		generation: u64,
+		cursor: Cursor,
+		checkpoint: SessionCheckpoint,
+		inspection: GenerationInspection,
+	) -> Result<(), RetainedSessionFailure> {
+		self.ensure_generation(generation)?;
+		if checkpoint.server_id() != &self.server_id
+			|| checkpoint.cursor() != cursor
+			|| inspection.authority != self.cache_authority
+			|| self
+				.cache
+				.as_ref()
+				.and_then(|cache| cache.inspect_current().ok().flatten())
+				.as_ref()
+				.is_none_or(|current| current.generation != inspection.generation)
+		{
+			return self.application_failure(QuarantineReason::ContentAttestation);
+		}
+
+		self.binding = Some(CacheBinding { checkpoint, generation: inspection.generation });
+		self.quarantine = None;
+		self.view = ConnectionView::Online { generation, applied: Some(cursor) };
+
+		Ok(())
+	}
+
+	fn ensure_generation(&mut self, generation: u64) -> Result<(), RetainedSessionFailure> {
+		if generation == self.connection_generation {
+			return Ok(());
+		}
+
+		self.enter_quarantine(
+			QuarantineReason::StaleConnectionGeneration,
+			QuarantineRecovery::VerifiedSnapshotReplacement,
+		);
+
+		Err(RetainedSessionFailure::PublicationOrder)
+	}
+
+	fn application_failure<T>(
+		&mut self,
+		reason: QuarantineReason,
+	) -> Result<T, RetainedSessionFailure> {
+		self.enter_quarantine(reason, QuarantineRecovery::VerifiedSnapshotReplacement);
+
+		Err(RetainedSessionFailure::PublicationOrder)
+	}
+
+	fn confirmation_failure(&mut self) -> RetainedSessionFailure {
+		self.enter_quarantine(
+			QuarantineReason::ApplicationConfirmation,
+			QuarantineRecovery::VerifiedSnapshotReplacement,
+		);
+
+		RetainedSessionFailure::ApplicationConfirmationMismatch
+	}
+
+	fn enter_quarantine(&mut self, reason: QuarantineReason, recovery: QuarantineRecovery) {
+		self.binding = None;
+		self.quarantine = Some(Quarantine { reason, recovery });
+		self.view = ConnectionView::Quarantined { reason, recovery };
+	}
+
+	fn handle_cache_failure(&mut self, error: CacheError) {
+		let recovery = if is_disposable_corruption(error)
+			&& ClientCache::dispose_all(&self.cache_root).is_ok()
+		{
+			match ClientCache::open(
+				&self.cache_root,
+				self.cache_limits,
+				self.cache_authority.clone(),
+			) {
+				Ok(cache) => {
+					self.cache = Some(cache);
+
+					QuarantineRecovery::DisposedBeforeRebuild
+				},
+				Err(_) => {
+					self.cache = None;
+
+					QuarantineRecovery::OperatorRequired
+				},
+			}
+		} else {
+			self.cache = None;
+
+			QuarantineRecovery::OperatorRequired
+		};
+
+		self.enter_quarantine(QuarantineReason::CacheCorrupt, recovery);
+	}
+
+	fn closed_failure(&mut self, failure: RetainedSessionFailure) -> Option<RunResult> {
+		match failure {
+			RetainedSessionFailure::Cancelled => Some(self.finish_shutdown_now()),
+			RetainedSessionFailure::InvalidEndpoint => {
+				self.view = ConnectionView::Incompatible(CompatibilityReason::InvalidEndpoint);
+
+				Some(RunResult::Incompatible)
+			},
+			RetainedSessionFailure::ProtocolMajorMismatch => {
+				self.view = ConnectionView::Incompatible(CompatibilityReason::ProtocolMajor);
+
+				Some(RunResult::Incompatible)
+			},
+			RetainedSessionFailure::ProtocolMinorMismatch => {
+				self.view = ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor);
+
+				Some(RunResult::Incompatible)
+			},
+			RetainedSessionFailure::PublicationIdentityUnavailable => {
+				self.view = ConnectionView::Incompatible(
+					CompatibilityReason::PublicationIdentityUnavailable,
+				);
+
+				Some(RunResult::Incompatible)
+			},
+			RetainedSessionFailure::ServerIdentityMismatch => {
+				self.enter_quarantine(
+					QuarantineReason::StableServerIdentity,
+					QuarantineRecovery::OperatorRequired,
+				);
+
+				Some(RunResult::Quarantined)
+			},
+			RetainedSessionFailure::CheckpointIdentityMismatch => {
+				self.enter_quarantine(
+					QuarantineReason::CheckpointMismatch,
+					QuarantineRecovery::VerifiedSnapshotReplacement,
+				);
+
+				None
+			},
+			RetainedSessionFailure::Malformed
+			| RetainedSessionFailure::ProtocolViolation
+			| RetainedSessionFailure::PublicationOrder
+			| RetainedSessionFailure::ApplicationConfirmationRequired
+			| RetainedSessionFailure::ApplicationConfirmationMismatch => {
+				if self.quarantine.is_none() {
+					self.enter_quarantine(
+						QuarantineReason::ApplicationOrder,
+						QuarantineRecovery::VerifiedSnapshotReplacement,
+					);
+				}
+
+				None
+			},
+			RetainedSessionFailure::OperationTimeout
+			| RetainedSessionFailure::Closed
+			| RetainedSessionFailure::Disconnected
+			| RetainedSessionFailure::Backpressure => None,
+		}
+	}
+
+	async fn retry<I>(&mut self, io: &mut I, attempt: u8, generation: u64) -> bool
+	where
+		I: LifecycleIo,
+	{
+		if attempt >= MAX_CONNECTION_ATTEMPTS {
+			return false;
+		}
+		let delay = RETRY_DELAYS[usize::from(attempt - 1)];
+
+		if self.quarantine.is_none() {
+			self.view = ConnectionView::OfflineRetrying { next_attempt: attempt + 1, delay };
+		}
+
+		io.backoff(delay, &self.cancellation).await.is_ok()
+			&& self.ensure_generation(generation).is_ok()
+	}
+
+	fn retry_terminal(&mut self, attempt: u8) -> RunResult {
+		if self.cancellation.is_cancelled() {
+			return self.finish_shutdown_now();
+		}
+		if self.quarantine.is_some() {
+			return RunResult::Quarantined;
+		}
+		if attempt >= MAX_CONNECTION_ATTEMPTS {
+			self.view = ConnectionView::Stopped;
+
+			return RunResult::RetryExhausted;
+		}
+
+		RunResult::Quarantined
+	}
+
+	async fn finish_shutdown(&mut self) -> RunResult {
+		self.finish_shutdown_now()
+	}
+
+	fn finish_shutdown_now(&mut self) -> RunResult {
+		if self.quarantine.is_some() {
+			return RunResult::Quarantined;
+		}
+		self.view = ConnectionView::ShuttingDown;
+		self.view = ConnectionView::Stopped;
+
+		RunResult::Stopped
+	}
+}
+
+fn initialize_cache(
+	root: &Path,
+	limits: CacheLimits,
+	authority: CacheAuthority,
+) -> (Option<ClientCache>, Option<Quarantine>) {
+	match ClientCache::open(root, limits, authority.clone()) {
+		Ok(cache) => (Some(cache), None),
+		Err(CacheError::AuthorityMismatch) => {
+			match ClientCache::prepare_authority_switch(root, limits, authority) {
+				Ok(cache) => (
+					Some(cache),
+					Some(Quarantine {
+						reason: QuarantineReason::AuthorityChanged,
+						recovery: QuarantineRecovery::VerifiedSnapshotReplacement,
+					}),
+				),
+				Err(_) => unsafe_cache_quarantine(),
+			}
+		},
+		Err(error) if is_disposable_corruption(error) => {
+			if ClientCache::dispose_all(root).is_ok() {
+				match ClientCache::open(root, limits, authority) {
+					Ok(cache) => (
+						Some(cache),
+						Some(Quarantine {
+							reason: QuarantineReason::CacheCorrupt,
+							recovery: QuarantineRecovery::DisposedBeforeRebuild,
+						}),
+					),
+					Err(_) => unsafe_cache_quarantine(),
+				}
+			} else {
+				unsafe_cache_quarantine()
+			}
+		},
+		Err(_) => unsafe_cache_quarantine(),
+	}
+}
+
+fn unsafe_cache_quarantine() -> (Option<ClientCache>, Option<Quarantine>) {
+	(
+		None,
+		Some(Quarantine {
+			reason: QuarantineReason::CacheRootUnsafe,
+			recovery: QuarantineRecovery::OperatorRequired,
+		}),
+	)
+}
+
+fn is_disposable_corruption(error: CacheError) -> bool {
+	matches!(
+		error,
+		CacheError::CrashRemnant
+			| CacheError::InvalidMetadata
+			| CacheError::IntegrityMismatch
+			| CacheError::OrphanGeneration
+	)
+}
+
+fn snapshot_identity(item: &SnapshotItem) -> (EntityId, EntityRevision) {
+	match item {
+		SnapshotItem::SystemState { entity_id, revision, .. } => (entity_id.clone(), *revision),
+	}
+}
+
+fn next_cursor(cursor: Cursor) -> Option<Cursor> {
+	cursor.0.checked_add(1).map(Cursor)
+}
+
+#[cfg(test)]
+mod tests;
