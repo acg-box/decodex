@@ -8,6 +8,9 @@ name                 = "decodex-postgres"
 repository.workspace = true
 version.workspace    = true
 
+[features]
+test-support = []
+
 [dependencies]
 deadpool-postgres = "=0.14.1"
 decodex-core      = { workspace = true }

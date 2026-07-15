@@ -493,12 +493,29 @@ def main() -> int:
 			],
 			env,
 		)
+		env["DECODEX_TEST_SOCKET_DIRECTORY"] = str(socket_dir)
+		account_composition_output = run(
+			[
+				"cargo",
+				"nextest",
+				"run",
+				"-p",
+				"decodex-runtime",
+				"--lib",
+				"--all-features",
+				"--run-ignored",
+				"all",
+				"--",
+				"account_launch::postgres_composition_tests::postgres_private_capacity_and_codex_composition_is_fail_closed",
+				"--exact",
+			],
+			env,
+		)
 		bootstrap_root = work / "decodex-root"
 		write_bootstrap_config(
 			bootstrap_root, socket_dir, port, DATABASE, MIGRATION_ROLE, RUNTIME_ROLE
 		)
 		env["DECODEX_TEST_BOOTSTRAP_ROOT"] = str(bootstrap_root)
-		env["DECODEX_TEST_SOCKET_DIRECTORY"] = str(socket_dir)
 		env["DECODEX_TEST_SOCKET_PORT"] = str(port)
 		bootstrap_output = run(
 			[
@@ -1219,7 +1236,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "3|1":
+		) != "4|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
@@ -1368,6 +1385,7 @@ def main() -> int:
 		print(migration_output)
 		print(restart_output)
 		print(contract_output)
+		print(account_composition_output)
 		print(bootstrap_output)
 		print(live_doctor_output)
 		print(auth_bootstrap_output)

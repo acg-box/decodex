@@ -19,6 +19,9 @@ if sys.argv[1] == "--version":
     raise SystemExit(0)
 
 if sys.argv[1] == "generate-json-schema":
+    if "--preflight-hang" in sys.argv:
+        time.sleep(60)
+        raise SystemExit(0)
     output = Path(sys.argv[-1])
     output.mkdir(parents=True, exist_ok=True)
     if "--orphan-pid" in sys.argv:
@@ -154,6 +157,9 @@ for line in sys.stdin:
         time.sleep(60)
     method = message.get("method")
     if method == "initialize":
+        if mode == "escaped-error":
+            print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32000, "message": "secret\\quoted"}}), flush=True)
+            continue
         if mode == "oversized-frame":
             sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
             sys.stdout.flush()
@@ -161,18 +167,41 @@ for line in sys.stdin:
         if mode == "queue-overflow":
             for index in range(100):
                 print(json.dumps({"jsonrpc": "2.0", "method": "unrelated", "params": {"index": index}}), flush=True)
-        assert os.environ.get("OPENAI_API_KEY") is None
+        # Apple's /usr/bin/python3 launcher adds only these toolchain/runtime
+        # variables after exec; the parent projection itself is HOME/PATH-only.
+        assert set(os.environ).issubset({
+            "CPATH",
+            "HOME",
+            "LC_CTYPE",
+            "LIBRARY_PATH",
+            "MANPATH",
+            "PATH",
+            "PYTHONNOUSERSITE",
+            "SDKROOT",
+            "__CF_USER_TEXT_ENCODING",
+        })
+        assert Path(os.environ["HOME"]).is_absolute()
+        assert os.environ.get("PATH") == "/usr/bin:/bin:/usr/sbin:/sbin"
         result = {
-            "codexHome": "/tmp/other-codex-home" if mode == "home-mismatch" else "/tmp/fake-codex-home",
+            "codexHome": "/tmp/other-codex-home" if mode == "home-mismatch" else str(Path(os.environ["HOME"]) / ".codex"),
             "platformFamily": "unix",
             "platformOs": "test",
-            "userAgent": "fake-codex/1",
+            "userAgent": {"late": "wrong"} if mode == "late-typed-error" else ("fake\"codex/1" if mode == "escaped-success" else "fake-codex/1"),
         }
     elif method == "account/read":
         account_reads += 1
         email = "changed@example.test" if mode == "account-switch" and account_reads > 1 else "private@example.test"
         account = None if mode == "account-none" else {"type": "chatgpt", "email": email}
         result = {"account": account, "requiresOpenaiAuth": True}
+    elif method == "account/login/start":
+        assert message["params"]["type"] == "chatgptAuthTokens"
+        assert message["params"]["accessToken"] == "synthetic-nonsecret-sentinel"
+        assert message["params"]["chatgptAccountId"] == "synthetic-provider-sentinel"
+        result = (
+            {"unexpected": "synthetic-nonsecret-sentinel"}
+            if mode == "login-extra"
+            else {}
+        )
     elif method == "thread/list":
         assert message["params"]["useStateDbOnly"] is True
         count = 101 if mode == "oversized-thread-list" else 1
