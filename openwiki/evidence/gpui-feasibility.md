@@ -1,8 +1,8 @@
 # XY-1263 GPUI feasibility evidence
 
-Status: exact-pin candidate evidence; the normalized current-main repository-owned
-PID-bound accessibility harness passed a fresh repo-local direct 40/40 and awaits
-independent review.
+Status: accepted exact-pin foundation evidence. The normalized current-main
+repository-owned PID-bound accessibility harness passed a fresh repo-local direct 40/40;
+the exact candidate received independent review and landed in PR #1109.
 
 As of: 2026-07-14. Normalized candidate base:
 `e4c026f8e42e64cfcaeadbbb71a0a40722212762`. Pre-normalization continuation base:
@@ -84,9 +84,11 @@ contract; hidden/unfocused creation is retained as the compliant configuration, 
 causal contribution to the original missing-content readback was not isolated. No newer
 revision or custom bridge was needed.
 
-The technical accessibility freeze remains in place pending fresh independent review of the
-full diff and exact artifacts, followed by the repository's normal acceptance and landing
-authority. This artifact does not begin or authorize production UI by itself.
+The exact candidate at `de6d028405159a79f1c30a4eeebdae47481e6f25` received an
+independent `NO_BLOCKING_FINDINGS` review and landed as the second parent of merge commit
+`d85a808a88af96d50fb4471deb00d13f4301b07d` in PR #1109. This acceptance closes only
+the isolated pinned-foundation gate. This artifact does not begin or authorize production
+UI by itself.
 
 ## Provenance and dependency evidence
 
@@ -146,7 +148,7 @@ after `xcodebuild -downloadComponent MetalToolchain`.
 | Manager ad-hoc run at `/tmp/decodex-gpui-cold-40.DkD3aj` | 40/40 behavioral pass, but no exact launch PID plus staged binary/probe provenance; insufficient to close the gate. |
 | earlier PID-bound gate, exact staged 40-launch command | **40/40 pass:** `target/gpui-spike/evidence/cold-launch-1783938579-82143`; retained as pre-current-fingerprint provenance. |
 | pre-normalization repo-local PID-bound gate | **40/40 technical provenance:** `/tmp/xy1263-repo-local-direct-20260714T044200Z/gate`; stale divergent base and blank outer receipts prevent current-main acceptance. |
-| normalized current-main PID-bound gate, exact staged 40-launch command | **40/40 pass:** `/tmp/xy1263-main-e4c-direct-20260714T045950Z/gate`; 40 distinct exact PIDs, literal-zero outer and per-run receipts, and all provenance, activation, AX, focus, action/value, single-keyboard-event, and cleanup assertions passed. Independent review remains pending. |
+| normalized current-main PID-bound gate, exact staged 40-launch command | **Accepted 40/40 pass:** `/tmp/xy1263-main-e4c-direct-20260714T045950Z/gate`; 40 distinct exact PIDs, literal-zero outer and per-run receipts, and all provenance, activation, AX, focus, action/value, single-keyboard-event, and cleanup assertions passed. Exact-candidate review returned `NO_BLOCKING_FINDINGS`; PR #1109 landed the reviewed candidate. |
 
 The measured redraw samples cover GPUI layout/paint submission for a real Metal-backed
 offscreen window. They are not end-to-end display-present latency and are not a production
@@ -242,9 +244,10 @@ and 80-element readback recorded even after this exact-pin replacement is accept
 
 ## Falsifiers and downstream stop conditions
 
-The technical accessibility falsifier has a fresh normalized current-main 40/40 bound run
-with exact literal-zero receipts and remains open until that run and the full diff receive
-independent review and repository acceptance.
+The technical accessibility falsifier is closed for the isolated pinned foundation by the
+normalized current-main 40/40 bound run, exact literal-zero receipts, independent
+`NO_BLOCKING_FINDINGS` review, and landed PR #1109. Production qualification remains
+separate.
 The remaining conditions continue to apply to every later evaluation:
 
 - the exact revision/toolchain/Metal component cannot produce a release build or signed
@@ -286,7 +289,7 @@ The stale-base repo-local 40/40 closed the launch-provenance gap but could not s
 landing. The fresh normalized current-main 40/40 closes both the base and outer-receipt
 gaps and preserves the bound harness's nonactivating launch as the only failure in its
 earlier 39/40 artifact.
-External/private
-research remains unavailable, and the scan is substring-based, so coverage remains
-candidate-search-only. This evidence does not supersede the no-go outcome until review and
-acceptance through the same repository authority; it does not alter the vNext contract.
+External/private research remains unavailable, and the scan is substring-based, so
+coverage remains candidate-search-only. Review and PR #1109 supersede the no-go outcome
+only for the isolated pinned foundation. The accepted evidence does not authorize a
+production shell or alter the remaining vNext product gates.
