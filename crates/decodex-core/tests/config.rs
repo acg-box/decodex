@@ -8,6 +8,7 @@ use getrandom as _;
 #[cfg(unix)] use libc as _;
 use regex as _;
 use serde as _;
+use serde_json as _;
 use sha2 as _;
 use tempfile::NamedTempFile;
 use toml as _;

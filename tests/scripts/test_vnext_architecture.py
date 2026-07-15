@@ -38,6 +38,7 @@ EXPECTED_CORE_EXTERNAL_DEPENDENCIES = {
     "libc",
     "regex",
     "serde",
+    "serde_json",
     "sha2",
     "tempfile",
     "toml",
@@ -113,13 +114,22 @@ class VnextArchitectureTests(unittest.TestCase):
 
     def test_core_configuration_and_storage_dependencies_are_exact(self):
         owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        dependencies = self.packages["decodex-core"]["dependencies"]
         actual = {
             dependency["name"]
-            for dependency in self.packages["decodex-core"]["dependencies"]
+            for dependency in dependencies
             if dependency["name"] not in owned_packages
         }
 
         self.assertEqual(actual, EXPECTED_CORE_EXTERNAL_DEPENDENCIES)
+        self.assertEqual(
+            {
+                dependency["name"]
+                for dependency in dependencies
+                if dependency["kind"] == "dev"
+            },
+            {"serde_json", "tempfile"},
+        )
 
     def test_protocol_client_transport_dependencies_are_exact(self):
         owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
@@ -360,7 +370,6 @@ class VnextArchitectureTests(unittest.TestCase):
             "conversation_id",
         ):
             self.assertNotIn(conversation_surface, migration)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ mod identity;
 #[cfg(unix)] mod path_unix;
 mod paths;
 mod project;
+mod quota;
 mod storage;
 
 pub use self::{
@@ -53,6 +54,15 @@ pub use self::{
 		Project, ProjectAuthority, ProjectError, ProjectId, ProjectMetadata, ProjectMetadataValue,
 		ProjectRepository, ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity,
 		ServerProjectPath,
+	},
+	quota::{
+		AccountQuotaClassification, AccountQuotaFacts, AccountQuotaObservation, AccountReadyAt,
+		AllAccountsQuotaFacts, AuthenticationObservation, MalformedObservation,
+		ObservationConfidence, ObservationDuration, ObservationInstant, ObservedQuotaWindow,
+		ProbeReason, QuotaClassificationPolicy, QuotaWindowClass, QuotaWindowFact,
+		QuotaWindowObservation, QuotaWindowState, QuotaWindowValueObservation, RemainingPercent,
+		TimeOverflow, UnknownObservation, UnknownWindowDuration, WindowDurationObservation,
+		classify_account_quota, classify_all_accounts,
 	},
 	storage::StorageError,
 };
