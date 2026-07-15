@@ -17,8 +17,8 @@ its dependent implementation uses the result.
 
 | Range | Accepted downstream ownership |
 | --- | --- |
-| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with live continuation moved to [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, live continuation remains failed in XY-1304, and GPUI remains failed on the separate XY-1263 accessibility gate. |
-| [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and GPUI shell/cache. |
+| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with live continuation moved to [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, live continuation remains failed in XY-1304, and XY-1263 accepts only the isolated pinned GPUI foundation. |
+| [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
 | [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile/readiness foundations; XY-1304 separately owns live routing enablement and blocks the Quick Task slice. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
@@ -31,7 +31,8 @@ planning metadata, not product/runtime identity.
 
 ## Required architecture and implementation gates
 
-1. GPUI exact-revision build/package/test/accessibility spike (XY-1263).
+1. The accepted GPUI exact-revision build/package/test/accessibility foundation
+   (XY-1263); production shell acceptance remains the later S gate defined below.
 2. The accepted XY-1262 foundation gate: shared-home/process isolation,
    creation-receipt ownership, negotiated app-server contracts, supported
    exact-ID/list/read/archive behavior, lossy-read/divergence policy, native run-local
@@ -95,13 +96,201 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1266 | Loopback protocol, idempotency, reconnect, backpressure, and non-loopback refusal. |
 | XY-1267 | PostgreSQL transactions, leases, outbox, and inert account/window schemas. |
 | XY-1268 | Owned `~/.decodex` paths and API-only diagnostics that report unavailable/unknown honestly. |
-| XY-1269 | No work while the separate GPUI accessibility gate in XY-1263 is failed; this is its sole feasibility blocker. |
+| XY-1269 | P and K may proceed independently under their own dependencies; L waits for P and K, and S waits for L. P, K, and L remain non-production and default-disabled. Only S owns production shell and exact final-artifact qualification. |
 | XY-1270 | Generated typed app-server contracts, live capability negotiation, redaction, and one-account-per-process supervision; no task scheduling or account choice. |
 | XY-1271 | Conversation/RuntimeSession/history and inspectable Context-Pack persistence; no automatic rollover, assignment, or fallback dispatch. |
 | XY-1272 | Transactional creation mappings, exact-ID/list reconciliation, explicit retention, and the ManagedRun `diverged` stop transition; no global title-search claim. |
 | XY-1273 | Credential-vault metadata and immutable runner/account binding; no sticky or policy assignment. |
 | XY-1274 | Pure duration-typed quota/wake calculations and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
 | XY-1275 | User-owned profile snapshots and read-only plugin readiness audits; no installation or routing decision. |
+
+### XY-1263 acceptance and XY-1269 clean-slice reset
+
+XY-1263 landed in PR #1109. Its reviewed candidate was
+`de6d028405159a79f1c30a4eeebdae47481e6f25`, with
+`NO_BLOCKING_FINDINGS`; merge commit
+`d85a808a88af96d50fb4471deb00d13f4301b07d` retains that candidate as its
+second parent. The accepted evidence includes the exact-PID normalized cold-launch
+Accessibility gate passing 40/40. This proves only the isolated pinned GPUI foundation
+and its minimum committed-text accessibility path. It does not authorize a production
+shell or close marked-text/IME, production signing/notarization, VoiceOver/Accessibility
+Inspector, variable-height history, production graph behavior, or presented-frame gates.
+
+The rejected combined XY-1269 implementation candidate is superseded. Its replacement is
+one serial dependency graph:
+
+```text
+P: retained WebSocket session contract
+K: append-only app-local cache authority
+P + K -> L: narrow GPUI client lifecycle and observable connection state
+L -> S: narrow GPUI shell plus one exact macOS artifact gate
+```
+
+- P owns handshake/session retention, ordered delivery, application confirmation,
+  checkpoint identity, idle retention, cancellation, and bounded connect/send/close. It
+  owns no filesystem, retry policy, GPUI, or signing.
+- K is a private, app-local, GPUI-independent module within an existing client/application
+  owner. It is not a new crate and must not reuse the server-side
+  `decodex_core::BoundedCache`. K owns append-only immutable-generation publication and
+  invalidation, physical bounds, preservation of uncertain objects, and offline disposal
+  of a whole generation.
+- L composes P and K. It owns retry, cancellation, quarantine lifetime, minimal state
+  application, and one narrow shell-facing connection view. It is not a general
+  projection framework.
+- S owns window, navigation, focus, and rendering. Its exact final candidate runs one
+  package/signing/Accessibility qualification. Packaging is an S acceptance gate, not a
+  fifth implementation child.
+
+At the current-main snapshot, P belongs to the existing
+`crates/decodex-protocol/src/` client-contract owner and K, L, and S belong to the
+existing `apps/decodex-gpui/` application owner. `crates/decodex-protocol/src/lib.rs` is
+P's serial export integration surface. P's retained session contract must not inherit the
+filesystem/config responsibility of sibling client-profile code in that owner.
+P first owns only the stale-diagnostic alignment in `apps/decodex-gpui/src/main.rs`; that
+file is otherwise shared in the L-then-S sequence. K remains private beneath the
+application owner. No child may create a GPUI cache crate, put K in `decodex-core`, move
+client state into the daemon, or treat the isolated `spikes/gpui/` harness as production
+source. Each child must freeze its exact existing and added files from its then-current
+clean `main` before dispatch; this map names owners, not speculative future filenames or
+permission for an unrelated manifest, lockfile, packaging, or native-receipt edit.
+
+Current `main` remains a disabled print-and-exit GPUI composition root throughout P, K,
+and L. No lower-level landing enables production UI. P and K are non-rendering and may
+proceed under their own dependencies, L starts only from accepted P and K, and only S may
+replace the disabled posture after its exact production artifact gate passes.
+The checked-in `apps/decodex-gpui/src/main.rs` diagnostic still says XY-1263 remains
+failed. That wording is stale, not runtime or gate authority; P owns aligning the
+diagnostic with the accepted foundation and disabled P/K/L/S posture before P validation.
+
+The dirty `xv/xy-1269-gpui-shell` branch, its combined candidate, and its evidence are
+prototype provenance only. Do not inspect them as executable authority, rebase them into
+a product candidate, or salvage mixed manifests, lockfiles, or native receipts. A clean
+current-main child may use only independently re-derived small pure designs, tests,
+protocol shapes, threat models, or navigation constants.
+
+### XY-1315 candidate-4 identity-ingress authority
+
+Candidate 3 remains frozen. Candidate 4 may start only after this amendment lands and the
+existing owner moves to the new base. The Project/Agent slice remains atomic and is
+limited to exactly the previously frozen candidate-3 twelve-path envelope below:
+
+```text
+crates/decodex-core/src/lib.rs
+crates/decodex-postgres/src/authority.rs
+crates/decodex-postgres/src/lib.rs
+crates/decodex-postgres/src/migrations.rs
+crates/decodex-postgres/src/types.rs
+crates/decodex-postgres/tests/postgres_store.rs
+scripts/vnext/postgres_store_test.py
+tests/scripts/test_vnext_architecture.py
+crates/decodex-core/src/agent.rs
+crates/decodex-core/src/project.rs
+crates/decodex-postgres/migrations/V5__project_agent_authority.sql
+crates/decodex-postgres/src/project_agents.rs
+```
+
+Candidate 4 may modify only this set. Any path-envelope change stops for scope review.
+The candidate requires bounded delta tests, the retained aggregate PostgreSQL harness,
+canonical validation, and a fresh exact-candidate review.
+
+The candidate-4 boundary is:
+
+1. One schema-qualified ingress-only checked text domain,
+   `decodex.canonical_uuid_v4_text`, owns exact lowercase hyphenated UUID-v4 boundary
+   spelling. It is not durable identity storage.
+2. Every externally executable identity-bearing mutator accepts that domain directly.
+   No UUID or plain-text overload may exist or resolve.
+3. The domain is not universal NULL authority. Every mutator remains `CALLED ON NULL
+   INPUT` and rejects every null identity parameter in its first executable statement,
+   before casts, locks, reads, or writes. Every such rejection uses exactly SQLSTATE
+   `23514`, constraint name `canonical_uuid_v4_text_ingress`, and the fixed input-free
+   message `identity ingress requires canonical UUID-v4 text`. These literals are shared
+   by every identity mutator; parameter names and values never enter the error.
+4. Validated domain text converts locally to UUID. UUID table columns retain durable
+   semantic version/variant checks, PK/FK, uniqueness, lifecycle, revision, and restore
+   authority.
+5. Rust binds the original typed ID string as wire `text` and invokes
+   `::text::decodex.canonical_uuid_v4_text`; it never binds a domain OID.
+6. Explicit caller normalization through
+   `uuid::text::decodex.canonical_uuid_v4_text` is accepted, and the contract begins at
+   the resulting domain text value. Discarded pre-boundary spelling is outside the
+   contract. An unconverted UUID expression must not resolve to a domain-bearing mutator.
+7. Runtime retains SELECT-only Project/Agent table access and no direct DML.
+8. At `ba09238b189da12ad60c2a6a3e10c0c60d1c5c52`, current-state audit evidence shows
+   the legacy runtime identity can execute 33 canonical signatures: the 15 required
+   non-trigger routines below plus 18 trigger-only routines. The nineteenth trigger-only
+   routine, `decodex.capture_history_item_version()`, is already non-executable. That
+   effective 33-signature set is evidence of legacy overgrant, not the target allowlist.
+
+   Candidate 4's target runtime EXECUTE allowlist contains exactly these 15 existing
+   non-trigger signatures required by current persistence behavior:
+
+   ```text
+   decodex.is_canonical_media_type(pg_catalog.text)
+   decodex.is_history_metadata_projection(pg_catalog.jsonb)
+   decodex.normalize_unicode_whitespace(pg_catalog.text)
+   decodex.ascii_lower(pg_catalog.text)
+   decodex.has_credential_material(pg_catalog.text)
+   decodex.has_credential_material(pg_catalog.jsonb)
+   decodex.is_meaningful_evidence(pg_catalog.jsonb)
+   decodex.rfc3339_utc(pg_catalog.timestamptz)
+   decodex.is_valid_operation_duration(pg_catalog.interval)
+   decodex.lease_ttl_milliseconds(pg_catalog.interval)
+   decodex.try_acquire_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.interval)
+   decodex.renew_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.interval)
+   decodex.release_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid)
+   decodex.prune_history_snapshots()
+   decodex.issue_history_cursor(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int4)
+   ```
+
+   Candidate 4 adds its exact identity-mutator signatures as the additional nested
+   domain-only subset. It revokes runtime and PUBLIC EXECUTE from all 19 trigger-only
+   routines:
+
+   ```text
+   decodex.enforce_lease_operation_time()
+   decodex.enforce_outbox_operation_time()
+   decodex.forbid_mutation_of_activity()
+   decodex.enforce_outbox_terminal_retention()
+   decodex.forbid_outbox_truncate()
+   decodex.enforce_command_receipt_state()
+   decodex.acquire_hierarchy_coordinator()
+   decodex.canonicalize_created_at()
+   decodex.enforce_blob_object_state()
+   decodex.enforce_conversation_state()
+   decodex.enforce_runtime_session_state()
+   decodex.enforce_turn_state()
+   decodex.enforce_history_item_state()
+   decodex.capture_history_item_version()
+   decodex.enforce_artifact_state()
+   decodex.enforce_artifact_revision_state()
+   decodex.enforce_context_pack_state()
+   decodex.enforce_context_pack_source_state()
+   decodex.enforce_history_cursor_state()
+   ```
+
+   Broad `GRANT EXECUTE ON ALL FUNCTIONS` is prohibited. Rebase-time audit must preserve
+   the distinction between observed legacy grants and the required target authority.
+9. The migration revokes PUBLIC privileges on every existing protected routine and
+   type/domain. The migration owner also establishes global owner default-privilege
+   revocations for PUBLIC EXECUTE on future routines and PUBLIC USAGE on future types,
+   then applies only the exact required grants.
+10. The canonical schema manifest/digest, tamper checks, and populated logical restore
+    attest the domain base type, collation dependency, validated constraints,
+    `typnotnull`, owner, type ACL, function signatures/source/settings/ACL/dependencies,
+    relevant owner/default ACLs, exact runtime grants, and the exact NULL-rejection
+    constraint-name and message literals.
+11. SECURITY DEFINER relations and types are schema-qualified, the owner is unreachable,
+    and function settings are attested under a hostile search path. Null guards and
+    conversion precede advisory locks; Project writes precede Lead writes; propagated
+    exceptions preserve atomic rollback.
+12. Candidate 4 preserves the resolved credential/privacy, split-identity, concurrency,
+    dot/C0/DEL/C1 path, lifecycle, restart, collation, tamper, digest, rollback, and
+    populated-restore obligations.
+
+These requirements are one authority boundary. A domain check does not replace durable
+UUID constraints, explicit NULL guards, function- and default-privilege closure, or
+logical-restore attestation.
 
 ### Post-V4 authority order and writer map
 
