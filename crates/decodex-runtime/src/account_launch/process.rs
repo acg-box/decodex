@@ -2,7 +2,7 @@
 #[cfg(test)] use std::sync::atomic::AtomicU32;
 use std::{
 	cell::UnsafeCell,
-	collections::BTreeMap,
+	collections::{BTreeMap, BTreeSet},
 	env,
 	ffi::{OsStr, OsString},
 	fmt::{Debug, Display, Formatter},
@@ -57,15 +57,18 @@ use {
 use crate::account_launch::{
 	RunnerPermit,
 	protocol::{
-		AccountReadResponse, ClientInfo, InitializeCapabilities, InitializeParams,
-		InitializeResponse, JsonRpcResponse, MAX_APP_SERVER_FRAME_BYTES, ThreadListParams,
+		AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
+		InitializeCapabilities, InitializeParams, InitializeResponse, JsonRpcResponse,
+		MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse, ThreadListParams,
 		ThreadListResponse, ThreadReadParams, ThreadReadResponse, ThreadSearchParams,
 		ThreadSearchResponse,
 	},
 };
 use decodex_codex::{
-	BuildId, Capability, CapabilityCache, CapabilityProfile, LiveMethodOutcome, MethodObservation,
-	ThreadSummary, UnavailableReason,
+	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
+	CapabilityProfile, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
+	ExactThreadListResult, ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory,
+	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, ThreadSummary, UnavailableReason,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
 };
 use decodex_core::AccountId;
@@ -542,6 +545,7 @@ pub(super) struct SupervisedProcess {
 	command: AppServerCommand,
 	expected_account_identity: Option<AccountIdentity>,
 	next_request_id: u64,
+	abandoned_request_ids: BTreeSet<u64>,
 }
 impl SupervisedProcess {
 	#[cfg(test)]
@@ -606,6 +610,7 @@ impl SupervisedProcess {
 			command,
 			expected_account_identity: None,
 			next_request_id: 1,
+			abandoned_request_ids: BTreeSet::new(),
 		})
 	}
 
@@ -642,16 +647,31 @@ impl SupervisedProcess {
 		P: Serialize,
 		R: DeserializeOwned,
 	{
+		self.request_rpc(method.as_str(), params, timeout).map_err(|error| match error {
+			RpcError::Supervision(error) => ProbeError::Supervision(error),
+			RpcError::MethodRejected(code) => ProbeError::MethodRejected { method, code },
+		})
+	}
+
+	fn request_rpc<P, R>(
+		&mut self,
+		method: &'static str,
+		params: &P,
+		timeout: Duration,
+	) -> Result<R, RpcError>
+	where
+		P: Serialize,
+		R: DeserializeOwned,
+	{
 		let request_id = self.next_request_id;
 
-		self.next_request_id += 1;
+		self.next_request_id = self
+			.next_request_id
+			.checked_add(1)
+			.ok_or(RpcError::Supervision(SupervisionError::ProtocolLimitExceeded))?;
 
-		self.write_json(&OutboundRequest {
-			jsonrpc: "2.0",
-			id: request_id,
-			method: method.as_str(),
-			params,
-		})?;
+		self.write_json(&OutboundRequest { jsonrpc: "2.0", id: request_id, method, params })
+			.map_err(rpc_supervision)?;
 
 		let deadline = Instant::now() + timeout;
 
@@ -659,13 +679,17 @@ impl SupervisedProcess {
 			let remaining = deadline.saturating_duration_since(Instant::now());
 
 			if remaining.is_zero() {
-				return Err(ProbeError::Supervision(SupervisionError::ResponseTimeout));
+				self.abandon_request(request_id)?;
+
+				return Err(RpcError::Supervision(SupervisionError::ResponseTimeout));
 			}
 
 			let line = match self.stdout.recv_timeout(remaining) {
 				Ok(line) => line.into_contiguous(),
 				Err(RecvTimeoutError::Timeout) => {
-					return Err(ProbeError::Supervision(SupervisionError::ResponseTimeout));
+					self.abandon_request(request_id)?;
+
+					return Err(RpcError::Supervision(SupervisionError::ResponseTimeout));
 				},
 				Err(RecvTimeoutError::Disconnected) => {
 					let error = if self.protocol_limit_exceeded.load(Ordering::Acquire) {
@@ -674,42 +698,66 @@ impl SupervisedProcess {
 						SupervisionError::ProcessExited
 					};
 
-					return Err(ProbeError::Supervision(error));
+					self.abandon_request(request_id)?;
+
+					return Err(RpcError::Supervision(error));
 				},
 			};
 
 			Self::validate_zero_scratch_json(&line)
-				.map_err(|_| ProbeError::Supervision(SupervisionError::InvalidProtocol))?;
+				.map_err(|()| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 			let header: InboundHeader = serde_json::from_slice(&line)
-				.map_err(|_| ProbeError::Supervision(SupervisionError::InvalidProtocol))?;
+				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 			if header.id == Some(request_id) {
 				let response: JsonRpcResponse<R> = serde_json::from_slice(&line)
-					.map_err(|_| ProbeError::Supervision(SupervisionError::InvalidProtocol))?;
+					.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 				if response.id != request_id {
-					return Err(ProbeError::Supervision(SupervisionError::InvalidProtocol));
+					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
+				}
+				if response.jsonrpc.as_str() != "2.0" {
+					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 				}
 
-				if let Some(error) = response.error {
-					return Err(ProbeError::MethodRejected { method, code: error.code });
-				}
-
-				return response
-					.result
-					.ok_or(ProbeError::Supervision(SupervisionError::InvalidProtocol));
+				return match (response.result, response.error) {
+					(Some(result), None) => Ok(result),
+					(None, Some(error)) => Err(RpcError::MethodRejected(error.code)),
+					_ => Err(RpcError::Supervision(SupervisionError::InvalidProtocol)),
+				};
 			}
+
+			if let Some(id) = header.id {
+				if self.abandoned_request_ids.remove(&id) {
+					continue;
+				}
+				if header.method.is_none() {
+					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
+				}
+			}
+
 			if header.method.is_some()
 				&& let Some(id) = header.id
 			{
 				self.write_json(&serde_json::json!({
 					"jsonrpc": "2.0",
 					"id": id,
-					"error": {"code": -32_601, "message": "read-only probe does not service requests"}
-				}))?;
+					"error": {"code": -32_601, "message": "account-bound adapter does not service requests"}
+				}))
+				.map_err(rpc_supervision)?;
 			}
 		}
+	}
+
+	fn abandon_request(&mut self, request_id: u64) -> Result<(), RpcError> {
+		if self.abandoned_request_ids.len() >= PROTOCOL_QUEUE_CAPACITY {
+			return Err(RpcError::Supervision(SupervisionError::ProtocolLimitExceeded));
+		}
+
+		self.abandoned_request_ids.insert(request_id);
+
+		Ok(())
 	}
 
 	fn notify<P>(&mut self, method: &str, params: &P) -> Result<(), ProbeError>
@@ -740,6 +788,126 @@ impl SupervisedProcess {
 		self.expected_account_identity = Some(identity.clone());
 
 		Ok(identity)
+	}
+
+	fn list_exact_threads(
+		&mut self,
+		filter: &ExactThreadListFilter,
+		timeout: Duration,
+	) -> Result<ExactThreadListResult, ExactReconciliationError> {
+		self.re_attest_exact_account(timeout)?;
+
+		let response = self
+			.request_rpc::<_, ThreadListResponse>(
+				"thread/list",
+				&ExactThreadListParams {
+					search_term: &filter.search_term,
+					archived: filter.archived.as_bool(),
+					limit: MAX_EXACT_THREAD_LIST_RESULTS as u32,
+				},
+				timeout,
+			)
+			.map_err(ExactReconciliationError::from_rpc)?;
+
+		if response.data.len() > MAX_EXACT_THREAD_LIST_RESULTS {
+			return Err(ExactReconciliationError::InvalidResult);
+		}
+
+		let threads = response
+			.data
+			.iter()
+			.map(ExactThreadFacts::try_from)
+			.collect::<Result<Vec<_>, _>>()
+			.map_err(|_| ExactReconciliationError::InvalidResult)?;
+
+		if threads.iter().any(|thread| {
+			thread.archived != filter.archived.as_bool()
+				|| thread.title.as_ref().map(|title| title.as_str())
+					!= Some(filter.search_term.as_str())
+		}) {
+			return Err(ExactReconciliationError::InvalidResult);
+		}
+
+		self.re_attest_exact_account(timeout)?;
+
+		ExactThreadListResult::from_protocol(threads)
+			.map_err(|_| ExactReconciliationError::InvalidResult)
+	}
+
+	fn read_exact_thread(
+		&mut self,
+		thread_id: &ExactThreadId,
+		timeout: Duration,
+	) -> Result<ExactThreadReadResult, ExactReconciliationError> {
+		self.re_attest_exact_account(timeout)?;
+
+		let response = self
+			.request_rpc::<_, ThreadReadResponse>(
+				"thread/read",
+				&ExactThreadReadParams { thread_id, include_turns: true },
+				timeout,
+			)
+			.map_err(ExactReconciliationError::from_rpc)?;
+		let facts = ExactThreadFacts::try_from(&response.thread)
+			.map_err(|_| ExactReconciliationError::InvalidResult)?;
+
+		if &facts.id != thread_id {
+			return Err(ExactReconciliationError::InvalidResult);
+		}
+
+		self.re_attest_exact_account(timeout)?;
+
+		Ok(ExactThreadReadResult { facts, history: LossyThreadHistory::IncludeTurnsReadback })
+	}
+
+	fn reconcile_archive(
+		&mut self,
+		thread_id: &ExactThreadId,
+		timeout: Duration,
+	) -> ArchiveReconciliationOutcome {
+		let before = match self.read_exact_thread(thread_id, timeout) {
+			Ok(readback) => readback,
+			Err(error) => return error.archive_outcome(),
+		};
+
+		if before.facts.archived {
+			return ArchiveReconciliationOutcome::AlreadyArchived;
+		}
+
+		let mutation = self.request_rpc::<_, ThreadArchiveResponse>(
+			"thread/archive",
+			&ThreadArchiveParams { thread_id },
+			timeout,
+		);
+
+		if matches!(mutation, Err(RpcError::MethodRejected(-32_601))) {
+			return ArchiveReconciliationOutcome::Unverified(
+				ArchiveUnverifiedReason::MethodUnsupported,
+			);
+		}
+
+		let mutation_confirmed = mutation.is_ok();
+
+		match self.read_exact_thread(thread_id, timeout) {
+			Ok(readback) if readback.facts.archived => ArchiveReconciliationOutcome::Archived,
+			Ok(_) if mutation_confirmed =>
+				ArchiveReconciliationOutcome::Unverified(ArchiveUnverifiedReason::ReadbackFailed),
+			Ok(_) =>
+				ArchiveReconciliationOutcome::Unverified(ArchiveUnverifiedReason::AmbiguousMutation),
+			Err(error) => error.archive_outcome(),
+		}
+	}
+
+	fn re_attest_exact_account(
+		&mut self,
+		timeout: Duration,
+	) -> Result<(), ExactReconciliationError> {
+		self.read_account_identity(timeout).map(|_| ()).map_err(|error| match error {
+			ProbeError::Supervision(
+				SupervisionError::AccountChanged | SupervisionError::ShutdownFailed,
+			) => ExactReconciliationError::AccountBindingChanged,
+			_ => ExactReconciliationError::Transport,
+		})
 	}
 
 	fn write_json<T>(&mut self, value: &T) -> Result<(), ProbeError>
@@ -922,6 +1090,167 @@ impl ReadOnlyProbe {
 			account_id,
 			process_id,
 		})
+	}
+}
+
+/// Private account-bound exact reconciliation configuration.
+///
+/// This is deliberately separate from [`ReadOnlyProbe`]: archive is never part of capability-probe
+/// execution, and no public caller can construct or dispatch this owner.
+pub(super) struct ExactThreadReconciler {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	schema_marker: SchemaMarker,
+	enforce_generated_digests: bool,
+	timeout: Duration,
+}
+impl ExactThreadReconciler {
+	pub(super) fn new(
+		command: AppServerCommand,
+		binding: AccountBinding,
+		timeout: Duration,
+	) -> Self {
+		Self {
+			command,
+			binding,
+			schema_marker: SchemaMarker::accepted(),
+			enforce_generated_digests: true,
+			timeout,
+		}
+	}
+
+	pub(super) fn account_id(&self) -> &AccountId {
+		self.binding.account_id()
+	}
+
+	#[cfg(test)]
+	fn fixture(command: AppServerCommand, binding: AccountBinding, timeout: Duration) -> Self {
+		Self {
+			command,
+			binding,
+			schema_marker: SchemaMarker::accepted(),
+			enforce_generated_digests: false,
+			timeout,
+		}
+	}
+
+	pub(super) fn run_mechanical_with_lifetime_guard(
+		self,
+		vault: &dyn CredentialVault,
+		cache: &mut CapabilityCache,
+		guard: RunnerPermit,
+		operation: ExactThreadReconciliation,
+	) -> Result<ExactThreadReconciliationResult, ExactThreadReconciliationFailure> {
+		SchemaContract::validate(self.schema_marker.clone()).map_err(|markers| {
+			ExactThreadReconciliationFailure::Probe(ProbeError::SchemaMissing { markers })
+		})?;
+
+		let expected_digests =
+			self.enforce_generated_digests.then_some(self.schema_marker.canonical_digests());
+		let (build, generated, guard) = attest_executable(
+			&self.command,
+			&self.binding,
+			expected_digests,
+			self.timeout,
+			Some(guard),
+		)
+		.map_err(ExactThreadReconciliationFailure::Probe)?;
+		let required_method = match &operation {
+			ExactThreadReconciliation::List(_) => "thread/list",
+			ExactThreadReconciliation::Read(_) => "thread/read",
+			ExactThreadReconciliation::Archive(_) => "thread/archive",
+		};
+
+		if !generated.contract().advertises_request(required_method) {
+			return match operation {
+				ExactThreadReconciliation::Archive(_) =>
+					Ok(ExactThreadReconciliationResult::Archive(
+						ArchiveReconciliationOutcome::Unverified(
+							ArchiveUnverifiedReason::MethodUnsupported,
+						),
+					)),
+				_ => Err(ExactThreadReconciliationFailure::Operation(
+					ExactReconciliationError::MethodUnsupported,
+				)),
+			};
+		}
+
+		let guard = guard
+			.ok_or(ExactThreadReconciliationFailure::Probe(SupervisionError::SpawnFailed.into()))?;
+		let mut negotiation = ProbeNegotiation::new(cache, &build, &generated);
+		let mut process = SupervisedProcess::spawn_bound(self.command, self.binding, guard)
+			.map_err(|error| ExactThreadReconciliationFailure::Probe(error.into()))?;
+
+		initialize_probe(&mut process, Some(vault), self.timeout, &mut negotiation)
+			.map_err(ExactThreadReconciliationFailure::Probe)?;
+
+		let result = match operation {
+			ExactThreadReconciliation::List(filter) => ExactThreadReconciliationResult::List(
+				process
+					.list_exact_threads(&filter, self.timeout)
+					.map_err(ExactThreadReconciliationFailure::Operation)?,
+			),
+			ExactThreadReconciliation::Read(thread_id) => ExactThreadReconciliationResult::Read(
+				process
+					.read_exact_thread(&thread_id, self.timeout)
+					.map_err(ExactThreadReconciliationFailure::Operation)?,
+			),
+			ExactThreadReconciliation::Archive(thread_id) =>
+				ExactThreadReconciliationResult::Archive(
+					process.reconcile_archive(&thread_id, self.timeout),
+				),
+		};
+
+		process
+			.shutdown(Duration::from_secs(1))
+			.map_err(ExactThreadReconciliationFailure::Shutdown)?;
+
+		Ok(result)
+	}
+}
+
+pub(super) enum ExactThreadReconciliation {
+	List(ExactThreadListFilter),
+	Read(ExactThreadId),
+	Archive(ExactThreadId),
+}
+
+pub(super) enum ExactThreadReconciliationResult {
+	List(ExactThreadListResult),
+	Read(ExactThreadReadResult),
+	Archive(ArchiveReconciliationOutcome),
+}
+
+#[derive(Debug)]
+pub(super) enum ExactThreadReconciliationFailure {
+	Probe(ProbeError),
+	Operation(ExactReconciliationError),
+	Shutdown(SupervisionError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ExactReconciliationError {
+	Transport,
+	MethodUnsupported,
+	InvalidResult,
+	AccountBindingChanged,
+}
+impl ExactReconciliationError {
+	fn from_rpc(error: RpcError) -> Self {
+		match error {
+			RpcError::MethodRejected(-32_601) => Self::MethodUnsupported,
+			RpcError::MethodRejected(_) | RpcError::Supervision(_) => Self::Transport,
+		}
+	}
+
+	const fn archive_outcome(self) -> ArchiveReconciliationOutcome {
+		let reason = match self {
+			Self::MethodUnsupported => ArchiveUnverifiedReason::MethodUnsupported,
+			Self::AccountBindingChanged => ArchiveUnverifiedReason::AccountBindingChanged,
+			Self::Transport | Self::InvalidResult => ArchiveUnverifiedReason::ReadbackFailed,
+		};
+
+		ArchiveReconciliationOutcome::Unverified(reason)
 	}
 }
 
@@ -1589,6 +1918,12 @@ impl Drop for ProcessQuarantine {
 	}
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RpcError {
+	Supervision(SupervisionError),
+	MethodRejected(i64),
+}
+
 struct ProcessQuarantineState {
 	slots: Box<[QuarantineSlot]>,
 	ready: Condvar,
@@ -1863,6 +2198,13 @@ impl Write for ZeroizingOutboundFrame {
 
 	fn flush(&mut self) -> io::Result<()> {
 		Ok(())
+	}
+}
+
+fn rpc_supervision(error: ProbeError) -> RpcError {
+	match error {
+		ProbeError::Supervision(error) => RpcError::Supervision(error),
+		_ => RpcError::Supervision(SupervisionError::InvalidProtocol),
 	}
 }
 
@@ -2866,9 +3208,10 @@ mod tests {
 		RunnerCapacity, RunnerPermit,
 		process::{
 			self, AccountBinding, AccountIdentity, AppServerCommand, CredentialProjection,
-			CredentialVault, CredentialVaultError, PROTOCOL_QUEUE_CAPACITY, ProbeError,
-			ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome, SupervisedProcess,
-			SupervisionError, UnavailableCredentialVault,
+			CredentialVault, CredentialVaultError, ExactThreadReconciler,
+			ExactThreadReconciliation, ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY,
+			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome,
+			SupervisedProcess, SupervisionError, UnavailableCredentialVault,
 		},
 		protocol::{
 			self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
@@ -2876,8 +3219,9 @@ mod tests {
 		},
 	};
 	use decodex_codex::{
-		Capability, CapabilityCache, CapabilityState, SchemaMarker, UnavailableReason,
-		UnsupportedReason,
+		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, Capability, CapabilityCache,
+		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter,
+		SchemaMarker, ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
 	use decodex_core::AccountId;
 
@@ -3358,7 +3702,7 @@ mod tests {
 		.unwrap_err();
 
 		assert_eq!(error, ProbeError::Supervision(SupervisionError::InvalidProtocol));
-		assert_eq!(protocol::sensitive_string_drops(), 3);
+		assert_eq!(protocol::sensitive_string_drops(), 4);
 		assert!(process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire) > before);
 	}
 
@@ -4681,5 +5025,224 @@ mod tests {
 		process::validate_initialize(&initialize, &process.binding).unwrap();
 
 		process.notify("initialized", &serde_json::json!({})).unwrap();
+	}
+
+	fn exact_filter(archived: ThreadArchivedFilter) -> ExactThreadListFilter {
+		ExactThreadListFilter {
+			search_term: DecodexThreadSearchTerm::new("Decodex XY-1317 exact reconciliation")
+				.unwrap(),
+			archived,
+		}
+	}
+
+	fn exact_thread_id() -> ExactThreadId {
+		ExactThreadId::new("thread:XY-1317/non-uuid_Case-Sensitive._~:@+$,;=[]{}()!%&'*? #")
+			.unwrap()
+	}
+
+	fn initialized_bound_process(mode: &str) -> (TempDir, SupervisedProcess) {
+		let temp = TempDir::new().unwrap();
+		let timeout = Duration::from_secs(2);
+		let mut process =
+			SupervisedProcess::spawn(fake_command(mode, temp.path(), None), binding()).unwrap();
+
+		initialize_test_process(&mut process, timeout);
+
+		let expected = {
+			let vault = FixtureVault::matching();
+			let account_id = process.binding.account_id().clone();
+			let mut projection =
+				CredentialProjection { process: &mut process, timeout, used: false };
+
+			vault.project(&account_id, &mut projection).unwrap()
+		};
+
+		process.expected_account_identity = Some(expected);
+
+		process.read_account_identity(timeout).unwrap();
+
+		(temp, process)
+	}
+
+	#[test]
+	fn exact_non_uuid_identity_round_trips_through_list_read_archive_and_readback() {
+		let (_temp, mut process) = initialized_bound_process("exact");
+		let timeout = Duration::from_secs(2);
+		let exact = exact_thread_id();
+		let listed = process
+			.list_exact_threads(&exact_filter(ThreadArchivedFilter::Current), timeout)
+			.unwrap();
+
+		assert_eq!(listed.threads().len(), 1);
+		assert_eq!(listed.threads()[0].id, exact);
+		assert_eq!(listed.threads()[0].created_at.unix_seconds(), 1_784_073_600);
+		assert_eq!(
+			listed.threads()[0].title.as_ref().unwrap().as_str(),
+			"Decodex XY-1317 exact reconciliation"
+		);
+		assert_eq!(listed.threads()[0].cwd.as_str(), "/tmp/xy-1317-repository");
+		assert_eq!(
+			listed.threads()[0].provenance.as_ref().unwrap().as_str(),
+			"decodex.xy1317.fixture"
+		);
+		assert!(!listed.threads()[0].archived);
+
+		let read = process.read_exact_thread(&exact, timeout).unwrap();
+
+		assert_eq!(read.facts.id, exact);
+		assert_eq!(read.history, decodex_codex::LossyThreadHistory::IncludeTurnsReadback);
+		assert_eq!(
+			process.reconcile_archive(&exact, timeout),
+			ArchiveReconciliationOutcome::Archived
+		);
+		assert_eq!(process.read_exact_thread(&exact, timeout).unwrap().facts.id, exact);
+		assert_eq!(
+			process
+				.list_exact_threads(&exact_filter(ThreadArchivedFilter::Archived), timeout)
+				.unwrap()
+				.threads()[0]
+				.id,
+			exact
+		);
+		assert_eq!(
+			process.reconcile_archive(&exact, timeout),
+			ArchiveReconciliationOutcome::AlreadyArchived
+		);
+	}
+
+	#[test]
+	fn private_reconciliation_owner_runs_under_one_concrete_account_capacity_guard() {
+		let temp = TempDir::new().unwrap();
+		let binding = binding();
+		let account_id = binding.account_id().clone();
+		let capacity = TestCapacity::new(1);
+		let result = ExactThreadReconciler::fixture(
+			fake_command("exact", temp.path(), None),
+			binding,
+			Duration::from_secs(2),
+		)
+		.run_mechanical_with_lifetime_guard(
+			&FixtureVault::matching(),
+			&mut CapabilityCache::default(),
+			capacity.inner.reserve(account_id, 1).unwrap(),
+			ExactThreadReconciliation::List(exact_filter(ThreadArchivedFilter::Current)),
+		)
+		.unwrap();
+		let ExactThreadReconciliationResult::List(list) = result else {
+			panic!("private list operation returned a different closed result variant");
+		};
+
+		assert_eq!(list.threads()[0].id, exact_thread_id());
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn abandoned_request_correlation_state_is_hard_bounded() {
+		let (_temp, mut process) = initialized_bound_process("exact");
+
+		for request_id in 1..=PROTOCOL_QUEUE_CAPACITY as u64 {
+			process.abandon_request(request_id).unwrap();
+		}
+
+		assert_eq!(
+			process.abandon_request(PROTOCOL_QUEUE_CAPACITY as u64 + 1),
+			Err(super::RpcError::Supervision(SupervisionError::ProtocolLimitExceeded))
+		);
+	}
+
+	#[test]
+	fn dropped_archive_response_is_resolved_only_by_same_process_exact_readback() {
+		let (_temp, mut process) = initialized_bound_process("exact-drop-after-apply");
+		let exact = exact_thread_id();
+
+		assert_eq!(
+			process.reconcile_archive(&exact, Duration::from_millis(100)),
+			ArchiveReconciliationOutcome::Archived
+		);
+	}
+
+	#[test]
+	fn contradictory_archive_readback_never_reports_success() {
+		let (_temp, mut process) = initialized_bound_process("exact-contradictory-readback");
+		let exact = exact_thread_id();
+
+		assert_eq!(
+			process.reconcile_archive(&exact, Duration::from_secs(2)),
+			ArchiveReconciliationOutcome::Unverified(ArchiveUnverifiedReason::ReadbackFailed)
+		);
+	}
+
+	#[test]
+	fn missing_mismatched_and_still_ambiguous_archive_readback_fail_closed() {
+		let exact = exact_thread_id();
+
+		for (mode, reason) in [
+			("exact-missing-post-archive-read", ArchiveUnverifiedReason::ReadbackFailed),
+			("exact-mismatched-post-archive-read", ArchiveUnverifiedReason::ReadbackFailed),
+			("exact-ambiguous-unapplied", ArchiveUnverifiedReason::AmbiguousMutation),
+		] {
+			let (_temp, mut process) = initialized_bound_process(mode);
+
+			assert_eq!(
+				process.reconcile_archive(&exact, Duration::from_millis(100)),
+				ArchiveReconciliationOutcome::Unverified(reason),
+				"mode {mode} did not fail closed"
+			);
+		}
+	}
+
+	#[test]
+	fn unsupported_archive_is_a_closed_unverified_outcome() {
+		let (_temp, mut process) = initialized_bound_process("exact-unsupported-archive");
+		let exact = exact_thread_id();
+
+		assert_eq!(
+			process.reconcile_archive(&exact, Duration::from_secs(2)),
+			ArchiveReconciliationOutcome::Unverified(ArchiveUnverifiedReason::MethodUnsupported)
+		);
+	}
+
+	#[test]
+	fn exact_list_rejects_malformed_wrong_correlation_and_missing_result() {
+		for mode in ["exact-malformed-list", "exact-wrong-correlation", "exact-missing-result"] {
+			let (_temp, mut process) = initialized_bound_process(mode);
+
+			assert!(
+				process
+					.list_exact_threads(
+						&exact_filter(ThreadArchivedFilter::Current),
+						Duration::from_secs(2),
+					)
+					.is_err(),
+				"mode {mode} unexpectedly succeeded"
+			);
+		}
+	}
+
+	#[test]
+	fn exact_read_rejects_malformed_oversized_and_mismatched_results() {
+		let exact = exact_thread_id();
+
+		for mode in ["exact-malformed-read", "exact-oversized-read", "exact-mismatched-id"] {
+			let (_temp, mut process) = initialized_bound_process(mode);
+
+			assert!(
+				process.read_exact_thread(&exact, Duration::from_millis(500)).is_err(),
+				"mode {mode} unexpectedly succeeded"
+			);
+		}
+	}
+
+	#[test]
+	fn exact_reconciliation_stops_on_account_binding_contradiction() {
+		let (_temp, mut process) = initialized_bound_process("account-switch");
+
+		assert_eq!(
+			process.list_exact_threads(
+				&exact_filter(ThreadArchivedFilter::Current),
+				Duration::from_secs(2),
+			),
+			Err(super::ExactReconciliationError::AccountBindingChanged)
+		);
 	}
 }
