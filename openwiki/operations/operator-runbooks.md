@@ -13,6 +13,28 @@ Registered projects use `landing_mode = "standard"` by default. `landing_mode = 
 trusts `decodex/local-full-check` from the configured `landing_actors` and permits
 ruleset bypass landing after the local gate passes. Stop instead of landing when the PR head changed, the base branch moved, the required context is missing, the status creator is not trusted, or the local evidence cannot be tied to the current PR head/base pair.
 
+## Linux container process-reaping prerequisite
+
+Before enabling account-bound Codex child supervision in a Linux container, the operator must run
+the daemon under a functioning PID 1 init/subreaper, such as Docker `--init`, that reaps orphaned
+descendants. A shell, Cargo, or the Decodex daemon itself must not be the container's non-reaping PID
+1. Validate the deployed container rather than assuming the image supplies a kernel or reaper:
+
+```sh
+tr '\0' ' ' </proc/1/cmdline
+uname -a
+uname -m
+```
+
+This is an availability prerequisite, not a relaxation of process authority. If an orphaned
+descendant becomes a zombie under a non-reaping PID 1, process-group absence cannot be confirmed.
+The runtime therefore keeps the child ownership and runner permit in its bounded quarantine and
+continues to fail closed. Repeated occurrences can consume all 64 process/quarantine slots and make
+subsequent manual launches unavailable indefinitely; the runtime does not detach the descendant,
+release the permit, undercount capacity, or route to another account. Correct the container init
+configuration and restart under operator authority; do not weaken cleanup checks or manually mark a
+slot free.
+
 ## Self-dogfood pilot checklist
 
 Use this checklist before running Decodex on its own repository. It is a readiness gate, not a substitute for issue authority or normal review.
