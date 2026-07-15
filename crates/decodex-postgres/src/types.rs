@@ -4,7 +4,16 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::StoreError;
-use decodex_core::{AccountId, AccountState};
+use decodex_core::{AccountId, AccountState, Agent, Project};
+
+/// Transactional creation input for one Project and its canonical Lead.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateProject {
+	/// Revision-one active Project authority.
+	pub project: Project,
+	/// Matching revision-one active canonical Lead.
+	pub lead: Agent,
+}
 
 /// Idempotent optimistic account metadata mutation.
 #[derive(Clone)]
