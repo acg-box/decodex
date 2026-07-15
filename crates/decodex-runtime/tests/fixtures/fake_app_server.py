@@ -151,6 +151,17 @@ if mode == "crash":
     raise SystemExit(17)
 
 account_reads = 0
+exact_thread_id = "thread:XY-1317/non-uuid_Case-Sensitive._~:@+$,;=[]{}()!%&'*? #"
+exact_thread = {
+    "id": exact_thread_id,
+    "archived": False,
+    "parentThreadId": None,
+    "createdAt": 1784073600,
+    "name": "Decodex XY-1317 exact reconciliation",
+    "cwd": "/tmp/xy-1317-repository",
+    "threadSource": "decodex.xy1317.fixture",
+}
+exact_thread_reads = 0
 for line in sys.stdin:
     message = json.loads(line)
     if mode == "hang":
@@ -203,21 +214,56 @@ for line in sys.stdin:
             else {}
         )
     elif method == "thread/list":
-        assert message["params"]["useStateDbOnly"] is True
-        count = 101 if mode == "oversized-thread-list" else 1
-        result = {
-            "data": [{"id": f"00000000-0000-4000-8000-{index:012d}", "archived": False, "parentThreadId": None} for index in range(1, count + 1)],
-            "nextCursor": None,
-        }
-    elif method == "thread/read" and mode != "optional-unsupported":
-        assert message["params"]["includeTurns"] is False
-        result = {
-            "thread": {
-                "id": message["params"]["threadId"],
-                "archived": False,
-                "parentThreadId": None,
+        if "searchTerm" in message["params"]:
+            assert set(message["params"]) == {"archived", "limit", "searchTerm"}
+            assert message["params"]["searchTerm"] == exact_thread["name"]
+            assert message["params"]["limit"] <= 100
+            matches_archive = message["params"]["archived"] == exact_thread["archived"]
+            data = [dict(exact_thread)] if matches_archive else []
+            if mode == "exact-malformed-list":
+                data = [{**exact_thread, "createdAt": "not-a-timestamp"}]
+            result = {"data": data, "nextCursor": None}
+        else:
+            assert message["params"]["useStateDbOnly"] is True
+            count = 101 if mode == "oversized-thread-list" else 1
+            result = {
+                "data": [{"id": f"00000000-0000-4000-8000-{index:012d}", "archived": False, "parentThreadId": None} for index in range(1, count + 1)],
+                "nextCursor": None,
             }
-        }
+    elif method == "thread/read" and mode != "optional-unsupported":
+        if message["params"]["includeTurns"]:
+            exact_thread_reads += 1
+            if mode == "exact-missing-post-archive-read" and exact_thread_reads > 1:
+                print(json.dumps({"jsonrpc": "2.0", "id": message["id"]}), flush=True)
+                continue
+            if mode == "exact-oversized-read":
+                sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
+                sys.stdout.flush()
+                time.sleep(60)
+            readback = dict(exact_thread)
+            if mode == "exact-mismatched-id" or (mode == "exact-mismatched-post-archive-read" and exact_thread_reads > 1):
+                readback["id"] = "thread:different"
+            if mode == "exact-malformed-read":
+                readback["cwd"] = {"not": "text"}
+            result = {"thread": readback}
+        else:
+            result = {
+                "thread": {
+                    "id": message["params"]["threadId"],
+                    "archived": False,
+                    "parentThreadId": None,
+                }
+            }
+    elif method == "thread/archive":
+        assert message["params"] == {"threadId": exact_thread_id}
+        if mode == "exact-unsupported-archive":
+            print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
+            continue
+        if mode not in ("exact-ambiguous-unapplied", "exact-contradictory-readback"):
+            exact_thread["archived"] = True
+        if mode in ("exact-ambiguous-unapplied", "exact-drop-after-apply"):
+            continue
+        result = {}
     elif method == "thread/search" and mode != "optional-unsupported":
         assert message["params"]["limit"] <= 10
         assert message["params"]["searchTerm"].startswith("decodex-capability-probe-")
@@ -227,4 +273,9 @@ for line in sys.stdin:
     else:
         print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
         continue
-    print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)
+    if mode == "exact-wrong-correlation" and method == "thread/list" and "searchTerm" in message["params"]:
+        print(json.dumps({"jsonrpc": "2.0", "id": message["id"] + 1, "result": result}), flush=True)
+    elif mode == "exact-missing-result" and method == "thread/list" and "searchTerm" in message["params"]:
+        print(json.dumps({"jsonrpc": "2.0", "id": message["id"]}), flush=True)
+    else:
+        print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)

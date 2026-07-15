@@ -6,7 +6,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize as _, Zeroizing};
 
-use decodex_codex::{ThreadId, ThreadSummary};
+use decodex_codex::{
+	DecodexThreadSearchTerm, ExactThreadFacts, ExactThreadId, ThreadCreatedAt, ThreadCwd, ThreadId,
+	ThreadProvenance, ThreadSummary, ThreadTitle,
+};
 
 #[doc(hidden)]
 pub const MAX_APP_SERVER_FRAME_BYTES: usize = 1_024 * 1_024;
@@ -18,6 +21,29 @@ impl From<&ProtocolThread> for ThreadSummary {
 			archived: value.archived,
 			parent_thread_id: value.parent_thread_id.as_deref().map(ThreadId::from_protocol),
 		}
+	}
+}
+
+impl TryFrom<&ProtocolThread> for ExactThreadFacts {
+	type Error = &'static str;
+
+	fn try_from(value: &ProtocolThread) -> Result<Self, Self::Error> {
+		Ok(Self {
+			id: ExactThreadId::new(value.id.as_str())?,
+			provenance: value
+				.thread_source
+				.as_deref()
+				.map(ThreadProvenance::from_protocol)
+				.transpose()?,
+			created_at: ThreadCreatedAt::from_protocol(
+				value.created_at.ok_or("Codex thread creation timestamp is missing")?,
+			)?,
+			title: value.name.as_deref().map(ThreadTitle::from_protocol).transpose()?,
+			cwd: ThreadCwd::from_protocol(
+				value.cwd.as_deref().ok_or("Codex thread cwd is missing")?,
+			)?,
+			archived: value.archived,
+		})
 	}
 }
 
@@ -88,6 +114,14 @@ pub struct ThreadListParams {
 	pub use_state_db_only: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExactThreadListParams<'a> {
+	pub search_term: &'a DecodexThreadSearchTerm,
+	pub archived: bool,
+	pub limit: u32,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadListResponse {
@@ -103,10 +137,27 @@ pub struct ThreadReadParams<'a> {
 	pub include_turns: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExactThreadReadParams<'a> {
+	pub thread_id: &'a ExactThreadId,
+	pub include_turns: bool,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ThreadReadResponse {
 	pub thread: ProtocolThread,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadArchiveParams<'a> {
+	pub thread_id: &'a ExactThreadId,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThreadArchiveResponse {}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -141,9 +192,12 @@ pub struct ProtocolAccount {
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolThread {
 	pub id: SensitiveString,
-	#[serde(default)]
 	pub archived: bool,
 	pub parent_thread_id: Option<SensitiveString>,
+	pub created_at: Option<i64>,
+	pub name: Option<SensitiveString>,
+	pub cwd: Option<SensitiveString>,
+	pub thread_source: Option<SensitiveString>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -153,6 +207,7 @@ pub struct JsonRpcError {
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcResponse<T> {
+	pub jsonrpc: SensitiveString,
 	pub id: u64,
 	pub result: Option<T>,
 	pub error: Option<JsonRpcError>,
@@ -195,10 +250,10 @@ mod sensitive_string_test_counter {
 #[cfg(test)]
 mod tests {
 	use crate::account_launch::protocol::{
-		AccountReadResponse, InitializeResponse, JsonRpcResponse, ThreadListResponse,
-		ThreadReadResponse,
+		AccountReadResponse, ExactThreadReadParams, InitializeResponse, JsonRpcResponse,
+		ThreadArchiveParams, ThreadListResponse, ThreadReadResponse,
 	};
-	use decodex_codex::BuildId;
+	use decodex_codex::{BuildId, ExactThreadFacts, ExactThreadId};
 
 	#[test]
 	fn build_identity_is_opaque_and_never_exports_credential_shaped_output() {
@@ -225,6 +280,41 @@ mod tests {
 		let second = BuildId::from_attestation("codex-cli 1", &[2; 32]).unwrap();
 
 		assert_ne!(first, second);
+	}
+
+	#[test]
+	fn exact_id_request_params_preserve_every_supported_punctuation_byte() {
+		let raw = "thread:XY-1317/non-uuid_Case-Sensitive._~:@+$,;=[]{}()!%&'*? #";
+		let exact = ExactThreadId::new(raw).unwrap();
+		let read =
+			serde_json::to_value(ExactThreadReadParams { thread_id: &exact, include_turns: true })
+				.unwrap();
+		let archive = serde_json::to_value(ThreadArchiveParams { thread_id: &exact }).unwrap();
+
+		assert_eq!(read["threadId"], raw);
+		assert_eq!(read["includeTurns"], true);
+		assert_eq!(archive["threadId"], raw);
+		assert!(!serde_json::to_string(&read).unwrap().contains("\\\\"));
+	}
+
+	#[test]
+	fn exact_fact_conversion_retains_zeroizing_redacted_owned_text() {
+		super::reset_sensitive_string_drops();
+
+		let response: ThreadReadResponse = serde_json::from_slice(
+			br#"{"thread":{"id":"thread:private-id","archived":false,"parentThreadId":null,"createdAt":1784073600,"name":"Decodex private title","cwd":"/tmp/private-repository","threadSource":"decodex.private"}}"#,
+		)
+		.unwrap();
+		let facts = ExactThreadFacts::try_from(&response.thread).unwrap();
+
+		drop(response);
+
+		assert_eq!(super::sensitive_string_drops(), 4);
+		assert_eq!(facts.id.as_str(), "thread:private-id");
+		assert_eq!(facts.title.as_ref().unwrap().as_str(), "Decodex private title");
+		assert_eq!(facts.cwd.as_str(), "/tmp/private-repository");
+		assert_eq!(facts.provenance.as_ref().unwrap().as_str(), "decodex.private");
+		assert!(!format!("{facts:?}").contains("private"));
 	}
 
 	#[test]
@@ -267,10 +357,10 @@ mod tests {
 	fn completed_thread_read_fields_zeroize_when_json_rpc_tail_fails() {
 		super::reset_sensitive_string_drops();
 
-		let json = br#"{"id":7,"result":{"thread":{"id":"thread\u002did","archived":false,"parentThreadId":"parent\u002did"}},"error":"wrong"}"#;
+		let json = br#"{"jsonrpc":"2.0","id":7,"result":{"thread":{"id":"thread\u002did","archived":false,"parentThreadId":"parent\u002did"}},"error":"wrong"}"#;
 
 		assert!(serde_json::from_slice::<JsonRpcResponse<ThreadReadResponse>>(json).is_err());
-		assert_eq!(super::sensitive_string_drops(), 2);
+		assert_eq!(super::sensitive_string_drops(), 3);
 	}
 
 	#[test]
