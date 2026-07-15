@@ -7,7 +7,7 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 5;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 6;
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -58,7 +58,7 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		!= Some(EXPECTED_LATEST_MIGRATION_VERSION)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V5 ledger".into(),
+			"embedded migration inventory does not end at the canonical V6 ledger".into(),
 		));
 	}
 	if actual.len() != expected.len() {

@@ -8,7 +8,8 @@ use crate::StoreError;
 const FOUNDATION_MIGRATION: &str = include_str!("../migrations/V1__persistence_foundation.sql");
 const CONVERSATION_MIGRATION: &str = include_str!("../migrations/V3__conversation_history.sql");
 const PROJECT_AGENT_MIGRATION: &str = include_str!("../migrations/V5__project_agent_authority.sql");
-const FUNCTION_CONTRACTS: [FunctionContract; 38] = [
+const POLICY_MIGRATION: &str = include_str!("../migrations/V6__project_policy_authority.sql");
+const FUNCTION_CONTRACTS: [FunctionContract; 43] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -363,8 +364,54 @@ const FUNCTION_CONTRACTS: [FunctionContract; 38] = [
 		returns_set: true,
 		rows: 1_000.0,
 	},
+	FunctionContract {
+		name: "is_policy_snapshot",
+		lookup_signature: "decodex.is_policy_snapshot(pg_catalog.jsonb)",
+		migration_signature: "is_policy_snapshot(document jsonb)",
+		arguments: "document jsonb",
+		result: "boolean",
+		language: "plpgsql",
+		volatility: "i",
+		strict: true,
+		returns_set: false,
+		rows: 0.0,
+	},
+	trigger_contract(
+		"enforce_policy_identity_state",
+		"decodex.enforce_policy_identity_state()",
+		"enforce_policy_identity_state()",
+	),
+	trigger_contract(
+		"forbid_policy_revision_mutation",
+		"decodex.forbid_policy_revision_mutation()",
+		"forbid_policy_revision_mutation()",
+	),
+	FunctionContract {
+		name: "create_policy",
+		lookup_signature: "decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
+		migration_signature: "create_policy(\n\tp_policy_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text\n)",
+		arguments: "p_policy_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text",
+		result: "TABLE(policy_id uuid, project_id uuid, created_at timestamp with time zone, current_revision bigint)",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	FunctionContract {
+		name: "accept_policy_revision",
+		lookup_signature: "decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
+		migration_signature: "accept_policy_revision(\n\tp_policy_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_revision bigint,\n\tp_provenance text,\n\tp_snapshot jsonb,\n\tp_accepted_by decodex.canonical_uuid_v4_text,\n\tp_supersedes_revision bigint\n)",
+		arguments: "p_policy_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_revision bigint, p_provenance text, p_snapshot jsonb, p_accepted_by decodex.canonical_uuid_v4_text, p_supersedes_revision bigint",
+		result: "TABLE(policy_id uuid, project_id uuid, revision bigint, provenance text, snapshot jsonb, accepted_by uuid, policy_created_at timestamp with time zone, accepted_at timestamp with time zone, supersedes_revision bigint, revision_accepted boolean, actual_revision bigint)",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 18] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 20] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -383,8 +430,10 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 18] = [
 	"decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
 	"decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
 	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
+	"decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
+	"decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
 ];
-const SAFETY_FUNCTIONS: [&str; 19] = [
+const SAFETY_FUNCTIONS: [&str; 21] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"forbid_mutation_of_activity",
@@ -404,8 +453,10 @@ const SAFETY_FUNCTIONS: [&str; 19] = [
 	"enforce_context_pack_state",
 	"enforce_context_pack_source_state",
 	"enforce_history_cursor_state",
+	"enforce_policy_identity_state",
+	"forbid_policy_revision_mutation",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 29;
+const SAFETY_TRIGGER_COUNT: usize = 33;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -578,7 +629,9 @@ WITH set_roles AS (
   ('context_pack_sources', true, true, false, false),
   ('transition_proposals', true, true, false, false),
   ('projects', true, false, false, false),
-  ('agents', true, false, false, false)
+  ('agents', true, false, false, false),
+  ('policies', true, false, false, false),
+  ('policy_revisions', true, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -587,7 +640,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 22
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 24
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -771,7 +824,11 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('context_pack_sources', 'context_pack_sources_state_guard', 'enforce_context_pack_source_state', 31),
   ('context_pack_sources', 'context_pack_sources_coordinator', 'acquire_hierarchy_coordinator', 30),
   ('transition_proposals', 'transition_proposals_created_at_guard', 'canonicalize_created_at', 7),
-  ('transition_proposals', 'transition_proposals_coordinator', 'acquire_hierarchy_coordinator', 30)
+  ('transition_proposals', 'transition_proposals_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('policies', 'policies_state_guard', 'enforce_policy_identity_state', 27),
+  ('policies', 'policies_truncate_forbidden', 'enforce_policy_identity_state', 34),
+  ('policy_revisions', 'policy_revisions_immutable', 'forbid_policy_revision_mutation', 27),
+  ('policy_revisions', 'policy_revisions_truncate_forbidden', 'forbid_policy_revision_mutation', 34)
 )
 SELECT
   expected.function_name,
@@ -911,7 +968,11 @@ WITH catalog_context AS MATERIALIZED (
   ('context_pack_sources', 'context_pack_sources_state_guard', 'decodex.enforce_context_pack_source_state()'),
   ('context_pack_sources', 'context_pack_sources_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
   ('transition_proposals', 'transition_proposals_created_at_guard', 'decodex.canonicalize_created_at()'),
-  ('transition_proposals', 'transition_proposals_coordinator', 'decodex.acquire_hierarchy_coordinator()')
+  ('transition_proposals', 'transition_proposals_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('policies', 'policies_state_guard', 'decodex.enforce_policy_identity_state()'),
+  ('policies', 'policies_truncate_forbidden', 'decodex.enforce_policy_identity_state()'),
+  ('policy_revisions', 'policy_revisions_immutable', 'decodex.forbid_policy_revision_mutation()'),
+  ('policy_revisions', 'policy_revisions_truncate_forbidden', 'decodex.forbid_policy_revision_mutation()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -1381,8 +1442,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0xec, 0x75, 0x7d, 0x18, 0x5f, 0x79, 0xcc, 0x33, 0xdc, 0x51, 0xa8, 0xde, 0x42, 0x6a, 0xb7, 0x45,
-	0x15, 0x3b, 0xb2, 0x66, 0x8d, 0xfe, 0xcd, 0x8e, 0xd0, 0x93, 0x31, 0x6b, 0x58, 0x42, 0x07, 0x88,
+	0xfa, 0xd2, 0x50, 0x40, 0x49, 0x0b, 0xda, 0x15, 0x02, 0xfb, 0xa7, 0x3a, 0x53, 0x7c, 0xc3, 0xce,
+	0x7b, 0xc8, 0x1c, 0x88, 0x1d, 0x90, 0xd6, 0x63, 0xc9, 0xc9, 0x2b, 0x4b, 0xee, 0x1d, 0x75, 0x72,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -1561,9 +1622,10 @@ fn canonical_safety_function_source(function_name: &str) -> Option<&'static str>
 
 fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str> {
 	let declaration = format!("CREATE FUNCTION decodex.{}", contract.migration_signature);
-	let migration = [FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION]
-		.into_iter()
-		.find(|migration| migration.contains(&declaration))?;
+	let migration =
+		[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION, POLICY_MIGRATION]
+			.into_iter()
+			.find(|migration| migration.contains(&declaration))?;
 	let (_, declaration_and_tail) = migration.split_once(&declaration)?;
 	let (_, source_and_tail) = declaration_and_tail.split_once("\nAS $$")?;
 	let (source, _) = source_and_tail.split_once("$$;")?;
@@ -1676,6 +1738,8 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "bootstrap_advisor"
 				| "create_project"
 				| "transition_project"
+				| "create_policy"
+				| "accept_policy_revision"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
@@ -1828,8 +1892,9 @@ mod tests {
 
 	use crate::authority::{
 		CONVERSATION_MIGRATION, FOUNDATION_MIGRATION, FUNCTION_CONTRACTS,
-		IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, PROJECT_AGENT_MIGRATION,
-		ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, POLICY_MIGRATION,
+		PROJECT_AGENT_MIGRATION, ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256,
+		SCHEMA_CONTRACT_SQL,
 	};
 
 	#[test]
@@ -1876,10 +1941,15 @@ mod tests {
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
 		assert_eq!(
-			[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION]
-				.into_iter()
-				.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
-				.sum::<usize>(),
+			[
+				FOUNDATION_MIGRATION,
+				CONVERSATION_MIGRATION,
+				PROJECT_AGENT_MIGRATION,
+				POLICY_MIGRATION,
+			]
+			.into_iter()
+			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
+			.sum::<usize>(),
 			FUNCTION_CONTRACTS.len()
 		);
 
@@ -1888,15 +1958,17 @@ mod tests {
 		for contract in FUNCTION_CONTRACTS {
 			assert!(lookup_signatures.insert(contract.lookup_signature));
 			assert_eq!(
-				[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION]
-					.into_iter()
-					.map(|migration| migration
-						.matches(&format!(
-							"CREATE FUNCTION decodex.{}",
-							contract.migration_signature
-						))
-						.count())
-					.sum::<usize>(),
+				[
+					FOUNDATION_MIGRATION,
+					CONVERSATION_MIGRATION,
+					PROJECT_AGENT_MIGRATION,
+					POLICY_MIGRATION,
+				]
+				.into_iter()
+				.map(|migration| migration
+					.matches(&format!("CREATE FUNCTION decodex.{}", contract.migration_signature))
+					.count())
+				.sum::<usize>(),
 				1
 			);
 
@@ -1911,7 +1983,13 @@ mod tests {
 
 	#[test]
 	fn identity_mutators_share_one_first_statement_null_guard_and_cast_audit() {
-		for name in ["bootstrap_advisor", "create_project", "transition_project"] {
+		for name in [
+			"bootstrap_advisor",
+			"create_project",
+			"transition_project",
+			"create_policy",
+			"accept_policy_revision",
+		] {
 			let contract = FUNCTION_CONTRACTS
 				.iter()
 				.find(|contract| contract.name == name)
