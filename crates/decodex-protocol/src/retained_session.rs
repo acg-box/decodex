@@ -1,0 +1,1608 @@
+//! Retained, resumable WebSocket client session without retry or persistence policy.
+
+use std::{
+	fmt::{Debug, Display, Formatter},
+	net::{IpAddr, SocketAddr},
+	sync::{
+		Arc,
+		atomic::{AtomicBool, AtomicU64, Ordering},
+	},
+	time::Duration,
+};
+
+use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
+use serde::{Deserialize, Serialize};
+use tokio::{net::TcpStream, sync::Notify, time};
+use tokio_tungstenite::{
+	MaybeTlsStream, WebSocketStream,
+	tungstenite::{Message, http::Uri, protocol::WebSocketConfig},
+};
+
+use crate::{
+	CURRENT_VERSION, ClientHello, ClientMessage, CommandEnvelope, CommandReceipt,
+	CommandResultEnvelope, Cursor, EventEnvelope, LoopbackEndpoint, ProtocolVersion, QueryEnvelope,
+	QueryResultEnvelope, ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId,
+	ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope, VersionRefusal,
+};
+
+type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+const OPERATION_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_ENDPOINT_BYTES: usize = 2_048;
+const MAX_MESSAGE_BYTES: usize = 256 * 1_024;
+const MAX_SNAPSHOT_ITEMS: usize = 1_024;
+const WS_PATH: &str = "/v1/ws";
+
+static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Explicit network and authority inputs for one retained session.
+///
+/// This value contains no filesystem, profile-selection, retry, or cache policy.
+#[derive(Clone, Eq, PartialEq)]
+pub struct RetainedSessionConfig {
+	endpoint: LoopbackEndpoint,
+	expected_server_id: ServerId,
+	operation_timeout: Duration,
+}
+impl RetainedSessionConfig {
+	/// Validate the canonical loopback WebSocket route and stable server identity pin.
+	pub fn new(
+		endpoint: impl AsRef<str>,
+		expected_server_id: ServerId,
+	) -> Result<Self, RetainedSessionFailure> {
+		let endpoint = parse_loopback_endpoint(endpoint.as_ref())?;
+
+		Ok(Self { endpoint, expected_server_id, operation_timeout: OPERATION_TIMEOUT })
+	}
+
+	fn url(&self) -> String {
+		format!("ws://{}{WS_PATH}", self.endpoint.address())
+	}
+}
+impl Debug for RetainedSessionConfig {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("RetainedSessionConfig")
+			.field("endpoint", &"<redacted>")
+			.field("identity_pinned", &true)
+			.field("operation_timeout", &self.operation_timeout)
+			.finish()
+	}
+}
+
+/// Exact resumable position after complete application by the consumer.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct SessionCheckpoint {
+	server_id: ServerId,
+	instance_id: ServerInstanceId,
+	cursor: Cursor,
+}
+impl SessionCheckpoint {
+	/// Restore one exact server, publication-instance, and cursor tuple.
+	pub const fn new(server_id: ServerId, instance_id: ServerInstanceId, cursor: Cursor) -> Self {
+		Self { server_id, instance_id, cursor }
+	}
+
+	/// Stable server identity that issued this checkpoint.
+	pub const fn server_id(&self) -> &ServerId {
+		&self.server_id
+	}
+
+	/// Publication instance that issued this checkpoint.
+	pub const fn instance_id(&self) -> &ServerInstanceId {
+		&self.instance_id
+	}
+
+	/// Last snapshot or event cursor completely applied by the consumer.
+	pub const fn cursor(&self) -> Cursor {
+		self.cursor
+	}
+
+	fn as_resume_cursor(&self) -> ResumeCursor {
+		ResumeCursor {
+			server_id: self.server_id.clone(),
+			instance_id: Some(self.instance_id.clone()),
+			cursor: self.cursor,
+		}
+	}
+}
+
+/// Cooperative cancellation shared with one retained session.
+///
+/// No task is spawned. An in-flight operation observes cancellation, drops the owned
+/// socket, and returns a closed failure.
+#[derive(Clone, Debug, Default)]
+pub struct SessionCancellation {
+	inner: Arc<(AtomicBool, Notify)>,
+}
+impl SessionCancellation {
+	/// Create an uncancelled signal.
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Cancel current and future operations.
+	pub fn cancel(&self) {
+		if !self.inner.0.swap(true, Ordering::AcqRel) {
+			self.inner.1.notify_waiters();
+		}
+	}
+
+	/// Whether cancellation has already been requested.
+	pub fn is_cancelled(&self) -> bool {
+		self.inner.0.load(Ordering::Acquire)
+	}
+
+	async fn cancelled(&self) {
+		loop {
+			let notified = self.inner.1.notified();
+
+			if self.is_cancelled() {
+				return;
+			}
+
+			notified.await;
+		}
+	}
+}
+
+/// Opaque proof that one checkpoint-bearing delivery was completely applied.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ApplicationConfirmation {
+	session_id: u64,
+	checkpoint: SessionCheckpoint,
+}
+
+/// A single retained WebSocket connection with no retry, filesystem, or cache owner.
+pub struct RetainedSession {
+	socket: Option<Socket>,
+	expected_server_id: ServerId,
+	instance_id: ServerInstanceId,
+	welcome_high_water: Cursor,
+	replay_high_water: Option<Cursor>,
+	next_cursor: Option<Cursor>,
+	checkpoint: Option<SessionCheckpoint>,
+	pending_confirmation: Option<ApplicationConfirmation>,
+	initial_snapshot: Option<SnapshotEnvelope>,
+	cancellation: SessionCancellation,
+	operation_timeout: Duration,
+	session_id: u64,
+}
+impl RetainedSession {
+	/// Connect, negotiate the exact current version, and verify session identity before
+	/// any application delivery can be observed.
+	pub async fn connect(
+		config: RetainedSessionConfig,
+		checkpoint: Option<SessionCheckpoint>,
+		cancellation: SessionCancellation,
+	) -> Result<Self, RetainedSessionFailure> {
+		if cancellation.is_cancelled() {
+			return Err(RetainedSessionFailure::Cancelled);
+		}
+		if checkpoint
+			.as_ref()
+			.is_some_and(|checkpoint| checkpoint.server_id != config.expected_server_id)
+		{
+			return Err(RetainedSessionFailure::CheckpointIdentityMismatch);
+		}
+
+		let websocket_config = WebSocketConfig::default()
+			.read_buffer_size(16 * 1_024)
+			.write_buffer_size(16 * 1_024)
+			.max_write_buffer_size(MAX_MESSAGE_BYTES)
+			.max_message_size(Some(MAX_MESSAGE_BYTES))
+			.max_frame_size(Some(MAX_MESSAGE_BYTES));
+		let endpoint = config.url();
+		let connect =
+			tokio_tungstenite::connect_async_with_config(&endpoint, Some(websocket_config), false);
+		let (mut socket, _) = bounded(&cancellation, config.operation_timeout, connect)
+			.await?
+			.map_err(map_connect_error)?;
+		let hello = ClientMessage::Hello(ClientHello {
+			version: CURRENT_VERSION,
+			expected_server_id: Some(config.expected_server_id.clone()),
+			resume: checkpoint.as_ref().map(SessionCheckpoint::as_resume_cursor),
+		});
+
+		send_message(&mut socket, hello, &cancellation, config.operation_timeout).await?;
+
+		let welcome =
+			match receive_message(&mut socket, &cancellation, config.operation_timeout).await? {
+				ServerMessage::Welcome(welcome) => welcome,
+				ServerMessage::Refusal(refusal) => {
+					return Err(refusal_failure(&config.expected_server_id, refusal));
+				},
+				_ => return Err(RetainedSessionFailure::Malformed),
+			};
+
+		verify_welcome(&config.expected_server_id, &welcome)?;
+
+		let instance_id = welcome
+			.instance_id
+			.clone()
+			.ok_or(RetainedSessionFailure::PublicationIdentityUnavailable)?;
+		let (replay_high_water, checkpoint, expect_snapshot) =
+			match (&checkpoint, welcome.reconnect) {
+				(None, ReconnectMode::Snapshot) => (None, None, true),
+				(Some(checkpoint), ReconnectMode::Resume)
+					if checkpoint.instance_id == instance_id
+						&& checkpoint.cursor <= welcome.cursor =>
+					(Some(welcome.cursor), Some(checkpoint.clone()), false),
+				(Some(_), ReconnectMode::Resume) => {
+					return Err(RetainedSessionFailure::CheckpointIdentityMismatch);
+				},
+				(Some(_), ReconnectMode::SnapshotFallback) => (None, None, true),
+				_ => return Err(RetainedSessionFailure::Malformed),
+			};
+		let initial_snapshot =
+			if expect_snapshot {
+				let snapshot =
+					match receive_message(&mut socket, &cancellation, config.operation_timeout)
+						.await?
+					{
+						ServerMessage::Snapshot(snapshot) => snapshot,
+						ServerMessage::Refusal(refusal) => {
+							return Err(refusal_failure(&config.expected_server_id, refusal));
+						},
+						_ => return Err(RetainedSessionFailure::Malformed),
+					};
+
+				verify_snapshot(&config.expected_server_id, welcome.cursor, &snapshot)?;
+
+				Some(snapshot)
+			} else {
+				None
+			};
+		let next_cursor = checkpoint.as_ref().and_then(|checkpoint| next(checkpoint.cursor));
+
+		Ok(Self {
+			socket: Some(socket),
+			expected_server_id: config.expected_server_id,
+			instance_id,
+			welcome_high_water: welcome.cursor,
+			replay_high_water,
+			next_cursor,
+			checkpoint,
+			pending_confirmation: None,
+			initial_snapshot,
+			cancellation,
+			operation_timeout: config.operation_timeout,
+			session_id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
+		})
+	}
+
+	/// Informational high-water observed during the verified welcome handshake.
+	///
+	/// This value never advances [`Self::checkpoint`].
+	pub const fn welcome_high_water(&self) -> Cursor {
+		self.welcome_high_water
+	}
+
+	/// Last checkpoint explicitly confirmed as completely applied.
+	pub const fn checkpoint(&self) -> Option<&SessionCheckpoint> {
+		self.checkpoint.as_ref()
+	}
+
+	#[cfg(test)]
+	fn set_operation_timeout(&mut self, operation_timeout: Duration) {
+		self.operation_timeout = operation_timeout;
+	}
+
+	/// Send one exact-version command with a bounded write.
+	pub async fn send_command(
+		&mut self,
+		command: CommandEnvelope,
+	) -> Result<(), RetainedSessionFailure> {
+		if command.version != CURRENT_VERSION {
+			return Err(version_failure(command.version));
+		}
+
+		self.send(ClientMessage::Command(command)).await
+	}
+
+	/// Send one exact-version live query with a bounded write.
+	pub async fn send_query(&mut self, query: QueryEnvelope) -> Result<(), RetainedSessionFailure> {
+		if query.version != CURRENT_VERSION {
+			return Err(version_failure(query.version));
+		}
+
+		self.send(ClientMessage::Query(query)).await
+	}
+
+	/// Receive the next verified delivery without imposing an idle-session deadline.
+	///
+	/// The deadline begins only when this operation is called. A snapshot or event blocks
+	/// the next receive and every send until its application confirmation is returned.
+	pub async fn next(&mut self) -> Result<SessionDelivery, RetainedSessionFailure> {
+		if self.pending_confirmation.is_some() {
+			return Err(RetainedSessionFailure::ApplicationConfirmationRequired);
+		}
+
+		if let Some(snapshot) = self.initial_snapshot.take() {
+			return Ok(self.checkpoint_delivery(snapshot));
+		}
+
+		let message = self.receive().await?;
+
+		match message {
+			ServerMessage::Event(event) => self.event_delivery(event),
+			ServerMessage::CommandReceipt(receipt) => {
+				self.verify_envelope(receipt.version, &receipt.server_id)?;
+
+				Ok(SessionDelivery::CommandReceipt(receipt))
+			},
+			ServerMessage::CommandResult(result) => {
+				self.verify_envelope(result.version, &result.server_id)?;
+
+				Ok(SessionDelivery::CommandResult(result))
+			},
+			ServerMessage::QueryResult(result) => {
+				self.verify_envelope(result.version, &result.server_id)?;
+
+				Ok(SessionDelivery::QueryResult(result))
+			},
+			ServerMessage::Refusal(refusal) =>
+				Err(refusal_failure(&self.expected_server_id, refusal)),
+			ServerMessage::Welcome(_) | ServerMessage::Snapshot(_) =>
+				Err(RetainedSessionFailure::Malformed),
+		}
+		.inspect_err(|_| {
+			self.terminate();
+		})
+	}
+
+	/// Confirm complete application and atomically advance the resumable checkpoint.
+	pub fn confirm_applied(
+		&mut self,
+		confirmation: ApplicationConfirmation,
+	) -> Result<&SessionCheckpoint, RetainedSessionFailure> {
+		if self.pending_confirmation.as_ref() != Some(&confirmation) {
+			return Err(RetainedSessionFailure::ApplicationConfirmationMismatch);
+		}
+
+		let checkpoint = confirmation.checkpoint;
+
+		self.pending_confirmation = None;
+		self.next_cursor = next(checkpoint.cursor);
+		self.checkpoint = Some(checkpoint);
+
+		Ok(self.checkpoint.as_ref().expect("checkpoint was just installed"))
+	}
+
+	/// Perform a bounded close handshake and consume the owned socket.
+	pub async fn close(mut self) -> Result<(), RetainedSessionFailure> {
+		let Some(mut socket) = self.socket.take() else {
+			return Ok(());
+		};
+		let cancellation = self.cancellation.clone();
+		let close = async {
+			socket.send(Message::Close(None)).await.map_err(map_transport_error)?;
+
+			while let Some(message) = socket.next().await {
+				match message.map_err(map_transport_error)? {
+					Message::Close(_) => return Ok(()),
+					Message::Ping(payload) =>
+						socket.send(Message::Pong(payload)).await.map_err(map_transport_error)?,
+					Message::Pong(_) => {},
+					Message::Text(_) | Message::Binary(_) | Message::Frame(_) => {
+						return Err(RetainedSessionFailure::Malformed);
+					},
+				}
+			}
+
+			Ok(())
+		};
+
+		bounded(&cancellation, self.operation_timeout, close).await?
+	}
+
+	async fn send(&mut self, message: ClientMessage) -> Result<(), RetainedSessionFailure> {
+		if self.pending_confirmation.is_some() {
+			return Err(RetainedSessionFailure::ApplicationConfirmationRequired);
+		}
+
+		let Some(socket) = self.socket.as_mut() else {
+			return Err(RetainedSessionFailure::Closed);
+		};
+		let result =
+			send_message(socket, message, &self.cancellation, self.operation_timeout).await;
+
+		if result.is_err() {
+			self.terminate();
+		}
+
+		result
+	}
+
+	async fn receive(&mut self) -> Result<ServerMessage, RetainedSessionFailure> {
+		receive_owned(&mut self.socket, &self.cancellation, self.operation_timeout).await
+	}
+
+	fn checkpoint_delivery(&mut self, snapshot: SnapshotEnvelope) -> SessionDelivery {
+		let confirmation = self.confirmation(snapshot.cursor);
+
+		SessionDelivery::Snapshot { snapshot, confirmation }
+	}
+
+	fn event_delivery(
+		&mut self,
+		event: EventEnvelope,
+	) -> Result<SessionDelivery, RetainedSessionFailure> {
+		self.verify_identity(event.version, &event.server_id)?;
+
+		if self.next_cursor != Some(event.cursor) {
+			return Err(RetainedSessionFailure::PublicationOrder);
+		}
+		if self.replay_high_water.is_some_and(|high_water| event.cursor > high_water) {
+			self.replay_high_water = None;
+		}
+
+		let confirmation = self.confirmation(event.cursor);
+
+		Ok(SessionDelivery::Event { event, confirmation })
+	}
+
+	fn confirmation(&mut self, cursor: Cursor) -> ApplicationConfirmation {
+		let confirmation = ApplicationConfirmation {
+			session_id: self.session_id,
+			checkpoint: SessionCheckpoint::new(
+				self.expected_server_id.clone(),
+				self.instance_id.clone(),
+				cursor,
+			),
+		};
+
+		self.pending_confirmation = Some(ApplicationConfirmation {
+			session_id: confirmation.session_id,
+			checkpoint: confirmation.checkpoint.clone(),
+		});
+
+		confirmation
+	}
+
+	fn verify_envelope(
+		&self,
+		version: ProtocolVersion,
+		server_id: &ServerId,
+	) -> Result<(), RetainedSessionFailure> {
+		self.verify_identity(version, server_id)?;
+
+		if self
+			.replay_high_water
+			.is_some_and(|high_water| self.next_cursor.is_some_and(|cursor| cursor <= high_water))
+		{
+			return Err(RetainedSessionFailure::PublicationOrder);
+		}
+
+		Ok(())
+	}
+
+	fn verify_identity(
+		&self,
+		version: ProtocolVersion,
+		server_id: &ServerId,
+	) -> Result<(), RetainedSessionFailure> {
+		if version != CURRENT_VERSION {
+			return Err(version_failure(version));
+		}
+		if server_id != &self.expected_server_id {
+			return Err(RetainedSessionFailure::ServerIdentityMismatch);
+		}
+
+		Ok(())
+	}
+
+	fn terminate(&mut self) {
+		self.socket.take();
+	}
+}
+
+impl Debug for RetainedSession {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("RetainedSession")
+			.field("connected", &self.socket.is_some())
+			.field("identity_verified", &true)
+			.field("checkpoint", &self.checkpoint)
+			.field("confirmation_pending", &self.pending_confirmation.is_some())
+			.finish()
+	}
+}
+
+/// One verified application delivery in exact WebSocket order.
+#[derive(Debug, Eq, PartialEq)]
+pub enum SessionDelivery {
+	/// Current state requiring complete application confirmation.
+	Snapshot {
+		/// Verified snapshot envelope.
+		snapshot: SnapshotEnvelope,
+		/// Opaque confirmation consumed after complete application.
+		confirmation: ApplicationConfirmation,
+	},
+	/// Resumable publication requiring complete application confirmation.
+	Event {
+		/// Verified ordered event envelope.
+		event: EventEnvelope,
+		/// Opaque confirmation consumed after complete application.
+		confirmation: ApplicationConfirmation,
+	},
+	/// Command attempt receipt in wire order.
+	CommandReceipt(CommandReceipt),
+	/// Deterministic command result in wire order.
+	CommandResult(CommandResultEnvelope),
+	/// Live query result in wire order.
+	QueryResult(QueryResultEnvelope),
+}
+
+/// Closed retained-session failures. External endpoint, parser, socket, HTTP, and
+/// server-provided text cannot inhabit this type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetainedSessionFailure {
+	/// The explicit endpoint was absent, oversized, or not a WebSocket endpoint.
+	InvalidEndpoint,
+	/// A bounded connect, handshake, send, or close deadline elapsed.
+	OperationTimeout,
+	/// Cooperative cancellation terminated the owned socket operation.
+	Cancelled,
+	/// The session was already closed or terminated.
+	Closed,
+	/// The peer disconnected without a completed close operation.
+	Disconnected,
+	/// The server used a different protocol generation.
+	ProtocolMajorMismatch,
+	/// The server did not negotiate the exact current minor revision.
+	ProtocolMinorMismatch,
+	/// The stable server identity did not match the explicit pin.
+	ServerIdentityMismatch,
+	/// Current protocol negotiation omitted publication-instance identity.
+	PublicationIdentityUnavailable,
+	/// A checkpoint was incompatible with the exact server or publication instance.
+	CheckpointIdentityMismatch,
+	/// A server response was not the expected bounded typed envelope.
+	Malformed,
+	/// The server refused the protocol operation.
+	ProtocolViolation,
+	/// A bounded transport or server queue limit was reached.
+	Backpressure,
+	/// Snapshot or event cursors were not delivered in strict order.
+	PublicationOrder,
+	/// Another delivery is blocked on complete application confirmation.
+	ApplicationConfirmationRequired,
+	/// The confirmation did not belong to the pending delivery and session.
+	ApplicationConfirmationMismatch,
+}
+impl Display for RetainedSessionFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::InvalidEndpoint => "retained session endpoint is invalid",
+			Self::OperationTimeout => "retained session operation timed out",
+			Self::Cancelled => "retained session was cancelled",
+			Self::Closed => "retained session is closed",
+			Self::Disconnected => "retained session disconnected",
+			Self::ProtocolMajorMismatch => "retained session protocol major does not match",
+			Self::ProtocolMinorMismatch => "retained session protocol minor is unsupported",
+			Self::ServerIdentityMismatch => "retained session server identity does not match",
+			Self::PublicationIdentityUnavailable =>
+				"retained session publication identity is unavailable",
+			Self::CheckpointIdentityMismatch =>
+				"retained session checkpoint identity does not match",
+			Self::Malformed => "retained session protocol response is malformed",
+			Self::ProtocolViolation => "retained session protocol operation was refused",
+			Self::Backpressure => "retained session backpressure limit was reached",
+			Self::PublicationOrder => "retained session publication order is invalid",
+			Self::ApplicationConfirmationRequired =>
+				"retained session delivery requires application confirmation",
+			Self::ApplicationConfirmationMismatch =>
+				"retained session application confirmation does not match",
+		})
+	}
+}
+
+impl std::error::Error for RetainedSessionFailure {}
+
+fn verify_welcome(
+	expected_server_id: &ServerId,
+	welcome: &ServerWelcome,
+) -> Result<(), RetainedSessionFailure> {
+	if welcome.version != CURRENT_VERSION
+		|| welcome.supported.major != CURRENT_VERSION.major
+		|| !(welcome.supported.minimum_minor..=welcome.supported.maximum_minor)
+			.contains(&CURRENT_VERSION.minor)
+	{
+		return Err(version_failure(welcome.version));
+	}
+	if &welcome.server_id != expected_server_id {
+		return Err(RetainedSessionFailure::ServerIdentityMismatch);
+	}
+
+	Ok(())
+}
+
+fn verify_snapshot(
+	expected_server_id: &ServerId,
+	welcome_cursor: Cursor,
+	snapshot: &SnapshotEnvelope,
+) -> Result<(), RetainedSessionFailure> {
+	if snapshot.version != CURRENT_VERSION {
+		return Err(version_failure(snapshot.version));
+	}
+	if &snapshot.server_id != expected_server_id {
+		return Err(RetainedSessionFailure::ServerIdentityMismatch);
+	}
+	if snapshot.cursor != welcome_cursor || snapshot.items.len() > MAX_SNAPSHOT_ITEMS {
+		return Err(RetainedSessionFailure::Malformed);
+	}
+
+	Ok(())
+}
+
+fn refusal_failure(
+	expected_server_id: &ServerId,
+	refusal: RefusalEnvelope,
+) -> RetainedSessionFailure {
+	if &refusal.server_id != expected_server_id {
+		return RetainedSessionFailure::ServerIdentityMismatch;
+	}
+
+	match refusal.refusal {
+		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) =>
+			RetainedSessionFailure::ProtocolMajorMismatch,
+		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
+			RetainedSessionFailure::ProtocolMinorMismatch,
+		Refusal::ServerIdentityMismatch { .. } => RetainedSessionFailure::ServerIdentityMismatch,
+		Refusal::ProtocolViolation { .. } => RetainedSessionFailure::ProtocolViolation,
+		Refusal::Backpressure { .. } => RetainedSessionFailure::Backpressure,
+	}
+}
+
+fn version_failure(version: ProtocolVersion) -> RetainedSessionFailure {
+	if version.major != CURRENT_VERSION.major {
+		RetainedSessionFailure::ProtocolMajorMismatch
+	} else {
+		RetainedSessionFailure::ProtocolMinorMismatch
+	}
+}
+
+fn map_connect_error(error: tokio_tungstenite::tungstenite::Error) -> RetainedSessionFailure {
+	match error {
+		tokio_tungstenite::tungstenite::Error::Capacity(_) => RetainedSessionFailure::Backpressure,
+		tokio_tungstenite::tungstenite::Error::Protocol(_)
+		| tokio_tungstenite::tungstenite::Error::Utf8(_)
+		| tokio_tungstenite::tungstenite::Error::Http(_)
+		| tokio_tungstenite::tungstenite::Error::HttpFormat(_) => RetainedSessionFailure::Malformed,
+		_ => RetainedSessionFailure::Disconnected,
+	}
+}
+
+fn map_transport_error(error: tokio_tungstenite::tungstenite::Error) -> RetainedSessionFailure {
+	match error {
+		tokio_tungstenite::tungstenite::Error::Capacity(_) => RetainedSessionFailure::Backpressure,
+		tokio_tungstenite::tungstenite::Error::Protocol(_)
+		| tokio_tungstenite::tungstenite::Error::Utf8(_) => RetainedSessionFailure::Malformed,
+		_ => RetainedSessionFailure::Disconnected,
+	}
+}
+
+fn next(cursor: Cursor) -> Option<Cursor> {
+	cursor.0.checked_add(1).map(Cursor)
+}
+
+fn parse_loopback_endpoint(endpoint: &str) -> Result<LoopbackEndpoint, RetainedSessionFailure> {
+	if endpoint.len() > MAX_ENDPOINT_BYTES || endpoint.contains('#') {
+		return Err(RetainedSessionFailure::InvalidEndpoint);
+	}
+
+	let uri = endpoint.parse::<Uri>().map_err(|_| RetainedSessionFailure::InvalidEndpoint)?;
+	let authority = uri.authority().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
+	let path = uri.path_and_query().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
+
+	if uri.scheme_str() != Some("ws")
+		|| authority.as_str().contains('@')
+		|| path.path() != WS_PATH
+		|| path.query().is_some()
+	{
+		return Err(RetainedSessionFailure::InvalidEndpoint);
+	}
+
+	let port = authority.port_u16().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
+	let host = authority.host().trim_start_matches('[').trim_end_matches(']');
+	let address = host
+		.parse::<IpAddr>()
+		.map(|ip| SocketAddr::new(ip, port))
+		.map_err(|_| RetainedSessionFailure::InvalidEndpoint)?;
+
+	LoopbackEndpoint::new(address).map_err(|_| RetainedSessionFailure::InvalidEndpoint)
+}
+
+async fn bounded<F, T>(
+	cancellation: &SessionCancellation,
+	timeout: Duration,
+	operation: F,
+) -> Result<T, RetainedSessionFailure>
+where
+	F: Future<Output = T>,
+{
+	let selected = async {
+		tokio::select! {
+			biased;
+
+			() = cancellation.cancelled() => Err(RetainedSessionFailure::Cancelled),
+			result = operation => Ok(result),
+		}
+	};
+
+	time::timeout(timeout, selected).await.map_err(|_| RetainedSessionFailure::OperationTimeout)?
+}
+
+async fn send_message(
+	socket: &mut Socket,
+	message: ClientMessage,
+	cancellation: &SessionCancellation,
+	timeout: Duration,
+) -> Result<(), RetainedSessionFailure> {
+	let encoded = serde_json::to_string(&message)
+		.expect("typed bounded client message serialization cannot fail");
+
+	if encoded.len() > MAX_MESSAGE_BYTES {
+		return Err(RetainedSessionFailure::Backpressure);
+	}
+
+	bounded(cancellation, timeout, socket.send(Message::Text(encoded.into())))
+		.await?
+		.map_err(map_transport_error)
+}
+
+async fn receive_message(
+	socket: &mut Socket,
+	cancellation: &SessionCancellation,
+	timeout: Duration,
+) -> Result<ServerMessage, RetainedSessionFailure> {
+	bounded(cancellation, timeout, receive_frame(socket, cancellation, timeout)).await?
+}
+
+async fn receive_owned<S>(
+	socket: &mut Option<S>,
+	cancellation: &SessionCancellation,
+	timeout: Duration,
+) -> Result<ServerMessage, RetainedSessionFailure>
+where
+	S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
+		+ Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+		+ Unpin,
+{
+	let result = match socket.as_mut() {
+		Some(socket) => receive_frame(socket, cancellation, timeout).await,
+		None => return Err(RetainedSessionFailure::Closed),
+	};
+
+	if result.is_err() {
+		socket.take();
+	}
+
+	result
+}
+
+async fn receive_frame<S>(
+	socket: &mut S,
+	cancellation: &SessionCancellation,
+	timeout: Duration,
+) -> Result<ServerMessage, RetainedSessionFailure>
+where
+	S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
+		+ Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+		+ Unpin,
+{
+	let receive = async {
+		loop {
+			let message = cancellable(cancellation, socket.next())
+				.await?
+				.ok_or(RetainedSessionFailure::Disconnected)?
+				.map_err(map_transport_error)?;
+
+			match message {
+				Message::Text(text) => {
+					return serde_json::from_str(&text)
+						.map_err(|_| RetainedSessionFailure::Malformed);
+				},
+				Message::Ping(payload) =>
+					bounded(cancellation, timeout, socket.send(Message::Pong(payload)))
+						.await?
+						.map_err(map_transport_error)?,
+				Message::Pong(_) => {},
+				Message::Close(_) => return Err(RetainedSessionFailure::Disconnected),
+				Message::Binary(_) | Message::Frame(_) => {
+					return Err(RetainedSessionFailure::Malformed);
+				},
+			}
+		}
+	};
+
+	receive.await
+}
+
+async fn cancellable<F, T>(
+	cancellation: &SessionCancellation,
+	operation: F,
+) -> Result<T, RetainedSessionFailure>
+where
+	F: Future<Output = T>,
+{
+	tokio::select! {
+		biased;
+
+		() = cancellation.cancelled() => Err(RetainedSessionFailure::Cancelled),
+		result = operation => Ok(result),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		future::Future,
+		net::{Ipv4Addr, SocketAddr},
+		pin::Pin,
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering},
+		},
+		task::{Context, Poll},
+		time::Duration,
+	};
+
+	use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
+	use tokio::{
+		net::{TcpListener, TcpStream},
+		sync::oneshot,
+		task::{self, JoinHandle},
+	};
+	use tokio_tungstenite::{self, WebSocketStream, tungstenite::Message};
+
+	use crate::{
+		CURRENT_VERSION, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
+		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId,
+		Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
+		PREVIOUS_MINOR_VERSION, ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope,
+		ServerId, ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem,
+		SupportedVersions, WireText,
+		retained_session::{
+			ApplicationConfirmation, MAX_MESSAGE_BYTES, RetainedSession, RetainedSessionConfig,
+			RetainedSessionFailure, SessionCancellation, SessionCheckpoint, SessionDelivery,
+		},
+	};
+
+	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+	const OTHER_SERVER_ID: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+	const INSTANCE_ID: &str = "118f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+	const NEW_INSTANCE_ID: &str = "218f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+
+	struct StalledPongSocket {
+		inbound: Option<Result<Message, tokio_tungstenite::tungstenite::Error>>,
+		pong_write_polled: Arc<AtomicBool>,
+		dropped: Arc<AtomicBool>,
+	}
+
+	impl Stream for StalledPongSocket {
+		type Item = Result<Message, tokio_tungstenite::tungstenite::Error>;
+
+		fn poll_next(
+			mut self: Pin<&mut Self>,
+			_context: &mut Context<'_>,
+		) -> Poll<Option<Self::Item>> {
+			Poll::Ready(self.inbound.take())
+		}
+	}
+
+	impl Sink<Message> for StalledPongSocket {
+		type Error = tokio_tungstenite::tungstenite::Error;
+
+		fn poll_ready(
+			self: Pin<&mut Self>,
+			_context: &mut Context<'_>,
+		) -> Poll<Result<(), Self::Error>> {
+			self.pong_write_polled.store(true, Ordering::Release);
+
+			Poll::Pending
+		}
+
+		fn start_send(self: Pin<&mut Self>, _item: Message) -> Result<(), Self::Error> {
+			unreachable!("the stalled sink never becomes writable")
+		}
+
+		fn poll_flush(
+			self: Pin<&mut Self>,
+			_context: &mut Context<'_>,
+		) -> Poll<Result<(), Self::Error>> {
+			Poll::Pending
+		}
+
+		fn poll_close(
+			self: Pin<&mut Self>,
+			_context: &mut Context<'_>,
+		) -> Poll<Result<(), Self::Error>> {
+			Poll::Ready(Ok(()))
+		}
+	}
+
+	impl Drop for StalledPongSocket {
+		fn drop(&mut self) {
+			self.dropped.store(true, Ordering::Release);
+		}
+	}
+
+	fn server_id(value: &str) -> ServerId {
+		ServerId::new(value).unwrap()
+	}
+
+	fn instance_id(value: &str) -> ServerInstanceId {
+		ServerInstanceId::new(value).unwrap()
+	}
+
+	fn checkpoint(instance: &str, cursor: u64) -> SessionCheckpoint {
+		SessionCheckpoint::new(server_id(SERVER_ID), instance_id(instance), Cursor(cursor))
+	}
+
+	fn welcome(
+		server: &str,
+		instance: Option<&str>,
+		cursor: u64,
+		reconnect: ReconnectMode,
+	) -> ServerMessage {
+		ServerMessage::Welcome(ServerWelcome {
+			version: CURRENT_VERSION,
+			supported: SupportedVersions::current(),
+			server_id: server_id(server),
+			instance_id: instance.map(instance_id),
+			cursor: Cursor(cursor),
+			reconnect,
+		})
+	}
+
+	fn snapshot(server: &str, cursor: u64) -> ServerMessage {
+		ServerMessage::Snapshot(SnapshotEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id(server),
+			cursor: Cursor(cursor),
+			items: vec![SnapshotItem::SystemState {
+				entity_id: EntityId::new("system").unwrap(),
+				revision: EntityRevision(cursor),
+				status: WireText::new("ready").unwrap(),
+			}],
+		})
+	}
+
+	fn event(cursor: u64) -> ServerMessage {
+		ServerMessage::Event(EventEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id(SERVER_ID),
+			cursor: Cursor(cursor),
+			channel: Channel::SystemHealth,
+			entity_id: EntityId::new("system").unwrap(),
+			entity_revision: EntityRevision(cursor),
+			correlation_id: CorrelationId::new(format!("correlation-{cursor}")).unwrap(),
+			causation_id: None,
+			payload: EventPayload::SystemObservationRefreshed {
+				status: WireText::new(format!("event-{cursor}")).unwrap(),
+			},
+		})
+	}
+
+	fn receipt() -> ServerMessage {
+		ServerMessage::CommandReceipt(CommandReceipt {
+			version: CURRENT_VERSION,
+			server_id: server_id(SERVER_ID),
+			client_command_id: ClientCommandId::new("command-1").unwrap(),
+			idempotency_key: IdempotencyKey::new("key-1").unwrap(),
+			disposition: ReceiptDisposition::Executed,
+			original_client_command_id: ClientCommandId::new("command-1").unwrap(),
+		})
+	}
+
+	fn command() -> CommandEnvelope {
+		CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: ClientCommandId::new("command-1").unwrap(),
+			idempotency_key: IdempotencyKey::new("key-1").unwrap(),
+			expected_revision: None,
+			correlation_id: CorrelationId::new("correlation-command").unwrap(),
+			causation_id: None,
+			payload: CommandPayload::RefreshSystemObservation {
+				entity_id: EntityId::new("system").unwrap(),
+			},
+		}
+	}
+
+	fn result() -> ServerMessage {
+		ServerMessage::CommandResult(CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id(SERVER_ID),
+			client_command_id: ClientCommandId::new("command-1").unwrap(),
+			idempotency_key: IdempotencyKey::new("key-1").unwrap(),
+			outcome: CommandOutcome::Rejected,
+			entity_revision: None,
+			payload: None,
+			error: None,
+		})
+	}
+
+	#[test]
+	fn retained_session_endpoint_accepts_only_the_canonical_loopback_route() {
+		for (url, expected_address) in [
+			("ws://127.0.0.1:49152/v1/ws", "127.0.0.1:49152"),
+			("ws://[::1]:49152/v1/ws", "[::1]:49152"),
+		] {
+			let config = RetainedSessionConfig::new(url, server_id(SERVER_ID)).unwrap();
+
+			assert_eq!(config.endpoint.address(), expected_address.parse::<SocketAddr>().unwrap());
+			assert_eq!(config.url(), url);
+		}
+		for invalid in [
+			"ws://192.0.2.10:49152/v1/ws",
+			"ws://example.com:49152/v1/ws",
+			"ws://user:password@127.0.0.1:49152/v1/ws",
+			"ws://127.0.0.1:49152/v1/ws?token=secret",
+			"ws://127.0.0.1:49152/v1/ws#fragment",
+			"ws://127.0.0.1:49152/wrong",
+			"wss://127.0.0.1:49152/v1/ws",
+			"ws://127.0.0.1/v1/ws",
+		] {
+			let Err(failure) = RetainedSessionConfig::new(invalid, server_id(SERVER_ID)) else {
+				panic!("accepted invalid retained-session endpoint: {invalid}")
+			};
+
+			assert_eq!(failure, RetainedSessionFailure::InvalidEndpoint);
+			assert_eq!(failure.to_string(), "retained session endpoint is invalid");
+			assert!(!format!("{failure:?}").contains(invalid));
+		}
+	}
+
+	async fn send(socket: &mut WebSocketStream<TcpStream>, message: ServerMessage) {
+		let text = serde_json::to_string(&message).unwrap();
+
+		socket.send(Message::Text(text.into())).await.unwrap();
+	}
+
+	async fn hello(socket: &mut WebSocketStream<TcpStream>) -> ClientHello {
+		let message = socket.next().await.unwrap().unwrap();
+		let Message::Text(text) = message else { panic!("expected text hello") };
+		let ClientMessage::Hello(hello) = serde_json::from_str(&text).unwrap() else {
+			panic!("expected typed hello")
+		};
+
+		assert_eq!(hello.version, CURRENT_VERSION);
+		assert_eq!(hello.expected_server_id.as_ref(), Some(&server_id(SERVER_ID)));
+
+		hello
+	}
+
+	async fn fixture<F, Fut>(handler: F) -> (RetainedSessionConfig, JoinHandle<()>)
+	where
+		F: FnOnce(WebSocketStream<TcpStream>) -> Fut + Send + 'static,
+		Fut: Future<Output = ()> + Send + 'static,
+	{
+		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+		let address = listener.local_addr().unwrap();
+		let task = tokio::spawn(async move {
+			let (stream, _) = listener.accept().await.unwrap();
+			let socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+			handler(socket).await;
+		});
+		let config =
+			RetainedSessionConfig::new(format!("ws://{address}/v1/ws"), server_id(SERVER_ID))
+				.unwrap();
+
+		(config, task)
+	}
+
+	#[tokio::test]
+	async fn stalled_pong_write_times_out_and_releases_transport_ownership() {
+		let pong_write_polled = Arc::new(AtomicBool::new(false));
+		let dropped = Arc::new(AtomicBool::new(false));
+		let cancellation = SessionCancellation::new();
+		let mut socket = Some(StalledPongSocket {
+			inbound: Some(Ok(Message::Ping(vec![1, 2, 3].into()))),
+			pong_write_polled: Arc::clone(&pong_write_polled),
+			dropped: Arc::clone(&dropped),
+		});
+
+		assert_eq!(
+			super::receive_owned(&mut socket, &cancellation, Duration::ZERO).await.unwrap_err(),
+			RetainedSessionFailure::OperationTimeout
+		);
+		assert!(pong_write_polled.load(Ordering::Acquire));
+		assert!(socket.is_none());
+		assert!(dropped.load(Ordering::Acquire));
+		assert!(!cancellation.is_cancelled());
+	}
+
+	#[tokio::test]
+	async fn snapshot_high_water_advances_only_after_exact_application_confirmation() {
+		let (config, task) = fixture(|mut socket| async move {
+			assert!(hello(&mut socket).await.resume.is_none());
+
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 7, ReconnectMode::Snapshot))
+				.await;
+			send(&mut socket, snapshot(SERVER_ID, 7)).await;
+		})
+		.await;
+		let mut session =
+			RetainedSession::connect(config, None, SessionCancellation::new()).await.unwrap();
+
+		assert_eq!(session.welcome_high_water(), Cursor(7));
+		assert_eq!(session.checkpoint(), None);
+
+		let SessionDelivery::Snapshot { snapshot, confirmation } = session.next().await.unwrap()
+		else {
+			panic!("expected snapshot")
+		};
+
+		assert_eq!(snapshot.cursor, Cursor(7));
+		assert_eq!(session.checkpoint(), None);
+		assert_eq!(
+			session.next().await.unwrap_err(),
+			RetainedSessionFailure::ApplicationConfirmationRequired
+		);
+
+		let wrong_confirmation = ApplicationConfirmation {
+			session_id: confirmation.session_id + 1,
+			checkpoint: confirmation.checkpoint.clone(),
+		};
+
+		assert_eq!(
+			session.confirm_applied(wrong_confirmation).unwrap_err(),
+			RetainedSessionFailure::ApplicationConfirmationMismatch
+		);
+		assert_eq!(session.checkpoint(), None);
+
+		let applied = session.confirm_applied(confirmation).unwrap();
+
+		assert_eq!(applied.server_id(), &server_id(SERVER_ID));
+		assert_eq!(applied.instance_id(), &instance_id(INSTANCE_ID));
+		assert_eq!(applied.cursor(), Cursor(7));
+
+		drop(session);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn resume_delivers_events_receipt_and_result_strictly_in_wire_order() {
+		let resume = checkpoint(INSTANCE_ID, 1);
+		let expected_resume = resume.clone();
+		let (config, task) = fixture(move |mut socket| async move {
+			let actual = hello(&mut socket).await.resume.unwrap();
+
+			assert_eq!(actual.server_id, expected_resume.server_id);
+			assert_eq!(actual.instance_id.as_ref(), Some(&expected_resume.instance_id));
+			assert_eq!(actual.cursor, Cursor(1));
+
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 3, ReconnectMode::Resume))
+				.await;
+			send(&mut socket, event(2)).await;
+			send(&mut socket, event(3)).await;
+
+			let Message::Text(message) = socket.next().await.unwrap().unwrap() else {
+				panic!("expected command")
+			};
+
+			assert_eq!(
+				serde_json::from_str::<ClientMessage>(&message).unwrap(),
+				ClientMessage::Command(command())
+			);
+
+			send(&mut socket, receipt()).await;
+			send(&mut socket, result()).await;
+		})
+		.await;
+		let mut session =
+			RetainedSession::connect(config, Some(resume), SessionCancellation::new())
+				.await
+				.unwrap();
+
+		assert_eq!(session.checkpoint().unwrap().cursor(), Cursor(1));
+
+		let SessionDelivery::Event { event, confirmation } = session.next().await.unwrap() else {
+			panic!("expected first event")
+		};
+
+		assert_eq!(event.cursor, Cursor(2));
+
+		session.confirm_applied(confirmation).unwrap();
+
+		let SessionDelivery::Event { event, confirmation } = session.next().await.unwrap() else {
+			panic!("expected second event")
+		};
+
+		assert_eq!(event.cursor, Cursor(3));
+		assert_eq!(session.checkpoint().unwrap().cursor(), Cursor(2));
+		assert_eq!(
+			session.next().await.unwrap_err(),
+			RetainedSessionFailure::ApplicationConfirmationRequired
+		);
+
+		session.confirm_applied(confirmation).unwrap();
+		session.send_command(command()).await.unwrap();
+
+		assert!(matches!(session.next().await.unwrap(), SessionDelivery::CommandReceipt(_)));
+		assert!(matches!(session.next().await.unwrap(), SessionDelivery::CommandResult(_)));
+
+		drop(session);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn cursor_gaps_terminate_delivery_before_out_of_order_application_data() {
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 2, ReconnectMode::Resume))
+				.await;
+			send(&mut socket, event(2)).await;
+		})
+		.await;
+		let mut session = RetainedSession::connect(
+			config,
+			Some(checkpoint(INSTANCE_ID, 0)),
+			SessionCancellation::new(),
+		)
+		.await
+		.unwrap();
+
+		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::PublicationOrder);
+		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Closed);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn stale_publication_instance_falls_back_without_reusing_the_old_checkpoint() {
+		let old_checkpoint = checkpoint(INSTANCE_ID, 5);
+		let (config, task) = fixture(|mut socket| async move {
+			assert_eq!(
+				hello(&mut socket).await.resume.unwrap().instance_id,
+				Some(instance_id(INSTANCE_ID))
+			);
+
+			send(
+				&mut socket,
+				welcome(SERVER_ID, Some(NEW_INSTANCE_ID), 8, ReconnectMode::SnapshotFallback),
+			)
+			.await;
+			send(&mut socket, snapshot(SERVER_ID, 8)).await;
+		})
+		.await;
+		let mut session =
+			RetainedSession::connect(config, Some(old_checkpoint), SessionCancellation::new())
+				.await
+				.unwrap();
+
+		assert_eq!(session.checkpoint(), None);
+
+		let SessionDelivery::Snapshot { confirmation, .. } = session.next().await.unwrap() else {
+			panic!("expected fallback snapshot")
+		};
+		let checkpoint = session.confirm_applied(confirmation).unwrap();
+
+		assert_eq!(checkpoint.instance_id(), &instance_id(NEW_INSTANCE_ID));
+		assert_eq!(checkpoint.cursor(), Cursor(8));
+
+		drop(session);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn server_and_checkpoint_identity_changes_fail_closed_before_application_data() {
+		let invalid_config =
+			RetainedSessionConfig::new("ws://127.0.0.1:1/v1/ws", server_id(SERVER_ID)).unwrap();
+		let wrong_checkpoint =
+			SessionCheckpoint::new(server_id(OTHER_SERVER_ID), instance_id(INSTANCE_ID), Cursor(1));
+
+		assert_eq!(
+			RetainedSession::connect(
+				invalid_config,
+				Some(wrong_checkpoint),
+				SessionCancellation::new()
+			)
+			.await
+			.unwrap_err(),
+			RetainedSessionFailure::CheckpointIdentityMismatch
+		);
+
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(
+				&mut socket,
+				welcome(OTHER_SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Snapshot),
+			)
+			.await;
+		})
+		.await;
+
+		assert_eq!(
+			RetainedSession::connect(config, None, SessionCancellation::new()).await.unwrap_err(),
+			RetainedSessionFailure::ServerIdentityMismatch
+		);
+
+		task.await.unwrap();
+
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(NEW_INSTANCE_ID), 1, ReconnectMode::Resume))
+				.await;
+		})
+		.await;
+
+		assert_eq!(
+			RetainedSession::connect(
+				config,
+				Some(checkpoint(INSTANCE_ID, 1)),
+				SessionCancellation::new()
+			)
+			.await
+			.unwrap_err(),
+			RetainedSessionFailure::CheckpointIdentityMismatch
+		);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn malformed_and_refused_frames_collapse_to_closed_failures_without_server_text() {
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+
+			socket.send(Message::Binary(vec![1, 2, 3].into())).await.unwrap();
+		})
+		.await;
+
+		assert_eq!(
+			RetainedSession::connect(config, None, SessionCancellation::new()).await.unwrap_err(),
+			RetainedSessionFailure::Malformed
+		);
+
+		task.await.unwrap();
+
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(
+				&mut socket,
+				ServerMessage::Refusal(RefusalEnvelope {
+					server_id: server_id(SERVER_ID),
+					refusal: Refusal::ProtocolViolation {
+						message: WireText::new("untrusted server detail").unwrap(),
+					},
+				}),
+			)
+			.await;
+		})
+		.await;
+		let failure =
+			RetainedSession::connect(config, None, SessionCancellation::new()).await.unwrap_err();
+
+		assert_eq!(failure, RetainedSessionFailure::ProtocolViolation);
+		assert!(!failure.to_string().contains("untrusted"));
+
+		task.await.unwrap();
+
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+
+			let ServerMessage::Welcome(mut wrong_version) =
+				welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Snapshot)
+			else {
+				unreachable!()
+			};
+
+			wrong_version.version = PREVIOUS_MINOR_VERSION;
+
+			send(&mut socket, ServerMessage::Welcome(wrong_version)).await;
+		})
+		.await;
+
+		assert_eq!(
+			RetainedSession::connect(config, None, SessionCancellation::new()).await.unwrap_err(),
+			RetainedSessionFailure::ProtocolMinorMismatch
+		);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn idle_session_remains_owned_until_the_consumer_requests_more_data() {
+		let (release_sender, release_receiver) = oneshot::channel();
+		let (idle_sender, idle_receiver) = oneshot::channel();
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
+				.await;
+
+			idle_sender.send(()).unwrap();
+
+			tokio::select! {
+				biased;
+
+				result = release_receiver => result.unwrap(),
+				message = socket.next() => panic!("idle session emitted or closed: {message:?}"),
+			}
+
+			send(&mut socket, event(1)).await;
+		})
+		.await;
+		let mut session = RetainedSession::connect(
+			config,
+			Some(checkpoint(INSTANCE_ID, 0)),
+			SessionCancellation::new(),
+		)
+		.await
+		.unwrap();
+
+		session.set_operation_timeout(std::time::Duration::ZERO);
+		idle_receiver.await.unwrap();
+
+		task::yield_now().await;
+
+		release_sender.send(()).unwrap();
+
+		let SessionDelivery::Event { event, .. } = session.next().await.unwrap() else {
+			panic!("expected event after idle release")
+		};
+
+		assert_eq!(event.cursor, Cursor(1));
+
+		drop(session);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn cancellation_terminates_an_inflight_receive_and_drops_the_owned_socket() {
+		let (ready_sender, ready_receiver) = oneshot::channel();
+		let (closed_sender, closed_receiver) = oneshot::channel();
+		let (config, server_task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
+				.await;
+
+			ready_sender.send(()).unwrap();
+
+			while socket.next().await.is_some() {}
+
+			closed_sender.send(()).unwrap();
+		})
+		.await;
+		let cancellation = SessionCancellation::new();
+		let mut session = RetainedSession::connect(
+			config,
+			Some(checkpoint(INSTANCE_ID, 0)),
+			cancellation.clone(),
+		)
+		.await
+		.unwrap();
+
+		ready_receiver.await.unwrap();
+
+		let client_task = tokio::spawn(async move { session.next().await });
+
+		task::yield_now().await;
+
+		cancellation.cancel();
+
+		assert_eq!(client_task.await.unwrap().unwrap_err(), RetainedSessionFailure::Cancelled);
+
+		closed_receiver.await.unwrap();
+		server_task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn oversized_input_and_server_backpressure_are_closed_and_bounded() {
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
+				.await;
+
+			socket.send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1).into())).await.unwrap();
+		})
+		.await;
+		let mut session = RetainedSession::connect(
+			config,
+			Some(checkpoint(INSTANCE_ID, 0)),
+			SessionCancellation::new(),
+		)
+		.await
+		.unwrap();
+
+		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Backpressure);
+
+		task.await.unwrap();
+
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
+				.await;
+			send(
+				&mut socket,
+				ServerMessage::Refusal(RefusalEnvelope {
+					server_id: server_id(SERVER_ID),
+					refusal: Refusal::Backpressure { queue_capacity: 1 },
+				}),
+			)
+			.await;
+		})
+		.await;
+		let mut session = RetainedSession::connect(
+			config,
+			Some(checkpoint(INSTANCE_ID, 0)),
+			SessionCancellation::new(),
+		)
+		.await
+		.unwrap();
+
+		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Backpressure);
+
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn close_completes_one_bounded_handshake_without_a_detached_socket() {
+		let (closed_sender, closed_receiver) = oneshot::channel();
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
+				.await;
+
+			let message = socket.next().await.unwrap().unwrap();
+
+			assert!(matches!(message, Message::Close(_)));
+
+			socket.flush().await.unwrap();
+			closed_sender.send(()).unwrap();
+		})
+		.await;
+		let session = RetainedSession::connect(
+			config,
+			Some(checkpoint(INSTANCE_ID, 0)),
+			SessionCancellation::new(),
+		)
+		.await
+		.unwrap();
+
+		session.close().await.unwrap();
+		closed_receiver.await.unwrap();
+		task.await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn zero_deadline_bounds_close_and_still_drops_the_owned_socket() {
+		let (closed_sender, closed_receiver) = oneshot::channel();
+		let (release_sender, release_receiver) = oneshot::channel();
+		let (config, task) = fixture(|mut socket| async move {
+			hello(&mut socket).await;
+			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
+				.await;
+
+			release_receiver.await.unwrap();
+
+			while socket.next().await.is_some() {}
+
+			closed_sender.send(()).unwrap();
+		})
+		.await;
+		let mut session = RetainedSession::connect(
+			config,
+			Some(checkpoint(INSTANCE_ID, 0)),
+			SessionCancellation::new(),
+		)
+		.await
+		.unwrap();
+
+		session.set_operation_timeout(std::time::Duration::ZERO);
+
+		assert_eq!(session.close().await.unwrap_err(), RetainedSessionFailure::OperationTimeout);
+
+		release_sender.send(()).unwrap();
+		closed_receiver.await.unwrap();
+		task.await.unwrap();
+	}
+}
