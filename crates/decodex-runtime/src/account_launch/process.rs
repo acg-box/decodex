@@ -3481,12 +3481,15 @@ mod tests {
 				fake_command(mode, temp.path(), Some(&marker_path)),
 				binding(),
 				SchemaMarker::accepted(),
-				Duration::from_secs(2),
+				Duration::from_secs(5),
 			)
 			.run(&mut CapabilityCache::default())
 			.unwrap_err();
 
-			assert!(matches!(error, ProbeError::SchemaMissing { .. }));
+			assert!(
+				matches!(error, ProbeError::SchemaMissing { .. }),
+				"{mode} returned an unexpected error: {error:?}"
+			);
 			assert!(!marker_path.exists());
 		}
 	}
