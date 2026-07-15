@@ -6,7 +6,7 @@ fn main() {
 	let version = CURRENT_VERSION;
 
 	println!(
-		"Decodex GPUI v{}.{} is disabled: XY-1263 accessibility gate remains failed",
+		"Decodex GPUI v{}.{} is disabled: XY-1263 foundation accepted; P/K/L/S product slices remain disabled",
 		version.major, version.minor
 	);
 }
