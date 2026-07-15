@@ -271,6 +271,96 @@ class VnextArchitectureTests(unittest.TestCase):
 
         self.assertEqual({token for token in forbidden if token in source}, set())
 
+    def test_project_and_agent_identity_have_one_canonical_inert_authority(self):
+        core_lib = (ROOT / "crates/decodex-core/src/lib.rs").read_text()
+        project = (ROOT / "crates/decodex-core/src/project.rs").read_text()
+        agent = (ROOT / "crates/decodex-core/src/agent.rs").read_text()
+        postgres = (ROOT / "crates/decodex-postgres/src/project_agents.rs").read_text()
+        migration = (
+            ROOT
+            / "crates/decodex-postgres/migrations/V5__project_agent_authority.sql"
+        ).read_text()
+
+        self.assertIn("ProjectId", core_lib)
+        self.assertIn("AgentId", core_lib)
+        self.assertIn("use decodex_core", postgres)
+        self.assertNotIn("pub struct ProjectId", postgres)
+        self.assertNotIn("pub struct AgentId", postgres)
+        self.assertIn("CREATE TABLE decodex.projects", migration)
+        self.assertIn("CREATE TABLE decodex.agents", migration)
+        self.assertIn("agents_one_global_advisor_idx", migration)
+        self.assertIn("agents_one_lead_per_project_idx", migration)
+        self.assertEqual(
+            postgres.count(
+                "::pg_catalog.text::decodex.canonical_uuid_v4_text"
+            ),
+            4,
+        )
+        self.assertNotIn("::text::decodex.canonical_uuid_v4_text", postgres)
+        self.assertEqual(
+            migration.count("CREATE FUNCTION decodex.bootstrap_advisor("), 1
+        )
+        self.assertEqual(
+            migration.count("CREATE FUNCTION decodex.create_project("), 1
+        )
+        self.assertEqual(
+            migration.count("CREATE FUNCTION decodex.transition_project("), 1
+        )
+
+        production = project.split("#[cfg(test)]", 1)[0] + agent.split("#[cfg(test)]", 1)[0]
+        for placeholder in (
+            "project-placeholder",
+            "lead-placeholder",
+            "agent-placeholder",
+            "00000000-0000-0000-0000-000000000000",
+        ):
+            self.assertNotIn(placeholder, production)
+            self.assertNotIn(placeholder, migration)
+
+    def test_project_and_agent_slice_enables_no_live_behavior(self):
+        live_roots = [
+            ROOT / "crates/decodex-codex/src",
+            ROOT / "crates/decodex-protocol/src",
+            ROOT / "crates/decodex-runtime/src",
+            ROOT / "apps/decodexd/src",
+            ROOT / "apps/decodex-cli/src",
+            ROOT / "apps/decodex-gpui/src",
+        ]
+        source = "\n".join(
+            path.read_text()
+            for root in live_roots
+            for path in sorted(root.rglob("*.rs"))
+        )
+        forbidden = {
+            "bootstrap_advisor",
+            "create_project",
+            "ProjectAuthority",
+            "ProjectRepository",
+            "AgentRepository",
+        }
+
+        self.assertEqual({token for token in forbidden if token in source}, set())
+
+        migration = (
+            ROOT
+            / "crates/decodex-postgres/migrations/V5__project_agent_authority.sql"
+        ).read_text().lower()
+        for live_token in (
+            "prompt",
+            "model",
+            "delegate",
+            "schedule",
+            "wakeup",
+            "message",
+        ):
+            self.assertNotIn(live_token, migration)
+        for conversation_surface in (
+            "create table decodex.conversations",
+            "insert into decodex.conversations",
+            "conversation_id",
+        ):
+            self.assertNotIn(conversation_surface, migration)
+
 
 if __name__ == "__main__":
     unittest.main()
