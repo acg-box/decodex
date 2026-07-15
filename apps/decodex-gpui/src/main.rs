@@ -1,5 +1,8 @@
 //! Default-disabled Decodex vNext GPUI client composition root.
 
+#[allow(dead_code, reason = "XY-1333 will compose the accepted private cache module")]
+mod client_cache;
+
 use decodex_protocol::CURRENT_VERSION;
 
 fn main() {
