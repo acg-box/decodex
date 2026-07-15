@@ -22,13 +22,15 @@ use tokio::{
 use tokio_postgres::{Client, Config, NoTls, types::ToSql};
 
 use decodex_core::{
-	self, AccountSnapshot, ArtifactId, ArtifactStatus, Availability, BlobHash, BlobStore,
-	ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceKind,
-	ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
-	HistoryMetadataValue, ItemStatus, PinnedContextSource, PossibleSideEffects, ProductState as _,
-	ProfileSnapshot, Project, ProjectId, ProjectMetadata, ProjectMetadataValue,
-	ProjectRepositoryBinding, ProjectStatus, ProposedTransitionKind, RepositoryIdentity,
-	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
+	self, AcceptedPolicyRevision, AccountSnapshot, ArtifactId, ArtifactStatus, Availability,
+	BlobHash, BlobStore, ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource,
+	ContextSourceKind, ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind,
+	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, ItemStatus, PinnedContextSource,
+	PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
+	PolicySnapshot, PolicySnapshotValue, PossibleSideEffects, ProductState as _, ProfileSnapshot,
+	Project, ProjectId, ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding,
+	ProjectStatus, ProposedTransitionKind, RepositoryIdentity, RuntimeSessionId,
+	RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 use decodex_postgres::{
 	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus, CLOSED,
@@ -83,6 +85,8 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
 	"decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
 	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
+	"decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
+	"decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
@@ -104,6 +108,8 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_context_pack_state()",
 	"decodex.enforce_context_pack_source_state()",
 	"decodex.enforce_history_cursor_state()",
+	"decodex.enforce_policy_identity_state()",
+	"decodex.forbid_policy_revision_mutation()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(
@@ -250,6 +256,37 @@ fn project_request(
 	CreateProject { project, lead }
 }
 
+fn policy_acceptance(
+	project_id: &ProjectId,
+	policy_id: &PolicyId,
+	accepted_by: &AgentId,
+	revision: u64,
+	marker: &str,
+) -> PolicyRevisionAcceptance {
+	let revision_number = PolicyRevision::new(revision).expect("Policy revision is positive");
+	let id = PolicyRevisionId::new(project_id.clone(), policy_id.clone(), revision_number);
+	let supersedes = revision.checked_sub(1).filter(|value| *value > 0).map(|previous| {
+		PolicyRevisionId::new(
+			project_id.clone(),
+			policy_id.clone(),
+			PolicyRevision::new(previous).expect("previous Policy revision is positive"),
+		)
+	});
+
+	PolicyRevisionAcceptance {
+		id,
+		provenance: PolicyProvenance::new(format!("accepted fixture {marker}"))
+			.expect("Policy provenance is bounded"),
+		snapshot: PolicySnapshot::new(BTreeMap::from([
+			("marker".into(), PolicySnapshotValue::Text(marker.into())),
+			("reviewed".into(), PolicySnapshotValue::Boolean(true)),
+		]))
+		.expect("Policy snapshot is bounded"),
+		accepted_by: accepted_by.clone(),
+		supersedes,
+	}
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 migration harness"]
 async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>> {
@@ -276,6 +313,7 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	assert_bootstrap_and_history(&client).await?;
 	assert_runtime_is_least_privilege(&runtime_client).await?;
 	assert_project_agent_authority(&store, &client, &migration, &runtime).await?;
+	assert_policy_authority(&store, &client, &migration, &runtime).await?;
 	assert_account_idempotency_and_revision(&store, &client).await?;
 	assert_receipt_first_saga(&store, &client).await?;
 	assert_concurrent_shard_capacity(&store, &client).await?;
@@ -1730,6 +1768,10 @@ async fn assert_runtime_is_least_privilege(
 		 ('10000000-0000-4000-8000-000000000099','forbidden/project','/srv/forbidden','/srv/forbidden')",
 		"INSERT INTO decodex.agents (agent_id,role) VALUES \
 		 ('20000000-0000-4000-8000-000000000099','advisor')",
+		"INSERT INTO decodex.policies (policy_id,project_id) VALUES \
+		 ('31000000-0000-4000-8000-000000000099',\
+		  '11000000-0000-4000-8000-000000000050')",
+		"UPDATE decodex.policy_revisions SET provenance='forbidden' WHERE revision=1",
 	] {
 		let error = client
 			.batch_execute(statement)
@@ -1821,6 +1863,8 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 
 	assert!(restored_fk);
 
+	assert_restored_policy_authority(&store).await?;
+
 	let ordinary_rows: i64 = client
 		.query_one(
 			"SELECT (SELECT count(*) FROM decodex.accounts) \
@@ -1841,6 +1885,33 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 	drop(client);
 
 	connection_task.await??;
+
+	Ok(())
+}
+
+async fn assert_restored_policy_authority(
+	store: &PostgresStore,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let policy_id = PolicyId::new("31000000-0000-4000-8000-000000000001")?;
+	let project_id = ProjectId::new("11000000-0000-4000-8000-000000000050")?;
+	let policies = store.policies_for_project(&project_id).await?;
+	let first_id =
+		PolicyRevisionId::new(project_id.clone(), policy_id.clone(), PolicyRevision::new(1)?);
+	let second_id = PolicyRevisionId::new(project_id, policy_id.clone(), PolicyRevision::new(2)?);
+	let first = store.policy_revision(&first_id).await?.expect("revision one restored");
+	let second = store.policy_revision(&second_id).await?.expect("revision two restored");
+
+	assert_eq!(policies.len(), 1);
+	assert_eq!(policies[0].id(), &policy_id);
+	assert_eq!(policies[0].current_revision(), Some(PolicyRevision::new(2)?));
+	assert_eq!(first.supersedes(), None);
+	assert_eq!(second.supersedes(), Some(first.id()));
+	assert!(
+		[&first, &second]
+			.into_iter()
+			.all(|revision| revision.accepted_at() >= revision.policy_created_at())
+	);
+	assert_eq!(store.policy_revision(&second_id).await?, Some(second));
 
 	Ok(())
 }
@@ -1950,7 +2021,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 5);
+	assert_eq!(history.len(), 6);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
@@ -1966,6 +2037,9 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 	assert_eq!(history[4].0, 5);
 	assert_eq!(history[4].1, "project_agent_authority");
 	assert!(!history[4].2.is_empty());
+	assert_eq!(history[5].0, 6);
+	assert_eq!(history[5].1, "project_policy_authority");
+	assert!(!history[5].2.is_empty());
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -2105,6 +2179,247 @@ async fn assert_project_agent_authority(
 
 	assert_eq!(restarted.project(paused.project.id()).await?, Some(paused));
 	assert_eq!(restarted.advisor().await?, store.advisor().await?);
+
+	Ok(())
+}
+
+async fn assert_policy_authority(
+	store: &PostgresStore,
+	client: &Client,
+	migration: &Config,
+	runtime: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let primary = project_request(
+		"11000000-0000-4000-8000-000000000050",
+		"22000000-0000-4000-8000-000000000050",
+		"hack-ink/policy-authority-a",
+		"/srv/repos/policy-authority-a",
+	);
+	let secondary = project_request(
+		"11000000-0000-4000-8000-000000000051",
+		"22000000-0000-4000-8000-000000000051",
+		"hack-ink/policy-authority-b",
+		"/srv/repos/policy-authority-b",
+	);
+	let primary_authority = store.create_project(primary).await?;
+	let secondary_authority = store.create_project(secondary).await?;
+	let project_id = primary_authority.project.id().clone();
+	let lead_id = primary_authority.lead.id().clone();
+	let policy_id = PolicyId::new("31000000-0000-4000-8000-000000000001")?;
+	let policy = store.create_policy(policy_id.clone(), project_id.clone()).await?;
+
+	assert_eq!(policy.id(), &policy_id);
+	assert_eq!(policy.project_id(), &project_id);
+	assert_eq!(policy.current_revision(), None);
+	assert_eq!(policy.status(), decodex_core::PolicyStatus::Unaccepted);
+	assert_eq!(store.policies_for_project(&project_id).await?, vec![policy.clone()]);
+	assert_eq!(store.create_policy(policy_id.clone(), project_id.clone()).await?, policy,);
+	assert!(matches!(
+		store.create_policy(policy_id.clone(), secondary_authority.project.id().clone()).await,
+		Err(StoreError::InvalidInput("Policy identity is already bound to another Project"))
+	));
+
+	let first_request = policy_acceptance(&project_id, &policy_id, &lead_id, 1, "first");
+	let first = store.accept_policy_revision(first_request.clone()).await?;
+
+	assert_eq!(first.id(), &first_request.id);
+	assert_eq!(first.supersedes(), None);
+	assert!(first.accepted_at() >= first.policy_created_at());
+	assert_eq!(store.accept_policy_revision(first_request.clone()).await?, first);
+
+	let mut conflicting_first = first_request;
+
+	conflicting_first.provenance = PolicyProvenance::new("accepted fixture conflicting")?;
+
+	assert!(matches!(
+		store.accept_policy_revision(conflicting_first).await,
+		Err(StoreError::IdempotencyConflict)
+	));
+
+	let cross_project = policy_acceptance(
+		secondary_authority.project.id(),
+		&policy_id,
+		secondary_authority.lead.id(),
+		2,
+		"cross-project",
+	);
+
+	assert!(matches!(
+		store.accept_policy_revision(cross_project).await,
+		Err(StoreError::InvalidInput("Policy revision cannot attach across Projects"))
+	));
+
+	let wrong_authority = policy_acceptance(
+		&project_id,
+		&policy_id,
+		secondary_authority.lead.id(),
+		2,
+		"wrong-authority",
+	);
+
+	assert!(matches!(
+		store.accept_policy_revision(wrong_authority).await,
+		Err(StoreError::InvalidInput("Policy acceptance requires active Project Lead authority"))
+	));
+
+	let (winner_request, winner_revision) = accept_concurrent_policy_revision(
+		store,
+		[
+			policy_acceptance(&project_id, &policy_id, &lead_id, 2, "candidate-a"),
+			policy_acceptance(&project_id, &policy_id, &lead_id, 2, "candidate-b"),
+		],
+	)
+	.await?;
+
+	assert_eq!(store.accept_policy_revision(winner_request.clone()).await?, winner_revision);
+	assert_eq!(store.policy_revision(winner_revision.id()).await?, Some(winner_revision.clone()));
+	assert_policy_revision_conflicts(
+		store,
+		client,
+		&project_id,
+		&policy_id,
+		&lead_id,
+		&winner_request,
+		&winner_revision,
+	)
+	.await?;
+
+	let listed = store.policies_for_project(&project_id).await?;
+
+	assert_eq!(listed.len(), 1);
+	assert_eq!(listed[0].id(), &policy_id);
+	assert_eq!(listed[0].current_revision(), Some(PolicyRevision::new(2)?));
+	assert_eq!(listed[0].status(), decodex_core::PolicyStatus::Accepted);
+	assert!(store.policies_for_project(secondary_authority.project.id()).await?.is_empty());
+
+	assert_policy_database_guards(store, client, &project_id, &policy_id, &lead_id).await?;
+
+	let restarted =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+
+	assert_eq!(restarted.policy_revision(winner_revision.id()).await?, Some(winner_revision));
+
+	Ok(())
+}
+
+async fn assert_policy_revision_conflicts(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	policy_id: &PolicyId,
+	lead_id: &AgentId,
+	winner_request: &PolicyRevisionAcceptance,
+	winner_revision: &AcceptedPolicyRevision,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let stale = client
+		.query_one(
+			"SELECT revision_accepted,actual_revision \
+			 FROM decodex.accept_policy_revision(\
+			 $1::pg_catalog.text::decodex.canonical_uuid_v4_text,\
+			 $2::pg_catalog.text::decodex.canonical_uuid_v4_text,3,'stale','{}'::jsonb,\
+			 $3::pg_catalog.text::decodex.canonical_uuid_v4_text,1)",
+			&[&policy_id.as_str(), &project_id.as_str(), &lead_id.as_str()],
+		)
+		.await?;
+
+	assert!(!stale.get::<_, bool>(0));
+	assert_eq!(stale.get::<_, Option<i64>>(1), Some(2));
+
+	let gapped_request = policy_acceptance(project_id, policy_id, lead_id, 4, "gapped");
+
+	assert!(matches!(
+		store.accept_policy_revision(gapped_request).await,
+		Err(StoreError::RevisionConflict {
+			ref entity,
+			expected: Some(4),
+			actual: Some(2),
+		}) if entity == policy_id.as_str()
+	));
+	assert_eq!(store.policy_revision(winner_revision.id()).await?, Some(winner_revision.clone()));
+	assert_eq!(
+		store.accept_policy_revision(winner_request.clone()).await?,
+		winner_revision.clone()
+	);
+
+	Ok(())
+}
+
+async fn accept_concurrent_policy_revision(
+	store: &PostgresStore,
+	candidates: [PolicyRevisionAcceptance; 2],
+) -> Result<(PolicyRevisionAcceptance, AcceptedPolicyRevision), Box<dyn std::error::Error>> {
+	let mut tasks = JoinSet::new();
+
+	for candidate in candidates {
+		let store = store.clone();
+
+		tasks.spawn(async move {
+			let result = store.accept_policy_revision(candidate.clone()).await;
+
+			(candidate, result)
+		});
+	}
+
+	let mut winner = None;
+	let mut conflicts = 0;
+
+	while let Some(result) = tasks.join_next().await {
+		let (candidate, result) = result?;
+
+		match result {
+			Ok(accepted) => winner = Some((candidate, accepted)),
+			Err(StoreError::IdempotencyConflict) => conflicts += 1,
+			Err(error) => return Err(error.into()),
+		}
+	}
+
+	let (winner_request, winner_revision) = winner.expect("one concurrent acceptance wins");
+
+	assert_eq!(conflicts, 1);
+
+	Ok((winner_request, winner_revision))
+}
+
+async fn assert_policy_database_guards(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	policy_id: &PolicyId,
+	lead_id: &AgentId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	for statement in [
+		"UPDATE decodex.policy_revisions SET provenance='changed' \
+		 WHERE policy_id='31000000-0000-4000-8000-000000000001' AND revision=1",
+		"DELETE FROM decodex.policy_revisions \
+		 WHERE policy_id='31000000-0000-4000-8000-000000000001' AND revision=1",
+		"UPDATE decodex.policies SET created_at=created_at+interval '1 second' \
+		 WHERE policy_id='31000000-0000-4000-8000-000000000001'",
+	] {
+		client
+			.batch_execute(statement)
+			.await
+			.expect_err("accepted Policy authority rejects retroactive mutation");
+	}
+
+	client
+		.batch_execute(
+			"INSERT INTO decodex.policy_revisions \
+			 (policy_id,project_id,revision,provenance,snapshot,accepted_by,supersedes_revision) VALUES \
+			 ('31000000-0000-4000-8000-000000000001',\
+			  '11000000-0000-4000-8000-000000000050',3,'cross-agent','{}',\
+			  '22000000-0000-4000-8000-000000000051',2)",
+		)
+		.await
+		.expect_err("cross-Project accepting Agent foreign key rejects attachment");
+
+	store.transition_project(project_id, 1, ProjectStatus::Paused).await?;
+
+	let paused_acceptance = policy_acceptance(project_id, policy_id, lead_id, 3, "paused-project");
+
+	assert!(matches!(
+		store.accept_policy_revision(paused_acceptance).await,
+		Err(StoreError::InvalidInput("Policy acceptance requires active Project Lead authority"))
+	));
 
 	Ok(())
 }
