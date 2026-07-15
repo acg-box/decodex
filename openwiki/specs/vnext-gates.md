@@ -198,8 +198,19 @@ The candidate-4 boundary is:
 1. One schema-qualified ingress-only checked text domain,
    `decodex.canonical_uuid_v4_text`, owns exact lowercase hyphenated UUID-v4 boundary
    spelling. It is not durable identity storage.
-2. Every externally executable identity-bearing mutator accepts that domain directly.
-   No UUID or plain-text overload may exist or resolve.
+2. The closed `pg_proc` inventory contains only these three externally executable
+   identity-bearing mutator signatures:
+
+   ```text
+   decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)
+   decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)
+   decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)
+   ```
+
+   No `pg_catalog.text`, `pg_catalog.uuid`, polymorphic, or other identity-mutator
+   overload exists. Exact-domain, unknown-literal, explicit-`pg_catalog.text`, and
+   prepared/bound-`pg_catalog.text` expressions may resolve to these signatures. Every
+   non-null form must pass `canonical_uuid_v4_text_exact` before function execution.
 3. The domain is not universal NULL authority. Every mutator remains `CALLED ON NULL
    INPUT` and rejects every null identity parameter in its first executable statement,
    before casts, locks, reads, or writes. Every such rejection uses exactly SQLSTATE
@@ -209,14 +220,25 @@ The candidate-4 boundary is:
 4. Validated domain text converts locally to UUID. UUID table columns retain durable
    semantic version/variant checks, PK/FK, uniqueness, lifecycle, revision, and restore
    authority.
-5. Rust binds the original typed ID string as wire `text` and invokes
-   `::text::decodex.canonical_uuid_v4_text`; it never binds a domain OID.
+5. Rust continues to bind the original typed ID string as wire text and spells every
+   identity argument `$n::pg_catalog.text::decodex.canonical_uuid_v4_text`; it never
+   binds a domain OID.
 6. Explicit caller normalization through
-   `uuid::text::decodex.canonical_uuid_v4_text` is accepted, and the contract begins at
-   the resulting domain text value. Discarded pre-boundary spelling is outside the
-   contract. An unconverted UUID expression must not resolve to a domain-bearing mutator.
+   `uuid::text::decodex.canonical_uuid_v4_text` remains accepted. Lexical authority
+   begins after that explicit normalization, at the resulting domain text value;
+   discarded pre-boundary spelling is outside the contract. Under the attested catalog,
+   a bare `pg_catalog.uuid` expression must not resolve to a domain-bearing mutator and
+   returns SQLSTATE `42883`.
 7. Runtime retains SELECT-only Project/Agent table access and no direct DML.
-8. At `ba09238b189da12ad60c2a6a3e10c0c60d1c5c52`, current-state audit evidence shows
+8. Readiness and every live revalidation reject any direct implicit
+   `pg_catalog.uuid` -> `pg_catalog.text` cast. That cast audit is not standalone
+   authority: the same pass retains the closed `pg_proc` inventory, schema ownership and
+   CREATE restrictions, extension/dependency checks, qualified calls and fixed
+   function-local search paths, domain/type ACLs, PUBLIC/default-privilege closure, the
+   exact runtime EXECUTE allowlist below, SELECT-only Project/Agent table access, and no
+   runtime Project/Agent DML.
+
+   At `ba09238b189da12ad60c2a6a3e10c0c60d1c5c52`, current-state audit evidence shows
    the legacy runtime identity can execute 33 canonical signatures: the 15 required
    non-trigger routines below plus 18 trigger-only routines. The nineteenth trigger-only
    routine, `decodex.capture_history_item_version()`, is already non-executable. That
@@ -287,6 +309,12 @@ The candidate-4 boundary is:
 12. Candidate 4 preserves the resolved credential/privacy, split-identity, concurrency,
     dot/C0/DEL/C1 path, lifecycle, restart, collation, tamper, digest, rollback, and
     populated-restore obligations.
+
+Candidate 4's ingress suite uses separately named cases for exact-domain,
+unknown-literal, explicit-text, prepared/bound-text, invalid-text, null, bare-UUID, and
+explicit-`uuid::text::decodex.canonical_uuid_v4_text` expressions. Every case carries
+its exact SQL expression in the assertion/report so text and UUID outcomes cannot be
+grouped or falsely attributed.
 
 These requirements are one authority boundary. A domain check does not replace durable
 UUID constraints, explicit NULL guards, function- and default-privilege closure, or
