@@ -299,7 +299,7 @@ fn normalize_item(params: &Value, completed: bool) -> Result<NormalizedEvent, Ev
 			.map(|value| {
 				value
 					.as_str()
-					.map(|id| ThreadId::from_protocol(id.to_owned()))
+					.map(ThreadId::from_protocol)
 					.ok_or(EventDecodeError::InvalidKnownEvent)
 			})
 			.collect::<Result<Vec<_>, _>>()?;
@@ -333,11 +333,11 @@ fn normalize_item(params: &Value, completed: bool) -> Result<NormalizedEvent, Ev
 }
 
 fn thread_id(value: &Value, key: &str) -> Result<ThreadId, EventDecodeError> {
-	Ok(ThreadId::from_protocol(string_field(value, key)?.to_owned()))
+	Ok(ThreadId::from_protocol(string_field(value, key)?))
 }
 
 fn optional_thread_id(value: &Value, key: &str) -> Option<ThreadId> {
-	value.get(key).and_then(Value::as_str).map(|value| ThreadId::from_protocol(value.to_owned()))
+	value.get(key).and_then(Value::as_str).map(ThreadId::from_protocol)
 }
 
 fn nested_id(value: &Value, key: &str) -> Result<OpaqueId, EventDecodeError> {
@@ -422,7 +422,7 @@ mod tests {
 		assert_eq!(
 			event,
 			NormalizedEvent::MessageDelta {
-				thread_id: ThreadId::from_protocol("thread-1".into()),
+				thread_id: ThreadId::from_protocol("thread-1"),
 				turn_id: OpaqueId::from_protocol("turn-1"),
 			}
 		);
@@ -473,8 +473,8 @@ mod tests {
 		assert_eq!(
 			event,
 			NormalizedEvent::CollaborationActivity(RunLocalActor {
-				id: ThreadId::from_protocol("child".into()),
-				parent_id: Some(ThreadId::from_protocol("parent".into())),
+				id: ThreadId::from_protocol("child"),
+				parent_id: Some(ThreadId::from_protocol("parent")),
 				activity: CollaborationActivityKind::Interacted,
 				optional_metadata_present: true,
 				turn_id: OpaqueId::from_protocol("turn"),
@@ -489,9 +489,9 @@ mod tests {
 		let event = event::normalize_event(br#"{"method":"item/completed","params":{"threadId":"parent","turnId":"turn","item":{"id":"tool-item","type":"collabAgentToolCall","senderThreadId":"parent","receiverThreadIds":["child"],"tool":"spawnAgent","status":"completed","prompt":"api_key=secret"}}}"#).unwrap();
 
 		assert!(matches!(event, NormalizedEvent::CollaborationToolCall(ref call)
-			if call.thread_id == ThreadId::from_protocol("parent".into())
-			&& call.sender_thread_id == ThreadId::from_protocol("parent".into())
-			&& call.receiver_thread_ids[0] == ThreadId::from_protocol("child".into())
+			if call.thread_id == ThreadId::from_protocol("parent")
+				&& call.sender_thread_id == ThreadId::from_protocol("parent")
+				&& call.receiver_thread_ids[0] == ThreadId::from_protocol("child")
 			&& call.tool == CollaborationTool::SpawnAgent
 			&& call.status == CollaborationToolStatus::Completed && call.completed));
 		assert!(!format!("{event:?}").contains("secret"));
