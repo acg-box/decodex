@@ -13,7 +13,9 @@ use std::{
 };
 
 use crate::account_launch::process::{
-	CredentialVault, ProbeError, QuarantineSlotLease, ReadOnlyProbe, ReadOnlyProbeResult,
+	CredentialVault, ExactThreadReconciler, ExactThreadReconciliation,
+	ExactThreadReconciliationFailure, ExactThreadReconciliationResult, ProbeError,
+	QuarantineSlotLease, ReadOnlyProbe, ReadOnlyProbeResult,
 };
 use decodex_codex::CapabilityCache;
 use decodex_core::AccountId;
@@ -97,6 +99,52 @@ impl ManualAccountLauncher {
 		Ok(ManualAccountLaunchResult { observation, account_revision: expected_revision })
 	}
 
+	/// Execute one exact reconciliation under an explicitly selected ready account.
+	///
+	/// This private composition performs no selection, persistence, turn dispatch, or restart
+	/// replay. PostgreSQL authority is checked before process mechanics and again after bounded
+	/// cleanup.
+	async fn reconcile_bound(
+		&self,
+		request: ManualReconciliationRequest,
+		vault: &dyn CredentialVault,
+		cache: &mut CapabilityCache,
+	) -> Result<ManualReconciliationResult, ManualAccountLaunchError> {
+		let ManualReconciliationRequest { account_id, expected_revision, reconciler, operation } =
+			request;
+
+		if reconciler.account_id() != &account_id {
+			return Err(ManualAccountLaunchError::BindingMismatch);
+		}
+		if !self
+			.store
+			.account_is_ready_at_revision(&account_id, expected_revision)
+			.await
+			.map_err(|_| ManualAccountLaunchError::ProductStateUnavailable)?
+		{
+			return Err(ManualAccountLaunchError::ReadinessRejected);
+		}
+
+		let guard = self
+			.capacity
+			.reserve(account_id.clone(), expected_revision)
+			.map_err(|_| ManualAccountLaunchError::CapacityExhausted)?;
+		let result = reconciler
+			.run_mechanical_with_lifetime_guard(vault, cache, guard, operation)
+			.map_err(ManualAccountLaunchError::Reconciliation)?;
+
+		if !self
+			.store
+			.account_is_ready_at_revision(&account_id, expected_revision)
+			.await
+			.map_err(|_| ManualAccountLaunchError::ProductStateUnavailable)?
+		{
+			return Err(ManualAccountLaunchError::ReadinessRejected);
+		}
+
+		Ok(ManualReconciliationResult { result, account_id, account_revision: expected_revision })
+	}
+
 	#[cfg(test)]
 	fn active_capacity(&self) -> u16 {
 		self.capacity.active()
@@ -124,6 +172,27 @@ impl ManualAccountLaunchRequest {
 	}
 }
 
+/// Exact caller-provided account authority and one closed reconciliation operation.
+struct ManualReconciliationRequest {
+	account_id: AccountId,
+	expected_revision: i64,
+	reconciler: ExactThreadReconciler,
+	operation: ExactThreadReconciliation,
+}
+impl ManualReconciliationRequest {
+	fn new(
+		account_id: AccountId,
+		expected_revision: i64,
+		reconciler: ExactThreadReconciler,
+		operation: ExactThreadReconciliation,
+	) -> Result<Self, ManualAccountLaunchError> {
+		if expected_revision < 1 {
+			return Err(ManualAccountLaunchError::ReadinessRejected);
+		}
+
+		Ok(Self { account_id, expected_revision, reconciler, operation })
+	}
+}
 /// Non-live observation produced only after exact final PostgreSQL revalidation and cleanup.
 struct ManualAccountLaunchResult {
 	observation: ReadOnlyProbeResult,
@@ -151,6 +220,28 @@ impl Debug for ManualAccountLaunchResult {
 	}
 }
 
+/// Non-live reconciliation result released only after exact final account revalidation.
+struct ManualReconciliationResult {
+	result: ExactThreadReconciliationResult,
+	account_id: AccountId,
+	account_revision: i64,
+}
+impl Debug for ManualReconciliationResult {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		let operation = match self.result {
+			ExactThreadReconciliationResult::List(_) => "list",
+			ExactThreadReconciliationResult::Read(_) => "read",
+			ExactThreadReconciliationResult::Archive(_) => "archive",
+		};
+
+		formatter
+			.debug_struct("ManualReconciliationResult")
+			.field("account_id", &self.account_id)
+			.field("account_revision", &self.account_revision)
+			.field("operation", &operation)
+			.finish_non_exhaustive()
+	}
+}
 /// Closed manual launch failure without database, account, credential, or provider text.
 #[derive(Debug)]
 enum ManualAccountLaunchError {
@@ -164,11 +255,14 @@ enum ManualAccountLaunchError {
 	BindingMismatch,
 	/// Bounded process mechanics failed.
 	Probe(ProbeError),
+	/// Exact reconciliation mechanics failed closed.
+	Reconciliation(ExactThreadReconciliationFailure),
 }
 impl Display for ManualAccountLaunchError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::Probe(error) => Display::fmt(error, formatter),
+			Self::Reconciliation(error) => write!(formatter, "{error:?}"),
 			_ => write!(formatter, "{self:?}"),
 		}
 	}
