@@ -3,6 +3,7 @@
 
 mod client;
 mod doctor;
+mod retained_session;
 mod wire;
 
 pub use self::{
@@ -10,6 +11,10 @@ pub use self::{
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,
+	},
+	retained_session::{
+		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
+		SessionCancellation, SessionCheckpoint, SessionDelivery,
 	},
 	wire::{
 		CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
