@@ -1,6 +1,7 @@
 //! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
 
 mod account;
+mod agent;
 mod blob;
 mod cache;
 mod config;
@@ -8,10 +9,15 @@ mod conversation;
 mod identity;
 #[cfg(unix)] mod path_unix;
 mod paths;
+mod project;
 mod storage;
 
 pub use self::{
 	account::{AccountError, AccountId, AccountState},
+	agent::{
+		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
+		lead_status_for_project,
+	},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
 		MAX_BLOB_BYTES,
@@ -41,6 +47,13 @@ pub use self::{
 	},
 	identity::ServerIdentity,
 	paths::{DecodexPaths, DecodexRoot, PathError},
+	project::{
+		MAX_PROJECT_METADATA_FIELDS, MAX_PROJECT_METADATA_KEY_BYTES,
+		MAX_PROJECT_METADATA_VALUE_BYTES, MAX_PROJECT_PATH_BYTES, MAX_REPOSITORY_IDENTITY_BYTES,
+		Project, ProjectAuthority, ProjectError, ProjectId, ProjectMetadata, ProjectMetadataValue,
+		ProjectRepository, ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity,
+		ServerProjectPath,
+	},
 	storage::StorageError,
 };
 

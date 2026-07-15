@@ -17,6 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATABASE = "decodex_xy1267"
 COLLATION_DATABASE = "decodex_xy1267_tr"
 RESTORE_DATABASE = "decodex_xy1267_restore"
+DEFAULT_ACL_TAMPER_DATABASE = "decodex_xy1315_default_acl_tamper"
+DEFAULT_ACL_RESTORE_DATABASE = "decodex_xy1315_default_acl_restore"
 AUTHORITY_DATABASE = "decodex_xy1307_authority"
 TRIGGER_DATABASE = "decodex_xy1307_trigger_contract"
 FUNCTION_DATABASE = "decodex_xy1307_function_contract"
@@ -25,6 +27,7 @@ TRIGGER_ESCAPE_DATABASE = "decodex_xy1307_trigger_escape"
 EXTENSION_CONTROL_DATABASE = "decodex_xy1307_extension_control"
 HOSTILE_SEARCH_DATABASE = "decodex_xy1307_hostile_search"
 CONSTRAINT_DRIFT_DATABASE = "decodex_xy1307_constraint_drift"
+IDENTITY_CAST_DATABASE = "decodex_xy1315_identity_cast"
 EXTERNAL_CASCADE_DATABASE = "decodex_xy1307_external_cascade"
 LEDGER_TAMPER_DATABASE = "decodex_xy1307_ledger_tamper"
 MISSING_EXTENSION_DATABASE = "decodex_xy1307_missing_extension"
@@ -62,6 +65,68 @@ UNSAFE_ROLES = {
 	"membership-admin": "decodex_unsafe_membership_admin",
 	"superuser": "decodex_unsafe_superuser",
 }
+RUNTIME_EXECUTE_SIGNATURES = (
+	"decodex.is_canonical_media_type(pg_catalog.text)",
+	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
+	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
+	"decodex.ascii_lower(pg_catalog.text)",
+	"decodex.has_credential_material(pg_catalog.text)",
+	"decodex.has_credential_material(pg_catalog.jsonb)",
+	"decodex.is_meaningful_evidence(pg_catalog.jsonb)",
+	"decodex.rfc3339_utc(pg_catalog.timestamptz)",
+	"decodex.is_valid_operation_duration(pg_catalog.interval)",
+	"decodex.lease_ttl_milliseconds(pg_catalog.interval)",
+	"decodex.try_acquire_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.interval)",
+	"decodex.renew_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.interval)",
+	"decodex.release_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.prune_history_snapshots()",
+	"decodex.issue_history_cursor(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int4)",
+	"decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
+	"decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
+	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
+)
+TRIGGER_ONLY_SIGNATURES = (
+	"decodex.enforce_lease_operation_time()",
+	"decodex.enforce_outbox_operation_time()",
+	"decodex.forbid_mutation_of_activity()",
+	"decodex.enforce_outbox_terminal_retention()",
+	"decodex.forbid_outbox_truncate()",
+	"decodex.enforce_command_receipt_state()",
+	"decodex.acquire_hierarchy_coordinator()",
+	"decodex.canonicalize_created_at()",
+	"decodex.enforce_blob_object_state()",
+	"decodex.enforce_conversation_state()",
+	"decodex.enforce_runtime_session_state()",
+	"decodex.enforce_turn_state()",
+	"decodex.enforce_history_item_state()",
+	"decodex.capture_history_item_version()",
+	"decodex.enforce_artifact_state()",
+	"decodex.enforce_artifact_revision_state()",
+	"decodex.enforce_context_pack_state()",
+	"decodex.enforce_context_pack_source_state()",
+	"decodex.enforce_history_cursor_state()",
+)
+RUNTIME_TYPE_NAMES = (
+	"decodex.account_state",
+	"decodex.outbox_state",
+	"decodex.effect_state",
+	"decodex.conversation_status",
+	"decodex.runtime_session_state",
+	"decodex.turn_role",
+	"decodex.side_effect_state",
+	"decodex.history_item_kind",
+	"decodex.history_item_status",
+	"decodex.turn_status",
+	"decodex.artifact_status",
+	"decodex.context_source_kind",
+	"decodex.transition_kind",
+	"decodex.context_source_disposition",
+	"decodex.command_receipt_state",
+	"decodex.canonical_uuid_v4_text",
+	"decodex.project_status",
+	"decodex.agent_role",
+	"decodex.agent_status",
+)
 
 
 class TestFailure(RuntimeError):
@@ -310,6 +375,10 @@ def run_migration(env: dict[str, str]) -> str:
 
 
 def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
+	execute_signatures = ", ".join(RUNTIME_EXECUTE_SIGNATURES)
+	trigger_signatures = ", ".join(TRIGGER_ONLY_SIGNATURES)
+	type_names = ", ".join(RUNTIME_TYPE_NAMES)
+
 	psql(
 		database,
 		f"GRANT CONNECT ON DATABASE {database} TO {role}; "
@@ -323,12 +392,14 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"decodex.account_snapshots, decodex.blob_objects, decodex.artifact_revisions, decodex.context_packs, "
 		f"decodex.context_pack_sources, decodex.transition_proposals TO {role}; "
 		f"GRANT SELECT ON TABLE decodex.history_cursors, decodex.history_item_versions TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.projects, decodex.agents TO {role}; "
 		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
 		f"GRANT USAGE ON SEQUENCE decodex.activity_sequence_seq, decodex.outbox_id_seq TO {role}; "
-		f"GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA decodex TO {role}; "
-		f"REVOKE ALL ON FUNCTION decodex.capture_history_item_version() FROM {role}",
+		f"GRANT USAGE ON TYPE {type_names} TO {role}; "
+		f"GRANT EXECUTE ON FUNCTION {execute_signatures} TO {role}; "
+		f"REVOKE ALL ON FUNCTION {trigger_signatures} FROM {role}, PUBLIC",
 		env,
 	)
 
@@ -889,7 +960,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 35",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 39",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -1157,6 +1228,37 @@ def main() -> int:
 			RUNTIME_ROLE,
 		)
 
+		create_database(IDENTITY_CAST_DATABASE, env)
+		set_contract_urls(env, socket_dir, port, IDENTITY_CAST_DATABASE, RUNTIME_ROLE)
+		run_migration(env)
+		provision_runtime(IDENTITY_CAST_DATABASE, RUNTIME_ROLE, env)
+		psql(
+			IDENTITY_CAST_DATABASE,
+			"CREATE FUNCTION public.xy1315_uuid_to_text(pg_catalog.uuid) "
+			"RETURNS pg_catalog.text LANGUAGE sql IMMUTABLE STRICT "
+			"AS 'SELECT $1::pg_catalog.text'; "
+			"CREATE CAST (pg_catalog.uuid AS pg_catalog.text) "
+			"WITH FUNCTION public.xy1315_uuid_to_text(pg_catalog.uuid) AS IMPLICIT",
+			env,
+		)
+		if psql(
+			IDENTITY_CAST_DATABASE,
+			"SELECT count(*) FROM pg_catalog.pg_cast AS conversion "
+			"WHERE conversion.castsource='pg_catalog.uuid'::pg_catalog.regtype "
+			"AND conversion.casttarget='pg_catalog.text'::pg_catalog.regtype "
+			"AND conversion.castcontext='i'",
+			env,
+		) != "1":
+			raise TestFailure("implicit UUID-to-text cast fixture is vacuous")
+		identity_cast_output = run(
+			[
+				"cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
+				"postgres_store", "--run-ignored", "all", "--",
+				"postgres_store_rejects_implicit_uuid_to_text_cast", "--exact",
+			],
+			env,
+		)
+
 		create_database(EXTERNAL_CASCADE_DATABASE, env)
 		set_contract_urls(env, socket_dir, port, EXTERNAL_CASCADE_DATABASE, RUNTIME_ROLE)
 		run_migration(env)
@@ -1236,7 +1338,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "4|1":
+		) != "5|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
@@ -1382,6 +1484,76 @@ def main() -> int:
 			],
 			env,
 		)
+
+		create_database(DEFAULT_ACL_TAMPER_DATABASE, env)
+		run(
+			[
+				"pg_restore", "--exit-on-error", "-d",
+				DEFAULT_ACL_TAMPER_DATABASE, str(dump_path),
+			],
+			env,
+		)
+		default_acl_tamper_root = work / "decodex-incompatible-schema-default-acl"
+		write_bootstrap_config(
+			default_acl_tamper_root,
+			socket_dir,
+			port,
+			DEFAULT_ACL_TAMPER_DATABASE,
+			MIGRATION_ROLE,
+			RUNTIME_ROLE,
+		)
+		default_acl_live_doctor_output = run_live_doctor_mutation(
+			default_acl_tamper_root,
+			DEFAULT_ACL_TAMPER_DATABASE,
+			f"ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATION_ROLE} IN SCHEMA decodex "
+			"GRANT EXECUTE ON FUNCTIONS TO PUBLIC",
+			"schema-default-acl",
+			work,
+			env,
+		)
+		default_acl_probe = (
+			"SELECT count(*) "
+			"FROM pg_catalog.pg_default_acl AS default_acl "
+			"JOIN pg_catalog.pg_namespace AS namespace "
+			"ON namespace.oid=default_acl.defaclnamespace "
+			f"WHERE default_acl.defaclrole='{MIGRATION_ROLE}'::pg_catalog.regrole "
+			"AND namespace.nspname='decodex' AND default_acl.defaclobjtype='f' "
+			"AND EXISTS (SELECT 1 FROM pg_catalog.aclexplode(default_acl.defaclacl) "
+			"AS privilege WHERE privilege.grantee=0 "
+			"AND privilege.privilege_type='EXECUTE')"
+		)
+		if psql(DEFAULT_ACL_TAMPER_DATABASE, default_acl_probe, env) != "1":
+			raise TestFailure("schema-scoped PUBLIC default-ACL fixture is vacuous")
+
+		default_acl_dump_path = work / "decodex_xy1315_default_acl.dump"
+		run(
+			[
+				"pg_dump", "-Fc", "-f", str(default_acl_dump_path),
+				DEFAULT_ACL_TAMPER_DATABASE,
+			],
+			env,
+		)
+		create_database(DEFAULT_ACL_RESTORE_DATABASE, env)
+		run(
+			[
+				"pg_restore", "--exit-on-error", "-d",
+				DEFAULT_ACL_RESTORE_DATABASE, str(default_acl_dump_path),
+			],
+			env,
+		)
+		if psql(DEFAULT_ACL_RESTORE_DATABASE, default_acl_probe, env) != "1":
+			raise TestFailure("populated restore lost the schema-scoped PUBLIC default ACL")
+		set_contract_urls(
+			env, socket_dir, port, DEFAULT_ACL_RESTORE_DATABASE, RUNTIME_ROLE
+		)
+		default_acl_restore_output = run(
+			[
+				"cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
+				"postgres_store", "--run-ignored", "all", "--",
+				"postgres_store_rejects_schema_scoped_default_acl_restore", "--exact",
+			],
+			env,
+		)
 		print(migration_output)
 		print(restart_output)
 		print(contract_output)
@@ -1393,9 +1565,12 @@ def main() -> int:
 		print(unsafe_authority_output)
 		print(ledger_live_doctor_output)
 		print(missing_extension_live_doctor_output)
+		print(identity_cast_output)
 		print(incompatible_authority_output)
 		print(hostile_search_output)
 		print(restore_output)
+		print(default_acl_live_doctor_output)
+		print(default_acl_restore_output)
 		return 0
 	finally:
 		stop_error: Exception | None = None

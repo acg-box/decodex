@@ -7,7 +7,8 @@ use crate::StoreError;
 
 const FOUNDATION_MIGRATION: &str = include_str!("../migrations/V1__persistence_foundation.sql");
 const CONVERSATION_MIGRATION: &str = include_str!("../migrations/V3__conversation_history.sql");
-const FUNCTION_CONTRACTS: [FunctionContract; 34] = [
+const PROJECT_AGENT_MIGRATION: &str = include_str!("../migrations/V5__project_agent_authority.sql");
+const FUNCTION_CONTRACTS: [FunctionContract; 38] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -314,6 +315,74 @@ const FUNCTION_CONTRACTS: [FunctionContract; 34] = [
 		"decodex.enforce_history_cursor_state()",
 		"enforce_history_cursor_state()",
 	),
+	FunctionContract {
+		name: "is_project_metadata",
+		lookup_signature: "decodex.is_project_metadata(pg_catalog.jsonb)",
+		migration_signature: "is_project_metadata(document jsonb)",
+		arguments: "document jsonb",
+		result: "boolean",
+		language: "plpgsql",
+		volatility: "i",
+		strict: true,
+		returns_set: false,
+		rows: 0.0,
+	},
+	FunctionContract {
+		name: "bootstrap_advisor",
+		lookup_signature: "decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
+		migration_signature: "bootstrap_advisor(p_agent_id decodex.canonical_uuid_v4_text)",
+		arguments: "p_agent_id decodex.canonical_uuid_v4_text",
+		result: "TABLE(agent_id uuid, role decodex.agent_role, project_id uuid, status decodex.agent_status, revision bigint)",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	FunctionContract {
+		name: "create_project",
+		lookup_signature: "decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
+		migration_signature: "create_project(\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_repository_identity text,\n\tp_repository_root text,\n\tp_default_cwd text,\n\tp_metadata jsonb,\n\tp_lead_id decodex.canonical_uuid_v4_text\n)",
+		arguments: "p_project_id decodex.canonical_uuid_v4_text, p_repository_identity text, p_repository_root text, p_default_cwd text, p_metadata jsonb, p_lead_id decodex.canonical_uuid_v4_text",
+		result: "TABLE(project_id uuid, repository_identity text, repository_root text, default_cwd text, project_status decodex.project_status, metadata jsonb, project_revision bigint, agent_id uuid, agent_role decodex.agent_role, agent_status decodex.agent_status, agent_revision bigint)",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	FunctionContract {
+		name: "transition_project",
+		lookup_signature: "decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
+		migration_signature: "transition_project(\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_expected_revision bigint,\n\tp_status decodex.project_status\n)",
+		arguments: "p_project_id decodex.canonical_uuid_v4_text, p_expected_revision bigint, p_status decodex.project_status",
+		result: "TABLE(project_id uuid, repository_identity text, repository_root text, default_cwd text, project_status decodex.project_status, metadata jsonb, project_revision bigint, agent_id uuid, agent_role decodex.agent_role, agent_status decodex.agent_status, agent_revision bigint)",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+];
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 18] = [
+	"decodex.is_canonical_media_type(pg_catalog.text)",
+	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
+	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
+	"decodex.ascii_lower(pg_catalog.text)",
+	"decodex.has_credential_material(pg_catalog.text)",
+	"decodex.has_credential_material(pg_catalog.jsonb)",
+	"decodex.is_meaningful_evidence(pg_catalog.jsonb)",
+	"decodex.rfc3339_utc(pg_catalog.timestamptz)",
+	"decodex.is_valid_operation_duration(pg_catalog.interval)",
+	"decodex.lease_ttl_milliseconds(pg_catalog.interval)",
+	"decodex.try_acquire_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.interval)",
+	"decodex.renew_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.interval)",
+	"decodex.release_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.prune_history_snapshots()",
+	"decodex.issue_history_cursor(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int4)",
+	"decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
+	"decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
+	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
 ];
 const SAFETY_FUNCTIONS: [&str; 19] = [
 	"enforce_lease_operation_time",
@@ -507,7 +576,9 @@ WITH set_roles AS (
   ('history_cursors', true, false, false, false),
   ('context_packs', true, true, false, false),
   ('context_pack_sources', true, true, false, false),
-  ('transition_proposals', true, true, false, false)
+  ('transition_proposals', true, true, false, false),
+  ('projects', true, false, false, false),
+  ('agents', true, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -516,7 +587,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 20
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 22
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -773,14 +844,30 @@ SELECT
     OR proc.pronargdefaults <> 0
     OR proc.proargdefaults IS NOT NULL,
   proc.prosecdef,
-  proc.proconfig,
-  proc.prosrc,
-  pg_catalog.has_function_privilege(session_user, proc.oid, 'EXECUTE')
+	proc.proconfig,
+	proc.prosrc,
+	pg_catalog.has_function_privilege(session_user, proc.oid, 'EXECUTE'),
+	EXISTS (
+	  SELECT 1
+	  FROM pg_catalog.aclexplode(
+	    COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))
+	  ) AS privilege
+	  WHERE privilege.grantee = 0 AND privilege.privilege_type = 'EXECUTE'
+	)
 FROM pg_catalog.pg_proc AS proc
 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
 JOIN pg_catalog.pg_language AS language ON language.oid = proc.prolang
 WHERE namespace.nspname = 'decodex'
   AND proc.oid = pg_catalog.to_regprocedure($1)
+"#;
+const IDENTITY_CAST_AUTHORITY_SQL: &str = r#"
+SELECT NOT EXISTS (
+  SELECT 1
+  FROM pg_catalog.pg_cast AS conversion
+  WHERE conversion.castsource = 'pg_catalog.uuid'::pg_catalog.regtype
+    AND conversion.casttarget = 'pg_catalog.text'::pg_catalog.regtype
+    AND conversion.castcontext = 'i'
+)
 "#;
 const EXECUTION_PATH_CONTRACT_SQL: &str = r#"
 WITH catalog_context AS MATERIALIZED (
@@ -910,7 +997,7 @@ const SCHEMA_CONTRACT_SQL: &str = r#"
 WITH catalog_context AS MATERIALIZED (
   SELECT pg_catalog.set_config('search_path', 'pg_catalog', true)
 ), decodex_namespace AS (
-  SELECT namespace.oid
+  SELECT namespace.oid, namespace.nspowner
   FROM pg_catalog.pg_namespace AS namespace
   CROSS JOIN catalog_context
   WHERE namespace.nspname = 'decodex'
@@ -932,6 +1019,39 @@ WITH catalog_context AS MATERIALIZED (
       trigger.tgrelid IN (SELECT oid FROM decodex_relations)
       OR trigger.tgconstraint IN (SELECT oid FROM touching_constraints)
     )
+), decodex_functions AS (
+  SELECT proc.*
+  FROM pg_catalog.pg_proc AS proc
+  WHERE proc.pronamespace IN (SELECT oid FROM decodex_namespace)
+), decodex_types AS (
+  SELECT type.*
+  FROM pg_catalog.pg_type AS type
+  WHERE type.typnamespace IN (SELECT oid FROM decodex_namespace)
+), runtime_role AS (
+  SELECT role.oid
+  FROM pg_catalog.pg_roles AS role
+  WHERE role.rolname = session_user
+), authority_dependency_targets(kind, identity, classid, objid, objsubid) AS (
+  SELECT
+    'function_dependency',
+    pg_catalog.format(
+      '%I.%I(%s)', namespace.nspname, proc.proname,
+      pg_catalog.pg_get_function_identity_arguments(proc.oid)
+    ),
+    'pg_catalog.pg_proc'::pg_catalog.regclass,
+    proc.oid,
+    0
+  FROM decodex_functions AS proc
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
+  UNION ALL
+  SELECT
+    'type_dependency',
+    pg_catalog.format('%I.%I', namespace.nspname, type.typname),
+    'pg_catalog.pg_type'::pg_catalog.regclass,
+    type.oid,
+    0
+  FROM decodex_types AS type
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
 ), dependency_targets(kind, identity, classid, objid, objsubid) AS (
   SELECT
     'default',
@@ -1097,6 +1217,138 @@ WITH catalog_context AS MATERIALIZED (
     ON index_namespace.oid = constraint_index.relnamespace
   UNION ALL
   SELECT
+    'type',
+    pg_catalog.format('%I.%I', namespace.nspname, type.typname),
+    pg_catalog.jsonb_build_array(
+      type.typtype,
+      type.typcategory,
+      pg_catalog.format_type(type.typbasetype, type.typtypmod),
+      type.typnotnull,
+      collation_namespace.nspname,
+      coll.collname,
+      CASE WHEN type.typowner = namespace.nspowner
+        THEN 'owner'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(type.typowner)
+      END,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(
+          pg_catalog.jsonb_build_array(
+            CASE
+              WHEN privilege.grantee = 0 THEN 'PUBLIC'
+              WHEN privilege.grantee = type.typowner THEN 'owner'
+              WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
+              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+            END,
+            privilege.privilege_type,
+            privilege.is_grantable
+          ) ORDER BY privilege.grantee, privilege.privilege_type
+        )
+        FROM pg_catalog.aclexplode(
+          COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))
+        ) AS privilege
+      ), '[]'::pg_catalog.jsonb)
+    )::pg_catalog.text
+  FROM decodex_types AS type
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+  LEFT JOIN pg_catalog.pg_collation AS coll ON coll.oid = type.typcollation
+  LEFT JOIN pg_catalog.pg_namespace AS collation_namespace
+    ON collation_namespace.oid = coll.collnamespace
+  UNION ALL
+  SELECT
+    'domain_constraint',
+    pg_catalog.format('%I.%I.%I', namespace.nspname, type.typname, con.conname),
+    pg_catalog.jsonb_build_array(
+      pg_catalog.pg_get_constraintdef(con.oid, false),
+      con.convalidated,
+      con.conenforced
+    )::pg_catalog.text
+  FROM pg_catalog.pg_constraint AS con
+  JOIN decodex_types AS type ON type.oid = con.contypid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+  UNION ALL
+  SELECT
+    'function',
+    pg_catalog.format(
+      '%I.%I(%s)', namespace.nspname, proc.proname,
+      pg_catalog.pg_get_function_identity_arguments(proc.oid)
+    ),
+    pg_catalog.jsonb_build_array(
+      pg_catalog.pg_get_function_arguments(proc.oid),
+      pg_catalog.pg_get_function_result(proc.oid),
+      language.lanname,
+      proc.provolatile,
+      proc.proparallel,
+      proc.proisstrict,
+      proc.prosecdef,
+      proc.proleakproof,
+      proc.proconfig,
+      proc.prosrc,
+      CASE WHEN proc.proowner = namespace.nspowner
+        THEN 'owner'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(proc.proowner)
+      END,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(
+          pg_catalog.jsonb_build_array(
+            CASE
+              WHEN privilege.grantee = 0 THEN 'PUBLIC'
+              WHEN privilege.grantee = proc.proowner THEN 'owner'
+              WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
+              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+            END,
+            privilege.privilege_type,
+            privilege.is_grantable
+          ) ORDER BY privilege.grantee, privilege.privilege_type
+        )
+        FROM pg_catalog.aclexplode(
+          COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))
+        ) AS privilege
+      ), '[]'::pg_catalog.jsonb)
+    )::pg_catalog.text
+  FROM decodex_functions AS proc
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
+  JOIN pg_catalog.pg_language AS language ON language.oid = proc.prolang
+  UNION ALL
+  SELECT
+    target.kind,
+    target.identity,
+    pg_catalog.jsonb_build_array(
+      dependency.deptype,
+      pg_catalog.pg_describe_object(
+        dependency.refclassid,
+        dependency.refobjid,
+        dependency.refobjsubid
+      )
+    )::pg_catalog.text
+  FROM authority_dependency_targets AS target
+  JOIN pg_catalog.pg_depend AS dependency
+    ON dependency.classid = target.classid
+   AND dependency.objid = target.objid
+   AND dependency.objsubid = target.objsubid
+  UNION ALL
+  SELECT
+    'default_acl',
+    pg_catalog.format('%s:%s', default_acl.defaclnamespace, default_acl.defaclobjtype),
+    COALESCE((
+      SELECT pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_array(
+          CASE
+            WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            WHEN privilege.grantee = default_acl.defaclrole THEN 'owner'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+          END,
+          privilege.privilege_type,
+          privilege.is_grantable
+        ) ORDER BY privilege.grantee, privilege.privilege_type
+      )
+      FROM pg_catalog.aclexplode(default_acl.defaclacl) AS privilege
+    ), '[]'::pg_catalog.jsonb)::pg_catalog.text
+  FROM pg_catalog.pg_default_acl AS default_acl
+  JOIN decodex_namespace AS namespace ON namespace.nspowner = default_acl.defaclrole
+  WHERE default_acl.defaclnamespace IN (0, namespace.oid)
+    AND default_acl.defaclobjtype IN ('f', 'T')
+  UNION ALL
+  SELECT
     'dependency',
     target.kind || ':' || target.identity,
     pg_catalog.jsonb_build_array(
@@ -1129,8 +1381,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x83, 0xed, 0x77, 0x06, 0x6f, 0x83, 0x2e, 0xa2, 0x1d, 0x78, 0xcb, 0x4a, 0x5e, 0x42, 0xe6, 0xc0,
-	0xfa, 0xe1, 0x78, 0x4b, 0xd8, 0x48, 0x6c, 0xaa, 0x4d, 0x8f, 0x86, 0xcb, 0x7a, 0xa1, 0xd8, 0xf9,
+	0xec, 0x75, 0x7d, 0x18, 0x5f, 0x79, 0xcc, 0x33, 0xdc, 0x51, 0xa8, 0xde, 0x42, 0x6a, 0xb7, 0x45,
+	0x15, 0x3b, 0xb2, 0x66, 0x8d, 0xfe, 0xcd, 0x8e, 0xd0, 0x93, 0x31, 0x6b, 0x58, 0x42, 0x07, 0x88,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -1269,6 +1521,7 @@ struct FunctionContract {
 
 pub(crate) async fn verify_runtime(client: &Client) -> Result<(), StoreError> {
 	verify_forbidden_authority(client).await?;
+	verify_identity_cast_authority(client).await?;
 	verify_execution_path_contract(client).await?;
 	verify_retention_contract(client).await?;
 	verify_function_contract(client).await?;
@@ -1308,7 +1561,7 @@ fn canonical_safety_function_source(function_name: &str) -> Option<&'static str>
 
 fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str> {
 	let declaration = format!("CREATE FUNCTION decodex.{}", contract.migration_signature);
-	let migration = [FOUNDATION_MIGRATION, CONVERSATION_MIGRATION]
+	let migration = [FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION]
 		.into_iter()
 		.find(|migration| migration.contains(&declaration))?;
 	let (_, declaration_and_tail) = migration.split_once(&declaration)?;
@@ -1316,6 +1569,18 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 	let (source, _) = source_and_tail.split_once("$$;")?;
 
 	Some(source)
+}
+
+async fn verify_identity_cast_authority(client: &Client) -> Result<(), StoreError> {
+	let closed: bool = client.query_one(IDENTITY_CAST_AUTHORITY_SQL, &[]).await?.get(0);
+
+	if !closed {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL permits an implicit UUID-to-text identity conversion",
+		));
+	}
+
+	Ok(())
 }
 
 async fn verify_schema_contract(client: &Client) -> Result<(), StoreError> {
@@ -1402,11 +1667,17 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 		let settings: Option<Vec<String>> = row.get(11);
 		let installed_source: String = row.get(12);
 		let executable: bool = row.get(13);
+		let public_executable: bool = row.get(14);
 		let expected_security_definer = matches!(
 			contract.name,
-			"issue_history_cursor" | "prune_history_snapshots" | "capture_history_item_version"
+			"issue_history_cursor"
+				| "prune_history_snapshots"
+				| "capture_history_item_version"
+				| "bootstrap_advisor"
+				| "create_project"
+				| "transition_project"
 		);
-		let expected_executable = contract.name != "capture_history_item_version";
+		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
 
 		if unsafe_metadata
@@ -1436,7 +1707,7 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				"PostgreSQL function semantics differ from the shipped migration".into(),
 			));
 		}
-		if executable != expected_executable {
+		if executable != expected_executable || public_executable {
 			return Err(StoreError::Incompatible(
 				"runtime identity has an incorrect PostgreSQL function privilege".into(),
 			));
@@ -1556,7 +1827,8 @@ mod tests {
 	use std::collections::HashSet;
 
 	use crate::authority::{
-		CONVERSATION_MIGRATION, FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, OWNED_OBJECT_CATALOGS,
+		CONVERSATION_MIGRATION, FOUNDATION_MIGRATION, FUNCTION_CONTRACTS,
+		IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, PROJECT_AGENT_MIGRATION,
 		ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 	};
 
@@ -1594,9 +1866,17 @@ mod tests {
 	}
 
 	#[test]
+	fn schema_manifest_attests_global_and_decodex_scoped_owner_default_acls() {
+		assert!(SCHEMA_CONTRACT_SQL.contains(
+			"default_acl.defaclnamespace IN (0, namespace.oid)\n    AND default_acl.defaclobjtype IN ('f', 'T')"
+		));
+		assert!(!SCHEMA_CONTRACT_SQL.contains("default_acl.defaclnamespace = 0"));
+	}
+
+	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
 		assert_eq!(
-			[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION]
+			[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION]
 				.into_iter()
 				.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
 				.sum::<usize>(),
@@ -1608,7 +1888,7 @@ mod tests {
 		for contract in FUNCTION_CONTRACTS {
 			assert!(lookup_signatures.insert(contract.lookup_signature));
 			assert_eq!(
-				[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION]
+				[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION]
 					.into_iter()
 					.map(|migration| migration
 						.matches(&format!(
@@ -1627,6 +1907,27 @@ mod tests {
 			assert!(source.ends_with('\n'));
 			assert!(!source.trim().is_empty());
 		}
+	}
+
+	#[test]
+	fn identity_mutators_share_one_first_statement_null_guard_and_cast_audit() {
+		for name in ["bootstrap_advisor", "create_project", "transition_project"] {
+			let contract = FUNCTION_CONTRACTS
+				.iter()
+				.find(|contract| contract.name == name)
+				.expect("identity mutator is in the closed function inventory");
+			let source = super::canonical_function_source(contract)
+				.expect("identity mutator has canonical migration source");
+			let first_statement =
+				source.split_once("BEGIN\n").expect("PL/pgSQL body begins").1.trim_start();
+
+			assert!(first_statement.starts_with("IF p_"), "{name}");
+			assert!(first_statement.contains("identity ingress requires canonical UUID-v4 text"));
+			assert!(first_statement.contains("CONSTRAINT = 'canonical_uuid_v4_text_ingress'"));
+		}
+
+		assert!(IDENTITY_CAST_AUTHORITY_SQL.contains("pg_catalog.pg_cast"));
+		assert!(IDENTITY_CAST_AUTHORITY_SQL.contains("conversion.castcontext = 'i'"));
 	}
 
 	#[test]
