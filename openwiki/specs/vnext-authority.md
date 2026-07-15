@@ -145,10 +145,36 @@ cross-run communication is delivered by Decodex as turns to recipient Conversati
 
 Each app-server process is bound to one account. Shared `~/.codex` supplies configuration
 and plugins; per-process credentials are never switched under a live runner. Account
-state is `available`, `depleted`, `unknown`, `auth_failed`, `plugin_unready`, or
-`disabled`. Each quota window stores its class/duration, remaining amount, reset time,
+state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`,
+`plugin_unready`, or `disabled`. Each quota window stores its class/duration, remaining amount, reset time,
 observation time, and confidence; 5-hour and 7-day windows are never inferred from
 positional primary/secondary ordering.
+
+The dormant manual account observation path checks an exact PostgreSQL account revision in the
+`available` state before mechanics and checks the same predicate again after cleanup. Each check
+releases its row and pooled client before arbitrary caller, vault, or process work. The result is a
+post-cleanup non-live observation: readiness is not claimed to remain true while the child runs, and
+any final stale, non-ready, or unavailable observation fails closed. A blocked synchronous vault can
+retain local mechanical capacity, but never a PostgreSQL transaction, row lock, or client checkout.
+Runtime owns the sole sibling-adapter composition and all child/vault/protocol mechanics in private,
+non-reexported modules. Codex remains a pure capability/schema adapter and does not depend on
+PostgreSQL. The private concrete permit moves through every
+sequential preflight and the final child, returning to the attempt only after confirmed group death
+and child reaping. Uncertain cleanup installs it in a hard-capped fair quarantine and ends the launch
+attempt without freeing capacity or synchronously entering an unbounded loop. A stuck group cannot
+starve later cleanup. Capacity exists only after its persistent cleanup owner starts successfully;
+per-iteration unwind and in-flight-job guards retain ownership across panic, poison recovery, and
+wakeup. Cleanup progress never depends on a later launch or external maintenance call. The janitor
+belongs to the live capacity lifecycle rather than process-global static ownership: a weak registry
+preserves one live daemon authority, and a finite coordinator stops and joins the worker after the
+last capacity, permit, and cleanup job is gone. Each permit reserves
+one fixed cleanup slot before spawn, so admission has no shared-lock deadline and a 65th group is
+rejected before it exists. Cargo metadata proves the current
+workspace production dependency graph and absence of synthetic features on normal edges; compile-fail
+contracts prove the launcher and capacity authority are not crate API. Neither proves call provenance,
+the absence of future wrappers, or Rust friend visibility against arbitrary new downstream
+dependencies. Daemon/host crash can orphan OS descendants; restart reconstructs neither assignment
+nor launch authority and requires fresh exact PostgreSQL observations.
 
 Routing honors an available sticky Advisor/Lead account, otherwise chooses an available
 compatible account by user policy and quota facts. Every known depleted window excludes

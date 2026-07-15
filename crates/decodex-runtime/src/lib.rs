@@ -1,5 +1,13 @@
 //! `decodexd` lifecycle assembly and the loopback V1 connection owner.
+//!
+//! Account-process composition remains crate-private and cannot be called by a product root:
+//!
+//! ```compile_fail
+//! use decodex_runtime::ManualAccountLauncher;
+//! ```
 
+#[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
+mod account_launch;
 mod application;
 mod bootstrap;
 mod websocket;

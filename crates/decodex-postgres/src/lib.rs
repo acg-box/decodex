@@ -25,11 +25,11 @@ pub use self::{
 	},
 	error::{BootstrapFailure, StoreError},
 	types::{
-		AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
-		LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState, QuotaWindow,
-		QuotaWindowMutation, ReconciliationOutcome,
+		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, LeaseClaim, OutboxClaim,
+		OutboxReconciliation, OutboxState, QuotaWindow, QuotaWindowMutation, ReconciliationOutcome,
 	},
 };
+pub use decodex_core::{AccountId, AccountState};
 
 use std::{sync::Arc, time::Duration};
 
@@ -92,6 +92,27 @@ impl PostgresStore {
 		runtime: Config,
 		expected_peer_uid: u32,
 	) -> Result<Self, StoreError> {
+		Self::connect_with_pool_size(migration, runtime, expected_peer_uid, 32).await
+	}
+
+	/// Construct a single-connection runtime pool for cross-adapter contention fixtures.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn connect_fixture(
+		migration: Config,
+		runtime: Config,
+		expected_peer_uid: u32,
+	) -> Result<Self, StoreError> {
+		Self::connect_with_pool_size(migration, runtime, expected_peer_uid, 1).await
+	}
+
+	#[cfg(unix)]
+	async fn connect_with_pool_size(
+		migration: Config,
+		runtime: Config,
+		expected_peer_uid: u32,
+		pool_size: usize,
+	) -> Result<Self, StoreError> {
 		validate_connection(&migration)?;
 		validate_connection(&runtime)?;
 		validate_separation(&migration, &runtime)?;
@@ -105,7 +126,7 @@ impl PostgresStore {
 			connector.clone(),
 			ManagerConfig { recycling_method: RecyclingMethod::Fast },
 		);
-		let pool = Pool::builder(manager).max_size(32).build()?;
+		let pool = Pool::builder(manager).max_size(pool_size).build()?;
 		let client = checkout(&pool, &connector).await?;
 
 		authority::verify_runtime(&client).await?;
@@ -113,10 +134,12 @@ impl PostgresStore {
 
 		drop(client);
 
-		let first = checkout(&pool, &connector).await?;
-		let second = checkout(&pool, &connector).await?;
+		if pool_size > 1 {
+			let first = checkout(&pool, &connector).await?;
+			let second = checkout(&pool, &connector).await?;
 
-		drop((first, second));
+			drop((first, second));
+		}
 
 		Ok(Self { pool: Arc::new(pool), connector })
 	}

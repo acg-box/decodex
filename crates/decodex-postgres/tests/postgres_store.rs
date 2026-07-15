@@ -1713,7 +1713,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 3);
+	assert_eq!(history.len(), 4);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
@@ -1723,6 +1723,9 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 	assert_eq!(history[2].0, 3);
 	assert_eq!(history[2].1, "conversation_history");
 	assert!(!history[2].2.is_empty());
+	assert_eq!(history[3].0, 4);
+	assert_eq!(history[3].1, "account_readiness");
+	assert!(!history[3].2.is_empty());
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -1841,6 +1844,83 @@ async fn assert_account_idempotency_and_revision(
 
 	assert_eq!((winners, conflicts), (1, 15));
 	assert_eq!(store.account(&account_id).await?.expect("account exists").revision, 2);
+
+	assert_account_launch_authority(store, &account_id, 2).await?;
+
+	assert_eq!(
+		store.account(&account_id).await?.expect("updated account remains readable").state,
+		AccountState::Unavailable
+	);
+
+	Ok(())
+}
+
+async fn assert_account_launch_authority(
+	store: &PostgresStore,
+	account_id: &AccountId,
+	starting_revision: i64,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let available = AccountMutation {
+		account_id: account_id.clone(),
+		display_label: "Primary metadata".into(),
+		state: AccountState::Available,
+		metadata: serde_json::json!({"observation": "manual_fixture_ready"}),
+		expected_revision: Some(starting_revision),
+	};
+	let command = CommandIdentity::new("account-available", b"account-available-v1")?;
+	let available = store.mutate_account(&command, &available).await?;
+
+	assert!(store.account_is_ready_at_revision(account_id, available.revision).await?);
+
+	let disabled_mutation = AccountMutation {
+		account_id: account_id.clone(),
+		display_label: "Primary metadata".into(),
+		state: AccountState::Disabled,
+		metadata: serde_json::json!({"observation": "manual_fixture_disabled"}),
+		expected_revision: Some(available.revision),
+	};
+	let command = CommandIdentity::new(
+		"account-disabled-after-readiness-observation",
+		b"account-disabled-after-readiness-observation-v1",
+	)?;
+	let disabled =
+		time::timeout(Duration::from_secs(1), store.mutate_account(&command, &disabled_mutation))
+			.await
+			.expect("a completed readiness observation retains no row lock")?;
+
+	assert_eq!(disabled.state, AccountState::Disabled);
+	assert!(!store.account_is_ready_at_revision(account_id, available.revision).await?);
+
+	let mut revision = disabled.revision;
+
+	for (index, state) in [
+		AccountState::Unknown,
+		AccountState::Depleted,
+		AccountState::AuthFailed,
+		AccountState::PluginUnready,
+		AccountState::Disabled,
+		AccountState::Unavailable,
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let mutation = AccountMutation {
+			account_id: account_id.clone(),
+			display_label: "Primary metadata".into(),
+			state,
+			metadata: serde_json::json!({"observation": "manual_fixture_not_ready"}),
+			expected_revision: Some(revision),
+		};
+		let command = CommandIdentity::new(
+			format!("account-not-ready-{index}"),
+			format!("account-not-ready-{index}-v1").as_bytes(),
+		)?;
+		let stored = store.mutate_account(&command, &mutation).await?;
+
+		revision = stored.revision;
+
+		assert!(!store.account_is_ready_at_revision(account_id, revision).await?);
+	}
 
 	Ok(())
 }

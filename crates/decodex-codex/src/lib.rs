@@ -1,15 +1,24 @@
 //! Typed, fail-closed Codex app-server adapter foundation.
 //!
-//! This crate owns protocol decoding, capability evidence, redaction, and isolated
-//! process supervision. It deliberately has no production turn-dispatch API while
-//! the XY-1304 live-routing gate remains failed.
+//! This crate owns protocol decoding, capability evidence, and redaction. Private
+//! process supervision belongs to the runtime composition owner. This crate deliberately
+//! has no child-launch or production turn-dispatch API while the XY-1304 live-routing gate
+//! remains failed.
+//!
+//! Product runner capacity and PostgreSQL authorization are deliberately absent:
+//!
+//! ```compile_fail
+//! use decodex_codex::{AppServerCommand, CredentialVault, ReadOnlyProbe, RunnerCapacity};
+//!
+//! let _ = RunnerCapacity::daemon();
+//! ```
+
+#[doc(hidden)] pub mod protocol;
+#[doc(hidden)] pub mod schema;
 
 mod capability;
 mod dispatch;
 mod event;
-mod process;
-mod protocol;
-mod schema;
 
 pub use self::{
 	capability::{
@@ -22,10 +31,6 @@ pub use self::{
 		CollaborationActivityKind, CollaborationTool, CollaborationToolCall,
 		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
 		RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
-	},
-	process::{
-		AccountBinding, AccountIdentity, AppServerCommand, ProbeError, ReadOnlyMethod,
-		ReadOnlyProbe, ReadOnlyProbeResult, ShutdownOutcome, SupervisedProcess, SupervisionError,
 	},
 	protocol::{BuildId, ThreadId, ThreadSummary},
 	schema::{

@@ -175,6 +175,82 @@ class VnextArchitectureTests(unittest.TestCase):
             }
             self.assertTrue(dependencies.isdisjoint(forbidden))
 
+    def test_production_targets_reach_both_adapters_only_through_runtime(self):
+        workspace_names = set(self.packages)
+        production_graph = {
+            package["name"]: {
+                dependency["name"]
+                for dependency in package["dependencies"]
+                if dependency["kind"] is None
+                and dependency["name"] in workspace_names
+            }
+            for package in self.metadata["packages"]
+        }
+
+        def reachable(package_name):
+            pending = list(production_graph[package_name])
+            result = set()
+            while pending:
+                dependency = pending.pop()
+                if dependency in result:
+                    continue
+                result.add(dependency)
+                pending.extend(production_graph.get(dependency, set()))
+            return result
+
+        covered_targets = set()
+        reaches_both = set()
+        for package in self.metadata["packages"]:
+            production_targets = {
+                target["name"]
+                for target in package["targets"]
+                if {"lib", "bin"}.intersection(target["kind"])
+            }
+            self.assertTrue(production_targets, package["name"])
+            covered_targets.update(
+                (package["name"], target) for target in production_targets
+            )
+            dependencies = reachable(package["name"])
+            if {"decodex-postgres", "decodex-codex"}.issubset(dependencies):
+                reaches_both.add(package["name"])
+
+        expected_targets = {
+            (package["name"], target["name"])
+            for package in self.metadata["packages"]
+            for target in package["targets"]
+            if {"lib", "bin"}.intersection(target["kind"])
+        }
+
+        self.assertEqual(covered_targets, expected_targets)
+        self.assertEqual(reaches_both, {"decodex-runtime", "decodexd"})
+        self.assertEqual(
+            production_graph["decodex-runtime"].intersection(
+                {"decodex-postgres", "decodex-codex"}
+            ),
+            {"decodex-postgres", "decodex-codex"},
+        )
+        self.assertEqual(
+            production_graph["decodexd"].intersection(
+                {"decodex-runtime", "decodex-postgres", "decodex-codex"}
+            ),
+            {"decodex-runtime"},
+        )
+        self.assertNotIn("decodex-postgres", reachable("decodex-codex"))
+
+    def test_synthetic_account_binding_features_are_not_enabled_by_production_edges(self):
+        forbidden_features = {"account-binding-fixtures", "test-support"}
+
+        for package in self.metadata["packages"]:
+            with self.subTest(package=package["name"]):
+                defaults = set(package["features"].get("default", []))
+                self.assertTrue(defaults.isdisjoint(forbidden_features))
+
+                for dependency in package["dependencies"]:
+                    if dependency["kind"] is None:
+                        self.assertTrue(
+                            set(dependency["features"]).isdisjoint(forbidden_features)
+                        )
+
     def test_cli_source_has_no_direct_mutation_or_infrastructure_escape(self):
         cli_root = ROOT / "apps/decodex-cli"
         source = "\n".join(
