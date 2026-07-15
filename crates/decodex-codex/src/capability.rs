@@ -158,7 +158,8 @@ pub struct CapabilityProfile {
 }
 impl CapabilityProfile {
 	/// Negotiate schema evidence against sanitized live outcomes.
-	pub(crate) fn negotiate(
+	#[doc(hidden)]
+	pub fn negotiate(
 		build: BuildId,
 		schema_fingerprint: impl Into<String>,
 		schema: &SchemaContract,

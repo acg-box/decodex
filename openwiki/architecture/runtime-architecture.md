@@ -22,12 +22,14 @@ vNext runtime boundary:
   optimistic transactions, leases, append-only activity, outbox delivery, inert
   account/window metadata, normalized history, immutable session snapshots, blob metadata,
   Context Pack revisions, and inert transition proposals.
-- `decodex-codex`: typed app-server contracts, schema/live capability negotiation,
-  redacted event normalization, and immutable one-account process supervision. Live
-  turn dispatch remains unavailable while XY-1304 is failed.
+- `decodex-codex`: typed app-server contracts, schema/live capability negotiation, and
+  redacted event normalization. It depends only on core, performs no SQL, owns no database
+  connection, and exposes no child-launch surface. Live turn dispatch remains unavailable
+  while XY-1304 is failed.
 - `decodex-runtime`: service lifecycle, connection/session execution, resumable event
-  publication, idempotency receipts, and adapter composition; depends on the other four
-  owners plus the maintained Axum/Tokio transport stack.
+  publication, idempotency receipts, private immutable-account process supervision, and the
+  sole PostgreSQL/Codex adapter composition; depends on the other four owners plus the
+  maintained Axum/Tokio transport stack.
 
 `apps/decodexd` depends only on runtime. The `apps/decodex-cli` and
 `apps/decodex-gpui` client roots depend only on protocol, so they cannot reach stores,
@@ -195,6 +197,81 @@ credentials, runs migration, or repins an endpoint. A stale but securely bound l
 database-unreachable; directory/socket replacement or peer-identity drift is unsafe-host-path.
 PostgreSQL socket recreation after restart therefore requires a daemon restart under the explicit
 operator authority instead of silently adopting the replacement.
+
+The XY-1273 account foundation keeps a canonical Decodex account UUID and a closed readiness
+observation in core. PostgreSQL persists only display metadata, that observation, ordinary
+credential-negative JSON, and revision evidence; the forward-only V4 migration adds the honest
+`unavailable` observation without adding any credential, vault-reference, selector, or routing
+column. The repository exposes only exact-ID reads and inert mutations.
+
+Codex child creation has one dormant runtime-owned explicit manual composition path. Runtime first
+observes the exact manually selected PostgreSQL account ID/revision in the `available` state, then
+releases the result row and pooled client before reserving process capacity or invoking a vault. It
+repeats the same exact observation after process-group cleanup or quarantine transfer and constructs
+only a non-live post-cleanup result. Readiness may change while mechanics run; a stale, non-ready, or
+unavailable final observation suppresses the result. No transaction, row lock, client checkout, or
+caller callback spans vault or process work. A synchronously blocked host vault can still retain its
+local task and mechanical capacity indefinitely, outside PostgreSQL.
+
+The manual launcher, request, result, capacity counter, permit, vault port, wire DTOs, stdout pump,
+and process supervisor are private to non-reexported runtime modules. The Codex adapter does not
+depend on PostgreSQL and exposes no child-launch operation.
+Cargo-metadata architecture guards enumerate every workspace library and binary target and prove the
+current normal-dependency graph: only runtime directly owns both sibling adapters, while `decodexd`
+reaches them only through runtime; production edges do not enable synthetic fixture features.
+Compile-fail contracts prove that the private launcher, capacity, command, probe, and vault types are
+absent from current crate APIs. Metadata does not prove the absence of future source changes or
+wrappers. The private account binding and host vault project into the not-yet-bound child exactly
+once, after which repeated `account/read` observations compare the exact identity in zeroizing,
+redacted process memory and attest the exact process ID. No account-identity digest is returned.
+A mismatch synchronously terminates the process group or transfers cleanup to the bounded quarantine;
+uncertain cleanup never returns a runner. The default vault is unavailable. Children retain the
+single normal shared `~/.codex` for configuration and plugins, receive only `HOME` and a fixed
+`PATH` from the parent, mark all other inherited descriptors close-on-exec, use a fixed app-server
+argv, and discard stderr. Outbound JSON serialization writes directly into fixed 8 KiB
+zeroizing blocks; the pointer-only block index may grow, but no growing ordinary allocation ever
+owns credential bytes. Serialization failure, frame overflow, transport failure, and normal
+teardown drop the same wiping owners. Inbound reads,
+partial frames, queued frames, overflow/disconnect values, and unread teardown state remain in
+fixed-allocation zeroizing blocks; the exact-size contiguous parse copy is zeroizing. A lexical gate
+rejects every escaped inbound JSON string before locked serde_json 1.0.150 can copy it into ordinary
+scratch; this intentionally closed subset fails unusual escaped paths/messages closed. Every completed
+owned string field under the typed RPC DTOs deserializes directly into a per-field zeroizing owner,
+so a later missing, malformed, nested, or wrong-type field cannot ordinarily free it. This guarantee
+does not claim that all opaque Serde structural/number scratch is zeroizing, only that inbound string
+bytes cannot enter its escaped-string scratch. No `CODEX_HOME`,
+credential file, global configuration mutation, ambient-account production probe, or live credential
+switch is exposed.
+
+Runner capacity is fixed at 64 and in-memory under one daemon-owned runtime authority. Reserving a
+private non-clone permit also reserves one of 64 fixed cleanup slots before spawn. The permit enters
+every version/schema preflight `ProcessGroupOwner` immediately after successful
+`spawn`, before any fallible post-spawn step. It returns to the launch attempt only after confirmed
+process-group absence and successful child reaping, then moves sequentially into the next preflight and
+final app-server. Confirmed final shutdown releases it only after the same proof; uncertain cleanup
+moves it into a hard-capped quarantine before control returns. The one capacity-lifecycle janitor must
+be successfully created before capacity authority exists; failure makes capacity construction fail
+closed, so no child can require later launch-triggered recovery. No caller or `Drop` path enters the
+background retry loop. A weak daemon registry reuses exactly one live capacity authority but does not
+make it process-immortal. A finite join coordinator stops and joins the janitor when the last capacity,
+permit, or quarantined job releases that authority; if the last release occurs on the janitor itself,
+the coordinator performs the join without self-wait. Construction failure after worker start shuts
+down and joins that worker before returning. The janitor scans the fixed slots
+round-robin and performs one nonblocking cleanup attempt per job per round, so one stuck group cannot
+starve later groups. Atomic slot states keep each job discoverable while reserved, ready, or in
+flight; an in-flight guard restores the same slot after unwind and a per-iteration unwind boundary
+keeps the persistent owner alive. Poison is recovered, and timed predicate rechecks prevent lost
+wakeup. There is no queue-full or
+contended-admission leak: the 65th permit is rejected before spawn. The failed attempt cannot launch
+another group. PostgreSQL's
+exact revision/state predicate excludes stale, unavailable, unknown, depleted,
+authentication-failed, plugin-unready, and disabled observations. A fresh daemon starts with no
+persisted capacity or assignment authority, but uncatchable daemon/host termination can orphan an OS
+process group because the in-memory quarantine is not an external process supervisor. Restart never
+adopts such a group or recreates authority; a later observation requires
+fresh exact PostgreSQL pre- and post-observations for the same manually selected account. There is no account
+inventory, automatic selector, weighting, stickiness, fallback, quota wake, or live routing API;
+XY-1304 remains the separate failed dispatch gate.
 
 V1.2 also carries `get_conversation_history`. Its request contains a logical Conversation UUID,
 an optional opaque PostgreSQL-issued Conversation-bound snapshot cursor, and a page size capped at
@@ -385,7 +462,7 @@ nearest-build or stale fallback.
 Each `SupervisedProcess` owns one immutable shared-home account authority. Credential
 environment variables are removed from the child, initialize must report the normal
 `$HOME/.codex`, no credential-switch operation exists, and read-only `account/read` must
-establish a pseudonymous active-account receipt before a successful probe. On Unix the child starts in a new session;
+establish an exact redacted, zeroizing in-memory account identity before a successful probe. On Unix the child starts in a new session;
 bounded shutdown checks the entire process group independently of the leader and escalates
 from termination to kill. Raw JSON-RPC, stderr, account details, and free-form model deltas
 stay inside the adapter. Callers receive typed probe results, stable errors, correlation-
@@ -394,15 +471,36 @@ digests rather than optional nickname/role fields. Build identity is an exact op
 fingerprint; statuses, activity kinds, tools, capability reasons, and read-only methods
 are closed enums, so protocol text is not exported through debug or serialization paths.
 
-The production command resolves `codex` once to a canonical absolute executable, reads it
-through a fixed byte limit, includes its digest in the opaque build identity, and rechecks
-the same path and digest before version, schema, and app-server spawn. Only tests can inject
-a fake executable. Preflight output/files, generated-schema file count/per-file/aggregate
+The production command opens the canonical `codex` executable and first rejects interpreter-driven
+files. On macOS, only current native 64-bit thin Mach-O images and native 32/64-bit universal Mach-O
+containers cross this boundary. On Linux, only native ELF images cross it, and account-bound launch
+additionally requires executable sealed-memfd support (`MFD_EXEC`, `F_SEAL_EXEC`, and the write,
+grow, shrink, and seal seals) plus procfs descriptor execution. A host missing any required Linux
+primitive returns executable-unavailable during command construction, before vault projection.
+Shebang wrappers and other formats therefore fail before vault projection on both platforms.
+The platform loader remains responsible for validating the complete image and selecting an
+architecture slice or ELF interpreter; dynamic-loader and shared-library integrity remain part of
+the host OS trust boundary rather than the build digest.
+
+The runtime copies the accepted source descriptor into a bounded protected object and hashes that
+object for the opaque build identity. On macOS this is a private fsynced mode-0500 file protected by
+`UF_IMMUTABLE`. On Linux it is an fsynced mode-0500 memfd whose contents, size, executable mode, and
+seal set are irreversibly sealed; the runtime verifies every required seal and that
+`/proc/self/fd/<owned-fd>` resolves to the same object. Every version, schema, and app-server spawn
+executes that exact protected object. The Linux descriptor is close-on-exec: it remains open while
+the kernel resolves the native ELF image and is closed atomically on successful exec. Original-path
+identity and digest checks detect pre-launch drift, but are not the check-to-exec security
+primitive. A source replacement after the final verification cannot alter the protected object that
+executes or receives credentials. Failure to create, seal, resolve, or execute the object fails
+closed. This protection assumes the daemon process and its uid are not already compromised. Only
+tests can inject a fake executable. Preflight output/files, generated-schema file count/per-file/aggregate
 bytes/depth, inbound and outbound app-server frames, the stdout queue, collaboration
 receiver count, and thread-list/search results are mechanically bounded; schema traversal
 rejects symlinks and special files. Both preflight commands use bounded process-group
-supervision and descendant cleanup. Failed bounded cleanup transfers the still-owned child
-and process group to a persistent reaper rather than relinquishing process authority.
+supervision and descendant cleanup. Failed bounded cleanup transfers the still-owned child, process
+group, and lifetime guard to the hard-capped fair quarantine rather than relinquishing process
+authority. Transfer is bounded; background retries are isolated per round and may intentionally
+retain capacity indefinitely when group death cannot be confirmed.
 
 The probe sends `initialize`, `initialized`, read-only `account/read`, bounded
 `thread/list(useStateDbOnly=true)`, exact-ID `thread/read(includeTurns=false)` when a listed
