@@ -522,6 +522,10 @@ name = "decodex-gpui"
 version = "0.2.0"
 dependencies = [
  "decodex-protocol",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]
