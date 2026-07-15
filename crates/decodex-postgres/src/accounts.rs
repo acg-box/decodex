@@ -43,6 +43,39 @@ pub(crate) enum CommandClaim {
 }
 
 impl PostgresStore {
+	/// Observe whether one explicitly named account is available at an exact revision.
+	///
+	/// This operation never selects an account, returns no retainable authority, and invokes no
+	/// caller work while a database client is checked out. Callers must re-observe after any
+	/// potentially blocking mechanical work before constructing a product result.
+	pub async fn account_is_ready_at_revision(
+		&self,
+		account_id: &AccountId,
+		expected_revision: i64,
+	) -> Result<bool, StoreError> {
+		if expected_revision < 1 {
+			return Err(StoreError::InvalidInput("expected revision must be positive"));
+		}
+
+		let client = self.pool().get().await?;
+		let row = client
+			.query_one(
+				"SELECT EXISTS (SELECT 1 FROM decodex.accounts \
+				 WHERE account_id=$1::text::uuid AND revision=$2 \
+				 AND state='available'::decodex.account_state)",
+				&[&account_id.as_str(), &expected_revision],
+			)
+			.await?;
+		let ready = row.get(0);
+
+		// Make the checkout boundary explicit: no caller-controlled vault or process work may
+		// begin until both the result row and its pooled client have been released.
+		drop(row);
+		drop(client);
+
+		Ok(ready)
+	}
+
 	/// Apply one inert account metadata mutation. The account revision, append-only activity,
 	/// outbox event, and command response commit in one PostgreSQL transaction.
 	pub async fn mutate_account(
@@ -75,7 +108,7 @@ impl PostgresStore {
 		let event_kind = if revision == 1 { "account_created" } else { "account_updated" };
 		let payload = serde_json::json!({
 			"account_id": mutation.account_id.as_str(),
-			"state": mutation.state.as_sql(),
+			"state": account_state_sql(mutation.state),
 			"revision": revision,
 		});
 
@@ -94,7 +127,7 @@ impl PostgresStore {
 			"kind": "account",
 			"account_id": mutation.account_id.as_str(),
 			"display_label": mutation.display_label,
-			"state": mutation.state.as_sql(),
+			"state": account_state_sql(mutation.state),
 			"metadata": mutation.metadata,
 			"revision": revision,
 		});
@@ -436,6 +469,31 @@ fn receipt_descriptor_matches(
 		&& row.get::<_, Option<i64>>(8) == descriptor.payload_length
 }
 
+const fn account_state_sql(state: AccountState) -> &'static str {
+	match state {
+		AccountState::Unavailable => "unavailable",
+		AccountState::Unknown => "unknown",
+		AccountState::Available => "available",
+		AccountState::Depleted => "depleted",
+		AccountState::AuthFailed => "auth_failed",
+		AccountState::PluginUnready => "plugin_unready",
+		AccountState::Disabled => "disabled",
+	}
+}
+
+fn account_state_from_sql(value: &str) -> Result<AccountState, StoreError> {
+	match value {
+		"unavailable" => Ok(AccountState::Unavailable),
+		"unknown" => Ok(AccountState::Unknown),
+		"available" => Ok(AccountState::Available),
+		"depleted" => Ok(AccountState::Depleted),
+		"auth_failed" => Ok(AccountState::AuthFailed),
+		"plugin_unready" => Ok(AccountState::PluginUnready),
+		"disabled" => Ok(AccountState::Disabled),
+		_ => Err(StoreError::Incompatible(format!("unknown account state {value}"))),
+	}
+}
+
 fn validate_account(mutation: &AccountMutation) -> Result<(), StoreError> {
 	if mutation.display_label.is_empty() || mutation.display_label.len() > 128 {
 		return Err(StoreError::InvalidInput("account display label must contain 1..=128 bytes"));
@@ -496,9 +554,9 @@ fn validate_rfc3339(value: &str, error: &'static str) -> Result<(), StoreError> 
 
 fn account_from_row(row: Row) -> Result<AccountMetadata, StoreError> {
 	Ok(AccountMetadata {
-		account_id: AccountId::new(row.get::<_, String>(0))?,
+		account_id: stored_account_id(row.get::<_, String>(0))?,
 		display_label: row.get(1),
-		state: AccountState::from_sql(row.get::<_, &str>(2))?,
+		state: account_state_from_sql(row.get::<_, &str>(2))?,
 		metadata: row.get(3),
 		revision: row.get(4),
 	})
@@ -510,9 +568,9 @@ fn account_from_response(response: Value) -> Result<AccountMetadata, StoreError>
 	}
 
 	Ok(AccountMetadata {
-		account_id: AccountId::new(required_str(&response, "account_id")?)?,
+		account_id: stored_account_id(required_str(&response, "account_id")?)?,
 		display_label: required_str(&response, "display_label")?.to_owned(),
-		state: AccountState::from_sql(required_str(&response, "state")?)?,
+		state: account_state_from_sql(required_str(&response, "state")?)?,
 		metadata: response
 			.get("metadata")
 			.cloned()
@@ -527,7 +585,7 @@ fn window_from_response(response: Value) -> Result<QuotaWindow, StoreError> {
 	}
 
 	Ok(QuotaWindow {
-		account_id: AccountId::new(required_str(&response, "account_id")?)?,
+		account_id: stored_account_id(required_str(&response, "account_id")?)?,
 		window_class: required_str(&response, "window_class")?.to_owned(),
 		duration_seconds: required_i64(&response, "duration_seconds")?,
 		remaining_amount: response.get("remaining_amount").and_then(Value::as_f64),
@@ -559,6 +617,11 @@ fn required_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
 		.ok_or_else(|| StoreError::Incompatible(format!("command response missing {key}")))
 }
 
+fn stored_account_id(value: impl Into<String>) -> Result<AccountId, StoreError> {
+	AccountId::new(value)
+		.map_err(|_| StoreError::Incompatible("stored account identity is invalid".into()))
+}
+
 async fn create_account(
 	transaction: &Transaction<'_>,
 	mutation: &AccountMutation,
@@ -571,7 +634,7 @@ async fn create_account(
 			&[
 				&mutation.account_id.as_str(),
 				&mutation.display_label,
-				&mutation.state.as_sql(),
+				&account_state_sql(mutation.state),
 				&mutation.metadata,
 			],
 		)
@@ -604,7 +667,7 @@ async fn update_account(
 			&[
 				&mutation.account_id.as_str(),
 				&mutation.display_label,
-				&mutation.state.as_sql(),
+				&account_state_sql(mutation.state),
 				&mutation.metadata,
 				&expected,
 			],
@@ -733,4 +796,26 @@ async fn window_revision_error(
 		expected,
 		actual,
 	})
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::accounts::{self};
+	use decodex_core::AccountState;
+
+	#[test]
+	fn every_typed_account_observation_has_one_storage_value() {
+		for (state, stored) in [
+			(AccountState::Unavailable, "unavailable"),
+			(AccountState::Unknown, "unknown"),
+			(AccountState::Available, "available"),
+			(AccountState::Depleted, "depleted"),
+			(AccountState::AuthFailed, "auth_failed"),
+			(AccountState::PluginUnready, "plugin_unready"),
+			(AccountState::Disabled, "disabled"),
+		] {
+			assert_eq!(accounts::account_state_sql(state), stored);
+			assert_eq!(accounts::account_state_from_sql(stored).unwrap(), state);
+		}
+	}
 }

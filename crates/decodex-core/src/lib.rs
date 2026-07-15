@@ -1,5 +1,6 @@
 //! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
 
+mod account;
 mod blob;
 mod cache;
 mod config;
@@ -10,6 +11,7 @@ mod paths;
 mod storage;
 
 pub use self::{
+	account::{AccountError, AccountId, AccountState},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
 		MAX_BLOB_BYTES,

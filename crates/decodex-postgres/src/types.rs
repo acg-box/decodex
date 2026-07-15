@@ -1,79 +1,13 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Formatter};
 
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::StoreError;
-
-/// Stable UUID-shaped account identity. The database validates its exact UUID syntax.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountId(String);
-impl AccountId {
-	/// Construct an account identity without exposing a credential-bearing account object.
-	pub fn new(value: impl Into<String>) -> Result<Self, StoreError> {
-		let value = value.into();
-
-		if value.is_empty() || value.len() > 64 {
-			return Err(StoreError::InvalidInput("account id must be a UUID string"));
-		}
-
-		Ok(Self(value))
-	}
-
-	pub(crate) fn as_str(&self) -> &str {
-		&self.0
-	}
-}
-
-impl Display for AccountId {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(&self.0)
-	}
-}
-
-/// Inert account health metadata. This type has no eligibility or routing operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AccountState {
-	/// No fresh evidence establishes account availability.
-	Unknown,
-	/// Fresh metadata reports availability; live selection remains owned elsewhere.
-	Available,
-	/// A known quota window is depleted.
-	Depleted,
-	/// Authentication failed.
-	AuthFailed,
-	/// Required plugin readiness was not established.
-	PluginUnready,
-	/// The account was administratively disabled.
-	Disabled,
-}
-impl AccountState {
-	pub(crate) const fn as_sql(self) -> &'static str {
-		match self {
-			Self::Unknown => "unknown",
-			Self::Available => "available",
-			Self::Depleted => "depleted",
-			Self::AuthFailed => "auth_failed",
-			Self::PluginUnready => "plugin_unready",
-			Self::Disabled => "disabled",
-		}
-	}
-
-	pub(crate) fn from_sql(value: &str) -> Result<Self, StoreError> {
-		match value {
-			"unknown" => Ok(Self::Unknown),
-			"available" => Ok(Self::Available),
-			"depleted" => Ok(Self::Depleted),
-			"auth_failed" => Ok(Self::AuthFailed),
-			"plugin_unready" => Ok(Self::PluginUnready),
-			"disabled" => Ok(Self::Disabled),
-			_ => Err(StoreError::Incompatible(format!("unknown account state {value}"))),
-		}
-	}
-}
+use decodex_core::{AccountId, AccountState};
 
 /// Idempotent optimistic account metadata mutation.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AccountMutation {
 	/// Stable account identity.
 	pub account_id: AccountId,
@@ -86,9 +20,19 @@ pub struct AccountMutation {
 	/// `None` creates revision 1; `Some` updates only that exact revision.
 	pub expected_revision: Option<i64>,
 }
+impl Debug for AccountMutation {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("AccountMutation")
+			.field("account_id", &self.account_id)
+			.field("state", &self.state)
+			.field("expected_revision", &self.expected_revision)
+			.finish_non_exhaustive()
+	}
+}
 
 /// Stored account metadata readback.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AccountMetadata {
 	/// Stable account identity.
 	pub account_id: AccountId,
@@ -100,6 +44,16 @@ pub struct AccountMetadata {
 	pub metadata: Value,
 	/// Monotonic optimistic revision.
 	pub revision: i64,
+}
+impl Debug for AccountMetadata {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("AccountMetadata")
+			.field("account_id", &self.account_id)
+			.field("state", &self.state)
+			.field("revision", &self.revision)
+			.finish_non_exhaustive()
+	}
 }
 
 /// Idempotent optimistic quota-window metadata mutation.
@@ -248,4 +202,33 @@ pub struct ActivityRecord {
 	pub event_kind: String,
 	/// Credential-negative activity payload.
 	pub payload: Value,
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::types::{AccountMetadata, AccountMutation};
+	use decodex_core::{AccountId, AccountState};
+
+	#[test]
+	fn account_debug_output_omits_all_caller_controlled_metadata() {
+		let account_id = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let marker = "caller-controlled-private-marker";
+		let mutation = AccountMutation {
+			account_id: account_id.clone(),
+			display_label: marker.into(),
+			state: AccountState::Unknown,
+			metadata: serde_json::json!({"nested": [marker]}),
+			expected_revision: None,
+		};
+		let stored = AccountMetadata {
+			account_id,
+			display_label: marker.into(),
+			state: AccountState::Unavailable,
+			metadata: serde_json::json!({"nested": [marker]}),
+			revision: 1,
+		};
+
+		assert!(!format!("{mutation:?}").contains(marker));
+		assert!(!format!("{stored:?}").contains(marker));
+	}
 }
