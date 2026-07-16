@@ -987,7 +987,7 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 
 #[tokio::test]
 #[ignore = "requires the isolated PostgreSQL 18 bootstrap harness"]
-async fn isolated_postgres_live_doctor_detects_database_incompatibility() {
+async fn isolated_postgres_live_doctor_detects_database_drift() {
 	let root_path = PathBuf::from(
 		env::var("DECODEX_TEST_LIVE_INCOMPATIBLE_ROOT")
 			.expect("live-incompatible bootstrap root environment"),
@@ -1059,7 +1059,11 @@ async fn isolated_postgres_live_doctor_detects_database_incompatibility() {
 
 	assert_eq!(
 		changed.check(DoctorComponent::Database).expect("database check").status,
-		DoctorStatus::Unavailable(DoctorIssue::DatabaseIncompatible)
+		DoctorStatus::Unavailable(if env::var_os("DECODEX_TEST_LIVE_EXPECTED_UNSAFE").is_some() {
+			DoctorIssue::UnsafeDatabaseAuthority
+		} else {
+			DoctorIssue::DatabaseIncompatible
+		},)
 	);
 
 	drop(client);
@@ -1094,7 +1098,7 @@ async fn isolated_postgres_overprivileged_runtime_is_unavailable() {
 	)
 	.collect::<Vec<_>>();
 
-	assert_eq!(roots.len(), 27);
+	assert_eq!(roots.len(), 28);
 
 	for root_path in roots {
 		let bootstrap = ServiceComposition::bootstrap(
@@ -1124,7 +1128,7 @@ async fn isolated_postgres_incompatible_runtime_is_unavailable() {
 	)
 	.collect::<Vec<_>>();
 
-	assert_eq!(roots.len(), 6);
+	assert_eq!(roots.len(), 5);
 
 	for root_path in roots {
 		let bootstrap = ServiceComposition::bootstrap(
@@ -1145,7 +1149,7 @@ async fn isolated_postgres_incompatible_runtime_is_unavailable() {
 
 #[tokio::test]
 #[ignore = "requires the isolated PostgreSQL 18 bootstrap harness"]
-async fn isolated_postgres_hostile_search_path_is_available() {
+async fn isolated_postgres_hostile_search_path_is_unavailable() {
 	let root_path = PathBuf::from(
 		env::var("DECODEX_TEST_HOSTILE_SEARCH_ROOT")
 			.expect("isolated hostile-search root environment"),
@@ -1155,52 +1159,14 @@ async fn isolated_postgres_hostile_search_path_is_available() {
 	)
 	.await;
 
-	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
-	assert_eq!(bootstrap.product_state_availability(), Availability::Available);
-
-	let server_id = bootstrap.server_id().clone();
-	let bound = bootstrap
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
-		.await
-		.expect("bind hostile-search daemon fixture");
-	let url = format!("ws://{}/v1/ws", bound.address());
-	let (mut client, _) =
-		tokio_tungstenite::connect_async(&url).await.expect("connect hostile-search client");
-
-	send(
-		&mut client,
-		ClientMessage::Hello(ClientHello {
-			version: CURRENT_VERSION,
-			expected_server_id: Some(server_id),
-			resume: None,
-		}),
-	)
-	.await;
-
-	assert!(matches!(receive(&mut client).await, ServerMessage::Welcome(_)));
-	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
-
-	send(
-		&mut client,
-		ClientMessage::Query(doctor_query(CURRENT_VERSION, "hostile-catalog-doctor")),
-	)
-	.await;
-
-	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
-		panic!("expected hostile-search doctor result");
-	};
-	let QueryResultPayload::DoctorStatus(report) = result.payload else {
-		panic!("expected doctor result");
-	};
-
 	assert_eq!(
-		report.check(DoctorComponent::Database).expect("database status is present").status,
-		DoctorStatus::Ready
+		status(&bootstrap, DoctorComponent::Database),
+		DoctorStatus::Unavailable(DoctorIssue::UnsafeDatabaseAuthority)
 	);
-
-	drop(client);
-
-	bound.shutdown().await.expect("shutdown hostile-search daemon fixture");
+	assert_eq!(
+		bootstrap.product_state_availability(),
+		Availability::Unavailable { reason: "configured PostgreSQL runtime authority is unsafe" }
+	);
 }
 
 async fn send<S>(client: &mut WebSocketStream<S>, message: ClientMessage)

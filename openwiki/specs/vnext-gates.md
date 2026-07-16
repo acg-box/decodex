@@ -98,10 +98,13 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1269 | P and K may proceed independently under their own dependencies; L waits for P and K, and S waits for L. P, K, and L remain non-production and default-disabled. Only S owns production shell and exact final-artifact qualification. |
 | XY-1270 | Generated typed app-server contracts, live capability negotiation, redaction, and one-account-per-process supervision; no task scheduling or account choice. |
 | XY-1271 | Conversation/RuntimeSession/history and inspectable Context-Pack persistence; no automatic rollover, assignment, or fallback dispatch. |
-| XY-1272 | Transactional creation mappings, exact-ID/list reconciliation, explicit retention, and the ManagedRun `diverged` stop transition; no global title-search claim. |
+| XY-1272 | PostgreSQL configured-principal and ACL authority manifest/readiness closure against V8; no migration or Codex creation/reconciliation surface. Any future configured role must atomically extend configuration, bootstrap, manifest/readiness, and negative tests. |
 | XY-1273 | Credential-vault metadata and immutable runner/account binding; no sticky or policy assignment. |
 | XY-1274 | Exact-microsecond quota persistence, `/2` canonical mutation identity, atomic V8 zero-state migration, and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
 | XY-1275 | User-owned profile persistence and RuntimeSession snapshots. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
+| XY-1276 | Production Quick Task creation; remains blocked by XY-1304. |
+| XY-1304 | Experiment thread creation and positive observation acquisition, plus live routing enablement. Lossy or paginated evidence cannot authorize negative `Present`, `Complete`, or context-free `Absent` conclusions. |
+| XY-1337 | The next PostgreSQL migration, expected V9; V8 remains final until this owner lands it. |
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
