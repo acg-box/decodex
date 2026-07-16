@@ -20,6 +20,14 @@ receipt-first, fenced, exact-response saga and dedicated session-level hash plus
 coordination around create-only synchronized CAS publication. Arbitrary/manual use of the private
 runtime credential is unsupported and equivalent to daemon compromise.
 
+Readiness authority correction accepted 2026-07-16: Codex 0.144.2 and 0.144.4 expose
+no stable passive complete account-owned plugin, skill, and MCP readiness receipt. Passive
+inventory is therefore withdrawn from the accepted XY-1262 foundation evidence. Host files,
+manifests, configuration, remote catalogs, process binding, and user declarations do not become
+observed account readiness. The first-release doctor result remains typed `unknown` for plugins;
+`plugin_unready` is inert reserved state. XY-1336 tracks the upstream receipt gap outside the
+vNext critical path and neither closes nor blocks XY-1275.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the
@@ -93,7 +101,7 @@ The XY-1262 foundation gate is accepted only for the evidence scope enumerated i
 boundaries, creation-receipt ownership, negotiated app-server contracts, supported
 exact-ID/list/read/archive operations, lossy-read/divergence policy, native run-local
 collaboration normalization, process-scoped authentication/redaction, read-only
-plugin/skill inventory, and pure duration-typed quota policy. This acceptance does not
+integrity evidence, and pure duration-typed quota policy. This acceptance does not
 claim global Codex title search, live quota-driven routing, automatic continuation, or
 release readiness.
 
