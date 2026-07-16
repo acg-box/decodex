@@ -28,6 +28,19 @@ observed account readiness. The first-release doctor result remains typed `unkno
 `plugin_unready` is inert reserved state. XY-1336 tracks the upstream receipt gap outside the
 vNext critical path and neither closes nor blocks XY-1275.
 
+XY-1274 quota-authority amendment accepted 2026-07-16: quota storage accepts only exact
+product-valid Unix microseconds, and no layer may round or truncate an ingress timestamp.
+Canonical quota mutation identities move to their `/2` typed-integer documents. The V8
+migration is an atomic zero-state boundary that locks every quota writer surface, rejects all
+structurally classified pre-V8 quota evidence, and alters the proven-empty `quota_windows`
+table in place. Populated V7 conversion and table drop/recreation are not compatibility
+features. Recovery is whole disposable pre-release database recreation; XY-1302 retains
+whole-ledger production-baseline and cutover authority. XY-1304 must capture natural upstream
+timestamp precision before live quota ingestion or routing, and a non-exact-microsecond result
+reopens the architecture around PostgreSQL-in-transaction canonicalization. The normative
+details and proof gates live in the authority contract and gate manifest; the three rejected
+old-boundary candidates remain historical provenance in the runtime proof.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the
