@@ -351,6 +351,27 @@ foreign-key backed, must resolve to the same Project, and must reject cross-Proj
 links. A `uuid[]`, JSON array, unconstrained UUID, placeholder identity, or equivalent
 denormalized shortcut is not authorized.
 
+XY-1281 owns the forward-only V7 schema after canonical V5 Project/Agent and V6 Policy.
+V7 contains no WorkItem identity or denormalized WorkItem relation. Program mutations
+verify the same active Project and canonical active Lead plus the exact accepted Policy
+revision. Objective achievement is not a bare lifecycle update: one immutable, exact
+prior-revision acceptance-and-validation record and the achieved revision are committed
+coherently. This evidence is Objective outcome authority only. Every new command reserves,
+mutates or records a typed deterministic rejection, appends activity/outbox when changed,
+and completes its exact response receipt in one transaction, so rollback cannot expose a
+pending receipt and exact retry/reopen returns the same typed result.
+ManagedRun may reach successful terminal completion only from explicit authoritative
+WorkItem acceptance and validation. Objective achievement or evidence and any external
+Codex Goal state cannot establish WorkItem acceptance or ManagedRun success; XY-1282 and
+later managed-execution owners must implement that positive authority.
+Mutation receipt scope comes only from the canonical Project ID in the request; a missing
+aggregate never substitutes an invented scope, and PostgreSQL independently compares that
+request scope with stored authority before mutation. Concurrent commands for one absent
+Program, Objective, or Objective evidence identity converge without leaking a uniqueness
+error: every command completes and replays while only the inserting command emits activity.
+Achievement chronology is anchored to the exact prior Objective revision `updated_at`, and
+all persisted Program/Objective timestamps share the closed `ProgramTimestamp` range.
+
 The executable dependency edges that mirror this order are XY-1273 -> XY-1314;
 XY-1314 -> XY-1315, XY-1317, and XY-1318; XY-1315 -> XY-1316; XY-1315 and XY-1316 ->
 XY-1281; the additional direct edge XY-1273 -> XY-1281; and XY-1315, XY-1316, and
