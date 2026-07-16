@@ -19,18 +19,21 @@ use tokio::{
 	task::{self, JoinSet},
 	time,
 };
-use tokio_postgres::{Client, Config, NoTls, types::ToSql};
+use tokio_postgres::{Client, Config, NoTls, Row, types::ToSql};
 
 use decodex_core::{
 	self, AcceptedPolicyRevision, AccountSnapshot, ArtifactId, ArtifactStatus, Availability,
 	BlobHash, BlobStore, ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource,
 	ContextSourceKind, ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind,
-	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, ItemStatus, PinnedContextSource,
-	PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
-	PolicySnapshot, PolicySnapshotValue, PossibleSideEffects, ProductState as _, ProfileSnapshot,
-	Project, ProjectId, ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding,
-	ProjectStatus, ProposedTransitionKind, RepositoryIdentity, RuntimeSessionId,
-	RuntimeSessionState, TurnId, TurnRole, TurnStatus,
+	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, ItemStatus, Objective,
+	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
+	PinnedContextSource, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance,
+	PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PossibleSideEffects, ProductState as _,
+	ProfileSnapshot, Program, ProgramContextInput, ProgramCorrelationId, ProgramId, ProgramMetric,
+	ProgramObservationId, ProgramObservationProvenance, ProgramProvenance, ProgramSignal,
+	ProgramState, ProgramTimestamp, Project, ProjectId, ProjectMetadata, ProjectMetadataValue,
+	ProjectRepositoryBinding, ProjectStatus, ProposedTransitionKind, RepositoryIdentity,
+	ReviewCadence, RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 use decodex_postgres::{
 	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus, CLOSED,
@@ -38,6 +41,7 @@ use decodex_postgres::{
 	CreateRuntimeSession, HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim,
 	OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition,
 	QuotaWindowMutation, ReconciliationOutcome, RecordHistoryItem, StoreError,
+	UpdateProgramContext,
 };
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
@@ -87,6 +91,12 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
 	"decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
 	"decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
+	"decodex.create_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.update_program_context(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.transition_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.program_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.create_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog._text,pg_catalog._text,pg_catalog.int8,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.transition_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.objective_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
@@ -110,6 +120,10 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_history_cursor_state()",
 	"decodex.enforce_policy_identity_state()",
 	"decodex.forbid_policy_revision_mutation()",
+	"decodex.enforce_program_state()",
+	"decodex.enforce_objective_state()",
+	"decodex.forbid_objective_evidence_mutation()",
+	"decodex.enforce_objective_completion_coherence()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(
@@ -314,6 +328,7 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	assert_runtime_is_least_privilege(&runtime_client).await?;
 	assert_project_agent_authority(&store, &client, &migration, &runtime).await?;
 	assert_policy_authority(&store, &client, &migration, &runtime).await?;
+	assert_program_objective_authority(&store, &client, &migration, &runtime).await?;
 	assert_account_idempotency_and_revision(&store, &client).await?;
 	assert_receipt_first_saga(&store, &client).await?;
 	assert_concurrent_shard_capacity(&store, &client).await?;
@@ -1864,6 +1879,7 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 	assert!(restored_fk);
 
 	assert_restored_policy_authority(&store).await?;
+	assert_restored_program_objective_authority(&store).await?;
 
 	let ordinary_rows: i64 = client
 		.query_one(
@@ -1912,6 +1928,34 @@ async fn assert_restored_policy_authority(
 			.all(|revision| revision.accepted_at() >= revision.policy_created_at())
 	);
 	assert_eq!(store.policy_revision(&second_id).await?, Some(second));
+
+	Ok(())
+}
+
+async fn assert_restored_program_objective_authority(
+	store: &PostgresStore,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let program_id = ProgramId::new("41000000-0000-4000-8000-000000000060")?;
+	let achieved_id = ObjectiveId::new("71000000-0000-4000-8000-000000000060")?;
+	let abandoned_id = ObjectiveId::new("71000000-0000-4000-8000-000000000061")?;
+	let program = store.program(&program_id).await?.expect("Program restored");
+	let achieved = store.objective(&achieved_id).await?.expect("achieved Objective restored");
+	let abandoned = store.objective(&abandoned_id).await?.expect("abandoned Objective restored");
+
+	assert_eq!(program.program.revision(), 3);
+	assert!(matches!(program.program.state(), ProgramState::Blocked | ProgramState::Paused));
+	assert_eq!(achieved.objective.state(), ObjectiveState::Achieved);
+	assert_eq!(achieved.objective.revision(), 3);
+
+	let evidence = achieved.objective.completion().expect("achievement evidence restored");
+	let objective_updated_at =
+		evidence.objective_updated_at().expect("prior Objective timestamp restored");
+
+	assert!(objective_updated_at <= evidence.accepted_at());
+	assert!(evidence.accepted_at() <= evidence.validated_at());
+	assert!(evidence.validated_at() <= evidence.recorded_at());
+	assert_eq!(abandoned.objective.state(), ObjectiveState::Abandoned);
+	assert_eq!(abandoned.objective.revision(), 2);
 
 	Ok(())
 }
@@ -2021,7 +2065,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 6);
+	assert_eq!(history.len(), 7);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
@@ -2040,6 +2084,9 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 	assert_eq!(history[5].0, 6);
 	assert_eq!(history[5].1, "project_policy_authority");
 	assert!(!history[5].2.is_empty());
+	assert_eq!(history[6].0, 7);
+	assert_eq!(history[6].1, "program_objective_authority");
+	assert!(!history[6].2.is_empty());
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -2273,6 +2320,7 @@ async fn assert_policy_authority(
 
 	assert_eq!(store.accept_policy_revision(winner_request.clone()).await?, winner_revision);
 	assert_eq!(store.policy_revision(winner_revision.id()).await?, Some(winner_revision.clone()));
+
 	assert_policy_revision_conflicts(
 		store,
 		client,
@@ -2298,6 +2346,1439 @@ async fn assert_policy_authority(
 		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 
 	assert_eq!(restarted.policy_revision(winner_revision.id()).await?, Some(winner_revision));
+
+	Ok(())
+}
+
+async fn assert_program_objective_authority(
+	store: &PostgresStore,
+	client: &Client,
+	migration: &Config,
+	runtime: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let authority = store
+		.create_project(project_request(
+			"11000000-0000-4000-8000-000000000060",
+			"22000000-0000-4000-8000-000000000060",
+			"hack-ink/program-objective-authority",
+			"/srv/repos/program-objective-authority",
+		))
+		.await?;
+	let project_id = authority.project.id().clone();
+	let lead_id = authority.lead.id().clone();
+	let policy_id = PolicyId::new("31000000-0000-4000-8000-000000000060")?;
+
+	store.create_policy(policy_id.clone(), project_id.clone()).await?;
+
+	let accepted_policy = store
+		.accept_policy_revision(policy_acceptance(
+			&project_id,
+			&policy_id,
+			&lead_id,
+			1,
+			"program-objective",
+		))
+		.await?;
+	let program_id = ProgramId::new("41000000-0000-4000-8000-000000000060")?;
+	let program = Program::new(
+		program_id.clone(),
+		project_id.clone(),
+		lead_id.clone(),
+		"SEO and GEO operations",
+		"Operate search visibility continuously; a conversation mention remains ordinary data",
+		accepted_policy.id().clone(),
+		ReviewCadence::new(30, ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?)?,
+	)?;
+	let create_provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000060")?,
+		"Lead established the ongoing responsibility",
+	)?;
+	let create_command = CommandIdentity::new("program-create-60", b"program-create-60")?;
+	let created = store.create_program(&create_command, &program, &create_provenance).await?;
+
+	assert_eq!(created.program.state(), ProgramState::Active);
+	assert_eq!(
+		created.program,
+		store.create_program(&create_command, &program, &create_provenance).await?.program
+	);
+
+	assert_program_objective_creation_races(
+		store,
+		client,
+		migration,
+		&project_id,
+		&lead_id,
+		accepted_policy.id(),
+		&program_id,
+	)
+	.await?;
+
+	let observed_at = ProgramTimestamp::from_unix_microseconds(1_900_000_000_000_000)?;
+	let observation = ProgramObservationProvenance::new(
+		"analytics conversation export retained only as inspectable data",
+		observed_at,
+	)?;
+	let metric = ProgramMetric::new("organic_sessions", "1200", "sessions", observation.clone())?;
+	let signal = ProgramSignal::new(
+		ProgramObservationId::new("61000000-0000-4000-8000-000000000060")?,
+		"visibility_change",
+		"Search visibility increased",
+		observation,
+	)?;
+	let update = UpdateProgramContext {
+		program_id: program_id.clone(),
+		project_id: project_id.clone(),
+		expected_revision: 1,
+		review_cadence: ReviewCadence::new(
+			14,
+			ProgramTimestamp::from_unix_microseconds(2_000_100_000_000_000)?,
+		)?,
+		metrics: vec![metric],
+		signals: vec![signal],
+	};
+	let update_provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000061")?,
+		"Lead refreshed Program observations",
+	)?;
+	let update_command = CommandIdentity::new("program-update-60", b"program-update-60")?;
+	let updated =
+		store.update_program_context(&update_command, &update, &update_provenance).await?;
+
+	assert_eq!(updated.program.revision(), 2);
+	assert_eq!(
+		updated,
+		store.update_program_context(&update_command, &update, &update_provenance).await?,
+	);
+
+	assert_program_context_compilation_is_pure(client, &updated.program, &program_id).await?;
+	assert_program_transition_replay(
+		store,
+		client,
+		migration,
+		runtime,
+		&project_id,
+		&program_id,
+		&lead_id,
+	)
+	.await?;
+	assert_hostile_program_objective_sql(client, &project_id, &lead_id, &policy_id).await?;
+	assert_objective_lifecycle(store, client, &project_id, &lead_id, &program_id).await?;
+
+	Ok(())
+}
+
+async fn assert_program_objective_creation_races(
+	store: &PostgresStore,
+	client: &Client,
+	migration: &Config,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	policy_revision_id: &PolicyRevisionId,
+	program_id: &ProgramId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	assert_program_create_race(store, client, project_id, lead_id, policy_revision_id).await?;
+	assert_objective_create_race(store, client, project_id, lead_id, program_id).await?;
+	assert_objective_evidence_race(store, client, project_id, lead_id, program_id).await?;
+	assert_cross_objective_evidence_identity_race(
+		store, client, migration, project_id, lead_id, program_id,
+	)
+	.await?;
+
+	let pending: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.command_receipts WHERE receipt_state='pending'\
+			 AND operation IN ('create_program','transition_program','create_objective',\
+			 'transition_objective','achieve_objective')",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(pending, 0);
+
+	Ok(())
+}
+
+async fn assert_program_create_race(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	policy_revision_id: &PolicyRevisionId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let program_id = ProgramId::new("41000000-0000-4000-8000-000000000080")?;
+	let program = Program::new(
+		program_id.clone(),
+		project_id.clone(),
+		lead_id.clone(),
+		"Concurrent Program",
+		"One canonical responsibility",
+		policy_revision_id.clone(),
+		ReviewCadence::new(30, ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?)?,
+	)?;
+	let provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000080")?,
+		"Concurrent Program creation",
+	)?;
+	let commands = [
+		CommandIdentity::new("program-create-race-a-80", b"program-create-race-a-80")?,
+		CommandIdentity::new("program-create-race-b-80", b"program-create-race-b-80")?,
+	];
+	let mut tasks = JoinSet::new();
+
+	for command in commands.clone() {
+		let store = store.clone();
+		let program = program.clone();
+		let provenance = provenance.clone();
+
+		tasks.spawn(async move {
+			let result = store.create_program(&command, &program, &provenance).await;
+
+			(command, result)
+		});
+	}
+
+	while let Some(result) = tasks.join_next().await {
+		let (command, result) = result?;
+
+		assert_eq!(result?, store.create_program(&command, &program, &provenance).await?);
+	}
+
+	assert_single_domain_activity(client, "program", program_id.as_str(), "program_created")
+		.await?;
+	assert_program_missing_replay(
+		store,
+		client,
+		project_id,
+		lead_id,
+		policy_revision_id,
+		&provenance,
+	)
+	.await?;
+
+	Ok(())
+}
+
+async fn assert_program_missing_replay(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	policy_revision_id: &PolicyRevisionId,
+	provenance: &ProgramProvenance,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let race_id = ProgramId::new("41000000-0000-4000-8000-000000000081")?;
+	let race_program = Program::new(
+		race_id.clone(),
+		project_id.clone(),
+		lead_id.clone(),
+		"Mutation race Program",
+		"Request-scoped mutation authority",
+		policy_revision_id.clone(),
+		ReviewCadence::new(30, ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?)?,
+	)?;
+	let transition =
+		CommandIdentity::new("program-absent-transition-81", b"program-absent-transition-81")?;
+
+	assert!(store.program(&race_id).await?.is_none());
+
+	let first = store
+		.transition_program(
+			&transition,
+			project_id,
+			&race_id,
+			1,
+			ProgramState::NeedsAttention,
+			provenance,
+		)
+		.await;
+
+	assert!(matches!(first, Err(StoreError::RevisionConflict { actual: None, .. })));
+
+	store
+		.create_program(
+			&CommandIdentity::new("program-create-after-miss-81", b"program-create-after-miss-81")?,
+			&race_program,
+			provenance,
+		)
+		.await?;
+
+	assert!(matches!(
+		store
+			.transition_program(
+				&transition,
+				project_id,
+				&race_id,
+				1,
+				ProgramState::NeedsAttention,
+				provenance,
+			)
+			.await,
+		Err(StoreError::RevisionConflict { actual: None, .. })
+	));
+
+	let receipt_scope: String = client
+		.query_one(
+			"SELECT scope_id FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[&"program-absent-transition-81"],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(receipt_scope, project_id.as_str());
+
+	let fresh_transition = CommandIdentity::new(
+		"program-create-between-read-transition-81",
+		b"program-create-between-read-transition-81",
+	)?;
+	let transitioned = store
+		.transition_program(
+			&fresh_transition,
+			project_id,
+			&race_id,
+			1,
+			ProgramState::NeedsAttention,
+			provenance,
+		)
+		.await?;
+
+	assert_eq!(transitioned.program.state(), ProgramState::NeedsAttention);
+	assert_eq!(
+		transitioned,
+		store
+			.transition_program(
+				&fresh_transition,
+				project_id,
+				&race_id,
+				1,
+				ProgramState::NeedsAttention,
+				provenance,
+			)
+			.await?
+	);
+
+	Ok(())
+}
+
+async fn assert_objective_create_race(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	program_id: &ProgramId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let objective_id = ObjectiveId::new("71000000-0000-4000-8000-000000000080")?;
+	let objective = Objective::new(
+		objective_id.clone(),
+		project_id.clone(),
+		Some(program_id.clone()),
+		"Resolve one concurrent creation",
+		vec!["Accepted once".into()],
+		vec!["Validated once".into()],
+		ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?,
+	)?;
+	let provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000082")?,
+		"Concurrent Objective creation",
+	)?;
+	let commands = [
+		CommandIdentity::new("objective-create-race-a-80", b"objective-create-race-a-80")?,
+		CommandIdentity::new("objective-create-race-b-80", b"objective-create-race-b-80")?,
+	];
+	let mut tasks = JoinSet::new();
+
+	for command in commands.clone() {
+		let store = store.clone();
+		let objective = objective.clone();
+		let provenance = provenance.clone();
+
+		tasks.spawn(async move {
+			let result = store.create_objective(&command, &objective, &provenance).await;
+
+			(command, result)
+		});
+	}
+
+	while let Some(result) = tasks.join_next().await {
+		let (command, result) = result?;
+
+		assert_eq!(result?, store.create_objective(&command, &objective, &provenance).await?);
+	}
+
+	assert_single_domain_activity(client, "objective", objective_id.as_str(), "objective_created")
+		.await?;
+	assert_objective_missing_replay(store, client, project_id, program_id, &provenance).await?;
+
+	Ok(())
+}
+
+async fn assert_objective_missing_replay(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	program_id: &ProgramId,
+	provenance: &ProgramProvenance,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let race_id = ObjectiveId::new("71000000-0000-4000-8000-000000000081")?;
+	let race_objective = Objective::new(
+		race_id.clone(),
+		project_id.clone(),
+		Some(program_id.clone()),
+		"Create after a deterministic miss",
+		vec!["Accepted".into()],
+		vec!["Validated".into()],
+		ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?,
+	)?;
+	let transition =
+		CommandIdentity::new("objective-absent-transition-81", b"objective-absent-transition-81")?;
+
+	assert!(store.objective(&race_id).await?.is_none());
+	assert!(matches!(
+		store
+			.transition_objective(
+				&transition,
+				project_id,
+				&race_id,
+				1,
+				ObjectiveState::Active,
+				provenance,
+			)
+			.await,
+		Err(StoreError::RevisionConflict { actual: None, .. })
+	));
+
+	store
+		.create_objective(
+			&CommandIdentity::new(
+				"objective-create-after-miss-81",
+				b"objective-create-after-miss-81",
+			)?,
+			&race_objective,
+			provenance,
+		)
+		.await?;
+
+	assert!(matches!(
+		store
+			.transition_objective(
+				&transition,
+				project_id,
+				&race_id,
+				1,
+				ObjectiveState::Active,
+				provenance,
+			)
+			.await,
+		Err(StoreError::RevisionConflict { actual: None, .. })
+	));
+
+	let receipt_scope: String = client
+		.query_one(
+			"SELECT scope_id FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[&"objective-absent-transition-81"],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(receipt_scope, project_id.as_str());
+
+	let fresh_transition = CommandIdentity::new(
+		"objective-create-between-read-transition-81",
+		b"objective-create-between-read-transition-81",
+	)?;
+	let transitioned = store
+		.transition_objective(
+			&fresh_transition,
+			project_id,
+			&race_id,
+			1,
+			ObjectiveState::Active,
+			provenance,
+		)
+		.await?;
+
+	assert_eq!(transitioned.objective.state(), ObjectiveState::Active);
+	assert_eq!(
+		transitioned,
+		store
+			.transition_objective(
+				&fresh_transition,
+				project_id,
+				&race_id,
+				1,
+				ObjectiveState::Active,
+				provenance,
+			)
+			.await?
+	);
+
+	Ok(())
+}
+
+async fn assert_objective_evidence_race(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	program_id: &ProgramId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let objective_id = ObjectiveId::new("71000000-0000-4000-8000-000000000082")?;
+	let provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000084")?,
+		"Concurrent evidence fixture",
+	)?;
+	let objective = Objective::new(
+		objective_id.clone(),
+		project_id.clone(),
+		Some(program_id.clone()),
+		"Accept one finite concurrent result",
+		vec!["Accepted".into()],
+		vec!["Validated".into()],
+		ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?,
+	)?;
+
+	store
+		.create_objective(
+			&CommandIdentity::new("objective-create-evidence-82", b"objective-create-evidence-82")?,
+			&objective,
+			&provenance,
+		)
+		.await?;
+	store
+		.transition_objective(
+			&CommandIdentity::new(
+				"objective-activate-evidence-82",
+				b"objective-activate-evidence-82",
+			)?,
+			project_id,
+			&objective_id,
+			1,
+			ObjectiveState::Active,
+			&provenance,
+		)
+		.await?;
+
+	let prior_updated_at: i64 = client
+		.query_one(
+			"SELECT (EXTRACT(epoch FROM updated_at)*1000000)::bigint \
+			 FROM decodex.objectives WHERE objective_id=$1::text::uuid",
+			&[&objective_id.as_str()],
+		)
+		.await?
+		.get(0);
+	let timestamp = ProgramTimestamp::from_unix_microseconds(prior_updated_at)?;
+	let evidence = ObjectiveCompletionEvidence::proposed(
+		ObjectiveEvidenceId::new("81000000-0000-4000-8000-000000000082")?,
+		objective_id.clone(),
+		project_id.clone(),
+		2,
+		"Accepted concurrent result",
+		lead_id.clone(),
+		timestamp,
+		"Acceptance retained",
+		"Validated concurrent result",
+		lead_id.clone(),
+		timestamp,
+		"Validation retained",
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000085")?,
+	)?;
+	let commands = [
+		CommandIdentity::new("objective-evidence-race-a-82", b"objective-evidence-race-a-82")?,
+		CommandIdentity::new("objective-evidence-race-b-82", b"objective-evidence-race-b-82")?,
+	];
+	let mut tasks = JoinSet::new();
+
+	for command in commands.clone() {
+		let store = store.clone();
+		let evidence = evidence.clone();
+
+		tasks.spawn(async move {
+			let result = store.achieve_objective(&command, &evidence).await;
+
+			(command, result)
+		});
+	}
+
+	while let Some(result) = tasks.join_next().await {
+		let (command, result) = result?;
+
+		assert_eq!(result?, store.achieve_objective(&command, &evidence).await?);
+	}
+
+	assert_single_domain_activity(client, "objective", objective_id.as_str(), "objective_achieved")
+		.await?;
+
+	Ok(())
+}
+
+async fn assert_cross_objective_evidence_identity_race(
+	store: &PostgresStore,
+	client: &Client,
+	migration: &Config,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	program_id: &ProgramId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let (objective_a, timestamp_a) = create_active_evidence_objective(
+		store,
+		client,
+		project_id,
+		lead_id,
+		program_id,
+		ActiveEvidenceObjectiveFixture {
+			objective_id: "71000000-0000-4000-8000-000000000083",
+			correlation_id: "51000000-0000-4000-8000-000000000086",
+			create_key: "objective-create-evidence-83",
+			activate_key: "objective-activate-evidence-83",
+		},
+	)
+	.await?;
+	let (objective_b, timestamp_b) = create_active_evidence_objective(
+		store,
+		client,
+		project_id,
+		lead_id,
+		program_id,
+		ActiveEvidenceObjectiveFixture {
+			objective_id: "71000000-0000-4000-8000-000000000084",
+			correlation_id: "51000000-0000-4000-8000-000000000087",
+			create_key: "objective-create-evidence-84",
+			activate_key: "objective-activate-evidence-84",
+		},
+	)
+	.await?;
+	let accepted_at = if timestamp_a >= timestamp_b { timestamp_a } else { timestamp_b };
+	let evidence_id = ObjectiveEvidenceId::new("81000000-0000-4000-8000-000000000083")?;
+	let cases = [
+		(
+			CommandIdentity::new("objective-evidence-cross-race-a-83", b"cross-race-a-83")?,
+			cross_objective_evidence(
+				evidence_id.clone(),
+				objective_a,
+				project_id,
+				lead_id,
+				accepted_at,
+				"51000000-0000-4000-8000-000000000088",
+			)?,
+		),
+		(
+			CommandIdentity::new("objective-evidence-cross-race-b-83", b"cross-race-b-83")?,
+			cross_objective_evidence(
+				evidence_id,
+				objective_b,
+				project_id,
+				lead_id,
+				accepted_at,
+				"51000000-0000-4000-8000-000000000089",
+			)?,
+		),
+	];
+
+	let (mut blocker, blocker_connection) = migration.clone().connect(NoTls).await?;
+	let blocker_task = task::spawn(blocker_connection);
+	let blocker_transaction = blocker.transaction().await?;
+
+	blocker_transaction
+		.batch_execute("LOCK TABLE decodex.activity IN ACCESS EXCLUSIVE MODE")
+		.await?;
+
+	let mut tasks = JoinSet::new();
+
+	for (command, evidence) in cases {
+		let store = store.clone();
+
+		tasks.spawn(async move {
+			let result = store.achieve_objective(&command, &evidence).await;
+
+			(command, evidence, result)
+		});
+	}
+
+	let contention = wait_for_cross_objective_evidence_contention(client).await;
+
+	blocker_transaction.rollback().await?;
+	drop(blocker);
+	blocker_task.await??;
+
+	if let Err(error) = contention {
+		tasks.abort_all();
+
+		while tasks.join_next().await.is_some() {}
+
+		return Err(error);
+	}
+
+	let mut results = Vec::new();
+
+	while let Some(joined) = tasks.join_next().await {
+		results.push(joined?);
+	}
+
+	assert_cross_objective_evidence_results(store, client, results).await
+}
+
+struct ActiveEvidenceObjectiveFixture<'a> {
+	objective_id: &'a str,
+	correlation_id: &'a str,
+	create_key: &'a str,
+	activate_key: &'a str,
+}
+
+async fn create_active_evidence_objective(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	program_id: &ProgramId,
+	fixture: ActiveEvidenceObjectiveFixture<'_>,
+) -> Result<(ObjectiveId, ProgramTimestamp), Box<dyn std::error::Error>> {
+	let objective_id = ObjectiveId::new(fixture.objective_id)?;
+	let provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new(fixture.correlation_id)?,
+		"Cross-Objective evidence identity race fixture",
+	)?;
+	let objective = Objective::new(
+		objective_id.clone(),
+		project_id.clone(),
+		Some(program_id.clone()),
+		"Accept one identity-race outcome",
+		vec!["Accepted".into()],
+		vec!["Validated".into()],
+		ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?,
+	)?;
+
+	store
+		.create_objective(
+			&CommandIdentity::new(fixture.create_key, fixture.create_key.as_bytes())?,
+			&objective,
+			&provenance,
+		)
+		.await?;
+	store
+		.transition_objective(
+			&CommandIdentity::new(fixture.activate_key, fixture.activate_key.as_bytes())?,
+			project_id,
+			&objective_id,
+			1,
+			ObjectiveState::Active,
+			&provenance,
+		)
+		.await?;
+
+	let updated_at: i64 = client
+		.query_one(
+			"SELECT (EXTRACT(epoch FROM updated_at)*1000000)::bigint \
+			 FROM decodex.objectives WHERE objective_id=$1::text::uuid",
+			&[&objective_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	Ok((objective_id, ProgramTimestamp::from_unix_microseconds(updated_at)?))
+}
+
+fn cross_objective_evidence(
+	evidence_id: ObjectiveEvidenceId,
+	objective_id: ObjectiveId,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	timestamp: ProgramTimestamp,
+	correlation_id: &str,
+) -> Result<ObjectiveCompletionEvidence, Box<dyn std::error::Error>> {
+	Ok(ObjectiveCompletionEvidence::proposed(
+		evidence_id,
+		objective_id,
+		project_id.clone(),
+		2,
+		"Accepted identity-race result",
+		lead_id.clone(),
+		timestamp,
+		"Acceptance identity retained",
+		"Validated identity-race result",
+		lead_id.clone(),
+		timestamp,
+		"Validation identity retained",
+		ProgramCorrelationId::new(correlation_id)?,
+	)?)
+}
+
+async fn wait_for_cross_objective_evidence_contention(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	for _ in 0..500 {
+		let row = client
+			.query_one(
+				r#"SELECT
+				 count(*) FILTER (WHERE locks.locktype = 'relation'
+				 AND locks.relation = 'decodex.activity'::pg_catalog.regclass
+				 AND locks.mode = 'RowExclusiveLock' AND locks.granted IS FALSE),
+				 count(*) FILTER (WHERE locks.locktype = 'transactionid'
+				 AND locks.mode = 'ShareLock' AND locks.granted IS FALSE)
+				 FROM pg_catalog.pg_locks AS locks"#,
+				&[],
+			)
+			.await?;
+		let waiting_activity: i64 = row.get(0);
+		let waiting_evidence: i64 = row.get(1);
+
+		if waiting_activity >= 1 && waiting_evidence >= 1 {
+			return Ok(());
+		}
+
+		time::sleep(Duration::from_millis(10)).await;
+	}
+
+	Err(std::io::Error::other("cross-Objective evidence commands did not reach both lock waits")
+		.into())
+}
+
+async fn assert_cross_objective_evidence_results(
+	store: &PostgresStore,
+	client: &Client,
+	results: Vec<(
+		CommandIdentity,
+		ObjectiveCompletionEvidence,
+		Result<decodex_postgres::ObjectiveRecord, StoreError>,
+	)>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let mut winners = 0;
+	let mut losers = 0;
+
+	for (command, evidence, result) in results {
+		match result {
+			Ok(record) => {
+				winners += 1;
+
+				assert_eq!(record, store.achieve_objective(&command, &evidence).await?);
+			},
+			Err(StoreError::IdempotencyConflict) => {
+				losers += 1;
+
+				assert!(matches!(
+					store.achieve_objective(&command, &evidence).await,
+					Err(StoreError::IdempotencyConflict)
+				));
+			},
+			Err(error) => return Err(error.into()),
+		}
+	}
+
+	assert_eq!((winners, losers), (1, 1));
+
+	let authority = client
+		.query_one(
+			r#"SELECT
+			 (SELECT count(*) FROM decodex.objectives WHERE objective_id IN
+			 ('71000000-0000-4000-8000-000000000083','71000000-0000-4000-8000-000000000084')
+			 AND state='achieved'),
+			 (SELECT count(*) FROM decodex.objective_completion_evidence
+			 WHERE evidence_id='81000000-0000-4000-8000-000000000083'),
+			 (SELECT count(*) FROM decodex.activity WHERE aggregate_kind='objective'
+			 AND aggregate_id IN ('71000000-0000-4000-8000-000000000083',
+			 '71000000-0000-4000-8000-000000000084') AND event_kind='objective_achieved'),
+			 (SELECT count(*) FROM decodex.command_receipts WHERE idempotency_key IN
+			 ('objective-evidence-cross-race-a-83','objective-evidence-cross-race-b-83')
+			 AND receipt_state='completed'),
+			 (SELECT count(*) FROM decodex.command_receipts WHERE idempotency_key IN
+			 ('objective-evidence-cross-race-a-83','objective-evidence-cross-race-b-83')
+			 AND receipt_state='pending')"#,
+			&[],
+		)
+		.await?;
+
+	assert_eq!(authority.get::<_, i64>(0), 1);
+	assert_eq!(authority.get::<_, i64>(1), 1);
+	assert_eq!(authority.get::<_, i64>(2), 1);
+	assert_eq!(authority.get::<_, i64>(3), 2);
+	assert_eq!(authority.get::<_, i64>(4), 0);
+
+	Ok(())
+}
+
+async fn assert_single_domain_activity(
+	client: &Client,
+	aggregate_kind: &str,
+	aggregate_id: &str,
+	event_kind: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let count: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.activity WHERE aggregate_kind=$1 \
+			 AND aggregate_id=$2 AND event_kind=$3",
+			&[&aggregate_kind, &aggregate_id, &event_kind],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(count, 1);
+
+	Ok(())
+}
+
+async fn assert_program_context_compilation_is_pure(
+	client: &Client,
+	program: &Program,
+	program_id: &ProgramId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let counts = |row: Row| {
+		(row.get::<_, i64>(0), row.get::<_, i64>(1), row.get::<_, i64>(2), row.get::<_, i64>(3))
+	};
+	let query = "SELECT (SELECT count(*) FROM decodex.agents),\
+		 (SELECT count(*) FROM decodex.conversations),\
+		 (SELECT count(*) FROM decodex.runtime_sessions),\
+		 (SELECT count(*) FROM decodex.programs)";
+	let before = counts(client.query_one(query, &[]).await?);
+	let context = decodex_core::compile_program_context(ProgramContextInput {
+		program,
+		recent_decisions: Vec::new(),
+		quiet_period: None,
+	})?;
+	let after = counts(client.query_one(query, &[]).await?);
+
+	assert_eq!(before, after);
+	assert_eq!(context.program_id(), program_id);
+	assert!(!context.bytes().is_empty());
+
+	Ok(())
+}
+
+async fn assert_program_transition_replay(
+	store: &PostgresStore,
+	client: &Client,
+	migration: &Config,
+	runtime: &Config,
+	project_id: &ProjectId,
+	program_id: &ProgramId,
+	lead_id: &AgentId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000062")?,
+		"Lead classified current attention",
+	)?;
+	let candidates = [
+		(CommandIdentity::new("program-race-blocked-60", b"blocked")?, ProgramState::Blocked),
+		(CommandIdentity::new("program-race-paused-60", b"paused")?, ProgramState::Paused),
+	];
+	let mut tasks = JoinSet::new();
+
+	for (command, state) in candidates {
+		let store = store.clone();
+		let project_id = project_id.clone();
+		let program_id = program_id.clone();
+		let provenance = provenance.clone();
+
+		tasks.spawn(async move {
+			let result = store
+				.transition_program(&command, &project_id, &program_id, 2, state, &provenance)
+				.await;
+
+			(command, state, result)
+		});
+	}
+
+	let mut loser = None;
+	let mut winner_count = 0;
+
+	while let Some(result) = tasks.join_next().await {
+		let (command, state, result) = result?;
+
+		match result {
+			Ok(_) => winner_count += 1,
+			Err(StoreError::RevisionConflict { actual: Some(3), .. }) =>
+				loser = Some((command, state)),
+			Err(error) => return Err(error.into()),
+		}
+	}
+
+	assert_eq!(winner_count, 1);
+
+	let (loser, loser_state) = loser.expect("one optimistic Program transition loses");
+
+	assert!(matches!(
+		store.transition_program(&loser, project_id, program_id, 2, loser_state, &provenance).await,
+		Err(StoreError::RevisionConflict { actual: Some(3), .. })
+	));
+
+	let pending: i64 = client
+		.query_one(
+			"SELECT count(*) FROM decodex.command_receipts WHERE receipt_state='pending'\
+			 AND operation IN ('create_program','update_program_context','transition_program',\
+			 'create_objective','transition_objective','achieve_objective')",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert_eq!(pending, 0);
+
+	let reopened =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+
+	assert_eq!(reopened.program(program_id).await?, store.program(program_id).await?);
+	assert!(matches!(
+		reopened
+			.transition_program(&loser, project_id, program_id, 2, loser_state, &provenance)
+			.await,
+		Err(StoreError::RevisionConflict { actual: Some(3), .. })
+	));
+
+	reopened.close();
+
+	Ok(())
+}
+
+async fn assert_hostile_program_objective_sql(
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	policy_id: &PolicyId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let boundary_metrics = serde_json::json!([{
+		"key":"metric_1","value":"x".repeat(256),"unit":"u".repeat(64),
+		"provenance":{"source":"s".repeat(256),"observed_at_microseconds":253_402_300_799_999_999_i64}
+	}]);
+	let boundary_signals = serde_json::json!([{
+		"id":"61000000-0000-4000-8000-000000000098","kind":"k".repeat(64),
+		"summary":"x".repeat(4_096),
+		"provenance":{"source":"s".repeat(256),"observed_at_microseconds":253_402_300_799_999_999_i64}
+	}]);
+	let boundary_criteria =
+		(0..32).map(|index| format!("{index:02}{}", "x".repeat(4_094))).collect::<Vec<_>>();
+	let boundary = client
+		.query_one(
+			"SELECT decodex.is_program_metrics($1),decodex.is_program_signals($2),\
+			 decodex.is_objective_criteria($3)",
+			&[&boundary_metrics, &boundary_signals, &boundary_criteria],
+		)
+		.await?;
+
+	assert!(boundary.get::<_, bool>(0));
+	assert!(boundary.get::<_, bool>(1));
+	assert!(boundary.get::<_, bool>(2));
+
+	client
+		.execute(
+			"WITH written AS (SELECT clock_timestamp() AS at)\
+			 INSERT INTO decodex.objectives (objective_id,project_id,outcome,\
+			 acceptance_criteria,validation_criteria,target_at,last_changed_by,\
+			 last_correlation_id,last_provenance,created_at,updated_at)\
+			 SELECT '71000000-0000-4000-8000-000000000097',$1::text::uuid,\
+			 'valid maximum criteria',$3,$3,to_timestamp(2000000000),$2::text::uuid,\
+			 gen_random_uuid(),'direct valid boundary fixture',written.at,written.at FROM written",
+			&[&project_id.as_str(), &lead_id.as_str(), &boundary_criteria],
+		)
+		.await?;
+
+	for document in [
+		serde_json::json!([null]),
+		serde_json::json!([{}]),
+		serde_json::json!([{"key":"metric","value":"","unit":"count","provenance":{"source":"fixture","observed_at_microseconds":1}}]),
+		serde_json::json!([{"key":"metric","value":"1","unit":"count","provenance":{"source":"fixture"}}]),
+		serde_json::json!([{"key":"metric","value":"1","unit":"count","provenance":{"source":"fixture","observed_at_microseconds":1}}, {"key":"metric","value":"2","unit":"count","provenance":{"source":"fixture","observed_at_microseconds":2}}]),
+	] {
+		client
+			.execute(
+				"UPDATE decodex.programs SET metrics=$1,revision=revision+1,\
+				 last_correlation_id=gen_random_uuid(),last_provenance='hostile SQL fixture',\
+				 updated_at=clock_timestamp()\
+				 WHERE program_id='41000000-0000-4000-8000-000000000060'",
+				&[&document],
+			)
+			.await
+			.expect_err("PostgreSQL rejects Rust-invalid Program metric JSON");
+	}
+	for document in [
+		serde_json::json!([null]),
+		serde_json::json!([{"id":"61000000-0000-4000-8000-000000000099","kind":"bad-kind","summary":"x","provenance":{"source":"fixture","observed_at_microseconds":1}}]),
+		serde_json::json!([{"id":"61000000-0000-4000-8000-000000000099","kind":"signal","summary":"","provenance":{"source":"fixture","observed_at_microseconds":1}}]),
+	] {
+		client
+			.execute(
+				"UPDATE decodex.programs SET signals=$1,revision=revision+1,\
+				 last_correlation_id=gen_random_uuid(),last_provenance='hostile SQL fixture',\
+				 updated_at=clock_timestamp()\
+				 WHERE program_id='41000000-0000-4000-8000-000000000060'",
+				&[&document],
+			)
+			.await
+			.expect_err("PostgreSQL rejects Rust-invalid Program signal JSON");
+	}
+
+	let program_timestamp_error = client
+		.execute(
+			"UPDATE decodex.programs SET next_review_at=TIMESTAMPTZ '10000-01-01 00:00:00+00',\
+			 revision=revision+1,last_correlation_id=gen_random_uuid(),\
+			 last_provenance='hostile timestamp fixture',updated_at=clock_timestamp()\
+			 WHERE program_id='41000000-0000-4000-8000-000000000060'",
+			&[],
+		)
+		.await
+		.expect_err("PostgreSQL rejects timestamps outside ProgramTimestamp");
+
+	assert_eq!(
+		program_timestamp_error.as_db_error().and_then(|error| error.constraint()),
+		Some("programs_finite_timestamps")
+	);
+
+	let timestamp_boundaries = client
+		.query_one(
+			"SELECT decodex.program_timestamp(0) IS NOT NULL,\
+			 decodex.program_timestamp(253402300799999999) IS NOT NULL,\
+			 decodex.program_timestamp(-1) IS NULL,\
+			 decodex.program_timestamp(253402300800000000) IS NULL",
+			&[],
+		)
+		.await?;
+
+	assert!(timestamp_boundaries.get::<_, bool>(0));
+	assert!(timestamp_boundaries.get::<_, bool>(1));
+	assert!(timestamp_boundaries.get::<_, bool>(2));
+	assert!(timestamp_boundaries.get::<_, bool>(3));
+
+	assert_hostile_objective_sql(client, project_id, lead_id).await?;
+
+	let exact_policy_reference: bool = client
+		.query_one(
+			"SELECT EXISTS (SELECT 1 FROM decodex.programs WHERE project_id=$1::text::uuid \
+			 AND policy_id=$2::text::uuid AND policy_revision=1)",
+			&[&project_id.as_str(), &policy_id.as_str()],
+		)
+		.await?
+		.get(0);
+
+	assert!(exact_policy_reference);
+
+	Ok(())
+}
+
+async fn assert_hostile_objective_sql(
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	for criteria in [
+		Vec::<String>::new(),
+		vec![String::new()],
+		vec!["duplicate".into(), "duplicate".into()],
+		vec!["x".repeat(4_097)],
+	] {
+		client
+			.execute(
+				"WITH written AS (SELECT clock_timestamp() AS at)\
+				 INSERT INTO decodex.objectives (objective_id,project_id,outcome,\
+				 acceptance_criteria,validation_criteria,target_at,last_changed_by,\
+				 last_correlation_id,last_provenance,created_at,updated_at)\
+				 SELECT gen_random_uuid(),$1::text::uuid,'hostile criteria',$3,$3,\
+				 to_timestamp(2000000000),$2::text::uuid,gen_random_uuid(),\
+				 'hostile SQL fixture',written.at,written.at FROM written",
+				&[&project_id.as_str(), &lead_id.as_str(), &criteria],
+			)
+			.await
+			.expect_err("PostgreSQL rejects Rust-invalid Objective criteria");
+	}
+
+	let objective_timestamp_error = client
+		.execute(
+			"WITH written AS (SELECT clock_timestamp() AS at)\
+			 INSERT INTO decodex.objectives (objective_id,project_id,outcome,\
+			 acceptance_criteria,validation_criteria,target_at,last_changed_by,\
+			 last_correlation_id,last_provenance,created_at,updated_at)\
+			 SELECT '71000000-0000-4000-8000-000000000096',$1::text::uuid,\
+			 'hostile timestamp',ARRAY['accepted'],ARRAY['validated'],\
+			 TIMESTAMPTZ '10000-01-01 00:00:00+00',$2::text::uuid,gen_random_uuid(),\
+			 'hostile timestamp fixture',written.at,written.at FROM written",
+			&[&project_id.as_str(), &lead_id.as_str()],
+		)
+		.await
+		.expect_err("PostgreSQL rejects Objective timestamps outside ProgramTimestamp");
+
+	assert_eq!(
+		objective_timestamp_error.as_db_error().and_then(|error| error.constraint()),
+		Some("objectives_finite_timestamps")
+	);
+
+	let direct_objective = "71000000-0000-4000-8000-000000000099";
+	let row = client
+		.query_one(
+			"SELECT result_code FROM decodex.create_objective(\
+			 $1::text::decodex.canonical_uuid_v4_text,\
+			 $2::text::decodex.canonical_uuid_v4_text,NULL,'direct SQL objective',\
+			 ARRAY['accepted'],ARRAY['validated'],2000000000000000,\
+			 $3::text::decodex.canonical_uuid_v4_text,\
+			 '51000000-0000-4000-8000-000000000099'::decodex.canonical_uuid_v4_text,\
+			 'direct SQL fixture')",
+			&[&direct_objective, &project_id.as_str(), &lead_id.as_str()],
+		)
+		.await?;
+
+	assert_eq!(row.get::<_, &str>(0), "ok");
+
+	client
+		.query_one(
+			"SELECT result_code FROM decodex.transition_objective(\
+			 $1::text::decodex.canonical_uuid_v4_text,\
+			 $2::text::decodex.canonical_uuid_v4_text,1,'active',\
+			 $3::text::decodex.canonical_uuid_v4_text,\
+			 '51000000-0000-4000-8000-000000000098'::decodex.canonical_uuid_v4_text,\
+			 'activate direct SQL fixture')",
+			&[&direct_objective, &project_id.as_str(), &lead_id.as_str()],
+		)
+		.await?;
+
+	assert_hostile_objective_evidence(client).await?;
+
+	let prior_revision_error = client
+		.execute(
+			"WITH evidence AS (INSERT INTO decodex.objective_completion_evidence\
+			 (evidence_id,objective_id,project_id,objective_revision,objective_updated_at,\
+			 acceptance_result,accepted_by,accepted_at,acceptance_provenance,validation_result,\
+			 validated_by,validated_at,validation_provenance,correlation_id) VALUES\
+			 ('81000000-0000-4000-8000-000000000099','71000000-0000-4000-8000-000000000099',\
+			 '11000000-0000-4000-8000-000000000060',2,to_timestamp(1700000000),\
+			 'accepted','22000000-0000-4000-8000-000000000060',to_timestamp(1700000000),\
+			 'accepted','validated','22000000-0000-4000-8000-000000000060',\
+			 to_timestamp(1700000001),'validated','51000000-0000-4000-8000-000000000097')\
+			 RETURNING evidence_id)\
+			 UPDATE decodex.objectives SET state='achieved',revision=revision+1,\
+			 completion_evidence_id='81000000-0000-4000-8000-000000000099',\
+			 last_changed_by='22000000-0000-4000-8000-000000000060',\
+			 last_correlation_id='51000000-0000-4000-8000-000000000097',\
+			 last_provenance='hostile stale achievement',updated_at=clock_timestamp()\
+			 FROM evidence WHERE objective_id='71000000-0000-4000-8000-000000000099'",
+			&[],
+		)
+		.await
+		.expect_err("achievement evidence cannot predate the exact prior Objective revision");
+
+	assert_eq!(
+		prior_revision_error.as_db_error().and_then(|error| error.constraint()),
+		Some("objective_evidence_prior_revision_time")
+	);
+
+	client
+		.execute(
+			"UPDATE decodex.objectives SET state='achieved',revision=revision+1,\
+			 completion_evidence_id=gen_random_uuid(),last_changed_by=$2::text::uuid,\
+			 last_correlation_id=gen_random_uuid(),last_provenance='bare achievement',\
+			 updated_at=clock_timestamp() WHERE objective_id=$1::text::uuid",
+			&[&direct_objective, &lead_id.as_str()],
+		)
+		.await
+		.expect_err("bare Objective achievement without exact evidence is impossible");
+
+	Ok(())
+}
+
+async fn assert_hostile_objective_evidence(
+	client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	for (statement, expected_constraint) in [
+		(
+			"INSERT INTO decodex.objective_completion_evidence\
+			 (evidence_id,objective_id,project_id,objective_revision,objective_updated_at,acceptance_result,\
+			 accepted_by,accepted_at,acceptance_provenance,validation_result,validated_by,\
+			 validated_at,validation_provenance,correlation_id) VALUES\
+			 (gen_random_uuid(),'71000000-0000-4000-8000-000000000099',\
+			 '11000000-0000-4000-8000-000000000060',2,to_timestamp(1700000000),'',\
+			 '22000000-0000-4000-8000-000000000060',to_timestamp(1700000000),'accepted',\
+			 'validated','22000000-0000-4000-8000-000000000060',\
+			 to_timestamp(1700000001),'validated',gen_random_uuid())",
+			"objective_evidence_text_bounded",
+		),
+		(
+			"INSERT INTO decodex.objective_completion_evidence\
+			 (evidence_id,objective_id,project_id,objective_revision,objective_updated_at,acceptance_result,\
+			 accepted_by,accepted_at,acceptance_provenance,validation_result,validated_by,\
+			 validated_at,validation_provenance,correlation_id) VALUES\
+			 (gen_random_uuid(),'71000000-0000-4000-8000-000000000099',\
+			 '11000000-0000-4000-8000-000000000060',2,to_timestamp(1700000000),'accepted',\
+			 '22000000-0000-4000-8000-000000000099',to_timestamp(1700000000),'accepted',\
+			 'validated','22000000-0000-4000-8000-000000000060',\
+			 to_timestamp(1700000001),'validated',gen_random_uuid())",
+			"objective_evidence_accepting_agent_project_fk",
+		),
+		(
+			"INSERT INTO decodex.objective_completion_evidence\
+			 (evidence_id,objective_id,project_id,objective_revision,objective_updated_at,acceptance_result,\
+			 accepted_by,accepted_at,acceptance_provenance,validation_result,validated_by,\
+			 validated_at,validation_provenance,correlation_id) VALUES\
+			 (gen_random_uuid(),'71000000-0000-4000-8000-000000000099',\
+			 '11000000-0000-4000-8000-000000000060',2,to_timestamp(1700000000),'accepted',\
+			 '22000000-0000-4000-8000-000000000060',to_timestamp(1700000002),'accepted',\
+			 'validated','22000000-0000-4000-8000-000000000060',\
+			 to_timestamp(1700000001),'validated',gen_random_uuid())",
+			"objective_evidence_chronology",
+		),
+		(
+			"INSERT INTO decodex.objective_completion_evidence\
+			 (evidence_id,objective_id,project_id,objective_revision,objective_updated_at,acceptance_result,\
+			 accepted_by,accepted_at,acceptance_provenance,validation_result,validated_by,\
+			 validated_at,validation_provenance,correlation_id) VALUES\
+			 (gen_random_uuid(),'71000000-0000-4000-8000-000000000099',\
+			 '11000000-0000-4000-8000-000000000060',2,to_timestamp(-1),'accepted',\
+			 '22000000-0000-4000-8000-000000000060',to_timestamp(0),'accepted',\
+			 'validated','22000000-0000-4000-8000-000000000060',\
+			 to_timestamp(1),'validated',gen_random_uuid())",
+			"objective_evidence_chronology",
+		),
+	] {
+		let error = client
+			.batch_execute(statement)
+			.await
+			.expect_err("hostile direct Objective evidence is rejected");
+
+		assert_eq!(
+			error.as_db_error().and_then(|error| error.constraint()),
+			Some(expected_constraint)
+		);
+	}
+
+	Ok(())
+}
+
+async fn assert_objective_lifecycle(
+	store: &PostgresStore,
+	client: &Client,
+	project_id: &ProjectId,
+	lead_id: &AgentId,
+	program_id: &ProgramId,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let achieved_id = ObjectiveId::new("71000000-0000-4000-8000-000000000060")?;
+	let achieved = Objective::new(
+		achieved_id.clone(),
+		project_id.clone(),
+		Some(program_id.clone()),
+		"Publish the finite Q3 search brief",
+		vec!["Lead accepts the brief".into()],
+		vec!["Independent checks pass".into()],
+		ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?,
+	)?;
+	let create_provenance = ProgramProvenance::new(
+		lead_id.clone(),
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000070")?,
+		"Lead proposed a finite Objective",
+	)?;
+	let create_command = CommandIdentity::new("objective-create-60", b"objective-create-60")?;
+
+	assert_eq!(
+		store.create_objective(&create_command, &achieved, &create_provenance).await?,
+		store.create_objective(&create_command, &achieved, &create_provenance).await?,
+	);
+
+	let activate_command = CommandIdentity::new("objective-activate-60", b"objective-activate-60")?;
+	let active = store
+		.transition_objective(
+			&activate_command,
+			project_id,
+			&achieved_id,
+			1,
+			ObjectiveState::Active,
+			&create_provenance,
+		)
+		.await?;
+
+	assert_eq!(active.objective.revision(), 2);
+
+	let prior_updated_at: i64 = client
+		.query_one(
+			"SELECT (EXTRACT(epoch FROM updated_at)*1000000)::bigint \
+			 FROM decodex.objectives WHERE objective_id=$1::text::uuid",
+			&[&achieved_id.as_str()],
+		)
+		.await?
+		.get(0);
+	let accepted_at = ProgramTimestamp::from_unix_microseconds(prior_updated_at)?;
+
+	assert_bare_achievement_replays(store, project_id, &achieved_id, &create_provenance).await?;
+
+	let evidence = ObjectiveCompletionEvidence::proposed(
+		ObjectiveEvidenceId::new("81000000-0000-4000-8000-000000000060")?,
+		achieved_id.clone(),
+		project_id.clone(),
+		2,
+		"Lead accepted the bounded outcome",
+		lead_id.clone(),
+		accepted_at,
+		"Acceptance checklist retained",
+		"Validation criteria passed",
+		lead_id.clone(),
+		accepted_at,
+		"Validation record retained",
+		ProgramCorrelationId::new("51000000-0000-4000-8000-000000000071")?,
+	)?;
+	let achieve_command = CommandIdentity::new("objective-achieve-60", b"objective-achieve-60")?;
+	let completed = store.achieve_objective(&achieve_command, &evidence).await?;
+
+	assert_eq!(completed.objective.state(), ObjectiveState::Achieved);
+	assert_eq!(completed.objective.revision(), 3);
+
+	let completion = completed.objective.completion().expect("achievement evidence");
+
+	assert_eq!(completion.id(), evidence.id());
+	assert_eq!(completion.objective_updated_at(), Some(accepted_at));
+	assert_eq!(completed, store.achieve_objective(&achieve_command, &evidence).await?);
+
+	let abandoned_id = ObjectiveId::new("71000000-0000-4000-8000-000000000061")?;
+	let abandoned = Objective::new(
+		abandoned_id.clone(),
+		project_id.clone(),
+		Some(program_id.clone()),
+		"Evaluate one finite channel experiment",
+		vec!["Decision documented".into()],
+		vec!["Experiment data reviewed".into()],
+		ProgramTimestamp::from_unix_microseconds(2_000_000_000_000_000)?,
+	)?;
+	let abandoned_create = CommandIdentity::new("objective-create-61", b"objective-create-61")?;
+
+	store.create_objective(&abandoned_create, &abandoned, &create_provenance).await?;
+
+	let abandoned_record = store
+		.transition_objective(
+			&CommandIdentity::new("objective-abandon-61", b"objective-abandon-61")?,
+			project_id,
+			&abandoned_id,
+			1,
+			ObjectiveState::Abandoned,
+			&create_provenance,
+		)
+		.await?;
+
+	assert_eq!(abandoned_record.objective.state(), ObjectiveState::Abandoned);
+	assert_eq!(store.objective(&achieved_id).await?, Some(completed));
+
+	Ok(())
+}
+
+async fn assert_bare_achievement_replays(
+	store: &PostgresStore,
+	project_id: &ProjectId,
+	objective_id: &ObjectiveId,
+	provenance: &ProgramProvenance,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let command = CommandIdentity::new("objective-bare-achieve-60", b"bare-achieve")?;
+
+	for _ in 0..2 {
+		assert!(matches!(
+			store
+				.transition_objective(
+					&command,
+					project_id,
+					objective_id,
+					2,
+					ObjectiveState::Achieved,
+					provenance,
+				)
+				.await,
+			Err(StoreError::InvalidInput("Program/Objective lifecycle transition is invalid"))
+		));
+	}
 
 	Ok(())
 }
@@ -2411,7 +3892,6 @@ async fn assert_policy_database_guards(
 		)
 		.await
 		.expect_err("cross-Project accepting Agent foreign key rejects attachment");
-
 	store.transition_project(project_id, 1, ProjectStatus::Paused).await?;
 
 	let paused_acceptance = policy_acceptance(project_id, policy_id, lead_id, 3, "paused-project");

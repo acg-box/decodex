@@ -1,10 +1,59 @@
 import json
+import re
 import subprocess
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+VNEXT_CONTRACT_ROOTS = (
+    ROOT / "crates/decodex-core/src",
+    ROOT / "crates/decodex-postgres/src",
+    ROOT / "crates/decodex-postgres/migrations",
+    ROOT / "crates/decodex-protocol/src",
+    ROOT / "crates/decodex-runtime/src",
+    ROOT / "apps/decodexd/src",
+    ROOT / "apps/decodex-cli/src",
+    ROOT / "apps/decodex-gpui/src",
+)
+CONTRACT_SUFFIXES = {".rs", ".sql", ".proto", ".json"}
+GOAL_IDENTIFIER = re.compile(
+    r"\b(?:goal|goals|goal_[A-Za-z0-9_]*|[A-Za-z0-9_]*Goal[A-Za-z0-9_]*)\b",
+    re.IGNORECASE,
+)
+RUST_CONTRACT_STRING = re.compile(
+    r"(?:serde\s*\([^)]*(?:rename|alias)|route|path|operation_id|schema)"
+    r"[^\n]*[\"'][^\"']*\bgoals?\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_rust_prose(source):
+    source = re.sub(r"/\*.*?\*/", " ", source, flags=re.DOTALL)
+    source = re.sub(r"//[^\n]*", " ", source)
+    return re.sub(r'r#*".*?"#*|"(?:\\.|[^"\\])*"', '""', source, flags=re.DOTALL)
+
+
+def _strip_sql_prose(source):
+    source = re.sub(r"--[^\n]*", " ", source)
+    source = re.sub(r"/\*.*?\*/", " ", source, flags=re.DOTALL)
+    return re.sub(r"'(?:''|[^'])*'", "''", source, flags=re.DOTALL)
+
+
+def forbidden_goal_contracts(source, suffix, ownership="active_vnext"):
+    """Return product Goal authority, not ordinary prose or bounded external ownership."""
+    if ownership in {"frozen_legacy", "external_codex_adapter"}:
+        return []
+    findings = []
+    if suffix == ".rs":
+        findings.extend(match.group(0) for match in GOAL_IDENTIFIER.finditer(_strip_rust_prose(source)))
+        findings.extend(match.group(0) for match in RUST_CONTRACT_STRING.finditer(source))
+    elif suffix == ".sql":
+        findings.extend(match.group(0) for match in GOAL_IDENTIFIER.finditer(_strip_sql_prose(source)))
+    elif suffix in {".proto", ".json"}:
+        findings.extend(match.group(0) for match in GOAL_IDENTIFIER.finditer(source))
+    return findings
 
 EXPECTED_OWNER_DEPENDENCIES = {
     "decodex-core": set(),
@@ -442,6 +491,117 @@ class VnextArchitectureTests(unittest.TestCase):
             "codex process",
         ):
             self.assertNotIn(live_token, migration)
+
+    def test_program_objective_identity_and_effect_boundaries_are_exact(self):
+        core = (ROOT / "crates/decodex-core/src/program.rs").read_text()
+        core_lib = (ROOT / "crates/decodex-core/src/lib.rs").read_text()
+        postgres = (ROOT / "crates/decodex-postgres/src/programs.rs").read_text()
+        migration = (
+            ROOT
+            / "crates/decodex-postgres/migrations/V7__program_objective_authority.sql"
+        ).read_text()
+
+        self.assertIn("stable_id!(ProgramId", core)
+        self.assertIn("stable_id!(ObjectiveId", core)
+        self.assertIn("mod program", core_lib)
+        self.assertIn("ProgramContextInput", core_lib)
+        self.assertIn("use decodex_core", postgres)
+        for parallel_identity in (
+            "struct ProjectId",
+            "struct LeadId",
+            "struct PolicyId",
+            "struct WorkItemId",
+            "work_item_ids",
+        ):
+            self.assertNotIn(parallel_identity, core)
+            self.assertNotIn(parallel_identity, postgres)
+            self.assertNotIn(parallel_identity, migration)
+        for runtime_identity in (
+            "RuntimeSessionId",
+            "ConversationId",
+            "ThreadId",
+            "create_conversation",
+            "create_runtime_session",
+        ):
+            self.assertNotIn(runtime_identity, core)
+            self.assertNotIn(runtime_identity, postgres)
+            self.assertNotIn(runtime_identity, migration)
+
+        self.assertIn("REFERENCES decodex.projects", migration)
+        self.assertIn("REFERENCES decodex.agents(agent_id, project_id)", migration)
+        self.assertIn("REFERENCES decodex.policy_revisions", migration)
+        self.assertIn("objective_completion_evidence", migration)
+        self.assertIn("DEFERRABLE INITIALLY DEFERRED", migration)
+        self.assertIn("p_project_id decodex.canonical_uuid_v4_text", migration)
+        self.assertIn("stored.project_id<>canonical_project_id", migration)
+        self.assertIn("evidence_row.objective_updated_at <> OLD.updated_at", migration)
+        self.assertIn("ON CONFLICT DO NOTHING", migration)
+        self.assertNotIn("WorkItem", migration)
+
+    def test_active_vnext_contracts_have_no_product_goal_authority(self):
+        findings = {}
+        for root in VNEXT_CONTRACT_ROOTS:
+            for path in sorted(root.rglob("*")):
+                if path.is_file() and path.suffix in CONTRACT_SUFFIXES:
+                    path_findings = forbidden_goal_contracts(
+                        path.read_text(), path.suffix
+                    )
+                    if path_findings:
+                        findings[str(path.relative_to(ROOT))] = path_findings
+
+        self.assertEqual(findings, {})
+
+    def test_managed_run_success_requires_work_item_acceptance_authority(self):
+        required = (
+            "ManagedRun may reach successful terminal completion only from explicit "
+            "authoritative\nWorkItem acceptance and validation"
+        )
+        exclusions = (
+            "Objective achievement or evidence",
+            "Codex Goal state cannot establish WorkItem acceptance or ManagedRun success",
+        )
+        for relative in (
+            "openwiki/specs/vnext-authority.md",
+            "openwiki/specs/vnext-gates.md",
+        ):
+            contract = (ROOT / relative).read_text()
+
+            self.assertIn(required, contract)
+            for exclusion in exclusions:
+                self.assertIn(exclusion, contract)
+
+    def test_goal_vocabulary_audit_is_contract_aware_and_adversarial(self):
+        forbidden = {
+            ".rs": [
+                "pub struct Goal { id: GoalId }",
+                "pub goal_id: String",
+                '#[serde(rename = "goal")] pub objective: String',
+                'route("/vnext/goals")',
+            ],
+            ".sql": [
+                "CREATE TABLE decodex.goals (goal_id uuid PRIMARY KEY);",
+                'CREATE TYPE decodex."GoalState" AS ENUM (\'active\');',
+            ],
+            ".proto": ["message Goal { string goal_id = 1; }"],
+            ".json": ['{"properties":{"goal":{"type":"string"}}}'],
+        }
+        for suffix, fixtures in forbidden.items():
+            for fixture in fixtures:
+                with self.subTest(suffix=suffix, fixture=fixture):
+                    self.assertTrue(forbidden_goal_contracts(fixture, suffix))
+
+        allowed = [
+            ("// Current non-goals remain explicit.", ".rs", "active_vnext"),
+            ('let prose = "ordinary goals and non-goals";', ".rs", "active_vnext"),
+            ("-- ordinary goals are discussed here", ".sql", "active_vnext"),
+            ("pub struct GoalHandle;", ".rs", "external_codex_adapter"),
+            ("CREATE TABLE legacy_goals(id uuid);", ".sql", "frozen_legacy"),
+        ]
+        for fixture, suffix, ownership in allowed:
+            with self.subTest(suffix=suffix, ownership=ownership):
+                self.assertEqual(
+                    forbidden_goal_contracts(fixture, suffix, ownership), []
+                )
 
 if __name__ == "__main__":
     unittest.main()
