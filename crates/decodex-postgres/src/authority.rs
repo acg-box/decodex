@@ -1587,6 +1587,486 @@ const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
 	0xae, 0x1f, 0xb7, 0x45, 0x9f, 0xf8, 0x07, 0x19, 0x10, 0x16, 0x9f, 0xa1, 0x48, 0x31, 0x11, 0xdc,
 	0xf0, 0xc8, 0xc8, 0xe7, 0xc8, 0x15, 0x59, 0xe0, 0x3d, 0xf7, 0x69, 0x2d, 0x1a, 0xca, 0x9c, 0x7e,
 ];
+// The shipped authority permits no role settings. Record only cardinality so any setting
+// fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
+const CONFIGURED_AUTHORITY_SQL: &str = r#"
+WITH RECURSIVE configured_principals(label, role_name) AS (
+  VALUES ('migration'::pg_catalog.text, $1::pg_catalog.name),
+         ('runtime'::pg_catalog.text, $2::pg_catalog.name)
+), configured_roles AS (
+  SELECT
+    configured.label, configured.role_name, role.oid, role.rolname,
+    role.rolsuper, role.rolinherit, role.rolcreaterole, role.rolcreatedb,
+    role.rolcanlogin, role.rolreplication, role.rolconnlimit, role.rolvaliduntil,
+    role.rolbypassrls, role.rolconfig
+  FROM configured_principals AS configured
+  LEFT JOIN pg_catalog.pg_roles AS role ON role.rolname = configured.role_name
+), membership_roles(oid) AS (
+  SELECT oid FROM configured_roles WHERE oid IS NOT NULL
+  UNION
+  SELECT endpoint.oid
+  FROM membership_roles AS reached
+  JOIN pg_catalog.pg_auth_members AS membership
+    ON membership.roleid = reached.oid OR membership.member = reached.oid
+  CROSS JOIN LATERAL (
+    VALUES (membership.roleid), (membership.member)
+  ) AS endpoint(oid)
+), relevant_roles AS (
+  SELECT
+    role.oid, role.rolname, role.rolsuper, role.rolinherit, role.rolcreaterole,
+    role.rolcreatedb, role.rolcanlogin, role.rolreplication, role.rolconnlimit,
+    role.rolvaliduntil, role.rolbypassrls, role.rolconfig
+  FROM pg_catalog.pg_roles AS role
+  WHERE role.oid IN (SELECT oid FROM membership_roles)
+), configured_database AS (
+  SELECT database.*
+  FROM pg_catalog.pg_database AS database
+  WHERE database.datname = pg_catalog.current_database()
+), relevant_namespaces AS (
+  SELECT namespace.*
+  FROM pg_catalog.pg_namespace AS namespace
+  WHERE namespace.nspname IN ('decodex', 'public')
+), decodex_classes AS (
+  SELECT class.*, namespace.nspname
+  FROM pg_catalog.pg_class AS class
+  JOIN relevant_namespaces AS namespace
+    ON namespace.oid = class.relnamespace AND namespace.nspname = 'decodex'
+), ledger_class AS (
+  SELECT class.*, namespace.nspname
+  FROM pg_catalog.pg_class AS class
+  JOIN relevant_namespaces AS namespace
+    ON namespace.oid = class.relnamespace AND namespace.nspname = 'public'
+  WHERE class.relname = 'refinery_schema_history' AND class.relkind IN ('r', 'p')
+), authority_classes AS (
+  SELECT * FROM decodex_classes
+  UNION ALL
+  SELECT * FROM ledger_class
+), authority_objects(kind, identity, owner_oid, acl) AS (
+  SELECT
+    'database', 'configured_database', database.datdba,
+    COALESCE(database.datacl, pg_catalog.acldefault('d', database.datdba))
+  FROM configured_database AS database
+  UNION ALL
+  SELECT
+    'namespace', namespace.nspname, namespace.nspowner,
+    COALESCE(namespace.nspacl, pg_catalog.acldefault('n', namespace.nspowner))
+  FROM relevant_namespaces AS namespace
+  UNION ALL
+  SELECT
+    CASE WHEN class.relkind = 'S' THEN 'sequence' ELSE 'relation' END,
+    pg_catalog.format('%I.%I', class.nspname, class.relname), class.relowner,
+    COALESCE(
+      class.relacl,
+      pg_catalog.acldefault(
+        (CASE WHEN class.relkind = 'S' THEN 's' ELSE 'r' END)::pg_catalog."char",
+        class.relowner
+      )
+    )
+  FROM decodex_classes AS class
+  WHERE class.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+  UNION ALL
+  SELECT
+    'migration_ledger', pg_catalog.format('%I.%I', class.nspname, class.relname),
+    class.relowner, COALESCE(class.relacl, pg_catalog.acldefault('r', class.relowner))
+  FROM ledger_class AS class
+  UNION ALL
+  SELECT
+    'type', pg_catalog.format('%I.%I', namespace.nspname, type.typname), type.typowner,
+    COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))
+  FROM pg_catalog.pg_type AS type
+  JOIN relevant_namespaces AS namespace
+    ON namespace.oid = type.typnamespace AND namespace.nspname = 'decodex'
+  UNION ALL
+  SELECT
+    'function',
+    pg_catalog.format(
+      '%I.%I(%s)', namespace.nspname, proc.proname,
+      pg_catalog.pg_get_function_identity_arguments(proc.oid)
+    ),
+    proc.proowner, COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))
+  FROM pg_catalog.pg_proc AS proc
+  JOIN relevant_namespaces AS namespace
+    ON namespace.oid = proc.pronamespace AND namespace.nspname = 'decodex'
+), contract_rows(kind, identity, contract) AS (
+  SELECT
+    'principal',
+    configured.label,
+    pg_catalog.jsonb_build_array(
+      configured.oid IS NOT NULL,
+      configured.rolsuper,
+      configured.rolinherit,
+      configured.rolcreaterole,
+      configured.rolcreatedb,
+      configured.rolcanlogin,
+      configured.rolreplication,
+      configured.rolconnlimit,
+      CASE WHEN configured.rolvaliduntil IS NULL THEN NULL ELSE
+        pg_catalog.to_char(
+          configured.rolvaliduntil AT TIME ZONE 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        )
+      END,
+      configured.rolbypassrls,
+      COALESCE(pg_catalog.cardinality(configured.rolconfig), 0)
+    )::pg_catalog.text
+  FROM configured_roles AS configured
+  UNION ALL
+  SELECT
+    'reachable_principal',
+    'other:' || role.rolname,
+    pg_catalog.jsonb_build_array(
+      role.rolsuper, role.rolinherit, role.rolcreaterole, role.rolcreatedb,
+      role.rolcanlogin, role.rolreplication, role.rolconnlimit,
+      CASE WHEN role.rolvaliduntil IS NULL THEN NULL ELSE
+        pg_catalog.to_char(
+          role.rolvaliduntil AT TIME ZONE 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        )
+      END,
+      role.rolbypassrls,
+      COALESCE(pg_catalog.cardinality(role.rolconfig), 0)
+    )::pg_catalog.text
+  FROM relevant_roles AS role
+  WHERE role.oid NOT IN (SELECT oid FROM configured_roles WHERE oid IS NOT NULL)
+  UNION ALL
+  SELECT
+    'role_membership',
+    pg_catalog.format(
+      '%s->%s',
+      CASE
+        WHEN membership.roleid = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN membership.roleid = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(membership.roleid)
+      END,
+      CASE
+        WHEN membership.member = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN membership.member = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(membership.member)
+      END
+    ),
+    pg_catalog.jsonb_build_array(
+      CASE
+        WHEN membership.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN membership.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(membership.grantor)
+      END,
+      membership.admin_option,
+      membership.inherit_option,
+      membership.set_option
+    )::pg_catalog.text
+  FROM pg_catalog.pg_auth_members AS membership
+  WHERE membership.roleid IN (SELECT oid FROM membership_roles)
+    AND membership.member IN (SELECT oid FROM membership_roles)
+  UNION ALL
+  SELECT
+    'role_setting',
+    pg_catalog.format(
+      '%s:%s',
+      CASE
+        WHEN setting.setrole = 0 THEN 'ALL'
+        WHEN setting.setrole = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN setting.setrole = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(setting.setrole)
+      END,
+      CASE WHEN setting.setdatabase = 0 THEN 'global' ELSE 'configured_database' END
+    ),
+    pg_catalog.jsonb_build_array(
+      COALESCE(pg_catalog.cardinality(setting.setconfig), 0)
+    )::pg_catalog.text
+  FROM pg_catalog.pg_db_role_setting AS setting
+  WHERE (
+      setting.setrole IN (SELECT oid FROM membership_roles)
+      AND setting.setdatabase IN (0, (SELECT oid FROM configured_database))
+    ) OR (
+      setting.setrole = 0 AND setting.setdatabase = (SELECT oid FROM configured_database)
+    )
+  UNION ALL
+  SELECT
+    object.kind,
+    object.identity,
+    pg_catalog.jsonb_build_array(
+      CASE
+        WHEN object.owner_oid = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN object.owner_oid = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(object.owner_oid)
+      END,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(
+          pg_catalog.jsonb_build_array(
+            CASE
+              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
+                THEN 'migration'
+              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+                THEN 'runtime'
+              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+            END,
+            CASE
+              WHEN privilege.grantee = 0 THEN 'PUBLIC'
+              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
+                THEN 'migration'
+              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+                THEN 'runtime'
+              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+            END,
+            privilege.privilege_type,
+            privilege.is_grantable
+          ) ORDER BY
+            CASE
+              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
+                THEN 'migration'
+              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+                THEN 'runtime'
+              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+            END,
+            CASE
+              WHEN privilege.grantee = 0 THEN 'PUBLIC'
+              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
+                THEN 'migration'
+              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+                THEN 'runtime'
+              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+            END,
+            privilege.privilege_type,
+            privilege.is_grantable
+        )
+        FROM pg_catalog.aclexplode(object.acl) AS privilege
+      ), '[]'::pg_catalog.jsonb)
+    )::pg_catalog.text
+  FROM authority_objects AS object
+  UNION ALL
+  SELECT
+    'relation_mode',
+    pg_catalog.format('%I.%I', class.nspname, class.relname),
+    pg_catalog.jsonb_build_array(
+      class.relkind, class.relpersistence, class.relrowsecurity,
+      class.relforcerowsecurity, class.relreplident
+    )::pg_catalog.text
+  FROM authority_classes AS class
+  WHERE class.relkind IN ('r', 'p', 'v', 'm', 'f')
+  UNION ALL
+  SELECT
+    'column_acl',
+    pg_catalog.format('%I.%I.%I', class.nspname, class.relname, attribute.attname),
+    COALESCE((
+      SELECT pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_array(
+          CASE
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+          END,
+          CASE
+            WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+          END,
+          privilege.privilege_type,
+          privilege.is_grantable
+        ) ORDER BY
+          CASE
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+          END,
+          CASE
+            WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+          END,
+          privilege.privilege_type,
+          privilege.is_grantable
+      )
+      FROM pg_catalog.aclexplode(
+        COALESCE(attribute.attacl, pg_catalog.acldefault('c', class.relowner))
+      ) AS privilege
+    ), '[]'::pg_catalog.jsonb)::pg_catalog.text
+  FROM pg_catalog.pg_attribute AS attribute
+  JOIN authority_classes AS class ON class.oid = attribute.attrelid
+  WHERE attribute.attnum > 0 AND NOT attribute.attisdropped
+  UNION ALL
+  SELECT
+    'trigger_definition',
+    pg_catalog.format('%I.%I.%I', class.nspname, class.relname, trigger.tgname),
+    pg_catalog.jsonb_build_array(
+      pg_catalog.pg_get_triggerdef(trigger.oid, false),
+      trigger.tgenabled,
+      CASE
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(class.relowner)
+      END,
+      pg_catalog.format(
+        '%I.%I(%s)', function_namespace.nspname, proc.proname,
+        pg_catalog.pg_get_function_identity_arguments(proc.oid)
+      ),
+      CASE
+        WHEN proc.proowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN proc.proowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(proc.proowner)
+      END
+    )::pg_catalog.text
+  FROM pg_catalog.pg_trigger AS trigger
+  JOIN authority_classes AS class ON class.oid = trigger.tgrelid
+  JOIN pg_catalog.pg_proc AS proc ON proc.oid = trigger.tgfoid
+  JOIN pg_catalog.pg_namespace AS function_namespace ON function_namespace.oid = proc.pronamespace
+  WHERE NOT trigger.tgisinternal
+     OR trigger.tgrelid IN (SELECT oid FROM ledger_class)
+  UNION ALL
+  SELECT
+    'rule_definition',
+    pg_catalog.format('%I.%I.%I', class.nspname, class.relname, rewrite.rulename),
+    pg_catalog.jsonb_build_array(
+      pg_catalog.pg_get_ruledef(rewrite.oid, false),
+      CASE
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(class.relowner)
+      END
+    )::pg_catalog.text
+  FROM pg_catalog.pg_rewrite AS rewrite
+  JOIN authority_classes AS class ON class.oid = rewrite.ev_class
+  UNION ALL
+  SELECT
+    'policy_definition',
+    pg_catalog.format('%I.%I.%I', class.nspname, class.relname, policy.polname),
+    pg_catalog.jsonb_build_array(
+      policy.polcmd,
+      policy.polpermissive,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(
+          CASE
+            WHEN policy_role = 0 THEN 'PUBLIC'
+            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(policy_role)
+          END ORDER BY
+          CASE
+            WHEN policy_role = 0 THEN 'PUBLIC'
+            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(policy_role)
+          END
+        )
+        FROM pg_catalog.unnest(policy.polroles) AS policy_role
+      ), '[]'::pg_catalog.jsonb),
+      pg_catalog.pg_get_expr(policy.polqual, policy.polrelid),
+      pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid),
+      CASE
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(class.relowner)
+      END
+    )::pg_catalog.text
+  FROM pg_catalog.pg_policy AS policy
+  JOIN authority_classes AS class ON class.oid = policy.polrelid
+  UNION ALL
+  SELECT
+    'default_acl',
+    pg_catalog.format(
+      '%s:%s:%s',
+      CASE
+        WHEN default_acl.defaclrole = (SELECT oid FROM configured_roles WHERE label = 'migration')
+          THEN 'migration'
+        WHEN default_acl.defaclrole = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+          THEN 'runtime'
+        ELSE 'other:' || pg_catalog.pg_get_userbyid(default_acl.defaclrole)
+      END,
+      CASE
+        WHEN default_acl.defaclnamespace = 0 THEN 'global'
+        ELSE namespace.nspname
+      END,
+      default_acl.defaclobjtype
+    ),
+    COALESCE((
+      SELECT pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_array(
+          CASE
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+          END,
+          CASE
+            WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+          END,
+          privilege.privilege_type,
+          privilege.is_grantable
+        ) ORDER BY
+          CASE
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+          END,
+          CASE
+            WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
+              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
+              THEN 'runtime'
+            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+          END,
+          privilege.privilege_type,
+          privilege.is_grantable
+      )
+      FROM pg_catalog.aclexplode(default_acl.defaclacl) AS privilege
+    ), '[]'::pg_catalog.jsonb)::pg_catalog.text
+  FROM pg_catalog.pg_default_acl AS default_acl
+  LEFT JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = default_acl.defaclnamespace
+  WHERE (
+      default_acl.defaclrole IN (SELECT oid FROM configured_roles WHERE oid IS NOT NULL)
+      AND (default_acl.defaclnamespace = 0 OR namespace.nspname IN ('decodex', 'public'))
+    ) OR namespace.nspname IN ('decodex', 'public')
+)
+SELECT pg_catalog.jsonb_agg(
+  pg_catalog.jsonb_build_array(kind, identity, contract)
+  ORDER BY kind, identity, contract
+)::pg_catalog.text
+FROM contract_rows
+"#;
+const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
+	0x9d, 0x90, 0xe4, 0xc8, 0x30, 0x19, 0xe5, 0x53, 0xa0, 0xe4, 0xa9, 0x38, 0x39, 0x1a, 0x84, 0xf2,
+	0x95, 0x03, 0x9f, 0x58, 0x37, 0x9e, 0x81, 0x24, 0xe0, 0x58, 0x51, 0xbc, 0x3c, 0x2c, 0x8a, 0x3a,
+];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.oid
@@ -1727,7 +2207,17 @@ pub(crate) const fn schema_contract_sql_fixture() -> &'static str {
 	SCHEMA_CONTRACT_SQL
 }
 
-pub(crate) async fn verify_runtime(client: &Client) -> Result<(), StoreError> {
+#[cfg(feature = "test-support")]
+pub(crate) const fn configured_authority_sql_fixture() -> &'static str {
+	CONFIGURED_AUTHORITY_SQL
+}
+
+pub(crate) async fn verify_runtime(
+	client: &Client,
+	migration_role: &str,
+	runtime_role: &str,
+) -> Result<(), StoreError> {
+	verify_configured_authority(client, migration_role, runtime_role).await?;
 	verify_forbidden_authority(client).await?;
 	verify_identity_cast_authority(client).await?;
 	verify_execution_path_contract(client).await?;
@@ -1853,6 +2343,41 @@ async fn verify_schema_contract(client: &Client) -> Result<(), StoreError> {
 		return Err(StoreError::Incompatible(format!(
 			"PostgreSQL Decodex schema contract differs from the shipped PG18 inventory ({actual})"
 		)));
+	}
+
+	Ok(())
+}
+
+async fn verify_configured_authority(
+	client: &Client,
+	migration_role: &str,
+	runtime_role: &str,
+) -> Result<(), StoreError> {
+	let session_is_runtime: bool = client
+		.query_one(
+			"SELECT session_user = $1::pg_catalog.name AND current_user = $1::pg_catalog.name",
+			&[&runtime_role],
+		)
+		.await?
+		.get(0);
+
+	if !session_is_runtime {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL session identity differs from the configured runtime principal",
+		));
+	}
+
+	let manifest: Option<String> =
+		client.query_one(CONFIGURED_AUTHORITY_SQL, &[&migration_role, &runtime_role]).await?.get(0);
+	let manifest = manifest.ok_or_else(|| {
+		StoreError::Incompatible("PostgreSQL configured authority inventory is empty".into())
+	})?;
+	let digest = Sha256::digest(manifest.as_bytes());
+
+	if digest.as_slice() != CONFIGURED_AUTHORITY_SHA256 {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL configured principal or ACL authority differs from the shipped PG18 inventory",
+		));
 	}
 
 	Ok(())
@@ -2092,11 +2617,91 @@ mod tests {
 	use std::collections::HashSet;
 
 	use crate::authority::{
-		CONVERSATION_MIGRATION, FOUNDATION_MIGRATION, FUNCTION_CONTRACTS,
-		IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, POLICY_MIGRATION,
-		PROGRAM_OBJECTIVE_MIGRATION, PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL,
-		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL, CONVERSATION_MIGRATION,
+		FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL,
+		OWNED_OBJECT_CATALOGS, POLICY_MIGRATION, PROGRAM_OBJECTIVE_MIGRATION,
+		PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS,
+		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 	};
+
+	#[test]
+	fn configured_authority_manifest_closes_postgres_18_principals_and_memberships() {
+		for required in [
+			"$1::pg_catalog.name",
+			"$2::pg_catalog.name",
+			"configured.rolsuper",
+			"configured.rolinherit",
+			"configured.rolcreaterole",
+			"configured.rolcreatedb",
+			"configured.rolcanlogin",
+			"configured.rolreplication",
+			"configured.rolconnlimit",
+			"configured.rolvaliduntil",
+			"configured.rolbypassrls",
+			"configured.rolconfig",
+			"membership.grantor",
+			"membership.admin_option",
+			"membership.inherit_option",
+			"membership.set_option",
+			"pg_catalog.pg_db_role_setting",
+		] {
+			assert!(CONFIGURED_AUTHORITY_SQL.contains(required), "{required}");
+		}
+
+		assert!(!CONFIGURED_AUTHORITY_SQL.contains("rolpassword"));
+		assert!(!CONFIGURED_AUTHORITY_SQL.contains("pg_authid"));
+		assert_ne!(CONFIGURED_AUTHORITY_SHA256, [0; 32]);
+	}
+
+	#[test]
+	fn configured_authority_never_serializes_role_setting_values() {
+		assert!(!CONFIGURED_AUTHORITY_SQL.contains("unnest(configured.rolconfig)"));
+		assert!(!CONFIGURED_AUTHORITY_SQL.contains("unnest(role.rolconfig)"));
+		assert!(!CONFIGURED_AUTHORITY_SQL.contains("unnest(setting.setconfig)"));
+		assert!(CONFIGURED_AUTHORITY_SQL.contains("cardinality(configured.rolconfig)"));
+		assert!(CONFIGURED_AUTHORITY_SQL.contains("cardinality(role.rolconfig)"));
+		assert!(CONFIGURED_AUTHORITY_SQL.contains("cardinality(setting.setconfig)"));
+	}
+
+	#[test]
+	fn configured_authority_manifest_closes_owned_objects_and_acl_grantors() {
+		for required in [
+			"'database', 'configured_database'",
+			"'namespace', namespace.nspname",
+			"'migration_ledger'",
+			"authority_classes AS (",
+			"JOIN authority_classes AS class ON class.oid = attribute.attrelid",
+			"JOIN authority_classes AS class ON class.oid = trigger.tgrelid",
+			"trigger.tgrelid IN (SELECT oid FROM ledger_class)",
+			"JOIN authority_classes AS class ON class.oid = rewrite.ev_class",
+			"JOIN authority_classes AS class ON class.oid = policy.polrelid",
+			"'relation_mode'",
+			"'column_acl'",
+			"'trigger_definition'",
+			"'rule_definition'",
+			"'policy_definition'",
+			"'default_acl'",
+			"class.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')",
+			"COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))",
+			"COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))",
+			"privilege.grantor",
+			"privilege.grantee",
+			"privilege.is_grantable",
+			"NOT trigger.tgisinternal",
+			"default_acl.defaclobjtype",
+		] {
+			assert!(CONFIGURED_AUTHORITY_SQL.contains(required), "{required}");
+		}
+	}
+
+	#[test]
+	fn configured_authority_semantic_labels_are_closed_to_configured_roles_and_public() {
+		assert_eq!(CONFIGURED_AUTHORITY_SQL.matches("VALUES ('migration'").count(), 1);
+		assert_eq!(CONFIGURED_AUTHORITY_SQL.matches("('runtime'").count(), 1);
+		assert!(CONFIGURED_AUTHORITY_SQL.contains("THEN 'PUBLIC'"));
+		assert!(CONFIGURED_AUTHORITY_SQL.contains("ELSE 'other:' ||"));
+		assert!(!CONFIGURED_AUTHORITY_SQL.contains("password"));
+	}
 
 	#[test]
 	fn postgres_18_owned_object_inventory_is_closed_in_one_authority_query() {
