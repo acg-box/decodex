@@ -139,10 +139,13 @@ authorization schemes, known token/key formats, credential assignments, embedded
 private-key headers. Ordinary prose containing words such as `secret`, `token`, or `session` is not
 credential material. PostgreSQL enforces the equivalent closed predicate. Nested/raw app-server JSON
 and unsupported, oversized, or credential-shaped forms are rejected.
-`thread/read(includeTurns=true)` is a lossy reconciliation source. External Codex activity
-may be provenance-imported for ordinary Quick/Advisor/Lead conversations; on an active
-ManagedRun it marks the session `diverged` and blocks side effects until tool/repository
-readback reconciles them.
+`thread/read(includeTurns=true)` and paginated/list evidence are lossy reconciliation sources.
+They may support positive observations, but never authorize a negative `Present`, `Complete`, or
+context-free `Absent` conclusion. Missing, truncated, or unobserved evidence remains unknown.
+Experiment creation and positive observation acquisition belong to XY-1304; production Quick Task
+creation belongs to XY-1276. External Codex activity may be provenance-imported for ordinary
+Quick/Advisor/Lead conversations; on an active ManagedRun it marks the session `diverged` and blocks
+side effects until tool/repository readback reconciles them.
 
 Long-term context consists of immutable Project, Advisor, and Program revisions. Project
 context records decisions, constraints, repository facts, active Programs/Objectives,

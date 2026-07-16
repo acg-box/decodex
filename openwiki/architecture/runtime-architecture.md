@@ -365,7 +365,9 @@ insert/update/delete poisoning while the deferred parent reference prevents orph
 rollover/fallback rows are proposals only: their schema
 forces dispatch disabled. This slice exposes no account selection, live turn start/resume/steer,
 automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake; XY-1304 remains the
-separate failed enablement gate and XY-1272 owns thread-ownership reconciliation.
+separate failed enablement gate. XY-1304 owns experiment creation and positive observation
+acquisition; XY-1276 owns production Quick Task creation. XY-1272 owns only PostgreSQL
+configured-principal and ACL authority closure against V8, while XY-1337 owns the expected V9.
 
 The composition also reports conversation execution unavailable. Authentication, TLS,
 remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, mutating

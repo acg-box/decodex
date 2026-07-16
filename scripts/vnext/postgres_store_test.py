@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 from enum import Enum
+import hashlib
 import json
 import os
 from pathlib import Path
+import secrets
+import select
 import shutil
 import subprocess
 import sys
@@ -251,6 +254,11 @@ def run_live_doctor_mutation(
 	case: str,
 	work: Path,
 	env: dict[str, str],
+	*,
+	unsafe_authority: bool = False,
+	cluster_authority: bool = False,
+	secret_sql: bool = False,
+	mutation_probe: str | None = None,
 ) -> str:
 	"""Coordinate a real daemon query around an adapter-owned database mutation."""
 	sync = work / f"live-doctor-{case}"
@@ -258,10 +266,12 @@ def run_live_doctor_mutation(
 	test_env = env.copy()
 	test_env["DECODEX_TEST_LIVE_INCOMPATIBLE_ROOT"] = str(root)
 	test_env["DECODEX_TEST_LIVE_INCOMPATIBLE_SYNC"] = str(sync)
+	if unsafe_authority:
+		test_env["DECODEX_TEST_LIVE_EXPECTED_UNSAFE"] = "1"
 	command = [
 		"cargo", "nextest", "run", "-p", "decodex-runtime", "--test",
 		"bootstrap_doctor", "--run-ignored", "all", "--",
-		"isolated_postgres_live_doctor_detects_database_incompatibility", "--exact",
+		"isolated_postgres_live_doctor_detects_database_drift", "--exact",
 	]
 	process = subprocess.Popen(
 		command,
@@ -276,33 +286,88 @@ def run_live_doctor_mutation(
 	while not (sync / "ready").exists():
 		if process.poll() is not None:
 			stdout, stderr = process.communicate()
+			if secret_sql:
+				raise TestFailure("live doctor exited before secret-bearing mutation")
 			raise TestFailure(
 				f"live doctor exited before {case} mutation\nstdout:\n{stdout}\nstderr:\n{stderr}"
 			)
 		if time.monotonic() >= deadline:
 			process.kill()
 			stdout, stderr = process.communicate()
+			if secret_sql:
+				raise TestFailure("live doctor did not reach the secret-bearing mutation barrier")
 			raise TestFailure(
 				f"live doctor did not reach {case} barrier\nstdout:\n{stdout}\nstderr:\n{stderr}"
 			)
 		time.sleep(0.01)
 
-	psql_as(MIGRATION_ROLE, database, sql, env)
+	if cluster_authority:
+		if secret_sql:
+			psql_secret(database, sql, env)
+		else:
+			psql(database, sql, env)
+	else:
+		psql_as(MIGRATION_ROLE, database, sql, env)
+	if mutation_probe is not None and psql(database, mutation_probe, env) != "t":
+		process.terminate()
+		process.communicate(timeout=10)
+		raise TestFailure(f"{case} authority mutation probe is vacuous")
 	(sync / "mutated").write_text("mutated", encoding="utf-8")
 	try:
 		stdout, stderr = process.communicate(timeout=30)
 	except subprocess.TimeoutExpired as error:
 		process.kill()
 		stdout, stderr = process.communicate()
+		if secret_sql:
+			raise TestFailure("live doctor did not finish the secret-bearing drift check") from error
 		raise TestFailure(
 			f"live doctor did not finish {case}\nstdout:\n{stdout}\nstderr:\n{stderr}"
 		) from error
 	if process.returncode != 0:
+		if secret_sql:
+			raise TestFailure("live doctor failed after the secret-bearing mutation")
 		raise TestFailure(
 			f"live doctor failed after {case} mutation\nstdout:\n{stdout}\nstderr:\n{stderr}"
 		)
 
 	return stdout.strip() or stderr.strip()
+
+
+def run_authority_drift_case(
+	root: Path,
+	database: str,
+	mutation: str,
+	restore: str,
+	case: str,
+	work: Path,
+	env: dict[str, str],
+	*,
+	cluster_authority: bool = False,
+	secret_sql: bool = False,
+	mutation_probe: str | None = None,
+) -> str:
+	"""Prove one live authority drift and restore the shared fixture exactly."""
+	try:
+		return run_live_doctor_mutation(
+			root,
+			database,
+			mutation,
+			case,
+			work,
+			env,
+			unsafe_authority=True,
+			cluster_authority=cluster_authority,
+			secret_sql=secret_sql,
+			mutation_probe=mutation_probe,
+		)
+	finally:
+		if cluster_authority:
+			if secret_sql:
+				psql_secret(database, restore, env)
+			else:
+				psql(database, restore, env)
+		else:
+			psql_as(MIGRATION_ROLE, database, restore, env)
 
 
 def postgres_status(data_dir: Path, env: dict[str, str]) -> ClusterStatus:
@@ -333,10 +398,116 @@ def psql(database: str, sql: str, env: dict[str, str]) -> str:
 	)
 
 
+def psql_secret(
+	database: str, sql: str, env: dict[str, str], *, expect_failure: bool = False
+) -> str:
+	"""Execute secret-bearing SQL only after one live session disables statement logging."""
+	ready_marker = "XY1272_SECRET_LOGGING_READY"
+	done_marker = "XY1272_SECRET_SQL_DONE"
+	process = subprocess.Popen(
+		["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-d", database],
+		text=True,
+		bufsize=1,
+		stdin=subprocess.PIPE,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+		env=env,
+		cwd=REPO_ROOT,
+	)
+	if process.stdin is None or process.stdout is None or process.stderr is None:
+		raise TestFailure("secret-bearing PostgreSQL fixture pipes are unavailable")
+	try:
+		process.stdin.write(
+			"SET log_min_error_statement=PANIC;\n"
+			"SET log_min_messages=PANIC;\n"
+			"SET log_statement=none;\n"
+			"SET log_duration=off;\n"
+			"SET log_min_duration_statement=-1;\n"
+			"SET log_min_duration_sample=-1;\n"
+			"SET log_statement_sample_rate=0;\n"
+			"SET log_transaction_sample_rate=0;\n"
+			"SET log_parameter_max_length=0;\n"
+			"SET log_parameter_max_length_on_error=0;\n"
+			"SET debug_print_parse=off;\n"
+			"SET debug_print_rewritten=off;\n"
+			"SET debug_print_plan=off;\n"
+			"SET log_parser_stats=off;\n"
+			"SET log_planner_stats=off;\n"
+			"SET log_executor_stats=off;\n"
+			"SET log_statement_stats=off;\n"
+			"SELECT pg_catalog.concat_ws('|',"
+			"pg_catalog.current_setting('log_min_error_statement'),"
+			"pg_catalog.current_setting('log_min_messages'),"
+			"pg_catalog.current_setting('log_statement'),"
+			"pg_catalog.current_setting('log_duration'),"
+			"pg_catalog.current_setting('log_min_duration_statement'),"
+			"pg_catalog.current_setting('log_min_duration_sample'),"
+			"pg_catalog.current_setting('log_statement_sample_rate'),"
+			"pg_catalog.current_setting('log_transaction_sample_rate'),"
+			"pg_catalog.current_setting('log_parameter_max_length'),"
+			"pg_catalog.current_setting('log_parameter_max_length_on_error'),"
+			"pg_catalog.current_setting('debug_print_parse'),"
+			"pg_catalog.current_setting('debug_print_rewritten'),"
+			"pg_catalog.current_setting('debug_print_plan'),"
+			"pg_catalog.current_setting('log_parser_stats'),"
+			"pg_catalog.current_setting('log_planner_stats'),"
+			"pg_catalog.current_setting('log_executor_stats'),"
+			"pg_catalog.current_setting('log_statement_stats'),"
+			"pg_catalog.current_setting('logging_collector'),"
+			"pg_catalog.current_setting('log_destination'));\n"
+			f"\\echo {ready_marker}\n"
+		)
+		process.stdin.flush()
+		ready, _, _ = select.select([process.stdout], [], [], 10)
+		if not ready:
+			raise TestFailure("secret-bearing PostgreSQL fixture logging check timed out")
+		settings = process.stdout.readline().strip()
+		if process.stdout.readline().strip() != ready_marker:
+			raise TestFailure("secret-bearing PostgreSQL fixture logging check did not complete")
+		expected = "panic|panic|none|off|-1|-1|0|0|0|0|off|off|off|off|off|off|off|off|stderr"
+		if settings != expected:
+			raise TestFailure("secret-bearing PostgreSQL fixture logging is not fail-closed")
+
+		process.stdin.write("\\set VERBOSITY terse\n")
+		if expect_failure:
+			process.stdin.write("\\set ON_ERROR_STOP off\n")
+		process.stdin.write(sql)
+		if not sql.rstrip().endswith(";"):
+			process.stdin.write(";")
+		process.stdin.write(f"\n\\echo {done_marker}\n\\quit\n")
+		process.stdin.flush()
+		stdout, stderr = process.communicate(timeout=10)
+		lines = stdout.splitlines()
+		if process.returncode != 0 or done_marker not in lines:
+			raise TestFailure("secret-bearing PostgreSQL fixture command failed")
+		if expect_failure:
+			if "ERROR:" not in stderr:
+				raise TestFailure("secret-bearing PostgreSQL failure probe unexpectedly succeeded")
+			return ""
+		if stderr:
+			raise TestFailure("secret-bearing PostgreSQL fixture emitted diagnostics")
+		return "\n".join(line for line in lines if line != done_marker).strip()
+	except subprocess.TimeoutExpired as error:
+		process.kill()
+		process.communicate()
+		raise TestFailure("secret-bearing PostgreSQL fixture command timed out") from error
+	finally:
+		if process.poll() is None:
+			process.terminate()
+			process.wait(timeout=10)
+
+
 def psql_as(role: str, database: str, sql: str, env: dict[str, str]) -> str:
 	role_env = env.copy()
 	role_env["PGUSER"] = role
 	return psql(database, sql, role_env)
+
+
+def assert_postgres_logs_redact(log_paths: tuple[Path, ...], markers: tuple[str, ...]) -> None:
+	for log_path in log_paths:
+		contents = log_path.read_bytes()
+		if any(marker.encode("utf-8") in contents for marker in markers):
+			raise TestFailure("PostgreSQL server log disclosed secret-bearing canary material")
 
 
 def assert_psql_rejected(
@@ -373,14 +544,16 @@ def create_database(database: str, env: dict[str, str], *, locale: str | None = 
 		locale_clause = f" LOCALE_PROVIDER icu ICU_LOCALE '{locale}'"
 	psql(
 		"postgres",
-		f"CREATE DATABASE {database} WITH TEMPLATE template0 ENCODING 'UTF8'{locale_clause}",
+		f"CREATE DATABASE {database} WITH TEMPLATE template0 ENCODING 'UTF8' "
+		f"OWNER {MIGRATION_ROLE}{locale_clause}",
 		env,
 	)
 	psql(database, f"GRANT USAGE, CREATE ON SCHEMA public TO {MIGRATION_ROLE}", env)
 	psql(
 		"postgres",
 		f"REVOKE CREATE ON DATABASE {database} FROM PUBLIC; "
-		f"GRANT CONNECT, CREATE ON DATABASE {database} TO {MIGRATION_ROLE}",
+		f"GRANT CONNECT, CREATE ON DATABASE {database} TO {MIGRATION_ROLE}; "
+		f"GRANT CONNECT ON DATABASE {database} TO {RUNTIME_ROLE}",
 		env,
 	)
 
@@ -563,6 +736,8 @@ def main() -> int:
 	socket_dir.mkdir()
 	# TCP is disabled; the port only distinguishes the socket filename inside this unique directory.
 	port = 55_432
+	role_setting_canary_guc = f"xy1272.canary_{secrets.token_hex(16)}"
+	role_setting_secret_canary = secrets.token_hex(32)
 	env = os.environ.copy()
 	initdb_path = Path(shutil.which("initdb") or "initdb").resolve()
 	postgres_share = initdb_path.parent.parent / "share" / "postgresql"
@@ -625,6 +800,8 @@ def main() -> int:
 				MEMBERSHIP_ADMIN_ROLE,
 			}
 			attributes = "" if role in group_roles else " LOGIN"
+			if role in {MIGRATION_ROLE, RUNTIME_ROLE}:
+				attributes += " NOINHERIT VALID UNTIL 'infinity'"
 			if role == UNSAFE_ROLES["bypassrls"]:
 				attributes += " BYPASSRLS"
 			elif role == UNSAFE_ROLES["superuser"]:
@@ -995,6 +1172,16 @@ def main() -> int:
 				unsafe_root, socket_dir, port, AUTHORITY_DATABASE, MIGRATION_ROLE, role
 			)
 			unsafe_roots.append(unsafe_root)
+		missing_select_root = work / "decodex-unsafe-missing-history-select"
+		write_bootstrap_config(
+			missing_select_root,
+			socket_dir,
+			port,
+			AUTHORITY_DATABASE,
+			MIGRATION_ROLE,
+			MISSING_SELECT_ROLE,
+		)
+		unsafe_roots.append(missing_select_root)
 
 		create_database(TRIGGER_DATABASE, env)
 		set_contract_urls(env, socket_dir, port, TRIGGER_DATABASE, RUNTIME_ROLE)
@@ -1278,15 +1465,6 @@ def main() -> int:
 		) != "t":
 			raise TestFailure("same-metadata no-op retention fixture is vacuous")
 
-		missing_select_root = work / "decodex-incompatible-missing-history-select"
-		write_bootstrap_config(
-			missing_select_root,
-			socket_dir,
-			port,
-			AUTHORITY_DATABASE,
-			MIGRATION_ROLE,
-			MISSING_SELECT_ROLE,
-		)
 		function_contract_root = work / "decodex-incompatible-function-contract"
 		write_bootstrap_config(
 			function_contract_root,
@@ -1481,7 +1659,6 @@ def main() -> int:
 			raise TestFailure("missing-pgcrypto fixture retained the extension")
 		env["DECODEX_TEST_INCOMPATIBLE_AUTHORITY_ROOTS"] = os.pathsep.join(
 			[
-				str(missing_select_root),
 				str(function_contract_root),
 				str(constraint_drift_root),
 				str(external_cascade_root),
@@ -1543,6 +1720,14 @@ def main() -> int:
 			env,
 		) != "t|t|t":
 			raise TestFailure("secure Decodex function path did not resist callable shadowing")
+		hostile_startup_path_output = run(
+			[
+				"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+				"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+				"postgres_session_search_path_startup_fixture", "--exact",
+			],
+			env,
+		)
 		if psql_as(
 			HOSTILE_SEARCH_ROLE,
 			HOSTILE_SEARCH_DATABASE,
@@ -1568,7 +1753,7 @@ def main() -> int:
 			[
 				"cargo", "nextest", "run", "-p", "decodex-runtime", "--test",
 				"bootstrap_doctor", "--run-ignored", "all", "--",
-				"isolated_postgres_hostile_search_path_is_available", "--exact",
+				"isolated_postgres_hostile_search_path_is_unavailable", "--exact",
 			],
 			env,
 		)
@@ -1595,12 +1780,20 @@ def main() -> int:
 		live_manifest = live_manifest_path.read_text()
 		restored_manifest = restored_manifest_path.read_text()
 		if live_manifest != restored_manifest:
-			live_rows = json.loads(live_manifest)
-			restored_rows = json.loads(restored_manifest)
+			live_document = json.loads(live_manifest)
+			restored_document = json.loads(restored_manifest)
+			changed = [
+				component for component in ("authority", "schema")
+				if live_document[component] != restored_document[component]
+			]
+			component = changed[0]
+			live_rows = json.loads(live_document[component])
+			restored_rows = json.loads(restored_document[component])
 			only_live = [row for row in live_rows if row not in restored_rows]
 			only_restored = [row for row in restored_rows if row not in live_rows]
 			raise TestFailure(
 				"dump/restore schema manifest changed\n"
+				f"component: {component}\n"
 				f"only live: {json.dumps(only_live[:8], indent=2)}\n"
 				f"only restored: {json.dumps(only_restored[:8], indent=2)}"
 			)
@@ -1622,6 +1815,68 @@ def main() -> int:
 				"--exact",
 			],
 			env,
+		)
+		canary_manifest_path = work / "schema-manifest-role-setting-canary.json"
+		canary_markers = (role_setting_canary_guc, role_setting_secret_canary)
+		psql_secret(
+			DATABASE,
+			f"ALTER ROLE xy1272_missing_secret_log_role SET {role_setting_canary_guc} = "
+			f"'{role_setting_secret_canary}'",
+			env,
+			expect_failure=True,
+		)
+		assert_postgres_logs_redact((log_path,), canary_markers)
+		psql_secret(
+			DATABASE,
+			f"ALTER ROLE {RUNTIME_ROLE} SET {role_setting_canary_guc} = "
+			f"'{role_setting_secret_canary}'",
+			env,
+		)
+		try:
+			catalog_probe = psql_secret(
+				DATABASE,
+				"SELECT count(*) FROM pg_catalog.pg_db_role_setting AS setting "
+				"CROSS JOIN LATERAL pg_catalog.unnest(setting.setconfig) AS item(value) "
+				f"WHERE setting.setrole='{RUNTIME_ROLE}'::pg_catalog.regrole "
+				"AND setting.setdatabase=0 "
+				f"AND item.value='{role_setting_canary_guc}={role_setting_secret_canary}'",
+				env,
+			)
+			if catalog_probe != "1":
+				raise TestFailure("secret-bearing role-setting canary is absent from the live catalog")
+			dump_schema_manifest(canary_manifest_path, env)
+			canary_manifest = canary_manifest_path.read_text(encoding="utf-8")
+			if json.loads(canary_manifest)["authority"] == json.loads(live_manifest)["authority"]:
+				raise TestFailure("secret-bearing role setting did not change configured authority")
+			if (
+				role_setting_secret_canary in canary_manifest
+				or role_setting_canary_guc in canary_manifest
+			):
+				raise TestFailure(
+					"configured authority manifest serialized a role-setting canary"
+				)
+		finally:
+			psql_secret(
+				DATABASE,
+				f"ALTER ROLE {RUNTIME_ROLE} RESET {role_setting_canary_guc}",
+				env,
+			)
+		if psql_secret(
+			DATABASE,
+			"SELECT count(*) FROM pg_catalog.pg_db_role_setting AS setting "
+			"CROSS JOIN LATERAL pg_catalog.unnest(setting.setconfig) AS item(value) "
+			f"WHERE setting.setrole='{RUNTIME_ROLE}'::pg_catalog.regrole "
+			"AND setting.setdatabase=0 "
+			f"AND pg_catalog.split_part(item.value,'=',1)='{role_setting_canary_guc}'",
+			env,
+		) != "0":
+			raise TestFailure("secret-bearing role-setting canary was not restored")
+		authority_digest = hashlib.sha256(
+			json.loads(live_manifest)["authority"].encode("utf-8")
+		).hexdigest()
+		print(
+			f"configured PostgreSQL authority manifest SHA-256: {authority_digest}",
+			flush=True,
 		)
 
 		create_database(DEFAULT_ACL_TAMPER_DATABASE, env)
@@ -1649,6 +1904,7 @@ def main() -> int:
 			"schema-default-acl",
 			work,
 			env,
+			unsafe_authority=True,
 		)
 		default_acl_probe = (
 			"SELECT count(*) "
@@ -1693,6 +1949,226 @@ def main() -> int:
 			],
 			env,
 		)
+		authority_drift_cases = [
+			(
+				f"ALTER ROLE {RUNTIME_ROLE} SET {role_setting_canary_guc} = "
+				f"'{role_setting_secret_canary}'",
+				f"ALTER ROLE {RUNTIME_ROLE} RESET {role_setting_canary_guc}",
+				"credential-setting-redaction",
+				True,
+			),
+			(
+				f"GRANT CONNECT ON DATABASE {DATABASE} TO {MISSING_SELECT_ROLE}",
+				f"REVOKE CONNECT ON DATABASE {DATABASE} FROM {MISSING_SELECT_ROLE}",
+				"database-acl-equivalent-grantee",
+				False,
+			),
+			(
+				f"ALTER DATABASE {DATABASE} OWNER TO {FUNCTION_OWNER_ROLE}",
+				f"ALTER DATABASE {DATABASE} OWNER TO {MIGRATION_ROLE}",
+				"database-owner",
+				True,
+			),
+			(
+				f"GRANT USAGE ON SCHEMA decodex TO {MISSING_SELECT_ROLE}",
+				f"REVOKE USAGE ON SCHEMA decodex FROM {MISSING_SELECT_ROLE}",
+				"namespace-acl-equivalent-grantee",
+				False,
+			),
+			(
+				f"ALTER SCHEMA decodex OWNER TO {FUNCTION_OWNER_ROLE}",
+				f"ALTER SCHEMA decodex OWNER TO {MIGRATION_ROLE}",
+				"namespace-owner",
+				True,
+			),
+			(
+				f"GRANT SELECT ON TABLE decodex.accounts TO {MISSING_SELECT_ROLE}",
+				f"REVOKE SELECT ON TABLE decodex.accounts FROM {MISSING_SELECT_ROLE}",
+				"relation-acl-equivalent-grantee",
+				False,
+			),
+			(
+				f"ALTER TABLE decodex.accounts OWNER TO {FUNCTION_OWNER_ROLE}",
+				f"ALTER TABLE decodex.accounts OWNER TO {MIGRATION_ROLE}",
+				"relation-owner",
+				True,
+			),
+			(
+				f"GRANT SELECT (account_id) ON TABLE decodex.accounts TO {MISSING_SELECT_ROLE}",
+				f"REVOKE SELECT (account_id) ON TABLE decodex.accounts FROM {MISSING_SELECT_ROLE}",
+				"column-acl",
+				False,
+			),
+			(
+				f"GRANT USAGE ON SEQUENCE decodex.activity_sequence_seq TO {MISSING_SELECT_ROLE}",
+				f"REVOKE USAGE ON SEQUENCE decodex.activity_sequence_seq FROM {MISSING_SELECT_ROLE}",
+				"sequence-acl-equivalent-grantee",
+				False,
+			),
+			(
+				f"ALTER TABLE decodex.activity OWNER TO {FUNCTION_OWNER_ROLE}",
+				f"ALTER TABLE decodex.activity OWNER TO {MIGRATION_ROLE}",
+				"identity-sequence-owner-via-table",
+				True,
+			),
+			(
+				f"GRANT USAGE ON TYPE decodex.account_state TO {MISSING_SELECT_ROLE}",
+				f"REVOKE USAGE ON TYPE decodex.account_state FROM {MISSING_SELECT_ROLE}",
+				"type-acl-equivalent-grantee",
+				False,
+			),
+			(
+				f"ALTER TYPE decodex.account_state OWNER TO {FUNCTION_OWNER_ROLE}",
+				f"ALTER TYPE decodex.account_state OWNER TO {MIGRATION_ROLE}",
+				"type-owner",
+				True,
+			),
+			(
+				f"GRANT EXECUTE ON FUNCTION decodex.is_canonical_media_type(text) TO {MISSING_SELECT_ROLE}",
+				f"REVOKE EXECUTE ON FUNCTION decodex.is_canonical_media_type(text) FROM {MISSING_SELECT_ROLE}",
+				"function-acl-equivalent-grantee",
+				False,
+			),
+			(
+				f"ALTER FUNCTION decodex.is_canonical_media_type(text) OWNER TO {FUNCTION_OWNER_ROLE}",
+				f"ALTER FUNCTION decodex.is_canonical_media_type(text) OWNER TO {MIGRATION_ROLE}",
+				"function-owner",
+				True,
+			),
+			(
+				f"GRANT SELECT ON TABLE public.refinery_schema_history TO {MISSING_SELECT_ROLE}",
+				f"REVOKE SELECT ON TABLE public.refinery_schema_history FROM {MISSING_SELECT_ROLE}",
+				"migration-ledger-equivalent-grantee",
+				False,
+			),
+			(
+				f"GRANT SELECT (version) ON TABLE public.refinery_schema_history "
+				f"TO {MISSING_SELECT_ROLE}",
+				f"REVOKE SELECT (version) ON TABLE public.refinery_schema_history "
+				f"FROM {MISSING_SELECT_ROLE}",
+				"migration-ledger-column-acl-equivalent-grantee",
+				False,
+			),
+			(
+				f"ALTER TABLE public.refinery_schema_history OWNER TO {FUNCTION_OWNER_ROLE}",
+				f"ALTER TABLE public.refinery_schema_history OWNER TO {MIGRATION_ROLE}",
+				"migration-ledger-owner",
+				True,
+			),
+			(
+				f"ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATION_ROLE} IN SCHEMA decodex "
+				f"GRANT SELECT ON TABLES TO {MISSING_SELECT_ROLE}",
+				f"ALTER DEFAULT PRIVILEGES FOR ROLE {MIGRATION_ROLE} IN SCHEMA decodex "
+				f"REVOKE SELECT ON TABLES FROM {MISSING_SELECT_ROLE}",
+				"default-acl-equivalent-grantee",
+				False,
+			),
+			(
+				"CREATE RULE xy1272_unexpected_rule AS ON INSERT TO decodex.accounts "
+				"DO ALSO NOTHING",
+				"DROP RULE xy1272_unexpected_rule ON decodex.accounts",
+				"rule-definition",
+				False,
+			),
+			(
+				"CREATE POLICY xy1272_unexpected_policy ON decodex.accounts TO PUBLIC USING (true)",
+				"DROP POLICY xy1272_unexpected_policy ON decodex.accounts",
+				"policy-definition",
+				False,
+			),
+			(
+				f"GRANT {FUNCTION_OWNER_ROLE} TO {RUNTIME_ROLE} "
+				"WITH ADMIN FALSE, INHERIT FALSE, SET FALSE",
+				f"REVOKE {FUNCTION_OWNER_ROLE} FROM {RUNTIME_ROLE}",
+				"membership-no-options",
+				True,
+			),
+			(
+				f"GRANT {FUNCTION_OWNER_ROLE} TO {RUNTIME_ROLE} "
+				"WITH ADMIN TRUE, INHERIT TRUE, SET TRUE",
+				f"REVOKE {FUNCTION_OWNER_ROLE} FROM {RUNTIME_ROLE}",
+				"membership-admin-inherit-set",
+				True,
+			),
+			(
+				f"ALTER ROLE {MIGRATION_ROLE} RENAME TO decodex_migration_renamed",
+				f"ALTER ROLE decodex_migration_renamed RENAME TO {MIGRATION_ROLE}",
+				"configured-migration-rename",
+				True,
+			),
+			(
+				f"ALTER ROLE {RUNTIME_ROLE} RENAME TO decodex_runtime_renamed",
+				f"ALTER ROLE decodex_runtime_renamed RENAME TO {RUNTIME_ROLE}",
+				"configured-runtime-rename",
+				True,
+			),
+		]
+		for role in (MIGRATION_ROLE, RUNTIME_ROLE):
+			for suffix, mutation, restore in (
+				("superuser", "SUPERUSER", "NOSUPERUSER"),
+				("inherit", "INHERIT", "NOINHERIT"),
+				("create-role", "CREATEROLE", "NOCREATEROLE"),
+				("create-database", "CREATEDB", "NOCREATEDB"),
+				("login", "NOLOGIN", "LOGIN"),
+				("replication", "REPLICATION", "NOREPLICATION"),
+				("bypass-rls", "BYPASSRLS", "NOBYPASSRLS"),
+				("connection-limit", "CONNECTION LIMIT 7", "CONNECTION LIMIT -1"),
+				(
+					"validity",
+					"VALID UNTIL '2030-01-01 00:00:00+00'",
+					"VALID UNTIL 'infinity'",
+				),
+			):
+				authority_drift_cases.append((
+					f"ALTER ROLE {role} {mutation}",
+					f"ALTER ROLE {role} {restore}",
+					f"{role}-{suffix}",
+					True,
+				))
+			authority_drift_cases.extend((
+				(
+					f"ALTER ROLE {role} SET statement_timeout = '1s'",
+					f"ALTER ROLE {role} RESET statement_timeout",
+					f"{role}-global-setting",
+					True,
+				),
+				(
+					f"ALTER ROLE {role} IN DATABASE {DATABASE} "
+					"SET search_path = hostile, public, pg_catalog",
+					f"ALTER ROLE {role} IN DATABASE {DATABASE} RESET search_path",
+					f"{role}-database-setting",
+					True,
+				),
+			))
+		authority_drift_outputs = []
+		for mutation, restore, case, cluster_authority in authority_drift_cases:
+			secret_sql = case == "credential-setting-redaction"
+			mutation_probe = None
+			if case == "migration-ledger-column-acl-equivalent-grantee":
+				mutation_probe = (
+					f"SELECT pg_catalog.has_column_privilege('{MISSING_SELECT_ROLE}', "
+					"'public.refinery_schema_history', 'version', 'SELECT') "
+					f"AND NOT pg_catalog.has_table_privilege('{MISSING_SELECT_ROLE}', "
+					"'public.refinery_schema_history', 'SELECT')"
+				)
+			output = run_authority_drift_case(
+				bootstrap_root,
+				DATABASE,
+				mutation,
+				restore,
+				case,
+				work,
+				env,
+				cluster_authority=cluster_authority,
+				secret_sql=secret_sql,
+				mutation_probe=mutation_probe,
+			)
+			if secret_sql and (
+				role_setting_secret_canary in output or role_setting_canary_guc in output
+			):
+				raise TestFailure("doctor output leaked a role-setting canary")
+			authority_drift_outputs.append(output)
+		assert_postgres_logs_redact((log_path,), canary_markers)
 		print(migration_output)
 		print(restart_output)
 		print(v8_boundary_output)
@@ -1707,10 +2183,12 @@ def main() -> int:
 		print(missing_extension_live_doctor_output)
 		print(identity_cast_output)
 		print(incompatible_authority_output)
+		print(hostile_startup_path_output)
 		print(hostile_search_output)
 		print(restore_output)
 		print(default_acl_live_doctor_output)
 		print(default_acl_restore_output)
+		print("\n".join(authority_drift_outputs))
 		return 0
 	finally:
 		stop_error: Exception | None = None
