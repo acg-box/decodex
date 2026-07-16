@@ -26,14 +26,60 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 | vNext PostgreSQL store, Conversation history, blobs, and Context Packs | `cargo make test-vnext-postgres-store` |
 | vNext storage feasibility proof | `cargo make test-vnext-storage-proof` |
 | Rust formatting | `cargo make fmt-rust-check` |
+| Canonical gate contract | `cargo make test-gate-contract` |
 | TOML formatting | `cargo make fmt-toml-check` |
 | Rust lint | `cargo make lint-rust` |
-| Vstyle lint | `cargo make lint-vstyle-rust` |
+| Read-only Vstyle audit | `cargo make audit-vstyle-rust` |
 | Site type check | `cargo make check-node` or `npm --prefix site run check` |
 | Site build | `cargo make build` or `npm --prefix site run build` |
 
 `cargo make test` runs `cargo nextest run --workspace --all-targets --all-features`, the
-vNext architecture test, and the XY-1308 CLI diagnostic process matrix (`Makefile.toml`).
+canonical gate contract tests, the vNext architecture test, and the XY-1308 CLI
+diagnostic process matrix (`Makefile.toml`). Rust compilation remains pinned by
+`rust-toolchain.toml` to `1.97.0`. The formatting tasks separately invoke
+`rustup run nightly-2026-07-16 cargo fmt`, which preserves the nightly-only options in
+`.rustfmt.toml` without depending on the mutable `nightly` alias. Supported hosts install
+that exact formatter toolchain once; formatting fails closed when it is unavailable:
+
+```sh
+rustup toolchain install nightly-2026-07-16 --profile minimal --component cargo --component rustfmt
+```
+
+## Vstyle audit authority
+
+Vstyle is an explicit read-only audit and is not part of the blocking `lint` or `check`
+aggregates. The ordinary `lint-fix` aggregate contains only Clippy fixing; the repository
+provides no Vstyle mutation task. Run the governed audit directly:
+
+```sh
+cargo make audit-vstyle-rust
+```
+
+`config/vstyle-rust-audit.json` pins `vibe-style` 0.2.3 to source commit
+`3a0959eac5363c4c427382bae1d80d87ecadb702`, attests the complete implemented Rust rule
+inventory, and records the reviewed current baseline of 184 findings, including seven
+manual findings. Supported hosts install that exact revision:
+
+```sh
+cargo install --git https://github.com/hack-ink/vibe-style.git \
+  --rev 3a0959eac5363c4c427382bae1d80d87ecadb702 \
+  --locked --force vibe-style
+```
+
+The audit fails closed when the executable version, source revision, build target, rule
+inventory, output grammar, or governance deadline differs from the contract. It also fails
+when normalized finding counts increase. Resolved baseline findings are reported without
+blocking so maintainers can refresh the baseline through review.
+
+Vstyle 0.2.3 does not expose structured curate output. The smallest repository-owned
+boundary therefore accepts only its exact finding and summary line grammar and rejects
+every unexpected nonempty line. Finding identity is normalized by path, rule, message,
+fixability, and multiplicity; line and column numbers are deliberately excluded so an
+unrelated line shift does not appear as a regression. The baseline owner is the Decodex
+repository maintainers. It must be reevaluated by 2026-08-15, whenever executable or rule
+identity changes, whenever the accepted baseline changes, and before any scope is promoted
+to blocking.
+
 The CLI matrix builds the real `decodex` binary, binds the real runtime to an isolated
 OS-selected loopback port, and proves status/doctor, stable identity mismatch,
 disconnection, malformed/missing profile configuration, unsafe server-host paths,

@@ -237,12 +237,10 @@ impl LifecycleIo for TokioIo {
 
 	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure> {
 		match self.session.as_mut().ok_or(RetainedSessionFailure::Closed)?.next().await? {
-			SessionDelivery::Snapshot { snapshot, confirmation } => {
-				Ok(Delivery::Snapshot { snapshot, confirmation })
-			},
-			SessionDelivery::Event { event, confirmation } => {
-				Ok(Delivery::Event { event, confirmation })
-			},
+			SessionDelivery::Snapshot { snapshot, confirmation } =>
+				Ok(Delivery::Snapshot { snapshot, confirmation }),
+			SessionDelivery::Event { event, confirmation } =>
+				Ok(Delivery::Event { event, confirmation }),
 			SessionDelivery::CommandReceipt(_)
 			| SessionDelivery::CommandResult(_)
 			| SessionDelivery::QueryResult(_) => Ok(Delivery::Other),
@@ -541,9 +539,7 @@ impl ClientLifecycle {
 			Ok(Some(inspection))
 				if inspection.generation == binding.generation
 					&& inspection.authority == self.cache_authority =>
-			{
-				Some(binding.checkpoint)
-			},
+				Some(binding.checkpoint),
 			_ => {
 				self.enter_quarantine(
 					QuarantineReason::ContentAttestation,
@@ -890,7 +886,7 @@ fn initialize_cache(
 				Err(_) => unsafe_cache_quarantine(),
 			}
 		},
-		Err(error) if is_disposable_corruption(error) => {
+		Err(error) if is_disposable_corruption(error) =>
 			if ClientCache::dispose_all(root).is_ok() {
 				match ClientCache::open(root, limits, authority) {
 					Ok(cache) => (
@@ -904,8 +900,7 @@ fn initialize_cache(
 				}
 			} else {
 				unsafe_cache_quarantine()
-			}
-		},
+			},
 		Err(_) => unsafe_cache_quarantine(),
 	}
 }
@@ -940,5 +935,4 @@ fn next_cursor(cursor: Cursor) -> Option<Cursor> {
 	cursor.0.checked_add(1).map(Cursor)
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(test)] mod tests;
