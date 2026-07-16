@@ -176,6 +176,51 @@ Host files, desired manifests, configuration, remote catalogs, process/account b
 and user declarations may be integrity or provenance inputs, but they do not become
 observed readiness and cannot prove either readiness or unreadiness.
 
+### Exact quota persistence boundary
+
+Quota storage APIs accept `QuotaTimestampMicros(i64)`, never raw RFC3339 text or arbitrary
+nanoseconds. The product-valid interval is `0..=253402300799999999` Unix microseconds. Raw
+RFC3339 ingress normalizes offsets to UTC and must be exactly microsecond-aligned before it
+constructs that type. Sub-microsecond, pre-Unix, post-year-9999, infinity, overflow or carry,
+leap-second, parser-unsupported, and otherwise unsupported values fail before command-receipt
+reservation. No application, adapter, database, or migration path rounds or truncates a quota
+timestamp. Freshness uses checked integer-microsecond subtraction: an age of exactly 300 seconds
+is accepted, while 300 seconds plus one microsecond is stale.
+
+The store owns two canonical mutation schemas: `decodex/quota-window-mutation/2` and
+`decodex/quota-exclusion-mutation/2`. Rust constructs them from typed logical values with integer
+timestamps, recursively sorted object keys, preserved array order and scalar distinctions, and one
+canonical serialization. The receipt binds the resulting SHA-256 digest and byte length, and exact
+completed-response replay returns the stored response bytes. Retaining the complete request
+document is not required.
+
+V8 is one atomic zero-state migration. In canonical writer order it takes `ACCESS EXCLUSIVE` locks
+on `command_receipts`, `quota_windows`, `activity`, and `outbox`, then uses closed structural
+classification to reject every pre-V8 quota fact: any `quota_windows` row; every receipt whose
+operation is `mutate_quota_window` or whose scope is `quota_windows`, regardless of lifecycle
+state; activity classified by aggregate kind, event kind, or structured payload; outbox classified
+by aggregate fields or structured activity envelope; every outbox link to classified activity; and
+every malformed or orphaned combination of those facts. Correlation-key or aggregate-ID string
+patterns are not evidence classification. The assertion and all DDL occur in the same transaction.
+Only after zero state is proven may V8 alter `quota_windows` in place, preserving its table identity,
+ACLs, account foreign key, unchanged observation-index identity, and migration atomicity while
+replacing only changed constraints and adding the typed enums, exclusion relation, indexes, and
+authority inventory.
+
+There is no populated V7 conversion or quarantine, hand deletion, retention bypass, table
+drop/recreation, dual schema, compatibility read/write, or hidden fallback. Any classified state
+aborts V8 with a stable incompatibility result. The supported recovery is to stop Decodex and
+recreate the whole disposable pre-release database. XY-1302 owns the final whole-ledger
+squash/reset, production baseline, privileges, recreation runbook, cutover/rollback readback, and
+proof that no pre-release database becomes production state.
+
+Separate typed 300-minute and 10080-minute observations remain mandatory. This persistence
+boundary enables no account assignment, fallback, `waiting_usage` registration, wake scheduling,
+continuation, replay of external effects, or live dispatch. Before any live quota ingestion or
+routing, XY-1304 must capture the natural app-server/provider timestamp precision. If upstream
+timestamps are not exact microseconds, routing remains blocked and the architecture reopens around
+PostgreSQL-in-transaction canonicalization; silent rounding or truncation remains forbidden.
+
 The dormant manual account observation path checks an exact PostgreSQL account revision in the
 `available` state before mechanics and checks the same predicate again after cleanup. Each check
 releases its row and pooled client before arbitrary caller, vault, or process work. The result is a
