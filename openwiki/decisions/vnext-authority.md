@@ -41,6 +41,14 @@ reopens the architecture around PostgreSQL-in-transaction canonicalization. The 
 details and proof gates live in the authority contract and gate manifest; the three rejected
 old-boundary candidates remain historical provenance in the runtime proof.
 
+XY-1272 PostgreSQL-authority reset accepted 2026-07-16: XY-1272 owns only configured-principal
+and ACL manifest/readiness closure against landed V8. It owns no migration or Codex creation,
+mapping, or reconciliation surface. XY-1337 owns the expected V9; XY-1304 owns experiment creation
+and positive observation acquisition; XY-1276 owns production Quick Task creation. Lossy or
+paginated Codex evidence cannot authorize negative `Present`, `Complete`, or context-free `Absent`
+authority. A future configured PostgreSQL role must atomically extend configuration, bootstrap,
+manifest/readiness, and negative tests.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the

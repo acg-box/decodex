@@ -313,15 +313,61 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 hostile-search-path harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn std::error::Error>> {
+	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::pin_session_search_path_fixture(&mut runtime);
+
+	let (client, connection) = runtime.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	let path = client
+		.query_one(
+			"SELECT pg_catalog.current_setting('search_path'), \
+			 pg_catalog.current_schemas(true) = ARRAY['pg_catalog','public']::pg_catalog.name[]",
+			&[],
+		)
+		.await?;
+	let search_path: String = path.get(0);
+	let catalogs_first: bool = path.get(1);
+
+	assert_eq!(search_path, "public");
+	assert!(catalogs_first);
+
+	drop(client);
+
+	connection_task.await??;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an isolated PostgreSQL 18 schema-manifest database"]
 #[cfg(feature = "test-support")]
 async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
 	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
+	let (mut migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
+	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
+
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
+
 	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	let manifest: String =
+	let schema: String =
 		client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await?.get(0);
+	let authority: String = client
+		.query_one(
+			PostgresStore::configured_authority_sql_fixture(),
+			&[&migration_role, &runtime_role],
+		)
+		.await?
+		.get(0);
+	let manifest = serde_json::to_string(&serde_json::json!({
+		"authority": authority,
+		"schema": schema,
+	}))?;
 
 	fs::write(path, manifest)?;
 
@@ -2243,7 +2289,7 @@ async fn postgres_store_rejects_schema_scoped_default_acl_restore()
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
 	match PostgresStore::connect(migration, runtime, expected_peer_uid()).await {
-		Err(StoreError::Incompatible(_)) => Ok(()),
+		Err(StoreError::UnsafeAuthority(_)) => Ok(()),
 		Err(error) => panic!("unexpected schema-scoped default-ACL restore error: {error:?}"),
 		Ok(_) => panic!("schema-scoped default-ACL restore was accepted"),
 	}
