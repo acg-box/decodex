@@ -4,7 +4,10 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::StoreError;
-use decodex_core::{AccountId, AccountState, Agent, Project};
+use decodex_core::{
+	AccountId, AccountState, Agent, ObservationConfidence, Project, QuotaWindowClass,
+	RemainingPercent,
+};
 
 /// Transactional creation input for one Project and its canonical Lead.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -65,50 +68,126 @@ impl Debug for AccountMetadata {
 	}
 }
 
-/// Idempotent optimistic quota-window metadata mutation.
-#[derive(Clone, Debug)]
+/// Exact UTC Unix-microsecond timestamp accepted by quota storage.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct QuotaTimestampMicros(i64);
+impl QuotaTimestampMicros {
+	/// Unix epoch through the final microsecond of year 9999.
+	pub const MAX: i64 = 253_402_300_799_999_999;
+
+	/// Construct an exact product-valid timestamp without normalization.
+	pub const fn new(value: i64) -> Result<Self, StoreError> {
+		if value < 0 || value > Self::MAX {
+			Err(StoreError::InvalidInput("quota timestamp is outside the product range"))
+		} else {
+			Ok(Self(value))
+		}
+	}
+
+	/// Return the canonical UTC Unix-microsecond value.
+	pub const fn get(self) -> i64 {
+		self.0
+	}
+
+	/// Compute a nonnegative elapsed duration without wrapping.
+	pub const fn checked_duration_since(self, earlier: Self) -> Result<u64, StoreError> {
+		match self.0.checked_sub(earlier.0) {
+			Some(value) if value >= 0 => Ok(value as u64),
+			_ => Err(StoreError::InvalidInput(
+				"quota timestamp chronology is reversed or unrepresentable",
+			)),
+		}
+	}
+}
+
+/// Idempotent optimistic mutation of one duration-typed quota observation.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QuotaWindowMutation {
 	/// Owning account.
 	pub account_id: AccountId,
-	/// Provider-independent window class such as `usage`.
-	pub window_class: String,
-	/// Exact duration, never inferred from primary/secondary position.
-	pub duration_seconds: i64,
-	/// Provider-reported remaining amount, when known.
-	pub remaining_amount: Option<f64>,
-	/// Provider reset timestamp as RFC 3339 text, when known.
-	pub resets_at: Option<String>,
-	/// Observation timestamp as RFC 3339 text.
-	pub observed_at: String,
-	/// Confidence in the observation in the closed range 0..=1.
-	pub confidence: f64,
+	/// Exact five-hour or seven-day duration identity.
+	pub window: QuotaWindowClass,
+	/// Provider-reported remaining percentage, when known.
+	pub remaining_percent: Option<RemainingPercent>,
+	/// Exact reset timestamp, when known.
+	pub resets_at: Option<QuotaTimestampMicros>,
+	/// Exact observation timestamp.
+	pub observed_at: QuotaTimestampMicros,
+	/// Closed confidence classification.
+	pub confidence: ObservationConfidence,
 	/// Ordinary credential-negative metadata.
 	pub metadata: Value,
 	/// `None` creates revision 1; `Some` updates only that exact revision.
 	pub expected_revision: Option<i64>,
 }
 
-/// Stored inert quota-window metadata readback.
-#[derive(Clone, Debug, PartialEq)]
+/// Stored inert quota-window observation readback.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QuotaWindow {
 	/// Owning account.
 	pub account_id: AccountId,
-	/// Provider-independent window class.
-	pub window_class: String,
-	/// Exact duration.
-	pub duration_seconds: i64,
-	/// Provider-reported remaining amount.
-	pub remaining_amount: Option<f64>,
-	/// Provider reset timestamp.
-	pub resets_at: Option<String>,
-	/// Observation timestamp.
-	pub observed_at: String,
+	/// Exact duration-owned window identity.
+	pub window: QuotaWindowClass,
+	/// Provider-reported remaining percentage.
+	pub remaining_percent: Option<RemainingPercent>,
+	/// Exact reset timestamp.
+	pub resets_at: Option<QuotaTimestampMicros>,
+	/// Exact observation timestamp.
+	pub observed_at: QuotaTimestampMicros,
 	/// Observation confidence.
-	pub confidence: f64,
+	pub confidence: ObservationConfidence,
 	/// Ordinary metadata.
 	pub metadata: Value,
 	/// Monotonic optimistic revision.
 	pub revision: i64,
+}
+
+/// One exact depleted observation to exclude inertly.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuotaExclusionMutation {
+	/// Observation committed by the same transaction as the exclusion.
+	pub observation: QuotaWindowMutation,
+	/// Exact command time used for freshness and reset checks.
+	pub excluded_at: QuotaTimestampMicros,
+}
+
+/// Mechanically inert hypothetical fallback evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HypotheticalFallbackFact;
+impl HypotheticalFallbackFact {
+	/// This persistence slice can never authorize dispatch.
+	pub const fn dispatch_enabled(self) -> bool {
+		false
+	}
+}
+
+/// Exact committed result of an inert exclusion transaction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuotaExclusionReceipt {
+	/// Owning account.
+	pub account_id: AccountId,
+	/// Exact duration-owned window identity.
+	pub window: QuotaWindowClass,
+	/// Revision of the committed observation evidence.
+	pub observation_revision: i64,
+	/// Exact depleted amount.
+	pub remaining_percent: RemainingPercent,
+	/// Exact reset timestamp.
+	pub resets_at: QuotaTimestampMicros,
+	/// Exact observation timestamp.
+	pub observed_at: QuotaTimestampMicros,
+	/// Exact exclusion timestamp.
+	pub excluded_at: QuotaTimestampMicros,
+	/// Closed confidence classification.
+	pub confidence: ObservationConfidence,
+	/// Immutable credential-negative observation metadata.
+	pub metadata: Value,
+	/// Canonical `/2` mutation digest.
+	pub mutation_sha256: String,
+	/// Canonical `/2` mutation byte length.
+	pub mutation_length: i64,
+	/// Persisted fact that cannot authorize routing.
+	pub hypothetical_fallback: HypotheticalFallbackFact,
 }
 
 /// Caller-chosen idempotency key plus a stable hash of the logical request bytes.

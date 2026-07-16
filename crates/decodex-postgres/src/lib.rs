@@ -16,6 +16,7 @@ mod outbox;
 mod policies;
 mod programs;
 mod project_agents;
+mod quota;
 #[cfg(unix)] mod socket;
 mod types;
 
@@ -30,7 +31,8 @@ pub use self::{
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	types::{
 		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
-		LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState, QuotaWindow,
+		HypotheticalFallbackFact, LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState,
+		QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow,
 		QuotaWindowMutation, ReconciliationOutcome,
 	},
 };
@@ -44,6 +46,7 @@ pub use decodex_core::{
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
 	ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity, ReviewCadence,
 };
+pub use quota::parse_quota_timestamp_rfc3339;
 
 use std::{sync::Arc, time::Duration};
 
@@ -85,6 +88,13 @@ pub struct PostgresStore {
 	connector: VerifiedSocketConnect,
 }
 impl PostgresStore {
+	/// Return the exact schema-manifest query for isolated dump/restore fixtures.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub const fn schema_contract_sql_fixture() -> &'static str {
+		authority::schema_contract_sql_fixture()
+	}
+
 	/// Run migration/verification through the migration identity, close it, then retain
 	/// only a separately verified least-privilege runtime pool.
 	pub async fn connect_explicit(
@@ -176,6 +186,32 @@ impl PostgresStore {
 		let connector = verified_socket_connect(&config, expected_peer_uid)?;
 
 		Self::migrate_with_connector(config, connector).await
+	}
+
+	/// Apply the immutable migration ledger only through V7 for V8 boundary fixtures.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v7(
+		config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v7(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
 	}
 
 	#[cfg(not(unix))]

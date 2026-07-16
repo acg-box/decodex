@@ -2,13 +2,12 @@ use std::time::Duration;
 
 use deadpool_postgres::{Client, Transaction};
 use serde_json::{self, Value};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
-use tokio::time::Instant;
+use tokio::time::{self, Instant};
 use tokio_postgres::Row;
 
 use crate::{
 	AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
-	PostgresStore, QuotaWindow, QuotaWindowMutation, StoreError,
+	PostgresStore, StoreError,
 };
 
 /// Immutable identity bound to one durable command receipt before side effects begin.
@@ -28,12 +27,6 @@ pub(crate) struct CommandReservation {
 	key: String,
 	request_hash: String,
 	claim_token: String,
-}
-
-struct PersistedWindowTimestamps {
-	revision: i64,
-	resets_at: Option<String>,
-	observed_at: String,
 }
 
 /// A reservation either owns the pending saga or replays its exact completed response bytes.
@@ -137,84 +130,6 @@ impl PostgresStore {
 		transaction.commit().await?;
 
 		account_from_response(response)
-	}
-
-	/// Apply one inert duration-typed quota-window mutation. No eligibility, assignment,
-	/// fallback, or wake decision is exposed by this storage boundary.
-	pub async fn mutate_quota_window(
-		&self,
-		command: &CommandIdentity,
-		mutation: &QuotaWindowMutation,
-	) -> Result<QuotaWindow, StoreError> {
-		validate_window(mutation)?;
-
-		let mut client = self.pool().get().await?;
-		let entity_id = format!(
-			"{}:{}/{}",
-			mutation.account_id, mutation.window_class, mutation.duration_seconds
-		);
-		let descriptor = CommandDescriptor {
-			protocol_version: "decodex/store-command/1",
-			operation: "mutate_quota_window",
-			project_scope: "global",
-			scope_id: "quota_windows".into(),
-			entity_id: entity_id.clone(),
-			expected_revision: mutation.expected_revision,
-			payload_hash: None,
-			payload_length: None,
-		};
-		let reservation = match reserve_command(&mut client, command, &descriptor).await? {
-			CommandClaim::Completed(response) => return window_from_response(response),
-			CommandClaim::Owned(reservation) => reservation,
-		};
-		let transaction = client.transaction().await?;
-		let persisted = match mutation.expected_revision {
-			None => create_window(&transaction, mutation).await?,
-			Some(expected) => update_window(&transaction, mutation, expected).await?,
-		};
-		let revision = persisted.revision;
-		let aggregate_id = format!(
-			"{}:{}/{}",
-			mutation.account_id, mutation.window_class, mutation.duration_seconds
-		);
-		let event_kind =
-			if revision == 1 { "quota_window_created" } else { "quota_window_updated" };
-		let payload = serde_json::json!({
-			"account_id": mutation.account_id.as_str(),
-			"window_class": mutation.window_class,
-			"duration_seconds": mutation.duration_seconds,
-			"revision": revision,
-		});
-
-		append_activity_and_outbox(
-			&transaction,
-			"quota_window",
-			&aggregate_id,
-			revision,
-			event_kind,
-			&command.key,
-			&payload,
-		)
-		.await?;
-
-		let response = serde_json::json!({
-			"kind": "quota_window",
-			"account_id": mutation.account_id.as_str(),
-			"window_class": mutation.window_class,
-			"duration_seconds": mutation.duration_seconds,
-			"remaining_amount": mutation.remaining_amount,
-			"resets_at": persisted.resets_at,
-			"observed_at": persisted.observed_at,
-			"confidence": mutation.confidence,
-			"metadata": mutation.metadata,
-			"revision": revision,
-		});
-
-		finish_command(&transaction, &reservation, &response).await?;
-
-		transaction.commit().await?;
-
-		window_from_response(response)
 	}
 
 	/// Read account metadata without providing an eligibility or selection query.
@@ -359,7 +274,7 @@ pub(crate) async fn reserve_command(
 				return Err(StoreError::OwnershipLost("command receipt claim is active"));
 			}
 
-			tokio::time::sleep(Duration::from_millis(10)).await;
+			time::sleep(Duration::from_millis(10)).await;
 
 			continue;
 		}
@@ -383,6 +298,47 @@ pub(crate) async fn reserve_command(
 			claim_token,
 		}));
 	}
+}
+
+pub(crate) async fn replay_completed_command(
+	client: &Client,
+	command: &CommandIdentity,
+	descriptor: &CommandDescriptor,
+) -> Result<Option<Value>, StoreError> {
+	let Some(row) = client
+		.query_opt(
+			"SELECT request_hash, protocol_version, operation, project_scope, scope_id, entity_id, \
+			 expected_revision, payload_hash, payload_length, receipt_state::text, response_bytes, \
+			 response FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[&command.key],
+		)
+		.await?
+	else {
+		return Ok(None);
+	};
+
+	if !receipt_descriptor_matches(&row, command, descriptor) {
+		return Err(StoreError::IdempotencyConflict);
+	}
+	if row.get::<_, &str>(9) != "completed" {
+		return Ok(None);
+	}
+
+	let bytes = row.get::<_, Option<Vec<u8>>>(10).ok_or_else(|| {
+		StoreError::Incompatible("completed command receipt lost response bytes".into())
+	})?;
+	let response: Value = serde_json::from_slice(&bytes).map_err(|_| {
+		StoreError::Incompatible("completed command response bytes are invalid".into())
+	})?;
+	let stored_response: Value = row.get(11);
+
+	if response != stored_response {
+		return Err(StoreError::Incompatible(
+			"completed command response bytes differ from committed response".into(),
+		));
+	}
+
+	Ok(Some(response))
 }
 
 pub(crate) async fn finish_command(
@@ -508,50 +464,6 @@ fn validate_account(mutation: &AccountMutation) -> Result<(), StoreError> {
 	Ok(())
 }
 
-fn validate_window(mutation: &QuotaWindowMutation) -> Result<(), StoreError> {
-	if mutation.duration_seconds <= 0 {
-		return Err(StoreError::InvalidInput("quota window duration must be positive"));
-	}
-	if !(0.0..=1.0).contains(&mutation.confidence) || !mutation.confidence.is_finite() {
-		return Err(StoreError::InvalidInput("quota confidence must be finite and within 0..=1"));
-	}
-	if mutation.remaining_amount.is_some_and(|remaining| remaining < 0.0 || !remaining.is_finite())
-	{
-		return Err(StoreError::InvalidInput(
-			"quota remaining amount must be finite and non-negative",
-		));
-	}
-	if mutation.expected_revision.is_some_and(|revision| revision < 1) {
-		return Err(StoreError::InvalidInput("expected revision must be positive"));
-	}
-
-	validate_rfc3339(&mutation.observed_at, "quota observed_at must be RFC 3339")?;
-
-	if let Some(resets_at) = &mutation.resets_at {
-		validate_rfc3339(resets_at, "quota resets_at must be RFC 3339")?;
-	}
-
-	crate::ensure_credential_negative_text(&mutation.window_class)?;
-	crate::ensure_credential_negative_json(&mutation.metadata)?;
-
-	Ok(())
-}
-
-fn validate_rfc3339(value: &str, error: &'static str) -> Result<(), StoreError> {
-	if value.as_bytes().get(10) != Some(&b'T') {
-		return Err(StoreError::InvalidInput(error));
-	}
-
-	let parsed =
-		OffsetDateTime::parse(value, &Rfc3339).map_err(|_| StoreError::InvalidInput(error))?;
-
-	if parsed.year() < 1 {
-		return Err(StoreError::InvalidInput(error));
-	}
-
-	Ok(())
-}
-
 fn account_from_row(row: Row) -> Result<AccountMetadata, StoreError> {
 	Ok(AccountMetadata {
 		account_id: stored_account_id(row.get::<_, String>(0))?,
@@ -575,30 +487,6 @@ fn account_from_response(response: Value) -> Result<AccountMetadata, StoreError>
 			.get("metadata")
 			.cloned()
 			.ok_or(StoreError::Incompatible("account response missing metadata".into()))?,
-		revision: required_i64(&response, "revision")?,
-	})
-}
-
-fn window_from_response(response: Value) -> Result<QuotaWindow, StoreError> {
-	if response.get("kind").and_then(Value::as_str) != Some("quota_window") {
-		return Err(StoreError::IdempotencyConflict);
-	}
-
-	Ok(QuotaWindow {
-		account_id: stored_account_id(required_str(&response, "account_id")?)?,
-		window_class: required_str(&response, "window_class")?.to_owned(),
-		duration_seconds: required_i64(&response, "duration_seconds")?,
-		remaining_amount: response.get("remaining_amount").and_then(Value::as_f64),
-		resets_at: response.get("resets_at").and_then(Value::as_str).map(str::to_owned),
-		observed_at: required_str(&response, "observed_at")?.to_owned(),
-		confidence: response
-			.get("confidence")
-			.and_then(Value::as_f64)
-			.ok_or(StoreError::Incompatible("quota response missing confidence".into()))?,
-		metadata: response
-			.get("metadata")
-			.cloned()
-			.ok_or(StoreError::Incompatible("quota response missing metadata".into()))?,
 		revision: required_i64(&response, "revision")?,
 	})
 }
@@ -698,104 +586,6 @@ async fn account_revision(
 		)
 		.await?
 		.map(|row| row.get(0)))
-}
-
-async fn create_window(
-	transaction: &Transaction<'_>,
-	mutation: &QuotaWindowMutation,
-) -> Result<PersistedWindowTimestamps, StoreError> {
-	let row = transaction
-		.query_opt(
-			"INSERT INTO decodex.quota_windows \
-			 (account_id, window_class, duration_seconds, remaining_amount, resets_at, observed_at, confidence, metadata) \
-			 VALUES ($1::text::uuid, $2, $3, $4, $5::text::timestamptz, $6::text::timestamptz, $7, $8) \
-				 ON CONFLICT DO NOTHING RETURNING revision, \
-				 CASE WHEN resets_at IS NULL THEN NULL ELSE decodex.rfc3339_utc(resets_at) END, \
-				 decodex.rfc3339_utc(observed_at)",
-			&[
-				&mutation.account_id.as_str(),
-				&mutation.window_class,
-				&mutation.duration_seconds,
-				&mutation.remaining_amount,
-				&mutation.resets_at,
-				&mutation.observed_at,
-				&mutation.confidence,
-				&mutation.metadata,
-			],
-		)
-		.await?;
-
-	if let Some(row) = row {
-		return Ok(PersistedWindowTimestamps {
-			revision: row.get(0),
-			resets_at: row.get(1),
-			observed_at: row.get(2),
-		});
-	}
-
-	Err(window_revision_error(transaction, mutation, None).await?)
-}
-
-async fn update_window(
-	transaction: &Transaction<'_>,
-	mutation: &QuotaWindowMutation,
-	expected: i64,
-) -> Result<PersistedWindowTimestamps, StoreError> {
-	let row = transaction
-		.query_opt(
-			"UPDATE decodex.quota_windows SET remaining_amount = $4, resets_at = $5::timestamptz, \
-			 observed_at = $6::timestamptz, confidence = $7, metadata = $8, revision = revision + 1, \
-			 updated_at = clock_timestamp() WHERE account_id = $1::text::uuid AND window_class = $2 \
-				 AND duration_seconds = $3 AND revision = $9 RETURNING revision, \
-				 CASE WHEN resets_at IS NULL THEN NULL ELSE decodex.rfc3339_utc(resets_at) END, \
-				 decodex.rfc3339_utc(observed_at)",
-			&[
-				&mutation.account_id.as_str(),
-				&mutation.window_class,
-				&mutation.duration_seconds,
-				&mutation.remaining_amount,
-				&mutation.resets_at,
-				&mutation.observed_at,
-				&mutation.confidence,
-				&mutation.metadata,
-				&expected,
-			],
-		)
-		.await?;
-
-	if let Some(row) = row {
-		return Ok(PersistedWindowTimestamps {
-			revision: row.get(0),
-			resets_at: row.get(1),
-			observed_at: row.get(2),
-		});
-	}
-
-	Err(window_revision_error(transaction, mutation, Some(expected)).await?)
-}
-
-async fn window_revision_error(
-	transaction: &Transaction<'_>,
-	mutation: &QuotaWindowMutation,
-	expected: Option<i64>,
-) -> Result<StoreError, StoreError> {
-	let actual = transaction
-		.query_opt(
-			"SELECT revision FROM decodex.quota_windows WHERE account_id = $1::text::uuid \
-			 AND window_class = $2 AND duration_seconds = $3",
-			&[&mutation.account_id.as_str(), &mutation.window_class, &mutation.duration_seconds],
-		)
-		.await?
-		.map(|row| row.get(0));
-
-	Ok(StoreError::RevisionConflict {
-		entity: format!(
-			"quota_window/{}:{}/{}",
-			mutation.account_id, mutation.window_class, mutation.duration_seconds
-		),
-		expected,
-		actual,
-	})
 }
 
 #[cfg(test)]

@@ -11,7 +11,8 @@ const PROJECT_AGENT_MIGRATION: &str = include_str!("../migrations/V5__project_ag
 const POLICY_MIGRATION: &str = include_str!("../migrations/V6__project_policy_authority.sql");
 const PROGRAM_OBJECTIVE_MIGRATION: &str =
 	include_str!("../migrations/V7__program_objective_authority.sql");
-const FUNCTION_CONTRACTS: [FunctionContract; 57] = [
+const QUOTA_MIGRATION: &str = include_str!("../migrations/V8__quota_exclusions.sql");
+const FUNCTION_CONTRACTS: [FunctionContract; 58] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -136,6 +137,18 @@ const FUNCTION_CONTRACTS: [FunctionContract; 57] = [
 		name: "enforce_outbox_operation_time",
 		lookup_signature: "decodex.enforce_outbox_operation_time()",
 		migration_signature: "enforce_outbox_operation_time()",
+		arguments: "",
+		result: "trigger",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: false,
+		rows: 0.0,
+	},
+	FunctionContract {
+		name: "enforce_quota_observation_monotonicity",
+		lookup_signature: "decodex.enforce_quota_observation_monotonicity()",
+		migration_signature: "enforce_quota_observation_monotonicity()",
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -529,9 +542,10 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 26] = [
 	"decodex.transition_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.objective_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
 	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
 ];
-const SAFETY_FUNCTIONS: [&str; 25] = [
+const SAFETY_FUNCTIONS: [&str; 26] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
+	"enforce_quota_observation_monotonicity",
 	"forbid_mutation_of_activity",
 	"enforce_outbox_terminal_retention",
 	"forbid_outbox_truncate",
@@ -556,7 +570,7 @@ const SAFETY_FUNCTIONS: [&str; 25] = [
 	"forbid_objective_evidence_mutation",
 	"enforce_objective_completion_coherence",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 41;
+const SAFETY_TRIGGER_COUNT: usize = 42;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -710,6 +724,7 @@ WITH set_roles AS (
 ), expected(table_name, can_select, can_insert, can_update, can_delete) AS (VALUES
   ('accounts', true, true, true, false),
   ('quota_windows', true, true, true, false),
+  ('quota_exclusions', true, true, false, false),
   ('command_receipts', true, true, true, false),
   ('activity', true, true, false, false),
   ('leases', true, true, true, false),
@@ -743,7 +758,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 27
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 28
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -901,6 +916,7 @@ const TRIGGER_CONTRACT_SQL: &str = r#"
 WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('leases', 'leases_operation_time', 'enforce_lease_operation_time', 23),
   ('outbox', 'outbox_operation_time', 'enforce_outbox_operation_time', 23),
+	('quota_windows', 'quota_windows_observed_at_monotonic', 'enforce_quota_observation_monotonicity', 19),
   ('activity', 'activity_append_only', 'forbid_mutation_of_activity', 27),
   ('outbox', 'outbox_terminal_retention', 'enforce_outbox_terminal_retention', 27),
   ('outbox', 'outbox_truncate_forbidden', 'forbid_outbox_truncate', 34),
@@ -1059,6 +1075,7 @@ WITH catalog_context AS MATERIALIZED (
 ), expected_triggers(table_name, trigger_name, function_signature) AS (VALUES
   ('leases', 'leases_operation_time', 'decodex.enforce_lease_operation_time()'),
   ('outbox', 'outbox_operation_time', 'decodex.enforce_outbox_operation_time()'),
+	('quota_windows', 'quota_windows_observed_at_monotonic', 'decodex.enforce_quota_observation_monotonicity()'),
   ('activity', 'activity_append_only', 'decodex.forbid_mutation_of_activity()'),
   ('outbox', 'outbox_terminal_retention', 'decodex.enforce_outbox_terminal_retention()'),
   ('outbox', 'outbox_truncate_forbidden', 'decodex.forbid_outbox_truncate()'),
@@ -1567,8 +1584,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0xc7, 0x92, 0xa5, 0x97, 0x5b, 0xf3, 0x0b, 0xcb, 0x2c, 0xcf, 0x14, 0xf2, 0x6b, 0x12, 0xa5, 0x8b,
-	0x38, 0x3c, 0x92, 0xd6, 0x66, 0x73, 0xa6, 0x12, 0x85, 0xec, 0x89, 0x92, 0x4a, 0x3a, 0x28, 0x4e,
+	0xae, 0x1f, 0xb7, 0x45, 0x9f, 0xf8, 0x07, 0x19, 0x10, 0x16, 0x9f, 0xa1, 0x48, 0x31, 0x11, 0xdc,
+	0xf0, 0xc8, 0xc8, 0xe7, 0xc8, 0x15, 0x59, 0xe0, 0x3d, 0xf7, 0x69, 0x2d, 0x1a, 0xca, 0x9c, 0x7e,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -1705,6 +1722,11 @@ struct FunctionContract {
 	rows: f32,
 }
 
+#[cfg(feature = "test-support")]
+pub(crate) const fn schema_contract_sql_fixture() -> &'static str {
+	SCHEMA_CONTRACT_SQL
+}
+
 pub(crate) async fn verify_runtime(client: &Client) -> Result<(), StoreError> {
 	verify_forbidden_authority(client).await?;
 	verify_identity_cast_authority(client).await?;
@@ -1795,6 +1817,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		PROJECT_AGENT_MIGRATION,
 		POLICY_MIGRATION,
 		PROGRAM_OBJECTIVE_MIGRATION,
+		QUOTA_MIGRATION,
 	]
 	.into_iter()
 	.find(|migration| migration.contains(&declaration))?;
@@ -2071,8 +2094,8 @@ mod tests {
 	use crate::authority::{
 		CONVERSATION_MIGRATION, FOUNDATION_MIGRATION, FUNCTION_CONTRACTS,
 		IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, POLICY_MIGRATION,
-		PROGRAM_OBJECTIVE_MIGRATION, PROJECT_AGENT_MIGRATION, ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS,
-		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		PROGRAM_OBJECTIVE_MIGRATION, PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL,
+		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 	};
 
 	#[test]
@@ -2125,6 +2148,7 @@ mod tests {
 				PROJECT_AGENT_MIGRATION,
 				POLICY_MIGRATION,
 				PROGRAM_OBJECTIVE_MIGRATION,
+				QUOTA_MIGRATION,
 			]
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
@@ -2143,6 +2167,7 @@ mod tests {
 					PROJECT_AGENT_MIGRATION,
 					POLICY_MIGRATION,
 					PROGRAM_OBJECTIVE_MIGRATION,
+					QUOTA_MIGRATION,
 				]
 				.into_iter()
 				.map(|migration| migration

@@ -3,14 +3,22 @@ mod embedded {
 }
 
 use deadpool_postgres::Client;
+#[cfg(feature = "test-support")] use refinery::Target;
 
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 7;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 8;
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v7(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(7)).run_async(&mut ***client).await?;
 
 	Ok(())
 }
@@ -58,7 +66,7 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		!= Some(EXPECTED_LATEST_MIGRATION_VERSION)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V7 ledger".into(),
+			"embedded migration inventory does not end at the canonical V8 ledger".into(),
 		));
 	}
 	if actual.len() != expected.len() {
