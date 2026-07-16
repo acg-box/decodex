@@ -1,10 +1,12 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
+#[path = "postgres_store/quota.rs"] mod quota;
+
 use std::{
 	collections::{BTreeMap, HashSet},
 	env,
 	fs::{self, Permissions},
-	os::unix::fs::PermissionsExt as _,
+	os::unix::fs::PermissionsExt,
 	path::{Path, PathBuf},
 	str::FromStr as _,
 	time::Duration,
@@ -40,8 +42,7 @@ use decodex_postgres::{
 	CommandIdentity, ContextPackRecord, CreateArtifact, CreateConversation, CreateProject,
 	CreateRuntimeSession, HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim,
 	OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition,
-	QuotaWindowMutation, ReconciliationOutcome, RecordHistoryItem, StoreError,
-	UpdateProgramContext,
+	ReconciliationOutcome, RecordHistoryItem, StoreError, UpdateProgramContext,
 };
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
@@ -311,6 +312,279 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 	Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires an isolated PostgreSQL 18 schema-manifest database"]
+#[cfg(feature = "test-support")]
+async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
+	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
+	let (migration, _) = separated_configs("DECODEX_TEST")?;
+	let (client, connection) = migration.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	let manifest: String =
+		client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await?.get(0);
+
+	fs::write(path, manifest)?;
+
+	drop(client);
+
+	connection_task.await??;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires a fresh isolated PostgreSQL 18 V8 migration database"]
+#[cfg(feature = "test-support")]
+async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error::Error>> {
+	let (migration, _) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::migrate_fixture_through_v7(migration.clone(), expected_peer_uid()).await?;
+
+	let (client, connection) = migration.clone().connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	let before = quota_v7_identity(&client).await?;
+
+	PostgresStore::migrate(migration, expected_peer_uid()).await?;
+
+	assert_eq!(quota_v7_identity(&client).await?, before);
+
+	let row = client
+		.query_one(
+			"SELECT (SELECT count(*)=0 FROM decodex.quota_windows), \
+			 (SELECT count(*)=0 FROM decodex.quota_exclusions), \
+			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
+			  FROM information_schema.columns WHERE table_schema='decodex' \
+			  AND table_name='quota_windows' AND column_name='window_class'), \
+			 (SELECT count(*)=8 FROM public.refinery_schema_history)",
+			&[],
+		)
+		.await?;
+
+	for index in 0..4 {
+		assert!(row.get::<_, bool>(index), "V8 empty-state assertion {index}");
+	}
+
+	drop(client);
+
+	connection_task.await??;
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+async fn quota_v7_identity(
+	client: &Client,
+) -> Result<(u32, u32, u32, Option<String>), tokio_postgres::Error> {
+	let row = client
+		.query_one(
+			"SELECT 'decodex.quota_windows'::regclass::oid, \
+			 'decodex.quota_windows_observation_idx'::regclass::oid, \
+			 (SELECT oid FROM pg_constraint WHERE conrelid='decodex.quota_windows'::regclass \
+			  AND contype='f' AND confrelid='decodex.accounts'::regclass), \
+			 (SELECT relacl::text FROM pg_class WHERE oid='decodex.quota_windows'::regclass)",
+			&[],
+		)
+		.await?;
+
+	Ok((row.get(0), row.get(1), row.get(2), row.get(3)))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires a fresh isolated PostgreSQL 18 V8 rejection database"]
+#[cfg(feature = "test-support")]
+async fn postgres_v8_rejects_classified_prior_state() -> Result<(), Box<dyn std::error::Error>> {
+	let variant = env::var("DECODEX_V8_PRIOR_STATE")?;
+	let (migration, _) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::migrate_fixture_through_v7(migration.clone(), expected_peer_uid()).await?;
+
+	let (client, connection) = migration.clone().connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+
+	insert_v7_prior_state(&client, &variant).await?;
+
+	let error = PostgresStore::migrate(migration, expected_peer_uid())
+		.await
+		.expect_err("classified V7 state must reject V8 atomically");
+	let state = client
+		.query_one(
+			"SELECT (SELECT count(*)=7 FROM public.refinery_schema_history), \
+			 to_regclass('decodex.quota_exclusions') IS NULL, \
+			 (SELECT data_type='text' FROM information_schema.columns \
+			  WHERE table_schema='decodex' AND table_name='quota_windows' \
+			  AND column_name='window_class')",
+			&[],
+		)
+		.await?;
+
+	assert!(format!("{error:?}").contains("V8 requires empty pre-release quota state"));
+
+	for index in 0..3 {
+		assert!(state.get::<_, bool>(index), "variant {variant}, field {index}");
+	}
+
+	drop(client);
+
+	connection_task.await??;
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+async fn insert_v7_prior_state(
+	client: &Client,
+	variant: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let statement = match variant {
+		"quota_row" =>
+			"INSERT INTO decodex.accounts (account_id,display_label) VALUES \
+			 ('10000000-0000-0000-0000-000000000091','V7 quota fixture'); \
+			 INSERT INTO decodex.quota_windows \
+			 (account_id,window_class,duration_seconds,observed_at,confidence) VALUES \
+			 ('10000000-0000-0000-0000-000000000091','five_hour',18000, \
+			  '2026-07-16T10:00:00Z',1)",
+		"receipt_operation" =>
+			"INSERT INTO decodex.command_receipts \
+			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
+			 ('v7-operation',repeat('a',64),'mutate_quota_window',gen_random_uuid(), \
+			  clock_timestamp()+interval '4 minutes')",
+		"receipt_scope" =>
+			"INSERT INTO decodex.command_receipts \
+			 (idempotency_key,request_hash,scope_id,claim_token,claim_expires_at) VALUES \
+			 ('v7-scope',repeat('b',64),'quota_windows',gen_random_uuid(), \
+			  clock_timestamp()+interval '4 minutes')",
+		"receipt_completed" =>
+			"INSERT INTO decodex.command_receipts \
+			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
+			 ('v7-completed',repeat('c',64),'mutate_quota_window',gen_random_uuid(), \
+			  clock_timestamp()+interval '4 minutes'); \
+			 UPDATE decodex.command_receipts SET receipt_state='completed',response='{}', \
+			 response_bytes=convert_to('{}','UTF8'),completion_claim_token=claim_token, \
+			 completed_at=clock_timestamp(),claim_token=NULL,claim_expires_at=NULL \
+			 WHERE idempotency_key='v7-completed'",
+		"activity_aggregate" =>
+			"INSERT INTO decodex.activity \
+			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
+			 ('quota_window','v7',1,'observed','v7-activity-aggregate','{}')",
+		"activity_event" =>
+			"INSERT INTO decodex.activity \
+			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
+			 ('account','v7',1,'quota_window_updated','v7-activity-event','{}')",
+		"activity_payload_window" =>
+			"INSERT INTO decodex.activity \
+			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
+			 ('account','v7',1,'observed','v7-activity-payload', \
+			  '{\"nested\":true,\"window_class\":\"five_hour\"}')",
+		"activity_payload_kind" =>
+			"INSERT INTO decodex.activity \
+			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
+			 ('account','v7',1,'observed','v7-activity-kind','{\"kind\":\"quota_exclusion\"}')",
+		"activity_payload_seconds" =>
+			"INSERT INTO decodex.activity \
+			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
+			 ('account','v7',1,'observed','v7-activity-seconds','{\"duration_seconds\":18000}')",
+		"activity_payload_minutes" =>
+			"INSERT INTO decodex.activity \
+			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
+			 ('account','v7',1,'observed','v7-activity-minutes','{\"duration_minutes\":300}')",
+		"outbox_aggregate" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-aggregate','quota_window','v7',1,'{}')",
+		"outbox_envelope" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-envelope','account','v7',1, \
+			  '{\"payload\":{\"duration_minutes\":300}}')",
+		"outbox_envelope_aggregate" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-envelope-aggregate','account','v7',1, \
+			  '{\"aggregate_kind\":\"quota_window\"}')",
+		"outbox_envelope_event" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-envelope-event','account','v7',1, \
+			  '{\"event_kind\":\"quota_window_excluded\"}')",
+		"outbox_envelope_kind" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-envelope-kind','account','v7',1, \
+			  '{\"payload\":{\"kind\":\"quota_window\"}}')",
+		"outbox_envelope_window" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-envelope-window','account','v7',1, \
+			  '{\"payload\":{\"window_class\":\"five_hour\"}}')",
+		"outbox_envelope_seconds" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-envelope-seconds','account','v7',1, \
+			  '{\"payload\":{\"duration_seconds\":18000}}')",
+		"outbox_link" =>
+			"WITH event AS (INSERT INTO decodex.activity \
+			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
+			 ('quota_window','v7-link',1,'observed','v7-link','{}') RETURNING sequence) \
+			 INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) \
+			 SELECT 'v7-outbox-link','account','v7-link',1, \
+			 jsonb_build_object('activity_sequence',sequence) FROM event",
+		"outbox_orphan" =>
+			"INSERT INTO decodex.outbox \
+			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
+			 ('v7-outbox-orphan','account','v7',1, \
+			  '{\"payload\":{\"kind\":\"quota_exclusion\"},\"activity_sequence\":9223372036854775807}')",
+		_ => return Err(format!("unknown V8 prior-state fixture {variant}").into()),
+	};
+
+	client.batch_execute(statement).await?;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires a fresh isolated PostgreSQL 18 V8 lock-fencing database"]
+#[cfg(feature = "test-support")]
+async fn postgres_v8_fences_concurrent_prior_writer() -> Result<(), Box<dyn std::error::Error>> {
+	let (migration, _) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::migrate_fixture_through_v7(migration.clone(), expected_peer_uid()).await?;
+
+	let (mut client, connection) = migration.clone().connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	let transaction = client.transaction().await?;
+
+	transaction
+		.batch_execute(
+			"INSERT INTO decodex.accounts (account_id,display_label) VALUES \
+			 ('10000000-0000-0000-0000-000000000092','V7 concurrent fixture'); \
+			 INSERT INTO decodex.quota_windows \
+			 (account_id,window_class,duration_seconds,observed_at,confidence) VALUES \
+			 ('10000000-0000-0000-0000-000000000092','seven_day',604800, \
+			  '2026-07-16T10:00:00Z',1)",
+		)
+		.await?;
+
+	let migration_task =
+		tokio::spawn(async move { PostgresStore::migrate(migration, expected_peer_uid()).await });
+
+	time::sleep(Duration::from_millis(200)).await;
+
+	assert!(!migration_task.is_finished(), "V8 must wait behind the prior writer");
+
+	transaction.commit().await?;
+
+	let error = migration_task.await?.expect_err("committed prior quota state rejects V8");
+
+	assert!(format!("{error:?}").contains("V8 requires empty pre-release quota state"));
+
+	drop(client);
+
+	connection_task.await??;
+
+	Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires the isolated PostgreSQL 18 harness"]
 async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
@@ -332,7 +606,9 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	assert_account_idempotency_and_revision(&store, &client).await?;
 	assert_receipt_first_saga(&store, &client).await?;
 	assert_concurrent_shard_capacity(&store, &client).await?;
-	assert_inert_window_and_credential_boundary(&store, &client).await?;
+
+	quota::assert_inert_window_and_credential_boundary(&store, &client).await?;
+
 	assert_conversation_history_context_and_blob_contract(&store, &client, &runtime_client).await?;
 	assert_concurrent_hierarchy_serialization(&store, &client, &runtime).await?;
 	assert_duration_validation(&store, &client).await?;
@@ -2065,7 +2341,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 7);
+	assert_eq!(history.len(), 8);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
@@ -2087,6 +2363,9 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 	assert_eq!(history[6].0, 7);
 	assert_eq!(history[6].1, "program_objective_authority");
 	assert!(!history[6].2.is_empty());
+	assert_eq!(history[7].0, 8);
+	assert_eq!(history[7].1, "quota_exclusions");
+	assert!(!history[7].2.is_empty());
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -4534,263 +4813,6 @@ async fn assert_account_launch_authority(
 	Ok(())
 }
 
-async fn assert_inert_window_and_credential_boundary(
-	store: &PostgresStore,
-	client: &Client,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let mutation = QuotaWindowMutation {
-		account_id: AccountId::new(ACCOUNT_ID)?,
-		window_class: "usage".into(),
-		duration_seconds: 300,
-		remaining_amount: None,
-		resets_at: None,
-		observed_at: "2026-07-13T07:00:00Z".into(),
-		confidence: 0.0,
-		metadata: serde_json::json!({
-			"observation": "unknown",
-			"token_budget": 8_192,
-			"session_id": "ordinary-session-id",
-		}),
-		expected_revision: None,
-	};
-	let command = CommandIdentity::new("window-create", b"window-create-v1")?;
-	let window = store.mutate_quota_window(&command, &mutation).await?;
-
-	assert_eq!(window.duration_seconds, 300);
-	assert_eq!(window.remaining_amount, None);
-	assert_eq!(window.confidence, 0.0);
-	assert!(CommandIdentity::new("token_budget/session_id", b"ordinary-id").is_ok());
-
-	assert_api_credential_boundary(store, &mutation).await?;
-	assert_quota_timestamp_validation(store, client, &mutation).await?;
-
-	for (key, command_key) in [
-		("refresh_token", "window-credential"),
-		("password", "account-credential"),
-		("Authorization", "authorization-credential"),
-		("session-token", "session-credential"),
-		("accessToken", "camel-token-credential"),
-		("bearer", "bearer-credential"),
-		("value", "secret-value-credential"),
-		("header", "bearer-value-credential"),
-		("header", "basic-value-credential"),
-		("value", "slack-value-credential"),
-		("value", "gitlab-value-credential"),
-		("value", "npm-value-credential"),
-	] {
-		if key != "password" {
-			let mut forbidden = mutation.clone();
-
-			forbidden.duration_seconds = 10_080;
-			forbidden.metadata = match command_key {
-				"secret-value-credential" => serde_json::json!({key: "sk-proj-0123456789abcdef"}),
-				"bearer-value-credential" => serde_json::json!({key: "Bearer abcdefghijklmnop"}),
-				"basic-value-credential" => serde_json::json!({key: "Basic dXNlcjpwYXNz"}),
-				"slack-value-credential" => serde_json::json!({key: "xoxb-1234567890-abcdef"}),
-				"gitlab-value-credential" => serde_json::json!({key: "glpat-1234567890abcdef"}),
-				"npm-value-credential" => serde_json::json!({key: "npm_1234567890abcdef"}),
-				_ => serde_json::json!({key: "forbidden"}),
-			};
-
-			let command = CommandIdentity::new(command_key, command_key.as_bytes())?;
-
-			assert!(matches!(
-				store.mutate_quota_window(&command, &forbidden).await,
-				Err(StoreError::CredentialRejected)
-			));
-		} else {
-			let forbidden = AccountMutation {
-				account_id: AccountId::new("10000000-0000-0000-0000-000000000002")?,
-				display_label: "Forbidden metadata".into(),
-				state: AccountState::Unknown,
-				metadata: serde_json::json!({key: "forbidden"}),
-				expected_revision: None,
-			};
-			let command = CommandIdentity::new(command_key, command_key.as_bytes())?;
-
-			assert!(matches!(
-				store.mutate_account(&command, &forbidden).await,
-				Err(StoreError::CredentialRejected)
-			));
-		}
-	}
-
-	assert_direct_credential_and_scope_boundary(store, client).await
-}
-
-async fn assert_api_credential_boundary(
-	store: &PostgresStore,
-	mutation: &QuotaWindowMutation,
-) -> Result<(), Box<dyn std::error::Error>> {
-	for value in CREDENTIAL_VALUE_VECTORS {
-		assert!(matches!(
-			CommandIdentity::new(*value, b"forbidden"),
-			Err(StoreError::CredentialRejected)
-		));
-	}
-
-	let forbidden_label = AccountMutation {
-		account_id: AccountId::new("10000000-0000-0000-0000-000000000002")?,
-		display_label: "Basic dXNlcjpwYXNz".into(),
-		state: AccountState::Unknown,
-		metadata: serde_json::json!({}),
-		expected_revision: None,
-	};
-	let safe_command = CommandIdentity::new("forbidden-label", b"forbidden-label")?;
-
-	assert!(matches!(
-		store.mutate_account(&safe_command, &forbidden_label).await,
-		Err(StoreError::CredentialRejected)
-	));
-
-	let mut forbidden_window_class = mutation.clone();
-
-	forbidden_window_class.window_class = "sk_proj_0123456789".into();
-
-	assert!(matches!(
-		store.mutate_quota_window(&safe_command, &forbidden_window_class).await,
-		Err(StoreError::CredentialRejected)
-	));
-	assert!(matches!(
-		store
-			.try_acquire_lease("Bearer abcdefghijklmnop", HOLDER_A, Duration::from_millis(1),)
-			.await,
-		Err(StoreError::CredentialRejected)
-	));
-	assert!(matches!(
-		store
-			.retry_outbox_before_effect(
-				0,
-				WORKER_A,
-				WORKER_A,
-				"sk_proj_0123456789",
-				Duration::from_millis(1),
-			)
-			.await,
-		Err(StoreError::CredentialRejected)
-	));
-
-	Ok(())
-}
-
-async fn assert_quota_timestamp_validation(
-	store: &PostgresStore,
-	client: &Client,
-	base: &QuotaWindowMutation,
-) -> Result<(), Box<dyn std::error::Error>> {
-	for (index, (observed_at, resets_at, expected_observed_at, expected_resets_at)) in [
-		(
-			"2026-07-13T07:00:00.123456789Z",
-			Some("2026-07-13T09:30:00.25+02:30"),
-			"2026-07-13T07:00:00.123457Z",
-			Some("2026-07-13T07:00:00.250000Z"),
-		),
-		("2026-07-13T01:30:00-05:30", None, "2026-07-13T07:00:00.000000Z", None),
-	]
-	.into_iter()
-	.enumerate()
-	{
-		let mut valid = base.clone();
-
-		valid.duration_seconds = 301 + i64::try_from(index)?;
-		valid.observed_at = observed_at.into();
-		valid.resets_at = resets_at.map(str::to_owned);
-
-		let key = format!("window-valid-timestamp-{index}");
-		let command = CommandIdentity::new(&key, key.as_bytes())?;
-		let stored = store.mutate_quota_window(&command, &valid).await?;
-
-		assert_eq!(stored.observed_at, expected_observed_at);
-		assert_eq!(stored.resets_at.as_deref(), expected_resets_at);
-
-		let duplicate = store.mutate_quota_window(&command, &valid).await?;
-
-		assert_eq!(duplicate, stored);
-
-		let persisted_row = client
-			.query_one(
-				"SELECT decodex.rfc3339_utc(observed_at), \
-				 CASE WHEN resets_at IS NULL THEN NULL ELSE decodex.rfc3339_utc(resets_at) END \
-				 FROM decodex.quota_windows WHERE account_id = $1::text::uuid \
-				 AND window_class = $2 AND duration_seconds = $3",
-				&[&ACCOUNT_ID, &valid.window_class, &valid.duration_seconds],
-			)
-			.await?;
-		let persisted: (String, Option<String>) = (persisted_row.get(0), persisted_row.get(1));
-		let receipt: Value = client
-			.query_one(
-				"SELECT response FROM decodex.command_receipts WHERE idempotency_key = $1",
-				&[&key],
-			)
-			.await?
-			.get(0);
-
-		assert_eq!(persisted.0, expected_observed_at);
-		assert_eq!(persisted.1.as_deref(), expected_resets_at);
-		assert_eq!(receipt["observed_at"], expected_observed_at);
-		assert_eq!(receipt.get("resets_at").and_then(Value::as_str), expected_resets_at);
-	}
-	for (index, (observed_at, resets_at)) in [
-		("infinity", None),
-		("tomorrow", None),
-		("2026-07-13 07:00:00Z", None),
-		("2026-07-13T07:00:00", None),
-		("2026-07-13", None),
-		("0000-01-01T00:00:00Z", None),
-		("2026-07-13T07:00:00Z", Some("infinity")),
-		("2026-07-13T07:00:00Z", Some("next monday")),
-	]
-	.into_iter()
-	.enumerate()
-	{
-		let mut invalid = base.clone();
-
-		invalid.duration_seconds = 400 + i64::try_from(index)?;
-		invalid.observed_at = observed_at.into();
-		invalid.resets_at = resets_at.map(str::to_owned);
-
-		let key = format!("window-invalid-timestamp-{index}");
-		let command = CommandIdentity::new(&key, key.as_bytes())?;
-		let result = store.mutate_quota_window(&command, &invalid).await;
-
-		assert!(
-			matches!(&result, Err(StoreError::InvalidInput(_))),
-			"invalid timestamp vector {index} was accepted: {result:?}"
-		);
-
-		let receipt_count: i64 = client
-			.query_one(
-				"SELECT count(*) FROM decodex.command_receipts WHERE idempotency_key = $1",
-				&[&key],
-			)
-			.await?
-			.get(0);
-
-		assert_eq!(receipt_count, 0);
-	}
-	for statement in [
-		"UPDATE decodex.quota_windows SET observed_at = 'infinity' \
-		 WHERE account_id = '10000000-0000-0000-0000-000000000001' \
-		 AND window_class = 'usage' AND duration_seconds = 300",
-		"UPDATE decodex.quota_windows SET resets_at = '-infinity' \
-		 WHERE account_id = '10000000-0000-0000-0000-000000000001' \
-		 AND window_class = 'usage' AND duration_seconds = 300",
-		"UPDATE decodex.quota_windows SET updated_at = 'infinity' \
-		 WHERE account_id = '10000000-0000-0000-0000-000000000001' \
-		 AND window_class = 'usage' AND duration_seconds = 300",
-	] {
-		let error =
-			client.execute(statement, &[]).await.expect_err("infinite quota timestamp rejected");
-
-		assert_eq!(
-			error.as_db_error().and_then(|error| error.constraint()),
-			Some("quota_windows_finite_timestamps")
-		);
-	}
-
-	Ok(())
-}
-
 async fn assert_direct_credential_and_scope_boundary(
 	store: &PostgresStore,
 	client: &Client,
@@ -4857,7 +4879,7 @@ async fn assert_direct_credential_rows(client: &Client) -> Result<(), Box<dyn st
 			"accounts_no_credentials",
 		),
 		(
-			"INSERT INTO decodex.quota_windows (account_id, window_class, duration_seconds, observed_at, confidence) VALUES ('10000000-0000-0000-0000-000000000001', 'sk_proj_0123456789', 60, clock_timestamp(), 1)",
+			"INSERT INTO decodex.quota_windows (account_id,window_class,duration_minutes,observed_at,confidence,metadata) VALUES ('10000000-0000-0000-0000-000000000001','seven_day',10080,TIMESTAMPTZ '1970-01-01 00:00:00+00','unknown','{\"api_key\":\"forbidden\"}')",
 			"quota_windows_no_credentials",
 		),
 		(
@@ -7690,24 +7712,7 @@ async fn assert_closed_pool_behavior(
 		Err(StoreError::Pool(_))
 	));
 	assert!(matches!(store.prune_delivered_outbox(1).await, Err(StoreError::Pool(_))));
-
-	let invalid_timestamp = QuotaWindowMutation {
-		account_id: AccountId::new(ACCOUNT_ID)?,
-		window_class: "closed_validation".into(),
-		duration_seconds: 1,
-		remaining_amount: None,
-		resets_at: None,
-		observed_at: "infinity".into(),
-		confidence: 0.0,
-		metadata: serde_json::json!({}),
-		expected_revision: None,
-	};
-	let command = CommandIdentity::new("closed-invalid-timestamp", b"closed-invalid-timestamp")?;
-
-	assert!(matches!(
-		store.mutate_quota_window(&command, &invalid_timestamp).await,
-		Err(StoreError::InvalidInput("quota observed_at must be RFC 3339"))
-	));
+	assert!(decodex_postgres::parse_quota_timestamp_rfc3339("infinity").is_err());
 
 	Ok(())
 }

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from enum import Enum
+import json
 import os
 from pathlib import Path
 import shutil
@@ -31,6 +32,8 @@ IDENTITY_CAST_DATABASE = "decodex_xy1315_identity_cast"
 EXTERNAL_CASCADE_DATABASE = "decodex_xy1307_external_cascade"
 LEDGER_TAMPER_DATABASE = "decodex_xy1307_ledger_tamper"
 MISSING_EXTENSION_DATABASE = "decodex_xy1307_missing_extension"
+V8_EMPTY_DATABASE = "decodex_xy1274_v8_empty"
+V8_LOCK_DATABASE = "decodex_xy1274_v8_lock"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -96,6 +99,7 @@ RUNTIME_EXECUTE_SIGNATURES = (
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
 	"decodex.enforce_outbox_operation_time()",
+	"decodex.enforce_quota_observation_monotonicity()",
 	"decodex.forbid_mutation_of_activity()",
 	"decodex.enforce_outbox_terminal_retention()",
 	"decodex.forbid_outbox_truncate()",
@@ -142,6 +146,8 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.agent_status",
 	"decodex.program_state",
 	"decodex.objective_state",
+	"decodex.quota_window_class",
+	"decodex.observation_confidence",
 )
 
 
@@ -390,6 +396,87 @@ def run_migration(env: dict[str, str]) -> str:
 	)
 
 
+def dump_schema_manifest(path: Path, env: dict[str, str]) -> str:
+	manifest_env = env.copy()
+	manifest_env["DECODEX_SCHEMA_MANIFEST_PATH"] = str(path)
+	return run(
+		["cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+		 "test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+		 "postgres_schema_manifest_dump_fixture", "--exact"],
+		manifest_env,
+	)
+
+
+def quota_authority_snapshot(database: str, env: dict[str, str]) -> str:
+	return psql(
+		database,
+		"SELECT jsonb_build_object("
+		"'windows',coalesce((SELECT jsonb_agg(to_jsonb(row) ORDER BY row.account_id,row.window_class) "
+		"FROM (SELECT account_id::text,window_class::text,duration_minutes,remaining_percent,"
+		"(extract(epoch FROM resets_at)::numeric*1000000)::bigint AS resets_at_micros,"
+		"(extract(epoch FROM observed_at)::numeric*1000000)::bigint AS observed_at_micros,"
+		"confidence::text,metadata,revision,updated_at FROM decodex.quota_windows) AS row),'[]'),"
+		"'exclusions',coalesce((SELECT jsonb_agg(to_jsonb(row) ORDER BY row.account_id,row.window_class) "
+		"FROM (SELECT account_id::text,window_class::text,duration_minutes,observation_revision,"
+		"remaining_percent,confidence::text,observation_metadata,observed_at_micros,resets_at_micros,"
+		"excluded_at_micros,maximum_age_micros,mutation_sha256,mutation_length,dispatch_enabled,"
+		"created_at FROM decodex.quota_exclusions) AS row),'[]'),"
+		"'receipts',coalesce((SELECT jsonb_agg(to_jsonb(row) ORDER BY row.idempotency_key) "
+		"FROM (SELECT idempotency_key,request_hash,operation,scope_id,entity_id,expected_revision,"
+		"payload_hash,payload_length,receipt_state::text,response,encode(response_bytes,'hex') AS response_hex,"
+		"created_at,completed_at FROM decodex.command_receipts WHERE operation IN "
+		"('mutate_quota_window','persist_quota_exclusion') OR scope_id IN ('quota_windows','quota_exclusions')) AS row),'[]'),"
+		"'activity',coalesce((SELECT jsonb_agg(to_jsonb(row) ORDER BY row.sequence) "
+		"FROM (SELECT sequence,aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload,created_at "
+		"FROM decodex.activity WHERE aggregate_kind='quota_window') AS row),'[]'),"
+		"'outbox',coalesce((SELECT jsonb_agg(to_jsonb(row) ORDER BY row.id) FROM "
+		"(SELECT work.id,work.effect_key,work.aggregate_kind,work.aggregate_id,work.aggregate_revision,"
+		"work.payload,work.state::text,work.effect_state::text,work.created_at FROM decodex.outbox AS work "
+		"JOIN decodex.activity AS event ON work.payload @> jsonb_build_object('activity_sequence',event.sequence) "
+		"WHERE event.aggregate_kind='quota_window') AS row),'[]'))",
+		env,
+	)
+
+
+def run_v8_migration_boundary_contracts(
+	env: dict[str, str], socket_dir: Path, port: int
+) -> str:
+	outputs: list[str] = []
+	tests = ((V8_EMPTY_DATABASE, "postgres_v8_empty_boundary_contract"),
+	         (V8_LOCK_DATABASE, "postgres_v8_fences_concurrent_prior_writer"))
+	for database, test in tests:
+		create_database(database, env)
+		set_contract_urls(env, socket_dir, port, database, RUNTIME_ROLE)
+		outputs.append(run(
+			["cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			 "test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			 test, "--exact"],
+			env,
+		))
+
+	for variant in (
+		"quota_row", "receipt_operation", "receipt_scope", "receipt_completed",
+		"activity_aggregate", "activity_event", "activity_payload_window",
+		"activity_payload_kind", "activity_payload_seconds", "activity_payload_minutes",
+		"outbox_aggregate", "outbox_envelope", "outbox_envelope_aggregate",
+		"outbox_envelope_event", "outbox_envelope_kind", "outbox_envelope_window",
+		"outbox_envelope_seconds", "outbox_link", "outbox_orphan",
+	):
+		database = f"decodex_xy1274_v8_{variant}"
+		create_database(database, env)
+		set_contract_urls(env, socket_dir, port, database, RUNTIME_ROLE)
+		variant_env = env.copy()
+		variant_env["DECODEX_V8_PRIOR_STATE"] = variant
+		outputs.append(run(
+			["cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			 "test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			 "postgres_v8_rejects_classified_prior_state", "--exact"],
+			variant_env,
+		))
+
+	return "\n".join(outputs)
+
+
 def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 	execute_signatures = ", ".join(RUNTIME_EXECUTE_SIGNATURES)
 	trigger_signatures = ", ".join(TRIGGER_ONLY_SIGNATURES)
@@ -404,6 +491,7 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"decodex.accounts, decodex.quota_windows, decodex.command_receipts, "
 		f"decodex.leases, decodex.conversations, decodex.runtime_sessions, "
 		f"decodex.artifacts, decodex.turns, decodex.history_items TO {role}; "
+		f"GRANT SELECT, INSERT ON TABLE decodex.quota_exclusions TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.profile_snapshots, "
 		f"decodex.account_snapshots, decodex.blob_objects, decodex.artifact_revisions, decodex.context_packs, "
 		f"decodex.context_pack_sources, decodex.transition_proposals TO {role}; "
@@ -547,6 +635,8 @@ def main() -> int:
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		migration_output = run_migration(env)
 		provision_runtime(DATABASE, RUNTIME_ROLE, env)
+		v8_boundary_output = run_v8_migration_boundary_contracts(env, socket_dir, port)
+		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		restart_output = run_blob_session_restart_contract(
 			data_dir, log_path, socket_dir, port, work, env
 		)
@@ -573,6 +663,8 @@ def main() -> int:
 				"run",
 				"-p",
 				"decodex-postgres",
+				"--features",
+				"test-support",
 				"--test",
 				"postgres_store",
 				"--run-ignored",
@@ -979,7 +1071,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 58",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 59",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -1357,7 +1449,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "7|1":
+		) != "8|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
@@ -1481,11 +1573,37 @@ def main() -> int:
 			env,
 		)
 
+		live_manifest_path = work / "schema-manifest-live.json"
+		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+		dump_schema_manifest(live_manifest_path, env)
+		live_quota_snapshot = quota_authority_snapshot(DATABASE, env)
+		live_quota = json.loads(live_quota_snapshot)
+		if len(live_quota["windows"]) != 2 or len(live_quota["exclusions"]) != 2:
+			raise TestFailure("live quota snapshot is not the populated two-window fixture")
+		if any(row["dispatch_enabled"] for row in live_quota["exclusions"]):
+			raise TestFailure("live quota exclusion unexpectedly enables dispatch")
 		dump_path = work / "decodex_xy1267.dump"
 		run(["pg_dump", "-Fc", "-f", str(dump_path), DATABASE], env)
 		create_database(RESTORE_DATABASE, env)
 		run(["pg_restore", "--exit-on-error", "-d", RESTORE_DATABASE, str(dump_path)], env)
 		set_contract_urls(env, socket_dir, port, RESTORE_DATABASE, RUNTIME_ROLE)
+		restored_manifest_path = work / "schema-manifest-restored.json"
+		dump_schema_manifest(restored_manifest_path, env)
+		restored_quota_snapshot = quota_authority_snapshot(RESTORE_DATABASE, env)
+		if restored_quota_snapshot != live_quota_snapshot:
+			raise TestFailure("dump/restore changed immutable quota authority evidence")
+		live_manifest = live_manifest_path.read_text()
+		restored_manifest = restored_manifest_path.read_text()
+		if live_manifest != restored_manifest:
+			live_rows = json.loads(live_manifest)
+			restored_rows = json.loads(restored_manifest)
+			only_live = [row for row in live_rows if row not in restored_rows]
+			only_restored = [row for row in restored_rows if row not in live_rows]
+			raise TestFailure(
+				"dump/restore schema manifest changed\n"
+				f"only live: {json.dumps(only_live[:8], indent=2)}\n"
+				f"only restored: {json.dumps(only_restored[:8], indent=2)}"
+			)
 		restore_output = run(
 			[
 				"cargo",
@@ -1493,6 +1611,8 @@ def main() -> int:
 				"run",
 				"-p",
 				"decodex-postgres",
+				"--features",
+				"test-support",
 				"--test",
 				"postgres_store",
 				"--run-ignored",
@@ -1575,6 +1695,7 @@ def main() -> int:
 		)
 		print(migration_output)
 		print(restart_output)
+		print(v8_boundary_output)
 		print(contract_output)
 		print(account_composition_output)
 		print(bootstrap_output)
