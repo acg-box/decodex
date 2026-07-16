@@ -133,6 +133,49 @@ table are usable downstream evidence. Global title discovery, real quota-depleti
 failover/exclusion persistence, a resume-denied Context-Pack transition, and an
 executable ManagedRun divergence transition remain unproven falsifiers.
 
+## XY-1274 repair-loop provenance and authority handoff
+
+This section is historical evidence, not normative implementation authority. The current quota
+boundary is owned by [the accepted decision](../decisions/vnext-authority.md),
+[authority contract](../specs/vnext-authority.md), and [gate manifest](../specs/vnext-gates.md).
+The original XY-1262 runtime probe did not observe natural 5-hour quota state, depleted quota, or
+the provider's natural timestamp precision, so it cannot establish timestamp canonicalization or
+live-routing acceptance.
+
+Three implementation candidates under the old rounding/populated-conversion boundary were
+independently rejected:
+
+1. Candidate fingerprint `564c491f4265853e19afcb35c51efcab97bdd7291e890e5f7f4ee68703cf656a`
+   allowed observation-time regression and did not structurally bind receipts to the complete
+   logical mutation.
+2. Candidate fingerprint `251934dda39eb1ff05de580fd99bdfa777c483e160c700c4f87daaf027d4fb59`
+   collapsed microsecond freshness to whole seconds, allowed recursive JSON object-key order to
+   change mutation identity, and lacked populated migration/restore proof.
+3. Frozen candidate fingerprint
+   `057d027c820cc51c07766579ec73c9d944e61cb2dcea9441382582e7667daa4c`, with frozen V8 object
+   `ca458a82da5dfd23efd8736ffd854fcc3f02a86a`, duplicated timestamp quantization with half-up Rust
+   behavior that disagreed with PostgreSQL half-microsecond tie behavior and left V7 receipt,
+   activity, and outbox conversion undefined.
+
+Bounded repair-loop research then confirmed that the production driver transports already
+normalized whole microseconds as binary integers, while text parsing and the rejected half-up path
+can differ for sub-microsecond values. The accepted skeptic disposition therefore removed rounding
+authority entirely, replaced populated conversion with one locked structural zero-state assertion,
+and required exact `/2` typed-integer mutation documents. Full request-document retention was not
+required because digest, byte length, and exact completed response bind replay. Recovery moved to
+whole disposable pre-release database recreation, with final production-baseline and cutover
+authority remaining in XY-1302. The bounded research task was
+`019f694e-44a1-7633-8cb8-9f5ff708df14`; the fresh skeptic task
+`019f695a-c7f5-7872-93c7-653aaf41e09f` used `gpt-5.6-sol` with medium reasoning and returned
+`APPROVE_WITH_CORRECTIONS` for this redesigned boundary.
+
+The next XY-1274 implementation is candidate 1 of that materially redesigned boundary, not
+candidate 4 of the rejected design. XY-1304 must first capture natural upstream timestamp precision
+before live ingestion or routing; a non-exact-microsecond result keeps routing blocked and reopens
+the architecture around PostgreSQL-in-transaction canonicalization. All separate 300/10080 facts
+remain inert, and this handoff enables no assignment, fallback, wake scheduling, continuation,
+external-effect replay, or live dispatch.
+
 ## Independent review
 
 Reviewer `/root/xy1262_reviewer` performed read-only review over the actual diff and
