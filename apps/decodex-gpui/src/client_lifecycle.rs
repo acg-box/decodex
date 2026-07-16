@@ -6,6 +6,7 @@ use std::{
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
+		mpsc::{self, Receiver, Sender},
 	},
 	time::Duration,
 };
@@ -13,9 +14,9 @@ use std::{
 use tokio::sync::Notify;
 
 use decodex_protocol::{
-	ApplicationConfirmation, CURRENT_VERSION, Cursor, EntityId, EntityRevision, EventEnvelope,
-	RetainedSession, RetainedSessionConfig, RetainedSessionFailure, ServerId, SessionCancellation,
-	SessionCheckpoint, SessionDelivery, SnapshotEnvelope, SnapshotItem,
+	ApplicationConfirmation, CURRENT_VERSION, ClientFailure, Cursor, EntityId, EntityRevision,
+	EventEnvelope, RetainedSession, RetainedSessionConfig, RetainedSessionFailure, ServerId,
+	SessionCancellation, SessionCheckpoint, SessionDelivery, SnapshotEnvelope, SnapshotItem,
 };
 
 use crate::client_cache::{
@@ -30,6 +31,9 @@ const RETRY_DELAYS: [Duration; 4] = [
 	Duration::from_secs(1),
 ];
 const MAX_CONNECTION_ATTEMPTS: u8 = 5;
+const PRODUCTION_CACHE_BYTES: u64 = 64 * 1_024 * 1_024;
+const PRODUCTION_CACHE_OBJECTS: usize = 2_048;
+const PRODUCTION_CACHE_GENERATIONS: usize = 16;
 
 /// State rendered by the later shell without exposing transport or cache internals.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -53,6 +57,7 @@ pub(crate) enum ConnectionView {
 /// Closed compatibility states that deterministic retry cannot repair.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CompatibilityReason {
+	Startup(ClientFailure),
 	InvalidEndpoint,
 	ProtocolMajor,
 	ProtocolMinor,
@@ -97,7 +102,6 @@ pub(crate) enum RunResult {
 /// Construction failures that occur before any connection attempt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum LifecycleBuildError {
-	Session(RetainedSessionFailure),
 	Cache(CacheError),
 }
 
@@ -276,7 +280,7 @@ impl LifecycleIo for TokioIo {
 	}
 }
 
-/// Private lifecycle owner. The disabled composition root does not construct it yet.
+/// Private lifecycle owner retained by the production shell.
 pub(crate) struct ClientLifecycle {
 	config: RetainedSessionConfig,
 	server_id: ServerId,
@@ -290,20 +294,33 @@ pub(crate) struct ClientLifecycle {
 	quarantine: Option<Quarantine>,
 	connection_generation: u64,
 	view: ConnectionView,
+	view_observer: Option<Sender<ConnectionView>>,
 	cancellation: LifecycleCancellation,
 }
 
 impl ClientLifecycle {
+	/// Construct the production lifecycle without exposing disposable-cache policy to the shell.
+	pub(crate) fn production(config: RetainedSessionConfig) -> Result<Self, LifecycleBuildError> {
+		let cache_limits = CacheLimits::new(
+			PRODUCTION_CACHE_BYTES,
+			PRODUCTION_CACHE_OBJECTS,
+			PRODUCTION_CACHE_GENERATIONS,
+		)
+		.expect("fixed production cache limits are valid");
+		let cache_root = std::env::temp_dir().join("box.acg.decodex").join("client-cache");
+		let schema_generation = u64::from(CURRENT_VERSION.minor);
+
+		Self::new(config, cache_root, cache_limits, schema_generation)
+	}
+
 	/// Bind the lifecycle to one exact stable server, protocol/schema generation, and cache root.
-	pub(crate) fn new(
-		endpoint: impl AsRef<str>,
-		server_id: ServerId,
+	fn new(
+		config: RetainedSessionConfig,
 		cache_root: impl Into<PathBuf>,
 		cache_limits: CacheLimits,
 		schema_generation: u64,
 	) -> Result<Self, LifecycleBuildError> {
-		let config = RetainedSessionConfig::new(endpoint, server_id.clone())
-			.map_err(LifecycleBuildError::Session)?;
+		let server_id = config.expected_server_id().clone();
 		let cache_authority = CacheAuthority::new(&server_id, CURRENT_VERSION, schema_generation)
 			.map_err(LifecycleBuildError::Cache)?;
 		let cache_root = cache_root.into();
@@ -326,6 +343,7 @@ impl ClientLifecycle {
 			quarantine,
 			connection_generation: 0,
 			view,
+			view_observer: None,
 			cancellation: LifecycleCancellation::new(),
 		})
 	}
@@ -333,6 +351,15 @@ impl ClientLifecycle {
 	/// Current narrow shell-facing state.
 	pub(crate) const fn view(&self) -> ConnectionView {
 		self.view
+	}
+
+	/// Observe every subsequent shell-facing state transition from one bounded run.
+	pub(crate) fn observe_views(&mut self) -> Receiver<ConnectionView> {
+		let (sender, receiver) = mpsc::channel();
+		let _ = sender.send(self.view);
+		self.view_observer = Some(sender);
+
+		receiver
 	}
 
 	/// Cooperative handle that can terminate the caller-owned run future.
@@ -447,7 +474,7 @@ impl ClientLifecycle {
 			};
 
 			if self.quarantine.is_none() {
-				self.view = ConnectionView::ShuttingDown;
+				self.set_view(ConnectionView::ShuttingDown);
 			}
 			let _ = io.close().await;
 
@@ -465,7 +492,7 @@ impl ClientLifecycle {
 		if self.quarantine.is_some() {
 			RunResult::Quarantined
 		} else {
-			self.view = ConnectionView::Stopped;
+			self.set_view(ConnectionView::Stopped);
 
 			RunResult::RetryExhausted
 		}
@@ -480,7 +507,7 @@ impl ClientLifecycle {
 				);
 			})?;
 		if self.quarantine.is_none() {
-			self.view = ConnectionView::Connecting { attempt };
+			self.set_view(ConnectionView::Connecting { attempt });
 		}
 
 		Ok(self.connection_generation)
@@ -499,10 +526,10 @@ impl ClientLifecycle {
 			);
 		}
 		if self.quarantine.is_none() {
-			self.view = ConnectionView::Online {
+			self.set_view(ConnectionView::Online {
 				generation,
 				applied: connected_checkpoint.map(SessionCheckpoint::cursor),
-			};
+			});
 		}
 	}
 
@@ -656,7 +683,7 @@ impl ClientLifecycle {
 
 		self.binding = Some(CacheBinding { checkpoint, generation: inspection.generation });
 		self.quarantine = None;
-		self.view = ConnectionView::Online { generation, applied: Some(cursor) };
+		self.set_view(ConnectionView::Online { generation, applied: Some(cursor) });
 
 		Ok(())
 	}
@@ -695,7 +722,7 @@ impl ClientLifecycle {
 	fn enter_quarantine(&mut self, reason: QuarantineReason, recovery: QuarantineRecovery) {
 		self.binding = None;
 		self.quarantine = Some(Quarantine { reason, recovery });
-		self.view = ConnectionView::Quarantined { reason, recovery };
+		self.set_view(ConnectionView::Quarantined { reason, recovery });
 	}
 
 	fn handle_cache_failure(&mut self, error: CacheError) {
@@ -731,24 +758,24 @@ impl ClientLifecycle {
 		match failure {
 			RetainedSessionFailure::Cancelled => Some(self.finish_shutdown_now()),
 			RetainedSessionFailure::InvalidEndpoint => {
-				self.view = ConnectionView::Incompatible(CompatibilityReason::InvalidEndpoint);
+				self.set_view(ConnectionView::Incompatible(CompatibilityReason::InvalidEndpoint));
 
 				Some(RunResult::Incompatible)
 			},
 			RetainedSessionFailure::ProtocolMajorMismatch => {
-				self.view = ConnectionView::Incompatible(CompatibilityReason::ProtocolMajor);
+				self.set_view(ConnectionView::Incompatible(CompatibilityReason::ProtocolMajor));
 
 				Some(RunResult::Incompatible)
 			},
 			RetainedSessionFailure::ProtocolMinorMismatch => {
-				self.view = ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor);
+				self.set_view(ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor));
 
 				Some(RunResult::Incompatible)
 			},
 			RetainedSessionFailure::PublicationIdentityUnavailable => {
-				self.view = ConnectionView::Incompatible(
+				self.set_view(ConnectionView::Incompatible(
 					CompatibilityReason::PublicationIdentityUnavailable,
-				);
+				));
 
 				Some(RunResult::Incompatible)
 			},
@@ -799,7 +826,7 @@ impl ClientLifecycle {
 		let delay = RETRY_DELAYS[usize::from(attempt - 1)];
 
 		if self.quarantine.is_none() {
-			self.view = ConnectionView::OfflineRetrying { next_attempt: attempt + 1, delay };
+			self.set_view(ConnectionView::OfflineRetrying { next_attempt: attempt + 1, delay });
 		}
 
 		io.backoff(delay, &self.cancellation).await.is_ok()
@@ -814,7 +841,7 @@ impl ClientLifecycle {
 			return RunResult::Quarantined;
 		}
 		if attempt >= MAX_CONNECTION_ATTEMPTS {
-			self.view = ConnectionView::Stopped;
+			self.set_view(ConnectionView::Stopped);
 
 			return RunResult::RetryExhausted;
 		}
@@ -830,10 +857,17 @@ impl ClientLifecycle {
 		if self.quarantine.is_some() {
 			return RunResult::Quarantined;
 		}
-		self.view = ConnectionView::ShuttingDown;
-		self.view = ConnectionView::Stopped;
+		self.set_view(ConnectionView::ShuttingDown);
+		self.set_view(ConnectionView::Stopped);
 
 		RunResult::Stopped
+	}
+
+	fn set_view(&mut self, view: ConnectionView) {
+		self.view = view;
+		if let Some(observer) = &self.view_observer {
+			let _ = observer.send(view);
+		}
 	}
 }
 

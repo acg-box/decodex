@@ -35,6 +35,7 @@ enum SessionAction {
 	Snapshot(SnapshotEnvelope),
 	Event(EventEnvelope),
 	Fail(RetainedSessionFailure),
+	AwaitCancellation,
 	Cancel,
 }
 
@@ -71,6 +72,11 @@ impl FakeSession {
 				Ok(Delivery::Event { event, confirmation })
 			},
 			SessionAction::Fail(failure) => Err(failure),
+			SessionAction::AwaitCancellation => {
+				self.cancellation.cancelled().await;
+
+				Err(RetainedSessionFailure::Cancelled)
+			},
 			SessionAction::Cancel => {
 				self.cancellation.cancel();
 
@@ -112,6 +118,60 @@ impl FakeSession {
 
 		Ok(())
 	}
+}
+
+#[gpui::test]
+fn production_owner_closes_connected_session_and_reaches_terminal_shutdown(
+	cx: &mut gpui::TestAppContext,
+) {
+	use crate::shell::{Shell, retain_lifecycle_task};
+
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let cancellation = lifecycle.cancellation();
+	let views = lifecycle.observe_views();
+	let initial_view = lifecycle.view();
+	let io = FakeIo::new(root, vec![connected(vec![SessionAction::AwaitCancellation], None)]);
+	let closed = io.closed.clone();
+	let (shell, visual) = cx.add_window_view(|window, cx| {
+		Shell::new(window, cx, ConnectionView::Connecting { attempt: 1 })
+	});
+	let window_id = visual.update(|window, _| window.window_handle().window_id());
+	let background = visual.spawn(|_| async move {
+		let mut io = io;
+
+		lifecycle.run_with_io(&mut io).await
+	});
+	let owner = visual.update(|_, cx| {
+		retain_lifecycle_task(
+			window_id,
+			shell.downgrade(),
+			cancellation,
+			views,
+			initial_view,
+			background,
+			cx,
+		)
+	});
+
+	visual.run_until_parked();
+	assert!(owner.read_with(visual, |owner, _| owner.is_running()));
+	visual.update(|window, _| window.remove_window());
+	for _ in 0..4 {
+		visual.executor().advance_clock(Duration::from_millis(40));
+		visual.run_until_parked();
+	}
+
+	assert_eq!(*closed.lock().expect("close count is available"), 1);
+	assert_eq!(owner.read_with(visual, |owner, _| owner.last_view()), ConnectionView::Stopped);
+	assert!(owner.read_with(visual, |owner, _| {
+		owner
+			.observed_views()
+			.windows(2)
+			.any(|views| views == [ConnectionView::ShuttingDown, ConnectionView::Stopped])
+	}));
+	assert!(!owner.read_with(visual, |owner, _| owner.is_running()));
 }
 
 enum ConnectAction {
@@ -303,9 +363,14 @@ fn lifecycle(root: &Path) -> ClientLifecycle {
 }
 
 fn lifecycle_for(root: &Path, server_id: &str, schema_generation: u64) -> ClientLifecycle {
-	ClientLifecycle::new(
+	let config = decodex_protocol::RetainedSessionConfig::new(
 		"ws://127.0.0.1:49152/v1/ws",
 		server(server_id),
+	)
+	.expect("fixture retained session config is valid");
+
+	ClientLifecycle::new(
+		config,
 		root,
 		CacheLimits::new(2 * 1_024 * 1_024, 32, 16).expect("limits are valid"),
 		schema_generation,
@@ -335,6 +400,35 @@ async fn retry_progression_is_capped_and_uses_only_fake_time() {
 		]
 	);
 	assert_eq!(lifecycle.view(), ConnectionView::Stopped);
+}
+
+#[tokio::test]
+async fn observer_receives_the_complete_bounded_retry_progression() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let views = lifecycle.observe_views();
+	let failures =
+		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
+	let mut io = FakeIo::new(root, failures);
+
+	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
+	assert_eq!(
+		views.try_iter().collect::<Vec<_>>(),
+		vec![
+			ConnectionView::Stopped,
+			ConnectionView::Connecting { attempt: 1 },
+			ConnectionView::OfflineRetrying { next_attempt: 2, delay: Duration::from_millis(100) },
+			ConnectionView::Connecting { attempt: 2 },
+			ConnectionView::OfflineRetrying { next_attempt: 3, delay: Duration::from_millis(250) },
+			ConnectionView::Connecting { attempt: 3 },
+			ConnectionView::OfflineRetrying { next_attempt: 4, delay: Duration::from_millis(500) },
+			ConnectionView::Connecting { attempt: 4 },
+			ConnectionView::OfflineRetrying { next_attempt: 5, delay: Duration::from_secs(1) },
+			ConnectionView::Connecting { attempt: 5 },
+			ConnectionView::Stopped,
+		]
+	);
 }
 
 #[tokio::test]
