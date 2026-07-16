@@ -1,5 +1,17 @@
 # Decodex workspace tasks.
 
+# Audit
+# | task              | type    | cwd |
+# | ----------------- | ------- | --- |
+# | audit-vstyle-rust | command |     |
+
+[tasks.audit-vstyle-rust]
+workspace = false
+command = "python3"
+args = [
+	"scripts/vstyle_audit.py",
+]
+
 # Check
 # | task              | type      | cwd  |
 # | ----------------- | --------- | ---- |
@@ -96,7 +108,7 @@ workspace = false
 command = "rustup"
 args = [
 	"run",
-	"nightly",
+	"nightly-2026-07-16",
 	"cargo",
 	"fmt",
 	"--all",
@@ -106,7 +118,7 @@ args = [
 extend = "fmt-rust"
 args = [
 	"run",
-	"nightly",
+	"nightly-2026-07-16",
 	"cargo",
 	"fmt",
 	"--all",
@@ -129,17 +141,15 @@ args = [
 ]
 
 # Lint
-# | task              | type      | cwd |
-# | ----------------- | --------- | --- |
-# | lint              | composite |     |
-# | lint-rust         | command   |     |
-# | lint-vstyle-rust  | command   |     |
+# | task      | type      | cwd |
+# | --------- | --------- | --- |
+# | lint      | composite |     |
+# | lint-rust | command   |     |
 
 [tasks.lint]
 workspace = false
 dependencies = [
 	"lint-rust",
-	"lint-vstyle-rust",
 ]
 
 [tasks.lint-rust]
@@ -169,30 +179,16 @@ args = [
 	"warnings",
 ]
 
-[tasks.lint-vstyle-rust]
-workspace = false
-command = "cargo"
-args = [
-	"vstyle",
-	"curate",
-	"--language",
-	"rust",
-	"--workspace",
-	"--all-features",
-]
-
 # Fix
-# | task             | type      | cwd |
-# | ---------------- | --------- | --- |
-# | lint-fix         | composite |     |
-# | lint-rust-fix    | command   |     |
-# | lint-vstyle-fix  | command   |     |
+# | task          | type      | cwd |
+# | ------------- | --------- | --- |
+# | lint-fix      | composite |     |
+# | lint-rust-fix | command   |     |
 
 [tasks.lint-fix]
 workspace = false
 dependencies = [
 	"lint-rust-fix",
-	"lint-vstyle-fix",
 ]
 
 [tasks.lint-rust-fix]
@@ -224,36 +220,35 @@ args = [
 	"warnings",
 ]
 
-[tasks.lint-vstyle-fix]
-workspace = false
-command = "cargo"
-args = [
-	"vstyle",
-	"tune",
-	"--language",
-	"rust",
-	"--workspace",
-	"--all-features",
-	"--strict",
-]
-
 # Test
-# | task                     | type      | cwd |
-# | ------------------------ | --------- | --- |
+# | task                       | type      | cwd |
+# | -------------------------- | --------- | --- |
 # | test                       | composite |     |
+# | test-gate-contract         | command   |     |
 # | test-rust                  | command   |     |
 # | test-vnext-architecture    | command   |     |
 # | test-vnext-cli-diagnostics | command   |     |
-# | test-vnext-postgres-store | command   |     |
-# | test-vnext-storage-proof  | command   |     |
+# | test-vnext-postgres-store  | command   |     |
+# | test-vnext-storage-proof   | command   |     |
 
 [tasks.test]
 clear = true
 workspace = false
 dependencies = [
+	"test-gate-contract",
 	"test-rust",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
+]
+
+[tasks.test-gate-contract]
+workspace = false
+command = "python3"
+args = [
+	"-m",
+	"unittest",
+	"tests/scripts/test_gate_contract.py",
+	"tests/scripts/test_vstyle_audit.py",
 ]
 
 [tasks.test-rust]

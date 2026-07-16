@@ -377,9 +377,8 @@ fn map_config_error(error: ConfigError) -> ClientFailure {
 	match error {
 		ConfigError::UnsupportedVersion => ClientFailure::ConfigurationVersion,
 		ConfigError::MissingProfile => ClientFailure::ProfileMissing,
-		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
-			ClientFailure::ConfigurationMissing
-		},
+		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
+			ClientFailure::ConfigurationMissing,
 		ConfigError::Path(_) => ClientFailure::UnsafeHostPath,
 		_ => ClientFailure::ConfigurationMalformed,
 	}
@@ -415,12 +414,10 @@ fn map_receive_error(error: tokio_tungstenite::tungstenite::Error) -> ClientFail
 
 fn map_refusal(refusal: Refusal) -> ClientFailure {
 	match refusal {
-		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) => {
-			ClientFailure::ProtocolMajorMismatch
-		},
-		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) => {
-			ClientFailure::ProtocolMinorMismatch
-		},
+		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) =>
+			ClientFailure::ProtocolMajorMismatch,
+		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
+			ClientFailure::ProtocolMinorMismatch,
 		Refusal::ServerIdentityMismatch { .. } => ClientFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => ClientFailure::ProtocolViolation,
 		Refusal::Backpressure { .. } => ClientFailure::ProtocolBackpressure,
@@ -437,8 +434,7 @@ fn version_failure(version: ProtocolVersion) -> ClientFailure {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(unix)]
-	use std::os::unix::fs::PermissionsExt as _;
+	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 	use std::{fs, net::Ipv4Addr, time::Duration};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
