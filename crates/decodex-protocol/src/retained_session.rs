@@ -55,6 +55,11 @@ impl RetainedSessionConfig {
 		Ok(Self { endpoint, expected_server_id, operation_timeout: OPERATION_TIMEOUT })
 	}
 
+	/// Stable server identity selected by the same typed profile as the endpoint.
+	pub const fn expected_server_id(&self) -> &ServerId {
+		&self.expected_server_id
+	}
+
 	fn url(&self) -> String {
 		format!("ws://{}{WS_PATH}", self.endpoint.address())
 	}
@@ -227,7 +232,9 @@ impl RetainedSession {
 				(Some(checkpoint), ReconnectMode::Resume)
 					if checkpoint.instance_id == instance_id
 						&& checkpoint.cursor <= welcome.cursor =>
-					(Some(welcome.cursor), Some(checkpoint.clone()), false),
+				{
+					(Some(welcome.cursor), Some(checkpoint.clone()), false)
+				},
 				(Some(_), ReconnectMode::Resume) => {
 					return Err(RetainedSessionFailure::CheckpointIdentityMismatch);
 				},
@@ -341,10 +348,12 @@ impl RetainedSession {
 
 				Ok(SessionDelivery::QueryResult(result))
 			},
-			ServerMessage::Refusal(refusal) =>
-				Err(refusal_failure(&self.expected_server_id, refusal)),
-			ServerMessage::Welcome(_) | ServerMessage::Snapshot(_) =>
-				Err(RetainedSessionFailure::Malformed),
+			ServerMessage::Refusal(refusal) => {
+				Err(refusal_failure(&self.expected_server_id, refusal))
+			},
+			ServerMessage::Welcome(_) | ServerMessage::Snapshot(_) => {
+				Err(RetainedSessionFailure::Malformed)
+			},
 		}
 		.inspect_err(|_| {
 			self.terminate();
@@ -381,8 +390,9 @@ impl RetainedSession {
 			while let Some(message) = socket.next().await {
 				match message.map_err(map_transport_error)? {
 					Message::Close(_) => return Ok(()),
-					Message::Ping(payload) =>
-						socket.send(Message::Pong(payload)).await.map_err(map_transport_error)?,
+					Message::Ping(payload) => {
+						socket.send(Message::Pong(payload)).await.map_err(map_transport_error)?
+					},
 					Message::Pong(_) => {},
 					Message::Text(_) | Message::Binary(_) | Message::Frame(_) => {
 						return Err(RetainedSessionFailure::Malformed);
@@ -583,18 +593,22 @@ impl Display for RetainedSessionFailure {
 			Self::ProtocolMajorMismatch => "retained session protocol major does not match",
 			Self::ProtocolMinorMismatch => "retained session protocol minor is unsupported",
 			Self::ServerIdentityMismatch => "retained session server identity does not match",
-			Self::PublicationIdentityUnavailable =>
-				"retained session publication identity is unavailable",
-			Self::CheckpointIdentityMismatch =>
-				"retained session checkpoint identity does not match",
+			Self::PublicationIdentityUnavailable => {
+				"retained session publication identity is unavailable"
+			},
+			Self::CheckpointIdentityMismatch => {
+				"retained session checkpoint identity does not match"
+			},
 			Self::Malformed => "retained session protocol response is malformed",
 			Self::ProtocolViolation => "retained session protocol operation was refused",
 			Self::Backpressure => "retained session backpressure limit was reached",
 			Self::PublicationOrder => "retained session publication order is invalid",
-			Self::ApplicationConfirmationRequired =>
-				"retained session delivery requires application confirmation",
-			Self::ApplicationConfirmationMismatch =>
-				"retained session application confirmation does not match",
+			Self::ApplicationConfirmationRequired => {
+				"retained session delivery requires application confirmation"
+			},
+			Self::ApplicationConfirmationMismatch => {
+				"retained session application confirmation does not match"
+			},
 		})
 	}
 }
@@ -646,10 +660,12 @@ fn refusal_failure(
 	}
 
 	match refusal.refusal {
-		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) =>
-			RetainedSessionFailure::ProtocolMajorMismatch,
-		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
-			RetainedSessionFailure::ProtocolMinorMismatch,
+		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) => {
+			RetainedSessionFailure::ProtocolMajorMismatch
+		},
+		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) => {
+			RetainedSessionFailure::ProtocolMinorMismatch
+		},
 		Refusal::ServerIdentityMismatch { .. } => RetainedSessionFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => RetainedSessionFailure::ProtocolViolation,
 		Refusal::Backpressure { .. } => RetainedSessionFailure::Backpressure,
@@ -805,10 +821,11 @@ where
 					return serde_json::from_str(&text)
 						.map_err(|_| RetainedSessionFailure::Malformed);
 				},
-				Message::Ping(payload) =>
+				Message::Ping(payload) => {
 					bounded(cancellation, timeout, socket.send(Message::Pong(payload)))
 						.await?
-						.map_err(map_transport_error)?,
+						.map_err(map_transport_error)?
+				},
 				Message::Pong(_) => {},
 				Message::Close(_) => return Err(RetainedSessionFailure::Disconnected),
 				Message::Binary(_) | Message::Frame(_) => {
