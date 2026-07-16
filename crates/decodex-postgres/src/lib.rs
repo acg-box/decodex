@@ -72,6 +72,9 @@ pub const MAX_OPERATION_DURATION_MILLISECONDS: u64 = 365 * 24 * 60 * 60 * 1_000;
 const INVALID_DURATION: &str =
 	"duration must be a positive whole number of milliseconds no greater than 365 days";
 const INVALID_EVIDENCE: &str = "outbox evidence must contain a non-empty JSON value";
+// Omitting pg_catalog makes PostgreSQL search it implicitly before the explicitly configured
+// public ledger namespace, while leaving unqualified migration DDL targeted at public.
+const TRUSTED_SESSION_OPTIONS: &str = "-csearch_path=public";
 
 /// Product-state authority selected by this infrastructure owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -86,6 +89,8 @@ pub struct PostgresStore {
 	pool: Arc<Pool>,
 	#[cfg(unix)]
 	connector: VerifiedSocketConnect,
+	configured_migration_role: Arc<str>,
+	configured_runtime_role: Arc<str>,
 }
 impl PostgresStore {
 	/// Return the exact schema-manifest query for isolated dump/restore fixtures.
@@ -93,6 +98,20 @@ impl PostgresStore {
 	#[doc(hidden)]
 	pub const fn schema_contract_sql_fixture() -> &'static str {
 		authority::schema_contract_sql_fixture()
+	}
+
+	/// Return the configured-principal and ACL manifest query for isolated restore fixtures.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub const fn configured_authority_sql_fixture() -> &'static str {
+		authority::configured_authority_sql_fixture()
+	}
+
+	/// Apply the production connection-startup invariant to an isolated raw fixture.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub fn pin_session_search_path_fixture(config: &mut Config) {
+		pin_session_search_path(config);
 	}
 
 	/// Run migration/verification through the migration identity, close it, then retain
@@ -133,7 +152,7 @@ impl PostgresStore {
 	#[cfg(unix)]
 	async fn connect_with_pool_size(
 		migration: Config,
-		runtime: Config,
+		mut runtime: Config,
 		expected_peer_uid: u32,
 		pool_size: usize,
 	) -> Result<Self, StoreError> {
@@ -141,9 +160,17 @@ impl PostgresStore {
 		validate_connection(&runtime)?;
 		validate_separation(&migration, &runtime)?;
 
+		let configured_migration_role = Arc::<str>::from(
+			migration.get_user().ok_or(StoreError::InvalidInput("migration role is absent"))?,
+		);
+		let configured_runtime_role = Arc::<str>::from(
+			runtime.get_user().ok_or(StoreError::InvalidInput("runtime role is absent"))?,
+		);
 		let connector = verified_socket_connect(&migration, expected_peer_uid)?;
 
 		Self::migrate_with_connector(migration, connector.clone()).await?;
+
+		pin_session_search_path(&mut runtime);
 
 		let manager = Manager::from_connect(
 			runtime,
@@ -153,7 +180,8 @@ impl PostgresStore {
 		let pool = Pool::builder(manager).max_size(pool_size).build()?;
 		let client = checkout(&pool, &connector).await?;
 
-		authority::verify_runtime(&client).await?;
+		authority::verify_runtime(&client, &configured_migration_role, &configured_runtime_role)
+			.await?;
 		migrations::verify(&client).await?;
 
 		drop(client);
@@ -165,7 +193,12 @@ impl PostgresStore {
 			drop((first, second));
 		}
 
-		Ok(Self { pool: Arc::new(pool), connector })
+		Ok(Self {
+			pool: Arc::new(pool),
+			connector,
+			configured_migration_role,
+			configured_runtime_role,
+		})
 	}
 
 	#[cfg(not(unix))]
@@ -192,12 +225,15 @@ impl PostgresStore {
 	#[cfg(all(unix, feature = "test-support"))]
 	#[doc(hidden)]
 	pub async fn migrate_fixture_through_v7(
-		config: Config,
+		mut config: Config,
 		expected_peer_uid: u32,
 	) -> Result<(), StoreError> {
 		validate_connection(&config)?;
 
 		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
 		let manager = Manager::from_connect(
 			config,
 			connector.clone(),
@@ -221,9 +257,11 @@ impl PostgresStore {
 
 	#[cfg(unix)]
 	async fn migrate_with_connector(
-		config: Config,
+		mut config: Config,
 		connector: VerifiedSocketConnect,
 	) -> Result<(), StoreError> {
+		pin_session_search_path(&mut config);
+
 		let manager = Manager::from_connect(
 			config,
 			connector.clone(),
@@ -263,7 +301,12 @@ impl PostgresStore {
 
 		client.simple_query("SELECT 1").await?;
 
-		authority::verify_runtime(&client).await?;
+		authority::verify_runtime(
+			&client,
+			&self.configured_migration_role,
+			&self.configured_runtime_role,
+		)
+		.await?;
 		migrations::verify(&client).await?;
 
 		self.connector.verify()?;
@@ -369,6 +412,13 @@ pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), Store
 	}
 
 	Ok(())
+}
+
+fn pin_session_search_path(config: &mut Config) {
+	// Startup-packet options are applied by PostgreSQL before it parses the first query.
+	// Replacing caller-provided options prevents role/database defaults from influencing
+	// migration, identity, schema, or configured-authority verification.
+	config.options(TRUSTED_SESSION_OPTIONS);
 }
 
 #[cfg(unix)]
