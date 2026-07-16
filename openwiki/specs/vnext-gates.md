@@ -19,7 +19,7 @@ its dependent implementation uses the result.
 | --- | --- |
 | [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with live continuation moved to [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, live continuation remains failed in XY-1304, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile/readiness foundations; XY-1304 separately owns live routing enablement and blocks the Quick Task slice. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; XY-1304 separately owns live routing enablement and blocks the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -37,7 +37,7 @@ planning metadata, not product/runtime identity.
    creation-receipt ownership, negotiated app-server contracts, supported
    exact-ID/list/read/archive behavior, lossy-read/divergence policy, native run-local
    collaboration normalization, process-scoped authentication/redaction, read-only
-   plugin/skill inventory, and pure duration-typed quota policy.
+   integrity evidence, and pure duration-typed quota policy.
 3. The separate failed XY-1262 live account-routing enablement gate (XY-1304): natural
    quota depletion, durable exclusion before fallback, crash-safe exactly-one
    continuation, real resume-denied Context-Pack fallback, all-depleted wait/wakeup
@@ -76,8 +76,7 @@ evidence boundaries:
 - persistent exact-ID, filtered-list, read, explicit archive, and restart readback;
 - lossy `thread/read` handling and a fail-closed ManagedRun `diverged` policy;
 - native collaboration/subagent events normalized only as run-local actors;
-- process-scoped authentication, redaction, and integrity-preserving read-only
-  plugin/skill inventory; and
+- process-scoped authentication, redaction, and no-mutation integrity evidence; and
 - pure quota decisions keyed by duration 300/10080, including unknown, stale, reversed,
   and all-depleted synthetic cases.
 
@@ -102,7 +101,12 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1272 | Transactional creation mappings, exact-ID/list reconciliation, explicit retention, and the ManagedRun `diverged` stop transition; no global title-search claim. |
 | XY-1273 | Credential-vault metadata and immutable runner/account binding; no sticky or policy assignment. |
 | XY-1274 | Pure duration-typed quota/wake calculations and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
-| XY-1275 | User-owned profile snapshots and read-only plugin readiness audits; no installation or routing decision. |
+| XY-1275 | User-owned profile persistence and RuntimeSession snapshots. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
+
+XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
+manifest, configuration value, remote catalog entry, process binding, or user declaration
+cannot close the missing account-owned receipt. Existing doctor `unknown(plugin)` is the
+first-release result, and `plugin_unready` remains inert reserved state.
 
 ### XY-1263 acceptance and XY-1269 clean-slice reset
 
@@ -462,7 +466,9 @@ amendment.
 
 All XY-1270-XY-1275 capabilities must be mechanically inert or default-disabled at their
 live boundary. Synthetic fixtures can validate representation, calculation, and
-transaction ordering but cannot satisfy the live gate.
+transaction ordering but cannot satisfy the live gate. Readiness cannot authorize
+eligibility, assignment, reassignment, fallback, scheduling, wakeup, continuation, or
+production routing.
 
 ### Failed live account-routing enablement gate
 
@@ -479,10 +485,25 @@ same thread when supported. Otherwise, a real denied/incompatible response must 
 old RuntimeSession and create exactly one Context-Pack RuntimeSession. Injected crashes
 at each exclusion, assignment, resume, and fallback boundary must read back exactly one
 continuation, correct `waiting_usage` plus the earliest ready time when all accounts are
-freshly depleted, and no duplicate tool, worktree, Git, or artifact effect. Normal auth,
-account-pool, and installed/enabled plugin state must remain unchanged. Separately, the
-retained title must be returned by supported Codex Desktop discovery after normal
-indexing before any global visibility claim.
+freshly depleted, and no duplicate tool, worktree, Git, or artifact effect. Normal
+`~/.codex/auth.json`, the Decodex account pool, and supported shared plugin files or
+configuration must have exact before/after equality receipts. The receipt manifest must
+name each supported host-owned, non-transient surface. These receipts are causal integrity
+evidence only, never account readiness. The experiment's protocol trace
+and admitted Decodex control-plane method set must contain no plugin, skill, MCP, or
+marketplace inventory or management call and no install, enable, disable, update, remove,
+login-management, or OAuth-management call. Normal process-scoped
+`account/login/start` authentication and ordinary execution of an already-enabled tool
+inside a turn are not control-plane inventory or management calls. Account-owned
+installed/enabled state remains unobserved and `unknown`; it is not an XY-1304 acceptance
+fact. An external or cloud change outside Decodex causal
+authority is not a Decodex mutation merely because it overlaps the experiment. Neither
+`plugin/list`, `skills/list`, `mcpServerStatus/list`, `app/list`, a catalog scan, nor an
+active diagnostic may substitute for this evidence; any future operator-triggered active
+diagnostic requires separate authority and remains non-routing.
+
+Separately, the retained title must be returned by supported Codex Desktop discovery
+after normal indexing before any global visibility claim.
 
 Until all of that evidence passes and a later explicit repository amendment enables the
 path, sticky or policy assignment, quota-driven exclusion causing another assignment,
