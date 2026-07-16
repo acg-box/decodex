@@ -1,0 +1,454 @@
+{
+  "schema": "decodex/vstyle-rust-audit/1",
+  "governance": {
+    "owner": "Decodex repository maintainers",
+    "accepted_by": "XY-1340",
+    "accepted_on": "2026-07-16",
+    "review_by": "2026-08-15",
+    "reevaluate_on": [
+      "vstyle executable identity changes",
+      "implemented Rust rule inventory changes",
+      "the accepted finding baseline changes",
+      "before any scope is promoted to blocking"
+    ]
+  },
+  "tool": {
+    "package": "vibe-style",
+    "version": "0.2.3",
+    "source": "https://github.com/hack-ink/vibe-style.git",
+    "commit": "3a0959eac5363c4c427382bae1d80d87ecadb702",
+    "git_short": "3a0959e",
+    "install": "cargo install --git https://github.com/hack-ink/vibe-style.git --rev 3a0959eac5363c4c427382bae1d80d87ecadb702 --locked --force vibe-style"
+  },
+  "accepted_baseline": {
+    "checked_files": 227,
+    "findings": 184,
+    "manual": 7
+  },
+  "rust_rules": [
+    "RUST-STYLE-FILE-001",
+    "RUST-STYLE-GENERICS-001",
+    "RUST-STYLE-GENERICS-002",
+    "RUST-STYLE-GENERICS-003",
+    "RUST-STYLE-IMPL-001",
+    "RUST-STYLE-IMPL-003",
+    "RUST-STYLE-IMPORT-001",
+    "RUST-STYLE-IMPORT-002",
+    "RUST-STYLE-IMPORT-003",
+    "RUST-STYLE-IMPORT-004",
+    "RUST-STYLE-IMPORT-005",
+    "RUST-STYLE-IMPORT-006",
+    "RUST-STYLE-IMPORT-007",
+    "RUST-STYLE-IMPORT-008",
+    "RUST-STYLE-IMPORT-009",
+    "RUST-STYLE-IMPORT-010",
+    "RUST-STYLE-IMPORT-011",
+    "RUST-STYLE-IMPORT-012",
+    "RUST-STYLE-LET-001",
+    "RUST-STYLE-LOG-002",
+    "RUST-STYLE-MOD-001",
+    "RUST-STYLE-MOD-002",
+    "RUST-STYLE-MOD-003",
+    "RUST-STYLE-MOD-004",
+    "RUST-STYLE-MOD-005",
+    "RUST-STYLE-MOD-007",
+    "RUST-STYLE-NUM-001",
+    "RUST-STYLE-NUM-002",
+    "RUST-STYLE-READ-002",
+    "RUST-STYLE-RUNTIME-001",
+    "RUST-STYLE-RUNTIME-002",
+    "RUST-STYLE-SERDE-001",
+    "RUST-STYLE-SPACE-003",
+    "RUST-STYLE-SPACE-004",
+    "RUST-STYLE-TEST-001",
+    "RUST-STYLE-TEST-002",
+    "RUST-STYLE-TYPE-001"
+  ],
+  "baseline": [
+    {
+      "count": 11,
+      "fixable": true,
+      "message": "Prefer importing non-function, non-macro symbols and using short paths when unambiguous.",
+      "path": "apps/decodex-gpui/src/client_cache.rs",
+      "rule": "RUST-STYLE-IMPORT-008"
+    },
+    {
+      "count": 6,
+      "fixable": true,
+      "message": "Do not insert blank lines within the same statement type.",
+      "path": "apps/decodex-gpui/src/client_cache.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 1,
+      "fixable": false,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "apps/decodex-gpui/src/client_cache.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 2,
+      "fixable": true,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "apps/decodex-gpui/src/client_cache.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 2,
+      "fixable": true,
+      "message": "Insert exactly one blank line before the final tail expression.",
+      "path": "apps/decodex-gpui/src/client_cache.rs",
+      "rule": "RUST-STYLE-SPACE-004"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Top-level module item order does not match rust.md order.",
+      "path": "apps/decodex-gpui/src/client_cache/tests.rs",
+      "rule": "RUST-STYLE-MOD-001"
+    },
+    {
+      "count": 2,
+      "fixable": true,
+      "message": "Do not insert blank lines within the same statement type.",
+      "path": "apps/decodex-gpui/src/client_cache/tests.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not place blank lines inside an import group.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-IMPORT-002"
+    },
+    {
+      "count": 2,
+      "fixable": true,
+      "message": "Prefer parent-module qualified free-function paths when unambiguous.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-IMPORT-004"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Top-level module item order does not match rust.md order.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-MOD-001"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Place pub items before non-pub items within the same group.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-MOD-002"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `ClientLifecycle` and its first impl block.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `TokioIo` and its first impl block.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Keep `LifecycleCancellation` definitions and related impl blocks adjacent.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": false,
+      "message": "Function body has 122 lines; keep functions at or under 120 lines.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-READ-002"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines within the same statement type.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 19,
+      "fixable": true,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "apps/decodex-gpui/src/client_lifecycle.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not place blank lines inside an import group.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-IMPORT-002"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Use items must appear only at file top level or module top level.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-IMPORT-006"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Prefer importing non-function, non-macro symbols and using short paths when unambiguous.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-IMPORT-008"
+    },
+    {
+      "count": 3,
+      "fixable": true,
+      "message": "Place immutable `let` bindings before mutable ones.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-LET-001"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Top-level module item order does not match rust.md order.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-MOD-001"
+    },
+    {
+      "count": 7,
+      "fixable": true,
+      "message": "Place non-async functions before async functions at the same visibility.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-MOD-003"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `FakeIo` and its first impl block.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `FakeSession` and its first impl block.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 42,
+      "fixable": true,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "apps/decodex-gpui/src/client_lifecycle/tests.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not place blank lines inside an import group.",
+      "path": "apps/decodex-gpui/src/main.rs",
+      "rule": "RUST-STYLE-IMPORT-002"
+    },
+    {
+      "count": 3,
+      "fixable": true,
+      "message": "Do not import free functions or macros into scope; prefer qualified module paths.",
+      "path": "apps/decodex-gpui/src/main.rs",
+      "rule": "RUST-STYLE-IMPORT-004"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Prefer importing non-function, non-macro symbols and using short paths when unambiguous.",
+      "path": "apps/decodex-gpui/src/main.rs",
+      "rule": "RUST-STYLE-IMPORT-008"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Integers with more than three digits must use underscore separators.",
+      "path": "apps/decodex-gpui/src/main.rs",
+      "rule": "RUST-STYLE-NUM-002"
+    },
+    {
+      "count": 3,
+      "fixable": true,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "apps/decodex-gpui/src/main.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 2,
+      "fixable": false,
+      "message": "Inline trait bounds are not allowed. Move bounds into a where clause.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-GENERICS-001"
+    },
+    {
+      "count": 1,
+      "fixable": false,
+      "message": "impl blocks for `Shell` must be contiguous.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-IMPL-003"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not place blank lines inside an import group.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-IMPORT-002"
+    },
+    {
+      "count": 5,
+      "fixable": true,
+      "message": "Do not import free functions or macros into scope; prefer qualified module paths.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-IMPORT-004"
+    },
+    {
+      "count": 1,
+      "fixable": false,
+      "message": "Glob imports are not allowed; import explicit symbols.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-IMPORT-007"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Glob imports are not allowed; import explicit symbols.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-IMPORT-007"
+    },
+    {
+      "count": 2,
+      "fixable": true,
+      "message": "Prefer importing non-function, non-macro symbols and using short paths when unambiguous.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-IMPORT-008"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not use `super` imports; use crate-absolute imports.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-IMPORT-010"
+    },
+    {
+      "count": 3,
+      "fixable": true,
+      "message": "Top-level module item order does not match rust.md order.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-MOD-001"
+    },
+    {
+      "count": 7,
+      "fixable": true,
+      "message": "Place pub items before non-pub items within the same group.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-MOD-002"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `Destination` and its first impl block.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `LifecycleOwnerGlobal` and its first impl block.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `LifecycleOwner` and its first impl block.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines between `Shell` and its first impl block.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-MOD-005"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Integers with more than three digits must use underscore separators.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-NUM-002"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines within the same statement type.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 1,
+      "fixable": false,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 24,
+      "fixable": true,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 2,
+      "fixable": true,
+      "message": "Insert exactly one blank line before the final tail expression.",
+      "path": "apps/decodex-gpui/src/shell.rs",
+      "rule": "RUST-STYLE-SPACE-004"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Prefer importing non-function, non-macro symbols and using short paths when unambiguous.",
+      "path": "crates/decodex-postgres/tests/postgres_store.rs",
+      "rule": "RUST-STYLE-IMPORT-008"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Top-level module item order does not match rust.md order.",
+      "path": "crates/decodex-postgres/tests/postgres_store.rs",
+      "rule": "RUST-STYLE-MOD-001"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Place non-async functions before async functions at the same visibility.",
+      "path": "crates/decodex-postgres/tests/postgres_store.rs",
+      "rule": "RUST-STYLE-MOD-003"
+    },
+    {
+      "count": 1,
+      "fixable": true,
+      "message": "Do not insert blank lines within the same statement type.",
+      "path": "crates/decodex-postgres/tests/postgres_store.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    },
+    {
+      "count": 2,
+      "fixable": true,
+      "message": "Insert exactly one blank line between different statement types.",
+      "path": "crates/decodex-postgres/tests/postgres_store.rs",
+      "rule": "RUST-STYLE-SPACE-003"
+    }
+  ]
+}
