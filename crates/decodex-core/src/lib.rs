@@ -14,6 +14,7 @@ mod program;
 mod project;
 mod quota;
 mod storage;
+mod work_item;
 
 pub use self::{
 	account::{AccountError, AccountId, AccountState},
@@ -83,6 +84,17 @@ pub use self::{
 		classify_account_quota, classify_all_accounts,
 	},
 	storage::StorageError,
+	work_item::{
+		MAX_WORK_ITEM_CRITERIA, MAX_WORK_ITEM_GRAPH_EDGES, MAX_WORK_ITEM_GRAPH_NODES,
+		MAX_WORK_ITEM_OBJECTIVES, MAX_WORK_ITEM_READINESS_CONTEXT,
+		MAX_WORK_ITEM_READINESS_RELATIONS, MAX_WORK_ITEM_TEXT_BYTES,
+		MAX_WORK_ITEM_TIMESTAMP_MICROSECONDS, MAX_WORK_ITEM_TITLE_BYTES, ReadinessAssessment,
+		ReadinessObservations, ReadinessReason, RelatedWorkItemObservation, WorkItem,
+		WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId,
+		WorkItemNode, WorkItemObjectiveObservation, WorkItemObjectiveRef, WorkItemPriority,
+		WorkItemProgramObservation, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
+		WorkItemTimestamp, assess_work_item_readiness, validate_work_item_graph,
+	},
 };
 
 #[cfg(test)] use tempfile as _;
