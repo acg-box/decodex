@@ -5,6 +5,38 @@ Status: gate evidence at repository revision `f9d6c4e70198e94e5b9461b8cac7518ae1
 Observed: 2026-07-13 using `codex-cli 0.144.0-alpha.4` and the normal shared
 `~/.codex`. This is a proof spike, not the vNext adapter.
 
+## Superseding readiness interpretation
+
+Accepted 2026-07-16 after follow-up protocol research and skeptic review. Historical
+observations and receipts below remain evidence of what those probes returned, including
+their negative provenance and before/after integrity hashes. They no longer establish
+passive or account-owned plugin, skill, or MCP readiness. Codex 0.144.2 and 0.144.4 expose
+no stable passive complete account-owned readiness receipt. Host files, manifests,
+configuration, remote catalogs, process binding, user declarations, inventory counts,
+and catalog usability are not substitutes for that receipt; account-owned readiness
+therefore remains typed `unknown`.
+
+Passive plugin and skill inventory is withdrawn from the accepted XY-1262 foundation
+interpretation. XY-1336 is upstream-blocked tracking outside the vNext critical path and
+neither closes nor blocks XY-1275. XY-1304 instead requires experiment-scoped causal
+no-mutation evidence: its protocol trace and admitted Decodex control-plane method set
+must contain no plugin, skill, MCP, or marketplace inventory or management call and no
+install, enable, disable, update, remove, login-management, or OAuth-management call.
+Normal process-scoped `account/login/start` authentication and ordinary execution of an
+already-enabled tool inside a turn are not control-plane inventory or management calls.
+Where the host supports exact receipts for named non-transient surfaces, the receipt
+manifest must enumerate each supported surface and before/after equality remains required
+for normal `~/.codex/auth.json`, the Decodex account pool, and shared plugin files or
+configuration. That host-artifact equality is causal integrity evidence only, never
+account readiness.
+Account-owned installed/enabled state remains unobserved and `unknown`; it is not an
+XY-1304 acceptance fact. An external or cloud change outside Decodex causal authority is
+not a Decodex mutation merely because it overlaps the experiment. These constraints must
+not be replaced by `plugin/list`, `skills/list`, `mcpServerStatus/list`, `app/list`, a
+catalog scan, or an active diagnostic. Any future operator-triggered active diagnostic
+requires a separate decision and cannot authorize routing. The later historical proposal
+is preserved as provenance and is superseded on these points.
+
 ## Reproduce
 
 The probe reads two explicitly selected records from the existing Decodex account pool,
