@@ -169,6 +169,13 @@ state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`,
 observation time, and confidence; 5-hour and 7-day windows are never inferred from
 positional primary/secondary ordering.
 
+`plugin_unready` is inert reserved state; no first-release passive probe sets it.
+Codex 0.144.2 and 0.144.4 expose no stable passive complete account-owned plugin,
+skill, and MCP readiness receipt, so account-owned readiness remains typed `unknown`.
+Host files, desired manifests, configuration, remote catalogs, process/account binding,
+and user declarations may be integrity or provenance inputs, but they do not become
+observed readiness and cannot prove either readiness or unreadiness.
+
 The dormant manual account observation path checks an exact PostgreSQL account revision in the
 `available` state before mechanics and checks the same predicate again after cleanup. Each check
 releases its row and pooled client before arbitrary caller, vault, or process work. The result is a
@@ -227,11 +234,15 @@ availability. In particular, unknown or stale quota is fail-closed: no assignmen
 automatic fallback is permitted; the unavailable/unknown condition must be surfaced for
 human resolution or bounded observation.
 
+Readiness cannot authorize account eligibility, assignment, reassignment, fallback,
+scheduling, wakeup, continuation, or production routing. A future operator-triggered
+active diagnostic requires a separate authority decision and remains non-routing evidence.
+
 Users exclusively select the four global RoleProfiles. Runtime cannot alter model,
 reasoning, or service tier. Each RuntimeSession snapshots its profile. Decodex keeps a
-desired plugin manifest and audits account inventories; V1 reports readiness differences
-and guides supported login/install/OAuth work rather than claiming file replacement can
-install cloud-bound plugins.
+user-owned desired inventory only as intent. Until a stable passive account-owned receipt
+exists, V1 reports plugin readiness as `unknown` and does not compare host facts into an
+account-readiness conclusion or guide mutation from such a conclusion.
 
 ## Automation and protocol
 
@@ -253,7 +264,8 @@ remains disabled until authentication, TLS, authorization, and redaction gates p
 GPUI is the primary workspace and exposes the Advisor inbox; Projects with persistent
 Lead Conversations; Quick Tasks; Program/Objective/WorkItem board; Run, review, repair,
 and landing state; agent/thread/automation graph and causal timeline; accounts, plugin
-readiness, global RoleProfiles, and system health. Users can always talk to Advisor or a
+readiness (typed `unknown` in the first release), global RoleProfiles, and system health.
+Users can always talk to Advisor or a
 Project Lead, start Quick Tasks, intervene in WorkItems/ManagedRuns, and inspect all
 agent/message/automation relationships. SwiftUI is a thin accounts/run-health menubar
 client over the restricted protocol. GPUI caches are bounded, disposable,
