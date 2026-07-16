@@ -86,6 +86,12 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
 	"decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
 	"decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
+	"decodex.create_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.update_program_context(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.transition_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.program_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.create_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog._text,pg_catalog._text,pg_catalog.int8,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.transition_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.objective_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -109,6 +115,10 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_history_cursor_state()",
 	"decodex.enforce_policy_identity_state()",
 	"decodex.forbid_policy_revision_mutation()",
+	"decodex.enforce_program_state()",
+	"decodex.enforce_objective_state()",
+	"decodex.forbid_objective_evidence_mutation()",
+	"decodex.enforce_objective_completion_coherence()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -130,6 +140,8 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.project_status",
 	"decodex.agent_role",
 	"decodex.agent_status",
+	"decodex.program_state",
+	"decodex.objective_state",
 )
 
 
@@ -398,6 +410,8 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"GRANT SELECT ON TABLE decodex.history_cursors, decodex.history_item_versions TO {role}; "
 		f"GRANT SELECT ON TABLE decodex.projects, decodex.agents, "
 		f"decodex.policies, decodex.policy_revisions TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.programs, decodex.objectives, "
+		f"decodex.objective_completion_evidence TO {role}; "
 		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
@@ -965,7 +979,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 44",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 58",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -1343,7 +1357,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "6|1":
+		) != "7|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
