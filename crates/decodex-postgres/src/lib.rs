@@ -14,6 +14,7 @@ mod leases;
 mod migrations;
 mod outbox;
 mod policies;
+mod programs;
 mod project_agents;
 #[cfg(unix)] mod socket;
 mod types;
@@ -26,6 +27,7 @@ pub use self::{
 		StoredRuntimeSession,
 	},
 	error::{BootstrapFailure, StoreError},
+	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	types::{
 		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
 		LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState, QuotaWindow,
@@ -34,10 +36,13 @@ pub use self::{
 };
 pub use decodex_core::{
 	AcceptedPolicyRevision, AccountId, AccountState, Agent, AgentId, AgentRole, AgentStatus,
+	Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
 	Policy, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
-	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, Project, ProjectAuthority,
-	ProjectId, ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding, ProjectStatus,
-	RepositoryIdentity,
+	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, Program,
+	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
+	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
+	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
+	ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity, ReviewCadence,
 };
 
 use std::{sync::Arc, time::Duration};

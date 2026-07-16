@@ -28,6 +28,25 @@ product entity in V1. Task and Reviewer agents are execution-scoped. Codex-nativ
 subagents are run-local runtime actors normalized into the same activity/message graph;
 durable cross-run and cross-project routing belongs to Decodex.
 
+Program owns an open-ended Project responsibility, its active canonical Lead owner, an
+exact accepted Project Policy revision, review cadence, and bounded provenance-bearing
+metrics/signals. Program context compilation is a pure deterministic data operation: it
+may preserve ordinary text that mentions a conversation or thread, but it has no typed
+Conversation, RuntimeSession, thread, or agent-creation field and performs no such side
+effect. Objective owns a finite Project outcome, optional same-Project Program relation,
+criteria, target horizon, lifecycle, and optimistic revision. `achieved` is available only
+through one immutable Objective-level acceptance-and-validation record bound to the exact
+Objective, Project, prior Objective revision, canonical accepting/validating Agent authority,
+provenance, and chronology. That record establishes Objective outcome acceptance only; it
+does not claim WorkItem or ManagedRun success. Objective abandonment remains independent.
+ManagedRun may reach successful terminal completion only from explicit authoritative
+WorkItem acceptance and validation. Objective achievement or evidence and any external
+Codex Goal state cannot establish WorkItem acceptance or ManagedRun success.
+The evidence persists the exact prior Objective `updated_at`; acceptance cannot predate that
+revision, including through direct SQL. Program and Objective mutation receipts are scoped
+from the caller's canonical Project authority and PostgreSQL verifies the stored Project
+match, so not-found replay remains deterministic even if the identity is created later.
+
 ## Interaction and work
 
 Advisor is the global default, owns consultation and cross-project recommendations, and

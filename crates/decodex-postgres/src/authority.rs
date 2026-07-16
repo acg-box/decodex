@@ -9,7 +9,9 @@ const FOUNDATION_MIGRATION: &str = include_str!("../migrations/V1__persistence_f
 const CONVERSATION_MIGRATION: &str = include_str!("../migrations/V3__conversation_history.sql");
 const PROJECT_AGENT_MIGRATION: &str = include_str!("../migrations/V5__project_agent_authority.sql");
 const POLICY_MIGRATION: &str = include_str!("../migrations/V6__project_policy_authority.sql");
-const FUNCTION_CONTRACTS: [FunctionContract; 43] = [
+const PROGRAM_OBJECTIVE_MIGRATION: &str =
+	include_str!("../migrations/V7__program_objective_authority.sql");
+const FUNCTION_CONTRACTS: [FunctionContract; 57] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -410,8 +412,96 @@ const FUNCTION_CONTRACTS: [FunctionContract; 43] = [
 		returns_set: true,
 		rows: 1_000.0,
 	},
+	immutable_function_contract(
+		"program_timestamp",
+		"decodex.program_timestamp(pg_catalog.int8)",
+		"program_timestamp(value bigint)",
+		"value bigint",
+		"timestamp with time zone",
+		"sql",
+	),
+	immutable_function_contract(
+		"is_program_metrics",
+		"decodex.is_program_metrics(pg_catalog.jsonb)",
+		"is_program_metrics(document jsonb)",
+		"document jsonb",
+		"boolean",
+		"plpgsql",
+	),
+	immutable_function_contract(
+		"is_program_signals",
+		"decodex.is_program_signals(pg_catalog.jsonb)",
+		"is_program_signals(document jsonb)",
+		"document jsonb",
+		"boolean",
+		"plpgsql",
+	),
+	immutable_function_contract(
+		"is_objective_criteria",
+		"decodex.is_objective_criteria(pg_catalog._text)",
+		"is_objective_criteria(document text[])",
+		"document text[]",
+		"boolean",
+		"plpgsql",
+	),
+	trigger_contract(
+		"enforce_program_state",
+		"decodex.enforce_program_state()",
+		"enforce_program_state()",
+	),
+	trigger_contract(
+		"enforce_objective_state",
+		"decodex.enforce_objective_state()",
+		"enforce_objective_state()",
+	),
+	trigger_contract(
+		"forbid_objective_evidence_mutation",
+		"decodex.forbid_objective_evidence_mutation()",
+		"forbid_objective_evidence_mutation()",
+	),
+	trigger_contract(
+		"enforce_objective_completion_coherence",
+		"decodex.enforce_objective_completion_coherence()",
+		"enforce_objective_completion_coherence()",
+	),
+	mutator_contract(
+		"create_program",
+		"decodex.create_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+		"create_program(\n\tp_program_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_owner_agent_id decodex.canonical_uuid_v4_text,\n\tp_name text,\n\tp_responsibility text,\n\tp_policy_id decodex.canonical_uuid_v4_text,\n\tp_policy_revision bigint,\n\tp_review_interval_days integer,\n\tp_next_review_at bigint,\n\tp_metrics jsonb,\n\tp_signals jsonb,\n\tp_correlation_id decodex.canonical_uuid_v4_text,\n\tp_provenance text\n)",
+		"p_program_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_owner_agent_id decodex.canonical_uuid_v4_text, p_name text, p_responsibility text, p_policy_id decodex.canonical_uuid_v4_text, p_policy_revision bigint, p_review_interval_days integer, p_next_review_at bigint, p_metrics jsonb, p_signals jsonb, p_correlation_id decodex.canonical_uuid_v4_text, p_provenance text",
+	),
+	mutator_contract(
+		"update_program_context",
+		"decodex.update_program_context(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+		"update_program_context(\n\tp_program_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_expected_revision bigint,\n\tp_review_interval_days integer,\n\tp_next_review_at bigint,\n\tp_metrics jsonb,\n\tp_signals jsonb,\n\tp_actor_id decodex.canonical_uuid_v4_text,\n\tp_correlation_id decodex.canonical_uuid_v4_text,\n\tp_provenance text\n)",
+		"p_program_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_expected_revision bigint, p_review_interval_days integer, p_next_review_at bigint, p_metrics jsonb, p_signals jsonb, p_actor_id decodex.canonical_uuid_v4_text, p_correlation_id decodex.canonical_uuid_v4_text, p_provenance text",
+	),
+	mutator_contract(
+		"transition_program",
+		"decodex.transition_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.program_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+		"transition_program(\n\tp_program_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_expected_revision bigint,\n\tp_state decodex.program_state,\n\tp_actor_id decodex.canonical_uuid_v4_text,\n\tp_correlation_id decodex.canonical_uuid_v4_text,\n\tp_provenance text\n)",
+		"p_program_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_expected_revision bigint, p_state decodex.program_state, p_actor_id decodex.canonical_uuid_v4_text, p_correlation_id decodex.canonical_uuid_v4_text, p_provenance text",
+	),
+	mutator_contract(
+		"create_objective",
+		"decodex.create_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog._text,pg_catalog._text,pg_catalog.int8,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+		"create_objective(\n\tp_objective_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_program_id decodex.canonical_uuid_v4_text,\n\tp_outcome text,\n\tp_acceptance_criteria text[],\n\tp_validation_criteria text[],\n\tp_target_at bigint,\n\tp_actor_id decodex.canonical_uuid_v4_text,\n\tp_correlation_id decodex.canonical_uuid_v4_text,\n\tp_provenance text\n)",
+		"p_objective_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_program_id decodex.canonical_uuid_v4_text, p_outcome text, p_acceptance_criteria text[], p_validation_criteria text[], p_target_at bigint, p_actor_id decodex.canonical_uuid_v4_text, p_correlation_id decodex.canonical_uuid_v4_text, p_provenance text",
+	),
+	mutator_contract(
+		"transition_objective",
+		"decodex.transition_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.objective_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+		"transition_objective(\n\tp_objective_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_expected_revision bigint,\n\tp_state decodex.objective_state,\n\tp_actor_id decodex.canonical_uuid_v4_text,\n\tp_correlation_id decodex.canonical_uuid_v4_text,\n\tp_provenance text\n)",
+		"p_objective_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_expected_revision bigint, p_state decodex.objective_state, p_actor_id decodex.canonical_uuid_v4_text, p_correlation_id decodex.canonical_uuid_v4_text, p_provenance text",
+	),
+	mutator_contract(
+		"achieve_objective",
+		"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
+		"achieve_objective(\n\tp_evidence_id decodex.canonical_uuid_v4_text,\n\tp_objective_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_objective_revision bigint,\n\tp_acceptance_result text,\n\tp_accepted_by decodex.canonical_uuid_v4_text,\n\tp_accepted_at bigint,\n\tp_acceptance_provenance text,\n\tp_validation_result text,\n\tp_validated_by decodex.canonical_uuid_v4_text,\n\tp_validated_at bigint,\n\tp_validation_provenance text,\n\tp_correlation_id decodex.canonical_uuid_v4_text\n)",
+		"p_evidence_id decodex.canonical_uuid_v4_text, p_objective_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_objective_revision bigint, p_acceptance_result text, p_accepted_by decodex.canonical_uuid_v4_text, p_accepted_at bigint, p_acceptance_provenance text, p_validation_result text, p_validated_by decodex.canonical_uuid_v4_text, p_validated_at bigint, p_validation_provenance text, p_correlation_id decodex.canonical_uuid_v4_text",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 20] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 26] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -432,8 +522,14 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 20] = [
 	"decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
 	"decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
 	"decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
+	"decodex.create_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.update_program_context(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.jsonb,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.transition_program(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.program_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.create_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog._text,pg_catalog._text,pg_catalog.int8,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.transition_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.objective_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
+	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
 ];
-const SAFETY_FUNCTIONS: [&str; 21] = [
+const SAFETY_FUNCTIONS: [&str; 25] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"forbid_mutation_of_activity",
@@ -455,8 +551,12 @@ const SAFETY_FUNCTIONS: [&str; 21] = [
 	"enforce_history_cursor_state",
 	"enforce_policy_identity_state",
 	"forbid_policy_revision_mutation",
+	"enforce_program_state",
+	"enforce_objective_state",
+	"forbid_objective_evidence_mutation",
+	"enforce_objective_completion_coherence",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 33;
+const SAFETY_TRIGGER_COUNT: usize = 41;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -631,7 +731,10 @@ WITH set_roles AS (
   ('projects', true, false, false, false),
   ('agents', true, false, false, false),
   ('policies', true, false, false, false),
-  ('policy_revisions', true, false, false, false)
+  ('policy_revisions', true, false, false, false),
+  ('programs', true, false, false, false),
+  ('objectives', true, false, false, false),
+  ('objective_completion_evidence', true, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -640,7 +743,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 24
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 27
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -828,7 +931,15 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('policies', 'policies_state_guard', 'enforce_policy_identity_state', 27),
   ('policies', 'policies_truncate_forbidden', 'enforce_policy_identity_state', 34),
   ('policy_revisions', 'policy_revisions_immutable', 'forbid_policy_revision_mutation', 27),
-  ('policy_revisions', 'policy_revisions_truncate_forbidden', 'forbid_policy_revision_mutation', 34)
+  ('policy_revisions', 'policy_revisions_truncate_forbidden', 'forbid_policy_revision_mutation', 34),
+  ('programs', 'programs_state_guard', 'enforce_program_state', 31),
+  ('programs', 'programs_truncate_forbidden', 'enforce_program_state', 34),
+  ('objectives', 'objectives_state_guard', 'enforce_objective_state', 31),
+  ('objectives', 'objectives_truncate_forbidden', 'enforce_objective_state', 34),
+  ('objective_completion_evidence', 'objective_evidence_immutable', 'forbid_objective_evidence_mutation', 27),
+  ('objective_completion_evidence', 'objective_evidence_truncate_forbidden', 'forbid_objective_evidence_mutation', 34),
+  ('objectives', 'objectives_completion_coherence', 'enforce_objective_completion_coherence', 21),
+  ('objective_completion_evidence', 'objective_evidence_completion_coherence', 'enforce_objective_completion_coherence', 5)
 )
 SELECT
   expected.function_name,
@@ -836,11 +947,17 @@ SELECT
     AND trigger.tgenabled = 'O'
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
-    AND trigger.tgconstraint = 0
+    AND (trigger.tgconstraint <> 0) = (
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence')
+    )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
-    AND NOT trigger.tgdeferrable
-    AND NOT trigger.tginitdeferred
+    AND trigger.tgdeferrable = (
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence')
+    )
+    AND trigger.tginitdeferred = (
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence')
+    )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
     AND trigger.tgqual IS NULL
@@ -972,7 +1089,15 @@ WITH catalog_context AS MATERIALIZED (
   ('policies', 'policies_state_guard', 'decodex.enforce_policy_identity_state()'),
   ('policies', 'policies_truncate_forbidden', 'decodex.enforce_policy_identity_state()'),
   ('policy_revisions', 'policy_revisions_immutable', 'decodex.forbid_policy_revision_mutation()'),
-  ('policy_revisions', 'policy_revisions_truncate_forbidden', 'decodex.forbid_policy_revision_mutation()')
+  ('policy_revisions', 'policy_revisions_truncate_forbidden', 'decodex.forbid_policy_revision_mutation()'),
+  ('programs', 'programs_state_guard', 'decodex.enforce_program_state()'),
+  ('programs', 'programs_truncate_forbidden', 'decodex.enforce_program_state()'),
+  ('objectives', 'objectives_state_guard', 'decodex.enforce_objective_state()'),
+  ('objectives', 'objectives_truncate_forbidden', 'decodex.enforce_objective_state()'),
+  ('objective_completion_evidence', 'objective_evidence_immutable', 'decodex.forbid_objective_evidence_mutation()'),
+  ('objective_completion_evidence', 'objective_evidence_truncate_forbidden', 'decodex.forbid_objective_evidence_mutation()'),
+  ('objectives', 'objectives_completion_coherence', 'decodex.enforce_objective_completion_coherence()'),
+  ('objective_completion_evidence', 'objective_evidence_completion_coherence', 'decodex.enforce_objective_completion_coherence()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -1442,8 +1567,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0xfa, 0xd2, 0x50, 0x40, 0x49, 0x0b, 0xda, 0x15, 0x02, 0xfb, 0xa7, 0x3a, 0x53, 0x7c, 0xc3, 0xce,
-	0x7b, 0xc8, 0x1c, 0x88, 0x1d, 0x90, 0xd6, 0x63, 0xc9, 0xc9, 0x2b, 0x4b, 0xee, 0x1d, 0x75, 0x72,
+	0xc7, 0x92, 0xa5, 0x97, 0x5b, 0xf3, 0x0b, 0xcb, 0x2c, 0xcf, 0x14, 0xf2, 0x6b, 0x12, 0xa5, 0x8b,
+	0x38, 0x3c, 0x92, 0xd6, 0x66, 0x73, 0xa6, 0x12, 0x85, 0xec, 0x89, 0x92, 0x4a, 0x3a, 0x28, 0x4e,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -1610,6 +1735,48 @@ const fn trigger_contract(
 	}
 }
 
+const fn immutable_function_contract(
+	name: &'static str,
+	lookup_signature: &'static str,
+	migration_signature: &'static str,
+	arguments: &'static str,
+	result: &'static str,
+	language: &'static str,
+) -> FunctionContract {
+	FunctionContract {
+		name,
+		lookup_signature,
+		migration_signature,
+		arguments,
+		result,
+		language,
+		volatility: "i",
+		strict: true,
+		returns_set: false,
+		rows: 0.0,
+	}
+}
+
+const fn mutator_contract(
+	name: &'static str,
+	lookup_signature: &'static str,
+	migration_signature: &'static str,
+	arguments: &'static str,
+) -> FunctionContract {
+	FunctionContract {
+		name,
+		lookup_signature,
+		migration_signature,
+		arguments,
+		result: "TABLE(result_code text, actual_revision bigint, changed boolean)",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	}
+}
+
 fn canonical_safety_function_source(function_name: &str) -> Option<&'static str> {
 	if !SAFETY_FUNCTIONS.contains(&function_name) {
 		return None;
@@ -1622,10 +1789,15 @@ fn canonical_safety_function_source(function_name: &str) -> Option<&'static str>
 
 fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str> {
 	let declaration = format!("CREATE FUNCTION decodex.{}", contract.migration_signature);
-	let migration =
-		[FOUNDATION_MIGRATION, CONVERSATION_MIGRATION, PROJECT_AGENT_MIGRATION, POLICY_MIGRATION]
-			.into_iter()
-			.find(|migration| migration.contains(&declaration))?;
+	let migration = [
+		FOUNDATION_MIGRATION,
+		CONVERSATION_MIGRATION,
+		PROJECT_AGENT_MIGRATION,
+		POLICY_MIGRATION,
+		PROGRAM_OBJECTIVE_MIGRATION,
+	]
+	.into_iter()
+	.find(|migration| migration.contains(&declaration))?;
 	let (_, declaration_and_tail) = migration.split_once(&declaration)?;
 	let (_, source_and_tail) = declaration_and_tail.split_once("\nAS $$")?;
 	let (source, _) = source_and_tail.split_once("$$;")?;
@@ -1740,6 +1912,12 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "transition_project"
 				| "create_policy"
 				| "accept_policy_revision"
+				| "create_program"
+				| "update_program_context"
+				| "transition_program"
+				| "create_objective"
+				| "transition_objective"
+				| "achieve_objective"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
@@ -1893,8 +2071,8 @@ mod tests {
 	use crate::authority::{
 		CONVERSATION_MIGRATION, FOUNDATION_MIGRATION, FUNCTION_CONTRACTS,
 		IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, POLICY_MIGRATION,
-		PROJECT_AGENT_MIGRATION, ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256,
-		SCHEMA_CONTRACT_SQL,
+		PROGRAM_OBJECTIVE_MIGRATION, PROJECT_AGENT_MIGRATION, ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS,
+		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 	};
 
 	#[test]
@@ -1946,6 +2124,7 @@ mod tests {
 				CONVERSATION_MIGRATION,
 				PROJECT_AGENT_MIGRATION,
 				POLICY_MIGRATION,
+				PROGRAM_OBJECTIVE_MIGRATION,
 			]
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
@@ -1963,6 +2142,7 @@ mod tests {
 					CONVERSATION_MIGRATION,
 					PROJECT_AGENT_MIGRATION,
 					POLICY_MIGRATION,
+					PROGRAM_OBJECTIVE_MIGRATION,
 				]
 				.into_iter()
 				.map(|migration| migration
@@ -1989,6 +2169,12 @@ mod tests {
 			"transition_project",
 			"create_policy",
 			"accept_policy_revision",
+			"create_program",
+			"update_program_context",
+			"transition_program",
+			"create_objective",
+			"transition_objective",
+			"achieve_objective",
 		] {
 			let contract = FUNCTION_CONTRACTS
 				.iter()
