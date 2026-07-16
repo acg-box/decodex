@@ -18,8 +18,8 @@ use tokio_tungstenite::{
 
 use crate::{
 	CURRENT_VERSION, ClientHello, ClientMessage, DoctorReport, ProtocolVersion, QueryEnvelope,
-	QueryId, QueryPayload, QueryResultPayload, Refusal, RefusalEnvelope, ServerId, ServerMessage,
-	VersionRefusal,
+	QueryId, QueryPayload, QueryResultPayload, Refusal, RefusalEnvelope, RetainedSessionConfig,
+	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
 };
 use decodex_core::{
 	ConfigError, DecodexClientConfig, DecodexRoot, PathError, ServerIdentity, ServerProfile,
@@ -98,6 +98,13 @@ impl ClientProfile {
 	/// Local or remote profile classification.
 	pub const fn kind(&self) -> ProfileKind {
 		self.kind
+	}
+
+	/// Project this selected typed profile into the retained-session boundary.
+	///
+	/// Remote profiles remain fail-closed while retained sessions are loopback-only.
+	pub fn retained_session_config(&self) -> Result<RetainedSessionConfig, RetainedSessionFailure> {
+		RetainedSessionConfig::new(&self.url, self.expected_server_id.clone())
 	}
 
 	#[cfg(test)]
@@ -370,8 +377,9 @@ fn map_config_error(error: ConfigError) -> ClientFailure {
 	match error {
 		ConfigError::UnsupportedVersion => ClientFailure::ConfigurationVersion,
 		ConfigError::MissingProfile => ClientFailure::ProfileMissing,
-		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
-			ClientFailure::ConfigurationMissing,
+		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
+			ClientFailure::ConfigurationMissing
+		},
 		ConfigError::Path(_) => ClientFailure::UnsafeHostPath,
 		_ => ClientFailure::ConfigurationMalformed,
 	}
@@ -407,10 +415,12 @@ fn map_receive_error(error: tokio_tungstenite::tungstenite::Error) -> ClientFail
 
 fn map_refusal(refusal: Refusal) -> ClientFailure {
 	match refusal {
-		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) =>
-			ClientFailure::ProtocolMajorMismatch,
-		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
-			ClientFailure::ProtocolMinorMismatch,
+		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. }) => {
+			ClientFailure::ProtocolMajorMismatch
+		},
+		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) => {
+			ClientFailure::ProtocolMinorMismatch
+		},
 		Refusal::ServerIdentityMismatch { .. } => ClientFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => ClientFailure::ProtocolViolation,
 		Refusal::Backpressure { .. } => ClientFailure::ProtocolBackpressure,
@@ -427,7 +437,8 @@ fn version_failure(version: ProtocolVersion) -> ClientFailure {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
+	#[cfg(unix)]
+	use std::os::unix::fs::PermissionsExt as _;
 	use std::{fs, net::Ipv4Addr, time::Duration};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
@@ -440,8 +451,9 @@ mod tests {
 		Cursor, DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue, DoctorReport,
 		DoctorStatus, EntityId, EntityRevision, EventEnvelope, EventPayload,
 		PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId, QueryResultEnvelope,
-		QueryResultPayload, ReconnectMode, Refusal, RefusalEnvelope, ServerId, ServerMessage,
-		ServerWelcome, SnapshotEnvelope, SupportedVersions, VersionRefusal, WireText,
+		QueryResultPayload, ReconnectMode, Refusal, RefusalEnvelope, RetainedSessionFailure,
+		ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope, SupportedVersions,
+		VersionRefusal, WireText,
 	};
 	use decodex_core::{DecodexRoot, ServerIdentity};
 
@@ -576,8 +588,17 @@ max_entry_bytes = 0
 
 		assert_eq!(local.kind(), ProfileKind::Local);
 		assert_eq!(local.expected_server_id.as_str(), identity.as_str());
+		assert_eq!(
+			local
+				.retained_session_config()
+				.expect("the selected local profile projects into a retained session")
+				.expected_server_id()
+				.as_str(),
+			identity.as_str()
+		);
 		assert_eq!(remote.kind(), ProfileKind::Remote);
 		assert_eq!(remote.expected_server_id.as_str(), SERVER_ID);
+		assert_eq!(remote.retained_session_config(), Err(RetainedSessionFailure::InvalidEndpoint));
 		assert!(!remote.url.contains("must-not-be-client-validated"));
 		assert!(!format!("{remote:?}").contains("server.example.test"));
 	}
