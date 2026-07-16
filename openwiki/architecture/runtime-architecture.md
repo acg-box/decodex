@@ -394,9 +394,9 @@ truncation is forbidden. Direct SQL therefore cannot delete and recreate a compl
 effect as replayable work.
 Operation-time triggers reject caller-shifted anchors and
 deadlines beyond the same 365-day horizon; relative-duration `CHECK` constraints remain
-wall-clock independent. Quota mutation responses and command receipts use PostgreSQL's
-persisted, microsecond-rounded UTC timestamps rather than caller timestamp text. Account and
-quota-window rows are
+wall-clock independent. Quota mutation responses and command receipts use already validated exact
+UTC Unix-microsecond values, persisted losslessly with no rounding or truncation, rather than caller
+timestamp text. Account and quota-window rows are
 inert observations with recursive credential-material rejection across normalized keys and
 recognizable secret-bearing value encodings. PostgreSQL explicitly normalizes Rust's full
 Unicode `White_Space` set, applies an explicit ASCII case fold, and evaluates the remaining
