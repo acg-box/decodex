@@ -10,6 +10,7 @@ mod identity;
 #[cfg(unix)] mod path_unix;
 mod paths;
 mod policy;
+mod program;
 mod project;
 mod quota;
 mod storage;
@@ -54,6 +55,16 @@ pub use self::{
 		MAX_POLICY_SNAPSHOT_KEY_BYTES, MAX_POLICY_SNAPSHOT_VALUE_BYTES, Policy, PolicyError,
 		PolicyId, PolicyProvenance, PolicyRepository, PolicyRevision, PolicyRevisionAcceptance,
 		PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp,
+	},
+	program::{
+		MAX_OBJECTIVE_CRITERIA, MAX_PROGRAM_CONTEXT_BYTES, MAX_PROGRAM_CONTEXT_DECISIONS,
+		MAX_PROGRAM_NAME_BYTES, MAX_PROGRAM_OBSERVATIONS, MAX_PROGRAM_TEXT_BYTES,
+		MAX_PROGRAM_TIMESTAMP_MICROSECONDS, MAX_REVIEW_CADENCE_DAYS, Objective,
+		ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState, Program,
+		ProgramContext, ProgramContextDecision, ProgramContextInput, ProgramCorrelationId,
+		ProgramError, ProgramId, ProgramMetric, ProgramObservationId, ProgramObservationProvenance,
+		ProgramProvenance, ProgramQuietPeriod, ProgramSignal, ProgramState, ProgramTimestamp,
+		ReviewCadence, compile_program_context,
 	},
 	project::{
 		MAX_PROJECT_METADATA_FIELDS, MAX_PROJECT_METADATA_KEY_BYTES,
