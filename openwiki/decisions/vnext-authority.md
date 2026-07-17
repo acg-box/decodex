@@ -43,11 +43,49 @@ old-boundary candidates remain historical provenance in the runtime proof.
 
 XY-1272 PostgreSQL-authority reset accepted 2026-07-16: XY-1272 owns only configured-principal
 and ACL manifest/readiness closure against landed V8. It owns no migration or Codex creation,
-mapping, or reconciliation surface. XY-1337 owns the expected V9; XY-1304 owns experiment creation
+mapping, or reconciliation surface. Under the later XY-1345 reset, XY-1346 owns expected V9 and
+re-bounded XY-1337 owns expected V10; XY-1304 owns experiment creation
 and positive observation acquisition; XY-1276 owns production Quick Task creation. Lossy or
 paginated Codex evidence cannot authorize negative `Present`, `Complete`, or context-free `Absent`
 authority. A future configured PostgreSQL role must atomically extend configuration, bootstrap,
 manifest/readiness, and negative tests.
+
+XY-1345 exact-command authority amendment accepted 2026-07-16: pure database commands use
+operation-specific, command-complete `SECURITY DEFINER` entrypoints. PostgreSQL constructs and
+consumes the complete typed request envelope; runtime supplies only the protocol-scoped
+idempotency key and typed operation inputs. A separate `decodex.exact_command_receipts` relation is
+keyed by `(protocol_version, idempotency_key)`, while operation identity remains inside the
+envelope so cross-operation reuse conflicts. Runtime has no exact-receipt table privilege and no
+private-helper or canonical activity/outbox mutation authority. An executing row is transaction
+internal: a `DEFERRABLE INITIALLY DEFERRED` commit-time invariant rejects every incomplete commit,
+and completed response bytes and effects are immutable and undeletable. Stable domain rejection,
+idempotency conflict, and retryable infrastructure failure are distinct outcomes.
+
+Normal execution is one exact command per top-level `READ COMMITTED` transaction. The command uses
+a later read/lock statement after `ON CONFLICT DO NOTHING`; classified `40001` and `40P01` failures
+retry the whole identical transaction. Request JSONB uses equality, includes every optional key
+with explicit JSON null, receives enums/numerics through typed inputs, and preserves exact
+PostgreSQL text/code-point semantics. Derived revisions, selected rows, generated identities,
+timestamps, digests, snapshots, activity/outbox identities, and responses are effects. Effect and
+response evidence comes from actual `RETURNING` rows and canonical audit identities.
+
+Candidate 3 is superseded as implementation and remains hostile-test/design provenance only.
+[XY-1345 evidence](../evidence/xy-1345-exact-command-authority.md) records the passing isolated
+PostgreSQL 18 proof. The serial vertical order is XY-1345 authority/prototype, then XY-1346 exact
+receipts plus immutable global RoleProfile bootstrap/update in V9, then re-bounded XY-1337
+RuntimeSession V10. Legacy
+`command_receipts` semantics remain unchanged for unrelated external or long-running sagas.
+
+XY-1337 RuntimeSession amendment, implemented as expected V10: creation and transition are separate
+command-complete `SECURITY DEFINER` operations using the unchanged V9 exact receipt. PostgreSQL
+constructs creation identity from RuntimeSession ID, Conversation ID, role, complete non-secret
+account snapshot identity/facts, nullable Codex thread ID, and initial state, then resolves exactly
+one current immutable RoleProfile revision server-side. Transition identity contains only session
+ID, expected revision, and target state. Both commands atomically store domain state, canonical
+activity/outbox effects, and immutable response bytes; stable rejection completes in the same
+transaction. V10 is a zero-state forward cutover, preserves the existing table identities, removes
+runtime snapshot/session DML, fences RuntimeSession audit namespaces, and does not authorize Codex
+creation, reconciliation, routing, scheduling, WorkItems, ManagedRuns, UI, or plugin readiness.
 
 ## Decision
 
