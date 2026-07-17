@@ -616,7 +616,7 @@ async fn postgres_v8_to_v9_role_profile_upgrade() -> Result<(), Box<dyn std::err
 	);
 	drop(client);
 	connection_task.await??;
-	PostgresStore::migrate(migration.clone(), expected_peer_uid()).await?;
+	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let after: i32 = client

@@ -11,6 +11,7 @@ mod accounts;
 mod authority;
 mod conversations;
 mod error;
+mod exact_commands;
 mod leases;
 mod migrations;
 mod outbox;
@@ -19,21 +20,26 @@ mod programs;
 mod project_agents;
 mod quota;
 mod role_profiles;
+mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
 
 pub use self::{
 	conversations::{
-		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation,
-		CreateRuntimeSession, HistoryCursor, HistoryEntry, HistoryPage, PersistContextPack,
-		ProposeTransition, RecordHistoryItem, StoredArtifact, StoredConversation,
-		StoredRuntimeSession,
+		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
+		HistoryEntry, HistoryPage, PersistContextPack, ProposeTransition, RecordHistoryItem,
+		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
 		RoleProfileRejection, RoleProfileRevision, RoleProfileRole,
+	},
+	runtime_sessions::{
+		CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, RuntimeSessionAccountSnapshot,
+		RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionProfileSnapshot,
+		RuntimeSessionRejection, StoredRuntimeSession,
 	},
 	types::{
 		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
@@ -284,6 +290,35 @@ impl PostgresStore {
 		let pool = Pool::builder(manager).max_size(1).build()?;
 		let mut client = checkout(&pool, &connector).await?;
 		let result = migrations::run_through_v8(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
+	}
+
+	/// Apply the immutable migration ledger only through V9 for the V10 upgrade proof.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v9(
+		mut config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v9(&mut client).await;
 
 		drop(client);
 
