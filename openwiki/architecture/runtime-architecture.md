@@ -119,21 +119,22 @@ runtime-effective, regardless of `pg_extension.extnamespace`.
 Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
 TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
 `session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
-in any reachable authority state. The audit verifies all twenty-nine shipped safety/state/retention triggers
-by table, event mask, row/statement level, regular non-constraint and non-deferrable shape,
-origin-enabled mode, and function binding, then compares
+in any reachable authority state. At the frozen V9 boundary, the audit verifies all fifty-two shipped
+non-internal trigger bindings, including regular and deferred constraint triggers, by table, event
+mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
+then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable V1 or forward-only V3 migration. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V9. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
 are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
 are unsafe; a replaced same-signature safety-function body is incompatible.
-Every non-internal trigger on a Decodex runtime relation must be one of those twenty-nine exact bindings.
+Every non-internal trigger on a Decodex runtime relation must be one of those fifty-two exact V9 bindings.
 The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
 on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
 generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
-thirty-four canonical functions. Every canonical function has the exact function-local
+seventy-two canonical V9 functions. Every canonical function has the exact function-local
 `pg_catalog, decodex` search path, so runtime-selected callable or operator shadows cannot redirect
 trigger or constraint execution. A trigger cannot therefore invoke an adjacent public owner-executed
 function merely because runtime DML fires it.
@@ -157,20 +158,21 @@ string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
 authority audit and schema-qualified migration-ledger verification remain correct under a hostile
 runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
 table, sequence, function, or ledger-read authority is incompatible.
-Three narrowly scoped canonical `SECURITY DEFINER` functions issue history cursors, prune expired
-cursor snapshots, and append immutable history-item versions. The issuer derives Conversation,
+At the frozen V9 boundary, sixteen canonical `SECURITY DEFINER` functions comprise the three V3
+cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two
+V9 RoleProfile command entrypoints. The cursor issuer derives Conversation,
 snapshot version, parent, page size, position, item identity, and expiry under serialized
 Conversation authority; the bounded pruner is callable by runtime, while the capture function is
 trigger-only and runtime cannot execute it directly. Runtime has no cursor-table INSERT authority.
-All other canonical functions are security invokers. The additional-function adversarial fixture creates a thirty-fifth migration-owned,
+The other fifty-six canonical V9 functions are security invokers. The additional-function adversarial fixture creates a fixture-only seventy-third migration-owned,
 runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
 trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
 and restores the trigger before the independent doctor rejection. A separate public-function trigger
 fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
-table `UPDATE`, or `TRIGGER`; the exact twenty-nine-trigger inventory rejects that path. A public,
+table `UPDATE`, or `TRIGGER`; the exact fifty-two-trigger V9 inventory rejects that path. A public,
 runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
 proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
-closed thirty-four-function inventory remains independent of the distinct same-signature canonical-source
+closed seventy-two-function V9 inventory remains independent of the distinct same-signature canonical-source
 substitution fixture. Missing, malformed, unsafe, unreachable,
 authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
 there is no ambient/default database or alternate state authority. Repository and
@@ -397,8 +399,16 @@ identical transaction. JSONB identity uses equality, explicit null keys, typed e
 and exact PostgreSQL text semantics. Effects use actual `RETURNING` rows and canonical audit
 identities. Operation is part of the envelope, so cross-operation key reuse conflicts. The accepted
 proof and vertical ownership are in
-[the XY-1345 evidence](../evidence/xy-1345-exact-command-authority.md); production V9 belongs to
-XY-1346 and V10 to re-bounded XY-1337.
+[the XY-1345 evidence](../evidence/xy-1345-exact-command-authority.md). V9 implements this boundary
+for immutable global RoleProfiles through `bootstrap_role_profiles_exact` and
+`update_role_profile_exact`; V10 remains owned by re-bounded XY-1337.
+
+The V9 RoleProfile model contains only advisor, lead, task, and reviewer. Bootstrap receives four
+role-implied scalar configuration groups and commits the complete set or nothing. Updates append an
+immutable revision under an expected-revision row lock and atomically advance the selected role's
+single current pointer. Runtime neither selects nor mutates the RoleProfile or exact-receipt
+relations directly; it parses the response bytes returned by the two command-complete entrypoints
+and retries a complete top-level transaction only after a classified infrastructure SQLSTATE.
 
 Legacy `command_receipts` retain the receipt-first fenced-claim protocol only for unrelated blob,
 filesystem, external, or long-running sagas whose point of no return cannot fit in one PostgreSQL

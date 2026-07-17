@@ -105,7 +105,7 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1276 | Production Quick Task creation; remains blocked by XY-1304. |
 | XY-1304 | Experiment thread creation and positive observation acquisition, plus live routing enablement. Lossy or paginated evidence cannot authorize negative `Present`, `Complete`, or context-free `Absent` conclusions. |
 | XY-1345 | Accepted exact-command authority and isolated PostgreSQL 18 prototype only; no production migration or Rust command path. |
-| XY-1346 | The next PostgreSQL migration, expected V9: separate exact receipts plus RoleProfile bootstrap/update. Starts only after XY-1345 lands. |
+| XY-1346 | PostgreSQL V9: separate exact receipts plus immutable global RoleProfile bootstrap/update. Starts only after XY-1345 lands. |
 | XY-1337 | Re-bounded RuntimeSession snapshot creation/transition migration, expected V10 after XY-1346. It does not own exact-receipt or RoleProfile redesign. |
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,

@@ -122,7 +122,9 @@ impl From<refinery::Error> for StoreError {
 
 impl From<tokio_postgres::Error> for StoreError {
 	fn from(error: tokio_postgres::Error) -> Self {
-		if error.as_db_error().is_some_and(|database| {
+		if error.code().is_some_and(|code| code.code() == "DX001") {
+			Self::IdempotencyConflict
+		} else if error.as_db_error().is_some_and(|database| {
 			database.code() == &tokio_postgres::error::SqlState::CHECK_VIOLATION
 				&& database.constraint().is_some_and(|name| name.contains("no_credentials"))
 		}) {
