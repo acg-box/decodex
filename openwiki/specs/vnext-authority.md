@@ -135,6 +135,69 @@ admission serialize create-only verified publication; transaction B atomically r
 metadata/domain references/evidence, stores the exact response bytes, and completes the fenced
 receipt. Exact replay returns those bytes; conflicting reuse fails before effects.
 
+### Managed repository authority reset
+
+This is the stage-one XY-1284 reset and falsifier contract. It invalidates the rejected
+combined candidate; it does not select or prove a Git/filesystem mechanism. Stage two
+must amend this section with mechanism-specific authority only after both the XY-1347
+feasibility verdict and the XY-1348 pure core-contract evidence are accepted. In
+particular, `/dev/fd`, descriptor-backed Git, worktree creation, durable worktree
+registration after descriptor closure, restart reacquisition, and direct allocation are
+unproven until that evidence exists.
+
+Within the trusted single-host V1 boundary:
+
+- `decodexd` is the sole owner of repository and worktree effects. No client, provider,
+  validation child, second daemon, or distributed worker acquires a parallel mutation
+  path.
+- The in-process `RepositoryExecutor` preserves correctness, deterministic decisions,
+  and continuity from explicitly admitted repository authority through effect readback.
+  It is not a sandbox and does not isolate the service from malicious code with the same
+  host UID.
+- Admission, allocation lifecycle, mutable repository/worktree head, and effect
+  reservation/completion are distinct authorities. A worktree may become ready without
+  changing its head; a commit completion requires exactly the separately authorized head
+  advance. A generic binding revision cannot stand in for these transition-specific
+  preconditions.
+- Every operation fails closed on stale revisions, foreign identity, any symlinked path
+  component, object or descriptor replacement, dirty state, ambiguous observation, or
+  incomplete authoritative readback. Crash recovery reads durable state and the external
+  authority before deciding completion, retry, or permanent ambiguity; it never blindly
+  adopts or replays.
+- Repository-controlled Git config and includes, hooks, filters, `fsmonitor`, credential
+  helpers, askpass, SSH, and transports are disabled unless an explicit managed policy
+  allowlists exact reviewed behavior. Stage two must enumerate the accepted mechanism's
+  canonical config keys, environment overrides, executable identities, and path-bearing
+  outputs; any omitted or unmatched surface remains disabled and fails closed. Ambient
+  environment, current working directory, and repository discovery never grant
+  authority.
+- Project validation is supervised for process lifecycle, bounded output, timeout and
+  cancellation, and repository mutation detection. Deliberately hostile same-UID code is
+  outside V1 confinement. Hostile-project or multi-tenant operation requires a separate
+  UID or sandbox owner and an independently accepted feasibility and authority gate.
+
+PostgreSQL persists the accepted projections through the singleton migration writer.
+V13 belongs only to XY-1349 managed-repository authority. XY-1304 creation and
+positive-observation persistence use the next migration available after V13, expected
+V14. This ordering leaves accepted V11
+`33159d0cb2da7f86748f1a380def0927970a409a` and V12
+`a6bfb0aefc72f2a65d14fc3755b556f959ec2d4e` unchanged.
+
+The rejected combined candidate is frozen as tree
+`c28a6f1557a2544d7c4521d77b39732b62f88fe4`; its canonical 21-path inventory has
+SHA-256 `254b972405857d4e1589a60e3bef1b2b96dd1f0038c6f289f69757f8ac507d77`.
+It is superseded provenance only. No fourth patch, transplant, or production migration is
+authorized under that rejected responsibility boundary.
+
+Residual unknowns after stage one are the exact macOS/Git invocation that can preserve
+admitted authority for ordinary repositories and linked worktrees; durable registration
+and restart behavior after descriptors close; exact direct-allocation and crash-state
+readback; the complete disabled/allowlisted Git executable and path-output surface; and
+quantitative recovery, validation, and performance budgets. Any mechanism-specific claim
+about those unknowns remains non-authoritative until stage two. Hostile same-UID or
+multi-tenant isolation remains a separate future UID/sandbox feasibility and authority
+gate, not a stage-two residual or V1 promise.
+
 Pure PostgreSQL commands use a different, exact in-transaction authority. Each operation has one
 command-complete migration-owner `SECURITY DEFINER` function. PostgreSQL constructs the complete
 request JSONB from the same typed values the function consumes; runtime supplies only a
