@@ -21,6 +21,7 @@ mod project_agents;
 mod quota;
 mod role_profiles;
 mod runtime_sessions;
+mod work_items;
 #[cfg(unix)] mod socket;
 mod types;
 
@@ -41,6 +42,11 @@ pub use self::{
 		RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionProfileSnapshot,
 		RuntimeSessionRejection, StoredRuntimeSession,
 	},
+	work_items::{
+		AcceptWorkItem, CreateWorkItem, StoredWorkItem, UpdateWorkItem, WorkItemCommandEffect,
+		WorkItemCommandOutcome, WorkItemReadinessBlocker, WorkItemReadinessBlockerKind,
+		WorkItemRejection, WorkItemRelations,
+	},
 	types::{
 		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
 		HypotheticalFallbackFact, LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState,
@@ -56,7 +62,10 @@ pub use decodex_core::{
 	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
-	ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity, ReviewCadence,
+	ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity, ReviewCadence, WorkItem,
+	WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode,
+	WorkItemObjectiveRef, WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
+	WorkItemTimestamp,
 };
 pub use quota::parse_quota_timestamp_rfc3339;
 

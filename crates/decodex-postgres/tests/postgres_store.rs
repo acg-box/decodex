@@ -7,6 +7,9 @@ mod role_profiles;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/runtime_sessions.rs"]
 mod runtime_sessions;
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/work_items.rs"]
+mod work_items;
 
 use std::{
 	collections::{BTreeMap, HashSet},

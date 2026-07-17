@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from enum import Enum
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import select
 import shutil
@@ -52,6 +54,8 @@ RUNTIME_SESSION_FENCE_DATABASE = "decodex_xy1337_fence"
 RUNTIME_SESSION_CRASH_DATABASE = "decodex_xy1337_crash"
 RUNTIME_SESSION_RESTORE_SOURCE_DATABASE = "decodex_xy1337_restore_source"
 RUNTIME_SESSION_RESTORE_DATABASE = "decodex_xy1337_restore"
+WORK_ITEM_DATABASE = "decodex_xy1343_work_items"
+WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -117,6 +121,11 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
 	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+	"decodex.create_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.update_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,decodex.work_item_state,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -156,6 +165,11 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_runtime_session_command_owner()",
 	"decodex.forbid_runtime_snapshot_mutation()",
 	"decodex.enforce_runtime_session_event_namespace()",
+	"decodex.enforce_work_item_state()",
+	"decodex.enforce_work_item_command_owner()",
+	"decodex.forbid_work_item_acceptance_mutation()",
+	"decodex.enforce_work_item_acceptance_coherence()",
+	"decodex.enforce_work_item_event_namespace()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -182,6 +196,10 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.quota_window_class",
 	"decodex.observation_confidence",
 	"decodex.role_profile_role",
+	"decodex.work_item_priority",
+	"decodex.work_item_state",
+	"decodex.work_item_edge_kind",
+	"decodex.work_item_blocker_kind",
 )
 
 
@@ -758,6 +776,248 @@ def run_runtime_session_test(test: str, env: dict[str, str]) -> str:
 	)
 
 
+def run_work_item_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"work_items::{test}", "--exact",
+		],
+		env,
+	)
+
+
+def rust_digest_constant(name: str) -> str:
+	authority = (
+		REPO_ROOT / "crates/decodex-postgres/src/authority.rs"
+	).read_text(encoding="utf-8")
+	match = re.search(
+		rf"const {re.escape(name)}: \[u8; 32\] = \[(.*?)\];",
+		authority,
+		flags=re.DOTALL,
+	)
+	if match is None:
+		raise TestFailure(f"missing Rust digest constant {name}")
+	values = re.findall(r"0x([0-9a-fA-F]{2})", match.group(1))
+	if len(values) != 32:
+		raise TestFailure(f"invalid Rust digest constant {name}")
+	return "".join(value.lower() for value in values)
+
+
+def load_semantic_manifest(path: Path) -> dict[str, str]:
+	document = json.loads(path.read_text(encoding="utf-8"))
+	if set(document) != {"schema", "authority"} or not all(
+		isinstance(document[key], str) for key in ("schema", "authority")
+	):
+		raise TestFailure(f"invalid semantic manifest at {path}")
+	for component in ("schema", "authority"):
+		rows = json.loads(document[component])
+		if not isinstance(rows, list):
+			raise TestFailure(f"invalid {component} row manifest at {path}")
+	return document
+
+
+def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
+	before_rows = json.loads(before)
+	after_rows = json.loads(after)
+	if not isinstance(before_rows, list) or not isinstance(after_rows, list):
+		raise TestFailure("semantic manifest component is not a row array")
+	encode = lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"))
+	before_counter = Counter(encode(row) for row in before_rows)
+	after_counter = Counter(encode(row) for row in after_rows)
+	return {
+		"before_only": [
+			json.loads(row)
+			for row, count in sorted((before_counter - after_counter).items())
+			for _ in range(count)
+		],
+		"after_only": [
+			json.loads(row)
+			for row, count in sorted((after_counter - before_counter).items())
+			for _ in range(count)
+		],
+	}
+
+
+def manifest_diagnostics(
+	checkpoints: dict[str, dict[str, str] | None],
+) -> tuple[dict[str, object], list[str]]:
+	shipped_expected = {
+		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+	}
+	actual = {
+		checkpoint: None if manifest is None else {
+			component: hashlib.sha256(value.encode("utf-8")).hexdigest()
+			for component, value in manifest.items()
+		}
+		for checkpoint, manifest in checkpoints.items()
+	}
+	missing_checkpoints = [
+		checkpoint for checkpoint, manifest in checkpoints.items() if manifest is None
+	]
+	component_results: dict[str, object] = {}
+	manifest_failures = [
+		f"missing semantic manifest checkpoint: {checkpoint}"
+		for checkpoint in missing_checkpoints
+	]
+	for component in ("schema", "authority"):
+		matches_shipped = {
+			checkpoint: None if manifest is None else manifest[component] == shipped_expected[component]
+			for checkpoint, manifest in actual.items()
+		}
+		available_values = [
+			manifest[component] for manifest in actual.values() if manifest is not None
+		]
+		available_equal = len(set(available_values)) <= 1
+		checkpoints_equal = (
+			len(available_values) == len(checkpoints)
+			and available_equal
+		)
+		component_results[component] = {
+			"matches_shipped": matches_shipped,
+			"checkpoints_equal": checkpoints_equal,
+		}
+		for checkpoint, matches in matches_shipped.items():
+			if matches is False:
+				manifest_failures.append(
+					f"{checkpoint} {component} digest differs from the shipped singleton"
+				)
+		if len(available_values) > 1 and not available_equal:
+			manifest_failures.append(
+				f"{component} manifest changed across available checkpoints"
+			)
+	diagnostics: dict[str, object] = {
+		"shipped_expected": shipped_expected,
+		"actual": actual,
+		"missing_checkpoints": missing_checkpoints,
+		"component_results": component_results,
+		"semantic_row_diffs": {},
+	}
+	diffs = diagnostics["semantic_row_diffs"]
+	assert isinstance(diffs, dict)
+	for comparison, before_name, after_name in (
+		("baseline_to_post_attempt", "baseline", "post_attempt"),
+		("post_attempt_to_restored", "post_attempt", "restored"),
+		("baseline_to_restored", "baseline", "restored"),
+	):
+		diffs[comparison] = {}
+		for component in ("schema", "authority"):
+			before = checkpoints[before_name]
+			after = checkpoints[after_name]
+			if before is None or after is None:
+				diffs[comparison][component] = {
+					"unavailable": [
+						name for name, manifest in ((before_name, before), (after_name, after))
+						if manifest is None
+					]
+				}
+			else:
+				diffs[comparison][component] = semantic_row_diff(
+					before[component], after[component]
+				)
+	return diagnostics, manifest_failures
+
+
+def run_work_item_focused_contracts(
+	socket_dir: Path, port: int, work: Path, env: dict[str, str]
+) -> str:
+	create_database(WORK_ITEM_DATABASE, env)
+	set_contract_urls(env, socket_dir, port, WORK_ITEM_DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(WORK_ITEM_DATABASE, RUNTIME_ROLE, env)
+	baseline_path = work / "xy1343-baseline-manifest.json"
+	post_attempt_path = work / "xy1343-post-attempt-manifest.json"
+	restored_path = work / "xy1343-restored-manifest.json"
+	checkpoints: dict[str, dict[str, str] | None] = {
+		"baseline": None,
+		"post_attempt": None,
+		"restored": None,
+	}
+	stage_failures: list[str] = []
+	command_output = ""
+	source_behavior_error: Exception | None = None
+	restore_output = ""
+
+	try:
+		dump_schema_manifest(baseline_path, env)
+		checkpoints["baseline"] = load_semantic_manifest(baseline_path)
+	except Exception as error:
+		stage_failures.append(f"baseline manifest capture failed:\n{error}")
+
+	if checkpoints["baseline"] is not None:
+		try:
+			command_output = run_work_item_test("postgres_exact_work_item_commands", env)
+		except Exception as error:
+			source_behavior_error = error
+	else:
+		source_behavior_error = TestFailure(
+			"source behavior was not run because the baseline manifest is unavailable"
+		)
+
+	try:
+		dump_schema_manifest(post_attempt_path, env)
+		checkpoints["post_attempt"] = load_semantic_manifest(post_attempt_path)
+	except Exception as error:
+		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
+
+	dump_path = work / "xy1343-work-items.dump"
+	dump_succeeded = False
+	restore_database_created = False
+	try:
+		run(["pg_dump", "-Fc", "-f", str(dump_path), WORK_ITEM_DATABASE], env)
+		dump_succeeded = True
+	except Exception as error:
+		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
+	if dump_succeeded:
+		try:
+			create_database(WORK_ITEM_RESTORE_DATABASE, env)
+			restore_database_created = True
+		except Exception as error:
+			stage_failures.append(f"restore database creation failed:\n{error}")
+	if restore_database_created:
+		try:
+			run(
+				[
+					"pg_restore", "--exit-on-error", "-d", WORK_ITEM_RESTORE_DATABASE,
+					str(dump_path),
+				],
+				env,
+			)
+		except Exception as error:
+			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
+		set_contract_urls(env, socket_dir, port, WORK_ITEM_RESTORE_DATABASE, RUNTIME_ROLE)
+		try:
+			dump_schema_manifest(restored_path, env)
+			checkpoints["restored"] = load_semantic_manifest(restored_path)
+		except Exception as error:
+			stage_failures.append(f"restored manifest capture failed:\n{error}")
+
+	diagnostics, manifest_failures = manifest_diagnostics(checkpoints)
+	print(
+		"XY-1343 V11 semantic manifest diagnostics:\n"
+		+ json.dumps(diagnostics, indent=2, sort_keys=True),
+		file=sys.stderr,
+		flush=True,
+	)
+
+	failures = list(stage_failures)
+	if source_behavior_error is not None:
+		failures.append(f"source verifier/behavior failed:\n{source_behavior_error}")
+	failures.extend(manifest_failures)
+	if not failures:
+		try:
+			restore_output = run_work_item_test("postgres_exact_work_item_restore", env)
+		except Exception as error:
+			failures.append(f"restored verifier/behavior failed:\n{error}")
+	if failures:
+		raise TestFailure(
+			"XY-1343 focused evidence finalized with failures:\n\n"
+			+ "\n\n".join(failures)
+		)
+	return "\n".join((migration_output, command_output, restore_output))
+
+
 def run_runtime_session_crash_recovery(
 	data_dir: Path,
 	log_path: Path,
@@ -988,6 +1248,9 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"decodex.policies, decodex.policy_revisions TO {role}; "
 		f"GRANT SELECT ON TABLE decodex.programs, decodex.objectives, "
 		f"decodex.objective_completion_evidence TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.work_items, decodex.work_item_objectives, "
+		f"decodex.work_item_edges, decodex.work_item_readiness_blockers, "
+		f"decodex.work_item_acceptances TO {role}; "
 		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
@@ -1044,7 +1307,27 @@ max_entry_bytes = 4096
 
 
 def main() -> int:
-	work = Path(tempfile.mkdtemp(prefix="decodex-xy1267-")).resolve()
+	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
+	if sys.argv[1:] and not focused_work_items:
+		raise TestFailure("usage: postgres_store_test.py [--focus-work-items]")
+	temp_root_value = os.environ.get("DECODEX_TEST_TEMP_ROOT")
+	temp_root = None
+	if temp_root_value:
+		requested_root = Path(temp_root_value)
+		if not requested_root.is_absolute():
+			raise TestFailure("DECODEX_TEST_TEMP_ROOT must be absolute")
+		for component in (requested_root, *requested_root.parents):
+			if component.is_symlink():
+				raise TestFailure("DECODEX_TEST_TEMP_ROOT must not contain a symlink")
+		if not requested_root.is_dir():
+			raise TestFailure("DECODEX_TEST_TEMP_ROOT must be a real existing directory")
+		temp_root = requested_root.resolve(strict=True)
+	work = Path(
+		tempfile.mkdtemp(
+			prefix="decodex-xy1343-" if focused_work_items else "decodex-xy1267-",
+			dir=temp_root,
+		)
+	).resolve()
 	data_dir = work / "postgres"
 	socket_dir = work / "socket"
 	log_path = work / "postgres.log"
@@ -1122,6 +1405,11 @@ def main() -> int:
 			elif role == UNSAFE_ROLES["superuser"]:
 				attributes += " SUPERUSER"
 			psql("postgres", f"CREATE ROLE {role}{attributes}", env)
+
+		if focused_work_items:
+			output = run_work_item_focused_contracts(socket_dir, port, work, env)
+			print(output)
+			return 0
 
 		create_database(DATABASE, env)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
@@ -2514,6 +2802,7 @@ def main() -> int:
 		print("\n".join(authority_drift_outputs))
 		return 0
 	finally:
+		primary_failure = sys.exc_info()[0] is not None
 		stop_error: Exception | None = None
 		stop_failures: list[str] = []
 		status = postgres_status(data_dir, env) if data_dir.exists() else ClusterStatus.STOPPED
@@ -2548,9 +2837,21 @@ def main() -> int:
 					f"PostgreSQL shutdown recovered after an error:{stop_diagnostics}",
 					file=sys.stderr,
 				)
-			shutil.rmtree(work, ignore_errors=True)
+			try:
+				shutil.rmtree(work)
+			except Exception as error:
+				cleanup_error = TestFailure(
+					f"failed to remove stopped task-owned PostgreSQL directory {work}: {error}"
+				)
+				if primary_failure:
+					print(cleanup_error, file=sys.stderr)
+				else:
+					raise cleanup_error
 		elif stop_error is not None:
-			raise stop_error
+			if primary_failure:
+				print(stop_error, file=sys.stderr)
+			else:
+				raise stop_error
 
 
 if __name__ == "__main__":

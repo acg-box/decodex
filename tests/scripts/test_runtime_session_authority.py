@@ -22,13 +22,13 @@ class RuntimeSessionAuthorityTests(unittest.TestCase):
         cls.authority = AUTHORITY.read_text(encoding="utf-8")
         cls.migrations = MIGRATIONS.read_text(encoding="utf-8")
 
-    def test_v10_is_the_one_next_forward_zero_state_cutover(self) -> None:
+    def test_v10_remains_the_zero_state_predecessor_to_v11(self) -> None:
         versions = sorted(
             int(path.name.split("__", 1)[0][1:])
             for path in MIGRATION.parent.glob("V*.sql")
         )
-        self.assertEqual(versions, list(range(1, 11)))
-        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 10", self.migrations)
+        self.assertEqual(versions, list(range(1, 12)))
+        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 11", self.migrations)
         self.assertIn("IN ACCESS EXCLUSIVE MODE", self.migration)
         self.assertIn("runtime_session_v10_zero_state", self.migration)
         self.assertIn("operation IN ('create_runtime_session', 'transition_runtime_session')", self.migration)
