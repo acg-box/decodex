@@ -358,9 +358,8 @@ async fn postgres_exact_role_profile_concurrency() -> Result<(), Box<dyn std::er
 	while let Some(result) = updates.join_next().await {
 		match result?? {
 			RoleProfileCommandOutcome::Success(_) => update_success += 1,
-			RoleProfileCommandOutcome::Rejected(RoleProfileRejection::StaleRevision) => {
-				update_stale += 1
-			},
+			RoleProfileCommandOutcome::Rejected(RoleProfileRejection::StaleRevision) =>
+				update_stale += 1,
 			other => panic!("unexpected concurrent update outcome: {other:?}"),
 		}
 	}
@@ -383,8 +382,7 @@ async fn postgres_exact_role_profile_concurrency() -> Result<(), Box<dyn std::er
 #[ignore = "requires an isolated PostgreSQL 18 V9 RoleProfile rollback database"]
 async fn postgres_exact_role_profile_atomic_rollback() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store =
-		PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("rollback-bootstrap", &bootstrap()).await?,
 		RoleProfileCommandOutcome::Success(_)
@@ -442,10 +440,7 @@ async fn postgres_exact_role_profile_atomic_rollback() -> Result<(), Box<dyn std
 		));
 		assert_eq!(role_profile_state(&admin).await?, before, "rollback at {boundary}");
 		admin
-			.execute(
-				"DELETE FROM public.xy1346_rollback_schedule WHERE boundary=$1",
-				&[&boundary],
-			)
+			.execute("DELETE FROM public.xy1346_rollback_schedule WHERE boundary=$1", &[&boundary])
 			.await?;
 		let RoleProfileCommandOutcome::Success(revision) =
 			store.update_role_profile(&key, role, 1, &configuration).await?
@@ -470,8 +465,7 @@ async fn postgres_exact_role_profile_atomic_rollback() -> Result<(), Box<dyn std
 #[ignore = "requires an isolated PostgreSQL 18 V9 RoleProfile retry database"]
 async fn postgres_exact_role_profile_retry_convergence() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store =
-		PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("retry-bootstrap", &bootstrap()).await?,
 		RoleProfileCommandOutcome::Success(_)
@@ -526,9 +520,7 @@ async fn postgres_exact_role_profile_retry_convergence() -> Result<(), Box<dyn s
 	);
 
 	admin
-		.batch_execute(
-			"BEGIN; SELECT role FROM decodex.role_profiles WHERE role='lead' FOR UPDATE",
-		)
+		.batch_execute("BEGIN; SELECT role FROM decodex.role_profiles WHERE role='lead' FOR UPDATE")
 		.await?;
 	let blocker_pid: i32 = admin.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
 	let deadlock_store = store.clone();
