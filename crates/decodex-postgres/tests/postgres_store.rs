@@ -1,6 +1,8 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
 #[path = "postgres_store/quota.rs"] mod quota;
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/role_profiles.rs"] mod role_profiles;
 
 use std::{
 	collections::{BTreeMap, HashSet},
@@ -98,6 +100,8 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.create_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog._text,pg_catalog._text,pg_catalog.int8,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
 	"decodex.transition_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.objective_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
 	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
+	"decodex.bootstrap_role_profiles_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
@@ -125,6 +129,14 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_objective_state()",
 	"decodex.forbid_objective_evidence_mutation()",
 	"decodex.enforce_objective_completion_coherence()",
+	"decodex.enforce_exact_receipt_completion()",
+	"decodex.forbid_exact_receipt_rewrite()",
+	"decodex.forbid_exact_receipt_truncate()",
+	"decodex.enforce_complete_role_profile_set()",
+	"decodex.forbid_role_profile_identity_rewrite()",
+	"decodex.forbid_role_profile_revision_mutation()",
+	"decodex.forbid_role_profile_truncate()",
+	"decodex.enforce_role_profile_event_namespace()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(

@@ -161,10 +161,19 @@ failpoint, and incomplete-row probe present in the candidate, with only command-
 runtime-executable. Effect evidence decodes the stored response bytes and joins their effect envelope
 to the returned domain row and actual canonical activity/outbox identities.
 
-This authority is implemented vertically: XY-1345 records and proves the protocol; XY-1346 owns
-the separate relation and RoleProfile bootstrap/update in V9; re-bounded XY-1337 owns authoritative
+This authority is implemented vertically: XY-1345 records and proves the protocol; XY-1346
+implements the separate relation and RoleProfile bootstrap/update in V9; re-bounded XY-1337 owns authoritative
 RuntimeSession snapshot creation/transition in V10. Candidate 3 is superseded code and may supply
 only independently re-derived invariants and hostile-test ideas.
+
+V9 persists exactly the `advisor`, `lead`, `task`, and `reviewer` identities in
+`role_profiles`, keeps every configuration in immutable `role_profile_revisions`, and advances one
+current-revision pointer per role. `bootstrap_role_profiles_exact` accepts four fixed
+advisor/lead/task/reviewer scalar groups and creates all four revision-one profiles atomically.
+`update_role_profile_exact` accepts one typed role plus an expected revision, appends exactly one
+immutable revision, and advances only that role's pointer. Both functions return and retain
+PostgreSQL-built response bytes whose effects are assembled from the returned profile rows and the
+actual canonical activity/outbox identities.
 
 ## Conversation, context, and communication
 
