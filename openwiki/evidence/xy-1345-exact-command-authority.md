@@ -12,7 +12,7 @@ The corrected exact-command architecture passed. No acceptance threshold was wea
 
 - PostgreSQL: `postgres (PostgreSQL) 18.4` (`psql`, `pg_dump`, and `pg_restore` also 18.4).
 - Harness: `scripts/vnext/exact_command_prototype.py`.
-- Harness SHA-256: `0b5ddc002affedd2988ef9367db1c3ca64e7db8469e38e865efbac659331e939`.
+- Harness SHA-256: `bf56eee949ed5450b07a296fbb761cc4ffd9afc1ec8cc2a2057b96749daa7e68`.
 - Embedded schema/fixture SQL SHA-256:
   `47e4be2cb1f7f9b20616d3ef86cf34b817e90ddc7431ceeea65017531712bf9e`.
 - Exact transition function source SHA-256:
@@ -20,9 +20,9 @@ The corrected exact-command architecture passed. No acceptance threshold was wea
 - Closed eleven-function `pg_get_functiondef` digest-manifest SHA-256:
   `d7b27ed3e42e7ac5a376afd8c3fd19aff039bcbed43d52ac17996b6d7efba2a5`.
 - Populated receipts/RuntimeSessions/activity/outbox snapshot SHA-256:
-  `7ba6bf1b1a5f86a2e960d555b13069cc784b7373fecba81cfb9d31a05f7f41db`.
+  `98cd96b0cff2102dbcd31dced06998f094951d0e583cd9d34b60deaf76ea2fde`.
 - Populated completed-receipt response-byte aggregate SHA-256 for this run:
-  `d14cb64cdb38cdc3d5f302006a3632eda82837054f1fb445e83e8ddc7fbcc917`.
+  `8795c1792590a77037aaffd89e058a49e347d59b564962ed0723a1ecaef7679d`.
 - Result schema: `decodex/xy-1345-exact-command-proof/1`.
 - Result: `PASSED`.
 
@@ -64,7 +64,7 @@ not enumerate, connect to, stop, or modify any existing PostgreSQL service.
 
 | Schedule or invariant | Observed result |
 | --- | --- |
-| Same key and same envelope in two sessions | Second session waited 0.663 seconds and returned byte-identical stored response bytes. |
+| Same key and same envelope in two sessions | Second session waited 0.662 seconds and returned byte-identical stored response bytes. |
 | Same key and changed target state | `DX001` idempotency conflict before a second domain/activity/outbox effect. |
 | Same key and changed operation | `DX001` exact conflict. |
 | Abort after receipt, domain, activity, or outbox | Each injected `DX900` rolled back; a waiting transaction became executor; each case converged to one receipt, domain effect, activity, and outbox row. |
