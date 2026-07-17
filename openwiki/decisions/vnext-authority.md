@@ -87,6 +87,36 @@ transaction. V10 is a zero-state forward cutover, preserves the existing table i
 runtime snapshot/session DML, fences RuntimeSession audit namespaces, and does not authorize Codex
 creation, reconciliation, routing, scheduling, WorkItems, ManagedRuns, UI, or plugin readiness.
 
+XY-1284 managed-repository authority reset accepted 2026-07-17 as a two-stage
+amendment. Stage one is this decision, contract, and gate correction only. It explicitly
+supersedes the rejected combined implementation candidate frozen as tree
+`c28a6f1557a2544d7c4521d77b39732b62f88fe4` with canonical 21-path inventory SHA-256
+`254b972405857d4e1589a60e3bef1b2b96dd1f0038c6f289f69757f8ac507d77`.
+That tree remains rejected provenance, is not implementation authority, and must not be
+reused or patched into a fourth candidate under the same combined boundary. The accepted
+V11 commit `33159d0cb2da7f86748f1a380def0927970a409a` and V12 commit
+`a6bfb0aefc72f2a65d14fc3755b556f959ec2d4e` remain unchanged.
+
+V13 is reserved solely for XY-1349 managed-repository PostgreSQL authority. XY-1304
+experiment creation and positive-observation persistence move to the next available
+migration, expected V14. Migration allocation, the embedded ledger, migration authority,
+schema/digest inventory, and aggregate migration evidence remain one non-commutative
+singleton serial-writer domain; an unlanded number is not a reusable parallel reservation.
+
+The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
+repository-effect owner. Its in-process `RepositoryExecutor` is a correctness,
+determinism, and admitted-authority-continuity boundary, not isolation from malicious
+same-UID code. Project validation may supervise lifecycle, bound output and time, and
+detect mutation, but it is not hostile-code confinement. A hostile same-UID project or
+multi-tenant requirement would require a separate UID/sandbox authority plus a new
+feasibility gate; it cannot be inferred from this design.
+
+Stage two may finalize mechanism-specific managed-repository authority only after XY-1347
+has accepted bounded macOS/Git feasibility evidence and XY-1348 has accepted the pure
+transition and executor contract. Until then `/dev/fd`, descriptor-backed Git invocation,
+worktree creation and durable registration, restart reacquisition, and direct final
+allocation are hypotheses, not proven mechanisms or production authority.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the
@@ -180,3 +210,17 @@ cannot be operated reliably on the intended host, app-server cannot provide requ
 ownership/read/list/collaboration behavior, or real dogfood proves one Lead cannot keep
 decision latency within policy. Such evidence blocks or revises the owning gate; it does
 not authorize a compatibility facade or silent fallback.
+
+For the XY-1284 managed-repository boundary, the prioritized falsifiers in the
+[gate manifest](../specs/vnext-gates.md#xy-1284-managed-repository-reset-gate) are
+incorporated into this decision as decision-changing evidence. In fixed order, they are:
+an architecture that cannot preserve admitted authority or separate its distinct state
+owners; unrecoverable or ambiguous restart/effect states; a security/authority path that
+does not fail closed or cannot disable repository-controlled execution; evidence that
+cannot distinguish completion from stale, duplicate, rollback, lost, or ambiguous
+outcomes; integrity that permits unreserved, drifted, undetected, or unreconciled effects;
+and performance that cannot meet an explicit later host budget without weakening an
+earlier guarantee. An earlier class cannot be traded for success in a later class. Any
+such contradiction stops the affected replacement gate and returns to an explicit
+architecture decision; it never authorizes a fourth patch under the rejected combined
+boundary, an unreviewed stage-two mechanism, or a silent fallback.
