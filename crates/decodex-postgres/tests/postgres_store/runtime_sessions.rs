@@ -31,14 +31,18 @@ fn profiles(marker: &str) -> BootstrapRoleProfiles {
 	}
 }
 
-fn account(snapshot_id: &str, marker: &str) -> CreateRuntimeSessionAccountSnapshot {
-	CreateRuntimeSessionAccountSnapshot {
+fn account(
+	snapshot_id: &str,
+	marker: &str,
+) -> Result<CreateRuntimeSessionAccountSnapshot, StoreError> {
+	Ok(CreateRuntimeSessionAccountSnapshot {
 		account_snapshot_id: snapshot_id.into(),
-		source_account_id: AccountId::new("13000000-0000-4000-8000-000000000001").unwrap(),
+		source_account_id: AccountId::new("13000000-0000-4000-8000-000000000001")
+			.map_err(|_| StoreError::InvalidInput("invalid fixture account identity"))?,
 		display_label: format!("Account {marker}"),
 		observed_state: AccountState::Unknown,
 		source_revision: 7,
-	}
+	})
 }
 
 fn creation(
@@ -46,15 +50,16 @@ fn creation(
 	conversation_id: &ConversationId,
 	snapshot_id: &str,
 	marker: &str,
-) -> CreateRuntimeSession {
-	CreateRuntimeSession {
-		runtime_session_id: RuntimeSessionId::new(session_id).unwrap(),
+) -> Result<CreateRuntimeSession, StoreError> {
+	Ok(CreateRuntimeSession {
+		runtime_session_id: RuntimeSessionId::new(session_id)
+			.map_err(|_| StoreError::InvalidInput("invalid fixture RuntimeSession identity"))?,
 		conversation_id: conversation_id.clone(),
 		role: RoleProfileRole::Task,
-		account_snapshot: account(snapshot_id, marker),
+		account_snapshot: account(snapshot_id, marker)?,
 		codex_thread_id: Some(session_id.replacen("41000000", "44000000", 1)),
 		initial_state: RuntimeSessionState::Starting,
-	}
+	})
 }
 
 async fn stored_response(client: &Client, key: &str) -> Result<Vec<u8>, tokio_postgres::Error> {
@@ -77,48 +82,34 @@ fn success(
 	effect
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-#[ignore = "requires an isolated PostgreSQL 18 V10 RuntimeSession database"]
-async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
-	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
-	let migration_task = tokio::spawn(migration_connection);
+struct CreatedSessionFixture {
+	request: CreateRuntimeSession,
+	effect: RuntimeSessionCommandEffect,
+}
 
-	assert!(matches!(
-		store.bootstrap_role_profiles("session-profiles", &profiles("v1")).await?,
-		RoleProfileCommandOutcome::Success(_)
-	));
-	let conversation_id = ConversationId::new("40000000-0000-4000-8000-000000000001")?;
-	store
-		.create_conversation(
-			&CommandIdentity::new("session-conversation", b"session-conversation-v1")?,
-			&CreateConversation {
-				conversation_id: conversation_id.clone(),
-				title: "Exact RuntimeSession fixture".into(),
-			},
-		)
-		.await?;
-
+async fn assert_creation_command(
+	store: &PostgresStore,
+	client: &Client,
+	conversation_id: &ConversationId,
+) -> Result<CreatedSessionFixture, Box<dyn std::error::Error>> {
 	let create = creation(
 		"41000000-0000-4000-8000-000000000001",
-		&conversation_id,
+		conversation_id,
 		"43000000-0000-4000-8000-000000000001",
 		"one",
-	);
+	)?;
 	let created = success(store.create_runtime_session("session-create", &create).await?);
 	assert_eq!(created.prior_state, None);
 	assert_eq!(created.prior_revision, None);
 	assert_eq!(created.new_state, RuntimeSessionState::Starting);
 	assert_eq!(created.new_revision, 1);
 	assert_eq!(created.runtime_session.last_known_turn_id, None);
-	let create_bytes = stored_response(&migration_client, "session-create").await?;
+	let create_bytes = stored_response(client, "session-create").await?;
 	assert_eq!(
 		store.create_runtime_session("session-create", &create).await?,
 		RuntimeSessionCommandOutcome::Success(created.clone()),
 	);
-	assert_eq!(stored_response(&migration_client, "session-create").await?, create_bytes);
+	assert_eq!(stored_response(client, "session-create").await?, create_bytes);
 
 	let mut substitutions = Vec::new();
 	let mut changed = create.clone();
@@ -163,18 +154,18 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 		store.create_runtime_session("session-duplicate", &create).await?,
 		RuntimeSessionCommandOutcome::Rejected(RuntimeSessionRejection::DuplicateTarget),
 	);
-	let duplicate_bytes = stored_response(&migration_client, "session-duplicate").await?;
+	let duplicate_bytes = stored_response(client, "session-duplicate").await?;
 	assert_eq!(
 		store.create_runtime_session("session-duplicate", &create).await?,
 		RuntimeSessionCommandOutcome::Rejected(RuntimeSessionRejection::DuplicateTarget),
 	);
-	assert_eq!(stored_response(&migration_client, "session-duplicate").await?, duplicate_bytes);
+	assert_eq!(stored_response(client, "session-duplicate").await?, duplicate_bytes);
 	let mut conflicting_account = creation(
 		"41000000-0000-4000-8000-000000000006",
-		&conversation_id,
+		conversation_id,
 		"43000000-0000-4000-8000-000000000001",
 		"conflict",
-	);
+	)?;
 	conflicting_account.codex_thread_id = None;
 	assert_eq!(
 		store.create_runtime_session("session-account-conflict", &conflicting_account).await?,
@@ -186,12 +177,19 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 		&ConversationId::new("40000000-0000-4000-8000-000000000099")?,
 		"43000000-0000-4000-8000-000000000003",
 		"missing",
-	);
+	)?;
 	assert_eq!(
 		store.create_runtime_session("session-missing", &missing).await?,
 		RuntimeSessionCommandOutcome::Rejected(RuntimeSessionRejection::MissingTarget),
 	);
+	Ok(CreatedSessionFixture { request: create, effect: created })
+}
 
+async fn assert_transition_command(
+	store: &PostgresStore,
+	client: &Client,
+	create: &CreateRuntimeSession,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let transitioned = success(
 		store
 			.transition_runtime_session(
@@ -205,7 +203,7 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 	assert_eq!(transitioned.prior_state, Some(RuntimeSessionState::Starting));
 	assert_eq!(transitioned.prior_revision, Some(1));
 	assert_eq!(transitioned.new_revision, 2);
-	let transition_bytes = stored_response(&migration_client, "session-active").await?;
+	let transition_bytes = stored_response(client, "session-active").await?;
 	assert_eq!(
 		store
 			.transition_runtime_session(
@@ -217,7 +215,7 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 			.await?,
 		RuntimeSessionCommandOutcome::Success(transitioned),
 	);
-	assert_eq!(stored_response(&migration_client, "session-active").await?, transition_bytes);
+	assert_eq!(stored_response(client, "session-active").await?, transition_bytes);
 	for (session, revision, state) in [
 		(
 			RuntimeSessionId::new("41000000-0000-4000-8000-000000000099")?,
@@ -265,28 +263,32 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 			.await?,
 		RuntimeSessionCommandOutcome::Rejected(RuntimeSessionRejection::MissingTarget),
 	);
+	Ok(())
+}
 
+async fn assert_profile_snapshot_race(
+	store: &PostgresStore,
+	client: &Client,
+	conversation_id: &ConversationId,
+	created: &RuntimeSessionCommandEffect,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let before_update = created.runtime_session.profile_snapshot.clone();
 	assert!(matches!(
 		store.update_role_profile("task-v2", RoleProfileRole::Task, 1, &profile("task-v2")).await?,
 		RoleProfileCommandOutcome::Success(_)
 	));
+	let after_update_request = creation(
+		"41000000-0000-4000-8000-000000000004",
+		conversation_id,
+		"43000000-0000-4000-8000-000000000004",
+		"four",
+	)?;
 	let after_update = success(
-		store
-			.create_runtime_session(
-				"session-after-profile-update",
-				&creation(
-					"41000000-0000-4000-8000-000000000004",
-					&conversation_id,
-					"43000000-0000-4000-8000-000000000004",
-					"four",
-				),
-			)
-			.await?,
+		store.create_runtime_session("session-after-profile-update", &after_update_request).await?,
 	);
 	assert_eq!(before_update.source_revision, 1);
 	assert_eq!(after_update.runtime_session.profile_snapshot.source_revision, 2);
-	let preserved: bool = migration_client
+	let preserved: bool = client
 		.query_one(
 			"SELECT model=$2 AND instructions=$3 AND source_revision=1 \
 			 FROM decodex.profile_snapshots WHERE profile_snapshot_id=$1::text::uuid",
@@ -311,7 +313,7 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 				&conversation_id,
 				&format!("43000000-0000-4000-8000-{identity:012x}"),
 				&format!("profile-race-{index}"),
-			);
+			)?;
 			store.create_runtime_session(&format!("session-profile-race-{index}"), &create).await
 		});
 	}
@@ -337,7 +339,12 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 		}
 	}
 	assert!(matches!(profile_update.await??, RoleProfileCommandOutcome::Success(_)));
+	Ok(())
+}
 
+async fn assert_runtime_authority_denials(
+	runtime: &tokio_postgres::Config,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let (runtime_client, runtime_connection) = runtime.connect(NoTls).await?;
 	let runtime_task = tokio::spawn(runtime_connection);
 	for statement in [
@@ -357,14 +364,20 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 	}
 	drop(runtime_client);
 	runtime_task.await??;
+	Ok(())
+}
 
+async fn assert_duplicate_creation_race(
+	store: &PostgresStore,
+	conversation_id: &ConversationId,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let mut duplicate_race = JoinSet::new();
 	let contested = creation(
 		"41000000-0000-4000-8000-000000000005",
-		&conversation_id,
+		conversation_id,
 		"43000000-0000-4000-8000-000000000005",
 		"five",
-	);
+	)?;
 	for index in 0..16 {
 		let store = store.clone();
 		let contested = contested.clone();
@@ -383,6 +396,39 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 		}
 	}
 	assert_eq!((winners, duplicates), (1, 15));
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[ignore = "requires an isolated PostgreSQL 18 V10 RuntimeSession database"]
+async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::error::Error>> {
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
+	let migration_task = tokio::spawn(migration_connection);
+
+	assert!(matches!(
+		store.bootstrap_role_profiles("session-profiles", &profiles("v1")).await?,
+		RoleProfileCommandOutcome::Success(_)
+	));
+	let conversation_id = ConversationId::new("40000000-0000-4000-8000-000000000001")?;
+	store
+		.create_conversation(
+			&CommandIdentity::new("session-conversation", b"session-conversation-v1")?,
+			&CreateConversation {
+				conversation_id: conversation_id.clone(),
+				title: "Exact RuntimeSession fixture".into(),
+			},
+		)
+		.await?;
+
+	let created = assert_creation_command(&store, &migration_client, &conversation_id).await?;
+	assert_transition_command(&store, &migration_client, &created.request).await?;
+	assert_profile_snapshot_race(&store, &migration_client, &conversation_id, &created.effect)
+		.await?;
+	assert_runtime_authority_denials(&runtime).await?;
+	assert_duplicate_creation_race(&store, &conversation_id).await?;
 
 	drop(migration_client);
 	migration_task.await??;
@@ -469,7 +515,7 @@ async fn postgres_exact_runtime_session_atomic_rollback() -> Result<(), Box<dyn 
 			&conversation_id,
 			&format!("43000000-0000-4000-8000-{identity:012x}"),
 			boundary,
-		);
+		)?;
 		admin
 			.execute(
 				"INSERT INTO public.xy1337_rollback_schedule(boundary) VALUES ($1)",
@@ -551,7 +597,7 @@ async fn postgres_exact_runtime_session_retry_convergence() -> Result<(), Box<dy
 		&conversation_id,
 		"43000000-0000-4000-8000-000000000060",
 		"retry",
-	);
+	)?;
 	assert!(matches!(
 		store.create_runtime_session("runtime-serialization-retry", &create).await?,
 		RuntimeSessionCommandOutcome::Success(_)
@@ -767,7 +813,7 @@ async fn postgres_exact_runtime_session_crash_recovery() -> Result<(), Box<dyn s
 		&conversation_id,
 		"43000000-0000-4000-8000-000000000070",
 		"crash",
-	);
+	)?;
 	let (blocker, blocker_connection) = migration.clone().connect(NoTls).await?;
 	let blocker_task = tokio::spawn(blocker_connection);
 	blocker
