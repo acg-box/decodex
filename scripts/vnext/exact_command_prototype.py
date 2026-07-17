@@ -1197,7 +1197,6 @@ def main() -> int:
 	harness = Harness(root)
 	report: dict[str, object] | None = None
 	error: Exception | None = None
-	cluster_stopped = not harness.started
 	try:
 		harness.start()
 		report = build_report(harness)
