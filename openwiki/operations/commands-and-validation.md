@@ -114,6 +114,21 @@ without changing lifecycle or revision; completion remains unowned. The focused 
 covers exact replay and concurrent convergence, cycle rollback, readiness blocker persistence,
 guard inertness, acceptance immutability and non-completion, clean V1-to-V11 bootstrap, and populated
 dump/restore.
+
+V12 adds only inert blocked/waiting ManagedRuns and one safety consumer transaction. The closed
+inventory is 107 functions, 84 non-internal triggers, and 24 security definers. Runtime receives
+SELECT-only access to six ManagedRun/effect/readback relations and EXECUTE on one command-complete
+safety entrypoint; it has no ManagedRun creation, acquisition, activation, progress, completion,
+assignment, submitted-receipt production, or effect-lineage writer authority. Task and Reviewer
+assignments bind exact RuntimeSessions and cannot encode Advisor, Lead, or durable Agent identity.
+The barrier has only fail-closed `guarded` and `closed` states. The focused V12 command
+`cargo make test-vnext-postgres-managed-runs` covers Project/WorkItem/RuntimeSession FK scope,
+state algebra, unknown-turn divergence with an active turn retained, current/stale submitted
+receipts, explicit inconclusive input, rollback/retry, durable cross-key input replay, exactly-once
+barrier closure, exact revisioned restart readback, runtime-role Turn and HistoryItem writes through
+the V12 forward-repaired invoker guards, fail-closed non-`READ COMMITTED` hierarchy DML, and the
+receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1-to-V12 bootstrap
+and populated restore.
 The final schema produced by every migration version must be a PostgreSQL 18 dump/restore fixed
 point so the one exact full-manifest digest remains identical before and after logical restore.
 
@@ -133,8 +148,8 @@ active implementation uses targeted Rust compilation, parser/unit contracts, and
 syntax checks. See
 [the durable evidence page](../evidence/xy-1345-exact-command-authority.md).
 
-The PostgreSQL integration harness bootstraps the shipped V1-V11 migration history, from the `V1`
-foundation through the forward-only `V11` WorkItem authority, and verifies
+The PostgreSQL integration harness bootstraps the shipped V1-V12 migration history, from the `V1`
+foundation through the forward-only `V12` ManagedRun safety authority, and verifies
 transaction/idempotency/revision behavior, Conversation-lock serialization with append-only history-derived
 positions, snapshot high-water, and immutable item-version sequence with no writable stored next-position counter, page-only opaque
 issued-cursor pagination with never-issued/expired/cross-Conversation/edited-chain rejection,

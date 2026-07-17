@@ -7,6 +7,7 @@ mod cache;
 mod config;
 mod conversation;
 mod identity;
+mod managed_run;
 #[cfg(unix)] mod path_unix;
 mod paths;
 mod policy;
@@ -50,6 +51,11 @@ pub use self::{
 		contains_credential_material, is_canonical_media_type, is_credential_metadata_key,
 	},
 	identity::ServerIdentity,
+	managed_run::{
+		EffectId, ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
+		ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
+		ManagedRunState, ManagedRunWaitReason, SafetyObservationId, SubmittedTurnReceiptId,
+	},
 	paths::{DecodexPaths, DecodexRoot, PathError},
 	policy::{
 		AcceptedPolicyRevision, MAX_POLICY_PROVENANCE_BYTES, MAX_POLICY_SNAPSHOT_FIELDS,

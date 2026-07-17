@@ -16,9 +16,10 @@ const ROLE_PROFILE_MIGRATION: &str = include_str!("../migrations/V9__exact_role_
 const RUNTIME_SESSION_MIGRATION: &str =
 	include_str!("../migrations/V10__runtime_session_snapshots.sql");
 const WORK_ITEM_MIGRATION: &str = include_str!("../migrations/V11__work_item_authority.sql");
+const MANAGED_RUN_MIGRATION: &str = include_str!("../migrations/V12__managed_run_safety.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 98] = [
+const FUNCTION_CONTRACTS: [FunctionContract; 107] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -813,8 +814,65 @@ const FUNCTION_CONTRACTS: [FunctionContract; 98] = [
 		"plpgsql",
 		"v",
 	),
+	trigger_contract(
+		"enforce_managed_run_command_owner",
+		"decodex.enforce_managed_run_command_owner()",
+		"enforce_managed_run_command_owner()",
+	),
+	trigger_contract(
+		"forbid_managed_run_immutable_mutation",
+		"decodex.forbid_managed_run_immutable_mutation()",
+		"forbid_managed_run_immutable_mutation()",
+	),
+	trigger_contract(
+		"enforce_managed_run_assignment_scope",
+		"decodex.enforce_managed_run_assignment_scope()",
+		"enforce_managed_run_assignment_scope()",
+	),
+	trigger_contract(
+		"enforce_managed_run_state",
+		"decodex.enforce_managed_run_state()",
+		"enforce_managed_run_state()",
+	),
+	trigger_contract(
+		"enforce_effect_barrier_state",
+		"decodex.enforce_effect_barrier_state()",
+		"enforce_effect_barrier_state()",
+	),
+	trigger_contract(
+		"enforce_managed_run_event_namespace",
+		"decodex.enforce_managed_run_event_namespace()",
+		"enforce_managed_run_event_namespace()",
+	),
+	exact_function_contract(
+		"reserve_exact_managed_run_safety_command",
+		"decodex.reserve_exact_managed_run_safety_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"reserve_exact_managed_run_safety_command(\n\tp_protocol text, p_idempotency_key text, p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_request jsonb",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"complete_exact_managed_run_safety_rejection",
+		"decodex.complete_exact_managed_run_safety_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"complete_exact_managed_run_safety_rejection(\n\tp_protocol text, p_idempotency_key text, p_reason text, p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_reason text, p_request jsonb",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"apply_managed_run_safety_input_exact",
+		"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+		"apply_managed_run_safety_input_exact(\n\tp_protocol text, p_idempotency_key text, p_managed_run_id uuid, p_project_id uuid,\n\tp_expected_run_revision bigint, p_input_kind decodex.managed_run_safety_input_kind,\n\tp_input_id uuid, p_runtime_session_id uuid, p_turn_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_managed_run_id uuid, p_project_id uuid, p_expected_run_revision bigint, p_input_kind decodex.managed_run_safety_input_kind, p_input_id uuid, p_runtime_session_id uuid, p_turn_id uuid",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 35] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 36] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -850,8 +908,9 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 35] = [
 	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
 	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 ];
-const SAFETY_FUNCTIONS: [&str; 42] = [
+const SAFETY_FUNCTIONS: [&str; 48] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -894,8 +953,14 @@ const SAFETY_FUNCTIONS: [&str; 42] = [
 	"forbid_work_item_acceptance_mutation",
 	"enforce_work_item_acceptance_coherence",
 	"enforce_work_item_event_namespace",
+	"enforce_managed_run_command_owner",
+	"forbid_managed_run_immutable_mutation",
+	"enforce_managed_run_assignment_scope",
+	"enforce_managed_run_state",
+	"enforce_effect_barrier_state",
+	"enforce_managed_run_event_namespace",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 69;
+const SAFETY_TRIGGER_COUNT: usize = 84;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1083,6 +1148,12 @@ WITH set_roles AS (
   ('work_item_edges', true, false, false, false),
   ('work_item_readiness_blockers', true, false, false, false),
   ('work_item_acceptances', true, false, false, false)
+  ,('managed_runs', true, false, false, false)
+  ,('managed_run_assignments', true, false, false, false)
+  ,('managed_run_effect_barriers', true, false, false, false)
+  ,('managed_run_effects', true, false, false, false)
+  ,('managed_run_submitted_turn_receipts', true, false, false, false)
+  ,('managed_run_safety_inputs', true, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -1091,7 +1162,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 36
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 42
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -1316,6 +1387,21 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('work_item_acceptances', 'work_item_acceptance_coherence', 'enforce_work_item_acceptance_coherence', 5)
 	,('activity', 'activity_work_item_namespace', 'enforce_work_item_event_namespace', 23)
 	,('outbox', 'outbox_work_item_namespace', 'enforce_work_item_event_namespace', 23)
+	,('managed_runs', 'managed_runs_command_owner', 'enforce_managed_run_command_owner', 62)
+	,('managed_run_assignments', 'managed_run_assignments_command_owner', 'enforce_managed_run_command_owner', 62)
+	,('managed_run_effect_barriers', 'managed_run_effect_barriers_command_owner', 'enforce_managed_run_command_owner', 62)
+	,('managed_run_effects', 'managed_run_effects_command_owner', 'enforce_managed_run_command_owner', 62)
+	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_command_owner', 'enforce_managed_run_command_owner', 62)
+	,('managed_run_safety_inputs', 'managed_run_safety_inputs_command_owner', 'enforce_managed_run_command_owner', 62)
+	,('managed_run_assignments', 'managed_run_assignments_immutable', 'forbid_managed_run_immutable_mutation', 27)
+	,('managed_run_effects', 'managed_run_effects_immutable', 'forbid_managed_run_immutable_mutation', 27)
+	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_immutable', 'forbid_managed_run_immutable_mutation', 27)
+	,('managed_run_safety_inputs', 'managed_run_safety_inputs_immutable', 'forbid_managed_run_immutable_mutation', 27)
+	,('managed_run_assignments', 'managed_run_assignment_scope', 'enforce_managed_run_assignment_scope', 5)
+	,('managed_runs', 'managed_runs_inert_state', 'enforce_managed_run_state', 31)
+	,('managed_run_effect_barriers', 'managed_run_effect_barriers_state', 'enforce_effect_barrier_state', 31)
+	,('activity', 'activity_managed_run_namespace', 'enforce_managed_run_event_namespace', 23)
+	,('outbox', 'outbox_managed_run_namespace', 'enforce_managed_run_event_namespace', 23)
 )
 SELECT
   expected.function_name,
@@ -1324,15 +1410,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -1502,6 +1588,21 @@ WITH catalog_context AS MATERIALIZED (
 	,('work_item_acceptances', 'work_item_acceptance_coherence', 'decodex.enforce_work_item_acceptance_coherence()')
 	,('activity', 'activity_work_item_namespace', 'decodex.enforce_work_item_event_namespace()')
 	,('outbox', 'outbox_work_item_namespace', 'decodex.enforce_work_item_event_namespace()')
+	,('managed_runs', 'managed_runs_command_owner', 'decodex.enforce_managed_run_command_owner()')
+	,('managed_run_assignments', 'managed_run_assignments_command_owner', 'decodex.enforce_managed_run_command_owner()')
+	,('managed_run_effect_barriers', 'managed_run_effect_barriers_command_owner', 'decodex.enforce_managed_run_command_owner()')
+	,('managed_run_effects', 'managed_run_effects_command_owner', 'decodex.enforce_managed_run_command_owner()')
+	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_command_owner', 'decodex.enforce_managed_run_command_owner()')
+	,('managed_run_safety_inputs', 'managed_run_safety_inputs_command_owner', 'decodex.enforce_managed_run_command_owner()')
+	,('managed_run_assignments', 'managed_run_assignments_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
+	,('managed_run_effects', 'managed_run_effects_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
+	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
+	,('managed_run_safety_inputs', 'managed_run_safety_inputs_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
+	,('managed_run_assignments', 'managed_run_assignment_scope', 'decodex.enforce_managed_run_assignment_scope()')
+	,('managed_runs', 'managed_runs_inert_state', 'decodex.enforce_managed_run_state()')
+	,('managed_run_effect_barriers', 'managed_run_effect_barriers_state', 'decodex.enforce_effect_barrier_state()')
+	,('activity', 'activity_managed_run_namespace', 'decodex.enforce_managed_run_event_namespace()')
+	,('outbox', 'outbox_managed_run_namespace', 'decodex.enforce_managed_run_event_namespace()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -1971,8 +2072,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0xc4, 0x8f, 0x7b, 0x49, 0x8d, 0xac, 0x7f, 0xd1, 0x6f, 0x2d, 0x1b, 0xe8, 0xc7, 0x49, 0x5e, 0xf8,
-	0xcf, 0xda, 0xb3, 0x09, 0xfd, 0xd8, 0x27, 0xb9, 0x47, 0x76, 0x80, 0x9a, 0x18, 0x97, 0x1b, 0x1b,
+	0x99, 0xb6, 0x41, 0xfb, 0xd0, 0xee, 0x07, 0xc1, 0xd8, 0x19, 0x06, 0x0b, 0x89, 0xcd, 0x2d, 0x39,
+	0x6a, 0xe5, 0xca, 0x80, 0xee, 0x46, 0x61, 0xab, 0x3c, 0x71, 0xea, 0xd6, 0xaa, 0x34, 0x7b, 0xf0,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -2451,8 +2552,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0xbf, 0x89, 0x19, 0x59, 0x3a, 0xe4, 0x3c, 0xc9, 0x01, 0x13, 0x4d, 0x14, 0x8f, 0x6c, 0x7d, 0xcf,
-	0x10, 0xc0, 0xeb, 0xf3, 0x4c, 0x1f, 0xea, 0xd9, 0xb5, 0x98, 0xdf, 0x45, 0xba, 0x6b, 0x9d, 0xd2,
+	0x83, 0x8a, 0x95, 0x63, 0x93, 0x2c, 0x50, 0xb7, 0xe5, 0xea, 0xa6, 0x0b, 0xa0, 0x32, 0x84, 0x47,
+	0xba, 0x24, 0xec, 0x85, 0x4e, 0x0b, 0x5f, 0xd8, 0x7c, 0x09, 0x57, 0x85, 0xfd, 0x8a, 0xe5, 0x1e,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -2722,8 +2823,11 @@ fn canonical_safety_function_source(function_name: &str) -> Option<&'static str>
 }
 
 fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str> {
-	let declaration = format!("CREATE FUNCTION decodex.{}", contract.migration_signature);
-	let migration = [
+	let declarations = [
+		format!("CREATE FUNCTION decodex.{}", contract.migration_signature),
+		format!("CREATE OR REPLACE FUNCTION decodex.{}", contract.migration_signature),
+	];
+	[
 		FOUNDATION_MIGRATION,
 		CONVERSATION_MIGRATION,
 		PROJECT_AGENT_MIGRATION,
@@ -2733,14 +2837,22 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		ROLE_PROFILE_MIGRATION,
 		RUNTIME_SESSION_MIGRATION,
 		WORK_ITEM_MIGRATION,
+		MANAGED_RUN_MIGRATION,
 	]
 	.into_iter()
-	.find(|migration| migration.contains(&declaration))?;
-	let (_, declaration_and_tail) = migration.split_once(&declaration)?;
-	let (_, source_and_tail) = declaration_and_tail.split_once("\nAS $$")?;
-	let (source, _) = source_and_tail.split_once("$$;")?;
-
-	Some(source)
+	.rev()
+	.find_map(|migration| {
+		let (declaration_index, declaration_length) = declarations
+			.iter()
+			.filter_map(|declaration| {
+				migration.rfind(declaration.as_str()).map(|index| (index, declaration.len()))
+			})
+			.max_by_key(|(index, _)| *index)?;
+		let declaration_and_tail = &migration[declaration_index + declaration_length..];
+		let (_, source_and_tail) = declaration_and_tail.split_once("\nAS $$")?;
+		let (source, _) = source_and_tail.split_once("$$;")?;
+		Some(source)
+	})
 }
 
 async fn verify_identity_cast_authority(client: &Client) -> Result<(), StoreError> {
@@ -2902,6 +3014,7 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "assess_work_item_readiness_exact"
 				| "accept_work_item_exact"
 				| "guard_work_item_running_resume"
+				| "apply_managed_run_safety_input_exact"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
@@ -3055,10 +3168,10 @@ mod tests {
 	use crate::authority::{
 		CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL, CONVERSATION_MIGRATION,
 		FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL,
-		OWNED_OBJECT_CATALOGS, POLICY_MIGRATION, PROGRAM_OBJECTIVE_MIGRATION,
-		PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL, ROLE_PROFILE_MIGRATION,
-		RUNTIME_SESSION_MIGRATION, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
-		WORK_ITEM_MIGRATION,
+		MANAGED_RUN_MIGRATION, OWNED_OBJECT_CATALOGS, POLICY_MIGRATION,
+		PROGRAM_OBJECTIVE_MIGRATION, PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL,
+		ROLE_PROFILE_MIGRATION, RUNTIME_SESSION_MIGRATION, SAFETY_FUNCTIONS,
+		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL, WORK_ITEM_MIGRATION,
 	};
 
 	#[test]
@@ -3194,6 +3307,7 @@ mod tests {
 				ROLE_PROFILE_MIGRATION,
 				RUNTIME_SESSION_MIGRATION,
 				WORK_ITEM_MIGRATION,
+				MANAGED_RUN_MIGRATION,
 			]
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
@@ -3216,6 +3330,7 @@ mod tests {
 					ROLE_PROFILE_MIGRATION,
 					RUNTIME_SESSION_MIGRATION,
 					WORK_ITEM_MIGRATION,
+					MANAGED_RUN_MIGRATION,
 				]
 				.into_iter()
 				.map(|migration| migration
