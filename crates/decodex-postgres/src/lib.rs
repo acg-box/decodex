@@ -3,13 +3,15 @@
 //! This crate owns the XY-1267 persistence foundation and XY-1271 Conversation history:
 //! immutable migrations, idempotent optimistic transactions, expiring leases, transactional
 //! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
-//! references, Context Packs, and inert transition proposals. It does not select accounts,
-//! route work, store credentials, dispatch transitions, or expose protocol/client behavior.
+//! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
+//! immutable global RoleProfiles. It does not select accounts, route work, store credentials,
+//! dispatch transitions, or expose protocol/client behavior.
 
 mod accounts;
 mod authority;
 mod conversations;
 mod error;
+mod exact_commands;
 mod leases;
 mod migrations;
 mod outbox;
@@ -17,18 +19,28 @@ mod policies;
 mod programs;
 mod project_agents;
 mod quota;
+mod role_profiles;
+mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
 
 pub use self::{
 	conversations::{
-		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation,
-		CreateRuntimeSession, HistoryCursor, HistoryEntry, HistoryPage, PersistContextPack,
-		ProposeTransition, RecordHistoryItem, StoredArtifact, StoredConversation,
-		StoredRuntimeSession,
+		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
+		HistoryEntry, HistoryPage, PersistContextPack, ProposeTransition, RecordHistoryItem,
+		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
+	role_profiles::{
+		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
+		RoleProfileRejection, RoleProfileRevision, RoleProfileRole,
+	},
+	runtime_sessions::{
+		CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, RuntimeSessionAccountSnapshot,
+		RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionProfileSnapshot,
+		RuntimeSessionRejection, StoredRuntimeSession,
+	},
 	types::{
 		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
 		HypotheticalFallbackFact, LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState,
@@ -105,6 +117,13 @@ impl PostgresStore {
 	#[doc(hidden)]
 	pub const fn configured_authority_sql_fixture() -> &'static str {
 		authority::configured_authority_sql_fixture()
+	}
+
+	/// Return the closed execution-path query and allowed function identities for fixtures.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub fn execution_path_contract_fixture() -> (&'static str, Vec<&'static str>) {
+		authority::execution_path_contract_fixture()
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.
@@ -242,6 +261,64 @@ impl PostgresStore {
 		let pool = Pool::builder(manager).max_size(1).build()?;
 		let mut client = checkout(&pool, &connector).await?;
 		let result = migrations::run_through_v7(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
+	}
+
+	/// Apply the immutable migration ledger only through V8 for the V9 upgrade proof.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v8(
+		mut config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v8(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
+	}
+
+	/// Apply the immutable migration ledger only through V9 for the V10 upgrade proof.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v9(
+		mut config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v9(&mut client).await;
 
 		drop(client);
 

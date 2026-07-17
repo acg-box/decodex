@@ -37,6 +37,21 @@ LEDGER_TAMPER_DATABASE = "decodex_xy1307_ledger_tamper"
 MISSING_EXTENSION_DATABASE = "decodex_xy1307_missing_extension"
 V8_EMPTY_DATABASE = "decodex_xy1274_v8_empty"
 V8_LOCK_DATABASE = "decodex_xy1274_v8_lock"
+ROLE_PROFILE_CONCURRENCY_DATABASE = "decodex_xy1346_concurrency"
+ROLE_PROFILE_UPGRADE_DATABASE = "decodex_xy1346_upgrade"
+ROLE_PROFILE_ROLLBACK_DATABASE = "decodex_xy1346_rollback"
+ROLE_PROFILE_RETRY_DATABASE = "decodex_xy1346_retry"
+ROLE_PROFILE_CRASH_DATABASE = "decodex_xy1346_crash"
+ROLE_PROFILE_RESTORE_SOURCE_DATABASE = "decodex_xy1346_restore_source"
+ROLE_PROFILE_RESTORE_DATABASE = "decodex_xy1346_restore"
+RUNTIME_SESSION_COMMAND_DATABASE = "decodex_xy1337_commands"
+RUNTIME_SESSION_ROLLBACK_DATABASE = "decodex_xy1337_rollback"
+RUNTIME_SESSION_RETRY_DATABASE = "decodex_xy1337_retry"
+RUNTIME_SESSION_UPGRADE_DATABASE = "decodex_xy1337_upgrade"
+RUNTIME_SESSION_FENCE_DATABASE = "decodex_xy1337_fence"
+RUNTIME_SESSION_CRASH_DATABASE = "decodex_xy1337_crash"
+RUNTIME_SESSION_RESTORE_SOURCE_DATABASE = "decodex_xy1337_restore_source"
+RUNTIME_SESSION_RESTORE_DATABASE = "decodex_xy1337_restore"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -98,6 +113,10 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.create_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog._text,pg_catalog._text,pg_catalog.int8,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
 	"decodex.transition_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.objective_state,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.text)",
 	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
+	"decodex.bootstrap_role_profiles_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
+	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -126,6 +145,17 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_objective_state()",
 	"decodex.forbid_objective_evidence_mutation()",
 	"decodex.enforce_objective_completion_coherence()",
+	"decodex.enforce_exact_receipt_completion()",
+	"decodex.forbid_exact_receipt_rewrite()",
+	"decodex.forbid_exact_receipt_truncate()",
+	"decodex.enforce_complete_role_profile_set()",
+	"decodex.forbid_role_profile_identity_rewrite()",
+	"decodex.forbid_role_profile_revision_mutation()",
+	"decodex.forbid_role_profile_truncate()",
+	"decodex.enforce_role_profile_event_namespace()",
+	"decodex.enforce_runtime_session_command_owner()",
+	"decodex.forbid_runtime_snapshot_mutation()",
+	"decodex.enforce_runtime_session_event_namespace()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -151,6 +181,7 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.objective_state",
 	"decodex.quota_window_class",
 	"decodex.observation_confidence",
+	"decodex.role_profile_role",
 )
 
 
@@ -580,6 +611,288 @@ def dump_schema_manifest(path: Path, env: dict[str, str]) -> str:
 	)
 
 
+def run_role_profile_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"role_profiles::{test}", "--exact",
+		],
+		env,
+	)
+
+
+def prepare_role_profile_database(
+	database: str, socket_dir: Path, port: int, env: dict[str, str]
+) -> None:
+	create_database(database, env)
+	set_contract_urls(env, socket_dir, port, database, RUNTIME_ROLE)
+	run_migration(env)
+	provision_runtime(database, RUNTIME_ROLE, env)
+
+
+def run_role_profile_crash_recovery(
+	data_dir: Path,
+	log_path: Path,
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	env: dict[str, str],
+) -> str:
+	sync = work / "role-profile-crash-recovery"
+	sync.mkdir()
+	test_env = env.copy()
+	test_env["DECODEX_ROLE_PROFILE_RESTART_SYNC"] = str(sync)
+	process = subprocess.Popen(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			"role_profiles::postgres_exact_role_profile_crash_recovery", "--exact",
+		],
+		text=True,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+		env=test_env,
+		cwd=REPO_ROOT,
+	)
+	try:
+		deadline = time.monotonic() + 30
+		while time.monotonic() < deadline:
+			if (sync / "ready").exists():
+				break
+			if process.poll() is not None:
+				stdout, stderr = process.communicate()
+				raise TestFailure(
+					f"RoleProfile crash fixture exited early\n{stdout}\n{stderr}"
+				)
+			time.sleep(0.02)
+		else:
+			raise TestFailure("RoleProfile crash fixture did not reach its lock barrier")
+
+		run(["pg_ctl", "-D", str(data_dir), "-m", "immediate", "-w", "stop"], env)
+		run(
+			[
+				"pg_ctl", "-D", str(data_dir), "-l", str(log_path), "-o",
+				f"-k {socket_dir} -p {port} -h '' -F", "-w", "start",
+			],
+			env,
+		)
+		(sync / "restarted").write_text("restarted", encoding="utf-8")
+		stdout, stderr = process.communicate(timeout=60)
+		if process.returncode != 0:
+			raise TestFailure(f"RoleProfile crash/recovery failed\n{stdout}\n{stderr}")
+		return stdout.strip() or stderr.strip()
+	finally:
+		if process.poll() is None:
+			process.terminate()
+			process.wait(timeout=10)
+
+
+def run_role_profile_final_gate_contracts(
+	data_dir: Path,
+	log_path: Path,
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	env: dict[str, str],
+) -> str:
+	outputs: list[str] = []
+	for database, test in (
+		(ROLE_PROFILE_CONCURRENCY_DATABASE, "postgres_exact_role_profile_concurrency"),
+		(ROLE_PROFILE_ROLLBACK_DATABASE, "postgres_exact_role_profile_atomic_rollback"),
+		(ROLE_PROFILE_RETRY_DATABASE, "postgres_exact_role_profile_retry_convergence"),
+	):
+		prepare_role_profile_database(database, socket_dir, port, env)
+		outputs.append(run_role_profile_test(test, env))
+
+	create_database(ROLE_PROFILE_UPGRADE_DATABASE, env)
+	set_contract_urls(
+		env, socket_dir, port, ROLE_PROFILE_UPGRADE_DATABASE, RUNTIME_ROLE
+	)
+	outputs.append(run_role_profile_test("postgres_v8_to_v9_role_profile_upgrade", env))
+
+	prepare_role_profile_database(ROLE_PROFILE_CRASH_DATABASE, socket_dir, port, env)
+	outputs.append(
+		run_role_profile_crash_recovery(
+			data_dir, log_path, socket_dir, port, work, env
+		)
+	)
+
+	prepare_role_profile_database(
+		ROLE_PROFILE_RESTORE_SOURCE_DATABASE, socket_dir, port, env
+	)
+	outputs.append(run_role_profile_test("postgres_exact_role_profile_commands", env))
+	restore_dump = work / "xy1346-role-profiles.dump"
+	run(
+		[
+			"pg_dump", "-Fc", "-f", str(restore_dump),
+			ROLE_PROFILE_RESTORE_SOURCE_DATABASE,
+		],
+		env,
+	)
+	create_database(ROLE_PROFILE_RESTORE_DATABASE, env)
+	run(
+		[
+			"pg_restore", "--exit-on-error", "-d", ROLE_PROFILE_RESTORE_DATABASE,
+			str(restore_dump),
+		],
+		env,
+	)
+	set_contract_urls(
+		env, socket_dir, port, ROLE_PROFILE_RESTORE_DATABASE, RUNTIME_ROLE
+	)
+	outputs.append(run_role_profile_test("postgres_exact_role_profile_restore", env))
+	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+
+	return "\n".join(outputs)
+
+
+def run_runtime_session_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"runtime_sessions::{test}", "--exact",
+		],
+		env,
+	)
+
+
+def run_runtime_session_crash_recovery(
+	data_dir: Path,
+	log_path: Path,
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	env: dict[str, str],
+) -> str:
+	sync = work / "runtime-session-crash-recovery"
+	sync.mkdir()
+	test_env = env.copy()
+	test_env["DECODEX_RUNTIME_SESSION_RESTART_SYNC"] = str(sync)
+	process = subprocess.Popen(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			"runtime_sessions::postgres_exact_runtime_session_crash_recovery", "--exact",
+		],
+		text=True,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+		env=test_env,
+		cwd=REPO_ROOT,
+	)
+	try:
+		deadline = time.monotonic() + 30
+		while time.monotonic() < deadline:
+			if (sync / "ready").exists():
+				break
+			if process.poll() is not None:
+				stdout, stderr = process.communicate()
+				raise TestFailure(
+					f"RuntimeSession crash fixture exited early\n{stdout}\n{stderr}"
+				)
+			time.sleep(0.02)
+		else:
+			raise TestFailure("RuntimeSession crash fixture did not reach its lock barrier")
+		run(["pg_ctl", "-D", str(data_dir), "-m", "immediate", "-w", "stop"], env)
+		run(
+			[
+				"pg_ctl", "-D", str(data_dir), "-l", str(log_path), "-o",
+				f"-k {socket_dir} -p {port} -h '' -F", "-w", "start",
+			],
+			env,
+		)
+		(sync / "restarted").write_text("restarted", encoding="utf-8")
+		stdout, stderr = process.communicate(timeout=60)
+		if process.returncode != 0:
+			raise TestFailure(f"RuntimeSession crash/recovery failed\n{stdout}\n{stderr}")
+		return stdout.strip() or stderr.strip()
+	finally:
+		if process.poll() is None:
+			process.terminate()
+			process.wait(timeout=10)
+
+
+def run_runtime_session_final_gate_contracts(
+	data_dir: Path,
+	log_path: Path,
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	env: dict[str, str],
+) -> str:
+	outputs: list[str] = []
+	for database, test in (
+		(RUNTIME_SESSION_COMMAND_DATABASE, "postgres_exact_runtime_session_commands"),
+		(RUNTIME_SESSION_ROLLBACK_DATABASE, "postgres_exact_runtime_session_atomic_rollback"),
+		(RUNTIME_SESSION_RETRY_DATABASE, "postgres_exact_runtime_session_retry_convergence"),
+	):
+		prepare_role_profile_database(database, socket_dir, port, env)
+		outputs.append(run_runtime_session_test(test, env))
+
+	create_database(RUNTIME_SESSION_UPGRADE_DATABASE, env)
+	set_contract_urls(
+		env, socket_dir, port, RUNTIME_SESSION_UPGRADE_DATABASE, RUNTIME_ROLE
+	)
+	outputs.append(run_runtime_session_test("postgres_v9_to_v10_runtime_session_upgrade", env))
+	create_database(RUNTIME_SESSION_FENCE_DATABASE, env)
+	set_contract_urls(env, socket_dir, port, RUNTIME_SESSION_FENCE_DATABASE, RUNTIME_ROLE)
+	outputs.append(
+		run_runtime_session_test("postgres_v10_fences_blocked_old_runtime_writer", env)
+	)
+	for variant in (
+		"profile_snapshot", "account_snapshot", "runtime_session", "legacy_receipt",
+		"exact_receipt", "activity", "activity_nested_aggregate",
+		"activity_legacy_other_aggregate", "outbox", "outbox_nested_effect",
+		"outbox_activity_link",
+	):
+		database = f"decodex_xy1337_v10_{variant}"
+		create_database(database, env)
+		set_contract_urls(env, socket_dir, port, database, RUNTIME_ROLE)
+		variant_env = env.copy()
+		variant_env["DECODEX_V10_PRIOR_STATE"] = variant
+		outputs.append(
+			run_runtime_session_test(
+				"postgres_v10_rejects_classified_runtime_state", variant_env
+			)
+		)
+
+	prepare_role_profile_database(RUNTIME_SESSION_CRASH_DATABASE, socket_dir, port, env)
+	outputs.append(
+		run_runtime_session_crash_recovery(
+			data_dir, log_path, socket_dir, port, work, env
+		)
+	)
+
+	prepare_role_profile_database(
+		RUNTIME_SESSION_RESTORE_SOURCE_DATABASE, socket_dir, port, env
+	)
+	outputs.append(run_runtime_session_test("postgres_exact_runtime_session_commands", env))
+	restore_dump = work / "xy1337-runtime-sessions.dump"
+	run(
+		[
+			"pg_dump", "-Fc", "-f", str(restore_dump),
+			RUNTIME_SESSION_RESTORE_SOURCE_DATABASE,
+		],
+		env,
+	)
+	create_database(RUNTIME_SESSION_RESTORE_DATABASE, env)
+	run(
+		[
+			"pg_restore", "--exit-on-error", "-d", RUNTIME_SESSION_RESTORE_DATABASE,
+			str(restore_dump),
+		],
+		env,
+	)
+	set_contract_urls(
+		env, socket_dir, port, RUNTIME_SESSION_RESTORE_DATABASE, RUNTIME_ROLE
+	)
+	outputs.append(run_runtime_session_test("postgres_exact_runtime_session_restore", env))
+	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+	return "\n".join(outputs)
+
+
 def quota_authority_snapshot(database: str, env: dict[str, str]) -> str:
 	return psql(
 		database,
@@ -662,13 +975,15 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"GRANT SELECT ON TABLE public.refinery_schema_history TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE ON TABLE "
 		f"decodex.accounts, decodex.quota_windows, decodex.command_receipts, "
-		f"decodex.leases, decodex.conversations, decodex.runtime_sessions, "
+		f"decodex.leases, decodex.conversations, "
 		f"decodex.artifacts, decodex.turns, decodex.history_items TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.quota_exclusions TO {role}; "
-		f"GRANT SELECT, INSERT ON TABLE decodex.profile_snapshots, "
-		f"decodex.account_snapshots, decodex.blob_objects, decodex.artifact_revisions, decodex.context_packs, "
+		f"GRANT SELECT, INSERT ON TABLE decodex.blob_objects, decodex.artifact_revisions, "
+		f"decodex.context_packs, "
 		f"decodex.context_pack_sources, decodex.transition_proposals TO {role}; "
-		f"GRANT SELECT ON TABLE decodex.history_cursors, decodex.history_item_versions TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.history_cursors, decodex.history_item_versions, "
+		f"decodex.profile_snapshots, decodex.account_snapshots, "
+		f"decodex.runtime_sessions TO {role}; "
 		f"GRANT SELECT ON TABLE decodex.projects, decodex.agents, "
 		f"decodex.policies, decodex.policy_revisions TO {role}; "
 		f"GRANT SELECT ON TABLE decodex.programs, decodex.objectives, "
@@ -812,6 +1127,12 @@ def main() -> int:
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		migration_output = run_migration(env)
 		provision_runtime(DATABASE, RUNTIME_ROLE, env)
+		role_profile_output = run_role_profile_final_gate_contracts(
+			data_dir, log_path, socket_dir, port, work, env
+		)
+		runtime_session_output = run_runtime_session_final_gate_contracts(
+			data_dir, log_path, socket_dir, port, work, env
+		)
 		v8_boundary_output = run_v8_migration_boundary_contracts(env, socket_dir, port)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		restart_output = run_blob_session_restart_contract(
@@ -1258,7 +1579,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 59",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 81",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -2170,6 +2491,8 @@ def main() -> int:
 			authority_drift_outputs.append(output)
 		assert_postgres_logs_redact((log_path,), canary_markers)
 		print(migration_output)
+		print(role_profile_output)
+		print(runtime_session_output)
 		print(restart_output)
 		print(v8_boundary_output)
 		print(contract_output)

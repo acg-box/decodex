@@ -8,7 +8,7 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 8;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 10;
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -19,6 +19,20 @@ pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 #[cfg(feature = "test-support")]
 pub(crate) async fn run_through_v7(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().set_target(Target::Version(7)).run_async(&mut ***client).await?;
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v8(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(8)).run_async(&mut ***client).await?;
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v9(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(9)).run_async(&mut ***client).await?;
 
 	Ok(())
 }
@@ -66,7 +80,7 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		!= Some(EXPECTED_LATEST_MIGRATION_VERSION)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V8 ledger".into(),
+			"embedded migration inventory does not end at the canonical V10 ledger".into(),
 		));
 	}
 	if actual.len() != expected.len() {

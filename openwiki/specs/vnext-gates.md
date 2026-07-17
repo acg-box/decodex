@@ -101,15 +101,64 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1272 | PostgreSQL configured-principal and ACL authority manifest/readiness closure against V8; no migration or Codex creation/reconciliation surface. Any future configured role must atomically extend configuration, bootstrap, manifest/readiness, and negative tests. |
 | XY-1273 | Credential-vault metadata and immutable runner/account binding; no sticky or policy assignment. |
 | XY-1274 | Exact-microsecond quota persistence, `/2` canonical mutation identity, atomic V8 zero-state migration, and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
-| XY-1275 | User-owned profile persistence and RuntimeSession snapshots. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
+| XY-1275 | Umbrella for user-owned profile persistence and RuntimeSession snapshots. It closes only through the serial XY-1345 -> XY-1346 -> XY-1337 order. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
 | XY-1276 | Production Quick Task creation; remains blocked by XY-1304. |
 | XY-1304 | Experiment thread creation and positive observation acquisition, plus live routing enablement. Lossy or paginated evidence cannot authorize negative `Present`, `Complete`, or context-free `Absent` conclusions. |
-| XY-1337 | The next PostgreSQL migration, expected V9; V8 remains final until this owner lands it. |
+| XY-1345 | Accepted exact-command authority and isolated PostgreSQL 18 prototype only; no production migration or Rust command path. |
+| XY-1346 | PostgreSQL V9: separate exact receipts plus immutable global RoleProfile bootstrap/update. Starts only after XY-1345 lands. |
+| XY-1337 | Re-bounded RuntimeSession snapshot creation/transition migration, expected V10 after XY-1346. It does not own exact-receipt or RoleProfile redesign. |
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
 cannot close the missing account-owned receipt. Existing doctor `unknown(plugin)` is the
 first-release result, and `plugin_unready` remains inert reserved state.
+
+### XY-1345 exact-command reset gate
+
+XY-1345 owns repository authority and a non-production PostgreSQL 18 proof, not a migration or
+Rust product API. Its accepted boundary is operation-specific, command-complete
+`SECURITY DEFINER` functions; PostgreSQL-built and -consumed typed request envelopes; a separate
+`exact_command_receipts` relation; no runtime receipt-table/private-helper/canonical-audit mutation
+authority; deferred commit closure for executing rows; immutable stored response bytes; and
+separate stable-domain, idempotency-conflict, and retryable-infrastructure outcomes. It changes no
+legacy `command_receipts` semantic.
+
+The isolated proof must pass all deterministic schedules for same-key waiting/replay, changed
+envelope and cross-operation conflict, rollback at receipt/domain/activity/outbox boundaries,
+precommit connection loss, postcommit lost result, stable rejection replay, deferred incomplete
+commit rejection, runtime receipt and canonical-audit denial, `READ COMMITTED`/`REPEATABLE
+READ`/`SERIALIZABLE`, opposite-order deadlock and whole-transaction retry, explicit nulls, exact
+text variants, typed numeric convergence, fixed scalar bootstrap groups, returned-row effect
+binding, catalog closure, and populated dump/restore. It must then pass 50 repetitions each of
+32-way identical and mixed-envelope concurrency with zero duplicate domain effects, duplicate
+activity/outbox pairs, response mismatches, committed executing rows, authority bypasses,
+unexplained rows, or unclassified SQLSTATEs. The durable receipt is
+[XY-1345 exact-command evidence](../evidence/xy-1345-exact-command-authority.md).
+
+Any anomaly falsifies the architecture and stops V9. A passing prototype permits only this serial
+order:
+
+```text
+XY-1345 authority/prototype and fresh exact-candidate review
+-> XY-1346 V9 exact receipts plus RoleProfile bootstrap/update
+-> XY-1337 V10 RuntimeSession snapshots, creation, and transition
+```
+
+V9 must re-prove the complete security-definer catalog/ACL/default-privilege/search-path/dependency
+closure, canonical audit namespace closure, clean V1-to-V9 bootstrap, V8-to-V9 upgrade, hostile SQL,
+crash/concurrency, and populated restore against the production migration. Candidate 3 SQL and Rust
+command code are superseded and cannot be transplanted; its valid invariants and hostile-test ideas
+remain provenance only.
+
+V10 must preserve the accepted V9 exact receipt and global RoleProfile contracts while adding only
+the two command-complete RuntimeSession entrypoints and their private builders/rejection helper.
+Acceptance requires zero-state V9-to-V10 fencing, clean V1-to-V10 bootstrap, exact creation and
+transition substitution conflicts, byte-identical success and stable-rejection replay, coherent
+old-or-new profile race binding, immutable account/profile history, direct-DML/helper/audit-namespace
+hostility, receipt/domain/activity/outbox/response rollback boundaries, whole-transaction retry,
+blocked-old-writer cutover, crash/restart convergence, concurrency, and populated dump/restore.
+These expensive PostgreSQL 18 gates run once against the frozen serial
+XY-1345 -> XY-1346 -> XY-1337 candidate; implementation work does not start a live database.
 
 ### XY-1263 acceptance and XY-1269 clean-slice reset
 

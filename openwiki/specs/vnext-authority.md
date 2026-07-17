@@ -111,6 +111,70 @@ admission serialize create-only verified publication; transaction B atomically r
 metadata/domain references/evidence, stores the exact response bytes, and completes the fenced
 receipt. Exact replay returns those bytes; conflicting reuse fails before effects.
 
+Pure PostgreSQL commands use a different, exact in-transaction authority. Each operation has one
+command-complete migration-owner `SECURITY DEFINER` function. PostgreSQL constructs the complete
+request JSONB from the same typed values the function consumes; runtime supplies only a
+protocol-scoped idempotency key and typed operation inputs, never an authoritative
+caller-supplied request hash, claim token, lease, committed pending claim, or split-phase reserve.
+The separate `decodex.exact_command_receipts` primary key is
+`(protocol_version, idempotency_key)`. Operation is inside the request envelope, so
+cross-operation reuse conflicts without extending or changing legacy `command_receipts` semantics.
+
+An exact row may be `executing` only within its operation transaction. A
+`DEFERRABLE INITIALLY DEFERRED` constraint trigger rejects commit unless every newly created exact
+row is completed success or completed stable rejection. Completed rows cannot be changed, deleted,
+or truncated and retain the authoritative response bytes created once by PostgreSQL. Expected
+missing-target, stale-revision, illegal-transition, and equivalent domain outcomes complete a
+stable rejected response; cancellation, connection loss, deadlock, serialization failure, and
+unexpected database failure propagate and roll back rather than becoming stable rejection.
+
+The normal contract is one exact command per top-level `READ COMMITTED` transaction. After
+`INSERT ... ON CONFLICT DO NOTHING`, replay/conflict selection occurs in a later read/lock
+statement. `40001` and `40P01` retry the whole transaction with the identical typed request.
+Multiple exact functions in one caller transaction remain atomic but are outside the no-deadlock
+guarantee.
+
+Request envelopes compare with JSONB equality, not containment. Every optional key is present with
+JSON null. Enum and numeric values are typed before construction; integer lexical spelling is not
+identity. Text uses exact PostgreSQL text/code-point semantics with no implicit Unicode, case, or
+whitespace normalization. RoleProfile bootstrap takes four role-implied scalar configuration
+groups in advisor/lead/task/reviewer order, never caller roles or parallel arrays. Derived
+revisions, selected profile rows, generated IDs, database timestamps, digests, immutable snapshots,
+activity/outbox IDs, and responses are effects rather than request inputs. Effects and stored
+responses are assembled from actual `INSERT`/`UPDATE ... RETURNING` rows and actual canonical
+activity/outbox identities.
+
+Exact-command catalog closure covers the unreachable owner; role membership and `SET ROLE` paths;
+signatures and overloads; `prosecdef`; language, volatility, parallel safety, settings, source and
+dependencies; ACLs, PUBLIC and owner default privileges; trusted search path; triggers; relation
+privileges; and populated restore. Runtime has no exact-receipt table privilege, private-helper
+execution, or canonical activity/outbox mutation authority. Namespace fences must reject equivalent
+aggregate/event/effect/link/payload forgery, including structured variants, rather than matching
+only obvious strings.
+
+Relation privilege closure is semantic: it enumerates the normalized grantee, grantor, privilege,
+and grant-option set; proves the owner's complete effective table privileges; proves runtime and
+PUBLIC lack every table privilege; and rejects any unexpected grantee before and after restore. It
+must not require byte- or text-identical `relacl` serialization. Function closure covers the exact
+identity and overload set of every command, private helper, envelope builder, trigger function,
+failpoint, and incomplete-row probe present in the candidate, with only command-complete entrypoints
+runtime-executable. Effect evidence decodes the stored response bytes and joins their effect envelope
+to the returned domain row and actual canonical activity/outbox identities.
+
+This authority is implemented vertically: XY-1345 records and proves the protocol; XY-1346
+implements the separate relation and RoleProfile bootstrap/update in V9; re-bounded XY-1337 owns authoritative
+RuntimeSession snapshot creation/transition in V10. Candidate 3 is superseded code and may supply
+only independently re-derived invariants and hostile-test ideas.
+
+V9 persists exactly the `advisor`, `lead`, `task`, and `reviewer` identities in
+`role_profiles`, keeps every configuration in immutable `role_profile_revisions`, and advances one
+current-revision pointer per role. `bootstrap_role_profiles_exact` accepts four fixed
+advisor/lead/task/reviewer scalar groups and creates all four revision-one profiles atomically.
+`update_role_profile_exact` accepts one typed role plus an expected revision, appends exactly one
+immutable revision, and advances only that role's pointer. Both functions return and retain
+PostgreSQL-built response bytes whose effects are assembled from the returned profile rows and the
+actual canonical activity/outbox identities.
+
 ## Conversation, context, and communication
 
 Every meaningful Decodex-created thread uses `ephemeral=false`, the shared normal
