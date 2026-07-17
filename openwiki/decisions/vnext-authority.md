@@ -72,7 +72,8 @@ response evidence comes from actual `RETURNING` rows and canonical audit identit
 Candidate 3 is superseded as implementation and remains hostile-test/design provenance only.
 [XY-1345 evidence](../evidence/xy-1345-exact-command-authority.md) records the passing isolated
 PostgreSQL 18 proof. The serial vertical order is XY-1345 authority/prototype, then XY-1346 exact
-receipts plus RoleProfile V9, then re-bounded XY-1337 RuntimeSession V10. Legacy
+receipts plus immutable global RoleProfile bootstrap/update in V9, then re-bounded XY-1337
+RuntimeSession V10. Legacy
 `command_receipts` semantics remain unchanged for unrelated external or long-running sagas.
 
 ## Decision
