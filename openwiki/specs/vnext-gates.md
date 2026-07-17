@@ -107,6 +107,8 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1345 | Accepted exact-command authority and isolated PostgreSQL 18 prototype only; no production migration or Rust command path. |
 | XY-1346 | PostgreSQL V9: separate exact receipts plus immutable global RoleProfile bootstrap/update. Starts only after XY-1345 lands. |
 | XY-1337 | Re-bounded RuntimeSession snapshot creation/transition migration, expected V10 after XY-1346. It does not own exact-receipt or RoleProfile redesign. |
+| XY-1343 | PostgreSQL V11 canonical WorkItems, transactional readiness blockers, and immutable Lead acceptance; no run execution or completion. |
+| XY-1338 | PostgreSQL V12 inert waiting ManagedRuns, exact-run Task/Reviewer assignments, exact RuntimeSession revision binding, FK-backed effect lineage, the fail-closed positive/inconclusive safety transaction, and the forward repair that removes illegal RuntimeSession row locks from V3 Turn/History invoker guards while preserving 1271 serialization. No producer, scheduler, acquisition, dispatch, progress, or completion path. |
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration

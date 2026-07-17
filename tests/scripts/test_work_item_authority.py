@@ -21,13 +21,13 @@ class WorkItemAuthorityTests(unittest.TestCase):
         cls.migrations = MIGRATIONS.read_text(encoding="utf-8")
         cls.harness = HARNESS.read_text(encoding="utf-8")
 
-    def test_v11_is_the_only_next_forward_migration(self) -> None:
+    def test_v11_remains_the_exact_predecessor_to_v12(self) -> None:
         versions = sorted(
             int(path.name.split("__", 1)[0][1:])
             for path in MIGRATION.parent.glob("V*.sql")
         )
-        self.assertEqual(versions, list(range(1, 12)))
-        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 11", self.migrations)
+        self.assertEqual(versions, list(range(1, 13)))
+        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 12", self.migrations)
         self.assertIn("WORK_ITEM_MIGRATION", self.authority)
 
     def test_v11_schema_is_a_singleton_pg18_restore_fixed_point(self) -> None:
@@ -85,7 +85,7 @@ class WorkItemAuthorityTests(unittest.TestCase):
             self.assertNotIn("VALIDATE CONSTRAINT", statement)
 
         self.assertIn(
-            "0xc4, 0x8f, 0x7b, 0x49, 0x8d, 0xac, 0x7f, 0xd1",
+            "0x99, 0xb6, 0x41, 0xfb, 0xd0, 0xee, 0x07, 0xc1",
             self.authority,
         )
         self.assertNotIn("expected_manifest_digest", self.authority)

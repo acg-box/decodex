@@ -73,6 +73,30 @@ reviewer, PR, harness, or Goal. A ManagedRun separates:
 - wait reason: `usage`, `auth`, `plugin`, `dependency`, `approval`, `user`, `external`,
   `reviewer_unavailable`, `reviewer_failed`.
 
+The inert V12 boundary persists only `waiting` ManagedRuns that remain blocked. Every run is
+foreign-key bound to its exact Project, canonical WorkItem, and authoritative RuntimeSession
+revision. Task and Reviewer assignments are exact-run RuntimeSession identities whose closed role
+type cannot represent Advisor or Lead and contains no durable Agent identity. Effect lineage is
+foreign-key bound to one run and one barrier. Barrier states are `guarded` or permanently `closed`;
+both deny effects, and there is no open state or positive execution transition in V12.
+
+The only V12 mutation consumes a positively observed unknown exact turn, a Decodex-owned exact
+submitted-turn receipt, or an explicit inconclusive observation. It atomically preserves a blocked
+waiting run, records divergence only from positive unknown-turn evidence, closes the barrier once,
+and stores exact replay bytes. A stale submitted receipt and an inconclusive observation remain
+fail-closed without asserting divergence. Missing, empty, exhausted, not-found, scan-exhaustion,
+no-event, or method-result absence is not an input and cannot authorize progress. Experiment
+creation, observation production, run creation/acquisition, scheduling, dispatch, progress,
+validation, completion, review verdicts, repair, and landing remain outside V12 and blocked by
+XY-1304 or later owners.
+
+The safety transaction reserves its exact receipt and validates input before acquiring hierarchy
+coordinator 1271, then the run-scoped 1338 lock, before any run/session/barrier/Turn read or lock.
+V12 also forward-repairs the V3 Turn and HistoryItem invoker-rights guards for V10's SELECT-only
+RuntimeSession authority: they read but never row-lock RuntimeSessions, retain their legal
+Conversation and Turn row locks, and accept direct hierarchy DML only in `READ COMMITTED`.
+Unsupported isolation fails retryably with `40001`; it never authorizes a stale absence decision.
+
 Project/Program policy is versioned authority over allowed repositories, tools, paths, merge
 behavior, parallelism, budgets, approvals, and quiet periods. Commands use expected
 revisions and idempotency keys. Side effects require receipts and authoritative readback;
