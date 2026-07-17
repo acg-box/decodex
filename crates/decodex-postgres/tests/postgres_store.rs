@@ -1,5 +1,8 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/managed_runs.rs"]
+mod managed_runs;
 #[path = "postgres_store/quota.rs"] mod quota;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
@@ -133,6 +136,7 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
 	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
@@ -171,6 +175,12 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_runtime_session_command_owner()",
 	"decodex.forbid_runtime_snapshot_mutation()",
 	"decodex.enforce_runtime_session_event_namespace()",
+	"decodex.enforce_managed_run_command_owner()",
+	"decodex.forbid_managed_run_immutable_mutation()",
+	"decodex.enforce_managed_run_assignment_scope()",
+	"decodex.enforce_managed_run_state()",
+	"decodex.enforce_effect_barrier_state()",
+	"decodex.enforce_managed_run_event_namespace()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(

@@ -127,9 +127,7 @@ async fn exercise_outbox_authority_case(
 	let mut rollback_status = "not_attempted".to_owned();
 	let mut rollback_error = serde_json::Value::Null;
 	let (connection_completion_status, connection_error) = match runtime.connect(NoTls).await {
-		Err(error) => {
-			("connect_failed".to_owned(), postgres_error_diagnostic(&error))
-		}
+		Err(error) => ("connect_failed".to_owned(), postgres_error_diagnostic(&error)),
 		Ok((client, connection)) => {
 			let connection_task = tokio::spawn(connection);
 			match client.batch_execute("BEGIN").await {
@@ -137,7 +135,7 @@ async fn exercise_outbox_authority_case(
 				Err(error) => {
 					begin_status = "begin_failed".into();
 					begin_error = postgres_error_diagnostic(&error);
-				}
+				},
 			}
 			if begin_status == "began" {
 				match client.batch_execute(sql).await {
@@ -153,7 +151,7 @@ async fn exercise_outbox_authority_case(
 								&& error.constraint() == Some("work_item_event_namespace")
 						});
 						execution_error = postgres_error_diagnostic(&error);
-					}
+					},
 				}
 			}
 			match client.batch_execute("ROLLBACK").await {
@@ -161,7 +159,7 @@ async fn exercise_outbox_authority_case(
 				Err(error) => {
 					rollback_status = "rollback_failed".into();
 					rollback_error = postgres_error_diagnostic(&error);
-				}
+				},
 			}
 			drop(client);
 			match connection_task.await {
@@ -173,7 +171,7 @@ async fn exercise_outbox_authority_case(
 					serde_json::json!({"message": error.to_string()}),
 				),
 			}
-		}
+		},
 	};
 
 	let matched = begin_status == "began"
@@ -211,10 +209,7 @@ async fn deliver_work_item_outbox(
 	owner: &tokio_postgres::Client,
 ) -> Result<i64, Box<dyn std::error::Error>> {
 	let protected_id = owner
-		.query_one(
-			"SELECT min(id) FROM decodex.outbox WHERE aggregate_kind='work_item'",
-			&[],
-		)
+		.query_one("SELECT min(id) FROM decodex.outbox WHERE aggregate_kind='work_item'", &[])
 		.await?
 		.get::<_, Option<i64>>(0)
 		.expect("WorkItem command must emit an outbox row");
@@ -494,9 +489,7 @@ async fn assert_ready_and_running_guard(
 	Ok(())
 }
 
-async fn assert_cycle_rejected(
-	store: &PostgresStore,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn assert_cycle_rejected(store: &PostgresStore) -> Result<(), Box<dyn std::error::Error>> {
 	let cycle_a = create(4, WorkItemRelations::default());
 	let cycle_b = create(5, WorkItemRelations::default());
 	success(store.create_work_item("work-item-create-4", &cycle_a).await?);
@@ -670,10 +663,7 @@ async fn postgres_exact_work_item_restore() -> Result<(), Box<dyn std::error::Er
 	assert_eq!(counts.get::<_, i64>(1), counts.get::<_, i64>(2));
 	assert_eq!(counts.get::<_, i64>(3), 1);
 	let mutation = client
-		.execute(
-			"UPDATE decodex.work_item_acceptances SET evidence_summary='mutated'",
-			&[],
-		)
+		.execute("UPDATE decodex.work_item_acceptances SET evidence_summary='mutated'", &[])
 		.await
 		.expect_err("immutable acceptance UPDATE must fail");
 	assert_eq!(

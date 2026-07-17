@@ -56,6 +56,8 @@ RUNTIME_SESSION_RESTORE_SOURCE_DATABASE = "decodex_xy1337_restore_source"
 RUNTIME_SESSION_RESTORE_DATABASE = "decodex_xy1337_restore"
 WORK_ITEM_DATABASE = "decodex_xy1343_work_items"
 WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
+MANAGED_RUN_DATABASE = "decodex_xy1338_managed_runs"
+MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1338_managed_runs_restore"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -126,6 +128,7 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
 	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -170,6 +173,12 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.forbid_work_item_acceptance_mutation()",
 	"decodex.enforce_work_item_acceptance_coherence()",
 	"decodex.enforce_work_item_event_namespace()",
+	"decodex.enforce_managed_run_command_owner()",
+	"decodex.forbid_managed_run_immutable_mutation()",
+	"decodex.enforce_managed_run_assignment_scope()",
+	"decodex.enforce_managed_run_state()",
+	"decodex.enforce_effect_barrier_state()",
+	"decodex.enforce_managed_run_event_namespace()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -200,6 +209,14 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.work_item_state",
 	"decodex.work_item_edge_kind",
 	"decodex.work_item_blocker_kind",
+	"decodex.managed_run_lifecycle",
+	"decodex.managed_run_phase",
+	"decodex.managed_run_wait_reason",
+	"decodex.execution_assignment_role",
+	"decodex.effect_barrier_state",
+	"decodex.managed_run_effect_kind",
+	"decodex.managed_run_effect_state",
+	"decodex.managed_run_safety_input_kind",
 )
 
 
@@ -787,6 +804,17 @@ def run_work_item_test(test: str, env: dict[str, str]) -> str:
 	)
 
 
+def run_managed_run_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"managed_runs::{test}", "--exact",
+		],
+		env,
+	)
+
+
 def rust_digest_constant(name: str) -> str:
 	authority = (
 		REPO_ROOT / "crates/decodex-postgres/src/authority.rs"
@@ -1016,6 +1044,109 @@ def run_work_item_focused_contracts(
 			+ "\n\n".join(failures)
 		)
 	return "\n".join((migration_output, command_output, restore_output))
+
+
+def run_managed_run_focused_contracts(
+	socket_dir: Path, port: int, work: Path, env: dict[str, str]
+) -> str:
+	static_output = run(
+		[
+			"python3", "-m", "unittest",
+			"tests/scripts/test_managed_run_authority.py",
+		],
+		env,
+	)
+	create_database(MANAGED_RUN_DATABASE, env)
+	set_contract_urls(env, socket_dir, port, MANAGED_RUN_DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(MANAGED_RUN_DATABASE, RUNTIME_ROLE, env)
+	paths = {
+		"baseline": work / "xy1338-baseline-manifest.json",
+		"post_attempt": work / "xy1338-post-attempt-manifest.json",
+		"restored": work / "xy1338-restored-manifest.json",
+	}
+	checkpoints: dict[str, dict[str, str] | None] = dict.fromkeys(paths)
+	stage_failures: list[str] = []
+	command_output = ""
+	restore_output = ""
+	source_behavior_error: Exception | None = None
+
+	try:
+		dump_schema_manifest(paths["baseline"], env)
+		checkpoints["baseline"] = load_semantic_manifest(paths["baseline"])
+	except Exception as error:
+		stage_failures.append(f"baseline manifest capture failed:\n{error}")
+	if checkpoints["baseline"] is not None:
+		try:
+			command_output = run_managed_run_test(
+				"postgres_managed_run_safety_contract", env
+			)
+		except Exception as error:
+			source_behavior_error = error
+	else:
+		source_behavior_error = TestFailure(
+			"source behavior was not run because the baseline manifest is unavailable"
+		)
+	try:
+		dump_schema_manifest(paths["post_attempt"], env)
+		checkpoints["post_attempt"] = load_semantic_manifest(paths["post_attempt"])
+	except Exception as error:
+		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
+
+	dump_path = work / "xy1338-managed-runs.dump"
+	dump_succeeded = False
+	restore_database_created = False
+	try:
+		run(["pg_dump", "-Fc", "-f", str(dump_path), MANAGED_RUN_DATABASE], env)
+		dump_succeeded = True
+	except Exception as error:
+		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
+	if dump_succeeded:
+		try:
+			create_database(MANAGED_RUN_RESTORE_DATABASE, env)
+			restore_database_created = True
+		except Exception as error:
+			stage_failures.append(f"restore database creation failed:\n{error}")
+	if restore_database_created:
+		try:
+			run(
+				["pg_restore", "--exit-on-error", "-d", MANAGED_RUN_RESTORE_DATABASE,
+				 str(dump_path)],
+				env,
+			)
+		except Exception as error:
+			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
+		set_contract_urls(env, socket_dir, port, MANAGED_RUN_RESTORE_DATABASE, RUNTIME_ROLE)
+		try:
+			dump_schema_manifest(paths["restored"], env)
+			checkpoints["restored"] = load_semantic_manifest(paths["restored"])
+		except Exception as error:
+			stage_failures.append(f"restored manifest capture failed:\n{error}")
+
+	diagnostics, manifest_failures = manifest_diagnostics(checkpoints)
+	print(
+		"XY-1338 V12 semantic manifest diagnostics:\n"
+		+ json.dumps(diagnostics, indent=2, sort_keys=True),
+		file=sys.stderr,
+		flush=True,
+	)
+	failures = list(stage_failures)
+	if source_behavior_error is not None:
+		failures.append(f"source verifier/behavior failed:\n{source_behavior_error}")
+	failures.extend(manifest_failures)
+	if not failures:
+		try:
+			restore_output = run_managed_run_test(
+				"postgres_managed_run_safety_restore", env
+			)
+		except Exception as error:
+			failures.append(f"restored verifier/behavior failed:\n{error}")
+	if failures:
+		raise TestFailure(
+			"XY-1338 focused evidence finalized with failures:\n\n"
+			+ "\n\n".join(failures)
+		)
+	return "\n".join((static_output, migration_output, command_output, restore_output))
 
 
 def run_runtime_session_crash_recovery(
@@ -1251,6 +1382,10 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"GRANT SELECT ON TABLE decodex.work_items, decodex.work_item_objectives, "
 		f"decodex.work_item_edges, decodex.work_item_readiness_blockers, "
 		f"decodex.work_item_acceptances TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.managed_runs, decodex.managed_run_assignments, "
+		f"decodex.managed_run_effect_barriers, decodex.managed_run_effects, "
+		f"decodex.managed_run_submitted_turn_receipts, "
+		f"decodex.managed_run_safety_inputs TO {role}; "
 		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
@@ -1308,8 +1443,11 @@ max_entry_bytes = 4096
 
 def main() -> int:
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
-	if sys.argv[1:] and not focused_work_items:
-		raise TestFailure("usage: postgres_store_test.py [--focus-work-items]")
+	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
+	if sys.argv[1:] and not (focused_work_items or focused_managed_runs):
+		raise TestFailure(
+			"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs]"
+		)
 	temp_root_value = os.environ.get("DECODEX_TEST_TEMP_ROOT")
 	temp_root = None
 	if temp_root_value:
@@ -1324,7 +1462,8 @@ def main() -> int:
 		temp_root = requested_root.resolve(strict=True)
 	work = Path(
 		tempfile.mkdtemp(
-			prefix="decodex-xy1343-" if focused_work_items else "decodex-xy1267-",
+			prefix=("decodex-xy1343-" if focused_work_items else
+				"decodex-xy1338-" if focused_managed_runs else "decodex-xy1267-"),
 			dir=temp_root,
 		)
 	).resolve()
@@ -1408,6 +1547,10 @@ def main() -> int:
 
 		if focused_work_items:
 			output = run_work_item_focused_contracts(socket_dir, port, work, env)
+			print(output)
+			return 0
+		if focused_managed_runs:
+			output = run_managed_run_focused_contracts(socket_dir, port, work, env)
 			print(output)
 			return 0
 

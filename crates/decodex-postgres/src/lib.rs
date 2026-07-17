@@ -4,8 +4,9 @@
 //! immutable migrations, idempotent optimistic transactions, expiring leases, transactional
 //! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
 //! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
-//! immutable global RoleProfiles. It does not select accounts, route work, store credentials,
-//! dispatch transitions, or expose protocol/client behavior.
+//! immutable global RoleProfiles, inert ManagedRuns, and fail-closed effect barriers. It does not
+//! select accounts, route work, store credentials, schedule or advance runs, dispatch transitions,
+//! or expose protocol/client behavior.
 
 mod accounts;
 mod authority;
@@ -13,6 +14,7 @@ mod conversations;
 mod error;
 mod exact_commands;
 mod leases;
+mod managed_runs;
 mod migrations;
 mod outbox;
 mod policies;
@@ -21,9 +23,9 @@ mod project_agents;
 mod quota;
 mod role_profiles;
 mod runtime_sessions;
-mod work_items;
 #[cfg(unix)] mod socket;
 mod types;
+mod work_items;
 
 pub use self::{
 	conversations::{
@@ -32,6 +34,11 @@ pub use self::{
 		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
+	managed_runs::{
+		ManagedRunEffectBarrier, ManagedRunEffectBarrierState, ManagedRunEffectKind,
+		ManagedRunEffectLineage, ManagedRunSafetyEffect, ManagedRunSafetyOutcome,
+		ManagedRunSafetyRejection, StoredManagedRun,
+	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
@@ -42,27 +49,30 @@ pub use self::{
 		RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionProfileSnapshot,
 		RuntimeSessionRejection, StoredRuntimeSession,
 	},
-	work_items::{
-		AcceptWorkItem, CreateWorkItem, StoredWorkItem, UpdateWorkItem, WorkItemCommandEffect,
-		WorkItemCommandOutcome, WorkItemReadinessBlocker, WorkItemReadinessBlockerKind,
-		WorkItemRejection, WorkItemRelations,
-	},
 	types::{
 		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
 		HypotheticalFallbackFact, LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState,
 		QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow,
 		QuotaWindowMutation, ReconciliationOutcome,
 	},
+	work_items::{
+		AcceptWorkItem, CreateWorkItem, StoredWorkItem, UpdateWorkItem, WorkItemCommandEffect,
+		WorkItemCommandOutcome, WorkItemReadinessBlocker, WorkItemReadinessBlockerKind,
+		WorkItemRejection, WorkItemRelations,
+	},
 };
 pub use decodex_core::{
 	AcceptedPolicyRevision, AccountId, AccountState, Agent, AgentId, AgentRole, AgentStatus,
-	Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
-	Policy, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
-	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, Program,
-	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
-	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
-	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
-	ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity, ReviewCadence, WorkItem,
+	EffectId, ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
+	ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
+	ManagedRunState, ManagedRunWaitReason, Objective, ObjectiveCompletionEvidence,
+	ObjectiveEvidenceId, ObjectiveId, ObjectiveState, Policy, PolicyId, PolicyProvenance,
+	PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
+	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, Program, ProgramCorrelationId,
+	ProgramError, ProgramId, ProgramMetric, ProgramObservationId, ProgramObservationProvenance,
+	ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp, Project, ProjectAuthority,
+	ProjectId, ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding, ProjectStatus,
+	RepositoryIdentity, ReviewCadence, SafetyObservationId, SubmittedTurnReceiptId, WorkItem,
 	WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode,
 	WorkItemObjectiveRef, WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
 	WorkItemTimestamp,

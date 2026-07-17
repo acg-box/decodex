@@ -452,7 +452,9 @@ fn parse_command_response(response: &[u8]) -> Result<WorkItemCommandOutcome, Sto
 		},
 		Some("success") => {},
 		_ => {
-			return Err(StoreError::Incompatible("exact WorkItem classification is invalid".into()));
+			return Err(StoreError::Incompatible(
+				"exact WorkItem classification is invalid".into(),
+			));
 		},
 	}
 	let effect = required_value(&document, "effect")?;
@@ -474,9 +476,16 @@ fn parse_command_response(response: &[u8]) -> Result<WorkItemCommandOutcome, Sto
 		|| outbox_payload.get("revision").and_then(Value::as_i64)
 			!= i64::try_from(work_item.work_item.revision()).ok()
 		|| outbox_payload.get("payload") != Some(&activity_payload)
-		|| !matches!(event_kind, Some("work_item_created" | "work_item_updated"
-			| "work_item_readiness_blocked" | "work_item_ready" | "work_item_accepted"))
-	{
+		|| !matches!(
+			event_kind,
+			Some(
+				"work_item_created"
+					| "work_item_updated"
+					| "work_item_readiness_blocked"
+					| "work_item_ready"
+					| "work_item_accepted"
+			)
+		) {
 		return Err(StoreError::Incompatible("exact WorkItem audit effect is inconsistent".into()));
 	}
 	Ok(WorkItemCommandOutcome::Success(Box::new(WorkItemCommandEffect {
@@ -579,7 +588,9 @@ fn rejection_from_document(value: &Value) -> Result<WorkItemRejection, StoreErro
 	if effect.get("changed").and_then(Value::as_bool) != Some(false)
 		|| effect.get("code").and_then(Value::as_str) != code
 	{
-		return Err(StoreError::Incompatible("exact WorkItem rejection effect is inconsistent".into()));
+		return Err(StoreError::Incompatible(
+			"exact WorkItem rejection effect is inconsistent".into(),
+		));
 	}
 	match code {
 		Some("missing_target") => Ok(WorkItemRejection::MissingTarget),
