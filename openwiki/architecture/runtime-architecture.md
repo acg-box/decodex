@@ -119,22 +119,22 @@ runtime-effective, regardless of `pg_extension.extnamespace`.
 Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
 TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
 `session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
-in any reachable authority state. At the V10 boundary, the audit verifies all fifty-nine shipped
+in any reachable authority state. At the V11 boundary, the audit verifies all sixty-nine shipped
 non-internal trigger bindings, including regular and deferred constraint triggers, by table, event
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V10. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V11. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
 are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
 are unsafe; a replaced same-signature safety-function body is incompatible.
-Every non-internal trigger on a Decodex runtime relation must be one of those fifty-nine exact V10 bindings.
+Every non-internal trigger on a Decodex runtime relation must be one of those sixty-nine exact V11 bindings.
 The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
 on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
 generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
-eighty canonical V10 functions. Every canonical function has the exact function-local
+ninety-eight canonical V11 functions. Every canonical function has the exact function-local
 `pg_catalog, decodex` search path, so runtime-selected callable or operator shadows cannot redirect
 trigger or constraint execution. A trigger cannot therefore invoke an adjacent public owner-executed
 function merely because runtime DML fires it.
@@ -158,21 +158,22 @@ string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
 authority audit and schema-qualified migration-ledger verification remain correct under a hostile
 runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
 table, sequence, function, or ledger-read authority is incompatible.
-At the V10 boundary, eighteen canonical `SECURITY DEFINER` functions comprise the three V3
+At the V11 boundary, twenty-three canonical `SECURITY DEFINER` functions comprise the three V3
 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two
-V9 RoleProfile command entrypoints plus two V10 RuntimeSession command entrypoints. The cursor issuer derives Conversation,
+V9 RoleProfile command entrypoints, two V10 RuntimeSession command entrypoints, and four V11 exact
+WorkItem commands plus the inert future running/resume guard. The cursor issuer derives Conversation,
 snapshot version, parent, page size, position, item identity, and expiry under serialized
 Conversation authority; the bounded pruner is callable by runtime, while the capture function is
 trigger-only and runtime cannot execute it directly. Runtime has no cursor-table INSERT authority.
-The other sixty-two canonical V10 functions are security invokers. The additional-function adversarial fixture creates a fixture-only eighty-first migration-owned,
+The other seventy-five canonical V11 functions are security invokers. The additional-function adversarial fixture creates a fixture-only ninety-ninth migration-owned,
 runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
 trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
 and restores the trigger before the independent doctor rejection. A separate public-function trigger
 fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
-table `UPDATE`, or `TRIGGER`; the exact fifty-nine-trigger V10 inventory rejects that path. A public,
+table `UPDATE`, or `TRIGGER`; the exact sixty-nine-trigger V11 inventory rejects that path. A public,
 runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
 proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
-closed eighty-function V10 inventory remains independent of the distinct same-signature canonical-source
+closed ninety-eight-function V11 inventory remains independent of the distinct same-signature canonical-source
 substitution fixture. Missing, malformed, unsafe, unreachable,
 authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
 there is no ambient/default database or alternate state authority. Repository and
