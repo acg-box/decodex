@@ -15,9 +15,10 @@ const QUOTA_MIGRATION: &str = include_str!("../migrations/V8__quota_exclusions.s
 const ROLE_PROFILE_MIGRATION: &str = include_str!("../migrations/V9__exact_role_profiles.sql");
 const RUNTIME_SESSION_MIGRATION: &str =
 	include_str!("../migrations/V10__runtime_session_snapshots.sql");
+const WORK_ITEM_MIGRATION: &str = include_str!("../migrations/V11__work_item_authority.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 80] = [
+const FUNCTION_CONTRACTS: [FunctionContract; 98] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -672,8 +673,148 @@ const FUNCTION_CONTRACTS: [FunctionContract; 80] = [
 		"plpgsql",
 		"v",
 	),
+	immutable_function_contract(
+		"is_work_item_text",
+		"decodex.is_work_item_text(pg_catalog.text,pg_catalog.int4)",
+		"is_work_item_text(value text, maximum_bytes integer)",
+		"value text, maximum_bytes integer",
+		"boolean",
+		"sql",
+	),
+	immutable_function_contract(
+		"is_work_item_criteria",
+		"decodex.is_work_item_criteria(pg_catalog._text)",
+		"is_work_item_criteria(document text[])",
+		"document text[]",
+		"boolean",
+		"plpgsql",
+	),
+	trigger_contract(
+		"enforce_work_item_state",
+		"decodex.enforce_work_item_state()",
+		"enforce_work_item_state()",
+	),
+	trigger_contract(
+		"enforce_work_item_command_owner",
+		"decodex.enforce_work_item_command_owner()",
+		"enforce_work_item_command_owner()",
+	),
+	trigger_contract(
+		"forbid_work_item_acceptance_mutation",
+		"decodex.forbid_work_item_acceptance_mutation()",
+		"forbid_work_item_acceptance_mutation()",
+	),
+	trigger_contract(
+		"enforce_work_item_acceptance_coherence",
+		"decodex.enforce_work_item_acceptance_coherence()",
+		"enforce_work_item_acceptance_coherence()",
+	),
+	trigger_contract(
+		"enforce_work_item_event_namespace",
+		"decodex.enforce_work_item_event_namespace()",
+		"enforce_work_item_event_namespace()",
+	),
+	exact_function_contract(
+		"work_item_document",
+		"decodex.work_item_document(pg_catalog.uuid)",
+		"work_item_document(p_work_item_id uuid)",
+		"p_work_item_id uuid",
+		"jsonb",
+		"sql",
+		"s",
+	),
+	exact_function_contract(
+		"complete_exact_work_item_rejection",
+		"decodex.complete_exact_work_item_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"complete_exact_work_item_rejection(\n\tp_protocol text, p_idempotency_key text, p_code text\n)",
+		"p_protocol text, p_idempotency_key text, p_code text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"complete_exact_work_item_success",
+		"decodex.complete_exact_work_item_success(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.jsonb)",
+		"complete_exact_work_item_success(\n\tp_protocol text, p_idempotency_key text, p_event_kind text,\n\tp_work_item_id uuid, p_effect jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_event_kind text, p_work_item_id uuid, p_effect jsonb",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"reserve_exact_work_item_command",
+		"decodex.reserve_exact_work_item_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"reserve_exact_work_item_command(\n\tp_protocol text, p_idempotency_key text, p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_request jsonb",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"work_item_graph_cycle",
+		"decodex.work_item_graph_cycle(pg_catalog.uuid)",
+		"work_item_graph_cycle(p_project_id uuid)",
+		"p_project_id uuid",
+		"boolean",
+		"sql",
+		"s",
+	),
+	exact_function_contract(
+		"work_item_readiness",
+		"decodex.work_item_readiness(pg_catalog.uuid)",
+		"work_item_readiness(p_work_item_id uuid)",
+		"p_work_item_id uuid",
+		"jsonb",
+		"plpgsql",
+		"s",
+	),
+	exact_function_contract(
+		"create_work_item_exact",
+		"decodex.create_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+		"create_work_item_exact(\n\tp_protocol text, p_idempotency_key text, p_work_item_id uuid, p_project_id uuid,\n\tp_lead_agent_id uuid, p_program_id uuid, p_objective_ids uuid[],\n\tp_depends_on_ids uuid[], p_blocked_by_ids uuid[], p_title text, p_description text,\n\tp_priority decodex.work_item_priority, p_acceptance_criteria text[],\n\tp_validation_criteria text[], p_actor_id uuid, p_correlation_id uuid, p_provenance text\n)",
+		"p_protocol text, p_idempotency_key text, p_work_item_id uuid, p_project_id uuid, p_lead_agent_id uuid, p_program_id uuid, p_objective_ids uuid[], p_depends_on_ids uuid[], p_blocked_by_ids uuid[], p_title text, p_description text, p_priority decodex.work_item_priority, p_acceptance_criteria text[], p_validation_criteria text[], p_actor_id uuid, p_correlation_id uuid, p_provenance text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"update_work_item_exact",
+		"decodex.update_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,decodex.work_item_state,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+		"update_work_item_exact(\n\tp_protocol text, p_idempotency_key text, p_work_item_id uuid, p_project_id uuid,\n\tp_expected_revision bigint, p_program_id uuid, p_objective_ids uuid[],\n\tp_depends_on_ids uuid[], p_blocked_by_ids uuid[], p_title text, p_description text,\n\tp_priority decodex.work_item_priority, p_acceptance_criteria text[],\n\tp_validation_criteria text[], p_target_state decodex.work_item_state,\n\tp_actor_id uuid, p_correlation_id uuid, p_provenance text\n)",
+		"p_protocol text, p_idempotency_key text, p_work_item_id uuid, p_project_id uuid, p_expected_revision bigint, p_program_id uuid, p_objective_ids uuid[], p_depends_on_ids uuid[], p_blocked_by_ids uuid[], p_title text, p_description text, p_priority decodex.work_item_priority, p_acceptance_criteria text[], p_validation_criteria text[], p_target_state decodex.work_item_state, p_actor_id uuid, p_correlation_id uuid, p_provenance text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"assess_work_item_readiness_exact",
+		"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+		"assess_work_item_readiness_exact(\n\tp_protocol text, p_idempotency_key text, p_work_item_id uuid, p_project_id uuid,\n\tp_expected_revision bigint, p_actor_id uuid, p_correlation_id uuid, p_provenance text\n)",
+		"p_protocol text, p_idempotency_key text, p_work_item_id uuid, p_project_id uuid, p_expected_revision bigint, p_actor_id uuid, p_correlation_id uuid, p_provenance text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"accept_work_item_exact",
+		"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"accept_work_item_exact(\n\tp_protocol text, p_idempotency_key text, p_acceptance_id uuid,\n\tp_work_item_id uuid, p_project_id uuid, p_expected_revision bigint,\n\tp_actor_id uuid, p_correlation_id uuid, p_provenance text, p_criteria_provenance text,\n\tp_evidence_summary text, p_evidence_provenance text\n)",
+		"p_protocol text, p_idempotency_key text, p_acceptance_id uuid, p_work_item_id uuid, p_project_id uuid, p_expected_revision bigint, p_actor_id uuid, p_correlation_id uuid, p_provenance text, p_criteria_provenance text, p_evidence_summary text, p_evidence_provenance text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"guard_work_item_running_resume",
+		"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+		"guard_work_item_running_resume(\n\tp_work_item_id uuid, p_project_id uuid, p_expected_revision bigint\n)",
+		"p_work_item_id uuid, p_project_id uuid, p_expected_revision bigint",
+		"void",
+		"plpgsql",
+		"v",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 30] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 35] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -704,8 +845,13 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 30] = [
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
 	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+	"decodex.create_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.update_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,decodex.work_item_state,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 ];
-const SAFETY_FUNCTIONS: [&str; 37] = [
+const SAFETY_FUNCTIONS: [&str; 42] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -743,8 +889,13 @@ const SAFETY_FUNCTIONS: [&str; 37] = [
 	"enforce_runtime_session_command_owner",
 	"forbid_runtime_snapshot_mutation",
 	"enforce_runtime_session_event_namespace",
+	"enforce_work_item_state",
+	"enforce_work_item_command_owner",
+	"forbid_work_item_acceptance_mutation",
+	"enforce_work_item_acceptance_coherence",
+	"enforce_work_item_event_namespace",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 59;
+const SAFETY_TRIGGER_COUNT: usize = 69;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -926,7 +1077,12 @@ WITH set_roles AS (
   ('objective_completion_evidence', true, false, false, false),
   ('exact_command_receipts', false, false, false, false),
   ('role_profiles', false, false, false, false),
-  ('role_profile_revisions', false, false, false, false)
+  ('role_profile_revisions', false, false, false, false),
+  ('work_items', true, false, false, false),
+  ('work_item_objectives', true, false, false, false),
+  ('work_item_edges', true, false, false, false),
+  ('work_item_readiness_blockers', true, false, false, false),
+  ('work_item_acceptances', true, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -935,7 +1091,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 31
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 36
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -1150,6 +1306,16 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	  ('account_snapshots', 'account_snapshots_immutable', 'forbid_runtime_snapshot_mutation', 27),
 	  ('activity', 'activity_runtime_session_namespace', 'enforce_runtime_session_event_namespace', 23),
 	  ('outbox', 'outbox_runtime_session_namespace', 'enforce_runtime_session_event_namespace', 23)
+	,('work_items', 'work_items_state_guard', 'enforce_work_item_state', 31)
+	,('work_items', 'work_items_command_owner', 'enforce_work_item_command_owner', 62)
+	,('work_item_objectives', 'work_item_objectives_command_owner', 'enforce_work_item_command_owner', 62)
+	,('work_item_edges', 'work_item_edges_command_owner', 'enforce_work_item_command_owner', 62)
+	,('work_item_readiness_blockers', 'work_item_readiness_blockers_command_owner', 'enforce_work_item_command_owner', 62)
+	,('work_item_acceptances', 'work_item_acceptances_command_owner', 'enforce_work_item_command_owner', 62)
+	,('work_item_acceptances', 'work_item_acceptances_immutable', 'forbid_work_item_acceptance_mutation', 27)
+	,('work_item_acceptances', 'work_item_acceptance_coherence', 'enforce_work_item_acceptance_coherence', 5)
+	,('activity', 'activity_work_item_namespace', 'enforce_work_item_event_namespace', 23)
+	,('outbox', 'outbox_work_item_namespace', 'enforce_work_item_event_namespace', 23)
 )
 SELECT
   expected.function_name,
@@ -1158,15 +1324,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -1326,6 +1492,16 @@ WITH catalog_context AS MATERIALIZED (
 	  ('account_snapshots', 'account_snapshots_immutable', 'decodex.forbid_runtime_snapshot_mutation()'),
 	  ('activity', 'activity_runtime_session_namespace', 'decodex.enforce_runtime_session_event_namespace()'),
 	  ('outbox', 'outbox_runtime_session_namespace', 'decodex.enforce_runtime_session_event_namespace()')
+	,('work_items', 'work_items_state_guard', 'decodex.enforce_work_item_state()')
+	,('work_items', 'work_items_command_owner', 'decodex.enforce_work_item_command_owner()')
+	,('work_item_objectives', 'work_item_objectives_command_owner', 'decodex.enforce_work_item_command_owner()')
+	,('work_item_edges', 'work_item_edges_command_owner', 'decodex.enforce_work_item_command_owner()')
+	,('work_item_readiness_blockers', 'work_item_readiness_blockers_command_owner', 'decodex.enforce_work_item_command_owner()')
+	,('work_item_acceptances', 'work_item_acceptances_command_owner', 'decodex.enforce_work_item_command_owner()')
+	,('work_item_acceptances', 'work_item_acceptances_immutable', 'decodex.forbid_work_item_acceptance_mutation()')
+	,('work_item_acceptances', 'work_item_acceptance_coherence', 'decodex.enforce_work_item_acceptance_coherence()')
+	,('activity', 'activity_work_item_namespace', 'decodex.enforce_work_item_event_namespace()')
+	,('outbox', 'outbox_work_item_namespace', 'decodex.enforce_work_item_event_namespace()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -1795,8 +1971,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x90, 0xad, 0xd2, 0x3f, 0x9a, 0xd9, 0xd9, 0x9c, 0x81, 0xb7, 0xae, 0xc1, 0x7a, 0x3f, 0xbf, 0x1f,
-	0xe6, 0xb2, 0x6c, 0x28, 0x8d, 0x2d, 0x04, 0xfd, 0x9b, 0x5c, 0x4b, 0xad, 0x9d, 0xda, 0xd2, 0xbe,
+	0xc4, 0x8f, 0x7b, 0x49, 0x8d, 0xac, 0x7f, 0xd1, 0x6f, 0x2d, 0x1b, 0xe8, 0xc7, 0x49, 0x5e, 0xf8,
+	0xcf, 0xda, 0xb3, 0x09, 0xfd, 0xd8, 0x27, 0xb9, 0x47, 0x76, 0x80, 0x9a, 0x18, 0x97, 0x1b, 0x1b,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -2275,8 +2451,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0xc4, 0x43, 0xc4, 0xe0, 0xb0, 0x6e, 0x01, 0xd5, 0xb9, 0x28, 0x36, 0xf2, 0xfd, 0xf3, 0xf9, 0x15,
-	0xd2, 0x96, 0xce, 0x40, 0xd3, 0x9b, 0x8c, 0x0c, 0xa1, 0x48, 0x9b, 0xe9, 0x65, 0xb5, 0xdb, 0xc1,
+	0xbf, 0x89, 0x19, 0x59, 0x3a, 0xe4, 0x3c, 0xc9, 0x01, 0x13, 0x4d, 0x14, 0x8f, 0x6c, 0x7d, 0xcf,
+	0x10, 0xc0, 0xeb, 0xf3, 0x4c, 0x1f, 0xea, 0xd9, 0xb5, 0x98, 0xdf, 0x45, 0xba, 0x6b, 0x9d, 0xd2,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -2556,6 +2732,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		QUOTA_MIGRATION,
 		ROLE_PROFILE_MIGRATION,
 		RUNTIME_SESSION_MIGRATION,
+		WORK_ITEM_MIGRATION,
 	]
 	.into_iter()
 	.find(|migration| migration.contains(&declaration))?;
@@ -2630,7 +2807,6 @@ async fn verify_configured_authority(
 
 	Ok(())
 }
-
 async fn verify_execution_path_contract(client: &Client) -> Result<(), StoreError> {
 	let allowed_functions = FUNCTION_CONTRACTS
 		.iter()
@@ -2721,6 +2897,11 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "update_role_profile_exact"
 				| "create_runtime_session_exact"
 				| "transition_runtime_session_exact"
+				| "create_work_item_exact"
+				| "update_work_item_exact"
+				| "assess_work_item_readiness_exact"
+				| "accept_work_item_exact"
+				| "guard_work_item_running_resume"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
@@ -2877,6 +3058,7 @@ mod tests {
 		OWNED_OBJECT_CATALOGS, POLICY_MIGRATION, PROGRAM_OBJECTIVE_MIGRATION,
 		PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL, ROLE_PROFILE_MIGRATION,
 		RUNTIME_SESSION_MIGRATION, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		WORK_ITEM_MIGRATION,
 	};
 
 	#[test]
@@ -3011,6 +3193,7 @@ mod tests {
 				QUOTA_MIGRATION,
 				ROLE_PROFILE_MIGRATION,
 				RUNTIME_SESSION_MIGRATION,
+				WORK_ITEM_MIGRATION,
 			]
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
@@ -3032,6 +3215,7 @@ mod tests {
 					QUOTA_MIGRATION,
 					ROLE_PROFILE_MIGRATION,
 					RUNTIME_SESSION_MIGRATION,
+					WORK_ITEM_MIGRATION,
 				]
 				.into_iter()
 				.map(|migration| migration

@@ -106,11 +106,12 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly eighteen narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly twenty-three narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
-commands, two command-complete exact RoleProfile entrypoints, and two command-complete exact
-RuntimeSession entrypoints. Runtime cannot insert cursor, exact-receipt, RoleProfile,
-RuntimeSession, or RuntimeSession snapshot rows or execute trigger/private helpers directly.
+commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
+RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, and one inert future
+running/resume guard. Runtime cannot insert cursor, exact-receipt, RoleProfile, RuntimeSession,
+RuntimeSession snapshot, or WorkItem rows or execute trigger/private helpers directly.
 The two bound identity sequences require
 USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
 are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.
