@@ -367,7 +367,9 @@ forces dispatch disabled. This slice exposes no account selection, live turn sta
 automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake; XY-1304 remains the
 separate failed enablement gate. XY-1304 owns experiment creation and positive observation
 acquisition; XY-1276 owns production Quick Task creation. XY-1272 owns only PostgreSQL
-configured-principal and ACL authority closure against V8, while XY-1337 owns the expected V9.
+configured-principal and ACL authority closure against V8. XY-1345 owns accepted exact-command
+authority/prototype evidence, XY-1346 owns expected V9 exact receipts plus RoleProfiles, and
+re-bounded XY-1337 owns expected V10 RuntimeSession snapshots and transitions.
 
 The composition also reports conversation execution unavailable. Authentication, TLS,
 remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, mutating
@@ -378,12 +380,32 @@ pool lifecycle: closing the pool makes it unavailable. Live PostgreSQL failures 
 authoritative at each asynchronous store operation; availability does not claim a synchronous
 network-liveness probe.
 
-The store's owned mutations commit an immutable pending command receipt before effects. A fenced
-claim then applies the exact expected revision, appends activity, enqueues the matching outbox
-effect, stores the exact response bytes, and completes the receipt atomically in transaction B.
-Reusing the same complete command identity returns those original bytes; changing operation, scope,
-entity, expected revision, payload, or canonical request is rejected before effects. Durable exact
-history replay retains its immutable version and referenced blob while the receipt exists. Outbox claims are bounded and
+Pure database commands do not use that split-phase flow. They execute through an
+operation-specific, command-complete migration-owner `SECURITY DEFINER` function. PostgreSQL builds
+the complete JSONB request from the typed values it consumes, inserts or waits on
+`exact_command_receipts(protocol_version, idempotency_key)`, and completes the receipt, domain
+mutation, canonical activity, outbox, and stored response in one transaction. Runtime has only the
+operation-function `EXECUTE` grant: it has no exact-receipt table privilege, private-helper access,
+or canonical activity/outbox mutation authority. A deferred constraint trigger rejects any commit
+with an executing row; completed rows and authoritative response bytes are immutable and
+undeletable. Stable domain rejection completes and replays, while cancellation, connection,
+serialization, deadlock, and unexpected database failures roll back.
+
+Normal exact-command execution is one command per top-level `READ COMMITTED` transaction. A
+separate read/lock follows `ON CONFLICT DO NOTHING`; `40001` and `40P01` retry the complete
+identical transaction. JSONB identity uses equality, explicit null keys, typed enum/numeric values,
+and exact PostgreSQL text semantics. Effects use actual `RETURNING` rows and canonical audit
+identities. Operation is part of the envelope, so cross-operation key reuse conflicts. The accepted
+proof and vertical ownership are in
+[the XY-1345 evidence](../evidence/xy-1345-exact-command-authority.md); production V9 belongs to
+XY-1346 and V10 to re-bounded XY-1337.
+
+Legacy `command_receipts` retain the receipt-first fenced-claim protocol only for unrelated blob,
+filesystem, external, or long-running sagas whose point of no return cannot fit in one PostgreSQL
+transaction. Such a flow commits an immutable pending receipt before effects; a fenced claim then
+applies the expected revision, appends activity, enqueues outbox, stores exact response bytes, and
+completes transaction B. Durable exact history replay retains its immutable version and referenced
+blob while the legacy receipt exists. Outbox claims are bounded and
 fenced by a token rotated on every claim or reclaim. Any effect that may have begun must be
 reconciled through a meaningful receipt and authoritative readback after claim expiry or
 restart. Lease, retry, and retention durations are exact positive whole milliseconds capped
