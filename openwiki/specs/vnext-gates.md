@@ -150,6 +150,16 @@ crash/concurrency, and populated restore against the production migration. Candi
 command code are superseded and cannot be transplanted; its valid invariants and hostile-test ideas
 remain provenance only.
 
+V10 must preserve the accepted V9 exact receipt and global RoleProfile contracts while adding only
+the two command-complete RuntimeSession entrypoints and their private builders/rejection helper.
+Acceptance requires zero-state V9-to-V10 fencing, clean V1-to-V10 bootstrap, exact creation and
+transition substitution conflicts, byte-identical success and stable-rejection replay, coherent
+old-or-new profile race binding, immutable account/profile history, direct-DML/helper/audit-namespace
+hostility, receipt/domain/activity/outbox/response rollback boundaries, whole-transaction retry,
+blocked-old-writer cutover, crash/restart convergence, concurrency, and populated dump/restore.
+These expensive PostgreSQL 18 gates run once against the frozen serial
+XY-1345 -> XY-1346 -> XY-1337 candidate; implementation work does not start a live database.
+
 ### XY-1263 acceptance and XY-1269 clean-slice reset
 
 XY-1263 landed in PR #1109. Its reviewed candidate was

@@ -119,22 +119,22 @@ runtime-effective, regardless of `pg_extension.extnamespace`.
 Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
 TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
 `session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
-in any reachable authority state. At the frozen V9 boundary, the audit verifies all fifty-two shipped
+in any reachable authority state. At the V10 boundary, the audit verifies all fifty-nine shipped
 non-internal trigger bindings, including regular and deferred constraint triggers, by table, event
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V9. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V10. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
 are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
 are unsafe; a replaced same-signature safety-function body is incompatible.
-Every non-internal trigger on a Decodex runtime relation must be one of those fifty-two exact V9 bindings.
+Every non-internal trigger on a Decodex runtime relation must be one of those fifty-nine exact V10 bindings.
 The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
 on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
 generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
-seventy-two canonical V9 functions. Every canonical function has the exact function-local
+eighty canonical V10 functions. Every canonical function has the exact function-local
 `pg_catalog, decodex` search path, so runtime-selected callable or operator shadows cannot redirect
 trigger or constraint execution. A trigger cannot therefore invoke an adjacent public owner-executed
 function merely because runtime DML fires it.
@@ -158,21 +158,21 @@ string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
 authority audit and schema-qualified migration-ledger verification remain correct under a hostile
 runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
 table, sequence, function, or ledger-read authority is incompatible.
-At the frozen V9 boundary, sixteen canonical `SECURITY DEFINER` functions comprise the three V3
+At the V10 boundary, eighteen canonical `SECURITY DEFINER` functions comprise the three V3
 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two
-V9 RoleProfile command entrypoints. The cursor issuer derives Conversation,
+V9 RoleProfile command entrypoints plus two V10 RuntimeSession command entrypoints. The cursor issuer derives Conversation,
 snapshot version, parent, page size, position, item identity, and expiry under serialized
 Conversation authority; the bounded pruner is callable by runtime, while the capture function is
 trigger-only and runtime cannot execute it directly. Runtime has no cursor-table INSERT authority.
-The other fifty-six canonical V9 functions are security invokers. The additional-function adversarial fixture creates a fixture-only seventy-third migration-owned,
+The other sixty-two canonical V10 functions are security invokers. The additional-function adversarial fixture creates a fixture-only eighty-first migration-owned,
 runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
 trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
 and restores the trigger before the independent doctor rejection. A separate public-function trigger
 fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
-table `UPDATE`, or `TRIGGER`; the exact fifty-two-trigger V9 inventory rejects that path. A public,
+table `UPDATE`, or `TRIGGER`; the exact fifty-nine-trigger V10 inventory rejects that path. A public,
 runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
 proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
-closed seventy-two-function V9 inventory remains independent of the distinct same-signature canonical-source
+closed eighty-function V10 inventory remains independent of the distinct same-signature canonical-source
 substitution fixture. Missing, malformed, unsafe, unreachable,
 authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
 there is no ambient/default database or alternate state authority. Repository and
@@ -401,7 +401,8 @@ identities. Operation is part of the envelope, so cross-operation key reuse conf
 proof and vertical ownership are in
 [the XY-1345 evidence](../evidence/xy-1345-exact-command-authority.md). V9 implements this boundary
 for immutable global RoleProfiles through `bootstrap_role_profiles_exact` and
-`update_role_profile_exact`; V10 remains owned by re-bounded XY-1337.
+`update_role_profile_exact`; V10 extends it through `create_runtime_session_exact` and
+`transition_runtime_session_exact` without changing the V9 receipt or RoleProfile authority.
 
 The V9 RoleProfile model contains only advisor, lead, task, and reviewer. Bootstrap receives four
 role-implied scalar configuration groups and commits the complete set or nothing. Updates append an
@@ -409,6 +410,26 @@ immutable revision under an expected-revision row lock and atomically advance th
 single current pointer. Runtime neither selects nor mutates the RoleProfile or exact-receipt
 relations directly; it parses the response bytes returned by the two command-complete entrypoints
 and retries a complete top-level transaction only after a classified infrastructure SQLSTATE.
+
+V10 is a forward-only zero-state cutover over the retained V3 snapshot and RuntimeSession table
+identities. One access-exclusive fence rejects every legacy RuntimeSession receipt, snapshot,
+session, Turn, or structurally classified activity/outbox row before altering the empty tables.
+Classification closes aggregate, event, effect, link, and payload representations recursively,
+including legacy `runtime_session_recorded` events under another aggregate and nested aggregate
+markers; the steady-state trigger applies the same fail-closed family.
+Creation accepts only the RuntimeSession and Conversation identities, one role, the complete
+non-secret account snapshot identity/facts, nullable Codex thread identity, and initial state.
+PostgreSQL acquires hierarchy coordinator 1271 before selecting or locking an open Conversation or
+RuntimeSession tuple, then resolves exactly one current immutable RoleProfile
+revision, inserts or equality-validates the account snapshot, writes the complete profile snapshot,
+creates revision 1 with a null last-known-turn identity, appends canonical activity/outbox rows,
+and stores the exact response bytes in one transaction. Transition identity is only RuntimeSession
+identity, expected revision, and target state; success returns prior/new state and revision plus the
+unchanged full profile/account/session facts and canonical audit identities. Missing, duplicate,
+stale, illegal, invalid-account, and account-snapshot-conflict outcomes are committed stable
+rejections. Runtime retains SELECT-only snapshot/session readback and can execute only the two
+public command owners; direct DML, private helpers, and forged RuntimeSession activity/outbox
+namespaces are closed.
 
 Legacy `command_receipts` retain the receipt-first fenced-claim protocol only for unrelated blob,
 filesystem, external, or long-running sagas whose point of no return cannot fit in one PostgreSQL
