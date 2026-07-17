@@ -76,6 +76,17 @@ receipts plus immutable global RoleProfile bootstrap/update in V9, then re-bound
 RuntimeSession V10. Legacy
 `command_receipts` semantics remain unchanged for unrelated external or long-running sagas.
 
+XY-1337 RuntimeSession amendment, implemented as expected V10: creation and transition are separate
+command-complete `SECURITY DEFINER` operations using the unchanged V9 exact receipt. PostgreSQL
+constructs creation identity from RuntimeSession ID, Conversation ID, role, complete non-secret
+account snapshot identity/facts, nullable Codex thread ID, and initial state, then resolves exactly
+one current immutable RoleProfile revision server-side. Transition identity contains only session
+ID, expected revision, and target state. Both commands atomically store domain state, canonical
+activity/outbox effects, and immutable response bytes; stable rejection completes in the same
+transaction. V10 is a zero-state forward cutover, preserves the existing table identities, removes
+runtime snapshot/session DML, fences RuntimeSession audit namespaces, and does not authorize Codex
+creation, reconciliation, routing, scheduling, WorkItems, ManagedRuns, UI, or plugin readiness.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the

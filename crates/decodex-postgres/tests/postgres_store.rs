@@ -2,7 +2,11 @@
 
 #[path = "postgres_store/quota.rs"] mod quota;
 #[cfg(feature = "test-support")]
-#[path = "postgres_store/role_profiles.rs"] mod role_profiles;
+#[path = "postgres_store/role_profiles.rs"]
+mod role_profiles;
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/runtime_sessions.rs"]
+mod runtime_sessions;
 
 use std::{
 	collections::{BTreeMap, HashSet},
@@ -26,25 +30,27 @@ use tokio::{
 use tokio_postgres::{Client, Config, NoTls, Row, types::ToSql};
 
 use decodex_core::{
-	self, AcceptedPolicyRevision, AccountSnapshot, ArtifactId, ArtifactStatus, Availability,
-	BlobHash, BlobStore, ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource,
-	ContextSourceKind, ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind,
-	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, ItemStatus, Objective,
-	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
-	PinnedContextSource, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance,
-	PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PossibleSideEffects, ProductState as _,
-	ProfileSnapshot, Program, ProgramContextInput, ProgramCorrelationId, ProgramId, ProgramMetric,
-	ProgramObservationId, ProgramObservationProvenance, ProgramProvenance, ProgramSignal,
-	ProgramState, ProgramTimestamp, Project, ProjectId, ProjectMetadata, ProjectMetadataValue,
-	ProjectRepositoryBinding, ProjectStatus, ProposedTransitionKind, RepositoryIdentity,
-	ReviewCadence, RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
+	self, AcceptedPolicyRevision, ArtifactId, ArtifactStatus, Availability, BlobHash, BlobStore,
+	ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceKind,
+	ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
+	HistoryMetadataValue, ItemStatus, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId,
+	ObjectiveId, ObjectiveState, PinnedContextSource, PolicyId, PolicyProvenance, PolicyRevision,
+	PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot, PolicySnapshotValue,
+	PossibleSideEffects, ProductState as _, Program, ProgramContextInput, ProgramCorrelationId,
+	ProgramId, ProgramMetric, ProgramObservationId, ProgramObservationProvenance,
+	ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp, Project, ProjectId,
+	ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding, ProjectStatus,
+	ProposedTransitionKind, RepositoryIdentity, ReviewCadence, RuntimeSessionId,
+	RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 use decodex_postgres::{
-	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus, CLOSED,
-	CommandIdentity, ContextPackRecord, CreateArtifact, CreateConversation, CreateProject,
-	CreateRuntimeSession, HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim,
-	OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition,
-	ReconciliationOutcome, RecordHistoryItem, StoreError, UpdateProgramContext,
+	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus,
+	BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord, CreateArtifact,
+	CreateConversation, CreateProject, CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot,
+	HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation,
+	PersistContextPack, PostgresStore, ProposeTransition, ReconciliationOutcome, RecordHistoryItem,
+	RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
+	RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
 };
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
@@ -73,6 +79,26 @@ const CREDENTIAL_VALUE_VECTORS: &[&str] = &[
 	"AKIA0123456789ABCDEF",
 ];
 const UNICODE_WHITESPACE_VECTORS: &[&str] = &["\u{a0}", "\u{85}", "\u{202f}", "\u{3000}"];
+
+fn exact_profile(marker: &str) -> RoleProfileConfiguration {
+	RoleProfileConfiguration {
+		model: "test-model".into(),
+		reasoning_effort: "medium".into(),
+		service_tier: "standard".into(),
+		instructions: format!("Exact {marker} fixture instructions."),
+		provenance: Some("XY-1337 integration fixture".into()),
+	}
+}
+
+fn exact_account_snapshot(snapshot_id: String) -> CreateRuntimeSessionAccountSnapshot {
+	CreateRuntimeSessionAccountSnapshot {
+		account_snapshot_id: snapshot_id,
+		source_account_id: AccountId::new(ACCOUNT_ID).expect("fixture account ID is canonical"),
+		display_label: "Manual A".into(),
+		observed_state: AccountState::Unknown,
+		source_revision: 3,
+	}
+}
 const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
@@ -102,6 +128,8 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
 	"decodex.bootstrap_role_profiles_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
+	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
@@ -137,6 +165,9 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.forbid_role_profile_revision_mutation()",
 	"decodex.forbid_role_profile_truncate()",
 	"decodex.enforce_role_profile_event_namespace()",
+	"decodex.enforce_runtime_session_command_owner()",
+	"decodex.forbid_runtime_snapshot_mutation()",
+	"decodex.enforce_runtime_session_event_namespace()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(
@@ -359,13 +390,13 @@ async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn st
 #[cfg(feature = "test-support")]
 async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
 	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
-	let (mut migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (migration, mut runtime) = separated_configs("DECODEX_TEST")?;
 	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
 	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
 
-	PostgresStore::pin_session_search_path_fixture(&mut migration);
+	PostgresStore::pin_session_search_path_fixture(&mut runtime);
 
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let schema: String =
 		client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await?.get(0);
@@ -387,6 +418,15 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 
 	connection_task.await??;
 
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires an isolated PostgreSQL 18 configured-authority database"]
+async fn postgres_manifest_readiness_fixture() -> Result<(), Box<dyn std::error::Error>> {
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	store.close();
 	Ok(())
 }
 
@@ -1082,24 +1122,6 @@ async fn assert_concurrent_hierarchy_serialization(
 
 	setup.batch_execute("INSERT INTO decodex.blob_objects (blob_hash,byte_length,verified_at) VALUES (repeat('a',64),1,clock_timestamp() + interval '1 second') ON CONFLICT DO NOTHING").await?;
 
-	assert_parent_child_race(
-		setup,
-		&client_a,
-		&client_b,
-		&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000001','{profile}','{account}','active')", session(1)),
-		"UPDATE decodex.conversations SET status='archived',revision=revision+1 WHERE conversation_id='49000000-0000-4000-8000-000000000001'",
-		"SELECT status='archived' AND NOT EXISTS (SELECT 1 FROM decodex.runtime_sessions WHERE conversation_id='49000000-0000-4000-8000-000000000001') FROM decodex.conversations WHERE conversation_id='49000000-0000-4000-8000-000000000001'",
-	).await?;
-
-	setup.execute(&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000002','{profile}','{account}','active')", session(2)), &[]).await?;
-
-	assert_parent_child_race(
-		setup, &client_a, &client_b,
-		&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000002','{}',1,'assistant')", turn(2), session(2)),
-		&format!("UPDATE decodex.runtime_sessions SET state='ended',revision=revision+1 WHERE runtime_session_id='{}'", session(2)),
-		&format!("SELECT state='ended' AND NOT EXISTS (SELECT 1 FROM decodex.turns WHERE runtime_session_id='{}') FROM decodex.runtime_sessions WHERE runtime_session_id='{}'", session(2), session(2)),
-	).await?;
-
 	setup.execute(&format!("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('{}','49000000-0000-4000-8000-000000000003','{profile}','{account}','active')", session(3)), &[]).await?;
 	setup.execute(&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000003','{}',1,'assistant')", turn(3), session(3)), &[]).await?;
 
@@ -1174,7 +1196,7 @@ async fn assert_executor_prelock_order(
 	opponent: &Client,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let blob_store = isolated_blob_store()?;
-	let (conversation_id, artifact_id, session_id, turn_id) =
+	let (conversation_id, artifact_id, _session_id, turn_id) =
 		seed_lock_order_fixture(observer, &blob_store, 24).await?;
 	let history_item_id: String = observer
 		.query_one(
@@ -1188,9 +1210,6 @@ async fn assert_executor_prelock_order(
 		format!(
 			"UPDATE decodex.conversations SET revision=revision WHERE conversation_id='{conversation_id}'"
 		),
-		format!(
-			"UPDATE decodex.runtime_sessions SET revision=revision WHERE runtime_session_id='{session_id}'"
-		),
 		format!("UPDATE decodex.turns SET revision=revision WHERE turn_id='{turn_id}'"),
 		format!(
 			"UPDATE decodex.history_items SET revision=revision WHERE history_item_id='{history_item_id}'"
@@ -1200,9 +1219,6 @@ async fn assert_executor_prelock_order(
 	let lock_queries = [
 		format!(
 			"SELECT 1 FROM decodex.conversations WHERE conversation_id='{conversation_id}' FOR UPDATE"
-		),
-		format!(
-			"SELECT 1 FROM decodex.runtime_sessions WHERE runtime_session_id='{session_id}' FOR UPDATE"
 		),
 		format!("SELECT 1 FROM decodex.turns WHERE turn_id='{turn_id}' FOR UPDATE"),
 		format!(
@@ -2399,7 +2415,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 8);
+	assert_eq!(history.len(), 10);
 	assert_eq!(history[0].0, 1);
 	assert_eq!(history[0].1, "persistence_foundation");
 	assert!(!history[0].2.is_empty());
@@ -2424,6 +2440,12 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 	assert_eq!(history[7].0, 8);
 	assert_eq!(history[7].1, "quota_exclusions");
 	assert!(!history[7].2.is_empty());
+	assert_eq!(history[8].0, 9);
+	assert_eq!(history[8].1, "exact_role_profiles");
+	assert!(!history[8].2.is_empty());
+	assert_eq!(history[9].0, 10);
+	assert_eq!(history[9].1, "runtime_session_snapshots");
+	assert!(!history[9].2.is_empty());
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -5443,16 +5465,16 @@ async fn assert_conversation_history_context_and_blob_contract(
 
 	assert_eq!(first, duplicate);
 
-	let profile = ProfileSnapshot::new(
-		"task-default",
-		"task",
-		"test-model",
-		"medium",
-		"standard",
-		BlobHash::digest(b"fixture instructions"),
-		4,
-	)?;
-	let account = AccountSnapshot::new("manual-account-a", "Manual A", "unknown", 3)?;
+	let profiles = BootstrapRoleProfiles {
+		advisor: exact_profile("advisor"),
+		lead: exact_profile("lead"),
+		task: exact_profile("task"),
+		reviewer: exact_profile("reviewer"),
+	};
+	assert!(matches!(
+		store.bootstrap_role_profiles("history-role-bootstrap", &profiles).await?,
+		RoleProfileCommandOutcome::Success(_)
+	));
 	let session_a_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000001")?;
 	let session_b_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000002")?;
 
@@ -5461,23 +5483,21 @@ async fn assert_conversation_history_context_and_blob_contract(
 		let create_session = CreateRuntimeSession {
 			runtime_session_id: session_id,
 			conversation_id: conversation_id.clone(),
-			profile_snapshot_id: format!("42000000-0000-4000-8000-{:012x}", index + 1),
-			account_snapshot_id: format!("43000000-0000-4000-8000-{:012x}", index + 1),
-			profile_snapshot: profile.clone(),
-			account_snapshot: account.clone(),
+			role: RoleProfileRole::Task,
+			account_snapshot: exact_account_snapshot(format!(
+				"43000000-0000-4000-8000-{:012x}",
+				index + 1
+			)),
 			codex_thread_id: None,
-			state: RuntimeSessionState::Active,
+			initial_state: RuntimeSessionState::Active,
 		};
 
-		store
-			.create_runtime_session(
-				&CommandIdentity::new(
-					format!("manual-session-{index}"),
-					format!("manual-session-{index}-v1").as_bytes(),
-				)?,
-				&create_session,
-			)
-			.await?;
+		assert!(matches!(
+			store
+				.create_runtime_session(&format!("manual-session-{index}"), &create_session)
+				.await?,
+			RuntimeSessionCommandOutcome::Success(_)
+		));
 	}
 
 	let null_thread_sessions: i64 = client
@@ -5491,15 +5511,10 @@ async fn assert_conversation_history_context_and_blob_contract(
 
 	assert_eq!(null_thread_sessions, 2, "manual fixtures may span multiple RuntimeSessions");
 
-	assert_initial_lifecycle_timestamps_are_canonical(runtime_client, &conversation_id).await?;
-	assert_runtime_session_correlation_is_immutable(
-		store,
-		runtime_client,
-		&conversation_id,
-		&profile,
-		&account,
-	)
-	.await?;
+	assert_initial_lifecycle_timestamps_are_canonical(store, runtime_client, &conversation_id)
+		.await?;
+	assert_runtime_session_correlation_is_immutable(store, runtime_client, &conversation_id)
+		.await?;
 
 	let fixture = ConversationFixture { blob_store, conversation_id, session_a_id, session_b_id };
 
@@ -5520,14 +5535,7 @@ async fn assert_conversation_history_context_and_blob_contract(
 	assert_eq!(artifact_page.entries.len(), 2);
 	assert!(artifact_page.entries[0].artifact.is_some());
 
-	assert_exact_receipt_responses_survive_later_mutation(
-		store,
-		runtime_client,
-		&fixture,
-		&profile,
-		&account,
-	)
-	.await?;
+	assert_exact_receipt_responses_survive_later_mutation(store, runtime_client, &fixture).await?;
 
 	Ok(())
 }
@@ -5536,8 +5544,6 @@ async fn assert_exact_receipt_responses_survive_later_mutation(
 	store: &PostgresStore,
 	runtime_client: &Client,
 	fixture: &ConversationFixture,
-	profile: &ProfileSnapshot,
-	account: &AccountSnapshot,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let sync = PathBuf::from(env::var("DECODEX_TEST_BLOB_ROOT")?).join("post-commit-sync");
 
@@ -5546,9 +5552,7 @@ async fn assert_exact_receipt_responses_survive_later_mutation(
 	// SAFETY: the isolated contract is one test process and removes this test-only variable below.
 	unsafe { env::set_var("DECODEX_TEST_POST_COMMIT_SYNC", &sync) };
 
-	let session_id =
-		assert_session_receipt_response(store, runtime_client, fixture, profile, account, &sync)
-			.await?;
+	let session_id = assert_session_receipt_response(store, runtime_client, fixture).await?;
 
 	assert_history_receipt_response(store, runtime_client, fixture, &session_id, &sync).await?;
 
@@ -5564,56 +5568,40 @@ async fn assert_session_receipt_response(
 	store: &PostgresStore,
 	runtime_client: &Client,
 	fixture: &ConversationFixture,
-	profile: &ProfileSnapshot,
-	account: &AccountSnapshot,
-	sync: &Path,
 ) -> Result<RuntimeSessionId, Box<dyn std::error::Error>> {
 	let session_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000088")?;
 	let create_session = CreateRuntimeSession {
 		runtime_session_id: session_id.clone(),
 		conversation_id: fixture.conversation_id.clone(),
-		profile_snapshot_id: "42000000-0000-4000-8000-000000000088".into(),
-		account_snapshot_id: "43000000-0000-4000-8000-000000000088".into(),
-		profile_snapshot: profile.clone(),
-		account_snapshot: account.clone(),
-		codex_thread_id: Some("receipt-response-thread".into()),
-		state: RuntimeSessionState::Starting,
+		role: RoleProfileRole::Task,
+		account_snapshot: exact_account_snapshot("43000000-0000-4000-8000-000000000088".into()),
+		codex_thread_id: Some("44000000-0000-4000-8000-000000000088".into()),
+		initial_state: RuntimeSessionState::Starting,
 	};
-	let first_store = store.clone();
-	let first_create = create_session.clone();
-	let session_committed = sync.join("runtime_session.committed");
-	let mut session_worker = tokio::spawn(async move {
-		first_store
-			.create_runtime_session(
-				&CommandIdentity::new("receipt-response-session", b"receipt-response-session-v1")?,
-				&first_create,
+	let RuntimeSessionCommandOutcome::Success(first_session) =
+		store.create_runtime_session("receipt-response-session", &create_session).await?
+	else {
+		panic!("exact session creation must succeed");
+	};
+	assert!(matches!(
+		store
+			.transition_runtime_session(
+				"receipt-response-session-active",
+				&session_id,
+				1,
+				RuntimeSessionState::Active,
 			)
-			.await
-	});
-
-	tokio::select! {
-		result = &mut session_worker => return Err(format!("session response worker exited before barrier: {result:?}").into()),
-		result = wait_for_path(&session_committed) => result?,
-	}
-
-	runtime_client.execute(
-		"UPDATE decodex.runtime_sessions SET state='active',revision=revision+1,updated_at=clock_timestamp() \
-		 WHERE runtime_session_id=$1::text::uuid",
-		&[&session_id.as_str()],
-	).await?;
-
-	fs::write(sync.join("runtime_session.continue"), b"continue")?;
-
-	let first_session = session_worker.await??;
-	let replay_session = store
-		.create_runtime_session(
-			&CommandIdentity::new("receipt-response-session", b"receipt-response-session-v1")?,
-			&create_session,
-		)
-		.await?;
+			.await?,
+		RuntimeSessionCommandOutcome::Success(_)
+	));
+	let RuntimeSessionCommandOutcome::Success(replay_session) =
+		store.create_runtime_session("receipt-response-session", &create_session).await?
+	else {
+		panic!("exact session replay must succeed");
+	};
 
 	assert_eq!(first_session, replay_session);
-	assert_eq!(first_session.state, RuntimeSessionState::Starting);
+	assert_eq!(first_session.runtime_session.state, RuntimeSessionState::Starting);
 
 	let current_session: String = runtime_client
 		.query_one(
@@ -5624,9 +5612,6 @@ async fn assert_session_receipt_response(
 		.get(0);
 
 	assert_eq!(current_session, "active");
-
-	fs::remove_file(sync.join("runtime_session.committed"))?;
-	fs::remove_file(sync.join("runtime_session.continue"))?;
 
 	Ok(session_id)
 }
@@ -5732,82 +5717,70 @@ async fn assert_history_receipt_response(
 }
 
 async fn assert_initial_lifecycle_timestamps_are_canonical(
+	store: &PostgresStore,
 	runtime_client: &Client,
 	conversation_id: &ConversationId,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	runtime_client
-		.batch_execute(
-			"INSERT INTO decodex.profile_snapshots \
-			 (profile_snapshot_id,source_profile_id,role,model,reasoning_effort,service_tier, \
-			  instructions_digest,source_revision,created_at) \
-			 VALUES ('42000000-0000-4000-8000-000000000099','timestamp-profile','task', \
-			 'test-model','medium','standard',repeat('a',64),1,'2000-01-01Z'); \
-			 INSERT INTO decodex.account_snapshots \
-			 (account_snapshot_id,source_account_id,display_label,observed_state,source_revision,created_at) \
-			 VALUES ('43000000-0000-4000-8000-000000000099','timestamp-account', \
-			 'Timestamp fixture','unknown',1,'2000-01-01Z')",
-		)
-		.await?;
-
-	let snapshot_times_canonical: bool = runtime_client
-		.query_one(
-			"SELECT (SELECT created_at>'2020-01-01Z' FROM decodex.profile_snapshots \
-			 WHERE profile_snapshot_id='42000000-0000-4000-8000-000000000099') \
-			 AND (SELECT created_at>'2020-01-01Z' FROM decodex.account_snapshots \
-			 WHERE account_snapshot_id='43000000-0000-4000-8000-000000000099')",
-			&[],
-		)
-		.await?
-		.get(0);
-
-	assert!(snapshot_times_canonical);
-
-	for (session_id, state) in [
-		("41000000-0000-4000-8000-000000000004", "active"),
-		("41000000-0000-4000-8000-000000000005", "starting"),
-	] {
-		let statement = format!(
-			"INSERT INTO decodex.runtime_sessions \
-			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state, \
-			  created_at,updated_at,ended_at) \
-			 VALUES ($1::text::uuid,$2::text::uuid, \
-			 '42000000-0000-4000-8000-000000000099', \
-			 '43000000-0000-4000-8000-000000000099','{state}', \
-			 '2000-01-01Z','2099-01-01Z','2001-01-01Z')"
-		);
-
-		runtime_client.execute(&statement, &[&session_id, &conversation_id.as_str()]).await?;
+	for (index, (session_id, state)) in [
+		("41000000-0000-4000-8000-000000000004", RuntimeSessionState::Active),
+		("41000000-0000-4000-8000-000000000005", RuntimeSessionState::Starting),
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let create = CreateRuntimeSession {
+			runtime_session_id: RuntimeSessionId::new(session_id)?,
+			conversation_id: conversation_id.clone(),
+			role: RoleProfileRole::Task,
+			account_snapshot: exact_account_snapshot(format!(
+				"43000000-0000-4000-8000-00000000009{}",
+				index + 1
+			)),
+			codex_thread_id: None,
+			initial_state: state,
+		};
+		assert!(matches!(
+			store.create_runtime_session(&format!("timestamp-session-{index}"), &create).await?,
+			RuntimeSessionCommandOutcome::Success(_)
+		));
 
 		let canonical: bool = runtime_client
 			.query_one(
-				"SELECT created_at=updated_at AND ended_at IS NULL \
-				 AND created_at>'2020-01-01Z' FROM decodex.runtime_sessions \
+				"SELECT session.created_at=session.updated_at AND session.ended_at IS NULL \
+				 AND session.created_at>'2020-01-01Z' AND profile.created_at>'2020-01-01Z' \
+				 AND account.created_at>'2020-01-01Z' FROM decodex.runtime_sessions AS session \
+				 JOIN decodex.profile_snapshots AS profile USING (profile_snapshot_id) \
+				 JOIN decodex.account_snapshots AS account USING (account_snapshot_id) \
 				 WHERE runtime_session_id=$1::text::uuid",
 				&[&session_id],
 			)
 			.await?
 			.get(0);
 
-		assert!(canonical, "{state} RuntimeSession timestamps are canonical");
+		assert!(canonical, "RuntimeSession timestamps are canonical");
 	}
-	for (session_id, state) in [
-		("41000000-0000-4000-8000-000000000006", "ended"),
-		("41000000-0000-4000-8000-000000000007", "diverged"),
-	] {
-		let statement = format!(
-			"INSERT INTO decodex.runtime_sessions \
-			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state,ended_at) \
-			 VALUES ($1::text::uuid,$2::text::uuid, \
-			 '42000000-0000-4000-8000-000000000099', \
-			 '43000000-0000-4000-8000-000000000099','{state}',clock_timestamp())"
-		);
-
-		assert!(
-			runtime_client
-				.execute(&statement, &[&session_id, &conversation_id.as_str()])
-				.await
-				.is_err()
-		);
+	for (index, (session_id, state)) in [
+		("41000000-0000-4000-8000-000000000006", RuntimeSessionState::Ended),
+		("41000000-0000-4000-8000-000000000007", RuntimeSessionState::Diverged),
+	]
+	.into_iter()
+	.enumerate()
+	{
+		let create = CreateRuntimeSession {
+			runtime_session_id: RuntimeSessionId::new(session_id)?,
+			conversation_id: conversation_id.clone(),
+			role: RoleProfileRole::Task,
+			account_snapshot: exact_account_snapshot(format!(
+				"43000000-0000-4000-8000-00000000019{}",
+				index + 1
+			)),
+			codex_thread_id: None,
+			initial_state: state,
+		};
+		assert!(matches!(
+			store.create_runtime_session(&format!("terminal-session-{index}"), &create).await?,
+			RuntimeSessionCommandOutcome::Rejected(_)
+		));
 	}
 
 	runtime_client
@@ -5852,31 +5825,25 @@ async fn assert_runtime_session_correlation_is_immutable(
 	store: &PostgresStore,
 	runtime_client: &Client,
 	conversation_id: &ConversationId,
-	profile: &ProfileSnapshot,
-	account: &AccountSnapshot,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let session_id = RuntimeSessionId::new("41000000-0000-4000-8000-000000000003")?;
-	let original_thread = "manual-thread-c";
+	let original_thread = "44000000-0000-4000-8000-000000000003";
 	let create = CreateRuntimeSession {
 		runtime_session_id: session_id.clone(),
 		conversation_id: conversation_id.clone(),
-		profile_snapshot_id: "42000000-0000-4000-8000-000000000003".into(),
-		account_snapshot_id: "43000000-0000-4000-8000-000000000003".into(),
-		profile_snapshot: profile.clone(),
-		account_snapshot: account.clone(),
+		role: RoleProfileRole::Task,
+		account_snapshot: exact_account_snapshot("43000000-0000-4000-8000-000000000003".into()),
 		codex_thread_id: Some(original_thread.into()),
-		state: RuntimeSessionState::Starting,
+		initial_state: RuntimeSessionState::Starting,
 	};
 
-	store
-		.create_runtime_session(
-			&CommandIdentity::new("manual-session-c", b"manual-session-c-v1")?,
-			&create,
-		)
-		.await?;
+	assert!(matches!(
+		store.create_runtime_session("manual-session-c", &create).await?,
+		RuntimeSessionCommandOutcome::Success(_)
+	));
 
 	for forged_assignment in [
-		"codex_thread_id='forged-thread'",
+		"codex_thread_id='44000000-0000-4000-8000-000000000013'",
 		"last_known_turn_id='forged-turn'",
 		"created_at=created_at - interval '1 second'",
 	] {
@@ -5890,7 +5857,7 @@ async fn assert_runtime_session_correlation_is_immutable(
 
 	let unchanged_starting: bool = runtime_client
 		.query_one(
-			"SELECT state='starting' AND revision=1 AND codex_thread_id=$2 \
+			"SELECT state='starting' AND revision=1 AND codex_thread_id=$2::text::uuid \
 			 AND last_known_turn_id IS NULL FROM decodex.runtime_sessions \
 			 WHERE runtime_session_id=$1::text::uuid",
 			&[&session_id.as_str(), &original_thread],
@@ -5900,20 +5867,23 @@ async fn assert_runtime_session_correlation_is_immutable(
 
 	assert!(unchanged_starting);
 
-	let active = store
+	let RuntimeSessionCommandOutcome::Success(active) = store
 		.transition_runtime_session(
-			&CommandIdentity::new("manual-session-c-active", b"manual-session-c-active-v1")?,
+			"manual-session-c-active",
 			&session_id,
 			1,
 			RuntimeSessionState::Active,
 		)
-		.await?;
+		.await?
+	else {
+		panic!("exact active transition must succeed");
+	};
 
-	assert_eq!(active.codex_thread_id.as_deref(), Some(original_thread));
-	assert_eq!(active.revision, 2);
+	assert_eq!(active.runtime_session.codex_thread_id.as_deref(), Some(original_thread));
+	assert_eq!(active.runtime_session.revision, 2);
 
 	for forged_assignment in [
-		"codex_thread_id='forged-terminal-thread'",
+		"codex_thread_id='44000000-0000-4000-8000-000000000023'",
 		"last_known_turn_id='forged-terminal-turn'",
 		"created_at=created_at - interval '1 second'",
 	] {
@@ -5925,21 +5895,24 @@ async fn assert_runtime_session_correlation_is_immutable(
 		assert!(runtime_client.execute(&statement, &[&session_id.as_str()]).await.is_err());
 	}
 
-	let ended = store
+	let RuntimeSessionCommandOutcome::Success(ended) = store
 		.transition_runtime_session(
-			&CommandIdentity::new("manual-session-c-ended", b"manual-session-c-ended-v1")?,
+			"manual-session-c-ended",
 			&session_id,
 			2,
 			RuntimeSessionState::Ended,
 		)
-		.await?;
+		.await?
+	else {
+		panic!("exact terminal transition must succeed");
+	};
 
-	assert_eq!(ended.codex_thread_id.as_deref(), Some(original_thread));
-	assert_eq!(ended.revision, 3);
+	assert_eq!(ended.runtime_session.codex_thread_id.as_deref(), Some(original_thread));
+	assert_eq!(ended.runtime_session.revision, 3);
 
 	let canonical_terminal: bool = runtime_client
 		.query_one(
-			"SELECT state='ended' AND codex_thread_id=$2 AND last_known_turn_id IS NULL \
+			"SELECT state='ended' AND codex_thread_id=$2::text::uuid AND last_known_turn_id IS NULL \
 			 AND ended_at=updated_at AND updated_at>=created_at \
 			 FROM decodex.runtime_sessions WHERE runtime_session_id=$1::text::uuid",
 			&[&session_id.as_str(), &original_thread],
@@ -7422,17 +7395,17 @@ async fn assert_transition_proposal_and_session_terminalization(
 
 	assert!(client.batch_execute("INSERT INTO decodex.transition_proposals (transition_id,conversation_id,from_runtime_session_id,context_pack_id,kind,reason) VALUES ('47000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','41000000-0000-4000-8000-000000000001','46000000-0000-4000-8000-000000000001','fallback','cross conversation')").await.is_err());
 	assert!(client.batch_execute("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('41000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','42000000-0000-4000-8000-000000000001','43000000-0000-4000-8000-000000000001','ended')").await.is_err());
-	assert!(
+	assert!(matches!(
 		store
 			.transition_runtime_session(
-				&CommandIdentity::new("session-a-end-too-early", b"session-a-end-too-early-v1")?,
+				"session-a-end-too-early",
 				&fixture.session_a_id,
 				1,
 				RuntimeSessionState::Ended
 			)
-			.await
-			.is_err()
-	);
+			.await?,
+		RuntimeSessionCommandOutcome::Rejected(_)
+	));
 
 	store
 		.transition_turn(
@@ -7443,18 +7416,18 @@ async fn assert_transition_proposal_and_session_terminalization(
 		)
 		.await?;
 
-	assert_eq!(
-		store
-			.transition_runtime_session(
-				&CommandIdentity::new("session-a-end", b"session-a-end-v1")?,
-				&fixture.session_a_id,
-				1,
-				RuntimeSessionState::Ended
-			)
-			.await?
-			.state,
-		RuntimeSessionState::Ended
-	);
+	let RuntimeSessionCommandOutcome::Success(ended) = store
+		.transition_runtime_session(
+			"session-a-end",
+			&fixture.session_a_id,
+			1,
+			RuntimeSessionState::Ended,
+		)
+		.await?
+	else {
+		panic!("exact session end must succeed");
+	};
+	assert_eq!(ended.runtime_session.state, RuntimeSessionState::Ended);
 	assert!(client.batch_execute("UPDATE decodex.runtime_sessions SET state='active', revision=revision+1 WHERE runtime_session_id='41000000-0000-4000-8000-000000000001'").await.is_err());
 	assert!(
 		client

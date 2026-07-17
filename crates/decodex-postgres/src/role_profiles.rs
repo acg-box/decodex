@@ -1,10 +1,11 @@
+use crate::{
+	PostgresStore, StoreError,
+	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
+};
 use serde_json::Value;
-use tokio_postgres::{Row, error::SqlState, types::ToSql};
 
-use crate::{PostgresStore, StoreError};
-
-const EXACT_COMMAND_PROTOCOL: &str = "decodex/exact-command/1";
-const MAX_EXACT_ATTEMPTS: usize = 4;
+// Whole-transaction retry classification is shared with RuntimeSessions through
+// exact_commands::is_retryable_exact_database_error; this module owns no second taxonomy.
 
 /// One of the four immutable global RoleProfile identities.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -19,7 +20,7 @@ pub enum RoleProfileRole {
 	Reviewer,
 }
 impl RoleProfileRole {
-	const fn as_sql(self) -> &'static str {
+	pub(crate) const fn as_sql(self) -> &'static str {
 		match self {
 			Self::Advisor => "advisor",
 			Self::Lead => "lead",
@@ -28,7 +29,7 @@ impl RoleProfileRole {
 		}
 	}
 
-	fn from_sql(value: &str) -> Result<Self, StoreError> {
+	pub(crate) fn from_sql(value: &str) -> Result<Self, StoreError> {
 		match value {
 			"advisor" => Ok(Self::Advisor),
 			"lead" => Ok(Self::Lead),
@@ -175,79 +176,6 @@ impl PostgresStore {
 
 		parse_update_response(&response)
 	}
-
-	async fn execute_exact_with_retry(
-		&self,
-		statement: &str,
-		parameters: &[&(dyn ToSql + Sync)],
-	) -> Result<Vec<u8>, StoreError> {
-		let mut last_retryable = None;
-
-		for _ in 0..MAX_EXACT_ATTEMPTS {
-			let mut client = match self.pool().get().await {
-				Ok(client) => client,
-				Err(error) => return Err(StoreError::Pool(error)),
-			};
-			let transaction = match client.transaction().await {
-				Ok(transaction) => transaction,
-				Err(error) if is_retryable_exact_database_error(&error) => {
-					last_retryable = Some(error);
-					continue;
-				},
-				Err(error) => return Err(StoreError::from(error)),
-			};
-			let row = match transaction.query_one(statement, parameters).await {
-				Ok(row) => row,
-				Err(error) if is_retryable_exact_database_error(&error) => {
-					last_retryable = Some(error);
-					continue;
-				},
-				Err(error) => return Err(StoreError::from(error)),
-			};
-			let response = response_bytes(row)?;
-
-			match transaction.commit().await {
-				Ok(()) => return Ok(response),
-				Err(error) if is_retryable_exact_database_error(&error) => {
-					last_retryable = Some(error);
-				},
-				Err(error) => return Err(StoreError::from(error)),
-			}
-		}
-
-		Err(StoreError::Database(
-			last_retryable.expect(
-				"an exhausted exact retry loop retains its classified infrastructure failure",
-			),
-		))
-	}
-}
-
-fn response_bytes(row: Row) -> Result<Vec<u8>, StoreError> {
-	let response: Option<Vec<u8>> = row.get(0);
-
-	response.ok_or_else(|| StoreError::Incompatible("exact RoleProfile response is null".into()))
-}
-
-fn validate_exact_key(key: &str) -> Result<(), StoreError> {
-	if key.is_empty() || key.len() > 256 {
-		return Err(StoreError::InvalidInput("idempotency key must contain 1..=256 bytes"));
-	}
-
-	crate::ensure_credential_negative_text(key)
-}
-
-fn is_retryable_exact_database_error(error: &tokio_postgres::Error) -> bool {
-	let Some(code) = error.code() else {
-		return false;
-	};
-
-	code == &SqlState::T_R_SERIALIZATION_FAILURE
-		|| code == &SqlState::T_R_DEADLOCK_DETECTED
-		|| code == &SqlState::ADMIN_SHUTDOWN
-		|| code == &SqlState::CRASH_SHUTDOWN
-		|| code == &SqlState::CANNOT_CONNECT_NOW
-		|| code.code().starts_with("08")
 }
 
 fn parse_bootstrap_response(
@@ -382,6 +310,7 @@ fn optional_str(value: &Value, key: &str) -> Result<Option<String>, StoreError> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use tokio_postgres::error::SqlState;
 
 	fn profile(role: &str, revision: i64) -> Value {
 		serde_json::json!({

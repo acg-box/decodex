@@ -15,11 +15,11 @@ use crate::{
 	accounts::{self, CommandClaim, CommandDescriptor},
 };
 use decodex_core::{
-	self, AccountSnapshot, ArtifactId, ArtifactStatus, BlobHash, BlobInventoryCursor, BlobStore,
-	ContextPack, ContextPackPolicy, ContextSourceDisposition, ContextSourceKind, ConversationId,
-	HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES,
-	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProfileSnapshot, ProposedTransitionKind,
-	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole,
+	self, ArtifactId, ArtifactStatus, BlobHash, BlobInventoryCursor, BlobStore, ContextPack,
+	ContextPackPolicy, ContextSourceDisposition, ContextSourceKind, ConversationId, HistoryItemId,
+	HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES,
+	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProposedTransitionKind, RuntimeSessionId,
+	TurnId, TurnRole,
 };
 
 const MAX_PAGE_SIZE: u16 = 100;
@@ -44,42 +44,6 @@ pub struct StoredConversation {
 	pub conversation_id: ConversationId,
 	/// Persisted title.
 	pub title: String,
-	/// Persisted optimistic revision.
-	pub revision: i64,
-}
-
-/// Create one explicitly manual or synthetic RuntimeSession and its immutable snapshots.
-#[derive(Clone, Debug)]
-pub struct CreateRuntimeSession {
-	/// Caller-selected runtime segment identity.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Existing logical Conversation identity.
-	pub conversation_id: ConversationId,
-	/// Caller-selected immutable profile snapshot identity.
-	pub profile_snapshot_id: String,
-	/// Caller-selected immutable account snapshot identity.
-	pub account_snapshot_id: String,
-	/// Validated immutable profile facts.
-	pub profile_snapshot: ProfileSnapshot,
-	/// Validated immutable non-secret account facts.
-	pub account_snapshot: AccountSnapshot,
-	/// Explicit manual thread binding, if available.
-	pub codex_thread_id: Option<String>,
-	/// Observed segment state; never used to dispatch work.
-	pub state: RuntimeSessionState,
-}
-
-/// Committed RuntimeSession readback.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct StoredRuntimeSession {
-	/// Stable runtime segment identity.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Parent logical Conversation.
-	pub conversation_id: ConversationId,
-	/// Explicitly stored Codex thread identity, if any.
-	pub codex_thread_id: Option<String>,
-	/// Persisted observed state.
-	pub state: RuntimeSessionState,
 	/// Persisted optimistic revision.
 	pub revision: i64,
 }
@@ -390,8 +354,9 @@ impl PostgresStore {
 		)
 		.await?
 		{
-			accounts::CommandClaim::Completed(response) =>
-				return conversation_from_response(&response),
+			accounts::CommandClaim::Completed(response) => {
+				return conversation_from_response(&response);
+			},
 			accounts::CommandClaim::Owned(reservation) => reservation,
 		};
 		let transaction = client.transaction().await?;
@@ -441,151 +406,6 @@ impl PostgresStore {
 		conversation_from_response(&response)
 	}
 
-	/// Atomically persist one explicitly manual or synthetic RuntimeSession and snapshots.
-	pub async fn create_runtime_session(
-		&self,
-		command: &CommandIdentity,
-		create: &CreateRuntimeSession,
-	) -> Result<StoredRuntimeSession, StoreError> {
-		validate_session(create)?;
-
-		let mut client = self.pool().get().await?;
-		let reservation = match reserve_conversation_command(
-			&mut client,
-			command,
-			"create_runtime_session",
-			("conversation", create.conversation_id.as_str(), create.runtime_session_id.as_str()),
-			None,
-			None,
-		)
-		.await?
-		{
-			accounts::CommandClaim::Completed(response) =>
-				return runtime_session_from_response(&response),
-			accounts::CommandClaim::Owned(reservation) => reservation,
-		};
-		let transaction = client.transaction().await?;
-
-		insert_profile_snapshot(&transaction, create).await?;
-		insert_account_snapshot(&transaction, create).await?;
-
-		let inserted = transaction
-			.query_opt(
-				"INSERT INTO decodex.runtime_sessions \
-				 (runtime_session_id, conversation_id, profile_snapshot_id, account_snapshot_id, \
-				  codex_thread_id, state) \
-				 VALUES ($1::text::uuid, $2::text::uuid, $3::text::uuid, $4::text::uuid, $5, \
-				 $6::text::decodex.runtime_session_state) \
-				 ON CONFLICT DO NOTHING RETURNING revision",
-				&[
-					&create.runtime_session_id.as_str(),
-					&create.conversation_id.as_str(),
-					&create.profile_snapshot_id,
-					&create.account_snapshot_id,
-					&create.codex_thread_id,
-					&session_state_sql(create.state),
-				],
-			)
-			.await?;
-
-		if inserted.is_none() {
-			return Err(StoreError::RevisionConflict {
-				entity: format!("runtime_session/{}", create.runtime_session_id),
-				expected: None,
-				actual: session_revision(&transaction, &create.runtime_session_id).await?,
-			});
-		}
-
-		let payload = serde_json::json!({
-			"conversation_id": create.conversation_id.as_str(),
-			"runtime_session_id": create.runtime_session_id.as_str(),
-			"binding": "manual_or_synthetic",
-			"revision": 1,
-		});
-
-		accounts::append_activity_and_outbox(
-			&transaction,
-			"runtime_session",
-			create.runtime_session_id.as_str(),
-			1,
-			"runtime_session_recorded",
-			&command.key,
-			&payload,
-		)
-		.await?;
-
-		let response = serde_json::json!({
-			"kind": "runtime_session",
-			"runtime_session_id": create.runtime_session_id.as_str(),
-			"conversation_id": create.conversation_id.as_str(),
-			"codex_thread_id": create.codex_thread_id,
-			"state": session_state_sql(create.state),
-			"revision": 1,
-		});
-
-		accounts::finish_command(&transaction, &reservation, &response).await?;
-
-		transaction.commit().await?;
-
-		post_commit_test_barrier("runtime_session").await?;
-
-		runtime_session_from_response(&response)
-	}
-
-	/// Record one observed RuntimeSession state transition; never starts or steers Codex.
-	pub async fn transition_runtime_session(
-		&self,
-		command: &CommandIdentity,
-		session_id: &RuntimeSessionId,
-		expected_revision: i64,
-		state: RuntimeSessionState,
-	) -> Result<StoredRuntimeSession, StoreError> {
-		if expected_revision < 1 || state == RuntimeSessionState::Starting {
-			return Err(StoreError::InvalidInput("RuntimeSession transition is invalid"));
-		}
-
-		let mut client = self.pool().get().await?;
-		let reservation = match reserve_conversation_command(
-			&mut client,
-			command,
-			"transition_runtime_session",
-			("runtime_session", session_id.as_str(), session_id.as_str()),
-			Some(expected_revision),
-			None,
-		)
-		.await?
-		{
-			accounts::CommandClaim::Completed(response) =>
-				return runtime_session_from_response(&response),
-			accounts::CommandClaim::Owned(reservation) => reservation,
-		};
-		let transaction = client.transaction().await?;
-		let row = transaction.query_opt(
-			"UPDATE decodex.runtime_sessions SET state=$3::text::decodex.runtime_session_state, revision=revision+1, updated_at=clock_timestamp(), ended_at=CASE WHEN $3 IN ('ended','diverged') THEN clock_timestamp() ELSE NULL END WHERE runtime_session_id=$1::text::uuid AND revision=$2 RETURNING revision, conversation_id::text, codex_thread_id",
-			&[&session_id.as_str(), &expected_revision, &session_state_sql(state)],
-		).await?.ok_or(StoreError::RevisionConflict { entity: format!("runtime_session/{session_id}"), expected: Some(expected_revision), actual: None })?;
-		let revision: i64 = row.get(0);
-		let conversation_id: String = row.get(1);
-		let codex_thread_id: Option<String> = row.get(2);
-
-		accounts::append_activity_and_outbox(&transaction,"runtime_session",session_id.as_str(),revision,"runtime_session_transitioned",&command.key,&serde_json::json!({"conversation_id":conversation_id,"state":session_state_sql(state),"revision":revision})).await?;
-
-		let response = serde_json::json!({
-			"kind":"runtime_session",
-			"runtime_session_id":session_id.as_str(),
-			"conversation_id":conversation_id,
-			"codex_thread_id":codex_thread_id,
-			"state":session_state_sql(state),
-			"revision":revision
-		});
-
-		accounts::finish_command(&transaction, &reservation, &response).await?;
-
-		transaction.commit().await?;
-
-		runtime_session_from_response(&response)
-	}
-
 	/// Complete or fail one active normalized Turn after its items are terminal.
 	pub async fn transition_turn(
 		&self,
@@ -609,8 +429,9 @@ impl PostgresStore {
 		)
 		.await?
 		{
-			accounts::CommandClaim::Completed(response) =>
-				return response_revision(&response, "turn"),
+			accounts::CommandClaim::Completed(response) => {
+				return response_revision(&response, "turn");
+			},
 			accounts::CommandClaim::Owned(reservation) => reservation,
 		};
 		let transaction = client.transaction().await?;
@@ -1149,8 +970,9 @@ impl PostgresStore {
 		)
 		.await?
 		{
-			accounts::CommandClaim::Completed(_) =>
-				return self.required_context_pack(blob_store, &request.context_pack_id).await,
+			accounts::CommandClaim::Completed(_) => {
+				return self.required_context_pack(blob_store, &request.context_pack_id).await;
+			},
 			accounts::CommandClaim::Owned(reservation) => reservation,
 		};
 
@@ -1442,10 +1264,11 @@ impl PostgresStore {
 		let bytes = match (inline, blob) {
 			(Some(inline), None) => inline,
 			(None, Some(blob)) => blob_store.read(BlobHash::parse(&blob)?)?,
-			_ =>
+			_ => {
 				return Err(StoreError::Incompatible(
 					"stored Context Pack payload is invalid".into(),
-				)),
+				));
+			},
 		};
 
 		if BlobHash::digest(&bytes) != digest
@@ -1544,37 +1367,6 @@ fn context_pack_referenced_hashes(
 	hashes
 }
 
-fn validate_session(create: &CreateRuntimeSession) -> Result<(), StoreError> {
-	if !is_canonical_uuid(&create.profile_snapshot_id)
-		|| !is_canonical_uuid(&create.account_snapshot_id)
-		|| create
-			.codex_thread_id
-			.as_ref()
-			.is_some_and(|value| value.is_empty() || value.len() > 256)
-	{
-		return Err(StoreError::InvalidInput("manual RuntimeSession is malformed"));
-	}
-
-	if let Some(thread_id) = &create.codex_thread_id {
-		crate::ensure_credential_negative_text(thread_id)?;
-	}
-
-	for value in [
-		create.profile_snapshot.profile_id.as_str(),
-		create.profile_snapshot.role.as_str(),
-		create.profile_snapshot.model.as_str(),
-		create.profile_snapshot.reasoning_effort.as_str(),
-		create.profile_snapshot.service_tier.as_str(),
-		create.account_snapshot.account_id.as_str(),
-		create.account_snapshot.display_label.as_str(),
-		create.account_snapshot.observed_state.as_str(),
-	] {
-		crate::ensure_credential_negative_text(value)?;
-	}
-
-	Ok(())
-}
-
 fn validate_artifact(create: &CreateArtifact) -> Result<(), StoreError> {
 	if create.bytes.is_empty()
 		|| create.bytes.len() > MAX_BLOB_BYTES
@@ -1652,8 +1444,11 @@ fn history_entry_from_row(row: Row) -> Result<HistoryEntry, StoreError> {
 			})?,
 		)),
 		(None, None) => None,
-		_ =>
-			return Err(StoreError::Incompatible("history Artifact reference is incomplete".into())),
+		_ => {
+			return Err(StoreError::Incompatible(
+				"history Artifact reference is incomplete".into(),
+			));
+		},
 	};
 	let kind = item_kind_from_sql(row.get::<_, &str>(6))?;
 	let media_type = HistoryMediaType::new(row.get::<_, String>(11))
@@ -1749,25 +1544,6 @@ fn context_source_from_row(row: Row) -> Result<decodex_core::ContextSourceManife
 		artifact,
 	)
 	.map_err(|_| StoreError::Incompatible("stored source manifest is invalid".into()))
-}
-
-const fn session_state_sql(value: RuntimeSessionState) -> &'static str {
-	match value {
-		RuntimeSessionState::Starting => "starting",
-		RuntimeSessionState::Active => "active",
-		RuntimeSessionState::Ended => "ended",
-		RuntimeSessionState::Diverged => "diverged",
-	}
-}
-
-fn session_state_from_sql(value: &str) -> Result<RuntimeSessionState, StoreError> {
-	match value {
-		"starting" => Ok(RuntimeSessionState::Starting),
-		"active" => Ok(RuntimeSessionState::Active),
-		"ended" => Ok(RuntimeSessionState::Ended),
-		"diverged" => Ok(RuntimeSessionState::Diverged),
-		_ => Err(StoreError::Incompatible("unknown RuntimeSession state".into())),
-	}
 }
 
 const fn artifact_status_sql(value: ArtifactStatus) -> &'static str {
@@ -2026,10 +1802,11 @@ fn history_entry_from_response(response: &Value) -> Result<HistoryEntry, StoreEr
 			))
 		},
 		Some(Value::Null) => None,
-		_ =>
+		_ => {
 			return Err(StoreError::Incompatible(
 				"stored history Artifact response is invalid".into(),
-			)),
+			));
+		},
 	};
 	let metadata = response.get("metadata").cloned().ok_or_else(|| {
 		StoreError::Incompatible("stored history metadata response is absent".into())
@@ -2085,46 +1862,6 @@ fn conversation_from_response(response: &Value) -> Result<StoredConversation, St
 		})?,
 		title: title.to_owned(),
 		revision: response_revision(response, "conversation")?,
-	})
-}
-
-fn runtime_session_from_response(response: &Value) -> Result<StoredRuntimeSession, StoreError> {
-	if response.get("kind").and_then(Value::as_str) != Some("runtime_session") {
-		return Err(StoreError::Incompatible(
-			"stored RuntimeSession response kind is invalid".into(),
-		));
-	}
-
-	let session_id =
-		response.get("runtime_session_id").and_then(Value::as_str).ok_or_else(|| {
-			StoreError::Incompatible("stored RuntimeSession response is incomplete".into())
-		})?;
-	let conversation_id =
-		response.get("conversation_id").and_then(Value::as_str).ok_or_else(|| {
-			StoreError::Incompatible("stored RuntimeSession response is incomplete".into())
-		})?;
-	let codex_thread_id = match response.get("codex_thread_id") {
-		Some(Value::String(value)) => Some(value.clone()),
-		Some(Value::Null) | None => None,
-		_ =>
-			return Err(StoreError::Incompatible(
-				"stored RuntimeSession thread response is invalid".into(),
-			)),
-	};
-	let state = response.get("state").and_then(Value::as_str).ok_or_else(|| {
-		StoreError::Incompatible("stored RuntimeSession response is incomplete".into())
-	})?;
-
-	Ok(StoredRuntimeSession {
-		runtime_session_id: RuntimeSessionId::new(session_id.to_owned()).map_err(|_| {
-			StoreError::Incompatible("stored RuntimeSession response identity is invalid".into())
-		})?,
-		conversation_id: ConversationId::new(conversation_id.to_owned()).map_err(|_| {
-			StoreError::Incompatible("stored Conversation response identity is invalid".into())
-		})?,
-		codex_thread_id,
-		state: session_state_from_sql(state)?,
-		revision: response_revision(response, "runtime_session")?,
 	})
 }
 
@@ -2198,54 +1935,6 @@ async fn issue_history_cursor(
 		.await?;
 
 	HistoryCursor::issued(row.get(0))
-}
-
-async fn insert_profile_snapshot(
-	transaction: &Transaction<'_>,
-	create: &CreateRuntimeSession,
-) -> Result<(), StoreError> {
-	transaction
-		.execute(
-			"INSERT INTO decodex.profile_snapshots \
-		 (profile_snapshot_id, source_profile_id, role, model, reasoning_effort, service_tier, \
-		  instructions_digest, source_revision) \
-		 VALUES ($1::text::uuid, $2, $3, $4, $5, $6, $7, $8)",
-			&[
-				&create.profile_snapshot_id,
-				&create.profile_snapshot.profile_id,
-				&create.profile_snapshot.role,
-				&create.profile_snapshot.model,
-				&create.profile_snapshot.reasoning_effort,
-				&create.profile_snapshot.service_tier,
-				&create.profile_snapshot.instructions_digest.to_hex(),
-				&i64::try_from(create.profile_snapshot.source_revision).unwrap_or(i64::MAX),
-			],
-		)
-		.await?;
-
-	Ok(())
-}
-
-async fn insert_account_snapshot(
-	transaction: &Transaction<'_>,
-	create: &CreateRuntimeSession,
-) -> Result<(), StoreError> {
-	transaction
-		.execute(
-			"INSERT INTO decodex.account_snapshots \
-		 (account_snapshot_id, source_account_id, display_label, observed_state, source_revision) \
-		 VALUES ($1::text::uuid, $2, $3, $4, $5)",
-			&[
-				&create.account_snapshot_id,
-				&create.account_snapshot.account_id,
-				&create.account_snapshot.display_label,
-				&create.account_snapshot.observed_state,
-				&i64::try_from(create.account_snapshot.source_revision).unwrap_or(i64::MAX),
-			],
-		)
-		.await?;
-
-	Ok(())
 }
 
 async fn insert_verified_blob(
@@ -2533,19 +2222,6 @@ async fn conversation_revision(
 	Ok(transaction
 		.query_opt(
 			"SELECT revision FROM decodex.conversations WHERE conversation_id = $1::text::uuid",
-			&[&id.as_str()],
-		)
-		.await?
-		.map(|row| row.get(0)))
-}
-
-async fn session_revision(
-	transaction: &Transaction<'_>,
-	id: &RuntimeSessionId,
-) -> Result<Option<i64>, StoreError> {
-	Ok(transaction
-		.query_opt(
-			"SELECT revision FROM decodex.runtime_sessions WHERE runtime_session_id = $1::text::uuid",
 			&[&id.as_str()],
 		)
 		.await?

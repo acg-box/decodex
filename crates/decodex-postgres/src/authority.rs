@@ -13,8 +13,11 @@ const PROGRAM_OBJECTIVE_MIGRATION: &str =
 	include_str!("../migrations/V7__program_objective_authority.sql");
 const QUOTA_MIGRATION: &str = include_str!("../migrations/V8__quota_exclusions.sql");
 const ROLE_PROFILE_MIGRATION: &str = include_str!("../migrations/V9__exact_role_profiles.sql");
-const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] = ["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 72] = [
+const RUNTIME_SESSION_MIGRATION: &str =
+	include_str!("../migrations/V10__runtime_session_snapshots.sql");
+const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
+	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
+const FUNCTION_CONTRACTS: [FunctionContract; 80] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -609,8 +612,68 @@ const FUNCTION_CONTRACTS: [FunctionContract; 72] = [
 		"plpgsql",
 		"v",
 	),
+	trigger_contract(
+		"enforce_runtime_session_command_owner",
+		"decodex.enforce_runtime_session_command_owner()",
+		"enforce_runtime_session_command_owner()",
+	),
+	trigger_contract(
+		"forbid_runtime_snapshot_mutation",
+		"decodex.forbid_runtime_snapshot_mutation()",
+		"forbid_runtime_snapshot_mutation()",
+	),
+	trigger_contract(
+		"enforce_runtime_session_event_namespace",
+		"decodex.enforce_runtime_session_event_namespace()",
+		"enforce_runtime_session_event_namespace()",
+	),
+	exact_function_contract(
+		"build_runtime_session_create_request",
+		"decodex.build_runtime_session_create_request(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
+		"build_runtime_session_create_request(\n\tp_protocol text, p_session_id uuid, p_conversation_id uuid,\n\tp_role decodex.role_profile_role, p_account_snapshot_id uuid,\n\tp_source_account_id uuid, p_display_label text,\n\tp_observed_state decodex.account_state, p_account_source_revision bigint,\n\tp_codex_thread_id uuid, p_initial_state decodex.runtime_session_state\n)",
+		"p_protocol text, p_session_id uuid, p_conversation_id uuid, p_role decodex.role_profile_role, p_account_snapshot_id uuid, p_source_account_id uuid, p_display_label text, p_observed_state decodex.account_state, p_account_source_revision bigint, p_codex_thread_id uuid, p_initial_state decodex.runtime_session_state",
+		"jsonb",
+		"sql",
+		"i",
+	),
+	exact_function_contract(
+		"build_runtime_session_transition_request",
+		"decodex.build_runtime_session_transition_request(pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+		"build_runtime_session_transition_request(\n\tp_protocol text, p_session_id uuid, p_expected_revision bigint,\n\tp_target_state decodex.runtime_session_state\n)",
+		"p_protocol text, p_session_id uuid, p_expected_revision bigint, p_target_state decodex.runtime_session_state",
+		"jsonb",
+		"sql",
+		"i",
+	),
+	exact_function_contract(
+		"complete_exact_runtime_session_rejection",
+		"decodex.complete_exact_runtime_session_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"complete_exact_runtime_session_rejection(\n\tp_protocol text, p_idempotency_key text, p_code text\n)",
+		"p_protocol text, p_idempotency_key text, p_code text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"create_runtime_session_exact",
+		"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
+		"create_runtime_session_exact(\n\tp_protocol text, p_idempotency_key text,\n\tp_session_id uuid, p_conversation_id uuid, p_role decodex.role_profile_role,\n\tp_account_snapshot_id uuid, p_source_account_id uuid, p_display_label text,\n\tp_observed_state decodex.account_state, p_account_source_revision bigint,\n\tp_codex_thread_id uuid, p_initial_state decodex.runtime_session_state\n)",
+		"p_protocol text, p_idempotency_key text, p_session_id uuid, p_conversation_id uuid, p_role decodex.role_profile_role, p_account_snapshot_id uuid, p_source_account_id uuid, p_display_label text, p_observed_state decodex.account_state, p_account_source_revision bigint, p_codex_thread_id uuid, p_initial_state decodex.runtime_session_state",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"transition_runtime_session_exact",
+		"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+		"transition_runtime_session_exact(\n\tp_protocol text, p_idempotency_key text, p_session_id uuid,\n\tp_expected_revision bigint, p_target_state decodex.runtime_session_state\n)",
+		"p_protocol text, p_idempotency_key text, p_session_id uuid, p_expected_revision bigint, p_target_state decodex.runtime_session_state",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 28] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 30] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -639,8 +702,10 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 28] = [
 	"decodex.achieve_objective(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,decodex.canonical_uuid_v4_text)",
 	"decodex.bootstrap_role_profiles_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
+	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
 ];
-const SAFETY_FUNCTIONS: [&str; 34] = [
+const SAFETY_FUNCTIONS: [&str; 37] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -675,8 +740,11 @@ const SAFETY_FUNCTIONS: [&str; 34] = [
 	"forbid_role_profile_revision_mutation",
 	"forbid_role_profile_truncate",
 	"enforce_role_profile_event_namespace",
+	"enforce_runtime_session_command_owner",
+	"forbid_runtime_snapshot_mutation",
+	"enforce_runtime_session_event_namespace",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 52;
+const SAFETY_TRIGGER_COUNT: usize = 59;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -836,9 +904,9 @@ WITH set_roles AS (
   ('leases', true, true, true, false),
   ('outbox', true, true, true, true),
   ('conversations', true, true, true, false),
-  ('profile_snapshots', true, true, false, false),
-  ('account_snapshots', true, true, false, false),
-  ('runtime_sessions', true, true, true, false),
+	  ('profile_snapshots', true, false, false, false),
+	  ('account_snapshots', true, false, false, false),
+	  ('runtime_sessions', true, false, false, false),
   ('blob_objects', true, true, false, true),
   ('artifacts', true, true, true, false),
   ('artifact_revisions', true, true, false, false),
@@ -1073,8 +1141,15 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('role_profile_revisions', 'role_profile_revisions_immutable', 'forbid_role_profile_revision_mutation', 27),
   ('role_profiles', 'role_profiles_untruncatable', 'forbid_role_profile_truncate', 34),
   ('role_profile_revisions', 'role_profile_revisions_untruncatable', 'forbid_role_profile_truncate', 34),
-  ('activity', 'activity_role_profile_namespace', 'enforce_role_profile_event_namespace', 23),
-  ('outbox', 'outbox_role_profile_namespace', 'enforce_role_profile_event_namespace', 23)
+	  ('activity', 'activity_role_profile_namespace', 'enforce_role_profile_event_namespace', 23),
+	  ('outbox', 'outbox_role_profile_namespace', 'enforce_role_profile_event_namespace', 23),
+	  ('profile_snapshots', 'profile_snapshots_command_owner', 'enforce_runtime_session_command_owner', 62),
+	  ('account_snapshots', 'account_snapshots_command_owner', 'enforce_runtime_session_command_owner', 62),
+	  ('runtime_sessions', 'runtime_sessions_command_owner', 'enforce_runtime_session_command_owner', 62),
+	  ('profile_snapshots', 'profile_snapshots_immutable', 'forbid_runtime_snapshot_mutation', 27),
+	  ('account_snapshots', 'account_snapshots_immutable', 'forbid_runtime_snapshot_mutation', 27),
+	  ('activity', 'activity_runtime_session_namespace', 'enforce_runtime_session_event_namespace', 23),
+	  ('outbox', 'outbox_runtime_session_namespace', 'enforce_runtime_session_event_namespace', 23)
 )
 SELECT
   expected.function_name,
@@ -1242,8 +1317,15 @@ WITH catalog_context AS MATERIALIZED (
   ('role_profile_revisions', 'role_profile_revisions_immutable', 'decodex.forbid_role_profile_revision_mutation()'),
   ('role_profiles', 'role_profiles_untruncatable', 'decodex.forbid_role_profile_truncate()'),
   ('role_profile_revisions', 'role_profile_revisions_untruncatable', 'decodex.forbid_role_profile_truncate()'),
-  ('activity', 'activity_role_profile_namespace', 'decodex.enforce_role_profile_event_namespace()'),
-  ('outbox', 'outbox_role_profile_namespace', 'decodex.enforce_role_profile_event_namespace()')
+	  ('activity', 'activity_role_profile_namespace', 'decodex.enforce_role_profile_event_namespace()'),
+	  ('outbox', 'outbox_role_profile_namespace', 'decodex.enforce_role_profile_event_namespace()'),
+	  ('profile_snapshots', 'profile_snapshots_command_owner', 'decodex.enforce_runtime_session_command_owner()'),
+	  ('account_snapshots', 'account_snapshots_command_owner', 'decodex.enforce_runtime_session_command_owner()'),
+	  ('runtime_sessions', 'runtime_sessions_command_owner', 'decodex.enforce_runtime_session_command_owner()'),
+	  ('profile_snapshots', 'profile_snapshots_immutable', 'decodex.forbid_runtime_snapshot_mutation()'),
+	  ('account_snapshots', 'account_snapshots_immutable', 'decodex.forbid_runtime_snapshot_mutation()'),
+	  ('activity', 'activity_runtime_session_namespace', 'decodex.enforce_runtime_session_event_namespace()'),
+	  ('outbox', 'outbox_runtime_session_namespace', 'decodex.enforce_runtime_session_event_namespace()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -1713,8 +1795,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x94, 0xef, 0x27, 0x45, 0x48, 0x2a, 0x0b, 0x52, 0x9f, 0x2f, 0x37, 0x5a, 0x9f, 0xbc, 0x1b, 0x76,
-	0x6c, 0x59, 0xc8, 0x20, 0x6b, 0xeb, 0x32, 0xd5, 0x82, 0xca, 0x9f, 0xa4, 0x1c, 0xb1, 0x43, 0x01,
+	0x90, 0xad, 0xd2, 0x3f, 0x9a, 0xd9, 0xd9, 0x9c, 0x81, 0xb7, 0xae, 0xc1, 0x7a, 0x3f, 0xbf, 0x1f,
+	0xe6, 0xb2, 0x6c, 0x28, 0x8d, 0x2d, 0x04, 0xfd, 0x9b, 0x5c, 0x4b, 0xad, 0x9d, 0xda, 0xd2, 0xbe,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -2193,8 +2275,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0x1a, 0x15, 0x62, 0xe7, 0x80, 0x8f, 0xb9, 0xdf, 0x1e, 0x0f, 0xe1, 0xbf, 0x8d, 0x5a, 0xcf, 0xa0,
-	0xf3, 0xbd, 0x1c, 0x86, 0x75, 0xef, 0x76, 0x23, 0xbe, 0xb6, 0x20, 0x92, 0xc2, 0xf0, 0xb1, 0x7c,
+	0xc4, 0x43, 0xc4, 0xe0, 0xb0, 0x6e, 0x01, 0xd5, 0xb9, 0x28, 0x36, 0xf2, 0xfd, 0xf3, 0xf9, 0x15,
+	0xd2, 0x96, 0xce, 0x40, 0xd3, 0x9b, 0x8c, 0x0c, 0xa1, 0x48, 0x9b, 0xe9, 0x65, 0xb5, 0xdb, 0xc1,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -2473,6 +2555,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		PROGRAM_OBJECTIVE_MIGRATION,
 		QUOTA_MIGRATION,
 		ROLE_PROFILE_MIGRATION,
+		RUNTIME_SESSION_MIGRATION,
 	]
 	.into_iter()
 	.find(|migration| migration.contains(&declaration))?;
@@ -2549,12 +2632,11 @@ async fn verify_configured_authority(
 }
 
 async fn verify_execution_path_contract(client: &Client) -> Result<(), StoreError> {
-	let allowed_functions =
-		FUNCTION_CONTRACTS
-			.iter()
-			.map(|contract| contract.lookup_signature)
-			.chain(ALLOWED_EXECUTION_DEPENDENCIES)
-			.collect::<Vec<_>>();
+	let allowed_functions = FUNCTION_CONTRACTS
+		.iter()
+		.map(|contract| contract.lookup_signature)
+		.chain(ALLOWED_EXECUTION_DEPENDENCIES)
+		.collect::<Vec<_>>();
 	let row = client.query_one(EXECUTION_PATH_CONTRACT_SQL, &[&allowed_functions]).await?;
 	let exact_triggers: bool = row.get(0);
 	let no_rules: bool = row.get(1);
@@ -2637,6 +2719,8 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "achieve_objective"
 				| "bootstrap_role_profiles_exact"
 				| "update_role_profile_exact"
+				| "create_runtime_session_exact"
+				| "transition_runtime_session_exact"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
@@ -2791,8 +2875,8 @@ mod tests {
 		CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL, CONVERSATION_MIGRATION,
 		FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL,
 		OWNED_OBJECT_CATALOGS, POLICY_MIGRATION, PROGRAM_OBJECTIVE_MIGRATION,
-		PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL, SAFETY_FUNCTIONS,
-		ROLE_PROFILE_MIGRATION, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL, ROLE_PROFILE_MIGRATION,
+		RUNTIME_SESSION_MIGRATION, SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 	};
 
 	#[test]
@@ -2926,6 +3010,7 @@ mod tests {
 				PROGRAM_OBJECTIVE_MIGRATION,
 				QUOTA_MIGRATION,
 				ROLE_PROFILE_MIGRATION,
+				RUNTIME_SESSION_MIGRATION,
 			]
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
@@ -2946,6 +3031,7 @@ mod tests {
 					PROGRAM_OBJECTIVE_MIGRATION,
 					QUOTA_MIGRATION,
 					ROLE_PROFILE_MIGRATION,
+					RUNTIME_SESSION_MIGRATION,
 				]
 				.into_iter()
 				.map(|migration| migration
