@@ -179,10 +179,7 @@ fn snapshot(members: Vec<RoutingDecisionCandidate>) -> RoutingDecisionSnapshot {
 #[test]
 fn quota_windows_are_duration_owned_complete_and_canonical() {
 	let base = snapshot(vec![candidate(1, account(1), false, vec![])]);
-	assert_eq!(
-		decide_routing(&base),
-		Ok(expected_selected(account(1), Vec::new()))
-	);
+	assert_eq!(decide_routing(&base), Ok(expected_selected(account(1), Vec::new())));
 
 	let mut cases = Vec::new();
 	let mut missing = base.clone();
@@ -202,11 +199,7 @@ fn quota_windows_are_duration_owned_complete_and_canonical() {
 	cases.push(("foreign member", foreign_member));
 
 	for (case, input) in cases {
-		assert_eq!(
-			decide_routing(&input),
-			Err(RoutingKernelError::MalformedSnapshot),
-			"{case}"
-		);
+		assert_eq!(decide_routing(&input), Err(RoutingKernelError::MalformedSnapshot), "{case}");
 	}
 }
 
@@ -218,32 +211,17 @@ fn sticky_affinity_requires_both_windows_and_depleted_sticky_yields_with_exact_e
 		candidate(1, ordinary.clone(), false, vec![]),
 		candidate(2, preferred.clone(), true, vec![]),
 	]);
-	assert_eq!(
-		decide_routing(&sticky_healthy),
-		Ok(expected_selected(preferred, Vec::new()))
-	);
+	assert_eq!(decide_routing(&sticky_healthy), Ok(expected_selected(preferred, Vec::new())));
 
 	let sticky = account(3);
 	let fallback = account(4);
 	let mut depleted = snapshot(vec![
-		candidate(
-			1,
-			sticky.clone(),
-			true,
-			vec![RoutingBlocker::QuotaFiveHourDepleted],
-		),
+		candidate(1, sticky.clone(), true, vec![RoutingBlocker::QuotaFiveHourDepleted]),
 		candidate(2, fallback.clone(), false, vec![]),
 	]);
-	depleted.quota_facts.splice(
-		0..2,
-		quota_pair(
-			&sticky,
-			0,
-			DECIDED_AT + 500,
-			50,
-			DECIDED_AT + 50_000,
-		),
-	);
+	depleted
+		.quota_facts
+		.splice(0..2, quota_pair(&sticky, 0, DECIDED_AT + 500, 50, DECIDED_AT + 50_000));
 	assert_eq!(
 		decide_routing(&depleted),
 		Ok(expected_selected(
@@ -265,29 +243,15 @@ fn sticky_affinity_requires_both_windows_and_depleted_sticky_yields_with_exact_e
 fn waiting_usage_uses_minimum_account_maximum_and_retains_each_window() {
 	let first = account(5);
 	let second = account(6);
-	let depletion_blockers = vec![
-		RoutingBlocker::QuotaFiveHourDepleted,
-		RoutingBlocker::QuotaSevenDayDepleted,
-	];
+	let depletion_blockers =
+		vec![RoutingBlocker::QuotaFiveHourDepleted, RoutingBlocker::QuotaSevenDayDepleted];
 	let mut input = snapshot(vec![
 		candidate(1, first.clone(), false, depletion_blockers.clone()),
 		candidate(2, second.clone(), false, depletion_blockers),
 	]);
 	input.quota_facts = [
-		quota_pair(
-			&first,
-			0,
-			DECIDED_AT + 500,
-			0,
-			DECIDED_AT + 2_000,
-		),
-		quota_pair(
-			&second,
-			0,
-			DECIDED_AT + 1_700,
-			0,
-			DECIDED_AT + 1_800,
-		),
+		quota_pair(&first, 0, DECIDED_AT + 500, 0, DECIDED_AT + 2_000),
+		quota_pair(&second, 0, DECIDED_AT + 1_700, 0, DECIDED_AT + 1_800),
 	]
 	.concat();
 
@@ -346,38 +310,22 @@ fn non_authoritative_depletion_evidence_never_selects_or_waits() {
 	let mut exact_bounds = snapshot(vec![candidate(1, account(70), false, vec![])]);
 	for fact in &mut exact_bounds.quota_facts {
 		fact.observed_at_micros = Some(DECIDED_AT - 300_000_000);
-		fact.observed_at_provenance = Some(provenance(
-			DECIDED_AT - 300_000_000,
-			fact.observation_revision.unwrap(),
-		));
+		fact.observed_at_provenance =
+			Some(provenance(DECIDED_AT - 300_000_000, fact.observation_revision.unwrap()));
 		fact.resets_at_micros = Some(DECIDED_AT + 1);
-		fact.resets_at_provenance = Some(provenance(
-			DECIDED_AT + 1,
-			fact.observation_revision.unwrap(),
-		));
+		fact.resets_at_provenance =
+			Some(provenance(DECIDED_AT + 1, fact.observation_revision.unwrap()));
 	}
-	assert_eq!(
-		decide_routing(&exact_bounds),
-		Ok(expected_selected(account(70), Vec::new()))
-	);
+	assert_eq!(decide_routing(&exact_bounds), Ok(expected_selected(account(70), Vec::new())));
 
 	let base = || {
 		let mut input = snapshot(vec![candidate(
 			1,
 			depleted.clone(),
 			false,
-			vec![
-				RoutingBlocker::QuotaFiveHourDepleted,
-				RoutingBlocker::QuotaSevenDayDepleted,
-			],
+			vec![RoutingBlocker::QuotaFiveHourDepleted, RoutingBlocker::QuotaSevenDayDepleted],
 		)]);
-		input.quota_facts = quota_pair(
-			&depleted,
-			0,
-			DECIDED_AT + 500,
-			0,
-			DECIDED_AT + 10_000,
-		);
+		input.quota_facts = quota_pair(&depleted, 0, DECIDED_AT + 500, 0, DECIDED_AT + 10_000);
 		input
 	};
 
@@ -397,17 +345,13 @@ fn non_authoritative_depletion_evidence_never_selects_or_waits() {
 	cases.push(("stale", stale));
 	let mut future = base();
 	future.quota_facts[0].observed_at_micros = Some(DECIDED_AT + 1);
-	future.quota_facts[0].observed_at_provenance = Some(provenance(
-		DECIDED_AT + 1,
-		future.quota_facts[0].observation_revision.unwrap(),
-	));
+	future.quota_facts[0].observed_at_provenance =
+		Some(provenance(DECIDED_AT + 1, future.quota_facts[0].observation_revision.unwrap()));
 	cases.push(("future observation", future));
 	let mut elapsed_reset = base();
 	elapsed_reset.quota_facts[0].resets_at_micros = Some(DECIDED_AT);
-	elapsed_reset.quota_facts[0].resets_at_provenance = Some(provenance(
-		DECIDED_AT,
-		elapsed_reset.quota_facts[0].observation_revision.unwrap(),
-	));
+	elapsed_reset.quota_facts[0].resets_at_provenance =
+		Some(provenance(DECIDED_AT, elapsed_reset.quota_facts[0].observation_revision.unwrap()));
 	cases.push(("elapsed reset", elapsed_reset));
 	let mut non_depletion = base();
 	for fact in &mut non_depletion.quota_facts {
@@ -416,11 +360,7 @@ fn non_authoritative_depletion_evidence_never_selects_or_waits() {
 	cases.push(("non-depletion", non_depletion));
 
 	for (case, input) in cases {
-		assert_eq!(
-			decide_routing(&input),
-			Ok(expected_no_route()),
-			"{case}"
-		);
+		assert_eq!(decide_routing(&input), Ok(expected_no_route()), "{case}");
 	}
 }
 
@@ -430,56 +370,28 @@ fn malformed_timestamp_provenance_is_a_structural_error() {
 	let fallback = account(9);
 	let base = || {
 		let mut input = snapshot(vec![
-			candidate(
-				1,
-				depleted.clone(),
-				false,
-				vec![RoutingBlocker::QuotaFiveHourDepleted],
-			),
+			candidate(1, depleted.clone(), false, vec![RoutingBlocker::QuotaFiveHourDepleted]),
 			candidate(2, fallback.clone(), false, vec![]),
 		]);
-		input.quota_facts.splice(
-			0..2,
-			quota_pair(
-				&depleted,
-				0,
-				DECIDED_AT + 500,
-				50,
-				DECIDED_AT + 10_000,
-			),
-		);
+		input
+			.quota_facts
+			.splice(0..2, quota_pair(&depleted, 0, DECIDED_AT + 500, 50, DECIDED_AT + 10_000));
 		input
 	};
 
 	let mut cases = Vec::new();
 	let mut raw_value = base();
-	raw_value.quota_facts[0]
-		.observed_at_provenance
-		.as_mut()
-		.unwrap()
-		.raw_value = format!("{}000", OBSERVED_AT);
+	raw_value.quota_facts[0].observed_at_provenance.as_mut().unwrap().raw_value =
+		format!("{}000", OBSERVED_AT);
 	cases.push(("raw microsecond value", raw_value));
 	let mut source = base();
-	source.quota_facts[0]
-		.observed_at_provenance
-		.as_mut()
-		.unwrap()
-		.source_id
-		.clear();
+	source.quota_facts[0].observed_at_provenance.as_mut().unwrap().source_id.clear();
 	cases.push(("source identity", source));
 	let mut revision = base();
-	revision.quota_facts[0]
-		.observed_at_provenance
-		.as_mut()
-		.unwrap()
-		.evidence_revision += 1;
+	revision.quota_facts[0].observed_at_provenance.as_mut().unwrap().evidence_revision += 1;
 	cases.push(("observation revision", revision));
 
 	for (case, input) in cases {
-		assert_eq!(
-			decide_routing(&input),
-			Err(RoutingKernelError::IncompleteEvidence),
-			"{case}"
-		);
+		assert_eq!(decide_routing(&input), Err(RoutingKernelError::IncompleteEvidence), "{case}");
 	}
 }

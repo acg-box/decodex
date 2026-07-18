@@ -16,8 +16,8 @@
 
 mod accounts;
 mod authority;
-mod conversations;
 mod continuations;
+mod conversations;
 mod error;
 mod exact_commands;
 mod experiments;
@@ -36,16 +36,16 @@ mod routing_decisions;
 mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
-mod work_items;
 mod wakes;
+mod work_items;
 
 pub use self::{
+	continuations::{ContinuationPlanEffect, PlanContinuation},
 	conversations::{
 		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
 		HistoryEntry, HistoryPage, PersistContextPack, ProposeTransition, RecordHistoryItem,
 		StoredArtifact, StoredConversation,
 	},
-	continuations::{ContinuationPlanEffect, PlanContinuation},
 	error::{BootstrapFailure, StoreError},
 	experiments::{
 		BindCodexExperimentThread, CodexExperimentCreationFenceOutcome,
@@ -66,9 +66,7 @@ pub use self::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
 		RoleProfileRejection, RoleProfileRevision, RoleProfileRole,
 	},
-	routing::{
-		PublishRoutingEvidence, ReplaceRoutingPolicy, RoutingPolicyMemberInput,
-	},
+	routing::{PublishRoutingEvidence, ReplaceRoutingPolicy, RoutingPolicyMemberInput},
 	routing_decisions::{PersistedRoutingDecision, RouteAccount},
 	runtime_sessions::{
 		CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, RuntimeSessionAccountSnapshot,
@@ -81,14 +79,14 @@ pub use self::{
 		QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow,
 		QuotaWindowMutation, ReconciliationOutcome,
 	},
+	wakes::{
+		CancelWaitingUsageWake, ClaimDueWaitingUsageWake, FireWaitingUsageWake,
+		RegisterWaitingUsageWake, WaitingUsageWakeClaimEffect,
+	},
 	work_items::{
 		AcceptWorkItem, CreateWorkItem, StoredWorkItem, UpdateWorkItem, WorkItemCommandEffect,
 		WorkItemCommandOutcome, WorkItemReadinessBlocker, WorkItemReadinessBlockerKind,
 		WorkItemRejection, WorkItemRelations,
-	},
-	wakes::{
-		CancelWaitingUsageWake, ClaimDueWaitingUsageWake, FireWaitingUsageWake,
-		RegisterWaitingUsageWake, WaitingUsageWakeClaimEffect,
 	},
 };
 pub use decodex_core::{
@@ -96,18 +94,18 @@ pub use decodex_core::{
 	AdmittedRepositoryIdentity, Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint,
 	AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
 	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
-	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, EffectId,
-	ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
-	ExactCommitEvidence, ExactRegistrationEvidence, ExactRepositoryReadbackScope,
-	ExactWorktreeReadyEvidence, ExecutionAssignment, ExecutionAssignmentRole,
-	ExecutorContractVersion, ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId,
-	ManagedRepositoryPhase, ManagedRunError, ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle,
-	ManagedRunPhase, ManagedRunSafetyInput, ManagedRunState, ManagedRunWaitReason,
-	ManagedWorktreeId, NoDispatch, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId,
-	ObjectiveId, ObjectiveState, OperationDescriptorVersion, OperationView, PersistedAbsolutePath,
-	Policy, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
-	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
-	Program, ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
+	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, ContinuationCommandOutcome,
+	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, EffectId, ExactCommitEvidence,
+	ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
+	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedRepositoryError,
+	ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError,
+	ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
+	ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
+	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
+	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
+	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
+	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence, Program,
+	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
 	ProjectRepositoryBinding, ProjectStatus, RegistrationEvidence, RegistrationReadbackRequest,
@@ -120,13 +118,12 @@ pub use decodex_core::{
 	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
 	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
 	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SameThreadContinuationEvidence,
-	SubmittedTurnReceiptId, WorkItem,
-	WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
-	WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
-	WaitingUsageWakeTransitionKind,
-	WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode,
-	WorkItemObjectiveRef, WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
-	WorkItemTimestamp, WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
+	SubmittedTurnReceiptId, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
+	WaitingUsageWakeRejection, WaitingUsageWakeState, WaitingUsageWakeTerminalReason,
+	WaitingUsageWakeTransition, WaitingUsageWakeTransitionKind, WorkItem, WorkItemCorrelationId,
+	WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode, WorkItemObjectiveRef,
+	WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState, WorkItemTimestamp,
+	WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
 };
 pub use quota::parse_quota_timestamp_rfc3339;
 

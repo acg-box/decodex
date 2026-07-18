@@ -3,8 +3,8 @@ use tokio_postgres::{Client, Config};
 
 use super::expected_peer_uid;
 use decodex_core::{
-	CodexCapability, ConversationId, ManagedRunId, RoutingCapabilityState,
-	RoutingCommandOutcome, RoutingDecisionKind, RoutingMemberDisposition, RuntimeSessionId,
+	CodexCapability, ConversationId, ManagedRunId, RoutingCapabilityState, RoutingCommandOutcome,
+	RoutingDecisionKind, RoutingMemberDisposition, RuntimeSessionId,
 };
 use decodex_postgres::{
 	AccountId, AccountState, CommandIdentity, CreateConversation, CreateRuntimeSession,
@@ -28,8 +28,7 @@ const NO_ROUTE_ACCOUNT_ID: &str = "a5000000-0000-4000-8000-000000000018";
 const BUILD_ID: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const NO_ROUTE_BUILD_ID: &str =
 	"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
-const SCHEMA_FINGERPRINT: &str =
-	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const SCHEMA_FINGERPRINT: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 #[derive(Clone)]
 pub(super) struct RoutingFixture {
@@ -81,11 +80,9 @@ pub(super) async fn assert_routing_decision_contract(
 	let cancel_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, 19).await?;
 	let stale_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, 20).await?;
 
-	for (marker, account_id) in [
-		(16_u8, SELECTED_ACCOUNT_ID),
-		(17_u8, WAITING_ACCOUNT_ID),
-		(18_u8, NO_ROUTE_ACCOUNT_ID),
-	] {
+	for (marker, account_id) in
+		[(16_u8, SELECTED_ACCOUNT_ID), (17_u8, WAITING_ACCOUNT_ID), (18_u8, NO_ROUTE_ACCOUNT_ID)]
+	{
 		publish_evidence(store, marker, account_id).await?;
 	}
 
@@ -145,11 +142,7 @@ pub(super) async fn assert_routing_decision_contract(
 		.query_one(
 			"SELECT decodex.route_account_exact('decodex/exact-command/1',\
 			 'v16-rollback',$1::text::uuid,$2::text::uuid,1,$3::text::uuid,1)",
-			&[
-				&uuid(0xb6, 1),
-				&SELECTED_POLICY_ID,
-				&selected_run.managed_run_id.as_str(),
-			],
+			&[&uuid(0xb6, 1), &SELECTED_POLICY_ID, &selected_run.managed_run_id.as_str()],
 		)
 		.await?
 		.get(0);
@@ -241,19 +234,13 @@ pub(super) async fn assert_routing_decision_contract(
 		.await?;
 	assert!(matches!(stale, RoutingCommandOutcome::Rejected(ref rejection)
 		if rejection.code == "stale_managed_run"));
-	let cancel_waiting = success(
-		store.route_account("v16-cancel-waiting", &cancel_request).await?,
-	)?;
-	let stale_waiting = success(
-		store.route_account("v16-stale-waiting", &stale_request).await?,
-	)?;
+	let cancel_waiting =
+		success(store.route_account("v16-cancel-waiting", &cancel_request).await?)?;
+	let stale_waiting = success(store.route_account("v16-stale-waiting", &stale_request).await?)?;
 	assert_eq!(cancel_waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
 	assert_eq!(stale_waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
 
-	let race_request = RouteAccount {
-		operation_id: uuid(0xb6, 2),
-		..selected_request.clone()
-	};
+	let race_request = RouteAccount { operation_id: uuid(0xb6, 2), ..selected_request.clone() };
 	let mut racers = JoinSet::new();
 	for _ in 0..2 {
 		let store = store.clone();
@@ -271,12 +258,8 @@ pub(super) async fn assert_routing_decision_contract(
 	}
 	assert_eq!(receipt_count(owner, "v16-concurrent-replay").await?, 1);
 
-	let restarted = PostgresStore::connect(
-		migration.clone(),
-		runtime.clone(),
-		expected_peer_uid(),
-	)
-	.await?;
+	let restarted =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		restarted.route_account("v16-selected", &selected_request).await?,
 		RoutingCommandOutcome::Success(selected.clone()),
@@ -332,10 +315,9 @@ async fn insert_quota_pair(
 	seven_day: Option<i16>,
 	marker: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	for (window, duration, remaining) in [
-		("five_hour", 300_i16, five_hour),
-		("seven_day", 10_080_i16, seven_day),
-	] {
+	for (window, duration, remaining) in
+		[("five_hour", 300_i16, five_hour), ("seven_day", 10_080_i16, seven_day)]
+	{
 		owner
 			.execute(
 				r#"WITH fact AS (
@@ -360,9 +342,7 @@ async fn insert_quota_pair(
 	Ok(())
 }
 
-async fn align_tied_waiting_ready_time(
-	owner: &Client,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn align_tied_waiting_ready_time(owner: &Client) -> Result<(), Box<dyn std::error::Error>> {
 	let updated = owner
 		.execute(
 			"UPDATE decodex.quota_windows AS target SET \
@@ -443,12 +423,7 @@ async fn create_run(
 			 runtime_session_id,runtime_session_revision,phase,lifecycle,wait_reason,blocked)\
 			 VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid,$4::text::uuid,1,\
 			 'execute','waiting','usage',true)",
-			&[
-				&managed_run_id.as_str(),
-				&PROJECT_ID,
-				&work_item_id,
-				&runtime_session_id.as_str(),
-			],
+			&[&managed_run_id.as_str(), &PROJECT_ID, &work_item_id, &runtime_session_id.as_str()],
 		)
 		.await?;
 	owner
@@ -509,24 +484,21 @@ async fn create_policy_snapshot_and_request(
 	required_build_id: &str,
 ) -> Result<RouteAccount, Box<dyn std::error::Error>> {
 	let rows = owner
-		.query(
-			"SELECT account_id::text,revision FROM decodex.accounts ORDER BY account_id",
-			&[],
-		)
+		.query("SELECT account_id::text,revision FROM decodex.accounts ORDER BY account_id", &[])
 		.await?;
 	let mut members = Vec::with_capacity(rows.len());
 	for row in rows {
-			let account_id = AccountId::new(row.get::<_, String>(0))?;
-			let disposition = if account_id.as_str() == included_account_id {
-				RoutingMemberDisposition::Included
-			} else {
-				RoutingMemberDisposition::Excluded
-			};
-			members.push(RoutingPolicyMemberInput {
-				account_id,
-				account_revision: row.get(1),
-				disposition,
-			});
+		let account_id = AccountId::new(row.get::<_, String>(0))?;
+		let disposition = if account_id.as_str() == included_account_id {
+			RoutingMemberDisposition::Included
+		} else {
+			RoutingMemberDisposition::Excluded
+		};
+		members.push(RoutingPolicyMemberInput {
+			account_id,
+			account_revision: row.get(1),
+			disposition,
+		});
 	}
 	let policy = store
 		.replace_routing_policy(
@@ -576,10 +548,7 @@ pub(super) async fn advance_stale_policy(
 	routing_policy_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let rows = owner
-		.query(
-			"SELECT account_id::text,revision FROM decodex.accounts ORDER BY account_id",
-			&[],
-		)
+		.query("SELECT account_id::text,revision FROM decodex.accounts ORDER BY account_id", &[])
 		.await?;
 	let mut members = Vec::with_capacity(rows.len());
 	for row in rows {
@@ -627,10 +596,7 @@ pub(super) async fn create_stale_evidence_snapshot(
 	routing: &RoutingFixture,
 ) -> Result<String, Box<dyn std::error::Error>> {
 	let rows = owner
-		.query(
-			"SELECT account_id::text,revision FROM decodex.accounts ORDER BY account_id",
-			&[],
-		)
+		.query("SELECT account_id::text,revision FROM decodex.accounts ORDER BY account_id", &[])
 		.await?;
 	let mut members = Vec::with_capacity(rows.len());
 	for row in rows {
@@ -687,9 +653,8 @@ pub(super) async fn create_stale_evidence_snapshot(
 fn success<T>(outcome: RoutingCommandOutcome<T>) -> Result<T, Box<dyn std::error::Error>> {
 	match outcome {
 		RoutingCommandOutcome::Success(value) => Ok(value),
-		RoutingCommandOutcome::Rejected(rejection) => {
-			Err(format!("routing command rejected: {}", rejection.code).into())
-		}
+		RoutingCommandOutcome::Rejected(rejection) =>
+			Err(format!("routing command rejected: {}", rejection.code).into()),
 	}
 }
 

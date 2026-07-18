@@ -5,13 +5,13 @@
 //! approval, or scheduler capability.
 
 use decodex_core::{
-	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome,
-	ContinuationEffectBarrierState, ContinuationPlanKind, ContinuationRejection, ManagedRunId,
-	RoutingCommandOutcome, RoutingDecisionKind, RoutingNoRouteReason,
+	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationEffectBarrierState,
+	ContinuationPlanKind, ContinuationRejection, ManagedRunId, RoutingCommandOutcome,
+	RoutingDecisionKind, RoutingNoRouteReason,
 };
 use decodex_postgres::{
-	ContinuationPlanEffect, PersistedRoutingDecision, PlanContinuation, PostgresStore, RouteAccount,
-	StoreError,
+	ContinuationPlanEffect, PersistedRoutingDecision, PlanContinuation, PostgresStore,
+	RouteAccount, StoreError,
 };
 
 /// Caller-owned identities for V17. The selected account and all continuation lineage remain
@@ -103,15 +103,9 @@ pub struct DisabledRoutingFailure {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DisabledRoutingOutcome {
 	/// One exact V17 plan. Both plan kinds are already selected and sealed by PostgreSQL.
-	Planned {
-		attempt: RoutingAttemptProvenance,
-		effect: ContinuationPlanEffect,
-	},
+	Planned { attempt: RoutingAttemptProvenance, effect: ContinuationPlanEffect },
 	/// Scheduler-owned future work represented without any wake lifecycle capability.
-	WaitingUsage {
-		attempt: RoutingAttemptProvenance,
-		handoff: WaitingUsageHandoff,
-	},
+	WaitingUsage { attempt: RoutingAttemptProvenance, handoff: WaitingUsageHandoff },
 	/// A persisted blocked-evidence decision that cannot advance execution.
 	NoRoute {
 		attempt: RoutingAttemptProvenance,
@@ -136,10 +130,7 @@ impl DisabledRoutingOrchestration {
 	}
 
 	/// Sequence one exact V16 command and, for `selected` only, one exact V17 command.
-	pub async fn orchestrate(
-		&self,
-		command: &DisabledRoutingCommand,
-	) -> DisabledRoutingOutcome {
+	pub async fn orchestrate(&self, command: &DisabledRoutingCommand) -> DisabledRoutingOutcome {
 		let attempt = RoutingAttemptProvenance {
 			routing_operation_id: command.routing.operation_id.clone(),
 			routing_policy_id: command.routing.routing_policy_id.clone(),
@@ -161,9 +152,8 @@ impl DisabledRoutingOrchestration {
 					"stale_routing_policy" => RoutingAuthorityRejection::StaleRoutingPolicy,
 					"stale_managed_run" => RoutingAuthorityRejection::StaleManagedRun,
 					"snapshot_missing" => RoutingAuthorityRejection::SnapshotMissing,
-					"concurrent_authority_change" => {
-						RoutingAuthorityRejection::ConcurrentAuthorityChange
-					},
+					"concurrent_authority_change" =>
+						RoutingAuthorityRejection::ConcurrentAuthorityChange,
 					_ => {
 						return failed(
 							attempt,
@@ -201,8 +191,7 @@ impl DisabledRoutingOrchestration {
 						DisabledRoutingFailureKind::InvalidPersistedDecision,
 					);
 				}
-				self
-					.plan_selected(command, attempt, decision, &persisted, &selected_account_id)
+				self.plan_selected(command, attempt, decision, &persisted, &selected_account_id)
 					.await
 			},
 			RoutingDecisionKind::WaitingUsage => {
@@ -267,14 +256,8 @@ impl DisabledRoutingOrchestration {
 			routing_decision_id: persisted.decision_id.clone(),
 			expected_managed_run_revision: command.routing.expected_managed_run_revision,
 			plan_id: command.continuation.plan_id.clone(),
-			fallback_runtime_session_id: command
-				.continuation
-				.fallback_runtime_session_id
-				.clone(),
-			fallback_account_snapshot_id: command
-				.continuation
-				.fallback_account_snapshot_id
-				.clone(),
+			fallback_runtime_session_id: command.continuation.fallback_runtime_session_id.clone(),
+			fallback_account_snapshot_id: command.continuation.fallback_account_snapshot_id.clone(),
 			fallback_context_pack_id: command.continuation.fallback_context_pack_id.clone(),
 		};
 		let effect = match self
@@ -323,39 +306,34 @@ fn valid_effect_barrier_lineage(effect: &ContinuationPlanEffect) -> bool {
 	let plan = &effect.plan;
 	matches!(
 		(plan.effect_barrier_state, plan.effect_barrier_revision),
-		(ContinuationEffectBarrierState::Guarded, 1)
-			| (ContinuationEffectBarrierState::Closed, 2)
+		(ContinuationEffectBarrierState::Guarded, 1) | (ContinuationEffectBarrierState::Closed, 2)
 	) && plan.submitted_turn_receipt_count >= 0
 }
 
 fn valid_plan_shape(effect: &ContinuationPlanEffect) -> bool {
 	match effect.plan.kind {
-		ContinuationPlanKind::SameThread => {
+		ContinuationPlanKind::SameThread =>
 			effect.plan.codex_thread_id.is_some()
 				&& effect.plan.fallback_context_pack_id.is_none()
 				&& effect.plan.fallback_runtime_session_id.is_none()
 				&& effect.plan.same_thread_evidence.is_some()
-				&& effect.fallback_context_pack.is_none()
-		},
-		ContinuationPlanKind::ContextPackFallback => {
+				&& effect.fallback_context_pack.is_none(),
+		ContinuationPlanKind::ContextPackFallback =>
 			effect.plan.codex_thread_id.is_none()
 				&& effect.plan.fallback_context_pack_id.is_some()
 				&& effect.plan.fallback_runtime_session_id.is_some()
 				&& effect.plan.same_thread_evidence.is_none()
-				&& effect.fallback_context_pack.is_some()
-		},
+				&& effect.fallback_context_pack.is_some(),
 	}
 }
 
 fn classify_store_error(error: &StoreError) -> DisabledRoutingFailureKind {
 	match error {
-		StoreError::InvalidInput(_) | StoreError::CredentialRejected => {
-			DisabledRoutingFailureKind::InvalidCommand
-		},
+		StoreError::InvalidInput(_) | StoreError::CredentialRejected =>
+			DisabledRoutingFailureKind::InvalidCommand,
 		StoreError::RevisionConflict { .. } => DisabledRoutingFailureKind::StaleAuthority,
-		StoreError::IdempotencyConflict | StoreError::OperationIdConflict => {
-			DisabledRoutingFailureKind::ExactCommandConflict
-		},
+		StoreError::IdempotencyConflict | StoreError::OperationIdConflict =>
+			DisabledRoutingFailureKind::ExactCommandConflict,
 		StoreError::Incompatible(_)
 		| StoreError::UnsafeAuthority(_)
 		| StoreError::UnsafeHostPath

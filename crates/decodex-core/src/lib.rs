@@ -19,16 +19,10 @@ mod project;
 mod quota;
 mod routing;
 mod storage;
-mod work_item;
 mod wake;
+mod work_item;
 
 pub use self::{
-	experiment::{
-		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
-		CodexExperimentObservation,
-		CodexExperimentObservationKind, CodexExperimentPrepared,
-		CodexExperimentRejection, CodexExperimentState, CodexExperimentThreadBinding,
-	},
 	account::{AccountError, AccountId, AccountState},
 	agent::{
 		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
@@ -64,6 +58,11 @@ pub use self::{
 		ProposedTransition, ProposedTransitionKind, RuntimeSession, RuntimeSessionId,
 		RuntimeSessionState, Turn, TurnId, TurnRole, TurnStatus, compile_context_pack,
 		contains_credential_material, is_canonical_media_type, is_credential_metadata_key,
+	},
+	experiment::{
+		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
+		CodexExperimentObservation, CodexExperimentObservationKind, CodexExperimentPrepared,
+		CodexExperimentRejection, CodexExperimentState, CodexExperimentThreadBinding,
 	},
 	identity::ServerIdentity,
 	managed_repository::{
@@ -137,14 +136,19 @@ pub use self::{
 	},
 	routing::{
 		CodexCapability, RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome,
-		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind, RoutingDecisionQuotaFact,
-		RoutingDecisionSnapshot, RoutingKernelError, RoutingNoRouteReason,
-		RoutingEvidenceEffect, RoutingMemberDisposition, RoutingPolicyEffect, RoutingPolicyMember,
-		RoutingRejection, RoutingTimestampPrecision, RoutingTimestampProvenance, decide_routing,
-		RoutingSnapshot, RoutingSnapshotCapabilityFact, RoutingSnapshotMember,
-		RoutingSnapshotQuotaFact,
+		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind,
+		RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingEvidenceEffect,
+		RoutingKernelError, RoutingMemberDisposition, RoutingNoRouteReason, RoutingPolicyEffect,
+		RoutingPolicyMember, RoutingRejection, RoutingSnapshot, RoutingSnapshotCapabilityFact,
+		RoutingSnapshotMember, RoutingSnapshotQuotaFact, RoutingTimestampPrecision,
+		RoutingTimestampProvenance, decide_routing,
 	},
 	storage::StorageError,
+	wake::{
+		WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
+		WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
+		WaitingUsageWakeTransitionKind,
+	},
 	work_item::{
 		MAX_WORK_ITEM_CRITERIA, MAX_WORK_ITEM_GRAPH_EDGES, MAX_WORK_ITEM_GRAPH_NODES,
 		MAX_WORK_ITEM_OBJECTIVES, MAX_WORK_ITEM_READINESS_CONTEXT,
@@ -155,11 +159,6 @@ pub use self::{
 		WorkItemNode, WorkItemObjectiveObservation, WorkItemObjectiveRef, WorkItemPriority,
 		WorkItemProgramObservation, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
 		WorkItemTimestamp, assess_work_item_readiness, validate_work_item_graph,
-	},
-	wake::{
-		WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
-		WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
-		WaitingUsageWakeTransitionKind,
 	},
 };
 
