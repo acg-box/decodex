@@ -109,12 +109,12 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1337 | Re-bounded RuntimeSession snapshot creation/transition migration, expected V10 after XY-1346. It does not own exact-receipt or RoleProfile redesign. |
 | XY-1343 | PostgreSQL V11 canonical WorkItems, transactional readiness blockers, and immutable Lead acceptance; no run execution or completion. |
 | XY-1338 | PostgreSQL V12 inert waiting ManagedRuns, exact-run Task/Reviewer assignments, exact RuntimeSession revision binding, FK-backed effect lineage, the fail-closed positive/inconclusive safety transaction, and the forward repair that removes illegal RuntimeSession row locks from V3 Turn/History invoker guards while preserving 1271 serialization. No producer, scheduler, acquisition, dispatch, progress, or completion path. |
-| XY-1284 | Stage-one managed-repository reset, rejected-candidate supersession, trust boundary, falsifiers, replacement graph, and validation exception only; no production implementation or migration. |
+| XY-1284 | Accepted two-stage managed-repository authority reset; stage two is finalized by XY-1348 and consumes accepted XY-1354 unchanged. |
 | XY-1347 | One bounded macOS/Git feasibility spike for ordinary repositories and linked worktrees; evidence only, with no production source or schema. |
-| XY-1348 | Pure transition algebra and executor contract; mechanism-specific authority finalizes only after XY-1347 evidence. |
+| XY-1348 | Accepted mechanism-neutral transition contract and stage-two PostgreSQL/executor authority boundary; no V13 persistence. |
 | XY-1349 | Sole V13 and migration-ledger writer for managed-repository PostgreSQL authority. XY-1304 persistence follows in the next available migration, expected V14. |
-| XY-1350 | Feasibility-proven allocator and in-process executor only; no persistence, saga, provider, or shared composition ownership. |
-| XY-1351 | Repository effect saga and supervised validation, including one thin reservation-to-effect-to-completion path; no migration, executor-internal, or provider ownership. |
+| XY-1350 | Read-only allocation evidence plus accepted Git/filesystem executor and readback only; may proceed in parallel against the accepted contract, with no persistence, receipt, saga, provider, or shared composition ownership. |
+| XY-1351 | First shared repository effect saga path, composing preparation, fresh receipt consumption, execution, readback, and terminal reconciliation; no migration, executor-internal, or provider ownership. |
 | XY-1352 | GitHub PR/check effect and reconciliation boundary with explicit provider identities and positive readback; no local repository discovery. |
 | XY-1353 | Serial integration, final authority/OpenWiki alignment, deferred-validation inventory, and exact-candidate freeze; it blocks XY-1285. |
 
@@ -170,29 +170,31 @@ blocked-old-writer cutover, crash/restart convergence, concurrency, and populate
 These expensive PostgreSQL 18 gates run once against the frozen serial
 XY-1345 -> XY-1346 -> XY-1337 candidate; implementation work does not start a live database.
 
-### XY-1284 managed-repository reset gate
+### XY-1284 managed-repository authority gate
 
-Stage one is the independently reviewed XY-1284 decision/specification/gate amendment.
-It supersedes frozen rejected tree
-`c28a6f1557a2544d7c4521d77b39732b62f88fe4`, bound to the canonical 21-path
-inventory SHA-256
-`254b972405857d4e1589a60e3bef1b2b96dd1f0038c6f289f69757f8ac507d77`.
-No fourth implementation patch is authorized under that combined boundary. Stage one
-changes no product source, SQL, migration, manifest/digest, runtime, test, fixture,
-script, provider, or UI surface and preserves accepted V11
-`33159d0cb2da7f86748f1a380def0927970a409a` and V12
-`a6bfb0aefc72f2a65d14fc3755b556f959ec2d4e` unchanged.
+Stage two is accepted. PostgreSQL owns durable projection, generation/tip, global
+complete-descriptor operation assignment, append-only evidence, exact compare-and-swap,
+atomic command completeness, and restart loads. Pure deciders/facts are mechanism-neutral
+and non-authoritative. Complete canonical equality yields
+`ExistingExact(OperationView, NoDispatch)`; any difference yields permanent
+`OperationIdConflict`. Only a same-control-path successful COMMIT acknowledgement may
+mint one fresh affine receipt. Unknown COMMIT outcome, persistence, repeat, readback,
+restart, and terminal state provide no receipt and authorize no external execution.
 
-Stage two finalizes the mechanism-specific managed-repository contract only when both
-XY-1347 bounded feasibility and XY-1348 pure transition/executor evidence are accepted.
-Before that gate, `/dev/fd`, descriptor-backed Git, worktree creation and registration,
-restart reacquisition, and direct allocation are not proven. A NO-GO or an unresolved
-authority contradiction returns to architecture rather than authorizing implementation.
+Allocate and its evidence are strictly read-only outside PostgreSQL. `Register`,
+`WorktreeReady`, and `Commit` are distinct durably fenced `PossiblyEffected` operations with
+operation-specific positive readback and readback-only restart. They permit no retry,
+replay, adoption, repair, or import. `Register` requires exact reciprocal registration,
+`WorktreeReady` keeps the head unchanged, and `Commit` advances exact `H` to exact `H-prime`
+once. Authorized whole-cluster restore may redefine authority inside the trusted
+PostgreSQL-administrator boundary; V1 does not automatically detect it. The trusted
+single-daemon/same-UID boundary and accepted XY-1354 descriptor-assisted symlink-free
+absolute-path reacquisition plus pinned Git 2.54 remain unchanged.
 
 The replacement ownership and dependency graph is:
 
 ```text
-XY-1284 stage-one reset
+XY-1284 accepted reset
 ├── XY-1347 bounded macOS/Git feasibility ─┐
 └── XY-1348 pure transition/executor core ─┴─> stage-two authority
                                                ├──> XY-1349 sole V13 persistence ─┐
@@ -203,25 +205,19 @@ XY-1349 + XY-1350 + XY-1351 + XY-1352 ──────────> XY-1353 in
 XY-1353 ─────────────────────────────────────────> XY-1285
 ```
 
-The migration ledger is a singleton serial-writer domain. XY-1349 alone owns V13,
-including registration and its authority/schema inventory. XY-1304 creation and
-positive-observation persistence move to the next available migration after V13,
-expected V14. Pure work may proceed only without touching or claiming that writer
-domain.
+The migration ledger is a singleton serial-writer domain. XY-1349 alone owns V13 and all
+physical persistence, transaction, retention, privilege, migration, and frozen database
+evidence details. XY-1304 creation and positive-observation persistence move to the next
+available migration after V13, expected V14. XY-1350 may proceed in parallel only against
+this accepted semantic contract and without touching or claiming the writer domain.
+XY-1351 owns the first shared saga path.
 
-The project-wide frozen integration gate remains the validation authority. Before that
-freeze, the only decision-critical early-check exception is exactly:
-
-1. one bounded macOS/Git feasibility matrix under XY-1347;
-2. one pure transition-semantics gate under XY-1348;
-3. one isolated PostgreSQL worktree-ready schedule whose head remains unchanged;
-4. one isolated commit/head-advance schedule; and
-5. one thin reservation -> effect -> completion path.
-
-Each check runs once on one coherent candidate. Broad compile, test, format, migration,
-PostgreSQL, provider, UI, end-to-end, restore, stress, digest, and repository validation,
-plus detailed matrices outside these five checks, remain deferred to the single frozen
-integration validation gate.
+No managed-repository implementation executes validation before the integration tree is
+frozen. One complete unified validation runs once on that exact frozen tree. Its concise
+evidence categories are pure semantics; PostgreSQL authority, concurrency, restore, and
+retention; accepted Git/filesystem execution and operation-specific readback; the first
+shared saga; provider and repository integration; and final digest/manifest agreement.
+No partial run, detailed early matrix, or result from another tree is acceptance evidence.
 
 Falsifiers are evaluated in this fixed priority order: architecture, then
 stability/recoverability, security/authority, verification, integrity, and performance.
@@ -233,8 +229,8 @@ An earlier class cannot be traded away for a later-class success.
   distinct; or if correctness requires another repository-effect owner beside
   `decodexd`.
 - **Stability/recoverability:** falsified if restart or any `allocated`, `registered`,
-  `ready`, reserved, effected, or completion crash boundary cannot be read back as one
-  deterministic state without blind adoption/replay; or if unchanged-head worktree
+  `ready`, `PossiblyEffected`, or completion crash boundary cannot be read back without
+  retry, replay, adoption, repair, or import; or if unchanged-head worktree
   readiness and exact-once commit head advancement cannot both be represented and
   recovered.
 - **Security/authority:** falsified if stale, foreign, symlinked, replaced, dirty, or
@@ -242,9 +238,9 @@ An earlier class cannot be traded away for a later-class success.
   or path-bearing output cannot be disabled or exactly allowlisted; or if any supported
   operation depends on CWD, ambient config, or implicit repository discovery. Same-UID
   hostile-code confinement is explicitly not a V1 claim.
-- **Verification:** falsified if the bounded spike, pure semantics, two isolated
-  schedules, and thin saga cannot distinguish accepted completion from stale, duplicate,
-  rollback, lost-response, or ambiguous outcomes on exact candidates.
+- **Verification:** falsified if the unified frozen-tree evidence cannot distinguish
+  accepted completion from stale, duplicate, rollback, lost-response, or ambiguous
+  outcomes.
 - **Integrity:** falsified if a durable reservation can be bypassed, identity/revision
   binding can drift, mutation can escape supervised detection, or positive external
   readback cannot reconcile a possibly completed effect without duplication.
@@ -252,16 +248,12 @@ An earlier class cannot be traded away for a later-class success.
   allocation, Git execution, recovery, or validation cannot meet the later explicit host
   budgets without weakening an earlier guarantee.
 
-Stage-one residual unknowns are the feasible macOS/Git descriptor/path mechanism; the
-behavior of ordinary and linked worktrees after descriptor closure and process restart;
-direct final allocation and crash-state reacquisition; the exhaustive Git
-config/include/hook/filter/`fsmonitor`/credential-helper/askpass/SSH/transport controls,
-including canonical keys, environment overrides, executable identities, and path-bearing
-outputs; and quantitative recovery, validation, and performance budgets. Stage two must
-close those mechanism-specific control unknowns, while omitted or unmatched surfaces
-remain disabled and fail closed. Hostile same-UID or multi-tenant operation is a separate
-future UID/sandbox feasibility and authority problem, not a stage-two residual or V1
-promise.
+Rejected candidate trees `6e20e9b3cf1415cce9b399da173b0410cc4c80dc`,
+`6979e3831da772fca3fe0f0e0b4699df642d3a65`, and
+`e42212add13af3f702e0ec8966ce3d6a7b682d12` are superseded evidence, not current
+authority or compatibility/history migration inputs. Hostile same-UID or multi-tenant
+operation remains a separate future UID/sandbox feasibility and authority problem, not a
+stage-two residual or V1 promise.
 
 ### XY-1263 acceptance and XY-1269 clean-slice reset
 

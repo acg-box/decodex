@@ -444,9 +444,51 @@ run-scoped `(1338, hash(run))` lock, and only then read or lock hierarchy, run, 
 receipt, or Turn state. This prevents an unknown-turn absence decision from crossing a concurrent
 same-session Turn insertion without granting runtime `UPDATE` on RuntimeSessions.
 
+### Managed repository stage-two authority
+
+PostgreSQL is the durable managed-repository authority. It owns the current projection,
+monotonic generation/tip, globally immutable complete-descriptor operation assignments,
+append-only authority transitions and operation evidence, exact generation/tip compare-and-swap,
+atomic command completeness, and state loaded after restart. The pure values, facts, descriptors,
+and deciders in `decodex-core` are mechanism-neutral and non-authoritative; a caller projection,
+snapshot, operation view, or generic observation cannot substitute for a transaction-internal
+PostgreSQL load.
+
+One repository operation ID spans every repository and operation kind. Complete canonical
+descriptor equality returns `ExistingExact(OperationView, NoDispatch)`; any difference is
+permanent `OperationIdConflict`. For a new assignment, one top-level transaction loads and locks
+current authority, evaluates the pure decision, inserts the immutable assignment, appends
+`PossiblyEffected`, fences the allocation or head, appends the authority transition, and advances
+the projection by exact generation/tip compare-and-swap. Commit-time completeness prevents a
+partial durable command.
+
+The PostgreSQL adapter may retain a private non-executable preparation seed until COMMIT. Only a
+successful COMMIT acknowledgement returning on that same live control path can turn the seed into
+one fresh affine receipt. The receipt cannot be persisted, queried, cloned, publicly constructed,
+or reconstructed. Persistence, readback, exact repeat, restart, terminal state, and unknown COMMIT
+outcome never grant dispatch. If the COMMIT outcome is unknown, the invocation produces no receipt
+and performs no external execution.
+
+Allocate is PostgreSQL-only; all admission, path-reacquisition, stat, Git, and target-availability
+evidence used before it is strictly read-only. `Register`, `WorktreeReady`, and `Commit` are distinct
+durably fenced `PossiblyEffected` external operations. `Register` uses the accepted pinned Git
+2.54 worktree-add mechanism and completes only on exact reciprocal registration with unchanged
+head. `WorktreeReady` completes only with its exact head unchanged. `Commit` consumes exact head `H`
+and completes only after positive readback of one exact advance to canonical `H-prime`. Restart can
+issue only operation-specific readback; it cannot retry, replay, adopt, repair, import, or
+reconstruct execution authority.
+
+Accepted XY-1354 supplies descriptor-assisted, symlink-free persisted absolute-path reacquisition
+and pinned Git 2.54 unchanged. `decodexd` remains the sole repository-effect owner inside the
+trusted single-daemon/same-UID V1 boundary. Authorized whole-cluster restore is inside the trusted
+PostgreSQL-administrator boundary and may redefine authority; V1 has no automatic full-cluster
+rollback detection. XY-1349 solely owns V13 persistence, XY-1350 owns only read-only acquisition
+and executor/readback mechanics against this contract, and XY-1351 owns the first shared saga path.
+
 Legacy `command_receipts` retain the receipt-first fenced-claim protocol only for unrelated blob,
 filesystem, external, or long-running sagas whose point of no return cannot fit in one PostgreSQL
-transaction. Such a flow commits an immutable pending receipt before effects; a fenced claim then
+transaction; managed-repository operations do not use this protocol. Such a flow commits an
+immutable pending receipt before effects; a fenced claim then
 applies the expected revision, appends activity, enqueues outbox, stores exact response bytes, and
 completes transaction B. Durable exact history replay retains its immutable version and referenced
 blob while the legacy receipt exists. Outbox claims are bounded and
