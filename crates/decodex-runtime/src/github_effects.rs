@@ -63,7 +63,10 @@ macro_rules! positive_id {
 			pub(crate) fn new(value: u64) -> Result<Self, GitHubContractError> {
 				if value == 0 { Err(GitHubContractError::InvalidIdentity) } else { Ok(Self(value)) }
 			}
-			pub(crate) const fn get(self) -> u64 { self.0 }
+
+			pub(crate) const fn get(self) -> u64 {
+				self.0
+			}
 		}
 	};
 }
@@ -87,10 +90,15 @@ macro_rules! bounded_identity {
 		impl $name {
 			pub(crate) fn new(value: impl Into<String>) -> Result<Self, GitHubContractError> {
 				let value = value.into();
-				if !$validator(&value) { return Err(GitHubContractError::$error); }
+				if !$validator(&value) {
+					return Err(GitHubContractError::$error);
+				}
 				Ok(Self(value))
 			}
-			pub(crate) fn value(&self) -> &str { &self.0 }
+
+			pub(crate) fn value(&self) -> &str {
+				&self.0
+			}
 		}
 	};
 }
@@ -98,9 +106,17 @@ macro_rules! bounded_identity {
 fn valid_owner(value: &str) -> bool {
 	!value.is_empty()
 		&& value.len() <= 39
-		&& value.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-		&& value.bytes().next().is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
-		&& value.bytes().next_back().is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+		&& value
+			.bytes()
+			.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+		&& value
+			.bytes()
+			.next()
+			.is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+		&& value
+			.bytes()
+			.next_back()
+			.is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
 		&& !value.contains("--")
 }
 
@@ -123,9 +139,9 @@ fn valid_branch(value: &str) -> bool {
 		&& !value.contains("..")
 		&& !value.contains("@{")
 		&& !value.contains("//")
-		&& !value
-			.bytes()
-			.any(|byte| byte <= b' ' || matches!(byte, b'~' | b'^' | b':' | b'?' | b'*' | b'[' | b'\\'))
+		&& !value.bytes().any(|byte| {
+			byte <= b' ' || matches!(byte, b'~' | b'^' | b':' | b'?' | b'*' | b'[' | b'\\')
+		})
 }
 
 fn valid_revision(value: &str) -> bool {
@@ -158,12 +174,30 @@ impl GitHubRepositoryBinding {
 	) -> Self {
 		Self { provider, repository_id, owner, name, installation_id, account_id }
 	}
-	pub(crate) const fn provider(&self) -> GitHubProviderIdentity { self.provider }
-	pub(crate) const fn repository_id(&self) -> GitHubRepositoryId { self.repository_id }
-	pub(crate) fn owner(&self) -> &str { self.owner.value() }
-	pub(crate) fn name(&self) -> &str { self.name.value() }
-	pub(crate) const fn installation_id(&self) -> GitHubInstallationId { self.installation_id }
-	pub(crate) const fn account_id(&self) -> GitHubAccountId { self.account_id }
+
+	pub(crate) const fn provider(&self) -> GitHubProviderIdentity {
+		self.provider
+	}
+
+	pub(crate) const fn repository_id(&self) -> GitHubRepositoryId {
+		self.repository_id
+	}
+
+	pub(crate) fn owner(&self) -> &str {
+		self.owner.value()
+	}
+
+	pub(crate) fn name(&self) -> &str {
+		self.name.value()
+	}
+
+	pub(crate) const fn installation_id(&self) -> GitHubInstallationId {
+		self.installation_id
+	}
+
+	pub(crate) const fn account_id(&self) -> GitHubAccountId {
+		self.account_id
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -180,13 +214,27 @@ impl GitHubRevisionAuthority {
 		head_branch: GitHubBranchName,
 		head_revision: GitHubRevision,
 	) -> Result<Self, GitHubContractError> {
-		if base_branch == head_branch { return Err(GitHubContractError::InvalidBranch); }
+		if base_branch == head_branch {
+			return Err(GitHubContractError::InvalidBranch);
+		}
 		Ok(Self { base_branch, base_revision, head_branch, head_revision })
 	}
-	pub(crate) fn base_branch(&self) -> &str { self.base_branch.value() }
-	pub(crate) fn base_revision(&self) -> &str { self.base_revision.value() }
-	pub(crate) fn head_branch(&self) -> &str { self.head_branch.value() }
-	pub(crate) fn head_revision(&self) -> &str { self.head_revision.value() }
+
+	pub(crate) fn base_branch(&self) -> &str {
+		self.base_branch.value()
+	}
+
+	pub(crate) fn base_revision(&self) -> &str {
+		self.base_revision.value()
+	}
+
+	pub(crate) fn head_branch(&self) -> &str {
+		self.head_branch.value()
+	}
+
+	pub(crate) fn head_revision(&self) -> &str {
+		self.head_revision.value()
+	}
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -197,10 +245,15 @@ impl GitHubOperationMarker {
 		let Some(uuid) = value.strip_prefix("decodex/github-effect/1/") else {
 			return Err(GitHubContractError::InvalidMarker);
 		};
-		if !is_canonical_uuid_v4(uuid) { return Err(GitHubContractError::InvalidMarker); }
+		if !is_canonical_uuid_v4(uuid) {
+			return Err(GitHubContractError::InvalidMarker);
+		}
 		Ok(Self(value))
 	}
-	pub(crate) fn value(&self) -> &str { &self.0 }
+
+	pub(crate) fn value(&self) -> &str {
+		&self.0
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -210,11 +263,19 @@ pub(crate) struct GitHubPullRequestIdentity {
 }
 impl GitHubPullRequestIdentity {
 	pub(crate) fn new(id: GitHubPullRequestId, number: u64) -> Result<Self, GitHubContractError> {
-		if number == 0 { return Err(GitHubContractError::InvalidIdentity); }
+		if number == 0 {
+			return Err(GitHubContractError::InvalidIdentity);
+		}
 		Ok(Self { id, number })
 	}
-	pub(crate) const fn id(self) -> GitHubPullRequestId { self.id }
-	pub(crate) const fn number(self) -> u64 { self.number }
+
+	pub(crate) const fn id(self) -> GitHubPullRequestId {
+		self.id
+	}
+
+	pub(crate) const fn number(self) -> u64 {
+		self.number
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -232,8 +293,14 @@ impl GitHubCheckIdentity {
 	pub(crate) const fn new(suite_id: GitHubCheckSuiteId, run_id: GitHubCheckRunId) -> Self {
 		Self { suite_id, run_id }
 	}
-	pub(crate) const fn suite_id(self) -> GitHubCheckSuiteId { self.suite_id }
-	pub(crate) const fn run_id(self) -> GitHubCheckRunId { self.run_id }
+
+	pub(crate) const fn suite_id(self) -> GitHubCheckSuiteId {
+		self.suite_id
+	}
+
+	pub(crate) const fn run_id(self) -> GitHubCheckRunId {
+		self.run_id
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -284,15 +351,23 @@ impl GitHubCheckAuthority {
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) struct GitHubPublicText(String);
 impl GitHubPublicText {
-	pub(crate) fn new(value: impl Into<String>, maximum: usize) -> Result<Self, GitHubContractError> {
+	pub(crate) fn new(
+		value: impl Into<String>,
+		maximum: usize,
+	) -> Result<Self, GitHubContractError> {
 		let value = value.into();
 		if value.is_empty() || value.len() > maximum || value.chars().any(char::is_control) {
 			return Err(GitHubContractError::InvalidText);
 		}
-		if contains_credential_material(&value) { return Err(GitHubContractError::CredentialRejected); }
+		if contains_credential_material(&value) {
+			return Err(GitHubContractError::CredentialRejected);
+		}
 		Ok(Self(value))
 	}
-	pub(crate) fn value(&self) -> &str { &self.0 }
+
+	pub(crate) fn value(&self) -> &str {
+		&self.0
+	}
 }
 impl Debug for GitHubPublicText {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -387,6 +462,7 @@ impl GitHubCheckState {
 		}
 		Ok(Self { status, conclusion })
 	}
+
 	pub(crate) fn from_provider(
 		status: &str,
 		conclusion: Option<&str>,
@@ -431,7 +507,9 @@ pub(crate) struct GitHubCheckSuiteContract {
 	required_runs: Vec<GitHubRequiredCheckRun>,
 }
 impl GitHubCheckSuiteContract {
-	pub(crate) fn new(required_runs: Vec<GitHubRequiredCheckRun>) -> Result<Self, GitHubContractError> {
+	pub(crate) fn new(
+		required_runs: Vec<GitHubRequiredCheckRun>,
+	) -> Result<Self, GitHubContractError> {
 		if required_runs.is_empty() || required_runs.len() > MAX_REQUIRED_CHECK_RUNS {
 			return Err(GitHubContractError::InvalidCheckContract);
 		}
@@ -542,9 +620,15 @@ impl GitHubCursor {
 	pub(crate) fn new(value: impl Into<String>) -> Result<Self, GitHubContractError> {
 		Self::validated(value.into()).map(Self)
 	}
-	pub(crate) fn provider_value(&self) -> &str { &self.0 }
+
+	pub(crate) fn provider_value(&self) -> &str {
+		&self.0
+	}
+
 	fn validated(value: String) -> Result<String, GitHubContractError> {
-		if !valid_opaque(&value) { return Err(GitHubContractError::InvalidPagination); }
+		if !valid_opaque(&value) {
+			return Err(GitHubContractError::InvalidPagination);
+		}
 		Ok(value)
 	}
 }
@@ -559,10 +643,15 @@ pub(crate) struct GitHubSnapshot(String);
 impl GitHubSnapshot {
 	pub(crate) fn new(value: impl Into<String>) -> Result<Self, GitHubContractError> {
 		let value = value.into();
-		if !valid_opaque(&value) { return Err(GitHubContractError::InvalidPagination); }
+		if !valid_opaque(&value) {
+			return Err(GitHubContractError::InvalidPagination);
+		}
 		Ok(Self(value))
 	}
-	pub(crate) fn provider_value(&self) -> &str { &self.0 }
+
+	pub(crate) fn provider_value(&self) -> &str {
+		&self.0
+	}
 }
 impl Debug for GitHubSnapshot {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -575,7 +664,9 @@ pub(crate) struct GitHubPageIdentity(String);
 impl GitHubPageIdentity {
 	pub(crate) fn new(value: impl Into<String>) -> Result<Self, GitHubContractError> {
 		let value = value.into();
-		if !valid_opaque(&value) { return Err(GitHubContractError::InvalidPagination); }
+		if !valid_opaque(&value) {
+			return Err(GitHubContractError::InvalidPagination);
+		}
 		Ok(Self(value))
 	}
 }
@@ -611,7 +702,9 @@ impl GitHubPaginationMetadata {
 		has_next_page: bool,
 		next_cursor: Option<GitHubCursor>,
 	) -> Result<Self, GitHubContractError> {
-		if page_number == 0 { return Err(GitHubContractError::InvalidPagination); }
+		if page_number == 0 {
+			return Err(GitHubContractError::InvalidPagination);
+		}
 		Ok(Self {
 			snapshot,
 			page_identity,
@@ -661,10 +754,21 @@ pub(crate) struct GitHubPullRequestMutation<'a> {
 	spec: &'a GitHubPullRequestSpec,
 }
 impl<'a> GitHubPullRequestMutation<'a> {
-	pub(crate) fn authority(&self) -> &GitHubPullRequestAuthority { self.authority }
-	pub(crate) fn title(&self) -> &str { self.spec.title.value() }
-	pub(crate) fn body(&self) -> &str { self.spec.body.value() }
-	pub(crate) const fn draft(&self) -> bool { self.spec.draft }
+	pub(crate) fn authority(&self) -> &GitHubPullRequestAuthority {
+		self.authority
+	}
+
+	pub(crate) fn title(&self) -> &str {
+		self.spec.title.value()
+	}
+
+	pub(crate) fn body(&self) -> &str {
+		self.spec.body.value()
+	}
+
+	pub(crate) const fn draft(&self) -> bool {
+		self.spec.draft
+	}
 }
 
 pub(crate) struct GitHubCheckMutation<'a> {
@@ -672,9 +776,17 @@ pub(crate) struct GitHubCheckMutation<'a> {
 	spec: &'a GitHubCheckSpec,
 }
 impl<'a> GitHubCheckMutation<'a> {
-	pub(crate) fn authority(&self) -> &GitHubCheckAuthority { self.authority }
-	pub(crate) fn name(&self) -> &str { self.spec.name.value() }
-	pub(crate) const fn state(&self) -> GitHubCheckState { self.spec.state }
+	pub(crate) fn authority(&self) -> &GitHubCheckAuthority {
+		self.authority
+	}
+
+	pub(crate) fn name(&self) -> &str {
+		self.spec.name.value()
+	}
+
+	pub(crate) const fn state(&self) -> GitHubCheckState {
+		self.spec.state
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -867,8 +979,13 @@ pub(crate) struct GitHubPullRequestCompletion {
 	summary: GitHubObservationSummary,
 }
 impl GitHubPullRequestCompletion {
-	pub(crate) fn observation(&self) -> &GitHubPullRequestObservation { &self.observation }
-	pub(crate) const fn summary(&self) -> GitHubObservationSummary { self.summary }
+	pub(crate) fn observation(&self) -> &GitHubPullRequestObservation {
+		&self.observation
+	}
+
+	pub(crate) const fn summary(&self) -> GitHubObservationSummary {
+		self.summary
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -878,9 +995,17 @@ pub(crate) struct GitHubCheckCompletion {
 	summary: GitHubObservationSummary,
 }
 impl GitHubCheckCompletion {
-	pub(crate) fn observation(&self) -> &GitHubCheckObservation { &self.observation }
-	pub(crate) fn required_runs(&self) -> &[GitHubCheckObservation] { &self.required_runs }
-	pub(crate) const fn summary(&self) -> GitHubObservationSummary { self.summary }
+	pub(crate) fn observation(&self) -> &GitHubCheckObservation {
+		&self.observation
+	}
+
+	pub(crate) fn required_runs(&self) -> &[GitHubCheckObservation] {
+		&self.required_runs
+	}
+
+	pub(crate) const fn summary(&self) -> GitHubObservationSummary {
+		self.summary
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -961,14 +1086,16 @@ pub(crate) fn reconcile_pull_request_dispatch<P: GitHubEffectProvider + ?Sized>(
 				GitHubPullRequestDispatchReceipt { authority, spec },
 			);
 		},
-		Err(failure) => return GitHubPullRequestDispatchResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) =>
+			return GitHubPullRequestDispatchResolution::Ambiguous(collection_ambiguity(failure)),
 	};
 	match reconcile_pull_request_present(&authority, &spec, None, inventory) {
 		PullRequestPresence::Terminal(terminal) => return terminal.into_dispatch(),
 		PullRequestPresence::Absent(_) => {},
 	}
 
-	let outcome = provider.apply_pull_request(GitHubPullRequestMutation { authority: &authority, spec: &spec });
+	let outcome = provider
+		.apply_pull_request(GitHubPullRequestMutation { authority: &authority, spec: &spec });
 	after_pull_request_mutation(authority, spec, outcome)
 }
 
@@ -986,7 +1113,8 @@ pub(crate) fn reconcile_pull_request_readback<P: GitHubEffectProvider + ?Sized>(
 				GitHubPullRequestContinuation { authority, spec, response_identity, reason },
 			);
 		},
-		Err(failure) => return GitHubPullRequestReadbackResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) =>
+			return GitHubPullRequestReadbackResolution::Ambiguous(collection_ambiguity(failure)),
 	};
 	match reconcile_pull_request_present(&authority, &spec, response_identity, inventory) {
 		PullRequestPresence::Terminal(terminal) => terminal,
@@ -1023,15 +1151,10 @@ pub(crate) fn reconcile_check_dispatch<P: GitHubEffectProvider + ?Sized>(
 				suite_contract,
 			});
 		},
-		Err(failure) => return GitHubCheckDispatchResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) =>
+			return GitHubCheckDispatchResolution::Ambiguous(collection_ambiguity(failure)),
 	};
-	match reconcile_check_present(
-		&authority,
-		&spec,
-		&suite_contract,
-		None,
-		inventory,
-	) {
+	match reconcile_check_present(&authority, &spec, &suite_contract, None, inventory) {
 		CheckPresence::Terminal(terminal) => return terminal.into_dispatch(),
 		CheckPresence::Absent(_) => {},
 	}
@@ -1044,13 +1167,8 @@ pub(crate) fn reconcile_check_readback<P: GitHubEffectProvider + ?Sized>(
 	provider: &P,
 	continuation: GitHubCheckContinuation,
 ) -> GitHubCheckReadbackResolution {
-	let GitHubCheckContinuation {
-		authority,
-		spec,
-		suite_contract,
-		response_identity,
-		reason,
-	} = continuation;
+	let GitHubCheckContinuation { authority, spec, suite_contract, response_identity, reason } =
+		continuation;
 	let inventory = match collect_checks(provider, &authority) {
 		Ok(inventory) => inventory,
 		Err(CollectionFailure::Read(
@@ -1064,15 +1182,11 @@ pub(crate) fn reconcile_check_readback<P: GitHubEffectProvider + ?Sized>(
 				reason,
 			});
 		},
-		Err(failure) => return GitHubCheckReadbackResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) =>
+			return GitHubCheckReadbackResolution::Ambiguous(collection_ambiguity(failure)),
 	};
-	match reconcile_check_present(
-		&authority,
-		&spec,
-		&suite_contract,
-		response_identity,
-		inventory,
-	) {
+	match reconcile_check_present(&authority, &spec, &suite_contract, response_identity, inventory)
+	{
 		CheckPresence::Terminal(terminal) => terminal,
 		CheckPresence::Absent(summary) => {
 			if response_identity.is_some()
@@ -1134,16 +1248,27 @@ fn after_pull_request_mutation(
 				reason: GitHubNoEffectReason::ProviderProvedRequestNotSent,
 				summary: None,
 			}),
-		GitHubPullRequestMutationOutcome::StaleBase =>
-			GitHubPullRequestDispatchResolution::Stale(stale(GitHubStaleReason::BaseRevisionChanged, None)),
-		GitHubPullRequestMutationOutcome::StaleHead =>
-			GitHubPullRequestDispatchResolution::Stale(stale(GitHubStaleReason::HeadRevisionChanged, None)),
+		GitHubPullRequestMutationOutcome::StaleBase => GitHubPullRequestDispatchResolution::Stale(
+			stale(GitHubStaleReason::BaseRevisionChanged, None),
+		),
+		GitHubPullRequestMutationOutcome::StaleHead => GitHubPullRequestDispatchResolution::Stale(
+			stale(GitHubStaleReason::HeadRevisionChanged, None),
+		),
 		GitHubPullRequestMutationOutcome::ConflictingMarker =>
-			GitHubPullRequestDispatchResolution::Ambiguous(ambiguity(GitHubAmbiguity::DurableMarkerConflict, None)),
+			GitHubPullRequestDispatchResolution::Ambiguous(ambiguity(
+				GitHubAmbiguity::DurableMarkerConflict,
+				None,
+			)),
 		GitHubPullRequestMutationOutcome::ProviderRedacted =>
-			GitHubPullRequestDispatchResolution::Ambiguous(ambiguity(GitHubAmbiguity::ProviderRedacted, None)),
+			GitHubPullRequestDispatchResolution::Ambiguous(ambiguity(
+				GitHubAmbiguity::ProviderRedacted,
+				None,
+			)),
 		GitHubPullRequestMutationOutcome::ImpossibleState =>
-			GitHubPullRequestDispatchResolution::Ambiguous(ambiguity(GitHubAmbiguity::ImpossibleProviderState, None)),
+			GitHubPullRequestDispatchResolution::Ambiguous(ambiguity(
+				GitHubAmbiguity::ImpossibleProviderState,
+				None,
+			)),
 	}
 }
 
@@ -1190,16 +1315,23 @@ fn after_check_mutation(
 				reason: GitHubNoEffectReason::ProviderProvedRequestNotSent,
 				summary: None,
 			}),
-		GitHubCheckMutationOutcome::StaleBase =>
-			GitHubCheckDispatchResolution::Stale(stale(GitHubStaleReason::BaseRevisionChanged, None)),
-		GitHubCheckMutationOutcome::StaleHead =>
-			GitHubCheckDispatchResolution::Stale(stale(GitHubStaleReason::HeadRevisionChanged, None)),
-		GitHubCheckMutationOutcome::ConflictingMarker =>
-			GitHubCheckDispatchResolution::Ambiguous(ambiguity(GitHubAmbiguity::DurableMarkerConflict, None)),
-		GitHubCheckMutationOutcome::ProviderRedacted =>
-			GitHubCheckDispatchResolution::Ambiguous(ambiguity(GitHubAmbiguity::ProviderRedacted, None)),
-		GitHubCheckMutationOutcome::ImpossibleState =>
-			GitHubCheckDispatchResolution::Ambiguous(ambiguity(GitHubAmbiguity::ImpossibleProviderState, None)),
+		GitHubCheckMutationOutcome::StaleBase => GitHubCheckDispatchResolution::Stale(stale(
+			GitHubStaleReason::BaseRevisionChanged,
+			None,
+		)),
+		GitHubCheckMutationOutcome::StaleHead => GitHubCheckDispatchResolution::Stale(stale(
+			GitHubStaleReason::HeadRevisionChanged,
+			None,
+		)),
+		GitHubCheckMutationOutcome::ConflictingMarker => GitHubCheckDispatchResolution::Ambiguous(
+			ambiguity(GitHubAmbiguity::DurableMarkerConflict, None),
+		),
+		GitHubCheckMutationOutcome::ProviderRedacted => GitHubCheckDispatchResolution::Ambiguous(
+			ambiguity(GitHubAmbiguity::ProviderRedacted, None),
+		),
+		GitHubCheckMutationOutcome::ImpossibleState => GitHubCheckDispatchResolution::Ambiguous(
+			ambiguity(GitHubAmbiguity::ImpossibleProviderState, None),
+		),
 	}
 }
 
@@ -1214,8 +1346,11 @@ fn collect_pull_requests<P: GitHubEffectProvider + ?Sized>(
 		|cursor| provider.pull_request_page(authority, &start, cursor),
 		|observation| (observation.identity.id.get(), Some(observation.identity.number)),
 	)?;
-	let end = provider.end_pull_request_snapshot(authority, &start).map_err(CollectionFailure::Read)?;
-	if end != start { return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::EndSnapshotChanged)); }
+	let end =
+		provider.end_pull_request_snapshot(authority, &start).map_err(CollectionFailure::Read)?;
+	if end != start {
+		return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::EndSnapshotChanged));
+	}
 	Ok(inventory)
 }
 
@@ -1231,7 +1366,9 @@ fn collect_checks<P: GitHubEffectProvider + ?Sized>(
 		|observation| (observation.identity.run_id.get(), None),
 	)?;
 	let end = provider.end_check_snapshot(authority, &start).map_err(CollectionFailure::Read)?;
-	if end != start { return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::EndSnapshotChanged)); }
+	if end != start {
+		return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::EndSnapshotChanged));
+	}
 	Ok(inventory)
 }
 
@@ -1282,8 +1419,10 @@ where
 		}
 
 		match (metadata.has_next_page, metadata.next_cursor.clone()) {
-			(true, None) => return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::MissingNextCursor)),
-			(false, Some(_)) => return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::UnexpectedNextCursor)),
+			(true, None) =>
+				return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::MissingNextCursor)),
+			(false, Some(_)) =>
+				return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::UnexpectedNextCursor)),
 			(true, Some(next)) => {
 				if cursor.as_ref() == Some(&next) || !seen_cursors.insert(next.clone()) {
 					return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::CursorCycle));
@@ -1326,6 +1465,7 @@ impl PullRequestTerminal {
 			Self::NoEffect(value) => GitHubPullRequestDispatchResolution::NoEffect(value),
 		}
 	}
+
 	fn into_readback(self) -> GitHubPullRequestReadbackResolution {
 		match self {
 			Self::Completed(value) => GitHubPullRequestReadbackResolution::Completed(value),
@@ -1356,6 +1496,7 @@ impl CheckTerminal {
 			Self::NoEffect(value) => GitHubCheckDispatchResolution::NoEffect(value),
 		}
 	}
+
 	fn into_readback(self) -> GitHubCheckReadbackResolution {
 		match self {
 			Self::Completed(value) => GitHubCheckReadbackResolution::Completed(value),
@@ -1402,7 +1543,9 @@ fn reconcile_pull_request_present(
 			candidate = Some(observation);
 		}
 	}
-	let Some(observation) = candidate else { return PullRequestPresence::Absent(summary); };
+	let Some(observation) = candidate else {
+		return PullRequestPresence::Absent(summary);
+	};
 	if !pull_request_target_matches(authority.target, observation.identity) {
 		return PullRequestPresence::Terminal(PullRequestTerminal::Stale(stale(
 			GitHubStaleReason::PullRequestIdentityChanged,
@@ -1416,7 +1559,10 @@ fn reconcile_pull_request_present(
 		)));
 	}
 	if let Some(reason) = stale_revisions(&authority.revisions, &observation.revisions) {
-		return PullRequestPresence::Terminal(PullRequestTerminal::Stale(stale(reason, Some(summary))));
+		return PullRequestPresence::Terminal(PullRequestTerminal::Stale(stale(
+			reason,
+			Some(summary),
+		)));
 	}
 	if observation.state != GitHubPullRequestState::Open {
 		return PullRequestPresence::Terminal(PullRequestTerminal::Stale(stale(
@@ -1434,9 +1580,8 @@ fn reconcile_pull_request_present(
 				GitHubAmbiguity::ExternallyChangedFields,
 				Some(summary),
 			)),
-		GitHubProviderField::Visible(_) => PullRequestTerminal::Completed(
-			GitHubPullRequestCompletion { observation, summary },
-		),
+		GitHubProviderField::Visible(_) =>
+			PullRequestTerminal::Completed(GitHubPullRequestCompletion { observation, summary }),
 	})
 }
 
@@ -1486,7 +1631,9 @@ fn reconcile_check_present(
 		}
 		all.push(observation);
 	}
-	let Some(observation) = candidate else { return CheckPresence::Absent(summary); };
+	let Some(observation) = candidate else {
+		return CheckPresence::Absent(summary);
+	};
 	if observation.pull_request != authority.pull_request {
 		return CheckPresence::Terminal(CheckTerminal::Ambiguous(ambiguity(
 			GitHubAmbiguity::DurableMarkerConflict,
@@ -1534,7 +1681,10 @@ fn reconcile_check_present(
 	) {
 		Ok(required) => required,
 		Err(reason) =>
-			return CheckPresence::Terminal(CheckTerminal::Ambiguous(ambiguity(reason, Some(summary)))),
+			return CheckPresence::Terminal(CheckTerminal::Ambiguous(ambiguity(
+				reason,
+				Some(summary),
+			))),
 	};
 	CheckPresence::Terminal(CheckTerminal::Completed(GitHubCheckCompletion {
 		observation,
@@ -1609,8 +1759,10 @@ fn stale_revisions(
 	expected: &GitHubRevisionAuthority,
 	observed: &GitHubRevisionAuthority,
 ) -> Option<GitHubStaleReason> {
-	let base = expected.base_branch != observed.base_branch || expected.base_revision != observed.base_revision;
-	let head = expected.head_branch != observed.head_branch || expected.head_revision != observed.head_revision;
+	let base = expected.base_branch != observed.base_branch
+		|| expected.base_revision != observed.base_revision;
+	let head = expected.head_branch != observed.head_branch
+		|| expected.head_revision != observed.head_revision;
 	match (base, head) {
 		(false, false) => None,
 		(true, false) => Some(GitHubStaleReason::BaseRevisionChanged),

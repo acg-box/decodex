@@ -8,7 +8,8 @@ use super::*;
 struct FakeProvider {
 	pr_begin: RefCell<Result<GitHubSnapshot, GitHubReadFailure>>,
 	pr_end: RefCell<Result<GitHubSnapshot, GitHubReadFailure>>,
-	pr_pages: RefCell<VecDeque<Result<GitHubPage<GitHubPullRequestObservation>, GitHubReadFailure>>>,
+	pr_pages:
+		RefCell<VecDeque<Result<GitHubPage<GitHubPullRequestObservation>, GitHubReadFailure>>>,
 	pr_mutation: Cell<GitHubPullRequestMutationOutcome>,
 	pr_mutations: Cell<usize>,
 	check_begin: RefCell<Result<GitHubSnapshot, GitHubReadFailure>>,
@@ -49,10 +50,7 @@ impl GitHubEffectProvider for FakeProvider {
 		_snapshot: &GitHubSnapshot,
 		_cursor: Option<&GitHubCursor>,
 	) -> Result<GitHubPage<GitHubPullRequestObservation>, GitHubReadFailure> {
-		self.pr_pages
-			.borrow_mut()
-			.pop_front()
-			.expect("pull-request fixture has the requested page")
+		self.pr_pages.borrow_mut().pop_front().expect("pull-request fixture has the requested page")
 	}
 
 	fn end_pull_request_snapshot(
@@ -86,10 +84,7 @@ impl GitHubEffectProvider for FakeProvider {
 		_snapshot: &GitHubSnapshot,
 		_cursor: Option<&GitHubCursor>,
 	) -> Result<GitHubPage<GitHubCheckObservation>, GitHubReadFailure> {
-		self.check_pages
-			.borrow_mut()
-			.pop_front()
-			.expect("check fixture has the requested page")
+		self.check_pages.borrow_mut().pop_front().expect("check fixture has the requested page")
 	}
 
 	fn end_check_snapshot(
@@ -128,8 +123,7 @@ fn revisions() -> GitHubRevisionAuthority {
 		GitHubBranchName::new("main").expect("base branch is canonical"),
 		GitHubRevision::new("1111111111111111111111111111111111111111")
 			.expect("base revision is canonical"),
-		GitHubBranchName::new("xv/xy-1353-vnext-integration")
-			.expect("head branch is canonical"),
+		GitHubBranchName::new("xv/xy-1353-vnext-integration").expect("head branch is canonical"),
 		GitHubRevision::new("2222222222222222222222222222222222222222")
 			.expect("head revision is canonical"),
 	)
@@ -247,30 +241,23 @@ fn explicit_identity_and_public_text_contracts_reject_ambient_or_secret_inferenc
 	assert!(GitHubOperationMarker::new("marker-from-cwd").is_err());
 	assert!(GitHubPullRequestSpec::new("Bearer abcdefghijklmnop", "safe", false).is_err());
 	assert!(GitHubCheckState::new(GitHubCheckStatus::Completed, None).is_err());
-	assert!(GitHubCheckSuiteContract::new(vec![
-		GitHubRequiredCheckRun::new("build", None).expect("run is canonical"),
-		GitHubRequiredCheckRun::new("build", None).expect("run is canonical"),
-	])
-	.is_err());
+	assert!(
+		GitHubCheckSuiteContract::new(vec![
+			GitHubRequiredCheckRun::new("build", None).expect("run is canonical"),
+			GitHubRequiredCheckRun::new("build", None).expect("run is canonical"),
+		])
+		.is_err()
+	);
 	let authority = pull_request_authority();
-	assert_eq!(
-		authority.repository.provider(),
-		GitHubProviderIdentity::GitHubDotCom
-	);
+	assert_eq!(authority.repository.provider(), GitHubProviderIdentity::GitHubDotCom);
 	assert_eq!(authority.repository.repository_id().get(), 1);
-	assert_eq!(
-		authority.revisions.head_revision(),
-		"2222222222222222222222222222222222222222"
-	);
+	assert_eq!(authority.revisions.head_revision(), "2222222222222222222222222222222222222222");
 }
 
 #[test]
 fn lost_pull_request_response_reconciles_from_a_complete_multi_page_snapshot() {
 	let provider = FakeProvider::new();
-	provider
-		.pr_pages
-		.borrow_mut()
-		.push_back(Ok(pr_page(1, None, None, Vec::new())));
+	provider.pr_pages.borrow_mut().push_back(Ok(pr_page(1, None, None, Vec::new())));
 	provider.pr_mutation.set(GitHubPullRequestMutationOutcome::LostResponse);
 	let dispatch = reconcile_pull_request_dispatch(
 		&provider,
@@ -284,37 +271,23 @@ fn lost_pull_request_response_reconciles_from_a_complete_multi_page_snapshot() {
 	};
 	assert_eq!(provider.pr_mutations.get(), 1);
 
-	provider
-		.pr_pages
-		.borrow_mut()
-		.extend([
-			Ok(pr_page(1, None, Some("cursor-2"), Vec::new())),
-			Ok(pr_page(
-				2,
-				Some("cursor-2"),
-				None,
-				vec![pull_request_observation(pull_request_spec())],
-			)),
-		]);
+	provider.pr_pages.borrow_mut().extend([
+		Ok(pr_page(1, None, Some("cursor-2"), Vec::new())),
+		Ok(pr_page(2, Some("cursor-2"), None, vec![pull_request_observation(pull_request_spec())])),
+	]);
 	let readback = reconcile_pull_request_readback(&provider, continuation);
 	let GitHubPullRequestReadbackResolution::Completed(completion) = readback else {
 		panic!("complete readback did not reconcile");
 	};
 	assert_eq!(completion.observation().identity, pull_request_identity());
-	assert_eq!(
-		completion.summary(),
-		GitHubObservationSummary { pages: 2, objects: 1 }
-	);
+	assert_eq!(completion.summary(), GitHubObservationSummary { pages: 2, objects: 1 });
 	assert_eq!(provider.pr_mutations.get(), 1);
 }
 
 #[test]
 fn absent_stale_external_and_provider_fault_outcomes_never_become_success() {
 	let provider = FakeProvider::new();
-	provider
-		.pr_pages
-		.borrow_mut()
-		.push_back(Ok(pr_page(1, None, None, Vec::new())));
+	provider.pr_pages.borrow_mut().push_back(Ok(pr_page(1, None, None, Vec::new())));
 	let absent = reconcile_pull_request_readback(
 		&provider,
 		GitHubPullRequestContinuation {
@@ -333,10 +306,8 @@ fn absent_stale_external_and_provider_fault_outcomes_never_become_success() {
 	));
 
 	let mut stale_revisions = revisions();
-	stale_revisions.head_revision = GitHubRevision::new(
-		"3333333333333333333333333333333333333333",
-	)
-	.expect("stale revision is canonical");
+	stale_revisions.head_revision = GitHubRevision::new("3333333333333333333333333333333333333333")
+		.expect("stale revision is canonical");
 	provider.pr_pages.borrow_mut().push_back(Ok(pr_page(
 		1,
 		None,
@@ -415,63 +386,67 @@ fn pagination_detects_cursor_snapshot_page_and_duplicate_drift() {
 	let start = snapshot("snapshot-1");
 	let cases = [
 		(
-			vec![GitHubPage::new(
-				repository.clone(),
-				GitHubPaginationMetadata::new(
-					start.clone(),
-					GitHubPageIdentity::new("page-1").expect("page identity is canonical"),
-					1,
-					None,
-					true,
-					None,
+			vec![
+				GitHubPage::new(
+					repository.clone(),
+					GitHubPaginationMetadata::new(
+						start.clone(),
+						GitHubPageIdentity::new("page-1").expect("page identity is canonical"),
+						1,
+						None,
+						true,
+						None,
+					)
+					.expect("metadata is representable"),
+					Vec::<u64>::new(),
 				)
-				.expect("metadata is representable"),
-				Vec::<u64>::new(),
-			)
-			.expect("page is canonical")],
+				.expect("page is canonical"),
+			],
 			GitHubAmbiguity::MissingNextCursor,
 		),
 		(
-			vec![GitHubPage::new(
-				repository.clone(),
-				GitHubPaginationMetadata::new(
-					snapshot("snapshot-other"),
-					GitHubPageIdentity::new("page-1").expect("page identity is canonical"),
-					1,
-					None,
-					false,
-					None,
+			vec![
+				GitHubPage::new(
+					repository.clone(),
+					GitHubPaginationMetadata::new(
+						snapshot("snapshot-other"),
+						GitHubPageIdentity::new("page-1").expect("page identity is canonical"),
+						1,
+						None,
+						false,
+						None,
+					)
+					.expect("metadata is representable"),
+					Vec::<u64>::new(),
 				)
-				.expect("metadata is representable"),
-				Vec::<u64>::new(),
-			)
-			.expect("page is canonical")],
+				.expect("page is canonical"),
+			],
 			GitHubAmbiguity::PageSnapshotChanged,
 		),
 		(
-			vec![GitHubPage::new(
-				repository.clone(),
-				GitHubPaginationMetadata::new(
-					start.clone(),
-					GitHubPageIdentity::new("page-2").expect("page identity is canonical"),
-					2,
-					None,
-					false,
-					None,
+			vec![
+				GitHubPage::new(
+					repository.clone(),
+					GitHubPaginationMetadata::new(
+						start.clone(),
+						GitHubPageIdentity::new("page-2").expect("page identity is canonical"),
+						2,
+						None,
+						false,
+						None,
+					)
+					.expect("metadata is representable"),
+					Vec::<u64>::new(),
 				)
-				.expect("metadata is representable"),
-				Vec::<u64>::new(),
-			)
-			.expect("page is canonical")],
+				.expect("page is canonical"),
+			],
 			GitHubAmbiguity::PageCycle,
 		),
 		(
-			vec![GitHubPage::new(
-				repository.clone(),
-				pagination(1, None, None),
-				vec![7_u64, 7_u64],
-			)
-			.expect("page is canonical")],
+			vec![
+				GitHubPage::new(repository.clone(), pagination(1, None, None), vec![7_u64, 7_u64])
+					.expect("page is canonical"),
+			],
 			GitHubAmbiguity::DuplicateObjectIdentity,
 		),
 	];
@@ -523,12 +498,7 @@ fn check_completion_requires_the_complete_exact_suite_inventory() {
 			Some("cursor-2"),
 			vec![check_observation("build", 51, Some(marker(2)))],
 		)),
-		Ok(check_page(
-			2,
-			Some("cursor-2"),
-			None,
-			vec![check_observation("test", 52, None)],
-		)),
+		Ok(check_page(2, Some("cursor-2"), None, vec![check_observation("test", 52, None)])),
 	]);
 	let resolution = reconcile_check_dispatch(
 		&provider,
@@ -542,10 +512,7 @@ fn check_completion_requires_the_complete_exact_suite_inventory() {
 		panic!("complete suite did not reconcile");
 	};
 	assert_eq!(completion.required_runs().len(), 2);
-	assert_eq!(
-		completion.summary(),
-		GitHubObservationSummary { pages: 2, objects: 2 }
-	);
+	assert_eq!(completion.summary(), GitHubObservationSummary { pages: 2, objects: 2 });
 	assert_eq!(provider.check_mutations.get(), 0);
 
 	provider.check_pages.borrow_mut().push_back(Ok(check_page(

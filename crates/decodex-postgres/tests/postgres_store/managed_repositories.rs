@@ -153,8 +153,7 @@ fn allocation(value: usize) -> AllocateRepositoryCommand {
 	AllocateRepositoryCommand {
 		allocation_id: RepositoryAllocationId::new(uuid(0x44, value))
 			.expect("allocation ID is canonical"),
-		worktree_id: ManagedWorktreeId::new(uuid(0x45, value))
-			.expect("worktree ID is canonical"),
+		worktree_id: ManagedWorktreeId::new(uuid(0x45, value)).expect("worktree ID is canonical"),
 		worktree_path: path(format!("/srv/decodex/acceptance/worktree-{value}")),
 	}
 }
@@ -209,8 +208,7 @@ fn registration_evidence(
 fn commit_intent() -> CanonicalCommitIntent {
 	let actor = RepositoryCommitActor::new(
 		RepositoryCommitActorName::new("PostgreSQL Acceptance").expect("name is canonical"),
-		RepositoryCommitActorEmail::new("postgres@decodex.invalid")
-			.expect("email is canonical"),
+		RepositoryCommitActorEmail::new("postgres@decodex.invalid").expect("email is canonical"),
 		1_700_000_000,
 		0,
 	)
@@ -255,17 +253,14 @@ async fn admit_and_allocate(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the isolated PostgreSQL 18 frozen-tree harness"]
-async fn postgres_managed_repository_authority_contract()
--> Result<(), Box<dyn std::error::Error>> {
+async fn postgres_managed_repository_authority_contract() -> Result<(), Box<dyn std::error::Error>>
+{
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 	let store = PostgresStore::connect(migration, runtime.clone(), expected_peer_uid()).await?;
 	ensure_project(&store).await?;
 	let descriptor = descriptor(1);
 	let admission = RepositoryAdmissionFacts::new(descriptor.clone());
-	assert_eq!(
-		store.admit_repository(&admission).await?,
-		RepositoryAdmissionOutcome::Admitted
-	);
+	assert_eq!(store.admit_repository(&admission).await?, RepositoryAdmissionOutcome::Admitted);
 	assert_eq!(
 		store.admit_repository(&admission).await?,
 		RepositoryAdmissionOutcome::ExistingExact
@@ -283,10 +278,12 @@ async fn postgres_managed_repository_authority_contract()
 		expected_head: facts.head.clone(),
 		executor_contract: ExecutorContractVersion::new(1)?,
 	};
-	let prepared = store.prepare_registration(descriptor.repository_id(), &register_command).await?;
+	let prepared =
+		store.prepare_registration(descriptor.repository_id(), &register_command).await?;
 	let (operation, receipt) = match prepared {
 		RepositoryPreparationOutcome::Prepared { operation, receipt } => (operation, receipt),
-		RepositoryPreparationOutcome::ExistingExact(_, _) => panic!("first operation was not fresh"),
+		RepositoryPreparationOutcome::ExistingExact(_, _) =>
+			panic!("first operation was not fresh"),
 	};
 	assert!(matches!(operation.state, RepositoryOperationState::PossiblyEffected));
 	assert!(matches!(
@@ -300,10 +297,7 @@ async fn postgres_managed_repository_authority_contract()
 		.await?;
 	assert!(matches!(
 		fenced,
-		RepositoryDispatchFenceOutcome::Authorized {
-			release_confirmed: true,
-			..
-		}
+		RepositoryDispatchFenceOutcome::Authorized { release_confirmed: true, .. }
 	));
 	assert!(matches!(
 		store
@@ -342,16 +336,15 @@ async fn postgres_managed_repository_authority_contract()
 		policy: WorktreeReadyPolicy::ExactCleanWorktree,
 		executor_contract: ExecutorContractVersion::new(1)?,
 	};
-	let ready_operation = match store
-		.prepare_worktree_ready(descriptor.repository_id(), &ready_command)
-		.await?
-	{
-		RepositoryPreparationOutcome::Prepared { operation, receipt } => {
-			drop(receipt);
-			operation
-		},
-		RepositoryPreparationOutcome::ExistingExact(_, _) => panic!("ready operation was not fresh"),
-	};
+	let ready_operation =
+		match store.prepare_worktree_ready(descriptor.repository_id(), &ready_command).await? {
+			RepositoryPreparationOutcome::Prepared { operation, receipt } => {
+				drop(receipt);
+				operation
+			},
+			RepositoryPreparationOutcome::ExistingExact(_, _) =>
+				panic!("ready operation was not fresh"),
+		};
 	let wrong_kind = store
 		.reconcile_repository_readback(&operation_id(2), |_, _, _| {
 			RepositoryReadbackEvidence::Commit(CommitEvidence::NoEffect)
@@ -400,7 +393,8 @@ async fn postgres_managed_repository_authority_contract()
 	};
 	match store.prepare_commit(descriptor.repository_id(), &commit_command).await? {
 		RepositoryPreparationOutcome::Prepared { receipt, .. } => drop(receipt),
-		RepositoryPreparationOutcome::ExistingExact(_, _) => panic!("commit operation was not fresh"),
+		RepositoryPreparationOutcome::ExistingExact(_, _) =>
+			panic!("commit operation was not fresh"),
 	}
 	let before_commit = store
 		.read_managed_repository(descriptor.repository_id())
@@ -414,8 +408,7 @@ async fn postgres_managed_repository_authority_contract()
 				target_reference: RepositoryReferenceName::new("HEAD")
 					.expect("reference is canonical"),
 				intent: intent.clone(),
-				predecessor_head: RepositoryContentRevision::new(BASE)
-					.expect("base is canonical"),
+				predecessor_head: RepositoryContentRevision::new(BASE).expect("base is canonical"),
 				completed_head: RepositoryContentRevision::new(NEXT)
 					.expect("next head is canonical"),
 			}))
@@ -428,16 +421,17 @@ async fn postgres_managed_repository_authority_contract()
 	assert_eq!(repository.head.as_str(), NEXT);
 	assert!(matches!(operation.state, RepositoryOperationState::Completed(_)));
 
-	let conflict = store.prepare_registration(
-		descriptor.repository_id(),
-		&BeginRegistrationCommand {
-			operation_id: operation_id(1),
-			expected_checkpoint: repository.checkpoint.clone(),
-			expected_head: repository.head.clone(),
-			executor_contract: ExecutorContractVersion::new(1)?,
-		},
-	)
-	.await;
+	let conflict = store
+		.prepare_registration(
+			descriptor.repository_id(),
+			&BeginRegistrationCommand {
+				operation_id: operation_id(1),
+				expected_checkpoint: repository.checkpoint.clone(),
+				expected_head: repository.head.clone(),
+				executor_contract: ExecutorContractVersion::new(1)?,
+			},
+		)
+		.await;
 	assert!(matches!(conflict, Err(StoreError::OperationIdConflict)));
 
 	let concurrent_facts = admit_and_allocate(&store, 2).await?;
@@ -476,14 +470,16 @@ async fn postgres_managed_repository_authority_contract()
 
 	let (runtime_client, connection) = runtime.connect(tokio_postgres::NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	assert!(runtime_client
-		.execute(
-			"UPDATE decodex.repository_operation_evidence SET kind='registration' \
+	assert!(
+		runtime_client
+			.execute(
+				"UPDATE decodex.repository_operation_evidence SET kind='registration' \
 			 WHERE operation_id=$1::text::uuid",
-			&[&operation_id(3).as_str()],
-		)
-		.await
-		.is_err());
+				&[&operation_id(3).as_str()],
+			)
+			.await
+			.is_err()
+	);
 	drop(runtime_client);
 	connection_task.await??;
 	store.close();
@@ -522,9 +518,8 @@ async fn postgres_managed_repository_restart_backlog_bound()
 		let operation_id = state.operation.descriptor.operation_id;
 		store
 			.reconcile_repository_readback(&operation_id, |work, _, _| match work {
-				RepositoryReadbackWork::Registration(_) => RepositoryReadbackEvidence::Registration(
-					RegistrationEvidence::NoEffect,
-				),
+				RepositoryReadbackWork::Registration(_) =>
+					RepositoryReadbackEvidence::Registration(RegistrationEvidence::NoEffect),
 				RepositoryReadbackWork::WorktreeReady(_) | RepositoryReadbackWork::Commit(_) => {
 					panic!("restart fixture contains a non-registration operation")
 				},

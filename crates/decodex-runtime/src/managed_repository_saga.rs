@@ -7,15 +7,15 @@
 use decodex_core::{
 	BeginCommitCommand, BeginRegistrationCommand, BeginWorktreeReadyCommand,
 	CanonicalOperationPayload, ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase,
-	OperationView, RepositoryAdmissionFacts,
-	RepositoryEvidenceId, RepositoryOperationId, RepositoryOperationState, WorktreeReadyEvidence,
+	OperationView, RepositoryAdmissionFacts, RepositoryEvidenceId, RepositoryOperationId,
+	RepositoryOperationState, WorktreeReadyEvidence,
 };
+pub use decodex_postgres::RepositoryReadbackEvidence;
 use decodex_postgres::{
 	PostgresStore, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,
 	RepositoryPreparationOutcome, RepositoryReadbackWork, RepositoryReconciliationOutcome,
 	RepositoryRestartState, StoreError,
 };
-pub use decodex_postgres::RepositoryReadbackEvidence;
 
 use crate::managed_repository_executor::{
 	ExecutionAttempt, ExecutionFailure, ManagedRepositoryExecutor,
@@ -84,10 +84,7 @@ pub enum ManagedRepositorySagaOutcome {
 	/// The globally immutable descriptor already existed exactly; no receipt or dispatch occurred.
 	ExistingExact(OperationView),
 	/// Reconciliation terminalized the operation before this owner acquired dispatch serialization.
-	TerminalWithoutDispatch {
-		operation: OperationView,
-		repository: ManagedRepositoryFacts,
-	},
+	TerminalWithoutDispatch { operation: OperationView, repository: ManagedRepositoryFacts },
 	/// A fresh receipt was consumed once and its resulting readback was durably reconciled.
 	Reconciled {
 		dispatch: RepositoryDispatchObservation,
@@ -226,12 +223,15 @@ where
 	) -> Result<RepositoryReconciliationOutcome, StoreError> {
 		let operation_id = readback_operation_id(work);
 		self.store
-			.reconcile_repository_readback(operation_id, |locked_work, locked_admission, evidence_id| {
-				if locked_work != work || locked_admission != admission {
-					return foreign_evidence(locked_work);
-				}
-				self.effects.readback(locked_work, locked_admission, evidence_id)
-			})
+			.reconcile_repository_readback(
+				operation_id,
+				|locked_work, locked_admission, evidence_id| {
+					if locked_work != work || locked_admission != admission {
+						return foreign_evidence(locked_work);
+					}
+					self.effects.readback(locked_work, locked_admission, evidence_id)
+				},
+			)
 			.await
 	}
 }
@@ -248,7 +248,8 @@ impl ManagedRepositoryEffectPort for ManagedRepositoryExecutor {
 				self.execute_register(receipt, admission),
 			decodex_core::RepositoryOperationKind::WorktreeReady =>
 				self.execute_worktree_ready(receipt, admission),
-			decodex_core::RepositoryOperationKind::Commit => self.execute_commit(receipt, admission),
+			decodex_core::RepositoryOperationKind::Commit =>
+				self.execute_commit(receipt, admission),
 		};
 		map_attempt(attempt)
 	}
@@ -260,9 +261,12 @@ impl ManagedRepositoryEffectPort for ManagedRepositoryExecutor {
 		evidence_id: RepositoryEvidenceId,
 	) -> RepositoryReadbackEvidence {
 		match work {
-			RepositoryReadbackWork::Registration(request) => RepositoryReadbackEvidence::Registration(
-				self.read_registration(request, admission, evidence_id),
-			),
+			RepositoryReadbackWork::Registration(request) =>
+				RepositoryReadbackEvidence::Registration(self.read_registration(
+					request,
+					admission,
+					evidence_id,
+				)),
 			RepositoryReadbackWork::WorktreeReady(request) =>
 				RepositoryReadbackEvidence::WorktreeReady(self.read_worktree_ready(
 					request,

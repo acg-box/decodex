@@ -11,9 +11,7 @@ use decodex_core::{
 	BeginWorktreeReadyCommand, ManagedRepositoryFacts, ManagedRepositoryId,
 	RepositoryAdmissionFacts, RepositoryEvidenceId,
 };
-use decodex_postgres::{
-	PostgresStore, RepositoryAdmissionOutcome, StoreError,
-};
+use decodex_postgres::{PostgresStore, RepositoryAdmissionOutcome, StoreError};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -48,6 +46,7 @@ pub enum ManagedRepositoryReadiness {
 }
 
 /// Exact startup failure retained inside the runtime composition.
+#[allow(dead_code)] // Debug retains the typed cause for fail-closed startup diagnostics.
 #[derive(Debug)]
 pub(crate) enum ManagedRepositoryStartupError {
 	ExecutorOpen(ExecutionFailure),
@@ -70,6 +69,7 @@ impl ManagedRepositoryStartupError {
 }
 
 /// Fail-closed error at the runtime-only composition boundary.
+#[allow(dead_code)] // Debug retains the typed cause across the private runtime boundary.
 #[derive(Debug)]
 pub(crate) enum ManagedRepositoryRuntimeError {
 	Store(StoreError),
@@ -91,9 +91,7 @@ pub(crate) struct ManagedRepositoryRuntime {
 
 impl ManagedRepositoryRuntime {
 	/// Open the exact accepted executor and bind it to the bootstrapped PostgreSQL authority.
-	pub(crate) async fn start(
-		store: PostgresStore,
-	) -> Result<Self, ManagedRepositoryStartupError> {
+	pub(crate) async fn start(store: PostgresStore) -> Result<Self, ManagedRepositoryStartupError> {
 		let executor = ManagedRepositoryExecutor::open()
 			.map_err(ManagedRepositoryStartupError::ExecutorOpen)?;
 		let saga = ManagedRepositoryEffectSaga::new(store.clone(), executor);

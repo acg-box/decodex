@@ -130,7 +130,8 @@ fn observations(layout: &RepositoryAdmittedGitLayout) -> Vec<RepositoryPathObser
 		.enumerate()
 		.map(|(index, (observed_path, (object_type, roles)))| {
 			RepositoryPathObservation::new(
-				RepositoryObservationPath::new(observed_path).expect("observation path is canonical"),
+				RepositoryObservationPath::new(observed_path)
+					.expect("observation path is canonical"),
 				roles.into_iter().collect(),
 				1,
 				u64::try_from(index + 1).expect("fixture inode fits"),
@@ -382,12 +383,16 @@ fn register_ready_and_commit_reconcile_only_exact_transition_evidence() {
 			&registration.operation,
 			&RegistrationEvidence::Unavailable,
 		)
-			.expect("unavailable readback remains pending"),
+		.expect("unavailable readback remains pending"),
 		RegistrationReconciliation::Pending
 	));
 	assert!(matches!(
-		decide_registration_readback(&repository, &registration.operation, &RegistrationEvidence::Dirty)
-			.expect("dirty readback terminalizes ambiguity"),
+		decide_registration_readback(
+			&repository,
+			&registration.operation,
+			&RegistrationEvidence::Dirty
+		)
+		.expect("dirty readback terminalizes ambiguity"),
 		RegistrationReconciliation::Ambiguous {
 			repository: decodex_core::RepositoryProjectionUpdate {
 				phase: ManagedRepositoryPhase::Ambiguous(RepositoryAmbiguity::Dirty),

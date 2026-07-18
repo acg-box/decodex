@@ -330,26 +330,32 @@ impl RepositoryPathObservation {
 	pub fn path(&self) -> &RepositoryObservationPath {
 		&self.path
 	}
+
 	/// Borrow the nonempty canonical role set.
 	pub fn roles(&self) -> &[RepositoryPathRegistrationRole] {
 		&self.roles
 	}
+
 	/// Return the admitted device fact.
 	pub const fn device(&self) -> u64 {
 		self.device
 	}
+
 	/// Return the admitted inode fact.
 	pub const fn inode(&self) -> u64 {
 		self.inode
 	}
+
 	/// Return the admitted object type.
 	pub const fn object_type(&self) -> RepositoryObservedObjectType {
 		self.object_type
 	}
+
 	/// Return the admitted owner UID.
 	pub const fn owner_uid(&self) -> u32 {
 		self.owner_uid
 	}
+
 	/// Return the exact admitted Unix permission bits.
 	pub const fn permissions(&self) -> u16 {
 		self.permissions
@@ -407,38 +413,47 @@ impl RepositoryAdmittedGitLayout {
 	pub const fn registration_role(&self) -> RepositoryGitRegistrationRole {
 		self.registration_role
 	}
+
 	/// Borrow the linked-worktree registration identity; primary layouts have none.
 	pub fn registration_id(&self) -> Option<&RepositoryRegistrationId> {
 		self.registration_id.as_ref()
 	}
+
 	/// Borrow the exact admitted repository root.
 	pub fn repository_root(&self) -> &PersistedAbsolutePath {
 		&self.repository_root
 	}
+
 	/// Borrow the exact `.git` entry at the admitted root.
 	pub fn worktree_git_entry(&self) -> &PersistedAbsolutePath {
 		&self.worktree_git_entry
 	}
+
 	/// Borrow the exact per-worktree Git directory.
 	pub fn git_directory(&self) -> &PersistedAbsolutePath {
 		&self.git_directory
 	}
+
 	/// Borrow the exact Git common directory.
 	pub fn common_directory(&self) -> &PersistedAbsolutePath {
 		&self.common_directory
 	}
+
 	/// Borrow the exact Git objects directory.
 	pub fn objects_directory(&self) -> &PersistedAbsolutePath {
 		&self.objects_directory
 	}
+
 	/// Borrow the exact optional Git refs directory.
 	pub fn refs_directory(&self) -> Option<&PersistedAbsolutePath> {
 		self.refs_directory.as_ref()
 	}
+
 	/// Borrow the `commondir` file required when Git and common directories differ.
 	pub fn common_directory_file(&self) -> Option<&PersistedAbsolutePath> {
 		self.common_directory_file.as_ref()
 	}
+
 	/// Borrow the reciprocal `gitdir` file required for a linked worktree.
 	pub fn git_directory_backlink_file(&self) -> Option<&PersistedAbsolutePath> {
 		self.git_directory_backlink_file.as_ref()
@@ -494,34 +509,42 @@ impl RepositoryAdmissionDescriptor {
 	pub const fn version(&self) -> RepositoryAdmissionDescriptorVersion {
 		self.version
 	}
+
 	/// Borrow the exact owning Project identity.
 	pub fn project_id(&self) -> &ProjectId {
 		&self.project_id
 	}
+
 	/// Borrow the exact managed repository identity.
 	pub fn repository_id(&self) -> &ManagedRepositoryId {
 		&self.repository_id
 	}
+
 	/// Borrow the opaque admitted external identity.
 	pub fn admitted_identity(&self) -> &AdmittedRepositoryIdentity {
 		&self.admitted_identity
 	}
+
 	/// Borrow the exact admitted base.
 	pub fn admitted_base(&self) -> &RepositoryContentRevision {
 		&self.admitted_base
 	}
+
 	/// Borrow the exact normalized admitted repository path.
 	pub fn repository_path(&self) -> &PersistedAbsolutePath {
 		&self.repository_path
 	}
+
 	/// Borrow the complete admitted Git layout.
 	pub fn git_layout(&self) -> &RepositoryAdmittedGitLayout {
 		&self.git_layout
 	}
+
 	/// Borrow the bounded canonical observation sequence.
 	pub fn observations(&self) -> &[RepositoryPathObservation] {
 		&self.observations
 	}
+
 	/// Borrow the derived canonical SHA-256 digest.
 	pub fn digest(&self) -> &AdmissionDescriptorDigest {
 		&self.digest
@@ -542,16 +565,12 @@ impl RepositoryAdmissionDescriptor {
 		if self.repository_path != self.git_layout.repository_root
 			|| self.observations.is_empty()
 			|| self.observations.len() > MAX_REPOSITORY_ADMISSION_OBSERVATIONS
-			|| !self
-				.observations
-				.windows(2)
-				.all(|pair| pair[0].path < pair[1].path)
+			|| !self.observations.windows(2).all(|pair| pair[0].path < pair[1].path)
 			|| self.observations.iter().enumerate().any(|(index, observation)| {
 				self.observations[index + 1..].iter().any(|candidate| {
 					candidate.device == observation.device && candidate.inode == observation.inode
 				})
-			})
-		{
+			}) {
 			return Err(ManagedRepositoryError::InvalidAdmissionDescriptor);
 		}
 		validate_git_layout(&self.git_layout, &self.observations)
@@ -568,10 +587,12 @@ impl RepositoryAdmissionFacts {
 	pub fn new(descriptor: RepositoryAdmissionDescriptor) -> Self {
 		Self { descriptor }
 	}
+
 	/// Borrow the complete descriptor.
 	pub fn descriptor(&self) -> &RepositoryAdmissionDescriptor {
 		&self.descriptor
 	}
+
 	/// Borrow its derived digest; no independent digest field can disagree.
 	pub fn descriptor_digest(&self) -> &AdmissionDescriptorDigest {
 		self.descriptor.digest()
@@ -594,14 +615,17 @@ impl PositiveAllocationEvidence {
 	) -> Self {
 		Self { evidence_id, admission_descriptor, vacant_worktree_path }
 	}
+
 	/// Borrow the immutable evidence identity.
 	pub fn evidence_id(&self) -> &RepositoryEvidenceId {
 		&self.evidence_id
 	}
+
 	/// Borrow the complete descriptor observed during read-only reacquisition.
 	pub fn admission_descriptor(&self) -> &RepositoryAdmissionDescriptor {
 		&self.admission_descriptor
 	}
+
 	/// Borrow the exact path observed vacant.
 	pub fn vacant_worktree_path(&self) -> &PersistedAbsolutePath {
 		&self.vacant_worktree_path
@@ -959,10 +983,7 @@ pub enum RepositoryOperationResult {
 	/// Worktree readiness completed at an unchanged exact head.
 	WorktreeReady { head: RepositoryContentRevision },
 	/// Commit advanced one exact predecessor to one exact successor.
-	Committed {
-		from: RepositoryContentRevision,
-		to: RepositoryContentRevision,
-	},
+	Committed { from: RepositoryContentRevision, to: RepositoryContentRevision },
 }
 
 /// Immutable lifecycle view of one globally assigned operation.
@@ -1007,9 +1028,8 @@ pub fn resolve_operation_assignment(
 ) -> AssignmentResolution {
 	match existing {
 		None => AssignmentResolution::NewlyAssigned,
-		Some(operation) if operation.descriptor == *requested => {
-			AssignmentResolution::ExistingExact(operation.clone(), NoDispatch)
-		},
+		Some(operation) if operation.descriptor == *requested =>
+			AssignmentResolution::ExistingExact(operation.clone(), NoDispatch),
 		Some(_) => AssignmentResolution::OperationIdConflict,
 	}
 }
@@ -1110,12 +1130,8 @@ pub fn decide_begin_registration(
 			worktree_path: facts.worktree_path.clone(),
 		},
 	};
-	let descriptor = descriptor(
-		facts,
-		command.operation_id.clone(),
-		payload,
-		command.executor_contract,
-	);
+	let descriptor =
+		descriptor(facts, command.operation_id.clone(), payload, command.executor_contract);
 	let operation = possibly_effected(descriptor.clone());
 	Ok(BeginRegistrationDecision {
 		descriptor,
@@ -1137,12 +1153,8 @@ pub fn decide_begin_worktree_ready(
 		expected_head: command.expected_head.clone(),
 		policy: command.policy,
 	};
-	let descriptor = descriptor(
-		facts,
-		command.operation_id.clone(),
-		payload,
-		command.executor_contract,
-	);
+	let descriptor =
+		descriptor(facts, command.operation_id.clone(), payload, command.executor_contract);
 	let operation = possibly_effected(descriptor.clone());
 	Ok(BeginWorktreeReadyDecision {
 		descriptor,
@@ -1170,12 +1182,8 @@ pub fn decide_begin_commit(
 		next_head: command.next_head.clone(),
 		intent: command.intent.clone(),
 	};
-	let descriptor = descriptor(
-		facts,
-		command.operation_id.clone(),
-		payload,
-		command.executor_contract,
-	);
+	let descriptor =
+		descriptor(facts, command.operation_id.clone(), payload, command.executor_contract);
 	let operation = possibly_effected(descriptor.clone());
 	Ok(BeginCommitDecision {
 		descriptor,
@@ -1406,7 +1414,8 @@ pub fn decide_registration_readback(
 		ManagedRepositoryPhase::Allocated,
 		RepositoryOperationKind::Register,
 	)?;
-	let CanonicalOperationPayload::Register { expected_head, target } = &operation.descriptor.payload
+	let CanonicalOperationPayload::Register { expected_head, target } =
+		&operation.descriptor.payload
 	else {
 		return Err(ManagedRepositoryError::OperationKindMismatch);
 	};
@@ -1417,13 +1426,8 @@ pub fn decide_registration_readback(
 		return Ok(RegistrationReconciliation::Pending);
 	}
 	let ambiguity = match evidence {
-		RegistrationEvidence::ExactReciprocal(observed) => registration_mismatch(
-			facts,
-			operation,
-			target,
-			expected_head,
-			observed,
-		),
+		RegistrationEvidence::ExactReciprocal(observed) =>
+			registration_mismatch(facts, operation, target, expected_head, observed),
 		RegistrationEvidence::NoEffect => Some(RepositoryAmbiguity::NoEffect),
 		RegistrationEvidence::MissingReciprocal => Some(RepositoryAmbiguity::Incomplete),
 		RegistrationEvidence::Stale => Some(RepositoryAmbiguity::Stale),
@@ -1471,7 +1475,8 @@ pub fn decide_worktree_ready_readback(
 		ManagedRepositoryPhase::Registered,
 		RepositoryOperationKind::WorktreeReady,
 	)?;
-	let CanonicalOperationPayload::WorktreeReady { expected_head, .. } = &operation.descriptor.payload
+	let CanonicalOperationPayload::WorktreeReady { expected_head, .. } =
+		&operation.descriptor.payload
 	else {
 		return Err(ManagedRepositoryError::OperationKindMismatch);
 	};
@@ -1482,9 +1487,8 @@ pub fn decide_worktree_ready_readback(
 		return Ok(WorktreeReadyReconciliation::Pending);
 	}
 	let ambiguity = match evidence {
-		WorktreeReadyEvidence::Exact(observed) => {
-			worktree_ready_mismatch(facts, operation, expected_head, observed)
-		},
+		WorktreeReadyEvidence::Exact(observed) =>
+			worktree_ready_mismatch(facts, operation, expected_head, observed),
 		WorktreeReadyEvidence::NoEffect => Some(RepositoryAmbiguity::NoEffect),
 		WorktreeReadyEvidence::Incomplete => Some(RepositoryAmbiguity::Incomplete),
 		WorktreeReadyEvidence::Stale => Some(RepositoryAmbiguity::Stale),
@@ -1544,9 +1548,8 @@ pub fn decide_commit_readback(
 		return Ok(CommitReconciliation::Pending);
 	}
 	let ambiguity = match evidence {
-		CommitEvidence::Exact(observed) => {
-			commit_mismatch(facts, operation, expected_head, next_head, intent, observed)
-		},
+		CommitEvidence::Exact(observed) =>
+			commit_mismatch(facts, operation, expected_head, next_head, intent, observed),
 		CommitEvidence::NoEffect => Some(RepositoryAmbiguity::NoEffect),
 		CommitEvidence::Incomplete => Some(RepositoryAmbiguity::Incomplete),
 		CommitEvidence::Stale => Some(RepositoryAmbiguity::Stale),
@@ -1880,10 +1883,7 @@ fn completed_operation(
 	}
 }
 
-fn ambiguous_operation(
-	operation: &OperationView,
-	reason: RepositoryAmbiguity,
-) -> OperationView {
+fn ambiguous_operation(operation: &OperationView, reason: RepositoryAmbiguity) -> OperationView {
 	OperationView {
 		descriptor: operation.descriptor.clone(),
 		state: RepositoryOperationState::Ambiguous(reason),
@@ -1923,9 +1923,7 @@ fn encode_admission_descriptor_v1(descriptor: &RepositoryAdmissionDescriptor) ->
 	encoder.text(descriptor.admitted_base.as_str());
 	encoder.path(&descriptor.repository_path);
 	encoder.u8(git_registration_role_tag(layout.registration_role));
-	encoder.optional_text(
-		layout.registration_id.as_ref().map(RepositoryRegistrationId::as_str),
-	);
+	encoder.optional_text(layout.registration_id.as_ref().map(RepositoryRegistrationId::as_str));
 	encoder.path(&layout.repository_root);
 	encoder.path(&layout.worktree_git_entry);
 	encoder.path(&layout.git_directory);
@@ -2020,9 +2018,10 @@ fn validate_git_layout(
 	let dot_git = layout.repository_root.as_path().join(".git");
 	if layout.worktree_git_entry.as_path() != dot_git
 		|| layout.objects_directory.as_path() != layout.common_directory.as_path().join("objects")
-		|| layout.refs_directory.as_ref().is_some_and(|path| {
-			path.as_path() != layout.common_directory.as_path().join("refs")
-		})
+		|| layout
+			.refs_directory
+			.as_ref()
+			.is_some_and(|path| path.as_path() != layout.common_directory.as_path().join("refs"))
 	{
 		return Err(ManagedRepositoryError::InvalidGitLayout);
 	}
@@ -2042,21 +2041,15 @@ fn validate_git_layout(
 			let Some(registration_id) = &layout.registration_id else {
 				return Err(ManagedRepositoryError::InvalidGitLayout);
 			};
-			let expected_git_directory = layout
-				.common_directory
-				.as_path()
-				.join("worktrees")
-				.join(registration_id.as_str());
+			let expected_git_directory =
+				layout.common_directory.as_path().join("worktrees").join(registration_id.as_str());
 			let expected_common_file = layout.git_directory.as_path().join("commondir");
 			let expected_backlink = layout.git_directory.as_path().join("gitdir");
 			if layout.git_directory == layout.common_directory
 				|| layout.git_directory.as_path() != expected_git_directory
 				|| layout.common_directory_file.as_ref().map(PersistedAbsolutePath::as_path)
 					!= Some(expected_common_file.as_path())
-				|| layout
-					.git_directory_backlink_file
-					.as_ref()
-					.map(PersistedAbsolutePath::as_path)
+				|| layout.git_directory_backlink_file.as_ref().map(PersistedAbsolutePath::as_path)
 					!= Some(expected_backlink.as_path())
 			{
 				return Err(ManagedRepositoryError::InvalidGitLayout);
@@ -2101,12 +2094,10 @@ fn validate_git_layout(
 		layout.worktree_git_entry.as_path(),
 		RepositoryPathRegistrationRole::WorktreeGitEntry,
 		match layout.registration_role {
-			RepositoryGitRegistrationRole::PrimaryWorktree => {
-				RepositoryObservedObjectType::Directory
-			},
-			RepositoryGitRegistrationRole::LinkedWorktree => {
-				RepositoryObservedObjectType::RegularFile
-			},
+			RepositoryGitRegistrationRole::PrimaryWorktree =>
+				RepositoryObservedObjectType::Directory,
+			RepositoryGitRegistrationRole::LinkedWorktree =>
+				RepositoryObservedObjectType::RegularFile,
 		},
 	)?;
 	if let Some(path) = &layout.common_directory_file {
@@ -2128,9 +2119,7 @@ fn validate_git_layout(
 
 	if observations
 		.iter()
-		.flat_map(|observation| {
-			observation.roles.iter().map(move |role| (observation, *role))
-		})
+		.flat_map(|observation| observation.roles.iter().map(move |role| (observation, *role)))
 		.any(|(observation, role)| !role_matches_layout(observation, role, layout))
 	{
 		return Err(ManagedRepositoryError::InvalidPathObservation);
@@ -2201,62 +2190,47 @@ fn role_matches_layout(
 			}
 	};
 	match role {
-		RepositoryPathRegistrationRole::RepositoryRootComponent => {
-			directory_endpoint(&layout.repository_root, false)
-		},
-		RepositoryPathRegistrationRole::RepositoryRoot => {
-			directory_endpoint(&layout.repository_root, true)
-		},
-		RepositoryPathRegistrationRole::WorktreeGitEntry => {
+		RepositoryPathRegistrationRole::RepositoryRootComponent =>
+			directory_endpoint(&layout.repository_root, false),
+		RepositoryPathRegistrationRole::RepositoryRoot =>
+			directory_endpoint(&layout.repository_root, true),
+		RepositoryPathRegistrationRole::WorktreeGitEntry =>
 			observation.path.as_path() == layout.worktree_git_entry.as_path()
 				&& observation.object_type
 					== match layout.registration_role {
-						RepositoryGitRegistrationRole::PrimaryWorktree => {
-							RepositoryObservedObjectType::Directory
-						},
-						RepositoryGitRegistrationRole::LinkedWorktree => {
-							RepositoryObservedObjectType::RegularFile
-						},
-					}
-		},
-		RepositoryPathRegistrationRole::GitDirectoryComponent => {
-			directory_endpoint(&layout.git_directory, false)
-		},
-		RepositoryPathRegistrationRole::GitDirectory => {
-			directory_endpoint(&layout.git_directory, true)
-		},
-		RepositoryPathRegistrationRole::GitCommonDirectoryComponent => {
-			directory_endpoint(&layout.common_directory, false)
-		},
-		RepositoryPathRegistrationRole::GitCommonDirectory => {
-			directory_endpoint(&layout.common_directory, true)
-		},
-		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent => {
-			directory_endpoint(&layout.objects_directory, false)
-		},
-		RepositoryPathRegistrationRole::GitObjectsDirectory => {
-			directory_endpoint(&layout.objects_directory, true)
-		},
-		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => layout
-			.refs_directory
-			.as_ref()
-			.is_some_and(|path| directory_endpoint(path, false)),
-		RepositoryPathRegistrationRole::GitRefsDirectory => layout
-			.refs_directory
-			.as_ref()
-			.is_some_and(|path| directory_endpoint(path, true)),
-		RepositoryPathRegistrationRole::GitCommonDirectoryFile => {
+						RepositoryGitRegistrationRole::PrimaryWorktree =>
+							RepositoryObservedObjectType::Directory,
+						RepositoryGitRegistrationRole::LinkedWorktree =>
+							RepositoryObservedObjectType::RegularFile,
+					},
+		RepositoryPathRegistrationRole::GitDirectoryComponent =>
+			directory_endpoint(&layout.git_directory, false),
+		RepositoryPathRegistrationRole::GitDirectory =>
+			directory_endpoint(&layout.git_directory, true),
+		RepositoryPathRegistrationRole::GitCommonDirectoryComponent =>
+			directory_endpoint(&layout.common_directory, false),
+		RepositoryPathRegistrationRole::GitCommonDirectory =>
+			directory_endpoint(&layout.common_directory, true),
+		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent =>
+			directory_endpoint(&layout.objects_directory, false),
+		RepositoryPathRegistrationRole::GitObjectsDirectory =>
+			directory_endpoint(&layout.objects_directory, true),
+		RepositoryPathRegistrationRole::GitRefsDirectoryComponent =>
+			layout.refs_directory.as_ref().is_some_and(|path| directory_endpoint(path, false)),
+		RepositoryPathRegistrationRole::GitRefsDirectory =>
+			layout.refs_directory.as_ref().is_some_and(|path| directory_endpoint(path, true)),
+		RepositoryPathRegistrationRole::GitCommonDirectoryFile =>
 			observation.object_type == RepositoryObservedObjectType::RegularFile
-				&& layout.common_directory_file.as_ref().is_some_and(|path| {
-					path.as_path() == observation.path.as_path()
-				})
-		},
-		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => {
+				&& layout
+					.common_directory_file
+					.as_ref()
+					.is_some_and(|path| path.as_path() == observation.path.as_path()),
+		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile =>
 			observation.object_type == RepositoryObservedObjectType::RegularFile
-				&& layout.git_directory_backlink_file.as_ref().is_some_and(|path| {
-					path.as_path() == observation.path.as_path()
-				})
-		},
+				&& layout
+					.git_directory_backlink_file
+					.as_ref()
+					.is_some_and(|path| path.as_path() == observation.path.as_path()),
 	}
 }
 
