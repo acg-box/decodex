@@ -28,9 +28,11 @@ const CONTINUATION_MIGRATION: &str =
 	include_str!("../migrations/V17__continuation_authority.sql");
 const WAITING_USAGE_WAKE_MIGRATION: &str =
 	include_str!("../migrations/V18__waiting_usage_wakes.sql");
+const WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION: &str =
+	include_str!("../migrations/V19__waiting_usage_wake_time_authority.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 152] = [
+const FUNCTION_CONTRACTS: [FunctionContract; 156] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1160,6 +1162,34 @@ const FUNCTION_CONTRACTS: [FunctionContract; 152] = [
 		"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 		"cancel_waiting_usage_wake_exact(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid\n)",
 		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"register_waiting_usage_wake_exact_internal",
+		"decodex.register_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.timestamptz)",
+		"register_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_decision_id uuid, p_expected_managed_run_revision bigint,\n\tp_authority_now timestamptz\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid, p_expected_managed_run_revision bigint, p_authority_now timestamp with time zone",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"claim_due_waiting_usage_wake_exact_internal",
+		"decodex.claim_due_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.timestamptz)",
+		"claim_due_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_claim_id uuid, p_holder_id uuid,\n\tp_authority_now timestamptz\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_claim_id uuid, p_holder_id uuid, p_authority_now timestamp with time zone",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"fire_waiting_usage_wake_exact_internal",
+		"decodex.fire_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.timestamptz)",
+		"fire_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid,\n\tp_holder_id uuid, p_lease_fence_id uuid,\n\tp_authority_now timestamptz\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid, p_holder_id uuid, p_lease_fence_id uuid, p_authority_now timestamp with time zone",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"cancel_waiting_usage_wake_exact_internal",
+		"decodex.cancel_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.timestamptz)",
+		"cancel_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid,\n\tp_authority_now timestamptz\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid, p_authority_now timestamp with time zone",
 		"bytea", "plpgsql", "v",
 	),
 ];
@@ -3815,6 +3845,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		ROUTING_DECISION_MIGRATION,
 		CONTINUATION_MIGRATION,
 		WAITING_USAGE_WAKE_MIGRATION,
+		WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION,
 	]
 	.into_iter()
 	.rev()

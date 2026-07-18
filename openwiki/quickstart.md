@@ -60,7 +60,11 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   fence. Cross-key operation replay reads the immutable transition result and never reconstructs a
   success from the head. Fired transitions contain no old candidates, quota evidence, eligibility,
   exclusions, or account choice and structurally disable prior-decision reuse and production
-  enablement. No runtime or application composition root imports the V18 adapter.
+  enablement. Forward-only V19 reopens the core freeze only to repair deterministic wake-time
+  acceptance authority: the four unchanged public commands still select PostgreSQL time after the
+  same locks, while four migration-owner-only internals accept a bounded explicit instant for the
+  deferred acceptance gate. Runtime cannot execute those internals, inject time, or reach V18/V19
+  through another API. No runtime or application composition root imports the wake adapter.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while the authority-defined XY-1269 P/K/L/S slices are still unimplemented. Its checked-in diagnostic still says XY-1263 remains failed; that text is stale, and P must align it with the accepted foundation and disabled slice posture before P validation.
