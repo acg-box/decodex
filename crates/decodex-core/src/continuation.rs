@@ -13,6 +13,15 @@ pub enum ContinuationPlanKind {
 	ContextPackFallback,
 }
 
+/// Exact fail-closed ManagedRun effect-barrier state retained by a continuation plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ContinuationEffectBarrierState {
+	/// Initial inert state; no effect may execute.
+	Guarded,
+	/// Permanently closed by one accepted ManagedRun safety input.
+	Closed,
+}
+
 /// Exact positive evidence retained for a same-thread plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SameThreadContinuationEvidence {
@@ -41,6 +50,9 @@ pub struct ContinuationPlan {
 	pub fallback_context_pack_id: Option<String>,
 	pub fallback_runtime_session_id: Option<RuntimeSessionId>,
 	pub same_thread_evidence: Option<SameThreadContinuationEvidence>,
+	pub effect_barrier_state: ContinuationEffectBarrierState,
+	pub effect_barrier_revision: i64,
+	pub submitted_turn_receipt_count: i64,
 	pub replay_permitted: bool,
 	pub dispatch_enabled: bool,
 	pub planned_at_micros: i64,
