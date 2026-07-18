@@ -253,6 +253,7 @@ async fn admit_and_allocate(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the isolated PostgreSQL 18 frozen-tree harness"]
+#[allow(clippy::too_many_lines)] // One representative durable authority lifecycle.
 async fn postgres_managed_repository_authority_contract() -> Result<(), Box<dyn std::error::Error>>
 {
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;

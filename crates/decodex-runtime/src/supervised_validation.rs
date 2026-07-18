@@ -4,6 +4,8 @@
 //! sandbox. Callers supply the executable, arguments, working directory, complete environment,
 //! absolute deadline, expected source revision, and an exact protected-state probe.
 
+#![allow(missing_docs)] // Public names and type-level docs define this closed evidence algebra.
+
 use std::{
 	collections::BTreeSet,
 	ffi::OsString,
@@ -313,10 +315,9 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		}
 	}
 	let termination = if teardown.confirmed {
-		if teardown.observed_before_signal || forced.is_none() {
-			classify_status(teardown.status)
-		} else {
-			forced.expect("forced termination checked")
+		match forced {
+			Some(forced) if !teardown.observed_before_signal => forced,
+			_ => classify_status(teardown.status),
 		}
 	} else {
 		ValidationTermination::SupervisionLost
@@ -564,10 +565,10 @@ fn teardown_process_group(
 }
 
 fn poll_status(child: &mut Child, status: &mut Option<ExitStatus>) {
-	if status.is_none() {
-		if let Ok(Some(observed)) = child.try_wait() {
-			*status = Some(observed);
-		}
+	if status.is_none()
+		&& let Ok(Some(observed)) = child.try_wait()
+	{
+		*status = Some(observed);
 	}
 }
 
