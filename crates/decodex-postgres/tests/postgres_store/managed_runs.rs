@@ -12,10 +12,10 @@ use decodex_core::{
 use decodex_postgres::{
 	AccountId, AccountState, BootstrapRoleProfiles, CommandIdentity, CreateConversation,
 	CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, CreateWorkItem,
-	ManagedRunEffectBarrierState, ManagedRunSafetyOutcome, OutboxReconciliation, PostgresStore,
-	ManagedRunSafetyRejection, ReconciliationOutcome, RoleProfileCommandOutcome,
-	RoleProfileConfiguration, RoleProfileRole, RuntimeSessionCommandOutcome, WorkItemCommandOutcome,
-	WorkItemRelations,
+	ManagedRunEffectBarrierState, ManagedRunSafetyOutcome, ManagedRunSafetyRejection,
+	OutboxReconciliation, PostgresStore, ReconciliationOutcome, RoleProfileCommandOutcome,
+	RoleProfileConfiguration, RoleProfileRole, RuntimeSessionCommandOutcome,
+	WorkItemCommandOutcome, WorkItemRelations,
 };
 
 const PROJECT_ID: &str = "22000000-0000-4000-8000-000000001338";

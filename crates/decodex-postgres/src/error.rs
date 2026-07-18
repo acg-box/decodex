@@ -104,14 +104,14 @@ impl std::fmt::Display for StoreError {
 			Self::SocketUnavailable => formatter.write_str("PostgreSQL Unix socket is unavailable"),
 			Self::IdempotencyConflict =>
 				formatter.write_str("idempotency key reused with a different request"),
-			Self::OperationIdConflict =>
-				formatter.write_str("repository operation ID is permanently assigned to another descriptor"),
-			Self::ManagedRepositoryAdmissionConflict =>
-				formatter.write_str("managed-repository admission conflicts with immutable authority"),
+			Self::OperationIdConflict => formatter
+				.write_str("repository operation ID is permanently assigned to another descriptor"),
+			Self::ManagedRepositoryAdmissionConflict => formatter
+				.write_str("managed-repository admission conflicts with immutable authority"),
 			Self::ManagedRepositoryAlreadyAllocated =>
 				formatter.write_str("managed repository is already allocated"),
-			Self::ManagedRepositoryAllocationConflict =>
-				formatter.write_str("managed-repository allocation identity or path is already claimed"),
+			Self::ManagedRepositoryAllocationConflict => formatter
+				.write_str("managed-repository allocation identity or path is already claimed"),
 			Self::ManagedRepositoryCompareAndSwapConflict =>
 				formatter.write_str("managed-repository generation, tip, or fence changed"),
 			Self::RepositoryCommitOutcomeUnknown(error) => write!(

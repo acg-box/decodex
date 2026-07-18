@@ -1,11 +1,11 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
 #[cfg(feature = "test-support")]
-#[path = "postgres_store/managed_runs.rs"]
-mod managed_runs;
-#[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_repositories.rs"]
 mod managed_repositories;
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/managed_runs.rs"]
+mod managed_runs;
 #[path = "postgres_store/quota.rs"] mod quota;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]

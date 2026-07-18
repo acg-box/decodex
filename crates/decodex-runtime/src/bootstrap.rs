@@ -168,15 +168,12 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 				Ok(runtime) => (Some(runtime), ManagedRepositoryReadiness::Ready, None),
 				Err(error) => {
 					let readiness = error.readiness();
-					store = ProductStore::Unavailable {
-						reason: MANAGED_REPOSITORY_UNAVAILABLE,
-					};
+					store = ProductStore::Unavailable { reason: MANAGED_REPOSITORY_UNAVAILABLE };
 					repositories = DoctorStatus::Unavailable(DoctorIssue::Integrity);
 					(None, readiness, Some(Arc::new(error)))
 				},
 			},
-			None =>
-				(None, ManagedRepositoryReadiness::ProductStateUnavailable, None),
+			None => (None, ManagedRepositoryReadiness::ProductStateUnavailable, None),
 		};
 	let doctor = doctor_report(
 		server_id.clone(),
