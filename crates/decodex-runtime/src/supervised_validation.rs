@@ -26,6 +26,9 @@ use decodex_core::RepositoryContentRevision;
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TERMINATION_GRACE: Duration = Duration::from_millis(100);
 const MAX_CAPTURE_BYTES: usize = 4 * 1_024 * 1_024;
+const MAX_DRAIN_EVENTS: usize = 32;
+const MAX_DRAIN_BYTES: usize = 256 * 1_024;
+const MAX_DRAIN_TIME: Duration = Duration::from_millis(2);
 
 /// Explicit, immutable command authority for one supervised validation invocation.
 pub struct ValidationCommandAuthority {
@@ -276,32 +279,46 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 				break None;
 			},
 		}
-		capture.drain();
-		if capture.output_exceeded {
-			forced = Some(ValidationTermination::OutputLimitExceeded);
-			break None;
-		}
+		capture.drain_bounded(authority.deadline);
 		let now = Instant::now();
-		if now >= authority.deadline {
-			forced = Some(ValidationTermination::TimedOut);
-			break None;
-		}
-		if cancellation.is_cancelled() {
-			forced = Some(ValidationTermination::Cancelled);
+		let supervisor_event = if capture.output_exceeded {
+			Some(ValidationTermination::OutputLimitExceeded)
+		} else if now >= authority.deadline {
+			Some(ValidationTermination::TimedOut)
+		} else if cancellation.is_cancelled() {
+			Some(ValidationTermination::Cancelled)
+		} else {
+			None
+		};
+		if let Some(supervisor_event) = supervisor_event {
+			// Close the observation gap between the iteration's first poll and committing a
+			// forced outcome. Any exit observed here has already happened and remains authoritative.
+			match child.try_wait() {
+				Ok(Some(status)) => break Some(status),
+				Ok(None) => forced = Some(supervisor_event),
+				Err(_) => forced = Some(ValidationTermination::SupervisionLost),
+			}
 			break None;
 		}
 		sleep_bounded(authority.deadline);
 	};
 	let teardown = teardown_process_group(&mut child, authority.deadline, recorded_status);
-	while !capture.settled() && Instant::now() < authority.deadline {
-		capture.drain();
+	while teardown.confirmed
+		&& !capture.output_exceeded
+		&& !capture.settled()
+		&& Instant::now() < authority.deadline
+	{
+		capture.drain_bounded(authority.deadline);
 		if !capture.settled() {
 			sleep_bounded(authority.deadline);
 		}
 	}
-	capture.drain();
 	let termination = if teardown.confirmed {
-		forced.unwrap_or_else(|| classify_status(teardown.status))
+		if teardown.observed_before_signal || forced.is_none() {
+			classify_status(teardown.status)
+		} else {
+			forced.expect("forced termination checked")
+		}
 	} else {
 		ValidationTermination::SupervisionLost
 	};
@@ -381,12 +398,27 @@ impl CaptureState {
 		}
 	}
 
-	fn drain(&mut self) {
-		loop {
+	fn drain_bounded(&mut self, deadline: Instant) {
+		let drain_deadline = deadline.min(Instant::now() + MAX_DRAIN_TIME);
+		let mut events = 0;
+		let mut bytes = 0;
+		while events < MAX_DRAIN_EVENTS
+			&& bytes < MAX_DRAIN_BYTES
+			&& Instant::now() < drain_deadline
+			&& !self.output_exceeded
+		{
 			match self.receiver.try_recv() {
-				Ok(CaptureEvent::Chunk(stream, bytes)) => self.append(stream, &bytes),
-				Ok(CaptureEvent::Eof(stream)) => self.mark_done(stream),
+				Ok(CaptureEvent::Chunk(stream, chunk)) => {
+					events += 1;
+					bytes = bytes.saturating_add(chunk.len());
+					self.append(stream, &chunk);
+				},
+				Ok(CaptureEvent::Eof(stream)) => {
+					events += 1;
+					self.mark_done(stream);
+				},
 				Ok(CaptureEvent::Failed(stream)) => {
+					events += 1;
 					self.failed = true;
 					self.mark_done(stream);
 				},
@@ -470,6 +502,7 @@ fn configure_child(command: &mut Command) {
 struct TeardownOutcome {
 	status: Option<ExitStatus>,
 	confirmed: bool,
+	observed_before_signal: bool,
 }
 
 fn missing_capture(
@@ -491,6 +524,8 @@ fn teardown_process_group(
 ) -> TeardownOutcome {
 	let pid = child.id();
 	let mut status = recorded_status;
+	poll_status(child, &mut status);
+	let observed_before_signal = status.is_some();
 	let grace_deadline = deadline.min(Instant::now() + TERMINATION_GRACE);
 	if Instant::now() < deadline {
 		let _ = signal_group_until(pid, libc::SIGTERM, deadline);
@@ -498,7 +533,7 @@ fn teardown_process_group(
 	loop {
 		poll_status(child, &mut status);
 		if group_gone(pid, deadline) && status.is_some() {
-			return TeardownOutcome { status, confirmed: true };
+			return TeardownOutcome { status, confirmed: true, observed_before_signal };
 		}
 		let now = Instant::now();
 		if now >= grace_deadline {
@@ -514,7 +549,7 @@ fn teardown_process_group(
 	loop {
 		poll_status(child, &mut status);
 		if group_gone(pid, deadline) && status.is_some() {
-			return TeardownOutcome { status, confirmed: true };
+			return TeardownOutcome { status, confirmed: true, observed_before_signal };
 		}
 		let now = Instant::now();
 		if now >= deadline {
@@ -526,7 +561,7 @@ fn teardown_process_group(
 	// One final nonblocking observation at the deadline; never call blocking `wait` or `join`.
 	poll_status(child, &mut status);
 	let confirmed = group_gone(pid, deadline) && status.is_some();
-	TeardownOutcome { status, confirmed }
+	TeardownOutcome { status, confirmed, observed_before_signal }
 }
 
 fn poll_status(child: &mut Child, status: &mut Option<ExitStatus>) {
