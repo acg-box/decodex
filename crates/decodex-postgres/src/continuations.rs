@@ -2,8 +2,8 @@
 
 use decodex_core::{
 	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationEffectBarrierState,
-	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ConversationId, ManagedRunId,
-	RuntimeSessionId, SameThreadContinuationEvidence, MAX_INLINE_HISTORY_BYTES,
+	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ConversationId,
+	MAX_INLINE_HISTORY_BYTES, ManagedRunId, RuntimeSessionId, SameThreadContinuationEvidence,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -69,10 +69,7 @@ impl PostgresStore {
 		)?;
 
 		let blob = (fallback_pack.bytes().len() > MAX_INLINE_HISTORY_BYTES).then(|| {
-			(
-				fallback_pack.digest(),
-				i64::try_from(fallback_pack.bytes().len()).unwrap_or(i64::MAX),
-			)
+			(fallback_pack.digest(), i64::try_from(fallback_pack.bytes().len()).unwrap_or(i64::MAX))
 		});
 		let referenced_hashes = context_pack_referenced_hashes(fallback_pack, blob);
 		let capacity_hashes = blob.map(|(hash, _)| vec![hash]).unwrap_or_default();
@@ -210,10 +207,10 @@ impl PostgresStore {
 		let fallback_context_pack = match plan.kind {
 			ContinuationPlanKind::SameThread => None,
 			ContinuationPlanKind::ContextPackFallback => {
-				let context_pack_id = plan
-					.fallback_context_pack_id
-					.as_deref()
-					.ok_or_else(|| StoreError::Incompatible("fallback plan lost Context Pack".into()))?;
+				let context_pack_id =
+					plan.fallback_context_pack_id.as_deref().ok_or_else(|| {
+						StoreError::Incompatible("fallback plan lost Context Pack".into())
+					})?;
 				let record = self.required_context_pack(blob_store, context_pack_id).await?;
 				if record.compiled_digest != fallback_pack.digest()
 					|| record.conversation_id != plan.conversation_id
@@ -269,17 +266,17 @@ impl PostgresStore {
 }
 
 fn parse_envelope(bytes: &[u8]) -> Result<(String, Value), StoreError> {
-	let document: Value = serde_json::from_slice(bytes)
-		.map_err(|_| StoreError::Incompatible("stored continuation response is malformed".into()))?;
+	let document: Value = serde_json::from_slice(bytes).map_err(|_| {
+		StoreError::Incompatible("stored continuation response is malformed".into())
+	})?;
 	require_keys(&document, &["classification", "effect"])?;
 	let classification = text(&document, "classification")?;
 	if !matches!(classification, "completed_success" | "stable_domain_rejection") {
 		return incompatible("stored continuation response classification is unknown");
 	}
-	let effect = document
-		.get("effect")
-		.filter(|value| value.is_object())
-		.ok_or_else(|| StoreError::Incompatible("stored continuation effect is malformed".into()))?;
+	let effect = document.get("effect").filter(|value| value.is_object()).ok_or_else(|| {
+		StoreError::Incompatible("stored continuation effect is malformed".into())
+	})?;
 	verify_digest(effect)?;
 	if text(effect, "operation")? != "plan_continuation" {
 		return incompatible("stored continuation operation is cross-linked");
@@ -288,10 +285,7 @@ fn parse_envelope(bytes: &[u8]) -> Result<(String, Value), StoreError> {
 }
 
 fn parse_rejection(effect: &Value) -> Result<ContinuationRejection, StoreError> {
-	require_keys(
-		effect,
-		&["effect_digest", "effect_digest_source", "operation", "rejection"],
-	)?;
+	require_keys(effect, &["effect_digest", "effect_digest_source", "operation", "rejection"])?;
 	match text(effect, "rejection")? {
 		"invalid_input" => Ok(ContinuationRejection::InvalidInput),
 		"missing_decision" => Ok(ContinuationRejection::MissingDecision),
@@ -352,7 +346,9 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 				.ok_or_else(|| StoreError::Incompatible("same-thread evidence is absent".into()))?
 				.to_owned(),
 			routing_evidence_revision: optional_positive_i64(effect, "routing_evidence_revision")?
-				.ok_or_else(|| StoreError::Incompatible("same-thread evidence revision is absent".into()))?,
+				.ok_or_else(|| {
+					StoreError::Incompatible("same-thread evidence revision is absent".into())
+				})?,
 			schema_fingerprint: optional_text(effect, "schema_fingerprint")?
 				.ok_or_else(|| StoreError::Incompatible("same-thread schema is absent".into()))?
 				.to_owned(),
@@ -360,9 +356,13 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 				.ok_or_else(|| StoreError::Incompatible("same-thread experiment is absent".into()))?
 				.to_owned(),
 			experiment_revision: optional_positive_i64(effect, "codex_experiment_revision")?
-				.ok_or_else(|| StoreError::Incompatible("same-thread experiment revision is absent".into()))?,
+				.ok_or_else(|| {
+					StoreError::Incompatible("same-thread experiment revision is absent".into())
+				})?,
 			observation_id: optional_text(effect, "codex_observation_id")?
-				.ok_or_else(|| StoreError::Incompatible("same-thread observation is absent".into()))?
+				.ok_or_else(|| {
+					StoreError::Incompatible("same-thread observation is absent".into())
+				})?
 				.to_owned(),
 		}),
 		ContinuationPlanKind::ContextPackFallback => {
@@ -390,7 +390,9 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 	let fallback_runtime_session_id = optional_text(effect, "fallback_runtime_session_id")?
 		.map(|value| RuntimeSessionId::new(value.to_owned()))
 		.transpose()
-		.map_err(|_| StoreError::Incompatible("fallback RuntimeSession identity is invalid".into()))?;
+		.map_err(|_| {
+			StoreError::Incompatible("fallback RuntimeSession identity is invalid".into())
+		})?;
 	match kind {
 		ContinuationPlanKind::SameThread
 			if codex_thread_id.is_none()
@@ -433,7 +435,9 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 			effect,
 			"source_runtime_session_id",
 		)?)
-		.map_err(|_| StoreError::Incompatible("source RuntimeSession identity is invalid".into()))?,
+		.map_err(|_| {
+			StoreError::Incompatible("source RuntimeSession identity is invalid".into())
+		})?,
 		source_runtime_session_revision: positive_i64(effect, "source_runtime_session_revision")?,
 		selected_account_id: AccountId::new(uuid_text(effect, "selected_account_id")?)
 			.map_err(|_| StoreError::Incompatible("selected account identity is invalid".into()))?,
@@ -496,30 +500,17 @@ fn verify_effect_rows(effect: &Value, plan: &ContinuationPlan) -> Result<(), Sto
 	{
 		require_keys(
 			activity,
-			&[
-				"aggregate_id",
-				"aggregate_kind",
-				"event_kind",
-				"payload",
-				"revision",
-				"sequence",
-			],
+			&["aggregate_id", "aggregate_kind", "event_kind", "payload", "revision", "sequence"],
 		)?;
 		require_keys(
 			outbox,
-			&[
-				"aggregate_id",
-				"aggregate_kind",
-				"aggregate_revision",
-				"effect_key",
-				"id",
-			],
+			&["aggregate_id", "aggregate_kind", "aggregate_revision", "effect_key", "id"],
 		)?;
 		let sequence = positive_i64(activity, "sequence")?;
-		let payload = activity
-			.get("payload")
-			.filter(|value| value.is_object())
-			.ok_or_else(|| StoreError::Incompatible("continuation activity payload is malformed".into()))?;
+		let payload =
+			activity.get("payload").filter(|value| value.is_object()).ok_or_else(|| {
+				StoreError::Incompatible("continuation activity payload is malformed".into())
+			})?;
 		let expected_effect_key = format!("activity/{sequence}");
 		positive_i64(outbox, "id")?;
 		if text(activity, "aggregate_kind")? != kind
@@ -561,9 +552,9 @@ fn verify_digest(effect: &Value) -> Result<(), StoreError> {
 }
 
 fn require_keys(value: &Value, expected: &[&str]) -> Result<(), StoreError> {
-	let object = value
-		.as_object()
-		.ok_or_else(|| StoreError::Incompatible("stored continuation object is malformed".into()))?;
+	let object = value.as_object().ok_or_else(|| {
+		StoreError::Incompatible("stored continuation object is malformed".into())
+	})?;
 	let mut actual = object.keys().map(String::as_str).collect::<Vec<_>>();
 	actual.sort_unstable();
 	let mut expected = expected.to_vec();
@@ -598,11 +589,9 @@ fn positive_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
 fn optional_positive_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreError> {
 	match value.get(key) {
 		Some(Value::Null) => Ok(None),
-		Some(value) => value
-			.as_i64()
-			.filter(|number| *number > 0)
-			.map(Some)
-			.ok_or_else(|| StoreError::Incompatible(format!("stored continuation {key} is malformed"))),
+		Some(value) => value.as_i64().filter(|number| *number > 0).map(Some).ok_or_else(|| {
+			StoreError::Incompatible(format!("stored continuation {key} is malformed"))
+		}),
 		None => incompatible("stored continuation optional revision is missing"),
 	}
 }
@@ -635,11 +624,7 @@ fn uuid_text(value: &Value, key: &str) -> Result<String, StoreError> {
 	}
 }
 fn validate_uuid(value: &str, label: &'static str) -> Result<(), StoreError> {
-	if is_uuid(value) {
-		Ok(())
-	} else {
-		Err(StoreError::InvalidInput(label))
-	}
+	if is_uuid(value) { Ok(()) } else { Err(StoreError::InvalidInput(label)) }
 }
 fn is_uuid(value: &str) -> bool {
 	value.len() == 36

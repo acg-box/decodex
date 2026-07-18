@@ -1,5 +1,6 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
+#[path = "postgres_store/continuation.rs"] mod continuation;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_repositories.rs"]
 mod managed_repositories;
@@ -7,18 +8,14 @@ mod managed_repositories;
 #[path = "postgres_store/managed_runs.rs"]
 mod managed_runs;
 #[path = "postgres_store/quota.rs"] mod quota;
-#[path = "postgres_store/routing_decision.rs"]
-mod routing_decision;
-#[path = "postgres_store/continuation.rs"]
-mod continuation;
-#[path = "postgres_store/waiting_wake.rs"]
-mod waiting_wake;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
 mod role_profiles;
+#[path = "postgres_store/routing_decision.rs"] mod routing_decision;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/runtime_sessions.rs"]
 mod runtime_sessions;
+#[path = "postgres_store/waiting_wake.rs"] mod waiting_wake;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/work_items.rs"]
 mod work_items;
@@ -459,8 +456,7 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
 	let expected_database = env::var("DECODEX_EXPECTED_MANIFEST_DATABASE")?;
 	let (mut migration, mut runtime) = separated_configs("DECODEX_TEST")?;
-	let migration_role =
-		migration.get_user().ok_or("migration role is absent")?.to_owned();
+	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
 	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
 	let migration_database =
 		migration.get_dbname().ok_or("migration database is absent")?.to_owned();
@@ -485,13 +481,11 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		)
 		.into());
 	}
-	let (schema, schema_complete, schema_error) = match client
-		.query_one(PostgresStore::schema_contract_sql_fixture(), &[])
-		.await
-	{
-		Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
-		Err(error) => (None, false, Some(error.to_string())),
-	};
+	let (schema, schema_complete, schema_error) =
+		match client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await {
+			Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
+			Err(error) => (None, false, Some(error.to_string())),
+		};
 	let (authority, authority_error) = match client
 		.query_one(
 			PostgresStore::configured_authority_sql_fixture(),
@@ -504,10 +498,8 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 	};
 	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
 	let migration_connection_task = tokio::spawn(migration_connection);
-	let observed_migration_database: String = migration_client
-		.query_one("SELECT pg_catalog.current_database()", &[])
-		.await?
-		.get(0);
+	let observed_migration_database: String =
+		migration_client.query_one("SELECT pg_catalog.current_database()", &[]).await?.get(0);
 	if observed_migration_database != expected_database {
 		return Err(format!(
 			"migration manifest connection selected {observed_migration_database}, expected {expected_database}"
@@ -872,18 +864,13 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	assert_duration_validation(&store, &client).await?;
 	assert_lease_contention_and_reclaim(&store).await?;
 
-	let routing = routing_decision::assert_routing_decision_contract(
-		&store, &client, &migration, &runtime,
-	)
-	.await?;
-	continuation::assert_continuation_contract(
-		&store, &client, &migration, &runtime, &routing,
-	)
-	.await?;
-	waiting_wake::assert_waiting_wake_contract(
-		&store, &client, &migration, &runtime, &routing,
-	)
-	.await?;
+	let routing =
+		routing_decision::assert_routing_decision_contract(&store, &client, &migration, &runtime)
+			.await?;
+	continuation::assert_continuation_contract(&store, &client, &migration, &runtime, &routing)
+		.await?;
+	waiting_wake::assert_waiting_wake_contract(&store, &client, &migration, &runtime, &routing)
+		.await?;
 	assert_outbox_concurrency_retry_and_restart(&store, &client, &migration, &runtime).await?;
 
 	assert_eq!(store.availability(), Availability::Unavailable { reason: CLOSED });

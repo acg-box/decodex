@@ -28,12 +28,12 @@ pub use self::{
 		UnsupportedReason,
 	},
 	dispatch::{DispatchDenied, DispatchGate, DispatchOperation, LIVE_ROUTING_GATE},
-	experiment::{PositiveExperimentFact, PositiveExperimentFactKind, TypedThreadStartResponse},
 	event::{
 		CollaborationActivityKind, CollaborationTool, CollaborationToolCall,
 		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
 		RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
 	},
+	experiment::{PositiveExperimentFact, PositiveExperimentFactKind, TypedThreadStartResponse},
 	protocol::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, DecodexThreadSearchTerm,
 		ExactThreadFacts, ExactThreadId, ExactThreadListFilter, ExactThreadListResult,
