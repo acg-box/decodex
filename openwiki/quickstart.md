@@ -45,7 +45,9 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   leases, append-only activity, transactional outbox delivery, inert account/window
   metadata, bounded history pagination, immutable snapshots, blob references, Context Pack
   revisions, inert rollover/fallback proposals, exact in-transaction receipts, and immutable
-  global RoleProfile revisions. XY-1307 wires the typed connection data through runtime composition into the
+  global RoleProfile revisions. V14 additionally owns revisioned complete routing policies,
+  database-timestamped ordinary Codex compatibility evidence, and immutable complete routing
+  fact snapshots; it performs no selection or dispatch. XY-1307 wires the typed connection data through runtime composition into the
   existing verification/migration boundary; every bootstrap failure remains fail-closed.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
