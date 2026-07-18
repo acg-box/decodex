@@ -689,8 +689,7 @@ fn validate_uuid(value: &str, label: &'static str) -> Result<(), StoreError> {
 		&& value.bytes().enumerate().all(|(index, byte)| match index {
 			8 | 13 | 18 | 23 => byte == b'-',
 			_ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
-		})
-	{
+		}) {
 		Ok(())
 	} else {
 		Err(StoreError::InvalidInput(label))
