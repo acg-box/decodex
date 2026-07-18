@@ -28,7 +28,9 @@ CREATE TABLE decodex.repository_admissions (
 	project_id uuid NOT NULL REFERENCES decodex.projects(project_id) ON DELETE RESTRICT,
 	admitted_identity text NOT NULL UNIQUE,
 	admitted_base text NOT NULL,
+	admission_descriptor_schema smallint NOT NULL,
 	admission_descriptor_digest text NOT NULL,
+	admission_descriptor jsonb NOT NULL,
 	repository_absolute_path text NOT NULL UNIQUE,
 	admitted_at timestamptz NOT NULL DEFAULT pg_catalog.clock_timestamp(),
 	CONSTRAINT repository_admissions_repository_id_canonical CHECK (
@@ -48,6 +50,59 @@ CREATE TABLE decodex.repository_admissions (
 	CONSTRAINT repository_admissions_digest_canonical CHECK (
 		admission_descriptor_digest COLLATE pg_catalog."C" ~ '^[0-9a-f]{64}$'
 	),
+	CONSTRAINT repository_admissions_descriptor_bounded CHECK (
+		admission_descriptor_schema = 1
+		AND pg_catalog.octet_length(admission_descriptor::text) BETWEEN 2 AND 2097152
+		AND pg_catalog.jsonb_typeof(admission_descriptor) = 'object'
+		AND pg_catalog.jsonb_typeof(admission_descriptor->'git_layout') = 'object'
+		AND pg_catalog.jsonb_typeof(admission_descriptor->'observations') = 'array'
+		AND pg_catalog.jsonb_array_length(admission_descriptor->'observations') BETWEEN 1 AND 256
+	),
+	CONSTRAINT repository_admissions_descriptor_complete CHECK (
+		admission_descriptor = pg_catalog.jsonb_build_object(
+			'schema', admission_descriptor_schema,
+			'project_id', project_id,
+			'repository_id', repository_id,
+			'admitted_identity', admitted_identity,
+			'admitted_base', admitted_base,
+			'repository_absolute_path', repository_absolute_path,
+			'git_layout', admission_descriptor->'git_layout',
+			'observations', admission_descriptor->'observations',
+			'digest', admission_descriptor_digest
+		)
+	),
+	CONSTRAINT repository_admissions_git_layout_complete CHECK (COALESCE((
+		admission_descriptor->'git_layout' ?& ARRAY[
+			'registration_role','registration_id','repository_absolute_path',
+			'worktree_git_entry_absolute_path','git_directory_absolute_path',
+			'common_directory_absolute_path','objects_directory_absolute_path',
+			'refs_directory_absolute_path','common_directory_file_absolute_path',
+			'git_directory_backlink_file_absolute_path'
+		]
+		AND (admission_descriptor->'git_layout') - ARRAY[
+			'registration_role','registration_id','repository_absolute_path',
+			'worktree_git_entry_absolute_path','git_directory_absolute_path',
+			'common_directory_absolute_path','objects_directory_absolute_path',
+			'refs_directory_absolute_path','common_directory_file_absolute_path',
+			'git_directory_backlink_file_absolute_path'
+		] = '{}'::jsonb
+		AND admission_descriptor#>>'{git_layout,registration_role}' IN (
+			'primary_worktree','linked_worktree'
+		)
+		AND admission_descriptor#>>'{git_layout,repository_absolute_path}'
+			= repository_absolute_path
+		AND CASE admission_descriptor#>>'{git_layout,registration_role}'
+			WHEN 'primary_worktree' THEN
+				admission_descriptor#>'{git_layout,registration_id}' = 'null'::jsonb
+			WHEN 'linked_worktree' THEN
+				pg_catalog.jsonb_typeof(
+					admission_descriptor#>'{git_layout,registration_id}'
+				) = 'string'
+				AND pg_catalog.octet_length(
+					admission_descriptor#>>'{git_layout,registration_id}'
+				) BETWEEN 1 AND 128
+		END
+	), false)),
 	CONSTRAINT repository_admissions_path_bounded CHECK (
 		pg_catalog.octet_length(repository_absolute_path) BETWEEN 2 AND 4096
 		AND pg_catalog.left(repository_absolute_path, 1) = '/'
@@ -233,7 +288,7 @@ CREATE TABLE decodex.repository_operation_evidence (
 		OR (kind <> 'allocation' AND operation_id IS NOT NULL)
 	),
 	CONSTRAINT repository_operation_evidence_bounded CHECK (
-		pg_catalog.octet_length(evidence::text) BETWEEN 2 AND 1048576
+		pg_catalog.octet_length(evidence::text) BETWEEN 2 AND 4194304
 	),
 	CONSTRAINT repository_operation_evidence_classification CHECK (COALESCE((
 		pg_catalog.jsonb_typeof(evidence) = 'object'
@@ -241,9 +296,14 @@ CREATE TABLE decodex.repository_operation_evidence (
 			WHEN 'allocation' THEN evidence->>'classification' = 'positive'
 				AND evidence->>'evidence_id' = evidence_id::text
 				AND evidence ?& ARRAY[
-					'evidence_id','admitted_identity','admitted_base',
-					'repository_absolute_path','vacant_worktree_absolute_path'
+					'classification','evidence_id','admission_descriptor',
+					'vacant_worktree_absolute_path'
 				]
+				AND evidence - ARRAY[
+					'classification','evidence_id','admission_descriptor',
+					'vacant_worktree_absolute_path'
+				] = '{}'::jsonb
+				AND pg_catalog.jsonb_typeof(evidence->'admission_descriptor') = 'object'
 			WHEN 'registration' THEN evidence->>'classification' IN (
 				'exact_reciprocal','no_effect','missing_reciprocal','stale','foreign',
 				'replaced','dirty','rollback','inconclusive'
@@ -722,9 +782,7 @@ BEGIN
 				AND evidence.evidence = pg_catalog.jsonb_build_object(
 					'classification','positive',
 					'evidence_id',evidence.evidence_id,
-					'admitted_identity',admission.admitted_identity,
-					'admitted_base',admission.admitted_base,
-					'repository_absolute_path',admission.repository_absolute_path,
+					'admission_descriptor',admission.admission_descriptor,
 					'vacant_worktree_absolute_path',repository.worktree_absolute_path
 				)
 				AND transition.transition_kind = 'allocated'
