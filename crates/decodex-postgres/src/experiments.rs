@@ -14,54 +14,77 @@ use crate::{
 /// Preparation input. PostgreSQL rechecks the complete V14 lineage and owns the clock.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrepareCodexExperiment {
+	/// Complete immutable experiment identity whose V14 lineage PostgreSQL must verify.
 	pub identity: CodexExperimentIdentity,
 }
 
 /// Exact typed successful app-server creation response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BindCodexExperimentThread {
+	/// Immutable experiment identity previously advanced to the pre-effect fence.
 	pub experiment_id: String,
+	/// Required current experiment revision, fixed at the creation-possible revision two.
 	pub expected_revision: i64,
+	/// Exact creation-attempt identity durably fenced before the external effect.
 	pub attempt_id: String,
+	/// Exact thread identity returned by the successful typed app-server response.
 	pub thread_id: String,
+	/// Opaque identity of that exact successful app-server response.
 	pub response_id: String,
+	/// Response title that must equal the immutable prepared title, including its derived marker.
 	pub response_title: String,
+	/// Response working directory that must equal the immutable prepared repository path.
 	pub response_cwd: String,
+	/// Response marker that must equal the marker deterministically derived from the experiment identity.
 	pub response_marker: String,
+	/// App-server ephemeral flag, which V15 requires to be false for a durable binding.
 	pub ephemeral: bool,
 }
 
 /// One exact positive observation. There is no negative observation variant.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecordCodexExperimentObservation {
+	/// Immutable identity of the experiment that owns the observation.
 	pub experiment_id: String,
+	/// Required bound-thread revision, fixed at revision three.
 	pub expected_revision: i64,
+	/// Globally unique identity for this append-only observation record.
 	pub observation_id: String,
+	/// Closed positive observation kind; no negative or absence kind exists.
 	pub kind: CodexExperimentObservationKind,
+	/// Exact observed thread, which must equal the experiment's unique bound thread.
 	pub thread_id: String,
+	/// Retained marker that must equal the value PostgreSQL derived from the experiment identity.
 	pub marker: String,
+	/// Opaque identity of the exact app-server item or event that supplied the fact.
 	pub source_id: String,
+	/// Lowercase SHA-256 digest of the positive fact payload at the observation boundary.
 	pub fact_digest: String,
 }
 
-/// Unforgeable one-shot permission returned only by a freshly committed pre-effect fence.
+/// One-shot permission emitted only after this adapter verifies a freshly committed pre-effect
+/// fence. A similarly shaped core value alone does not prove PostgreSQL provenance.
 #[derive(Debug, Eq, PartialEq)]
 pub struct FreshCodexExperimentCreation {
 	fact: CodexExperimentCreationPossible,
 }
 impl FreshCodexExperimentCreation {
+	/// Returns the experiment identity whose fresh pre-effect fence committed.
 	pub fn experiment_id(&self) -> &str {
 		&self.fact.experiment_id
 	}
 
+	/// Returns the committed creation-possible revision, fixed at two.
 	pub fn revision(&self) -> i64 {
 		self.fact.revision
 	}
 
+	/// Returns the sole creation-attempt identity bound by the fence.
 	pub fn attempt_id(&self) -> &str {
 		&self.fact.attempt_id
 	}
 
+	/// Returns the PostgreSQL-authored fence time as nonnegative Unix microseconds.
 	pub fn fenced_at_micros(&self) -> i64 {
 		self.fact.fenced_at_micros
 	}
@@ -70,8 +93,18 @@ impl FreshCodexExperimentCreation {
 /// Pre-effect command outcome. Durable successful replay is ambiguity readback, never permission.
 #[derive(Debug, Eq, PartialEq)]
 pub enum CodexExperimentCreationFenceOutcome {
+	/// Adapter-verified newly committed fence carrying one-shot permission for the possible effect.
 	Fresh(FreshCodexExperimentCreation),
-	ReplayedAmbiguous { experiment_id: String, revision: i64, attempt_id: String },
+	/// Durable replay readback that is terminally ambiguous and never permits retry or adoption.
+	ReplayedAmbiguous {
+		/// Experiment identity retained by the completed fence response.
+		experiment_id: String,
+		/// Creation-possible revision retained by the response, fixed at two.
+		revision: i64,
+		/// Sole fenced attempt identity retained for causal audit.
+		attempt_id: String,
+	},
+	/// Stable PostgreSQL-authored rejection of the requested state transition.
 	Rejected(CodexExperimentRejection),
 }
 
