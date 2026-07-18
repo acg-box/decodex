@@ -19,7 +19,8 @@ use tokio::sync::Mutex;
 use crate::{
 	ManagedRepositoryRestartOutcome, ManagedRepositorySagaOutcome,
 	managed_repository_executor::{
-		AcquisitionFailure, AllocationAcquisitionRequest, ManagedRepositoryExecutor,
+		AcquisitionFailure, AllocationAcquisitionRequest, ExecutionFailure,
+		ManagedRepositoryExecutor,
 	},
 	managed_repository_saga::ManagedRepositoryEffectSaga,
 };

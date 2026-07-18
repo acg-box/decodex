@@ -21,7 +21,7 @@ use std::{
 	os::unix::{
 		ffi::OsStrExt as _,
 		fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
-		io::{AsRawFd as _, FromRawFd as _},
+		io::{AsRawFd, FromRawFd as _},
 		process::{CommandExt as _, ExitStatusExt as _},
 	},
 	path::{Component, Path, PathBuf},
