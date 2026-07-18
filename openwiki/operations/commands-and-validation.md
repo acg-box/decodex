@@ -176,6 +176,17 @@ caller-shifted lease/retry/retention anchors, early and due delivered-row deleti
 forbidden outbox truncation. Intermediate schemas from unshipped branches are not
 compatibility targets.
 
+## Managed repository frozen-tree validation
+
+Managed-repository stage-two work has no pre-freeze execution gate. Do not run compile, test,
+check, Clippy, format, migration, wrapper, matrix, doctest, behavioral, app, or benchmark commands
+while its parallel owners construct the candidate. After serial integration freezes one exact
+tree, run one complete unified validation on that tree only. Keep the resulting evidence categories
+concise: pure semantics; PostgreSQL authority, concurrency, restore, and retention; accepted
+Git/filesystem execution and operation-specific readback; first shared-saga composition; provider
+and repository integration; and final digest/manifest agreement. Partial runs, expanded early test
+matrices, and results from any other tree are not acceptance evidence.
+
 ## Validation scope selection
 
 Use the aggregate gate before broad readiness, landing, or release-readiness claims. During iteration, choose the smallest command that covers the touched contract, then name that scope in handoff notes. A narrow validation result is useful evidence, but it is not equivalent to the broad gate unless the change is truly limited to that surface.
@@ -188,13 +199,22 @@ Use the owner path to choose the first validation surface:
 
 - `crates/decodex-core/`: vNext domain/application contracts and authority ports plus
   the typed `~/.decodex` root, bounded/redacted config, stable server identity,
-  integrity-verifying blobs, and disposable bounded cache.
+  integrity-verifying blobs, and disposable bounded cache. For managed repositories it
+  owns only mechanism-neutral values, facts, descriptors, evidence, and pure deciders;
+  these are not durable authority.
 - `crates/decodex-protocol/`: version and loopback server boundary plus the bounded typed
   client transport shared by CLI and future UI clients.
-- `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated real-PostgreSQL integration tests; XY-1307 runtime composition supplies only typed explicit configuration and retains unavailable on every bootstrap failure.
+- `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated
+  real-PostgreSQL integration tests; XY-1307 runtime composition supplies only typed
+  explicit configuration and retains unavailable on every bootstrap failure. XY-1349 is
+  the sole V13 owner for managed-repository projection, generation/tip, global operation
+  assignment, append-only evidence, compare-and-swap, transaction completeness, receipt
+  provenance, retention, and restart loads.
 - `crates/decodex-codex/`: typed shared-home Codex adapter foundation; live dispatch is
   default-disabled by the failed XY-1304 gate.
-- `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners.
+- `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners;
+  for managed repositories it sequences accepted owners but creates no state or receipt
+  authority. XY-1351 owns the first shared saga path.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/`: active vNext composition roots.
 - `apps/decodex/`: frozen v0.2 source excluded from the workspace; provenance only.
 - `apps/radar/`: Radar auxiliary tool for upstream evidence, release deltas, signal rendering, artifact validation, and ledger workflows.
