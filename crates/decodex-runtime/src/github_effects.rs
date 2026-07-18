@@ -990,10 +990,19 @@ pub(crate) fn reconcile_pull_request_readback<P: GitHubEffectProvider + ?Sized>(
 	};
 	match reconcile_pull_request_present(&authority, &spec, response_identity, inventory) {
 		PullRequestPresence::Terminal(terminal) => terminal,
-		PullRequestPresence::Absent(summary) => PullRequestTerminal::NoEffect(GitHubNoEffect {
-			reason: GitHubNoEffectReason::CompletelyObservedAbsent,
-			summary: Some(summary),
-		}),
+		PullRequestPresence::Absent(summary) => {
+			if response_identity.is_some()
+				|| matches!(reason, GitHubReadbackReason::AcceptedNeedsVerification)
+			{
+				return GitHubPullRequestReadbackResolution::ReadbackRequired(
+					GitHubPullRequestContinuation { authority, spec, response_identity, reason },
+				);
+			}
+			PullRequestTerminal::NoEffect(GitHubNoEffect {
+				reason: GitHubNoEffectReason::CompletelyObservedAbsent,
+				summary: Some(summary),
+			})
+		},
 	}
 	.into_readback()
 }
@@ -1065,10 +1074,23 @@ pub(crate) fn reconcile_check_readback<P: GitHubEffectProvider + ?Sized>(
 		inventory,
 	) {
 		CheckPresence::Terminal(terminal) => terminal,
-		CheckPresence::Absent(summary) => CheckTerminal::NoEffect(GitHubNoEffect {
-			reason: GitHubNoEffectReason::CompletelyObservedAbsent,
-			summary: Some(summary),
-		}),
+		CheckPresence::Absent(summary) => {
+			if response_identity.is_some()
+				|| matches!(reason, GitHubReadbackReason::AcceptedNeedsVerification)
+			{
+				return GitHubCheckReadbackResolution::ReadbackRequired(GitHubCheckContinuation {
+					authority,
+					spec,
+					suite_contract,
+					response_identity,
+					reason,
+				});
+			}
+			CheckTerminal::NoEffect(GitHubNoEffect {
+				reason: GitHubNoEffectReason::CompletelyObservedAbsent,
+				summary: Some(summary),
+			})
+		},
 	}
 	.into_readback()
 }
@@ -1503,7 +1525,13 @@ fn reconcile_check_present(
 			Some(summary),
 		)));
 	}
-	let required_runs = match complete_required_runs(suite_contract, observation.identity.suite_id, &all) {
+	let required_runs = match complete_required_runs(
+		suite_contract,
+		observation.identity.suite_id,
+		authority.pull_request,
+		&authority.revisions,
+		&all,
+	) {
 		Ok(required) => required,
 		Err(reason) =>
 			return CheckPresence::Terminal(CheckTerminal::Ambiguous(ambiguity(reason, Some(summary)))),
@@ -1518,6 +1546,8 @@ fn reconcile_check_present(
 fn complete_required_runs(
 	contract: &GitHubCheckSuiteContract,
 	suite_id: GitHubCheckSuiteId,
+	pull_request: GitHubPullRequestIdentity,
+	revisions: &GitHubRevisionAuthority,
 	observations: &[GitHubCheckObservation],
 ) -> Result<Vec<GitHubCheckObservation>, GitHubAmbiguity> {
 	let mut by_name = BTreeMap::<&str, &GitHubCheckObservation>::new();
@@ -1535,6 +1565,9 @@ fn complete_required_runs(
 		let Some(observation) = by_name.get(required.name.value()).copied() else {
 			return Err(GitHubAmbiguity::IncompleteChecks);
 		};
+		if observation.pull_request != pull_request || &observation.revisions != revisions {
+			return Err(GitHubAmbiguity::ConflictingCheckResults);
+		}
 		if required.run_id.is_some_and(|run_id| run_id != observation.identity.run_id) {
 			return Err(GitHubAmbiguity::ConflictingCheckResults);
 		}
