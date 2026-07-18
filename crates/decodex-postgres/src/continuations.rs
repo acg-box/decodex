@@ -1,9 +1,9 @@
 //! Inert, exactly-once continuation plans over persisted V16 decisions.
 
 use decodex_core::{
-	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlan,
-	ContinuationPlanKind, ContinuationRejection, ConversationId, ManagedRunId, RuntimeSessionId,
-	SameThreadContinuationEvidence, MAX_INLINE_HISTORY_BYTES,
+	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationEffectBarrierState,
+	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ConversationId, ManagedRunId,
+	RuntimeSessionId, SameThreadContinuationEvidence, MAX_INLINE_HISTORY_BYTES,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -413,10 +413,13 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 	if boolean(effect, "replay_permitted")? || boolean(effect, "dispatch_enabled")? {
 		return incompatible("continuation plan unexpectedly authorizes execution");
 	}
-	let submitted = unsigned(effect, "submitted_turn_receipt_count")?;
-	if submitted > i64::MAX as u64 {
-		return incompatible("submitted-turn receipt count is invalid");
-	}
+	let effect_barrier_state = match text(effect, "effect_barrier_state")? {
+		"guarded" => ContinuationEffectBarrierState::Guarded,
+		"closed" => ContinuationEffectBarrierState::Closed,
+		_ => return incompatible("stored continuation effect-barrier state is unknown"),
+	};
+	let effect_barrier_revision = positive_i64(effect, "effect_barrier_revision")?;
+	let submitted_turn_receipt_count = nonnegative_i64(effect, "submitted_turn_receipt_count")?;
 	Ok(ContinuationPlan {
 		plan_id: uuid_text(effect, "plan_id")?,
 		operation_id: uuid_text(effect, "operation_id")?,
@@ -439,6 +442,9 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 		fallback_context_pack_id,
 		fallback_runtime_session_id,
 		same_thread_evidence,
+		effect_barrier_state,
+		effect_barrier_revision,
+		submitted_turn_receipt_count,
 		replay_permitted: false,
 		dispatch_enabled: false,
 		planned_at_micros: positive_i64(effect, "planned_at_micros")?,
@@ -600,10 +606,11 @@ fn optional_positive_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreE
 		None => incompatible("stored continuation optional revision is missing"),
 	}
 }
-fn unsigned(value: &Value, key: &str) -> Result<u64, StoreError> {
+fn nonnegative_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
 	value
 		.get(key)
-		.and_then(Value::as_u64)
+		.and_then(Value::as_i64)
+		.filter(|number| *number >= 0)
 		.ok_or_else(|| StoreError::Incompatible(format!("stored continuation {key} is malformed")))
 }
 fn boolean(value: &Value, key: &str) -> Result<bool, StoreError> {
