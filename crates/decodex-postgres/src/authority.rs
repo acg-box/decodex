@@ -1750,10 +1750,45 @@ WITH catalog_context AS MATERIALIZED (
   CROSS JOIN catalog_context
   WHERE namespace.nspname = 'decodex'
 ), decodex_relations AS (
-  SELECT class.oid
+  SELECT class.*, namespace.nspname
   FROM pg_catalog.pg_class AS class
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
   WHERE class.relnamespace IN (SELECT oid FROM decodex_namespace)
     AND class.relkind IN ('r', 'p')
+), relation_keys AS MATERIALIZED (
+  SELECT
+    class.oid,
+    pg_catalog.jsonb_build_array(namespace.nspname, class.relname, class.relkind) AS key
+  FROM pg_catalog.pg_class AS class
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
+), type_keys AS MATERIALIZED (
+  SELECT
+    type.oid,
+    pg_catalog.jsonb_build_array(namespace.nspname, type.typname) AS key
+  FROM pg_catalog.pg_type AS type
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+), function_keys AS MATERIALIZED (
+  SELECT
+    proc.oid,
+    pg_catalog.jsonb_build_array(
+      namespace.nspname,
+      proc.proname,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(argument_type.key ORDER BY argument.ordinality)
+        FROM pg_catalog.unnest(proc.proargtypes::pg_catalog.oid[])
+          WITH ORDINALITY AS argument(type_oid, ordinality)
+        JOIN type_keys AS argument_type ON argument_type.oid = argument.type_oid
+      ), '[]'::pg_catalog.jsonb)
+    ) AS key
+  FROM pg_catalog.pg_proc AS proc
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
+), constraint_keys AS MATERIALIZED (
+  SELECT
+    con.oid,
+    pg_catalog.jsonb_build_array(namespace.nspname, class.relname, con.conname, con.contype) AS key
+  FROM pg_catalog.pg_constraint AS con
+  JOIN pg_catalog.pg_class AS class ON class.oid = con.conrelid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
 ), touching_constraints AS (
   SELECT con.*
   FROM pg_catalog.pg_constraint AS con
@@ -1782,28 +1817,25 @@ WITH catalog_context AS MATERIALIZED (
 ), authority_dependency_targets(kind, identity, classid, objid, objsubid) AS (
   SELECT
     'function_dependency',
-    pg_catalog.format(
-      '%I.%I(%s)', namespace.nspname, proc.proname,
-      pg_catalog.pg_get_function_identity_arguments(proc.oid)
-    ),
+    function_key.key,
     'pg_catalog.pg_proc'::pg_catalog.regclass,
     proc.oid,
     0
   FROM decodex_functions AS proc
-  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
+  JOIN function_keys AS function_key ON function_key.oid = proc.oid
   UNION ALL
   SELECT
     'type_dependency',
-    pg_catalog.format('%I.%I', namespace.nspname, type.typname),
+    type_key.key,
     'pg_catalog.pg_type'::pg_catalog.regclass,
     type.oid,
     0
   FROM decodex_types AS type
-  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+  JOIN type_keys AS type_key ON type_key.oid = type.oid
 ), dependency_targets(kind, identity, classid, objid, objsubid) AS (
   SELECT
     'default',
-    pg_catalog.format('%I.%I.%I', namespace.nspname, class.relname, attribute.attname),
+    pg_catalog.jsonb_build_array(namespace.nspname, class.relname, attribute.attname),
     'pg_catalog.pg_attrdef'::pg_catalog.regclass,
     attrdef.oid,
     0
@@ -1817,17 +1849,18 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'constraint',
-    pg_catalog.format('%I.%I.%I', namespace.nspname, class.relname, con.conname),
+    constraint_key.key,
     'pg_catalog.pg_constraint'::pg_catalog.regclass,
     con.oid,
     0
   FROM touching_constraints AS con
+  JOIN constraint_keys AS constraint_key ON constraint_key.oid = con.oid
   JOIN pg_catalog.pg_class AS class ON class.oid = con.conrelid
   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
   UNION ALL
   SELECT
     'index',
-    pg_catalog.format('%I.%I', namespace.nspname, class.relname),
+    pg_catalog.jsonb_build_array(namespace.nspname, class.relname),
     'pg_catalog.pg_class'::pg_catalog.regclass,
     class.oid,
     0
@@ -1838,11 +1871,11 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'internal_trigger',
-    pg_catalog.format(
-      '%I.%I:%I.%I:%s',
-      relation_namespace.nspname, relation.relname,
-      constraint_namespace.nspname, con.conname,
-      trigger.tgfoid::pg_catalog.regprocedure
+    pg_catalog.jsonb_build_array(
+      relation_namespace.nspname,
+      relation.relname,
+      constraint_key.key,
+      function_key.key
     ),
     'pg_catalog.pg_trigger'::pg_catalog.regclass,
     trigger.oid,
@@ -1851,12 +1884,143 @@ WITH catalog_context AS MATERIALIZED (
   JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
   JOIN pg_catalog.pg_namespace AS relation_namespace ON relation_namespace.oid = relation.relnamespace
   LEFT JOIN touching_constraints AS con ON con.oid = trigger.tgconstraint
+  LEFT JOIN constraint_keys AS constraint_key ON constraint_key.oid = con.oid
+  JOIN function_keys AS function_key ON function_key.oid = trigger.tgfoid
   LEFT JOIN pg_catalog.pg_namespace AS constraint_namespace
     ON constraint_namespace.oid = con.connamespace
+), dependency_rows(kind, identity, dependency_type, reference_key) AS (
+  SELECT
+    target.kind,
+    target.identity,
+    dependency.deptype,
+    CASE
+        WHEN dependency.refclassid = 'pg_catalog.pg_proc'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('function', function_key.key)
+          FROM function_keys AS function_key
+          WHERE function_key.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_type'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('type', type_key.key)
+          FROM type_keys AS type_key
+          WHERE type_key.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass THEN (
+          SELECT CASE
+            WHEN dependency.refobjsubid = 0 THEN
+              pg_catalog.jsonb_build_array(
+                CASE WHEN class.relkind = 'S' THEN 'sequence' ELSE 'relation' END,
+                relation_key.key
+              )
+            ELSE pg_catalog.jsonb_build_array(
+              'column', namespace.nspname, class.relname, attribute.attname
+            )
+          END
+          FROM pg_catalog.pg_class AS class
+          JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
+          JOIN relation_keys AS relation_key ON relation_key.oid = class.oid
+          LEFT JOIN pg_catalog.pg_attribute AS attribute
+            ON attribute.attrelid = class.oid
+           AND attribute.attnum = dependency.refobjsubid
+          WHERE class.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_constraint'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('constraint', constraint_key.key)
+          FROM constraint_keys AS constraint_key
+          WHERE constraint_key.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_collation'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('collation', namespace.nspname, coll.collname)
+          FROM pg_catalog.pg_collation AS coll
+          JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = coll.collnamespace
+          WHERE coll.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_operator'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array(
+            'operator', namespace.nspname, operator.oprname,
+            left_type.key, right_type.key
+          )
+          FROM pg_catalog.pg_operator AS operator
+          JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = operator.oprnamespace
+          LEFT JOIN type_keys AS left_type ON left_type.oid = operator.oprleft
+          LEFT JOIN type_keys AS right_type ON right_type.oid = operator.oprright
+          WHERE operator.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_namespace'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('namespace', namespace.nspname)
+          FROM pg_catalog.pg_namespace AS namespace
+          WHERE namespace.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('extension', extension.extname)
+          FROM pg_catalog.pg_extension AS extension
+          WHERE extension.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_language'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('language', language.lanname)
+          FROM pg_catalog.pg_language AS language
+          WHERE language.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_opclass'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array(
+            'operator_class', namespace.nspname, operator_class.opcname,
+            access_method.amname, input_type.key
+          )
+          FROM pg_catalog.pg_opclass AS operator_class
+          JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = operator_class.opcnamespace
+          JOIN pg_catalog.pg_am AS access_method ON access_method.oid = operator_class.opcmethod
+          JOIN type_keys AS input_type ON input_type.oid = operator_class.opcintype
+          WHERE operator_class.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_opfamily'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array(
+            'operator_family', namespace.nspname, operator_family.opfname,
+            access_method.amname
+          )
+          FROM pg_catalog.pg_opfamily AS operator_family
+          JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = operator_family.opfnamespace
+          JOIN pg_catalog.pg_am AS access_method ON access_method.oid = operator_family.opfmethod
+          WHERE operator_family.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_cast'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array(
+            'cast', source_type.key, target_type.key, cast.castcontext, cast.castmethod
+          )
+          FROM pg_catalog.pg_cast AS cast
+          JOIN type_keys AS source_type ON source_type.oid = cast.castsource
+          JOIN type_keys AS target_type ON target_type.oid = cast.casttarget
+          WHERE cast.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_am'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('access_method', access_method.amname)
+          FROM pg_catalog.pg_am AS access_method
+          WHERE access_method.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array(
+            'default', namespace.nspname, class.relname, attribute.attname
+          )
+          FROM pg_catalog.pg_attrdef AS attrdef
+          JOIN pg_catalog.pg_class AS class ON class.oid = attrdef.adrelid
+          JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
+          JOIN pg_catalog.pg_attribute AS attribute
+            ON attribute.attrelid = attrdef.adrelid
+           AND attribute.attnum = attrdef.adnum
+          WHERE attrdef.oid = dependency.refobjid
+        )
+    END
+  FROM (
+    SELECT * FROM authority_dependency_targets
+    UNION ALL
+    SELECT * FROM dependency_targets
+  ) AS target
+  JOIN pg_catalog.pg_depend AS dependency
+    ON dependency.classid = target.classid
+   AND dependency.objid = target.objid
+   AND dependency.objsubid = target.objsubid
 ), contract_rows(kind, identity, contract) AS (
   SELECT
     'relation',
-    pg_catalog.format('%I.%I', namespace.nspname, class.relname),
+    pg_catalog.jsonb_build_array(namespace.nspname, class.relname, class.relkind),
     pg_catalog.jsonb_build_array(
       class.relkind, class.relpersistence, class.relrowsecurity, class.relforcerowsecurity,
       class.relreplident, access_method.amname, class.reloptions
@@ -1865,12 +2029,13 @@ WITH catalog_context AS MATERIALIZED (
   JOIN decodex_namespace AS selected ON selected.oid = class.relnamespace
   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
   LEFT JOIN pg_catalog.pg_am AS access_method ON access_method.oid = class.relam
+  WHERE class.relkind IN ('r', 'p', 'v', 'm', 'f')
   UNION ALL
   SELECT
     'column',
-    pg_catalog.format('%I.%I.%I', namespace.nspname, class.relname, attribute.attname),
+    pg_catalog.jsonb_build_array(namespace.nspname, class.relname, attribute.attname),
     pg_catalog.jsonb_build_array(
-      attribute.attnum, pg_catalog.format_type(attribute.atttypid, attribute.atttypmod),
+      pg_catalog.format_type(attribute.atttypid, attribute.atttypmod),
       attribute.attnotnull, attribute.attidentity, attribute.attgenerated,
       attribute.attstorage, attribute.attcompression, attribute.attstattarget,
 		collation_namespace.nspname, coll.collname
@@ -1887,7 +2052,7 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'default',
-    pg_catalog.format('%I.%I.%I', namespace.nspname, class.relname, attribute.attname),
+    pg_catalog.jsonb_build_array(namespace.nspname, class.relname, attribute.attname),
     pg_catalog.jsonb_build_array(pg_catalog.pg_get_expr(attrdef.adbin, attrdef.adrelid))::pg_catalog.text
   FROM pg_catalog.pg_attrdef AS attrdef
   JOIN pg_catalog.pg_class AS class ON class.oid = attrdef.adrelid
@@ -1899,16 +2064,31 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'constraint',
-    pg_catalog.format('%I.%I.%I', source_namespace.nspname, source.relname, con.conname),
+    constraint_key.key,
     pg_catalog.jsonb_build_array(
       con.contype, pg_catalog.pg_get_constraintdef(con.oid, false),
       con.condeferrable, con.condeferred, con.convalidated,
       con.conenforced, con.confupdtype, con.confdeltype,
       con.confmatchtype, con.conislocal, con.coninhcount,
-      con.connoinherit, con.conkey, con.confkey,
+      con.connoinherit,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(attribute.attname ORDER BY key.ordinality)
+        FROM pg_catalog.unnest(con.conkey) WITH ORDINALITY AS key(attnum, ordinality)
+        JOIN pg_catalog.pg_attribute AS attribute
+          ON attribute.attrelid = con.conrelid
+         AND attribute.attnum = key.attnum
+      ), '[]'::pg_catalog.jsonb),
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(attribute.attname ORDER BY key.ordinality)
+        FROM pg_catalog.unnest(con.confkey) WITH ORDINALITY AS key(attnum, ordinality)
+        JOIN pg_catalog.pg_attribute AS attribute
+          ON attribute.attrelid = con.confrelid
+         AND attribute.attnum = key.attnum
+      ), '[]'::pg_catalog.jsonb),
       referenced_namespace.nspname, referenced.relname
     )::pg_catalog.text
   FROM touching_constraints AS con
+  JOIN constraint_keys AS constraint_key ON constraint_key.oid = con.oid
   JOIN pg_catalog.pg_class AS source ON source.oid = con.conrelid
   JOIN pg_catalog.pg_namespace AS source_namespace ON source_namespace.oid = source.relnamespace
   LEFT JOIN pg_catalog.pg_class AS referenced ON referenced.oid = con.confrelid
@@ -1917,14 +2097,26 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'index',
-    pg_catalog.format('%I.%I', index_namespace.nspname, index_class.relname),
+    pg_catalog.jsonb_build_array(index_namespace.nspname, index_class.relname),
     pg_catalog.jsonb_build_array(
       table_namespace.nspname, table_class.relname,
       pg_catalog.pg_get_indexdef(index.indexrelid), index.indnatts, index.indnkeyatts,
       index.indisunique, index.indnullsnotdistinct, index.indisprimary,
       index.indisexclusion, index.indimmediate, index.indisclustered,
       index.indisvalid, index.indcheckxmin, index.indisready, index.indislive,
-		index.indisreplident, index.indkey, index.indoption,
+		index.indisreplident,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(
+          CASE WHEN key.attnum = 0 THEN NULL ELSE attribute.attname END
+          ORDER BY key.ordinality
+        )
+        FROM pg_catalog.unnest(index.indkey::pg_catalog.int2[])
+          WITH ORDINALITY AS key(attnum, ordinality)
+        LEFT JOIN pg_catalog.pg_attribute AS attribute
+          ON attribute.attrelid = index.indrelid
+         AND attribute.attnum = key.attnum
+      ), '[]'::pg_catalog.jsonb),
+      index.indoption,
 		pg_catalog.pg_get_expr(index.indexprs, index.indrelid),
       pg_catalog.pg_get_expr(index.indpred, index.indrelid)
     )::pg_catalog.text
@@ -1937,11 +2129,11 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'internal_trigger',
-    pg_catalog.format(
-      '%I.%I:%I.%I:%s',
-      relation_namespace.nspname, relation.relname,
-      constraint_namespace.nspname, con.conname,
-      trigger.tgfoid::pg_catalog.regprocedure
+    pg_catalog.jsonb_build_array(
+      relation_namespace.nspname,
+      relation.relname,
+      constraint_key.key,
+      function_key.key
     ),
     pg_catalog.jsonb_build_array(
       trigger.tgtype, trigger.tgenabled, trigger.tgparentid = 0,
@@ -1955,6 +2147,8 @@ WITH catalog_context AS MATERIALIZED (
   JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
   JOIN pg_catalog.pg_namespace AS relation_namespace ON relation_namespace.oid = relation.relnamespace
   LEFT JOIN touching_constraints AS con ON con.oid = trigger.tgconstraint
+  LEFT JOIN constraint_keys AS constraint_key ON constraint_key.oid = con.oid
+  JOIN function_keys AS function_key ON function_key.oid = trigger.tgfoid
   LEFT JOIN pg_catalog.pg_namespace AS constraint_namespace
     ON constraint_namespace.oid = con.connamespace
   LEFT JOIN pg_catalog.pg_class AS referenced ON referenced.oid = trigger.tgconstrrelid
@@ -1965,8 +2159,47 @@ WITH catalog_context AS MATERIALIZED (
     ON index_namespace.oid = constraint_index.relnamespace
   UNION ALL
   SELECT
+    'sequence',
+    pg_catalog.jsonb_build_array(
+      sequence_namespace.nspname,
+      sequence_class.relname,
+      owner_namespace.nspname,
+      owner_class.relname,
+      owner_attribute.attname
+    ),
+    pg_catalog.jsonb_build_array(
+      sequence_type.key,
+      sequence.seqstart,
+      sequence.seqincrement,
+      sequence.seqmax,
+      sequence.seqmin,
+      sequence.seqcache,
+      sequence.seqcycle,
+      ownership.deptype
+    )::pg_catalog.text
+  FROM pg_catalog.pg_class AS sequence_class
+  JOIN decodex_namespace AS selected ON selected.oid = sequence_class.relnamespace
+  JOIN pg_catalog.pg_namespace AS sequence_namespace
+    ON sequence_namespace.oid = sequence_class.relnamespace
+  JOIN pg_catalog.pg_sequence AS sequence ON sequence.seqrelid = sequence_class.oid
+  JOIN type_keys AS sequence_type ON sequence_type.oid = sequence.seqtypid
+  LEFT JOIN pg_catalog.pg_depend AS ownership
+    ON ownership.classid = 'pg_catalog.pg_class'::pg_catalog.regclass
+   AND ownership.objid = sequence_class.oid
+   AND ownership.objsubid = 0
+   AND ownership.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass
+   AND ownership.deptype IN ('a', 'i')
+  LEFT JOIN pg_catalog.pg_class AS owner_class ON owner_class.oid = ownership.refobjid
+  LEFT JOIN pg_catalog.pg_namespace AS owner_namespace
+    ON owner_namespace.oid = owner_class.relnamespace
+  LEFT JOIN pg_catalog.pg_attribute AS owner_attribute
+    ON owner_attribute.attrelid = owner_class.oid
+   AND owner_attribute.attnum = ownership.refobjsubid
+  WHERE sequence_class.relkind = 'S'
+  UNION ALL
+  SELECT
     'type',
-    pg_catalog.format('%I.%I', namespace.nspname, type.typname),
+    type_key.key,
     pg_catalog.jsonb_build_array(
       type.typtype,
       type.typcategory,
@@ -1974,22 +2207,31 @@ WITH catalog_context AS MATERIALIZED (
       type.typnotnull,
       collation_namespace.nspname,
       coll.collname,
-      CASE WHEN type.typowner = namespace.nspowner
-        THEN 'owner'
-        ELSE 'other:' || pg_catalog.pg_get_userbyid(type.typowner)
+      CASE
+        WHEN type.typowner = namespace.nspowner THEN 'migration'
+        WHEN type.typowner = (SELECT oid FROM runtime_role) THEN 'runtime'
+        ELSE 'role:' || pg_catalog.pg_get_userbyid(type.typowner)
       END,
       COALESCE((
         SELECT pg_catalog.jsonb_agg(
           pg_catalog.jsonb_build_array(
             CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = type.typowner THEN 'owner'
+              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
-              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+              ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
             END,
             privilege.privilege_type,
             privilege.is_grantable
-          ) ORDER BY privilege.grantee, privilege.privilege_type
+          ) ORDER BY
+            CASE
+              WHEN privilege.grantee = 0 THEN 'PUBLIC'
+              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
+              WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
+              ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+            END,
+            privilege.privilege_type,
+            privilege.is_grantable
         )
         FROM pg_catalog.aclexplode(
           COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))
@@ -1997,6 +2239,7 @@ WITH catalog_context AS MATERIALIZED (
       ), '[]'::pg_catalog.jsonb)
     )::pg_catalog.text
   FROM decodex_types AS type
+  JOIN type_keys AS type_key ON type_key.oid = type.oid
   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
   LEFT JOIN pg_catalog.pg_collation AS coll ON coll.oid = type.typcollation
   LEFT JOIN pg_catalog.pg_namespace AS collation_namespace
@@ -2004,7 +2247,7 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'domain_constraint',
-    pg_catalog.format('%I.%I.%I', namespace.nspname, type.typname, con.conname),
+    pg_catalog.jsonb_build_array(namespace.nspname, type.typname, con.conname),
     pg_catalog.jsonb_build_array(
       pg_catalog.pg_get_constraintdef(con.oid, false),
       con.convalidated,
@@ -2016,10 +2259,7 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'function',
-    pg_catalog.format(
-      '%I.%I(%s)', namespace.nspname, proc.proname,
-      pg_catalog.pg_get_function_identity_arguments(proc.oid)
-    ),
+    function_key.key,
     pg_catalog.jsonb_build_array(
       pg_catalog.pg_get_function_arguments(proc.oid),
       pg_catalog.pg_get_function_result(proc.oid),
@@ -2031,22 +2271,31 @@ WITH catalog_context AS MATERIALIZED (
       proc.proleakproof,
       proc.proconfig,
       proc.prosrc,
-      CASE WHEN proc.proowner = namespace.nspowner
-        THEN 'owner'
-        ELSE 'other:' || pg_catalog.pg_get_userbyid(proc.proowner)
+      CASE
+        WHEN proc.proowner = namespace.nspowner THEN 'migration'
+        WHEN proc.proowner = (SELECT oid FROM runtime_role) THEN 'runtime'
+        ELSE 'role:' || pg_catalog.pg_get_userbyid(proc.proowner)
       END,
       COALESCE((
         SELECT pg_catalog.jsonb_agg(
           pg_catalog.jsonb_build_array(
             CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = proc.proowner THEN 'owner'
+              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
-              ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+              ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
             END,
             privilege.privilege_type,
             privilege.is_grantable
-          ) ORDER BY privilege.grantee, privilege.privilege_type
+          ) ORDER BY
+            CASE
+              WHEN privilege.grantee = 0 THEN 'PUBLIC'
+              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
+              WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
+              ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+            END,
+            privilege.privilege_type,
+            privilege.is_grantable
         )
         FROM pg_catalog.aclexplode(
           COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))
@@ -2054,47 +2303,60 @@ WITH catalog_context AS MATERIALIZED (
       ), '[]'::pg_catalog.jsonb)
     )::pg_catalog.text
   FROM decodex_functions AS proc
+  JOIN function_keys AS function_key ON function_key.oid = proc.oid
   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
   JOIN pg_catalog.pg_language AS language ON language.oid = proc.prolang
   UNION ALL
   SELECT
-    target.kind,
-    target.identity,
+    dependency.kind,
+    dependency.identity,
     pg_catalog.jsonb_build_array(
-      dependency.deptype,
-      pg_catalog.pg_describe_object(
-        dependency.refclassid,
-        dependency.refobjid,
-        dependency.refobjsubid
-      )
+      dependency.dependency_type,
+      dependency.reference_key
     )::pg_catalog.text
-  FROM authority_dependency_targets AS target
-  JOIN pg_catalog.pg_depend AS dependency
-    ON dependency.classid = target.classid
-   AND dependency.objid = target.objid
-   AND dependency.objsubid = target.objsubid
+  FROM dependency_rows AS dependency
+  WHERE dependency.kind IN ('function_dependency', 'type_dependency')
   UNION ALL
   SELECT
     'default_acl',
-    pg_catalog.format(
-      '%s:%s',
+    pg_catalog.jsonb_build_array(
       CASE
         WHEN default_acl.defaclnamespace = 0 THEN 'global'
         ELSE 'decodex'
       END,
-      default_acl.defaclobjtype
+      default_acl.defaclobjtype,
+      'migration'
     ),
     COALESCE((
       SELECT pg_catalog.jsonb_agg(
         pg_catalog.jsonb_build_array(
           CASE
+            WHEN privilege.grantor = namespace.nspowner THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM runtime_role) THEN 'runtime'
+            ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+          END,
+          CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
-            WHEN privilege.grantee = default_acl.defaclrole THEN 'owner'
-            ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+            WHEN privilege.grantee = default_acl.defaclrole THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
+            ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
           END,
           privilege.privilege_type,
           privilege.is_grantable
-        ) ORDER BY privilege.grantee, privilege.privilege_type
+        ) ORDER BY
+          CASE
+            WHEN privilege.grantor = namespace.nspowner THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM runtime_role) THEN 'runtime'
+            ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantor)
+          END,
+          CASE
+            WHEN privilege.grantee = 0 THEN 'PUBLIC'
+            WHEN privilege.grantee = default_acl.defaclrole THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
+            ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
+          END,
+          privilege.privilege_type,
+          privilege.is_grantable
       )
       FROM pg_catalog.aclexplode(default_acl.defaclacl) AS privilege
     ), '[]'::pg_catalog.jsonb)::pg_catalog.text
@@ -2105,35 +2367,35 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'dependency',
-    target.kind || ':' || target.identity,
+    pg_catalog.jsonb_build_array(dependency.kind, dependency.identity),
     pg_catalog.jsonb_build_array(
-      dependency.deptype,
-      pg_catalog.pg_describe_object(
-        dependency.refclassid,
-        dependency.refobjid,
-        dependency.refobjsubid
-      )
+      dependency.dependency_type,
+      dependency.reference_key
     )::pg_catalog.text
-  FROM dependency_targets AS target
-  JOIN pg_catalog.pg_depend AS dependency
-    ON dependency.classid = target.classid
-   AND dependency.objid = target.objid
-   AND dependency.objsubid = target.objsubid
+  FROM dependency_rows AS dependency
+  WHERE dependency.kind NOT IN ('function_dependency', 'type_dependency')
   UNION ALL
   SELECT
     'enum_label',
-    pg_catalog.format('%I.%I.%s', namespace.nspname, type.typname, enum.enumsortorder),
+    pg_catalog.jsonb_build_array(namespace.nspname, type.typname, enum.enumsortorder),
     pg_catalog.jsonb_build_array(enum.enumlabel)::pg_catalog.text
   FROM pg_catalog.pg_enum AS enum
   JOIN pg_catalog.pg_type AS type ON type.oid = enum.enumtypid
   JOIN decodex_namespace AS selected ON selected.oid = type.typnamespace
   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
 )
-SELECT pg_catalog.jsonb_agg(
-  pg_catalog.jsonb_build_array(kind, identity, contract)
-  ORDER BY kind, identity, contract
-)::pg_catalog.text
-FROM contract_rows
+SELECT CASE
+  WHEN EXISTS (
+    SELECT 1 FROM dependency_rows AS dependency WHERE dependency.reference_key IS NULL
+  ) THEN NULL
+  ELSE (
+    SELECT pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_array(kind, identity, contract)
+      ORDER BY kind, identity, contract
+    )::pg_catalog.text
+    FROM contract_rows
+  )
+END
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
 	0x79, 0xfc, 0x7a, 0x15, 0x10, 0x16, 0x4f, 0x4c, 0x04, 0xa4, 0xe4, 0x7b, 0xa4, 0x62, 0x70, 0xae,
@@ -2178,6 +2440,27 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
   SELECT namespace.*
   FROM pg_catalog.pg_namespace AS namespace
   WHERE namespace.nspname IN ('decodex', 'public')
+), type_keys AS MATERIALIZED (
+  SELECT
+    type.oid,
+    pg_catalog.jsonb_build_array(namespace.nspname, type.typname) AS key
+  FROM pg_catalog.pg_type AS type
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+), function_keys AS MATERIALIZED (
+  SELECT
+    proc.oid,
+    pg_catalog.jsonb_build_array(
+      namespace.nspname,
+      proc.proname,
+      COALESCE((
+        SELECT pg_catalog.jsonb_agg(argument_type.key ORDER BY argument.ordinality)
+        FROM pg_catalog.unnest(proc.proargtypes::pg_catalog.oid[])
+          WITH ORDINALITY AS argument(type_oid, ordinality)
+        JOIN type_keys AS argument_type ON argument_type.oid = argument.type_oid
+      ), '[]'::pg_catalog.jsonb)
+    ) AS key
+  FROM pg_catalog.pg_proc AS proc
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
 ), decodex_classes AS (
   SELECT class.*, namespace.nspname
   FROM pg_catalog.pg_class AS class
@@ -2231,12 +2514,10 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
   UNION ALL
   SELECT
     'function',
-    pg_catalog.format(
-      '%I.%I(%s)', namespace.nspname, proc.proname,
-      pg_catalog.pg_get_function_identity_arguments(proc.oid)
-    ),
+    function_key.key::pg_catalog.text,
     proc.proowner, COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))
   FROM pg_catalog.pg_proc AS proc
+  JOIN function_keys AS function_key ON function_key.oid = proc.oid
   JOIN relevant_namespaces AS namespace
     ON namespace.oid = proc.pronamespace AND namespace.nspname = 'decodex'
 ), contract_rows(kind, identity, contract) AS (
@@ -2469,10 +2750,7 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(class.relowner)
       END,
-      pg_catalog.format(
-        '%I.%I(%s)', function_namespace.nspname, proc.proname,
-        pg_catalog.pg_get_function_identity_arguments(proc.oid)
-      ),
+      function_key.key,
       CASE
         WHEN proc.proowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
           THEN 'migration'
@@ -2484,6 +2762,7 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
   FROM pg_catalog.pg_trigger AS trigger
   JOIN authority_classes AS class ON class.oid = trigger.tgrelid
   JOIN pg_catalog.pg_proc AS proc ON proc.oid = trigger.tgfoid
+  JOIN function_keys AS function_key ON function_key.oid = proc.oid
   JOIN pg_catalog.pg_namespace AS function_namespace ON function_namespace.oid = proc.pronamespace
   WHERE NOT trigger.tgisinternal
      OR trigger.tgrelid IN (SELECT oid FROM ledger_class)
@@ -3348,10 +3627,17 @@ mod tests {
 			"pg_catalog.pg_get_constraintdef",
 			"pg_catalog.pg_get_indexdef",
 			"pg_catalog.pg_get_expr(attrdef.adbin",
-			"pg_catalog.pg_describe_object",
+			"function_keys AS MATERIALIZED",
+			"type_keys AS MATERIALIZED",
+			"dependency_rows(kind, identity, dependency_type, reference_key)",
+			"JOIN pg_catalog.pg_sequence AS sequence",
+			"ownership.deptype IN ('a', 'i')",
 		] {
 			assert!(SCHEMA_CONTRACT_SQL.contains(required), "{required}");
 		}
+		assert!(!SCHEMA_CONTRACT_SQL.contains("pg_catalog.pg_describe_object"));
+		assert!(!SCHEMA_CONTRACT_SQL.contains("pg_catalog.regprocedure"));
+		assert!(!SCHEMA_CONTRACT_SQL.contains("ORDER BY privilege.grantee"));
 
 		assert_ne!(SCHEMA_CONTRACT_SHA256, [0; 32]);
 	}
@@ -3361,9 +3647,7 @@ mod tests {
 		assert!(SCHEMA_CONTRACT_SQL.contains(
 			"default_acl.defaclnamespace IN (0, namespace.oid)\n    AND default_acl.defaclobjtype IN ('f', 'T')"
 		));
-		assert!(SCHEMA_CONTRACT_SQL.contains(
-			"WHEN default_acl.defaclnamespace = 0 THEN 'global'\n        ELSE 'decodex'"
-		));
+		assert!(SCHEMA_CONTRACT_SQL.contains("WHEN default_acl.defaclnamespace = 0 THEN 'global'"));
 		assert!(!SCHEMA_CONTRACT_SQL.contains(
 			"pg_catalog.format('%s:%s', default_acl.defaclnamespace"
 		));

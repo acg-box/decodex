@@ -131,6 +131,21 @@ receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1
 and populated restore.
 The final schema produced by every migration version must be a PostgreSQL 18 dump/restore fixed
 point so the one exact full-manifest digest remains identical before and after logical restore.
+Cross-database manifest identity is semantic rather than catalog-local: every relation, column,
+constraint, function signature, trigger, dependency, ACL/default ACL, and sequence is keyed by
+stable schema/name/owner-column/principal tuples. Catalog OIDs and presentation renderers are join
+mechanics only and never enter emitted identity or ordering. Sequence definitions and stable
+ownership belong to the schema manifest; mutable sequence values are a separate restore-state
+receipt. Every manifest checkpoint binds an explicit requested database to both configured URLs
+and both observed `current_database()` values, while that binding evidence is excluded from
+cross-database digest equality. The canonical harness collects source, post-command, populated
+RoleProfile restore, and final primary restore evidence before one terminal report.
+
+XY-1353 reset the earlier catalog-presentation model after two canonical-boundary falsifiers: the
+normalized source schema changed from the stale `5b546036...` digest to `79fc7a15...`, then the
+same committed candidate restored as `b3984125...`. Those failures reject the identity model, not
+PostgreSQL logical restore, and prohibit repairing another individual OID or mechanically rebinding
+a digest before semantic source/restore parity is established.
 
 The XY-1345 command is a separate non-production architecture proof. It requires exactly
 PostgreSQL 18.4, creates a private temporary cluster with TCP disabled, installs only fixture

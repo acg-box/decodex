@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from enum import Enum
 import hashlib
 import json
@@ -665,9 +666,12 @@ def run_migration(env: dict[str, str]) -> str:
 	)
 
 
-def dump_schema_manifest(path: Path, env: dict[str, str]) -> str:
+def dump_schema_manifest(
+	path: Path, database: str, env: dict[str, str]
+) -> str:
 	manifest_env = env.copy()
 	manifest_env["DECODEX_SCHEMA_MANIFEST_PATH"] = str(path)
+	manifest_env["DECODEX_EXPECTED_MANIFEST_DATABASE"] = database
 	return run(
 		["cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
 		 "test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
@@ -760,6 +764,7 @@ def run_role_profile_final_gate_contracts(
 	port: int,
 	work: Path,
 	env: dict[str, str],
+	restore_report: dict[str, object],
 ) -> str:
 	outputs: list[str] = []
 	for database, test in (
@@ -787,26 +792,60 @@ def run_role_profile_final_gate_contracts(
 		ROLE_PROFILE_RESTORE_SOURCE_DATABASE, socket_dir, port, env
 	)
 	outputs.append(run_role_profile_test("postgres_exact_role_profile_commands", env))
+	source_manifest_path = work / "xy1346-role-profiles-source-manifest.json"
+	outputs.append(capture_restore_checkpoint(
+		restore_report,
+		"role_profile_post_command",
+		source_manifest_path,
+		ROLE_PROFILE_RESTORE_SOURCE_DATABASE,
+		env,
+	))
 	restore_dump = work / "xy1346-role-profiles.dump"
-	run(
-		[
-			"pg_dump", "-Fc", "-f", str(restore_dump),
-			ROLE_PROFILE_RESTORE_SOURCE_DATABASE,
-		],
-		env,
-	)
-	create_database(ROLE_PROFILE_RESTORE_DATABASE, env)
-	run(
-		[
-			"pg_restore", "--exit-on-error", "-d", ROLE_PROFILE_RESTORE_DATABASE,
-			str(restore_dump),
-		],
-		env,
-	)
-	set_contract_urls(
-		env, socket_dir, port, ROLE_PROFILE_RESTORE_DATABASE, RUNTIME_ROLE
-	)
-	outputs.append(run_role_profile_test("postgres_exact_role_profile_restore", env))
+	restore_ready = True
+	try:
+		run(
+			[
+				"pg_dump", "-Fc", "-f", str(restore_dump),
+				ROLE_PROFILE_RESTORE_SOURCE_DATABASE,
+			],
+			env,
+		)
+		create_database(ROLE_PROFILE_RESTORE_DATABASE, env)
+		run(
+			[
+				"pg_restore", "--exit-on-error", "-d", ROLE_PROFILE_RESTORE_DATABASE,
+				str(restore_dump),
+			],
+			env,
+		)
+	except Exception as error:
+		restore_ready = False
+		failures = restore_report["capture_failures"]
+		assert isinstance(failures, dict)
+		failures["role_profile_restore"] = str(error)
+	if restore_ready:
+		set_contract_urls(
+			env, socket_dir, port, ROLE_PROFILE_RESTORE_DATABASE, RUNTIME_ROLE
+		)
+		restored_manifest_path = work / "xy1346-role-profiles-restored-manifest.json"
+		outputs.append(capture_restore_checkpoint(
+			restore_report,
+			"role_profile_restored",
+			restored_manifest_path,
+			ROLE_PROFILE_RESTORE_DATABASE,
+			env,
+		))
+		outputs.append(record_restore_production_check(
+			restore_report,
+			"role_profile_restored",
+			lambda: run_role_profile_test("postgres_exact_role_profile_restore", env),
+		))
+	else:
+		checkpoints = restore_report["checkpoints"]
+		checks = restore_report["production_checks"]
+		assert isinstance(checkpoints, dict) and isinstance(checks, dict)
+		checkpoints["role_profile_restored"] = None
+		checks["role_profile_restored"] = {"status": "unavailable"}
 	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 
 	return "\n".join(outputs)
@@ -873,12 +912,16 @@ def rust_digest_constant(name: str) -> str:
 	return "".join(value.lower() for value in values)
 
 
-def load_semantic_manifest(path: Path) -> dict[str, str]:
+def load_semantic_manifest(path: Path) -> dict[str, object]:
 	document = json.loads(path.read_text(encoding="utf-8"))
-	if set(document) != {"schema", "authority"} or not all(
+	if set(document) != {"schema", "authority", "binding", "sequence_state"} or not all(
 		isinstance(document[key], str) for key in ("schema", "authority")
 	):
 		raise TestFailure(f"invalid semantic manifest at {path}")
+	if not isinstance(document["binding"], dict) or not isinstance(
+		document["sequence_state"], list
+	):
+		raise TestFailure(f"invalid semantic manifest evidence at {path}")
 	for component in ("schema", "authority"):
 		rows = json.loads(document[component])
 		if not isinstance(rows, list):
@@ -886,23 +929,12 @@ def load_semantic_manifest(path: Path) -> dict[str, str]:
 	return document
 
 
-def verify_initial_manifest_digests(path: Path, env: dict[str, str]) -> str:
-	output = dump_schema_manifest(path, env)
+def verify_initial_manifest_digests(
+	path: Path, env: dict[str, str]
+) -> tuple[str, dict[str, object]]:
+	output = dump_schema_manifest(path, DATABASE, env)
 	document = load_semantic_manifest(path)
-	expected = {
-		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
-		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
-	}
-	actual = {
-		component: hashlib.sha256(document[component].encode("utf-8")).hexdigest()
-		for component in ("schema", "authority")
-	}
-	if actual != expected:
-		raise TestFailure(
-			"initial PostgreSQL manifest digest mismatch:\n"
-			+ json.dumps({"expected": expected, "actual": actual}, sort_keys=True)
-		)
-	return output
+	return output, document
 
 
 def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
@@ -927,8 +959,143 @@ def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
 	}
 
 
+def semantic_state_diff(before: list[object], after: list[object]) -> dict[str, list[object]]:
+	encode = lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"))
+	before_counter = Counter(encode(row) for row in before)
+	after_counter = Counter(encode(row) for row in after)
+	return {
+		"before_only": [
+			json.loads(row)
+			for row, count in sorted((before_counter - after_counter).items())
+			for _ in range(count)
+		],
+		"after_only": [
+			json.loads(row)
+			for row, count in sorted((after_counter - before_counter).items())
+			for _ in range(count)
+		],
+	}
+
+
+def capture_restore_checkpoint(
+	report: dict[str, object],
+	name: str,
+	path: Path,
+	database: str,
+	env: dict[str, str],
+) -> str:
+	checkpoints = report["checkpoints"]
+	assert isinstance(checkpoints, dict)
+	try:
+		output = dump_schema_manifest(path, database, env)
+		checkpoints[name] = load_semantic_manifest(path)
+		return output
+	except Exception as error:
+		checkpoints[name] = None
+		failures = report["capture_failures"]
+		assert isinstance(failures, dict)
+		failures[name] = str(error)
+		return ""
+
+
+def record_restore_production_check(
+	report: dict[str, object], name: str, action: Callable[[], str]
+) -> str:
+	checks = report["production_checks"]
+	assert isinstance(checks, dict)
+	try:
+		output = action()
+		checks[name] = {"status": "passed"}
+		return output
+	except Exception as error:
+		checks[name] = {"status": "failed", "error": str(error)}
+		return ""
+
+
+def finalize_restore_report(report: dict[str, object]) -> list[str]:
+	checkpoints = report["checkpoints"]
+	assert isinstance(checkpoints, dict)
+	expected = {
+		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+	}
+	diagnostics: dict[str, object] = {
+		"expected_digests": expected,
+		"checkpoints": {},
+		"comparisons": {},
+		"capture_failures": report["capture_failures"],
+		"production_checks": report["production_checks"],
+	}
+	capture_failures = report["capture_failures"]
+	assert isinstance(capture_failures, dict)
+	failures = [f"restore stage {name} failed" for name in capture_failures]
+	checkpoint_diagnostics = diagnostics["checkpoints"]
+	assert isinstance(checkpoint_diagnostics, dict)
+	for name, document in checkpoints.items():
+		if document is None:
+			checkpoint_diagnostics[name] = {"available": False}
+			failures.append(f"restore checkpoint {name} is unavailable")
+			continue
+		assert isinstance(document, dict)
+		digests = {
+			component: hashlib.sha256(document[component].encode("utf-8")).hexdigest()
+			for component in ("schema", "authority")
+		}
+		checkpoint_diagnostics[name] = {
+			"available": True,
+			"binding": document["binding"],
+			"digests": digests,
+		}
+		if digests != expected:
+			failures.append(f"restore checkpoint {name} differs from shipped digests")
+	comparisons = diagnostics["comparisons"]
+	assert isinstance(comparisons, dict)
+	for name, before_name, after_name, compare_state in (
+		("source_to_role_profile_post_command", "source", "role_profile_post_command", False),
+		("role_profile_restore", "role_profile_post_command", "role_profile_restored", True),
+		("source_to_primary_post_command", "source", "primary_post_command", False),
+		("primary_restore", "primary_post_command", "primary_restored", True),
+	):
+		before = checkpoints.get(before_name)
+		after = checkpoints.get(after_name)
+		if before is None or after is None:
+			comparisons[name] = {
+				"unavailable": [
+					checkpoint
+					for checkpoint, document in ((before_name, before), (after_name, after))
+					if document is None
+				]
+			}
+			failures.append(f"restore comparison {name} is unavailable")
+			continue
+		assert isinstance(before, dict) and isinstance(after, dict)
+		comparison = {
+			component: semantic_row_diff(before[component], after[component])
+			for component in ("schema", "authority")
+		}
+		if compare_state:
+			comparison["sequence_state"] = semantic_state_diff(
+				before["sequence_state"], after["sequence_state"]
+			)
+		comparisons[name] = comparison
+		if any(value["before_only"] or value["after_only"] for value in comparison.values()):
+			failures.append(f"restore comparison {name} changed semantic evidence")
+	checks = report["production_checks"]
+	assert isinstance(checks, dict)
+	for name, result in checks.items():
+		if result.get("status") != "passed":
+			failures.append(f"production restore check {name} failed")
+	print(
+		"XY-1353 structured PostgreSQL restore report:\n"
+		+ json.dumps(diagnostics, indent=2, sort_keys=True),
+		file=sys.stderr,
+		flush=True,
+	)
+	return failures
+
+
 def manifest_diagnostics(
-	checkpoints: dict[str, dict[str, str] | None],
+	checkpoints: dict[str, dict[str, object] | None],
 ) -> tuple[dict[str, object], list[str]]:
 	shipped_expected = {
 		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
@@ -936,8 +1103,8 @@ def manifest_diagnostics(
 	}
 	actual = {
 		checkpoint: None if manifest is None else {
-			component: hashlib.sha256(value.encode("utf-8")).hexdigest()
-			for component, value in manifest.items()
+			component: hashlib.sha256(manifest[component].encode("utf-8")).hexdigest()
+			for component in ("schema", "authority")
 		}
 		for checkpoint, manifest in checkpoints.items()
 	}
@@ -1004,6 +1171,17 @@ def manifest_diagnostics(
 				diffs[comparison][component] = semantic_row_diff(
 					before[component], after[component]
 				)
+		if before is not None and after is not None:
+			state_diff = semantic_state_diff(
+				before["sequence_state"], after["sequence_state"]
+			)
+			diffs[comparison]["sequence_state"] = state_diff
+			if comparison == "post_attempt_to_restored" and (
+				state_diff["before_only"] or state_diff["after_only"]
+			):
+				manifest_failures.append(
+					f"sequence state changed across {comparison}"
+				)
 	return diagnostics, manifest_failures
 
 
@@ -1028,7 +1206,7 @@ def run_work_item_focused_contracts(
 	restore_output = ""
 
 	try:
-		dump_schema_manifest(baseline_path, env)
+		dump_schema_manifest(baseline_path, WORK_ITEM_DATABASE, env)
 		checkpoints["baseline"] = load_semantic_manifest(baseline_path)
 	except Exception as error:
 		stage_failures.append(f"baseline manifest capture failed:\n{error}")
@@ -1044,7 +1222,7 @@ def run_work_item_focused_contracts(
 		)
 
 	try:
-		dump_schema_manifest(post_attempt_path, env)
+		dump_schema_manifest(post_attempt_path, WORK_ITEM_DATABASE, env)
 		checkpoints["post_attempt"] = load_semantic_manifest(post_attempt_path)
 	except Exception as error:
 		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
@@ -1076,7 +1254,7 @@ def run_work_item_focused_contracts(
 			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
 		set_contract_urls(env, socket_dir, port, WORK_ITEM_RESTORE_DATABASE, RUNTIME_ROLE)
 		try:
-			dump_schema_manifest(restored_path, env)
+			dump_schema_manifest(restored_path, WORK_ITEM_RESTORE_DATABASE, env)
 			checkpoints["restored"] = load_semantic_manifest(restored_path)
 		except Exception as error:
 			stage_failures.append(f"restored manifest capture failed:\n{error}")
@@ -1132,7 +1310,7 @@ def run_managed_run_focused_contracts(
 	source_behavior_error: Exception | None = None
 
 	try:
-		dump_schema_manifest(paths["baseline"], env)
+		dump_schema_manifest(paths["baseline"], MANAGED_RUN_DATABASE, env)
 		checkpoints["baseline"] = load_semantic_manifest(paths["baseline"])
 	except Exception as error:
 		stage_failures.append(f"baseline manifest capture failed:\n{error}")
@@ -1148,7 +1326,7 @@ def run_managed_run_focused_contracts(
 			"source behavior was not run because the baseline manifest is unavailable"
 		)
 	try:
-		dump_schema_manifest(paths["post_attempt"], env)
+		dump_schema_manifest(paths["post_attempt"], MANAGED_RUN_DATABASE, env)
 		checkpoints["post_attempt"] = load_semantic_manifest(paths["post_attempt"])
 	except Exception as error:
 		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
@@ -1178,7 +1356,7 @@ def run_managed_run_focused_contracts(
 			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
 		set_contract_urls(env, socket_dir, port, MANAGED_RUN_RESTORE_DATABASE, RUNTIME_ROLE)
 		try:
-			dump_schema_manifest(paths["restored"], env)
+			dump_schema_manifest(paths["restored"], MANAGED_RUN_RESTORE_DATABASE, env)
 			checkpoints["restored"] = load_semantic_manifest(paths["restored"])
 		except Exception as error:
 			stage_failures.append(f"restored manifest capture failed:\n{error}")
@@ -1272,6 +1450,7 @@ def run_runtime_session_final_gate_contracts(
 	port: int,
 	work: Path,
 	env: dict[str, str],
+	restore_report: dict[str, object],
 ) -> str:
 	outputs: list[str] = []
 	for database, test in (
@@ -1321,25 +1500,41 @@ def run_runtime_session_final_gate_contracts(
 	)
 	outputs.append(run_runtime_session_test("postgres_exact_runtime_session_commands", env))
 	restore_dump = work / "xy1337-runtime-sessions.dump"
-	run(
-		[
-			"pg_dump", "-Fc", "-f", str(restore_dump),
-			RUNTIME_SESSION_RESTORE_SOURCE_DATABASE,
-		],
-		env,
-	)
-	create_database(RUNTIME_SESSION_RESTORE_DATABASE, env)
-	run(
-		[
-			"pg_restore", "--exit-on-error", "-d", RUNTIME_SESSION_RESTORE_DATABASE,
-			str(restore_dump),
-		],
-		env,
-	)
-	set_contract_urls(
-		env, socket_dir, port, RUNTIME_SESSION_RESTORE_DATABASE, RUNTIME_ROLE
-	)
-	outputs.append(run_runtime_session_test("postgres_exact_runtime_session_restore", env))
+	restore_ready = True
+	try:
+		run(
+			[
+				"pg_dump", "-Fc", "-f", str(restore_dump),
+				RUNTIME_SESSION_RESTORE_SOURCE_DATABASE,
+			],
+			env,
+		)
+		create_database(RUNTIME_SESSION_RESTORE_DATABASE, env)
+		run(
+			[
+				"pg_restore", "--exit-on-error", "-d", RUNTIME_SESSION_RESTORE_DATABASE,
+				str(restore_dump),
+			],
+			env,
+		)
+	except Exception as error:
+		restore_ready = False
+		failures = restore_report["capture_failures"]
+		assert isinstance(failures, dict)
+		failures["runtime_session_restore"] = str(error)
+	if restore_ready:
+		set_contract_urls(
+			env, socket_dir, port, RUNTIME_SESSION_RESTORE_DATABASE, RUNTIME_ROLE
+		)
+		outputs.append(record_restore_production_check(
+			restore_report,
+			"runtime_session_restored",
+			lambda: run_runtime_session_test("postgres_exact_runtime_session_restore", env),
+		))
+	else:
+		checks = restore_report["production_checks"]
+		assert isinstance(checks, dict)
+		checks["runtime_session_restored"] = {"status": "unavailable"}
 	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 	return "\n".join(outputs)
 
@@ -1619,19 +1814,56 @@ def main() -> int:
 			print(output)
 			return 0
 		source_binding = frozen_source_binding()
+		restore_report: dict[str, object] = {
+			"checkpoints": {},
+			"capture_failures": {},
+			"production_checks": {},
+		}
 
 		create_database(DATABASE, env)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		migration_output = run_migration(env)
 		provision_runtime(DATABASE, RUNTIME_ROLE, env)
-		initial_manifest_output = verify_initial_manifest_digests(
+		initial_manifest_output, initial_manifest = verify_initial_manifest_digests(
 			work / "schema-manifest-initial.json", env
 		)
+		checkpoints = restore_report["checkpoints"]
+		assert isinstance(checkpoints, dict)
+		checkpoints["source"] = initial_manifest
+		initial_expected = {
+			"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+			"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+		}
+		initial_actual = {
+			component: hashlib.sha256(initial_manifest[component].encode("utf-8")).hexdigest()
+			for component in ("schema", "authority")
+		}
+		if initial_actual != initial_expected:
+			for checkpoint in (
+				"role_profile_post_command",
+				"role_profile_restored",
+				"primary_post_command",
+				"primary_restored",
+			):
+				checkpoints[checkpoint] = None
+			checks = restore_report["production_checks"]
+			assert isinstance(checks, dict)
+			for check in (
+				"role_profile_restored",
+				"runtime_session_restored",
+				"primary_store_restored",
+				"managed_repository_restored",
+			):
+				checks[check] = {"status": "unavailable", "reason": "source digest mismatch"}
+			finalize_restore_report(restore_report)
+			raise TestFailure(
+				"canonical PostgreSQL source digest differs from the shipped semantic inventory"
+			)
 		role_profile_output = run_role_profile_final_gate_contracts(
-			data_dir, log_path, socket_dir, port, work, env
+			data_dir, log_path, socket_dir, port, work, env, restore_report
 		)
 		runtime_session_output = run_runtime_session_final_gate_contracts(
-			data_dir, log_path, socket_dir, port, work, env
+			data_dir, log_path, socket_dir, port, work, env, restore_report
 		)
 		v8_boundary_output = run_v8_migration_boundary_contracts(env, socket_dir, port)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
@@ -2589,7 +2821,13 @@ def main() -> int:
 
 		live_manifest_path = work / "schema-manifest-live.json"
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
-		dump_schema_manifest(live_manifest_path, env)
+		capture_restore_checkpoint(
+			restore_report,
+			"primary_post_command",
+			live_manifest_path,
+			DATABASE,
+			env,
+		)
 		live_quota_snapshot = quota_authority_snapshot(DATABASE, env)
 		live_quota = json.loads(live_quota_snapshot)
 		if len(live_quota["windows"]) != 2 or len(live_quota["exclusions"]) != 2:
@@ -2602,52 +2840,41 @@ def main() -> int:
 		run(["pg_restore", "--exit-on-error", "-d", RESTORE_DATABASE, str(dump_path)], env)
 		set_contract_urls(env, socket_dir, port, RESTORE_DATABASE, RUNTIME_ROLE)
 		restored_manifest_path = work / "schema-manifest-restored.json"
-		dump_schema_manifest(restored_manifest_path, env)
-		restored_quota_snapshot = quota_authority_snapshot(RESTORE_DATABASE, env)
-		if restored_quota_snapshot != live_quota_snapshot:
-			raise TestFailure("dump/restore changed immutable quota authority evidence")
-		live_manifest = live_manifest_path.read_text()
-		restored_manifest = restored_manifest_path.read_text()
-		if live_manifest != restored_manifest:
-			live_document = json.loads(live_manifest)
-			restored_document = json.loads(restored_manifest)
-			changed = [
-				component for component in ("authority", "schema")
-				if live_document[component] != restored_document[component]
-			]
-			component = changed[0]
-			live_rows = json.loads(live_document[component])
-			restored_rows = json.loads(restored_document[component])
-			only_live = [row for row in live_rows if row not in restored_rows]
-			only_restored = [row for row in restored_rows if row not in live_rows]
-			raise TestFailure(
-				"dump/restore schema manifest changed\n"
-				f"component: {component}\n"
-				f"only live: {json.dumps(only_live[:8], indent=2)}\n"
-				f"only restored: {json.dumps(only_restored[:8], indent=2)}"
-			)
-		restore_output = run(
-			[
-				"cargo",
-				"nextest",
-				"run",
-				"-p",
-				"decodex-postgres",
-				"--features",
-				"test-support",
-				"--test",
-				"postgres_store",
-				"--run-ignored",
-				"all",
-				"--",
-				"postgres_store_restored_contract",
-				"--exact",
-			],
+		capture_restore_checkpoint(
+			restore_report,
+			"primary_restored",
+			restored_manifest_path,
+			RESTORE_DATABASE,
 			env,
 		)
-		managed_repository_restore_output = run_managed_repository_test(
-			"postgres_managed_repository_restored_contract", env
+		restored_quota_snapshot = quota_authority_snapshot(RESTORE_DATABASE, env)
+		if restored_quota_snapshot != live_quota_snapshot:
+			failures = restore_report["capture_failures"]
+			assert isinstance(failures, dict)
+			failures["primary_quota_state"] = (
+				"dump/restore changed immutable quota authority evidence"
+			)
+		restore_output = record_restore_production_check(
+			restore_report,
+			"primary_store_restored",
+			lambda: run(
+				[
+					"cargo", "nextest", "run", "-p", "decodex-postgres",
+					"--features", "test-support", "--test", "postgres_store",
+					"--run-ignored", "all", "--",
+					"postgres_store_restored_contract", "--exact",
+				],
+				env,
+			),
 		)
+		managed_repository_restore_output = record_restore_production_check(
+			restore_report,
+			"managed_repository_restored",
+			lambda: run_managed_repository_test(
+				"postgres_managed_repository_restored_contract", env
+			),
+		)
+		live_manifest = live_manifest_path.read_text(encoding="utf-8")
 		canary_manifest_path = work / "schema-manifest-role-setting-canary.json"
 		canary_markers = (role_setting_canary_guc, role_setting_secret_canary)
 		psql_secret(
@@ -2676,7 +2903,7 @@ def main() -> int:
 			)
 			if catalog_probe != "1":
 				raise TestFailure("secret-bearing role-setting canary is absent from the live catalog")
-			dump_schema_manifest(canary_manifest_path, env)
+			dump_schema_manifest(canary_manifest_path, RESTORE_DATABASE, env)
 			canary_manifest = canary_manifest_path.read_text(encoding="utf-8")
 			if json.loads(canary_manifest)["authority"] == json.loads(live_manifest)["authority"]:
 				raise TestFailure("secret-bearing role setting did not change configured authority")
@@ -2996,8 +3223,17 @@ def main() -> int:
 		final_source_binding = frozen_source_binding()
 		if final_source_binding != source_binding:
 			raise TestFailure("frozen PostgreSQL gate source binding changed during execution")
-		live_document = load_semantic_manifest(live_manifest_path)
-		restored_document = load_semantic_manifest(restored_manifest_path)
+		restore_failures = finalize_restore_report(restore_report)
+		if restore_failures:
+			raise TestFailure(
+				"XY-1353 structured PostgreSQL restore acceptance failed:\n"
+				+ "\n".join(f"- {failure}" for failure in restore_failures)
+			)
+		checkpoints = restore_report["checkpoints"]
+		assert isinstance(checkpoints, dict)
+		live_document = checkpoints["primary_post_command"]
+		restored_document = checkpoints["primary_restored"]
+		assert isinstance(live_document, dict) and isinstance(restored_document, dict)
 		expected_digests = {
 			"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
 			"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
@@ -3012,8 +3248,6 @@ def main() -> int:
 			).hexdigest()
 			for component in ("schema", "authority")
 		}
-		if actual_digests != expected_digests or restored_digests != expected_digests:
-			raise TestFailure("final PostgreSQL artifact digests differ from shipped authority")
 		migration_inventory = json.loads(psql(
 			DATABASE,
 			"SELECT pg_catalog.json_agg(pg_catalog.json_build_object("
@@ -3024,6 +3258,11 @@ def main() -> int:
 		artifact_evidence = {
 			"schema": "decodex/xy-1353-frozen-postgres-evidence/1",
 			"source": source_binding,
+			"database_bindings": {
+				name: document["binding"]
+				for name, document in checkpoints.items()
+				if isinstance(document, dict)
+			},
 			"migration_inventory": migration_inventory,
 			"configured_authority_inventory_rows": len(
 				json.loads(live_document["authority"])
@@ -3032,7 +3271,12 @@ def main() -> int:
 			"expected_digests": expected_digests,
 			"actual_digests": actual_digests,
 			"restored_digests": restored_digests,
-			"restore_parity": live_document == restored_document,
+			"sequence_state_receipt": live_document["sequence_state"],
+			"production_restore_checks": restore_report["production_checks"],
+			"restore_parity": all(
+				live_document[component] == restored_document[component]
+				for component in ("schema", "authority", "sequence_state")
+			),
 		}
 		print(migration_output)
 		print(initial_manifest_output)

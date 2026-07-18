@@ -406,14 +406,34 @@ async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn st
 #[cfg(feature = "test-support")]
 async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
 	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
-	let (migration, mut runtime) = separated_configs("DECODEX_TEST")?;
-	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
+	let expected_database = env::var("DECODEX_EXPECTED_MANIFEST_DATABASE")?;
+	let (mut migration, mut runtime) = separated_configs("DECODEX_TEST")?;
+	let migration_role =
+		migration.get_user().ok_or("migration role is absent")?.to_owned();
 	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
+	let migration_database =
+		migration.get_dbname().ok_or("migration database is absent")?.to_owned();
+	let runtime_database = runtime.get_dbname().ok_or("runtime database is absent")?.to_owned();
+	if migration_database != expected_database || runtime_database != expected_database {
+		return Err(format!(
+			"manifest database binding mismatch: requested={expected_database}, migration={migration_database}, runtime={runtime_database}"
+		)
+		.into());
+	}
 
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
 	PostgresStore::pin_session_search_path_fixture(&mut runtime);
 
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
+	let observed_runtime_database: String =
+		client.query_one("SELECT pg_catalog.current_database()", &[]).await?.get(0);
+	if observed_runtime_database != expected_database {
+		return Err(format!(
+			"runtime manifest connection selected {observed_runtime_database}, expected {expected_database}"
+		)
+		.into());
+	}
 	let schema: String =
 		client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await?.get(0);
 	let authority: String = client
@@ -423,18 +443,73 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		)
 		.await?
 		.get(0);
+	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
+	let migration_connection_task = tokio::spawn(migration_connection);
+	let observed_migration_database: String = migration_client
+		.query_one("SELECT pg_catalog.current_database()", &[])
+		.await?
+		.get(0);
+	if observed_migration_database != expected_database {
+		return Err(format!(
+			"migration manifest connection selected {observed_migration_database}, expected {expected_database}"
+		)
+		.into());
+	}
+	let sequence_state = manifest_sequence_state(&migration_client).await?;
 	let manifest = serde_json::to_string(&serde_json::json!({
 		"authority": authority,
+		"binding": {
+			"requested": expected_database,
+			"migration_url": migration_database,
+			"runtime_url": runtime_database,
+			"observed_migration": observed_migration_database,
+			"observed_runtime": observed_runtime_database,
+		},
 		"schema": schema,
+		"sequence_state": sequence_state,
 	}))?;
 
 	fs::write(path, manifest)?;
 
 	drop(client);
+	drop(migration_client);
 
 	connection_task.await??;
+	migration_connection_task.await??;
 
 	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+async fn manifest_sequence_state(
+	client: &Client,
+) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+	let mut state_rows = Vec::new();
+	let sequences = client
+		.query(
+			"SELECT sequence.schemaname, sequence.sequencename, \
+			 pg_catalog.format('SELECT last_value::bigint, is_called FROM %I.%I', \
+			 sequence.schemaname, sequence.sequencename) \
+			 FROM pg_catalog.pg_sequences AS sequence \
+			 WHERE sequence.schemaname = 'decodex' \
+			 ORDER BY sequence.schemaname, sequence.sequencename",
+			&[],
+		)
+		.await?;
+	for row in sequences {
+		let schema_name = row.get::<_, String>(0);
+		let sequence_name = row.get::<_, String>(1);
+		let query = row.get::<_, String>(2);
+		let state = client.query_one(&query, &[]).await?;
+		state_rows.push(serde_json::json!([
+			schema_name,
+			sequence_name,
+			state.get::<_, i64>(0),
+			state.get::<_, bool>(1),
+		]));
+	}
+
+	Ok(state_rows)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
