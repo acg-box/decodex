@@ -1483,6 +1483,7 @@ enum CheckTerminal {
 	NoEffect(GitHubNoEffect),
 }
 
+#[allow(clippy::large_enum_variant)] // Preserve the closed by-value reconciliation result.
 enum CheckPresence {
 	Absent(GitHubObservationSummary),
 	Terminal(CheckTerminal),
