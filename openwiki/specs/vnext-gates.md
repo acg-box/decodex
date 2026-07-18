@@ -219,6 +219,27 @@ retention; accepted Git/filesystem execution and operation-specific readback; th
 shared saga; provider and repository integration; and final digest/manifest agreement.
 No partial run, detailed early matrix, or result from another tree is acceptance evidence.
 
+#### XY-1353 deferred acceptance matrix
+
+The Manager runs this matrix once against the exact frozen candidate. Every receipt must bind the
+candidate HEAD and tree; no result from an owner branch or earlier integration tree is reusable.
+
+| Boundary | Deferred acceptance cases |
+| --- | --- |
+| Integration and regression | Exact XY-1349/XY-1350/XY-1351/XY-1352 stack ancestry and exports; one runtime composition; no duplicate migration, executor, saga, provider, receipt, or authority owner; rejected candidate trees remain absent. |
+| Pure protocol and schema | Canonical admission/allocation/operation descriptors; global operation-ID conflict and exact-repeat/no-dispatch behavior; Register/WorktreeReady/Commit evidence-kind separation; protocol clients remain isolated from PostgreSQL, filesystem, and provider authority. |
+| PostgreSQL authority | Fresh V13 migration and rollback; exact ledger order; runtime ACL/function/trigger/catalog closure; compare-and-swap, immutable evidence, receipt provenance, retention, concurrency, populated dump/restore, and schema/authority digest agreement. |
+| Local repository effects | Ordinary and linked repositories; pinned executable/config/environment authority; read-only allocation acquisition; reciprocal registration; unchanged ready head; exact one-head commit advance; dirty, stale, foreign, replaced, symlinked, occupied, rollback, lost-response, and ambiguous readback. |
+| Saga and restart faults | COMMIT acknowledgement loss; receipt consumption at every dispatch boundary; dispatch serialization race; crash before/during/after effect and reconciliation; bounded restart enumeration; readback-only recovery; no receipt reconstruction, replay, adoption, repair, or duplicate effect. |
+| Validation supervision | Exact source fingerprint before/after; success, nonzero exit, signal, timeout, cancellation, output limits, drain bounds, descendant teardown, spawn/capture failure, and concurrent protected-worktree mutation. Same-UID hostile-code confinement is not claimed. |
+| GitHub effects | Explicit provider/repository/head/base/marker identities; create/update duplicates; lost mutation response; complete multi-page scans; cursor/snapshot/page drift; absent, stale, externally changed, ambiguous, and provider-fault outcomes; required check-run completeness; no CWD/local-Git inference or live mutation without later provider authority. |
+| End to end | PostgreSQL admission and allocation through Register, WorktreeReady, Commit, supervised validation, sealed GitHub reconciliation, daemon restart, and authoritative readback on one exact fixture; every failure remains unavailable, pending, or ambiguous rather than successful or replayable. |
+| Frozen artifacts | One final migration inventory, configured-authority inventory, schema manifest, expected digests, and source/tree binding produced by the canonical unified PostgreSQL gate; compare every expected/actual digest in the same invocation and preserve restore parity. |
+
+There is no separate checked-in XY-1353 manifest/digest generator. The existing canonical
+PostgreSQL harness produces and verifies those inventories only as part of the unified frozen-tree
+gate, so source-freeze work must not invent a second generator or execute the harness early.
+
 Falsifiers are evaluated in this fixed priority order: architecture, then
 stability/recoverability, security/authority, verification, integrity, and performance.
 An earlier class cannot be traded away for a later-class success.

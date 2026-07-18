@@ -485,6 +485,21 @@ PostgreSQL-administrator boundary and may redefine authority; V1 has no automati
 rollback detection. XY-1349 solely owns V13 persistence, XY-1350 owns only read-only acquisition
 and executor/readback mechanics against this contract, and XY-1351 owns the first shared saga path.
 
+The production runtime composes those three accepted owners exactly once during daemon bootstrap.
+When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
+same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol
+listener can serve. Executor-open or restart-reconciliation failure leaves the repository runtime
+unavailable; it does not create a second store, dispatch path, retry, or fallback. Foreground
+admission, allocation, Register, WorktreeReady, and Commit enter through this same retained runtime
+composition. The protocol still exposes no managed-repository mutation route in this gate.
+
+GitHub pull-request and check effects are a separate sealed provider boundary in
+`crates/decodex-runtime/src/github_effects.rs`. It requires explicit provider/repository/revision
+authority, complete pagination, durable markers, and positive readback, but XY-1353 does not invent
+a live credentialed provider or persistence owner. The later Reviewer/landing owner must connect
+that boundary to PostgreSQL effect lineage and an explicitly authorized provider; until then there
+is no live GitHub mutation route.
+
 Legacy `command_receipts` retain the receipt-first fenced-claim protocol only for unrelated blob,
 filesystem, external, or long-running sagas whose point of no return cannot fit in one PostgreSQL
 transaction; managed-repository operations do not use this protocol. Such a flow commits an

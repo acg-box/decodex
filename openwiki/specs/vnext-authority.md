@@ -538,6 +538,14 @@ Goal, and old operator transport after replacement behavior and gates exist; do 
 dual writes, dual reads, or compatibility facades. Radar, Publisher, and the static site
 may remain outside the runtime until explicitly adopted.
 
+PR #1092 is closed, unmerged, and frozen at historical head
+`32a0589b94987f265013ffd3c8b322f9c57f5097`. Its Lane Authority v2 identity, Linear scope,
+SQLite registry, lane/effect ledger, and C1-C7 orchestration are obsolete. The only relevant
+behavior classes are already replaced by vNext owners: explicit Project/repository identity by
+the Project and managed-repository admission contracts, frozen admitted-base and worktree
+continuity by the V13/executor/saga stack, and paginated positive GitHub readback by the sealed
+GitHub effect boundary. It contributes no unique production behavior to the vNext candidate.
+
 ## V1 non-goals
 
 - Pi as a second runtime; per-run/per-agent `CODEX_HOME`; Codex Project sync.
