@@ -4,6 +4,8 @@
 //! post-COMMIT affine receipt through exactly one effect attempt, operation-specific readback,
 //! and durable reconciliation. Restart enters below the receipt boundary and is readback-only.
 
+#![allow(missing_docs)] // Type-level contracts carry the architecture; avoid variant restatement.
+
 use decodex_core::{
 	BeginCommitCommand, BeginRegistrationCommand, BeginWorktreeReadyCommand,
 	CanonicalOperationPayload, ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase,

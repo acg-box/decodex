@@ -368,6 +368,7 @@ impl ManagedRepositoryExecutor {
 	}
 
 	/// Consume the exact H-to-H-prime Commit attempt using only the service-private index.
+	#[allow(clippy::too_many_lines)] // One closed fail-closed commit authority sequence.
 	pub(crate) fn execute_commit(
 		&mut self,
 		receipt: RepositoryDispatchReceipt,
@@ -754,6 +755,7 @@ impl ManagedRepositoryExecutor {
 	}
 
 	/// Restart-safe Commit readback. It observes one exact ref/commit/content advance only.
+	#[allow(clippy::too_many_lines)] // One closed exact commit readback sequence.
 	pub(crate) fn read_commit(
 		&self,
 		request: &CommitReadbackRequest,
