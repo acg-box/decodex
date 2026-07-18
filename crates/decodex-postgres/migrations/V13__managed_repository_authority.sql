@@ -131,8 +131,8 @@ CREATE TABLE decodex.repository_operations (
 		AND payload->>'expected_head' COLLATE pg_catalog."C" !~ '[[:cntrl:]]'
 		AND CASE kind
 			WHEN 'register' THEN
-				pg_catalog.jsonb_object_length(payload) = 3
-				AND payload ?& ARRAY['kind','expected_head','target']
+				payload ?& ARRAY['kind','expected_head','target']
+				AND payload - ARRAY['kind','expected_head','target'] = '{}'::jsonb
 				AND payload->'target' = pg_catalog.jsonb_build_object(
 					'repository_id', repository_id,
 					'worktree_id', worktree_id,
@@ -140,21 +140,23 @@ CREATE TABLE decodex.repository_operations (
 					'worktree_absolute_path', worktree_absolute_path
 				)
 			WHEN 'worktree_ready' THEN
-				pg_catalog.jsonb_object_length(payload) = 3
-				AND payload ?& ARRAY['kind','expected_head','policy']
+				payload ?& ARRAY['kind','expected_head','policy']
+				AND payload - ARRAY['kind','expected_head','policy'] = '{}'::jsonb
 				AND payload->>'policy' = 'exact_clean_worktree'
 			WHEN 'commit' THEN
-				pg_catalog.jsonb_object_length(payload) = 4
-				AND payload ?& ARRAY['kind','expected_head','next_head','intent']
+				payload ?& ARRAY['kind','expected_head','next_head','intent']
+				AND payload - ARRAY['kind','expected_head','next_head','intent'] = '{}'::jsonb
 				AND pg_catalog.octet_length(payload->>'next_head') BETWEEN 1 AND 256
 				AND payload->>'next_head' = pg_catalog.btrim(payload->>'next_head')
 				AND payload->>'next_head' COLLATE pg_catalog."C" !~ '[[:cntrl:]]'
 				AND payload->>'next_head' <> payload->>'expected_head'
 				AND pg_catalog.jsonb_typeof(payload->'intent') = 'object'
-				AND pg_catalog.jsonb_object_length(payload->'intent') = 5
 				AND payload->'intent' ?& ARRAY[
 					'target_reference','tree','message','author','committer'
 				]
+				AND (payload->'intent') - ARRAY[
+					'target_reference','tree','message','author','committer'
+				] = '{}'::jsonb
 				AND pg_catalog.octet_length(payload#>>'{intent,target_reference}') BETWEEN 1 AND 256
 				AND pg_catalog.octet_length(payload#>>'{intent,tree}') BETWEEN 1 AND 256
 				AND pg_catalog.octet_length(payload#>>'{intent,message}') BETWEEN 1 AND 16384
@@ -165,14 +167,18 @@ CREATE TABLE decodex.repository_operations (
 				AND payload#>>'{intent,message}' !~ E'\\r'
 				AND pg_catalog.jsonb_typeof(payload#>'{intent,author}') = 'object'
 				AND pg_catalog.jsonb_typeof(payload#>'{intent,committer}') = 'object'
-				AND pg_catalog.jsonb_object_length(payload#>'{intent,author}') = 4
-				AND pg_catalog.jsonb_object_length(payload#>'{intent,committer}') = 4
 				AND payload#>'{intent,author}' ?& ARRAY[
 					'name','email','timestamp_seconds','utc_offset_minutes'
 				]
+				AND (payload#>'{intent,author}') - ARRAY[
+					'name','email','timestamp_seconds','utc_offset_minutes'
+				] = '{}'::jsonb
 				AND payload#>'{intent,committer}' ?& ARRAY[
 					'name','email','timestamp_seconds','utc_offset_minutes'
 				]
+				AND (payload#>'{intent,committer}') - ARRAY[
+					'name','email','timestamp_seconds','utc_offset_minutes'
+				] = '{}'::jsonb
 				AND pg_catalog.octet_length(payload#>>'{intent,author,name}') BETWEEN 1 AND 256
 				AND pg_catalog.octet_length(payload#>>'{intent,author,email}') BETWEEN 1 AND 256
 				AND pg_catalog.octet_length(payload#>>'{intent,committer,name}') BETWEEN 1 AND 256
@@ -388,6 +394,12 @@ CREATE TABLE decodex.managed_repositories (
 	updated_at timestamptz NOT NULL DEFAULT pg_catalog.clock_timestamp(),
 	CONSTRAINT managed_repositories_admission_project_fk FOREIGN KEY (repository_id, project_id)
 		REFERENCES decodex.repository_admissions(repository_id, project_id) ON DELETE RESTRICT,
+	CONSTRAINT managed_repositories_ids_canonical CHECK (
+		allocation_id::text COLLATE pg_catalog."C" ~
+			'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+		AND worktree_id::text COLLATE pg_catalog."C" ~
+			'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+	),
 	CONSTRAINT managed_repositories_authority_tip_fk
 		FOREIGN KEY (repository_id, generation, authority_tip)
 		REFERENCES decodex.repository_authority_transitions(
@@ -630,45 +642,206 @@ RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, decodex
 AS $$
+DECLARE target_operation_id uuid;
+DECLARE target_repository_id uuid;
+DECLARE target_evidence_id uuid;
+DECLARE allocation_entry boolean := false;
+DECLARE terminal_entry boolean := false;
 BEGIN
 	IF TG_TABLE_NAME = 'repository_authority_transitions' THEN
 		IF NOT EXISTS (SELECT 1 FROM decodex.managed_repositories repository
 			WHERE repository.repository_id = NEW.repository_id
 				AND repository.generation = NEW.generation
-				AND repository.authority_tip = NEW.authority_tip)
+				AND repository.authority_tip = NEW.authority_tip
+				AND repository.phase = NEW.phase
+				AND repository.ambiguity IS NOT DISTINCT FROM NEW.ambiguity
+				AND repository.head = NEW.head
+				AND repository.active_operation_id IS NOT DISTINCT FROM NEW.active_operation_id)
 		THEN
 			RAISE EXCEPTION 'repository authority transition has no exact current projection'
 				USING ERRCODE = '23514', CONSTRAINT = 'repository_history_completeness';
 		END IF;
-	ELSIF NEW.operation_id IS NULL THEN
-		IF NOT EXISTS (SELECT 1 FROM decodex.repository_authority_transitions transition
-			JOIN decodex.managed_repositories repository USING(repository_id)
-			WHERE transition.repository_id = NEW.repository_id
-				AND transition.generation = 1 AND transition.transition_kind = 'allocated'
-				AND transition.evidence_id = NEW.evidence_id
-				AND repository.generation = 1 AND repository.authority_tip = transition.authority_tip)
+		IF NEW.transition_kind = 'allocated' THEN
+			allocation_entry := true;
+			target_repository_id := NEW.repository_id;
+			target_evidence_id := NEW.evidence_id;
+		ELSIF NEW.transition_kind IN ('register_completed','worktree_ready_completed',
+			'commit_completed','operation_ambiguous')
 		THEN
-			RAISE EXCEPTION 'allocation evidence has no complete allocation transition'
-				USING ERRCODE = '23514', CONSTRAINT = 'repository_history_completeness';
+			terminal_entry := true;
+			target_operation_id := NEW.operation_id;
+			target_repository_id := NEW.repository_id;
+			target_evidence_id := NEW.evidence_id;
+		ELSE
+			RETURN NULL;
 		END IF;
+	ELSIF TG_TABLE_NAME = 'repository_operation_evidence' THEN
+		IF NEW.operation_id IS NULL THEN
+			allocation_entry := true;
+		ELSE
+			terminal_entry := true;
+			target_operation_id := NEW.operation_id;
+		END IF;
+		target_repository_id := NEW.repository_id;
+		target_evidence_id := NEW.evidence_id;
+	ELSIF TG_TABLE_NAME = 'repository_operation_results' THEN
+		terminal_entry := true;
+		target_operation_id := NEW.operation_id;
+		target_repository_id := NEW.repository_id;
+		target_evidence_id := NEW.evidence_id;
+	ELSIF TG_TABLE_NAME = 'repository_operation_events' THEN
+		IF NEW.ordinal <> 2 THEN
+			RETURN NULL;
+		END IF;
+		terminal_entry := true;
+		target_operation_id := NEW.operation_id;
+		target_repository_id := NEW.repository_id;
+		target_evidence_id := NEW.evidence_id;
 	ELSE
-		IF NOT EXISTS (SELECT 1 FROM decodex.repository_operation_results result
-			JOIN decodex.repository_operation_events event
-				ON event.operation_id = result.operation_id AND event.ordinal = 2
+		RAISE EXCEPTION 'unexpected repository history completeness trigger source'
+			USING ERRCODE = '23514', CONSTRAINT = 'repository_history_completeness';
+	END IF;
+
+	IF allocation_entry THEN
+		IF NOT EXISTS (
+			SELECT 1
+			FROM decodex.repository_operation_evidence evidence
+			JOIN decodex.repository_admissions admission
+				ON admission.repository_id = evidence.repository_id
 			JOIN decodex.repository_authority_transitions transition
-				ON transition.operation_id = result.operation_id
-				AND transition.evidence_id = result.evidence_id
+				ON transition.repository_id = evidence.repository_id
+				AND transition.generation = 1
+				AND transition.evidence_id = evidence.evidence_id
 			JOIN decodex.managed_repositories repository
 				ON repository.repository_id = transition.repository_id
 				AND repository.generation = transition.generation
 				AND repository.authority_tip = transition.authority_tip
-			WHERE result.operation_id = NEW.operation_id
-				AND result.repository_id = NEW.repository_id
-				AND result.evidence_id = NEW.evidence_id
-				AND event.evidence_id = NEW.evidence_id AND event.state = result.state
-				AND repository.active_operation_id IS NULL)
+			WHERE evidence.evidence_id = target_evidence_id
+				AND evidence.repository_id = target_repository_id
+				AND evidence.operation_id IS NULL AND evidence.kind = 'allocation'
+				AND evidence.evidence = pg_catalog.jsonb_build_object(
+					'classification','positive',
+					'evidence_id',evidence.evidence_id,
+					'admitted_identity',admission.admitted_identity,
+					'admitted_base',admission.admitted_base,
+					'repository_absolute_path',admission.repository_absolute_path,
+					'vacant_worktree_absolute_path',repository.worktree_absolute_path
+				)
+				AND transition.transition_kind = 'allocated'
+				AND transition.prior_generation IS NULL
+				AND transition.prior_authority_tip IS NULL
+				AND transition.operation_id IS NULL
+				AND transition.phase = 'allocated' AND transition.ambiguity IS NULL
+				AND transition.head = admission.admitted_base
+				AND transition.active_operation_id IS NULL
+				AND repository.project_id = admission.project_id
+				AND repository.phase = 'allocated' AND repository.ambiguity IS NULL
+				AND repository.head = admission.admitted_base
+				AND repository.active_operation_id IS NULL
+				AND pg_catalog.rtrim(repository.worktree_absolute_path, '/')
+					<> pg_catalog.rtrim(admission.repository_absolute_path, '/')
+		) THEN
+			RAISE EXCEPTION 'allocation history has no exact admitted generation-one cluster'
+				USING ERRCODE = '23514', CONSTRAINT = 'repository_history_completeness';
+		END IF;
+		RETURN NULL;
+	END IF;
+
+	IF terminal_entry THEN
+		IF NOT EXISTS (
+			SELECT 1
+			FROM decodex.repository_operations operation
+			JOIN decodex.repository_operation_evidence evidence
+				ON evidence.operation_id = operation.operation_id
+				AND evidence.repository_id = operation.repository_id
+			JOIN decodex.repository_operation_results result
+				ON result.operation_id = operation.operation_id
+				AND result.repository_id = operation.repository_id
+				AND result.evidence_id = evidence.evidence_id
+			JOIN decodex.repository_operation_events initial_event
+				ON initial_event.operation_id = operation.operation_id
+				AND initial_event.ordinal = 1
+				AND initial_event.repository_id = operation.repository_id
+			JOIN decodex.repository_operation_events terminal_event
+				ON terminal_event.operation_id = operation.operation_id
+				AND terminal_event.ordinal = 2
+				AND terminal_event.repository_id = operation.repository_id
+				AND terminal_event.evidence_id = evidence.evidence_id
+				AND terminal_event.state = result.state
+			JOIN decodex.repository_authority_transitions preparation
+				ON preparation.repository_id = operation.repository_id
+				AND preparation.generation = operation.expected_generation + 1
+				AND preparation.operation_id = operation.operation_id
+			JOIN decodex.repository_authority_transitions terminal_transition
+				ON terminal_transition.repository_id = operation.repository_id
+				AND terminal_transition.generation = operation.expected_generation + 2
+				AND terminal_transition.operation_id = operation.operation_id
+				AND terminal_transition.evidence_id = evidence.evidence_id
+				AND terminal_transition.prior_generation = preparation.generation
+				AND terminal_transition.prior_authority_tip = preparation.authority_tip
+			JOIN decodex.managed_repositories repository
+				ON repository.repository_id = terminal_transition.repository_id
+				AND repository.generation = terminal_transition.generation
+				AND repository.authority_tip = terminal_transition.authority_tip
+			WHERE operation.operation_id = target_operation_id
+				AND operation.repository_id = target_repository_id
+				AND evidence.evidence_id = target_evidence_id
+				AND evidence.kind = CASE operation.kind
+					WHEN 'register' THEN 'registration'::decodex.repository_evidence_kind
+					WHEN 'worktree_ready' THEN 'worktree_ready'::decodex.repository_evidence_kind
+					WHEN 'commit' THEN 'commit'::decodex.repository_evidence_kind
+				END
+				AND initial_event.state = 'possibly_effected'
+				AND initial_event.evidence_id IS NULL
+				AND preparation.transition_kind = CASE operation.kind
+					WHEN 'register' THEN 'register_prepared'::decodex.repository_authority_transition_kind
+					WHEN 'worktree_ready' THEN 'worktree_ready_prepared'::decodex.repository_authority_transition_kind
+					WHEN 'commit' THEN 'commit_prepared'::decodex.repository_authority_transition_kind
+				END
+				AND preparation.evidence_id IS NULL
+				AND preparation.active_operation_id = operation.operation_id
+				AND preparation.head = operation.payload->>'expected_head'
+				AND terminal_transition.active_operation_id IS NULL
+				AND repository.active_operation_id IS NULL
+				AND repository.project_id = operation.project_id
+				AND repository.allocation_id = operation.allocation_id
+				AND repository.worktree_id = operation.worktree_id
+				AND repository.worktree_absolute_path = operation.worktree_absolute_path
+				AND repository.phase = terminal_transition.phase
+				AND repository.ambiguity IS NOT DISTINCT FROM terminal_transition.ambiguity
+				AND repository.head = terminal_transition.head
+				AND CASE result.state
+					WHEN 'ambiguous' THEN
+						terminal_transition.transition_kind = 'operation_ambiguous'
+						AND terminal_transition.phase = 'ambiguous'
+						AND terminal_transition.ambiguity = result.ambiguity
+						AND terminal_transition.head = operation.payload->>'expected_head'
+					WHEN 'completed' THEN
+						terminal_transition.transition_kind = CASE operation.kind
+							WHEN 'register' THEN 'register_completed'::decodex.repository_authority_transition_kind
+							WHEN 'worktree_ready' THEN 'worktree_ready_completed'::decodex.repository_authority_transition_kind
+							WHEN 'commit' THEN 'commit_completed'::decodex.repository_authority_transition_kind
+						END
+						AND terminal_transition.ambiguity IS NULL
+						AND CASE operation.kind
+							WHEN 'register' THEN result.result = pg_catalog.jsonb_build_object(
+								'kind','registered','head',operation.payload->>'expected_head'
+							) AND terminal_transition.phase = 'registered'
+								AND terminal_transition.head = operation.payload->>'expected_head'
+							WHEN 'worktree_ready' THEN result.result = pg_catalog.jsonb_build_object(
+								'kind','worktree_ready','head',operation.payload->>'expected_head'
+							) AND terminal_transition.phase = 'ready'
+								AND terminal_transition.head = operation.payload->>'expected_head'
+							WHEN 'commit' THEN result.result = pg_catalog.jsonb_build_object(
+								'kind','committed','from',operation.payload->>'expected_head',
+								'to',operation.payload->>'next_head'
+							) AND terminal_transition.phase = 'ready'
+								AND terminal_transition.head = operation.payload->>'next_head'
+						END
+				END
+		)
 		THEN
-			RAISE EXCEPTION 'terminal repository evidence has no complete reconciliation'
+			RAISE EXCEPTION 'terminal repository history has no exact reconciliation cluster'
 				USING ERRCODE = '23514', CONSTRAINT = 'repository_history_completeness';
 		END IF;
 	END IF;
@@ -677,6 +850,14 @@ END
 $$;
 CREATE CONSTRAINT TRIGGER repository_operation_evidence_complete
 AFTER INSERT ON decodex.repository_operation_evidence
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION decodex.enforce_repository_history_completeness();
+CREATE CONSTRAINT TRIGGER repository_operation_results_complete
+AFTER INSERT ON decodex.repository_operation_results
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION decodex.enforce_repository_history_completeness();
+CREATE CONSTRAINT TRIGGER repository_operation_events_complete
+AFTER INSERT ON decodex.repository_operation_events
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION decodex.enforce_repository_history_completeness();
 CREATE CONSTRAINT TRIGGER repository_authority_transitions_complete
