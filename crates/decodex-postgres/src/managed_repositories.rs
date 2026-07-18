@@ -95,6 +95,7 @@ impl RepositoryDispatchReceipt {
 }
 
 /// Result of preparing a durably fenced repository effect.
+#[allow(clippy::large_enum_variant)] // Preserve the stable by-value adapter result contract.
 pub enum RepositoryPreparationOutcome {
 	/// A new global assignment committed and yielded one fresh affine receipt.
 	Prepared {
@@ -108,6 +109,7 @@ pub enum RepositoryPreparationOutcome {
 }
 
 /// Result of serializing one affine receipt against every terminal reconciliation path.
+#[allow(missing_docs)] // The type-level contract and field names define the private payloads.
 pub enum RepositoryDispatchFenceOutcome<T> {
 	/// The exact durable fence was current while the receipt was consumed and dispatched.
 	Authorized {
@@ -122,6 +124,7 @@ pub enum RepositoryDispatchFenceOutcome<T> {
 }
 
 /// Readback-only restart work. No variant can authorize an external effect.
+#[allow(missing_docs)] // Variant names are the operation-specific readback contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RepositoryReadbackWork {
 	Registration(RegistrationReadbackRequest),
@@ -130,6 +133,7 @@ pub enum RepositoryReadbackWork {
 }
 
 /// Operation-specific evidence produced while holding the shared dispatch/reconciliation lock.
+#[allow(missing_docs)] // Variant names are the operation-specific evidence contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RepositoryReadbackEvidence {
 	Registration(RegistrationEvidence),
@@ -151,6 +155,7 @@ pub struct RepositoryRestartState {
 }
 
 /// Result of operation-specific reconciliation.
+#[allow(clippy::large_enum_variant, missing_docs)] // Preserve stable by-value authority facts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RepositoryReconciliationOutcome {
 	/// Readback was temporarily unavailable; durable authority remains possibly effected.
@@ -673,7 +678,7 @@ async fn finish_reconciliation(
 	let Some(terminal) = terminal else {
 		return Ok(RepositoryReconciliationOutcome::Pending(operation));
 	};
-	let evidence_id = terminal.evidence_id(&transaction).await?;
+	let evidence_id = terminal.evidence_id(transaction).await?;
 	transaction
 		.execute(
 			"INSERT INTO decodex.repository_operation_evidence(
@@ -721,10 +726,10 @@ async fn finish_reconciliation(
 			],
 		)
 		.await?;
-	let next_tip = issue_authority_tip(&transaction).await?;
+	let next_tip = issue_authority_tip(transaction).await?;
 	let next_generation = next_generation(facts.checkpoint.generation)?;
 	insert_transition(
-		&transaction,
+		transaction,
 		&facts,
 		next_generation,
 		&next_tip,
@@ -760,7 +765,7 @@ async fn finish_reconciliation(
 	if updated != 1 {
 		return Err(StoreError::ManagedRepositoryCompareAndSwapConflict);
 	}
-	let repository = load_facts(&transaction, &operation.descriptor.repository_id, false)
+	let repository = load_facts(transaction, &operation.descriptor.repository_id, false)
 		.await?
 		.ok_or_else(|| incompatible("reconciled repository projection disappeared"))?;
 	Ok(RepositoryReconciliationOutcome::Terminal { operation: terminal.operation, repository })
