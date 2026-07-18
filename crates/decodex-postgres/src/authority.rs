@@ -31,7 +31,7 @@ const WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION: &str =
 	include_str!("../migrations/V19__waiting_usage_wake_time_authority.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 156] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 156] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -4027,6 +4027,51 @@ async fn verify_execution_path_contract(client: &Client) -> Result<(), StoreErro
 	Ok(())
 }
 
+fn function_is_security_definer(function_name: &str) -> bool {
+	matches!(
+		function_name,
+		"issue_history_cursor"
+			| "prune_history_snapshots"
+			| "capture_history_item_version"
+			| "bootstrap_advisor"
+			| "create_project"
+			| "transition_project"
+			| "create_policy"
+			| "accept_policy_revision"
+			| "create_program"
+			| "update_program_context"
+			| "transition_program"
+			| "create_objective"
+			| "transition_objective"
+			| "achieve_objective"
+			| "bootstrap_role_profiles_exact"
+			| "update_role_profile_exact"
+			| "create_runtime_session_exact"
+			| "transition_runtime_session_exact"
+			| "create_work_item_exact"
+			| "update_work_item_exact"
+			| "assess_work_item_readiness_exact"
+			| "accept_work_item_exact"
+			| "guard_work_item_running_resume"
+			| "apply_managed_run_safety_input_exact"
+			| "replace_routing_policy_exact"
+			| "publish_routing_evidence_exact"
+			| "resolve_routing_snapshot_exact"
+			| "prepare_codex_experiment_exact"
+			| "mark_codex_experiment_creation_possible_exact"
+			| "bind_codex_experiment_thread_exact"
+			| "record_codex_experiment_observation_exact"
+			| "route_account_exact"
+			| "plan_continuation_exact"
+			| "read_continuation_plan_exact"
+			| "register_waiting_usage_wake_exact"
+			| "claim_due_waiting_usage_wake_exact"
+			| "fire_waiting_usage_wake_exact"
+			| "cancel_waiting_usage_wake_exact"
+			| "read_waiting_usage_wake_transition_exact"
+	)
+}
+
 async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 	let actual_count: i64 = client
 		.query_one(
@@ -4053,7 +4098,7 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 		));
 	}
 
-	for contract in FUNCTION_CONTRACTS {
+	for contract in &FUNCTION_CONTRACTS {
 		let Some(row) =
 			client.query_opt(FUNCTION_CONTRACT_SQL, &[&contract.lookup_signature]).await?
 		else {
@@ -4076,48 +4121,7 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 		let installed_source: String = row.get(12);
 		let executable: bool = row.get(13);
 		let public_executable: bool = row.get(14);
-		let expected_security_definer = matches!(
-			contract.name,
-			"issue_history_cursor"
-				| "prune_history_snapshots"
-				| "capture_history_item_version"
-				| "bootstrap_advisor"
-				| "create_project"
-				| "transition_project"
-				| "create_policy"
-				| "accept_policy_revision"
-				| "create_program"
-				| "update_program_context"
-				| "transition_program"
-				| "create_objective"
-				| "transition_objective"
-				| "achieve_objective"
-				| "bootstrap_role_profiles_exact"
-				| "update_role_profile_exact"
-				| "create_runtime_session_exact"
-				| "transition_runtime_session_exact"
-				| "create_work_item_exact"
-				| "update_work_item_exact"
-				| "assess_work_item_readiness_exact"
-				| "accept_work_item_exact"
-				| "guard_work_item_running_resume"
-				| "apply_managed_run_safety_input_exact"
-				| "replace_routing_policy_exact"
-				| "publish_routing_evidence_exact"
-				| "resolve_routing_snapshot_exact"
-				| "prepare_codex_experiment_exact"
-				| "mark_codex_experiment_creation_possible_exact"
-				| "bind_codex_experiment_thread_exact"
-				| "record_codex_experiment_observation_exact"
-				| "route_account_exact"
-				| "plan_continuation_exact"
-				| "read_continuation_plan_exact"
-				| "register_waiting_usage_wake_exact"
-				| "claim_due_waiting_usage_wake_exact"
-				| "fire_waiting_usage_wake_exact"
-				| "cancel_waiting_usage_wake_exact"
-				| "read_waiting_usage_wake_transition_exact"
-		);
+		let expected_security_definer = function_is_security_definer(contract.name);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
 
@@ -4139,7 +4143,7 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 			));
 		}
 
-		let expected_source = canonical_function_source(&contract).ok_or_else(|| {
+		let expected_source = canonical_function_source(contract).ok_or_else(|| {
 			StoreError::Incompatible("unknown canonical PostgreSQL function contract".into())
 		})?;
 
@@ -4430,7 +4434,7 @@ mod tests {
 
 		let mut lookup_signatures = HashSet::new();
 
-		for contract in FUNCTION_CONTRACTS {
+		for contract in &FUNCTION_CONTRACTS {
 			assert!(lookup_signatures.insert(contract.lookup_signature));
 			assert_eq!(
 				[
@@ -4454,7 +4458,7 @@ mod tests {
 				1
 			);
 
-			let source = super::canonical_function_source(&contract)
+			let source = super::canonical_function_source(contract)
 				.expect("shipped function has a canonical migration body");
 
 			assert!(source.starts_with('\n'));
