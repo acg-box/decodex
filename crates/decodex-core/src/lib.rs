@@ -5,6 +5,7 @@ mod agent;
 mod blob;
 mod cache;
 mod config;
+mod continuation;
 mod conversation;
 mod experiment;
 mod identity;
@@ -44,6 +45,10 @@ pub use self::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
 		MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig, ProfileName,
 		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
+	},
+	continuation::{
+		ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind,
+		ContinuationRejection, SameThreadContinuationEvidence,
 	},
 	conversation::{
 		AccountSnapshot, ArtifactId, ArtifactReference, ArtifactStatus, ContextPack,

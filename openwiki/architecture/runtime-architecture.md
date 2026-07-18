@@ -511,8 +511,9 @@ rollback detection. XY-1349 solely owns V13 persistence, XY-1350 owns only read-
 and executor/readback mechanics against this contract, and XY-1351 owns the first shared saga path.
 
 V13 is accepted. The routing migration order is XY-1356/V14 complete policy and candidate-set
-authority, XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions; no
-V17 is reserved. XY-1361 composes these boundaries only with production dispatch disabled. The
+authority, XY-1358/V15 causal experiment authority, XY-1359/V16 atomic routing decisions, then
+XY-1360/V17 continuation authority after source inspection proved durable atomic fallback state was
+required. XY-1361 composes these boundaries only with production dispatch disabled. The
 existing ManagedRun barrier, submitted-turn receipt, and repository/worktree/Git/artifact
 reconciliation authorities retain ambiguous-effect ownership; routing never reclassifies or
 replays those effects.
@@ -528,6 +529,28 @@ separate. Missing or inexact provenance cannot establish eligibility. The adapte
 the database result back through the pure kernel. No runtime or application composition root
 imports this command, and digest regeneration plus executable validation remain deferred to the
 integrated freeze.
+
+V17 consumes only one persisted selected V16 decision identity plus its expected ManagedRun
+revision. PostgreSQL derives the selected account, V14 snapshot, source RuntimeSession,
+Conversation, RoleProfile snapshot, and evidence universe; callers cannot provide candidates,
+policy, exclusions, compatibility, or selection. One qualifying same-thread path requires exactly
+one canonical V15 experiment lineage whose bound thread equals the source RuntimeSession thread,
+a fresh positive exact `thread_read_item`, exact selected account/revision/build/RoleProfile facts,
+and supported initialize/account-read/thread-read/paginated-history evidence from the exact V14
+profile. Unknown, stale, negative, mismatched, incomplete, or ambiguous evidence selects the
+fallback path rather than inferring compatibility.
+
+The fallback path validates the complete deterministic Context-Pack encoding and manifest, stages
+any content-addressed bytes under the existing blob coordination, then inserts its Context Pack,
+selected-account snapshot, starting RuntimeSession, continuation plan, audit rows, outbox rows, and
+exact receipt in one PostgreSQL transaction. A unique decision link makes both paths mutually
+exclusive and exactly once across keys and replay. The plan snapshots the accepted ManagedRun
+effect barrier and submitted-turn receipt count, while `replay_permitted` and `dispatch_enabled`
+are structurally false. No ManagedRun identity or Conversation identity changes, no turn is
+submitted or replayed, and no runtime, protocol, daemon, CLI, scheduler, credential, Codex, or UI
+composition root imports the V17 adapter. Schema and configured-authority digest regeneration and
+all executable acceptance remain deferred to the single integrated post-freeze gate, so ordinary
+runtime readiness continues to fail closed on this moving-core tree.
 
 No production crate or application imports or constructs a V15 experiment execution root. The
 mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
