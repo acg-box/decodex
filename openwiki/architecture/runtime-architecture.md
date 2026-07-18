@@ -277,6 +277,16 @@ fresh exact PostgreSQL pre- and post-observations for the same manually selected
 inventory, automatic selector, weighting, stickiness, fallback, quota wake, or live routing API;
 XY-1304 remains the separate failed dispatch gate.
 
+The accepted XY-1355 target adds no executable path here. V14 will make PostgreSQL the sole owner
+of a revisioned complete routing-policy snapshot over the entire account inventory, canonical
+user order, explicit per-member disposition, sticky affinity plus source RuntimeSession revision,
+account/profile/build compatibility, exact evidence revisions, and required-capability
+applicability. Runtime and callers cannot supply that universe. The core routing component will be
+a pure kernel over the database-produced snapshot; V16 will atomically persist its decision and
+complete evidence linkage. Codex remains a positive-evidence adapter. An unknown required
+capability blocks, while an empty required-capability set makes unknown plugin inventory non-
+applicable rather than positive readiness evidence.
+
 V1.2 also carries `get_conversation_history`. Its request contains a logical Conversation UUID,
 an optional opaque PostgreSQL-issued Conversation-bound snapshot cursor, and a page size capped at
 eight on the wire (the repository's internal cap is 100). PostgreSQL assigns append-only
@@ -369,8 +379,9 @@ insert/update/delete poisoning while the deferred parent reference prevents orph
 rollover/fallback rows are proposals only: their schema
 forces dispatch disabled. This slice exposes no account selection, live turn start/resume/steer,
 automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake; XY-1304 remains the
-separate failed enablement gate. XY-1304 owns experiment creation and positive observation
-acquisition; XY-1276 owns production Quick Task creation. XY-1272 owns only PostgreSQL
+separate failed enablement gate. XY-1358/V15 owns experiment creation and positive-only observation
+authority; XY-1360 owns continuation and atomic Context-Pack fallback; XY-1362 owns scheduler wake;
+XY-1276 owns production Quick Task creation. XY-1272 owns only PostgreSQL
 configured-principal and ACL authority closure against V8. XY-1345 owns accepted exact-command
 authority/prototype evidence, XY-1346 owns expected V9 exact receipts plus RoleProfiles, and
 re-bounded XY-1337 owns expected V10 RuntimeSession snapshots and transitions.
@@ -485,6 +496,13 @@ PostgreSQL-administrator boundary and may redefine authority; V1 has no automati
 rollback detection. XY-1349 solely owns V13 persistence, XY-1350 owns only read-only acquisition
 and executor/readback mechanics against this contract, and XY-1351 owns the first shared saga path.
 
+V13 is accepted. The routing migration order is XY-1356/V14 complete policy and candidate-set
+authority, XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions; no
+V17 is reserved. XY-1361 composes these boundaries only with production dispatch disabled. The
+existing ManagedRun barrier, submitted-turn receipt, and repository/worktree/Git/artifact
+reconciliation authorities retain ambiguous-effect ownership; routing never reclassifies or
+replays those effects.
+
 The production runtime composes those three accepted owners exactly once during daemon bootstrap.
 When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
 same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol
@@ -533,6 +551,12 @@ case-sensitive regular expressions under the built-in `C` collation. The integra
 repeats credential vectors in a Turkish ICU database so database-default case rules cannot
 weaken the direct-SQL boundary; this crate exposes no
 eligibility, account selection, fallback, wake scheduling, or credential storage.
+
+Provider ingress must additionally retain the exact raw timestamp representation until exact UTC
+Unix-microsecond construction succeeds. V14 through V16 do not assume a provider precision and
+fail closed on any value that would require rounding or truncation. Natural characterization and
+retained-title Desktop discovery remain post-freeze evidence owned by XY-1357 and XY-1363,
+respectively; neither is a runtime authority path.
 
 ## Owned vNext paths, configuration, blobs, and cache
 

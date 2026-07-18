@@ -344,8 +344,8 @@ and unsupported, oversized, or credential-shaped forms are rejected.
 `thread/read(includeTurns=true)` and paginated/list evidence are lossy reconciliation sources.
 They may support positive observations, but never authorize a negative `Present`, `Complete`, or
 context-free `Absent` conclusion. Missing, truncated, or unobserved evidence remains unknown.
-Experiment creation and positive observation acquisition belong to XY-1304; production Quick Task
-creation belongs to XY-1276. External Codex activity may be provenance-imported for ordinary
+Experiment creation and positive-only observation authority belong to XY-1358/V15; production
+Quick Task creation belongs to XY-1276. External Codex activity may be provenance-imported for ordinary
 Quick/Advisor/Lead conversations; on an active ManagedRun it marks the session `diverged` and blocks
 side effects until tool/repository readback reconciles them.
 
@@ -421,10 +421,12 @@ proof that no pre-release database becomes production state.
 
 Separate typed 300-minute and 10080-minute observations remain mandatory. This persistence
 boundary enables no account assignment, fallback, `waiting_usage` registration, wake scheduling,
-continuation, replay of external effects, or live dispatch. Before any live quota ingestion or
-routing, XY-1304 must capture the natural app-server/provider timestamp precision. If upstream
-timestamps are not exact microseconds, routing remains blocked and the architecture reopens around
-PostgreSQL-in-transaction canonicalization; silent rounding or truncation remains forbidden.
+continuation, replay of external effects, or live dispatch. Ingress retains the exact raw provider
+timestamp value. Construction of UTC Unix microseconds must be exact; any conversion that would
+round or truncate is rejected. V14 through V16 consume only exact values, remain otherwise
+precision-agnostic, and fail closed. XY-1357 owns the one natural precision receipt in the unified
+post-freeze gate. An incompatible receipt leaves production routing disabled and reopens only the
+ingress authority; it does not require a moving-core schema or decision rewrite.
 
 The dormant manual account observation path checks an exact PostgreSQL account revision in the
 `available` state before mechanics and checks the same predicate again after cleanup. Each check
@@ -452,16 +454,65 @@ the absence of future wrappers, or Rust friend visibility against arbitrary new 
 dependencies. Daemon/host crash can orphan OS descendants; restart reconstructs neither assignment
 nor launch authority and requires fresh exact PostgreSQL observations.
 
-Routing honors an available sticky Advisor/Lead account, otherwise chooses an available
-compatible account by user policy and quota facts. Every known depleted window excludes
-an account until reset; unknown is distinct and receives bounded probe/backoff. When all
-accounts are depleted, persist `waiting_usage` and the earliest ready time. Persist the
-specific account/window exclusion before rate-limit failover.
+### Durable routing-policy and candidate-set authority
 
-Cross-account resume of the same Codex thread is allowed only after the two-account E2E
-gate. Otherwise start a new RuntimeSession from a Context Pack while preserving the
-Conversation and ManagedRun. Never replay a possibly side-effecting turn without receipt,
-worktree/Git, and artifact reconciliation.
+PostgreSQL owns a revisioned complete routing-authority snapshot and is the only authority that
+may construct the candidate universe. A routing-resolution request supplies identity and
+idempotency inputs only. Runtime, protocol clients, adapters, and tests cannot supply or override
+authoritative policy order, candidate membership, sticky identity, eligibility facts, exclusions,
+or a preclassified candidate array.
+
+The current `decodex-core::PolicySnapshot` remains a bounded inert value inside one accepted
+Project Policy revision. It neither enumerates the account inventory nor establishes routing
+completeness, eligibility, evidence provenance, or persistence freshness. V14 must introduce the
+distinct database-owned complete routing snapshot rather than widening a Rust wrapper into
+authorization authority.
+
+One snapshot binds, under the database locks that establish its revision boundary:
+
+- the exact accepted routing Policy revision and canonical user-owned account order;
+- every current account-inventory member exactly once, with an explicit included or excluded
+  disposition and an exact account revision;
+- sticky affinity, when present, plus the exact source RuntimeSession identity and revision;
+- required account, RoleProfile, and Codex-build compatibility facts and their exact revisions;
+- each exact quota, authentication, capability, and administrative evidence revision used;
+- the accepted required-capability set and capability applicability for every member; and
+- explicit blocker facts for every unknown or otherwise unusable member.
+
+Completeness is fail-closed. A duplicate, omitted, foreign, newly added, concurrently removed, or
+revision-changed inventory member; an unbound sticky source; or an unknown required fact blocks the
+snapshot or decision. Silence never means excluded, eligible, or non-applicable.
+
+`decodex-core` is a pure deterministic decision kernel over this database-produced snapshot. It
+does not establish provenance or completeness. PostgreSQL atomically persists the resulting V16
+decision, its complete normalized exclusions, and every evidence reference. Runtime consumes one
+exact persisted decision and sequences effects only; it cannot substitute a decision. Codex is a
+positive-evidence capability adapter and cannot determine membership, policy, or eligibility.
+One app-server process remains bound to one account, credentials never switch in a live process,
+and the separate 300-minute and 10080-minute quota facts for separate accounts are never merged.
+
+Sticky affinity wins only when the bound member is independently eligible under the same complete
+snapshot. Every known depleted window excludes its account until reset. Unknown, stale,
+incompatible, disabled, authentication-failed, missing-duration, low-confidence, or precision-
+incompatible evidence blocks eligibility. When every otherwise eligible account is excluded only
+by usage, V16 persists `waiting_usage` and the exact earliest-ready time. XY-1362 owns one
+restart-safe scheduler wake and always re-enters fresh authoritative resolution; routing owns no
+wake lifecycle.
+
+Account-owned readiness is evaluated only for capabilities explicitly required by the accepted
+routing Policy revision. Unknown never satisfies a required capability. If the accepted required-
+capability set is empty, unknown account-owned plugin inventory is non-applicable; it is not
+positive readiness evidence and does not change an account to ready. XY-1336 remains future
+passive-receipt tracking. Host-owned before/after receipts prove causal no-mutation integrity only
+and cannot establish account-owned readiness.
+
+XY-1358 owns causal positive-only experiment evidence. After an exact V16 decision, XY-1360 owns
+same-thread continuation when exact positive account/profile/build evidence permits it, otherwise
+one atomic Context-Pack plus RuntimeSession fallback that preserves Conversation and ManagedRun
+identity. It allocates no V17 in advance. XY-1361 composes these authorities with production
+dispatch still structurally disabled. Ambiguous-turn replay remains blocked until the accepted
+ManagedRun submitted-turn, effect-barrier, repository/worktree/Git, and artifact authorities
+reconcile it; routing never owns or weakens that boundary.
 
 Those paragraphs define the target behavior, not current enablement. Until the separate
 [XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
@@ -484,15 +535,18 @@ availability. In particular, unknown or stale quota is fail-closed: no assignmen
 automatic fallback is permitted; the unavailable/unknown condition must be surfaced for
 human resolution or bounded observation.
 
-Readiness cannot authorize account eligibility, assignment, reassignment, fallback,
-scheduling, wakeup, continuation, or production routing. A future operator-triggered
-active diagnostic requires a separate authority decision and remains non-routing evidence.
+Readiness outside the accepted capability-applicability rule cannot authorize account eligibility,
+assignment, reassignment, fallback, scheduling, wakeup, continuation, or production routing. A
+future operator-triggered active diagnostic requires a separate authority decision and remains
+non-routing evidence.
 
 Users exclusively select the four global RoleProfiles. Runtime cannot alter model,
 reasoning, or service tier. Each RuntimeSession snapshots its profile. Decodex keeps a
 user-owned desired inventory only as intent. Until a stable passive account-owned receipt
-exists, V1 reports plugin readiness as `unknown` and does not compare host facts into an
-account-readiness conclusion or guide mutation from such a conclusion.
+exists, V1 reports plugin readiness as `unknown`; that unknown is blocking only when the exact
+accepted routing policy requires the corresponding capability, and is non-applicable when the
+required-capability set is empty. Host facts never become positive account-readiness evidence or
+guide mutation from such a conclusion.
 
 ## Automation and protocol
 

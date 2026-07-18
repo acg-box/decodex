@@ -17,9 +17,9 @@ its dependent implementation uses the result.
 
 | Range | Accepted downstream ownership |
 | --- | --- |
-| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with live continuation moved to [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, live continuation remains failed in XY-1304, and XY-1263 accepts only the isolated pinned GPUI foundation. |
+| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its final aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; XY-1304 separately owns live routing enablement and blocks the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence, while XY-1304 owns only the final aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -103,7 +103,7 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1274 | Exact-microsecond quota persistence, `/2` canonical mutation identity, atomic V8 zero-state migration, and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
 | XY-1275 | Umbrella for user-owned profile persistence and RuntimeSession snapshots. It closes only through the serial XY-1345 -> XY-1346 -> XY-1337 order. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
 | XY-1276 | Production Quick Task creation; remains blocked by XY-1304. |
-| XY-1304 | Experiment thread creation and positive observation acquisition, plus live routing enablement. Lossy or paginated evidence cannot authorize negative `Present`, `Complete`, or context-free `Absent` conclusions. |
+| XY-1304 | Final aggregate live-routing gate and separate reviewed enablement amendment only. It owns no migration, policy snapshot, candidate construction, experiment schema, continuation, orchestration, wake lifecycle, or Desktop discovery implementation. |
 | XY-1345 | Accepted exact-command authority and isolated PostgreSQL 18 prototype only; no production migration or Rust command path. |
 | XY-1346 | PostgreSQL V9: separate exact receipts plus immutable global RoleProfile bootstrap/update. Starts only after XY-1345 lands. |
 | XY-1337 | Re-bounded RuntimeSession snapshot creation/transition migration, expected V10 after XY-1346. It does not own exact-receipt or RoleProfile redesign. |
@@ -112,11 +112,20 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1284 | Accepted two-stage managed-repository authority reset; stage two is finalized by XY-1348 and consumes accepted XY-1354 unchanged. |
 | XY-1347 | One bounded macOS/Git feasibility spike for ordinary repositories and linked worktrees; evidence only, with no production source or schema. |
 | XY-1348 | Accepted mechanism-neutral transition contract and stage-two PostgreSQL/executor authority boundary; no V13 persistence. |
-| XY-1349 | Sole V13 and migration-ledger writer for managed-repository PostgreSQL authority. XY-1304 persistence follows in the next available migration, expected V14. |
+| XY-1349 | Accepted sole V13 managed-repository PostgreSQL authority migration. |
 | XY-1350 | Read-only allocation evidence plus accepted Git/filesystem executor and readback only; may proceed in parallel against the accepted contract, with no persistence, receipt, saga, provider, or shared composition ownership. |
 | XY-1351 | First shared repository effect saga path, composing preparation, fresh receipt consumption, execution, readback, and terminal reconciliation; no migration, executor-internal, or provider ownership. |
 | XY-1352 | GitHub PR/check effect and reconciliation boundary with explicit provider identities and positive readback; no local repository discovery. |
 | XY-1353 | Serial integration, final authority/OpenWiki alignment, deferred-validation inventory, and exact-candidate freeze; it blocks XY-1285. |
+| XY-1355 | Normative live-routing authority and capability-applicability reset only; no executable implementation or validation. |
+| XY-1356 | Sole V14 migration owner for revisioned complete routing-policy and candidate-set authority. |
+| XY-1357 | One post-freeze natural provider timestamp-precision receipt; no deliberate quota consumption or routing enablement. |
+| XY-1358 | Sole V15 migration owner for causal positive-only Codex experiment authority. |
+| XY-1359 | Sole V16 migration owner plus pure routing kernel and atomic persisted decisions; no dispatch. |
+| XY-1360 | Same-thread continuation and one atomic Context-Pack/RuntimeSession fallback after V16; no migration is pre-reserved. |
+| XY-1361 | Runtime orchestration over persisted authorities with production dispatch structurally disabled. |
+| XY-1362 | Scheduler-owned `waiting_usage` wake lifecycle and fresh re-resolution; no selection authority. |
+| XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. |
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
@@ -205,12 +214,12 @@ XY-1349 + XY-1350 + XY-1351 + XY-1352 ──────────> XY-1353 in
 XY-1353 ─────────────────────────────────────────> XY-1285
 ```
 
-The migration ledger is a singleton serial-writer domain. XY-1349 alone owns V13 and all
-physical persistence, transaction, retention, privilege, migration, and frozen database
-evidence details. XY-1304 creation and positive-observation persistence move to the next
-available migration after V13, expected V14. XY-1350 may proceed in parallel only against
-this accepted semantic contract and without touching or claiming the writer domain.
-XY-1351 owns the first shared saga path.
+The migration ledger is a singleton serial-writer domain. XY-1349's V13 is accepted on
+`main`. The fixed next order is XY-1356/V14 durable routing-policy authority, then
+XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions. No
+V17 is reserved. XY-1360 may allocate a later migration only if then-current source
+inspection proves additional durable state is required. XY-1350 and the remaining
+managed-repository children retain their accepted non-routing ownership.
 
 No managed-repository implementation executes validation before the integration tree is
 frozen. One complete unified validation runs once on that exact frozen tree. Its concise
@@ -690,43 +699,57 @@ production routing.
 ### Failed live account-routing enablement gate
 
 The [live gate issue](https://linear.app/hack-ink/issue/XY-1304) remains failed and
-fail-closed. Before any gated capability is enabled, an account must become **naturally
-depleted**; quota must not be deliberately consumed to manufacture acceptance. A fixed
-no-tool marker must then return a typed provider quota failure. Durable readback must
-show the submitted turn and unknown side-effect state, followed by the specific
-duration-typed 300/10080 account/window exclusion committed and crash-recoverable before
-any fallback assignment.
+fail-closed. It is only the final aggregate evidence gate and owner of a later separate
+repository-authority enablement amendment. Production routing remains structurally default-
+disabled until XY-1355, V14, V15, V16, continuation, disabled orchestration, scheduler wake,
+natural timestamp evidence, and Desktop discovery have all landed and one post-freeze aggregate
+gate passes.
 
-Before live quota ingestion or routing begins, XY-1304 must also capture the natural
-app-server/provider quota timestamp precision. Only exact-microsecond upstream values may enter the
-accepted XY-1274 ingress boundary. If the natural value has other precision, live routing remains
-blocked and the architecture must reopen around PostgreSQL-in-transaction canonicalization. No
-probe, adapter, or migration may silently round or truncate it.
+The required dependency order is:
 
-A different fresh eligible account must produce exactly one useful continuation on the
-same thread when supported. Otherwise, a real denied/incompatible response must end the
-old RuntimeSession and create exactly one Context-Pack RuntimeSession. Injected crashes
-at each exclusion, assignment, resume, and fallback boundary must read back exactly one
-continuation, correct `waiting_usage` plus the earliest ready time when all accounts are
-freshly depleted, and no duplicate tool, worktree, Git, or artifact effect. Normal
-`~/.codex/auth.json`, the Decodex account pool, and supported shared plugin files or
-configuration must have exact before/after equality receipts. The receipt manifest must
-name each supported host-owned, non-transient surface. These receipts are causal integrity
-evidence only, never account readiness. The experiment's protocol trace
-and admitted Decodex control-plane method set must contain no plugin, skill, MCP, or
-marketplace inventory or management call and no install, enable, disable, update, remove,
-login-management, or OAuth-management call. Normal process-scoped
-`account/login/start` authentication and ordinary execution of an already-enabled tool
-inside a turn are not control-plane inventory or management calls. Account-owned
-installed/enabled state remains unobserved and `unknown`; it is not an XY-1304 acceptance
-fact. An external or cloud change outside Decodex causal
-authority is not a Decodex mutation merely because it overlaps the experiment. Neither
-`plugin/list`, `skills/list`, `mcpServerStatus/list`, `app/list`, a catalog scan, nor an
-active diagnostic may substitute for this evidence; any future operator-triggered active
-diagnostic requires separate authority and remains non-routing.
+```text
+XY-1355 authority amendment
+-> XY-1356 / V14 complete routing-policy authority
+-> XY-1358 / V15 causal experiment authority
+-> XY-1359 / V16 atomic routing decisions
+-> XY-1360 continuation and atomic Context-Pack fallback
+-> XY-1361 runtime orchestration with dispatch disabled
 
-Separately, the retained title must be returned by supported Codex Desktop discovery
-after normal indexing before any global visibility claim.
+XY-1359 -> XY-1362 scheduler-owned waiting_usage wake lifecycle
+XY-1358 -> XY-1363 retained-title Desktop discovery evidence
+XY-1355 -> XY-1357 natural timestamp precision evidence
+
+all children + XY-1300 unified post-freeze acceptance -> XY-1304 aggregate gate
+-> separate reviewed repository amendment to enable production routing
+```
+
+The aggregate gate must bind one exact source tree and prove PostgreSQL-produced complete
+routing snapshots and decisions. Caller omission, reordering, substitution, duplicate facts,
+or stale revisions must not change the authoritative universe. Every inventory member has an
+explicit disposition; unknown or omitted members block. Sticky affinity is bound to its exact
+RuntimeSession revision and wins only when independently eligible. Required capabilities and
+their applicability are explicit: unknown never satisfies a required capability, while an empty
+required-capability set makes unknown plugin inventory non-applicable rather than positive
+readiness evidence.
+
+The natural provider receipt retains the exact raw timestamp and must convert exactly to UTC Unix
+microseconds without rounding or truncation. A precision-incompatible receipt leaves routing
+disabled and reopens only ingress authority. A naturally depleted account, never deliberately
+exhausted for evidence, must return the typed quota failure for a fixed no-tool marker. Durable
+readback must bind the submitted turn, unknown side-effect state, exact duration-typed exclusion,
+complete decision evidence, and either exactly one supported same-thread continuation or exactly
+one atomic Context-Pack RuntimeSession after genuine denied/incompatible evidence. All-depleted
+state must persist the exact earliest-ready time and one restart-safe scheduler wake that performs
+fresh resolution.
+
+Crash injection at every external-effect boundary must produce no duplicate turn, tool,
+repository, worktree, Git, or artifact effect. Possibly side-effecting turn replay remains under
+the accepted ManagedRun submitted-turn/effect-barrier and repository-effect reconciliation
+authorities, not routing. Host-owned before/after receipts prove no-mutation integrity only. The
+experiment and gate must not use plugin, skill, MCP, marketplace, login-management, OAuth-
+management, or account-configuration inventory/mutation calls to manufacture readiness. XY-1363
+must independently prove supported retained-title Desktop discovery after normal indexing without
+deriving absence from pagination, list exhaustion, missing events, or lossy readback.
 
 Until all of that evidence passes and a later explicit repository amendment enables the
 path, sticky or policy assignment, quota-driven exclusion causing another assignment,
@@ -742,6 +765,15 @@ later milestone, a synthetic test, or an otherwise completed dependency cannot a
 managed production routing. Other later foundation or UI work may proceed only when its
 own scope can remain inert and its other gates pass; it cannot claim live-routing,
 dogfood, cutover, or release acceptance.
+
+The dirty combined XY-1304/V14 candidate, partial fourth repair, caller-authoritative request
+shape, Rust authorization wrapper as provenance, global `SupportedPositive` plugin requirement,
+combined experiment/routing schema, and sequential exclusion -> RuntimeSession -> decision
+composition are superseded and must not be revived. Before core freeze, executable validation is
+deferred: no formatter, compile/check/lint, migration or SQL parser, tests or matrices, wrappers or
+generators, PostgreSQL, live experiments, or UI/Accessibility/Desktop checks. After freeze,
+XY-1300 owns one mechanical preflight, one unified complete gate, coherent batched repairs, and one
+final aggregate rerun.
 
 
 ## Cutover gate
