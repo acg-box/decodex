@@ -3113,7 +3113,9 @@ def main() -> int:
 			)
 			if catalog_probe != "1":
 				raise TestFailure("secret-bearing role-setting canary is absent from the live catalog")
-			dump_schema_manifest(canary_manifest_path, RESTORE_DATABASE, env)
+			canary_env = env.copy()
+			set_contract_urls(canary_env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+			dump_schema_manifest(canary_manifest_path, DATABASE, canary_env)
 			canary_document = load_semantic_manifest(canary_manifest_path)
 			canary_authority = component_manifest(
 				canary_document, "authority", require_complete=False
