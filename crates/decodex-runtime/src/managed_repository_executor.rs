@@ -26,10 +26,6 @@ use std::{
 	},
 	path::{Component, Path, PathBuf},
 	process::{Command, ExitStatus, Stdio},
-	sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	},
 	thread,
 	time::{Duration, Instant},
 };
@@ -170,6 +166,7 @@ impl ManagedRepositoryExecutor {
 		}
 		let target_parent = vacant_target(target_path).map_err(map_acquisition_path)?;
 		validate_repository_owner(&target_parent).map_err(map_acquisition_path)?;
+		require_allocation_registration_vacancy(&layout.common_dir, target_path)?;
 
 		repository_pin.revalidate().map_err(map_acquisition_path)?;
 		layout.revalidate().map_err(map_acquisition_path)?;
@@ -177,6 +174,7 @@ impl ManagedRepositoryExecutor {
 		if !path_is_missing(target_path).map_err(map_acquisition_path)? {
 			return Err(AcquisitionFailure::TargetOccupied);
 		}
+		require_allocation_registration_vacancy(&layout.common_dir, target_path)?;
 		self.git.revalidate().map_err(map_acquisition_git)?;
 
 		Ok(PositiveAllocationEvidence::new(
@@ -226,18 +224,18 @@ impl ManagedRepositoryExecutor {
 				ExecutionFailure::PreconditionMismatch,
 			);
 		}
-		let expected_admin = match expected_registration_admin(
-			&prepared.layout.common_dir.path,
+		match inspect_registration_vacancy(
+			&prepared.layout.common_dir,
 			descriptor.worktree_absolute_path.as_path(),
 		) {
-			Ok(path) => path,
+			Ok(RegistrationVacancy::Vacant) => {},
+			Ok(RegistrationVacancy::Replaced) => {
+				return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::Replaced);
+			},
+			Ok(RegistrationVacancy::Incomplete | RegistrationVacancy::Foreign) => {
+				return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::TargetOccupied);
+			},
 			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error.into()),
-		};
-		if let Err(error) = validate_registration_admin_root(&prepared.layout.common_dir.path) {
-			return ExecutionAttempt::ConsumedWithoutInvocation(error.into());
-		}
-		if !path_is_missing(&expected_admin).unwrap_or(false) {
-			return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::TargetOccupied);
 		}
 
 		let arguments = vec![
@@ -343,15 +341,33 @@ impl ManagedRepositoryExecutor {
 			MAX_GIT_OUTPUT_BYTES,
 		);
 		let attempt = self.finish_effect(prepared, admission.descriptor(), result);
-		if attempt == ExecutionAttempt::CompletedInvocation
-			&& (FilePin::acquire(&index).is_err()
-				|| adjacent_lock_exists(&index).unwrap_or(true)
-				|| !RepositoryLayout::inspect(descriptor.worktree_absolute_path.as_path())
-					.is_ok_and(|layout| private_index_owner_matches(&layout, descriptor)))
-		{
-			ExecutionAttempt::InvocationFailed(ExecutionFailure::PrivateIndexConflict)
-		} else {
-			attempt
+		if attempt != ExecutionAttempt::CompletedInvocation {
+			return attempt;
+		}
+		match self.inspect_registered_target(descriptor, admission.descriptor()) {
+			Ok(target)
+				if private_index_owner_matches(&target.layout, descriptor)
+					&& FilePin::acquire(&index).is_ok()
+					&& !adjacent_lock_exists(&index).unwrap_or(true)
+					&& self
+						.read_detached_head(
+							&target.layout,
+							descriptor.worktree_absolute_path.as_path(),
+						)
+						.is_ok_and(|head| head.as_str() == expected_head.as_str())
+					&& self
+						.clean_against(
+							&target.layout,
+							descriptor.worktree_absolute_path.as_path(),
+							&index,
+							expected_head,
+						)
+						.is_ok_and(|clean| clean)
+					&& target.revalidate().is_ok() => ExecutionAttempt::CompletedInvocation,
+			Err(ReadbackFailure::Replaced) => {
+				ExecutionAttempt::InvocationFailed(ExecutionFailure::Replaced)
+			},
+			_ => ExecutionAttempt::InvocationFailed(ExecutionFailure::UnexpectedOutput),
 		}
 	}
 
@@ -575,12 +591,14 @@ impl ManagedRepositoryExecutor {
 			return RegistrationEvidence::Stale;
 		}
 		if path_is_missing(descriptor.worktree_absolute_path.as_path()).unwrap_or(false) {
-			return match registration_admin_for_path(
+			return match inspect_registration_vacancy(
 				&source.layout.common_dir,
 				descriptor.worktree_absolute_path.as_path(),
 			) {
-				Ok(true) => RegistrationEvidence::MissingReciprocal,
-				Ok(false) => RegistrationEvidence::NoEffect,
+				Ok(RegistrationVacancy::Vacant) => RegistrationEvidence::NoEffect,
+				Ok(RegistrationVacancy::Incomplete) => RegistrationEvidence::MissingReciprocal,
+				Ok(RegistrationVacancy::Foreign) => RegistrationEvidence::Foreign,
+				Ok(RegistrationVacancy::Replaced) => RegistrationEvidence::Replaced,
 				Err(PathFailure::Replaced) => RegistrationEvidence::Replaced,
 				Err(_) => RegistrationEvidence::Inconclusive,
 			};
@@ -1541,6 +1559,8 @@ fn fixed_config() -> &'static [(&'static str, &'static str)] {
 		("core.fsmonitor", "false"),
 		("core.hooksPath", "/var/empty/decodex-no-hooks"),
 		("core.pager", "false"),
+		("core.protectHFS", "true"),
+		("core.protectNTFS", "true"),
 		("core.safecrlf", "true"),
 		("core.sparseCheckout", "false"),
 		("core.sparseCheckoutCone", "false"),
@@ -1598,6 +1618,7 @@ fn allowed_config_value(key: &str, value: &str) -> bool {
 		"core.repositoryformatversion" => value == "0",
 		"core.bare" => value == "false",
 		"core.logallrefupdates" => matches!(value, "true" | "false" | "always"),
+		"core.protecthfs" | "core.protectntfs" => value == "true",
 		"extensions.objectformat" => matches!(value, "sha1" | "sha256"),
 		_ => matches!(value, "true" | "false"),
 	}
@@ -1650,10 +1671,16 @@ fn verify_tree_inventory(bytes: &[u8]) -> Result<(), ExecutionFailure> {
 		let mode = fields.next().ok_or(ExecutionFailure::UnexpectedOutput)?;
 		let kind = fields.next().ok_or(ExecutionFailure::UnexpectedOutput)?;
 		let _object = fields.next().ok_or(ExecutionFailure::UnexpectedOutput)?;
-		if fields.next().is_some() || mode == "160000" || kind == "commit" {
+		if fields.next().is_some()
+			|| matches!(mode, "120000" | "160000")
+			|| kind == "commit"
+		{
 			return Err(ExecutionFailure::UnsupportedRepository);
 		}
 		let path = &record[tab + 1..];
+		if unsafe_git_tree_path(path) {
+			return Err(ExecutionFailure::UnsupportedRepository);
+		}
 		if path == b".gitmodules" || path.ends_with(b"/.gitmodules") {
 			return Err(ExecutionFailure::UnsupportedRepository);
 		}
@@ -1662,6 +1689,24 @@ fn verify_tree_inventory(bytes: &[u8]) -> Result<(), ExecutionFailure> {
 		}
 	}
 	Ok(())
+}
+
+fn unsafe_git_tree_path(path: &[u8]) -> bool {
+	path.is_empty()
+		|| !path.is_ascii()
+		|| path.split(|byte| *byte == b'/').any(|component| {
+			if component.is_empty()
+				|| component == b"."
+				|| component == b".."
+				|| component.contains(&b'\\')
+				|| component.contains(&b':')
+				|| component.last().is_some_and(|byte| matches!(byte, b'.' | b' '))
+			{
+				return true;
+			}
+			let folded = component.iter().map(u8::to_ascii_lowercase).collect::<Vec<_>>();
+			folded == b".git" || folded.starts_with(b".git~") || folded.starts_with(b"git~")
+		})
 }
 
 fn verify_worktree_inventory(root: &Path) -> Result<(), ExecutionFailure> {
@@ -1806,7 +1851,7 @@ fn run_bounded(
 	timeout: Duration,
 ) -> Result<GitOutput, ExecutionFailure> {
 	let mut child = command.spawn().map_err(|_| ExecutionFailure::SpawnFailed)?;
-	let stdout = match child.stdout.take() {
+	let mut stdout = match child.stdout.take() {
 		Some(stdout) => stdout,
 		None => {
 			terminate_process_group(&mut child);
@@ -1814,7 +1859,7 @@ fn run_bounded(
 			return Err(ExecutionFailure::SpawnFailed);
 		},
 	};
-	let stderr = match child.stderr.take() {
+	let mut stderr = match child.stderr.take() {
 		Some(stderr) => stderr,
 		None => {
 			terminate_process_group(&mut child);
@@ -1822,90 +1867,138 @@ fn run_bounded(
 			return Err(ExecutionFailure::SpawnFailed);
 		},
 	};
-	let exceeded = Arc::new(AtomicBool::new(false));
-	let stdout_reader = bounded_reader(stdout, limit, Arc::clone(&exceeded));
-	let stderr_reader = bounded_reader(stderr, limit, Arc::clone(&exceeded));
-	let stdin_writer = if let Some(bytes) = stdin {
-		let Some(mut writer) = child.stdin.take() else {
-			terminate_process_group(&mut child);
-			let _ = child.wait();
-			let _ = stdout_reader.join();
-			let _ = stderr_reader.join();
-			return Err(ExecutionFailure::StdinFailed);
-		};
-		let bytes = bytes.to_vec();
-		Some(thread::spawn(move || {
-			writer.write_all(&bytes).map_err(|_| ExecutionFailure::StdinFailed)
-		}))
-	} else {
-		None
-	};
-	drop(child.stdin.take());
-
+	let mut stdin_pipe = child.stdin.take();
+	if stdin.is_none() {
+		stdin_pipe = None;
+	}
+	for descriptor in [
+		stdout.as_raw_fd(),
+		stderr.as_raw_fd(),
+		stdin_pipe.as_ref().map_or(-1, AsRawFd::as_raw_fd),
+	] {
+		if descriptor != -1 && set_nonblocking(descriptor).is_err() {
+			return abort_bounded(
+				&mut child,
+				&mut stdin_pipe,
+				ExecutionFailure::SpawnFailed,
+			);
+		}
+	}
+	let input = stdin.unwrap_or_default();
+	let mut input_offset = 0_usize;
+	let mut stdout_bytes = Vec::with_capacity(limit.min(64 * 1_024));
+	let mut stderr_bytes = Vec::with_capacity(limit.min(64 * 1_024));
+	let mut stdout_eof = false;
+	let mut stderr_eof = false;
 	let deadline = Instant::now() + timeout;
-	let status = loop {
-		if exceeded.load(Ordering::Acquire) {
-			terminate_process_group(&mut child);
-			break child.wait().map_err(|_| ExecutionFailure::SpawnFailed)?;
-		}
-		match child.try_wait() {
-			Ok(Some(status)) => break status,
-			Ok(None) => {},
-			Err(_) => {
-				terminate_process_group(&mut child);
-				let _ = child.wait();
-				let _ = stdout_reader.join();
-				let _ = stderr_reader.join();
-				if let Some(writer) = stdin_writer {
-					let _ = writer.join();
-				}
-				return Err(ExecutionFailure::SpawnFailed);
-			},
-		}
+	loop {
 		if Instant::now() >= deadline {
-			terminate_process_group(&mut child);
-			let _ = child.wait();
-			let _ = stdout_reader.join();
-			let _ = stderr_reader.join();
-			if let Some(writer) = stdin_writer {
-				let _ = writer.join();
+			return abort_bounded(&mut child, &mut stdin_pipe, ExecutionFailure::TimedOut);
+		}
+		if !stdout_eof {
+			stdout_eof = match drain_nonblocking(&mut stdout, &mut stdout_bytes, limit, deadline) {
+				Ok(eof) => eof,
+				Err(error) => return abort_bounded(&mut child, &mut stdin_pipe, error),
+			};
+		}
+		if !stderr_eof {
+			stderr_eof = match drain_nonblocking(&mut stderr, &mut stderr_bytes, limit, deadline) {
+				Ok(eof) => eof,
+				Err(error) => return abort_bounded(&mut child, &mut stdin_pipe, error),
+			};
+		}
+		if let Some(writer) = &mut stdin_pipe {
+			match writer.write(&input[input_offset..]) {
+				Ok(0) if input_offset != input.len() => {
+					return abort_bounded(
+						&mut child,
+						&mut stdin_pipe,
+						ExecutionFailure::StdinFailed,
+					);
+				},
+				Ok(count) => input_offset += count,
+				Err(error) if error.kind() == ErrorKind::WouldBlock => {},
+				Err(error) if error.kind() == ErrorKind::Interrupted => {},
+				Err(_) => {
+					return abort_bounded(
+						&mut child,
+						&mut stdin_pipe,
+						ExecutionFailure::StdinFailed,
+					);
+				},
 			}
-			return Err(ExecutionFailure::TimedOut);
+			if input_offset == input.len() {
+				stdin_pipe = None;
+			}
+		}
+		if stdout_eof && stderr_eof && stdin_pipe.is_none() {
+			match child.try_wait() {
+				Ok(Some(status)) => {
+					return Ok(GitOutput {
+						status,
+						stdout: stdout_bytes,
+						stderr: stderr_bytes,
+					});
+				},
+				Ok(None) => {},
+				Err(_) => {
+					let _ = child.wait();
+					return Err(ExecutionFailure::SpawnFailed);
+				},
+			}
 		}
 		thread::sleep(POLL_INTERVAL);
-	};
-	let stdout = stdout_reader.join().map_err(|_| ExecutionFailure::SpawnFailed)??;
-	let stderr = stderr_reader.join().map_err(|_| ExecutionFailure::SpawnFailed)??;
-	if let Some(writer) = stdin_writer {
-		writer.join().map_err(|_| ExecutionFailure::StdinFailed)??;
 	}
-	if exceeded.load(Ordering::Acquire) {
-		return Err(ExecutionFailure::OutputLimit);
-	}
-	Ok(GitOutput { status, stdout, stderr })
 }
 
-fn bounded_reader(
-	mut reader: impl Read + Send + 'static,
-	limit: usize,
-	exceeded: Arc<AtomicBool>,
-) -> thread::JoinHandle<Result<Vec<u8>, ExecutionFailure>> {
-	thread::spawn(move || {
-		let mut output = Vec::with_capacity(limit.min(64 * 1_024));
-		let mut buffer = [0_u8; 8 * 1_024];
-		loop {
-			let count = reader.read(&mut buffer).map_err(|_| ExecutionFailure::GitUnavailable)?;
-			if count == 0 {
-				break;
-			}
-			if output.len().saturating_add(count) > limit {
-				exceeded.store(true, Ordering::Release);
-			} else {
-				output.extend_from_slice(&buffer[..count]);
-			}
+fn set_nonblocking(descriptor: i32) -> Result<(), ExecutionFailure> {
+	// SAFETY: `descriptor` is a live uniquely owned child pipe; `fcntl` changes only its flags.
+	unsafe {
+		let flags = libc::fcntl(descriptor, libc::F_GETFL);
+		if flags == -1 || libc::fcntl(descriptor, libc::F_SETFL, flags | libc::O_NONBLOCK) == -1 {
+			return Err(ExecutionFailure::SpawnFailed);
 		}
-		Ok(output)
-	})
+	}
+	Ok(())
+}
+
+fn drain_nonblocking(
+	reader: &mut impl Read,
+	output: &mut Vec<u8>,
+	limit: usize,
+	deadline: Instant,
+) -> Result<bool, ExecutionFailure> {
+	let mut buffer = [0_u8; 8 * 1_024];
+	loop {
+		if Instant::now() >= deadline {
+			return Err(ExecutionFailure::TimedOut);
+		}
+		match reader.read(&mut buffer) {
+			Ok(0) => return Ok(true),
+			Ok(count) => {
+				if output.len().saturating_add(count) > limit {
+					return Err(ExecutionFailure::OutputLimit);
+				}
+				output.extend_from_slice(&buffer[..count]);
+			},
+			Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(false),
+			Err(error) if error.kind() == ErrorKind::Interrupted => {},
+			Err(_) => return Err(ExecutionFailure::GitUnavailable),
+		}
+	}
+}
+
+fn abort_bounded(
+	child: &mut std::process::Child,
+	stdin_pipe: &mut Option<std::process::ChildStdin>,
+	error: ExecutionFailure,
+) -> Result<GitOutput, ExecutionFailure> {
+	// Failure paths have not waited or reaped the leader, so its PID still reserves this process
+	// group identity and the negative-PID signal cannot target a reused unrelated group.
+	terminate_process_group(child);
+	*stdin_pipe = None;
+	let _ = child.wait();
+	Err(error)
 }
 
 fn apply_child_limits(command: &mut Command) {
@@ -2615,33 +2708,102 @@ fn registration_directory_is_clean(path: &Path) -> bool {
 	names == [OsString::from(".git")]
 }
 
-fn registration_admin_for_path(common_dir: &DirectoryPin, worktree_path: &Path) -> Result<bool, PathFailure> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RegistrationVacancy {
+	Vacant,
+	Incomplete,
+	Foreign,
+	Replaced,
+}
+
+fn require_allocation_registration_vacancy(
+	common_dir: &DirectoryPin,
+	worktree_path: &Path,
+) -> Result<(), AcquisitionFailure> {
+	match inspect_registration_vacancy(common_dir, worktree_path).map_err(map_acquisition_path)? {
+		RegistrationVacancy::Vacant => Ok(()),
+		RegistrationVacancy::Replaced => Err(AcquisitionFailure::Replaced),
+		RegistrationVacancy::Incomplete | RegistrationVacancy::Foreign => {
+			Err(AcquisitionFailure::TargetOccupied)
+		},
+	}
+}
+
+fn inspect_registration_vacancy(
+	common_dir: &DirectoryPin,
+	worktree_path: &Path,
+) -> Result<RegistrationVacancy, PathFailure> {
+	common_dir.revalidate()?;
+	let expected_admin = expected_registration_admin(&common_dir.path, worktree_path)?;
+	let expected_backlink = worktree_path.join(".git");
 	let root = common_dir.path.join("worktrees");
-	let entries = match fs::read_dir(root) {
-		Ok(entries) => entries,
-		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
-		Err(_) => return Err(PathFailure::Io),
+	if path_is_missing(&root)? {
+		return Ok(RegistrationVacancy::Vacant);
+	}
+	let root_pin = match DirectoryPin::acquire(&root) {
+		Ok(pin) => pin,
+		Err(PathFailure::Invalid | PathFailure::UnsafeOwner | PathFailure::Replaced) => {
+			return Ok(RegistrationVacancy::Replaced);
+		},
+		Err(error) => return Err(error),
 	};
-	let expected = worktree_path.join(".git");
+	if validate_repository_owner(&root_pin).is_err() {
+		return Ok(RegistrationVacancy::Replaced);
+	}
+	let entries = fs::read_dir(&root).map_err(path_io)?;
 	let started = Instant::now();
 	for (count, entry) in entries.enumerate() {
 		if count >= MAX_WALK_FILES || started.elapsed() > WALK_TIMEOUT {
 			return Err(PathFailure::Io);
 		}
 		let entry = entry.map_err(|_| PathFailure::Io)?;
-		let metadata = fs::symlink_metadata(entry.path()).map_err(|_| PathFailure::Io)?;
-		if !metadata.is_dir() || metadata.file_type().is_symlink() {
-			return Err(PathFailure::Invalid);
+		let path = entry.path();
+		let metadata = fs::symlink_metadata(&path).map_err(path_io)?;
+		if metadata.file_type().is_symlink() {
+			return Ok(RegistrationVacancy::Replaced);
 		}
-		let path = entry.path().join("gitdir");
-		if let Ok(bytes) = read_nofollow(&path, 4_096) {
-			let value = resolve_metadata_path(entry.path().as_path(), parse_metadata_line(&bytes)?)?;
-			if value == expected {
-				return Ok(true);
-			}
+		if !metadata.is_dir() {
+			return Ok(RegistrationVacancy::Incomplete);
 		}
+		let admin_pin = match DirectoryPin::acquire(&path) {
+			Ok(pin) => pin,
+			Err(PathFailure::Invalid | PathFailure::UnsafeOwner | PathFailure::Replaced) => {
+				return Ok(RegistrationVacancy::Replaced);
+			},
+			Err(error) => return Err(error),
+		};
+		if validate_repository_owner(&admin_pin).is_err() {
+			return Ok(RegistrationVacancy::Replaced);
+		}
+		let gitdir = path.join("gitdir");
+		if path_is_missing(&gitdir)? {
+			return Ok(RegistrationVacancy::Incomplete);
+		}
+		if !safe_owned_regular_file(&gitdir) {
+			return Ok(RegistrationVacancy::Replaced);
+		}
+		let backlink = match read_nofollow(&gitdir, 4_096).and_then(|bytes| {
+			resolve_metadata_path(path.as_path(), parse_metadata_line(&bytes)?)
+		}) {
+			Ok(backlink) => backlink,
+			Err(_) if path == expected_admin => return Ok(RegistrationVacancy::Foreign),
+			Err(_) => return Ok(RegistrationVacancy::Incomplete),
+		};
+		if path == expected_admin {
+			return Ok(if backlink == expected_backlink {
+				RegistrationVacancy::Incomplete
+			} else {
+				RegistrationVacancy::Foreign
+			});
+		}
+		if backlink == expected_backlink {
+			return Ok(RegistrationVacancy::Incomplete);
+		}
+		admin_pin.revalidate()?;
 	}
-	Ok(false)
+	root_pin.revalidate()?;
+	common_dir.revalidate()?;
+	Ok(RegistrationVacancy::Vacant)
 }
 
 fn expected_registration_admin(
@@ -2654,16 +2816,6 @@ fn expected_registration_admin(
 		.ok_or(PathFailure::Invalid)?;
 	RepositoryRegistrationId::new(name.to_owned()).map_err(|_| PathFailure::Invalid)?;
 	Ok(common_dir.join("worktrees").join(name))
-}
-
-fn validate_registration_admin_root(common_dir: &Path) -> Result<(), PathFailure> {
-	let root = common_dir.join("worktrees");
-	if path_is_missing(&root)? {
-		return Ok(());
-	}
-	let pin = DirectoryPin::acquire(&root)?;
-	validate_repository_owner(&pin)?;
-	pin.revalidate()
 }
 
 fn path_errno(error: io::Error) -> PathFailure {
