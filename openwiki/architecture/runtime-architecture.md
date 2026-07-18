@@ -552,6 +552,39 @@ composition root imports the V17 adapter. Schema and configured-authority digest
 all executable acceptance remain deferred to the single integrated post-freeze gate, so ordinary
 runtime readiness continues to fail closed on this moving-core tree.
 
+V18 consumes only the exact persisted V16 `waiting_usage` decision identity and expected
+ManagedRun revision. PostgreSQL derives the exact earliest-ready instant, policy lineage, run
+lineage, and database clock; the caller supplies no timestamp, candidate, quota evidence,
+eligibility, exclusion, account, or replacement decision. One append-only transition relation is
+the lifecycle, domain-operation result, historical-readback, and cross-key replay authority. Every
+accepted registration, claim, reclaim, fire, cancellation, or supersession operation has one
+globally unique operation identity, canonical request, exact predecessor revision/tip, complete
+resultant state, immutable effect/response bytes, and transaction-bound activity/outbox identities.
+The mutable wake head is only a due-order index and current-tip fence; deferred equality and chain
+checks require it to point to the exact newly appended transition. No command success or historical
+readback is constructed from the head.
+
+Unique registration-decision and run-revision links make registration converge to one durable
+wake, while a different operation identity targeting an existing decision rejects instead of
+aliasing it. V9 exact receipts replay byte-identically by protocol key; the same domain operation
+under a new key can return only its immutable transition result after canonical request equality.
+Due acquisition orders independent waits by exact earliest-ready instant, registration time, and
+wake identity and never pools account quotas. A fixed sixty-second database-authored lease is
+recorded on a claim or reclaim transition after global scheduler serialization. Lease expiry and
+restart append a new reclaim transition rather than rewriting history. Registration, claim, fire,
+and cancellation retain V16's hierarchy/run lock order, so replacement decisions cannot cross a
+stale-lineage check.
+
+Pending or leased heads advance to terminal immutable transitions when explicit cancellation,
+ManagedRun revision/lifecycle/wait reason, divergence, policy revision, V16 decision kind, or
+ambiguous replacement lineage is stale. A valid leased wake fires exactly once into one immutable
+transition containing one `routing_resolution_request_id` whose only authority is fresh routing resolution;
+`fresh_routing_resolution_only=true`, `prior_decision_reusable=false`, and
+`production_enabled=false` are structural. The fired record carries no old universe or evidence,
+and no runtime, protocol, daemon, CLI, scheduler composition root, Codex adapter, credential owner,
+or UI imports V18. Executable timing, crash, replay, concurrency, restart, ACL, hostile-input, and
+isolation acceptance remains deferred to the single integrated post-freeze gate.
+
 No production crate or application imports or constructs a V15 experiment execution root. The
 mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
 the complete V15 source boundary. XY-1361 alone may later compose the accepted V14-V16 owners, and
