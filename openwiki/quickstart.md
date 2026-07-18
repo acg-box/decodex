@@ -77,6 +77,12 @@ query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
 API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
 
+When PostgreSQL is ready, daemon bootstrap also opens the accepted pinned repository executor,
+retains the single PostgreSQL/executor/saga composition, and completes bounded readback-only
+restart reconciliation before serving. No managed-repository or GitHub mutation is exposed by the
+current protocol; the GitHub PR/check reconciler remains sealed until the later provider and
+PostgreSQL effect-lineage owner connects it.
+
 The PostgreSQL adapter persists its XY-1267 foundation and forward-only XY-1271 history schema when `decodexd` receives one explicit
 PostgreSQL 18 Unix-socket endpoint, an operator-pinned expected server UID, and distinct migration
 and runtime identities. The socket directory must be owned by that UID and not group/other-writable.

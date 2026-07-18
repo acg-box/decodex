@@ -10,6 +10,7 @@ use std::{
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	application::{ProductStore, ServiceApplication},
+	managed_repository_runtime::ManagedRepositoryRuntime,
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
@@ -34,6 +35,7 @@ pub struct ServiceBootstrap {
 	server_id: ServerId,
 	address: SocketAddr,
 	store: ProductStore,
+	managed_repositories: Option<ManagedRepositoryRuntime>,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
 }
@@ -63,6 +65,7 @@ impl ServiceBootstrap {
 			self.server_id,
 			ServiceApplication::new(
 				self.store,
+				self.managed_repositories,
 				CodexAdapter::unavailable(),
 				self.blob_store,
 				self.doctor,
@@ -154,11 +157,20 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 			vault,
 		},
 	);
+	let managed_repositories = match &store {
+		ProductStore::Available(store) => ManagedRepositoryRuntime::open(store.clone()),
+		ProductStore::Unavailable { .. } => None,
+	};
+	let managed_repositories = match managed_repositories {
+		Some(runtime) if runtime.reconcile_restart().await.is_ok() => Some(runtime),
+		_ => None,
+	};
 
 	ServiceBootstrap {
 		server_id,
 		address: DEFAULT_ADDRESS,
 		store,
+		managed_repositories,
 		blob_store: blob_store.ok(),
 		doctor,
 	}
@@ -183,6 +195,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		server_id,
 		address: DEFAULT_ADDRESS,
 		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
+		managed_repositories: None,
 		blob_store: None,
 		doctor,
 	}

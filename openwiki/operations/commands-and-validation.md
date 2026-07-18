@@ -187,6 +187,13 @@ Git/filesystem execution and operation-specific readback; first shared-saga comp
 and repository integration; and final digest/manifest agreement. Partial runs, expanded early test
 matrices, and results from any other tree are not acceptance evidence.
 
+The authoritative deferred cases are the
+[XY-1353 deferred acceptance matrix](../specs/vnext-gates.md#xy-1353-deferred-acceptance-matrix).
+The repository has no standalone XY-1353 artifact generator: migration, configured-authority, and
+schema inventories plus their expected/actual digests are emitted and checked by the canonical
+PostgreSQL frozen-tree harness during that one unified gate. Do not run it as integration-time
+code generation or create parallel manifest authority.
+
 ## Validation scope selection
 
 Use the aggregate gate before broad readiness, landing, or release-readiness claims. During iteration, choose the smallest command that covers the touched contract, then name that scope in handoff notes. A narrow validation result is useful evidence, but it is not equivalent to the broad gate unless the change is truly limited to that surface.

@@ -19,6 +19,8 @@ use decodex_protocol::{
 	Sha256Digest, SnapshotItem, WireText,
 };
 
+use crate::managed_repository_runtime::ManagedRepositoryRuntime;
+
 /// The only mutation/observation seam reachable from the WebSocket server.
 ///
 /// PostgreSQL-backed services can implement this async owner in XY-1267 without moving
@@ -91,6 +93,7 @@ impl ProductState for ProductStore {
 #[derive(Clone)]
 pub(crate) struct ServiceApplication {
 	store: ProductStore,
+	_managed_repositories: Option<ManagedRepositoryRuntime>,
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
@@ -98,11 +101,12 @@ pub(crate) struct ServiceApplication {
 impl ServiceApplication {
 	pub(crate) const fn new(
 		store: ProductStore,
+		managed_repositories: Option<ManagedRepositoryRuntime>,
 		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
 		doctor: DoctorReport,
 	) -> Self {
-		Self { store, _codex: codex, blob_store, doctor }
+		Self { store, _managed_repositories: managed_repositories, _codex: codex, blob_store, doctor }
 	}
 
 	async fn refreshed_doctor(&self) -> DoctorReport {

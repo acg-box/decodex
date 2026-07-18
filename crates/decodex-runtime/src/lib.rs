@@ -13,6 +13,7 @@ mod bootstrap;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
 mod managed_repository_executor;
+mod managed_repository_runtime;
 mod managed_repository_saga;
 mod supervised_validation;
 mod websocket;
