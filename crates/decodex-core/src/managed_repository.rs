@@ -4,6 +4,12 @@
 //! freshness, permits an external effect, or authorizes persistence. PostgreSQL must load current
 //! facts inside its transaction and owns checkpoints, global operation assignment, append-only
 //! evidence, CAS, transaction completeness, restart loads, and private post-commit dispatch.
+//!
+//! Admission observations support exact comparison of path, layout, external identity, base, and
+//! currently observable object metadata. They do not prove uninterrupted historical object
+//! identity while the daemon is stopped: V1 cannot distinguish an exact delete/recreate whose
+//! device, inode, type, UID, and mode are reused. Hostile same-UID operation or a requirement for
+//! stronger historical identity is therefore a V1 falsifier, not authority supplied by these types.
 
 use std::{
 	error::Error,
@@ -12,7 +18,6 @@ use std::{
 	path::{Component, Path, PathBuf},
 };
 
-use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 
 use crate::ProjectId;
@@ -25,6 +30,8 @@ pub const MAX_MANAGED_REPOSITORY_PATH_BYTES: usize = 4_096;
 pub const MAX_REPOSITORY_ADMISSION_OBSERVATIONS: usize = 256;
 /// Maximum semantic registration roles attached to one observed object.
 pub const MAX_REPOSITORY_OBSERVATION_ROLES: usize = 8;
+/// Maximum UTF-8 bytes in one canonical linked-worktree registration identity.
+pub const MAX_REPOSITORY_REGISTRATION_ID_BYTES: usize = 128;
 /// Maximum UTF-8 bytes in one canonical commit message.
 pub const MAX_REPOSITORY_COMMIT_MESSAGE_BYTES: usize = 16_384;
 
@@ -111,6 +118,31 @@ bounded_value!(/// Bounded canonical commit actor name.
 	RepositoryCommitActorName, InvalidCommitActorName);
 bounded_value!(/// Bounded canonical commit actor email.
 	RepositoryCommitActorEmail, InvalidCommitActorEmail);
+
+/// Bounded canonical Git linked-worktree registration identity.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RepositoryRegistrationId(String);
+impl RepositoryRegistrationId {
+	/// Parse one nonempty bounded registration identity valid as exactly one path component.
+	pub fn new(value: impl Into<String>) -> Result<Self, ManagedRepositoryError> {
+		let value = value.into();
+		if value.is_empty()
+			|| value.len() > MAX_REPOSITORY_REGISTRATION_ID_BYTES
+			|| matches!(value.as_str(), "." | "..")
+			|| !value
+				.bytes()
+				.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+		{
+			return Err(ManagedRepositoryError::InvalidRegistrationId);
+		}
+		Ok(Self(value))
+	}
+
+	/// Borrow the canonical registration identity.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+}
 
 /// SHA-256 digest of the complete admitted repository descriptor.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -203,9 +235,9 @@ pub enum RepositoryAdmissionDescriptorVersion {
 /// Closed admitted Git registration shape.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RepositoryGitRegistrationRole {
-	/// The admitted root owns its `.git` directory directly.
+	/// The admitted root owns the one shared `.git` directory directly.
 	PrimaryWorktree,
-	/// The admitted root is a linked worktree with reciprocal Git metadata.
+	/// The admitted root is a linked worktree with one named private-admin child and reciprocity.
 	LinkedWorktree,
 }
 
@@ -249,7 +281,10 @@ pub enum RepositoryObservedObjectType {
 	RegularFile,
 }
 
-/// One exact persisted path/object observation used for componentwise reacquisition.
+/// One persisted snapshot of observable path/object metadata used during reacquisition.
+///
+/// Equality can detect changed observed metadata. It is not proof that an inode was never deleted
+/// and reused while the daemon was stopped.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositoryPathObservation {
 	path: RepositoryObservationPath,
@@ -261,7 +296,7 @@ pub struct RepositoryPathObservation {
 	permissions: u16,
 }
 impl RepositoryPathObservation {
-	/// Construct one exact observation. Roles must be nonempty, unique, and enum-ordered.
+	/// Construct one observable metadata snapshot. Roles must be nonempty, unique, and ordered.
 	pub fn new(
 		path: RepositoryObservationPath,
 		roles: Vec<RepositoryPathRegistrationRole>,
@@ -299,11 +334,11 @@ impl RepositoryPathObservation {
 	pub fn roles(&self) -> &[RepositoryPathRegistrationRole] {
 		&self.roles
 	}
-	/// Return the admitted device identity.
+	/// Return the admitted device fact.
 	pub const fn device(&self) -> u64 {
 		self.device
 	}
-	/// Return the admitted inode identity.
+	/// Return the admitted inode fact.
 	pub const fn inode(&self) -> u64 {
 		self.inode
 	}
@@ -321,10 +356,15 @@ impl RepositoryPathObservation {
 	}
 }
 
-/// Exact Git layout resolved at admission without embedding Git execution behavior.
+/// Exact closed V1 Git layout resolved at admission without embedding Git execution behavior.
+///
+/// For a linked worktree, the `.git` file resolves to `git_directory`, `commondir` resolves to
+/// `common_directory`, and `gitdir` resolves back to `worktree_git_entry`; adapters must observe
+/// those exact reciprocal values when constructing or reacquiring this forgeable data.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositoryAdmittedGitLayout {
 	registration_role: RepositoryGitRegistrationRole,
+	registration_id: Option<RepositoryRegistrationId>,
 	repository_root: PersistedAbsolutePath,
 	worktree_git_entry: PersistedAbsolutePath,
 	git_directory: PersistedAbsolutePath,
@@ -339,6 +379,7 @@ impl RepositoryAdmittedGitLayout {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		registration_role: RepositoryGitRegistrationRole,
+		registration_id: Option<RepositoryRegistrationId>,
 		repository_root: PersistedAbsolutePath,
 		worktree_git_entry: PersistedAbsolutePath,
 		git_directory: PersistedAbsolutePath,
@@ -350,6 +391,7 @@ impl RepositoryAdmittedGitLayout {
 	) -> Self {
 		Self {
 			registration_role,
+			registration_id,
 			repository_root,
 			worktree_git_entry,
 			git_directory,
@@ -364,6 +406,10 @@ impl RepositoryAdmittedGitLayout {
 	/// Return the admitted Git registration role.
 	pub const fn registration_role(&self) -> RepositoryGitRegistrationRole {
 		self.registration_role
+	}
+	/// Borrow the linked-worktree registration identity; primary layouts have none.
+	pub fn registration_id(&self) -> Option<&RepositoryRegistrationId> {
+		self.registration_id.as_ref()
 	}
 	/// Borrow the exact admitted repository root.
 	pub fn repository_root(&self) -> &PersistedAbsolutePath {
@@ -401,7 +447,9 @@ impl RepositoryAdmittedGitLayout {
 
 /// Complete versioned repository-admission descriptor and its derived inventory digest.
 ///
-/// Exact descriptor equality is authoritative input equality. The digest is derived evidence only.
+/// Exact descriptor equality is authoritative input equality. It detects changed observable facts;
+/// it does not establish uninterrupted filesystem identity across daemon downtime. The digest is
+/// derived evidence only.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositoryAdmissionDescriptor {
 	version: RepositoryAdmissionDescriptorVersion,
@@ -438,7 +486,7 @@ impl RepositoryAdmissionDescriptor {
 			digest: AdmissionDescriptorDigest(String::new()),
 		};
 		descriptor.validate_shape()?;
-		descriptor.digest = AdmissionDescriptorDigest::digest(&descriptor.canonical_bytes()?);
+		descriptor.digest = AdmissionDescriptorDigest::digest(&descriptor.canonical_bytes());
 		Ok(descriptor)
 	}
 
@@ -479,21 +527,15 @@ impl RepositoryAdmissionDescriptor {
 		&self.digest
 	}
 
-	/// Return the canonical UTF-8 TOML representation hashed by the descriptor digest.
-	pub fn canonical_bytes(&self) -> Result<Vec<u8>, ManagedRepositoryError> {
-		let canonical = CanonicalAdmissionDescriptor::from(self);
-		toml::to_string(&canonical)
-			.map(String::into_bytes)
-			.map_err(|_| ManagedRepositoryError::CanonicalDescriptorSerialization)
+	/// Return the module-owned canonical V1 byte representation hashed by the digest.
+	pub fn canonical_bytes(&self) -> Vec<u8> {
+		encode_admission_descriptor_v1(self)
 	}
 
 	/// Verify persisted digest evidence against the complete canonical descriptor.
-	pub fn verify_digest(
-		&self,
-		expected: &AdmissionDescriptorDigest,
-	) -> Result<bool, ManagedRepositoryError> {
-		let computed = AdmissionDescriptorDigest::digest(&self.canonical_bytes()?);
-		Ok(self.digest == computed && *expected == computed)
+	pub fn verify_digest(&self, expected: &AdmissionDescriptorDigest) -> bool {
+		let computed = AdmissionDescriptorDigest::digest(&self.canonical_bytes());
+		self.digest == computed && *expected == computed
 	}
 
 	fn validate_shape(&self) -> Result<(), ManagedRepositoryError> {
@@ -895,7 +937,7 @@ pub enum RepositoryAmbiguity {
 	Stale,
 	/// External facts named another repository, worktree, allocation, or operation.
 	Foreign,
-	/// An admitted path or object was replaced.
+	/// Reacquisition observed path/object metadata different from the admitted descriptor.
 	Replaced,
 	/// Unreserved or unexpected mutation was observed.
 	Dirty,
@@ -1557,13 +1599,13 @@ pub enum ManagedRepositoryError {
 	InvalidReferenceName,
 	InvalidCommitActorName,
 	InvalidCommitActorEmail,
+	InvalidRegistrationId,
 	InvalidDescriptorDigest,
 	InvalidAbsolutePath,
 	InvalidPathObservation,
 	MissingPathObservation,
 	InvalidGitLayout,
 	InvalidAdmissionDescriptor,
-	CanonicalDescriptorSerialization,
 	InvalidCheckpoint,
 	InvalidExecutorContractVersion,
 	InvalidCommitMessage,
@@ -1595,15 +1637,13 @@ impl Display for ManagedRepositoryError {
 			Self::InvalidReferenceName => "invalid repository reference name",
 			Self::InvalidCommitActorName => "invalid repository commit actor name",
 			Self::InvalidCommitActorEmail => "invalid repository commit actor email",
+			Self::InvalidRegistrationId => "invalid repository registration identity",
 			Self::InvalidDescriptorDigest => "invalid admission descriptor digest",
 			Self::InvalidAbsolutePath => "invalid persisted absolute path",
 			Self::InvalidPathObservation => "invalid repository path observation",
 			Self::MissingPathObservation => "repository admission path observation is missing",
 			Self::InvalidGitLayout => "invalid admitted Git layout",
 			Self::InvalidAdmissionDescriptor => "invalid repository admission descriptor",
-			Self::CanonicalDescriptorSerialization => {
-				"repository admission descriptor canonical serialization failed"
-			},
 			Self::InvalidCheckpoint => "invalid aggregate checkpoint",
 			Self::InvalidExecutorContractVersion => "invalid executor contract version",
 			Self::InvalidCommitMessage => "invalid repository commit message",
@@ -1862,93 +1902,115 @@ fn terminal_update(
 	}
 }
 
-#[derive(Serialize)]
-struct CanonicalAdmissionDescriptor<'a> {
-	schema: &'static str,
-	project_id: &'a str,
-	repository_id: &'a str,
-	admitted_identity: &'a str,
-	admitted_base: &'a str,
-	repository_path: &'a str,
-	git_layout: CanonicalGitLayout<'a>,
-	observations: Vec<CanonicalPathObservation<'a>>,
+/// Canonical V1 bytes are the fixed ASCII magic below followed by fields in this exact order:
+/// version (`u16`), project/repository/admitted identity/base/repository path (length-prefixed),
+/// Git role (`u8`), optional registration ID, five layout paths, optional refs/commondir/backlink
+/// paths, observation count (`u16`), then each observation's path, role count and role tags,
+/// device, inode, object type, UID, and permissions. Lengths and UID are `u32`; device/inode are
+/// `u64`; permissions are `u16`. Every integer is unsigned big-endian. Text/path lengths count
+/// exact UTF-8 bytes. Options use one `u8` tag (`0` absent, `1` present) followed by the value only
+/// when present. Enum tags are fixed by the functions below, not Rust discriminants.
+const ADMISSION_DESCRIPTOR_V1_MAGIC: &[u8] = b"decodex/repository-admission-descriptor\0";
+
+fn encode_admission_descriptor_v1(descriptor: &RepositoryAdmissionDescriptor) -> Vec<u8> {
+	let layout = &descriptor.git_layout;
+	let mut encoder = CanonicalV1Encoder::new();
+	encoder.bytes.extend_from_slice(ADMISSION_DESCRIPTOR_V1_MAGIC);
+	encoder.u16(1);
+	encoder.text(descriptor.project_id.as_str());
+	encoder.text(descriptor.repository_id.as_str());
+	encoder.text(descriptor.admitted_identity.as_str());
+	encoder.text(descriptor.admitted_base.as_str());
+	encoder.path(&descriptor.repository_path);
+	encoder.u8(git_registration_role_tag(layout.registration_role));
+	encoder.optional_text(
+		layout.registration_id.as_ref().map(RepositoryRegistrationId::as_str),
+	);
+	encoder.path(&layout.repository_root);
+	encoder.path(&layout.worktree_git_entry);
+	encoder.path(&layout.git_directory);
+	encoder.path(&layout.common_directory);
+	encoder.path(&layout.objects_directory);
+	encoder.optional_path(layout.refs_directory.as_ref());
+	encoder.optional_path(layout.common_directory_file.as_ref());
+	encoder.optional_path(layout.git_directory_backlink_file.as_ref());
+	encoder.u16(layout_observation_count(&descriptor.observations));
+	for observation in &descriptor.observations {
+		encoder.observation_path(&observation.path);
+		encoder.u8(observation.roles.len() as u8);
+		for role in &observation.roles {
+			encoder.u8(path_registration_role_tag(*role));
+		}
+		encoder.u64(observation.device);
+		encoder.u64(observation.inode);
+		encoder.u8(observed_object_type_tag(observation.object_type));
+		encoder.u32(observation.owner_uid);
+		encoder.u16(observation.permissions);
+	}
+	encoder.bytes
 }
 
-#[derive(Serialize)]
-struct CanonicalGitLayout<'a> {
-	registration_role: &'static str,
-	repository_root: &'a str,
-	worktree_git_entry: &'a str,
-	git_directory: &'a str,
-	common_directory: &'a str,
-	objects_directory: &'a str,
-	refs_directory_present: bool,
-	refs_directory: &'a str,
-	common_directory_file_present: bool,
-	common_directory_file: &'a str,
-	git_directory_backlink_file_present: bool,
-	git_directory_backlink_file: &'a str,
+struct CanonicalV1Encoder {
+	bytes: Vec<u8>,
 }
+impl CanonicalV1Encoder {
+	fn new() -> Self {
+		Self { bytes: Vec::new() }
+	}
 
-#[derive(Serialize)]
-struct CanonicalPathObservation<'a> {
-	path: &'a str,
-	roles: Vec<&'static str>,
-	device: String,
-	inode: String,
-	object_type: &'static str,
-	owner_uid: String,
-	permissions_octal: String,
-}
+	fn u8(&mut self, value: u8) {
+		self.bytes.push(value);
+	}
 
-impl<'a> From<&'a RepositoryAdmissionDescriptor> for CanonicalAdmissionDescriptor<'a> {
-	fn from(descriptor: &'a RepositoryAdmissionDescriptor) -> Self {
-		let layout = &descriptor.git_layout;
-		Self {
-			schema: "decodex/repository-admission-descriptor/1",
-			project_id: descriptor.project_id.as_str(),
-			repository_id: descriptor.repository_id.as_str(),
-			admitted_identity: descriptor.admitted_identity.as_str(),
-			admitted_base: descriptor.admitted_base.as_str(),
-			repository_path: path_str(&descriptor.repository_path),
-			git_layout: CanonicalGitLayout {
-				registration_role: git_registration_role(layout.registration_role),
-				repository_root: path_str(&layout.repository_root),
-				worktree_git_entry: path_str(&layout.worktree_git_entry),
-				git_directory: path_str(&layout.git_directory),
-				common_directory: path_str(&layout.common_directory),
-				objects_directory: path_str(&layout.objects_directory),
-				refs_directory_present: layout.refs_directory.is_some(),
-				refs_directory: optional_path_str(layout.refs_directory.as_ref()),
-				common_directory_file_present: layout.common_directory_file.is_some(),
-				common_directory_file: optional_path_str(layout.common_directory_file.as_ref()),
-				git_directory_backlink_file_present: layout
-					.git_directory_backlink_file
-					.is_some(),
-				git_directory_backlink_file: optional_path_str(
-					layout.git_directory_backlink_file.as_ref(),
-				),
+	fn u16(&mut self, value: u16) {
+		self.bytes.extend_from_slice(&value.to_be_bytes());
+	}
+
+	fn u32(&mut self, value: u32) {
+		self.bytes.extend_from_slice(&value.to_be_bytes());
+	}
+
+	fn u64(&mut self, value: u64) {
+		self.bytes.extend_from_slice(&value.to_be_bytes());
+	}
+
+	fn text(&mut self, value: &str) {
+		self.u32(value.len() as u32);
+		self.bytes.extend_from_slice(value.as_bytes());
+	}
+
+	fn path(&mut self, value: &PersistedAbsolutePath) {
+		self.text(path_str(value));
+	}
+
+	fn observation_path(&mut self, value: &RepositoryObservationPath) {
+		self.text(observation_path_str(value));
+	}
+
+	fn optional_text(&mut self, value: Option<&str>) {
+		match value {
+			Some(value) => {
+				self.u8(1);
+				self.text(value);
 			},
-			observations: descriptor
-				.observations
-				.iter()
-				.map(|observation| CanonicalPathObservation {
-					path: observation_path_str(&observation.path),
-					roles: observation
-						.roles
-						.iter()
-						.copied()
-						.map(path_registration_role)
-						.collect(),
-					device: observation.device.to_string(),
-					inode: observation.inode.to_string(),
-					object_type: observed_object_type(observation.object_type),
-					owner_uid: observation.owner_uid.to_string(),
-					permissions_octal: format!("{:04o}", observation.permissions),
-				})
-				.collect(),
+			None => self.u8(0),
 		}
 	}
+
+	fn optional_path(&mut self, value: Option<&PersistedAbsolutePath>) {
+		match value {
+			Some(value) => {
+				self.u8(1);
+				self.path(value);
+			},
+			None => self.u8(0),
+		}
+	}
+}
+
+fn layout_observation_count(observations: &[RepositoryPathObservation]) -> u16 {
+	debug_assert!(observations.len() <= MAX_REPOSITORY_ADMISSION_OBSERVATIONS);
+	observations.len() as u16
 }
 
 fn validate_git_layout(
@@ -1965,34 +2027,41 @@ fn validate_git_layout(
 		return Err(ManagedRepositoryError::InvalidGitLayout);
 	}
 
-	let expected_common_file = (layout.common_directory != layout.git_directory)
-		.then(|| layout.git_directory.as_path().join("commondir"));
-	if layout.common_directory_file.as_ref().map(PersistedAbsolutePath::as_path)
-		!= expected_common_file.as_deref()
-	{
-		return Err(ManagedRepositoryError::InvalidGitLayout);
-	}
-	let expected_backlink = match layout.registration_role {
+	match layout.registration_role {
 		RepositoryGitRegistrationRole::PrimaryWorktree => {
-			if layout.git_directory != layout.worktree_git_entry {
+			if layout.registration_id.is_some()
+				|| layout.git_directory != layout.worktree_git_entry
+				|| layout.common_directory != layout.git_directory
+				|| layout.common_directory_file.is_some()
+				|| layout.git_directory_backlink_file.is_some()
+			{
 				return Err(ManagedRepositoryError::InvalidGitLayout);
 			}
-			None
 		},
 		RepositoryGitRegistrationRole::LinkedWorktree => {
-			if layout.git_directory == layout.worktree_git_entry {
+			let Some(registration_id) = &layout.registration_id else {
+				return Err(ManagedRepositoryError::InvalidGitLayout);
+			};
+			let expected_git_directory = layout
+				.common_directory
+				.as_path()
+				.join("worktrees")
+				.join(registration_id.as_str());
+			let expected_common_file = layout.git_directory.as_path().join("commondir");
+			let expected_backlink = layout.git_directory.as_path().join("gitdir");
+			if layout.git_directory == layout.common_directory
+				|| layout.git_directory.as_path() != expected_git_directory
+				|| layout.common_directory_file.as_ref().map(PersistedAbsolutePath::as_path)
+					!= Some(expected_common_file.as_path())
+				|| layout
+					.git_directory_backlink_file
+					.as_ref()
+					.map(PersistedAbsolutePath::as_path)
+					!= Some(expected_backlink.as_path())
+			{
 				return Err(ManagedRepositoryError::InvalidGitLayout);
 			}
-			Some(layout.git_directory.as_path().join("gitdir"))
 		},
-	};
-	if layout
-		.git_directory_backlink_file
-		.as_ref()
-		.map(PersistedAbsolutePath::as_path)
-		!= expected_backlink.as_deref()
-	{
-		return Err(ManagedRepositoryError::InvalidGitLayout);
 	}
 
 	require_directory_chain(
@@ -2203,47 +2272,35 @@ fn observation_path_str(path: &RepositoryObservationPath) -> &str {
 	path.as_path().to_str().expect("observation paths are validated UTF-8")
 }
 
-fn optional_path_str(path: Option<&PersistedAbsolutePath>) -> &str {
-	path.map_or("", path_str)
-}
-
-fn git_registration_role(role: RepositoryGitRegistrationRole) -> &'static str {
+fn git_registration_role_tag(role: RepositoryGitRegistrationRole) -> u8 {
 	match role {
-		RepositoryGitRegistrationRole::PrimaryWorktree => "primary_worktree",
-		RepositoryGitRegistrationRole::LinkedWorktree => "linked_worktree",
+		RepositoryGitRegistrationRole::PrimaryWorktree => 0,
+		RepositoryGitRegistrationRole::LinkedWorktree => 1,
 	}
 }
 
-fn observed_object_type(object_type: RepositoryObservedObjectType) -> &'static str {
+fn observed_object_type_tag(object_type: RepositoryObservedObjectType) -> u8 {
 	match object_type {
-		RepositoryObservedObjectType::Directory => "directory",
-		RepositoryObservedObjectType::RegularFile => "regular_file",
+		RepositoryObservedObjectType::Directory => 0,
+		RepositoryObservedObjectType::RegularFile => 1,
 	}
 }
 
-fn path_registration_role(role: RepositoryPathRegistrationRole) -> &'static str {
+fn path_registration_role_tag(role: RepositoryPathRegistrationRole) -> u8 {
 	match role {
-		RepositoryPathRegistrationRole::RepositoryRootComponent => "repository_root_component",
-		RepositoryPathRegistrationRole::RepositoryRoot => "repository_root",
-		RepositoryPathRegistrationRole::WorktreeGitEntry => "worktree_git_entry",
-		RepositoryPathRegistrationRole::GitDirectoryComponent => "git_directory_component",
-		RepositoryPathRegistrationRole::GitDirectory => "git_directory",
-		RepositoryPathRegistrationRole::GitCommonDirectoryComponent => {
-			"git_common_directory_component"
-		},
-		RepositoryPathRegistrationRole::GitCommonDirectory => "git_common_directory",
-		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent => {
-			"git_objects_directory_component"
-		},
-		RepositoryPathRegistrationRole::GitObjectsDirectory => "git_objects_directory",
-		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => {
-			"git_refs_directory_component"
-		},
-		RepositoryPathRegistrationRole::GitRefsDirectory => "git_refs_directory",
-		RepositoryPathRegistrationRole::GitCommonDirectoryFile => "git_common_directory_file",
-		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => {
-			"git_directory_backlink_file"
-		},
+		RepositoryPathRegistrationRole::RepositoryRootComponent => 0,
+		RepositoryPathRegistrationRole::RepositoryRoot => 1,
+		RepositoryPathRegistrationRole::WorktreeGitEntry => 2,
+		RepositoryPathRegistrationRole::GitDirectoryComponent => 3,
+		RepositoryPathRegistrationRole::GitDirectory => 4,
+		RepositoryPathRegistrationRole::GitCommonDirectoryComponent => 5,
+		RepositoryPathRegistrationRole::GitCommonDirectory => 6,
+		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent => 7,
+		RepositoryPathRegistrationRole::GitObjectsDirectory => 8,
+		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => 9,
+		RepositoryPathRegistrationRole::GitRefsDirectory => 10,
+		RepositoryPathRegistrationRole::GitCommonDirectoryFile => 11,
+		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => 12,
 	}
 }
 
