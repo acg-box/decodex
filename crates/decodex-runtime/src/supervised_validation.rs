@@ -634,11 +634,14 @@ fn classify_acceptance(
 	if after.is_some_and(|after| after != before) {
 		return ValidationAcceptance::Rejected(ValidationRejection::ProtectedStateMutated);
 	}
-	if after.is_none() || !capture_complete {
+	if after.is_none() {
 		return ValidationAcceptance::Rejected(ValidationRejection::IncompleteEvidence);
 	}
 	if output_exceeded || termination == ValidationTermination::OutputLimitExceeded {
 		return ValidationAcceptance::Rejected(ValidationRejection::OutputLimitExceeded);
+	}
+	if !capture_complete {
+		return ValidationAcceptance::Rejected(ValidationRejection::IncompleteEvidence);
 	}
 	match termination {
 		ValidationTermination::Exited(0) => ValidationAcceptance::Accepted,
