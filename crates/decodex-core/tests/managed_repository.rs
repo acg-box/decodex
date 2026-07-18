@@ -1,7 +1,19 @@
+//! Architecture-level managed-repository semantic acceptance coverage.
+
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	path::{Path, PathBuf},
 };
+
+use getrandom as _;
+#[cfg(unix)]
+use libc as _;
+use regex as _;
+use serde as _;
+use serde_json as _;
+use sha2 as _;
+use tempfile as _;
+use toml as _;
 
 use decodex_core::{
 	AdmittedRepositoryIdentity, AggregateCheckpoint, AllocateRepositoryCommand,
@@ -364,6 +376,7 @@ fn global_operation_assignment_exact_repeat_never_dispatches_and_conflicts_are_p
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // One representative Register -> Ready -> Commit semantic path.
 fn register_ready_and_commit_reconcile_only_exact_transition_evidence() {
 	let mut repository = facts(ManagedRepositoryPhase::Allocated);
 	let registration = decide_begin_registration(
