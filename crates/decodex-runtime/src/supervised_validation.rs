@@ -27,6 +27,7 @@ use decodex_core::RepositoryContentRevision;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TERMINATION_GRACE: Duration = Duration::from_millis(100);
+const TEARDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CAPTURE_BYTES: usize = 4 * 1_024 * 1_024;
 const MAX_DRAIN_EVENTS: usize = 32;
 const MAX_DRAIN_BYTES: usize = 256 * 1_024;
@@ -256,11 +257,11 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 	let mut child = command.spawn().map_err(ValidationSupervisionError::Spawn)?;
 	let stdout = match child.stdout.take() {
 		Some(stdout) => stdout,
-		None => return Err(missing_capture(&mut child, authority.deadline, "stdout")),
+		None => return Err(missing_capture(&mut child, "stdout")),
 	};
 	let stderr = match child.stderr.take() {
 		Some(stderr) => stderr,
-		None => return Err(missing_capture(&mut child, authority.deadline, "stderr")),
+		None => return Err(missing_capture(&mut child, "stderr")),
 	};
 
 	let (capture_sender, capture_receiver) = sync_channel(16);
@@ -303,15 +304,19 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		}
 		sleep_bounded(authority.deadline);
 	};
-	let teardown = teardown_process_group(&mut child, authority.deadline, recorded_status);
+	// The command deadline decides the validation outcome. Once that decision is made, the
+	// supervisor gets a separate fixed budget to prove that the complete process group is gone
+	// and to collect the resulting capture EOFs.
+	let teardown_deadline = Instant::now() + TEARDOWN_TIMEOUT;
+	let teardown = teardown_process_group(&mut child, teardown_deadline, recorded_status);
 	while teardown.confirmed
 		&& !capture.output_exceeded
 		&& !capture.settled()
-		&& Instant::now() < authority.deadline
+		&& Instant::now() < teardown_deadline
 	{
-		capture.drain_bounded(authority.deadline);
+		capture.drain_bounded(teardown_deadline);
 		if !capture.settled() {
-			sleep_bounded(authority.deadline);
+			sleep_bounded(teardown_deadline);
 		}
 	}
 	let termination = if teardown.confirmed {
@@ -505,12 +510,8 @@ struct TeardownOutcome {
 	observed_before_signal: bool,
 }
 
-fn missing_capture(
-	child: &mut Child,
-	deadline: Instant,
-	stream: &'static str,
-) -> ValidationSupervisionError {
-	let teardown = teardown_process_group(child, deadline, None);
+fn missing_capture(child: &mut Child, stream: &'static str) -> ValidationSupervisionError {
+	let teardown = teardown_process_group(child, Instant::now() + TEARDOWN_TIMEOUT, None);
 	let suffix = if teardown.confirmed { "" } else { "; teardown unconfirmed" };
 	ValidationSupervisionError::Spawn(io::Error::other(format!(
 		"{stream} supervision unavailable{suffix}"
@@ -542,8 +543,8 @@ fn teardown_process_group(
 		sleep_bounded(grace_deadline);
 	}
 
-	// Always attempt both group and leader SIGKILL paths. Neither call is allowed to extend the
-	// command authority's single absolute deadline.
+	// Always attempt both group and leader SIGKILL paths within the supervisor's fixed teardown
+	// budget.
 	let _ = signal_group_until(pid, libc::SIGKILL, deadline);
 	let _ = child.kill();
 	loop {
