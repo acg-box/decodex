@@ -1,7 +1,8 @@
 //! Trusted-host managed-repository acquisition, effects, and exact readback.
 //!
 //! This module is deliberately crate-private. PostgreSQL and the future repository saga own
-//! durable authority. The executor accepts only their complete canonical descriptors, remembers
+//! durable authority. The executor accepts only fresh affine dispatch receipts plus the complete
+//! persisted admission descriptor, remembers
 //! every attempted operation for the lifetime of this daemon, and exposes separate readback-only
 //! entry points. A descriptor, operation view, or readback request is never a dispatch receipt.
 //!
@@ -15,11 +16,11 @@
 use std::{
 	collections::BTreeSet,
 	ffi::{CString, OsStr, OsString},
-	fs::{self, File, Metadata},
+	fs::{self, File, Metadata, OpenOptions},
 	io::{self, ErrorKind, Read, Write},
 	os::unix::{
 		ffi::OsStrExt as _,
-		fs::{MetadataExt as _, PermissionsExt as _},
+		fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
 		io::{AsRawFd as _, FromRawFd as _},
 		process::{CommandExt as _, ExitStatusExt as _},
 	},
@@ -38,10 +39,14 @@ use decodex_core::{
 	CommitReadbackRequest, ExactCommitEvidence, ExactRegistrationEvidence,
 	ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence, OperationDescriptorVersion,
 	PersistedAbsolutePath, PositiveAllocationEvidence, RegistrationEvidence,
-	RegistrationReadbackRequest, RepositoryAdmissionFacts, RepositoryContentRevision,
-	RepositoryEvidenceId, RepositoryOperationId, RepositoryOperationKind,
+	RegistrationReadbackRequest, RepositoryAdmissionDescriptor,
+	RepositoryAdmissionDescriptorVersion, RepositoryAdmissionFacts, RepositoryAdmittedGitLayout,
+	RepositoryContentRevision, RepositoryEvidenceId, RepositoryGitRegistrationRole,
+	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
+	RepositoryOperationKind, RepositoryPathObservation, RepositoryRegistrationId,
 	WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
 };
+use decodex_postgres::RepositoryDispatchReceipt;
 use sha2::{Digest as _, Sha256};
 
 /// The only executor interpretation accepted by this source tree.
@@ -55,13 +60,19 @@ const PINNED_GIT_SHA256: &str =
 const NEUTRAL_CWD: &str = "/var/empty";
 const DISABLED_EXECUTABLE: &str = "/usr/bin/false";
 const PRIVATE_INDEX_NAME: &str = "decodex-index";
+const PRIVATE_INDEX_OWNER_NAME: &str = "decodex-index.owner";
 const MAX_GIT_OUTPUT_BYTES: usize = 4 * 1_024 * 1_024;
 const MAX_CONFIG_OUTPUT_BYTES: usize = 64 * 1_024;
 const MAX_COMMIT_OUTPUT_BYTES: usize = 64 * 1_024;
 const MAX_METADATA_FILE_BYTES: usize = 64 * 1_024;
+const MAX_GIT_EXECUTABLE_BYTES: u64 = 128 * 1_024 * 1_024;
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
-const MAX_ATTRIBUTE_FILES: usize = 256;
+const MAX_PATH_COMPONENTS: usize = 128;
+const MAX_WALK_FILES: usize = 100_000;
+const MAX_WALK_DEPTH: usize = 128;
+const MAX_WALK_BYTES: u64 = 4 * 1_024 * 1_024 * 1_024;
+const WALK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Read-only Allocate acquisition input. Its evidence identity is persistence-owned data, not an
 /// execution capability.
@@ -137,16 +148,19 @@ impl ManagedRepositoryExecutor {
 		&self,
 		request: AllocationAcquisitionRequest<'_>,
 	) -> Result<PositiveAllocationEvidence, AcquisitionFailure> {
-		let repository_path = request.admission.repository_path.as_path();
+		let expected_admission = request.admission.descriptor();
+		let repository_path = expected_admission.repository_path().as_path();
 		let repository_pin = DirectoryPin::acquire(repository_path).map_err(map_acquisition_path)?;
 		validate_repository_owner(&repository_pin).map_err(map_acquisition_path)?;
-		let layout = RepositoryLayout::inspect(repository_path).map_err(map_acquisition_path)?;
+		let layout = self
+			.reacquire_admission(expected_admission)
+			.map_err(map_acquisition_git)?;
 
 		self.verify_repository_policy(&layout, repository_path)
 			.map_err(map_acquisition_git)?;
 		let head = self.read_revision(&layout, repository_path, OsStr::new("HEAD"))
 			.map_err(map_acquisition_git)?;
-		if head.as_str() != request.admission.admitted_base.as_str() {
+		if head.as_str() != expected_admission.admitted_base().as_str() {
 			return Err(AcquisitionFailure::ForeignRepository);
 		}
 
@@ -165,23 +179,24 @@ impl ManagedRepositoryExecutor {
 		}
 		self.git.revalidate().map_err(map_acquisition_git)?;
 
-		Ok(PositiveAllocationEvidence {
-			evidence_id: request.evidence_id,
-			admitted_identity: request.admission.admitted_identity.clone(),
-			admitted_base: request.admission.admitted_base.clone(),
-			repository_path: request.admission.repository_path.clone(),
-			vacant_worktree_path: request.vacant_worktree_path.clone(),
-		})
+		Ok(PositiveAllocationEvidence::new(
+			request.evidence_id,
+			expected_admission.clone(),
+			request.vacant_worktree_path.clone(),
+		))
 	}
 
 	/// Consume the one in-memory Register attempt for this daemon generation.
 	pub(crate) fn execute_register(
 		&mut self,
-		descriptor: &CanonicalOperationDescriptor,
+		receipt: RepositoryDispatchReceipt,
+		admission: &RepositoryAdmissionFacts,
 	) -> ExecutionAttempt {
-		if let Err(error) = self.consume_descriptor(descriptor, RepositoryOperationKind::Register) {
-			return ExecutionAttempt::ConsumedWithoutInvocation(error);
-		}
+		let descriptor = match self.consume_receipt(receipt, admission, RepositoryOperationKind::Register) {
+			Ok(descriptor) => descriptor,
+			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error),
+		};
+		let descriptor = &descriptor;
 		let CanonicalOperationPayload::Register { expected_head, target } = &descriptor.payload else {
 			return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::InvalidDescriptor);
 		};
@@ -202,7 +217,7 @@ impl ManagedRepositoryExecutor {
 				return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::from(error))
 			},
 		}
-		let prepared = match self.prepare_operation(descriptor, false) {
+		let prepared = match self.prepare_operation(descriptor, admission.descriptor(), false) {
 			Ok(prepared) => prepared,
 			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error),
 		};
@@ -210,6 +225,19 @@ impl ManagedRepositoryExecutor {
 			return ExecutionAttempt::ConsumedWithoutInvocation(
 				ExecutionFailure::PreconditionMismatch,
 			);
+		}
+		let expected_admin = match expected_registration_admin(
+			&prepared.layout.common_dir.path,
+			descriptor.worktree_absolute_path.as_path(),
+		) {
+			Ok(path) => path,
+			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error.into()),
+		};
+		if let Err(error) = validate_registration_admin_root(&prepared.layout.common_dir.path) {
+			return ExecutionAttempt::ConsumedWithoutInvocation(error.into());
+		}
+		if !path_is_missing(&expected_admin).unwrap_or(false) {
+			return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::TargetOccupied);
 		}
 
 		let arguments = vec![
@@ -222,18 +250,20 @@ impl ManagedRepositoryExecutor {
 			descriptor.worktree_absolute_path.as_path().as_os_str().to_owned(),
 			OsString::from(expected_head.as_str()),
 		];
+		if let Err(error) = self.authorize_effect(admission.descriptor(), &prepared) {
+			return ExecutionAttempt::ConsumedWithoutInvocation(error);
+		}
 		let result = self.run_git(&prepared.layout, None, &arguments, None, MAX_GIT_OUTPUT_BYTES);
-		let attempt = self.finish_effect(prepared, result);
+		let attempt = self.finish_effect(prepared, admission.descriptor(), result);
 		if attempt != ExecutionAttempt::CompletedInvocation {
 			return attempt;
 		}
-		match self.inspect_registered_target(descriptor) {
+		match self.inspect_registered_target(descriptor, admission.descriptor()) {
 			Ok(target)
 				if self
-					.read_revision(
+					.read_detached_head(
 						&target.layout,
 						descriptor.worktree_absolute_path.as_path(),
-						OsStr::new("HEAD"),
 					)
 					.is_ok_and(|head| head.as_str() == expected_head.as_str())
 					&& registration_directory_is_clean(
@@ -253,13 +283,18 @@ impl ManagedRepositoryExecutor {
 	/// Consume the distinct Registered-to-Ready attempt without advancing HEAD.
 	pub(crate) fn execute_worktree_ready(
 		&mut self,
-		descriptor: &CanonicalOperationDescriptor,
+		receipt: RepositoryDispatchReceipt,
+		admission: &RepositoryAdmissionFacts,
 	) -> ExecutionAttempt {
-		if let Err(error) =
-			self.consume_descriptor(descriptor, RepositoryOperationKind::WorktreeReady)
-		{
-			return ExecutionAttempt::ConsumedWithoutInvocation(error);
-		}
+		let descriptor = match self.consume_receipt(
+			receipt,
+			admission,
+			RepositoryOperationKind::WorktreeReady,
+		) {
+			Ok(descriptor) => descriptor,
+			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error),
+		};
+		let descriptor = &descriptor;
 		let CanonicalOperationPayload::WorktreeReady { expected_head, policy } = &descriptor.payload
 		else {
 			return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::InvalidDescriptor);
@@ -268,7 +303,7 @@ impl ManagedRepositoryExecutor {
 			return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::InvalidDescriptor);
 		}
 
-		let prepared = match self.prepare_operation(descriptor, true) {
+		let prepared = match self.prepare_operation(descriptor, admission.descriptor(), true) {
 			Ok(prepared) => prepared,
 			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error),
 		};
@@ -278,8 +313,16 @@ impl ManagedRepositoryExecutor {
 			);
 		}
 		let index = prepared.layout.private_index();
-		if adjacent_lock_exists(&index).unwrap_or(true) {
+		if !path_is_missing(&index).unwrap_or(false)
+			|| adjacent_lock_exists(&index).unwrap_or(true)
+			|| !path_is_missing(&prepared.layout.private_index_owner()).unwrap_or(false)
+		{
 			return ExecutionAttempt::ConsumedWithoutInvocation(
+				ExecutionFailure::PrivateIndexConflict,
+			);
+		}
+		if create_private_index_owner(&prepared.layout, descriptor).is_err() {
+			return ExecutionAttempt::InvocationFailed(
 				ExecutionFailure::PrivateIndexConflict,
 			);
 		}
@@ -289,6 +332,9 @@ impl ManagedRepositoryExecutor {
 			OsString::from("-u"),
 			OsString::from(expected_head.as_str()),
 		];
+		if let Err(error) = self.authorize_effect(admission.descriptor(), &prepared) {
+			return ExecutionAttempt::InvocationFailed(error);
+		}
 		let result = self.run_git(
 			&prepared.layout,
 			Some(&index),
@@ -296,9 +342,12 @@ impl ManagedRepositoryExecutor {
 			None,
 			MAX_GIT_OUTPUT_BYTES,
 		);
-		let attempt = self.finish_effect(prepared, result);
+		let attempt = self.finish_effect(prepared, admission.descriptor(), result);
 		if attempt == ExecutionAttempt::CompletedInvocation
-			&& (FilePin::acquire(&index).is_err() || adjacent_lock_exists(&index).unwrap_or(true))
+			&& (FilePin::acquire(&index).is_err()
+				|| adjacent_lock_exists(&index).unwrap_or(true)
+				|| !RepositoryLayout::inspect(descriptor.worktree_absolute_path.as_path())
+					.is_ok_and(|layout| private_index_owner_matches(&layout, descriptor)))
 		{
 			ExecutionAttempt::InvocationFailed(ExecutionFailure::PrivateIndexConflict)
 		} else {
@@ -309,25 +358,33 @@ impl ManagedRepositoryExecutor {
 	/// Consume the exact H-to-H-prime Commit attempt using only the service-private index.
 	pub(crate) fn execute_commit(
 		&mut self,
-		descriptor: &CanonicalOperationDescriptor,
+		receipt: RepositoryDispatchReceipt,
+		admission: &RepositoryAdmissionFacts,
 	) -> ExecutionAttempt {
-		if let Err(error) = self.consume_descriptor(descriptor, RepositoryOperationKind::Commit) {
-			return ExecutionAttempt::ConsumedWithoutInvocation(error);
-		}
+		let descriptor = match self.consume_receipt(receipt, admission, RepositoryOperationKind::Commit) {
+			Ok(descriptor) => descriptor,
+			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error),
+		};
+		let descriptor = &descriptor;
 		let CanonicalOperationPayload::Commit { expected_head, next_head, intent } =
 			&descriptor.payload
 		else {
 			return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::InvalidDescriptor);
 		};
-		if !valid_reference(intent.target_reference.as_str()) || !valid_commit_intent(intent) {
+		if intent.target_reference.as_str() != "HEAD" || !valid_commit_intent(intent) {
 			return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::InvalidDescriptor);
 		}
 
-		let prepared = match self.prepare_operation(descriptor, true) {
+		let prepared = match self.prepare_operation(descriptor, admission.descriptor(), true) {
 			Ok(prepared) => prepared,
 			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error),
 		};
 		let index = prepared.layout.private_index();
+		if !private_index_owner_matches(&prepared.layout, descriptor) {
+			return ExecutionAttempt::ConsumedWithoutInvocation(
+				ExecutionFailure::PrivateIndexConflict,
+			);
+		}
 		let _index_pin = match FilePin::acquire(&index) {
 			Ok(pin) => pin,
 			Err(_) => {
@@ -341,10 +398,9 @@ impl ManagedRepositoryExecutor {
 				ExecutionFailure::PrivateIndexConflict,
 			);
 		}
-		let reference = match self.read_revision(
+		let reference = match self.read_detached_head(
 			&prepared.layout,
 			descriptor.worktree_absolute_path.as_path(),
-			OsStr::new(intent.target_reference.as_str()),
 		) {
 			Ok(reference) => reference,
 			Err(error) => return ExecutionAttempt::ConsumedWithoutInvocation(error),
@@ -354,19 +410,34 @@ impl ManagedRepositoryExecutor {
 				ExecutionFailure::PreconditionMismatch,
 			);
 		}
+		match self.object_exists(
+			&prepared.layout,
+			descriptor.worktree_absolute_path.as_path(),
+			next_head,
+		) {
+			Ok(false) => {},
+			_ => return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::PreconditionMismatch),
+		}
 
 		let add = vec![OsString::from("add"), OsString::from("--all"), OsString::from("--")];
+		if let Err(error) = self.authorize_effect(admission.descriptor(), &prepared) {
+			return ExecutionAttempt::ConsumedWithoutInvocation(error);
+		}
 		if let Err(error) = self.run_git(&prepared.layout, Some(&index), &add, None, MAX_GIT_OUTPUT_BYTES)
 		{
-			return self.finish_effect(prepared, Err(error));
+			return self.finish_effect(prepared, admission.descriptor(), Err(error));
 		}
 		if !safe_private_index(&index) || adjacent_lock_exists(&index).unwrap_or(true) {
 			return self.finish_effect(
 				prepared,
+				admission.descriptor(),
 				Err(ExecutionFailure::PrivateIndexConflict),
 			);
 		}
 		let write_tree = vec![OsString::from("write-tree")];
+		if let Err(error) = self.authorize_effect(admission.descriptor(), &prepared) {
+			return self.finish_effect(prepared, admission.descriptor(), Err(error));
+		}
 		let tree = match self.run_git(
 			&prepared.layout,
 			Some(&index),
@@ -376,13 +447,14 @@ impl ManagedRepositoryExecutor {
 		) {
 			Ok(output) => match parse_single_revision(&output.stdout) {
 				Some(tree) if tree == intent.tree.as_str() => tree.to_owned(),
-				_ => return self.finish_effect(prepared, Err(ExecutionFailure::UnexpectedOutput)),
+				_ => return self.finish_effect(prepared, admission.descriptor(), Err(ExecutionFailure::UnexpectedOutput)),
 			},
-			Err(error) => return self.finish_effect(prepared, Err(error)),
+			Err(error) => return self.finish_effect(prepared, admission.descriptor(), Err(error)),
 		};
 		if !safe_private_index(&index) || adjacent_lock_exists(&index).unwrap_or(true) {
 			return self.finish_effect(
 				prepared,
+				admission.descriptor(),
 				Err(ExecutionFailure::PrivateIndexConflict),
 			);
 		}
@@ -396,6 +468,9 @@ impl ManagedRepositoryExecutor {
 			OsString::from("-"),
 		];
 		let commit_environment = commit_environment(intent);
+		if let Err(error) = self.authorize_effect(admission.descriptor(), &prepared) {
+			return self.finish_effect(prepared, admission.descriptor(), Err(error));
+		}
 		let commit = match self.run_git_with_environment(
 			&prepared.layout,
 			Some(&index),
@@ -406,13 +481,14 @@ impl ManagedRepositoryExecutor {
 		) {
 			Ok(output) => match parse_single_revision(&output.stdout) {
 				Some(commit) if commit == next_head.as_str() => commit.to_owned(),
-				_ => return self.finish_effect(prepared, Err(ExecutionFailure::UnexpectedOutput)),
+				_ => return self.finish_effect(prepared, admission.descriptor(), Err(ExecutionFailure::UnexpectedOutput)),
 			},
-			Err(error) => return self.finish_effect(prepared, Err(error)),
+			Err(error) => return self.finish_effect(prepared, admission.descriptor(), Err(error)),
 		};
 		if !safe_private_index(&index) || adjacent_lock_exists(&index).unwrap_or(true) {
 			return self.finish_effect(
 				prepared,
+				admission.descriptor(),
 				Err(ExecutionFailure::PrivateIndexConflict),
 			);
 		}
@@ -424,6 +500,9 @@ impl ManagedRepositoryExecutor {
 			OsString::from(commit),
 			OsString::from(expected_head.as_str()),
 		];
+		if let Err(error) = self.authorize_effect(admission.descriptor(), &prepared) {
+			return self.finish_effect(prepared, admission.descriptor(), Err(error));
+		}
 		let result = self.run_git(
 			&prepared.layout,
 			Some(&index),
@@ -431,11 +510,25 @@ impl ManagedRepositoryExecutor {
 			None,
 			MAX_GIT_OUTPUT_BYTES,
 		);
-		let attempt = self.finish_effect(prepared, result);
+		let attempt = self.finish_effect(prepared, admission.descriptor(), result);
 		// `git add` may publish the private index by lock-and-rename, so replacement by the
 		// admitted Git operation is expected here. Reacquire and verify the resulting private file.
 		if !safe_private_index(&index) || adjacent_lock_exists(&index).unwrap_or(true) {
 			ExecutionAttempt::InvocationFailed(ExecutionFailure::PrivateIndexConflict)
+		} else if attempt == ExecutionAttempt::CompletedInvocation {
+			match self.inspect_registered_target(descriptor, admission.descriptor()) {
+				Ok(target)
+					if self
+						.read_detached_head(
+							&target.layout,
+							descriptor.worktree_absolute_path.as_path(),
+						)
+						.is_ok_and(|head| head.as_str() == next_head.as_str()) => attempt,
+				Err(ReadbackFailure::Replaced) => {
+					ExecutionAttempt::InvocationFailed(ExecutionFailure::Replaced)
+				},
+				_ => ExecutionAttempt::InvocationFailed(ExecutionFailure::UnexpectedOutput),
+			}
 		} else {
 			attempt
 		}
@@ -445,6 +538,7 @@ impl ManagedRepositoryExecutor {
 	pub(crate) fn read_registration(
 		&self,
 		request: &RegistrationReadbackRequest,
+		admission: &RepositoryAdmissionFacts,
 		evidence_id: RepositoryEvidenceId,
 	) -> RegistrationEvidence {
 		let descriptor = &request.descriptor;
@@ -454,10 +548,11 @@ impl ManagedRepositoryExecutor {
 		if descriptor.kind != RepositoryOperationKind::Register
 			|| target.repository_path != descriptor.repository_absolute_path
 			|| target.worktree_path != descriptor.worktree_absolute_path
+			|| !descriptor_matches_admission(descriptor, admission.descriptor())
 		{
 			return RegistrationEvidence::Foreign;
 		}
-		let source = match self.inspect_readback_source(descriptor) {
+		let source = match self.inspect_readback_source(descriptor, admission.descriptor()) {
 			Ok(source) => source,
 			Err(ReadbackFailure::Replaced) => return RegistrationEvidence::Replaced,
 			Err(ReadbackFailure::Foreign) => return RegistrationEvidence::Foreign,
@@ -480,15 +575,14 @@ impl ManagedRepositoryExecutor {
 			return RegistrationEvidence::Stale;
 		}
 		if path_is_missing(descriptor.worktree_absolute_path.as_path()).unwrap_or(false) {
-			return if registration_admin_for_path(
+			return match registration_admin_for_path(
 				&source.layout.common_dir,
 				descriptor.worktree_absolute_path.as_path(),
-			)
-			.unwrap_or(false)
-			{
-				RegistrationEvidence::MissingReciprocal
-			} else {
-				RegistrationEvidence::NoEffect
+			) {
+				Ok(true) => RegistrationEvidence::MissingReciprocal,
+				Ok(false) => RegistrationEvidence::NoEffect,
+				Err(PathFailure::Replaced) => RegistrationEvidence::Replaced,
+				Err(_) => RegistrationEvidence::Inconclusive,
 			};
 		}
 		let target_layout = match RepositoryLayout::inspect(descriptor.worktree_absolute_path.as_path()) {
@@ -500,19 +594,24 @@ impl ManagedRepositoryExecutor {
 		if target_layout.common_dir.identity() != source.layout.common_dir.identity()
 			|| target_layout.backlink.as_deref()
 				!= Some(descriptor.worktree_absolute_path.as_path().join(".git").as_path())
+			|| !target_layout.has_exact_linked_admin_child()
+			|| !expected_registration_admin(
+				&source.layout.common_dir.path,
+				descriptor.worktree_absolute_path.as_path(),
+			)
+			.is_ok_and(|expected| target_layout.git_dir.path == expected)
 		{
 			return RegistrationEvidence::MissingReciprocal;
 		}
-		if !safe_regular_file(&target_layout.locked_marker(), false) {
+		if !safe_owned_regular_file(&target_layout.locked_marker()) {
 			return RegistrationEvidence::MissingReciprocal;
 		}
 		if !registration_directory_is_clean(descriptor.worktree_absolute_path.as_path()) {
 			return RegistrationEvidence::Dirty;
 		}
-		let head = match self.read_revision(
+		let head = match self.read_detached_head(
 			&target_layout,
 			descriptor.worktree_absolute_path.as_path(),
-			OsStr::new("HEAD"),
 		) {
 			Ok(head) => head,
 			Err(ExecutionFailure::Replaced) => return RegistrationEvidence::Replaced,
@@ -521,7 +620,10 @@ impl ManagedRepositoryExecutor {
 		if head.as_str() != expected_head.as_str() {
 			return RegistrationEvidence::Stale;
 		}
-		if source.revalidate().is_err() || target_layout.revalidate().is_err() {
+		if source.revalidate().is_err()
+			|| target_layout.revalidate().is_err()
+			|| self.reacquire_admission(admission.descriptor()).is_err()
+		{
 			return RegistrationEvidence::Replaced;
 		}
 
@@ -537,6 +639,7 @@ impl ManagedRepositoryExecutor {
 	pub(crate) fn read_worktree_ready(
 		&self,
 		request: &WorktreeReadyReadbackRequest,
+		admission: &RepositoryAdmissionFacts,
 		evidence_id: RepositoryEvidenceId,
 	) -> WorktreeReadyEvidence {
 		let descriptor = &request.descriptor;
@@ -546,10 +649,11 @@ impl ManagedRepositoryExecutor {
 		};
 		if descriptor.kind != RepositoryOperationKind::WorktreeReady
 			|| *policy != WorktreeReadyPolicy::ExactCleanWorktree
+			|| !descriptor_matches_admission(descriptor, admission.descriptor())
 		{
 			return WorktreeReadyEvidence::Foreign;
 		}
-		let target = match self.inspect_registered_target(descriptor) {
+		let target = match self.inspect_registered_target(descriptor, admission.descriptor()) {
 			Ok(target) => target,
 			Err(ReadbackFailure::Missing) => return WorktreeReadyEvidence::NoEffect,
 			Err(ReadbackFailure::Incomplete) => return WorktreeReadyEvidence::Incomplete,
@@ -558,10 +662,9 @@ impl ManagedRepositoryExecutor {
 			Err(ReadbackFailure::Dirty) => return WorktreeReadyEvidence::Dirty,
 			Err(ReadbackFailure::Unavailable) => return WorktreeReadyEvidence::Unavailable,
 		};
-		let head = match self.read_revision(
+		let head = match self.read_detached_head(
 			&target.layout,
 			descriptor.worktree_absolute_path.as_path(),
-			OsStr::new("HEAD"),
 		) {
 			Ok(head) => head,
 			Err(ExecutionFailure::Replaced) => return WorktreeReadyEvidence::Replaced,
@@ -577,10 +680,15 @@ impl ManagedRepositoryExecutor {
 			};
 		}
 		let index = target.layout.private_index();
+		let owner = target.layout.private_index_owner();
+		let owner_missing = path_is_missing(&owner).unwrap_or(false);
+		let index_lock = adjacent_lock_exists(&index).unwrap_or(true);
 		let index_pin = match FilePin::acquire(&index) {
 			Ok(pin) => pin,
 			Err(PathFailure::Missing) => {
-				return if registration_directory_is_clean(
+				return if owner_missing
+					&& !index_lock
+					&& registration_directory_is_clean(
 					descriptor.worktree_absolute_path.as_path(),
 				) {
 					WorktreeReadyEvidence::NoEffect
@@ -592,6 +700,9 @@ impl ManagedRepositoryExecutor {
 			Err(PathFailure::UnsafeOwner) => return WorktreeReadyEvidence::Dirty,
 			Err(_) => return WorktreeReadyEvidence::Incomplete,
 		};
+		if owner_missing || index_lock || !private_index_owner_matches(&target.layout, descriptor) {
+			return WorktreeReadyEvidence::Dirty;
+		}
 		match self.clean_against(
 			&target.layout,
 			descriptor.worktree_absolute_path.as_path(),
@@ -603,7 +714,10 @@ impl ManagedRepositoryExecutor {
 			Err(ExecutionFailure::Replaced) => return WorktreeReadyEvidence::Replaced,
 			Err(error) => return worktree_readback_process_failure(error),
 		}
-		if target.revalidate().is_err() || index_pin.revalidate().is_err() {
+		if target.revalidate().is_err()
+			|| index_pin.revalidate().is_err()
+			|| self.reacquire_admission(admission.descriptor()).is_err()
+		{
 			return WorktreeReadyEvidence::Replaced;
 		}
 
@@ -617,6 +731,7 @@ impl ManagedRepositoryExecutor {
 	pub(crate) fn read_commit(
 		&self,
 		request: &CommitReadbackRequest,
+		admission: &RepositoryAdmissionFacts,
 		evidence_id: RepositoryEvidenceId,
 	) -> CommitEvidence {
 		let descriptor = &request.descriptor;
@@ -626,31 +741,88 @@ impl ManagedRepositoryExecutor {
 			return CommitEvidence::Foreign;
 		};
 		if descriptor.kind != RepositoryOperationKind::Commit
-			|| !valid_reference(intent.target_reference.as_str())
+			|| intent.target_reference.as_str() != "HEAD"
 			|| !valid_commit_intent(intent)
+			|| !descriptor_matches_admission(descriptor, admission.descriptor())
 		{
 			return CommitEvidence::Foreign;
 		}
-		let target = match self.inspect_registered_target(descriptor) {
+		let target = match self.inspect_registered_target(descriptor, admission.descriptor()) {
 			Ok(target) => target,
-			Err(ReadbackFailure::Missing) => return CommitEvidence::NoEffect,
+			Err(ReadbackFailure::Missing) => return CommitEvidence::Incomplete,
 			Err(ReadbackFailure::Incomplete) => return CommitEvidence::Incomplete,
 			Err(ReadbackFailure::Replaced) => return CommitEvidence::Replaced,
 			Err(ReadbackFailure::Foreign) => return CommitEvidence::Foreign,
 			Err(ReadbackFailure::Dirty) => return CommitEvidence::Dirty,
 			Err(ReadbackFailure::Unavailable) => return CommitEvidence::Unavailable,
 		};
-		let observed = match self.read_revision(
+		let index = target.layout.private_index();
+		let owner = target.layout.private_index_owner();
+		let index_pin = match FilePin::acquire(&index) {
+			Ok(pin) => pin,
+			Err(PathFailure::Replaced) => return CommitEvidence::Replaced,
+			Err(PathFailure::UnsafeOwner) => return CommitEvidence::Dirty,
+			Err(_) => return CommitEvidence::Incomplete,
+		};
+		if path_is_missing(&owner).unwrap_or(false)
+			|| !private_index_owner_matches(&target.layout, descriptor)
+		{
+			return CommitEvidence::Dirty;
+		}
+		let locks_present = adjacent_lock_exists(&index).unwrap_or(true)
+			|| !path_is_missing(&target.layout.git_dir.path.join("HEAD.lock")).unwrap_or(false)
+			|| object_temporary_evidence(&target.layout.objects_dir.path).unwrap_or(true);
+		let observed = match self.read_detached_head(
 			&target.layout,
 			descriptor.worktree_absolute_path.as_path(),
-			OsStr::new(intent.target_reference.as_str()),
 		) {
 			Ok(observed) => observed,
 			Err(ExecutionFailure::Replaced) => return CommitEvidence::Replaced,
 			Err(error) => return commit_readback_process_failure(error),
 		};
+		let next_object_exists = match self.object_exists(
+			&target.layout,
+			descriptor.worktree_absolute_path.as_path(),
+			next_head,
+		) {
+			Ok(exists) => exists,
+			Err(ExecutionFailure::Replaced) => return CommitEvidence::Replaced,
+			Err(error) => return commit_readback_process_failure(error),
+		};
+		let exact_next_object = if next_object_exists {
+			match self.read_object(
+				&target.layout,
+				descriptor.worktree_absolute_path.as_path(),
+				next_head,
+			) {
+				Ok(bytes) if bytes == expected_commit_bytes(intent, expected_head) => true,
+				Ok(_) => return CommitEvidence::Foreign,
+				Err(ExecutionFailure::Replaced) => return CommitEvidence::Replaced,
+				Err(_) => return CommitEvidence::Incomplete,
+			}
+		} else {
+			false
+		};
 		if observed.as_str() == expected_head.as_str() {
-			return CommitEvidence::NoEffect;
+			if locks_present || exact_next_object {
+				return CommitEvidence::Incomplete;
+			}
+			return match self.clean_against(
+				&target.layout,
+				descriptor.worktree_absolute_path.as_path(),
+				&index,
+				expected_head,
+			) {
+				Ok(true)
+					if target.revalidate().is_ok()
+						&& index_pin.revalidate().is_ok()
+						&& self.reacquire_admission(admission.descriptor()).is_ok() => {
+					CommitEvidence::NoEffect
+				},
+				Ok(true) | Err(ExecutionFailure::Replaced) => CommitEvidence::Replaced,
+				Ok(false) => CommitEvidence::Dirty,
+				Err(error) => commit_readback_process_failure(error),
+			};
 		}
 		if observed.as_str() == descriptor.admitted_base.as_str()
 			&& expected_head.as_str() != descriptor.admitted_base.as_str()
@@ -660,25 +832,9 @@ impl ManagedRepositoryExecutor {
 		if observed.as_str() != next_head.as_str() {
 			return CommitEvidence::Foreign;
 		}
-		let raw_commit = match self.read_object(
-			&target.layout,
-			descriptor.worktree_absolute_path.as_path(),
-			next_head,
-		) {
-			Ok(bytes) => bytes,
-			Err(ExecutionFailure::Replaced) => return CommitEvidence::Replaced,
-			Err(_) => return CommitEvidence::Incomplete,
-		};
-		if raw_commit != expected_commit_bytes(intent, expected_head) {
-			return CommitEvidence::Foreign;
+		if locks_present || !exact_next_object {
+			return CommitEvidence::Incomplete;
 		}
-		let index = target.layout.private_index();
-		let index_pin = match FilePin::acquire(&index) {
-			Ok(pin) => pin,
-			Err(PathFailure::Replaced) => return CommitEvidence::Replaced,
-			Err(PathFailure::UnsafeOwner) => return CommitEvidence::Dirty,
-			Err(_) => return CommitEvidence::Incomplete,
-		};
 		match self.clean_against(
 			&target.layout,
 			descriptor.worktree_absolute_path.as_path(),
@@ -690,7 +846,10 @@ impl ManagedRepositoryExecutor {
 			Err(ExecutionFailure::Replaced) => return CommitEvidence::Replaced,
 			Err(error) => return commit_readback_process_failure(error),
 		}
-		if target.revalidate().is_err() || index_pin.revalidate().is_err() {
+		if target.revalidate().is_err()
+			|| index_pin.revalidate().is_err()
+			|| self.reacquire_admission(admission.descriptor()).is_err()
+		{
 			return CommitEvidence::Replaced;
 		}
 
@@ -703,11 +862,13 @@ impl ManagedRepositoryExecutor {
 		})
 	}
 
-	fn consume_descriptor(
+	fn consume_receipt(
 		&mut self,
-		descriptor: &CanonicalOperationDescriptor,
+		receipt: RepositoryDispatchReceipt,
+		admission: &RepositoryAdmissionFacts,
 		expected_kind: RepositoryOperationKind,
-	) -> Result<(), ExecutionFailure> {
+	) -> Result<CanonicalOperationDescriptor, ExecutionFailure> {
+		let descriptor = receipt.into_descriptor();
 		if !self.attempted.insert(descriptor.operation_id.clone()) {
 			return Err(ExecutionFailure::AlreadyAttempted);
 		}
@@ -722,29 +883,40 @@ impl ManagedRepositoryExecutor {
 		if descriptor.repository_absolute_path == descriptor.worktree_absolute_path {
 			return Err(ExecutionFailure::InvalidDescriptor);
 		}
-		Ok(())
+		if !descriptor_matches_admission(&descriptor, admission.descriptor()) {
+			return Err(ExecutionFailure::ForeignRepository);
+		}
+		self.reacquire_admission(admission.descriptor())?;
+		Ok(descriptor)
 	}
 
 	fn prepare_operation(
 		&self,
 		descriptor: &CanonicalOperationDescriptor,
+		admission: &RepositoryAdmissionDescriptor,
 		require_registered_target: bool,
 	) -> Result<PreparedOperation, ExecutionFailure> {
 		let repository_path = descriptor.repository_absolute_path.as_path();
 		let repository_pin = DirectoryPin::acquire(repository_path)?;
 		validate_repository_owner(&repository_pin)?;
-		let source_layout = RepositoryLayout::inspect(repository_path)?;
+		let source_layout = self.reacquire_admission(admission)?;
 		self.verify_repository_policy(&source_layout, repository_path)?;
 
 		let (path_pin, layout, worktree_path) = if require_registered_target {
-			let target = self.inspect_registered_target(descriptor).map_err(map_readback_execution)?;
+			let target = self
+				.inspect_registered_target(descriptor, admission)
+				.map_err(map_readback_execution)?;
 			(target.path_pin, target.layout, descriptor.worktree_absolute_path.as_path().to_owned())
 		} else {
 			let parent = vacant_target(descriptor.worktree_absolute_path.as_path())?;
 			validate_repository_owner(&parent)?;
 			(parent, source_layout, repository_path.to_owned())
 		};
-		let head = self.read_revision(&layout, &worktree_path, OsStr::new("HEAD"))?;
+		let head = if require_registered_target {
+			self.read_detached_head(&layout, &worktree_path)?
+		} else {
+			self.read_revision(&layout, &worktree_path, OsStr::new("HEAD"))?
+		};
 		self.git.revalidate()?;
 
 		Ok(PreparedOperation { repository_pin, path_pin, layout, head })
@@ -753,6 +925,7 @@ impl ManagedRepositoryExecutor {
 	fn finish_effect(
 		&self,
 		prepared: PreparedOperation,
+		admission: &RepositoryAdmissionDescriptor,
 		result: Result<GitOutput, ExecutionFailure>,
 	) -> ExecutionAttempt {
 		let identity_result = prepared
@@ -761,7 +934,8 @@ impl ManagedRepositoryExecutor {
 			.and_then(|()| prepared.path_pin.revalidate())
 			.and_then(|()| prepared.layout.revalidate())
 			.map_err(ExecutionFailure::from)
-			.and_then(|()| self.git.revalidate());
+			.and_then(|()| self.git.revalidate())
+			.and_then(|()| self.reacquire_admission(admission).map(|_| ()));
 		if let Err(error) = identity_result {
 			return ExecutionAttempt::InvocationFailed(error);
 		}
@@ -771,14 +945,31 @@ impl ManagedRepositoryExecutor {
 		}
 	}
 
+	fn authorize_effect(
+		&self,
+		admission: &RepositoryAdmissionDescriptor,
+		prepared: &PreparedOperation,
+	) -> Result<(), ExecutionFailure> {
+		let source = self.reacquire_admission(admission)?;
+		self.verify_repository_policy(&source, admission.repository_path().as_path())?;
+		prepared.repository_pin.revalidate()?;
+		prepared.path_pin.revalidate()?;
+		prepared.layout.revalidate()?;
+		self.git.revalidate()
+	}
+
 	fn inspect_readback_source(
 		&self,
 		descriptor: &CanonicalOperationDescriptor,
+		admission: &RepositoryAdmissionDescriptor,
 	) -> Result<InspectedTarget, ReadbackFailure> {
 		let path = descriptor.repository_absolute_path.as_path();
 		let path_pin = DirectoryPin::acquire(path).map_err(ReadbackFailure::from)?;
 		validate_repository_owner(&path_pin).map_err(ReadbackFailure::from)?;
-		let layout = RepositoryLayout::inspect(path).map_err(ReadbackFailure::from)?;
+		if !descriptor_matches_admission(descriptor, admission) {
+			return Err(ReadbackFailure::Foreign);
+		}
+		let layout = self.reacquire_admission(admission).map_err(ReadbackFailure::from)?;
 		self.verify_repository_policy(&layout, path).map_err(ReadbackFailure::from)?;
 		Ok(InspectedTarget { path_pin, layout })
 	}
@@ -786,22 +977,102 @@ impl ManagedRepositoryExecutor {
 	fn inspect_registered_target(
 		&self,
 		descriptor: &CanonicalOperationDescriptor,
+		admission: &RepositoryAdmissionDescriptor,
 	) -> Result<InspectedTarget, ReadbackFailure> {
-		let source = self.inspect_readback_source(descriptor)?;
+		let source = self.inspect_readback_source(descriptor, admission)?;
 		let path = descriptor.worktree_absolute_path.as_path();
 		let path_pin = DirectoryPin::acquire(path).map_err(ReadbackFailure::from)?;
 		validate_repository_owner(&path_pin).map_err(ReadbackFailure::from)?;
 		let layout = RepositoryLayout::inspect(path).map_err(ReadbackFailure::from)?;
 		if layout.common_dir.identity() != source.layout.common_dir.identity()
 			|| layout.backlink.as_deref() != Some(path.join(".git").as_path())
+			|| !layout.has_exact_linked_admin_child()
+			|| !expected_registration_admin(&source.layout.common_dir.path, path)
+				.is_ok_and(|expected| layout.git_dir.path == expected)
 		{
 			return Err(ReadbackFailure::Foreign);
 		}
-		if !safe_regular_file(&layout.locked_marker(), false) {
+		if !safe_owned_regular_file(&layout.locked_marker()) {
 			return Err(ReadbackFailure::Incomplete);
 		}
 		self.verify_repository_policy(&layout, path).map_err(ReadbackFailure::from)?;
 		Ok(InspectedTarget { path_pin, layout })
+	}
+
+	/// Reconstruct every observable field through the validated core constructor and require exact
+	/// equality with the complete persisted descriptor. Opaque admission identity is copied only as
+	/// constructor input; it cannot mask any changed path, role, layout, stat fact, or digest.
+	fn reacquire_admission(
+		&self,
+		expected: &RepositoryAdmissionDescriptor,
+	) -> Result<RepositoryLayout, ExecutionFailure> {
+		if expected.version() != RepositoryAdmissionDescriptorVersion::V1 {
+			return Err(ExecutionFailure::UnsupportedContract);
+		}
+		let layout = RepositoryLayout::inspect(expected.repository_path().as_path())?;
+		let (registration_role, registration_id, common_file, backlink_file) =
+			if layout.backlink.is_some() {
+				if !layout.has_exact_linked_admin_child() {
+					return Err(ExecutionFailure::UnsupportedRepository);
+				}
+				let name = layout
+					.git_dir
+					.path
+					.file_name()
+					.and_then(OsStr::to_str)
+					.ok_or(ExecutionFailure::UnsupportedRepository)?;
+				let registration_id = RepositoryRegistrationId::new(name.to_owned())
+					.map_err(|_| ExecutionFailure::UnsupportedRepository)?;
+				(
+					RepositoryGitRegistrationRole::LinkedWorktree,
+					Some(registration_id),
+					Some(persisted_path(layout.git_dir.path.join("commondir"))?),
+					Some(persisted_path(layout.git_dir.path.join("gitdir"))?),
+				)
+			} else {
+				(
+					RepositoryGitRegistrationRole::PrimaryWorktree,
+					None,
+					None,
+					None,
+				)
+			};
+		let observed_layout = RepositoryAdmittedGitLayout::new(
+			registration_role,
+			registration_id,
+			persisted_path(layout.worktree_path.clone())?,
+			persisted_path(layout.worktree_path.join(".git"))?,
+			persisted_path(layout.git_dir.path.clone())?,
+			persisted_path(layout.common_dir.path.clone())?,
+			persisted_path(layout.objects_dir.path.clone())?,
+			layout
+				.refs_dir
+				.as_ref()
+				.map(|refs| persisted_path(refs.path.clone()))
+				.transpose()?,
+			common_file,
+			backlink_file,
+		);
+		let observations = expected
+			.observations()
+			.iter()
+			.map(observe_path)
+			.collect::<Result<Vec<_>, _>>()?;
+		let observed = RepositoryAdmissionDescriptor::new_v1(
+			expected.project_id().clone(),
+			expected.repository_id().clone(),
+			expected.admitted_identity().clone(),
+			expected.admitted_base().clone(),
+			persisted_path(layout.worktree_path.clone())?,
+			observed_layout,
+			observations,
+		)
+		.map_err(|_| ExecutionFailure::UnsupportedRepository)?;
+		if &observed != expected || !observed.verify_digest(expected.digest()) {
+			return Err(ExecutionFailure::Replaced);
+		}
+		layout.revalidate()?;
+		Ok(layout)
 	}
 
 	fn verify_repository_policy(
@@ -813,7 +1084,7 @@ impl ManagedRepositoryExecutor {
 			return Err(ExecutionFailure::UnsupportedRepository);
 		}
 		let worktree_config = layout.git_dir.path.join("config.worktree");
-		if worktree_config.exists() && !safe_owned_regular_file(&worktree_config) {
+		if !path_is_missing(&worktree_config).unwrap_or(false) {
 			return Err(ExecutionFailure::UnsupportedRepository);
 		}
 		let packed_refs = layout.common_dir.path.join("packed-refs");
@@ -834,6 +1105,7 @@ impl ManagedRepositoryExecutor {
 		}
 		verify_hooks(&layout.common_dir.path.join("hooks"))?;
 		verify_info_attributes(&layout.common_dir.path.join("info/attributes"))?;
+		verify_worktree_inventory(worktree_path)?;
 
 		let config = vec![
 			OsString::from("config"),
@@ -852,16 +1124,7 @@ impl ManagedRepositoryExecutor {
 			OsString::from("HEAD"),
 		];
 		let output = self.run_git(layout, None, &tree, None, MAX_GIT_OUTPUT_BYTES)?;
-		let attributes = verify_tree_inventory(&output.stdout)?;
-		for object in attributes {
-			let blob = vec![
-				OsString::from("cat-file"),
-				OsString::from("blob"),
-				OsString::from(object),
-			];
-			let output = self.run_git(layout, None, &blob, None, MAX_METADATA_FILE_BYTES)?;
-			verify_attributes(&output.stdout)?;
-		}
+		verify_tree_inventory(&output.stdout)?;
 		layout.revalidate()?;
 		if !worktree_path.is_absolute() {
 			return Err(ExecutionFailure::PathUnavailable);
@@ -885,6 +1148,39 @@ impl ManagedRepositoryExecutor {
 		let revision = parse_single_revision(&output.stdout).ok_or(ExecutionFailure::UnexpectedOutput)?;
 		RepositoryContentRevision::new(revision.to_owned())
 			.map_err(|_| ExecutionFailure::UnexpectedOutput)
+	}
+
+	fn read_detached_head(
+		&self,
+		layout: &RepositoryLayout,
+		worktree_path: &Path,
+	) -> Result<RepositoryContentRevision, ExecutionFailure> {
+		let bytes = read_nofollow(&layout.git_dir.path.join("HEAD"), 256)?;
+		let direct = parse_single_revision(&bytes).ok_or(ExecutionFailure::UnsupportedRepository)?;
+		let observed = self.read_revision(layout, worktree_path, OsStr::new("HEAD"))?;
+		if observed.as_str() != direct {
+			return Err(ExecutionFailure::Replaced);
+		}
+		Ok(observed)
+	}
+
+	fn object_exists(
+		&self,
+		layout: &RepositoryLayout,
+		worktree_path: &Path,
+		revision: &RepositoryContentRevision,
+	) -> Result<bool, ExecutionFailure> {
+		let arguments = vec![
+			OsString::from("cat-file"),
+			OsString::from("-e"),
+			OsString::from(format!("{}^{{commit}}", revision.as_str())),
+		];
+		match self.run_git_raw(layout, worktree_path, None, &arguments, None, 1, &[]) {
+			Ok(output) if output.status.success() => Ok(true),
+			Ok(output) if output.status.code() == Some(1) => Ok(false),
+			Ok(output) => Err(classify_status(output.status)),
+			Err(error) => Err(error),
+		}
 	}
 
 	fn read_object(
@@ -1065,6 +1361,10 @@ impl ManagedRepositoryExecutor {
 			.env("GIT_PAGER", "")
 			.env("PAGER", "")
 			.env("GIT_OPTIONAL_LOCKS", "0")
+			.env("GIT_NO_REPLACE_OBJECTS", "1")
+			.env("GIT_LITERAL_PATHSPECS", "1")
+			.env("GIT_DISCOVERY_ACROSS_FILESYSTEM", "0")
+			.env("GIT_CEILING_DIRECTORIES", "/")
 			.env("GIT_DIR", &layout.git_dir.path)
 			.env("GIT_COMMON_DIR", &layout.common_dir.path)
 			.env("GIT_WORK_TREE", worktree_path)
@@ -1172,14 +1472,75 @@ fn readback_scope(
 	}
 }
 
+fn descriptor_matches_admission(
+	descriptor: &CanonicalOperationDescriptor,
+	admission: &RepositoryAdmissionDescriptor,
+) -> bool {
+	&descriptor.project_id == admission.project_id()
+		&& &descriptor.repository_id == admission.repository_id()
+		&& &descriptor.admitted_identity == admission.admitted_identity()
+		&& &descriptor.admitted_base == admission.admitted_base()
+		&& &descriptor.admission_descriptor_digest == admission.digest()
+		&& &descriptor.repository_absolute_path == admission.repository_path()
+		&& admission.verify_digest(&descriptor.admission_descriptor_digest)
+}
+
+fn persisted_path(path: PathBuf) -> Result<PersistedAbsolutePath, ExecutionFailure> {
+	PersistedAbsolutePath::new(path).map_err(|_| ExecutionFailure::UnsupportedRepository)
+}
+
+fn observe_path(
+	expected: &RepositoryPathObservation,
+) -> Result<RepositoryPathObservation, ExecutionFailure> {
+	let path = expected.path().as_path();
+	let (metadata, object_type) = match expected.object_type() {
+		RepositoryObservedObjectType::Directory => {
+			let pin = if path == Path::new("/") {
+				let file = open_directory_absolute(path)?;
+				file.metadata().map_err(|_| ExecutionFailure::PathUnavailable)?
+			} else {
+				DirectoryPin::acquire(path)?
+					.components
+					.last()
+					.expect("directory pin contains root")
+					.0
+					.metadata()
+					.map_err(|_| ExecutionFailure::PathUnavailable)?
+			};
+			(pin, RepositoryObservedObjectType::Directory)
+		},
+		RepositoryObservedObjectType::RegularFile => {
+			let file = open_nofollow_file(path)?;
+			let metadata = file.metadata().map_err(|_| ExecutionFailure::PathUnavailable)?;
+			if !metadata.is_file() {
+				return Err(ExecutionFailure::Replaced);
+			}
+			(metadata, RepositoryObservedObjectType::RegularFile)
+		},
+	};
+	RepositoryPathObservation::new(
+		RepositoryObservationPath::new(path.to_owned())
+			.map_err(|_| ExecutionFailure::UnsupportedRepository)?,
+		expected.roles().to_vec(),
+		metadata.dev(),
+		metadata.ino(),
+		object_type,
+		metadata.uid(),
+		metadata.mode() & 0o7777,
+	)
+	.map_err(|_| ExecutionFailure::Replaced)
+}
+
 fn fixed_config() -> &'static [(&'static str, &'static str)] {
 	&[
 		("advice.detachedHead", "false"),
 		("commit.gpgSign", "false"),
+		("core.editor", DISABLED_EXECUTABLE),
 		("core.attributesFile", "/dev/null"),
 		("core.autocrlf", "false"),
 		("core.fsmonitor", "false"),
 		("core.hooksPath", "/var/empty/decodex-no-hooks"),
+		("core.pager", "false"),
 		("core.safecrlf", "true"),
 		("core.sparseCheckout", "false"),
 		("core.sparseCheckoutCone", "false"),
@@ -1189,6 +1550,7 @@ fn fixed_config() -> &'static [(&'static str, &'static str)] {
 		("diff.external", ""),
 		("gc.auto", "0"),
 		("maintenance.auto", "false"),
+		("merge.renormalize", "false"),
 		("protocol.allow", "never"),
 		("protocol.file.allow", "never"),
 		("submodule.recurse", "false"),
@@ -1207,8 +1569,6 @@ fn verify_local_config(bytes: &[u8]) -> Result<(), ExecutionFailure> {
 		"core.protectntfs",
 		"core.repositoryformatversion",
 		"extensions.objectformat",
-		"extensions.refstorage",
-		"extensions.worktreeconfig",
 	];
 	let mut seen = BTreeSet::new();
 	for record in bytes.split(|byte| *byte == 0).filter(|record| !record.is_empty()) {
@@ -1235,12 +1595,10 @@ fn verify_local_config(bytes: &[u8]) -> Result<(), ExecutionFailure> {
 
 fn allowed_config_value(key: &str, value: &str) -> bool {
 	match key {
-		"core.repositoryformatversion" => matches!(value, "0" | "1"),
+		"core.repositoryformatversion" => value == "0",
 		"core.bare" => value == "false",
 		"core.logallrefupdates" => matches!(value, "true" | "false" | "always"),
 		"extensions.objectformat" => matches!(value, "sha1" | "sha256"),
-		"extensions.refstorage" => matches!(value, "files" | "reftable"),
-		"extensions.worktreeconfig" => value == "true",
 		_ => matches!(value, "true" | "false"),
 	}
 }
@@ -1248,7 +1606,11 @@ fn allowed_config_value(key: &str, value: &str) -> bool {
 fn verify_hooks(path: &Path) -> Result<(), ExecutionFailure> {
 	match fs::read_dir(path) {
 		Ok(entries) => {
-			for entry in entries {
+			let started = Instant::now();
+			for (count, entry) in entries.enumerate() {
+				if count >= MAX_WALK_FILES || started.elapsed() > WALK_TIMEOUT {
+					return Err(ExecutionFailure::OutputLimit);
+				}
 				let entry = entry.map_err(|_| ExecutionFailure::UnsupportedRepository)?;
 				let name = entry.file_name();
 				let name = name.to_str().ok_or(ExecutionFailure::UnsupportedRepository)?;
@@ -1273,9 +1635,13 @@ fn verify_info_attributes(path: &Path) -> Result<(), ExecutionFailure> {
 	}
 }
 
-fn verify_tree_inventory(bytes: &[u8]) -> Result<Vec<String>, ExecutionFailure> {
-	let mut attributes = Vec::new();
+fn verify_tree_inventory(bytes: &[u8]) -> Result<(), ExecutionFailure> {
+	let mut files = 0_usize;
 	for record in bytes.split(|byte| *byte == 0).filter(|record| !record.is_empty()) {
+		files = files.checked_add(1).ok_or(ExecutionFailure::OutputLimit)?;
+		if files > MAX_WALK_FILES {
+			return Err(ExecutionFailure::OutputLimit);
+		}
 		let tab = record.iter().position(|byte| *byte == b'\t')
 			.ok_or(ExecutionFailure::UnexpectedOutput)?;
 		let header = std::str::from_utf8(&record[..tab])
@@ -1283,7 +1649,7 @@ fn verify_tree_inventory(bytes: &[u8]) -> Result<Vec<String>, ExecutionFailure> 
 		let mut fields = header.split(' ');
 		let mode = fields.next().ok_or(ExecutionFailure::UnexpectedOutput)?;
 		let kind = fields.next().ok_or(ExecutionFailure::UnexpectedOutput)?;
-		let object = fields.next().ok_or(ExecutionFailure::UnexpectedOutput)?;
+		let _object = fields.next().ok_or(ExecutionFailure::UnexpectedOutput)?;
 		if fields.next().is_some() || mode == "160000" || kind == "commit" {
 			return Err(ExecutionFailure::UnsupportedRepository);
 		}
@@ -1292,54 +1658,50 @@ fn verify_tree_inventory(bytes: &[u8]) -> Result<Vec<String>, ExecutionFailure> 
 			return Err(ExecutionFailure::UnsupportedRepository);
 		}
 		if path == b".gitattributes" || path.ends_with(b"/.gitattributes") {
-			if attributes.len() == MAX_ATTRIBUTE_FILES {
-				return Err(ExecutionFailure::OutputLimit);
-			}
-			attributes.push(object.to_owned());
-		}
-	}
-	Ok(attributes)
-}
-
-fn verify_attributes(bytes: &[u8]) -> Result<(), ExecutionFailure> {
-	let text = std::str::from_utf8(bytes).map_err(|_| ExecutionFailure::UnsupportedRepository)?;
-	for line in text.lines() {
-		let line = line.trim();
-		if line.is_empty() || line.starts_with('#') {
-			continue;
-		}
-		for attribute in line.split_ascii_whitespace().skip(1) {
-			let name = attribute
-				.trim_start_matches(['-', '!'])
-				.split_once('=')
-				.map_or(attribute.trim_start_matches(['-', '!']), |(name, _)| name);
-			if !matches!(
-				name,
-				"binary" | "eol" | "export-ignore" | "export-subst" | "ident" | "text" | "whitespace"
-			) {
-				return Err(ExecutionFailure::UnsupportedRepository);
-			}
+			return Err(ExecutionFailure::UnsupportedRepository);
 		}
 	}
 	Ok(())
 }
 
-fn valid_reference(reference: &str) -> bool {
-	if reference == "HEAD" {
-		return true;
+fn verify_worktree_inventory(root: &Path) -> Result<(), ExecutionFailure> {
+	let started = Instant::now();
+	let mut pending = vec![(root.to_owned(), 0_usize)];
+	let mut files = 0_usize;
+	let mut bytes = 0_u64;
+	while let Some((directory, depth)) = pending.pop() {
+		if started.elapsed() > WALK_TIMEOUT || depth > MAX_WALK_DEPTH {
+			return Err(ExecutionFailure::TimedOut);
+		}
+		let entries = fs::read_dir(&directory).map_err(|_| ExecutionFailure::PathUnavailable)?;
+		for entry in entries {
+			let entry = entry.map_err(|_| ExecutionFailure::PathUnavailable)?;
+			files = files.checked_add(1).ok_or(ExecutionFailure::OutputLimit)?;
+			if files > MAX_WALK_FILES || started.elapsed() > WALK_TIMEOUT {
+				return Err(ExecutionFailure::OutputLimit);
+			}
+			let name = entry.file_name();
+			if depth == 0 && name == OsStr::new(".git") {
+				continue;
+			}
+			if name == OsStr::new(".gitattributes") || name == OsStr::new(".gitmodules") {
+				return Err(ExecutionFailure::UnsupportedRepository);
+			}
+			let metadata = fs::symlink_metadata(entry.path())
+				.map_err(|_| ExecutionFailure::PathUnavailable)?;
+			if metadata.file_type().is_symlink() || (!metadata.is_dir() && !metadata.is_file()) {
+				return Err(ExecutionFailure::UnsupportedRepository);
+			}
+			bytes = bytes.checked_add(metadata.len()).ok_or(ExecutionFailure::OutputLimit)?;
+			if bytes > MAX_WALK_BYTES {
+				return Err(ExecutionFailure::OutputLimit);
+			}
+			if metadata.is_dir() {
+				pending.push((entry.path(), depth + 1));
+			}
+		}
 	}
-	reference.starts_with("refs/heads/")
-		&& !reference.ends_with('/')
-		&& !reference.contains("..")
-		&& !reference.contains("@{")
-		&& !reference.bytes().any(|byte| {
-			byte.is_ascii_control()
-				|| byte.is_ascii_whitespace()
-				|| matches!(byte, b'~' | b'^' | b':' | b'?' | b'*' | b'[' | b'\\')
-		})
-		&& reference.split('/').all(|part| {
-			!part.is_empty() && !part.starts_with('.') && !part.ends_with('.') && !part.ends_with(".lock")
-		})
+	Ok(())
 }
 
 fn valid_commit_intent(intent: &CanonicalCommitIntent) -> bool {
@@ -1444,12 +1806,26 @@ fn run_bounded(
 	timeout: Duration,
 ) -> Result<GitOutput, ExecutionFailure> {
 	let mut child = command.spawn().map_err(|_| ExecutionFailure::SpawnFailed)?;
-	let stdout = child.stdout.take().ok_or(ExecutionFailure::SpawnFailed)?;
-	let stderr = child.stderr.take().ok_or(ExecutionFailure::SpawnFailed)?;
+	let stdout = match child.stdout.take() {
+		Some(stdout) => stdout,
+		None => {
+			terminate_process_group(&mut child);
+			let _ = child.wait();
+			return Err(ExecutionFailure::SpawnFailed);
+		},
+	};
+	let stderr = match child.stderr.take() {
+		Some(stderr) => stderr,
+		None => {
+			terminate_process_group(&mut child);
+			let _ = child.wait();
+			return Err(ExecutionFailure::SpawnFailed);
+		},
+	};
 	let exceeded = Arc::new(AtomicBool::new(false));
 	let stdout_reader = bounded_reader(stdout, limit, Arc::clone(&exceeded));
 	let stderr_reader = bounded_reader(stderr, limit, Arc::clone(&exceeded));
-	if let Some(bytes) = stdin {
+	let stdin_writer = if let Some(bytes) = stdin {
 		let Some(mut writer) = child.stdin.take() else {
 			terminate_process_group(&mut child);
 			let _ = child.wait();
@@ -1457,14 +1833,13 @@ fn run_bounded(
 			let _ = stderr_reader.join();
 			return Err(ExecutionFailure::StdinFailed);
 		};
-		if writer.write_all(bytes).is_err() {
-			terminate_process_group(&mut child);
-			let _ = child.wait();
-			let _ = stdout_reader.join();
-			let _ = stderr_reader.join();
-			return Err(ExecutionFailure::StdinFailed);
-		}
-	}
+		let bytes = bytes.to_vec();
+		Some(thread::spawn(move || {
+			writer.write_all(&bytes).map_err(|_| ExecutionFailure::StdinFailed)
+		}))
+	} else {
+		None
+	};
 	drop(child.stdin.take());
 
 	let deadline = Instant::now() + timeout;
@@ -1473,20 +1848,37 @@ fn run_bounded(
 			terminate_process_group(&mut child);
 			break child.wait().map_err(|_| ExecutionFailure::SpawnFailed)?;
 		}
-		if let Some(status) = child.try_wait().map_err(|_| ExecutionFailure::SpawnFailed)? {
-			break status;
+		match child.try_wait() {
+			Ok(Some(status)) => break status,
+			Ok(None) => {},
+			Err(_) => {
+				terminate_process_group(&mut child);
+				let _ = child.wait();
+				let _ = stdout_reader.join();
+				let _ = stderr_reader.join();
+				if let Some(writer) = stdin_writer {
+					let _ = writer.join();
+				}
+				return Err(ExecutionFailure::SpawnFailed);
+			},
 		}
 		if Instant::now() >= deadline {
 			terminate_process_group(&mut child);
 			let _ = child.wait();
 			let _ = stdout_reader.join();
 			let _ = stderr_reader.join();
+			if let Some(writer) = stdin_writer {
+				let _ = writer.join();
+			}
 			return Err(ExecutionFailure::TimedOut);
 		}
 		thread::sleep(POLL_INTERVAL);
 	};
 	let stdout = stdout_reader.join().map_err(|_| ExecutionFailure::SpawnFailed)??;
 	let stderr = stderr_reader.join().map_err(|_| ExecutionFailure::SpawnFailed)??;
+	if let Some(writer) = stdin_writer {
+		writer.join().map_err(|_| ExecutionFailure::StdinFailed)??;
+	}
 	if exceeded.load(Ordering::Acquire) {
 		return Err(ExecutionFailure::OutputLimit);
 	}
@@ -1526,9 +1918,11 @@ fn apply_child_limits(command: &mut Command) {
 				return Err(io::Error::last_os_error());
 			}
 			for (resource, current, maximum) in [
+				(libc::RLIMIT_CORE, 0, 0),
 				(libc::RLIMIT_CPU, 30, 30),
 				(libc::RLIMIT_FSIZE, 64 * 1_024 * 1_024, 64 * 1_024 * 1_024),
 				(libc::RLIMIT_NOFILE, 64, 64),
+				(libc::RLIMIT_AS, 1024 * 1_024 * 1_024, 1024 * 1_024 * 1_024),
 			] {
 				let limit = libc::rlimit { rlim_cur: current, rlim_max: maximum };
 				if libc::setrlimit(resource, &limit) == -1 {
@@ -1572,6 +1966,7 @@ impl PinnedGit {
 			|| metadata.uid() != 0
 			|| metadata.mode() & 0o022 != 0
 			|| metadata.permissions().mode() & 0o111 == 0
+			|| metadata.len() > MAX_GIT_EXECUTABLE_BYTES
 		{
 			return Err(ExecutionFailure::GitUnavailable);
 		}
@@ -1605,10 +2000,17 @@ fn digest_file(file: &File) -> Result<[u8; 32], ExecutionFailure> {
 	let mut source = file.try_clone().map_err(|_| ExecutionFailure::GitUnavailable)?;
 	let mut hasher = Sha256::new();
 	let mut buffer = [0_u8; 64 * 1_024];
+	let mut total = 0_u64;
 	loop {
 		let count = source.read(&mut buffer).map_err(|_| ExecutionFailure::GitUnavailable)?;
 		if count == 0 {
 			break;
+		}
+		total = total
+			.checked_add(count as u64)
+			.ok_or(ExecutionFailure::GitUnavailable)?;
+		if total > MAX_GIT_EXECUTABLE_BYTES {
+			return Err(ExecutionFailure::GitUnavailable);
 		}
 		hasher.update(&buffer[..count]);
 	}
@@ -1700,10 +2102,14 @@ impl FilePin {
 impl DirectoryPin {
 	fn acquire(path: &Path) -> Result<Self, PathFailure> {
 		let parts = normalized_absolute_components(path)?;
+		let started = Instant::now();
 		let root = open_directory_absolute(Path::new("/"))?;
 		let root_identity = ObjectIdentity::from_metadata(&root.metadata().map_err(|_| PathFailure::Io)?);
 		let mut components = vec![(root, root_identity)];
 		for part in parts {
+			if started.elapsed() > WALK_TIMEOUT {
+				return Err(PathFailure::Io);
+			}
 			let parent = &components.last().expect("root descriptor exists").0;
 			let child = openat_directory(parent, part)?;
 			let identity = ObjectIdentity::from_metadata(&child.metadata().map_err(|_| PathFailure::Io)?);
@@ -1816,8 +2222,32 @@ impl RepositoryLayout {
 		self.git_dir.path.join(PRIVATE_INDEX_NAME)
 	}
 
+	fn private_index_owner(&self) -> PathBuf {
+		self.git_dir.path.join(PRIVATE_INDEX_OWNER_NAME)
+	}
+
 	fn locked_marker(&self) -> PathBuf {
 		self.git_dir.path.join("locked")
+	}
+
+	fn has_exact_linked_admin_child(&self) -> bool {
+		if self.backlink.is_none() {
+			return false;
+		}
+		let Some(name) = self.git_dir.path.file_name() else {
+			return false;
+		};
+		let expected_root = self.common_dir.path.join("worktrees");
+		self.git_dir.path == expected_root.join(name)
+			&& self.git_dir.path.parent() == Some(expected_root.as_path())
+			&& DirectoryPin::acquire(&expected_root).is_ok_and(|parent| {
+				parent.revalidate().is_ok()
+					&& self
+						.git_dir
+						.components
+						.get(self.git_dir.components.len().saturating_sub(2))
+						.is_some_and(|component| component.1 == parent.identity())
+			})
 	}
 
 	fn revalidate(&self) -> Result<(), PathFailure> {
@@ -1900,7 +2330,7 @@ fn normalized_absolute_components(path: &Path) -> Result<Vec<&OsStr>, PathFailur
 			_ => return Err(PathFailure::Invalid),
 		}
 	}
-	if parts.is_empty() {
+	if parts.is_empty() || parts.len() > MAX_PATH_COMPONENTS {
 		return Err(PathFailure::Invalid);
 	}
 	Ok(parts)
@@ -1972,7 +2402,13 @@ fn read_nofollow(path: &Path, limit: usize) -> Result<Vec<u8>, PathFailure> {
 		return Err(PathFailure::Invalid);
 	}
 	let mut bytes = Vec::with_capacity(metadata.len() as usize);
-	file.read_to_end(&mut bytes).map_err(|_| PathFailure::Io)?;
+	file.by_ref()
+		.take(limit.saturating_add(1) as u64)
+		.read_to_end(&mut bytes)
+		.map_err(|_| PathFailure::Io)?;
+	if bytes.len() > limit {
+		return Err(PathFailure::Invalid);
+	}
 	Ok(bytes)
 }
 
@@ -2058,6 +2494,79 @@ fn adjacent_lock_exists(index: &Path) -> Result<bool, PathFailure> {
 	path_is_missing(Path::new(&lock)).map(|missing| !missing)
 }
 
+fn private_index_owner_bytes(descriptor: &CanonicalOperationDescriptor) -> Vec<u8> {
+	format!(
+		"decodex-private-index-v1\n{}\n{}\n{}\n{}\n",
+		descriptor.repository_id.as_str(),
+		descriptor.allocation_id.as_str(),
+		descriptor.worktree_id.as_str(),
+		descriptor.worktree_absolute_path.as_path().display(),
+	)
+	.into_bytes()
+}
+
+fn create_private_index_owner(
+	layout: &RepositoryLayout,
+	descriptor: &CanonicalOperationDescriptor,
+) -> Result<FilePin, PathFailure> {
+	layout.revalidate()?;
+	let path = layout.private_index_owner();
+	let mut owner = OpenOptions::new()
+		.write(true)
+		.create_new(true)
+		.mode(0o600)
+		.open(&path)
+		.map_err(path_io)?;
+	owner
+		.write_all(&private_index_owner_bytes(descriptor))
+		.map_err(|_| PathFailure::Io)?;
+	owner.sync_all().map_err(|_| PathFailure::Io)?;
+	layout.revalidate()?;
+	FilePin::acquire(&path)
+}
+
+fn private_index_owner_matches(
+	layout: &RepositoryLayout,
+	descriptor: &CanonicalOperationDescriptor,
+) -> bool {
+	read_nofollow(&layout.private_index_owner(), MAX_METADATA_FILE_BYTES)
+		.is_ok_and(|bytes| bytes == private_index_owner_bytes(descriptor))
+}
+
+fn object_temporary_evidence(objects: &Path) -> Result<bool, PathFailure> {
+	let started = Instant::now();
+	let mut pending = vec![(objects.to_owned(), 0_usize)];
+	let mut count = 0_usize;
+	while let Some((directory, depth)) = pending.pop() {
+		if started.elapsed() > WALK_TIMEOUT {
+			return Err(PathFailure::Io);
+		}
+		for entry in fs::read_dir(directory).map_err(path_io)? {
+			let entry = entry.map_err(|_| PathFailure::Io)?;
+			count = count.checked_add(1).ok_or(PathFailure::Io)?;
+			if count > MAX_WALK_FILES {
+				return Err(PathFailure::Io);
+			}
+			let metadata = fs::symlink_metadata(entry.path()).map_err(path_io)?;
+			if metadata.file_type().is_symlink() {
+				return Err(PathFailure::Invalid);
+			}
+			let name = entry.file_name();
+			let bytes = name.as_bytes();
+			if bytes.starts_with(b"tmp_obj_")
+				|| bytes.starts_with(b"incoming-")
+				|| bytes.ends_with(b".lock")
+			{
+				return Ok(true);
+			}
+			if metadata.is_dir() && depth < 2 {
+				pending.push((entry.path(), depth + 1));
+			}
+		}
+	}
+	Ok(false)
+}
+
 fn safe_private_index(path: &Path) -> bool {
 	safe_regular_file(path, true)
 }
@@ -2093,7 +2602,11 @@ fn registration_directory_is_clean(path: &Path) -> bool {
 		return false;
 	};
 	let mut names = Vec::new();
-	for entry in entries {
+	let started = Instant::now();
+	for (count, entry) in entries.enumerate() {
+		if count >= 2 || started.elapsed() > WALK_TIMEOUT {
+			return false;
+		}
 		let Ok(entry) = entry else {
 			return false;
 		};
@@ -2110,8 +2623,16 @@ fn registration_admin_for_path(common_dir: &DirectoryPin, worktree_path: &Path) 
 		Err(_) => return Err(PathFailure::Io),
 	};
 	let expected = worktree_path.join(".git");
-	for entry in entries {
+	let started = Instant::now();
+	for (count, entry) in entries.enumerate() {
+		if count >= MAX_WALK_FILES || started.elapsed() > WALK_TIMEOUT {
+			return Err(PathFailure::Io);
+		}
 		let entry = entry.map_err(|_| PathFailure::Io)?;
+		let metadata = fs::symlink_metadata(entry.path()).map_err(|_| PathFailure::Io)?;
+		if !metadata.is_dir() || metadata.file_type().is_symlink() {
+			return Err(PathFailure::Invalid);
+		}
 		let path = entry.path().join("gitdir");
 		if let Ok(bytes) = read_nofollow(&path, 4_096) {
 			let value = resolve_metadata_path(entry.path().as_path(), parse_metadata_line(&bytes)?)?;
@@ -2121,6 +2642,28 @@ fn registration_admin_for_path(common_dir: &DirectoryPin, worktree_path: &Path) 
 		}
 	}
 	Ok(false)
+}
+
+fn expected_registration_admin(
+	common_dir: &Path,
+	worktree_path: &Path,
+) -> Result<PathBuf, PathFailure> {
+	let name = worktree_path
+		.file_name()
+		.and_then(OsStr::to_str)
+		.ok_or(PathFailure::Invalid)?;
+	RepositoryRegistrationId::new(name.to_owned()).map_err(|_| PathFailure::Invalid)?;
+	Ok(common_dir.join("worktrees").join(name))
+}
+
+fn validate_registration_admin_root(common_dir: &Path) -> Result<(), PathFailure> {
+	let root = common_dir.join("worktrees");
+	if path_is_missing(&root)? {
+		return Ok(());
+	}
+	let pin = DirectoryPin::acquire(&root)?;
+	validate_repository_owner(&pin)?;
+	pin.revalidate()
 }
 
 fn path_errno(error: io::Error) -> PathFailure {
