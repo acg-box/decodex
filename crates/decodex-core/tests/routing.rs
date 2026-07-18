@@ -1,3 +1,14 @@
+//! Contract tests for the pure V16 routing kernel.
+
+use getrandom as _;
+#[cfg(unix)] use libc as _;
+use regex as _;
+use serde as _;
+use serde_json as _;
+use sha2 as _;
+use tempfile as _;
+use toml as _;
+
 use decodex_core::{
 	AccountId, CodexCapability, ObservationConfidence, QuotaWindowClass, RoutingBlocker,
 	RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind,
@@ -13,7 +24,8 @@ const OBSERVED_AT: i64 = DECIDED_AT - 100;
 const OBSERVED_AT_RAW: &str = "999999900";
 
 fn account(number: u8) -> AccountId {
-	AccountId::new(format!("10000000-0000-4000-8000-{number:012}")).unwrap()
+	AccountId::new(format!("10000000-0000-4000-8000-{number:012}"))
+		.expect("routing account fixture is a canonical UUID")
 }
 
 fn candidate(
