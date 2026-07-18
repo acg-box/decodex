@@ -7,6 +7,12 @@ mod managed_repositories;
 #[path = "postgres_store/managed_runs.rs"]
 mod managed_runs;
 #[path = "postgres_store/quota.rs"] mod quota;
+#[path = "postgres_store/routing_decision.rs"]
+mod routing_decision;
+#[path = "postgres_store/continuation.rs"]
+mod continuation;
+#[path = "postgres_store/waiting_wake.rs"]
+mod waiting_wake;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
 mod role_profiles;
@@ -139,11 +145,32 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
 	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+	"decodex.create_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.update_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,decodex.work_item_state,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
+	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
+	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
+	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
 	"decodex.enforce_outbox_operation_time()",
+	"decodex.enforce_quota_observation_monotonicity()",
 	"decodex.forbid_mutation_of_activity()",
 	"decodex.enforce_outbox_terminal_retention()",
 	"decodex.forbid_outbox_truncate()",
@@ -178,12 +205,36 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_runtime_session_command_owner()",
 	"decodex.forbid_runtime_snapshot_mutation()",
 	"decodex.enforce_runtime_session_event_namespace()",
+	"decodex.enforce_work_item_state()",
+	"decodex.enforce_work_item_command_owner()",
+	"decodex.forbid_work_item_acceptance_mutation()",
+	"decodex.enforce_work_item_acceptance_coherence()",
+	"decodex.enforce_work_item_event_namespace()",
 	"decodex.enforce_managed_run_command_owner()",
 	"decodex.forbid_managed_run_immutable_mutation()",
 	"decodex.enforce_managed_run_assignment_scope()",
 	"decodex.enforce_managed_run_state()",
 	"decodex.enforce_effect_barrier_state()",
 	"decodex.enforce_managed_run_event_namespace()",
+	"decodex.forbid_managed_repository_history_mutation()",
+	"decodex.enforce_managed_repository_projection()",
+	"decodex.enforce_repository_operation_scope()",
+	"decodex.enforce_repository_history_completeness()",
+	"decodex.forbid_routing_history_mutation()",
+	"decodex.enforce_routing_completeness()",
+	"decodex.enforce_routing_command_owner()",
+	"decodex.forbid_codex_experiment_history_mutation()",
+	"decodex.enforce_codex_experiment_command_owner()",
+	"decodex.forbid_routing_decision_mutation()",
+	"decodex.enforce_routing_decision_completeness()",
+	"decodex.forbid_continuation_plan_mutation()",
+	"decodex.enforce_continuation_plan_completeness()",
+	"decodex.enforce_continuation_event_namespace()",
+	"decodex.enforce_waiting_usage_wake_command_owner()",
+	"decodex.forbid_waiting_usage_wake_transition_mutation()",
+	"decodex.enforce_waiting_usage_wake_transition_complete()",
+	"decodex.enforce_waiting_usage_wake_head_projection()",
+	"decodex.enforce_waiting_usage_wake_event_namespace()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(
@@ -562,7 +613,7 @@ async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error:
 			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
 			  FROM information_schema.columns WHERE table_schema='decodex' \
 			  AND table_name='quota_windows' AND column_name='window_class'), \
-			 (SELECT count(*)=8 FROM public.refinery_schema_history)",
+				 (SELECT count(*)=19 FROM public.refinery_schema_history)",
 			&[],
 		)
 		.await?;
@@ -820,6 +871,19 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	assert_concurrent_hierarchy_serialization(&store, &client, &runtime).await?;
 	assert_duration_validation(&store, &client).await?;
 	assert_lease_contention_and_reclaim(&store).await?;
+
+	let routing = routing_decision::assert_routing_decision_contract(
+		&store, &client, &migration, &runtime,
+	)
+	.await?;
+	continuation::assert_continuation_contract(
+		&store, &client, &migration, &runtime, &routing,
+	)
+	.await?;
+	waiting_wake::assert_waiting_wake_contract(
+		&store, &client, &migration, &runtime, &routing,
+	)
+	.await?;
 	assert_outbox_concurrency_retry_and_restart(&store, &client, &migration, &runtime).await?;
 
 	assert_eq!(store.availability(), Availability::Unavailable { reason: CLOSED });
@@ -2275,6 +2339,9 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 	assert_bootstrap_and_history(&client).await?;
 
 	assert!(store.account(&AccountId::new(ACCOUNT_ID)?).await?.is_some());
+	routing_decision::assert_restored_routing_contract(&client).await?;
+	continuation::assert_restored_continuation_contract(&client).await?;
+	waiting_wake::assert_restored_waiting_wake_contract(&client).await?;
 
 	let advisor = store.advisor().await?.expect("restored global Advisor exists");
 
@@ -2524,37 +2591,35 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 10);
-	assert_eq!(history[0].0, 1);
-	assert_eq!(history[0].1, "persistence_foundation");
-	assert!(!history[0].2.is_empty());
-	assert_eq!(history[1].0, 2);
-	assert_eq!(history[1].1, "claim_indexes");
-	assert!(!history[1].2.is_empty());
-	assert_eq!(history[2].0, 3);
-	assert_eq!(history[2].1, "conversation_history");
-	assert!(!history[2].2.is_empty());
-	assert_eq!(history[3].0, 4);
-	assert_eq!(history[3].1, "account_readiness");
-	assert!(!history[3].2.is_empty());
-	assert_eq!(history[4].0, 5);
-	assert_eq!(history[4].1, "project_agent_authority");
-	assert!(!history[4].2.is_empty());
-	assert_eq!(history[5].0, 6);
-	assert_eq!(history[5].1, "project_policy_authority");
-	assert!(!history[5].2.is_empty());
-	assert_eq!(history[6].0, 7);
-	assert_eq!(history[6].1, "program_objective_authority");
-	assert!(!history[6].2.is_empty());
-	assert_eq!(history[7].0, 8);
-	assert_eq!(history[7].1, "quota_exclusions");
-	assert!(!history[7].2.is_empty());
-	assert_eq!(history[8].0, 9);
-	assert_eq!(history[8].1, "exact_role_profiles");
-	assert!(!history[8].2.is_empty());
-	assert_eq!(history[9].0, 10);
-	assert_eq!(history[9].1, "runtime_session_snapshots");
-	assert!(!history[9].2.is_empty());
+	let expected_history = [
+		"persistence_foundation",
+		"claim_indexes",
+		"conversation_history",
+		"account_readiness",
+		"project_agent_authority",
+		"project_policy_authority",
+		"program_objective_authority",
+		"quota_exclusions",
+		"exact_role_profiles",
+		"runtime_session_snapshots",
+		"work_item_authority",
+		"managed_run_safety",
+		"managed_repository_authority",
+		"routing_authority",
+		"causal_codex_experiments",
+		"atomic_routing_decisions",
+		"continuation_authority",
+		"waiting_usage_wakes",
+		"waiting_usage_wake_time_authority",
+	];
+	assert_eq!(history.len(), expected_history.len());
+	for (index, ((version, name, checksum), expected_name)) in
+		history.iter().zip(expected_history).enumerate()
+	{
+		assert_eq!(*version, i32::try_from(index + 1)?);
+		assert_eq!(name, expected_name);
+		assert!(!checksum.is_empty());
+	}
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
