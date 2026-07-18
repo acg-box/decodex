@@ -6,7 +6,9 @@ pub use decodex_core::CodexCapability as Capability;
 
 trait CapabilityExt {
 	fn schema_method(self) -> Option<&'static str>;
-	fn all() -> &'static [Self];
+	fn all() -> &'static [Self]
+	where
+		Self: Sized;
 }
 impl CapabilityExt for Capability {
 	fn schema_method(self) -> Option<&'static str> {
