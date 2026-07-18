@@ -320,9 +320,13 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		}
 	}
 	let termination = if teardown.confirmed {
-		match forced {
-			Some(forced) if !teardown.observed_before_signal => forced,
-			_ => classify_status(teardown.status),
+		if capture.output_exceeded {
+			ValidationTermination::OutputLimitExceeded
+		} else {
+			match forced {
+				Some(forced) if !teardown.observed_before_signal => forced,
+				_ => classify_status(teardown.status),
+			}
 		}
 	} else {
 		ValidationTermination::SupervisionLost
