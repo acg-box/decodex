@@ -241,6 +241,11 @@ candidate HEAD and tree; no result from an owner branch or earlier integration t
 There is no separate checked-in XY-1353 manifest/digest generator. The existing canonical
 PostgreSQL harness produces and verifies those inventories only as part of the unified frozen-tree
 gate, so source-freeze work must not invent a second generator or execute the harness early.
+When the canonical semantic identity or closure model changes, final acceptance uses two exact
+freezes: one derivation execution first proves dependency closure plus source/restore parity and
+emits the candidate digest; one digest-only source batch binds that receipt; then a new exact frozen
+unified execution validates the bound production constant. A derivation receipt is evidence for the
+digest-only batch, not acceptance evidence for the subsequently bound tree.
 
 Falsifiers are evaluated in this fixed priority order: architecture, then
 stability/recoverability, security/authority, verification, integrity, and performance.
