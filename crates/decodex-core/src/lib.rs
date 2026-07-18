@@ -53,7 +53,8 @@ pub use self::{
 	},
 	identity::ServerIdentity,
 	managed_repository::{
-		AdmissionDescriptorDigest, AggregateCheckpoint, AllocateRepositoryCommand,
+		AdmissionDescriptorDigest, AdmittedRepositoryIdentity, AggregateCheckpoint,
+		AllocateRepositoryCommand,
 		AllocateRepositoryDecision, AllocationAvailabilityFacts, AssignmentResolution,
 		BeginCommitCommand, BeginCommitDecision, BeginRegistrationCommand,
 		BeginRegistrationDecision, BeginWorktreeReadyCommand, BeginWorktreeReadyDecision,
