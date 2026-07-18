@@ -20,9 +20,11 @@ const MANAGED_RUN_MIGRATION: &str = include_str!("../migrations/V12__managed_run
 const MANAGED_REPOSITORY_MIGRATION: &str =
 	include_str!("../migrations/V13__managed_repository_authority.sql");
 const ROUTING_MIGRATION: &str = include_str!("../migrations/V14__routing_authority.sql");
+const CODEX_EXPERIMENT_MIGRATION: &str =
+	include_str!("../migrations/V15__causal_codex_experiments.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 119] = [
+const FUNCTION_CONTRACTS: [FunctionContract; 128] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -944,8 +946,67 @@ const FUNCTION_CONTRACTS: [FunctionContract; 119] = [
 		"p_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_managed_run_id uuid, p_expected_managed_run_revision bigint",
 		"bytea", "plpgsql", "v",
 	),
+	immutable_function_contract(
+		"codex_experiment_marker",
+		"decodex.codex_experiment_marker(pg_catalog.uuid)",
+		"codex_experiment_marker(p_experiment_id uuid)",
+		"p_experiment_id uuid", "text", "sql",
+	),
+	trigger_contract(
+		"forbid_codex_experiment_history_mutation",
+		"decodex.forbid_codex_experiment_history_mutation()",
+		"forbid_codex_experiment_history_mutation()",
+	),
+	trigger_contract(
+		"enforce_codex_experiment_command_owner",
+		"decodex.enforce_codex_experiment_command_owner()",
+		"enforce_codex_experiment_command_owner()",
+	),
+	exact_function_contract(
+		"complete_exact_codex_experiment_rejection",
+		"decodex.complete_exact_codex_experiment_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"complete_exact_codex_experiment_rejection(\n\tp_protocol text, p_idempotency_key text, p_operation text, p_code text\n)",
+		"p_protocol text, p_idempotency_key text, p_operation text, p_code text",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"reserve_exact_codex_experiment_command",
+		"decodex.reserve_exact_codex_experiment_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"reserve_exact_codex_experiment_command(\n\tp_protocol text, p_idempotency_key text, p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_request jsonb",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"prepare_codex_experiment_exact",
+		"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"prepare_codex_experiment_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_managed_run_id uuid, p_managed_run_revision bigint, p_routing_snapshot_id uuid,\n\tp_account_id uuid, p_account_revision bigint, p_role_profile_revision bigint,\n\tp_build_id text, p_repository_cwd text, p_thread_title text\n)",
+		"p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_managed_run_id uuid, p_managed_run_revision bigint, p_routing_snapshot_id uuid, p_account_id uuid, p_account_revision bigint, p_role_profile_revision bigint, p_build_id text, p_repository_cwd text, p_thread_title text",
+		"bytea", "plpgsql", "v",
+	),
+	FunctionContract {
+		name: "mark_codex_experiment_creation_possible_exact",
+		lookup_signature: "decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		migration_signature: "mark_codex_experiment_creation_possible_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_attempt_id uuid\n)",
+		arguments: "p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attempt_id uuid",
+		result: "TABLE(response_bytes bytea, replayed boolean)",
+		language: "plpgsql", volatility: "v", strict: false, returns_set: true, rows: 1_000.0,
+	},
+	exact_function_contract(
+		"bind_codex_experiment_thread_exact",
+		"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
+		"bind_codex_experiment_thread_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_attempt_id uuid, p_thread_id text, p_response_id text,\n\tp_response_title text, p_response_cwd text, p_response_marker text, p_ephemeral boolean\n)",
+		"p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attempt_id uuid, p_thread_id text, p_response_id text, p_response_title text, p_response_cwd text, p_response_marker text, p_ephemeral boolean",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"record_codex_experiment_observation_exact",
+		"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"record_codex_experiment_observation_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_observation_id uuid,\n\tp_kind decodex.codex_experiment_observation_kind, p_thread_id text,\n\tp_marker text, p_source_id text, p_fact_digest text\n)",
+		"p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_observation_id uuid, p_kind decodex.codex_experiment_observation_kind, p_thread_id text, p_marker text, p_source_id text, p_fact_digest text",
+		"bytea", "plpgsql", "v",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 39] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 43] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -985,8 +1046,12 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 39] = [
 	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
 	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
 	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
+	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 ];
-const SAFETY_FUNCTIONS: [&str; 55] = [
+const SAFETY_FUNCTIONS: [&str; 57] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -1042,8 +1107,10 @@ const SAFETY_FUNCTIONS: [&str; 55] = [
 	"forbid_routing_history_mutation",
 	"enforce_routing_completeness",
 	"enforce_routing_command_owner",
+	"forbid_codex_experiment_history_mutation",
+	"enforce_codex_experiment_command_owner",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 110;
+const SAFETY_TRIGGER_COUNT: usize = 115;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1255,6 +1322,11 @@ WITH set_roles AS (
 	,('routing_snapshot_quota_facts', false, false, false, false)
 	,('routing_snapshot_capability_facts', false, false, false, false)
 	,('routing_snapshot_blockers', false, false, false, false)
+	,('codex_experiments', false, false, false, false)
+	,('codex_experiment_revisions', false, false, false, false)
+	,('codex_experiment_creation_attempts', false, false, false, false)
+	,('codex_experiment_thread_bindings', false, false, false, false)
+	,('codex_experiment_observations', false, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -1263,7 +1335,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 60
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 65
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -1529,6 +1601,11 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('routing_policy_revisions', 'routing_policy_revision_complete', 'enforce_routing_completeness', 5)
 	,('routing_compatibility_evidence', 'routing_evidence_complete', 'enforce_routing_completeness', 5)
 	,('routing_snapshots', 'routing_snapshot_complete', 'enforce_routing_completeness', 5)
+	,('codex_experiment_revisions', 'codex_experiment_revisions_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiment_creation_attempts', 'codex_experiment_creation_attempts_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiment_thread_bindings', 'codex_experiment_thread_bindings_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiment_observations', 'codex_experiment_observations_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiments', 'codex_experiments_command_owner', 'enforce_codex_experiment_command_owner', 62)
 )
 SELECT
   expected.function_name,
@@ -1756,6 +1833,11 @@ WITH catalog_context AS MATERIALIZED (
 	,('routing_policy_revisions', 'routing_policy_revision_complete', 'decodex.enforce_routing_completeness()')
 	,('routing_compatibility_evidence', 'routing_evidence_complete', 'decodex.enforce_routing_completeness()')
 	,('routing_snapshots', 'routing_snapshot_complete', 'decodex.enforce_routing_completeness()')
+	,('codex_experiment_revisions', 'codex_experiment_revisions_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiment_creation_attempts', 'codex_experiment_creation_attempts_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiment_thread_bindings', 'codex_experiment_thread_bindings_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiment_observations', 'codex_experiment_observations_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiments', 'codex_experiments_command_owner', 'decodex.enforce_codex_experiment_command_owner()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -3499,6 +3581,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		MANAGED_RUN_MIGRATION,
 		MANAGED_REPOSITORY_MIGRATION,
 		ROUTING_MIGRATION,
+		CODEX_EXPERIMENT_MIGRATION,
 	]
 	.into_iter()
 	.rev()
@@ -3691,6 +3774,10 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "replace_routing_policy_exact"
 				| "publish_routing_evidence_exact"
 				| "resolve_routing_snapshot_exact"
+				| "prepare_codex_experiment_exact"
+				| "mark_codex_experiment_creation_possible_exact"
+				| "bind_codex_experiment_thread_exact"
+				| "record_codex_experiment_observation_exact"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];

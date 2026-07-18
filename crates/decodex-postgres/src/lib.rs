@@ -6,7 +6,8 @@
 //! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
 //! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
 //! managed-repository authority with append-only operations/evidence, plus revisioned routing
-//! policies, ordinary capability evidence, and immutable routing fact snapshots. It does not
+//! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
+//! Codex experiment intent/fences/bindings/positive observations. It does not
 //! select accounts, route work, store credentials, schedule or advance runs, execute repository
 //! effects, or expose protocol/client behavior.
 
@@ -15,6 +16,7 @@ mod authority;
 mod conversations;
 mod error;
 mod exact_commands;
+mod experiments;
 mod leases;
 mod managed_repositories;
 mod managed_runs;
@@ -38,6 +40,10 @@ pub use self::{
 		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
+	experiments::{
+		BindCodexExperimentThread, CodexExperimentCreationFenceOutcome,
+		FreshCodexExperimentCreation, PrepareCodexExperiment, RecordCodexExperimentObservation,
+	},
 	managed_repositories::{
 		RepositoryAdmissionOutcome, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,
 		RepositoryPreparationOutcome, RepositoryReadbackEvidence, RepositoryReadbackWork,

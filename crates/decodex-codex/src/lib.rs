@@ -19,6 +19,7 @@
 mod capability;
 mod dispatch;
 mod event;
+mod experiment;
 
 pub use self::{
 	capability::{
@@ -27,6 +28,7 @@ pub use self::{
 		UnsupportedReason,
 	},
 	dispatch::{DispatchDenied, DispatchGate, DispatchOperation, LIVE_ROUTING_GATE},
+	experiment::{PositiveExperimentFact, PositiveExperimentFactKind, TypedThreadStartResponse},
 	event::{
 		CollaborationActivityKind, CollaborationTool, CollaborationToolCall,
 		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
