@@ -36,6 +36,37 @@ use decodex_core::{
 
 const MAX_RESTART_WORK: i64 = 256;
 
+/// Owns a pooled connection for the full lifetime of an advisory-lock transaction.
+///
+/// The connection returns to the fast-recycling pool only after an explicitly acknowledged
+/// commit or rollback. Every other exit, including callback unwind, detaches the connection so
+/// transaction cleanup and advisory-lock release cannot race reuse from the pool.
+struct AdvisoryTransactionOwner {
+	client: Option<deadpool_postgres::Client>,
+}
+
+impl AdvisoryTransactionOwner {
+	fn new(client: deadpool_postgres::Client) -> Self {
+		Self { client: Some(client) }
+	}
+
+	fn client_mut(&mut self) -> &mut deadpool_postgres::Client {
+		self.client.as_mut().expect("advisory transaction owner is live")
+	}
+
+	fn confirm(mut self) {
+		drop(self.client.take());
+	}
+}
+
+impl Drop for AdvisoryTransactionOwner {
+	fn drop(&mut self) {
+		if let Some(client) = self.client.take() {
+			drop(deadpool_postgres::Client::take(client));
+		}
+	}
+}
+
 /// Result of immutable repository admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RepositoryAdmissionOutcome {
@@ -142,8 +173,8 @@ impl PostgresStore {
 	) -> Result<RepositoryAdmissionOutcome, StoreError> {
 		let descriptor = admission.descriptor();
 		let descriptor_document = admission_descriptor_document(descriptor)?;
-		let mut client = self.pool().get().await?;
-		let transaction = client.transaction().await?;
+		let mut owner = AdvisoryTransactionOwner::new(self.pool().get().await?);
+		let transaction = owner.client_mut().transaction().await?;
 		transaction
 			.query_one(
 				"SELECT pg_catalog.pg_advisory_xact_lock(1349,pg_catalog.hashtext($1))",
@@ -174,6 +205,7 @@ impl PostgresStore {
 			return Err(StoreError::ManagedRepositoryAdmissionConflict);
 		}
 		transaction.commit().await?;
+		owner.confirm();
 		Ok(if inserted == 1 {
 			RepositoryAdmissionOutcome::Admitted
 		} else {
@@ -188,8 +220,8 @@ impl PostgresStore {
 		command: &AllocateRepositoryCommand,
 		evidence: &PositiveAllocationEvidence,
 	) -> Result<ManagedRepositoryFacts, StoreError> {
-		let mut client = self.pool().get().await?;
-		let transaction = client.transaction().await?;
+		let mut owner = AdvisoryTransactionOwner::new(self.pool().get().await?);
+		let transaction = owner.client_mut().transaction().await?;
 		transaction
 			.query_one(
 				"SELECT pg_catalog.pg_advisory_xact_lock(1349,pg_catalog.hashtext($1))",
@@ -274,6 +306,7 @@ impl PostgresStore {
 			.await?
 			.ok_or_else(|| incompatible("allocated repository projection disappeared"))?;
 		transaction.commit().await?;
+		owner.confirm();
 		Ok(facts)
 	}
 
@@ -307,8 +340,8 @@ impl PostgresStore {
 		dispatch: impl FnOnce(RepositoryDispatchReceipt, &ManagedRepositoryFacts) -> T,
 	) -> Result<RepositoryDispatchFenceOutcome<T>, StoreError> {
 		let operation_id = receipt.descriptor.operation_id.clone();
-		let mut client = self.pool().get().await?;
-		let transaction = client.transaction().await?;
+		let mut owner = AdvisoryTransactionOwner::new(self.pool().get().await?);
+		let transaction = owner.client_mut().transaction().await?;
 		transaction
 			.query_one(
 				"SELECT pg_catalog.pg_advisory_xact_lock(1349,pg_catalog.hashtext($1))",
@@ -326,9 +359,8 @@ impl PostgresStore {
 				load_facts_client_like(&transaction, &operation.descriptor.repository_id)
 					.await?
 					.ok_or_else(|| incompatible("terminal operation repository is absent"))?;
-			if transaction.rollback().await.is_err() {
-				drop(deadpool_postgres::Client::take(client));
-			}
+			transaction.rollback().await?;
+			owner.confirm();
 			return Ok(RepositoryDispatchFenceOutcome::Terminal { repository, operation });
 		}
 		let repository = load_facts(&transaction, &operation.descriptor.repository_id, true)
@@ -337,13 +369,11 @@ impl PostgresStore {
 		validate_dispatch_fence(&repository, &operation)?;
 		let dispatch = dispatch(receipt, &repository);
 		let release_confirmed = match transaction.rollback().await {
-			Ok(()) => true,
-			Err(_) => {
-				// Never return an uncertain transaction to the fast-recycling pool. Dropping the
-				// detached wrapper aborts its connection task and releases the server-side lock.
-				drop(deadpool_postgres::Client::take(client));
-				false
+			Ok(()) => {
+				owner.confirm();
+				true
 			},
+			Err(_) => false,
 		};
 		Ok(RepositoryDispatchFenceOutcome::Authorized {
 			dispatch,
@@ -385,8 +415,8 @@ impl PostgresStore {
 		repository_id: &ManagedRepositoryId,
 		command: PrepareCommand<'_>,
 	) -> Result<RepositoryPreparationOutcome, StoreError> {
-		let mut client = self.pool().get().await?;
-		let transaction = client.transaction().await?;
+		let mut owner = AdvisoryTransactionOwner::new(self.pool().get().await?);
+		let transaction = owner.client_mut().transaction().await?;
 		transaction
 			.query_one(
 				"SELECT pg_catalog.pg_advisory_xact_lock(1349,pg_catalog.hashtext($1))",
@@ -404,6 +434,7 @@ impl PostgresStore {
 		match resolve_operation_assignment(&requested, existing.as_ref()) {
 			AssignmentResolution::ExistingExact(operation, no_dispatch) => {
 				transaction.commit().await?;
+				owner.confirm();
 				return Ok(RepositoryPreparationOutcome::ExistingExact(operation, no_dispatch));
 			},
 			AssignmentResolution::OperationIdConflict => {
@@ -473,6 +504,7 @@ impl PostgresStore {
 		}
 		let receipt_seed = operation.descriptor.clone();
 		transaction.commit().await.map_err(StoreError::RepositoryCommitOutcomeUnknown)?;
+		owner.confirm();
 		Ok(RepositoryPreparationOutcome::Prepared {
 			operation,
 			receipt: RepositoryDispatchReceipt { descriptor: receipt_seed },
@@ -489,8 +521,8 @@ impl PostgresStore {
 			RepositoryEvidenceId,
 		) -> RepositoryReadbackEvidence,
 	) -> Result<RepositoryReconciliationOutcome, StoreError> {
-		let mut client = self.pool().get().await?;
-		let transaction = client.transaction().await?;
+		let mut owner = AdvisoryTransactionOwner::new(self.pool().get().await?);
+		let transaction = owner.client_mut().transaction().await?;
 		transaction
 			.query_one(
 				"SELECT pg_catalog.pg_advisory_xact_lock(1349,pg_catalog.hashtext($1))",
@@ -506,6 +538,7 @@ impl PostgresStore {
 					.await?
 					.ok_or_else(|| incompatible("terminal operation repository is absent"))?;
 			transaction.commit().await?;
+			owner.confirm();
 			return Ok(RepositoryReconciliationOutcome::Terminal { repository, operation });
 		}
 		let facts = load_facts(&transaction, &operation.descriptor.repository_id, true)
@@ -518,11 +551,11 @@ impl PostgresStore {
 			.get(0);
 		let evidence_id = RepositoryEvidenceId::new(value)?;
 		let observed = observe(&work, &facts.admission, evidence_id);
-		match observed {
+		let outcome = match observed {
 			RepositoryReadbackEvidence::Registration(evidence)
 				if matches!(&work, RepositoryReadbackWork::Registration(_)) =>
 				finish_reconciliation(
-					transaction,
+					&transaction,
 					operation_id,
 					operation,
 					facts,
@@ -532,7 +565,7 @@ impl PostgresStore {
 			RepositoryReadbackEvidence::WorktreeReady(evidence)
 				if matches!(&work, RepositoryReadbackWork::WorktreeReady(_)) =>
 				finish_reconciliation(
-					transaction,
+					&transaction,
 					operation_id,
 					operation,
 					facts,
@@ -542,7 +575,7 @@ impl PostgresStore {
 			RepositoryReadbackEvidence::Commit(evidence)
 				if matches!(&work, RepositoryReadbackWork::Commit(_)) =>
 				finish_reconciliation(
-					transaction,
+					&transaction,
 					operation_id,
 					operation,
 					facts,
@@ -550,7 +583,10 @@ impl PostgresStore {
 				)
 				.await,
 			_ => Err(incompatible("readback evidence kind contradicts operation")),
-		}
+		}?;
+		transaction.commit().await?;
+		owner.confirm();
+		Ok(outcome)
 	}
 
 	/// Load bounded restart work for committed possibly-effected operations only.
@@ -639,7 +675,7 @@ fn operation_readback_work(operation: &OperationView) -> Result<RepositoryReadba
 }
 
 async fn finish_reconciliation(
-	transaction: Transaction<'_>,
+	transaction: &Transaction<'_>,
 	operation_id: &RepositoryOperationId,
 	operation: OperationView,
 	facts: ManagedRepositoryFacts,
@@ -647,7 +683,6 @@ async fn finish_reconciliation(
 ) -> Result<RepositoryReconciliationOutcome, StoreError> {
 	let terminal = evidence.decide(&facts, &operation)?;
 	let Some(terminal) = terminal else {
-		transaction.commit().await?;
 		return Ok(RepositoryReconciliationOutcome::Pending(operation));
 	};
 	let evidence_id = terminal.evidence_id(&transaction).await?;
@@ -740,7 +775,6 @@ async fn finish_reconciliation(
 	let repository = load_facts(&transaction, &operation.descriptor.repository_id, false)
 		.await?
 		.ok_or_else(|| incompatible("reconciled repository projection disappeared"))?;
-	transaction.commit().await?;
 	Ok(RepositoryReconciliationOutcome::Terminal {
 		operation: terminal.operation,
 		repository,
