@@ -15,41 +15,74 @@ use crate::{
 };
 
 /// One explicit member supplied for complete policy replacement.
+///
+/// Constructing this input does not establish PostgreSQL provenance or routing authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingPolicyMemberInput {
+	/// Canonical account identity that PostgreSQL must find in the complete project inventory.
 	pub account_id: AccountId,
+	/// Positive account revision that PostgreSQL must match before accepting the replacement.
 	pub account_revision: i64,
+	/// Explicit included or excluded policy state; omission is not an exclusion signal.
 	pub disposition: RoutingMemberDisposition,
 }
 
 /// User-authored complete replacement request; PostgreSQL rechecks the inventory and sources.
+///
+/// This value represents command input only; constructing it does not prove database authorship
+/// or authorize account switching, dispatch, continuation, or production routing.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReplaceRoutingPolicy {
+	/// Stable UUID of the routing policy to create or replace.
 	pub routing_policy_id: String,
+	/// Stable UUID of the project whose complete account inventory the policy must cover.
 	pub project_id: String,
+	/// Current positive policy revision to replace, or absence only when creating revision one.
 	pub expected_revision: Option<i64>,
+	/// UUID of the accepted project Policy from which this routing policy derives authority.
 	pub accepted_policy_id: String,
+	/// Positive, exact revision of the accepted project Policy used by this replacement.
 	pub accepted_policy_revision: i64,
+	/// Role that every eligible account's current RoleProfile must provide.
 	pub required_role: RoleProfileRole,
+	/// Positive, exact RoleProfile revision required for the specified role.
 	pub required_role_profile_revision: i64,
+	/// Exact canonical Codex build identity required by the policy.
 	pub required_build_id: String,
+	/// Complete replacement membership, with one revisioned entry for every project account.
 	pub members: Vec<RoutingPolicyMemberInput>,
+	/// Canonically ordered, duplicate-free set of capabilities required from every eligible member.
 	pub required_capabilities: Vec<CodexCapability>,
 }
 
 /// Complete ordinary XY-1270 compatibility observation without any caller clock.
+///
+/// PostgreSQL supplies the ingestion time and verifies the linked authorities. Public Rust
+/// construction represents an input only and does not itself prove that provenance or authorize
+/// account switching, dispatch, continuation, or production routing.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishRoutingEvidence {
+	/// UUID assigned to this immutable evidence publication.
 	pub evidence_id: String,
+	/// Canonical account identity observed by the evidence publication.
 	pub account_id: AccountId,
+	/// Positive account revision that PostgreSQL must still observe when publishing the evidence.
 	pub expected_account_revision: i64,
+	/// Current positive evidence revision to advance, or absence only for the first observation.
 	pub expected_evidence_revision: Option<i64>,
+	/// Observed RoleProfile role, checked as part of the complete compatibility fact.
 	pub role: RoleProfileRole,
+	/// Positive, exact revision of the observed RoleProfile.
 	pub role_profile_revision: i64,
+	/// Exact canonical Codex build identity observed for the process.
 	pub build_id: String,
+	/// UUID of the observed Codex process, present with the account and schema process facts.
 	pub process_id: String,
+	/// Account bound to the observed process; it must exactly equal `account_id`.
 	pub process_account_id: AccountId,
+	/// Exact lowercase hexadecimal schema digest observed with the same process facts.
 	pub schema_fingerprint: String,
+	/// Complete canonically ordered state vector containing every closed Codex capability exactly once.
 	pub capabilities: Vec<(CodexCapability, RoutingCapabilityState)>,
 }
 
