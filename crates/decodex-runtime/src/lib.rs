@@ -21,6 +21,7 @@ mod websocket;
 pub use application::{Application, ApplicationPublication};
 pub use bootstrap::ServiceBootstrap;
 pub use decodex_protocol::ServerId;
+pub use managed_repository_runtime::ManagedRepositoryReadiness;
 pub use managed_repository_saga::{
 	ManagedRepositoryEffectPort, ManagedRepositoryEffectSaga, ManagedRepositoryRestartOutcome,
 	ManagedRepositorySagaOutcome, RepositoryDispatchFailure, RepositoryDispatchObservation,
