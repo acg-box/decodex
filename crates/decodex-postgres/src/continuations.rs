@@ -209,9 +209,8 @@ impl PostgresStore {
 		};
 
 		let parameters = ContinuationPackParameters::new(fallback_pack);
-		let response = self
-			.execute_continuation_command(idempotency_key, request, &parameters)
-			.await?;
+		let response =
+			self.execute_continuation_command(idempotency_key, request, &parameters).await?;
 		let (classification, effect) = parse_envelope(&response)?;
 		if classification == "stable_domain_rejection" {
 			return Ok(ContinuationCommandOutcome::Rejected(parse_rejection(&effect)?));
