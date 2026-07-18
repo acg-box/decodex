@@ -19,9 +19,10 @@ const WORK_ITEM_MIGRATION: &str = include_str!("../migrations/V11__work_item_aut
 const MANAGED_RUN_MIGRATION: &str = include_str!("../migrations/V12__managed_run_safety.sql");
 const MANAGED_REPOSITORY_MIGRATION: &str =
 	include_str!("../migrations/V13__managed_repository_authority.sql");
+const ROUTING_MIGRATION: &str = include_str!("../migrations/V14__routing_authority.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 111] = [
+const FUNCTION_CONTRACTS: [FunctionContract; 119] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -893,8 +894,58 @@ const FUNCTION_CONTRACTS: [FunctionContract; 111] = [
 		"decodex.enforce_repository_history_completeness()",
 		"enforce_repository_history_completeness()",
 	),
+	trigger_contract(
+		"forbid_routing_history_mutation",
+		"decodex.forbid_routing_history_mutation()",
+		"forbid_routing_history_mutation()",
+	),
+	trigger_contract(
+		"enforce_routing_completeness",
+		"decodex.enforce_routing_completeness()",
+		"enforce_routing_completeness()",
+	),
+	trigger_contract(
+		"enforce_routing_command_owner",
+		"decodex.enforce_routing_command_owner()",
+		"enforce_routing_command_owner()",
+	),
+	exact_function_contract(
+		"complete_exact_routing_rejection",
+		"decodex.complete_exact_routing_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"complete_exact_routing_rejection(\n\tp_protocol text, p_idempotency_key text, p_operation text, p_code text\n)",
+		"p_protocol text, p_idempotency_key text, p_operation text, p_code text",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"reserve_exact_routing_command",
+		"decodex.reserve_exact_routing_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"reserve_exact_routing_command(\n\tp_protocol text, p_idempotency_key text, p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_request jsonb",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"replace_routing_policy_exact",
+		"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
+		"replace_routing_policy_exact(\n\tp_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_project_id uuid,\n\tp_expected_revision bigint, p_accepted_policy_id uuid, p_accepted_policy_revision bigint,\n\tp_required_role decodex.role_profile_role, p_required_role_profile_revision bigint,\n\tp_required_build_id text, p_account_ids uuid[], p_account_revisions bigint[],\n\tp_dispositions decodex.routing_member_disposition[],\n\tp_required_capabilities decodex.codex_capability[]\n)",
+		"p_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_project_id uuid, p_expected_revision bigint, p_accepted_policy_id uuid, p_accepted_policy_revision bigint, p_required_role decodex.role_profile_role, p_required_role_profile_revision bigint, p_required_build_id text, p_account_ids uuid[], p_account_revisions bigint[], p_dispositions decodex.routing_member_disposition[], p_required_capabilities decodex.codex_capability[]",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"publish_routing_evidence_exact",
+		"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
+		"publish_routing_evidence_exact(\n\tp_protocol text, p_idempotency_key text, p_evidence_id uuid, p_account_id uuid,\n\tp_expected_account_revision bigint, p_expected_evidence_revision bigint,\n\tp_role decodex.role_profile_role,\n\tp_role_profile_revision bigint, p_build_id text, p_process_id uuid,\n\tp_process_account_id uuid, p_schema_fingerprint text,\n\tp_capabilities decodex.codex_capability[], p_states decodex.capability_evidence_state[]\n)",
+		"p_protocol text, p_idempotency_key text, p_evidence_id uuid, p_account_id uuid, p_expected_account_revision bigint, p_expected_evidence_revision bigint, p_role decodex.role_profile_role, p_role_profile_revision bigint, p_build_id text, p_process_id uuid, p_process_account_id uuid, p_schema_fingerprint text, p_capabilities decodex.codex_capability[], p_states decodex.capability_evidence_state[]",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"resolve_routing_snapshot_exact",
+		"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+		"resolve_routing_snapshot_exact(\n\tp_protocol text, p_idempotency_key text, p_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint, p_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint\n)",
+		"p_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_managed_run_id uuid, p_expected_managed_run_revision bigint",
+		"bytea", "plpgsql", "v",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 36] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 39] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -931,8 +982,11 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 36] = [
 	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
+	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 ];
-const SAFETY_FUNCTIONS: [&str; 52] = [
+const SAFETY_FUNCTIONS: [&str; 55] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -985,8 +1039,11 @@ const SAFETY_FUNCTIONS: [&str; 52] = [
 	"enforce_managed_repository_projection",
 	"enforce_repository_operation_scope",
 	"enforce_repository_history_completeness",
+	"forbid_routing_history_mutation",
+	"enforce_routing_completeness",
+	"enforce_routing_command_owner",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 96;
+const SAFETY_TRIGGER_COUNT: usize = 110;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1187,6 +1244,17 @@ WITH set_roles AS (
 	,('repository_operation_events', true, true, false, false)
 	,('repository_operation_evidence', true, true, false, false)
 	,('repository_operation_results', true, true, false, false)
+	,('routing_policy_heads', false, false, false, false)
+	,('routing_policy_revisions', false, false, false, false)
+	,('routing_policy_members', false, false, false, false)
+	,('routing_policy_required_capabilities', false, false, false, false)
+	,('routing_compatibility_evidence', false, false, false, false)
+	,('routing_capability_evidence', false, false, false, false)
+	,('routing_snapshots', false, false, false, false)
+	,('routing_snapshot_members', false, false, false, false)
+	,('routing_snapshot_quota_facts', false, false, false, false)
+	,('routing_snapshot_capability_facts', false, false, false, false)
+	,('routing_snapshot_blockers', false, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -1195,7 +1263,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 49
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 60
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -1447,6 +1515,20 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('repository_operation_results', 'repository_operation_results_complete', 'enforce_repository_history_completeness', 5)
 	,('repository_operation_events', 'repository_operation_events_complete', 'enforce_repository_history_completeness', 5)
 	,('repository_authority_transitions', 'repository_authority_transitions_complete', 'enforce_repository_history_completeness', 5)
+	,('routing_policy_revisions', 'routing_policy_revisions_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_policy_members', 'routing_policy_members_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_policy_required_capabilities', 'routing_policy_required_capabilities_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_compatibility_evidence', 'routing_compatibility_evidence_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_capability_evidence', 'routing_capability_evidence_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_snapshots', 'routing_snapshots_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_snapshot_members', 'routing_snapshot_members_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_snapshot_quota_facts', 'routing_snapshot_quota_facts_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_snapshot_capability_facts', 'routing_snapshot_capability_facts_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_snapshot_blockers', 'routing_snapshot_blockers_immutable', 'forbid_routing_history_mutation', 58)
+	,('routing_policy_heads', 'routing_policy_heads_command_owner', 'enforce_routing_command_owner', 58)
+	,('routing_policy_revisions', 'routing_policy_revision_complete', 'enforce_routing_completeness', 5)
+	,('routing_compatibility_evidence', 'routing_evidence_complete', 'enforce_routing_completeness', 5)
+	,('routing_snapshots', 'routing_snapshot_complete', 'enforce_routing_completeness', 5)
 )
 SELECT
   expected.function_name,
@@ -1455,15 +1537,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -1660,6 +1742,20 @@ WITH catalog_context AS MATERIALIZED (
 	,('repository_operation_results', 'repository_operation_results_complete', 'decodex.enforce_repository_history_completeness()')
 	,('repository_operation_events', 'repository_operation_events_complete', 'decodex.enforce_repository_history_completeness()')
 	,('repository_authority_transitions', 'repository_authority_transitions_complete', 'decodex.enforce_repository_history_completeness()')
+	,('routing_policy_revisions', 'routing_policy_revisions_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_policy_members', 'routing_policy_members_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_policy_required_capabilities', 'routing_policy_required_capabilities_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_compatibility_evidence', 'routing_compatibility_evidence_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_capability_evidence', 'routing_capability_evidence_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_snapshots', 'routing_snapshots_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_snapshot_members', 'routing_snapshot_members_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_snapshot_quota_facts', 'routing_snapshot_quota_facts_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_snapshot_capability_facts', 'routing_snapshot_capability_facts_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_snapshot_blockers', 'routing_snapshot_blockers_immutable', 'decodex.forbid_routing_history_mutation()')
+	,('routing_policy_heads', 'routing_policy_heads_command_owner', 'decodex.enforce_routing_command_owner()')
+	,('routing_policy_revisions', 'routing_policy_revision_complete', 'decodex.enforce_routing_completeness()')
+	,('routing_compatibility_evidence', 'routing_evidence_complete', 'decodex.enforce_routing_completeness()')
+	,('routing_snapshots', 'routing_snapshot_complete', 'decodex.enforce_routing_completeness()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -3402,6 +3498,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		WORK_ITEM_MIGRATION,
 		MANAGED_RUN_MIGRATION,
 		MANAGED_REPOSITORY_MIGRATION,
+		ROUTING_MIGRATION,
 	]
 	.into_iter()
 	.rev()
@@ -3591,6 +3688,9 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "accept_work_item_exact"
 				| "guard_work_item_running_resume"
 				| "apply_managed_run_safety_input_exact"
+				| "replace_routing_policy_exact"
+				| "publish_routing_evidence_exact"
+				| "resolve_routing_snapshot_exact"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];

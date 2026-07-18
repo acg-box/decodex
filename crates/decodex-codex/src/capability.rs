@@ -2,27 +2,13 @@ use std::collections::BTreeMap;
 
 use crate::{BuildId, SchemaContract};
 
-/// Adapter capabilities whose live state is tracked independently of schema presence.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum Capability {
-	/// JSON-RPC initialization handshake.
-	Initialize,
-	/// Active-account readback for one immutable runner binding.
-	AccountRead,
-	/// Bounded thread listing.
-	ThreadList,
-	/// Exact-ID thread readback.
-	ThreadRead,
-	/// Explicit thread archival.
-	ThreadArchive,
-	/// Paginated rather than legacy persisted thread history.
-	PaginatedHistory,
-	/// Native run-local collaboration event shape.
-	NativeCollaboration,
-	/// Read-only `thread/search` method availability; not a global-discovery claim.
-	ThreadSearch,
+pub use decodex_core::CodexCapability as Capability;
+
+trait CapabilityExt {
+	fn schema_method(self) -> Option<&'static str>;
+	fn all() -> &'static [Self];
 }
-impl Capability {
+impl CapabilityExt for Capability {
 	fn schema_method(self) -> Option<&'static str> {
 		match self {
 			Self::Initialize => Some("initialize"),
@@ -37,16 +23,7 @@ impl Capability {
 	}
 
 	fn all() -> &'static [Self] {
-		&[
-			Self::Initialize,
-			Self::AccountRead,
-			Self::ThreadList,
-			Self::ThreadRead,
-			Self::ThreadArchive,
-			Self::PaginatedHistory,
-			Self::NativeCollaboration,
-			Self::ThreadSearch,
-		]
+		&Self::ALL
 	}
 }
 
