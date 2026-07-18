@@ -10,6 +10,7 @@
 mod account_launch;
 mod application;
 mod bootstrap;
+mod managed_repository_executor;
 mod websocket;
 
 pub use application::{Application, ApplicationPublication};
