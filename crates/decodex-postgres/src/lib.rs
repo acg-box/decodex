@@ -28,6 +28,7 @@ mod project_agents;
 mod quota;
 mod role_profiles;
 mod routing;
+mod routing_decisions;
 mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
@@ -62,6 +63,7 @@ pub use self::{
 	routing::{
 		PublishRoutingEvidence, ReplaceRoutingPolicy, RoutingPolicyMemberInput,
 	},
+	routing_decisions::{PersistedRoutingDecision, RouteAccount},
 	runtime_sessions::{
 		CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, RuntimeSessionAccountSnapshot,
 		RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionProfileSnapshot,

@@ -49,7 +49,9 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   database-timestamped ordinary Codex compatibility evidence, and immutable complete routing
   fact snapshots; it performs no selection or dispatch. V15 adds the uncomposed causal Codex
   experiment persistence protocol: deterministic markers, pre-effect ambiguity fences, exact typed
-  thread binding, and positive-only observations. No production root reaches it and it enables no
+  thread binding, and positive-only observations. V16 adds inert atomic routing decisions over a
+  PostgreSQL-authored locked universe, exact evidence references, duration-typed depletion
+  exclusions, and pure-kernel readback. No production root reaches either boundary and they enable no
   live execution. XY-1307 wires the typed connection data through runtime composition into the
   existing verification/migration boundary; every bootstrap failure remains fail-closed.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
@@ -103,7 +105,7 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical embedded migrations. The eighty-four expected safety/state/retention
+source bodies matching the canonical embedded migrations. The 127 expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
 indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
@@ -117,14 +119,15 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly twenty-four narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly twenty-five narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
 commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
 RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
-running/resume guard, and one command-complete ManagedRun safety consumer. Runtime cannot insert
+running/resume guard, one command-complete ManagedRun safety consumer, and the inert V16 exact
+routing-decision entrypoint. Runtime cannot insert
 cursor, exact-receipt, RoleProfile, RuntimeSession, RuntimeSession snapshot, WorkItem, ManagedRun,
-assignment, submitted-turn receipt, or effect-lineage rows or execute trigger/private helpers
-directly.
+assignment, submitted-turn receipt, effect-lineage, routing-decision, decision-member, decision-quota,
+decision-capability, decision-blocker, or decision-exclusion rows or execute trigger/private helpers directly.
 The two bound identity sequences require
 USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
 are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.

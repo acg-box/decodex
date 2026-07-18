@@ -827,6 +827,25 @@ tree and may not enable a live experiment while collecting evidence.
 | ACL and hostile catalog | Runtime has only the four V15 command entrypoints plus required enum usage; PUBLIC, direct table writes, helpers, trigger bypass, hostile search path, overloads, default ACL drift, and dump/restore authority drift fail closed. |
 | Production isolation | Reverse dependency inspection proves no production runtime or application reaches a V15 experiment execution root; Codex remains a typed fact adapter and dispatch remains disabled. |
 
+#### XY-1359 deferred acceptance matrix
+
+This source-only matrix is deferred to the unified post-freeze gate. It binds the V16 source,
+migration, configured-authority inventory, schema manifest, and authority digests to one exact
+tree; no case may dispatch work or enable a production consumer.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Deterministic order | Policy order and canonical account identity produce the same selected result across caller reorder, map order, pagination, and timing variation; caller omission, substitution, duplication, or extra candidates cannot alter the PostgreSQL universe. |
+| Sticky eligibility | A sticky account wins only with the same current policy, identity/revision, capability, compatibility, blocker, and exact quota evidence required of every candidate; stale, disabled, auth-failed, incompatible, or depleted sticky accounts cannot bypass blockers. |
+| Duration and precision | 300-minute and 10080-minute facts remain distinct; missing/unsupported duration, unknown/low confidence, malformed raw provenance, non-microsecond precision, and any would-round or would-truncate timestamp fail closed. Exact raw observed/reset text, source identity, evidence revision, and UTC Unix microseconds round-trip unchanged. |
+| Selected exclusions | Every depleted predecessor ahead of the selected member has one normalized account/window exclusion tied to its immutable snapshot fact, observation revision, exact raw timestamps, source, precision, and deterministic `usage_depleted` reason; unrelated blockers are retained as references. |
+| Waiting versus blocked | All otherwise eligible accounts depleted produces only `waiting_usage`, complete per-account/per-window exclusions, per-account maximum readiness, and the exact minimum of those readiness instants. Mixed depletion with unknown, incompatible, disabled, auth-failed, missing-duration, stale, or precision-incompatible evidence produces `no_route`, never a wake-ready decision. |
+| Exact command replay | Same key and envelope replays byte-identical decision/evidence readback; changed operation or envelope conflicts; malformed input is a stable typed rejection; abort, lost response, deadlock, serialization failure, and restart never commit a partial decision, executing receipt, or duplicate effect. |
+| Concurrent authority | Policy, snapshot, account, RoleProfile, capability, compatibility, blocker, quota, or ManagedRun changes before or during resolution either serialize against the complete lock boundary or return a typed stale/concurrent rejection; no mixed-universe decision commits. |
+| Immutability and completeness | Decision, member, quota, capability, blocker, and exclusion rows commit together, are append-only after commit, and match strict Rust readback plus the pure kernel; missing, reordered, extra, cross-linked, or malformed fields fail closed. |
+| ACL and hostile catalog | Runtime has only the V16 command entrypoint; PUBLIC, direct table writes, private helpers, trigger bypass, hostile search path, overload/default-ACL drift, ownership drift, and dump/restore catalog drift fail closed. Regenerated schema/configured-authority digests match the integrated frozen tree. |
+| Production isolation | Reverse dependency inspection proves no runtime, protocol, CLI, daemon, scheduler, Codex, credential, or UI production root imports or invokes V16; persisted decisions remain inert and no V17 continuation or wake authority exists. |
+
 
 ## Cutover gate
 
