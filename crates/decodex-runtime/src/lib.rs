@@ -10,6 +10,7 @@
 mod account_launch;
 mod application;
 mod bootstrap;
+pub mod github_effects;
 mod managed_repository_executor;
 mod managed_repository_saga;
 mod supervised_validation;
