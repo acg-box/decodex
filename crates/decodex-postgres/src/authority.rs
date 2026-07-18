@@ -2970,6 +2970,11 @@ async fn verify_configured_authority(
 	let digest = Sha256::digest(manifest.as_bytes());
 
 	if digest.as_slice() != CONFIGURED_AUTHORITY_SHA256 {
+		#[cfg(feature = "test-support")]
+		eprintln!(
+			"configured authority actual SHA-256: {}",
+			digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+		);
 		return Err(StoreError::UnsafeAuthority(
 			"PostgreSQL configured principal or ACL authority differs from the shipped PG18 inventory",
 		));
