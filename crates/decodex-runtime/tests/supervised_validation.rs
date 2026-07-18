@@ -1,3 +1,5 @@
+//! Architecture-level validation-supervision acceptance coverage.
+
 use std::{
 	ffi::OsString,
 	fs,
@@ -6,6 +8,19 @@ use std::{
 	thread,
 	time::{Duration, Instant},
 };
+
+use axum as _;
+use decodex_codex as _;
+use decodex_postgres as _;
+use decodex_protocol as _;
+use futures_util as _;
+use serde as _;
+use serde_json as _;
+use sha2 as _;
+use tokio as _;
+use tokio_postgres as _;
+use tokio_tungstenite as _;
+use zeroize as _;
 
 use decodex_core::RepositoryContentRevision;
 use decodex_runtime::{
