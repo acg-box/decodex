@@ -649,3 +649,7 @@ fn classify_acceptance(
 			ValidationAcceptance::Rejected(ValidationRejection::ProcessFailed),
 	}
 }
+
+#[cfg(test)]
+#[path = "supervised_validation/tests.rs"]
+mod tests;

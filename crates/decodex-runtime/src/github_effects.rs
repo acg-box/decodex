@@ -1667,3 +1667,7 @@ fn is_canonical_uuid_v4(value: &str) -> bool {
 				|| (b'a'..=b'f').contains(byte)
 		})
 }
+
+#[cfg(test)]
+#[path = "github_effects/tests.rs"]
+mod tests;

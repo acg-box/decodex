@@ -240,6 +240,7 @@ dependencies = [
 	"test-rust",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
+	"test-vnext-postgres-store",
 ]
 
 [tasks.test-gate-contract]
