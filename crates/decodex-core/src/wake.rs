@@ -20,7 +20,8 @@ pub enum WaitingUsageWakeState {
 	Fired,
 	/// The terminal wake was stopped by an explicit cancellation.
 	Cancelled,
-	/// The terminal wake was fenced because its persisted run, policy, or decision lineage is stale.
+	/// The terminal wake was fenced because its persisted run, policy, or decision lineage is
+	/// stale.
 	Superseded,
 }
 
@@ -67,7 +68,8 @@ pub struct WaitingUsageWakeLease {
 	/// through `253402300739999999` inclusive.
 	pub acquired_at_micros: i64,
 	/// Lease expiry instant as nonnegative UTC microseconds since the Unix epoch, exactly
-	/// `60000000` microseconds after acquisition and bounded through `253402300799999999` inclusive.
+	/// `60000000` microseconds after acquisition and bounded through `253402300799999999`
+	/// inclusive.
 	pub expires_at_micros: i64,
 }
 
@@ -120,8 +122,8 @@ pub struct WaitingUsageWakeTransition {
 	/// Registration instant as nonnegative UTC microseconds since the Unix epoch, bounded through
 	/// `253402300739999999` inclusive and unchanged across the lineage.
 	pub registered_at_micros: i64,
-	/// Instant this immutable revision was appended, as nonnegative UTC microseconds since the Unix
-	/// epoch and bounded through `253402300739999999` inclusive.
+	/// Instant this immutable revision was appended, as nonnegative UTC microseconds since the
+	/// Unix epoch and bounded through `253402300739999999` inclusive.
 	pub transitioned_at_micros: i64,
 	/// Cause required for cancelled or superseded terminal states and absent for all other states.
 	pub terminal_reason: Option<WaitingUsageWakeTerminalReason>,

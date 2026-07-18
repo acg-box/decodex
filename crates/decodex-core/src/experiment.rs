@@ -80,7 +80,8 @@ impl CodexExperimentObservationKind {
 pub struct CodexExperimentPrepared {
 	/// Complete mechanism-neutral identity whose provenance PostgreSQL must independently verify.
 	pub identity: CodexExperimentIdentity,
-	/// Positive experiment revision returned for the initial prepared state; fixed to revision one.
+	/// Positive experiment revision returned for the initial prepared state; fixed to revision
+	/// one.
 	pub revision: i64,
 	/// Deterministic retained marker derived from the canonical experiment identity.
 	pub marker: String,
@@ -123,7 +124,8 @@ pub struct CodexExperimentThreadBinding {
 pub struct CodexExperimentObservation {
 	/// Canonical experiment UUID text owning this positive fact.
 	pub experiment_id: String,
-	/// Exact positive experiment revision to which the observation is bound; fixed to revision three.
+	/// Exact positive experiment revision to which the observation is bound; fixed to revision
+	/// three.
 	pub experiment_revision: i64,
 	/// Canonical UUID text uniquely identifying this append-only observation.
 	pub observation_id: String,
@@ -149,8 +151,8 @@ pub struct CodexExperimentRejection {
 pub enum CodexExperimentCommandOutcome<T> {
 	/// Exact command effect accepted after PostgreSQL has verified and persisted its authority.
 	///
-	/// Constructing this Rust variant alone does not prove database authorship or authorize routing,
-	/// dispatch, thread creation, retry, or adoption.
+	/// Constructing this Rust variant alone does not prove database authorship or authorize
+	/// routing, dispatch, thread creation, retry, or adoption.
 	Applied(T),
 	/// Durable stable domain rejection; this shape grants no permission to infer thread absence.
 	Rejected(CodexExperimentRejection),
