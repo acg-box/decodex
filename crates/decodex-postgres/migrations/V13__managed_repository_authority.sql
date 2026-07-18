@@ -575,11 +575,11 @@ BEGIN
 			END)
 			OR NEW.phase <> OLD.phase OR NEW.head <> OLD.head
 			OR transition_row.operation_id <> NEW.active_operation_id
-			OR transition_row.transition_kind <> CASE operation_row.kind
+			OR transition_row.transition_kind <> (CASE operation_row.kind
 				WHEN 'register' THEN 'register_prepared'::decodex.repository_authority_transition_kind
 				WHEN 'worktree_ready' THEN 'worktree_ready_prepared'::decodex.repository_authority_transition_kind
 				WHEN 'commit' THEN 'commit_prepared'::decodex.repository_authority_transition_kind
-			END OR EXISTS (
+			END) OR EXISTS (
 			SELECT 1 FROM decodex.repository_operation_results
 			WHERE operation_id = NEW.active_operation_id
 		) OR NOT EXISTS (
@@ -604,11 +604,11 @@ BEGIN
 				WHERE evidence.evidence_id = result_row.evidence_id
 					AND evidence.repository_id = NEW.repository_id
 					AND evidence.operation_id = OLD.active_operation_id
-					AND evidence.kind = CASE operation_row.kind
+					AND evidence.kind = (CASE operation_row.kind
 						WHEN 'register' THEN 'registration'::decodex.repository_evidence_kind
 						WHEN 'worktree_ready' THEN 'worktree_ready'::decodex.repository_evidence_kind
 						WHEN 'commit' THEN 'commit'::decodex.repository_evidence_kind
-					END
+					END)
 			)
 			OR transition_row.operation_id <> OLD.active_operation_id
 			OR NOT EXISTS (SELECT 1 FROM decodex.repository_operation_events
@@ -620,12 +620,12 @@ BEGIN
 			))
 			OR (terminal_state = 'completed' AND (
 				NEW.ambiguity IS NOT NULL
-				OR transition_row.transition_kind <> CASE operation_row.kind
+				OR transition_row.transition_kind <> (CASE operation_row.kind
 					WHEN 'register' THEN 'register_completed'::decodex.repository_authority_transition_kind
 					WHEN 'worktree_ready' THEN 'worktree_ready_completed'::decodex.repository_authority_transition_kind
 					WHEN 'commit' THEN 'commit_completed'::decodex.repository_authority_transition_kind
-				END
-				OR CASE operation_row.kind
+				END)
+				OR (CASE operation_row.kind
 					WHEN 'register' THEN result_row.result <> pg_catalog.jsonb_build_object(
 						'kind','registered','head',operation_row.payload->>'expected_head'
 					) OR NEW.phase <> 'registered' OR NEW.head <> OLD.head
@@ -637,7 +637,7 @@ BEGIN
 						'to',operation_row.payload->>'next_head'
 					) OR NEW.phase <> 'ready'
 						OR NEW.head <> operation_row.payload->>'next_head'
-				END
+				END)
 			))
 		THEN
 			RAISE EXCEPTION 'managed-repository reconciliation is incomplete'
@@ -844,18 +844,18 @@ BEGIN
 			WHERE operation.operation_id = target_operation_id
 				AND operation.repository_id = target_repository_id
 				AND evidence.evidence_id = target_evidence_id
-				AND evidence.kind = CASE operation.kind
+				AND evidence.kind = (CASE operation.kind
 					WHEN 'register' THEN 'registration'::decodex.repository_evidence_kind
 					WHEN 'worktree_ready' THEN 'worktree_ready'::decodex.repository_evidence_kind
 					WHEN 'commit' THEN 'commit'::decodex.repository_evidence_kind
-				END
+				END)
 				AND initial_event.state = 'possibly_effected'
 				AND initial_event.evidence_id IS NULL
-				AND preparation.transition_kind = CASE operation.kind
+				AND preparation.transition_kind = (CASE operation.kind
 					WHEN 'register' THEN 'register_prepared'::decodex.repository_authority_transition_kind
 					WHEN 'worktree_ready' THEN 'worktree_ready_prepared'::decodex.repository_authority_transition_kind
 					WHEN 'commit' THEN 'commit_prepared'::decodex.repository_authority_transition_kind
-				END
+				END)
 				AND preparation.evidence_id IS NULL
 				AND preparation.active_operation_id = operation.operation_id
 				AND preparation.head = operation.payload->>'expected_head'
@@ -868,20 +868,20 @@ BEGIN
 				AND repository.phase = terminal_transition.phase
 				AND repository.ambiguity IS NOT DISTINCT FROM terminal_transition.ambiguity
 				AND repository.head = terminal_transition.head
-				AND CASE result.state
+				AND (CASE result.state
 					WHEN 'ambiguous' THEN
 						terminal_transition.transition_kind = 'operation_ambiguous'
 						AND terminal_transition.phase = 'ambiguous'
 						AND terminal_transition.ambiguity = result.ambiguity
 						AND terminal_transition.head = operation.payload->>'expected_head'
 					WHEN 'completed' THEN
-						terminal_transition.transition_kind = CASE operation.kind
+						terminal_transition.transition_kind = (CASE operation.kind
 							WHEN 'register' THEN 'register_completed'::decodex.repository_authority_transition_kind
 							WHEN 'worktree_ready' THEN 'worktree_ready_completed'::decodex.repository_authority_transition_kind
 							WHEN 'commit' THEN 'commit_completed'::decodex.repository_authority_transition_kind
-						END
+						END)
 						AND terminal_transition.ambiguity IS NULL
-						AND CASE operation.kind
+						AND (CASE operation.kind
 							WHEN 'register' THEN result.result = pg_catalog.jsonb_build_object(
 								'kind','registered','head',operation.payload->>'expected_head'
 							) AND terminal_transition.phase = 'registered'
@@ -895,8 +895,8 @@ BEGIN
 								'to',operation.payload->>'next_head'
 							) AND terminal_transition.phase = 'ready'
 								AND terminal_transition.head = operation.payload->>'next_head'
-						END
-				END
+						END)
+				END)
 		)
 		THEN
 			RAISE EXCEPTION 'terminal repository history has no exact reconciliation cluster'
