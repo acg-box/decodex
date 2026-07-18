@@ -252,8 +252,9 @@ XY-1353 ────────────────────────
 
 The migration ledger is a singleton serial-writer domain. XY-1349's V13 is accepted on
 `main`. The fixed next order is XY-1356/V14 durable routing-policy authority, then
-XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions. No
-V17 is reserved. XY-1360 may allocate a later migration only if then-current source
+XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions, then
+XY-1360/V17 continuation authority after bounded source inspection proved durable atomic state
+was required. Later owners may allocate another migration only if then-current source
 inspection proves additional durable state is required. XY-1350 and the remaining
 managed-repository children retain their accepted non-routing ownership.
 
@@ -844,7 +845,24 @@ tree; no case may dispatch work or enable a production consumer.
 | Concurrent authority | Policy, snapshot, account, RoleProfile, capability, compatibility, blocker, quota, or ManagedRun changes before or during resolution either serialize against the complete lock boundary or return a typed stale/concurrent rejection; no mixed-universe decision commits. |
 | Immutability and completeness | Decision, member, quota, capability, blocker, and exclusion rows commit together, are append-only after commit, and match strict Rust readback plus the pure kernel; missing, reordered, extra, cross-linked, or malformed fields fail closed. |
 | ACL and hostile catalog | Runtime has only the V16 command entrypoint; PUBLIC, direct table writes, private helpers, trigger bypass, hostile search path, overload/default-ACL drift, ownership drift, and dump/restore catalog drift fail closed. Regenerated schema/configured-authority digests match the integrated frozen tree. |
-| Production isolation | Reverse dependency inspection proves no runtime, protocol, CLI, daemon, scheduler, Codex, credential, or UI production root imports or invokes V16; persisted decisions remain inert and no V17 continuation or wake authority exists. |
+| Production isolation | Reverse dependency inspection proves no runtime, protocol, CLI, daemon, scheduler, Codex, credential, or UI production root imports or invokes V16; persisted decisions remain inert, V17 is a separate uncomposed consumer, and no wake authority exists. |
+
+#### XY-1360 deferred acceptance matrix
+
+This source-only matrix is deferred to the unified post-freeze gate. It binds V10, V12, V15,
+V16, V17, the strict Rust adapter, schema/configured-authority inventories, and regenerated digests
+to one exact integrated tree; no case may dispatch work or enable a production consumer.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Decision consumption | Only one persisted `selected` V16 decision identity plus its exact ManagedRun revision is accepted; waiting/no-route, missing, stale, cross-run, substituted, or already-consumed decisions fail closed. Caller candidates, policy, exclusions, selection, evidence, and account facts cannot alter the database-derived lineage. |
+| Same-thread evidence | Exact selected account/revision, build, RoleProfile and source RuntimeSession identity, bound thread, V14 schema/capability profile, and fresh positive V15 thread-read evidence permit exactly one same-thread plan. Unknown, stale, future, negative, mismatched, incomplete, duplicate-experiment, unsupported, noncanonical, or lossy absence evidence produces fallback, never inferred compatibility. |
+| Atomic fallback | Crash before/after blob publication, exact-receipt reservation, source staging, Context-Pack seal, account snapshot, RuntimeSession, plan, activity, outbox, receipt completion, commit, or response loss leaves either no durable fallback state or one complete linked Context Pack + RuntimeSession + plan. No Context Pack-only, RuntimeSession-only, two-session, or V10/V16 two-command orphan is possible. |
+| Replay and concurrency | Same key replays exact bytes; a second key with the identical request reads the one stored plan; changed requests conflict or reject. Concurrent decision consumers, Context-Pack revisions, fallback identities, Conversation closure, ManagedRun revision change, and blob reclamation serialize or fail closed without duplicate state. |
+| ManagedRun safety | Conversation and ManagedRun identities remain unchanged. Guarded/closed barrier revision and submitted-turn receipt count are snapshotted; `replay_permitted=false` and `dispatch_enabled=false` remain immutable for no-receipt, stale-receipt, possible-side-effect, unknown-side-effect, diverged, and reconciled fixtures. No turn, tool, repository, worktree, Git, or artifact effect is replayed. |
+| Context-Pack hostile input | Canonical binary header, digest, manifest digest, source order, pinned source, disposition, represented-byte digest, bounds, credential-negative identities, Artifact revision/blob provenance, and inline/offloaded shape round-trip through strict readback. Truncated, reordered, forged, cross-Conversation, credential-shaped, oversized, malformed, and hash/length-conflicting inputs fail closed. |
+| ACL and catalogs | PUBLIC, direct plan DML, helper execution, activity/outbox lineage forgery, trigger bypass, hostile `search_path`, overload/default-ACL drift, ownership drift, restore drift, and surplus runtime privileges fail closed. The exact V17 function, relation, enum, constraint, trigger, dependency, migration, schema, and configured-authority inventories and regenerated digests match. |
+| End to end and isolation | One exact selected decision yields either one same-thread plan or one atomically verified fallback and survives restart readback byte-for-byte. Reverse dependency inspection proves no runtime, protocol, daemon, CLI, scheduler, credential, Codex, UI, or production composition root reaches V17. |
 
 
 ## Cutover gate

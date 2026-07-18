@@ -7,13 +7,15 @@
 //! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
 //! managed-repository authority with append-only operations/evidence, plus revisioned routing
 //! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
-//! Codex experiment intent/fences/bindings/positive observations. It does not
-//! select accounts, route work, store credentials, schedule or advance runs, execute repository
-//! effects, or expose protocol/client behavior.
+//! Codex experiment intent/fences/bindings/positive observations, atomic routing decisions, and
+//! inert exactly-once continuation plans with atomic Context-Pack fallback. It does not dispatch
+//! work, switch credentials, schedule or advance runs, replay turns or effects, or expose
+//! protocol/client behavior.
 
 mod accounts;
 mod authority;
 mod conversations;
+mod continuations;
 mod error;
 mod exact_commands;
 mod experiments;
@@ -40,6 +42,7 @@ pub use self::{
 		HistoryEntry, HistoryPage, PersistContextPack, ProposeTransition, RecordHistoryItem,
 		StoredArtifact, StoredConversation,
 	},
+	continuations::{ContinuationPlanEffect, PlanContinuation},
 	error::{BootstrapFailure, StoreError},
 	experiments::{
 		BindCodexExperimentThread, CodexExperimentCreationFenceOutcome,
@@ -87,6 +90,7 @@ pub use decodex_core::{
 	AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
 	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
 	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, EffectId,
+	ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
 	ExactCommitEvidence, ExactRegistrationEvidence, ExactRepositoryReadbackScope,
 	ExactWorktreeReadyEvidence, ExecutionAssignment, ExecutionAssignmentRole,
 	ExecutorContractVersion, ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId,
@@ -108,7 +112,8 @@ pub use decodex_core::{
 	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
 	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
 	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
-	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SubmittedTurnReceiptId, WorkItem,
+	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SameThreadContinuationEvidence,
+	SubmittedTurnReceiptId, WorkItem,
 	WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode,
 	WorkItemObjectiveRef, WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
 	WorkItemTimestamp, WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
