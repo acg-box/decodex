@@ -1983,12 +1983,12 @@ WITH catalog_context AS MATERIALIZED (
         )
         WHEN dependency.refclassid = 'pg_catalog.pg_cast'::pg_catalog.regclass THEN (
           SELECT pg_catalog.jsonb_build_array(
-            'cast', source_type.key, target_type.key, cast.castcontext, cast.castmethod
+            'cast', source_type.key, target_type.key, conversion.castcontext, conversion.castmethod
           )
-          FROM pg_catalog.pg_cast AS cast
-          JOIN type_keys AS source_type ON source_type.oid = cast.castsource
-          JOIN type_keys AS target_type ON target_type.oid = cast.casttarget
-          WHERE cast.oid = dependency.refobjid
+          FROM pg_catalog.pg_cast AS conversion
+          JOIN type_keys AS source_type ON source_type.oid = conversion.castsource
+          JOIN type_keys AS target_type ON target_type.oid = conversion.casttarget
+          WHERE conversion.oid = dependency.refobjid
         )
         WHEN dependency.refclassid = 'pg_catalog.pg_am'::pg_catalog.regclass THEN (
           SELECT pg_catalog.jsonb_build_array('access_method', access_method.amname)
