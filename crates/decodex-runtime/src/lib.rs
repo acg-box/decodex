@@ -5,6 +5,10 @@
 //! ```compile_fail
 //! use decodex_runtime::ManualAccountLauncher;
 //! ```
+//!
+//! Persisted routing orchestration is explicitly disabled and can produce only an immutable V17
+//! plan, an inert scheduler handoff, a no-route result, or a typed fail-closed result. No dispatch
+//! gate is exported or constructed.
 
 #[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
 mod account_launch;
@@ -15,6 +19,7 @@ pub(crate) mod github_effects;
 mod managed_repository_executor;
 mod managed_repository_runtime;
 mod managed_repository_saga;
+mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
 
@@ -26,6 +31,12 @@ pub use managed_repository_saga::{
 	ManagedRepositoryEffectPort, ManagedRepositoryEffectSaga, ManagedRepositoryRestartOutcome,
 	ManagedRepositorySagaOutcome, RepositoryDispatchFailure, RepositoryDispatchObservation,
 	RepositoryReadbackEvidence,
+};
+pub use routing_orchestration::{
+	ContinuationCoordinates, DisabledRoutingCommand, DisabledRoutingFailure,
+	DisabledRoutingFailureKind, DisabledRoutingOrchestration, DisabledRoutingOutcome,
+	PersistedDecisionProvenance, RoutingAttemptProvenance, RoutingAuthorityRejection,
+	WaitingUsageHandoff,
 };
 pub use supervised_validation::{
 	ProtectedWorktreeFingerprint, ProtectedWorktreeStateProbe, SupervisedValidationEvidence,
