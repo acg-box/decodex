@@ -1,9 +1,9 @@
 //! Durable inert ledger-first scheduler lifecycle over exact persisted V16 `waiting_usage` lineage.
 
 use decodex_core::{
-	ManagedRunId, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
-	WaitingUsageWakeRejection, WaitingUsageWakeState, WaitingUsageWakeTerminalReason,
-	WaitingUsageWakeTransition, WaitingUsageWakeTransitionKind,
+	ManagedRunId, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
+	WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
+	WaitingUsageWakeTransitionKind,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -135,15 +135,15 @@ impl PostgresStore {
 		let transition = parse_transition(&effect, "claim_due_waiting_usage_wake", true)?;
 		let claimed = boolean(&effect, "claimed")?;
 		if transition.operation_id != request.operation_id
-			|| claimed != matches!(
-				transition.transition_kind,
-				WaitingUsageWakeTransitionKind::Claimed | WaitingUsageWakeTransitionKind::Reclaimed
-			)
 			|| claimed
-				&& transition.lease.as_ref().map_or(true, |lease| {
-					lease.claim_id != request.claim_id || lease.holder_id != request.holder_id
-				})
-		{
+				!= matches!(
+					transition.transition_kind,
+					WaitingUsageWakeTransitionKind::Claimed
+						| WaitingUsageWakeTransitionKind::Reclaimed
+				) || claimed
+			&& transition.lease.as_ref().map_or(true, |lease| {
+				lease.claim_id != request.claim_id || lease.holder_id != request.holder_id
+			}) {
 			return incompatible("stored wake claim transition is cross-linked");
 		}
 		self.verify_transition_readback(&transition, &response).await?;
@@ -198,8 +198,7 @@ impl PostgresStore {
 					transition.transition_kind,
 					WaitingUsageWakeTransitionKind::Fired
 						| WaitingUsageWakeTransitionKind::Superseded
-				)
-			{
+				) {
 				return incompatible("stored wake fire transition is cross-linked");
 			}
 			self.verify_transition_readback(transition, &response).await?;
@@ -265,7 +264,9 @@ impl PostgresStore {
 				&[&transition.transition_id, &transition.operation_id],
 			)
 			.await?
-			.ok_or_else(|| StoreError::Incompatible("wake result lost its immutable transition".into()))?;
+			.ok_or_else(|| {
+				StoreError::Incompatible("wake result lost its immutable transition".into())
+			})?;
 		let lease = transition.lease.as_ref();
 		let terminal_reason = transition.terminal_reason.map(terminal_reason_sql);
 		let (_, effect) = parse_envelope(response)?;
@@ -302,7 +303,9 @@ impl PostgresStore {
 			|| row.get::<_, Value>(28) != effect
 			|| row.get::<_, Vec<u8>>(29).as_slice() != response
 		{
-			return incompatible("wake immutable transition readback differs from its command result");
+			return incompatible(
+				"wake immutable transition readback differs from its command result",
+			);
 		}
 		Ok(())
 	}
@@ -319,9 +322,7 @@ fn parse_transition_response(
 	if classification != "success" {
 		return incompatible("stored waiting-usage wake response classification is unknown");
 	}
-	Ok(WaitingUsageWakeCommandOutcome::Success(parse_transition(
-		&effect, operation, false,
-	)?))
+	Ok(WaitingUsageWakeCommandOutcome::Success(parse_transition(&effect, operation, false)?))
 }
 
 fn parse_transition(
@@ -330,26 +331,75 @@ fn parse_transition(
 	claim_effect: bool,
 ) -> Result<WaitingUsageWakeTransition, StoreError> {
 	let ordinary_keys = [
-		"activity_effects", "claim_id", "earliest_ready_at_micros", "effect_digest",
-		"effect_digest_source", "fresh_routing_resolution_only", "lease_acquired_at_micros",
-		"lease_expires_at_micros", "lease_fence_id", "lease_holder", "managed_run_id",
-		"managed_run_revision", "operation", "operation_id", "outbox_effects",
-		"predecessor_revision", "predecessor_transition_id", "prior_decision_reusable",
-		"production_enabled", "registered_at_micros", "registration_operation_id", "revision",
-		"routing_decision_id", "routing_decision_revision", "routing_policy_id",
-		"routing_policy_revision", "routing_resolution_request_id", "state", "terminal_reason",
-		"transition_id", "transition_kind", "transitioned_at_micros", "wake_id",
+		"activity_effects",
+		"claim_id",
+		"earliest_ready_at_micros",
+		"effect_digest",
+		"effect_digest_source",
+		"fresh_routing_resolution_only",
+		"lease_acquired_at_micros",
+		"lease_expires_at_micros",
+		"lease_fence_id",
+		"lease_holder",
+		"managed_run_id",
+		"managed_run_revision",
+		"operation",
+		"operation_id",
+		"outbox_effects",
+		"predecessor_revision",
+		"predecessor_transition_id",
+		"prior_decision_reusable",
+		"production_enabled",
+		"registered_at_micros",
+		"registration_operation_id",
+		"revision",
+		"routing_decision_id",
+		"routing_decision_revision",
+		"routing_policy_id",
+		"routing_policy_revision",
+		"routing_resolution_request_id",
+		"state",
+		"terminal_reason",
+		"transition_id",
+		"transition_kind",
+		"transitioned_at_micros",
+		"wake_id",
 	];
 	let claim_keys = [
-		"activity_effects", "claim_id", "claimed", "earliest_ready_at_micros", "effect_digest",
-		"effect_digest_source", "fresh_routing_resolution_only", "lease_acquired_at_micros",
-		"lease_expires_at_micros", "lease_fence_id", "lease_holder", "managed_run_id",
-		"managed_run_revision", "operation", "operation_id", "outbox_effects",
-		"predecessor_revision", "predecessor_transition_id", "prior_decision_reusable",
-		"production_enabled", "registered_at_micros", "registration_operation_id", "revision",
-		"routing_decision_id", "routing_decision_revision", "routing_policy_id",
-		"routing_policy_revision", "routing_resolution_request_id", "state", "terminal_reason",
-		"transition_id", "transition_kind", "transitioned_at_micros", "wake_id",
+		"activity_effects",
+		"claim_id",
+		"claimed",
+		"earliest_ready_at_micros",
+		"effect_digest",
+		"effect_digest_source",
+		"fresh_routing_resolution_only",
+		"lease_acquired_at_micros",
+		"lease_expires_at_micros",
+		"lease_fence_id",
+		"lease_holder",
+		"managed_run_id",
+		"managed_run_revision",
+		"operation",
+		"operation_id",
+		"outbox_effects",
+		"predecessor_revision",
+		"predecessor_transition_id",
+		"prior_decision_reusable",
+		"production_enabled",
+		"registered_at_micros",
+		"registration_operation_id",
+		"revision",
+		"routing_decision_id",
+		"routing_decision_revision",
+		"routing_policy_id",
+		"routing_policy_revision",
+		"routing_resolution_request_id",
+		"state",
+		"terminal_reason",
+		"transition_id",
+		"transition_kind",
+		"transitioned_at_micros",
+		"wake_id",
 	];
 	require_keys(effect, if claim_effect { &claim_keys } else { &ordinary_keys })?;
 	validate_digest(effect)?;
@@ -379,16 +429,19 @@ fn parse_transition(
 	let lease_acquired = optional_i64(effect, "lease_acquired_at_micros")?;
 	let lease_expires = optional_i64(effect, "lease_expires_at_micros")?;
 	let lease = match (claim_id, holder_id, lease_fence_id, lease_acquired, lease_expires) {
-		(Some(claim_id), Some(holder_id), Some(lease_fence_id), Some(acquired_at_micros),
-			Some(expires_at_micros)) if state == WaitingUsageWakeState::Leased => {
-			Some(WaitingUsageWakeLease {
-				claim_id,
-				holder_id,
-				lease_fence_id,
-				acquired_at_micros,
-				expires_at_micros,
-			})
-		}
+		(
+			Some(claim_id),
+			Some(holder_id),
+			Some(lease_fence_id),
+			Some(acquired_at_micros),
+			Some(expires_at_micros),
+		) if state == WaitingUsageWakeState::Leased => Some(WaitingUsageWakeLease {
+			claim_id,
+			holder_id,
+			lease_fence_id,
+			acquired_at_micros,
+			expires_at_micros,
+		}),
 		(None, None, None, None, None) if state != WaitingUsageWakeState::Leased => None,
 		_ => return incompatible("stored waiting-usage wake lease shape is invalid"),
 	};
@@ -399,9 +452,8 @@ fn parse_transition(
 			"explicit_cancellation" => WaitingUsageWakeTerminalReason::ExplicitCancellation,
 			"managed_run_stale" => WaitingUsageWakeTerminalReason::ManagedRunStale,
 			"policy_revision_stale" => WaitingUsageWakeTerminalReason::PolicyRevisionStale,
-			"ambiguous_decision_lineage" => {
-				WaitingUsageWakeTerminalReason::AmbiguousDecisionLineage
-			}
+			"ambiguous_decision_lineage" =>
+				WaitingUsageWakeTerminalReason::AmbiguousDecisionLineage,
 			_ => return incompatible("stored wake terminal reason is unknown"),
 		}),
 		_ => return incompatible("stored wake terminal reason is malformed"),
@@ -409,16 +461,24 @@ fn parse_transition(
 	if !matches!(
 		(state, transition_kind, terminal_reason),
 		(WaitingUsageWakeState::Pending, WaitingUsageWakeTransitionKind::Registered, None)
-			| (WaitingUsageWakeState::Leased,
+			| (
+				WaitingUsageWakeState::Leased,
 				WaitingUsageWakeTransitionKind::Claimed | WaitingUsageWakeTransitionKind::Reclaimed,
-				None)
-			| (WaitingUsageWakeState::Fired, WaitingUsageWakeTransitionKind::Fired, None)
-			| (WaitingUsageWakeState::Cancelled, WaitingUsageWakeTransitionKind::Cancelled,
-				Some(WaitingUsageWakeTerminalReason::ExplicitCancellation))
-			| (WaitingUsageWakeState::Superseded, WaitingUsageWakeTransitionKind::Superseded,
-				Some(WaitingUsageWakeTerminalReason::ManagedRunStale
+				None
+			) | (WaitingUsageWakeState::Fired, WaitingUsageWakeTransitionKind::Fired, None)
+			| (
+				WaitingUsageWakeState::Cancelled,
+				WaitingUsageWakeTransitionKind::Cancelled,
+				Some(WaitingUsageWakeTerminalReason::ExplicitCancellation)
+			) | (
+			WaitingUsageWakeState::Superseded,
+			WaitingUsageWakeTransitionKind::Superseded,
+			Some(
+				WaitingUsageWakeTerminalReason::ManagedRunStale
 					| WaitingUsageWakeTerminalReason::PolicyRevisionStale
-					| WaitingUsageWakeTerminalReason::AmbiguousDecisionLineage))
+					| WaitingUsageWakeTerminalReason::AmbiguousDecisionLineage
+			)
+		)
 	) {
 		return incompatible("stored wake transition kind, state, and reason are inconsistent");
 	}
@@ -434,8 +494,7 @@ fn parse_transition(
 	let revision = positive_i64(effect, "revision")?;
 	let predecessor_revision = optional_positive_i64(effect, "predecessor_revision")?;
 	let predecessor_transition_id = optional_uuid(effect, "predecessor_transition_id")?;
-	if (revision == 1)
-		!= (predecessor_revision.is_none() && predecessor_transition_id.is_none())
+	if (revision == 1) != (predecessor_revision.is_none() && predecessor_transition_id.is_none())
 		|| revision > 1 && predecessor_revision != Some(revision - 1)
 	{
 		return incompatible("stored wake transition predecessor is nonmonotonic");
@@ -487,7 +546,10 @@ fn parse_envelope(response: &[u8]) -> Result<(String, Value), StoreError> {
 	Ok((classification, effect))
 }
 
-fn parse_rejection(effect: &Value, operation: &str) -> Result<WaitingUsageWakeRejection, StoreError> {
+fn parse_rejection(
+	effect: &Value,
+	operation: &str,
+) -> Result<WaitingUsageWakeRejection, StoreError> {
 	require_keys(effect, &["effect_digest", "effect_digest_source", "operation", "rejection"])?;
 	validate_digest(effect)?;
 	if text(effect, "operation")? != operation {
@@ -545,15 +607,17 @@ fn require_keys(value: &Value, expected: &[&str]) -> Result<(), StoreError> {
 }
 
 fn text<'a>(value: &'a Value, key: &str) -> Result<&'a str, StoreError> {
-	value.get(key).and_then(Value::as_str).ok_or_else(|| {
-		StoreError::Incompatible(format!("stored wake {key} is malformed"))
-	})
+	value
+		.get(key)
+		.and_then(Value::as_str)
+		.ok_or_else(|| StoreError::Incompatible(format!("stored wake {key} is malformed")))
 }
 
 fn boolean(value: &Value, key: &str) -> Result<bool, StoreError> {
-	value.get(key).and_then(Value::as_bool).ok_or_else(|| {
-		StoreError::Incompatible(format!("stored wake {key} is malformed"))
-	})
+	value
+		.get(key)
+		.and_then(Value::as_bool)
+		.ok_or_else(|| StoreError::Incompatible(format!("stored wake {key} is malformed")))
 }
 
 fn uuid(value: &Value, key: &str) -> Result<String, StoreError> {
@@ -568,15 +632,16 @@ fn optional_uuid(value: &Value, key: &str) -> Result<Option<String>, StoreError>
 		Some(Value::String(value)) => {
 			validate_uuid(value, "stored wake UUID")?;
 			Ok(Some(value.clone()))
-		}
+		},
 		_ => incompatible("stored optional wake UUID is malformed"),
 	}
 }
 
 fn positive_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
-	let value = value.get(key).and_then(Value::as_i64).ok_or_else(|| {
-		StoreError::Incompatible(format!("stored wake {key} is malformed"))
-	})?;
+	let value = value
+		.get(key)
+		.and_then(Value::as_i64)
+		.ok_or_else(|| StoreError::Incompatible(format!("stored wake {key} is malformed")))?;
 	positive(value, "stored wake revision")?;
 	Ok(value)
 }
@@ -584,19 +649,18 @@ fn positive_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
 fn optional_positive_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreError> {
 	match value.get(key) {
 		Some(Value::Null) => Ok(None),
-		Some(value) => value
-			.as_i64()
-			.filter(|value| *value > 0)
-			.map(Some)
-			.ok_or_else(|| StoreError::Incompatible("stored optional wake revision is malformed".into())),
+		Some(value) => value.as_i64().filter(|value| *value > 0).map(Some).ok_or_else(|| {
+			StoreError::Incompatible("stored optional wake revision is malformed".into())
+		}),
 		None => incompatible("stored optional wake revision is missing"),
 	}
 }
 
 fn nonnegative_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
-	let value = value.get(key).and_then(Value::as_i64).ok_or_else(|| {
-		StoreError::Incompatible(format!("stored wake {key} is malformed"))
-	})?;
+	let value = value
+		.get(key)
+		.and_then(Value::as_i64)
+		.ok_or_else(|| StoreError::Incompatible(format!("stored wake {key} is malformed")))?;
 	if value < 0 {
 		return incompatible("stored wake timestamp is negative");
 	}
@@ -606,28 +670,27 @@ fn nonnegative_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
 fn optional_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreError> {
 	match value.get(key) {
 		Some(Value::Null) => Ok(None),
-		Some(value) => value
-			.as_i64()
-			.filter(|value| *value >= 0)
-			.map(Some)
-			.ok_or_else(|| StoreError::Incompatible("stored optional wake timestamp is malformed".into())),
+		Some(value) => value.as_i64().filter(|value| *value >= 0).map(Some).ok_or_else(|| {
+			StoreError::Incompatible("stored optional wake timestamp is malformed".into())
+		}),
 		None => incompatible("stored optional wake timestamp is missing"),
 	}
 }
 
 fn positive(value: i64, label: &'static str) -> Result<(), StoreError> {
-	if value <= 0 {
-		Err(StoreError::InvalidInput(label))
-	} else {
-		Ok(())
-	}
+	if value <= 0 { Err(StoreError::InvalidInput(label)) } else { Ok(()) }
 }
 
 fn validate_uuid(value: &str, label: &'static str) -> Result<(), StoreError> {
-	if uuid::Uuid::parse_str(value).is_err() {
-		Err(StoreError::InvalidInput(label))
-	} else {
+	if value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
+		})
+	{
 		Ok(())
+	} else {
+		Err(StoreError::InvalidInput(label))
 	}
 }
 

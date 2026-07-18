@@ -42,16 +42,10 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 
-	let stale_ready = routing
-		.stale_waiting
-		.decision
-		.ready_at_micros
-		.expect("stale waiting decision is timed");
-	let cancel_ready = routing
-		.cancel_waiting
-		.decision
-		.ready_at_micros
-		.expect("cancellation wait is timed");
+	let stale_ready =
+		routing.stale_waiting.decision.ready_at_micros.expect("stale waiting decision is timed");
+	let cancel_ready =
+		routing.cancel_waiting.decision.ready_at_micros.expect("cancellation wait is timed");
 	assert_eq!(stale_ready, cancel_ready);
 	assert_eq!(stale_ready, ready_at + 1);
 	let equal_ready_at = stale_ready;
@@ -67,9 +61,7 @@ pub(super) async fn assert_waiting_wake_contract(
 	.await
 	.expect_err("registration before locked decision/run authority is rejected");
 	assert_eq!(
-		monotonic_error
-			.as_db_error()
-			.and_then(tokio_postgres::error::DbError::constraint),
+		monotonic_error.as_db_error().and_then(tokio_postgres::error::DbError::constraint),
 		Some("waiting_usage_wake_authority_time_monotonic"),
 	);
 	owner.batch_execute("ROLLBACK").await?;
@@ -100,10 +92,7 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 	let reordered_stale = assert_success(&reordered_stale_bytes, "registered");
-	assert_eq!(
-		text(&reordered_stale, "routing_policy_id"),
-		routing.stale_policy_id,
-	);
+	assert_eq!(text(&reordered_stale, "routing_policy_id"), routing.stale_policy_id,);
 	let cancel_registration_operation = uuid(0xa8, 6);
 	let reordered_cancel_bytes = internal_register(
 		owner,
@@ -168,10 +157,7 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 	let rollback_claim = assert_success(&rollback_claim_bytes, "claimed");
-	assert_eq!(
-		text(&rollback_claim, "wake_id"),
-		expected_wake_order[0].2.as_str(),
-	);
+	assert_eq!(text(&rollback_claim, "wake_id"), expected_wake_order[0].2.as_str(),);
 	assert_eq!(integer(&rollback_claim, "transitioned_at_micros"), ready_at);
 	let rollback_claim_outbox_id = integer(&rollback_claim["outbox_effects"][0], "id");
 	owner.batch_execute("ROLLBACK").await?;
@@ -209,15 +195,9 @@ pub(super) async fn assert_waiting_wake_contract(
 		} else {
 			(&reordered_cancel, &reordered_stale_bytes)
 		};
-	assert_eq!(
-		text(supersede_registered, "wake_id"),
-		expected_wake_order[1].2.as_str(),
-	);
+	assert_eq!(text(supersede_registered, "wake_id"), expected_wake_order[1].2.as_str(),);
 	let cancel_registered = assert_success(cancel_registered_bytes, "registered");
-	assert_eq!(
-		text(&cancel_registered, "wake_id"),
-		expected_wake_order[2].2.as_str(),
-	);
+	assert_eq!(text(&cancel_registered, "wake_id"), expected_wake_order[2].2.as_str(),);
 	advance_stale_policy(store, owner, text(supersede_registered, "routing_policy_id")).await?;
 	let superseded_bytes = internal_claim(
 		owner,
@@ -229,21 +209,13 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 	let superseded = assert_success(&superseded_bytes, "superseded");
-	assert_eq!(
-		text(&superseded, "wake_id"),
-		expected_wake_order[1].2.as_str(),
-	);
+	assert_eq!(text(&superseded, "wake_id"), expected_wake_order[1].2.as_str(),);
 	assert_eq!(text(&superseded, "terminal_reason"), "policy_revision_stale");
 	assert!(superseded.get("routing_resolution_request_id").is_some_and(Value::is_null));
 	assert_transition_readback(owner, &superseded_bytes).await?;
 
-	let cancelled_bytes = assert_cancellation_race(
-		migration,
-		owner,
-		cancel_registered_bytes,
-		equal_ready_at,
-	)
-	.await?;
+	let cancelled_bytes =
+		assert_cancellation_race(migration, owner, cancel_registered_bytes, equal_ready_at).await?;
 	assert_transition_readback(owner, &cancelled_bytes).await?;
 	let superseded_terminal = internal_cancel(
 		owner,
@@ -383,12 +355,9 @@ pub(super) async fn assert_waiting_wake_contract(
 	.await?;
 	assert_eq!(cross_key_registration, registered_bytes);
 
-	let restarted = PostgresStore::connect(
-		migration.clone(),
-		runtime.clone(),
-		super::expected_peer_uid(),
-	)
-	.await?;
+	let restarted =
+		PostgresStore::connect(migration.clone(), runtime.clone(), super::expected_peer_uid())
+			.await?;
 	let restart_replay = restarted
 		.register_waiting_usage_wake(
 			"v19-register",
@@ -450,12 +419,13 @@ async fn assert_cancellation_race(
 			Some("success") => {
 				assert_eq!(envelope["effect"]["transition_kind"], "cancelled");
 				assert!(cancelled.replace(response).is_none());
-			}
+			},
 			Some("stable_domain_rejection") => {
 				assert_eq!(envelope["effect"]["rejection"], "wake_terminal");
 				terminal_rejections += 1;
-			}
-			other => return Err(format!("unexpected cancellation race classification: {other:?}").into()),
+			},
+			other =>
+				return Err(format!("unexpected cancellation race classification: {other:?}").into()),
 		}
 	}
 	connection_a.await??;
@@ -573,10 +543,7 @@ async fn assert_claim_cluster_absent(
 		)
 		.await?;
 	for index in 0..4 {
-		assert!(
-			row.get::<_, bool>(index),
-			"rolled-back claim component {index} survived",
-		);
+		assert!(row.get::<_, bool>(index), "rolled-back claim component {index} survived",);
 	}
 	Ok(())
 }
@@ -748,15 +715,7 @@ async fn internal_cancel(
 				" + ($7::bigint / 1000000) * INTERVAL '1 second'",
 				" + ($7::bigint % 1000000) * INTERVAL '1 microsecond')",
 			),
-			&[
-				&PROTOCOL,
-				&key,
-				&operation_id,
-				&wake_id,
-				&revision,
-				&transition_id,
-				&now_micros,
-			],
+			&[&PROTOCOL, &key, &operation_id, &wake_id, &revision, &transition_id, &now_micros],
 		)
 		.await?
 		.get(0))

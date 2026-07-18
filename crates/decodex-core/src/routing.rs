@@ -337,8 +337,7 @@ pub fn decide_routing(
 		|| members.iter().enumerate().any(|(index, member)| member.position != index + 1)
 		|| members.iter().enumerate().any(|(index, member)| {
 			members[..index].iter().any(|prior| prior.account_id == member.account_id)
-		})
-		|| members.iter().filter(|member| member.sticky).count() > 1
+		}) || members.iter().filter(|member| member.sticky).count() > 1
 	{
 		return Err(RoutingKernelError::MalformedSnapshot);
 	}
@@ -366,8 +365,7 @@ pub fn decide_routing(
 		|| snapshot.capability_facts.iter().enumerate().any(|(index, fact)| {
 			fact.account_id != members[index / CodexCapability::ALL.len()].account_id
 				|| fact.capability != CodexCapability::ALL[index % CodexCapability::ALL.len()]
-		})
-	{
+		}) {
 		return Err(RoutingKernelError::MalformedSnapshot);
 	}
 
@@ -382,14 +380,15 @@ pub fn decide_routing(
 
 	let sticky = included.iter().copied().find(|(_, member)| member.sticky);
 	let selected = sticky
-		.filter(|(index, member)| member.blockers.is_empty()
-			&& account_available(&facts_by_member[*index], snapshot.decided_at_micros))
+		.filter(|(index, member)| {
+			member.blockers.is_empty()
+				&& account_available(&facts_by_member[*index], snapshot.decided_at_micros)
+		})
 		.or_else(|| {
-			included
-				.iter()
-				.copied()
-				.find(|(index, member)| member.blockers.is_empty()
-					&& account_available(&facts_by_member[*index], snapshot.decided_at_micros))
+			included.iter().copied().find(|(index, member)| {
+				member.blockers.is_empty()
+					&& account_available(&facts_by_member[*index], snapshot.decided_at_micros)
+			})
 		});
 	if let Some((selected_index, selected_member)) = selected {
 		let mut exclusions = Vec::new();
@@ -397,10 +396,10 @@ pub fn decide_routing(
 			if index >= selected_index {
 				break;
 			}
-			let account_exclusions = depletion_exclusions(
-				member, &facts_by_member[index], snapshot.decided_at_micros,
-			)?;
-			let required = member.blockers.iter().filter(|blocker| is_depletion_blocker(**blocker)).count();
+			let account_exclusions =
+				depletion_exclusions(member, &facts_by_member[index], snapshot.decided_at_micros)?;
+			let required =
+				member.blockers.iter().filter(|blocker| is_depletion_blocker(**blocker)).count();
 			if account_exclusions.len() != required {
 				return Ok(no_route(&snapshot.snapshot_id));
 			}
@@ -425,10 +424,14 @@ pub fn decide_routing(
 	let mut exclusions = Vec::new();
 	let mut earliest_ready = None;
 	for (index, member) in included {
-		if !facts_by_member[index].iter().all(|fact| quota_fact_current(fact, snapshot.decided_at_micros)) {
+		if !facts_by_member[index]
+			.iter()
+			.all(|fact| quota_fact_current(fact, snapshot.decided_at_micros))
+		{
 			return Ok(no_route(&snapshot.snapshot_id));
 		}
-		let account_exclusions = depletion_exclusions(member, &facts_by_member[index], snapshot.decided_at_micros)?;
+		let account_exclusions =
+			depletion_exclusions(member, &facts_by_member[index], snapshot.decided_at_micros)?;
 		if account_exclusions.is_empty() {
 			return Ok(no_route(&snapshot.snapshot_id));
 		}
@@ -472,20 +475,19 @@ fn quota_fact_current(fact: &RoutingDecisionQuotaFact, decided_at_micros: i64) -
 	fact.confidence == Some(ObservationConfidence::High)
 		&& fact.remaining_percent.is_some()
 		&& fact.observation_revision.is_some_and(|revision| {
-			fact.observed_at_provenance.as_ref().is_some_and(|value| provenance_complete(value, revision, fact.observed_at_micros))
-				&& fact.resets_at_provenance.as_ref().is_some_and(|value| provenance_complete(value, revision, fact.resets_at_micros))
-		})
-		&& fact.observed_at_micros.is_some_and(|observed| {
-			observed <= decided_at_micros && decided_at_micros - observed <= 300_000_000
-		})
-		&& fact.resets_at_micros.is_some_and(|resets| resets > decided_at_micros)
+			fact.observed_at_provenance
+				.as_ref()
+				.is_some_and(|value| provenance_complete(value, revision, fact.observed_at_micros))
+				&& fact.resets_at_provenance.as_ref().is_some_and(|value| {
+					provenance_complete(value, revision, fact.resets_at_micros)
+				})
+		}) && fact.observed_at_micros.is_some_and(|observed| {
+		observed <= decided_at_micros && decided_at_micros - observed <= 300_000_000
+	}) && fact.resets_at_micros.is_some_and(|resets| resets > decided_at_micros)
 }
 
 fn is_depletion_blocker(blocker: RoutingBlocker) -> bool {
-	matches!(
-		blocker,
-		RoutingBlocker::QuotaFiveHourDepleted | RoutingBlocker::QuotaSevenDayDepleted
-	)
+	matches!(blocker, RoutingBlocker::QuotaFiveHourDepleted | RoutingBlocker::QuotaSevenDayDepleted)
 }
 
 fn provenance_complete(
@@ -496,7 +498,8 @@ fn provenance_complete(
 	value.evidence_revision == revision
 		&& !value.source_id.is_empty()
 		&& value.raw_value.parse::<i64>().ok() == canonical_micros
-		&& canonical_micros.is_some_and(|micros| micros >= 0 && value.raw_value == micros.to_string())
+		&& canonical_micros
+			.is_some_and(|micros| micros >= 0 && value.raw_value == micros.to_string())
 }
 
 fn depletion_exclusions(
@@ -513,18 +516,31 @@ fn depletion_exclusions(
 		if fact.remaining_percent != Some(0) || !member.blockers.contains(&depletion_blocker) {
 			continue;
 		}
-		let (Some(observed), Some(resets), Some(revision), Some(observed_at_micros),
-			Some(resets_at_micros), Some(confidence)) = (
-				fact.observed_at_provenance.clone(), fact.resets_at_provenance.clone(),
-				fact.observation_revision, fact.observed_at_micros, fact.resets_at_micros,
-				fact.confidence,
-			) else { continue };
+		let (
+			Some(observed),
+			Some(resets),
+			Some(revision),
+			Some(observed_at_micros),
+			Some(resets_at_micros),
+			Some(confidence),
+		) = (
+			fact.observed_at_provenance.clone(),
+			fact.resets_at_provenance.clone(),
+			fact.observation_revision,
+			fact.observed_at_micros,
+			fact.resets_at_micros,
+			fact.confidence,
+		)
+		else {
+			continue;
+		};
 		if !provenance_complete(&observed, revision, Some(observed_at_micros))
 			|| !provenance_complete(&resets, revision, Some(resets_at_micros))
 		{
 			return Err(RoutingKernelError::IncompleteEvidence);
 		}
-		if confidence != ObservationConfidence::High || observed_at_micros > decided_at_micros
+		if confidence != ObservationConfidence::High
+			|| observed_at_micros > decided_at_micros
 			|| decided_at_micros - observed_at_micros > 300_000_000
 			|| resets_at_micros <= decided_at_micros
 		{

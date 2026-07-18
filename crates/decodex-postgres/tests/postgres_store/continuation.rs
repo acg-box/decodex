@@ -8,8 +8,8 @@ use super::{
 use decodex_core::{
 	CodexExperimentCommandOutcome, CodexExperimentIdentity, CodexExperimentObservationKind,
 	ContextPack, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
-	ContinuationEffectBarrierState, ContinuationPlanKind, ContinuationRejection, PinnedContextSource,
-	PossibleSideEffects,
+	ContinuationEffectBarrierState, ContinuationPlanKind, ContinuationRejection,
+	PinnedContextSource, PossibleSideEffects,
 };
 use decodex_postgres::{
 	BindCodexExperimentThread, CodexExperimentCreationFenceOutcome, PlanContinuation,
@@ -71,21 +71,20 @@ pub(super) async fn assert_continuation_contract(
 	let missing_request = plan_request(1, &routing.selected.decision_id);
 	let missing = continuation_success(
 		store
-			.plan_continuation(&blob_store, "v17-missing-fallback", &missing_request, &fallback_pack)
+			.plan_continuation(
+				&blob_store,
+				"v17-missing-fallback",
+				&missing_request,
+				&fallback_pack,
+			)
 			.await?,
 	)?;
 	assert_eq!(missing.plan.kind, ContinuationPlanKind::ContextPackFallback);
 	assert!(missing.fallback_context_pack.is_some());
 	assert_barrier(&missing.plan);
 	let replay_inventory = continuation_effect_inventory(owner, &missing_request).await?;
-	assert_eq!(
-		replay_inventory["activity"].as_array().map(|rows| rows.len()),
-		Some(3),
-	);
-	assert_eq!(
-		replay_inventory["outbox"].as_array().map(|rows| rows.len()),
-		Some(3),
-	);
+	assert_eq!(replay_inventory["activity"].as_array().map(|rows| rows.len()), Some(3),);
+	assert_eq!(replay_inventory["outbox"].as_array().map(|rows| rows.len()), Some(3),);
 	let missing_bytes = receipt_bytes(owner, "v17-missing-fallback").await?;
 	assert_eq!(
 		store
@@ -99,10 +98,7 @@ pub(super) async fn assert_continuation_contract(
 		ContinuationCommandOutcome::Success(missing.clone()),
 	);
 	assert_eq!(receipt_bytes(owner, "v17-missing-fallback").await?, missing_bytes);
-	assert_eq!(
-		continuation_effect_inventory(owner, &missing_request).await?,
-		replay_inventory,
-	);
+	assert_eq!(continuation_effect_inventory(owner, &missing_request).await?, replay_inventory,);
 	assert_eq!(
 		store
 			.plan_continuation(
@@ -115,10 +111,7 @@ pub(super) async fn assert_continuation_contract(
 		ContinuationCommandOutcome::Success(missing.clone()),
 	);
 	assert_eq!(receipt_bytes(owner, "v17-missing-fallback-replay").await?, missing_bytes);
-	assert_eq!(
-		continuation_effect_inventory(owner, &missing_request).await?,
-		replay_inventory,
-	);
+	assert_eq!(continuation_effect_inventory(owner, &missing_request).await?, replay_inventory,);
 	let fallback_lineage = owner
 		.query_one(
 			"SELECT session.revision=1 AND session.state='starting',\
@@ -149,14 +142,8 @@ pub(super) async fn assert_continuation_contract(
 	}
 	let conflicting = PlanContinuation { plan_id: uuid(0xf4, 99), ..missing_request.clone() };
 	let conflicting_inventory = continuation_effect_inventory(owner, &conflicting).await?;
-	assert_eq!(
-		conflicting_inventory["activity"].as_array().map(|rows| rows.len()),
-		Some(2),
-	);
-	assert_eq!(
-		conflicting_inventory["outbox"].as_array().map(|rows| rows.len()),
-		Some(2),
-	);
+	assert_eq!(conflicting_inventory["activity"].as_array().map(|rows| rows.len()), Some(2),);
+	assert_eq!(conflicting_inventory["outbox"].as_array().map(|rows| rows.len()), Some(2),);
 	assert!(matches!(
 		store
 			.plan_continuation(
@@ -178,13 +165,11 @@ pub(super) async fn assert_continuation_contract(
 		.get(0);
 	assert_eq!(conflicting_plan_rows, 0);
 	assert_no_continuation_effects(owner, "v17-duplicate-consumption", &conflicting).await?;
-	assert_eq!(
-		continuation_effect_inventory(owner, &conflicting).await?,
-		conflicting_inventory,
-	);
+	assert_eq!(continuation_effect_inventory(owner, &conflicting).await?, conflicting_inventory,);
 
 	let mismatch_decision = route_selected(store, routing, 2).await?;
-	create_positive_experiment(store, routing, 2, &mismatch_decision.decision.snapshot_id, true).await?;
+	create_positive_experiment(store, routing, 2, &mismatch_decision.decision.snapshot_id, true)
+		.await?;
 	let mismatch = continuation_success(
 		store
 			.plan_continuation(
@@ -216,13 +201,8 @@ pub(super) async fn assert_continuation_contract(
 	assert_barrier(&stale_evidence.plan);
 
 	let ambiguous_decision = route_selected(store, routing, 4).await?;
-	create_ambiguous_creation_fence(
-		store,
-		routing,
-		4,
-		&ambiguous_decision.decision.snapshot_id,
-	)
-	.await?;
+	create_ambiguous_creation_fence(store, routing, 4, &ambiguous_decision.decision.snapshot_id)
+		.await?;
 	let ambiguous = continuation_success(
 		store
 			.plan_continuation(
@@ -248,16 +228,14 @@ pub(super) async fn assert_continuation_contract(
 	let same_thread_request = plan_request(3, &same_thread_decision.decision_id);
 	let same_thread = continuation_success(
 		store
-			.plan_continuation(
-				&blob_store,
-				"v17-same-thread",
-				&same_thread_request,
-				&fallback_pack,
-			)
+			.plan_continuation(&blob_store, "v17-same-thread", &same_thread_request, &fallback_pack)
 			.await?,
 	)?;
 	assert_eq!(same_thread.plan.kind, ContinuationPlanKind::SameThread);
-	assert_eq!(same_thread.plan.codex_thread_id.as_deref(), Some(routing.selected_thread_id.as_str()));
+	assert_eq!(
+		same_thread.plan.codex_thread_id.as_deref(),
+		Some(routing.selected_thread_id.as_str())
+	);
 	assert!(same_thread.plan.same_thread_evidence.is_some());
 	assert!(same_thread.fallback_context_pack.is_none());
 	assert_barrier(&same_thread.plan);
@@ -268,22 +246,11 @@ pub(super) async fn assert_continuation_contract(
 		..plan_request(5, &stale_decision.decision_id)
 	};
 	let stale_inventory = continuation_effect_inventory(owner, &stale_request).await?;
-	assert_eq!(
-		stale_inventory["activity"].as_array().map(|rows| rows.len()),
-		Some(0),
-	);
-	assert_eq!(
-		stale_inventory["outbox"].as_array().map(|rows| rows.len()),
-		Some(0),
-	);
+	assert_eq!(stale_inventory["activity"].as_array().map(|rows| rows.len()), Some(0),);
+	assert_eq!(stale_inventory["outbox"].as_array().map(|rows| rows.len()), Some(0),);
 	assert!(matches!(
 		store
-			.plan_continuation(
-				&blob_store,
-				"v17-stale-revision",
-				&stale_request,
-				&fallback_pack,
-			)
+			.plan_continuation(&blob_store, "v17-stale-revision", &stale_request, &fallback_pack,)
 			.await?,
 		ContinuationCommandOutcome::Rejected(ContinuationRejection::StaleManagedRunRevision)
 	));
@@ -297,10 +264,7 @@ pub(super) async fn assert_continuation_contract(
 		.get(0);
 	assert_eq!(stale_plan_rows, 0);
 	assert_no_continuation_effects(owner, "v17-stale-revision", &stale_request).await?;
-	assert_eq!(
-		continuation_effect_inventory(owner, &stale_request).await?,
-		stale_inventory,
-	);
+	assert_eq!(continuation_effect_inventory(owner, &stale_request).await?, stale_inventory,);
 
 	let lineage = owner
 		.query_one(
@@ -322,20 +286,11 @@ pub(super) async fn assert_continuation_contract(
 	for index in 3..8 {
 		assert!(lineage.get::<_, bool>(index), "V17 lineage assertion {index}");
 	}
-	let restarted = PostgresStore::connect(
-		migration.clone(),
-		runtime.clone(),
-		expected_peer_uid(),
-	)
-	.await?;
+	let restarted =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		restarted
-			.plan_continuation(
-				&blob_store,
-				"v17-same-thread",
-				&same_thread_request,
-				&fallback_pack,
-			)
+			.plan_continuation(&blob_store, "v17-same-thread", &same_thread_request, &fallback_pack,)
 			.await?,
 		ContinuationCommandOutcome::Success(same_thread),
 	);
@@ -363,10 +318,7 @@ async fn create_ambiguous_creation_fence(
 	};
 	assert!(matches!(
 		store
-			.prepare_codex_experiment(
-				"v17-ambiguous-prepare",
-				&PrepareCodexExperiment { identity },
-			)
+			.prepare_codex_experiment("v17-ambiguous-prepare", &PrepareCodexExperiment { identity },)
 			.await?,
 		CodexExperimentCommandOutcome::Applied(_)
 	));
@@ -441,17 +393,13 @@ async fn route_selected(
 	let outcome = store
 		.route_account(
 			&format!("v17-selected-decision-{marker}"),
-			&RouteAccount {
-				operation_id: uuid(0xf9, marker),
-				..routing.selected_request.clone()
-			},
+			&RouteAccount { operation_id: uuid(0xf9, marker), ..routing.selected_request.clone() },
 		)
 		.await?;
 	match outcome {
 		decodex_core::RoutingCommandOutcome::Success(value) => Ok(value),
-		decodex_core::RoutingCommandOutcome::Rejected(rejection) => {
-			Err(format!("V17 selected fixture rejected: {}", rejection.code).into())
-		}
+		decodex_core::RoutingCommandOutcome::Rejected(rejection) =>
+			Err(format!("V17 selected fixture rejected: {}", rejection.code).into()),
 	}
 }
 
@@ -497,11 +445,8 @@ async fn create_positive_experiment(
 			.await?,
 		CodexExperimentCreationFenceOutcome::Fresh(_)
 	));
-	let thread_id = if mismatched_thread {
-		uuid(0xec, marker)
-	} else {
-		routing.selected_thread_id.clone()
-	};
+	let thread_id =
+		if mismatched_thread { uuid(0xec, marker) } else { routing.selected_thread_id.clone() };
 	assert!(matches!(
 		store
 			.bind_codex_experiment_thread(
@@ -533,9 +478,8 @@ async fn create_positive_experiment(
 					thread_id,
 					marker: marker_text,
 					source_id: format!("thread-read-{marker}"),
-					fact_digest:
-						"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-							.into(),
+					fact_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+						.into(),
 				},
 			)
 			.await?,
@@ -549,9 +493,8 @@ fn continuation_success<T>(
 ) -> Result<T, Box<dyn std::error::Error>> {
 	match outcome {
 		ContinuationCommandOutcome::Success(value) => Ok(value),
-		ContinuationCommandOutcome::Rejected(rejection) => {
-			Err(format!("continuation rejected: {rejection:?}").into())
-		}
+		ContinuationCommandOutcome::Rejected(rejection) =>
+			Err(format!("continuation rejected: {rejection:?}").into()),
 	}
 }
 
