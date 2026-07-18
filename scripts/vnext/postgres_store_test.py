@@ -130,6 +130,21 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
+	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
+	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
+	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -184,6 +199,21 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_managed_repository_projection()",
 	"decodex.enforce_repository_operation_scope()",
 	"decodex.enforce_repository_history_completeness()",
+	"decodex.forbid_routing_history_mutation()",
+	"decodex.enforce_routing_completeness()",
+	"decodex.enforce_routing_command_owner()",
+	"decodex.forbid_codex_experiment_history_mutation()",
+	"decodex.enforce_codex_experiment_command_owner()",
+	"decodex.forbid_routing_decision_mutation()",
+	"decodex.enforce_routing_decision_completeness()",
+	"decodex.forbid_continuation_plan_mutation()",
+	"decodex.enforce_continuation_plan_completeness()",
+	"decodex.enforce_continuation_event_namespace()",
+	"decodex.enforce_waiting_usage_wake_command_owner()",
+	"decodex.forbid_waiting_usage_wake_transition_mutation()",
+	"decodex.enforce_waiting_usage_wake_transition_complete()",
+	"decodex.enforce_waiting_usage_wake_head_projection()",
+	"decodex.enforce_waiting_usage_wake_event_namespace()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -228,6 +258,11 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.repository_ambiguity",
 	"decodex.repository_authority_transition_kind",
 	"decodex.repository_evidence_kind",
+	"decodex.routing_member_disposition",
+	"decodex.codex_capability",
+	"decodex.capability_evidence_state",
+	"decodex.routing_blocker",
+	"decodex.codex_experiment_observation_kind",
 )
 
 
@@ -1981,6 +2016,7 @@ def main() -> int:
 			"production_checks": {},
 			"stages": {},
 		}
+		acceptance_failures: list[str] = []
 
 		create_database(DATABASE, env)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
@@ -2060,8 +2096,9 @@ def main() -> int:
 			env,
 		) != "origin|f|f|f|t|f|f":
 			raise TestFailure("valid runtime role is not a non-vacuous least-privilege fixture")
-		contract_output = run(
-			[
+		try:
+			contract_output = run(
+				[
 				"cargo",
 				"nextest",
 				"run",
@@ -2076,9 +2113,16 @@ def main() -> int:
 				"--",
 				"postgres_store_contract",
 				"--exact",
-			],
-			env,
-		)
+				],
+				env,
+			)
+			record_restore_stage(restore_report, "v14_v19_semantic_source", "passed")
+		except Exception as error:
+			contract_output = ""
+			acceptance_failures.append(f"V14-V19 semantic source: {error}")
+			record_restore_stage(
+				restore_report, "v14_v19_semantic_source", "failed", error=str(error)
+			)
 		managed_repository_output = "\n".join((
 			run_managed_repository_test(
 				"postgres_managed_repository_authority_contract", env
@@ -2493,7 +2537,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 112",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 157",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -2862,7 +2906,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "13|1":
+		) != "19|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
@@ -3004,10 +3048,12 @@ def main() -> int:
 		)
 		live_quota_snapshot = quota_authority_snapshot(DATABASE, env)
 		live_quota = json.loads(live_quota_snapshot)
-		if len(live_quota["windows"]) != 2 or len(live_quota["exclusions"]) != 2:
-			raise TestFailure("live quota snapshot is not the populated two-window fixture")
+		if len(live_quota["windows"]) != 8 or len(live_quota["exclusions"]) != 2:
+			acceptance_failures.append(
+				"live quota snapshot is not the populated V8/V14 eight-window fixture"
+			)
 		if any(row["dispatch_enabled"] for row in live_quota["exclusions"]):
-			raise TestFailure("live quota exclusion unexpectedly enables dispatch")
+			acceptance_failures.append("live quota exclusion unexpectedly enables dispatch")
 		dump_path = work / "decodex_xy1267.dump"
 		primary_restore_ready = True
 		try:
@@ -3072,12 +3118,6 @@ def main() -> int:
 				"postgres_managed_repository_restored_contract", env
 			),
 		)
-		if not primary_restore_ready:
-			restore_failures = finalize_restore_report(restore_report)
-			raise TestFailure(
-				"XY-1353 structured PostgreSQL restore acceptance failed:\n"
-				+ "\n".join(f"- {failure}" for failure in restore_failures)
-			)
 		checkpoints = restore_report["checkpoints"]
 		assert isinstance(checkpoints, dict)
 		live_document = checkpoints["primary_post_command"]
@@ -3451,11 +3491,6 @@ def main() -> int:
 		if final_source_binding != source_binding:
 			raise TestFailure("frozen PostgreSQL gate source binding changed during execution")
 		restore_failures = finalize_restore_report(restore_report)
-		if restore_failures:
-			raise TestFailure(
-				"XY-1353 structured PostgreSQL restore acceptance failed:\n"
-				+ "\n".join(f"- {failure}" for failure in restore_failures)
-			)
 		checkpoints = restore_report["checkpoints"]
 		assert isinstance(checkpoints, dict)
 		live_document = checkpoints["primary_post_command"]
@@ -3465,20 +3500,21 @@ def main() -> int:
 		live_authority = component_manifest(live_document, "authority")
 		restored_schema = component_manifest(restored_document, "schema")
 		restored_authority = component_manifest(restored_document, "authority")
-		if None in (live_schema, live_authority, restored_schema, restored_authority):
-			raise TestFailure(
-				"complete PostgreSQL artifacts are unavailable after restore finalization"
-			)
-		assert isinstance(live_schema, str) and isinstance(live_authority, str)
-		assert isinstance(restored_schema, str) and isinstance(restored_authority, str)
-		live_components = {"schema": live_schema, "authority": live_authority}
-		restored_components = {
-			"schema": restored_schema,
-			"authority": restored_authority,
-		}
 		expected_digests = {
 			"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
 			"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+		}
+		if None in (live_schema, live_authority, restored_schema, restored_authority):
+			acceptance_failures.append(
+				"complete PostgreSQL artifacts are unavailable after restore finalization"
+			)
+		live_components = {
+			"schema": live_schema if isinstance(live_schema, str) else "",
+			"authority": live_authority if isinstance(live_authority, str) else "",
+		}
+		restored_components = {
+			"schema": restored_schema if isinstance(restored_schema, str) else "",
+			"authority": restored_authority if isinstance(restored_authority, str) else "",
 		}
 		actual_digests = {
 			component: hashlib.sha256(live_components[component].encode("utf-8")).hexdigest()
@@ -3490,6 +3526,21 @@ def main() -> int:
 			).hexdigest()
 			for component in ("schema", "authority")
 		}
+		for component in ("schema", "authority"):
+			if actual_digests[component] != expected_digests[component]:
+				acceptance_failures.append(
+					f"live {component} digest mismatch: expected "
+					f"{expected_digests[component]}, actual {actual_digests[component]}"
+				)
+			if restored_digests[component] != expected_digests[component]:
+				acceptance_failures.append(
+					f"restored {component} digest mismatch: expected "
+					f"{expected_digests[component]}, actual {restored_digests[component]}"
+				)
+			if live_components[component] != restored_components[component]:
+				acceptance_failures.append(
+					f"{component} manifest differs between live and restored clusters"
+				)
 		migration_inventory = json.loads(psql(
 			DATABASE,
 			"SELECT pg_catalog.json_agg(pg_catalog.json_build_object("
@@ -3506,10 +3557,14 @@ def main() -> int:
 				if isinstance(document, dict)
 			},
 			"migration_inventory": migration_inventory,
-			"configured_authority_inventory_rows": len(
-				json.loads(live_components["authority"])
+			"configured_authority_inventory_rows": (
+				len(json.loads(live_components["authority"]))
+				if live_components["authority"] else None
 			),
-			"schema_manifest_rows": len(json.loads(live_components["schema"])),
+			"schema_manifest_rows": (
+				len(json.loads(live_components["schema"]))
+				if live_components["schema"] else None
+			),
 			"expected_digests": expected_digests,
 			"actual_digests": actual_digests,
 			"restored_digests": restored_digests,
@@ -3520,6 +3575,21 @@ def main() -> int:
 				for component in ("schema", "authority")
 			) and live_document["sequence_state"] == restored_document["sequence_state"],
 		}
+		acceptance_failures.extend(
+			f"structured restore: {failure}" for failure in restore_failures
+		)
+		if acceptance_failures:
+			diagnostics = {
+				"failures": acceptance_failures,
+				"expected_digests": expected_digests,
+				"actual_digests": actual_digests,
+				"restored_digests": restored_digests,
+				"checkpoint_state": restore_report,
+			}
+			raise TestFailure(
+				"aggregate V14-V19 PostgreSQL acceptance failure:\n"
+				+ json.dumps(diagnostics, sort_keys=True)
+			)
 		print(migration_output)
 		print(initial_manifest_output)
 		print(role_profile_output)
