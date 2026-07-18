@@ -774,7 +774,7 @@ async fn postgres_v10_fences_blocked_old_runtime_writer() -> Result<(), Box<dyn 
 	assert_eq!(error.code().map(|code| code.code()), Some("42501"));
 	let fenced: bool = admin
 		.query_one(
-			"SELECT (SELECT max(version)=10 FROM public.refinery_schema_history) \
+			"SELECT (SELECT max(version)=11 FROM public.refinery_schema_history) \
 			 AND NOT EXISTS (SELECT 1 FROM decodex.profile_snapshots)",
 			&[],
 		)
@@ -880,7 +880,7 @@ async fn postgres_exact_runtime_session_restore() -> Result<(), Box<dyn std::err
 	let valid: bool = client
 		.query_one(
 			"SELECT \
-			 (SELECT max(version)=10 FROM public.refinery_schema_history) AND \
+			 (SELECT max(version)=11 FROM public.refinery_schema_history) AND \
 			 NOT EXISTS (SELECT 1 FROM decodex.exact_command_receipts \
 			  WHERE receipt_state='executing' OR response_bytes IS NULL \
 			  OR convert_from(response_bytes,'UTF8')::jsonb->'effect' IS DISTINCT FROM effect_envelope) AND \

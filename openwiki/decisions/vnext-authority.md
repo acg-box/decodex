@@ -87,6 +87,56 @@ transaction. V10 is a zero-state forward cutover, preserves the existing table i
 runtime snapshot/session DML, fences RuntimeSession audit namespaces, and does not authorize Codex
 creation, reconciliation, routing, scheduling, WorkItems, ManagedRuns, UI, or plugin readiness.
 
+XY-1284 managed-repository authority reset was finalized by the accepted XY-1348
+stage-two amendment on 2026-07-17. PostgreSQL is the durable authority for the current
+repository projection, monotonic generation/tip, globally immutable operation
+assignment, append-only authority and operation evidence, compare-and-swap, atomic
+command completeness, and restart loads. Pure deciders and facts in `decodex-core` are
+mechanism-neutral inputs to that authority; no standalone object, snapshot, caller
+projection, or operation view is authoritative or can grant execution.
+
+Every repository operation ID has one complete canonical descriptor across all
+repositories and operation kinds. Exact descriptor equality resolves to
+`ExistingExact(OperationView, NoDispatch)`; any difference is permanent
+`OperationIdConflict`. A fresh affine execution receipt exists only after successful
+COMMIT acknowledgement on the same adapter control path that prepared the new assignment.
+Persistence, readback, exact repeat, restart, terminal state, and an unknown COMMIT
+outcome never mint or reconstruct it. An unknown COMMIT outcome therefore authorizes no
+external execution.
+
+Allocate is PostgreSQL-only and uses strictly read-only repository evidence. `Register`,
+`WorktreeReady`, and `Commit` are distinct durably fenced `PossiblyEffected` operations with
+readback-only restart: no retry, replay, adoption, repair, or import is authorized.
+`Register` requires exact reciprocal registration, `WorktreeReady` preserves the exact
+head, and `Commit` advances exactly once from its authorized predecessor head to its exact
+successor. Accepted XY-1354 descriptor-assisted, symlink-free persisted absolute-path
+reacquisition and pinned Git 2.54 remain unchanged. Rejected candidate trees
+`6e20e9b3cf1415cce9b399da173b0410cc4c80dc`,
+`6979e3831da772fca3fe0f0e0b4699df642d3a65`, and
+`e42212add13af3f702e0ec8966ce3d6a7b682d12` are superseded evidence only, not current
+authority. The accepted V11 commit `33159d0cb2da7f86748f1a380def0927970a409a`
+and V12 commit `a6bfb0aefc72f2a65d14fc3755b556f959ec2d4e` remain unchanged.
+
+V13 is reserved solely for XY-1349 managed-repository PostgreSQL authority. XY-1304
+experiment creation and positive-observation persistence move to the next available
+migration, expected V14. Migration allocation, the embedded ledger, migration authority,
+schema/digest inventory, and aggregate migration evidence remain one non-commutative
+singleton serial-writer domain; an unlanded number is not a reusable parallel reservation.
+
+The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
+repository-effect owner. Its in-process repository executor is a correctness,
+determinism, and admitted-authority-continuity boundary, not isolation from malicious
+same-UID code. Project validation may supervise lifecycle, bound output and time, and
+detect mutation, but it is not hostile-code confinement. A hostile same-UID project or
+multi-tenant requirement would require a separate UID/sandbox authority plus a new
+feasibility gate; it cannot be inferred from this design.
+
+Authorized whole-cluster restore is inside the trusted PostgreSQL-administrator boundary
+and may redefine current authority; V1 has no automatic full-cluster rollback detection.
+The trusted single-daemon/same-UID boundary remains unchanged. XY-1349 solely owns V13
+persistence, XY-1350 may proceed in parallel only against this accepted contract, and
+XY-1351 owns the first shared saga path.
+
 ## Decision
 
 Decodex vNext is a rebuild of the agent workspace, not an incremental extension of the
@@ -180,3 +230,17 @@ cannot be operated reliably on the intended host, app-server cannot provide requ
 ownership/read/list/collaboration behavior, or real dogfood proves one Lead cannot keep
 decision latency within policy. Such evidence blocks or revises the owning gate; it does
 not authorize a compatibility facade or silent fallback.
+
+For the XY-1284 managed-repository boundary, the prioritized falsifiers in the
+[gate manifest](../specs/vnext-gates.md#xy-1284-managed-repository-authority-gate) are
+incorporated into this decision as decision-changing evidence. In fixed order, they are:
+an architecture that cannot preserve admitted authority or separate its distinct state
+owners; unrecoverable or ambiguous restart/effect states; a security/authority path that
+does not fail closed or cannot disable repository-controlled execution; evidence that
+cannot distinguish completion from stale, duplicate, rollback, lost, or ambiguous
+outcomes; integrity that permits unreserved, drifted, undetected, or unreconciled effects;
+and performance that cannot meet an explicit later host budget without weakening an
+earlier guarantee. An earlier class cannot be traded for success in a later class. Any
+such contradiction stops the affected replacement gate and returns to an explicit
+architecture decision; it never authorizes a fourth patch under the rejected combined
+boundary, a mechanism outside the accepted stage-two contract, or a silent fallback.

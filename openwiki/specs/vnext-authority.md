@@ -73,6 +73,30 @@ reviewer, PR, harness, or Goal. A ManagedRun separates:
 - wait reason: `usage`, `auth`, `plugin`, `dependency`, `approval`, `user`, `external`,
   `reviewer_unavailable`, `reviewer_failed`.
 
+The inert V12 boundary persists only `waiting` ManagedRuns that remain blocked. Every run is
+foreign-key bound to its exact Project, canonical WorkItem, and authoritative RuntimeSession
+revision. Task and Reviewer assignments are exact-run RuntimeSession identities whose closed role
+type cannot represent Advisor or Lead and contains no durable Agent identity. Effect lineage is
+foreign-key bound to one run and one barrier. Barrier states are `guarded` or permanently `closed`;
+both deny effects, and there is no open state or positive execution transition in V12.
+
+The only V12 mutation consumes a positively observed unknown exact turn, a Decodex-owned exact
+submitted-turn receipt, or an explicit inconclusive observation. It atomically preserves a blocked
+waiting run, records divergence only from positive unknown-turn evidence, closes the barrier once,
+and stores exact replay bytes. A stale submitted receipt and an inconclusive observation remain
+fail-closed without asserting divergence. Missing, empty, exhausted, not-found, scan-exhaustion,
+no-event, or method-result absence is not an input and cannot authorize progress. Experiment
+creation, observation production, run creation/acquisition, scheduling, dispatch, progress,
+validation, completion, review verdicts, repair, and landing remain outside V12 and blocked by
+XY-1304 or later owners.
+
+The safety transaction reserves its exact receipt and validates input before acquiring hierarchy
+coordinator 1271, then the run-scoped 1338 lock, before any run/session/barrier/Turn read or lock.
+V12 also forward-repairs the V3 Turn and HistoryItem invoker-rights guards for V10's SELECT-only
+RuntimeSession authority: they read but never row-lock RuntimeSessions, retain their legal
+Conversation and Turn row locks, and accept direct hierarchy DML only in `READ COMMITTED`.
+Unsupported isolation fails retryably with `40001`; it never authorizes a stale absence decision.
+
 Project/Program policy is versioned authority over allowed repositories, tools, paths, merge
 behavior, parallelism, budgets, approvals, and quiet periods. Commands use expected
 revisions and idempotency keys. Side effects require receipts and authoritative readback;
@@ -110,6 +134,120 @@ revision, and payload hashes/lengths before publication; sorted session hash loc
 admission serialize create-only verified publication; transaction B atomically registers
 metadata/domain references/evidence, stores the exact response bytes, and completes the fenced
 receipt. Exact replay returns those bytes; conflicting reuse fails before effects.
+
+### Managed repository authority
+
+The accepted XY-1348 stage-two contract makes PostgreSQL the current durable authority
+for each managed repository's projection, monotonic generation/tip, globally immutable
+operation assignment, append-only authority transitions and operation evidence, exact
+generation/tip compare-and-swap, atomic command completeness, and every restart load.
+Pure value types, descriptors, transition-specific evidence, and deciders in
+`decodex-core` remain mechanism-neutral and explicitly non-authoritative. They cannot
+infer persistence freshness, COMMIT success, or global operation history. No snapshot,
+caller-supplied projection, generic observation, operation view, or reconstructed state
+can be supplied back as mutation authority.
+
+Within the trusted single-host V1 boundary:
+
+- `decodexd` is the sole owner of repository and worktree effects. No client, provider,
+  validation child, second daemon, or distributed worker acquires a parallel mutation
+  path.
+- The in-process repository executor preserves correctness, deterministic decisions,
+  and continuity from explicitly admitted repository authority through effect readback.
+  It is not a sandbox and does not isolate the service from malicious code with the same
+  host UID.
+- Admission, allocation lifecycle, mutable repository/worktree head, active operation,
+  and operation result are distinct typed authorities.
+- Every operation fails closed on stale revisions, foreign identity, any symlinked path
+  component, object or descriptor replacement, dirty state, ambiguous observation, or
+  incomplete authoritative readback.
+- Repository-controlled Git config and includes, hooks, filters, `fsmonitor`, credential
+  helpers, askpass, SSH, and transports are disabled unless an explicit managed policy
+  allowlists exact reviewed behavior. The accepted XY-1354 mechanism closes its canonical
+  config, environment, executable-identity, and path-output surfaces; every omitted or
+  unmatched surface remains disabled and fails closed. Ambient environment, current
+  working directory, and repository discovery never grant authority.
+- Project validation is supervised for process lifecycle, bounded output, timeout and
+  cancellation, and repository mutation detection. Deliberately hostile same-UID code is
+  outside V1 confinement. Hostile-project or multi-tenant operation requires a separate
+  UID or sandbox owner and an independently accepted feasibility and authority gate.
+
+Every external operation is assigned one complete canonical descriptor. The descriptor
+contains every value capable of changing execution or success evidence, including the
+operation, project, repository, admitted identity and base, admission descriptor digest,
+allocation and worktree identities, persisted absolute repository and worktree paths,
+expected aggregate checkpoint, operation kind, complete kind-specific payload, and
+executor-contract version. Optional values have an explicit null representation; field
+and collection order is canonical. Equality compares the complete canonical
+representation rather than a digest. The namespace is global across repositories and
+operation kinds, not per kind.
+
+An unassigned ID may become a new assignment. Complete canonical equality with an
+existing assignment resolves to `ExistingExact(OperationView, NoDispatch)`, whether the
+view is `PossiblyEffected`, completed, or ambiguous. Any difference is permanent
+`OperationIdConflict`. Exact repeat is immutable result/readback access only; it is never
+retry, replay, adoption, or dispatch.
+
+One top-level PostgreSQL transaction canonicalizes the new operation, resolves its global
+ID, locks and loads current authority, verifies projection/checkpoint/fence agreement,
+runs the pure decision, inserts the immutable assignment, appends `PossiblyEffected`,
+fences allocation or head, appends the authority transition, and advances the projection
+with exact generation/tip compare-and-swap. Commit-time completeness prevents any subset
+from committing. Assignment and terminal evidence remain immutable and retained across
+repository retirement or deletion.
+
+The adapter may privately retain a non-executable pre-COMMIT seed. One fresh affine
+receipt may be minted only when COMMIT returns successful acknowledgement on that same
+live adapter control path. The receipt is neither cloneable, serializable, persistable,
+queryable, nor publicly constructible. Persistence, `SELECT`, readback, exact repeat,
+restart, and terminal state can never mint or reconstruct it. If COMMIT may have succeeded
+but acknowledgement is lost, the invocation returns an unknown preparation outcome, no
+receipt exists, and no external execution occurs. A later exact request may resolve an
+existing assignment without dispatch or, if no assignment exists, perform a wholly new
+preparation whose own successful COMMIT acknowledgement is the only possible receipt
+source.
+
+Allocate is PostgreSQL-only. Descriptor-assisted admission facts, symlink-free verified
+persisted absolute-path reacquisition, identity/stat facts, read-only Git facts, and target
+availability observations must remain strictly read-only: they create no file, directory,
+lock, reservation, worktree, index, config, or Git mutation. Allocation claims the exact
+repository/allocation/worktree/path identities and initial head only in PostgreSQL.
+
+`Register`, `WorktreeReady`, and `Commit` are separate durably fenced
+`PossiblyEffected` operations:
+
+- `Register` is the accepted pinned Git 2.54 worktree-add operation. Completion
+  requires exact reciprocal registration and the unchanged authorized head.
+- `WorktreeReady` is a distinct registered-to-ready operation whose positive readback
+  preserves the exact head.
+- `Commit` consumes exact head `H` and positively reads back exactly one advance to the
+  canonical successor `H-prime`.
+
+Every restart loads PostgreSQL authority and may issue only an operation-specific,
+strictly read-only readback for a committed `PossiblyEffected` operation. Positive
+transition-specific evidence may complete it; authoritative negative, foreign, dirty,
+rollback, replacement, or bounded inconclusive evidence may make it ambiguous; temporary
+readback unavailability leaves it `PossiblyEffected`. Restart never prepares the existing
+ID, reconstructs a receipt, invokes or retries the effect, replays, adopts, repairs, or
+imports external state. Generic observations cannot complete any operation.
+
+Authorized whole-cluster restore is inside the trusted PostgreSQL-administrator boundary
+and may remove or resurrect assignments, checkpoints, and results together, thereby
+redefining current authority. V1 has no external monotonic anchor and no automatic
+full-cluster rollback detection. The accepted trusted single-daemon/same-UID boundary,
+XY-1354 descriptor-assisted symlink-free persisted absolute-path reacquisition, and
+pinned Git 2.54 mechanism remain unchanged.
+
+XY-1349 solely owns V13 physical persistence, transaction mechanics, privileges,
+retention, migration, and frozen database evidence. XY-1350 may proceed in parallel only
+against this accepted contract and owns read-only acquisition plus executor/readback
+mechanics, not persistence, receipt minting, saga, or hidden allocation mutation. XY-1351
+owns the first shared path that composes preparation, fresh receipt consumption, execution,
+readback, and terminal reconciliation. Rejected candidate trees
+`6e20e9b3cf1415cce9b399da173b0410cc4c80dc`,
+`6979e3831da772fca3fe0f0e0b4699df642d3a65`, and
+`e42212add13af3f702e0ec8966ce3d6a7b682d12` are superseded evidence only. This contract
+creates no compatibility or history migration path.
 
 Pure PostgreSQL commands use a different, exact in-transaction authority. Each operation has one
 command-complete migration-owner `SECURITY DEFINER` function. PostgreSQL constructs the complete
@@ -399,6 +537,14 @@ compiles, tests, and states current capability. Remove Linear, SQLite product au
 Goal, and old operator transport after replacement behavior and gates exist; do not add
 dual writes, dual reads, or compatibility facades. Radar, Publisher, and the static site
 may remain outside the runtime until explicitly adopted.
+
+PR #1092 is closed, unmerged, and frozen at historical head
+`32a0589b94987f265013ffd3c8b322f9c57f5097`. Its Lane Authority v2 identity, Linear scope,
+SQLite registry, lane/effect ledger, and C1-C7 orchestration are obsolete. The only relevant
+behavior classes are already replaced by vNext owners: explicit Project/repository identity by
+the Project and managed-repository admission contracts, frozen admitted-base and worktree
+continuity by the V13/executor/saga stack, and paginated positive GitHub readback by the sealed
+GitHub effect boundary. It contributes no unique production behavior to the vNext candidate.
 
 ## V1 non-goals
 

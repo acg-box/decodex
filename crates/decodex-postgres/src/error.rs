@@ -17,6 +17,20 @@ pub enum StoreError {
 	SocketUnavailable,
 	/// A caller reused an idempotency key for a different logical request.
 	IdempotencyConflict,
+	/// One global repository operation ID was permanently assigned another descriptor.
+	OperationIdConflict,
+	/// An immutable repository admission differed or collided with an admitted identity/path.
+	ManagedRepositoryAdmissionConflict,
+	/// A repository already owns an allocation projection.
+	ManagedRepositoryAlreadyAllocated,
+	/// An allocation, worktree, or persisted path is already claimed.
+	ManagedRepositoryAllocationConflict,
+	/// Current generation/tip/fence did not match the transaction's locked facts.
+	ManagedRepositoryCompareAndSwapConflict,
+	/// Preparation COMMIT did not return a success acknowledgement; no receipt was minted.
+	RepositoryCommitOutcomeUnknown(tokio_postgres::Error),
+	/// A pure managed-repository decision rejected the transaction.
+	ManagedRepository(decodex_core::ManagedRepositoryError),
 	/// The expected entity revision did not match authoritative state.
 	RevisionConflict {
 		/// Stable entity identity used by the attempted mutation.
@@ -58,6 +72,15 @@ impl StoreError {
 			Self::UnsafeHostPath => BootstrapFailure::UnsafeHostPath,
 			Self::SocketUnavailable => BootstrapFailure::Unreachable,
 			Self::Incompatible(_) | Self::Migration(_) => BootstrapFailure::Incompatible,
+			Self::RepositoryCommitOutcomeUnknown(error) if is_authentication_error(error) =>
+				BootstrapFailure::Authentication,
+			Self::RepositoryCommitOutcomeUnknown(_)
+			| Self::OperationIdConflict
+			| Self::ManagedRepositoryAdmissionConflict
+			| Self::ManagedRepositoryAlreadyAllocated
+			| Self::ManagedRepositoryAllocationConflict
+			| Self::ManagedRepositoryCompareAndSwapConflict
+			| Self::ManagedRepository(_) => BootstrapFailure::Unreachable,
 			_ => BootstrapFailure::Unreachable,
 		}
 	}
@@ -81,6 +104,22 @@ impl std::fmt::Display for StoreError {
 			Self::SocketUnavailable => formatter.write_str("PostgreSQL Unix socket is unavailable"),
 			Self::IdempotencyConflict =>
 				formatter.write_str("idempotency key reused with a different request"),
+			Self::OperationIdConflict => formatter
+				.write_str("repository operation ID is permanently assigned to another descriptor"),
+			Self::ManagedRepositoryAdmissionConflict => formatter
+				.write_str("managed-repository admission conflicts with immutable authority"),
+			Self::ManagedRepositoryAlreadyAllocated =>
+				formatter.write_str("managed repository is already allocated"),
+			Self::ManagedRepositoryAllocationConflict => formatter
+				.write_str("managed-repository allocation identity or path is already claimed"),
+			Self::ManagedRepositoryCompareAndSwapConflict =>
+				formatter.write_str("managed-repository generation, tip, or fence changed"),
+			Self::RepositoryCommitOutcomeUnknown(error) => write!(
+				formatter,
+				"managed-repository preparation COMMIT outcome is unknown; no dispatch receipt was minted: {error}"
+			),
+			Self::ManagedRepository(error) =>
+				write!(formatter, "managed-repository decision rejected: {error}"),
 			Self::RevisionConflict { entity, expected, actual } => write!(
 				formatter,
 				"revision conflict for {entity}: expected {expected:?}, actual {actual:?}"
@@ -134,6 +173,12 @@ impl From<tokio_postgres::Error> for StoreError {
 		} else {
 			Self::Database(error)
 		}
+	}
+}
+
+impl From<decodex_core::ManagedRepositoryError> for StoreError {
+	fn from(error: decodex_core::ManagedRepositoryError) -> Self {
+		Self::ManagedRepository(error)
 	}
 }
 
