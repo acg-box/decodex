@@ -119,13 +119,13 @@ authority. The accepted V11 commit `33159d0cb2da7f86748f1a380def0927970a409a`
 and V12 commit `a6bfb0aefc72f2a65d14fc3755b556f959ec2d4e` remain unchanged.
 
 V13 is accepted on `main` as the sole XY-1349 managed-repository PostgreSQL authority
-migration. The next serial migration owners are fixed: XY-1356 solely owns V14 durable
+migration. The serial routing migration owners are fixed: XY-1356 solely owns V14 durable
 routing-policy and complete candidate-set authority; XY-1358 solely owns V15 causal Codex
-experiment authority; and XY-1359 solely owns V16 atomic routing decisions. No V17 is
-reserved. A later owner may allocate another migration only after source inspection proves
-that new durable state is required. Migration allocation, the embedded ledger, migration
-authority, schema/digest inventory, and aggregate migration evidence remain one
-non-commutative singleton serial-writer domain.
+experiment authority; XY-1359 solely owns V16 atomic routing decisions; XY-1360 owns V17
+continuation authority after source inspection proved durable atomic fallback state was required;
+and XY-1362 owns V18's ledger-first `waiting_usage` wake authority. Migration allocation, the
+embedded ledger, migration authority, schema/digest inventory, and aggregate migration evidence
+remain one non-commutative singleton serial-writer domain.
 
 XY-1355 live-routing authority reset accepted 2026-07-18 after three materially rejected
 XY-1304 candidates: PostgreSQL owns one revisioned complete routing-authority snapshot.

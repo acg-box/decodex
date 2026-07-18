@@ -54,6 +54,13 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   exclusions, and pure-kernel readback. No production root reaches either boundary and they enable no
   live execution. XY-1307 wires the typed connection data through runtime composition into the
   existing verification/migration boundary; every bootstrap failure remains fail-closed.
+  V18 adds XY-1362's uncomposed ledger-first `waiting_usage` wake authority. Append-only transitions
+  own operation results, historical readback, lease/reclaim history, cancellation, supersession,
+  and the one fired fresh-routing request; a mutable head is only the exact-tip scheduler index and
+  fence. Cross-key operation replay reads the immutable transition result and never reconstructs a
+  success from the head. Fired transitions contain no old candidates, quota evidence, eligibility,
+  exclusions, or account choice and structurally disable prior-decision reuse and production
+  enablement. No runtime or application composition root imports the V18 adapter.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while the authority-defined XY-1269 P/K/L/S slices are still unimplemented. Its checked-in diagnostic still says XY-1263 remains failed; that text is stale, and P must align it with the accepted foundation and disabled slice posture before P validation.
@@ -105,7 +112,7 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical embedded migrations. The 131 expected safety/state/retention
+source bodies matching the canonical embedded migrations. The 138 expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
 indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
@@ -119,19 +126,20 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly thirty-four narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly thirty-nine narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
 commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
 RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
 running/resume guard, one command-complete ManagedRun safety consumer, seven inert V14/V15 routing
-and causal-experiment entrypoints, the inert V16 exact routing-decision entrypoint, and V17's inert
-exact continuation command plus strict readback.
+and causal-experiment entrypoints, the inert V16 exact routing-decision entrypoint, V17's inert
+exact continuation command plus strict readback, and V18's four exact wake commands plus strict
+readback.
 A selected V16 decision commits either one positive-evidence-bound same-thread plan or one Context
 Pack, fallback RuntimeSession, and plan in the same transaction. Runtime cannot insert
 cursor, exact-receipt, RoleProfile, RuntimeSession, RuntimeSession snapshot, WorkItem, ManagedRun,
 assignment, submitted-turn receipt, effect-lineage, routing-decision, decision-member, decision-quota,
-decision-capability, decision-blocker, decision-exclusion, or continuation-plan rows or execute
-trigger/private helpers directly.
+decision-capability, decision-blocker, decision-exclusion, continuation-plan, waiting-usage wake
+transition, or waiting-usage wake head rows or execute trigger/private helpers directly.
 The two bound identity sequences require
 USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
 are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.

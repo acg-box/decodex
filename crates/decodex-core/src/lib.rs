@@ -20,6 +20,7 @@ mod quota;
 mod routing;
 mod storage;
 mod work_item;
+mod wake;
 
 pub use self::{
 	experiment::{
@@ -154,6 +155,11 @@ pub use self::{
 		WorkItemNode, WorkItemObjectiveObservation, WorkItemObjectiveRef, WorkItemPriority,
 		WorkItemProgramObservation, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
 		WorkItemTimestamp, assess_work_item_readiness, validate_work_item_graph,
+	},
+	wake::{
+		WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
+		WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
+		WaitingUsageWakeTransitionKind,
 	},
 };
 
