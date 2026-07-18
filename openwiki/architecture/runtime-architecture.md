@@ -587,6 +587,26 @@ and no runtime, protocol, daemon, CLI, scheduler composition root, Codex adapter
 or UI imports V18. Executable timing, crash, replay, concurrency, restart, ACL, hostile-input, and
 isolation acceptance remains deferred to the single integrated post-freeze gate.
 
+V19 is an acceptance-enabling authority repair, not a scheduler feature. V18 and its checksum are
+immutable history. Four new command-complete `SECURITY INVOKER` internals retain the exact V18
+register, claim/reclaim, fire, and cancel transaction paths and add one nullable authority instant.
+Each unchanged public `SECURITY DEFINER` command calls its schema-qualified internal with typed
+`NULL`, so production still samples `clock_timestamp()` only at the original post-lock point; the
+existing Rust/domain/adapter signatures and 51-function runtime execute allowlist do not change.
+Only the migration owner can execute an internal with explicit time. PUBLIC and runtime execution
+are revoked, the internals have no overloads or defaults, and startup closes their exact source,
+metadata, ACL, dependencies, ownership, and role reachability with the canonical function and
+configured-authority inventories.
+
+An explicit instant must be finite and exactly representable in the nonnegative Unix-microsecond
+domain, at most `253402300739999999`, leaving the literal 60-second lease inside the canonical
+application ceiling. Registration cannot precede either the locked V16 decision time or locked
+ManagedRun update time; every later explicit transition cannot precede the locked head timestamp.
+These checks do not change the typed-`NULL` production path. The repair is forward-only: rollback
+means restoring a pre-V19 cluster where the four internals are absent, never editing or reversing
+V18. Schema and configured-authority digest regeneration remains deferred to the refrozen unified
+acceptance boundary.
+
 No production crate or application imports or constructs a V15 experiment execution root. The
 mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
 the complete V15 source boundary. XY-1361 now owns the only disabled runtime orchestration over
