@@ -17,21 +17,37 @@ use crate::{
 };
 
 /// Caller-owned operation identity and optimistic authority coordinates.
+///
+/// Callers cannot supply candidates or evidence through this value. Constructing it does not prove
+/// PostgreSQL provenance or authorize account switching, dispatch, continuation, or production use.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RouteAccount {
+	/// Stable UUID of the semantic routing operation, distinct from the command idempotency key.
 	pub operation_id: String,
+	/// UUID of the routing policy lineage from which PostgreSQL must resolve the snapshot.
 	pub routing_policy_id: String,
+	/// Positive, exact policy revision PostgreSQL must lock for immutable snapshot selection.
 	pub expected_routing_policy_revision: i64,
+	/// Managed-run identity whose current routing lineage PostgreSQL must lock and resolve.
 	pub managed_run_id: ManagedRunId,
+	/// Positive, exact managed-run revision required while the complete snapshot is selected.
 	pub expected_managed_run_revision: i64,
 }
 
 /// Exact immutable decision read back after PostgreSQL commits the complete evidence set.
+///
+/// Although this public shape can be constructed in Rust, construction alone does not prove a
+/// committed database origin or grant routing, credential, dispatch, continuation, or production
+/// authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PersistedRoutingDecision {
+	/// UUID of the immutable decision row created by PostgreSQL.
 	pub decision_id: String,
+	/// Semantic operation UUID carried through from the locked routing request lineage.
 	pub operation_id: String,
+	/// PostgreSQL-owned decision instant as exact microseconds since the Unix epoch.
 	pub decided_at_micros: i64,
+	/// Inert pure-kernel outcome read back with its complete persisted evidence and exclusions.
 	pub decision: RoutingDecision,
 }
 
