@@ -17,9 +17,11 @@ const RUNTIME_SESSION_MIGRATION: &str =
 	include_str!("../migrations/V10__runtime_session_snapshots.sql");
 const WORK_ITEM_MIGRATION: &str = include_str!("../migrations/V11__work_item_authority.sql");
 const MANAGED_RUN_MIGRATION: &str = include_str!("../migrations/V12__managed_run_safety.sql");
+const MANAGED_REPOSITORY_MIGRATION: &str =
+	include_str!("../migrations/V13__managed_repository_authority.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 107] = [
+const FUNCTION_CONTRACTS: [FunctionContract; 111] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -871,6 +873,26 @@ const FUNCTION_CONTRACTS: [FunctionContract; 107] = [
 		"plpgsql",
 		"v",
 	),
+	trigger_contract(
+		"forbid_managed_repository_history_mutation",
+		"decodex.forbid_managed_repository_history_mutation()",
+		"forbid_managed_repository_history_mutation()",
+	),
+	trigger_contract(
+		"enforce_managed_repository_projection",
+		"decodex.enforce_managed_repository_projection()",
+		"enforce_managed_repository_projection()",
+	),
+	trigger_contract(
+		"enforce_repository_operation_scope",
+		"decodex.enforce_repository_operation_scope()",
+		"enforce_repository_operation_scope()",
+	),
+	trigger_contract(
+		"enforce_repository_history_completeness",
+		"decodex.enforce_repository_history_completeness()",
+		"enforce_repository_history_completeness()",
+	),
 ];
 const RUNTIME_EXECUTE_FUNCTIONS: [&str; 36] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
@@ -910,7 +932,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 36] = [
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 ];
-const SAFETY_FUNCTIONS: [&str; 48] = [
+const SAFETY_FUNCTIONS: [&str; 52] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -959,8 +981,12 @@ const SAFETY_FUNCTIONS: [&str; 48] = [
 	"enforce_managed_run_state",
 	"enforce_effect_barrier_state",
 	"enforce_managed_run_event_namespace",
+	"forbid_managed_repository_history_mutation",
+	"enforce_managed_repository_projection",
+	"enforce_repository_operation_scope",
+	"enforce_repository_history_completeness",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 84;
+const SAFETY_TRIGGER_COUNT: usize = 94;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1154,6 +1180,13 @@ WITH set_roles AS (
   ,('managed_run_effects', true, false, false, false)
   ,('managed_run_submitted_turn_receipts', true, false, false, false)
   ,('managed_run_safety_inputs', true, false, false, false)
+	,('repository_admissions', true, true, false, false)
+	,('managed_repositories', true, true, true, false)
+	,('repository_authority_transitions', true, true, false, false)
+	,('repository_operations', true, true, false, false)
+	,('repository_operation_events', true, true, false, false)
+	,('repository_operation_evidence', true, true, false, false)
+	,('repository_operation_results', true, true, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -1162,7 +1195,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 42
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 49
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -1402,6 +1435,16 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('managed_run_effect_barriers', 'managed_run_effect_barriers_state', 'enforce_effect_barrier_state', 31)
 	,('activity', 'activity_managed_run_namespace', 'enforce_managed_run_event_namespace', 23)
 	,('outbox', 'outbox_managed_run_namespace', 'enforce_managed_run_event_namespace', 23)
+	,('repository_admissions', 'repository_admissions_immutable', 'forbid_managed_repository_history_mutation', 58)
+	,('repository_operations', 'repository_operations_immutable', 'forbid_managed_repository_history_mutation', 58)
+	,('repository_operation_evidence', 'repository_operation_evidence_immutable', 'forbid_managed_repository_history_mutation', 58)
+	,('repository_operation_results', 'repository_operation_results_immutable', 'forbid_managed_repository_history_mutation', 58)
+	,('repository_operation_events', 'repository_operation_events_immutable', 'forbid_managed_repository_history_mutation', 58)
+	,('repository_authority_transitions', 'repository_authority_transitions_immutable', 'forbid_managed_repository_history_mutation', 58)
+	,('managed_repositories', 'managed_repositories_projection_complete', 'enforce_managed_repository_projection', 29)
+	,('repository_operations', 'repository_operations_scope_complete', 'enforce_repository_operation_scope', 5)
+	,('repository_operation_evidence', 'repository_operation_evidence_complete', 'enforce_repository_history_completeness', 5)
+	,('repository_authority_transitions', 'repository_authority_transitions_complete', 'enforce_repository_history_completeness', 5)
 )
 SELECT
   expected.function_name,
@@ -1410,15 +1453,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_authority_transitions_complete')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_authority_transitions_complete')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_authority_transitions_complete')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -1603,6 +1646,16 @@ WITH catalog_context AS MATERIALIZED (
 	,('managed_run_effect_barriers', 'managed_run_effect_barriers_state', 'decodex.enforce_effect_barrier_state()')
 	,('activity', 'activity_managed_run_namespace', 'decodex.enforce_managed_run_event_namespace()')
 	,('outbox', 'outbox_managed_run_namespace', 'decodex.enforce_managed_run_event_namespace()')
+	,('repository_admissions', 'repository_admissions_immutable', 'decodex.forbid_managed_repository_history_mutation()')
+	,('repository_operations', 'repository_operations_immutable', 'decodex.forbid_managed_repository_history_mutation()')
+	,('repository_operation_evidence', 'repository_operation_evidence_immutable', 'decodex.forbid_managed_repository_history_mutation()')
+	,('repository_operation_results', 'repository_operation_results_immutable', 'decodex.forbid_managed_repository_history_mutation()')
+	,('repository_operation_events', 'repository_operation_events_immutable', 'decodex.forbid_managed_repository_history_mutation()')
+	,('repository_authority_transitions', 'repository_authority_transitions_immutable', 'decodex.forbid_managed_repository_history_mutation()')
+	,('managed_repositories', 'managed_repositories_projection_complete', 'decodex.enforce_managed_repository_projection()')
+	,('repository_operations', 'repository_operations_scope_complete', 'decodex.enforce_repository_operation_scope()')
+	,('repository_operation_evidence', 'repository_operation_evidence_complete', 'decodex.enforce_repository_history_completeness()')
+	,('repository_authority_transitions', 'repository_authority_transitions_complete', 'decodex.enforce_repository_history_completeness()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -2838,6 +2891,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		RUNTIME_SESSION_MIGRATION,
 		WORK_ITEM_MIGRATION,
 		MANAGED_RUN_MIGRATION,
+		MANAGED_REPOSITORY_MIGRATION,
 	]
 	.into_iter()
 	.rev()
@@ -3169,6 +3223,7 @@ mod tests {
 		CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL, CONVERSATION_MIGRATION,
 		FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL,
 		MANAGED_RUN_MIGRATION, OWNED_OBJECT_CATALOGS, POLICY_MIGRATION,
+		MANAGED_REPOSITORY_MIGRATION,
 		PROGRAM_OBJECTIVE_MIGRATION, PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION, ROLE_AUTHORITY_SQL,
 		ROLE_PROFILE_MIGRATION, RUNTIME_SESSION_MIGRATION, SAFETY_FUNCTIONS,
 		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL, WORK_ITEM_MIGRATION,
@@ -3308,6 +3363,7 @@ mod tests {
 				RUNTIME_SESSION_MIGRATION,
 				WORK_ITEM_MIGRATION,
 				MANAGED_RUN_MIGRATION,
+				MANAGED_REPOSITORY_MIGRATION,
 			]
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
@@ -3331,6 +3387,7 @@ mod tests {
 					RUNTIME_SESSION_MIGRATION,
 					WORK_ITEM_MIGRATION,
 					MANAGED_RUN_MIGRATION,
+					MANAGED_REPOSITORY_MIGRATION,
 				]
 				.into_iter()
 				.map(|migration| migration
