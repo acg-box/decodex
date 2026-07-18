@@ -1,5 +1,11 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/managed_repositories.rs"]
+mod managed_repositories;
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/managed_runs.rs"]
+mod managed_runs;
 #[path = "postgres_store/quota.rs"] mod quota;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
@@ -7,6 +13,9 @@ mod role_profiles;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/runtime_sessions.rs"]
 mod runtime_sessions;
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/work_items.rs"]
+mod work_items;
 
 use std::{
 	collections::{BTreeMap, HashSet},
@@ -130,6 +139,7 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
 	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
@@ -168,6 +178,12 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_runtime_session_command_owner()",
 	"decodex.forbid_runtime_snapshot_mutation()",
 	"decodex.enforce_runtime_session_event_namespace()",
+	"decodex.enforce_managed_run_command_owner()",
+	"decodex.forbid_managed_run_immutable_mutation()",
+	"decodex.enforce_managed_run_assignment_scope()",
+	"decodex.enforce_managed_run_state()",
+	"decodex.enforce_effect_barrier_state()",
+	"decodex.enforce_managed_run_event_namespace()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(
@@ -390,35 +406,128 @@ async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn st
 #[cfg(feature = "test-support")]
 async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
 	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
-	let (migration, mut runtime) = separated_configs("DECODEX_TEST")?;
-	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
+	let expected_database = env::var("DECODEX_EXPECTED_MANIFEST_DATABASE")?;
+	let (mut migration, mut runtime) = separated_configs("DECODEX_TEST")?;
+	let migration_role =
+		migration.get_user().ok_or("migration role is absent")?.to_owned();
 	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
+	let migration_database =
+		migration.get_dbname().ok_or("migration database is absent")?.to_owned();
+	let runtime_database = runtime.get_dbname().ok_or("runtime database is absent")?.to_owned();
+	if migration_database != expected_database || runtime_database != expected_database {
+		return Err(format!(
+			"manifest database binding mismatch: requested={expected_database}, migration={migration_database}, runtime={runtime_database}"
+		)
+		.into());
+	}
 
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
 	PostgresStore::pin_session_search_path_fixture(&mut runtime);
 
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	let schema: String =
-		client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await?.get(0);
-	let authority: String = client
+	let observed_runtime_database: String =
+		client.query_one("SELECT pg_catalog.current_database()", &[]).await?.get(0);
+	if observed_runtime_database != expected_database {
+		return Err(format!(
+			"runtime manifest connection selected {observed_runtime_database}, expected {expected_database}"
+		)
+		.into());
+	}
+	let (schema, schema_complete, schema_error) = match client
+		.query_one(PostgresStore::schema_contract_sql_fixture(), &[])
+		.await
+	{
+		Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
+		Err(error) => (None, false, Some(error.to_string())),
+	};
+	let (authority, authority_error) = match client
 		.query_one(
 			PostgresStore::configured_authority_sql_fixture(),
 			&[&migration_role, &runtime_role],
 		)
+		.await
+	{
+		Ok(row) => (row.get::<_, Option<String>>(0), None),
+		Err(error) => (None, Some(error.to_string())),
+	};
+	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
+	let migration_connection_task = tokio::spawn(migration_connection);
+	let observed_migration_database: String = migration_client
+		.query_one("SELECT pg_catalog.current_database()", &[])
 		.await?
 		.get(0);
+	if observed_migration_database != expected_database {
+		return Err(format!(
+			"migration manifest connection selected {observed_migration_database}, expected {expected_database}"
+		)
+		.into());
+	}
+	let sequence_state = manifest_sequence_state(&migration_client).await?;
 	let manifest = serde_json::to_string(&serde_json::json!({
-		"authority": authority,
-		"schema": schema,
+		"authority": {
+			"available": authority.is_some(),
+			"complete": authority.is_some(),
+			"error": authority_error,
+			"manifest": authority,
+		},
+		"binding": {
+			"requested": expected_database,
+			"migration_url": migration_database,
+			"runtime_url": runtime_database,
+			"observed_migration": observed_migration_database,
+			"observed_runtime": observed_runtime_database,
+		},
+		"schema": {
+			"available": schema.is_some(),
+			"complete": schema.is_some() && schema_complete,
+			"error": schema_error,
+			"manifest": schema,
+		},
+		"sequence_state": sequence_state,
 	}))?;
 
 	fs::write(path, manifest)?;
 
 	drop(client);
+	drop(migration_client);
 
 	connection_task.await??;
+	migration_connection_task.await??;
 
 	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+async fn manifest_sequence_state(
+	client: &Client,
+) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+	let mut state_rows = Vec::new();
+	let sequences = client
+		.query(
+			"SELECT sequence.schemaname, sequence.sequencename, \
+			 pg_catalog.format('SELECT last_value::bigint, is_called FROM %I.%I', \
+			 sequence.schemaname, sequence.sequencename) \
+			 FROM pg_catalog.pg_sequences AS sequence \
+			 WHERE sequence.schemaname = 'decodex' \
+			 ORDER BY sequence.schemaname, sequence.sequencename",
+			&[],
+		)
+		.await?;
+	for row in sequences {
+		let schema_name = row.get::<_, String>(0);
+		let sequence_name = row.get::<_, String>(1);
+		let query = row.get::<_, String>(2);
+		let state = client.query_one(&query, &[]).await?;
+		state_rows.push(serde_json::json!([
+			schema_name,
+			sequence_name,
+			state.get::<_, i64>(0),
+			state.get::<_, bool>(1),
+		]));
+	}
+
+	Ok(state_rows)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

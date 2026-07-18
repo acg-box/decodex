@@ -119,22 +119,22 @@ runtime-effective, regardless of `pg_extension.extnamespace`.
 Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
 TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
 `session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
-in any reachable authority state. At the V10 boundary, the audit verifies all fifty-nine shipped
+in any reachable authority state. At the V12 boundary, the audit verifies all eighty-four shipped
 non-internal trigger bindings, including regular and deferred constraint triggers, by table, event
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V10. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V12. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
 are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
 are unsafe; a replaced same-signature safety-function body is incompatible.
-Every non-internal trigger on a Decodex runtime relation must be one of those fifty-nine exact V10 bindings.
+Every non-internal trigger on a Decodex runtime relation must be one of those eighty-four exact V12 bindings.
 The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
 on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
 generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
-eighty canonical V10 functions. Every canonical function has the exact function-local
+107 canonical V12 functions. Every canonical function has the exact function-local
 `pg_catalog, decodex` search path, so runtime-selected callable or operator shadows cannot redirect
 trigger or constraint execution. A trigger cannot therefore invoke an adjacent public owner-executed
 function merely because runtime DML fires it.
@@ -158,21 +158,23 @@ string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
 authority audit and schema-qualified migration-ledger verification remain correct under a hostile
 runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
 table, sequence, function, or ledger-read authority is incompatible.
-At the V10 boundary, eighteen canonical `SECURITY DEFINER` functions comprise the three V3
+At the V12 boundary, twenty-four canonical `SECURITY DEFINER` functions comprise the three V3
 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two
-V9 RoleProfile command entrypoints plus two V10 RuntimeSession command entrypoints. The cursor issuer derives Conversation,
+V9 RoleProfile command entrypoints, two V10 RuntimeSession command entrypoints, and four V11 exact
+WorkItem commands, the inert future running/resume guard, and the one V12 ManagedRun safety
+consumer. The cursor issuer derives Conversation,
 snapshot version, parent, page size, position, item identity, and expiry under serialized
 Conversation authority; the bounded pruner is callable by runtime, while the capture function is
 trigger-only and runtime cannot execute it directly. Runtime has no cursor-table INSERT authority.
-The other sixty-two canonical V10 functions are security invokers. The additional-function adversarial fixture creates a fixture-only eighty-first migration-owned,
+The other eighty-three canonical V12 functions are security invokers. The additional-function adversarial fixture creates a fixture-only 108th migration-owned,
 runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
 trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
 and restores the trigger before the independent doctor rejection. A separate public-function trigger
 fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
-table `UPDATE`, or `TRIGGER`; the exact fifty-nine-trigger V10 inventory rejects that path. A public,
+table `UPDATE`, or `TRIGGER`; the exact eighty-four-trigger V12 inventory rejects that path. A public,
 runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
 proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
-closed eighty-function V10 inventory remains independent of the distinct same-signature canonical-source
+closed 107-function V12 inventory remains independent of the distinct same-signature canonical-source
 substitution fixture. Missing, malformed, unsafe, unreachable,
 authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
 there is no ambient/default database or alternate state authority. Repository and
@@ -431,9 +433,81 @@ rejections. Runtime retains SELECT-only snapshot/session readback and can execut
 public command owners; direct DML, private helpers, and forged RuntimeSession activity/outbox
 namespaces are closed.
 
+V12 rolls the V3 invoker-rights Turn and HistoryItem state guards forward after V10 made
+RuntimeSessions SELECT-only for runtime. Their statement-level `BEFORE` guards acquire hierarchy
+coordinator 1271 before row-trigger reads; the Turn guard retains only its Conversation row lock,
+and the HistoryItem guard retains only its Conversation and Turn row locks while reading the exact
+RuntimeSession without locking it. Both direct hierarchy paths require `READ COMMITTED` and fail
+retryably with `40001` under any other isolation level. The ManagedRun safety owner follows the
+same global order: reserve the exact receipt, validate the request, acquire 1271, acquire the
+run-scoped `(1338, hash(run))` lock, and only then read or lock hierarchy, run, session, barrier,
+receipt, or Turn state. This prevents an unknown-turn absence decision from crossing a concurrent
+same-session Turn insertion without granting runtime `UPDATE` on RuntimeSessions.
+
+### Managed repository stage-two authority
+
+PostgreSQL is the durable managed-repository authority. It owns the current projection,
+monotonic generation/tip, globally immutable complete-descriptor operation assignments,
+append-only authority transitions and operation evidence, exact generation/tip compare-and-swap,
+atomic command completeness, and state loaded after restart. The pure values, facts, descriptors,
+and deciders in `decodex-core` are mechanism-neutral and non-authoritative; a caller projection,
+snapshot, operation view, or generic observation cannot substitute for a transaction-internal
+PostgreSQL load.
+
+One repository operation ID spans every repository and operation kind. Complete canonical
+descriptor equality returns `ExistingExact(OperationView, NoDispatch)`; any difference is
+permanent `OperationIdConflict`. For a new assignment, one top-level transaction loads and locks
+current authority, evaluates the pure decision, inserts the immutable assignment, appends
+`PossiblyEffected`, fences the allocation or head, appends the authority transition, and advances
+the projection by exact generation/tip compare-and-swap. Commit-time completeness prevents a
+partial durable command.
+
+The PostgreSQL adapter may retain a private non-executable preparation seed until COMMIT. Only a
+successful COMMIT acknowledgement returning on that same live control path can turn the seed into
+one fresh affine receipt. The receipt cannot be persisted, queried, cloned, publicly constructed,
+or reconstructed. Persistence, readback, exact repeat, restart, terminal state, and unknown COMMIT
+outcome never grant dispatch. If the COMMIT outcome is unknown, the invocation produces no receipt
+and performs no external execution.
+
+Allocate is PostgreSQL-only; all admission, path-reacquisition, stat, Git, and target-availability
+evidence used before it is strictly read-only. `Register`, `WorktreeReady`, and `Commit` are distinct
+durably fenced `PossiblyEffected` external operations. `Register` uses the accepted pinned Git
+2.54 worktree-add mechanism and completes only on exact reciprocal registration with unchanged
+head. `WorktreeReady` completes only with its exact head unchanged. `Commit` consumes exact head `H`
+and completes only after positive readback of one exact advance to canonical `H-prime`. Restart can
+issue only operation-specific readback; it cannot retry, replay, adopt, repair, import, or
+reconstruct execution authority.
+
+Accepted XY-1354 supplies descriptor-assisted, symlink-free persisted absolute-path reacquisition
+and pinned Git 2.54 unchanged. `decodexd` remains the sole repository-effect owner inside the
+trusted single-daemon/same-UID V1 boundary. Authorized whole-cluster restore is inside the trusted
+PostgreSQL-administrator boundary and may redefine authority; V1 has no automatic full-cluster
+rollback detection. XY-1349 solely owns V13 persistence, XY-1350 owns only read-only acquisition
+and executor/readback mechanics against this contract, and XY-1351 owns the first shared saga path.
+
+The production runtime composes those three accepted owners exactly once during daemon bootstrap.
+When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
+same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol
+listener can serve. Executor-open or restart-reconciliation failure leaves the repository runtime
+and product-state composition unavailable and projects `ServerRepositories` unavailable in doctor;
+the typed bootstrap readiness distinguishes executor, reconciliation, and residual-backlog failure.
+Startup observes at most 256 eligible operations plus one residual probe and refuses repository
+readiness if any eligible work remains. It does not create a second store, dispatch path, retry, or
+fallback. Foreground admission, allocation, Register, WorktreeReady, and Commit enter through this
+same retained runtime composition. The protocol still exposes no managed-repository mutation route
+in this gate.
+
+GitHub pull-request and check effects are a separate sealed provider boundary in
+`crates/decodex-runtime/src/github_effects.rs`. It requires explicit provider/repository/revision
+authority, complete pagination, durable markers, and positive readback, but XY-1353 does not invent
+a live credentialed provider or persistence owner. The later Reviewer/landing owner must connect
+that boundary to PostgreSQL effect lineage and an explicitly authorized provider; until then there
+is no live GitHub mutation route.
+
 Legacy `command_receipts` retain the receipt-first fenced-claim protocol only for unrelated blob,
 filesystem, external, or long-running sagas whose point of no return cannot fit in one PostgreSQL
-transaction. Such a flow commits an immutable pending receipt before effects; a fenced claim then
+transaction; managed-repository operations do not use this protocol. Such a flow commits an
+immutable pending receipt before effects; a fenced claim then
 applies the expected revision, appends activity, enqueues outbox, stores exact response bytes, and
 completes transaction B. Durable exact history replay retains its immutable version and referenced
 blob while the legacy receipt exists. Outbox claims are bounded and

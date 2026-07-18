@@ -37,7 +37,7 @@ async fn role_profile_state(client: &Client) -> Result<[i64; 6], tokio_postgres:
 			 (SELECT count(*) FROM decodex.role_profile_revisions), \
 			 (SELECT count(*) FROM decodex.activity WHERE aggregate_kind='role_profile'), \
 			 (SELECT count(*) FROM decodex.outbox WHERE aggregate_kind='role_profile'), \
-			 (SELECT coalesce(sum(current_revision),0) FROM decodex.role_profiles)",
+			 (SELECT coalesce(sum(current_revision),0)::bigint FROM decodex.role_profiles)",
 			&[],
 		)
 		.await?;
@@ -242,7 +242,7 @@ async fn assert_migration_role_profile_invariants(
 		),
 		("DELETE FROM decodex.role_profiles WHERE role='advisor'", "23514"),
 		("UPDATE decodex.role_profile_revisions SET model='forged' WHERE role='advisor'", "23514"),
-		("TRUNCATE decodex.role_profiles, decodex.role_profile_revisions", "23514"),
+		("TRUNCATE decodex.role_profiles, decodex.role_profile_revisions CASCADE", "23514"),
 	] {
 		let error = migration_client.batch_execute(statement).await.expect_err(statement);
 		assert_eq!(error.code().map(|state| state.code()), Some(code), "{statement}");

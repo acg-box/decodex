@@ -4,8 +4,10 @@
 //! immutable migrations, idempotent optimistic transactions, expiring leases, transactional
 //! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
 //! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
-//! immutable global RoleProfiles. It does not select accounts, route work, store credentials,
-//! dispatch transitions, or expose protocol/client behavior.
+//! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
+//! managed-repository authority with append-only operations/evidence. It does not select accounts,
+//! route work, store credentials, schedule or advance runs, execute repository effects, or expose
+//! protocol/client behavior.
 
 mod accounts;
 mod authority;
@@ -13,6 +15,8 @@ mod conversations;
 mod error;
 mod exact_commands;
 mod leases;
+mod managed_repositories;
+mod managed_runs;
 mod migrations;
 mod outbox;
 mod policies;
@@ -23,6 +27,7 @@ mod role_profiles;
 mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
+mod work_items;
 
 pub use self::{
 	conversations::{
@@ -31,6 +36,16 @@ pub use self::{
 		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
+	managed_repositories::{
+		RepositoryAdmissionOutcome, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,
+		RepositoryPreparationOutcome, RepositoryReadbackEvidence, RepositoryReadbackWork,
+		RepositoryReconciliationOutcome, RepositoryRestartState,
+	},
+	managed_runs::{
+		ManagedRunEffectBarrier, ManagedRunEffectBarrierState, ManagedRunEffectKind,
+		ManagedRunEffectLineage, ManagedRunSafetyEffect, ManagedRunSafetyOutcome,
+		ManagedRunSafetyRejection, StoredManagedRun,
+	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
@@ -47,16 +62,43 @@ pub use self::{
 		QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow,
 		QuotaWindowMutation, ReconciliationOutcome,
 	},
+	work_items::{
+		AcceptWorkItem, CreateWorkItem, StoredWorkItem, UpdateWorkItem, WorkItemCommandEffect,
+		WorkItemCommandOutcome, WorkItemReadinessBlocker, WorkItemReadinessBlockerKind,
+		WorkItemRejection, WorkItemRelations,
+	},
 };
 pub use decodex_core::{
-	AcceptedPolicyRevision, AccountId, AccountState, Agent, AgentId, AgentRole, AgentStatus,
-	Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
+	AcceptedPolicyRevision, AccountId, AccountState, AdmissionDescriptorDigest,
+	AdmittedRepositoryIdentity, Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint,
+	AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
+	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
+	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, EffectId,
+	ExactCommitEvidence, ExactRegistrationEvidence, ExactRepositoryReadbackScope,
+	ExactWorktreeReadyEvidence, ExecutionAssignment, ExecutionAssignmentRole,
+	ExecutorContractVersion, ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId,
+	ManagedRepositoryPhase, ManagedRunError, ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle,
+	ManagedRunPhase, ManagedRunSafetyInput, ManagedRunState, ManagedRunWaitReason,
+	ManagedWorktreeId, NoDispatch, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId,
+	ObjectiveId, ObjectiveState, OperationDescriptorVersion, OperationView, PersistedAbsolutePath,
 	Policy, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
-	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, Program,
-	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
+	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
+	Program, ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
-	ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity, ReviewCadence,
+	ProjectRepositoryBinding, ProjectStatus, RegistrationEvidence, RegistrationReadbackRequest,
+	RegistrationTarget, RepositoryAdmissionDescriptor, RepositoryAdmissionDescriptorVersion,
+	RepositoryAdmissionFacts, RepositoryAdmittedGitLayout, RepositoryAllocationId,
+	RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor, RepositoryCommitActorEmail,
+	RepositoryCommitActorName, RepositoryCommitMessage, RepositoryContentRevision,
+	RepositoryEvidenceId, RepositoryGitRegistrationRole, RepositoryIdentity,
+	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
+	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
+	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
+	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SubmittedTurnReceiptId, WorkItem,
+	WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode,
+	WorkItemObjectiveRef, WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
+	WorkItemTimestamp, WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
 };
 pub use quota::parse_quota_timestamp_rfc3339;
 

@@ -5,11 +5,15 @@ use std::{
 	io::ErrorKind,
 	net::{IpAddr, Ipv4Addr, SocketAddr},
 	path::{Path, PathBuf},
+	sync::Arc,
 };
 
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	application::{ProductStore, ServiceApplication},
+	managed_repository_runtime::{
+		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
+	},
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
@@ -28,12 +32,16 @@ const AUTHENTICATION_UNAVAILABLE: &str = "PostgreSQL authentication is unavailab
 const DATABASE_UNREACHABLE: &str = "configured PostgreSQL is unreachable";
 const DATABASE_INCOMPATIBLE: &str = "configured PostgreSQL is incompatible";
 const DATABASE_AUTHORITY_UNSAFE: &str = "configured PostgreSQL runtime authority is unsafe";
+const MANAGED_REPOSITORY_UNAVAILABLE: &str = "managed repository runtime is unavailable";
 
 /// Complete daemon bootstrap result, including its stable identity and typed report.
 pub struct ServiceBootstrap {
 	server_id: ServerId,
 	address: SocketAddr,
 	store: ProductStore,
+	managed_repositories: Option<ManagedRepositoryRuntime>,
+	managed_repository_readiness: ManagedRepositoryReadiness,
+	managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
 }
@@ -58,11 +66,19 @@ impl ServiceBootstrap {
 		self.store.availability()
 	}
 
+	/// Managed-repository readiness after executor verification and bounded restart reconciliation.
+	pub const fn managed_repository_readiness(&self) -> ManagedRepositoryReadiness {
+		self.managed_repository_readiness
+	}
+
 	fn protocol_server(self, config: ServerConfig) -> ProtocolServer<ServiceApplication> {
 		ProtocolServer::new(
 			self.server_id,
 			ServiceApplication::new(
 				self.store,
+				self.managed_repositories,
+				self.managed_repository_readiness,
+				self.managed_repository_startup_error,
 				CodexAdapter::unavailable(),
 				self.blob_store,
 				self.doctor,
@@ -120,7 +136,7 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		Ok(_) => DoctorStatus::Ready,
 		Err(error) => DoctorStatus::Unavailable(config_issue(*error)),
 	};
-	let repositories = loaded
+	let mut repositories = loaded
 		.as_ref()
 		.map_or_else(|error| DoctorStatus::Unavailable(config_issue(*error)), server_repositories);
 	let blob_store = BlobStore::open(paths.clone());
@@ -129,7 +145,7 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		Err(_) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	};
 	let shared_home = shared_codex_home();
-	let (store, database, vault) = match (loaded.as_ref(), repositories) {
+	let (mut store, database, vault) = match (loaded.as_ref(), repositories) {
 		(Ok(config), DoctorStatus::Ready) => connect_database(config).await,
 		(Ok(_), _) => (
 			ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
@@ -142,6 +158,23 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 			DoctorStatus::Unknown(DoctorIssue::Authentication),
 		),
 	};
+	let postgres = match &store {
+		ProductStore::Available(postgres) => Some(postgres.clone()),
+		ProductStore::Unavailable { .. } => None,
+	};
+	let (managed_repositories, managed_repository_readiness, managed_repository_startup_error) =
+		match postgres {
+			Some(postgres) => match ManagedRepositoryRuntime::start(postgres).await {
+				Ok(runtime) => (Some(runtime), ManagedRepositoryReadiness::Ready, None),
+				Err(error) => {
+					let readiness = error.readiness();
+					store = ProductStore::Unavailable { reason: MANAGED_REPOSITORY_UNAVAILABLE };
+					repositories = DoctorStatus::Unavailable(DoctorIssue::Integrity);
+					(None, readiness, Some(Arc::new(error)))
+				},
+			},
+			None => (None, ManagedRepositoryReadiness::ProductStateUnavailable, None),
+		};
 	let doctor = doctor_report(
 		server_id.clone(),
 		DoctorInputs {
@@ -159,6 +192,9 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		server_id,
 		address: DEFAULT_ADDRESS,
 		store,
+		managed_repositories,
+		managed_repository_readiness,
+		managed_repository_startup_error,
 		blob_store: blob_store.ok(),
 		doctor,
 	}
@@ -183,6 +219,9 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		server_id,
 		address: DEFAULT_ADDRESS,
 		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
+		managed_repositories: None,
+		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
+		managed_repository_startup_error: None,
 		blob_store: None,
 		doctor,
 	}
