@@ -20,11 +20,14 @@ use decodex_core::{
 	NoDispatch, OperationDescriptorVersion, OperationView, PersistedAbsolutePath,
 	PositiveAllocationEvidence, ProjectId, RegistrationEvidence, RegistrationReadbackRequest,
 	RegistrationReconciliation, RegistrationTarget, RepositoryAdmissionFacts, RepositoryAllocationId,
-	RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor,
+	RepositoryAdmissionDescriptor, RepositoryAdmissionDescriptorVersion,
+	RepositoryAdmittedGitLayout, RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor,
 	RepositoryCommitActorEmail, RepositoryCommitActorName, RepositoryCommitMessage,
 	RepositoryContentRevision, RepositoryEvidenceId, RepositoryOperationId,
+	RepositoryGitRegistrationRole, RepositoryObservationPath, RepositoryObservedObjectType,
 	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
-	RepositoryReferenceName, WorktreeReadyEvidence, WorktreeReadyPolicy,
+	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
+	RepositoryRegistrationId, WorktreeReadyEvidence, WorktreeReadyPolicy,
 	WorktreeReadyReadbackRequest, WorktreeReadyReconciliation, commit_readback_request,
 	decide_allocate, decide_begin_commit, decide_begin_registration, decide_begin_worktree_ready,
 	decide_commit_readback, decide_registration_readback, decide_worktree_ready_readback,
@@ -112,31 +115,36 @@ impl PostgresStore {
 		&self,
 		admission: &RepositoryAdmissionFacts,
 	) -> Result<RepositoryAdmissionOutcome, StoreError> {
+		let descriptor = admission.descriptor();
+		let descriptor_document = admission_descriptor_document(descriptor)?;
 		let mut client = self.pool().get().await?;
 		let transaction = client.transaction().await?;
 		transaction
 			.query_one(
 				"SELECT pg_catalog.pg_advisory_xact_lock(1349,pg_catalog.hashtext($1))",
-				&[&admission.repository_id.as_str()],
+				&[&descriptor.repository_id().as_str()],
 			)
 			.await?;
 		let inserted = transaction
 			.execute(
 				"INSERT INTO decodex.repository_admissions(
 				 repository_id,project_id,admitted_identity,admitted_base,
-				 admission_descriptor_digest,repository_absolute_path
-				) VALUES($1::text::uuid,$2::text::uuid,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
+				 admission_descriptor_schema,admission_descriptor_digest,
+				 admission_descriptor,repository_absolute_path
+				) VALUES($1::text::uuid,$2::text::uuid,$3,$4,1,$5,$6,$7)
+				 ON CONFLICT DO NOTHING",
 				&[
-					&admission.repository_id.as_str(),
-					&admission.project_id.as_str(),
-					&admission.admitted_identity.as_str(),
-					&admission.admitted_base.as_str(),
-					&admission.admission_descriptor_digest.as_str(),
-					&path_text(&admission.repository_path)?,
+					&descriptor.repository_id().as_str(),
+					&descriptor.project_id().as_str(),
+					&descriptor.admitted_identity().as_str(),
+					&descriptor.admitted_base().as_str(),
+					&descriptor.digest().as_str(),
+					&descriptor_document,
+					&path_text(descriptor.repository_path())?,
 				],
 			)
 			.await?;
-		let stored = load_admission(&transaction, &admission.repository_id).await?;
+		let stored = load_admission(&transaction, descriptor.repository_id()).await?;
 		if stored.as_ref() != Some(admission) {
 			return Err(StoreError::ManagedRepositoryAdmissionConflict);
 		}
@@ -198,7 +206,11 @@ impl PostgresStore {
 				"INSERT INTO decodex.repository_operation_evidence(
 				 evidence_id,repository_id,kind,evidence
 				) VALUES($1::text::uuid,$2::text::uuid,'allocation',$3)",
-				&[&evidence.evidence_id.as_str(), &repository_id.as_str(), &evidence_document],
+				&[
+					&evidence.evidence_id().as_str(),
+					&repository_id.as_str(),
+					&evidence_document,
+				],
 			)
 			.await?;
 		transaction
@@ -210,7 +222,7 @@ impl PostgresStore {
 				&[
 					&repository_id.as_str(),
 					&tip.as_str(),
-					&evidence.evidence_id.as_str(),
+					&evidence.evidence_id().as_str(),
 					&decision.head.as_str(),
 				],
 			)
@@ -224,7 +236,7 @@ impl PostgresStore {
 				 'allocated',$6,1,$7::text::uuid)",
 				&[
 					&repository_id.as_str(),
-					&decision.admission.project_id.as_str(),
+					&decision.admission.descriptor().project_id().as_str(),
 					&decision.allocation_id.as_str(),
 					&decision.worktree_id.as_str(),
 					&path_text(&decision.worktree_path)?,
@@ -558,10 +570,15 @@ impl PostgresStore {
 		let rows = transaction
 			.query(
 				"SELECT operation.descriptor,result.state::text,result.ambiguity::text,result.result,
+				 admission.project_id::text,admission.repository_id::text,
+				 admission.admitted_identity,admission.admitted_base,
+				 admission.admission_descriptor_digest,admission.repository_absolute_path,
+				 admission.admission_descriptor_schema,admission.admission_descriptor,
 				 repository.repository_id::text,evidence.evidence
 				 FROM decodex.managed_repositories repository
 				 JOIN decodex.repository_operations operation
 				 ON operation.operation_id=repository.active_operation_id
+				 JOIN decodex.repository_admissions admission USING(repository_id)
 				 LEFT JOIN decodex.repository_operation_results result USING(operation_id)
 				 JOIN decodex.repository_operation_evidence evidence
 				 ON evidence.repository_id=repository.repository_id
@@ -573,11 +590,19 @@ impl PostgresStore {
 		let mut states = Vec::with_capacity(rows.len());
 		for row in rows {
 			let operation = parse_operation_columns(&row)?;
-			let repository_id = ManagedRepositoryId::new(row.get::<_, String>(4))?;
+			let repository_id = ManagedRepositoryId::new(row.get::<_, String>(12))?;
 			let repository = load_facts(&transaction, &repository_id, false)
 				.await?
 				.ok_or_else(|| incompatible("restart repository projection disappeared"))?;
-			let allocation_evidence = parse_allocation_evidence(row.get(5))?;
+			let allocation_evidence = parse_allocation_evidence(row.get(13))?;
+			if allocation_evidence.admission_descriptor()
+				!= repository.admission.descriptor()
+				|| allocation_evidence.vacant_worktree_path() != &repository.worktree_path
+			{
+				return Err(incompatible(
+					"stored allocation evidence contradicts the current repository authority",
+				));
+			}
 			let readback = match operation.descriptor.kind {
 					RepositoryOperationKind::Register => registration_readback_request(&operation)
 						.map(RepositoryReadbackWork::Registration),
@@ -615,6 +640,7 @@ impl PrepareCommand<'_> {
 	}
 
 	fn descriptor(&self, facts: &ManagedRepositoryFacts) -> CanonicalOperationDescriptor {
+		let admission = facts.admission.descriptor();
 		let (operation_id, expected_checkpoint, payload, executor_contract) = match self {
 			Self::Registration(command) => (
 				command.operation_id.clone(),
@@ -622,9 +648,9 @@ impl PrepareCommand<'_> {
 				CanonicalOperationPayload::Register {
 					expected_head: command.expected_head.clone(),
 					target: RegistrationTarget {
-						repository_id: facts.admission.repository_id.clone(),
+						repository_id: admission.repository_id().clone(),
 						worktree_id: facts.worktree_id.clone(),
-						repository_path: facts.admission.repository_path.clone(),
+						repository_path: admission.repository_path().clone(),
 						worktree_path: facts.worktree_path.clone(),
 					},
 				},
@@ -653,14 +679,14 @@ impl PrepareCommand<'_> {
 		CanonicalOperationDescriptor {
 			schema: OperationDescriptorVersion::V1,
 			operation_id,
-			project_id: facts.admission.project_id.clone(),
-			repository_id: facts.admission.repository_id.clone(),
-			admitted_identity: facts.admission.admitted_identity.clone(),
-			admitted_base: facts.admission.admitted_base.clone(),
-			admission_descriptor_digest: facts.admission.admission_descriptor_digest.clone(),
+			project_id: admission.project_id().clone(),
+			repository_id: admission.repository_id().clone(),
+			admitted_identity: admission.admitted_identity().clone(),
+			admitted_base: admission.admitted_base().clone(),
+			admission_descriptor_digest: admission.digest().clone(),
 			allocation_id: facts.allocation_id.clone(),
 			worktree_id: facts.worktree_id.clone(),
-			repository_absolute_path: facts.admission.repository_path.clone(),
+			repository_absolute_path: admission.repository_path().clone(),
 			worktree_absolute_path: facts.worktree_path.clone(),
 			expected_checkpoint,
 			kind: payload.kind(),
@@ -819,12 +845,13 @@ async fn load_admission(
 	let row = transaction
 		.query_opt(
 			"SELECT project_id::text,repository_id::text,admitted_identity,admitted_base,
-			 admission_descriptor_digest,repository_absolute_path
+			 admission_descriptor_digest,repository_absolute_path,
+			 admission_descriptor_schema,admission_descriptor
 			 FROM decodex.repository_admissions WHERE repository_id=$1::text::uuid",
 			&[&repository_id.as_str()],
 		)
 		.await?;
-	row.map(parse_admission_row).transpose()
+	row.as_ref().map(parse_admission_row).transpose()
 }
 
 async fn load_admission_for_update(
@@ -834,29 +861,59 @@ async fn load_admission_for_update(
 	let row = transaction
 		.query_opt(
 			"SELECT project_id::text,repository_id::text,admitted_identity,admitted_base,
-			 admission_descriptor_digest,repository_absolute_path
+			 admission_descriptor_digest,repository_absolute_path,
+			 admission_descriptor_schema,admission_descriptor
 			 FROM decodex.repository_admissions WHERE repository_id=$1::text::uuid FOR UPDATE",
 			&[&repository_id.as_str()],
 		)
 		.await?;
-	row.map(parse_admission_row).transpose()
+	row.as_ref().map(parse_admission_row).transpose()
 }
 
-fn parse_admission_row(row: Row) -> Result<RepositoryAdmissionFacts, StoreError> {
-	Ok(RepositoryAdmissionFacts {
-		project_id: ProjectId::new(row.get::<_, String>(0))
-			.map_err(|_| incompatible("stored Project identity is invalid"))?,
-		repository_id: ManagedRepositoryId::new(row.get::<_, String>(1))?,
-		admitted_identity: AdmittedRepositoryIdentity::new(row.get::<_, String>(2))?,
-		admitted_base: RepositoryContentRevision::new(row.get::<_, String>(3))?,
-		admission_descriptor_digest: AdmissionDescriptorDigest::new(row.get::<_, String>(4))?,
-		repository_path: PersistedAbsolutePath::new(PathBuf::from(row.get::<_, String>(5)))?,
-	})
+fn parse_admission_row(row: &Row) -> Result<RepositoryAdmissionFacts, StoreError> {
+	parse_admission_columns(row, 0)
+}
+
+fn parse_admission_columns(
+	row: &Row,
+	start: usize,
+) -> Result<RepositoryAdmissionFacts, StoreError> {
+	let project_id = ProjectId::new(row.get::<_, String>(start))
+		.map_err(|_| incompatible("stored admission Project identity is invalid"))?;
+	let repository_id = ManagedRepositoryId::new(row.get::<_, String>(start + 1))
+		.map_err(|_| incompatible("stored admission repository identity is invalid"))?;
+	let admitted_identity = AdmittedRepositoryIdentity::new(row.get::<_, String>(start + 2))
+		.map_err(|_| incompatible("stored admission external identity is invalid"))?;
+	let admitted_base = RepositoryContentRevision::new(row.get::<_, String>(start + 3))
+		.map_err(|_| incompatible("stored admission base is invalid"))?;
+	let digest = AdmissionDescriptorDigest::new(row.get::<_, String>(start + 4))
+		.map_err(|_| incompatible("stored admission descriptor digest is invalid"))?;
+	let repository_path = parse_stored_path(&row.get::<_, String>(start + 5))?;
+	let schema: i16 = row.get(start + 6);
+	if schema != 1 {
+		return Err(incompatible("stored admission descriptor version is unsupported"));
+	}
+	let document: Value = row.get(start + 7);
+	let descriptor = parse_admission_descriptor_document(&document)?;
+	if descriptor.version() != RepositoryAdmissionDescriptorVersion::V1
+		|| descriptor.project_id() != &project_id
+		|| descriptor.repository_id() != &repository_id
+		|| descriptor.admitted_identity() != &admitted_identity
+		|| descriptor.admitted_base() != &admitted_base
+		|| descriptor.repository_path() != &repository_path
+		|| !descriptor.verify_digest(&digest)
+	{
+		return Err(incompatible(
+			"stored admission columns contradict the complete descriptor",
+		));
+	}
+	Ok(RepositoryAdmissionFacts::new(descriptor))
 }
 
 const FACTS_SELECT: &str = "SELECT admission.project_id::text,admission.repository_id::text,
  admission.admitted_identity,admission.admitted_base,admission.admission_descriptor_digest,
- admission.repository_absolute_path,repository.allocation_id::text,repository.worktree_id::text,
+ admission.repository_absolute_path,admission.admission_descriptor_schema,
+ admission.admission_descriptor,repository.allocation_id::text,repository.worktree_id::text,
 	 repository.worktree_absolute_path,repository.phase::text,repository.ambiguity::text,
 	 repository.head,repository.generation,repository.authority_tip::text,
 	 repository.active_operation_id::text
@@ -899,39 +956,36 @@ async fn load_facts_client_like(
 }
 
 fn parse_facts_row(row: Row) -> Result<ManagedRepositoryFacts, StoreError> {
-	let generation: i64 = row.get(12);
+	let generation: i64 = row.get(14);
 	Ok(ManagedRepositoryFacts {
-		admission: RepositoryAdmissionFacts {
-			project_id: ProjectId::new(row.get::<_, String>(0))
-				.map_err(|_| incompatible("stored Project identity is invalid"))?,
-			repository_id: ManagedRepositoryId::new(row.get::<_, String>(1))?,
-			admitted_identity: AdmittedRepositoryIdentity::new(row.get::<_, String>(2))?,
-			admitted_base: RepositoryContentRevision::new(row.get::<_, String>(3))?,
-			admission_descriptor_digest: AdmissionDescriptorDigest::new(row.get::<_, String>(4))?,
-			repository_path: PersistedAbsolutePath::new(PathBuf::from(row.get::<_, String>(5)))?,
-		},
-		allocation_id: RepositoryAllocationId::new(row.get::<_, String>(6))?,
-		worktree_id: ManagedWorktreeId::new(row.get::<_, String>(7))?,
-		worktree_path: PersistedAbsolutePath::new(PathBuf::from(row.get::<_, String>(8)))?,
+		admission: parse_admission_columns(&row, 0)?,
+		allocation_id: RepositoryAllocationId::new(row.get::<_, String>(8))?,
+		worktree_id: ManagedWorktreeId::new(row.get::<_, String>(9))?,
+		worktree_path: PersistedAbsolutePath::new(PathBuf::from(row.get::<_, String>(10)))?,
 		phase: parse_phase(
-			&row.get::<_, String>(9),
-			row.get::<_, Option<String>>(10).as_deref(),
+			&row.get::<_, String>(11),
+			row.get::<_, Option<String>>(12).as_deref(),
 		)?,
-		head: RepositoryContentRevision::new(row.get::<_, String>(11))?,
+		head: RepositoryContentRevision::new(row.get::<_, String>(13))?,
 		checkpoint: AggregateCheckpoint::new(
 			u64::try_from(generation).map_err(|_| incompatible("stored generation is invalid"))?,
-			RepositoryAuthorityTip::new(row.get::<_, String>(13))?,
+			RepositoryAuthorityTip::new(row.get::<_, String>(15))?,
 		)?,
 		active_operation: row
-			.get::<_, Option<String>>(14)
+			.get::<_, Option<String>>(16)
 			.map(RepositoryOperationId::new)
 			.transpose()?,
 	})
 }
 
 const OPERATION_SELECT: &str = "SELECT operation.descriptor,result.state::text,
- result.ambiguity::text,result.result FROM decodex.repository_operations operation
+ result.ambiguity::text,result.result,admission.project_id::text,
+ admission.repository_id::text,admission.admitted_identity,admission.admitted_base,
+ admission.admission_descriptor_digest,admission.repository_absolute_path,
+ admission.admission_descriptor_schema,admission.admission_descriptor
+ FROM decodex.repository_operations operation
  LEFT JOIN decodex.repository_operation_results result USING(operation_id)
+ JOIN decodex.repository_admissions admission USING(repository_id)
  WHERE operation.operation_id=$1::text::uuid";
 
 async fn load_operation(
@@ -962,6 +1016,19 @@ fn parse_operation_row(row: Row) -> Result<OperationView, StoreError> {
 
 fn parse_operation_columns(row: &Row) -> Result<OperationView, StoreError> {
 	let descriptor = parse_descriptor(row.get(0))?;
+	let admission = parse_admission_columns(row, 4)?;
+	let admitted = admission.descriptor();
+	if &descriptor.project_id != admitted.project_id()
+		|| &descriptor.repository_id != admitted.repository_id()
+		|| &descriptor.admitted_identity != admitted.admitted_identity()
+		|| &descriptor.admitted_base != admitted.admitted_base()
+		|| &descriptor.admission_descriptor_digest != admitted.digest()
+		|| &descriptor.repository_absolute_path != admitted.repository_path()
+	{
+		return Err(incompatible(
+			"stored operation descriptor contradicts the complete admission authority",
+		));
+	}
 	let state = match row.get::<_, Option<String>>(1).as_deref() {
 		None => RepositoryOperationState::PossiblyEffected,
 		Some("ambiguous") => RepositoryOperationState::Ambiguous(parse_ambiguity(
@@ -981,19 +1048,22 @@ fn parse_allocation_evidence(document: Value) -> Result<PositiveAllocationEviden
 	if required_str(&document, "classification")? != "positive" {
 		return Err(incompatible("stored allocation evidence classification is invalid"));
 	}
-	Ok(PositiveAllocationEvidence {
-		evidence_id: RepositoryEvidenceId::new(required_str(&document, "evidence_id")?)?,
-		admitted_identity: AdmittedRepositoryIdentity::new(required_str(
+	let evidence = PositiveAllocationEvidence::new(
+		RepositoryEvidenceId::new(required_str(&document, "evidence_id")?)
+			.map_err(|_| incompatible("stored allocation evidence identity is invalid"))?,
+		parse_admission_descriptor_document(required_value(
 			&document,
-			"admitted_identity",
+			"admission_descriptor",
 		)?)?,
-		admitted_base: RepositoryContentRevision::new(required_str(&document, "admitted_base")?)?,
-		repository_path: parse_path(required_str(&document, "repository_absolute_path")?)?,
-		vacant_worktree_path: parse_path(required_str(
+		parse_stored_path(required_str(
 			&document,
 			"vacant_worktree_absolute_path",
 		)?)?,
-	})
+	);
+	if allocation_evidence_document(&evidence)? != document {
+		return Err(incompatible("stored allocation evidence is not canonical"));
+	}
+	Ok(evidence)
 }
 
 async fn insert_operation(
@@ -1058,7 +1128,7 @@ async fn insert_transition(
 			 $9::text::decodex.managed_repository_phase,
 			 $10::text::decodex.repository_ambiguity,$11,$12::text::uuid)",
 			&[
-				&facts.admission.repository_id.as_str(),
+				&facts.admission.descriptor().repository_id().as_str(),
 				&generation_i64(generation)?,
 				&tip.as_str(),
 				&generation_i64(facts.checkpoint.generation)?,
@@ -1154,14 +1224,163 @@ fn actor_document(actor: &RepositoryCommitActor) -> Value {
 	})
 }
 
+fn admission_descriptor_document(
+	descriptor: &RepositoryAdmissionDescriptor,
+) -> Result<Value, StoreError> {
+	let layout = descriptor.git_layout();
+	let observations = descriptor
+		.observations()
+		.iter()
+		.map(|observation| {
+			Ok(json!({
+				"path": observation_path_text(observation.path())?,
+				"roles": observation.roles().iter().copied()
+					.map(path_registration_role_text).collect::<Vec<_>>(),
+				"device": observation.device(),
+				"inode": observation.inode(),
+				"object_type": observed_object_type_text(observation.object_type()),
+				"owner_uid": observation.owner_uid(),
+				"permissions": observation.permissions(),
+			}))
+		})
+		.collect::<Result<Vec<_>, StoreError>>()?;
+	Ok(json!({
+		"schema": match descriptor.version() {
+			RepositoryAdmissionDescriptorVersion::V1 => 1,
+		},
+		"project_id": descriptor.project_id().as_str(),
+		"repository_id": descriptor.repository_id().as_str(),
+		"admitted_identity": descriptor.admitted_identity().as_str(),
+		"admitted_base": descriptor.admitted_base().as_str(),
+		"repository_absolute_path": path_text(descriptor.repository_path())?,
+		"git_layout": {
+			"registration_role": git_registration_role_text(layout.registration_role()),
+			"registration_id": layout.registration_id().map(RepositoryRegistrationId::as_str),
+			"repository_absolute_path": path_text(layout.repository_root())?,
+			"worktree_git_entry_absolute_path": path_text(layout.worktree_git_entry())?,
+			"git_directory_absolute_path": path_text(layout.git_directory())?,
+			"common_directory_absolute_path": path_text(layout.common_directory())?,
+			"objects_directory_absolute_path": path_text(layout.objects_directory())?,
+			"refs_directory_absolute_path": optional_path_text(layout.refs_directory())?,
+			"common_directory_file_absolute_path": optional_path_text(
+				layout.common_directory_file()
+			)?,
+			"git_directory_backlink_file_absolute_path": optional_path_text(
+				layout.git_directory_backlink_file()
+			)?,
+		},
+		"observations": observations,
+		"digest": descriptor.digest().as_str(),
+	}))
+}
+
+fn parse_admission_descriptor_document(
+	document: &Value,
+) -> Result<RepositoryAdmissionDescriptor, StoreError> {
+	if required_u64(document, "schema")? != 1 {
+		return Err(incompatible("stored admission descriptor version is unsupported"));
+	}
+	let layout_document = required_value(document, "git_layout")?;
+	let registration_role = parse_git_registration_role(required_str(
+		layout_document,
+		"registration_role",
+	)?)?;
+	let registration_id = required_optional_str(layout_document, "registration_id")?
+		.map(|value| {
+			RepositoryRegistrationId::new(value)
+				.map_err(|_| incompatible("stored admission registration identity is invalid"))
+		})
+		.transpose()?;
+	let layout = RepositoryAdmittedGitLayout::new(
+		registration_role,
+		registration_id,
+		parse_stored_path(required_str(layout_document, "repository_absolute_path")?)?,
+		parse_stored_path(required_str(
+			layout_document,
+			"worktree_git_entry_absolute_path",
+		)?)?,
+		parse_stored_path(required_str(layout_document, "git_directory_absolute_path")?)?,
+		parse_stored_path(required_str(layout_document, "common_directory_absolute_path")?)?,
+		parse_stored_path(required_str(layout_document, "objects_directory_absolute_path")?)?,
+		parse_optional_stored_path(layout_document, "refs_directory_absolute_path")?,
+		parse_optional_stored_path(layout_document, "common_directory_file_absolute_path")?,
+		parse_optional_stored_path(
+			layout_document,
+			"git_directory_backlink_file_absolute_path",
+		)?,
+	);
+	let observations_document = required_value(document, "observations")?
+		.as_array()
+		.ok_or_else(|| incompatible("stored admission observations are not an array"))?;
+	let mut observations = Vec::with_capacity(observations_document.len());
+	for observation_document in observations_document {
+		let roles_document = required_value(observation_document, "roles")?
+			.as_array()
+			.ok_or_else(|| incompatible("stored admission observation roles are not an array"))?;
+		let roles = roles_document
+			.iter()
+			.map(|role| {
+				parse_path_registration_role(
+					role.as_str().ok_or_else(|| {
+						incompatible("stored admission observation role is invalid")
+					})?,
+				)
+			})
+			.collect::<Result<Vec<_>, StoreError>>()?;
+		let owner_uid = u32::try_from(required_u64(observation_document, "owner_uid")?)
+			.map_err(|_| incompatible("stored admission observation UID is invalid"))?;
+		let permissions = u32::try_from(required_u64(observation_document, "permissions")?)
+			.map_err(|_| incompatible("stored admission observation mode is invalid"))?;
+		observations.push(
+			RepositoryPathObservation::new(
+				parse_observation_path(required_str(observation_document, "path")?)?,
+				roles,
+				required_u64(observation_document, "device")?,
+				required_u64(observation_document, "inode")?,
+				parse_observed_object_type(required_str(
+					observation_document,
+					"object_type",
+				)?)?,
+				owner_uid,
+				permissions,
+			)
+			.map_err(|_| incompatible("stored admission path observation is invalid"))?,
+		);
+	}
+	let descriptor = RepositoryAdmissionDescriptor::new_v1(
+		ProjectId::new(required_str(document, "project_id")?)
+			.map_err(|_| incompatible("stored admission Project identity is invalid"))?,
+		ManagedRepositoryId::new(required_str(document, "repository_id")?)
+			.map_err(|_| incompatible("stored admission repository identity is invalid"))?,
+		AdmittedRepositoryIdentity::new(required_str(document, "admitted_identity")?)
+			.map_err(|_| incompatible("stored admission external identity is invalid"))?,
+		RepositoryContentRevision::new(required_str(document, "admitted_base")?)
+			.map_err(|_| incompatible("stored admission base is invalid"))?,
+		parse_stored_path(required_str(document, "repository_absolute_path")?)?,
+		layout,
+		observations,
+	)
+	.map_err(|_| incompatible("stored admission descriptor is contradictory"))?;
+	let persisted_digest = AdmissionDescriptorDigest::new(required_str(document, "digest")?)
+		.map_err(|_| incompatible("stored admission descriptor digest is invalid"))?;
+	if !descriptor.verify_digest(&persisted_digest)
+		|| admission_descriptor_document(&descriptor)? != *document
+	{
+		return Err(incompatible(
+			"stored admission descriptor digest or canonical form is invalid",
+		));
+	}
+	Ok(descriptor)
+}
+
 fn allocation_evidence_document(evidence: &PositiveAllocationEvidence) -> Result<Value, StoreError> {
 	Ok(json!({
 		"classification": "positive",
-		"evidence_id": evidence.evidence_id.as_str(),
-		"admitted_identity": evidence.admitted_identity.as_str(),
-		"admitted_base": evidence.admitted_base.as_str(),
-		"repository_absolute_path": path_text(&evidence.repository_path)?,
-		"vacant_worktree_absolute_path": path_text(&evidence.vacant_worktree_path)?,
+		"evidence_id": evidence.evidence_id().as_str(),
+		"admission_descriptor": admission_descriptor_document(
+			evidence.admission_descriptor()
+		)?,
+		"vacant_worktree_absolute_path": path_text(evidence.vacant_worktree_path())?,
 	}))
 }
 
@@ -1376,6 +1595,55 @@ fn parse_worktree_policy(value: &str) -> Result<WorktreeReadyPolicy, StoreError>
 	}
 }
 
+fn parse_git_registration_role(
+	value: &str,
+) -> Result<RepositoryGitRegistrationRole, StoreError> {
+	match value {
+		"primary_worktree" => Ok(RepositoryGitRegistrationRole::PrimaryWorktree),
+		"linked_worktree" => Ok(RepositoryGitRegistrationRole::LinkedWorktree),
+		_ => Err(incompatible("stored admission Git registration role is invalid")),
+	}
+}
+
+fn parse_observed_object_type(
+	value: &str,
+) -> Result<RepositoryObservedObjectType, StoreError> {
+	match value {
+		"directory" => Ok(RepositoryObservedObjectType::Directory),
+		"regular_file" => Ok(RepositoryObservedObjectType::RegularFile),
+		_ => Err(incompatible("stored admission observed object type is invalid")),
+	}
+}
+
+fn parse_path_registration_role(
+	value: &str,
+) -> Result<RepositoryPathRegistrationRole, StoreError> {
+	Ok(match value {
+		"repository_root_component" => RepositoryPathRegistrationRole::RepositoryRootComponent,
+		"repository_root" => RepositoryPathRegistrationRole::RepositoryRoot,
+		"worktree_git_entry" => RepositoryPathRegistrationRole::WorktreeGitEntry,
+		"git_directory_component" => RepositoryPathRegistrationRole::GitDirectoryComponent,
+		"git_directory" => RepositoryPathRegistrationRole::GitDirectory,
+		"git_common_directory_component" => {
+			RepositoryPathRegistrationRole::GitCommonDirectoryComponent
+		},
+		"git_common_directory" => RepositoryPathRegistrationRole::GitCommonDirectory,
+		"git_objects_directory_component" => {
+			RepositoryPathRegistrationRole::GitObjectsDirectoryComponent
+		},
+		"git_objects_directory" => RepositoryPathRegistrationRole::GitObjectsDirectory,
+		"git_refs_directory_component" => {
+			RepositoryPathRegistrationRole::GitRefsDirectoryComponent
+		},
+		"git_refs_directory" => RepositoryPathRegistrationRole::GitRefsDirectory,
+		"git_common_directory_file" => RepositoryPathRegistrationRole::GitCommonDirectoryFile,
+		"git_directory_backlink_file" => {
+			RepositoryPathRegistrationRole::GitDirectoryBacklinkFile
+		},
+		_ => return Err(incompatible("stored admission path role is invalid")),
+	})
+}
+
 fn parse_ambiguity(value: &str) -> Result<RepositoryAmbiguity, StoreError> {
 	Ok(match value {
 		"stale" => RepositoryAmbiguity::Stale,
@@ -1417,6 +1685,46 @@ fn operation_kind_text(value: RepositoryOperationKind) -> &'static str {
 fn worktree_policy_text(value: WorktreeReadyPolicy) -> &'static str {
 	match value {
 		WorktreeReadyPolicy::ExactCleanWorktree => "exact_clean_worktree",
+	}
+}
+
+fn git_registration_role_text(value: RepositoryGitRegistrationRole) -> &'static str {
+	match value {
+		RepositoryGitRegistrationRole::PrimaryWorktree => "primary_worktree",
+		RepositoryGitRegistrationRole::LinkedWorktree => "linked_worktree",
+	}
+}
+
+fn observed_object_type_text(value: RepositoryObservedObjectType) -> &'static str {
+	match value {
+		RepositoryObservedObjectType::Directory => "directory",
+		RepositoryObservedObjectType::RegularFile => "regular_file",
+	}
+}
+
+fn path_registration_role_text(value: RepositoryPathRegistrationRole) -> &'static str {
+	match value {
+		RepositoryPathRegistrationRole::RepositoryRootComponent => "repository_root_component",
+		RepositoryPathRegistrationRole::RepositoryRoot => "repository_root",
+		RepositoryPathRegistrationRole::WorktreeGitEntry => "worktree_git_entry",
+		RepositoryPathRegistrationRole::GitDirectoryComponent => "git_directory_component",
+		RepositoryPathRegistrationRole::GitDirectory => "git_directory",
+		RepositoryPathRegistrationRole::GitCommonDirectoryComponent => {
+			"git_common_directory_component"
+		},
+		RepositoryPathRegistrationRole::GitCommonDirectory => "git_common_directory",
+		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent => {
+			"git_objects_directory_component"
+		},
+		RepositoryPathRegistrationRole::GitObjectsDirectory => "git_objects_directory",
+		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => {
+			"git_refs_directory_component"
+		},
+		RepositoryPathRegistrationRole::GitRefsDirectory => "git_refs_directory",
+		RepositoryPathRegistrationRole::GitCommonDirectoryFile => "git_common_directory_file",
+		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => {
+			"git_directory_backlink_file"
+		},
 	}
 }
 
@@ -1485,8 +1793,36 @@ fn path_text(path: &PersistedAbsolutePath) -> Result<String, StoreError> {
 		.ok_or(StoreError::InvalidInput("managed-repository path is not UTF-8"))
 }
 
+fn optional_path_text(path: Option<&PersistedAbsolutePath>) -> Result<Option<String>, StoreError> {
+	path.map(path_text).transpose()
+}
+
+fn observation_path_text(path: &RepositoryObservationPath) -> Result<String, StoreError> {
+	path.as_path()
+		.to_str()
+		.map(str::to_owned)
+		.ok_or(StoreError::InvalidInput("repository observation path is not UTF-8"))
+}
+
 fn parse_path(value: &str) -> Result<PersistedAbsolutePath, StoreError> {
 	PersistedAbsolutePath::new(PathBuf::from(value)).map_err(StoreError::from)
+}
+
+fn parse_stored_path(value: &str) -> Result<PersistedAbsolutePath, StoreError> {
+	PersistedAbsolutePath::new(PathBuf::from(value))
+		.map_err(|_| incompatible("stored admission path is invalid"))
+}
+
+fn parse_observation_path(value: &str) -> Result<RepositoryObservationPath, StoreError> {
+	RepositoryObservationPath::new(PathBuf::from(value))
+		.map_err(|_| incompatible("stored admission observation path is invalid"))
+}
+
+fn parse_optional_stored_path(
+	value: &Value,
+	key: &str,
+) -> Result<Option<PersistedAbsolutePath>, StoreError> {
+	required_optional_str(value, key)?.map(parse_stored_path).transpose()
 }
 
 fn next_generation(value: u64) -> Result<u64, StoreError> {
@@ -1505,6 +1841,17 @@ fn required_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, StoreError> 
 	required_value(value, key)?
 		.as_str()
 		.ok_or_else(|| incompatible("repository document string field is invalid"))
+}
+
+fn required_optional_str<'a>(
+	value: &'a Value,
+	key: &str,
+) -> Result<Option<&'a str>, StoreError> {
+	match required_value(value, key)? {
+		Value::Null => Ok(None),
+		Value::String(value) => Ok(Some(value.as_str())),
+		_ => Err(incompatible("repository document optional string field is invalid")),
+	}
 }
 
 fn required_u64(value: &Value, key: &str) -> Result<u64, StoreError> {
