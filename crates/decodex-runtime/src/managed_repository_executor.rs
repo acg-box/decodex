@@ -2495,7 +2495,7 @@ fn read_nofollow(path: &Path, limit: usize) -> Result<Vec<u8>, PathFailure> {
 		return Err(PathFailure::Invalid);
 	}
 	let mut bytes = Vec::with_capacity(metadata.len() as usize);
-	file.by_ref()
+	Read::by_ref(&mut file)
 		.take(limit.saturating_add(1) as u64)
 		.read_to_end(&mut bytes)
 		.map_err(|_| PathFailure::Io)?;
