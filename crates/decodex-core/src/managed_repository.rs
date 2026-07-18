@@ -976,6 +976,7 @@ pub enum RepositoryAmbiguity {
 }
 
 /// Exact immutable successful operation result.
+#[allow(missing_docs)] // The type-level contract documents its self-describing result fields.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RepositoryOperationResult {
 	/// Registration completed at an unchanged exact head.
@@ -1011,6 +1012,7 @@ pub struct OperationView {
 pub struct NoDispatch;
 
 /// Pure global operation-assignment comparison.
+#[allow(clippy::large_enum_variant)] // Preserve the stable by-value semantic result algebra.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AssignmentResolution {
 	/// No assignment fact was supplied; PostgreSQL may attempt a new global insert.
@@ -1274,6 +1276,7 @@ pub struct ExactRegistrationEvidence {
 }
 
 /// Transition-specific registration evidence.
+#[allow(clippy::large_enum_variant, missing_docs)] // Preserve the stable by-value evidence algebra.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RegistrationEvidence {
 	ExactReciprocal(ExactRegistrationEvidence),
@@ -1298,6 +1301,7 @@ pub struct ExactWorktreeReadyEvidence {
 }
 
 /// Transition-specific WorktreeReady evidence.
+#[allow(clippy::large_enum_variant, missing_docs)] // Preserve the stable by-value evidence algebra.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorktreeReadyEvidence {
 	Exact(ExactWorktreeReadyEvidence),
@@ -1328,6 +1332,7 @@ pub struct ExactCommitEvidence {
 }
 
 /// Transition-specific Commit evidence.
+#[allow(clippy::large_enum_variant, missing_docs)] // Preserve the stable by-value evidence algebra.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommitEvidence {
 	Exact(ExactCommitEvidence),
@@ -1355,6 +1360,7 @@ pub struct RepositoryProjectionUpdate {
 }
 
 /// Registration readback decision.
+#[allow(missing_docs)] // Variant payload names are the complete semantic decision contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RegistrationReconciliation {
 	Pending,
@@ -1371,6 +1377,7 @@ pub enum RegistrationReconciliation {
 }
 
 /// WorktreeReady readback decision.
+#[allow(missing_docs)] // Variant payload names are the complete semantic decision contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorktreeReadyReconciliation {
 	Pending,
@@ -1387,6 +1394,7 @@ pub enum WorktreeReadyReconciliation {
 }
 
 /// Commit readback decision.
+#[allow(missing_docs)] // Variant payload names are the complete semantic decision contract.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CommitReconciliation {
 	Pending,
@@ -1589,6 +1597,7 @@ pub fn decide_commit_readback(
 }
 
 /// Pure contract rejection. Infrastructure and transaction-outcome errors belong to adapters.
+#[allow(missing_docs)] // Display supplies the stable public rejection description for each variant.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ManagedRepositoryError {
 	InvalidRepositoryId,
