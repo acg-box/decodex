@@ -12,12 +12,19 @@ use std::{
 	path::{Component, Path, PathBuf},
 };
 
+use serde::Serialize;
+use sha2::{Digest as _, Sha256};
+
 use crate::ProjectId;
 
 /// Maximum bytes in a bounded managed-repository identity or revision.
 pub const MAX_MANAGED_REPOSITORY_VALUE_BYTES: usize = 256;
 /// Maximum UTF-8 bytes in a persisted absolute server-host path.
 pub const MAX_MANAGED_REPOSITORY_PATH_BYTES: usize = 4_096;
+/// Maximum persisted objects/components in one admission descriptor.
+pub const MAX_REPOSITORY_ADMISSION_OBSERVATIONS: usize = 256;
+/// Maximum semantic registration roles attached to one observed object.
+pub const MAX_REPOSITORY_OBSERVATION_ROLES: usize = 8;
 /// Maximum UTF-8 bytes in one canonical commit message.
 pub const MAX_REPOSITORY_COMMIT_MESSAGE_BYTES: usize = 16_384;
 
@@ -124,6 +131,10 @@ impl AdmissionDescriptorDigest {
 	pub fn as_str(&self) -> &str {
 		&self.0
 	}
+
+	fn digest(bytes: &[u8]) -> Self {
+		Self(hex_sha256(bytes))
+	}
 }
 
 /// Normalized absolute path persisted for server-host reacquisition.
@@ -151,6 +162,407 @@ impl PersistedAbsolutePath {
 impl Debug for PersistedAbsolutePath {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str("PersistedAbsolutePath(<server-host-only>)")
+	}
+}
+
+/// Normalized absolute path of one persisted reacquisition observation, including `/`.
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct RepositoryObservationPath(PathBuf);
+impl RepositoryObservationPath {
+	/// Validate a normalized absolute UTF-8 observation path without `.` or `..` components.
+	pub fn new(value: PathBuf) -> Result<Self, ManagedRepositoryError> {
+		let Some(encoded) = value.to_str() else {
+			return Err(ManagedRepositoryError::InvalidAbsolutePath);
+		};
+		if encoded.len() > MAX_MANAGED_REPOSITORY_PATH_BYTES
+			|| (value != Path::new("/") && !is_normalized_absolute(&value))
+		{
+			return Err(ManagedRepositoryError::InvalidAbsolutePath);
+		}
+		Ok(Self(value))
+	}
+
+	/// Borrow the normalized observation path.
+	pub fn as_path(&self) -> &Path {
+		&self.0
+	}
+}
+impl Debug for RepositoryObservationPath {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str("RepositoryObservationPath(<server-host-only>)")
+	}
+}
+
+/// Version of the complete persisted repository-admission descriptor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepositoryAdmissionDescriptorVersion {
+	/// Initial restart-reacquisition contract.
+	V1,
+}
+
+/// Closed admitted Git registration shape.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepositoryGitRegistrationRole {
+	/// The admitted root owns its `.git` directory directly.
+	PrimaryWorktree,
+	/// The admitted root is a linked worktree with reciprocal Git metadata.
+	LinkedWorktree,
+}
+
+/// Closed semantic role of one persisted path/object observation.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum RepositoryPathRegistrationRole {
+	/// Ancestor component traversed to reacquire the repository root.
+	RepositoryRootComponent,
+	/// Exact admitted repository root.
+	RepositoryRoot,
+	/// Exact `.git` directory or link file at the admitted root.
+	WorktreeGitEntry,
+	/// Ancestor component traversed to reacquire the Git directory.
+	GitDirectoryComponent,
+	/// Exact per-worktree Git directory.
+	GitDirectory,
+	/// Ancestor component traversed to reacquire the Git common directory.
+	GitCommonDirectoryComponent,
+	/// Exact Git common directory.
+	GitCommonDirectory,
+	/// Ancestor component traversed to reacquire the Git object directory.
+	GitObjectsDirectoryComponent,
+	/// Exact Git object directory.
+	GitObjectsDirectory,
+	/// Ancestor component traversed to reacquire the optional refs directory.
+	GitRefsDirectoryComponent,
+	/// Exact optional Git refs directory.
+	GitRefsDirectory,
+	/// Exact `commondir` metadata file resolving the common directory.
+	GitCommonDirectoryFile,
+	/// Exact linked-worktree `gitdir` reciprocal metadata file.
+	GitDirectoryBacklinkFile,
+}
+
+/// Closed admitted filesystem object type. Symlinks and special objects are unrepresentable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RepositoryObservedObjectType {
+	/// Directory opened one component at a time without following symlinks.
+	Directory,
+	/// Regular file opened through its verified parent without following the final component.
+	RegularFile,
+}
+
+/// One exact persisted path/object observation used for componentwise reacquisition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositoryPathObservation {
+	path: RepositoryObservationPath,
+	roles: Vec<RepositoryPathRegistrationRole>,
+	device: u64,
+	inode: u64,
+	object_type: RepositoryObservedObjectType,
+	owner_uid: u32,
+	permissions: u16,
+}
+impl RepositoryPathObservation {
+	/// Construct one exact observation. Roles must be nonempty, unique, and enum-ordered.
+	pub fn new(
+		path: RepositoryObservationPath,
+		roles: Vec<RepositoryPathRegistrationRole>,
+		device: u64,
+		inode: u64,
+		object_type: RepositoryObservedObjectType,
+		owner_uid: u32,
+		permissions: u32,
+	) -> Result<Self, ManagedRepositoryError> {
+		if roles.is_empty()
+			|| roles.len() > MAX_REPOSITORY_OBSERVATION_ROLES
+			|| !strictly_ordered(&roles)
+			|| inode == 0
+			|| permissions & !0o7777 != 0
+			|| permissions & 0o022 != 0
+		{
+			return Err(ManagedRepositoryError::InvalidPathObservation);
+		}
+		Ok(Self {
+			path,
+			roles,
+			device,
+			inode,
+			object_type,
+			owner_uid,
+			permissions: permissions as u16,
+		})
+	}
+
+	/// Borrow the exact normalized path.
+	pub fn path(&self) -> &RepositoryObservationPath {
+		&self.path
+	}
+	/// Borrow the nonempty canonical role set.
+	pub fn roles(&self) -> &[RepositoryPathRegistrationRole] {
+		&self.roles
+	}
+	/// Return the admitted device identity.
+	pub const fn device(&self) -> u64 {
+		self.device
+	}
+	/// Return the admitted inode identity.
+	pub const fn inode(&self) -> u64 {
+		self.inode
+	}
+	/// Return the admitted object type.
+	pub const fn object_type(&self) -> RepositoryObservedObjectType {
+		self.object_type
+	}
+	/// Return the admitted owner UID.
+	pub const fn owner_uid(&self) -> u32 {
+		self.owner_uid
+	}
+	/// Return the exact admitted Unix permission bits.
+	pub const fn permissions(&self) -> u16 {
+		self.permissions
+	}
+}
+
+/// Exact Git layout resolved at admission without embedding Git execution behavior.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositoryAdmittedGitLayout {
+	registration_role: RepositoryGitRegistrationRole,
+	repository_root: PersistedAbsolutePath,
+	worktree_git_entry: PersistedAbsolutePath,
+	git_directory: PersistedAbsolutePath,
+	common_directory: PersistedAbsolutePath,
+	objects_directory: PersistedAbsolutePath,
+	refs_directory: Option<PersistedAbsolutePath>,
+	common_directory_file: Option<PersistedAbsolutePath>,
+	git_directory_backlink_file: Option<PersistedAbsolutePath>,
+}
+impl RepositoryAdmittedGitLayout {
+	/// Collect the resolved Git layout facts. The descriptor constructor validates relationships.
+	#[allow(clippy::too_many_arguments)]
+	pub fn new(
+		registration_role: RepositoryGitRegistrationRole,
+		repository_root: PersistedAbsolutePath,
+		worktree_git_entry: PersistedAbsolutePath,
+		git_directory: PersistedAbsolutePath,
+		common_directory: PersistedAbsolutePath,
+		objects_directory: PersistedAbsolutePath,
+		refs_directory: Option<PersistedAbsolutePath>,
+		common_directory_file: Option<PersistedAbsolutePath>,
+		git_directory_backlink_file: Option<PersistedAbsolutePath>,
+	) -> Self {
+		Self {
+			registration_role,
+			repository_root,
+			worktree_git_entry,
+			git_directory,
+			common_directory,
+			objects_directory,
+			refs_directory,
+			common_directory_file,
+			git_directory_backlink_file,
+		}
+	}
+
+	/// Return the admitted Git registration role.
+	pub const fn registration_role(&self) -> RepositoryGitRegistrationRole {
+		self.registration_role
+	}
+	/// Borrow the exact admitted repository root.
+	pub fn repository_root(&self) -> &PersistedAbsolutePath {
+		&self.repository_root
+	}
+	/// Borrow the exact `.git` entry at the admitted root.
+	pub fn worktree_git_entry(&self) -> &PersistedAbsolutePath {
+		&self.worktree_git_entry
+	}
+	/// Borrow the exact per-worktree Git directory.
+	pub fn git_directory(&self) -> &PersistedAbsolutePath {
+		&self.git_directory
+	}
+	/// Borrow the exact Git common directory.
+	pub fn common_directory(&self) -> &PersistedAbsolutePath {
+		&self.common_directory
+	}
+	/// Borrow the exact Git objects directory.
+	pub fn objects_directory(&self) -> &PersistedAbsolutePath {
+		&self.objects_directory
+	}
+	/// Borrow the exact optional Git refs directory.
+	pub fn refs_directory(&self) -> Option<&PersistedAbsolutePath> {
+		self.refs_directory.as_ref()
+	}
+	/// Borrow the `commondir` file required when Git and common directories differ.
+	pub fn common_directory_file(&self) -> Option<&PersistedAbsolutePath> {
+		self.common_directory_file.as_ref()
+	}
+	/// Borrow the reciprocal `gitdir` file required for a linked worktree.
+	pub fn git_directory_backlink_file(&self) -> Option<&PersistedAbsolutePath> {
+		self.git_directory_backlink_file.as_ref()
+	}
+}
+
+/// Complete versioned repository-admission descriptor and its derived inventory digest.
+///
+/// Exact descriptor equality is authoritative input equality. The digest is derived evidence only.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositoryAdmissionDescriptor {
+	version: RepositoryAdmissionDescriptorVersion,
+	project_id: ProjectId,
+	repository_id: ManagedRepositoryId,
+	admitted_identity: AdmittedRepositoryIdentity,
+	admitted_base: RepositoryContentRevision,
+	repository_path: PersistedAbsolutePath,
+	git_layout: RepositoryAdmittedGitLayout,
+	observations: Vec<RepositoryPathObservation>,
+	digest: AdmissionDescriptorDigest,
+}
+impl RepositoryAdmissionDescriptor {
+	/// Construct and validate one complete V1 descriptor, deriving its SHA-256 digest.
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_v1(
+		project_id: ProjectId,
+		repository_id: ManagedRepositoryId,
+		admitted_identity: AdmittedRepositoryIdentity,
+		admitted_base: RepositoryContentRevision,
+		repository_path: PersistedAbsolutePath,
+		git_layout: RepositoryAdmittedGitLayout,
+		observations: Vec<RepositoryPathObservation>,
+	) -> Result<Self, ManagedRepositoryError> {
+		let mut descriptor = Self {
+			version: RepositoryAdmissionDescriptorVersion::V1,
+			project_id,
+			repository_id,
+			admitted_identity,
+			admitted_base,
+			repository_path,
+			git_layout,
+			observations,
+			digest: AdmissionDescriptorDigest(String::new()),
+		};
+		descriptor.validate_shape()?;
+		descriptor.digest = AdmissionDescriptorDigest::digest(&descriptor.canonical_bytes()?);
+		Ok(descriptor)
+	}
+
+	/// Return the closed descriptor version.
+	pub const fn version(&self) -> RepositoryAdmissionDescriptorVersion {
+		self.version
+	}
+	/// Borrow the exact owning Project identity.
+	pub fn project_id(&self) -> &ProjectId {
+		&self.project_id
+	}
+	/// Borrow the exact managed repository identity.
+	pub fn repository_id(&self) -> &ManagedRepositoryId {
+		&self.repository_id
+	}
+	/// Borrow the opaque admitted external identity.
+	pub fn admitted_identity(&self) -> &AdmittedRepositoryIdentity {
+		&self.admitted_identity
+	}
+	/// Borrow the exact admitted base.
+	pub fn admitted_base(&self) -> &RepositoryContentRevision {
+		&self.admitted_base
+	}
+	/// Borrow the exact normalized admitted repository path.
+	pub fn repository_path(&self) -> &PersistedAbsolutePath {
+		&self.repository_path
+	}
+	/// Borrow the complete admitted Git layout.
+	pub fn git_layout(&self) -> &RepositoryAdmittedGitLayout {
+		&self.git_layout
+	}
+	/// Borrow the bounded canonical observation sequence.
+	pub fn observations(&self) -> &[RepositoryPathObservation] {
+		&self.observations
+	}
+	/// Borrow the derived canonical SHA-256 digest.
+	pub fn digest(&self) -> &AdmissionDescriptorDigest {
+		&self.digest
+	}
+
+	/// Return the canonical UTF-8 TOML representation hashed by the descriptor digest.
+	pub fn canonical_bytes(&self) -> Result<Vec<u8>, ManagedRepositoryError> {
+		let canonical = CanonicalAdmissionDescriptor::from(self);
+		toml::to_string(&canonical)
+			.map(String::into_bytes)
+			.map_err(|_| ManagedRepositoryError::CanonicalDescriptorSerialization)
+	}
+
+	/// Verify persisted digest evidence against the complete canonical descriptor.
+	pub fn verify_digest(
+		&self,
+		expected: &AdmissionDescriptorDigest,
+	) -> Result<bool, ManagedRepositoryError> {
+		let computed = AdmissionDescriptorDigest::digest(&self.canonical_bytes()?);
+		Ok(self.digest == computed && *expected == computed)
+	}
+
+	fn validate_shape(&self) -> Result<(), ManagedRepositoryError> {
+		if self.repository_path != self.git_layout.repository_root
+			|| self.observations.is_empty()
+			|| self.observations.len() > MAX_REPOSITORY_ADMISSION_OBSERVATIONS
+			|| !self
+				.observations
+				.windows(2)
+				.all(|pair| pair[0].path < pair[1].path)
+			|| self.observations.iter().enumerate().any(|(index, observation)| {
+				self.observations[index + 1..].iter().any(|candidate| {
+					candidate.device == observation.device && candidate.inode == observation.inode
+				})
+			})
+		{
+			return Err(ManagedRepositoryError::InvalidAdmissionDescriptor);
+		}
+		validate_git_layout(&self.git_layout, &self.observations)
+	}
+}
+
+/// Forgeable immutable repository-admission facts.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepositoryAdmissionFacts {
+	descriptor: RepositoryAdmissionDescriptor,
+}
+impl RepositoryAdmissionFacts {
+	/// Wrap one validated complete descriptor as forgeable admission facts.
+	pub fn new(descriptor: RepositoryAdmissionDescriptor) -> Self {
+		Self { descriptor }
+	}
+	/// Borrow the complete descriptor.
+	pub fn descriptor(&self) -> &RepositoryAdmissionDescriptor {
+		&self.descriptor
+	}
+	/// Borrow its derived digest; no independent digest field can disagree.
+	pub fn descriptor_digest(&self) -> &AdmissionDescriptorDigest {
+		self.descriptor.digest()
+	}
+}
+
+/// Read-only positive external evidence used by Allocate.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PositiveAllocationEvidence {
+	evidence_id: RepositoryEvidenceId,
+	admission_descriptor: RepositoryAdmissionDescriptor,
+	vacant_worktree_path: PersistedAbsolutePath,
+}
+impl PositiveAllocationEvidence {
+	/// Construct forgeable positive evidence from a complete observed descriptor.
+	pub fn new(
+		evidence_id: RepositoryEvidenceId,
+		admission_descriptor: RepositoryAdmissionDescriptor,
+		vacant_worktree_path: PersistedAbsolutePath,
+	) -> Self {
+		Self { evidence_id, admission_descriptor, vacant_worktree_path }
+	}
+	/// Borrow the immutable evidence identity.
+	pub fn evidence_id(&self) -> &RepositoryEvidenceId {
+		&self.evidence_id
+	}
+	/// Borrow the complete descriptor observed during read-only reacquisition.
+	pub fn admission_descriptor(&self) -> &RepositoryAdmissionDescriptor {
+		&self.admission_descriptor
+	}
+	/// Borrow the exact path observed vacant.
+	pub fn vacant_worktree_path(&self) -> &PersistedAbsolutePath {
+		&self.vacant_worktree_path
 	}
 }
 
@@ -200,41 +612,6 @@ impl ExecutorContractVersion {
 	}
 }
 
-/// Forgeable immutable repository-admission facts.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RepositoryAdmissionFacts {
-	/// Owning Project.
-	pub project_id: ProjectId,
-	/// Managed repository.
-	pub repository_id: ManagedRepositoryId,
-	/// Exact admitted external identity.
-	pub admitted_identity: AdmittedRepositoryIdentity,
-	/// Exact admitted base revision.
-	pub admitted_base: RepositoryContentRevision,
-	/// Digest of the complete admission descriptor.
-	pub admission_descriptor_digest: AdmissionDescriptorDigest,
-	/// Verified persisted repository path.
-	pub repository_path: PersistedAbsolutePath,
-}
-
-/// Read-only positive external evidence used by Allocate.
-///
-/// The type deliberately has no negative, unknown, or mutation-bearing variant. Constructing it
-/// does not attest that its claims are true; the allocator must acquire it read-only.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PositiveAllocationEvidence {
-	/// Immutable evidence identity.
-	pub evidence_id: RepositoryEvidenceId,
-	/// Exact admitted external identity observed read-only.
-	pub admitted_identity: AdmittedRepositoryIdentity,
-	/// Exact admitted base observed read-only.
-	pub admitted_base: RepositoryContentRevision,
-	/// Exact repository path reacquired read-only.
-	pub repository_path: PersistedAbsolutePath,
-	/// Exact vacant final worktree path observed read-only.
-	pub vacant_worktree_path: PersistedAbsolutePath,
-}
-
 /// Forgeable positive availability facts that PostgreSQL must independently enforce.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AllocationAvailabilityFacts {
@@ -281,7 +658,7 @@ pub fn decide_allocate(
 	command: &AllocateRepositoryCommand,
 	evidence: &PositiveAllocationEvidence,
 ) -> Result<AllocateRepositoryDecision, ManagedRepositoryError> {
-	if admission.repository_path == command.worktree_path {
+	if admission.descriptor.repository_path == command.worktree_path {
 		return Err(ManagedRepositoryError::InvalidAllocationTarget);
 	}
 	if availability.allocation_id != command.allocation_id
@@ -290,9 +667,7 @@ pub fn decide_allocate(
 	{
 		return Err(ManagedRepositoryError::AvailabilityMismatch);
 	}
-	if evidence.admitted_identity != admission.admitted_identity
-		|| evidence.admitted_base != admission.admitted_base
-		|| evidence.repository_path != admission.repository_path
+	if evidence.admission_descriptor != admission.descriptor
 		|| evidence.vacant_worktree_path != command.worktree_path
 	{
 		return Err(ManagedRepositoryError::AllocationEvidenceMismatch);
@@ -302,7 +677,7 @@ pub fn decide_allocate(
 		allocation_id: command.allocation_id.clone(),
 		worktree_id: command.worktree_id.clone(),
 		worktree_path: command.worktree_path.clone(),
-		head: admission.admitted_base.clone(),
+		head: admission.descriptor.admitted_base.clone(),
 		evidence: evidence.clone(),
 	})
 }
@@ -687,9 +1062,9 @@ pub fn decide_begin_registration(
 	let payload = CanonicalOperationPayload::Register {
 		expected_head: command.expected_head.clone(),
 		target: RegistrationTarget {
-			repository_id: facts.admission.repository_id.clone(),
+			repository_id: facts.admission.descriptor.repository_id.clone(),
 			worktree_id: facts.worktree_id.clone(),
-			repository_path: facts.admission.repository_path.clone(),
+			repository_path: facts.admission.descriptor.repository_path.clone(),
 			worktree_path: facts.worktree_path.clone(),
 		},
 	};
@@ -1184,6 +1559,11 @@ pub enum ManagedRepositoryError {
 	InvalidCommitActorEmail,
 	InvalidDescriptorDigest,
 	InvalidAbsolutePath,
+	InvalidPathObservation,
+	MissingPathObservation,
+	InvalidGitLayout,
+	InvalidAdmissionDescriptor,
+	CanonicalDescriptorSerialization,
 	InvalidCheckpoint,
 	InvalidExecutorContractVersion,
 	InvalidCommitMessage,
@@ -1217,6 +1597,13 @@ impl Display for ManagedRepositoryError {
 			Self::InvalidCommitActorEmail => "invalid repository commit actor email",
 			Self::InvalidDescriptorDigest => "invalid admission descriptor digest",
 			Self::InvalidAbsolutePath => "invalid persisted absolute path",
+			Self::InvalidPathObservation => "invalid repository path observation",
+			Self::MissingPathObservation => "repository admission path observation is missing",
+			Self::InvalidGitLayout => "invalid admitted Git layout",
+			Self::InvalidAdmissionDescriptor => "invalid repository admission descriptor",
+			Self::CanonicalDescriptorSerialization => {
+				"repository admission descriptor canonical serialization failed"
+			},
 			Self::InvalidCheckpoint => "invalid aggregate checkpoint",
 			Self::InvalidExecutorContractVersion => "invalid executor contract version",
 			Self::InvalidCommitMessage => "invalid repository commit message",
@@ -1242,17 +1629,18 @@ fn descriptor(
 	payload: CanonicalOperationPayload,
 	executor_contract: ExecutorContractVersion,
 ) -> CanonicalOperationDescriptor {
+	let admission = &facts.admission.descriptor;
 	CanonicalOperationDescriptor {
 		schema: OperationDescriptorVersion::V1,
 		operation_id,
-		project_id: facts.admission.project_id.clone(),
-		repository_id: facts.admission.repository_id.clone(),
-		admitted_identity: facts.admission.admitted_identity.clone(),
-		admitted_base: facts.admission.admitted_base.clone(),
-		admission_descriptor_digest: facts.admission.admission_descriptor_digest.clone(),
+		project_id: admission.project_id.clone(),
+		repository_id: admission.repository_id.clone(),
+		admitted_identity: admission.admitted_identity.clone(),
+		admitted_base: admission.admitted_base.clone(),
+		admission_descriptor_digest: admission.digest.clone(),
 		allocation_id: facts.allocation_id.clone(),
 		worktree_id: facts.worktree_id.clone(),
-		repository_absolute_path: facts.admission.repository_path.clone(),
+		repository_absolute_path: admission.repository_path.clone(),
 		worktree_absolute_path: facts.worktree_path.clone(),
 		expected_checkpoint: facts.checkpoint.clone(),
 		kind: payload.kind(),
@@ -1276,7 +1664,7 @@ fn validate_begin(
 	if facts.checkpoint != *expected_checkpoint {
 		return Err(ManagedRepositoryError::StaleCheckpoint);
 	}
-	if facts.admission.repository_path == facts.worktree_path {
+	if facts.admission.descriptor.repository_path == facts.worktree_path {
 		return Err(ManagedRepositoryError::OperationContextMismatch);
 	}
 	if facts.active_operation.is_some() {
@@ -1333,17 +1721,17 @@ fn validate_reconciliation(
 	expected_kind: RepositoryOperationKind,
 ) -> Result<(), ManagedRepositoryError> {
 	validate_readback(operation, expected_kind)?;
+	let admission = &facts.admission.descriptor;
 	if facts.phase != expected_phase {
 		return Err(ManagedRepositoryError::WrongPhase);
 	}
 	if facts.active_operation.as_ref() != Some(&operation.descriptor.operation_id)
-		|| facts.admission.project_id != operation.descriptor.project_id
-		|| facts.admission.repository_id != operation.descriptor.repository_id
-		|| facts.admission.admitted_identity != operation.descriptor.admitted_identity
-		|| facts.admission.admitted_base != operation.descriptor.admitted_base
-		|| facts.admission.admission_descriptor_digest
-			!= operation.descriptor.admission_descriptor_digest
-		|| facts.admission.repository_path != operation.descriptor.repository_absolute_path
+		|| admission.project_id != operation.descriptor.project_id
+		|| admission.repository_id != operation.descriptor.repository_id
+		|| admission.admitted_identity != operation.descriptor.admitted_identity
+		|| admission.admitted_base != operation.descriptor.admitted_base
+		|| admission.digest != operation.descriptor.admission_descriptor_digest
+		|| admission.repository_path != operation.descriptor.repository_absolute_path
 		|| facts.allocation_id != operation.descriptor.allocation_id
 		|| facts.worktree_id != operation.descriptor.worktree_id
 		|| facts.worktree_path != operation.descriptor.worktree_absolute_path
@@ -1422,20 +1810,21 @@ fn positive_scope_mismatch(
 	operation: &OperationView,
 	observed: &ExactRepositoryReadbackScope,
 ) -> Option<RepositoryAmbiguity> {
+	let admission = &facts.admission.descriptor;
 	if observed.operation_id != operation.descriptor.operation_id
-		|| observed.admitted_identity != facts.admission.admitted_identity
-		|| observed.repository_id != facts.admission.repository_id
+		|| observed.admitted_identity != admission.admitted_identity
+		|| observed.repository_id != admission.repository_id
 		|| observed.allocation_id != facts.allocation_id
 		|| observed.worktree_id != facts.worktree_id
 	{
 		return Some(RepositoryAmbiguity::Foreign);
 	}
-	if observed.repository_path != facts.admission.repository_path
+	if observed.repository_path != admission.repository_path
 		|| observed.worktree_path != facts.worktree_path
 	{
 		return Some(RepositoryAmbiguity::Replaced);
 	}
-	if observed.admitted_base != facts.admission.admitted_base {
+	if observed.admitted_base != admission.admitted_base {
 		return Some(RepositoryAmbiguity::Stale);
 	}
 	None
@@ -1471,6 +1860,401 @@ fn terminal_update(
 		head,
 		clear_active_operation: operation.descriptor.operation_id.clone(),
 	}
+}
+
+#[derive(Serialize)]
+struct CanonicalAdmissionDescriptor<'a> {
+	schema: &'static str,
+	project_id: &'a str,
+	repository_id: &'a str,
+	admitted_identity: &'a str,
+	admitted_base: &'a str,
+	repository_path: &'a str,
+	git_layout: CanonicalGitLayout<'a>,
+	observations: Vec<CanonicalPathObservation<'a>>,
+}
+
+#[derive(Serialize)]
+struct CanonicalGitLayout<'a> {
+	registration_role: &'static str,
+	repository_root: &'a str,
+	worktree_git_entry: &'a str,
+	git_directory: &'a str,
+	common_directory: &'a str,
+	objects_directory: &'a str,
+	refs_directory_present: bool,
+	refs_directory: &'a str,
+	common_directory_file_present: bool,
+	common_directory_file: &'a str,
+	git_directory_backlink_file_present: bool,
+	git_directory_backlink_file: &'a str,
+}
+
+#[derive(Serialize)]
+struct CanonicalPathObservation<'a> {
+	path: &'a str,
+	roles: Vec<&'static str>,
+	device: String,
+	inode: String,
+	object_type: &'static str,
+	owner_uid: String,
+	permissions_octal: String,
+}
+
+impl<'a> From<&'a RepositoryAdmissionDescriptor> for CanonicalAdmissionDescriptor<'a> {
+	fn from(descriptor: &'a RepositoryAdmissionDescriptor) -> Self {
+		let layout = &descriptor.git_layout;
+		Self {
+			schema: "decodex/repository-admission-descriptor/1",
+			project_id: descriptor.project_id.as_str(),
+			repository_id: descriptor.repository_id.as_str(),
+			admitted_identity: descriptor.admitted_identity.as_str(),
+			admitted_base: descriptor.admitted_base.as_str(),
+			repository_path: path_str(&descriptor.repository_path),
+			git_layout: CanonicalGitLayout {
+				registration_role: git_registration_role(layout.registration_role),
+				repository_root: path_str(&layout.repository_root),
+				worktree_git_entry: path_str(&layout.worktree_git_entry),
+				git_directory: path_str(&layout.git_directory),
+				common_directory: path_str(&layout.common_directory),
+				objects_directory: path_str(&layout.objects_directory),
+				refs_directory_present: layout.refs_directory.is_some(),
+				refs_directory: optional_path_str(layout.refs_directory.as_ref()),
+				common_directory_file_present: layout.common_directory_file.is_some(),
+				common_directory_file: optional_path_str(layout.common_directory_file.as_ref()),
+				git_directory_backlink_file_present: layout
+					.git_directory_backlink_file
+					.is_some(),
+				git_directory_backlink_file: optional_path_str(
+					layout.git_directory_backlink_file.as_ref(),
+				),
+			},
+			observations: descriptor
+				.observations
+				.iter()
+				.map(|observation| CanonicalPathObservation {
+					path: observation_path_str(&observation.path),
+					roles: observation
+						.roles
+						.iter()
+						.copied()
+						.map(path_registration_role)
+						.collect(),
+					device: observation.device.to_string(),
+					inode: observation.inode.to_string(),
+					object_type: observed_object_type(observation.object_type),
+					owner_uid: observation.owner_uid.to_string(),
+					permissions_octal: format!("{:04o}", observation.permissions),
+				})
+				.collect(),
+		}
+	}
+}
+
+fn validate_git_layout(
+	layout: &RepositoryAdmittedGitLayout,
+	observations: &[RepositoryPathObservation],
+) -> Result<(), ManagedRepositoryError> {
+	let dot_git = layout.repository_root.as_path().join(".git");
+	if layout.worktree_git_entry.as_path() != dot_git
+		|| layout.objects_directory.as_path() != layout.common_directory.as_path().join("objects")
+		|| layout.refs_directory.as_ref().is_some_and(|path| {
+			path.as_path() != layout.common_directory.as_path().join("refs")
+		})
+	{
+		return Err(ManagedRepositoryError::InvalidGitLayout);
+	}
+
+	let expected_common_file = (layout.common_directory != layout.git_directory)
+		.then(|| layout.git_directory.as_path().join("commondir"));
+	if layout.common_directory_file.as_ref().map(PersistedAbsolutePath::as_path)
+		!= expected_common_file.as_deref()
+	{
+		return Err(ManagedRepositoryError::InvalidGitLayout);
+	}
+	let expected_backlink = match layout.registration_role {
+		RepositoryGitRegistrationRole::PrimaryWorktree => {
+			if layout.git_directory != layout.worktree_git_entry {
+				return Err(ManagedRepositoryError::InvalidGitLayout);
+			}
+			None
+		},
+		RepositoryGitRegistrationRole::LinkedWorktree => {
+			if layout.git_directory == layout.worktree_git_entry {
+				return Err(ManagedRepositoryError::InvalidGitLayout);
+			}
+			Some(layout.git_directory.as_path().join("gitdir"))
+		},
+	};
+	if layout
+		.git_directory_backlink_file
+		.as_ref()
+		.map(PersistedAbsolutePath::as_path)
+		!= expected_backlink.as_deref()
+	{
+		return Err(ManagedRepositoryError::InvalidGitLayout);
+	}
+
+	require_directory_chain(
+		observations,
+		&layout.repository_root,
+		RepositoryPathRegistrationRole::RepositoryRootComponent,
+		RepositoryPathRegistrationRole::RepositoryRoot,
+	)?;
+	require_directory_chain(
+		observations,
+		&layout.git_directory,
+		RepositoryPathRegistrationRole::GitDirectoryComponent,
+		RepositoryPathRegistrationRole::GitDirectory,
+	)?;
+	require_directory_chain(
+		observations,
+		&layout.common_directory,
+		RepositoryPathRegistrationRole::GitCommonDirectoryComponent,
+		RepositoryPathRegistrationRole::GitCommonDirectory,
+	)?;
+	require_directory_chain(
+		observations,
+		&layout.objects_directory,
+		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent,
+		RepositoryPathRegistrationRole::GitObjectsDirectory,
+	)?;
+	if let Some(refs) = &layout.refs_directory {
+		require_directory_chain(
+			observations,
+			refs,
+			RepositoryPathRegistrationRole::GitRefsDirectoryComponent,
+			RepositoryPathRegistrationRole::GitRefsDirectory,
+		)?;
+	}
+	require_observation(
+		observations,
+		layout.worktree_git_entry.as_path(),
+		RepositoryPathRegistrationRole::WorktreeGitEntry,
+		match layout.registration_role {
+			RepositoryGitRegistrationRole::PrimaryWorktree => {
+				RepositoryObservedObjectType::Directory
+			},
+			RepositoryGitRegistrationRole::LinkedWorktree => {
+				RepositoryObservedObjectType::RegularFile
+			},
+		},
+	)?;
+	if let Some(path) = &layout.common_directory_file {
+		require_observation(
+			observations,
+			path.as_path(),
+			RepositoryPathRegistrationRole::GitCommonDirectoryFile,
+			RepositoryObservedObjectType::RegularFile,
+		)?;
+	}
+	if let Some(path) = &layout.git_directory_backlink_file {
+		require_observation(
+			observations,
+			path.as_path(),
+			RepositoryPathRegistrationRole::GitDirectoryBacklinkFile,
+			RepositoryObservedObjectType::RegularFile,
+		)?;
+	}
+
+	if observations
+		.iter()
+		.flat_map(|observation| {
+			observation.roles.iter().map(move |role| (observation, *role))
+		})
+		.any(|(observation, role)| !role_matches_layout(observation, role, layout))
+	{
+		return Err(ManagedRepositoryError::InvalidPathObservation);
+	}
+	Ok(())
+}
+
+fn require_directory_chain(
+	observations: &[RepositoryPathObservation],
+	endpoint: &PersistedAbsolutePath,
+	component_role: RepositoryPathRegistrationRole,
+	endpoint_role: RepositoryPathRegistrationRole,
+) -> Result<(), ManagedRepositoryError> {
+	let mut path = PathBuf::from("/");
+	let mut components = endpoint.as_path().components().peekable();
+	if !matches!(components.next(), Some(Component::RootDir)) {
+		return Err(ManagedRepositoryError::InvalidGitLayout);
+	}
+	require_observation(
+		observations,
+		RepositoryObservationPath::new(path.clone())?.as_path(),
+		component_role,
+		RepositoryObservedObjectType::Directory,
+	)?;
+	while let Some(Component::Normal(component)) = components.next() {
+		path.push(component);
+		let persisted = RepositoryObservationPath::new(path.clone())?;
+		let role = if components.peek().is_none() { endpoint_role } else { component_role };
+		require_observation(
+			observations,
+			persisted.as_path(),
+			role,
+			RepositoryObservedObjectType::Directory,
+		)?;
+	}
+	Ok(())
+}
+
+fn require_observation(
+	observations: &[RepositoryPathObservation],
+	path: &Path,
+	role: RepositoryPathRegistrationRole,
+	object_type: RepositoryObservedObjectType,
+) -> Result<(), ManagedRepositoryError> {
+	if observations.iter().any(|observation| {
+		observation.path.as_path() == path
+			&& observation.object_type == object_type
+			&& observation.roles.binary_search(&role).is_ok()
+	}) {
+		Ok(())
+	} else {
+		Err(ManagedRepositoryError::MissingPathObservation)
+	}
+}
+
+fn role_matches_layout(
+	observation: &RepositoryPathObservation,
+	role: RepositoryPathRegistrationRole,
+	layout: &RepositoryAdmittedGitLayout,
+) -> bool {
+	let directory_endpoint = |endpoint: &PersistedAbsolutePath, exact: bool| {
+		observation.object_type == RepositoryObservedObjectType::Directory
+			&& if exact {
+				observation.path.as_path() == endpoint.as_path()
+			} else {
+				observation.path.as_path() != endpoint.as_path()
+					&& endpoint.as_path().starts_with(observation.path.as_path())
+			}
+	};
+	match role {
+		RepositoryPathRegistrationRole::RepositoryRootComponent => {
+			directory_endpoint(&layout.repository_root, false)
+		},
+		RepositoryPathRegistrationRole::RepositoryRoot => {
+			directory_endpoint(&layout.repository_root, true)
+		},
+		RepositoryPathRegistrationRole::WorktreeGitEntry => {
+			observation.path.as_path() == layout.worktree_git_entry.as_path()
+				&& observation.object_type
+					== match layout.registration_role {
+						RepositoryGitRegistrationRole::PrimaryWorktree => {
+							RepositoryObservedObjectType::Directory
+						},
+						RepositoryGitRegistrationRole::LinkedWorktree => {
+							RepositoryObservedObjectType::RegularFile
+						},
+					}
+		},
+		RepositoryPathRegistrationRole::GitDirectoryComponent => {
+			directory_endpoint(&layout.git_directory, false)
+		},
+		RepositoryPathRegistrationRole::GitDirectory => {
+			directory_endpoint(&layout.git_directory, true)
+		},
+		RepositoryPathRegistrationRole::GitCommonDirectoryComponent => {
+			directory_endpoint(&layout.common_directory, false)
+		},
+		RepositoryPathRegistrationRole::GitCommonDirectory => {
+			directory_endpoint(&layout.common_directory, true)
+		},
+		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent => {
+			directory_endpoint(&layout.objects_directory, false)
+		},
+		RepositoryPathRegistrationRole::GitObjectsDirectory => {
+			directory_endpoint(&layout.objects_directory, true)
+		},
+		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => layout
+			.refs_directory
+			.as_ref()
+			.is_some_and(|path| directory_endpoint(path, false)),
+		RepositoryPathRegistrationRole::GitRefsDirectory => layout
+			.refs_directory
+			.as_ref()
+			.is_some_and(|path| directory_endpoint(path, true)),
+		RepositoryPathRegistrationRole::GitCommonDirectoryFile => {
+			observation.object_type == RepositoryObservedObjectType::RegularFile
+				&& layout.common_directory_file.as_ref().is_some_and(|path| {
+					path.as_path() == observation.path.as_path()
+				})
+		},
+		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => {
+			observation.object_type == RepositoryObservedObjectType::RegularFile
+				&& layout.git_directory_backlink_file.as_ref().is_some_and(|path| {
+					path.as_path() == observation.path.as_path()
+				})
+		},
+	}
+}
+
+fn strictly_ordered<T: Ord>(values: &[T]) -> bool {
+	values.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+fn path_str(path: &PersistedAbsolutePath) -> &str {
+	path.as_path().to_str().expect("persisted paths are validated UTF-8")
+}
+
+fn observation_path_str(path: &RepositoryObservationPath) -> &str {
+	path.as_path().to_str().expect("observation paths are validated UTF-8")
+}
+
+fn optional_path_str(path: Option<&PersistedAbsolutePath>) -> &str {
+	path.map_or("", path_str)
+}
+
+fn git_registration_role(role: RepositoryGitRegistrationRole) -> &'static str {
+	match role {
+		RepositoryGitRegistrationRole::PrimaryWorktree => "primary_worktree",
+		RepositoryGitRegistrationRole::LinkedWorktree => "linked_worktree",
+	}
+}
+
+fn observed_object_type(object_type: RepositoryObservedObjectType) -> &'static str {
+	match object_type {
+		RepositoryObservedObjectType::Directory => "directory",
+		RepositoryObservedObjectType::RegularFile => "regular_file",
+	}
+}
+
+fn path_registration_role(role: RepositoryPathRegistrationRole) -> &'static str {
+	match role {
+		RepositoryPathRegistrationRole::RepositoryRootComponent => "repository_root_component",
+		RepositoryPathRegistrationRole::RepositoryRoot => "repository_root",
+		RepositoryPathRegistrationRole::WorktreeGitEntry => "worktree_git_entry",
+		RepositoryPathRegistrationRole::GitDirectoryComponent => "git_directory_component",
+		RepositoryPathRegistrationRole::GitDirectory => "git_directory",
+		RepositoryPathRegistrationRole::GitCommonDirectoryComponent => {
+			"git_common_directory_component"
+		},
+		RepositoryPathRegistrationRole::GitCommonDirectory => "git_common_directory",
+		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent => {
+			"git_objects_directory_component"
+		},
+		RepositoryPathRegistrationRole::GitObjectsDirectory => "git_objects_directory",
+		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => {
+			"git_refs_directory_component"
+		},
+		RepositoryPathRegistrationRole::GitRefsDirectory => "git_refs_directory",
+		RepositoryPathRegistrationRole::GitCommonDirectoryFile => "git_common_directory_file",
+		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => {
+			"git_directory_backlink_file"
+		},
+	}
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+	let digest = Sha256::digest(bytes);
+	let mut output = String::with_capacity(64);
+	for byte in digest {
+		use std::fmt::Write as _;
+		let _ = write!(output, "{byte:02x}");
+	}
+	output
 }
 
 fn is_canonical_uuid_v4(value: &str) -> bool {
