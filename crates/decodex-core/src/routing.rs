@@ -391,8 +391,8 @@ pub struct RoutingDecisionQuotaFact {
 	pub observation_revision: Option<i64>,
 	/// Remaining percentage in `0..=100`, or `None` when unknown.
 	pub remaining_percent: Option<u8>,
-	/// Exact reset instant in UTC Unix microseconds, whether future or elapsed, or explicit absence.
-	/// An elapsed value is classified by the matching `Quota*ResetElapsed` blocker.
+	/// Exact reset instant in UTC Unix microseconds, whether future or elapsed, or explicit
+	/// absence. An elapsed value is classified by the matching `Quota*ResetElapsed` blocker.
 	pub resets_at_micros: Option<i64>,
 	/// Exact observation instant in UTC Unix microseconds, or explicit absence.
 	pub observed_at_micros: Option<i64>,
@@ -486,7 +486,8 @@ pub struct RoutingDecisionExclusion {
 
 /// Inert deterministic V16 result shape.
 ///
-/// Construction does not prove persistence and carries no routing, dispatch, or execution authority.
+/// Construction does not prove persistence and carries no routing, dispatch, or execution
+/// authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingDecision {
 	/// Immutable source snapshot identity; constructing it does not establish authority.

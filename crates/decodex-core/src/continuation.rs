@@ -43,7 +43,8 @@ pub struct SameThreadContinuationEvidence {
 
 /// One immutable, inert, exactly-once plan produced from one selected V16 decision.
 ///
-/// Construction of this mechanism-neutral value proves neither persistence nor production authority.
+/// Construction of this mechanism-neutral value proves neither persistence nor production
+/// authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContinuationPlan {
 	/// Stable identity of this single immutable continuation plan.
@@ -62,7 +63,8 @@ pub struct ContinuationPlan {
 	pub source_runtime_session_id: RuntimeSessionId,
 	/// Positive immutable revision of the source RuntimeSession.
 	pub source_runtime_session_revision: i64,
-	/// Account selected by the consumed routing decision; this field grants no selection authority.
+	/// Account selected by the consumed routing decision; this field grants no selection
+	/// authority.
 	pub selected_account_id: AccountId,
 	/// Mutually exclusive same-thread or Context-Pack fallback shape of the plan.
 	pub kind: ContinuationPlanKind,
