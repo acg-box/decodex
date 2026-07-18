@@ -35,17 +35,18 @@ migration is an atomic zero-state boundary that locks every quota writer surface
 structurally classified pre-V8 quota evidence, and alters the proven-empty `quota_windows`
 table in place. Populated V7 conversion and table drop/recreation are not compatibility
 features. Recovery is whole disposable pre-release database recreation; XY-1302 retains
-whole-ledger production-baseline and cutover authority. XY-1304 must capture natural upstream
-timestamp precision before live quota ingestion or routing, and a non-exact-microsecond result
-reopens the architecture around PostgreSQL-in-transaction canonicalization. The normative
+whole-ledger production-baseline and cutover authority. XY-1357 must retain and characterize the
+natural raw upstream timestamp before live quota ingestion or routing, and a value that cannot be
+converted exactly to UTC Unix microseconds keeps production routing disabled and reopens only the
+ingress authority. The normative
 details and proof gates live in the authority contract and gate manifest; the three rejected
 old-boundary candidates remain historical provenance in the runtime proof.
 
 XY-1272 PostgreSQL-authority reset accepted 2026-07-16: XY-1272 owns only configured-principal
 and ACL manifest/readiness closure against landed V8. It owns no migration or Codex creation,
 mapping, or reconciliation surface. Under the later XY-1345 reset, XY-1346 owns expected V9 and
-re-bounded XY-1337 owns expected V10; XY-1304 owns experiment creation
-and positive observation acquisition; XY-1276 owns production Quick Task creation. Lossy or
+re-bounded XY-1337 owns expected V10; XY-1358/V15 owns causal experiment creation
+and positive-only observation authority; XY-1276 owns production Quick Task creation. Lossy or
 paginated Codex evidence cannot authorize negative `Present`, `Complete`, or context-free `Absent`
 authority. A future configured PostgreSQL role must atomically extend configuration, bootstrap,
 manifest/readiness, and negative tests.
@@ -117,11 +118,56 @@ reacquisition and pinned Git 2.54 remain unchanged. Rejected candidate trees
 authority. The accepted V11 commit `33159d0cb2da7f86748f1a380def0927970a409a`
 and V12 commit `a6bfb0aefc72f2a65d14fc3755b556f959ec2d4e` remain unchanged.
 
-V13 is reserved solely for XY-1349 managed-repository PostgreSQL authority. XY-1304
-experiment creation and positive-observation persistence move to the next available
-migration, expected V14. Migration allocation, the embedded ledger, migration authority,
-schema/digest inventory, and aggregate migration evidence remain one non-commutative
-singleton serial-writer domain; an unlanded number is not a reusable parallel reservation.
+V13 is accepted on `main` as the sole XY-1349 managed-repository PostgreSQL authority
+migration. The next serial migration owners are fixed: XY-1356 solely owns V14 durable
+routing-policy and complete candidate-set authority; XY-1358 solely owns V15 causal Codex
+experiment authority; and XY-1359 solely owns V16 atomic routing decisions. No V17 is
+reserved. A later owner may allocate another migration only after source inspection proves
+that new durable state is required. Migration allocation, the embedded ledger, migration
+authority, schema/digest inventory, and aggregate migration evidence remain one
+non-commutative singleton serial-writer domain.
+
+XY-1355 live-routing authority reset accepted 2026-07-18 after three materially rejected
+XY-1304 candidates: PostgreSQL owns one revisioned complete routing-authority snapshot.
+Runtime and callers cannot supply authoritative policy order, candidate membership, sticky
+identity, eligibility facts, or exclusions. The database-produced snapshot binds every
+account-inventory member to an explicit disposition; canonical user-owned order and accepted
+Policy revision; sticky affinity and the exact RuntimeSession revision from which it was
+derived; account, RoleProfile, and Codex-build compatibility; exact account and evidence
+revisions; and the required capabilities plus applicability for each member. An omitted or
+unknown inventory member is a blocker, never silent absence or an eligible candidate.
+The existing bounded inert `PolicySnapshot` remains accepted Policy-revision content only; it is
+not a complete routing snapshot and cannot prove candidate completeness or provenance.
+
+`decodex-core` remains a pure decision kernel over that complete database-produced value.
+PostgreSQL persists the atomic decision and evidence linkage; runtime sequences only effects;
+Codex supplies positive capability evidence and never routing authority. One app-server process
+remains immutably bound to one account, credentials never switch in a live process, and separate
+account quotas are never represented as a merged pool.
+
+Account-owned readiness is evaluated only for capabilities explicitly required by the accepted
+routing policy. Unknown never satisfies a required capability. When the accepted required-
+capability set is empty, unknown plugin inventory is non-applicable rather than positive readiness
+evidence. XY-1336 remains future passive-receipt tracking outside this routing chain. Host-owned
+before/after receipts establish only no-mutation integrity.
+
+Ingress retains the exact raw provider timestamp value. UTC Unix-microsecond construction must be
+exact and rejects every rounding or truncation path. V14 through V16 remain precision-agnostic and
+fail closed, allowing XY-1357 natural provider evidence to remain in the unified post-freeze gate.
+
+After V16, XY-1360 owns same-thread continuation and one atomic Context-Pack fallback;
+XY-1361 owns runtime orchestration while production dispatch remains structurally disabled;
+XY-1362 owns `waiting_usage` wake lifecycle under scheduler authority; and XY-1363 owns
+retained-title Codex Desktop discovery evidence. Ambiguous-turn replay and repository,
+worktree, Git, and artifact reconciliation remain in the accepted ManagedRun and repository-
+effect authorities, not routing. XY-1304 is only the final aggregate live gate and the owner of
+a separate reviewed enablement amendment.
+
+The rejected dirty combined XY-1304/V14 candidate, its partial fourth repair, its caller-
+authoritative request shape, Rust authorization wrapper used as provenance, global
+`SupportedPositive` plugin requirement, combined experiment/routing schema, and sequential
+exclusion -> RuntimeSession -> decision composition are superseded evidence only. They must not
+be repaired, revived, or wholesale transplanted.
 
 The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
 repository-effect owner. Its in-process repository executor is a correctness,
