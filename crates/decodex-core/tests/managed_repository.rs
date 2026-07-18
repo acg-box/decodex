@@ -6,8 +6,7 @@ use std::{
 };
 
 use getrandom as _;
-#[cfg(unix)]
-use libc as _;
+#[cfg(unix)] use libc as _;
 use regex as _;
 use serde as _;
 use serde_json as _;
