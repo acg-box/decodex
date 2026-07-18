@@ -8,9 +8,11 @@
 //! managed-repository authority with append-only operations/evidence, plus revisioned routing
 //! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
 //! Codex experiment intent/fences/bindings/positive observations, atomic routing decisions, and
-//! inert exactly-once continuation plans with atomic Context-Pack fallback. It does not dispatch
-//! work, switch credentials, schedule or advance runs, replay turns or effects, or expose
-//! protocol/client behavior.
+//! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
+//! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
+//! cancellation, supersession, and fresh-routing requests. It does not compose a scheduler,
+//! dispatch work, switch credentials, advance runs,
+//! replay turns or effects, or expose protocol/client behavior.
 
 mod accounts;
 mod authority;
@@ -35,6 +37,7 @@ mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
 mod work_items;
+mod wakes;
 
 pub use self::{
 	conversations::{
@@ -83,6 +86,10 @@ pub use self::{
 		WorkItemCommandOutcome, WorkItemReadinessBlocker, WorkItemReadinessBlockerKind,
 		WorkItemRejection, WorkItemRelations,
 	},
+	wakes::{
+		CancelWaitingUsageWake, ClaimDueWaitingUsageWake, FireWaitingUsageWake,
+		RegisterWaitingUsageWake, WaitingUsageWakeClaimEffect,
+	},
 };
 pub use decodex_core::{
 	AcceptedPolicyRevision, AccountId, AccountState, AdmissionDescriptorDigest,
@@ -114,6 +121,9 @@ pub use decodex_core::{
 	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
 	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SameThreadContinuationEvidence,
 	SubmittedTurnReceiptId, WorkItem,
+	WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
+	WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
+	WaitingUsageWakeTransitionKind,
 	WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode,
 	WorkItemObjectiveRef, WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
 	WorkItemTimestamp, WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
