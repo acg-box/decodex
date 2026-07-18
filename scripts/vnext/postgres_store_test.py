@@ -886,6 +886,25 @@ def load_semantic_manifest(path: Path) -> dict[str, str]:
 	return document
 
 
+def verify_initial_manifest_digests(path: Path, env: dict[str, str]) -> str:
+	output = dump_schema_manifest(path, env)
+	document = load_semantic_manifest(path)
+	expected = {
+		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+	}
+	actual = {
+		component: hashlib.sha256(document[component].encode("utf-8")).hexdigest()
+		for component in ("schema", "authority")
+	}
+	if actual != expected:
+		raise TestFailure(
+			"initial PostgreSQL manifest digest mismatch:\n"
+			+ json.dumps({"expected": expected, "actual": actual}, sort_keys=True)
+		)
+	return output
+
+
 def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
 	before_rows = json.loads(before)
 	after_rows = json.loads(after)
@@ -1605,6 +1624,9 @@ def main() -> int:
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		migration_output = run_migration(env)
 		provision_runtime(DATABASE, RUNTIME_ROLE, env)
+		initial_manifest_output = verify_initial_manifest_digests(
+			work / "schema-manifest-initial.json", env
+		)
 		role_profile_output = run_role_profile_final_gate_contracts(
 			data_dir, log_path, socket_dir, port, work, env
 		)
@@ -3013,6 +3035,7 @@ def main() -> int:
 			"restore_parity": live_document == restored_document,
 		}
 		print(migration_output)
+		print(initial_manifest_output)
 		print(role_profile_output)
 		print(runtime_session_output)
 		print(restart_output)

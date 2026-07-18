@@ -37,7 +37,7 @@ async fn role_profile_state(client: &Client) -> Result<[i64; 6], tokio_postgres:
 			 (SELECT count(*) FROM decodex.role_profile_revisions), \
 			 (SELECT count(*) FROM decodex.activity WHERE aggregate_kind='role_profile'), \
 			 (SELECT count(*) FROM decodex.outbox WHERE aggregate_kind='role_profile'), \
-			 (SELECT coalesce(sum(current_revision),0) FROM decodex.role_profiles)",
+			 (SELECT coalesce(sum(current_revision),0)::bigint FROM decodex.role_profiles)",
 			&[],
 		)
 		.await?;
