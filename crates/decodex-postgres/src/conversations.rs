@@ -251,7 +251,7 @@ pub struct ProposeTransition {
 	pub reason: String,
 }
 
-struct BlobSession {
+pub(crate) struct BlobSession {
 	client: ClientWrapper,
 }
 
@@ -262,7 +262,7 @@ impl PostgresStore {
 		Ok(BlobSession { client: Client::take(client) })
 	}
 
-	async fn lock_blob_session(
+	pub(crate) async fn lock_blob_session(
 		&self,
 		hashes: &[BlobHash],
 		capacity_hashes: &[BlobHash],
@@ -1233,7 +1233,7 @@ impl PostgresStore {
 		Ok(())
 	}
 
-	async fn required_context_pack(
+	pub(crate) async fn required_context_pack(
 		&self,
 		blob_store: &BlobStore,
 		context_pack_id: &str,
@@ -1349,7 +1349,7 @@ impl PostgresStore {
 	}
 }
 
-fn context_pack_referenced_hashes(
+pub(crate) fn context_pack_referenced_hashes(
 	pack: &ContextPack,
 	blob: Option<(BlobHash, i64)>,
 ) -> Vec<BlobHash> {
@@ -1497,7 +1497,7 @@ fn verify_entry_blob(blob_store: &BlobStore, entry: &HistoryEntry) -> Result<(),
 	}
 }
 
-fn validate_context_pack(
+pub(crate) fn validate_context_pack(
 	request: &PersistContextPack,
 	pack: &ContextPack,
 ) -> Result<(), StoreError> {
@@ -1582,7 +1582,7 @@ fn turn_role_from_sql(value: &str) -> Result<TurnRole, StoreError> {
 	}
 }
 
-const fn side_effect_sql(value: PossibleSideEffects) -> &'static str {
+pub(crate) const fn side_effect_sql(value: PossibleSideEffects) -> &'static str {
 	match value {
 		PossibleSideEffects::None => "none",
 		PossibleSideEffects::Possible => "possible",
@@ -1639,7 +1639,7 @@ fn item_status_from_sql(value: &str) -> Result<ItemStatus, StoreError> {
 	}
 }
 
-const fn context_source_sql(value: ContextSourceKind) -> &'static str {
+pub(crate) const fn context_source_sql(value: ContextSourceKind) -> &'static str {
 	match value {
 		ContextSourceKind::PinnedRevision => "pinned_revision",
 		ContextSourceKind::RepositoryInstructions => "repository_instructions",
@@ -1664,7 +1664,7 @@ fn context_source_from_sql(value: &str) -> Result<ContextSourceKind, StoreError>
 	}
 }
 
-const fn context_disposition_sql(value: ContextSourceDisposition) -> &'static str {
+pub(crate) const fn context_disposition_sql(value: ContextSourceDisposition) -> &'static str {
 	match value {
 		ContextSourceDisposition::Complete => "complete",
 		ContextSourceDisposition::Truncated => "truncated",
@@ -1696,7 +1696,7 @@ fn is_canonical_uuid(value: &str) -> bool {
 		})
 }
 
-fn publish_verified_blob(
+pub(crate) fn publish_verified_blob(
 	blob_store: &BlobStore,
 	hash: BlobHash,
 	bytes: &[u8],
