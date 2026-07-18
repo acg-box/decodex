@@ -489,9 +489,13 @@ The production runtime composes those three accepted owners exactly once during 
 When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
 same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol
 listener can serve. Executor-open or restart-reconciliation failure leaves the repository runtime
-unavailable; it does not create a second store, dispatch path, retry, or fallback. Foreground
-admission, allocation, Register, WorktreeReady, and Commit enter through this same retained runtime
-composition. The protocol still exposes no managed-repository mutation route in this gate.
+and product-state composition unavailable and projects `ServerRepositories` unavailable in doctor;
+the typed bootstrap readiness distinguishes executor, reconciliation, and residual-backlog failure.
+Startup observes at most 256 eligible operations plus one residual probe and refuses repository
+readiness if any eligible work remains. It does not create a second store, dispatch path, retry, or
+fallback. Foreground admission, allocation, Register, WorktreeReady, and Commit enter through this
+same retained runtime composition. The protocol still exposes no managed-repository mutation route
+in this gate.
 
 GitHub pull-request and check effects are a separate sealed provider boundary in
 `crates/decodex-runtime/src/github_effects.rs`. It requires explicit provider/repository/revision
