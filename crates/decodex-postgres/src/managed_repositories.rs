@@ -270,6 +270,22 @@ impl PostgresStore {
 		load_operation_client(&client, operation_id).await
 	}
 
+	/// Issue an opaque identity for one operation-specific readback observation.
+	///
+	/// This value is not an execution capability and does not reserve or mutate authority. Exact
+	/// positive readback carries it into the subsequent reconciliation transaction; negative
+	/// evidence receives its durable identity inside that transaction.
+	pub async fn issue_repository_readback_evidence_id(
+		&self,
+	) -> Result<RepositoryEvidenceId, StoreError> {
+		let client = self.pool().get().await?;
+		let value: String = client
+			.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[])
+			.await?
+			.get(0);
+		RepositoryEvidenceId::new(value).map_err(StoreError::from)
+	}
+
 	/// Prepare a new Register fence or return exact immutable readback with no dispatch.
 	pub async fn prepare_registration(
 		&self,
