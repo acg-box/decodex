@@ -179,6 +179,10 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_managed_run_state()",
 	"decodex.enforce_effect_barrier_state()",
 	"decodex.enforce_managed_run_event_namespace()",
+	"decodex.forbid_managed_repository_history_mutation()",
+	"decodex.enforce_managed_repository_projection()",
+	"decodex.enforce_repository_operation_scope()",
+	"decodex.enforce_repository_history_completeness()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -217,6 +221,12 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.managed_run_effect_kind",
 	"decodex.managed_run_effect_state",
 	"decodex.managed_run_safety_input_kind",
+	"decodex.managed_repository_phase",
+	"decodex.repository_operation_kind",
+	"decodex.repository_operation_state",
+	"decodex.repository_ambiguity",
+	"decodex.repository_authority_transition_kind",
+	"decodex.repository_evidence_kind",
 )
 
 
@@ -247,6 +257,26 @@ def run(command: list[str], env: dict[str, str]) -> str:
 			f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
 		)
 	return completed.stdout.strip() or completed.stderr.strip()
+
+
+def frozen_source_binding() -> dict[str, str]:
+	def git(*arguments: str) -> str:
+		completed = subprocess.run(
+			["git", *arguments],
+			check=True,
+			text=True,
+			capture_output=True,
+			cwd=REPO_ROOT,
+		)
+		return completed.stdout.strip()
+
+	status = git("status", "--porcelain=v1", "--untracked-files=all")
+	if status:
+		raise TestFailure("frozen PostgreSQL gate requires a clean exact committed worktree")
+	return {
+		"head": git("rev-parse", "HEAD"),
+		"tree": git("rev-parse", "HEAD^{tree}"),
+	}
 
 
 def run_blob_session_restart_contract(
@@ -810,6 +840,17 @@ def run_managed_run_test(test: str, env: dict[str, str]) -> str:
 			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
 			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
 			f"managed_runs::{test}", "--exact",
+		],
+		env,
+	)
+
+
+def run_managed_repository_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"managed_repositories::{test}", "--exact",
 		],
 		env,
 	)
@@ -1386,6 +1427,11 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"decodex.managed_run_effect_barriers, decodex.managed_run_effects, "
 		f"decodex.managed_run_submitted_turn_receipts, "
 		f"decodex.managed_run_safety_inputs TO {role}; "
+		f"GRANT SELECT, INSERT ON TABLE decodex.repository_admissions, "
+		f"decodex.repository_authority_transitions, decodex.repository_operations, "
+		f"decodex.repository_operation_events, decodex.repository_operation_evidence, "
+		f"decodex.repository_operation_results TO {role}; "
+		f"GRANT SELECT, INSERT, UPDATE ON TABLE decodex.managed_repositories TO {role}; "
 		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
@@ -1553,6 +1599,7 @@ def main() -> int:
 			output = run_managed_run_focused_contracts(socket_dir, port, work, env)
 			print(output)
 			return 0
+		source_binding = frozen_source_binding()
 
 		create_database(DATABASE, env)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
@@ -1604,6 +1651,14 @@ def main() -> int:
 			],
 			env,
 		)
+		managed_repository_output = "\n".join((
+			run_managed_repository_test(
+				"postgres_managed_repository_authority_contract", env
+			),
+			run_managed_repository_test(
+				"postgres_managed_repository_restart_backlog_bound", env
+			),
+		))
 		env["DECODEX_TEST_SOCKET_DIRECTORY"] = str(socket_dir)
 		account_composition_output = run(
 			[
@@ -2010,7 +2065,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 81",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 112",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -2379,7 +2434,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "8|1":
+		) != "13|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
@@ -2568,6 +2623,9 @@ def main() -> int:
 			],
 			env,
 		)
+		managed_repository_restore_output = run_managed_repository_test(
+			"postgres_managed_repository_restored_contract", env
+		)
 		canary_manifest_path = work / "schema-manifest-role-setting-canary.json"
 		canary_markers = (role_setting_canary_guc, role_setting_secret_canary)
 		psql_secret(
@@ -2623,14 +2681,6 @@ def main() -> int:
 			env,
 		) != "0":
 			raise TestFailure("secret-bearing role-setting canary was not restored")
-		authority_digest = hashlib.sha256(
-			json.loads(live_manifest)["authority"].encode("utf-8")
-		).hexdigest()
-		print(
-			f"configured PostgreSQL authority manifest SHA-256: {authority_digest}",
-			flush=True,
-		)
-
 		create_database(DEFAULT_ACL_TAMPER_DATABASE, env)
 		run(
 			[
@@ -2921,12 +2971,54 @@ def main() -> int:
 				raise TestFailure("doctor output leaked a role-setting canary")
 			authority_drift_outputs.append(output)
 		assert_postgres_logs_redact((log_path,), canary_markers)
+		final_source_binding = frozen_source_binding()
+		if final_source_binding != source_binding:
+			raise TestFailure("frozen PostgreSQL gate source binding changed during execution")
+		live_document = load_semantic_manifest(live_manifest_path)
+		restored_document = load_semantic_manifest(restored_manifest_path)
+		expected_digests = {
+			"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+			"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+		}
+		actual_digests = {
+			component: hashlib.sha256(live_document[component].encode("utf-8")).hexdigest()
+			for component in ("schema", "authority")
+		}
+		restored_digests = {
+			component: hashlib.sha256(
+				restored_document[component].encode("utf-8")
+			).hexdigest()
+			for component in ("schema", "authority")
+		}
+		if actual_digests != expected_digests or restored_digests != expected_digests:
+			raise TestFailure("final PostgreSQL artifact digests differ from shipped authority")
+		migration_inventory = json.loads(psql(
+			DATABASE,
+			"SELECT pg_catalog.json_agg(pg_catalog.json_build_object("
+			"'version', version, 'name', name, 'checksum', checksum) ORDER BY version)::text "
+			"FROM public.refinery_schema_history",
+			env,
+		))
+		artifact_evidence = {
+			"schema": "decodex/xy-1353-frozen-postgres-evidence/1",
+			"source": source_binding,
+			"migration_inventory": migration_inventory,
+			"configured_authority_inventory_rows": len(
+				json.loads(live_document["authority"])
+			),
+			"schema_manifest_rows": len(json.loads(live_document["schema"])),
+			"expected_digests": expected_digests,
+			"actual_digests": actual_digests,
+			"restored_digests": restored_digests,
+			"restore_parity": live_document == restored_document,
+		}
 		print(migration_output)
 		print(role_profile_output)
 		print(runtime_session_output)
 		print(restart_output)
 		print(v8_boundary_output)
 		print(contract_output)
+		print(managed_repository_output)
 		print(account_composition_output)
 		print(bootstrap_output)
 		print(live_doctor_output)
@@ -2940,9 +3032,11 @@ def main() -> int:
 		print(hostile_startup_path_output)
 		print(hostile_search_output)
 		print(restore_output)
+		print(managed_repository_restore_output)
 		print(default_acl_live_doctor_output)
 		print(default_acl_restore_output)
 		print("\n".join(authority_drift_outputs))
+		print(json.dumps(artifact_evidence, sort_keys=True), flush=True)
 		return 0
 	finally:
 		primary_failure = sys.exc_info()[0] is not None
