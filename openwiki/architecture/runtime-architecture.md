@@ -517,6 +517,18 @@ existing ManagedRun barrier, submitted-turn receipt, and repository/worktree/Git
 reconciliation authorities retain ambiguous-effect ownership; routing never reclassifies or
 replays those effects.
 
+V16 is the sole additive migration after V15. It adds an uncomposed pure routing kernel and one
+operation-specific PostgreSQL exact command. The command selects and locks the immutable V14
+snapshot and its current policy, run, account, compatibility, capability, blocker, and quota
+sources; callers provide no candidate array or evidence. It persists one inert `selected`,
+`waiting_usage`, or `no_route` row together with complete member, quota, capability, blocker, and
+normalized exact-depletion references in the same transaction. Five-hour and seven-day facts,
+raw timestamp text, source identity, exact microsecond precision, and evidence revision remain
+separate. Missing or inexact provenance cannot establish eligibility. The adapter strictly reads
+the database result back through the pure kernel. No runtime or application composition root
+imports this command, and digest regeneration plus executable validation remain deferred to the
+integrated freeze.
+
 No production crate or application imports or constructs a V15 experiment execution root. The
 mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
 the complete V15 source boundary. XY-1361 alone may later compose the accepted V14-V16 owners, and

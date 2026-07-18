@@ -131,8 +131,10 @@ pub use self::{
 	},
 	routing::{
 		CodexCapability, RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome,
+		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind, RoutingDecisionQuotaFact,
+		RoutingDecisionSnapshot, RoutingKernelError, RoutingNoRouteReason,
 		RoutingEvidenceEffect, RoutingMemberDisposition, RoutingPolicyEffect, RoutingPolicyMember,
-		RoutingRejection,
+		RoutingRejection, RoutingTimestampPrecision, RoutingTimestampProvenance, decide_routing,
 		RoutingSnapshot, RoutingSnapshotCapabilityFact, RoutingSnapshotMember,
 		RoutingSnapshotQuotaFact,
 	},
