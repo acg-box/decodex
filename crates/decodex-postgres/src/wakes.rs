@@ -577,7 +577,10 @@ fn parse_rejection(
 fn validate_digest(effect: &Value) -> Result<(), StoreError> {
 	let source = text(effect, "effect_digest_source")?;
 	let expected = text(effect, "effect_digest")?;
-	let actual = format!("{:x}", Sha256::digest(source.as_bytes()));
+	let actual = Sha256::digest(source.as_bytes())
+		.iter()
+		.map(|byte| format!("{byte:02x}"))
+		.collect::<String>();
 	if expected.len() != 64 || expected != actual {
 		return incompatible("stored waiting-usage wake effect digest is invalid");
 	}
