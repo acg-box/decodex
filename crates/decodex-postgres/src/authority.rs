@@ -2076,7 +2076,14 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'default_acl',
-    pg_catalog.format('%s:%s', default_acl.defaclnamespace, default_acl.defaclobjtype),
+    pg_catalog.format(
+      '%s:%s',
+      CASE
+        WHEN default_acl.defaclnamespace = 0 THEN 'global'
+        ELSE 'decodex'
+      END,
+      default_acl.defaclobjtype
+    ),
     COALESCE((
       SELECT pg_catalog.jsonb_agg(
         pg_catalog.jsonb_build_array(
@@ -3354,7 +3361,12 @@ mod tests {
 		assert!(SCHEMA_CONTRACT_SQL.contains(
 			"default_acl.defaclnamespace IN (0, namespace.oid)\n    AND default_acl.defaclobjtype IN ('f', 'T')"
 		));
-		assert!(!SCHEMA_CONTRACT_SQL.contains("default_acl.defaclnamespace = 0"));
+		assert!(SCHEMA_CONTRACT_SQL.contains(
+			"WHEN default_acl.defaclnamespace = 0 THEN 'global'\n        ELSE 'decodex'"
+		));
+		assert!(!SCHEMA_CONTRACT_SQL.contains(
+			"pg_catalog.format('%s:%s', default_acl.defaclnamespace"
+		));
 	}
 
 	#[test]
