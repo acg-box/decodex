@@ -76,12 +76,37 @@ pub enum RepositoryPreparationOutcome {
 	ExistingExact(OperationView, NoDispatch),
 }
 
+/// Result of serializing one affine receipt against every terminal reconciliation path.
+pub enum RepositoryDispatchFenceOutcome<T> {
+	/// The exact durable fence was current while the receipt was consumed and dispatched.
+	Authorized {
+		dispatch: T,
+		repository: ManagedRepositoryFacts,
+		operation: OperationView,
+		/// Whether the lock-only transaction acknowledged release. A false value grants no retry.
+		release_confirmed: bool,
+	},
+	/// Reconciliation won serialization first. The supplied receipt was consumed without dispatch.
+	Terminal {
+		repository: ManagedRepositoryFacts,
+		operation: OperationView,
+	},
+}
+
 /// Readback-only restart work. No variant can authorize an external effect.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RepositoryReadbackWork {
 	Registration(RegistrationReadbackRequest),
 	WorktreeReady(WorktreeReadyReadbackRequest),
 	Commit(CommitReadbackRequest),
+}
+
+/// Operation-specific evidence produced while holding the shared dispatch/reconciliation lock.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RepositoryReadbackEvidence {
+	Registration(RegistrationEvidence),
+	WorktreeReady(WorktreeReadyEvidence),
+	Commit(CommitEvidence),
 }
 
 /// Coherent read-only restart state for one committed possibly-effected operation.
@@ -270,20 +295,62 @@ impl PostgresStore {
 		load_operation_client(&client, operation_id).await
 	}
 
-	/// Issue an opaque identity for one operation-specific readback observation.
+	/// Consume one fresh receipt while holding the operation lock shared by reconciliation.
 	///
-	/// This value is not an execution capability and does not reserve or mutate authority. Exact
-	/// positive readback carries it into the subsequent reconciliation transaction; negative
-	/// evidence receives its durable identity inside that transaction.
-	pub async fn issue_repository_readback_evidence_id(
+	/// The callback is synchronous so it cannot outlive the lock-only transaction. PostgreSQL
+	/// current rows are reloaded and the exact fence is confirmed under that lock immediately
+	/// before the callback receives the affine receipt. If terminal reconciliation acquired the
+	/// lock first, the receipt is consumed without calling the callback.
+	pub async fn consume_repository_dispatch<T>(
 		&self,
-	) -> Result<RepositoryEvidenceId, StoreError> {
-		let client = self.pool().get().await?;
-		let value: String = client
-			.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[])
+		receipt: RepositoryDispatchReceipt,
+		dispatch: impl FnOnce(RepositoryDispatchReceipt, &ManagedRepositoryFacts) -> T,
+	) -> Result<RepositoryDispatchFenceOutcome<T>, StoreError> {
+		let operation_id = receipt.descriptor.operation_id.clone();
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		transaction
+			.query_one(
+				"SELECT pg_catalog.pg_advisory_xact_lock(1349,pg_catalog.hashtext($1))",
+				&[&operation_id.as_str()],
+			)
+			.await?;
+		let operation = load_operation(&transaction, &operation_id)
 			.await?
-			.get(0);
-		RepositoryEvidenceId::new(value).map_err(StoreError::from)
+			.ok_or(StoreError::InvalidInput("repository operation is absent"))?;
+		if operation.descriptor != receipt.descriptor {
+			return Err(StoreError::OperationIdConflict);
+		}
+		if operation.state != RepositoryOperationState::PossiblyEffected {
+			let repository =
+				load_facts_client_like(&transaction, &operation.descriptor.repository_id)
+					.await?
+					.ok_or_else(|| incompatible("terminal operation repository is absent"))?;
+			if transaction.rollback().await.is_err() {
+				drop(deadpool_postgres::Client::take(client));
+			}
+			return Ok(RepositoryDispatchFenceOutcome::Terminal { repository, operation });
+		}
+		let repository = load_facts(&transaction, &operation.descriptor.repository_id, true)
+			.await?
+			.ok_or_else(|| incompatible("dispatch repository is absent"))?;
+		validate_dispatch_fence(&repository, &operation)?;
+		let dispatch = dispatch(receipt, &repository);
+		let release_confirmed = match transaction.rollback().await {
+			Ok(()) => true,
+			Err(_) => {
+				// Never return an uncertain transaction to the fast-recycling pool. Dropping the
+				// detached wrapper aborts its connection task and releases the server-side lock.
+				drop(deadpool_postgres::Client::take(client));
+				false
+			},
+		};
+		Ok(RepositoryDispatchFenceOutcome::Authorized {
+			dispatch,
+			repository,
+			operation,
+			release_confirmed,
+		})
 	}
 
 	/// Prepare a new Register fence or return exact immutable readback with no dispatch.
@@ -412,37 +479,15 @@ impl PostgresStore {
 		})
 	}
 
-	/// Reconcile Register from transition-specific evidence in one authority transaction.
-	pub async fn reconcile_registration(
+	/// Observe and reconcile one operation while holding the lock shared with affine dispatch.
+	pub async fn reconcile_repository_readback(
 		&self,
 		operation_id: &RepositoryOperationId,
-		evidence: &RegistrationEvidence,
-	) -> Result<RepositoryReconciliationOutcome, StoreError> {
-		self.reconcile(operation_id, ReconcileEvidence::Registration(evidence)).await
-	}
-
-	/// Reconcile WorktreeReady from transition-specific evidence in one authority transaction.
-	pub async fn reconcile_worktree_ready(
-		&self,
-		operation_id: &RepositoryOperationId,
-		evidence: &WorktreeReadyEvidence,
-	) -> Result<RepositoryReconciliationOutcome, StoreError> {
-		self.reconcile(operation_id, ReconcileEvidence::WorktreeReady(evidence)).await
-	}
-
-	/// Reconcile Commit from transition-specific evidence in one authority transaction.
-	pub async fn reconcile_commit(
-		&self,
-		operation_id: &RepositoryOperationId,
-		evidence: &CommitEvidence,
-	) -> Result<RepositoryReconciliationOutcome, StoreError> {
-		self.reconcile(operation_id, ReconcileEvidence::Commit(evidence)).await
-	}
-
-	async fn reconcile(
-		&self,
-		operation_id: &RepositoryOperationId,
-		evidence: ReconcileEvidence<'_>,
+		observe: impl FnOnce(
+			&RepositoryReadbackWork,
+			&RepositoryAdmissionFacts,
+			RepositoryEvidenceId,
+		) -> RepositoryReadbackEvidence,
 	) -> Result<RepositoryReconciliationOutcome, StoreError> {
 		let mut client = self.pool().get().await?;
 		let transaction = client.transaction().await?;
@@ -466,106 +511,46 @@ impl PostgresStore {
 		let facts = load_facts(&transaction, &operation.descriptor.repository_id, true)
 			.await?
 			.ok_or_else(|| incompatible("operation repository is absent"))?;
-		let terminal = evidence.decide(&facts, &operation)?;
-		let Some(terminal) = terminal else {
-			transaction.commit().await?;
-			return Ok(RepositoryReconciliationOutcome::Pending(operation));
-		};
-		let evidence_id = terminal.evidence_id(&transaction).await?;
-		transaction
-			.execute(
-				"INSERT INTO decodex.repository_operation_evidence(
-				 evidence_id,repository_id,operation_id,kind,evidence
-				) VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid,
-				 $4::text::decodex.repository_evidence_kind,$5)",
-				&[
-					&evidence_id.as_str(),
-					&operation.descriptor.repository_id.as_str(),
-					&operation_id.as_str(),
-					&terminal.evidence_kind(),
-					&terminal.evidence_document()?,
-				],
-			)
-			.await?;
-		let (state, ambiguity, result) = operation_result_parts(&terminal.operation)?;
-		transaction
-			.execute(
-				"INSERT INTO decodex.repository_operation_results(
-				 operation_id,repository_id,state,ambiguity,result,evidence_id
-				) VALUES($1::text::uuid,$2::text::uuid,
-				 $3::text::decodex.repository_operation_state,
-				 $4::text::decodex.repository_ambiguity,$5,$6::text::uuid)",
-				&[
-					&operation_id.as_str(),
-					&operation.descriptor.repository_id.as_str(),
-					&state,
-					&ambiguity,
-					&result,
-					&evidence_id.as_str(),
-				],
-			)
-			.await?;
-		transaction
-			.execute(
-				"INSERT INTO decodex.repository_operation_events(
-				 operation_id,ordinal,repository_id,state,evidence_id
-				) VALUES($1::text::uuid,2,$2::text::uuid,
-				 $3::text::decodex.repository_operation_state,$4::text::uuid)",
-				&[
-					&operation_id.as_str(),
-					&operation.descriptor.repository_id.as_str(),
-					&state,
-					&evidence_id.as_str(),
-				],
-			)
-			.await?;
-		let next_tip = issue_authority_tip(&transaction).await?;
-		let next_generation = next_generation(facts.checkpoint.generation)?;
-		insert_transition(
-			&transaction,
-			&facts,
-			next_generation,
-			&next_tip,
-			terminal.transition_kind(),
-			Some(operation_id),
-			Some(&evidence_id),
-			terminal.phase,
-			&terminal.head,
-			None,
-		)
-		.await?;
-		let updated = transaction
-			.execute(
-				"UPDATE decodex.managed_repositories SET phase=$1::text::decodex.managed_repository_phase,
-				 ambiguity=$2::text::decodex.repository_ambiguity,head=$3,generation=$4,
-				 authority_tip=$5::text::uuid,active_operation_id=NULL,
-				 updated_at=pg_catalog.clock_timestamp()
-				 WHERE repository_id=$6::text::uuid AND generation=$7
-				 AND authority_tip=$8::text::uuid AND active_operation_id=$9::text::uuid",
-				&[
-					&phase_text(terminal.phase),
-					&phase_ambiguity_text(terminal.phase),
-					&terminal.head.as_str(),
-					&generation_i64(next_generation)?,
-					&next_tip.as_str(),
-					&operation.descriptor.repository_id.as_str(),
-					&generation_i64(facts.checkpoint.generation)?,
-					&facts.checkpoint.tip.as_str(),
-					&operation_id.as_str(),
-				],
-			)
-			.await?;
-		if updated != 1 {
-			return Err(StoreError::ManagedRepositoryCompareAndSwapConflict);
-		}
-		let repository = load_facts(&transaction, &operation.descriptor.repository_id, false)
+		let work = operation_readback_work(&operation)?;
+		let value: String = transaction
+			.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[])
 			.await?
-			.ok_or_else(|| incompatible("reconciled repository projection disappeared"))?;
-		transaction.commit().await?;
-		Ok(RepositoryReconciliationOutcome::Terminal {
-			operation: terminal.operation,
-			repository,
-		})
+			.get(0);
+		let evidence_id = RepositoryEvidenceId::new(value)?;
+		let observed = observe(&work, &facts.admission, evidence_id);
+		match observed {
+			RepositoryReadbackEvidence::Registration(evidence)
+				if matches!(&work, RepositoryReadbackWork::Registration(_)) =>
+				finish_reconciliation(
+					transaction,
+					operation_id,
+					operation,
+					facts,
+					ReconcileEvidence::Registration(&evidence),
+				)
+				.await,
+			RepositoryReadbackEvidence::WorktreeReady(evidence)
+				if matches!(&work, RepositoryReadbackWork::WorktreeReady(_)) =>
+				finish_reconciliation(
+					transaction,
+					operation_id,
+					operation,
+					facts,
+					ReconcileEvidence::WorktreeReady(&evidence),
+				)
+				.await,
+			RepositoryReadbackEvidence::Commit(evidence)
+				if matches!(&work, RepositoryReadbackWork::Commit(_)) =>
+				finish_reconciliation(
+					transaction,
+					operation_id,
+					operation,
+					facts,
+					ReconcileEvidence::Commit(&evidence),
+				)
+				.await,
+			_ => Err(incompatible("readback evidence kind contradicts operation")),
+		}
 	}
 
 	/// Load bounded restart work for committed possibly-effected operations only.
@@ -641,11 +626,174 @@ impl PostgresStore {
 	}
 }
 
+fn operation_readback_work(operation: &OperationView) -> Result<RepositoryReadbackWork, StoreError> {
+	Ok(match operation.descriptor.kind {
+		RepositoryOperationKind::Register =>
+			RepositoryReadbackWork::Registration(registration_readback_request(operation)?),
+		RepositoryOperationKind::WorktreeReady => RepositoryReadbackWork::WorktreeReady(
+			worktree_ready_readback_request(operation)?,
+		),
+		RepositoryOperationKind::Commit =>
+			RepositoryReadbackWork::Commit(commit_readback_request(operation)?),
+	})
+}
+
+async fn finish_reconciliation(
+	transaction: Transaction<'_>,
+	operation_id: &RepositoryOperationId,
+	operation: OperationView,
+	facts: ManagedRepositoryFacts,
+	evidence: ReconcileEvidence<'_>,
+) -> Result<RepositoryReconciliationOutcome, StoreError> {
+	let terminal = evidence.decide(&facts, &operation)?;
+	let Some(terminal) = terminal else {
+		transaction.commit().await?;
+		return Ok(RepositoryReconciliationOutcome::Pending(operation));
+	};
+	let evidence_id = terminal.evidence_id(&transaction).await?;
+	transaction
+		.execute(
+			"INSERT INTO decodex.repository_operation_evidence(
+			 evidence_id,repository_id,operation_id,kind,evidence
+			) VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid,
+			 $4::text::decodex.repository_evidence_kind,$5)",
+			&[
+				&evidence_id.as_str(),
+				&operation.descriptor.repository_id.as_str(),
+				&operation_id.as_str(),
+				&terminal.evidence_kind(),
+				&terminal.evidence_document()?,
+			],
+		)
+		.await?;
+	let (state, ambiguity, result) = operation_result_parts(&terminal.operation)?;
+	transaction
+		.execute(
+			"INSERT INTO decodex.repository_operation_results(
+			 operation_id,repository_id,state,ambiguity,result,evidence_id
+			) VALUES($1::text::uuid,$2::text::uuid,
+			 $3::text::decodex.repository_operation_state,
+			 $4::text::decodex.repository_ambiguity,$5,$6::text::uuid)",
+			&[
+				&operation_id.as_str(),
+				&operation.descriptor.repository_id.as_str(),
+				&state,
+				&ambiguity,
+				&result,
+				&evidence_id.as_str(),
+			],
+		)
+		.await?;
+	transaction
+		.execute(
+			"INSERT INTO decodex.repository_operation_events(
+			 operation_id,ordinal,repository_id,state,evidence_id
+			) VALUES($1::text::uuid,2,$2::text::uuid,
+			 $3::text::decodex.repository_operation_state,$4::text::uuid)",
+			&[
+				&operation_id.as_str(),
+				&operation.descriptor.repository_id.as_str(),
+				&state,
+				&evidence_id.as_str(),
+			],
+		)
+		.await?;
+	let next_tip = issue_authority_tip(&transaction).await?;
+	let next_generation = next_generation(facts.checkpoint.generation)?;
+	insert_transition(
+		&transaction,
+		&facts,
+		next_generation,
+		&next_tip,
+		terminal.transition_kind(),
+		Some(operation_id),
+		Some(&evidence_id),
+		terminal.phase,
+		&terminal.head,
+		None,
+	)
+	.await?;
+	let updated = transaction
+		.execute(
+			"UPDATE decodex.managed_repositories SET phase=$1::text::decodex.managed_repository_phase,
+			 ambiguity=$2::text::decodex.repository_ambiguity,head=$3,generation=$4,
+			 authority_tip=$5::text::uuid,active_operation_id=NULL,
+			 updated_at=pg_catalog.clock_timestamp()
+			 WHERE repository_id=$6::text::uuid AND generation=$7
+			 AND authority_tip=$8::text::uuid AND active_operation_id=$9::text::uuid",
+			&[
+				&phase_text(terminal.phase),
+				&phase_ambiguity_text(terminal.phase),
+				&terminal.head.as_str(),
+				&generation_i64(next_generation)?,
+				&next_tip.as_str(),
+				&operation.descriptor.repository_id.as_str(),
+				&generation_i64(facts.checkpoint.generation)?,
+				&facts.checkpoint.tip.as_str(),
+				&operation_id.as_str(),
+			],
+		)
+		.await?;
+	if updated != 1 {
+		return Err(StoreError::ManagedRepositoryCompareAndSwapConflict);
+	}
+	let repository = load_facts(&transaction, &operation.descriptor.repository_id, false)
+		.await?
+		.ok_or_else(|| incompatible("reconciled repository projection disappeared"))?;
+	transaction.commit().await?;
+	Ok(RepositoryReconciliationOutcome::Terminal {
+		operation: terminal.operation,
+		repository,
+	})
+}
+
 enum PrepareCommand<'a> {
 	Registration(&'a BeginRegistrationCommand),
 	WorktreeReady(&'a BeginWorktreeReadyCommand),
 	Commit(&'a BeginCommitCommand),
 }
+
+fn validate_dispatch_fence(
+	repository: &ManagedRepositoryFacts,
+	operation: &OperationView,
+) -> Result<(), StoreError> {
+	let (expected_phase, expected_head) = match &operation.descriptor.payload {
+		CanonicalOperationPayload::Register { expected_head, .. } =>
+			(ManagedRepositoryPhase::Allocated, expected_head),
+		CanonicalOperationPayload::WorktreeReady { expected_head, .. } =>
+			(ManagedRepositoryPhase::Registered, expected_head),
+		CanonicalOperationPayload::Commit { expected_head, .. } =>
+			(ManagedRepositoryPhase::Ready, expected_head),
+	};
+	let expected_generation = operation
+		.descriptor
+		.expected_checkpoint
+		.generation
+		.checked_add(1)
+		.ok_or_else(|| incompatible("prepared operation generation overflowed"))?;
+	if repository.active_operation.as_ref() != Some(&operation.descriptor.operation_id)
+		|| repository.phase != expected_phase
+		|| repository.head != *expected_head
+		|| repository.checkpoint.generation != expected_generation
+		|| repository.checkpoint.tip == operation.descriptor.expected_checkpoint.tip
+		|| repository.admission.descriptor().repository_id() != &operation.descriptor.repository_id
+		|| repository.admission.descriptor().project_id() != &operation.descriptor.project_id
+		|| repository.admission.descriptor().admitted_identity()
+			!= &operation.descriptor.admitted_identity
+		|| repository.admission.descriptor().admitted_base() != &operation.descriptor.admitted_base
+		|| repository.admission.descriptor().digest()
+			!= &operation.descriptor.admission_descriptor_digest
+		|| repository.admission.descriptor().repository_path()
+			!= &operation.descriptor.repository_absolute_path
+		|| repository.allocation_id != operation.descriptor.allocation_id
+		|| repository.worktree_id != operation.descriptor.worktree_id
+		|| repository.worktree_path != operation.descriptor.worktree_absolute_path
+	{
+		return Err(incompatible("durable dispatch fence contradicts operation assignment"));
+	}
+	Ok(())
+}
+
 impl PrepareCommand<'_> {
 	fn operation_id(&self) -> &RepositoryOperationId {
 		match self {
