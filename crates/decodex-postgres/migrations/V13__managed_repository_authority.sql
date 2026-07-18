@@ -568,11 +568,11 @@ BEGIN
 			OR operation_row.expected_generation <> OLD.generation
 			OR operation_row.expected_authority_tip <> OLD.authority_tip
 			OR operation_row.payload->>'expected_head' <> OLD.head
-			OR NOT CASE operation_row.kind
+			OR NOT (CASE operation_row.kind
 				WHEN 'register' THEN OLD.phase = 'allocated'
 				WHEN 'worktree_ready' THEN OLD.phase = 'registered'
 				WHEN 'commit' THEN OLD.phase = 'ready'
-			END
+			END)
 			OR NEW.phase <> OLD.phase OR NEW.head <> OLD.head
 			OR transition_row.operation_id <> NEW.active_operation_id
 			OR transition_row.transition_kind <> CASE operation_row.kind
