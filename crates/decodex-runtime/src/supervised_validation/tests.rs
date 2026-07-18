@@ -8,10 +8,8 @@ use decodex_core::RepositoryContentRevision;
 
 fn fingerprint() -> ProtectedWorktreeFingerprint {
 	ProtectedWorktreeFingerprint {
-		source_revision: RepositoryContentRevision::new(
-			"1111111111111111111111111111111111111111",
-		)
-		.expect("fixture revision is canonical"),
+		source_revision: RepositoryContentRevision::new("1111111111111111111111111111111111111111")
+			.expect("fixture revision is canonical"),
 		worktree_state: [1; 32],
 	}
 }
@@ -43,7 +41,8 @@ fn capture_failure_is_incomplete_evidence_even_after_successful_exit() {
 fn capture_drain_processes_a_bounded_event_batch() {
 	let (sender, receiver) = sync_channel(64);
 	for _ in 0..40 {
-		sender.send(CaptureEvent::Chunk(CaptureStream::Stdout, vec![b'x']))
+		sender
+			.send(CaptureEvent::Chunk(CaptureStream::Stdout, vec![b'x']))
 			.expect("chunk is queued");
 	}
 	drop(sender);

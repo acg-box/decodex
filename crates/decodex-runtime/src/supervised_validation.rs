@@ -201,7 +201,8 @@ pub enum ValidationSupervisionError {
 impl Display for ValidationSupervisionError {
 	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Self::InvalidAuthority(reason) => write!(formatter, "invalid validation authority: {reason}"),
+			Self::InvalidAuthority(reason) =>
+				write!(formatter, "invalid validation authority: {reason}"),
 			Self::StateObservation(reason) =>
 				write!(formatter, "protected-state observation failed: {reason}"),
 			Self::Spawn(error) => write!(formatter, "validation process spawn failed: {error}"),
@@ -263,11 +264,8 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 	let (capture_sender, capture_receiver) = sync_channel(16);
 	let _stdout_reader = spawn_capture(stdout, CaptureStream::Stdout, capture_sender.clone());
 	let _stderr_reader = spawn_capture(stderr, CaptureStream::Stderr, capture_sender);
-	let mut capture = CaptureState::new(
-		capture_receiver,
-		authority.stdout_limit,
-		authority.stderr_limit,
-	);
+	let mut capture =
+		CaptureState::new(capture_receiver, authority.stdout_limit, authority.stderr_limit);
 	let mut forced = None;
 	let recorded_status = loop {
 		// Observe leader completion first. Once recorded, no later supervisor event may replace it.
@@ -292,7 +290,8 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		};
 		if let Some(supervisor_event) = supervisor_event {
 			// Close the observation gap between the iteration's first poll and committing a
-			// forced outcome. Any exit observed here has already happened and remains authoritative.
+			// forced outcome. Any exit observed here has already happened and remains
+			// authoritative.
 			match child.try_wait() {
 				Ok(Some(status)) => break Some(status),
 				Ok(None) => forced = Some(supervisor_event),

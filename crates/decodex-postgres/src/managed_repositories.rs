@@ -19,12 +19,12 @@ use decodex_core::{
 	ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase, ManagedWorktreeId,
 	NoDispatch, OperationDescriptorVersion, OperationView, PersistedAbsolutePath,
 	PositiveAllocationEvidence, ProjectId, RegistrationEvidence, RegistrationReadbackRequest,
-	RegistrationReconciliation, RegistrationTarget, RepositoryAdmissionFacts, RepositoryAllocationId,
-	RepositoryAdmissionDescriptor, RepositoryAdmissionDescriptorVersion,
-	RepositoryAdmittedGitLayout, RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor,
+	RegistrationReconciliation, RegistrationTarget, RepositoryAdmissionDescriptor,
+	RepositoryAdmissionDescriptorVersion, RepositoryAdmissionFacts, RepositoryAdmittedGitLayout,
+	RepositoryAllocationId, RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor,
 	RepositoryCommitActorEmail, RepositoryCommitActorName, RepositoryCommitMessage,
-	RepositoryContentRevision, RepositoryEvidenceId, RepositoryOperationId,
-	RepositoryGitRegistrationRole, RepositoryObservationPath, RepositoryObservedObjectType,
+	RepositoryContentRevision, RepositoryEvidenceId, RepositoryGitRegistrationRole,
+	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
 	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
 	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
 	RepositoryRegistrationId, WorktreeReadyEvidence, WorktreeReadyPolicy,
@@ -118,10 +118,7 @@ pub enum RepositoryDispatchFenceOutcome<T> {
 		release_confirmed: bool,
 	},
 	/// Reconciliation won serialization first. The supplied receipt was consumed without dispatch.
-	Terminal {
-		repository: ManagedRepositoryFacts,
-		operation: OperationView,
-	},
+	Terminal { repository: ManagedRepositoryFacts, operation: OperationView },
 }
 
 /// Readback-only restart work. No variant can authorize an external effect.
@@ -159,10 +156,7 @@ pub enum RepositoryReconciliationOutcome {
 	/// Readback was temporarily unavailable; durable authority remains possibly effected.
 	Pending(OperationView),
 	/// One terminal evidence/result/transition transaction committed.
-	Terminal {
-		operation: OperationView,
-		repository: ManagedRepositoryFacts,
-	},
+	Terminal { operation: OperationView, repository: ManagedRepositoryFacts },
 }
 
 impl PostgresStore {
@@ -263,11 +257,7 @@ impl PostgresStore {
 				"INSERT INTO decodex.repository_operation_evidence(
 				 evidence_id,repository_id,kind,evidence
 				) VALUES($1::text::uuid,$2::text::uuid,'allocation',$3)",
-				&[
-					&evidence.evidence_id().as_str(),
-					&repository_id.as_str(),
-					&evidence_document,
-				],
+				&[&evidence.evidence_id().as_str(), &repository_id.as_str(), &evidence_document],
 			)
 			.await?;
 		transaction
@@ -545,10 +535,8 @@ impl PostgresStore {
 			.await?
 			.ok_or_else(|| incompatible("operation repository is absent"))?;
 		let work = operation_readback_work(&operation)?;
-		let value: String = transaction
-			.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[])
-			.await?
-			.get(0);
+		let value: String =
+			transaction.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[]).await?.get(0);
 		let evidence_id = RepositoryEvidenceId::new(value)?;
 		let observed = observe(&work, &facts.admission, evidence_id);
 		let outcome = match observed {
@@ -632,8 +620,7 @@ impl PostgresStore {
 				.await?
 				.ok_or_else(|| incompatible("restart repository projection disappeared"))?;
 			let allocation_evidence = parse_allocation_evidence(row.get(13))?;
-			if allocation_evidence.admission_descriptor()
-				!= repository.admission.descriptor()
+			if allocation_evidence.admission_descriptor() != repository.admission.descriptor()
 				|| allocation_evidence.vacant_worktree_path() != &repository.worktree_path
 			{
 				return Err(incompatible(
@@ -641,15 +628,15 @@ impl PostgresStore {
 				));
 			}
 			let readback = match operation.descriptor.kind {
-					RepositoryOperationKind::Register => registration_readback_request(&operation)
-						.map(RepositoryReadbackWork::Registration),
-					RepositoryOperationKind::WorktreeReady =>
-						worktree_ready_readback_request(&operation)
-							.map(RepositoryReadbackWork::WorktreeReady),
-					RepositoryOperationKind::Commit => commit_readback_request(&operation)
-						.map(RepositoryReadbackWork::Commit),
-				}
-				.map_err(StoreError::from)?;
+				RepositoryOperationKind::Register => registration_readback_request(&operation)
+					.map(RepositoryReadbackWork::Registration),
+				RepositoryOperationKind::WorktreeReady =>
+					worktree_ready_readback_request(&operation)
+						.map(RepositoryReadbackWork::WorktreeReady),
+				RepositoryOperationKind::Commit =>
+					commit_readback_request(&operation).map(RepositoryReadbackWork::Commit),
+			}
+			.map_err(StoreError::from)?;
 			states.push(RepositoryRestartState {
 				repository,
 				operation,
@@ -662,13 +649,14 @@ impl PostgresStore {
 	}
 }
 
-fn operation_readback_work(operation: &OperationView) -> Result<RepositoryReadbackWork, StoreError> {
+fn operation_readback_work(
+	operation: &OperationView,
+) -> Result<RepositoryReadbackWork, StoreError> {
 	Ok(match operation.descriptor.kind {
 		RepositoryOperationKind::Register =>
 			RepositoryReadbackWork::Registration(registration_readback_request(operation)?),
-		RepositoryOperationKind::WorktreeReady => RepositoryReadbackWork::WorktreeReady(
-			worktree_ready_readback_request(operation)?,
-		),
+		RepositoryOperationKind::WorktreeReady =>
+			RepositoryReadbackWork::WorktreeReady(worktree_ready_readback_request(operation)?),
 		RepositoryOperationKind::Commit =>
 			RepositoryReadbackWork::Commit(commit_readback_request(operation)?),
 	})
@@ -775,10 +763,7 @@ async fn finish_reconciliation(
 	let repository = load_facts(&transaction, &operation.descriptor.repository_id, false)
 		.await?
 		.ok_or_else(|| incompatible("reconciled repository projection disappeared"))?;
-	Ok(RepositoryReconciliationOutcome::Terminal {
-		operation: terminal.operation,
-		repository,
-	})
+	Ok(RepositoryReconciliationOutcome::Terminal { operation: terminal.operation, repository })
 }
 
 enum PrepareCommand<'a> {
@@ -914,17 +899,18 @@ impl ReconcileEvidence<'_> {
 		operation: &OperationView,
 	) -> Result<Option<TerminalReconciliation>, StoreError> {
 		match self {
-			Self::Registration(evidence) => match decide_registration_readback(facts, operation, evidence)? {
-				RegistrationReconciliation::Pending => Ok(None),
-				RegistrationReconciliation::Completed { operation, repository, evidence }
-				| RegistrationReconciliation::Ambiguous { operation, repository, evidence } =>
-					Ok(Some(TerminalReconciliation::new(
-						operation,
-						repository.phase,
-						repository.head,
-						TerminalEvidence::Registration(evidence),
-					))),
-			},
+			Self::Registration(evidence) =>
+				match decide_registration_readback(facts, operation, evidence)? {
+					RegistrationReconciliation::Pending => Ok(None),
+					RegistrationReconciliation::Completed { operation, repository, evidence }
+					| RegistrationReconciliation::Ambiguous { operation, repository, evidence } =>
+						Ok(Some(TerminalReconciliation::new(
+							operation,
+							repository.phase,
+							repository.head,
+							TerminalEvidence::Registration(evidence),
+						))),
+				},
 			Self::WorktreeReady(evidence) =>
 				match decide_worktree_ready_readback(facts, operation, evidence)? {
 					WorktreeReadyReconciliation::Pending => Ok(None),
@@ -975,8 +961,10 @@ impl TerminalReconciliation {
 		if let Some(id) = self.evidence.exact_evidence_id() {
 			Ok(id.clone())
 		} else {
-			let value: String = transaction.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[])
-				.await?.get(0);
+			let value: String = transaction
+				.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[])
+				.await?
+				.get(0);
 			RepositoryEvidenceId::new(value).map_err(StoreError::from)
 		}
 	}
@@ -1101,9 +1089,7 @@ fn parse_admission_columns(
 		|| descriptor.repository_path() != &repository_path
 		|| !descriptor.verify_digest(&digest)
 	{
-		return Err(incompatible(
-			"stored admission columns contradict the complete descriptor",
-		));
+		return Err(incompatible("stored admission columns contradict the complete descriptor"));
 	}
 	Ok(RepositoryAdmissionFacts::new(descriptor))
 }
@@ -1160,10 +1146,7 @@ fn parse_facts_row(row: Row) -> Result<ManagedRepositoryFacts, StoreError> {
 		allocation_id: RepositoryAllocationId::new(row.get::<_, String>(8))?,
 		worktree_id: ManagedWorktreeId::new(row.get::<_, String>(9))?,
 		worktree_path: PersistedAbsolutePath::new(PathBuf::from(row.get::<_, String>(10)))?,
-		phase: parse_phase(
-			&row.get::<_, String>(11),
-			row.get::<_, Option<String>>(12).as_deref(),
-		)?,
+		phase: parse_phase(&row.get::<_, String>(11), row.get::<_, Option<String>>(12).as_deref())?,
 		head: RepositoryContentRevision::new(row.get::<_, String>(13))?,
 		checkpoint: AggregateCheckpoint::new(
 			u64::try_from(generation).map_err(|_| incompatible("stored generation is invalid"))?,
@@ -1249,14 +1232,8 @@ fn parse_allocation_evidence(document: Value) -> Result<PositiveAllocationEviden
 	let evidence = PositiveAllocationEvidence::new(
 		RepositoryEvidenceId::new(required_str(&document, "evidence_id")?)
 			.map_err(|_| incompatible("stored allocation evidence identity is invalid"))?,
-		parse_admission_descriptor_document(required_value(
-			&document,
-			"admission_descriptor",
-		)?)?,
-		parse_stored_path(required_str(
-			&document,
-			"vacant_worktree_absolute_path",
-		)?)?,
+		parse_admission_descriptor_document(required_value(&document, "admission_descriptor")?)?,
+		parse_stored_path(required_str(&document, "vacant_worktree_absolute_path")?)?,
 	);
 	if allocation_evidence_document(&evidence)? != document {
 		return Err(incompatible("stored allocation evidence is not canonical"));
@@ -1347,14 +1324,12 @@ async fn insert_transition(
 async fn issue_authority_tip(
 	transaction: &Transaction<'_>,
 ) -> Result<RepositoryAuthorityTip, StoreError> {
-	let value: String = transaction.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[])
-		.await?.get(0);
+	let value: String =
+		transaction.query_one("SELECT pg_catalog.gen_random_uuid()::text", &[]).await?.get(0);
 	RepositoryAuthorityTip::new(value).map_err(StoreError::from)
 }
 
-fn descriptor_document(
-	descriptor: &CanonicalOperationDescriptor,
-) -> Result<Value, StoreError> {
+fn descriptor_document(descriptor: &CanonicalOperationDescriptor) -> Result<Value, StoreError> {
 	Ok(json!({
 		"schema": 1,
 		"operation_id": descriptor.operation_id.as_str(),
@@ -1479,10 +1454,8 @@ fn parse_admission_descriptor_document(
 		return Err(incompatible("stored admission descriptor version is unsupported"));
 	}
 	let layout_document = required_value(document, "git_layout")?;
-	let registration_role = parse_git_registration_role(required_str(
-		layout_document,
-		"registration_role",
-	)?)?;
+	let registration_role =
+		parse_git_registration_role(required_str(layout_document, "registration_role")?)?;
 	let registration_id = required_optional_str(layout_document, "registration_id")?
 		.map(|value| {
 			RepositoryRegistrationId::new(value)
@@ -1493,19 +1466,13 @@ fn parse_admission_descriptor_document(
 		registration_role,
 		registration_id,
 		parse_stored_path(required_str(layout_document, "repository_absolute_path")?)?,
-		parse_stored_path(required_str(
-			layout_document,
-			"worktree_git_entry_absolute_path",
-		)?)?,
+		parse_stored_path(required_str(layout_document, "worktree_git_entry_absolute_path")?)?,
 		parse_stored_path(required_str(layout_document, "git_directory_absolute_path")?)?,
 		parse_stored_path(required_str(layout_document, "common_directory_absolute_path")?)?,
 		parse_stored_path(required_str(layout_document, "objects_directory_absolute_path")?)?,
 		parse_optional_stored_path(layout_document, "refs_directory_absolute_path")?,
 		parse_optional_stored_path(layout_document, "common_directory_file_absolute_path")?,
-		parse_optional_stored_path(
-			layout_document,
-			"git_directory_backlink_file_absolute_path",
-		)?,
+		parse_optional_stored_path(layout_document, "git_directory_backlink_file_absolute_path")?,
 	);
 	let observations_document = required_value(document, "observations")?
 		.as_array()
@@ -1515,16 +1482,15 @@ fn parse_admission_descriptor_document(
 		let roles_document = required_value(observation_document, "roles")?
 			.as_array()
 			.ok_or_else(|| incompatible("stored admission observation roles are not an array"))?;
-		let roles = roles_document
-			.iter()
-			.map(|role| {
-				parse_path_registration_role(
-					role.as_str().ok_or_else(|| {
+		let roles =
+			roles_document
+				.iter()
+				.map(|role| {
+					parse_path_registration_role(role.as_str().ok_or_else(|| {
 						incompatible("stored admission observation role is invalid")
-					})?,
-				)
-			})
-			.collect::<Result<Vec<_>, StoreError>>()?;
+					})?)
+				})
+				.collect::<Result<Vec<_>, StoreError>>()?;
 		let owner_uid = u32::try_from(required_u64(observation_document, "owner_uid")?)
 			.map_err(|_| incompatible("stored admission observation UID is invalid"))?;
 		let permissions = u32::try_from(required_u64(observation_document, "permissions")?)
@@ -1535,10 +1501,7 @@ fn parse_admission_descriptor_document(
 				roles,
 				required_u64(observation_document, "device")?,
 				required_u64(observation_document, "inode")?,
-				parse_observed_object_type(required_str(
-					observation_document,
-					"object_type",
-				)?)?,
+				parse_observed_object_type(required_str(observation_document, "object_type")?)?,
 				owner_uid,
 				permissions,
 			)
@@ -1571,7 +1534,9 @@ fn parse_admission_descriptor_document(
 	Ok(descriptor)
 }
 
-fn allocation_evidence_document(evidence: &PositiveAllocationEvidence) -> Result<Value, StoreError> {
+fn allocation_evidence_document(
+	evidence: &PositiveAllocationEvidence,
+) -> Result<Value, StoreError> {
 	Ok(json!({
 		"classification": "positive",
 		"evidence_id": evidence.evidence_id().as_str(),
@@ -1762,10 +1727,7 @@ fn parse_result(value: Value) -> Result<RepositoryOperationResult, StoreError> {
 	}
 }
 
-fn parse_phase(
-	value: &str,
-	ambiguity: Option<&str>,
-) -> Result<ManagedRepositoryPhase, StoreError> {
+fn parse_phase(value: &str, ambiguity: Option<&str>) -> Result<ManagedRepositoryPhase, StoreError> {
 	Ok(match value {
 		"allocated" if ambiguity.is_none() => ManagedRepositoryPhase::Allocated,
 		"registered" if ambiguity.is_none() => ManagedRepositoryPhase::Registered,
@@ -1793,9 +1755,7 @@ fn parse_worktree_policy(value: &str) -> Result<WorktreeReadyPolicy, StoreError>
 	}
 }
 
-fn parse_git_registration_role(
-	value: &str,
-) -> Result<RepositoryGitRegistrationRole, StoreError> {
+fn parse_git_registration_role(value: &str) -> Result<RepositoryGitRegistrationRole, StoreError> {
 	match value {
 		"primary_worktree" => Ok(RepositoryGitRegistrationRole::PrimaryWorktree),
 		"linked_worktree" => Ok(RepositoryGitRegistrationRole::LinkedWorktree),
@@ -1803,9 +1763,7 @@ fn parse_git_registration_role(
 	}
 }
 
-fn parse_observed_object_type(
-	value: &str,
-) -> Result<RepositoryObservedObjectType, StoreError> {
+fn parse_observed_object_type(value: &str) -> Result<RepositoryObservedObjectType, StoreError> {
 	match value {
 		"directory" => Ok(RepositoryObservedObjectType::Directory),
 		"regular_file" => Ok(RepositoryObservedObjectType::RegularFile),
@@ -1813,31 +1771,23 @@ fn parse_observed_object_type(
 	}
 }
 
-fn parse_path_registration_role(
-	value: &str,
-) -> Result<RepositoryPathRegistrationRole, StoreError> {
+fn parse_path_registration_role(value: &str) -> Result<RepositoryPathRegistrationRole, StoreError> {
 	Ok(match value {
 		"repository_root_component" => RepositoryPathRegistrationRole::RepositoryRootComponent,
 		"repository_root" => RepositoryPathRegistrationRole::RepositoryRoot,
 		"worktree_git_entry" => RepositoryPathRegistrationRole::WorktreeGitEntry,
 		"git_directory_component" => RepositoryPathRegistrationRole::GitDirectoryComponent,
 		"git_directory" => RepositoryPathRegistrationRole::GitDirectory,
-		"git_common_directory_component" => {
-			RepositoryPathRegistrationRole::GitCommonDirectoryComponent
-		},
+		"git_common_directory_component" =>
+			RepositoryPathRegistrationRole::GitCommonDirectoryComponent,
 		"git_common_directory" => RepositoryPathRegistrationRole::GitCommonDirectory,
-		"git_objects_directory_component" => {
-			RepositoryPathRegistrationRole::GitObjectsDirectoryComponent
-		},
+		"git_objects_directory_component" =>
+			RepositoryPathRegistrationRole::GitObjectsDirectoryComponent,
 		"git_objects_directory" => RepositoryPathRegistrationRole::GitObjectsDirectory,
-		"git_refs_directory_component" => {
-			RepositoryPathRegistrationRole::GitRefsDirectoryComponent
-		},
+		"git_refs_directory_component" => RepositoryPathRegistrationRole::GitRefsDirectoryComponent,
 		"git_refs_directory" => RepositoryPathRegistrationRole::GitRefsDirectory,
 		"git_common_directory_file" => RepositoryPathRegistrationRole::GitCommonDirectoryFile,
-		"git_directory_backlink_file" => {
-			RepositoryPathRegistrationRole::GitDirectoryBacklinkFile
-		},
+		"git_directory_backlink_file" => RepositoryPathRegistrationRole::GitDirectoryBacklinkFile,
 		_ => return Err(incompatible("stored admission path role is invalid")),
 	})
 }
@@ -1907,22 +1857,16 @@ fn path_registration_role_text(value: RepositoryPathRegistrationRole) -> &'stati
 		RepositoryPathRegistrationRole::WorktreeGitEntry => "worktree_git_entry",
 		RepositoryPathRegistrationRole::GitDirectoryComponent => "git_directory_component",
 		RepositoryPathRegistrationRole::GitDirectory => "git_directory",
-		RepositoryPathRegistrationRole::GitCommonDirectoryComponent => {
-			"git_common_directory_component"
-		},
+		RepositoryPathRegistrationRole::GitCommonDirectoryComponent =>
+			"git_common_directory_component",
 		RepositoryPathRegistrationRole::GitCommonDirectory => "git_common_directory",
-		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent => {
-			"git_objects_directory_component"
-		},
+		RepositoryPathRegistrationRole::GitObjectsDirectoryComponent =>
+			"git_objects_directory_component",
 		RepositoryPathRegistrationRole::GitObjectsDirectory => "git_objects_directory",
-		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => {
-			"git_refs_directory_component"
-		},
+		RepositoryPathRegistrationRole::GitRefsDirectoryComponent => "git_refs_directory_component",
 		RepositoryPathRegistrationRole::GitRefsDirectory => "git_refs_directory",
 		RepositoryPathRegistrationRole::GitCommonDirectoryFile => "git_common_directory_file",
-		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => {
-			"git_directory_backlink_file"
-		},
+		RepositoryPathRegistrationRole::GitDirectoryBacklinkFile => "git_directory_backlink_file",
 	}
 }
 
@@ -2028,7 +1972,8 @@ fn next_generation(value: u64) -> Result<u64, StoreError> {
 }
 
 fn generation_i64(value: u64) -> Result<i64, StoreError> {
-	i64::try_from(value).map_err(|_| incompatible("managed-repository generation exceeds PostgreSQL"))
+	i64::try_from(value)
+		.map_err(|_| incompatible("managed-repository generation exceeds PostgreSQL"))
 }
 
 fn required_value<'a>(value: &'a Value, key: &str) -> Result<&'a Value, StoreError> {
@@ -2041,10 +1986,7 @@ fn required_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, StoreError> 
 		.ok_or_else(|| incompatible("repository document string field is invalid"))
 }
 
-fn required_optional_str<'a>(
-	value: &'a Value,
-	key: &str,
-) -> Result<Option<&'a str>, StoreError> {
+fn required_optional_str<'a>(value: &'a Value, key: &str) -> Result<Option<&'a str>, StoreError> {
 	match required_value(value, key)? {
 		Value::Null => Ok(None),
 		Value::String(value) => Ok(Some(value.as_str())),
