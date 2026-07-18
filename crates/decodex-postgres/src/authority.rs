@@ -986,7 +986,7 @@ const SAFETY_FUNCTIONS: [&str; 52] = [
 	"enforce_repository_operation_scope",
 	"enforce_repository_history_completeness",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 94;
+const SAFETY_TRIGGER_COUNT: usize = 96;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1444,6 +1444,8 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('managed_repositories', 'managed_repositories_projection_complete', 'enforce_managed_repository_projection', 29)
 	,('repository_operations', 'repository_operations_scope_complete', 'enforce_repository_operation_scope', 5)
 	,('repository_operation_evidence', 'repository_operation_evidence_complete', 'enforce_repository_history_completeness', 5)
+	,('repository_operation_results', 'repository_operation_results_complete', 'enforce_repository_history_completeness', 5)
+	,('repository_operation_events', 'repository_operation_events_complete', 'enforce_repository_history_completeness', 5)
 	,('repository_authority_transitions', 'repository_authority_transitions_complete', 'enforce_repository_history_completeness', 5)
 )
 SELECT
@@ -1453,15 +1455,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_authority_transitions_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_authority_transitions_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_authority_transitions_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -1655,6 +1657,8 @@ WITH catalog_context AS MATERIALIZED (
 	,('managed_repositories', 'managed_repositories_projection_complete', 'decodex.enforce_managed_repository_projection()')
 	,('repository_operations', 'repository_operations_scope_complete', 'decodex.enforce_repository_operation_scope()')
 	,('repository_operation_evidence', 'repository_operation_evidence_complete', 'decodex.enforce_repository_history_completeness()')
+	,('repository_operation_results', 'repository_operation_results_complete', 'decodex.enforce_repository_history_completeness()')
+	,('repository_operation_events', 'repository_operation_events_complete', 'decodex.enforce_repository_history_completeness()')
 	,('repository_authority_transitions', 'repository_authority_transitions_complete', 'decodex.enforce_repository_history_completeness()')
 ), actual_triggers AS (
   SELECT
