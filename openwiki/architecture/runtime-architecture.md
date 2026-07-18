@@ -518,7 +518,7 @@ existing ManagedRun barrier, submitted-turn receipt, and repository/worktree/Git
 reconciliation authorities retain ambiguous-effect ownership; routing never reclassifies or
 replays those effects.
 
-V16 is the sole additive migration after V15. It adds an uncomposed pure routing kernel and one
+V16 is the sole routing-decision authority. It adds a pure routing kernel and one
 operation-specific PostgreSQL exact command. The command selects and locks the immutable V14
 snapshot and its current policy, run, account, compatibility, capability, blocker, and quota
 sources; callers provide no candidate array or evidence. It persists one inert `selected`,
@@ -526,9 +526,10 @@ sources; callers provide no candidate array or evidence. It persists one inert `
 normalized exact-depletion references in the same transaction. Five-hour and seven-day facts,
 raw timestamp text, source identity, exact microsecond precision, and evidence revision remain
 separate. Missing or inexact provenance cannot establish eligibility. The adapter strictly reads
-the database result back through the pure kernel. No runtime or application composition root
-imports this command, and digest regeneration plus executable validation remain deferred to the
-integrated freeze.
+the database result back through the pure kernel. The disabled XY-1361 runtime orchestration may
+invoke exactly one V16 command per request, but no daemon, application, protocol, scheduler, Codex,
+credential, or UI composition root constructs that orchestration. Digest regeneration plus
+executable validation remain deferred to the integrated freeze.
 
 V17 consumes only one persisted selected V16 decision identity plus its expected ManagedRun
 revision. PostgreSQL derives the selected account, V14 snapshot, source RuntimeSession,
@@ -547,15 +548,54 @@ exact receipt in one PostgreSQL transaction. A unique decision link makes both p
 exclusive and exactly once across keys and replay. The plan snapshots the accepted ManagedRun
 effect barrier and submitted-turn receipt count, while `replay_permitted` and `dispatch_enabled`
 are structurally false. No ManagedRun identity or Conversation identity changes, no turn is
-submitted or replayed, and no runtime, protocol, daemon, CLI, scheduler, credential, Codex, or UI
-composition root imports the V17 adapter. Schema and configured-authority digest regeneration and
-all executable acceptance remain deferred to the single integrated post-freeze gate, so ordinary
+submitted or replayed. The disabled XY-1361 runtime orchestration consumes one exact V17 plan only
+for a selected V16 decision; no daemon, application, protocol, scheduler, credential, Codex, or UI
+composition root constructs it. Schema and configured-authority digest regeneration and all
+executable acceptance remain deferred to the single integrated post-freeze gate, so ordinary
 runtime readiness continues to fail closed on this moving-core tree.
+
+V18 consumes only the exact persisted V16 `waiting_usage` decision identity and expected
+ManagedRun revision. PostgreSQL derives the exact earliest-ready instant, policy lineage, run
+lineage, and database clock; the caller supplies no timestamp, candidate, quota evidence,
+eligibility, exclusion, account, or replacement decision. One append-only transition relation is
+the lifecycle, domain-operation result, historical-readback, and cross-key replay authority. Every
+accepted registration, claim, reclaim, fire, cancellation, or supersession operation has one
+globally unique operation identity, canonical request, exact predecessor revision/tip, complete
+resultant state, immutable effect/response bytes, and transaction-bound activity/outbox identities.
+The mutable wake head is only a due-order index and current-tip fence; deferred equality and chain
+checks require it to point to the exact newly appended transition. No command success or historical
+readback is constructed from the head.
+
+Unique registration-decision and run-revision links make registration converge to one durable
+wake, while a different operation identity targeting an existing decision rejects instead of
+aliasing it. V9 exact receipts replay byte-identically by protocol key; the same domain operation
+under a new key can return only its immutable transition result after canonical request equality.
+Due acquisition orders independent waits by exact earliest-ready instant, registration time, and
+wake identity and never pools account quotas. A fixed sixty-second database-authored lease is
+recorded on a claim or reclaim transition after global scheduler serialization. Lease expiry and
+restart append a new reclaim transition rather than rewriting history. Registration, claim, fire,
+and cancellation retain V16's hierarchy/run lock order, so replacement decisions cannot cross a
+stale-lineage check.
+
+Pending or leased heads advance to terminal immutable transitions when explicit cancellation,
+ManagedRun revision/lifecycle/wait reason, divergence, policy revision, V16 decision kind, or
+ambiguous replacement lineage is stale. A valid leased wake fires exactly once into one immutable
+transition containing one `routing_resolution_request_id` whose only authority is fresh routing resolution;
+`fresh_routing_resolution_only=true`, `prior_decision_reusable=false`, and
+`production_enabled=false` are structural. The fired record carries no old universe or evidence,
+and no runtime, protocol, daemon, CLI, scheduler composition root, Codex adapter, credential owner,
+or UI imports V18. Executable timing, crash, replay, concurrency, restart, ACL, hostile-input, and
+isolation acceptance remains deferred to the single integrated post-freeze gate.
 
 No production crate or application imports or constructs a V15 experiment execution root. The
 mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
-the complete V15 source boundary. XY-1361 alone may later compose the accepted V14-V16 owners, and
-even that composition must retain production dispatch disabled until the separate enablement gate.
+the complete V15 source boundary. XY-1361 now owns the only disabled runtime orchestration over
+V16 and V17: it makes one exact V16 decision per request, consumes one exact V17 plan only for
+`selected`, and exposes only inert handoff facts for `waiting_usage`. It does not import V18 or
+provide scheduler registration, claiming, firing, cancellation, supersession, credentials, Codex
+mutation, dispatch, replay, or production enablement. The V1 protocol vocabulary remains unchanged
+and exposes none of these authority commands. Production dispatch remains disabled until the
+separate enablement gate.
 The production runtime composes the already accepted repository owners exactly once during daemon bootstrap.
 When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
 same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol

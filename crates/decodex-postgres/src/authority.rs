@@ -26,9 +26,11 @@ const ROUTING_DECISION_MIGRATION: &str =
 	include_str!("../migrations/V16__atomic_routing_decisions.sql");
 const CONTINUATION_MIGRATION: &str =
 	include_str!("../migrations/V17__continuation_authority.sql");
+const WAITING_USAGE_WAKE_MIGRATION: &str =
+	include_str!("../migrations/V18__waiting_usage_wakes.sql");
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const FUNCTION_CONTRACTS: [FunctionContract; 139] = [
+const FUNCTION_CONTRACTS: [FunctionContract; 152] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1078,8 +1080,90 @@ const FUNCTION_CONTRACTS: [FunctionContract; 139] = [
 		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid, p_expected_managed_run_revision bigint, p_plan_id uuid, p_fallback_session_id uuid, p_account_snapshot_id uuid, p_context_pack_id uuid, p_compiled_bytes bytea, p_compiled_digest text, p_manifest_digest text, p_max_bytes integer, p_recent_item_limit integer, p_possible_side_effects text, p_truncated boolean, p_omitted_source_count integer, p_source_kinds text[], p_source_ids text[], p_source_revisions bigint[], p_content_digests text[], p_original_lengths bigint[], p_included_lengths bigint[], p_included_digests text[], p_dispositions text[], p_artifact_ids text[], p_artifact_revisions bigint[]",
 		"bytea", "plpgsql", "v",
 	),
+	trigger_contract(
+		"enforce_waiting_usage_wake_command_owner",
+		"decodex.enforce_waiting_usage_wake_command_owner()",
+		"enforce_waiting_usage_wake_command_owner()",
+	),
+	trigger_contract(
+		"forbid_waiting_usage_wake_transition_mutation",
+		"decodex.forbid_waiting_usage_wake_transition_mutation()",
+		"forbid_waiting_usage_wake_transition_mutation()",
+	),
+	trigger_contract(
+		"enforce_waiting_usage_wake_transition_complete",
+		"decodex.enforce_waiting_usage_wake_transition_complete()",
+		"enforce_waiting_usage_wake_transition_complete()",
+	),
+	trigger_contract(
+		"enforce_waiting_usage_wake_head_projection",
+		"decodex.enforce_waiting_usage_wake_head_projection()",
+		"enforce_waiting_usage_wake_head_projection()",
+	),
+	trigger_contract(
+		"enforce_waiting_usage_wake_event_namespace",
+		"decodex.enforce_waiting_usage_wake_event_namespace()",
+		"enforce_waiting_usage_wake_event_namespace()",
+	),
+	exact_function_contract(
+		"reserve_exact_waiting_usage_wake_command",
+		"decodex.reserve_exact_waiting_usage_wake_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"reserve_exact_waiting_usage_wake_command(\n\tp_protocol text, p_idempotency_key text, p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_request jsonb",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"complete_exact_waiting_usage_wake_rejection",
+		"decodex.complete_exact_waiting_usage_wake_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"complete_exact_waiting_usage_wake_rejection(\n\tp_protocol text, p_idempotency_key text, p_operation text, p_code text\n)",
+		"p_protocol text, p_idempotency_key text, p_operation text, p_code text",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"replay_waiting_usage_wake_operation_exact",
+		"decodex.replay_waiting_usage_wake_operation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.jsonb)",
+		"replay_waiting_usage_wake_operation_exact(\n\tp_protocol text, p_idempotency_key text, p_operation text,\n\tp_operation_id uuid, p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_operation text, p_operation_id uuid, p_request jsonb",
+		"bytea", "plpgsql", "v",
+	),
+	FunctionContract {
+		name: "read_waiting_usage_wake_transition_exact",
+		lookup_signature: "decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
+		migration_signature: "read_waiting_usage_wake_transition_exact(\n\tp_transition_id uuid, p_operation_id uuid\n)",
+		arguments: "p_transition_id uuid, p_operation_id uuid",
+		result: "TABLE(transition_id text, wake_id text, revision bigint, predecessor_revision bigint, predecessor_transition_id text, operation_id text, transition_kind text, registration_operation_id text, routing_decision_id text, routing_decision_revision bigint, routing_policy_id text, routing_policy_revision bigint, managed_run_id text, managed_run_revision bigint, earliest_ready_at_micros bigint, state text, claim_id text, lease_holder text, lease_fence_id text, lease_acquired_at_micros bigint, lease_expires_at_micros bigint, registered_at_micros bigint, transitioned_at_micros bigint, terminal_reason text, routing_resolution_request_id text, fresh_routing_resolution_only boolean, prior_decision_reusable boolean, production_enabled boolean, effect_envelope jsonb, response_bytes bytea)",
+		language: "sql", volatility: "s", strict: false, returns_set: true, rows: 1_000.0,
+	},
+	exact_function_contract(
+		"register_waiting_usage_wake_exact",
+		"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+		"register_waiting_usage_wake_exact(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_decision_id uuid, p_expected_managed_run_revision bigint\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid, p_expected_managed_run_revision bigint",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"claim_due_waiting_usage_wake_exact",
+		"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+		"claim_due_waiting_usage_wake_exact(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_claim_id uuid, p_holder_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_claim_id uuid, p_holder_id uuid",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"fire_waiting_usage_wake_exact",
+		"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+		"fire_waiting_usage_wake_exact(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid,\n\tp_holder_id uuid, p_lease_fence_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid, p_holder_id uuid, p_lease_fence_id uuid",
+		"bytea", "plpgsql", "v",
+	),
+	exact_function_contract(
+		"cancel_waiting_usage_wake_exact",
+		"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		"cancel_waiting_usage_wake_exact(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid",
+		"bytea", "plpgsql", "v",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 46] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 51] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -1126,8 +1210,13 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 46] = [
 	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 ];
-const SAFETY_FUNCTIONS: [&str; 62] = [
+const SAFETY_FUNCTIONS: [&str; 67] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -1190,8 +1279,13 @@ const SAFETY_FUNCTIONS: [&str; 62] = [
 	"forbid_continuation_plan_mutation",
 	"enforce_continuation_plan_completeness",
 	"enforce_continuation_event_namespace",
+	"enforce_waiting_usage_wake_command_owner",
+	"forbid_waiting_usage_wake_transition_mutation",
+	"enforce_waiting_usage_wake_transition_complete",
+	"enforce_waiting_usage_wake_head_projection",
+	"enforce_waiting_usage_wake_event_namespace",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 131;
+const SAFETY_TRIGGER_COUNT: usize = 138;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1415,6 +1509,8 @@ WITH set_roles AS (
 	,('routing_decision_blocker_refs', false, false, false, false)
 	,('routing_decision_exclusions', false, false, false, false)
 	,('continuation_plans', false, false, false, false)
+	,('waiting_usage_wake_transitions', false, false, false, false)
+	,('waiting_usage_wake_heads', false, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -1423,7 +1519,7 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 71
+  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 73
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -1710,6 +1806,13 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('continuation_plans', 'continuation_plan_complete', 'enforce_continuation_plan_completeness', 5)
 	,('activity', 'activity_continuation_namespace', 'enforce_continuation_event_namespace', 23)
 	,('outbox', 'outbox_continuation_namespace', 'enforce_continuation_event_namespace', 23)
+	,('waiting_usage_wake_transitions', 'waiting_usage_wake_transitions_command_owner', 'enforce_waiting_usage_wake_command_owner', 62)
+	,('waiting_usage_wake_heads', 'waiting_usage_wake_heads_command_owner', 'enforce_waiting_usage_wake_command_owner', 62)
+	,('waiting_usage_wake_transitions', 'waiting_usage_wake_transitions_immutable', 'forbid_waiting_usage_wake_transition_mutation', 58)
+	,('waiting_usage_wake_transitions', 'waiting_usage_wake_transition_complete', 'enforce_waiting_usage_wake_transition_complete', 5)
+	,('waiting_usage_wake_heads', 'waiting_usage_wake_head_projection', 'enforce_waiting_usage_wake_head_projection', 29)
+	,('activity', 'activity_waiting_usage_wake_namespace', 'enforce_waiting_usage_wake_event_namespace', 23)
+	,('outbox', 'outbox_waiting_usage_wake_namespace', 'enforce_waiting_usage_wake_event_namespace', 23)
 )
 SELECT
   expected.function_name,
@@ -1718,15 +1821,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -1958,6 +2061,13 @@ WITH catalog_context AS MATERIALIZED (
 	,('continuation_plans', 'continuation_plan_complete', 'decodex.enforce_continuation_plan_completeness()')
 	,('activity', 'activity_continuation_namespace', 'decodex.enforce_continuation_event_namespace()')
 	,('outbox', 'outbox_continuation_namespace', 'decodex.enforce_continuation_event_namespace()')
+	,('waiting_usage_wake_transitions', 'waiting_usage_wake_transitions_command_owner', 'decodex.enforce_waiting_usage_wake_command_owner()')
+	,('waiting_usage_wake_heads', 'waiting_usage_wake_heads_command_owner', 'decodex.enforce_waiting_usage_wake_command_owner()')
+	,('waiting_usage_wake_transitions', 'waiting_usage_wake_transitions_immutable', 'decodex.forbid_waiting_usage_wake_transition_mutation()')
+	,('waiting_usage_wake_transitions', 'waiting_usage_wake_transition_complete', 'decodex.enforce_waiting_usage_wake_transition_complete()')
+	,('waiting_usage_wake_heads', 'waiting_usage_wake_head_projection', 'decodex.enforce_waiting_usage_wake_head_projection()')
+	,('activity', 'activity_waiting_usage_wake_namespace', 'decodex.enforce_waiting_usage_wake_event_namespace()')
+	,('outbox', 'outbox_waiting_usage_wake_namespace', 'decodex.enforce_waiting_usage_wake_event_namespace()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -3704,6 +3814,7 @@ fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str
 		CODEX_EXPERIMENT_MIGRATION,
 		ROUTING_DECISION_MIGRATION,
 		CONTINUATION_MIGRATION,
+		WAITING_USAGE_WAKE_MIGRATION,
 	]
 	.into_iter()
 	.rev()
@@ -3903,6 +4014,11 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 				| "route_account_exact"
 				| "plan_continuation_exact"
 				| "read_continuation_plan_exact"
+				| "register_waiting_usage_wake_exact"
+				| "claim_due_waiting_usage_wake_exact"
+				| "fire_waiting_usage_wake_exact"
+				| "cancel_waiting_usage_wake_exact"
+				| "read_waiting_usage_wake_transition_exact"
 		);
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
