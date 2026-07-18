@@ -11,11 +11,23 @@ mod account_launch;
 mod application;
 mod bootstrap;
 mod managed_repository_executor;
+mod managed_repository_saga;
+mod supervised_validation;
 mod websocket;
 
 pub use application::{Application, ApplicationPublication};
 pub use bootstrap::ServiceBootstrap;
 pub use decodex_protocol::ServerId;
+pub use managed_repository_saga::{
+	ManagedRepositoryEffectPort, ManagedRepositoryEffectSaga, ManagedRepositoryRestartOutcome,
+	ManagedRepositorySagaOutcome, RepositoryDispatchFailure, RepositoryDispatchObservation,
+	RepositoryReadbackEvidence,
+};
+pub use supervised_validation::{
+	ProtectedWorktreeFingerprint, ProtectedWorktreeStateProbe, SupervisedValidationEvidence,
+	ValidationAcceptance, ValidationCancellation, ValidationCommandAuthority, ValidationRejection,
+	ValidationSupervisionError, ValidationTermination, supervise_validation,
+};
 pub use websocket::{BoundServer, ProtocolServer, ServerConfig, ServerError};
 
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
