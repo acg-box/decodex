@@ -811,6 +811,22 @@ generators, PostgreSQL, live experiments, or UI/Accessibility/Desktop checks. Af
 XY-1300 owns one mechanical preflight, one unified complete gate, coherent batched repairs, and one
 final aggregate rerun.
 
+#### XY-1358 deferred acceptance matrix
+
+This source-only matrix is deferred to the unified post-freeze gate. It must run against one exact
+tree and may not enable a live experiment while collecting evidence.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Preparation and crash | Crash before preparation leaves no authority; crash after preparation leaves only `prepared`; crash after the committed pre-effect fence leaves terminal `creation_possible` and cannot authorize another create. |
+| Lost response and replay | A discarded successful command response replays byte-identically, while replay of the pre-effect fence is typed only as ambiguity and cannot recreate its private fresh permission; a lost app-server creation response never retries creation, searches broadly, adopts a thread, or converts ambiguity to absence. |
+| Exact typed binding | Wrong attempt, experiment, marker, title, cwd, ephemeral flag, response ID, reused thread ID, or immutable V14 lineage is rejected atomically; one exact response binds once. |
+| Positive observations | Exact list/read/event/message facts append once with owned experiment, revision, thread, marker, source ID, digest, and database clock; malformed or cross-thread facts fail closed. |
+| Lossy readback | Empty pages, pagination exhaustion, list omission, missing events, truncated history, stale caches, and incomplete readback persist no negative fact and cannot prove absence, completion, failure, or recreate authority. |
+| Exact-command recovery | Same envelope/key replays stored bytes; changed envelope/key conflicts; aborts at receipt/domain/history completion roll back; no executing receipt commits. |
+| ACL and hostile catalog | Runtime has only the four V15 command entrypoints plus required enum usage; PUBLIC, direct table writes, helpers, trigger bypass, hostile search path, overloads, default ACL drift, and dump/restore authority drift fail closed. |
+| Production isolation | Reverse dependency inspection proves no production runtime or application reaches a V15 experiment execution root; Codex remains a typed fact adapter and dispatch remains disabled. |
+
 
 ## Cutover gate
 

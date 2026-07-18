@@ -6,6 +6,7 @@ mod blob;
 mod cache;
 mod config;
 mod conversation;
+mod experiment;
 mod identity;
 mod managed_repository;
 mod managed_run;
@@ -20,6 +21,12 @@ mod storage;
 mod work_item;
 
 pub use self::{
+	experiment::{
+		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
+		CodexExperimentObservation,
+		CodexExperimentObservationKind, CodexExperimentPrepared,
+		CodexExperimentRejection, CodexExperimentState, CodexExperimentThreadBinding,
+	},
 	account::{AccountError, AccountId, AccountState},
 	agent::{
 		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
