@@ -15,6 +15,7 @@ use std::{
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
+		mpsc::{Receiver, SyncSender, TryRecvError, sync_channel},
 	},
 	thread,
 	time::{Duration, Instant},
@@ -247,61 +248,68 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		.stderr(Stdio::piped());
 	configure_child(&mut command);
 	let mut child = command.spawn().map_err(ValidationSupervisionError::Spawn)?;
-	let stdout = child.stdout.take().ok_or_else(|| {
-		let _ = terminate_process_group(&mut child, authority.deadline);
-		ValidationSupervisionError::Spawn(io::Error::other("stdout supervision unavailable"))
-	})?;
-	let stderr = child.stderr.take().ok_or_else(|| {
-		let _ = terminate_process_group(&mut child, authority.deadline);
-		ValidationSupervisionError::Spawn(io::Error::other("stderr supervision unavailable"))
-	})?;
-
-	let output_exceeded = Arc::new(AtomicBool::new(false));
-	let stdout_reader = spawn_capture(stdout, authority.stdout_limit, output_exceeded.clone());
-	let stderr_reader = spawn_capture(stderr, authority.stderr_limit, output_exceeded.clone());
-	let mut forced = None;
-	let status = loop {
-		let now = Instant::now();
-		let reason = if now >= authority.deadline {
-			Some(ValidationTermination::TimedOut)
-		} else if cancellation.is_cancelled() {
-			Some(ValidationTermination::Cancelled)
-		} else if output_exceeded.load(Ordering::Acquire) {
-			Some(ValidationTermination::OutputLimitExceeded)
-		} else {
-			None
-		};
-		if let Some(reason) = reason {
-			forced = Some(reason);
-			let status = terminate_process_group(&mut child, authority.deadline).ok();
-			break status;
-		}
-		match child.try_wait() {
-			Ok(Some(status)) => {
-				// A successful leader may not detach descendants or keep capture pipes alive.
-				let _ = signal_group(child.id(), libc::SIGKILL);
-				break Some(status);
-			},
-			Ok(None) => thread::sleep(POLL_INTERVAL.min(authority.deadline - now)),
-			Err(_) => {
-				forced = Some(ValidationTermination::SupervisionLost);
-				let status = terminate_process_group(&mut child, authority.deadline).ok();
-				break status;
-			},
-		}
+	let stdout = match child.stdout.take() {
+		Some(stdout) => stdout,
+		None => return Err(missing_capture(&mut child, authority.deadline, "stdout")),
+	};
+	let stderr = match child.stderr.take() {
+		Some(stderr) => stderr,
+		None => return Err(missing_capture(&mut child, authority.deadline, "stderr")),
 	};
 
-	let stdout = stdout_reader.join().ok().and_then(Result::ok);
-	let stderr = stderr_reader.join().ok().and_then(Result::ok);
-	let capture_complete = stdout.is_some() && stderr.is_some();
-	let stdout = stdout.unwrap_or_default();
-	let stderr = stderr.unwrap_or_default();
-	let termination = forced.unwrap_or_else(|| classify_status(status));
+	let (capture_sender, capture_receiver) = sync_channel(16);
+	let _stdout_reader = spawn_capture(stdout, CaptureStream::Stdout, capture_sender.clone());
+	let _stderr_reader = spawn_capture(stderr, CaptureStream::Stderr, capture_sender);
+	let mut capture = CaptureState::new(
+		capture_receiver,
+		authority.stdout_limit,
+		authority.stderr_limit,
+	);
+	let mut forced = None;
+	let recorded_status = loop {
+		// Observe leader completion first. Once recorded, no later supervisor event may replace it.
+		match child.try_wait() {
+			Ok(Some(status)) => break Some(status),
+			Ok(None) => {},
+			Err(_) => {
+				forced = Some(ValidationTermination::SupervisionLost);
+				break None;
+			},
+		}
+		capture.drain();
+		if capture.output_exceeded {
+			forced = Some(ValidationTermination::OutputLimitExceeded);
+			break None;
+		}
+		let now = Instant::now();
+		if now >= authority.deadline {
+			forced = Some(ValidationTermination::TimedOut);
+			break None;
+		}
+		if cancellation.is_cancelled() {
+			forced = Some(ValidationTermination::Cancelled);
+			break None;
+		}
+		sleep_bounded(authority.deadline);
+	};
+	let teardown = teardown_process_group(&mut child, authority.deadline, recorded_status);
+	while !capture.settled() && Instant::now() < authority.deadline {
+		capture.drain();
+		if !capture.settled() {
+			sleep_bounded(authority.deadline);
+		}
+	}
+	capture.drain();
+	let termination = if teardown.confirmed {
+		forced.unwrap_or_else(|| classify_status(teardown.status))
+	} else {
+		ValidationTermination::SupervisionLost
+	};
 	let after = probe.observe().ok();
 	let acceptance = classify_acceptance(
 		termination,
-		capture_complete,
-		output_exceeded.load(Ordering::Acquire),
+		capture.complete(),
+		capture.output_exceeded,
 		&before,
 		after.as_ref(),
 	);
@@ -312,8 +320,8 @@ pub fn supervise_validation<P: ProtectedWorktreeStateProbe>(
 		after,
 		termination,
 		acceptance,
-		stdout,
-		stderr,
+		stdout: capture.stdout,
+		stderr: capture.stderr,
 	})
 }
 
@@ -334,28 +342,115 @@ fn pre_spawn_rejection(
 	}
 }
 
+#[derive(Clone, Copy)]
+enum CaptureStream {
+	Stdout,
+	Stderr,
+}
+
+enum CaptureEvent {
+	Chunk(CaptureStream, Vec<u8>),
+	Eof(CaptureStream),
+	Failed(CaptureStream),
+}
+
+struct CaptureState {
+	receiver: Receiver<CaptureEvent>,
+	stdout: Vec<u8>,
+	stderr: Vec<u8>,
+	stdout_limit: usize,
+	stderr_limit: usize,
+	stdout_done: bool,
+	stderr_done: bool,
+	failed: bool,
+	output_exceeded: bool,
+}
+
+impl CaptureState {
+	fn new(receiver: Receiver<CaptureEvent>, stdout_limit: usize, stderr_limit: usize) -> Self {
+		Self {
+			receiver,
+			stdout: Vec::with_capacity(stdout_limit.min(64 * 1_024)),
+			stderr: Vec::with_capacity(stderr_limit.min(64 * 1_024)),
+			stdout_limit,
+			stderr_limit,
+			stdout_done: false,
+			stderr_done: false,
+			failed: false,
+			output_exceeded: false,
+		}
+	}
+
+	fn drain(&mut self) {
+		loop {
+			match self.receiver.try_recv() {
+				Ok(CaptureEvent::Chunk(stream, bytes)) => self.append(stream, &bytes),
+				Ok(CaptureEvent::Eof(stream)) => self.mark_done(stream),
+				Ok(CaptureEvent::Failed(stream)) => {
+					self.failed = true;
+					self.mark_done(stream);
+				},
+				Err(TryRecvError::Empty) => break,
+				Err(TryRecvError::Disconnected) => {
+					if !self.stdout_done || !self.stderr_done {
+						self.failed = true;
+					}
+					break;
+				},
+			}
+		}
+	}
+
+	fn append(&mut self, stream: CaptureStream, bytes: &[u8]) {
+		let (output, limit) = match stream {
+			CaptureStream::Stdout => (&mut self.stdout, self.stdout_limit),
+			CaptureStream::Stderr => (&mut self.stderr, self.stderr_limit),
+		};
+		let remaining = limit.saturating_sub(output.len());
+		output.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+		self.output_exceeded |= bytes.len() > remaining;
+	}
+
+	fn mark_done(&mut self, stream: CaptureStream) {
+		match stream {
+			CaptureStream::Stdout => self.stdout_done = true,
+			CaptureStream::Stderr => self.stderr_done = true,
+		}
+	}
+
+	fn complete(&self) -> bool {
+		self.stdout_done && self.stderr_done && !self.failed
+	}
+
+	fn settled(&self) -> bool {
+		self.stdout_done && self.stderr_done
+	}
+}
+
 fn spawn_capture<R: Read + Send + 'static>(
 	mut reader: R,
-	limit: usize,
-	exceeded: Arc<AtomicBool>,
-) -> thread::JoinHandle<io::Result<Vec<u8>>> {
+	stream: CaptureStream,
+	sender: SyncSender<CaptureEvent>,
+) -> thread::JoinHandle<()> {
 	thread::spawn(move || {
-		let mut captured = Vec::with_capacity(limit.min(64 * 1_024));
 		let mut buffer = [0_u8; 8 * 1_024];
 		loop {
 			let count = match reader.read(&mut buffer) {
-				Ok(0) => break,
+				Ok(0) => {
+					let _ = sender.send(CaptureEvent::Eof(stream));
+					return;
+				},
 				Ok(count) => count,
 				Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-				Err(error) => return Err(error),
+				Err(_) => {
+					let _ = sender.send(CaptureEvent::Failed(stream));
+					return;
+				},
 			};
-			let remaining = limit.saturating_sub(captured.len());
-			captured.extend_from_slice(&buffer[..count.min(remaining)]);
-			if count > remaining {
-				exceeded.store(true, Ordering::Release);
+			if sender.send(CaptureEvent::Chunk(stream, buffer[..count].to_vec())).is_err() {
+				return;
 			}
 		}
-		Ok(captured)
 	})
 }
 
@@ -372,31 +467,110 @@ fn configure_child(command: &mut Command) {
 	}
 }
 
-fn terminate_process_group(child: &mut Child, deadline: Instant) -> io::Result<ExitStatus> {
-	let _ = signal_group(child.id(), libc::SIGTERM);
-	let grace_deadline = deadline.min(Instant::now() + TERMINATION_GRACE);
-	loop {
-		match child.try_wait()? {
-			Some(status) => {
-				let _ = signal_group(child.id(), libc::SIGKILL);
-				return Ok(status);
-			},
-			None if Instant::now() < grace_deadline => thread::sleep(POLL_INTERVAL),
-			None => break,
-		}
-	}
-	let _ = signal_group(child.id(), libc::SIGKILL);
-	child.wait()
+struct TeardownOutcome {
+	status: Option<ExitStatus>,
+	confirmed: bool,
 }
 
-fn signal_group(pid: u32, signal: i32) -> io::Result<()> {
+fn missing_capture(
+	child: &mut Child,
+	deadline: Instant,
+	stream: &'static str,
+) -> ValidationSupervisionError {
+	let teardown = teardown_process_group(child, deadline, None);
+	let suffix = if teardown.confirmed { "" } else { "; teardown unconfirmed" };
+	ValidationSupervisionError::Spawn(io::Error::other(format!(
+		"{stream} supervision unavailable{suffix}"
+	)))
+}
+
+fn teardown_process_group(
+	child: &mut Child,
+	deadline: Instant,
+	recorded_status: Option<ExitStatus>,
+) -> TeardownOutcome {
+	let pid = child.id();
+	let mut status = recorded_status;
+	let grace_deadline = deadline.min(Instant::now() + TERMINATION_GRACE);
+	if Instant::now() < deadline {
+		let _ = signal_group_until(pid, libc::SIGTERM, deadline);
+	}
+	loop {
+		poll_status(child, &mut status);
+		if group_gone(pid, deadline) && status.is_some() {
+			return TeardownOutcome { status, confirmed: true };
+		}
+		let now = Instant::now();
+		if now >= grace_deadline {
+			break;
+		}
+		sleep_bounded(grace_deadline);
+	}
+
+	// Always attempt both group and leader SIGKILL paths. Neither call is allowed to extend the
+	// command authority's single absolute deadline.
+	let _ = signal_group_until(pid, libc::SIGKILL, deadline);
+	let _ = child.kill();
+	loop {
+		poll_status(child, &mut status);
+		if group_gone(pid, deadline) && status.is_some() {
+			return TeardownOutcome { status, confirmed: true };
+		}
+		let now = Instant::now();
+		if now >= deadline {
+			break;
+		}
+		let _ = signal_group_until(pid, libc::SIGKILL, deadline);
+		sleep_bounded(deadline);
+	}
+	// One final nonblocking observation at the deadline; never call blocking `wait` or `join`.
+	poll_status(child, &mut status);
+	let confirmed = group_gone(pid, deadline) && status.is_some();
+	TeardownOutcome { status, confirmed }
+}
+
+fn poll_status(child: &mut Child, status: &mut Option<ExitStatus>) {
+	if status.is_none() {
+		if let Ok(Some(observed)) = child.try_wait() {
+			*status = Some(observed);
+		}
+	}
+}
+
+fn signal_group_until(pid: u32, signal: i32, deadline: Instant) -> io::Result<()> {
 	let pid = i32::try_from(pid).map_err(|_| io::Error::other("invalid child process identity"))?;
-	// SAFETY: the negative PID addresses only the group created in `pre_exec`.
-	let result = unsafe { libc::kill(-pid, signal) };
-	if result == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
-		Ok(())
-	} else {
-		Err(io::Error::last_os_error())
+	loop {
+		// SAFETY: the negative PID addresses only the group created in `pre_exec`.
+		if unsafe { libc::kill(-pid, signal) } == 0 {
+			return Ok(());
+		}
+		let error = io::Error::last_os_error();
+		match error.raw_os_error() {
+			Some(libc::ESRCH) => return Ok(()),
+			Some(libc::EINTR) if Instant::now() < deadline => continue,
+			_ => return Err(error),
+		}
+	}
+}
+
+fn group_gone(pid: u32, deadline: Instant) -> bool {
+	let Ok(pid) = i32::try_from(pid) else { return false };
+	loop {
+		// SAFETY: signal zero observes only the child-created process group.
+		if unsafe { libc::kill(-pid, 0) } == 0 {
+			return false;
+		}
+		match io::Error::last_os_error().raw_os_error() {
+			Some(libc::ESRCH) => return true,
+			Some(libc::EINTR) if Instant::now() < deadline => continue,
+			_ => return false,
+		}
+	}
+}
+
+fn sleep_bounded(deadline: Instant) {
+	if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+		thread::sleep(POLL_INTERVAL.min(remaining));
 	}
 }
 

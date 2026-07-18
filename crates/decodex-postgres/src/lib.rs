@@ -42,8 +42,9 @@ pub use self::{
 		ManagedRunSafetyRejection, StoredManagedRun,
 	},
 	managed_repositories::{
-		RepositoryAdmissionOutcome, RepositoryDispatchReceipt, RepositoryPreparationOutcome,
-		RepositoryReadbackWork, RepositoryReconciliationOutcome, RepositoryRestartState,
+		RepositoryAdmissionOutcome, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,
+		RepositoryPreparationOutcome, RepositoryReadbackEvidence, RepositoryReadbackWork,
+		RepositoryReconciliationOutcome, RepositoryRestartState,
 	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	role_profiles::{

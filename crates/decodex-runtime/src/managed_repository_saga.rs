@@ -5,15 +5,17 @@
 //! and durable reconciliation. Restart enters below the receipt boundary and is readback-only.
 
 use decodex_core::{
-	BeginCommitCommand, BeginRegistrationCommand, BeginWorktreeReadyCommand, CommitEvidence,
-	CanonicalOperationPayload, ManagedRepositoryFacts, ManagedRepositoryId,
-	ManagedRepositoryPhase, OperationView, RegistrationEvidence, RepositoryAdmissionFacts,
+	BeginCommitCommand, BeginRegistrationCommand, BeginWorktreeReadyCommand,
+	CanonicalOperationPayload, ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase,
+	OperationView, RepositoryAdmissionFacts,
 	RepositoryEvidenceId, RepositoryOperationId, RepositoryOperationState, WorktreeReadyEvidence,
 };
 use decodex_postgres::{
-	PostgresStore, RepositoryDispatchReceipt, RepositoryPreparationOutcome,
-	RepositoryReadbackWork, RepositoryReconciliationOutcome, RepositoryRestartState, StoreError,
+	PostgresStore, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,
+	RepositoryPreparationOutcome, RepositoryReadbackWork, RepositoryReconciliationOutcome,
+	RepositoryRestartState, StoreError,
 };
+pub use decodex_postgres::RepositoryReadbackEvidence;
 
 use crate::managed_repository_executor::{
 	ExecutionAttempt, ExecutionFailure, ManagedRepositoryExecutor,
@@ -57,14 +59,6 @@ pub enum RepositoryDispatchFailure {
 	PreconditionMismatch,
 }
 
-/// Operation-specific evidence returned by a strictly read-only effect observation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RepositoryReadbackEvidence {
-	Registration(RegistrationEvidence),
-	WorktreeReady(WorktreeReadyEvidence),
-	Commit(CommitEvidence),
-}
-
 /// Minimal effect/readback port for the local executor and later provider composition.
 ///
 /// Only `dispatch` accepts the affine receipt. `readback` accepts data and an observation identity,
@@ -89,10 +83,17 @@ pub trait ManagedRepositoryEffectPort {
 pub enum ManagedRepositorySagaOutcome {
 	/// The globally immutable descriptor already existed exactly; no receipt or dispatch occurred.
 	ExistingExact(OperationView),
+	/// Reconciliation terminalized the operation before this owner acquired dispatch serialization.
+	TerminalWithoutDispatch {
+		operation: OperationView,
+		repository: ManagedRepositoryFacts,
+	},
 	/// A fresh receipt was consumed once and its resulting readback was durably reconciled.
 	Reconciled {
 		dispatch: RepositoryDispatchObservation,
 		outcome: RepositoryReconciliationOutcome,
+		/// Whether PostgreSQL acknowledged release of the lock-only dispatch transaction.
+		serialization_release_confirmed: bool,
 	},
 }
 
@@ -169,25 +170,38 @@ where
 		&mut self,
 		prepared: RepositoryPreparationOutcome,
 	) -> Result<ManagedRepositorySagaOutcome, StoreError> {
-		let (operation, receipt) = match prepared {
+		let receipt = match prepared {
 			RepositoryPreparationOutcome::ExistingExact(operation, _) =>
 				return Ok(ManagedRepositorySagaOutcome::ExistingExact(operation)),
-			RepositoryPreparationOutcome::Prepared { operation, receipt } => (operation, receipt),
+			RepositoryPreparationOutcome::Prepared { receipt, .. } => receipt,
 		};
-
-		// Deliberately reload after acknowledged COMMIT. If this readback cannot establish the exact
-		// committed fence, dropping the affine receipt fails closed and no effect occurs.
-		let repository = self
+		let effects = &mut self.effects;
+		let fenced = self
 			.store
-			.read_managed_repository(&operation.descriptor.repository_id)
-			.await?
-			.ok_or_else(|| incompatible("prepared repository is absent on durable readback"))?;
-		validate_prepared_readback(&repository, &operation)?;
-
+			.consume_repository_dispatch(receipt, |receipt, repository| {
+				effects.dispatch(receipt, &repository.admission)
+			})
+			.await?;
+		let (dispatch, repository, operation, serialization_release_confirmed) = match fenced {
+			RepositoryDispatchFenceOutcome::Terminal { repository, operation } =>
+				return Ok(ManagedRepositorySagaOutcome::TerminalWithoutDispatch {
+					operation,
+					repository,
+				}),
+			RepositoryDispatchFenceOutcome::Authorized {
+				dispatch,
+				repository,
+				operation,
+				release_confirmed,
+			} => (dispatch, repository, operation, release_confirmed),
+		};
 		let work = readback_work(&operation)?;
-		let dispatch = self.effects.dispatch(receipt, &repository.admission);
 		let outcome = self.reconcile(&work, &repository.admission).await?;
-		Ok(ManagedRepositorySagaOutcome::Reconciled { dispatch, outcome })
+		Ok(ManagedRepositorySagaOutcome::Reconciled {
+			dispatch,
+			outcome,
+			serialization_release_confirmed,
+		})
 	}
 
 	async fn reconcile_restart_state(
@@ -210,21 +224,15 @@ where
 		work: &RepositoryReadbackWork,
 		admission: &RepositoryAdmissionFacts,
 	) -> Result<RepositoryReconciliationOutcome, StoreError> {
-		let evidence_id = self.store.issue_repository_readback_evidence_id().await?;
-		match self.effects.readback(work, admission, evidence_id) {
-			RepositoryReadbackEvidence::Registration(evidence) => {
-				let operation_id = &registration_work(work)?.descriptor.operation_id;
-				self.store.reconcile_registration(operation_id, &evidence).await
-			},
-			RepositoryReadbackEvidence::WorktreeReady(evidence) => {
-				let operation_id = &worktree_ready_work(work)?.descriptor.operation_id;
-				self.store.reconcile_worktree_ready(operation_id, &evidence).await
-			},
-			RepositoryReadbackEvidence::Commit(evidence) => {
-				let operation_id = &commit_work(work)?.descriptor.operation_id;
-				self.store.reconcile_commit(operation_id, &evidence).await
-			},
-		}
+		let operation_id = readback_operation_id(work);
+		self.store
+			.reconcile_repository_readback(operation_id, |locked_work, locked_admission, evidence_id| {
+				if locked_work != work || locked_admission != admission {
+					return foreign_evidence(locked_work);
+				}
+				self.effects.readback(locked_work, locked_admission, evidence_id)
+			})
+			.await
 	}
 }
 
@@ -324,30 +332,22 @@ fn readback_work(operation: &OperationView) -> Result<RepositoryReadbackWork, St
 	})
 }
 
-fn registration_work(
-	work: &RepositoryReadbackWork,
-) -> Result<&decodex_core::RegistrationReadbackRequest, StoreError> {
+fn readback_operation_id(work: &RepositoryReadbackWork) -> &RepositoryOperationId {
 	match work {
-		RepositoryReadbackWork::Registration(request) => Ok(request),
-		_ => Err(incompatible("effect port returned registration evidence for another operation")),
+		RepositoryReadbackWork::Registration(request) => &request.descriptor.operation_id,
+		RepositoryReadbackWork::WorktreeReady(request) => &request.descriptor.operation_id,
+		RepositoryReadbackWork::Commit(request) => &request.descriptor.operation_id,
 	}
 }
 
-fn worktree_ready_work(
-	work: &RepositoryReadbackWork,
-) -> Result<&decodex_core::WorktreeReadyReadbackRequest, StoreError> {
+fn foreign_evidence(work: &RepositoryReadbackWork) -> RepositoryReadbackEvidence {
 	match work {
-		RepositoryReadbackWork::WorktreeReady(request) => Ok(request),
-		_ => Err(incompatible("effect port returned readiness evidence for another operation")),
-	}
-}
-
-fn commit_work(
-	work: &RepositoryReadbackWork,
-) -> Result<&decodex_core::CommitReadbackRequest, StoreError> {
-	match work {
-		RepositoryReadbackWork::Commit(request) => Ok(request),
-		_ => Err(incompatible("effect port returned commit evidence for another operation")),
+		RepositoryReadbackWork::Registration(_) =>
+			RepositoryReadbackEvidence::Registration(decodex_core::RegistrationEvidence::Foreign),
+		RepositoryReadbackWork::WorktreeReady(_) =>
+			RepositoryReadbackEvidence::WorktreeReady(WorktreeReadyEvidence::Foreign),
+		RepositoryReadbackWork::Commit(_) =>
+			RepositoryReadbackEvidence::Commit(decodex_core::CommitEvidence::Foreign),
 	}
 }
 
