@@ -51,7 +51,8 @@ pub struct ReplaceRoutingPolicy {
 	pub required_build_id: String,
 	/// Complete replacement membership, with one revisioned entry for every project account.
 	pub members: Vec<RoutingPolicyMemberInput>,
-	/// Canonically ordered, duplicate-free set of capabilities required from every eligible member.
+	/// Canonically ordered, duplicate-free set of capabilities required from every eligible
+	/// member.
 	pub required_capabilities: Vec<CodexCapability>,
 }
 
@@ -82,7 +83,8 @@ pub struct PublishRoutingEvidence {
 	pub process_account_id: AccountId,
 	/// Exact lowercase hexadecimal schema digest observed with the same process facts.
 	pub schema_fingerprint: String,
-	/// Complete canonically ordered state vector containing every closed Codex capability exactly once.
+	/// Complete canonically ordered state vector containing every closed Codex capability exactly
+	/// once.
 	pub capabilities: Vec<(CodexCapability, RoutingCapabilityState)>,
 }
 

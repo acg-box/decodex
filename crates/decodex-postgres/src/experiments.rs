@@ -35,7 +35,8 @@ pub struct BindCodexExperimentThread {
 	pub response_title: String,
 	/// Response working directory that must equal the immutable prepared repository path.
 	pub response_cwd: String,
-	/// Response marker that must equal the marker deterministically derived from the experiment identity.
+	/// Response marker that must equal the marker deterministically derived from the experiment
+	/// identity.
 	pub response_marker: String,
 	/// App-server ephemeral flag, which V15 requires to be false for a durable binding.
 	pub ephemeral: bool,

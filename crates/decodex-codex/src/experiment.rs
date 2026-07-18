@@ -32,7 +32,8 @@ pub enum PositiveExperimentFactKind {
 	ThreadReadItem,
 	/// A start event was observed for the exact thread.
 	TurnStartedEvent,
-	/// A terminal event was observed for the exact thread; this fact alone does not infer experiment completion.
+	/// A terminal event was observed for the exact thread; this fact alone does not infer
+	/// experiment completion.
 	TurnTerminalEvent,
 	/// An exact message item was observed for the thread.
 	MessageItem,
@@ -43,7 +44,8 @@ pub enum PositiveExperimentFactKind {
 pub struct PositiveExperimentFact {
 	/// Supported app-server surface that supplied the positive observation.
 	pub kind: PositiveExperimentFactKind,
-	/// Exact observed thread identity; it grants no authority to search for or adopt another thread.
+	/// Exact observed thread identity; it grants no authority to search for or adopt another
+	/// thread.
 	pub thread_id: ExactThreadId,
 	/// Opaque identity of the observed app-server item or event.
 	pub source_id: String,
