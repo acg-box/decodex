@@ -90,7 +90,7 @@ untrusted server-text cases.
 
 The XY-1267/XY-1307 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. The PostgreSQL command provisions fixture-only migration/runtime roles, proves least-privilege daemon bootstrap, and rejects 27 unsafe roots covering direct, inherited, NOINHERIT/SET-only, and membership-admin paths to forbidden role attributes, PostgreSQL 18 namespace-object ownership (including distinct collation, conversion, operator, and text-search cases), DDL, table/ledger/sequence mutation, grant options, `session_replication_role` SET/ALTER SYSTEM, retention bypass, trigger drift, extension-member control, an indirect public-function trigger, and a genuinely additional function. It closes every runtime-callable Decodex function over exact signatures, overloads, metadata, settings, and canonical source. At the frozen V9 boundary, all 72 shipped functions have the exact secure `pg_catalog, decodex` function-local search path, and all 52 non-internal shipped trigger bindings—including deferred constraint triggers—have exact catalog attestations. The 16 shipped security definers comprise three V3 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two V9 RoleProfile command entrypoints; runtime cannot insert cursors or execute capture directly. The additional fixture-only seventy-third function is migration-owned, runtime-executable, `SECURITY DEFINER`, configured with an unsafe setting, and is invoked as runtime to perform owner-authority trigger DDL before fixture restoration and independent rejection. The separate substitution fixture replaces a shipped safety body without changing its signature. The indirect-trigger fixture proves runtime DML executes a public definer function despite direct `EXECUTE`, protected-table `UPDATE`, and `TRIGGER` all being denied. The extension fixture proves a public runtime-owned extension can transactionally drop it. Six incompatible roots cover missing ledger SELECT, canonical-function drift, a dropped credential constraint with demonstrated credential insertion, an external child cascade with demonstrated runtime-mediated deletion, a same-count tampered migration ledger, and absent `pgcrypto`. The canonical PostgreSQL 18 schema manifest closes defaults, constraints on both foreign-key sides, indexes, enums, and internal constraint-trigger semantics. Descriptor-pinned socket unit fixtures reject a same-UID pre-planted endpoint in a world-writable configured directory, a mismatched operator UID pin, replaced ancestors, replaced endpoints, and deterministic replacement between precheck and failed connect; an unchanged secure stale socket maps to unreachable. An isolated daemon fixture starts Ready, replaces the configured endpoint, and proves a fresh V1.2 doctor query becomes unsafe-host-path without migration or repinning. The runtime protocol tests keep mutation receipt lookup/capacity independent across V1.1/V1.2 and prove repeated, ordered, concurrent live queries neither replay nor consume receipts. The adapter contract tampers a ledger name at constant row count and removes `pgcrypto` after bootstrap, proving read-only live revalidation reports both as incompatible before restoration. The harness also exercises an in-flight Rust BlobSession across an immediate PostgreSQL restart: the old session loses its hash lock and transaction-B connection, its stale claim cannot complete, and a reassigned exact retry verifies already-published bytes before committing metadata. It also proves `setval` denial, same-signature callable hostile-`search_path` safety, Turkish ICU credential behavior, and populated dump/restore. The XY-1264 proof additionally exercises rollback, blob, and cache behavior (`crates/decodex-postgres/src/socket.rs`, `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
 
-The V10 extension raises the closed production inventory to 80 functions, 59 non-internal
+The V10 extension raised the closed production inventory to 80 functions, 59 non-internal
 triggers, and 18 security definers. The two additional definers are the command-complete
 RuntimeSession creation and transition owners; the other three new private/builder routines and
 three new trigger routines are security invokers. Runtime receives EXECUTE only on the two command
@@ -102,6 +102,50 @@ identity-preserving upgrade, and populated restore. The manager-owned final Post
 clean V1-to-V10 bootstrap, classified zero-state and blocked-old-writer cutover, whole-transaction
 retry, crash/restart, dump/restore, and stress schedules; those live gates are deliberately not run
 during candidate construction.
+
+V11 adds canonical PostgreSQL WorkItems without introducing execution ownership. The closed
+inventory is 98 functions, 69 non-internal triggers, and 23 security definers. Runtime can execute
+four exact WorkItem command owners plus one inert future running/resume guard, and receives
+SELECT-only access to five normalized WorkItem relations. Readiness re-reads and locks the current
+WorkItem, Project, canonical Lead, Program/Objectives, dependency/blocker graph, lifecycle, and
+revision state in one transaction before recording typed blockers or entering `ready`. Lead
+acceptance snapshots exact-review-revision criteria, evidence provenance, and database chronology
+without changing lifecycle or revision; completion remains unowned. The focused V11 harness mode
+covers exact replay and concurrent convergence, cycle rollback, readiness blocker persistence,
+guard inertness, acceptance immutability and non-completion, clean V1-to-V11 bootstrap, and populated
+dump/restore.
+
+V12 adds only inert blocked/waiting ManagedRuns and one safety consumer transaction. The closed
+inventory is 107 functions, 84 non-internal triggers, and 24 security definers. Runtime receives
+SELECT-only access to six ManagedRun/effect/readback relations and EXECUTE on one command-complete
+safety entrypoint; it has no ManagedRun creation, acquisition, activation, progress, completion,
+assignment, submitted-receipt production, or effect-lineage writer authority. Task and Reviewer
+assignments bind exact RuntimeSessions and cannot encode Advisor, Lead, or durable Agent identity.
+The barrier has only fail-closed `guarded` and `closed` states. The focused V12 command
+`cargo make test-vnext-postgres-managed-runs` covers Project/WorkItem/RuntimeSession FK scope,
+state algebra, unknown-turn divergence with an active turn retained, current/stale submitted
+receipts, explicit inconclusive input, rollback/retry, durable cross-key input replay, exactly-once
+barrier closure, exact revisioned restart readback, runtime-role Turn and HistoryItem writes through
+the V12 forward-repaired invoker guards, fail-closed non-`READ COMMITTED` hierarchy DML, and the
+receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1-to-V12 bootstrap
+and populated restore.
+The final schema produced by every migration version must be a PostgreSQL 18 dump/restore fixed
+point so the one exact full-manifest digest remains identical before and after logical restore.
+Cross-database manifest identity is semantic rather than catalog-local: every relation, column,
+constraint, function signature, trigger, dependency, ACL/default ACL, and sequence is keyed by
+stable schema/name/owner-column/principal tuples. Catalog OIDs and presentation renderers are join
+mechanics only and never enter emitted identity or ordering. Sequence definitions and stable
+ownership belong to the schema manifest; mutable sequence values are a separate restore-state
+receipt. Every manifest checkpoint binds an explicit requested database to both configured URLs
+and both observed `current_database()` values, while that binding evidence is excluded from
+cross-database digest equality. The canonical harness collects source, post-command, populated
+RoleProfile restore, and final primary restore evidence before one terminal report.
+
+XY-1353 reset the earlier catalog-presentation model after two canonical-boundary falsifiers: the
+normalized source schema changed from the stale `5b546036...` digest to `79fc7a15...`, then the
+same committed candidate restored as `b3984125...`. Those failures reject the identity model, not
+PostgreSQL logical restore, and prohibit repairing another individual OID or mechanically rebinding
+a digest before semantic source/restore parity is established.
 
 The XY-1345 command is a separate non-production architecture proof. It requires exactly
 PostgreSQL 18.4, creates a private temporary cluster with TCP disabled, installs only fixture
@@ -119,8 +163,8 @@ active implementation uses targeted Rust compilation, parser/unit contracts, and
 syntax checks. See
 [the durable evidence page](../evidence/xy-1345-exact-command-authority.md).
 
-The PostgreSQL integration harness bootstraps the shipped V1-V10 migration history, from the `V1`
-foundation through the forward-only `V10` RuntimeSession snapshot authority, and verifies
+The PostgreSQL integration harness bootstraps the shipped V1-V12 migration history, from the `V1`
+foundation through the forward-only `V12` ManagedRun safety authority, and verifies
 transaction/idempotency/revision behavior, Conversation-lock serialization with append-only history-derived
 positions, snapshot high-water, and immutable item-version sequence with no writable stored next-position counter, page-only opaque
 issued-cursor pagination with never-issued/expired/cross-Conversation/edited-chain rejection,
@@ -147,6 +191,24 @@ caller-shifted lease/retry/retention anchors, early and due delivered-row deleti
 forbidden outbox truncation. Intermediate schemas from unshipped branches are not
 compatibility targets.
 
+## Managed repository frozen-tree validation
+
+Managed-repository stage-two work has no pre-freeze execution gate. Do not run compile, test,
+check, Clippy, format, migration, wrapper, matrix, doctest, behavioral, app, or benchmark commands
+while its parallel owners construct the candidate. After serial integration freezes one exact
+tree, run one complete unified validation on that tree only. Keep the resulting evidence categories
+concise: pure semantics; PostgreSQL authority, concurrency, restore, and retention; accepted
+Git/filesystem execution and operation-specific readback; first shared-saga composition; provider
+and repository integration; and final digest/manifest agreement. Partial runs, expanded early test
+matrices, and results from any other tree are not acceptance evidence.
+
+The authoritative deferred cases are the
+[XY-1353 deferred acceptance matrix](../specs/vnext-gates.md#xy-1353-deferred-acceptance-matrix).
+The repository has no standalone XY-1353 artifact generator: migration, configured-authority, and
+schema inventories plus their expected/actual digests are emitted and checked by the canonical
+PostgreSQL frozen-tree harness during that one unified gate. Do not run it as integration-time
+code generation or create parallel manifest authority.
+
 ## Validation scope selection
 
 Use the aggregate gate before broad readiness, landing, or release-readiness claims. During iteration, choose the smallest command that covers the touched contract, then name that scope in handoff notes. A narrow validation result is useful evidence, but it is not equivalent to the broad gate unless the change is truly limited to that surface.
@@ -159,13 +221,22 @@ Use the owner path to choose the first validation surface:
 
 - `crates/decodex-core/`: vNext domain/application contracts and authority ports plus
   the typed `~/.decodex` root, bounded/redacted config, stable server identity,
-  integrity-verifying blobs, and disposable bounded cache.
+  integrity-verifying blobs, and disposable bounded cache. For managed repositories it
+  owns only mechanism-neutral values, facts, descriptors, evidence, and pure deciders;
+  these are not durable authority.
 - `crates/decodex-protocol/`: version and loopback server boundary plus the bounded typed
   client transport shared by CLI and future UI clients.
-- `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated real-PostgreSQL integration tests; XY-1307 runtime composition supplies only typed explicit configuration and retains unavailable on every bootstrap failure.
+- `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated
+  real-PostgreSQL integration tests; XY-1307 runtime composition supplies only typed
+  explicit configuration and retains unavailable on every bootstrap failure. XY-1349 is
+  the sole V13 owner for managed-repository projection, generation/tip, global operation
+  assignment, append-only evidence, compare-and-swap, transaction completeness, receipt
+  provenance, retention, and restart loads.
 - `crates/decodex-codex/`: typed shared-home Codex adapter foundation; live dispatch is
   default-disabled by the failed XY-1304 gate.
-- `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners.
+- `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners;
+  for managed repositories it sequences accepted owners but creates no state or receipt
+  authority. XY-1351 owns the first shared saga path.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/`: active vNext composition roots.
 - `apps/decodex/`: frozen v0.2 source excluded from the workspace; provenance only.
 - `apps/radar/`: Radar auxiliary tool for upstream evidence, release deltas, signal rendering, artifact validation, and ledger workflows.

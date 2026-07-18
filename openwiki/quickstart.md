@@ -77,6 +77,12 @@ query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
 API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
 
+When PostgreSQL is ready, daemon bootstrap also opens the accepted pinned repository executor,
+retains the single PostgreSQL/executor/saga composition, and completes bounded readback-only
+restart reconciliation before serving. No managed-repository or GitHub mutation is exposed by the
+current protocol; the GitHub PR/check reconciler remains sealed until the later provider and
+PostgreSQL effect-lineage owner connects it.
+
 The PostgreSQL adapter persists its XY-1267 foundation and forward-only XY-1271 history schema when `decodexd` receives one explicit
 PostgreSQL 18 Unix-socket endpoint, an operator-pinned expected server UID, and distinct migration
 and runtime identities. The socket directory must be owned by that UID and not group/other-writable.
@@ -92,7 +98,7 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical embedded migrations. The fifty-nine expected safety/state/retention
+source bodies matching the canonical embedded migrations. The eighty-four expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
 indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
@@ -106,11 +112,14 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly eighteen narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly twenty-four narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
-commands, two command-complete exact RoleProfile entrypoints, and two command-complete exact
-RuntimeSession entrypoints. Runtime cannot insert cursor, exact-receipt, RoleProfile,
-RuntimeSession, or RuntimeSession snapshot rows or execute trigger/private helpers directly.
+commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
+RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
+running/resume guard, and one command-complete ManagedRun safety consumer. Runtime cannot insert
+cursor, exact-receipt, RoleProfile, RuntimeSession, RuntimeSession snapshot, WorkItem, ManagedRun,
+assignment, submitted-turn receipt, or effect-lineage rows or execute trigger/private helpers
+directly.
 The two bound identity sequences require
 USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
 are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.

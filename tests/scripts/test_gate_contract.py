@@ -52,6 +52,16 @@ class GateContractTests(unittest.TestCase):
         )
         self.assertEqual(self.tasks["lint"]["dependencies"], ["lint-rust"])
         self.assertEqual(self.tasks["lint-fix"]["dependencies"], ["lint-rust-fix"])
+        self.assertEqual(
+            self.tasks["test"]["dependencies"],
+            [
+                "test-gate-contract",
+                "test-rust",
+                "test-vnext-architecture",
+                "test-vnext-cli-diagnostics",
+                "test-vnext-postgres-store",
+            ],
+        )
 
     def test_vstyle_is_a_read_only_explicit_audit(self) -> None:
         self.assertEqual(

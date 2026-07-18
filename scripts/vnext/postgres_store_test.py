@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Callable
 from enum import Enum
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import select
 import shutil
@@ -52,6 +55,10 @@ RUNTIME_SESSION_FENCE_DATABASE = "decodex_xy1337_fence"
 RUNTIME_SESSION_CRASH_DATABASE = "decodex_xy1337_crash"
 RUNTIME_SESSION_RESTORE_SOURCE_DATABASE = "decodex_xy1337_restore_source"
 RUNTIME_SESSION_RESTORE_DATABASE = "decodex_xy1337_restore"
+WORK_ITEM_DATABASE = "decodex_xy1343_work_items"
+WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
+MANAGED_RUN_DATABASE = "decodex_xy1338_managed_runs"
+MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1338_managed_runs_restore"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -117,6 +124,12 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
 	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+	"decodex.create_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.update_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,decodex.work_item_state,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -156,6 +169,21 @@ TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_runtime_session_command_owner()",
 	"decodex.forbid_runtime_snapshot_mutation()",
 	"decodex.enforce_runtime_session_event_namespace()",
+	"decodex.enforce_work_item_state()",
+	"decodex.enforce_work_item_command_owner()",
+	"decodex.forbid_work_item_acceptance_mutation()",
+	"decodex.enforce_work_item_acceptance_coherence()",
+	"decodex.enforce_work_item_event_namespace()",
+	"decodex.enforce_managed_run_command_owner()",
+	"decodex.forbid_managed_run_immutable_mutation()",
+	"decodex.enforce_managed_run_assignment_scope()",
+	"decodex.enforce_managed_run_state()",
+	"decodex.enforce_effect_barrier_state()",
+	"decodex.enforce_managed_run_event_namespace()",
+	"decodex.forbid_managed_repository_history_mutation()",
+	"decodex.enforce_managed_repository_projection()",
+	"decodex.enforce_repository_operation_scope()",
+	"decodex.enforce_repository_history_completeness()",
 )
 RUNTIME_TYPE_NAMES = (
 	"decodex.account_state",
@@ -182,6 +210,24 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.quota_window_class",
 	"decodex.observation_confidence",
 	"decodex.role_profile_role",
+	"decodex.work_item_priority",
+	"decodex.work_item_state",
+	"decodex.work_item_edge_kind",
+	"decodex.work_item_blocker_kind",
+	"decodex.managed_run_lifecycle",
+	"decodex.managed_run_phase",
+	"decodex.managed_run_wait_reason",
+	"decodex.execution_assignment_role",
+	"decodex.effect_barrier_state",
+	"decodex.managed_run_effect_kind",
+	"decodex.managed_run_effect_state",
+	"decodex.managed_run_safety_input_kind",
+	"decodex.managed_repository_phase",
+	"decodex.repository_operation_kind",
+	"decodex.repository_operation_state",
+	"decodex.repository_ambiguity",
+	"decodex.repository_authority_transition_kind",
+	"decodex.repository_evidence_kind",
 )
 
 
@@ -212,6 +258,26 @@ def run(command: list[str], env: dict[str, str]) -> str:
 			f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
 		)
 	return completed.stdout.strip() or completed.stderr.strip()
+
+
+def frozen_source_binding() -> dict[str, str]:
+	def git(*arguments: str) -> str:
+		completed = subprocess.run(
+			["git", *arguments],
+			check=True,
+			text=True,
+			capture_output=True,
+			cwd=REPO_ROOT,
+		)
+		return completed.stdout.strip()
+
+	status = git("status", "--porcelain=v1", "--untracked-files=all")
+	if status:
+		raise TestFailure("frozen PostgreSQL gate requires a clean exact committed worktree")
+	return {
+		"head": git("rev-parse", "HEAD"),
+		"tree": git("rev-parse", "HEAD^{tree}"),
+	}
 
 
 def run_blob_session_restart_contract(
@@ -600,9 +666,12 @@ def run_migration(env: dict[str, str]) -> str:
 	)
 
 
-def dump_schema_manifest(path: Path, env: dict[str, str]) -> str:
+def dump_schema_manifest(
+	path: Path, database: str, env: dict[str, str]
+) -> str:
 	manifest_env = env.copy()
 	manifest_env["DECODEX_SCHEMA_MANIFEST_PATH"] = str(path)
+	manifest_env["DECODEX_EXPECTED_MANIFEST_DATABASE"] = database
 	return run(
 		["cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
 		 "test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
@@ -695,6 +764,7 @@ def run_role_profile_final_gate_contracts(
 	port: int,
 	work: Path,
 	env: dict[str, str],
+	restore_report: dict[str, object],
 ) -> str:
 	outputs: list[str] = []
 	for database, test in (
@@ -722,26 +792,67 @@ def run_role_profile_final_gate_contracts(
 		ROLE_PROFILE_RESTORE_SOURCE_DATABASE, socket_dir, port, env
 	)
 	outputs.append(run_role_profile_test("postgres_exact_role_profile_commands", env))
+	source_manifest_path = work / "xy1346-role-profiles-source-manifest.json"
+	outputs.append(capture_restore_checkpoint(
+		restore_report,
+		"role_profile_post_command",
+		source_manifest_path,
+		ROLE_PROFILE_RESTORE_SOURCE_DATABASE,
+		env,
+	))
 	restore_dump = work / "xy1346-role-profiles.dump"
-	run(
-		[
-			"pg_dump", "-Fc", "-f", str(restore_dump),
-			ROLE_PROFILE_RESTORE_SOURCE_DATABASE,
-		],
-		env,
-	)
-	create_database(ROLE_PROFILE_RESTORE_DATABASE, env)
-	run(
-		[
-			"pg_restore", "--exit-on-error", "-d", ROLE_PROFILE_RESTORE_DATABASE,
-			str(restore_dump),
-		],
-		env,
-	)
-	set_contract_urls(
-		env, socket_dir, port, ROLE_PROFILE_RESTORE_DATABASE, RUNTIME_ROLE
-	)
-	outputs.append(run_role_profile_test("postgres_exact_role_profile_restore", env))
+	restore_ready = True
+	try:
+		run(
+			[
+				"pg_dump", "-Fc", "-f", str(restore_dump),
+				ROLE_PROFILE_RESTORE_SOURCE_DATABASE,
+			],
+			env,
+		)
+		create_database(ROLE_PROFILE_RESTORE_DATABASE, env)
+		run(
+			[
+				"pg_restore", "--exit-on-error", "-d", ROLE_PROFILE_RESTORE_DATABASE,
+				str(restore_dump),
+			],
+			env,
+		)
+	except Exception as error:
+		restore_ready = False
+		record_restore_stage(
+			restore_report, "role_profile_restore", "failed", error=str(error)
+		)
+	else:
+		record_restore_stage(restore_report, "role_profile_restore", "passed")
+	if restore_stage_ready(restore_report, "role_profile_restored_capture") and restore_ready:
+		set_contract_urls(
+			env, socket_dir, port, ROLE_PROFILE_RESTORE_DATABASE, RUNTIME_ROLE
+		)
+		restored_manifest_path = work / "xy1346-role-profiles-restored-manifest.json"
+		outputs.append(capture_restore_checkpoint(
+			restore_report,
+			"role_profile_restored",
+			restored_manifest_path,
+			ROLE_PROFILE_RESTORE_DATABASE,
+			env,
+		))
+		outputs.append(record_restore_production_check(
+			restore_report,
+			"role_profile_restored",
+			lambda: run_role_profile_test("postgres_exact_role_profile_restore", env),
+		))
+	else:
+		checkpoints = restore_report["checkpoints"]
+		assert isinstance(checkpoints, dict)
+		checkpoints["role_profile_restored"] = unavailable_checkpoint(
+			"role_profile_restore prerequisite is unavailable"
+		)
+		record_restore_production_check(
+			restore_report,
+			"role_profile_restored",
+			lambda: run_role_profile_test("postgres_exact_role_profile_restore", env),
+		)
 	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 
 	return "\n".join(outputs)
@@ -756,6 +867,682 @@ def run_runtime_session_test(test: str, env: dict[str, str]) -> str:
 		],
 		env,
 	)
+
+
+def run_work_item_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"work_items::{test}", "--exact",
+		],
+		env,
+	)
+
+
+def run_managed_run_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"managed_runs::{test}", "--exact",
+		],
+		env,
+	)
+
+
+def run_managed_repository_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			f"managed_repositories::{test}", "--exact",
+		],
+		env,
+	)
+
+
+def rust_digest_constant(name: str) -> str:
+	authority = (
+		REPO_ROOT / "crates/decodex-postgres/src/authority.rs"
+	).read_text(encoding="utf-8")
+	match = re.search(
+		rf"const {re.escape(name)}: \[u8; 32\] = \[(.*?)\];",
+		authority,
+		flags=re.DOTALL,
+	)
+	if match is None:
+		raise TestFailure(f"missing Rust digest constant {name}")
+	values = re.findall(r"0x([0-9a-fA-F]{2})", match.group(1))
+	if len(values) != 32:
+		raise TestFailure(f"invalid Rust digest constant {name}")
+	return "".join(value.lower() for value in values)
+
+
+def unavailable_component(reason: str) -> dict[str, object]:
+	return {
+		"available": False,
+		"complete": False,
+		"error": reason,
+		"manifest": None,
+	}
+
+
+def unavailable_checkpoint(reason: str) -> dict[str, object]:
+	return {
+		"authority": unavailable_component(reason),
+		"binding": None,
+		"capture_error": reason,
+		"schema": unavailable_component(reason),
+		"sequence_state": None,
+	}
+
+
+def load_semantic_manifest(path: Path) -> dict[str, object]:
+	document = json.loads(path.read_text(encoding="utf-8"))
+	if set(document) != {"schema", "authority", "binding", "sequence_state"}:
+		raise TestFailure(f"invalid semantic manifest envelope at {path}")
+	if not isinstance(document["binding"], dict) or not isinstance(
+		document["sequence_state"], list
+	):
+		raise TestFailure(f"invalid semantic manifest evidence at {path}")
+	for component_name in ("schema", "authority"):
+		component = document[component_name]
+		if not isinstance(component, dict) or set(component) != {
+			"available", "complete", "error", "manifest"
+		}:
+			raise TestFailure(f"invalid {component_name} component at {path}")
+		available = component["available"]
+		complete = component["complete"]
+		manifest = component["manifest"]
+		error = component["error"]
+		if not isinstance(available, bool) or not isinstance(complete, bool):
+			raise TestFailure(f"invalid {component_name} status at {path}")
+		if error is not None and not isinstance(error, str):
+			raise TestFailure(f"invalid {component_name} error at {path}")
+		if available != isinstance(manifest, str) or complete and not available:
+			raise TestFailure(f"incoherent {component_name} availability at {path}")
+		if isinstance(manifest, str):
+			rows = json.loads(manifest)
+			if not isinstance(rows, list):
+				raise TestFailure(f"invalid {component_name} row manifest at {path}")
+	return document
+
+
+def component_manifest(
+	document: dict[str, object], component_name: str, *, require_complete: bool = True
+) -> str | None:
+	component = document[component_name]
+	assert isinstance(component, dict)
+	if not component["available"] or require_complete and not component["complete"]:
+		return None
+	manifest = component["manifest"]
+	assert isinstance(manifest, str)
+	return manifest
+
+
+def unresolved_dependency_rows(manifest: str) -> list[object]:
+	rows = json.loads(manifest)
+	unresolved = []
+	for row in rows:
+		if not isinstance(row, list) or len(row) != 3 or row[0] not in {
+			"dependency", "function_dependency", "type_dependency"
+		}:
+			continue
+		contract = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+		if isinstance(contract, list) and len(contract) == 4 and contract[2] is False:
+			unresolved.append(row)
+	return unresolved
+
+
+def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
+	before_rows = json.loads(before)
+	after_rows = json.loads(after)
+	if not isinstance(before_rows, list) or not isinstance(after_rows, list):
+		raise TestFailure("semantic manifest component is not a row array")
+	encode = lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"))
+	before_counter = Counter(encode(row) for row in before_rows)
+	after_counter = Counter(encode(row) for row in after_rows)
+	return {
+		"before_only": [
+			json.loads(row)
+			for row, count in sorted((before_counter - after_counter).items())
+			for _ in range(count)
+		],
+		"after_only": [
+			json.loads(row)
+			for row, count in sorted((after_counter - before_counter).items())
+			for _ in range(count)
+		],
+	}
+
+
+def semantic_state_diff(before: list[object], after: list[object]) -> dict[str, list[object]]:
+	encode = lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"))
+	before_counter = Counter(encode(row) for row in before)
+	after_counter = Counter(encode(row) for row in after)
+	return {
+		"before_only": [
+			json.loads(row)
+			for row, count in sorted((before_counter - after_counter).items())
+			for _ in range(count)
+		],
+		"after_only": [
+			json.loads(row)
+			for row, count in sorted((after_counter - before_counter).items())
+			for _ in range(count)
+		],
+	}
+
+
+def capture_restore_checkpoint(
+	report: dict[str, object],
+	name: str,
+	path: Path,
+	database: str,
+	env: dict[str, str],
+) -> str:
+	checkpoints = report["checkpoints"]
+	assert isinstance(checkpoints, dict)
+	try:
+		output = dump_schema_manifest(path, database, env)
+		checkpoints[name] = load_semantic_manifest(path)
+		record_restore_stage(report, f"{name}_capture", "passed")
+		return output
+	except Exception as error:
+		try:
+			checkpoints[name] = (
+				load_semantic_manifest(path)
+				if path.is_file()
+				else unavailable_checkpoint(str(error))
+			)
+		except Exception as artifact_error:
+			checkpoints[name] = unavailable_checkpoint(
+				f"{error}; checkpoint artifact invalid: {artifact_error}"
+			)
+		record_restore_stage(report, f"{name}_capture", "failed", error=str(error))
+		return ""
+
+
+RESTORE_STAGE_DEPENDENCIES = {
+	"role_profile_restored_capture": ("role_profile_restore",),
+	"role_profile_restored_check": ("role_profile_restore",),
+	"runtime_session_restored_check": ("runtime_session_restore",),
+	"primary_restored_capture": ("primary_restore",),
+	"primary_store_restored_check": ("primary_restore",),
+	"managed_repository_restored_check": ("primary_restore",),
+}
+
+
+def record_restore_stage(
+	report: dict[str, object],
+	name: str,
+	status: str,
+	*,
+	error: str | None = None,
+	blocked_by: list[str] | None = None,
+) -> None:
+	stages = report["stages"]
+	assert isinstance(stages, dict)
+	result: dict[str, object] = {"status": status}
+	if error is not None:
+		result["error"] = error
+	if blocked_by:
+		result["blocked_by"] = blocked_by
+	stages[name] = result
+
+
+def restore_stage_ready(report: dict[str, object], name: str) -> bool:
+	stages = report["stages"]
+	assert isinstance(stages, dict)
+	blocked_by = [
+		dependency
+		for dependency in RESTORE_STAGE_DEPENDENCIES.get(name, ())
+		if not isinstance(stages.get(dependency), dict)
+		or stages[dependency].get("status") != "passed"
+	]
+	if blocked_by:
+		record_restore_stage(report, name, "unavailable", blocked_by=blocked_by)
+		return False
+	return True
+
+
+def record_restore_production_check(
+	report: dict[str, object], name: str, action: Callable[[], str]
+) -> str:
+	checks = report["production_checks"]
+	assert isinstance(checks, dict)
+	stage_name = f"{name}_check"
+	if not restore_stage_ready(report, stage_name):
+		checks[name] = {"status": "unavailable"}
+		return ""
+	try:
+		output = action()
+		checks[name] = {"status": "passed"}
+		record_restore_stage(report, stage_name, "passed")
+		return output
+	except Exception as error:
+		checks[name] = {"status": "failed", "error": str(error)}
+		record_restore_stage(report, stage_name, "failed", error=str(error))
+		return ""
+
+
+def finalize_restore_report(report: dict[str, object]) -> list[str]:
+	checkpoints = report["checkpoints"]
+	assert isinstance(checkpoints, dict)
+	expected = {
+		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+	}
+	diagnostics: dict[str, object] = {
+		"expected_digests": expected,
+		"checkpoints": {},
+		"comparisons": {},
+		"stages": report["stages"],
+		"production_checks": report["production_checks"],
+	}
+	stages = report["stages"]
+	assert isinstance(stages, dict)
+	failures = [
+		f"restore stage {name} is {result.get('status')}"
+		for name, result in stages.items()
+		if result.get("status") != "passed"
+	]
+	checkpoint_diagnostics = diagnostics["checkpoints"]
+	assert isinstance(checkpoint_diagnostics, dict)
+	for name, document in checkpoints.items():
+		assert isinstance(document, dict)
+		component_diagnostics: dict[str, object] = {}
+		checkpoint_diagnostics[name] = {
+			"binding": document.get("binding"),
+			"components": component_diagnostics,
+			"sequence_state": document.get("sequence_state"),
+		}
+		for component_name in ("schema", "authority"):
+			component = document[component_name]
+			assert isinstance(component, dict)
+			manifest = component.get("manifest")
+			result = {
+				"available": component.get("available"),
+				"complete": component.get("complete"),
+				"error": component.get("error"),
+			}
+			if isinstance(manifest, str):
+				result["rows"] = len(json.loads(manifest))
+				if component_name == "schema":
+					result["unresolved_dependencies"] = unresolved_dependency_rows(manifest)
+			if component.get("available") and component.get("complete"):
+				assert isinstance(manifest, str)
+				digest = hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+				result["digest"] = digest
+				result["matches_shipped"] = digest == expected[component_name]
+				if digest != expected[component_name]:
+					failures.append(
+						f"restore checkpoint {name} {component_name} differs from shipped digest"
+					)
+			elif component.get("available"):
+				failures.append(f"restore checkpoint {name} {component_name} is incomplete")
+			else:
+				failures.append(f"restore checkpoint {name} {component_name} is unavailable")
+			component_diagnostics[component_name] = result
+	comparisons = diagnostics["comparisons"]
+	assert isinstance(comparisons, dict)
+	for name, before_name, after_name, compare_state in (
+		("source_to_role_profile_post_command", "source", "role_profile_post_command", False),
+		("role_profile_restore", "role_profile_post_command", "role_profile_restored", True),
+		("source_to_primary_post_command", "source", "primary_post_command", False),
+		("primary_restore", "primary_post_command", "primary_restored", True),
+	):
+		before = checkpoints.get(before_name, unavailable_checkpoint("checkpoint not collected"))
+		after = checkpoints.get(after_name, unavailable_checkpoint("checkpoint not collected"))
+		assert isinstance(before, dict) and isinstance(after, dict)
+		comparison: dict[str, object] = {}
+		for component_name in ("schema", "authority"):
+			before_manifest = component_manifest(before, component_name)
+			after_manifest = component_manifest(after, component_name)
+			if before_manifest is None or after_manifest is None:
+				comparison[component_name] = {
+					"unavailable": [
+						checkpoint
+						for checkpoint, manifest in (
+							(before_name, before_manifest), (after_name, after_manifest)
+						)
+						if manifest is None
+					]
+				}
+				failures.append(f"restore comparison {name} {component_name} is unavailable")
+			else:
+				comparison[component_name] = semantic_row_diff(before_manifest, after_manifest)
+		if compare_state and isinstance(before.get("sequence_state"), list) and isinstance(
+			after.get("sequence_state"), list
+		):
+			comparison["sequence_state"] = semantic_state_diff(
+				before["sequence_state"], after["sequence_state"]
+			)
+		elif compare_state:
+			comparison["sequence_state"] = {"unavailable": True}
+			failures.append(f"restore comparison {name} sequence state is unavailable")
+		comparisons[name] = comparison
+		for component_name, value in comparison.items():
+			if isinstance(value, dict) and (
+				value.get("before_only") or value.get("after_only")
+			):
+				failures.append(
+					f"restore comparison {name} changed {component_name} evidence"
+				)
+	checks = report["production_checks"]
+	assert isinstance(checks, dict)
+	for name, result in checks.items():
+		if result.get("status") != "passed":
+			failures.append(f"production restore check {name} failed")
+	print(
+		"XY-1353 structured PostgreSQL restore report:\n"
+		+ json.dumps(diagnostics, indent=2, sort_keys=True),
+		file=sys.stderr,
+		flush=True,
+	)
+	return failures
+
+
+def manifest_diagnostics(
+	checkpoints: dict[str, dict[str, object] | None],
+) -> tuple[dict[str, object], list[str]]:
+	shipped_expected = {
+		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+	}
+	actual = {
+		checkpoint: None if manifest is None else {
+			component: None if component_manifest(manifest, component) is None else hashlib.sha256(
+				component_manifest(manifest, component).encode("utf-8")
+			).hexdigest()
+			for component in ("schema", "authority")
+		}
+		for checkpoint, manifest in checkpoints.items()
+	}
+	missing_checkpoints = [
+		checkpoint for checkpoint, manifest in checkpoints.items() if manifest is None
+	]
+	component_results: dict[str, object] = {}
+	manifest_failures = [
+		f"missing semantic manifest checkpoint: {checkpoint}"
+		for checkpoint in missing_checkpoints
+	]
+	for component in ("schema", "authority"):
+		matches_shipped = {
+			checkpoint: None if manifest is None else manifest[component] == shipped_expected[component]
+			for checkpoint, manifest in actual.items()
+		}
+		available_values = [
+			manifest[component] for manifest in actual.values() if manifest is not None
+		]
+		available_equal = len(set(available_values)) <= 1
+		checkpoints_equal = (
+			len(available_values) == len(checkpoints)
+			and available_equal
+		)
+		component_results[component] = {
+			"matches_shipped": matches_shipped,
+			"checkpoints_equal": checkpoints_equal,
+		}
+		for checkpoint, matches in matches_shipped.items():
+			if matches is False:
+				manifest_failures.append(
+					f"{checkpoint} {component} digest differs from the shipped singleton"
+				)
+		if len(available_values) > 1 and not available_equal:
+			manifest_failures.append(
+				f"{component} manifest changed across available checkpoints"
+			)
+	diagnostics: dict[str, object] = {
+		"shipped_expected": shipped_expected,
+		"actual": actual,
+		"missing_checkpoints": missing_checkpoints,
+		"component_results": component_results,
+		"semantic_row_diffs": {},
+	}
+	diffs = diagnostics["semantic_row_diffs"]
+	assert isinstance(diffs, dict)
+	for comparison, before_name, after_name in (
+		("baseline_to_post_attempt", "baseline", "post_attempt"),
+		("post_attempt_to_restored", "post_attempt", "restored"),
+		("baseline_to_restored", "baseline", "restored"),
+	):
+		diffs[comparison] = {}
+		for component in ("schema", "authority"):
+			before = checkpoints[before_name]
+			after = checkpoints[after_name]
+			before_manifest = None if before is None else component_manifest(before, component)
+			after_manifest = None if after is None else component_manifest(after, component)
+			if before_manifest is None or after_manifest is None:
+				diffs[comparison][component] = {
+					"unavailable": [
+						name for name, manifest in (
+							(before_name, before_manifest), (after_name, after_manifest)
+						)
+						if manifest is None
+					]
+				}
+			else:
+				diffs[comparison][component] = semantic_row_diff(
+					before_manifest, after_manifest
+				)
+		if before is not None and after is not None and isinstance(
+			before["sequence_state"], list
+		) and isinstance(after["sequence_state"], list):
+			state_diff = semantic_state_diff(
+				before["sequence_state"], after["sequence_state"]
+			)
+			diffs[comparison]["sequence_state"] = state_diff
+			if comparison == "post_attempt_to_restored" and (
+				state_diff["before_only"] or state_diff["after_only"]
+			):
+				manifest_failures.append(
+					f"sequence state changed across {comparison}"
+				)
+	return diagnostics, manifest_failures
+
+
+def run_work_item_focused_contracts(
+	socket_dir: Path, port: int, work: Path, env: dict[str, str]
+) -> str:
+	create_database(WORK_ITEM_DATABASE, env)
+	set_contract_urls(env, socket_dir, port, WORK_ITEM_DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(WORK_ITEM_DATABASE, RUNTIME_ROLE, env)
+	baseline_path = work / "xy1343-baseline-manifest.json"
+	post_attempt_path = work / "xy1343-post-attempt-manifest.json"
+	restored_path = work / "xy1343-restored-manifest.json"
+	checkpoints: dict[str, dict[str, str] | None] = {
+		"baseline": None,
+		"post_attempt": None,
+		"restored": None,
+	}
+	stage_failures: list[str] = []
+	command_output = ""
+	source_behavior_error: Exception | None = None
+	restore_output = ""
+
+	try:
+		dump_schema_manifest(baseline_path, WORK_ITEM_DATABASE, env)
+		checkpoints["baseline"] = load_semantic_manifest(baseline_path)
+	except Exception as error:
+		stage_failures.append(f"baseline manifest capture failed:\n{error}")
+
+	if checkpoints["baseline"] is not None:
+		try:
+			command_output = run_work_item_test("postgres_exact_work_item_commands", env)
+		except Exception as error:
+			source_behavior_error = error
+	else:
+		source_behavior_error = TestFailure(
+			"source behavior was not run because the baseline manifest is unavailable"
+		)
+
+	try:
+		dump_schema_manifest(post_attempt_path, WORK_ITEM_DATABASE, env)
+		checkpoints["post_attempt"] = load_semantic_manifest(post_attempt_path)
+	except Exception as error:
+		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
+
+	dump_path = work / "xy1343-work-items.dump"
+	dump_succeeded = False
+	restore_database_created = False
+	try:
+		run(["pg_dump", "-Fc", "-f", str(dump_path), WORK_ITEM_DATABASE], env)
+		dump_succeeded = True
+	except Exception as error:
+		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
+	if dump_succeeded:
+		try:
+			create_database(WORK_ITEM_RESTORE_DATABASE, env)
+			restore_database_created = True
+		except Exception as error:
+			stage_failures.append(f"restore database creation failed:\n{error}")
+	if restore_database_created:
+		try:
+			run(
+				[
+					"pg_restore", "--exit-on-error", "-d", WORK_ITEM_RESTORE_DATABASE,
+					str(dump_path),
+				],
+				env,
+			)
+		except Exception as error:
+			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
+		set_contract_urls(env, socket_dir, port, WORK_ITEM_RESTORE_DATABASE, RUNTIME_ROLE)
+		try:
+			dump_schema_manifest(restored_path, WORK_ITEM_RESTORE_DATABASE, env)
+			checkpoints["restored"] = load_semantic_manifest(restored_path)
+		except Exception as error:
+			stage_failures.append(f"restored manifest capture failed:\n{error}")
+
+	diagnostics, manifest_failures = manifest_diagnostics(checkpoints)
+	print(
+		"XY-1343 V11 semantic manifest diagnostics:\n"
+		+ json.dumps(diagnostics, indent=2, sort_keys=True),
+		file=sys.stderr,
+		flush=True,
+	)
+
+	failures = list(stage_failures)
+	if source_behavior_error is not None:
+		failures.append(f"source verifier/behavior failed:\n{source_behavior_error}")
+	failures.extend(manifest_failures)
+	if not failures:
+		try:
+			restore_output = run_work_item_test("postgres_exact_work_item_restore", env)
+		except Exception as error:
+			failures.append(f"restored verifier/behavior failed:\n{error}")
+	if failures:
+		raise TestFailure(
+			"XY-1343 focused evidence finalized with failures:\n\n"
+			+ "\n\n".join(failures)
+		)
+	return "\n".join((migration_output, command_output, restore_output))
+
+
+def run_managed_run_focused_contracts(
+	socket_dir: Path, port: int, work: Path, env: dict[str, str]
+) -> str:
+	static_output = run(
+		[
+			"python3", "-m", "unittest",
+			"tests/scripts/test_managed_run_authority.py",
+		],
+		env,
+	)
+	create_database(MANAGED_RUN_DATABASE, env)
+	set_contract_urls(env, socket_dir, port, MANAGED_RUN_DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(MANAGED_RUN_DATABASE, RUNTIME_ROLE, env)
+	paths = {
+		"baseline": work / "xy1338-baseline-manifest.json",
+		"post_attempt": work / "xy1338-post-attempt-manifest.json",
+		"restored": work / "xy1338-restored-manifest.json",
+	}
+	checkpoints: dict[str, dict[str, str] | None] = dict.fromkeys(paths)
+	stage_failures: list[str] = []
+	command_output = ""
+	restore_output = ""
+	source_behavior_error: Exception | None = None
+
+	try:
+		dump_schema_manifest(paths["baseline"], MANAGED_RUN_DATABASE, env)
+		checkpoints["baseline"] = load_semantic_manifest(paths["baseline"])
+	except Exception as error:
+		stage_failures.append(f"baseline manifest capture failed:\n{error}")
+	if checkpoints["baseline"] is not None:
+		try:
+			command_output = run_managed_run_test(
+				"postgres_managed_run_safety_contract", env
+			)
+		except Exception as error:
+			source_behavior_error = error
+	else:
+		source_behavior_error = TestFailure(
+			"source behavior was not run because the baseline manifest is unavailable"
+		)
+	try:
+		dump_schema_manifest(paths["post_attempt"], MANAGED_RUN_DATABASE, env)
+		checkpoints["post_attempt"] = load_semantic_manifest(paths["post_attempt"])
+	except Exception as error:
+		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
+
+	dump_path = work / "xy1338-managed-runs.dump"
+	dump_succeeded = False
+	restore_database_created = False
+	try:
+		run(["pg_dump", "-Fc", "-f", str(dump_path), MANAGED_RUN_DATABASE], env)
+		dump_succeeded = True
+	except Exception as error:
+		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
+	if dump_succeeded:
+		try:
+			create_database(MANAGED_RUN_RESTORE_DATABASE, env)
+			restore_database_created = True
+		except Exception as error:
+			stage_failures.append(f"restore database creation failed:\n{error}")
+	if restore_database_created:
+		try:
+			run(
+				["pg_restore", "--exit-on-error", "-d", MANAGED_RUN_RESTORE_DATABASE,
+				 str(dump_path)],
+				env,
+			)
+		except Exception as error:
+			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
+		set_contract_urls(env, socket_dir, port, MANAGED_RUN_RESTORE_DATABASE, RUNTIME_ROLE)
+		try:
+			dump_schema_manifest(paths["restored"], MANAGED_RUN_RESTORE_DATABASE, env)
+			checkpoints["restored"] = load_semantic_manifest(paths["restored"])
+		except Exception as error:
+			stage_failures.append(f"restored manifest capture failed:\n{error}")
+
+	diagnostics, manifest_failures = manifest_diagnostics(checkpoints)
+	print(
+		"XY-1338 V12 semantic manifest diagnostics:\n"
+		+ json.dumps(diagnostics, indent=2, sort_keys=True),
+		file=sys.stderr,
+		flush=True,
+	)
+	failures = list(stage_failures)
+	if source_behavior_error is not None:
+		failures.append(f"source verifier/behavior failed:\n{source_behavior_error}")
+	failures.extend(manifest_failures)
+	if not failures:
+		try:
+			restore_output = run_managed_run_test(
+				"postgres_managed_run_safety_restore", env
+			)
+		except Exception as error:
+			failures.append(f"restored verifier/behavior failed:\n{error}")
+	if failures:
+		raise TestFailure(
+			"XY-1338 focused evidence finalized with failures:\n\n"
+			+ "\n\n".join(failures)
+		)
+	return "\n".join((static_output, migration_output, command_output, restore_output))
 
 
 def run_runtime_session_crash_recovery(
@@ -821,6 +1608,7 @@ def run_runtime_session_final_gate_contracts(
 	port: int,
 	work: Path,
 	env: dict[str, str],
+	restore_report: dict[str, object],
 ) -> str:
 	outputs: list[str] = []
 	for database, test in (
@@ -870,25 +1658,45 @@ def run_runtime_session_final_gate_contracts(
 	)
 	outputs.append(run_runtime_session_test("postgres_exact_runtime_session_commands", env))
 	restore_dump = work / "xy1337-runtime-sessions.dump"
-	run(
-		[
-			"pg_dump", "-Fc", "-f", str(restore_dump),
-			RUNTIME_SESSION_RESTORE_SOURCE_DATABASE,
-		],
-		env,
-	)
-	create_database(RUNTIME_SESSION_RESTORE_DATABASE, env)
-	run(
-		[
-			"pg_restore", "--exit-on-error", "-d", RUNTIME_SESSION_RESTORE_DATABASE,
-			str(restore_dump),
-		],
-		env,
-	)
-	set_contract_urls(
-		env, socket_dir, port, RUNTIME_SESSION_RESTORE_DATABASE, RUNTIME_ROLE
-	)
-	outputs.append(run_runtime_session_test("postgres_exact_runtime_session_restore", env))
+	restore_ready = True
+	try:
+		run(
+			[
+				"pg_dump", "-Fc", "-f", str(restore_dump),
+				RUNTIME_SESSION_RESTORE_SOURCE_DATABASE,
+			],
+			env,
+		)
+		create_database(RUNTIME_SESSION_RESTORE_DATABASE, env)
+		run(
+			[
+				"pg_restore", "--exit-on-error", "-d", RUNTIME_SESSION_RESTORE_DATABASE,
+				str(restore_dump),
+			],
+			env,
+		)
+	except Exception as error:
+		restore_ready = False
+		record_restore_stage(
+			restore_report, "runtime_session_restore", "failed", error=str(error)
+		)
+	else:
+		record_restore_stage(restore_report, "runtime_session_restore", "passed")
+	if restore_ready:
+		set_contract_urls(
+			env, socket_dir, port, RUNTIME_SESSION_RESTORE_DATABASE, RUNTIME_ROLE
+		)
+		outputs.append(record_restore_production_check(
+			restore_report,
+			"runtime_session_restored",
+			lambda: run_runtime_session_test("postgres_exact_runtime_session_restore", env),
+		))
+	else:
+		record_restore_production_check(
+			restore_report,
+			"runtime_session_restored",
+			lambda: run_runtime_session_test("postgres_exact_runtime_session_restore", env),
+		)
 	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 	return "\n".join(outputs)
 
@@ -988,6 +1796,18 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"decodex.policies, decodex.policy_revisions TO {role}; "
 		f"GRANT SELECT ON TABLE decodex.programs, decodex.objectives, "
 		f"decodex.objective_completion_evidence TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.work_items, decodex.work_item_objectives, "
+		f"decodex.work_item_edges, decodex.work_item_readiness_blockers, "
+		f"decodex.work_item_acceptances TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.managed_runs, decodex.managed_run_assignments, "
+		f"decodex.managed_run_effect_barriers, decodex.managed_run_effects, "
+		f"decodex.managed_run_submitted_turn_receipts, "
+		f"decodex.managed_run_safety_inputs TO {role}; "
+		f"GRANT SELECT, INSERT ON TABLE decodex.repository_admissions, "
+		f"decodex.repository_authority_transitions, decodex.repository_operations, "
+		f"decodex.repository_operation_events, decodex.repository_operation_evidence, "
+		f"decodex.repository_operation_results TO {role}; "
+		f"GRANT SELECT, INSERT, UPDATE ON TABLE decodex.managed_repositories TO {role}; "
 		f"GRANT DELETE ON TABLE decodex.blob_objects TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.activity TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {role}; "
@@ -1044,7 +1864,31 @@ max_entry_bytes = 4096
 
 
 def main() -> int:
-	work = Path(tempfile.mkdtemp(prefix="decodex-xy1267-")).resolve()
+	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
+	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
+	if sys.argv[1:] and not (focused_work_items or focused_managed_runs):
+		raise TestFailure(
+			"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs]"
+		)
+	temp_root_value = os.environ.get("DECODEX_TEST_TEMP_ROOT")
+	temp_root = None
+	if temp_root_value:
+		requested_root = Path(temp_root_value)
+		if not requested_root.is_absolute():
+			raise TestFailure("DECODEX_TEST_TEMP_ROOT must be absolute")
+		for component in (requested_root, *requested_root.parents):
+			if component.is_symlink():
+				raise TestFailure("DECODEX_TEST_TEMP_ROOT must not contain a symlink")
+		if not requested_root.is_dir():
+			raise TestFailure("DECODEX_TEST_TEMP_ROOT must be a real existing directory")
+		temp_root = requested_root.resolve(strict=True)
+	work = Path(
+		tempfile.mkdtemp(
+			prefix=("decodex-xy1343-" if focused_work_items else
+				"decodex-xy1338-" if focused_managed_runs else "decodex-xy1267-"),
+			dir=temp_root,
+		)
+	).resolve()
 	data_dir = work / "postgres"
 	socket_dir = work / "socket"
 	log_path = work / "postgres.log"
@@ -1123,16 +1967,78 @@ def main() -> int:
 				attributes += " SUPERUSER"
 			psql("postgres", f"CREATE ROLE {role}{attributes}", env)
 
+		if focused_work_items:
+			output = run_work_item_focused_contracts(socket_dir, port, work, env)
+			print(output)
+			return 0
+		if focused_managed_runs:
+			output = run_managed_run_focused_contracts(socket_dir, port, work, env)
+			print(output)
+			return 0
+		source_binding = frozen_source_binding()
+		restore_report: dict[str, object] = {
+			"checkpoints": {},
+			"production_checks": {},
+			"stages": {},
+		}
+
 		create_database(DATABASE, env)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		migration_output = run_migration(env)
 		provision_runtime(DATABASE, RUNTIME_ROLE, env)
-		role_profile_output = run_role_profile_final_gate_contracts(
-			data_dir, log_path, socket_dir, port, work, env
+		initial_manifest_output = capture_restore_checkpoint(
+			restore_report,
+			"source",
+			work / "schema-manifest-initial.json",
+			DATABASE,
+			env,
 		)
-		runtime_session_output = run_runtime_session_final_gate_contracts(
-			data_dir, log_path, socket_dir, port, work, env
-		)
+		try:
+			role_profile_output = run_role_profile_final_gate_contracts(
+				data_dir, log_path, socket_dir, port, work, env, restore_report
+			)
+			record_restore_stage(restore_report, "role_profile_suite", "passed")
+		except Exception as error:
+			role_profile_output = ""
+			record_restore_stage(
+				restore_report, "role_profile_suite", "failed", error=str(error)
+			)
+			record_restore_stage(
+				restore_report,
+				"role_profile_restore",
+				"unavailable",
+				blocked_by=["role_profile_suite"],
+			)
+			checkpoints = restore_report["checkpoints"]
+			assert isinstance(checkpoints, dict)
+			for checkpoint in ("role_profile_post_command", "role_profile_restored"):
+				checkpoints.setdefault(checkpoint, unavailable_checkpoint(str(error)))
+			record_restore_production_check(
+				restore_report,
+				"role_profile_restored",
+				lambda: run_role_profile_test("postgres_exact_role_profile_restore", env),
+			)
+		try:
+			runtime_session_output = run_runtime_session_final_gate_contracts(
+				data_dir, log_path, socket_dir, port, work, env, restore_report
+			)
+			record_restore_stage(restore_report, "runtime_session_suite", "passed")
+		except Exception as error:
+			runtime_session_output = ""
+			record_restore_stage(
+				restore_report, "runtime_session_suite", "failed", error=str(error)
+			)
+			record_restore_stage(
+				restore_report,
+				"runtime_session_restore",
+				"unavailable",
+				blocked_by=["runtime_session_suite"],
+			)
+			record_restore_production_check(
+				restore_report,
+				"runtime_session_restored",
+				lambda: run_runtime_session_test("postgres_exact_runtime_session_restore", env),
+			)
 		v8_boundary_output = run_v8_migration_boundary_contracts(env, socket_dir, port)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		restart_output = run_blob_session_restart_contract(
@@ -1173,6 +2079,14 @@ def main() -> int:
 			],
 			env,
 		)
+		managed_repository_output = "\n".join((
+			run_managed_repository_test(
+				"postgres_managed_repository_authority_contract", env
+			),
+			run_managed_repository_test(
+				"postgres_managed_repository_restart_backlog_bound", env
+			),
+		))
 		env["DECODEX_TEST_SOCKET_DIRECTORY"] = str(socket_dir)
 		account_composition_output = run(
 			[
@@ -1579,7 +2493,7 @@ def main() -> int:
 			f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
 			f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
 			f"ON inventory_namespace.oid = inventory.pronamespace "
-			f"WHERE inventory_namespace.nspname = 'decodex') = 81",
+			f"WHERE inventory_namespace.nspname = 'decodex') = 112",
 			env,
 		) != "t|t|t|t|t|t|t|t":
 			raise TestFailure("additional privileged-function fixture is vacuous")
@@ -1948,7 +2862,7 @@ def main() -> int:
 			"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
 			"FROM public.refinery_schema_history",
 			env,
-		) != "8|1":
+		) != "13|1":
 			raise TestFailure("migration-ledger tamper did not preserve the row count")
 
 		create_database(MISSING_EXTENSION_DATABASE, env)
@@ -2081,7 +2995,13 @@ def main() -> int:
 
 		live_manifest_path = work / "schema-manifest-live.json"
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
-		dump_schema_manifest(live_manifest_path, env)
+		capture_restore_checkpoint(
+			restore_report,
+			"primary_post_command",
+			live_manifest_path,
+			DATABASE,
+			env,
+		)
 		live_quota_snapshot = quota_authority_snapshot(DATABASE, env)
 		live_quota = json.loads(live_quota_snapshot)
 		if len(live_quota["windows"]) != 2 or len(live_quota["exclusions"]) != 2:
@@ -2089,53 +3009,81 @@ def main() -> int:
 		if any(row["dispatch_enabled"] for row in live_quota["exclusions"]):
 			raise TestFailure("live quota exclusion unexpectedly enables dispatch")
 		dump_path = work / "decodex_xy1267.dump"
-		run(["pg_dump", "-Fc", "-f", str(dump_path), DATABASE], env)
-		create_database(RESTORE_DATABASE, env)
-		run(["pg_restore", "--exit-on-error", "-d", RESTORE_DATABASE, str(dump_path)], env)
-		set_contract_urls(env, socket_dir, port, RESTORE_DATABASE, RUNTIME_ROLE)
-		restored_manifest_path = work / "schema-manifest-restored.json"
-		dump_schema_manifest(restored_manifest_path, env)
-		restored_quota_snapshot = quota_authority_snapshot(RESTORE_DATABASE, env)
-		if restored_quota_snapshot != live_quota_snapshot:
-			raise TestFailure("dump/restore changed immutable quota authority evidence")
-		live_manifest = live_manifest_path.read_text()
-		restored_manifest = restored_manifest_path.read_text()
-		if live_manifest != restored_manifest:
-			live_document = json.loads(live_manifest)
-			restored_document = json.loads(restored_manifest)
-			changed = [
-				component for component in ("authority", "schema")
-				if live_document[component] != restored_document[component]
-			]
-			component = changed[0]
-			live_rows = json.loads(live_document[component])
-			restored_rows = json.loads(restored_document[component])
-			only_live = [row for row in live_rows if row not in restored_rows]
-			only_restored = [row for row in restored_rows if row not in live_rows]
-			raise TestFailure(
-				"dump/restore schema manifest changed\n"
-				f"component: {component}\n"
-				f"only live: {json.dumps(only_live[:8], indent=2)}\n"
-				f"only restored: {json.dumps(only_restored[:8], indent=2)}"
+		primary_restore_ready = True
+		try:
+			run(["pg_dump", "-Fc", "-f", str(dump_path), DATABASE], env)
+			create_database(RESTORE_DATABASE, env)
+			run(
+				["pg_restore", "--exit-on-error", "-d", RESTORE_DATABASE, str(dump_path)],
+				env,
 			)
-		restore_output = run(
-			[
-				"cargo",
-				"nextest",
-				"run",
-				"-p",
-				"decodex-postgres",
-				"--features",
-				"test-support",
-				"--test",
-				"postgres_store",
-				"--run-ignored",
-				"all",
-				"--",
-				"postgres_store_restored_contract",
-				"--exact",
-			],
-			env,
+		except Exception as error:
+			primary_restore_ready = False
+			record_restore_stage(
+				restore_report, "primary_restore", "failed", error=str(error)
+			)
+		else:
+			record_restore_stage(restore_report, "primary_restore", "passed")
+		restored_manifest_path = work / "schema-manifest-restored.json"
+		if restore_stage_ready(
+			restore_report, "primary_restored_capture"
+		) and primary_restore_ready:
+			set_contract_urls(env, socket_dir, port, RESTORE_DATABASE, RUNTIME_ROLE)
+			capture_restore_checkpoint(
+				restore_report,
+				"primary_restored",
+				restored_manifest_path,
+				RESTORE_DATABASE,
+				env,
+			)
+			restored_quota_snapshot = quota_authority_snapshot(RESTORE_DATABASE, env)
+			if restored_quota_snapshot != live_quota_snapshot:
+				record_restore_stage(
+					restore_report,
+					"primary_sequence_state",
+					"failed",
+					error="dump/restore changed immutable quota authority evidence",
+				)
+			else:
+				record_restore_stage(restore_report, "primary_sequence_state", "passed")
+		else:
+			checkpoints = restore_report["checkpoints"]
+			assert isinstance(checkpoints, dict)
+			checkpoints["primary_restored"] = unavailable_checkpoint(
+				"primary_restore prerequisite is unavailable"
+			)
+		restore_output = record_restore_production_check(
+			restore_report,
+			"primary_store_restored",
+			lambda: run(
+				[
+					"cargo", "nextest", "run", "-p", "decodex-postgres",
+					"--features", "test-support", "--test", "postgres_store",
+					"--run-ignored", "all", "--",
+					"postgres_store_restored_contract", "--exact",
+				],
+				env,
+			),
+		)
+		managed_repository_restore_output = record_restore_production_check(
+			restore_report,
+			"managed_repository_restored",
+			lambda: run_managed_repository_test(
+				"postgres_managed_repository_restored_contract", env
+			),
+		)
+		if not primary_restore_ready:
+			restore_failures = finalize_restore_report(restore_report)
+			raise TestFailure(
+				"XY-1353 structured PostgreSQL restore acceptance failed:\n"
+				+ "\n".join(f"- {failure}" for failure in restore_failures)
+			)
+		checkpoints = restore_report["checkpoints"]
+		assert isinstance(checkpoints, dict)
+		live_document = checkpoints["primary_post_command"]
+		assert isinstance(live_document, dict)
+		live_authority = component_manifest(
+			live_document, "authority", require_complete=False
 		)
 		canary_manifest_path = work / "schema-manifest-role-setting-canary.json"
 		canary_markers = (role_setting_canary_guc, role_setting_secret_canary)
@@ -2165,10 +3113,27 @@ def main() -> int:
 			)
 			if catalog_probe != "1":
 				raise TestFailure("secret-bearing role-setting canary is absent from the live catalog")
-			dump_schema_manifest(canary_manifest_path, env)
-			canary_manifest = canary_manifest_path.read_text(encoding="utf-8")
-			if json.loads(canary_manifest)["authority"] == json.loads(live_manifest)["authority"]:
+			canary_env = env.copy()
+			set_contract_urls(canary_env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+			dump_schema_manifest(canary_manifest_path, DATABASE, canary_env)
+			canary_document = load_semantic_manifest(canary_manifest_path)
+			canary_authority = component_manifest(
+				canary_document, "authority", require_complete=False
+			)
+			if canary_authority is None or live_authority is None:
+				record_restore_stage(
+					restore_report,
+					"authority_canary_manifest",
+					"unavailable",
+					blocked_by=["primary_post_command_capture"],
+				)
+			elif canary_authority == live_authority:
 				raise TestFailure("secret-bearing role setting did not change configured authority")
+			else:
+				record_restore_stage(
+					restore_report, "authority_canary_manifest", "passed"
+				)
+			canary_manifest = canary_manifest_path.read_text(encoding="utf-8")
 			if (
 				role_setting_secret_canary in canary_manifest
 				or role_setting_canary_guc in canary_manifest
@@ -2192,14 +3157,6 @@ def main() -> int:
 			env,
 		) != "0":
 			raise TestFailure("secret-bearing role-setting canary was not restored")
-		authority_digest = hashlib.sha256(
-			json.loads(live_manifest)["authority"].encode("utf-8")
-		).hexdigest()
-		print(
-			f"configured PostgreSQL authority manifest SHA-256: {authority_digest}",
-			flush=True,
-		)
-
 		create_database(DEFAULT_ACL_TAMPER_DATABASE, env)
 		run(
 			[
@@ -2490,12 +3447,87 @@ def main() -> int:
 				raise TestFailure("doctor output leaked a role-setting canary")
 			authority_drift_outputs.append(output)
 		assert_postgres_logs_redact((log_path,), canary_markers)
+		final_source_binding = frozen_source_binding()
+		if final_source_binding != source_binding:
+			raise TestFailure("frozen PostgreSQL gate source binding changed during execution")
+		restore_failures = finalize_restore_report(restore_report)
+		if restore_failures:
+			raise TestFailure(
+				"XY-1353 structured PostgreSQL restore acceptance failed:\n"
+				+ "\n".join(f"- {failure}" for failure in restore_failures)
+			)
+		checkpoints = restore_report["checkpoints"]
+		assert isinstance(checkpoints, dict)
+		live_document = checkpoints["primary_post_command"]
+		restored_document = checkpoints["primary_restored"]
+		assert isinstance(live_document, dict) and isinstance(restored_document, dict)
+		live_schema = component_manifest(live_document, "schema")
+		live_authority = component_manifest(live_document, "authority")
+		restored_schema = component_manifest(restored_document, "schema")
+		restored_authority = component_manifest(restored_document, "authority")
+		if None in (live_schema, live_authority, restored_schema, restored_authority):
+			raise TestFailure(
+				"complete PostgreSQL artifacts are unavailable after restore finalization"
+			)
+		assert isinstance(live_schema, str) and isinstance(live_authority, str)
+		assert isinstance(restored_schema, str) and isinstance(restored_authority, str)
+		live_components = {"schema": live_schema, "authority": live_authority}
+		restored_components = {
+			"schema": restored_schema,
+			"authority": restored_authority,
+		}
+		expected_digests = {
+			"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+			"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+		}
+		actual_digests = {
+			component: hashlib.sha256(live_components[component].encode("utf-8")).hexdigest()
+			for component in ("schema", "authority")
+		}
+		restored_digests = {
+			component: hashlib.sha256(
+				restored_components[component].encode("utf-8")
+			).hexdigest()
+			for component in ("schema", "authority")
+		}
+		migration_inventory = json.loads(psql(
+			DATABASE,
+			"SELECT pg_catalog.json_agg(pg_catalog.json_build_object("
+			"'version', version, 'name', name, 'checksum', checksum) ORDER BY version)::text "
+			"FROM public.refinery_schema_history",
+			env,
+		))
+		artifact_evidence = {
+			"schema": "decodex/xy-1353-frozen-postgres-evidence/1",
+			"source": source_binding,
+			"database_bindings": {
+				name: document.get("binding")
+				for name, document in checkpoints.items()
+				if isinstance(document, dict)
+			},
+			"migration_inventory": migration_inventory,
+			"configured_authority_inventory_rows": len(
+				json.loads(live_components["authority"])
+			),
+			"schema_manifest_rows": len(json.loads(live_components["schema"])),
+			"expected_digests": expected_digests,
+			"actual_digests": actual_digests,
+			"restored_digests": restored_digests,
+			"sequence_state_receipt": live_document["sequence_state"],
+			"production_restore_checks": restore_report["production_checks"],
+			"restore_parity": all(
+				live_components[component] == restored_components[component]
+				for component in ("schema", "authority")
+			) and live_document["sequence_state"] == restored_document["sequence_state"],
+		}
 		print(migration_output)
+		print(initial_manifest_output)
 		print(role_profile_output)
 		print(runtime_session_output)
 		print(restart_output)
 		print(v8_boundary_output)
 		print(contract_output)
+		print(managed_repository_output)
 		print(account_composition_output)
 		print(bootstrap_output)
 		print(live_doctor_output)
@@ -2509,11 +3541,14 @@ def main() -> int:
 		print(hostile_startup_path_output)
 		print(hostile_search_output)
 		print(restore_output)
+		print(managed_repository_restore_output)
 		print(default_acl_live_doctor_output)
 		print(default_acl_restore_output)
 		print("\n".join(authority_drift_outputs))
+		print(json.dumps(artifact_evidence, sort_keys=True), flush=True)
 		return 0
 	finally:
+		primary_failure = sys.exc_info()[0] is not None
 		stop_error: Exception | None = None
 		stop_failures: list[str] = []
 		status = postgres_status(data_dir, env) if data_dir.exists() else ClusterStatus.STOPPED
@@ -2548,9 +3583,21 @@ def main() -> int:
 					f"PostgreSQL shutdown recovered after an error:{stop_diagnostics}",
 					file=sys.stderr,
 				)
-			shutil.rmtree(work, ignore_errors=True)
+			try:
+				shutil.rmtree(work)
+			except Exception as error:
+				cleanup_error = TestFailure(
+					f"failed to remove stopped task-owned PostgreSQL directory {work}: {error}"
+				)
+				if primary_failure:
+					print(cleanup_error, file=sys.stderr)
+				else:
+					raise cleanup_error
 		elif stop_error is not None:
-			raise stop_error
+			if primary_failure:
+				print(stop_error, file=sys.stderr)
+			else:
+				raise stop_error
 
 
 if __name__ == "__main__":

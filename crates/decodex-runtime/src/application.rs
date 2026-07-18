@@ -1,6 +1,9 @@
 //! Application-service seam used by the transport without exposing infrastructure.
 
-use std::future::{self, Future};
+use std::{
+	future::{self, Future},
+	sync::Arc,
+};
 
 use decodex_codex::CodexAdapter;
 use decodex_core::{
@@ -17,6 +20,10 @@ use decodex_protocol::{
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
 	MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryPayload, QueryResultPayload, ResultPayload,
 	Sha256Digest, SnapshotItem, WireText,
+};
+
+use crate::managed_repository_runtime::{
+	ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
 };
 
 /// The only mutation/observation seam reachable from the WebSocket server.
@@ -91,6 +98,9 @@ impl ProductState for ProductStore {
 #[derive(Clone)]
 pub(crate) struct ServiceApplication {
 	store: ProductStore,
+	_managed_repositories: Option<ManagedRepositoryRuntime>,
+	_managed_repository_readiness: ManagedRepositoryReadiness,
+	_managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
@@ -98,11 +108,22 @@ pub(crate) struct ServiceApplication {
 impl ServiceApplication {
 	pub(crate) const fn new(
 		store: ProductStore,
+		managed_repositories: Option<ManagedRepositoryRuntime>,
+		managed_repository_readiness: ManagedRepositoryReadiness,
+		managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
 		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
 		doctor: DoctorReport,
 	) -> Self {
-		Self { store, _codex: codex, blob_store, doctor }
+		Self {
+			store,
+			_managed_repositories: managed_repositories,
+			_managed_repository_readiness: managed_repository_readiness,
+			_managed_repository_startup_error: managed_repository_startup_error,
+			_codex: codex,
+			blob_store,
+			doctor,
+		}
 	}
 
 	async fn refreshed_doctor(&self) -> DoctorReport {

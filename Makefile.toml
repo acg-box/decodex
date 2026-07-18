@@ -221,15 +221,16 @@ args = [
 ]
 
 # Test
-# | task                       | type      | cwd |
-# | -------------------------- | --------- | --- |
-# | test                       | composite |     |
-# | test-gate-contract         | command   |     |
-# | test-rust                  | command   |     |
-# | test-vnext-architecture    | command   |     |
-# | test-vnext-cli-diagnostics | command   |     |
-# | test-vnext-postgres-store  | command   |     |
-# | test-vnext-storage-proof   | command   |     |
+# | task                               | type      | cwd |
+# | ---------------------------------- | --------- | --- |
+# | test                               | composite |     |
+# | test-gate-contract                 | command   |     |
+# | test-rust                          | command   |     |
+# | test-vnext-architecture            | command   |     |
+# | test-vnext-cli-diagnostics         | command   |     |
+# | test-vnext-postgres-managed-runs   | command   |     |
+# | test-vnext-postgres-store          | command   |     |
+# | test-vnext-storage-proof           | command   |     |
 
 [tasks.test]
 clear = true
@@ -239,6 +240,7 @@ dependencies = [
 	"test-rust",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
+	"test-vnext-postgres-store",
 ]
 
 [tasks.test-gate-contract]
@@ -276,6 +278,14 @@ workspace = false
 command = "python3"
 args = [
 	"scripts/vnext/cli_diagnostics_test.py",
+]
+
+[tasks.test-vnext-postgres-managed-runs]
+workspace = false
+command = "python3"
+args = [
+	"scripts/vnext/postgres_store_test.py",
+	"--focus-managed-runs",
 ]
 
 [tasks.test-vnext-postgres-store]
