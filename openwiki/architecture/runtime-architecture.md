@@ -389,6 +389,17 @@ configured-principal and ACL authority closure against V8. XY-1345 owns accepted
 authority/prototype evidence, XY-1346 owns expected V9 exact receipts plus RoleProfiles, and
 re-bounded XY-1337 owns expected V10 RuntimeSession snapshots and transitions.
 
+V15 is a persistence protocol, not an execution composition root. PostgreSQL first records immutable
+intent, then a one-way `creation_possible` fence before any `thread/start` could occur. Only the exact
+typed successful response for that same attempt can bind one globally unique thread. A retained
+`creation_possible` row after a crash or lost response is terminal ambiguous creation authority:
+stored response bytes remain replayable for audit, but the PostgreSQL adapter reports that replay
+only as ambiguous readback and cannot reconstruct its private one-shot fresh permission. There is
+no transition, Rust API, or Codex API here that retries, searches for, or adopts a thread.
+Observations are append-only positive exact facts bound by experiment revision, thread, deterministic
+marker, source identity, and payload digest. List omission, pagination exhaustion, missing events,
+lossy history, and stale caches have no persisted representation and authorize nothing.
+
 The composition also reports conversation execution unavailable. Authentication, TLS,
 remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, mutating
 CLI operations, and GPUI behavior remain disabled and belong to later issues.
@@ -506,7 +517,11 @@ existing ManagedRun barrier, submitted-turn receipt, and repository/worktree/Git
 reconciliation authorities retain ambiguous-effect ownership; routing never reclassifies or
 replays those effects.
 
-The production runtime composes those three accepted owners exactly once during daemon bootstrap.
+No production crate or application imports or constructs a V15 experiment execution root. The
+mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
+the complete V15 source boundary. XY-1361 alone may later compose the accepted V14-V16 owners, and
+even that composition must retain production dispatch disabled until the separate enablement gate.
+The production runtime composes the already accepted repository owners exactly once during daemon bootstrap.
 When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
 same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol
 listener can serve. Executor-open or restart-reconciliation failure leaves the repository runtime
