@@ -7,6 +7,7 @@ mod cache;
 mod config;
 mod conversation;
 mod identity;
+mod managed_repository;
 mod managed_run;
 #[cfg(unix)] mod path_unix;
 mod paths;
@@ -51,6 +52,35 @@ pub use self::{
 		contains_credential_material, is_canonical_media_type, is_credential_metadata_key,
 	},
 	identity::ServerIdentity,
+	managed_repository::{
+		AdmissionDescriptorDigest, AggregateCheckpoint, AllocateRepositoryCommand,
+		AllocateRepositoryDecision, AllocationAvailabilityFacts, AssignmentResolution,
+		BeginCommitCommand, BeginCommitDecision, BeginRegistrationCommand,
+		BeginRegistrationDecision, BeginWorktreeReadyCommand, BeginWorktreeReadyDecision,
+		CanonicalCommitIntent, CanonicalOperationDescriptor, CanonicalOperationPayload, CommitEvidence,
+		CommitReadbackRequest, CommitReconciliation, ExactCommitEvidence,
+		ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
+		ExecutorContractVersion,
+		MAX_MANAGED_REPOSITORY_PATH_BYTES, MAX_MANAGED_REPOSITORY_VALUE_BYTES,
+		MAX_REPOSITORY_COMMIT_MESSAGE_BYTES,
+		ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId,
+		ManagedRepositoryPhase, ManagedWorktreeId, NoDispatch, OperationDescriptorVersion,
+		OperationView, PersistedAbsolutePath, PositiveAllocationEvidence,
+		RegistrationEvidence, RegistrationReadbackRequest, RegistrationReconciliation,
+		RegistrationTarget, RepositoryAdmissionFacts, RepositoryAllocationId,
+		RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryContentRevision,
+		RepositoryCommitActor, RepositoryCommitActorEmail, RepositoryCommitActorName,
+		RepositoryCommitMessage, RepositoryEvidenceId,
+		RepositoryOperationId, RepositoryOperationKind, RepositoryReferenceName,
+		RepositoryOperationResult, RepositoryOperationState, RepositoryProjectionUpdate,
+		WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
+		WorktreeReadyReconciliation,
+		decide_allocate, decide_begin_commit, decide_begin_registration,
+		decide_begin_worktree_ready, decide_commit_readback, decide_registration_readback,
+		decide_worktree_ready_readback, commit_readback_request,
+		registration_readback_request, resolve_operation_assignment,
+		worktree_ready_readback_request,
+	},
 	managed_run::{
 		EffectId, ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
 		ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
