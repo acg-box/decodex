@@ -15,6 +15,7 @@ mod policy;
 mod program;
 mod project;
 mod quota;
+mod routing;
 mod storage;
 mod work_item;
 
@@ -120,6 +121,13 @@ pub use self::{
 		QuotaWindowObservation, QuotaWindowState, QuotaWindowValueObservation, RemainingPercent,
 		TimeOverflow, UnknownObservation, UnknownWindowDuration, WindowDurationObservation,
 		classify_account_quota, classify_all_accounts,
+	},
+	routing::{
+		CodexCapability, RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome,
+		RoutingEvidenceEffect, RoutingMemberDisposition, RoutingPolicyEffect, RoutingPolicyMember,
+		RoutingRejection,
+		RoutingSnapshot, RoutingSnapshotCapabilityFact, RoutingSnapshotMember,
+		RoutingSnapshotQuotaFact,
 	},
 	storage::StorageError,
 	work_item::{

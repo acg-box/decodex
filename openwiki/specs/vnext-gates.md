@@ -132,6 +132,42 @@ manifest, configuration value, remote catalog entry, process binding, or user de
 cannot close the missing account-owned receipt. Existing doctor `unknown(plugin)` is the
 first-release result, and `plugin_unready` remains inert reserved state.
 
+### XY-1356 deferred V14 acceptance inventory
+
+V14 source review precedes executable validation. The frozen integration gate must execute the
+following as one coherent boundary, not as per-command repair loops:
+
+- fresh V1-to-V14 initialization and V13-to-V14 forward upgrade; exact migration ledger,
+  configured-principal ACL, 60-relation, 119-function, and 110-trigger inventories; derivation and
+  binding of the new schema/configured-authority digests; populated dump/restore parity;
+- policy replacement with empty, one-member, and multi-member inventories; every omission,
+  duplicate, foreign member, order gap, account-revision race, accepted-Policy race,
+  RoleProfile race, BuildId mismatch, and same-expected-revision/different-key schedule;
+- evidence publication with the exact eight-capability order and every closed state; account,
+  process, RoleProfile, BuildId, schema-fingerprint, and evidence-revision conflict schedules;
+  explicit rejection of timestamps and causal experiment, plugin, skill, MCP, marketplace,
+  OAuth/login-management, account-configuration, host-file, digest-only, and credential-shaped
+  sources;
+- snapshot resolution under the 1271 -> 1338 -> 1356 coordinator order and fixed SHARE bridge;
+  concurrent account, quota, Policy, RoleProfile, RuntimeSession, ManagedRun, evidence, and
+  inventory writers; resolution-clock capture only after the full lock/recheck set;
+- exact 300-second freshness acceptance and 300-seconds-plus-one-microsecond rejection for
+  account/evidence/quota facts; future facts; negative disabled/auth-failed facts independent of
+  age; exact raw quota timestamp preservation; separate ordered 300/10080 facts;
+- complete policy-order snapshots, one sticky source, exact account/profile snapshot lineage,
+  eight-cell capability matrices, explicit applicability, deterministic blocker arrays, and
+  deferred commit failure for every partial member, quota, matrix, blocker, or evidence child set;
+- byte-identical replay and lost-response recovery for all three operations; same-key changed
+  envelope/operation `DX001`; stable rejection replay after later state changes; rollback at every
+  receipt/domain/child/response boundary; no committed executing receipt;
+- runtime/PUBLIC direct relation, helper, receipt, activity, outbox, trigger, grant, ownership,
+  or DDL denial; EXECUTE only for the three public V14 functions; hostile search path, overload,
+  function-body, trigger-binding, ACL, default-privilege, and extension-dependency substitutions;
+- strict Rust rejection of malformed bytes, unknown/missing/null/defaulted fields, identity
+  duplication/reordering, position gaps, quota-pair or capability-matrix drift, blocker/disposition
+  inconsistency, cross-linked revisions/provenance, and effect-digest mismatch; and proof that V14
+  exposes no account selection, `waiting_usage`, continuation, wake, dispatch, or live enablement.
+
 ### XY-1345 exact-command reset gate
 
 XY-1345 owns repository authority and a non-production PostgreSQL 18 proof, not a migration or

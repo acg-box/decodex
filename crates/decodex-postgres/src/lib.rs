@@ -5,9 +5,10 @@
 //! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
 //! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
 //! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
-//! managed-repository authority with append-only operations/evidence. It does not select accounts,
-//! route work, store credentials, schedule or advance runs, execute repository effects, or expose
-//! protocol/client behavior.
+//! managed-repository authority with append-only operations/evidence, plus revisioned routing
+//! policies, ordinary capability evidence, and immutable routing fact snapshots. It does not
+//! select accounts, route work, store credentials, schedule or advance runs, execute repository
+//! effects, or expose protocol/client behavior.
 
 mod accounts;
 mod authority;
@@ -24,6 +25,7 @@ mod programs;
 mod project_agents;
 mod quota;
 mod role_profiles;
+mod routing;
 mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
@@ -50,6 +52,9 @@ pub use self::{
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
 		RoleProfileRejection, RoleProfileRevision, RoleProfileRole,
+	},
+	routing::{
+		PublishRoutingEvidence, ReplaceRoutingPolicy, RoutingPolicyMemberInput,
 	},
 	runtime_sessions::{
 		CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, RuntimeSessionAccountSnapshot,

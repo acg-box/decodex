@@ -119,22 +119,22 @@ runtime-effective, regardless of `pg_extension.extnamespace`.
 Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
 TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
 `session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
-in any reachable authority state. At the V12 boundary, the audit verifies all eighty-four shipped
+in any reachable authority state. At the V14 boundary, the audit verifies all 110 shipped
 non-internal trigger bindings, including regular and deferred constraint triggers, by table, event
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V12. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V14. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
 are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
 are unsafe; a replaced same-signature safety-function body is incompatible.
-Every non-internal trigger on a Decodex runtime relation must be one of those eighty-four exact V12 bindings.
+Every non-internal trigger on a Decodex runtime relation must be one of those 110 exact V14 bindings.
 The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
 on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
 generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
-107 canonical V12 functions. Every canonical function has the exact function-local
+119 canonical V14 functions. Every canonical function has the exact function-local
 `pg_catalog, decodex` search path, so runtime-selected callable or operator shadows cannot redirect
 trigger or constraint execution. A trigger cannot therefore invoke an adjacent public owner-executed
 function merely because runtime DML fires it.
@@ -158,23 +158,23 @@ string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
 authority audit and schema-qualified migration-ledger verification remain correct under a hostile
 runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
 table, sequence, function, or ledger-read authority is incompatible.
-At the V12 boundary, twenty-four canonical `SECURITY DEFINER` functions comprise the three V3
+At the V14 boundary, twenty-seven canonical `SECURITY DEFINER` functions comprise the three V3
 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two
 V9 RoleProfile command entrypoints, two V10 RuntimeSession command entrypoints, and four V11 exact
-WorkItem commands, the inert future running/resume guard, and the one V12 ManagedRun safety
-consumer. The cursor issuer derives Conversation,
+WorkItem commands, the inert future running/resume guard, the one V12 ManagedRun safety
+consumer, and the three V14 routing-authority commands. The cursor issuer derives Conversation,
 snapshot version, parent, page size, position, item identity, and expiry under serialized
 Conversation authority; the bounded pruner is callable by runtime, while the capture function is
 trigger-only and runtime cannot execute it directly. Runtime has no cursor-table INSERT authority.
-The other eighty-three canonical V12 functions are security invokers. The additional-function adversarial fixture creates a fixture-only 108th migration-owned,
+The other ninety-two canonical V14 functions are security invokers. The additional-function adversarial fixture creates a fixture-only migration-owned,
 runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
 trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
 and restores the trigger before the independent doctor rejection. A separate public-function trigger
 fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
-table `UPDATE`, or `TRIGGER`; the exact eighty-four-trigger V12 inventory rejects that path. A public,
+table `UPDATE`, or `TRIGGER`; the closed V14 trigger inventory rejects that path. A public,
 runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
 proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
-closed 107-function V12 inventory remains independent of the distinct same-signature canonical-source
+closed 119-function V14 inventory remains independent of the distinct same-signature canonical-source
 substitution fixture. Missing, malformed, unsafe, unreachable,
 authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
 there is no ambient/default database or alternate state authority. Repository and
@@ -277,11 +277,14 @@ fresh exact PostgreSQL pre- and post-observations for the same manually selected
 inventory, automatic selector, weighting, stickiness, fallback, quota wake, or live routing API;
 XY-1304 remains the separate failed dispatch gate.
 
-The accepted XY-1355 target adds no executable path here. V14 will make PostgreSQL the sole owner
+The accepted XY-1355 target adds no live execution path here. V14 makes PostgreSQL the sole owner
 of a revisioned complete routing-policy snapshot over the entire account inventory, canonical
 user order, explicit per-member disposition, sticky affinity plus source RuntimeSession revision,
 account/profile/build compatibility, exact evidence revisions, and required-capability
-applicability. Runtime and callers cannot supply that universe. The core routing component will be
+applicability. Runtime and callers cannot supply that universe. V14 exposes only exact policy
+replacement, ordinary compatibility-evidence publication, and immutable snapshot-resolution
+commands; resolution classifies facts and blockers but cannot select, wait, wake, continue, or
+dispatch. The core routing component will be
 a pure kernel over the database-produced snapshot; V16 will atomically persist its decision and
 complete evidence linkage. Codex remains a positive-evidence adapter. An unknown required
 capability blocks, while an empty required-capability set makes unknown plugin inventory non-
