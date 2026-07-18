@@ -434,15 +434,23 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		)
 		.into());
 	}
-	let schema: String =
-		client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await?.get(0);
-	let authority: String = client
+	let (schema, schema_complete, schema_error) = match client
+		.query_one(PostgresStore::schema_contract_sql_fixture(), &[])
+		.await
+	{
+		Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
+		Err(error) => (None, false, Some(error.to_string())),
+	};
+	let (authority, authority_error) = match client
 		.query_one(
 			PostgresStore::configured_authority_sql_fixture(),
 			&[&migration_role, &runtime_role],
 		)
-		.await?
-		.get(0);
+		.await
+	{
+		Ok(row) => (row.get::<_, Option<String>>(0), None),
+		Err(error) => (None, Some(error.to_string())),
+	};
 	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
 	let migration_connection_task = tokio::spawn(migration_connection);
 	let observed_migration_database: String = migration_client
@@ -457,7 +465,12 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 	}
 	let sequence_state = manifest_sequence_state(&migration_client).await?;
 	let manifest = serde_json::to_string(&serde_json::json!({
-		"authority": authority,
+		"authority": {
+			"available": authority.is_some(),
+			"complete": authority.is_some(),
+			"error": authority_error,
+			"manifest": authority,
+		},
 		"binding": {
 			"requested": expected_database,
 			"migration_url": migration_database,
@@ -465,7 +478,12 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 			"observed_migration": observed_migration_database,
 			"observed_runtime": observed_runtime_database,
 		},
-		"schema": schema,
+		"schema": {
+			"available": schema.is_some(),
+			"complete": schema.is_some() && schema_complete,
+			"error": schema_error,
+			"manifest": schema,
+		},
 		"sequence_state": sequence_state,
 	}))?;
 
