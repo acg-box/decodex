@@ -47,8 +47,8 @@ pub use self::{
 		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
 	},
 	continuation::{
-		ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind,
-		ContinuationRejection, SameThreadContinuationEvidence,
+		ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlan,
+		ContinuationPlanKind, ContinuationRejection, SameThreadContinuationEvidence,
 	},
 	conversation::{
 		AccountSnapshot, ArtifactId, ArtifactReference, ArtifactStatus, ContextPack,
