@@ -1104,10 +1104,59 @@ def validate_capture_manifest_rows(document: dict[str, object]) -> None:
 			contract = json.loads(row[2])
 			if not isinstance(contract, list):
 				raise TestFailure(f"malformed {component_name} manifest contract")
-			if row[0] in {"dependency", "function_dependency", "type_dependency"} and (
-				len(contract) != 4 or not isinstance(contract[2], bool)
-			):
-				raise TestFailure("malformed schema dependency contract")
+			if row[0] in {"dependency", "function_dependency", "type_dependency"}:
+				decode_dependency_manifest_row(row)
+
+
+def decode_dependency_manifest_row(
+	row: object,
+) -> tuple[str, object, str, object, object, bool] | None:
+	if not isinstance(row, list) or len(row) != 3 or row[0] not in {
+		"dependency", "function_dependency", "type_dependency"
+	}:
+		return None
+	kind, identity, encoded_contract = row
+	contract = (
+		json.loads(encoded_contract)
+		if isinstance(encoded_contract, str)
+		else encoded_contract
+	)
+	expected_identity_length = 5 if kind == "dependency" else 4
+	if (
+		not isinstance(identity, list)
+		or len(identity) != expected_identity_length
+		or not isinstance(contract, list)
+		or len(contract) != 1
+		or not isinstance(contract[0], bool)
+	):
+		raise TestFailure("malformed schema dependency contract")
+	if kind == "dependency":
+		(
+			source_kind,
+			source_identity,
+			dependency_type,
+			reference_class,
+			reference_key,
+		) = identity
+	else:
+		source_kind = kind
+		source_identity, dependency_type, reference_class, reference_key = identity
+	if (
+		not isinstance(source_kind, str)
+		or not isinstance(source_identity, list)
+		or not isinstance(dependency_type, str)
+		or not isinstance(reference_class, list)
+		or reference_key is not None and not isinstance(reference_key, list)
+	):
+		raise TestFailure("malformed schema dependency contract")
+	return (
+		source_kind,
+		source_identity,
+		dependency_type,
+		reference_class,
+		reference_key,
+		contract[0],
+	)
 
 
 def structured_manifest_query_error(error: str) -> dict[str, object]:
@@ -1222,12 +1271,8 @@ def unresolved_dependency_rows(manifest: str) -> list[object]:
 	rows = json.loads(manifest)
 	unresolved = []
 	for row in rows:
-		if not isinstance(row, list) or len(row) != 3 or row[0] not in {
-			"dependency", "function_dependency", "type_dependency"
-		}:
-			continue
-		contract = json.loads(row[2]) if isinstance(row[2], str) else row[2]
-		if isinstance(contract, list) and len(contract) == 4 and contract[2] is False:
+		dependency = decode_dependency_manifest_row(row)
+		if dependency is not None and dependency[-1] is False:
 			unresolved.append(row)
 	return unresolved
 
@@ -1289,17 +1334,24 @@ def manifest_component_diagnostic(
 			unresolved = unresolved_dependency_rows(manifest)
 			unresolved_count = len(unresolved)
 			for row in unresolved[:MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT]:
-				assert isinstance(row, list) and len(row) == 3
-				kind, identity = row[:2]
-				contract = json.loads(row[2]) if isinstance(row[2], str) else row[2]
-				assert isinstance(contract, list) and len(contract) == 4
-				dependency_type, reference_class, _, reference_key = contract
+				dependency = decode_dependency_manifest_row(row)
+				assert dependency is not None
+				(
+					source_kind,
+					source_identity,
+					dependency_type,
+					reference_class,
+					reference_key,
+					_,
+				) = dependency
 				unresolved_evidence.append({
 					"dependency_type": bounded_evidence_value(
 						dependency_type, secret_markers
 					),
-					"identity": bounded_evidence_value(identity, secret_markers),
-					"kind": bounded_evidence_value(kind, secret_markers),
+					"identity": bounded_evidence_value(
+						source_identity, secret_markers
+					),
+					"kind": bounded_evidence_value(source_kind, secret_markers),
 					"reference_class": bounded_evidence_value(
 						reference_class, secret_markers
 					),
