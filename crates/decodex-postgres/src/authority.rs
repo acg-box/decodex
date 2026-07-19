@@ -3205,6 +3205,7 @@ SELECT
   (
     SELECT pg_catalog.jsonb_agg(
       pg_catalog.jsonb_build_array(kind, identity, contract)
+      -- Identity text byte order is canonical; digest changes require Phase A/B refreeze.
       ORDER BY
         pg_catalog.convert_to(kind, 'UTF8'),
         pg_catalog.convert_to(identity::pg_catalog.text, 'UTF8'),
