@@ -2049,6 +2049,7 @@ def capture_restore_checkpoint(
 
 
 RESTORE_STAGE_DEPENDENCIES = {
+	"bootstrap_doctor_history_daemon": ("postgres_store_contract",),
 	"role_profile_restored_capture": ("role_profile_restore",),
 	"role_profile_restored_check": ("role_profile_restore",),
 	"runtime_session_restored_check": ("runtime_session_restore",),
@@ -4790,12 +4791,12 @@ def main() -> int | AuthorityCandidatePublication:
 				],
 				env,
 			)
-			record_restore_stage(restore_report, "v14_v20_semantic_source", "passed")
+			record_restore_stage(restore_report, "postgres_store_contract", "passed")
 		except Exception as error:
 			contract_output = ""
-			acceptance_failures.append(f"V14-V20 semantic source: {error}")
+			acceptance_failures.append(f"postgres_store_contract failed:\n{error}")
 			record_restore_stage(
-				restore_report, "v14_v20_semantic_source", "failed", error=str(error)
+				restore_report, "postgres_store_contract", "failed", error=str(error)
 			)
 		managed_repository_output = "\n".join((
 			run_managed_repository_test(
@@ -4829,23 +4830,54 @@ def main() -> int | AuthorityCandidatePublication:
 		)
 		env["DECODEX_TEST_BOOTSTRAP_ROOT"] = str(bootstrap_root)
 		env["DECODEX_TEST_SOCKET_PORT"] = str(port)
-		bootstrap_output = run(
-			[
-				"cargo",
-				"nextest",
-				"run",
-				"-p",
-				"decodex-runtime",
-				"--test",
-				"bootstrap_doctor",
-				"--run-ignored",
-				"all",
-				"--",
-				"isolated_postgres_bootstrap_is_available_through_the_daemon",
-				"--exact",
-			],
-			env,
-		)
+		stages = restore_report["stages"]
+		assert isinstance(stages, dict)
+		bootstrap_stage = "bootstrap_doctor_history_daemon"
+		bootstrap_blocked_by = [
+			dependency
+			for dependency in RESTORE_STAGE_DEPENDENCIES[bootstrap_stage]
+			if not isinstance(stages.get(dependency), dict)
+			or stages[dependency].get("status") != "passed"
+		]
+		if bootstrap_blocked_by:
+			bootstrap_output = ""
+			record_restore_stage(
+				restore_report,
+				bootstrap_stage,
+				"blocked",
+				blocked_by=bootstrap_blocked_by,
+			)
+			acceptance_failures.append(
+				f"{bootstrap_stage} blocked by prerequisite chain: "
+				+ " -> ".join(bootstrap_blocked_by)
+			)
+		else:
+			try:
+				bootstrap_output = run(
+					[
+						"cargo",
+						"nextest",
+						"run",
+						"-p",
+						"decodex-runtime",
+						"--test",
+						"bootstrap_doctor",
+						"--run-ignored",
+						"all",
+						"--",
+						"isolated_postgres_bootstrap_is_available_through_the_daemon",
+						"--exact",
+					],
+					env,
+				)
+			except Exception as error:
+				bootstrap_output = ""
+				acceptance_failures.append(f"{bootstrap_stage} failed:\n{error}")
+				record_restore_stage(
+					restore_report, bootstrap_stage, "failed", error=str(error)
+				)
+			else:
+				record_restore_stage(restore_report, bootstrap_stage, "passed")
 		live_doctor_output = run(
 			[
 				"cargo", "nextest", "run", "-p", "decodex-runtime", "--test",
