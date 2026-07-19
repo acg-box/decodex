@@ -4435,9 +4435,9 @@ mod tests {
 		assert_eq!(FUNCTION_CONTRACTS.len(), 156);
 		assert_eq!(
 			CANONICAL_FUNCTION_MIGRATIONS
-			.into_iter()
-			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
-			.sum::<usize>(),
+				.into_iter()
+				.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
+				.sum::<usize>(),
 			FUNCTION_CONTRACTS.len()
 		);
 
@@ -4451,11 +4451,14 @@ mod tests {
 			);
 			assert_eq!(
 				CANONICAL_FUNCTION_MIGRATIONS
-				.into_iter()
-				.map(|migration| migration
-					.matches(&format!("CREATE FUNCTION decodex.{}", contract.migration_signature))
-					.count())
-				.sum::<usize>(),
+					.into_iter()
+					.map(|migration| migration
+						.matches(&format!(
+							"CREATE FUNCTION decodex.{}",
+							contract.migration_signature
+						))
+						.count())
+					.sum::<usize>(),
 				1,
 				"{}",
 				contract.lookup_signature
@@ -4502,7 +4505,10 @@ mod tests {
 			let source = super::canonical_safety_function_source(function_name)
 				.unwrap_or_else(|| panic!("compact safety body is unresolved: {function_name}"));
 
-			assert!(source.starts_with("\nBEGIN\n") || source.starts_with("\nDECLARE "), "{function_name}");
+			assert!(
+				source.starts_with("\nBEGIN\n") || source.starts_with("\nDECLARE "),
+				"{function_name}"
+			);
 			assert!(source.ends_with("END\n"), "{function_name}");
 		}
 	}
@@ -4519,12 +4525,25 @@ mod tests {
 				.iter()
 				.find(|contract| contract.name == function_name)
 				.unwrap_or_else(|| panic!("replacement contract is unresolved: {function_name}"));
-			let source = super::canonical_function_source(contract)
-				.unwrap_or_else(|| panic!("replacement body is unresolved: {}", contract.lookup_signature));
+			let source = super::canonical_function_source(contract).unwrap_or_else(|| {
+				panic!("replacement body is unresolved: {}", contract.lookup_signature)
+			});
 
-			assert!(source.contains(&format!("decodex.{function_name}_internal(")), "{}", contract.lookup_signature);
-			assert!(source.contains("NULL::pg_catalog.timestamptz);"), "{}", contract.lookup_signature);
-			assert!(!source.contains("pg_catalog.clock_timestamp()"), "{}", contract.lookup_signature);
+			assert!(
+				source.contains(&format!("decodex.{function_name}_internal(")),
+				"{}",
+				contract.lookup_signature
+			);
+			assert!(
+				source.contains("NULL::pg_catalog.timestamptz);"),
+				"{}",
+				contract.lookup_signature
+			);
+			assert!(
+				!source.contains("pg_catalog.clock_timestamp()"),
+				"{}",
+				contract.lookup_signature
+			);
 		}
 	}
 
@@ -4565,8 +4584,10 @@ mod tests {
 	fn every_safety_function_has_one_nonempty_canonical_migration_body() {
 		assert_eq!(SAFETY_FUNCTIONS.len(), 67);
 		for function_name in SAFETY_FUNCTIONS {
-			let source = super::canonical_safety_function_source(function_name)
-				.unwrap_or_else(|| panic!("shipped safety function is unresolved: {function_name}"));
+			let source =
+				super::canonical_safety_function_source(function_name).unwrap_or_else(|| {
+					panic!("shipped safety function is unresolved: {function_name}")
+				});
 
 			assert!(source.starts_with('\n'), "{function_name}");
 			assert!(source.ends_with("END\n") || source.ends_with("END;\n"), "{function_name}");
