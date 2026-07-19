@@ -530,6 +530,18 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 			error.to_string()
 		})),
 	};
+	let semantic_authority = if structured_errors {
+		Some(
+			PostgresStore::semantic_authority_fixture(
+				&client,
+				&migration_role,
+				&runtime_role,
+			)
+			.await?,
+		)
+	} else {
+		None
+	};
 	let has_structured_component_failure =
 		structured_errors && (schema_error.is_some() || authority_error.is_some());
 	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
@@ -543,7 +555,7 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		.into());
 	}
 	let sequence_state = manifest_sequence_state(&migration_client).await?;
-	let manifest = serde_json::to_string(&serde_json::json!({
+	let mut manifest = serde_json::json!({
 		"authority": {
 			"available": authority.is_some(),
 			"complete": authority.is_some(),
@@ -564,7 +576,19 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 			"manifest": schema,
 		},
 		"sequence_state": sequence_state,
-	}))?;
+	});
+	if let Some(predicates) = semantic_authority {
+		manifest.as_object_mut().ok_or("manifest envelope is not an object")?.insert(
+			"semantic_authority".into(),
+			serde_json::json!({
+				"predicates": predicates.into_iter().map(|(name, passed)| {
+					serde_json::json!({"name": name, "passed": passed})
+				}).collect::<Vec<_>>(),
+				"schema": "decodex/postgres-semantic-authority/1",
+			}),
+		);
+	}
+	let manifest = serde_json::to_string(&manifest)?;
 
 	fs::write(path, manifest)?;
 

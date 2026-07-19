@@ -15,6 +15,7 @@ import re
 import secrets
 import select
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,18 @@ AUTHORITY_CAPTURE_UPGRADE_DATABASE = "decodex_xy1300_authority_upgrade"
 AUTHORITY_CAPTURE_RESTORE_EDGES = (
 	("source_to_restored_once", "source", "restored_once"),
 	("restored_once_to_restored_twice", "restored_once", "restored_twice"),
+)
+AUTHORITY_CANDIDATE_SCHEMA = "decodex/postgres-authority-candidate/2"
+AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES = 128 * 1024
+GIT_READ_TIMEOUT_SECONDS = 5.0
+GIT_METADATA_MAX_BYTES = 4 * 1024
+GIT_COMMIT_MAX_BYTES = 64 * 1024
+GIT_STATUS_MAX_BYTES = 64 * 1024
+GIT_PATH_LIST_MAX_BYTES = 64 * 1024
+GIT_AUTHORITY_SOURCE_MAX_BYTES = 512 * 1024
+AUTHORITY_DIGEST_CONSTANTS = (
+	("schema", "SCHEMA_CONTRACT_SHA256"),
+	("configured_authority", "CONFIGURED_AUTHORITY_SHA256"),
 )
 DEFAULT_ACL_TAMPER_DATABASE = "decodex_xy1315_default_acl_tamper"
 DEFAULT_ACL_RESTORE_DATABASE = "decodex_xy1315_default_acl_restore"
@@ -315,6 +328,43 @@ MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT = 8
 MANIFEST_DIAGNOSTIC_SCHEMA = "decodex/postgres-manifest-component-diagnostic/1"
 MANIFEST_QUERY_ERROR_SCHEMA = "decodex/postgres-manifest-query-error/1"
 RESTORE_PARITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-restore-parity-diagnostic/1"
+SEMANTIC_AUTHORITY_SCHEMA = "decodex/postgres-semantic-authority/1"
+SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-semantic-authority-diagnostic/1"
+SEMANTIC_AUTHORITY_PREDICATES = (
+	"configured_runtime_session",
+	"no_forbidden_role_attributes",
+	"no_database_create",
+	"no_schema_create",
+	"no_effective_object_ownership",
+	"no_function_grant_option",
+	"no_trigger_bypass",
+	"no_alter_system_bypass",
+	"session_replication_role_origin",
+	"no_membership_admin",
+	"exact_table_authority",
+	"no_unsafe_table_authority",
+	"migration_history_exists",
+	"migration_history_select",
+	"no_unsafe_migration_history_authority",
+	"exact_sequence_contract",
+	"sequence_usage",
+	"no_unsafe_sequence_authority",
+	"no_extension_control",
+	"schema_usage",
+	"identity_cast_closed",
+	"exact_trigger_inventory",
+	"no_relation_rules",
+	"no_relation_policies",
+	"closed_function_dependencies",
+	"exact_function_inventory",
+	"function_metadata",
+	"function_semantics",
+	"function_execute_authority",
+	"retention_inventory",
+	"retention_trigger_bindings",
+	"retention_function_metadata",
+	"retention_function_semantics",
+)
 CONSTRAINT_CONTRACT_FIELDS = (
 	"constraint_type",
 	"definition",
@@ -348,6 +398,14 @@ class AuthorityCandidatePublication:
 	receipt: dict[str, object]
 
 
+@dataclass(frozen=True)
+class PhaseAAuthorityReceipt:
+	"""Validated immutable derivation evidence consumed only by Phase B."""
+
+	document: dict[str, object]
+	sha256: str
+
+
 class ClusterStatus(Enum):
 	"""Tri-state result from pg_ctl status."""
 
@@ -374,23 +432,22 @@ def run(command: list[str], env: dict[str, str]) -> str:
 
 
 def frozen_source_binding() -> dict[str, str]:
-	def git(*arguments: str) -> str:
-		completed = subprocess.run(
-			["git", *arguments],
-			check=True,
-			text=True,
-			capture_output=True,
-			cwd=REPO_ROOT,
-		)
-		return completed.stdout.strip()
-
-	status = git("status", "--porcelain=v1", "--untracked-files=all")
+	status = git_read_text(
+		"status", "--porcelain=v1", "--untracked-files=all",
+		byte_limit=GIT_STATUS_MAX_BYTES,
+	).strip()
 	if status:
 		raise TestFailure("frozen PostgreSQL gate requires a clean exact committed worktree")
-	return {
-		"head": git("rev-parse", "HEAD"),
-		"tree": git("rev-parse", "HEAD^{tree}"),
+	binding = {
+		"head": git_read_text(
+			"rev-parse", "--verify", "HEAD", byte_limit=GIT_METADATA_MAX_BYTES
+		).strip(),
+		"tree": git_read_text(
+			"rev-parse", "--verify", "HEAD^{tree}", byte_limit=GIT_METADATA_MAX_BYTES
+		).strip(),
 	}
+	require_commit_tree_binding(binding)
+	return binding
 
 
 def run_blob_session_restart_contract(
@@ -1070,11 +1127,14 @@ def unavailable_checkpoint(reason: str) -> dict[str, object]:
 
 
 def validate_semantic_manifest(
-	document: object, location: str
+	document: object, location: str, *, require_semantic_authority: bool = False
 ) -> dict[str, object]:
 	if not isinstance(document, dict):
 		raise TestFailure(f"invalid semantic manifest envelope at {location}")
-	if set(document) != {"schema", "authority", "binding", "sequence_state"}:
+	expected_fields = {"schema", "authority", "binding", "sequence_state"}
+	if require_semantic_authority:
+		expected_fields.add("semantic_authority")
+	if set(document) != expected_fields:
 		raise TestFailure(f"invalid semantic manifest envelope at {location}")
 	if not isinstance(document["binding"], dict) or not isinstance(
 		document["sequence_state"], list
@@ -1102,7 +1162,64 @@ def validate_semantic_manifest(
 				raise TestFailure(
 					f"invalid {component_name} row manifest at {location}"
 				)
+	if require_semantic_authority:
+		validate_semantic_authority_evidence(document["semantic_authority"])
 	return document
+
+
+def validate_semantic_authority_evidence(evidence: object) -> list[dict[str, object]]:
+	if (
+		not isinstance(evidence, dict)
+		or set(evidence) != {"predicates", "schema"}
+		or evidence["schema"] != SEMANTIC_AUTHORITY_SCHEMA
+		or not isinstance(evidence["predicates"], list)
+		or len(evidence["predicates"]) != len(SEMANTIC_AUTHORITY_PREDICATES)
+	):
+		raise TestFailure("invalid semantic authority evidence")
+	predicates = evidence["predicates"]
+	assert isinstance(predicates, list)
+	names: set[str] = set()
+	for predicate in predicates:
+		if (
+			not isinstance(predicate, dict)
+			or set(predicate) != {"name", "passed"}
+			or not isinstance(predicate["name"], str)
+			or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", predicate["name"]) is None
+			or not isinstance(predicate["passed"], bool)
+			or predicate["name"] in names
+		):
+			raise TestFailure("invalid semantic authority predicate")
+		names.add(predicate["name"])
+	if tuple(predicate["name"] for predicate in predicates) != SEMANTIC_AUTHORITY_PREDICATES:
+		raise TestFailure("semantic authority predicate contract differs")
+	return predicates
+
+
+def require_capture_semantic_authority(
+	document: dict[str, object], checkpoint: str, *, secret_markers: tuple[str, ...]
+) -> dict[str, object]:
+	predicates = validate_semantic_authority_evidence(document.get("semantic_authority"))
+	failed = sorted(
+		predicate["name"] for predicate in predicates if predicate["passed"] is False
+	)
+	if failed:
+		diagnostic = {
+			"checkpoint": checkpoint,
+			"failed_predicates": failed,
+			"predicate_count": len(predicates),
+			"schema": SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+		}
+		serialized = json.dumps(diagnostic, sort_keys=True, separators=(",", ":"))
+		if any(marker and marker in serialized for marker in secret_markers):
+			raise TestFailure("semantic authority diagnostic redaction failed")
+		raise TestFailure("authority candidate semantic diagnostic: " + serialized)
+	passed = sorted(predicate["name"] for predicate in predicates)
+	return {
+		"all_passed": True,
+		"passed_predicates": passed,
+		"predicate_count": len(passed),
+		"schema": SEMANTIC_AUTHORITY_SCHEMA,
+	}
 
 
 def load_semantic_manifest(path: Path) -> dict[str, object]:
@@ -1471,7 +1588,9 @@ def parse_capture_manifest(
 ) -> dict[str, object]:
 	try:
 		document = json.loads(artifact_bytes.decode("utf-8"))
-		validated = validate_semantic_manifest(document, checkpoint)
+		validated = validate_semantic_manifest(
+			document, checkpoint, require_semantic_authority=True
+		)
 		validate_capture_manifest_rows(validated)
 		require_manifest_binding(validated, expected_database)
 		validate_capture_component_errors(validated)
@@ -2698,10 +2817,13 @@ def authority_manifest_evidence(manifest: str) -> dict[str, object]:
 		if count > 1
 	]
 	return {
+		"complete": True,
 		"row_count": len(rows),
 		"grouped_row_counts": dict(sorted(grouped_counts.items())),
 		"duplicate_key_multiplicities": duplicates,
+		"resolved": not unresolved_dependency_rows(manifest),
 		"sha256": hashlib.sha256(manifest.encode("utf-8")).hexdigest(),
+		"unique": not duplicates,
 	}
 
 
@@ -3091,6 +3213,788 @@ def require_manifest_binding(document: dict[str, object], database: str) -> None
 		raise TestFailure(f"authority candidate database binding differs for {database}")
 
 
+def require_exact_keys(value: object, expected: set[str], classification: str) -> dict[str, object]:
+	if not isinstance(value, dict) or set(value) != expected:
+		raise TestFailure(classification)
+	return value
+
+
+def require_source_binding(value: object, classification: str) -> dict[str, str]:
+	binding = require_exact_keys(value, {"head", "tree"}, classification)
+	head = binding["head"]
+	tree = binding["tree"]
+	if (
+		not isinstance(head, str) or re.fullmatch(r"[0-9a-f]{40}", head) is None
+		or not isinstance(tree, str) or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+	):
+		raise TestFailure(classification)
+	return {"head": head, "tree": tree}
+
+
+def require_receipt_ledger(value: object, *, through_version: int) -> list[object]:
+	if not isinstance(value, list) or len(value) != through_version:
+		raise TestFailure("Phase A receipt migration ledger is malformed")
+	for expected_version, row in enumerate(value, start=1):
+		if (
+			not isinstance(row, dict)
+			or set(row) != {"checksum", "name", "version"}
+			or row["version"] != expected_version
+			or not isinstance(row["name"], str)
+			or re.fullmatch(r"[a-z0-9_]+", row["name"]) is None
+			or not isinstance(row["checksum"], str)
+			or not row["checksum"].isdigit()
+		):
+			raise TestFailure("Phase A receipt migration ledger is malformed")
+	return value
+
+
+def require_manifest_summary(value: object, expected_sha256: str) -> None:
+	summary = require_exact_keys(
+		value,
+		{
+			"complete", "duplicate_key_multiplicities", "grouped_row_counts", "resolved",
+			"row_count", "sha256", "unique",
+		},
+		"Phase A receipt manifest summary is malformed",
+	)
+	counts = summary["grouped_row_counts"]
+	if (
+		summary["complete"] is not True
+		or summary["unique"] is not True
+		or summary["resolved"] is not True
+		or summary["duplicate_key_multiplicities"] != []
+		or not isinstance(counts, dict) or not counts
+		or any(not isinstance(kind, str) or not isinstance(count, int) or count <= 0
+			for kind, count in counts.items())
+		or not isinstance(summary["row_count"], int)
+		or sum(counts.values()) != summary["row_count"]
+		or summary["sha256"] != expected_sha256
+	):
+		raise TestFailure("Phase A receipt manifest summary is incomplete")
+
+
+def comparable_receipt_runtime_authority(value: object) -> dict[str, object]:
+	authority = require_exact_keys(
+		value,
+		{
+			"anchor_execute", "database", "direct_non_grantable_execute_count",
+			"direct_non_grantable_type_usage_count", "migration_role",
+			"non_default_runtime_role", "runtime_login", "runtime_role",
+		},
+		"Phase A receipt runtime authority is malformed",
+	)
+	if (
+		authority["anchor_execute"] is not True
+		or authority["non_default_runtime_role"] is not True
+		or authority["runtime_login"] is not True
+		or authority["migration_role"] != MIGRATION_ROLE
+		or authority["runtime_role"] != RUNTIME_ROLE
+		or not isinstance(authority["database"], str)
+		or not isinstance(authority["direct_non_grantable_execute_count"], int)
+		or authority["direct_non_grantable_execute_count"] <= 0
+		or not isinstance(authority["direct_non_grantable_type_usage_count"], int)
+		or authority["direct_non_grantable_type_usage_count"] <= 0
+	):
+		raise TestFailure("Phase A receipt runtime authority is incomplete")
+	return {key: authority[key] for key in authority if key != "database"}
+
+
+def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
+	receipt = require_exact_keys(
+		document,
+		{
+			"acceptance", "acceptance_lineage", "bindings", "capture_only", "digests",
+			"expected_digests", "manifests", "migration_ledger", "mismatches",
+			"one_grantee_upgrade", "phase_b_provenance", "population", "postgres",
+			"restore_edges", "runtime_authority", "schema", "semantic_authority",
+			"semantic_state", "source_binding",
+		},
+		"Phase A receipt schema is not exact",
+	)
+	if (
+		receipt["schema"] != AUTHORITY_CANDIDATE_SCHEMA
+		or receipt["capture_only"] is not True
+		or receipt["acceptance"] is not False
+	):
+		raise TestFailure("Phase A receipt is not non-accepting capture evidence")
+	source_binding = require_exact_keys(
+		receipt["source_binding"], {"end", "start"}, "Phase A source binding is malformed"
+	)
+	start = require_source_binding(source_binding["start"], "Phase A source binding is malformed")
+	end = require_source_binding(source_binding["end"], "Phase A source binding is malformed")
+	if start != end:
+		raise TestFailure("Phase A source binding changed during capture")
+	lineage = require_exact_keys(
+		receipt["acceptance_lineage"],
+		{"phase_a_receipt_sha256", "phase_a_source_binding", "phase_b_source_binding"},
+		"Phase A receipt lineage is malformed",
+	)
+	if (
+		lineage["phase_a_receipt_sha256"] is not None
+		or lineage["phase_b_source_binding"] is not None
+		or lineage["phase_a_source_binding"] != end
+	):
+		raise TestFailure("Phase A receipt lineage is not derivation-only")
+	postgres = require_exact_keys(
+		receipt["postgres"], {"major", "version", "version_num"},
+		"Phase A PostgreSQL version evidence is malformed",
+	)
+	if (
+		postgres["major"] != 18
+		or not isinstance(postgres["version"], str)
+		or not isinstance(postgres["version_num"], int)
+		or postgres["version_num"] // 10_000 != 18
+	):
+		raise TestFailure("Phase A receipt is not PostgreSQL 18 evidence")
+	bindings = require_exact_keys(
+		receipt["bindings"],
+		{
+			"expected_peer_uid", "migration_role", "restored_once_database",
+			"restored_twice_database", "runtime_role", "source_database",
+		},
+		"Phase A principal or database binding is malformed",
+	)
+	if (
+		bindings["migration_role"] != MIGRATION_ROLE
+		or bindings["runtime_role"] != RUNTIME_ROLE
+		or bindings["expected_peer_uid"] != os.geteuid()
+	):
+		raise TestFailure("Phase A principal binding differs")
+	for binding_name, expected_database in (
+		("source_database", AUTHORITY_CAPTURE_DATABASE),
+		("restored_once_database", AUTHORITY_CAPTURE_RESTORE_DATABASE),
+		("restored_twice_database", AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE),
+	):
+		database_binding = require_exact_keys(
+			bindings[binding_name],
+			{
+				"migration_url", "observed_migration", "observed_runtime", "requested",
+				"runtime_url",
+			},
+			"Phase A database binding is malformed",
+		)
+		if any(value != expected_database for value in database_binding.values()):
+			raise TestFailure("Phase A database binding is not a bounded database name")
+
+	provenance = require_exact_keys(
+		receipt["phase_b_provenance"],
+		{
+			"allowed_source_delta", "any_other_source_delta_invalidates_candidate",
+			"designated_evidence_surface", "phase_a_tree",
+			"phase_b_must_record_phase_a_and_phase_b_trees",
+		},
+		"Phase A provenance is malformed",
+	)
+	if (
+		provenance["phase_a_tree"] != end["tree"]
+		or provenance["allowed_source_delta"] != [name for _, name in AUTHORITY_DIGEST_CONSTANTS]
+		or provenance["designated_evidence_surface"] != {"schema": AUTHORITY_CANDIDATE_SCHEMA}
+		or provenance["phase_b_must_record_phase_a_and_phase_b_trees"] is not True
+		or provenance["any_other_source_delta_invalidates_candidate"] is not True
+	):
+		raise TestFailure("Phase A provenance does not authorize exact Phase B")
+
+	mismatches = receipt["mismatches"]
+	if not isinstance(mismatches, list) or [
+		mismatch.get("component") if isinstance(mismatch, dict) else None
+		for mismatch in mismatches
+	] != ["schema", "configured_authority"]:
+		raise TestFailure("Phase A receipt mismatch order is not exact")
+	digest_by_component: dict[str, tuple[str, str]] = {}
+	for mismatch in mismatches:
+		assert isinstance(mismatch, dict)
+		if (
+			set(mismatch) != {
+				"actual_sha256", "classification", "component", "expected_sha256"
+			}
+			or mismatch["classification"] != "candidate_digest_mismatch"
+			or mismatch["actual_sha256"] == mismatch["expected_sha256"]
+			or any(
+				not isinstance(mismatch[key], str)
+				or re.fullmatch(r"[0-9a-f]{64}", mismatch[key]) is None
+				for key in ("actual_sha256", "expected_sha256")
+			)
+		):
+			raise TestFailure("Phase A receipt mismatch is malformed")
+		digest_by_component[mismatch["component"]] = (
+			mismatch["expected_sha256"], mismatch["actual_sha256"]
+		)
+	expected_digests = require_exact_keys(
+		receipt["expected_digests"], {"authority", "schema"},
+		"Phase A expected digest evidence is malformed",
+	)
+	if (
+		expected_digests["schema"] != digest_by_component["schema"][0]
+		or expected_digests["authority"] != digest_by_component["configured_authority"][0]
+	):
+		raise TestFailure("Phase A expected digest evidence is inconsistent")
+
+	digests = require_exact_keys(
+		receipt["digests"], {"authority", "schema"}, "Phase A digest evidence is malformed"
+	)
+	manifests = require_exact_keys(
+		receipt["manifests"], {"authority", "schema"}, "Phase A manifest evidence is malformed"
+	)
+	for receipt_component, mismatch_component in (
+		("schema", "schema"), ("authority", "configured_authority")
+	):
+		expected_sha256, actual_sha256 = digest_by_component[mismatch_component]
+		digest = require_exact_keys(
+			digests[receipt_component], {"actual_sha256", "expected_sha256"},
+			"Phase A digest evidence is malformed",
+		)
+		actuals = require_exact_keys(
+			digest["actual_sha256"], {"restored_once", "restored_twice", "source"},
+			"Phase A digest checkpoints are malformed",
+		)
+		if digest["expected_sha256"] != expected_sha256 or any(
+			value != actual_sha256 for value in actuals.values()
+		):
+			raise TestFailure("Phase A digest checkpoints are inconsistent")
+		checkpoint_summaries = require_exact_keys(
+			manifests[receipt_component], {"restored_once", "restored_twice", "source"},
+			"Phase A manifest checkpoints are malformed",
+		)
+		for summary in checkpoint_summaries.values():
+			require_manifest_summary(summary, actual_sha256)
+
+	checkpoints = {"source", "restored_once", "restored_twice"}
+	ledgers = require_exact_keys(
+		receipt["migration_ledger"], checkpoints, "Phase A ledger checkpoints are malformed"
+	)
+	for ledger in ledgers.values():
+		require_receipt_ledger(ledger, through_version=20)
+	if ledgers["source"] != ledgers["restored_once"] or ledgers["source"] != ledgers["restored_twice"]:
+		raise TestFailure("Phase A V20 ledgers differ across restore checkpoints")
+	if ledgers["source"][-1]["name"] != "constraint_restore_canonicalization":
+		raise TestFailure("Phase A ledger does not end at V20")
+	upgrade = require_exact_keys(
+		receipt["one_grantee_upgrade"],
+		{"database", "pre_v14_anchor_binding", "runtime_authority", "v13_ledger", "v20_ledger"},
+		"Phase A one-grantee upgrade evidence is malformed",
+	)
+	require_receipt_ledger(upgrade["v13_ledger"], through_version=13)
+	upgrade_v20 = require_receipt_ledger(upgrade["v20_ledger"], through_version=20)
+	if (
+		upgrade["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
+		or upgrade_v20 != ledgers["source"]
+	):
+		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V20 ledger")
+	upgrade_authority = require_exact_keys(
+		upgrade["runtime_authority"],
+		{
+			"all_direct_runtime_function_grants", "anchor_binding", "database",
+			"migration_delta", "migration_role", "runtime_role", "unrelated_authority",
+			"v19_internal_sealing",
+		},
+		"Phase A one-grantee authority evidence is malformed",
+	)
+	delta = require_exact_keys(
+		upgrade_authority["migration_delta"],
+		{"execute_count", "execute_grants", "type_usage_count", "type_usage_grants"},
+		"Phase A one-grantee authority delta is malformed",
+	)
+	if (
+		upgrade_authority["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
+		or upgrade_authority["migration_role"] != MIGRATION_ROLE
+		or upgrade_authority["runtime_role"] != RUNTIME_ROLE
+		or delta["execute_count"] != 15
+		or not isinstance(delta["execute_grants"], list)
+		or len(delta["execute_grants"]) != 15
+		or delta["type_usage_count"] != 5
+		or not isinstance(delta["type_usage_grants"], list)
+		or len(delta["type_usage_grants"]) != 5
+		or not isinstance(upgrade_authority["all_direct_runtime_function_grants"], list)
+		or len(upgrade_authority["all_direct_runtime_function_grants"]) != 16
+		or not isinstance(upgrade_authority["v19_internal_sealing"], list)
+		or len(upgrade_authority["v19_internal_sealing"]) != 4
+		or upgrade_authority["unrelated_authority"] != {
+			"default_acl_rows": 0,
+			"owned_databases": 0,
+			"owned_functions": 0,
+			"owned_relations": 0,
+			"owned_schemas": 0,
+			"owned_types": 0,
+			"relation_acl_rows": 0,
+			"role_memberships": 0,
+			"schema_acl_rows": 0,
+		}
+	):
+		raise TestFailure("Phase A one-grantee authority delta is incomplete")
+	if (
+		[row.get("identity") for row in delta["execute_grants"]]
+		!= list(sorted(UPGRADE_RUNTIME_EXECUTE_SIGNATURES))
+		or [row.get("identity") for row in delta["type_usage_grants"]]
+		!= list(sorted(UPGRADE_RUNTIME_TYPE_NAMES))
+		or [
+			row.get("identity")
+			for row in upgrade_authority["all_direct_runtime_function_grants"]
+		]
+		!= list(sorted((AUTHORITY_ANCHOR_SIGNATURE, *UPGRADE_RUNTIME_EXECUTE_SIGNATURES)))
+		or [row.get("identity") for row in upgrade_authority["v19_internal_sealing"]]
+		!= list(sorted(V19_INTERNAL_SIGNATURES))
+	):
+		raise TestFailure("Phase A one-grantee authority identities differ")
+	for grant in (
+		*delta["execute_grants"], *delta["type_usage_grants"],
+		*upgrade_authority["all_direct_runtime_function_grants"],
+		upgrade["pre_v14_anchor_binding"], upgrade_authority["anchor_binding"],
+	):
+		if (
+			not isinstance(grant, dict)
+			or set(grant) != {
+				"catalog_identity", "grantee", "grantor", "identity", "is_grantable"
+			}
+			or grant["grantee"] != RUNTIME_ROLE
+			or grant["grantor"] != MIGRATION_ROLE
+			or grant["is_grantable"] is not False
+			or not isinstance(grant["identity"], str)
+			or not isinstance(grant["catalog_identity"], str)
+		):
+			raise TestFailure("Phase A one-grantee authority grant is not exact")
+	if (
+		upgrade["pre_v14_anchor_binding"] != upgrade_authority["anchor_binding"]
+		or upgrade_authority["anchor_binding"]["identity"] != AUTHORITY_ANCHOR_SIGNATURE
+	):
+		raise TestFailure("Phase A one-grantee anchor lineage differs")
+	for sealing in upgrade_authority["v19_internal_sealing"]:
+		if (
+			not isinstance(sealing, dict)
+			or set(sealing) != {
+				"identity", "public_execute", "runtime_direct_execute",
+				"runtime_effective_execute",
+			}
+			or sealing["public_execute"] != 0
+			or sealing["runtime_direct_execute"] != 0
+			or sealing["runtime_effective_execute"] is not False
+		):
+			raise TestFailure("Phase A V19 internal sealing evidence is not exact")
+
+	semantic = require_exact_keys(
+		receipt["semantic_authority"], checkpoints,
+		"Phase A semantic authority checkpoints are malformed",
+	)
+	semantic_values = []
+	for value in semantic.values():
+		summary = require_exact_keys(
+			value, {"all_passed", "passed_predicates", "predicate_count", "schema"},
+			"Phase A semantic authority summary is malformed",
+		)
+		passed = summary["passed_predicates"]
+		if (
+			summary["schema"] != SEMANTIC_AUTHORITY_SCHEMA
+			or summary["all_passed"] is not True
+			or passed != sorted(SEMANTIC_AUTHORITY_PREDICATES)
+			or summary["predicate_count"] != len(SEMANTIC_AUTHORITY_PREDICATES)
+		):
+			raise TestFailure("Phase A semantic authority did not pass exactly")
+		semantic_values.append(summary)
+	if semantic_values[0] != semantic_values[1] or semantic_values[0] != semantic_values[2]:
+		raise TestFailure("Phase A semantic authority evidence differs across checkpoints")
+
+	restore_edges = require_exact_keys(
+		receipt["restore_edges"],
+		{"restored_once_to_restored_twice", "source_to_restored_once"},
+		"Phase A restore edges are malformed",
+	)
+	for edge in restore_edges.values():
+		exact_edge = require_exact_keys(
+			edge,
+			{
+				"configured_authority_manifest", "migration_ledger", "populated_fixture",
+				"runtime_authority_shape", "schema_manifest", "semantic_state",
+			},
+			"Phase A restore edge is malformed",
+		)
+		if any(value is not True for value in exact_edge.values()):
+			raise TestFailure("Phase A restore edge is incomplete")
+
+	for field in ("semantic_state", "population"):
+		values = require_exact_keys(
+			receipt[field], checkpoints, f"Phase A {field} checkpoints are malformed"
+		)
+		if values["source"] != values["restored_once"] or values["source"] != values["restored_twice"]:
+			raise TestFailure(f"Phase A {field} differs across checkpoints")
+	runtime = require_exact_keys(
+		receipt["runtime_authority"], checkpoints | {"zero_grantee_migration"},
+		"Phase A runtime authority checkpoints are malformed",
+	)
+	zero_grantee = require_exact_keys(
+		runtime["zero_grantee_migration"],
+		{"database", "direct_function_acl_rows", "direct_type_acl_rows"},
+		"Phase A zero-grantee authority evidence is malformed",
+	)
+	if zero_grantee != {
+		"database": AUTHORITY_CAPTURE_DATABASE,
+		"direct_function_acl_rows": 0,
+		"direct_type_acl_rows": 0,
+	}:
+		raise TestFailure("Phase A zero-grantee authority evidence differs")
+	expected_runtime_databases = {
+		"source": AUTHORITY_CAPTURE_DATABASE,
+		"restored_once": AUTHORITY_CAPTURE_RESTORE_DATABASE,
+		"restored_twice": AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+	}
+	for checkpoint, database in expected_runtime_databases.items():
+		value = runtime[checkpoint]
+		if not isinstance(value, dict) or value.get("database") != database:
+			raise TestFailure("Phase A runtime database binding differs")
+	runtime_shapes = [
+		comparable_receipt_runtime_authority(runtime[name]) for name in sorted(checkpoints)
+	]
+	if runtime_shapes[0] != runtime_shapes[1] or runtime_shapes[0] != runtime_shapes[2]:
+		raise TestFailure("Phase A runtime authority shape differs across checkpoints")
+
+	def inspect_public_value(value: object) -> None:
+		if isinstance(value, dict):
+			for key, nested in value.items():
+				if re.search(
+					r"(^|_)(path|socket|port|credential|secret|token|temporary|temp)($|_)", key
+				):
+					raise TestFailure("Phase A receipt contains forbidden operational state")
+				inspect_public_value(nested)
+		elif isinstance(value, list):
+			for nested in value:
+				inspect_public_value(nested)
+		elif isinstance(value, str) and re.search(
+			r"/private/|/tmp/|file://|postgres(?:ql)?://|(?:^|[?;& ])(?:host|port|password|secret|token)=",
+			value,
+			flags=re.IGNORECASE,
+		):
+			raise TestFailure("Phase A receipt contains forbidden operational value")
+	inspect_public_value(receipt)
+	return receipt
+
+
+def read_private_authority_receipt(path: Path) -> tuple[bytes, str]:
+	parent_components = path.parent.parts[1:]
+	if (
+		not path.is_absolute()
+		or not path.name
+		or path.name in {".", ".."}
+		or any(component in {"", ".", ".."} for component in parent_components)
+	):
+		raise TestFailure("Phase A receipt location is invalid")
+	directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
+		os, "O_CLOEXEC", 0
+	)
+	no_follow = getattr(os, "O_NOFOLLOW", 0)
+	parent_descriptor: int | None = None
+	receipt_descriptor: int | None = None
+	try:
+		parent_descriptor = os.open("/", directory_flags)
+		for component in parent_components:
+			next_descriptor = os.open(
+				component,
+				directory_flags | no_follow,
+				dir_fd=parent_descriptor,
+			)
+			os.close(parent_descriptor)
+			parent_descriptor = next_descriptor
+		parent_metadata = os.fstat(parent_descriptor)
+		if (
+			not stat.S_ISDIR(parent_metadata.st_mode)
+			or parent_metadata.st_uid != os.geteuid()
+			or stat.S_IMODE(parent_metadata.st_mode) & 0o077
+		):
+			raise TestFailure("Phase A receipt parent is not operator-private")
+		receipt_descriptor = os.open(
+			path.name,
+			os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | no_follow,
+			dir_fd=parent_descriptor,
+		)
+		before = os.fstat(receipt_descriptor)
+		if (
+			not stat.S_ISREG(before.st_mode)
+			or before.st_uid != os.geteuid()
+			or stat.S_IMODE(before.st_mode) != 0o600
+			or before.st_size <= 0
+			or before.st_size > AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES
+		):
+			raise TestFailure("Phase A receipt file metadata is invalid")
+		payload_parts: list[bytes] = []
+		remaining = AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES + 1
+		while remaining:
+			chunk = os.read(receipt_descriptor, min(64 * 1024, remaining))
+			if not chunk:
+				break
+			payload_parts.append(chunk)
+			remaining -= len(chunk)
+		payload = b"".join(payload_parts)
+		after = os.fstat(receipt_descriptor)
+		parent_after = os.fstat(parent_descriptor)
+		stable_fields = (
+			"st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink", "st_size",
+			"st_mtime_ns", "st_ctime_ns",
+		)
+		stable_parent_fields = (
+			"st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_mtime_ns",
+			"st_ctime_ns",
+		)
+		if (
+			len(payload) != before.st_size
+			or len(payload) > AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES
+			or any(getattr(before, field) != getattr(after, field) for field in stable_fields)
+			or any(
+				getattr(parent_metadata, field) != getattr(parent_after, field)
+				for field in stable_parent_fields
+			)
+		):
+			raise TestFailure("Phase A receipt changed during bounded read")
+		return payload, hashlib.sha256(payload).hexdigest()
+	except TestFailure:
+		raise
+	except (OSError, ValueError):
+		raise TestFailure("Phase A receipt could not be read safely") from None
+	finally:
+		if receipt_descriptor is not None:
+			os.close(receipt_descriptor)
+		if parent_descriptor is not None:
+			os.close(parent_descriptor)
+
+
+def load_phase_a_authority_receipt(path: Path) -> PhaseAAuthorityReceipt:
+	payload, digest = read_private_authority_receipt(path)
+	try:
+		def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+			result: dict[str, object] = {}
+			for key, value in pairs:
+				if key in result:
+					raise ValueError("duplicate JSON key")
+				result[key] = value
+			return result
+		document = json.loads(payload.decode("utf-8"), object_pairs_hook=unique_object)
+	except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+		raise TestFailure("Phase A receipt is malformed") from None
+	canonical = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+	if payload != canonical:
+		raise TestFailure("Phase A receipt bytes are not canonical and immutable")
+	return PhaseAAuthorityReceipt(validate_phase_a_receipt_document(document), digest)
+
+
+def git_read_bytes(
+	*arguments: str,
+	byte_limit: int,
+	timeout_seconds: float = GIT_READ_TIMEOUT_SECONDS,
+) -> bytes:
+	process: subprocess.Popen[bytes] | None = None
+	stdout = None
+	try:
+		if byte_limit <= 0 or timeout_seconds <= 0:
+			raise TestFailure("Git source lineage is unavailable")
+		git_env = os.environ.copy()
+		git_env["GIT_NO_REPLACE_OBJECTS"] = "1"
+		process = subprocess.Popen(
+			["git", *arguments],
+			stdin=subprocess.DEVNULL,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.DEVNULL,
+			cwd=REPO_ROOT,
+			env=git_env,
+		)
+		stdout = process.stdout
+		if stdout is None:
+			raise TestFailure("Git source lineage is unavailable")
+		descriptor = stdout.fileno()
+		os.set_blocking(descriptor, False)
+		deadline = time.monotonic() + timeout_seconds
+		payload = bytearray()
+		while True:
+			remaining = deadline - time.monotonic()
+			if remaining <= 0:
+				raise TestFailure("Git source lineage is unavailable")
+			readable, _, _ = select.select([descriptor], [], [], remaining)
+			if not readable:
+				raise TestFailure("Git source lineage is unavailable")
+			chunk = os.read(descriptor, min(64 * 1024, byte_limit + 1 - len(payload)))
+			if not chunk:
+				break
+			payload.extend(chunk)
+			if len(payload) > byte_limit:
+				raise TestFailure("Git source lineage is unavailable")
+		remaining = deadline - time.monotonic()
+		if remaining <= 0 or process.wait(timeout=remaining) != 0:
+			raise TestFailure("Git source lineage is unavailable")
+		return bytes(payload)
+	except TestFailure:
+		raise
+	except (OSError, ValueError, subprocess.SubprocessError):
+		raise TestFailure("Git source lineage is unavailable") from None
+	finally:
+		if process is not None:
+			if process.poll() is None:
+				process.kill()
+			process.wait()
+		if stdout is not None:
+			stdout.close()
+
+
+def git_read_text(
+	*arguments: str,
+	byte_limit: int,
+	timeout_seconds: float = GIT_READ_TIMEOUT_SECONDS,
+) -> str:
+	try:
+		return git_read_bytes(
+			*arguments, byte_limit=byte_limit, timeout_seconds=timeout_seconds
+		).decode("utf-8")
+	except UnicodeDecodeError:
+		raise TestFailure("Git source lineage is unavailable") from None
+
+
+def canonical_digest_constant(
+	source: str, name: str
+) -> tuple[re.Match[str], str]:
+	byte_literal = r"0x[0-9a-f]{2}"
+	array = rf"\[\s*{byte_literal}(?:\s*,\s*{byte_literal}){{31}}\s*,?\s*\]"
+	pattern = re.compile(
+		rf"^const {name}: \[u8; 32\] = (?P<array>{array});[ \t]*$",
+		flags=re.MULTILINE,
+	)
+	if len(re.findall(rf"(?m)^const\s+{name}\b", source)) != 1:
+		raise TestFailure("Phase B digest constant source is malformed")
+	matches = list(pattern.finditer(source))
+	if len(matches) != 1:
+		raise TestFailure("Phase B digest constant source is malformed")
+	match = matches[0]
+	values = re.findall(r"0x([0-9a-f]{2})", match.group("array"))
+	if len(values) != 32:
+		raise TestFailure("Phase B digest constant source is malformed")
+	return match, "".join(values)
+
+
+def digest_constants_from_source(source: str) -> dict[str, str]:
+	return {
+		component: canonical_digest_constant(source, name)[1]
+		for component, name in AUTHORITY_DIGEST_CONSTANTS
+	}
+
+
+def normalized_digest_source(source: str) -> str:
+	normalized = source
+	for _, name in AUTHORITY_DIGEST_CONSTANTS:
+		match, _ = canonical_digest_constant(normalized, name)
+		start, end = match.span("array")
+		normalized = normalized[:start] + "[<PHASE_B_DIGEST>]" + normalized[end:]
+	return normalized
+
+
+def commit_object_binding(head: str) -> tuple[str, tuple[str, ...]]:
+	if not re.fullmatch(r"[0-9a-f]{40}", head):
+		raise TestFailure("source commit binding is invalid")
+	try:
+		content = git_read_text(
+			"cat-file", "commit", head, byte_limit=GIT_COMMIT_MAX_BYTES
+		)
+	except TestFailure:
+		raise TestFailure("source commit binding is invalid") from None
+	headers, separator, _ = content.partition("\n\n")
+	if not separator:
+		raise TestFailure("source commit binding is invalid")
+	trees = tuple(
+		line.removeprefix("tree ")
+		for line in headers.splitlines()
+		if line.startswith("tree ")
+	)
+	parents = tuple(
+		line.removeprefix("parent ")
+		for line in headers.splitlines()
+		if line.startswith("parent ")
+	)
+	if (
+		len(trees) != 1
+		or not re.fullmatch(r"[0-9a-f]{40}", trees[0])
+		or any(re.fullmatch(r"[0-9a-f]{40}", parent) is None for parent in parents)
+	):
+		raise TestFailure("source commit binding is invalid")
+	return trees[0], parents
+
+
+def require_commit_tree_binding(binding: dict[str, str]) -> tuple[str, ...]:
+	head = binding["head"]
+	tree = binding["tree"]
+	if not re.fullmatch(r"[0-9a-f]{40}", head) or not re.fullmatch(r"[0-9a-f]{40}", tree):
+		raise TestFailure("source commit binding is invalid")
+	actual_tree, parents = commit_object_binding(head)
+	if actual_tree != tree:
+		raise TestFailure("source commit tree binding differs")
+	try:
+		tree_type = git_read_text(
+			"cat-file", "-t", tree, byte_limit=GIT_METADATA_MAX_BYTES
+		).strip()
+	except TestFailure:
+		raise TestFailure("source commit tree binding is invalid") from None
+	if tree_type != "tree":
+		raise TestFailure("source commit tree binding is invalid")
+	return parents
+
+
+def require_direct_parent_lineage(
+	phase_a_head: str, phase_b_parents: tuple[str, ...]
+) -> None:
+	if phase_b_parents != (phase_a_head,):
+		raise TestFailure("Phase B source commit lineage is invalid")
+
+
+def require_direct_phase_transition(
+	phase_a_binding: dict[str, str], phase_b_binding: dict[str, str]
+) -> None:
+	require_commit_tree_binding(phase_a_binding)
+	phase_b_parents = require_commit_tree_binding(phase_b_binding)
+	require_direct_parent_lineage(phase_a_binding["head"], phase_b_parents)
+
+
+def require_phase_b_changed_paths(changed_paths: list[str]) -> None:
+	if changed_paths != ["crates/decodex-postgres/src/authority.rs"]:
+		raise TestFailure("Phase B source changes exceed the two digest constants")
+
+
+def require_digest_only_authority_source(
+	phase_a_source: str,
+	phase_b_source: str,
+	mismatches: list[object],
+) -> None:
+	if normalized_digest_source(phase_a_source) != normalized_digest_source(phase_b_source):
+		raise TestFailure("Phase B authority source changes exceed the two digest constants")
+	phase_a_constants = digest_constants_from_source(phase_a_source)
+	phase_b_constants = digest_constants_from_source(phase_b_source)
+	for mismatch in mismatches:
+		assert isinstance(mismatch, dict)
+		component = mismatch["component"]
+		if phase_a_constants[component] != mismatch["expected_sha256"]:
+			raise TestFailure("Phase A source digest constants do not match its receipt")
+		if phase_b_constants[component] != mismatch["actual_sha256"]:
+			raise TestFailure("Phase B source digest constants do not match Phase A evidence")
+
+
+def validate_phase_b_source_delta(
+	phase_a: PhaseAAuthorityReceipt, phase_b_binding: dict[str, str]
+) -> None:
+	source_binding = phase_a.document["source_binding"]
+	assert isinstance(source_binding, dict)
+	phase_a_binding = require_source_binding(
+		source_binding["end"], "Phase A source binding is malformed"
+	)
+	require_direct_phase_transition(phase_a_binding, phase_b_binding)
+	changed_paths = git_read_text(
+		"diff", "--name-only", phase_a_binding["tree"], phase_b_binding["tree"],
+		byte_limit=GIT_PATH_LIST_MAX_BYTES,
+	).splitlines()
+	authority_path = "crates/decodex-postgres/src/authority.rs"
+	require_phase_b_changed_paths(changed_paths)
+	phase_a_source = git_read_text(
+		"show", f"{phase_a_binding['tree']}:{authority_path}",
+		byte_limit=GIT_AUTHORITY_SOURCE_MAX_BYTES,
+	)
+	phase_b_source = git_read_text(
+		"show", f"{phase_b_binding['tree']}:{authority_path}",
+		byte_limit=GIT_AUTHORITY_SOURCE_MAX_BYTES,
+	)
+	mismatches = phase_a.document["mismatches"]
+	assert isinstance(mismatches, list)
+	require_digest_only_authority_source(phase_a_source, phase_b_source, mismatches)
+
+
 def validate_authority_candidate_output_path(path: Path) -> None:
 	if not path.is_absolute():
 		raise TestFailure("authority candidate output path must be absolute")
@@ -3149,6 +4053,27 @@ def publish_authority_candidate(path: Path, receipt: dict[str, object]) -> None:
 		os.close(directory_descriptor)
 
 
+def authority_candidate_phase_fields(
+	phase_a: PhaseAAuthorityReceipt | None,
+	start_binding: dict[str, str],
+	end_binding: dict[str, str],
+) -> dict[str, object]:
+	return {
+		"acceptance": phase_a is not None,
+		"acceptance_lineage": {
+			"phase_a_receipt_sha256": None if phase_a is None else phase_a.sha256,
+			"phase_a_source_binding": (
+				start_binding if phase_a is None
+				else phase_a.document["source_binding"]["end"]
+			),
+			"phase_b_source_binding": None if phase_a is None else {
+				"start": start_binding,
+				"end": end_binding,
+			},
+		},
+	}
+
+
 def run_authority_candidate_capture(
 	socket_dir: Path,
 	port: int,
@@ -3156,8 +4081,11 @@ def run_authority_candidate_capture(
 	log_path: Path,
 	env: dict[str, str],
 	secret_markers: tuple[str, ...],
+	phase_a: PhaseAAuthorityReceipt | None = None,
 ) -> dict[str, object]:
 	start_binding = frozen_source_binding()
+	if phase_a is not None:
+		validate_phase_b_source_delta(phase_a, start_binding)
 	pg_version = json.loads(psql(
 		"postgres",
 		"SELECT pg_catalog.json_build_object("
@@ -3225,6 +4153,9 @@ def run_authority_candidate_capture(
 		source_binding=start_binding,
 		secret_markers=secret_markers,
 	)
+	source_semantic_authority = require_capture_semantic_authority(
+		source, "source", secret_markers=secret_markers
+	)
 	source_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_DATABASE, env)
 	source_runtime_authority = capture_runtime_authority(AUTHORITY_CAPTURE_DATABASE, env)
 	source_population = json.loads(psql(
@@ -3263,6 +4194,9 @@ def run_authority_candidate_capture(
 		AUTHORITY_CAPTURE_RESTORE_DATABASE,
 		source_binding=start_binding,
 		secret_markers=secret_markers,
+	)
+	restored_semantic_authority = require_capture_semantic_authority(
+		restored, "restored_once", secret_markers=secret_markers
 	)
 	restored_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
 	restored_runtime_authority = capture_runtime_authority(
@@ -3313,6 +4247,9 @@ def run_authority_candidate_capture(
 		source_binding=start_binding,
 		secret_markers=secret_markers,
 	)
+	second_restored_semantic_authority = require_capture_semantic_authority(
+		second_restored, "restored_twice", secret_markers=secret_markers
+	)
 	second_restored_ledger = capture_migration_ledger(
 		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, env
 	)
@@ -3348,6 +4285,11 @@ def run_authority_candidate_capture(
 		"source": source_runtime_authority,
 		"restored_once": restored_runtime_authority,
 		"restored_twice": second_restored_runtime_authority,
+	}
+	checkpoint_semantic_authority = {
+		"source": source_semantic_authority,
+		"restored_once": restored_semantic_authority,
+		"restored_twice": second_restored_semantic_authority,
 	}
 	checkpoint_population = {
 		"source": source_population,
@@ -3401,7 +4343,7 @@ def run_authority_candidate_capture(
 			after_population=checkpoint_population[after],
 			secret_markers=secret_markers,
 		)
-	if mismatches != [
+	expected_phase_a_mismatches = [
 		{
 			"component": "schema",
 			"classification": "candidate_digest_mismatch",
@@ -3414,16 +4356,50 @@ def run_authority_candidate_capture(
 			"expected_sha256": expected_digests["authority"],
 			"actual_sha256": manifest_evidence["authority"]["source"]["sha256"],
 		},
-	]:
-		raise TestFailure("authority candidate digest mismatch set is not exact")
+	]
+	if phase_a is None:
+		if mismatches != expected_phase_a_mismatches:
+			raise TestFailure("authority candidate digest mismatch set is not exact")
+	else:
+		if mismatches:
+			raise TestFailure("Phase B authority acceptance retains a digest mismatch")
+		phase_a_mismatches = phase_a.document["mismatches"]
+		assert isinstance(phase_a_mismatches, list)
+		for mismatch in phase_a_mismatches:
+			assert isinstance(mismatch, dict)
+			component = "authority" if mismatch["component"] == "configured_authority" else "schema"
+			if manifest_evidence[component]["source"]["sha256"] != mismatch["actual_sha256"]:
+				raise TestFailure("Phase B manifest digest differs from Phase A evidence")
+		if checkpoint_ledgers != phase_a.document["migration_ledger"]:
+			raise TestFailure("Phase B migration ledger differs from Phase A evidence")
+		if manifest_evidence != phase_a.document["manifests"]:
+			raise TestFailure("Phase B manifest summaries differ from Phase A evidence")
+		if checkpoint_semantic_authority != phase_a.document["semantic_authority"]:
+			raise TestFailure("Phase B semantic authority differs from Phase A evidence")
+		phase_b_upgrade = {
+			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
+			"v13_ledger": upgrade_v13_ledger,
+			"pre_v14_anchor_binding": upgrade_anchor_binding,
+			"v20_ledger": upgrade_v20_ledger,
+			"runtime_authority": upgrade_runtime_authority,
+		}
+		if phase_b_upgrade != phase_a.document["one_grantee_upgrade"]:
+			raise TestFailure("Phase B one-grantee evidence differs from Phase A evidence")
+		phase_b_runtime_authority = {
+			"zero_grantee_migration": zero_grantee_migration_authority,
+			**checkpoint_runtime_authority,
+		}
+		if phase_b_runtime_authority != phase_a.document["runtime_authority"]:
+			raise TestFailure("Phase B runtime authority differs from Phase A evidence")
 
 	end_binding = frozen_source_binding()
 	if end_binding != start_binding:
 		raise TestFailure("authority candidate source binding changed during capture")
+	phase_fields = authority_candidate_phase_fields(phase_a, start_binding, end_binding)
 	receipt = {
-		"schema": "decodex/postgres-authority-candidate/1",
+		"schema": AUTHORITY_CANDIDATE_SCHEMA,
 		"capture_only": True,
-		"acceptance": False,
+		**phase_fields,
 		"source_binding": {"start": start_binding, "end": end_binding},
 		"postgres": pg_version,
 		"bindings": {
@@ -3448,6 +4424,7 @@ def run_authority_candidate_capture(
 			"restored_once": restored_runtime_authority,
 			"restored_twice": second_restored_runtime_authority,
 		},
+		"semantic_authority": checkpoint_semantic_authority,
 		"expected_digests": expected_digests,
 		"digests": {
 			component: {
@@ -3469,13 +4446,16 @@ def run_authority_candidate_capture(
 		"restore_edges": restore_edges,
 		"mismatches": mismatches,
 		"phase_b_provenance": {
-			"phase_a_tree": end_binding["tree"],
+			"phase_a_tree": (
+				end_binding["tree"] if phase_a is None
+				else phase_a.document["source_binding"]["end"]["tree"]
+			),
 			"allowed_source_delta": [
 				"SCHEMA_CONTRACT_SHA256",
 				"CONFIGURED_AUTHORITY_SHA256",
 			],
 			"designated_evidence_surface": {
-				"schema": "decodex/postgres-authority-candidate/1",
+				"schema": AUTHORITY_CANDIDATE_SCHEMA,
 			},
 			"phase_b_must_record_phase_a_and_phase_b_trees": True,
 			"any_other_source_delta_invalidates_candidate": True,
@@ -3536,11 +4516,23 @@ def main() -> int | AuthorityCandidatePublication:
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
 	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
-	capture_output = Path(sys.argv[2]) if capture_only else None
-	if sys.argv[1:] and not (focused_work_items or focused_managed_runs or capture_only):
+	acceptance_mode = len(sys.argv) == 4 and sys.argv[1] == "--accept-authority-candidate"
+	phase_a = load_phase_a_authority_receipt(Path(sys.argv[2])) if acceptance_mode else None
+	if phase_a is not None:
+		validate_phase_b_source_delta(phase_a, frozen_source_binding())
+	capture_output = (
+		Path(sys.argv[3]) if acceptance_mode
+		else Path(sys.argv[2]) if capture_only
+		else None
+	)
+	authority_mode = capture_only or acceptance_mode
+	if sys.argv[1:] and not (
+		focused_work_items or focused_managed_runs or authority_mode
+	):
 		raise TestFailure(
 			"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
-			"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH]"
+			"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
+			"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
 		)
 	if capture_output is not None:
 		validate_authority_candidate_output_path(capture_output)
@@ -3560,7 +4552,7 @@ def main() -> int | AuthorityCandidatePublication:
 		tempfile.mkdtemp(
 			prefix=("decodex-xy1343-" if focused_work_items else
 				"decodex-xy1338-" if focused_managed_runs else
-				"decodex-xy1300-capture-" if capture_only else "decodex-xy1267-"),
+				"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
 			dir=temp_root,
 		)
 	).resolve()
@@ -3614,7 +4606,7 @@ def main() -> int | AuthorityCandidatePublication:
 			env,
 		)
 		roles = [MIGRATION_ROLE, RUNTIME_ROLE]
-		if not capture_only:
+		if not authority_mode:
 			roles.extend((
 				MISSING_SELECT_ROLE,
 				HOSTILE_SEARCH_ROLE,
@@ -3658,6 +4650,7 @@ def main() -> int | AuthorityCandidatePublication:
 				log_path,
 				env,
 				(role_setting_canary_guc, role_setting_secret_canary),
+				phase_a,
 			)
 			return AuthorityCandidatePublication(capture_output, capture_receipt)
 		source_binding = frozen_source_binding()
@@ -3775,12 +4768,12 @@ def main() -> int | AuthorityCandidatePublication:
 				],
 				env,
 			)
-			record_restore_stage(restore_report, "v14_v19_semantic_source", "passed")
+			record_restore_stage(restore_report, "v14_v20_semantic_source", "passed")
 		except Exception as error:
 			contract_output = ""
-			acceptance_failures.append(f"V14-V19 semantic source: {error}")
+			acceptance_failures.append(f"V14-V20 semantic source: {error}")
 			record_restore_stage(
-				restore_report, "v14_v19_semantic_source", "failed", error=str(error)
+				restore_report, "v14_v20_semantic_source", "failed", error=str(error)
 			)
 		managed_repository_output = "\n".join((
 			run_managed_repository_test(
