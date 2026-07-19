@@ -2604,7 +2604,12 @@ async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::
 	let locale: Option<String> = locale.get(1);
 
 	assert_eq!(provider, "i");
-	assert!(locale.as_deref().is_some_and(|value| value.starts_with("tr")));
+	assert!(
+		locale
+			.as_deref()
+			.and_then(|value| value.split('-').next())
+			.is_some_and(|language| language.eq_ignore_ascii_case("tr"))
+	);
 
 	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
 
