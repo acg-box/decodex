@@ -6,14 +6,16 @@ use super::{
 	routing_decision::{RoutingFixture, create_stale_evidence_snapshot},
 };
 use decodex_core::{
-	CodexExperimentCommandOutcome, CodexExperimentIdentity, CodexExperimentObservationKind,
+	BlobStore, CodexExperimentCommandOutcome, CodexExperimentIdentity,
+	CodexExperimentObservationKind,
 	ContextPack, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
 	ContinuationEffectBarrierState, ContinuationPlanKind, ContinuationRejection,
 	PinnedContextSource, PossibleSideEffects,
 };
 use decodex_postgres::{
 	BindCodexExperimentThread, CodexExperimentCreationFenceOutcome, PlanContinuation,
-	PostgresStore, PrepareCodexExperiment, RecordCodexExperimentObservation, RouteAccount,
+	ContinuationPlanEffect, PostgresStore, PrepareCodexExperiment,
+	RecordCodexExperimentObservation, RouteAccount,
 };
 
 const SUBMITTED_RECEIPT_ID: &str = "f1000000-0000-4000-8000-000000000017";
@@ -27,6 +29,28 @@ pub(super) async fn assert_continuation_contract(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let blob_store = isolated_blob_store()?;
 	let fallback_pack = fallback_pack(owner, routing).await?;
+	prepare_continuation_fixture(owner, routing).await?;
+	assert_missing_fallback_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
+	assert_alternate_fallback_contracts(store, owner, routing, &blob_store, &fallback_pack).await?;
+	let (same_thread, same_thread_request) =
+		assert_same_thread_contract(store, routing, &blob_store, &fallback_pack).await?;
+	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
+	assert_lineage_and_restart_contract(
+		owner,
+		(migration, runtime),
+		&blob_store,
+		&fallback_pack,
+		&same_thread_request,
+		same_thread,
+	)
+	.await?;
+	Ok(())
+}
+
+async fn prepare_continuation_fixture(
+	owner: &Client,
+	routing: &RoutingFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
 	owner
 		.execute(
 			"INSERT INTO decodex.managed_run_submitted_turn_receipts(\
@@ -67,15 +91,24 @@ pub(super) async fn assert_continuation_contract(
 	owner.batch_execute("ROLLBACK").await?;
 	assert!(!rollback_response.is_empty());
 	assert_eq!(receipt_count(owner, "v17-rollback").await?, 0);
+	Ok(())
+}
 
+async fn assert_missing_fallback_contract(
+	store: &PostgresStore,
+	owner: &Client,
+	routing: &RoutingFixture,
+	blob_store: &BlobStore,
+	fallback_pack: &ContextPack,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let missing_request = plan_request(1, &routing.selected.decision_id);
 	let missing = continuation_success(
 		store
 			.plan_continuation(
-				&blob_store,
+				blob_store,
 				"v17-missing-fallback",
 				&missing_request,
-				&fallback_pack,
+				fallback_pack,
 			)
 			.await?,
 	)?;
@@ -89,10 +122,10 @@ pub(super) async fn assert_continuation_contract(
 	assert_eq!(
 		store
 			.plan_continuation(
-				&blob_store,
+				blob_store,
 				"v17-missing-fallback",
 				&missing_request,
-				&fallback_pack,
+				fallback_pack,
 			)
 			.await?,
 		ContinuationCommandOutcome::Success(missing.clone()),
@@ -102,10 +135,10 @@ pub(super) async fn assert_continuation_contract(
 	assert_eq!(
 		store
 			.plan_continuation(
-				&blob_store,
+				blob_store,
 				"v17-missing-fallback-replay",
 				&missing_request,
-				&fallback_pack,
+				fallback_pack,
 			)
 			.await?,
 		ContinuationCommandOutcome::Success(missing.clone()),
@@ -147,10 +180,10 @@ pub(super) async fn assert_continuation_contract(
 	assert!(matches!(
 		store
 			.plan_continuation(
-				&blob_store,
+				blob_store,
 				"v17-duplicate-consumption",
 				&conflicting,
-				&fallback_pack,
+				fallback_pack,
 			)
 			.await?,
 		ContinuationCommandOutcome::Rejected(ContinuationRejection::DecisionAlreadyConsumed)
@@ -166,17 +199,26 @@ pub(super) async fn assert_continuation_contract(
 	assert_eq!(conflicting_plan_rows, 0);
 	assert_no_continuation_effects(owner, "v17-duplicate-consumption", &conflicting).await?;
 	assert_eq!(continuation_effect_inventory(owner, &conflicting).await?, conflicting_inventory,);
+	Ok(())
+}
 
+async fn assert_alternate_fallback_contracts(
+	store: &PostgresStore,
+	owner: &Client,
+	routing: &RoutingFixture,
+	blob_store: &BlobStore,
+	fallback_pack: &ContextPack,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let mismatch_decision = route_selected(store, routing, 2).await?;
 	create_positive_experiment(store, routing, 2, &mismatch_decision.decision.snapshot_id, true)
 		.await?;
 	let mismatch = continuation_success(
 		store
 			.plan_continuation(
-				&blob_store,
+				blob_store,
 				"v17-mismatch-fallback",
 				&plan_request(2, &mismatch_decision.decision_id),
-				&fallback_pack,
+				fallback_pack,
 			)
 			.await?,
 	)?;
@@ -189,10 +231,10 @@ pub(super) async fn assert_continuation_contract(
 	let stale_evidence = continuation_success(
 		store
 			.plan_continuation(
-				&blob_store,
+				blob_store,
 				"v17-stale-evidence-fallback",
 				&plan_request(6, &stale_evidence_decision.decision_id),
-				&fallback_pack,
+				fallback_pack,
 			)
 			.await?,
 	)?;
@@ -206,16 +248,24 @@ pub(super) async fn assert_continuation_contract(
 	let ambiguous = continuation_success(
 		store
 			.plan_continuation(
-				&blob_store,
+				blob_store,
 				"v17-ambiguous-fallback",
 				&plan_request(4, &ambiguous_decision.decision_id),
-				&fallback_pack,
+				fallback_pack,
 			)
 			.await?,
 	)?;
 	assert_eq!(ambiguous.plan.kind, ContinuationPlanKind::ContextPackFallback);
 	assert_barrier(&ambiguous.plan);
+	Ok(())
+}
 
+async fn assert_same_thread_contract(
+	store: &PostgresStore,
+	routing: &RoutingFixture,
+	blob_store: &BlobStore,
+	fallback_pack: &ContextPack,
+) -> Result<(ContinuationPlanEffect, PlanContinuation), Box<dyn std::error::Error>> {
 	let same_thread_decision = route_selected(store, routing, 3).await?;
 	create_positive_experiment(
 		store,
@@ -228,7 +278,7 @@ pub(super) async fn assert_continuation_contract(
 	let same_thread_request = plan_request(3, &same_thread_decision.decision_id);
 	let same_thread = continuation_success(
 		store
-			.plan_continuation(&blob_store, "v17-same-thread", &same_thread_request, &fallback_pack)
+			.plan_continuation(blob_store, "v17-same-thread", &same_thread_request, fallback_pack)
 			.await?,
 	)?;
 	assert_eq!(same_thread.plan.kind, ContinuationPlanKind::SameThread);
@@ -239,7 +289,16 @@ pub(super) async fn assert_continuation_contract(
 	assert!(same_thread.plan.same_thread_evidence.is_some());
 	assert!(same_thread.fallback_context_pack.is_none());
 	assert_barrier(&same_thread.plan);
+	Ok((same_thread, same_thread_request))
+}
 
+async fn assert_stale_revision_contract(
+	store: &PostgresStore,
+	owner: &Client,
+	routing: &RoutingFixture,
+	blob_store: &BlobStore,
+	fallback_pack: &ContextPack,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let stale_decision = route_selected(store, routing, 5).await?;
 	let stale_request = PlanContinuation {
 		expected_managed_run_revision: 2,
@@ -250,7 +309,7 @@ pub(super) async fn assert_continuation_contract(
 	assert_eq!(stale_inventory["outbox"].as_array().map(|rows| rows.len()), Some(0),);
 	assert!(matches!(
 		store
-			.plan_continuation(&blob_store, "v17-stale-revision", &stale_request, &fallback_pack,)
+			.plan_continuation(blob_store, "v17-stale-revision", &stale_request, fallback_pack,)
 			.await?,
 		ContinuationCommandOutcome::Rejected(ContinuationRejection::StaleManagedRunRevision)
 	));
@@ -265,7 +324,17 @@ pub(super) async fn assert_continuation_contract(
 	assert_eq!(stale_plan_rows, 0);
 	assert_no_continuation_effects(owner, "v17-stale-revision", &stale_request).await?;
 	assert_eq!(continuation_effect_inventory(owner, &stale_request).await?, stale_inventory,);
+	Ok(())
+}
 
+async fn assert_lineage_and_restart_contract(
+	owner: &Client,
+	configs: (&Config, &Config),
+	blob_store: &BlobStore,
+	fallback_pack: &ContextPack,
+	same_thread_request: &PlanContinuation,
+	same_thread: ContinuationPlanEffect,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let lineage = owner
 		.query_one(
 			"SELECT plan.effect_barrier_state::text,plan.effect_barrier_revision,\
@@ -286,11 +355,12 @@ pub(super) async fn assert_continuation_contract(
 	for index in 3..8 {
 		assert!(lineage.get::<_, bool>(index), "V17 lineage assertion {index}");
 	}
+	let (migration, runtime) = configs;
 	let restarted =
 		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		restarted
-			.plan_continuation(&blob_store, "v17-same-thread", &same_thread_request, &fallback_pack,)
+			.plan_continuation(blob_store, "v17-same-thread", same_thread_request, fallback_pack,)
 			.await?,
 		ContinuationCommandOutcome::Success(same_thread),
 	);
