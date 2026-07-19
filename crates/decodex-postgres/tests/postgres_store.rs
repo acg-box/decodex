@@ -2591,7 +2591,6 @@ async fn postgres_store_rejects_implicit_uuid_to_text_cast()
 #[ignore = "requires the isolated PostgreSQL 18 Turkish ICU collation harness"]
 async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, runtime) = separated_configs("DECODEX_TEST_COLLATION")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let locale = client
@@ -2606,6 +2605,8 @@ async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::
 
 	assert_eq!(provider, "i");
 	assert!(locale.as_deref().is_some_and(|value| value.starts_with("tr")));
+
+	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
 
 	for (index, response) in [
 		serde_json::json!({"AUTHORIZATION": "forbidden"}),
