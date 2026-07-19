@@ -21,11 +21,101 @@ pub(super) async fn assert_waiting_wake_contract(
 	let registration_at = ready_at - 1;
 	let equal_registration_at = ready_at - 2;
 	let registration_operation = uuid(0xa8, 1);
+	assert_registration_rollback(
+		owner,
+		routing,
+		&registration_operation,
+		registration_at,
+	)
+	.await?;
+
+	let stale_ready =
+		routing.stale_waiting.decision.ready_at_micros.expect("stale waiting decision is timed");
+	let cancel_ready =
+		routing.cancel_waiting.decision.ready_at_micros.expect("cancellation wait is timed");
+	assert_eq!(stale_ready, cancel_ready);
+	assert_eq!(stale_ready, ready_at + 1);
+	let equal_ready_at = stale_ready;
+	assert_registration_monotonicity(owner, routing).await?;
+	let registered = register_waiting_wakes(
+		owner,
+		routing,
+		&registration_operation,
+		ready_at,
+		registration_at,
+		equal_registration_at,
+		equal_ready_at,
+	)
+	.await?;
+	let claimed = assert_initial_claims(owner, &registered, registration_at, ready_at, equal_ready_at)
+		.await?;
+	assert_supersession_and_cancellation(
+		store,
+		migration,
+		owner,
+		&registered,
+		equal_ready_at,
+	)
+	.await?;
+	let reclaimed = reclaim_waiting_wake(owner, &claimed).await?;
+	assert_fire_contract(
+		owner,
+		routing,
+		&registration_operation,
+		&registered,
+		&claimed,
+		&reclaimed,
+	)
+	.await?;
+	assert_restart_replay(
+		migration,
+		runtime,
+		routing,
+		registration_operation,
+		&registered,
+	)
+	.await?;
+	assert_exact_chain(owner).await?;
+	Ok(())
+}
+
+struct RegisteredWakes {
+	registered_bytes: Vec<u8>,
+	registered: Value,
+	reordered_stale_bytes: Vec<u8>,
+	reordered_stale: Value,
+	reordered_cancel_bytes: Vec<u8>,
+	reordered_cancel: Value,
+	expected_wake_order: [(i64, i64, String); 3],
+}
+
+struct ClaimedWake {
+	claimed_bytes: Vec<u8>,
+	claimed: Value,
+	claim_operation: String,
+	claim_id: String,
+	first_holder: String,
+	first_expiry: i64,
+	first_fence: String,
+}
+
+struct ReclaimedWake {
+	reclaimed: Value,
+	second_holder: String,
+	second_fence: String,
+}
+
+async fn assert_registration_rollback(
+	owner: &Client,
+	routing: &RoutingFixture,
+	registration_operation: &str,
+	registration_at: i64,
+) -> Result<(), Box<dyn std::error::Error>> {
 	owner.batch_execute("BEGIN").await?;
 	let rollback = internal_register(
 		owner,
 		"v19-register-rollback",
-		&registration_operation,
+		registration_operation,
 		&routing.waiting.decision_id,
 		1,
 		registration_at,
@@ -37,18 +127,17 @@ pub(super) async fn assert_waiting_wake_contract(
 	assert_cluster_absent(
 		owner,
 		"v19-register-rollback",
-		&registration_operation,
+		registration_operation,
 		rollback_outbox_id,
 	)
 	.await?;
+	Ok(())
+}
 
-	let stale_ready =
-		routing.stale_waiting.decision.ready_at_micros.expect("stale waiting decision is timed");
-	let cancel_ready =
-		routing.cancel_waiting.decision.ready_at_micros.expect("cancellation wait is timed");
-	assert_eq!(stale_ready, cancel_ready);
-	assert_eq!(stale_ready, ready_at + 1);
-	let equal_ready_at = stale_ready;
+async fn assert_registration_monotonicity(
+	owner: &Client,
+	routing: &RoutingFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
 	owner.batch_execute("BEGIN").await?;
 	let monotonic_error = internal_register(
 		owner,
@@ -65,11 +154,22 @@ pub(super) async fn assert_waiting_wake_contract(
 		Some("waiting_usage_wake_authority_time_monotonic"),
 	);
 	owner.batch_execute("ROLLBACK").await?;
+	Ok(())
+}
 
+async fn register_waiting_wakes(
+	owner: &Client,
+	routing: &RoutingFixture,
+	registration_operation: &str,
+	ready_at: i64,
+	registration_at: i64,
+	equal_registration_at: i64,
+	equal_ready_at: i64,
+) -> Result<RegisteredWakes, Box<dyn std::error::Error>> {
 	let registered_bytes = internal_register(
 		owner,
 		"v19-register",
-		&registration_operation,
+		registration_operation,
 		&routing.waiting.decision_id,
 		1,
 		registration_at,
@@ -132,7 +232,24 @@ pub(super) async fn assert_waiting_wake_contract(
 	assert_eq!(expected_wake_order[1].0, expected_wake_order[2].0);
 	assert_eq!(expected_wake_order[1].1, expected_wake_order[2].1);
 	assert!(expected_wake_order[1].2 < expected_wake_order[2].2);
+	Ok(RegisteredWakes {
+		registered_bytes,
+		registered,
+		reordered_stale_bytes,
+		reordered_stale,
+		reordered_cancel_bytes,
+		reordered_cancel,
+		expected_wake_order,
+	})
+}
 
+async fn assert_initial_claims(
+	owner: &Client,
+	registered: &RegisteredWakes,
+	registration_at: i64,
+	ready_at: i64,
+	equal_ready_at: i64,
+) -> Result<ClaimedWake, Box<dyn std::error::Error>> {
 	let before_ready = internal_claim(
 		owner,
 		"v19-claim-before-ready",
@@ -157,7 +274,10 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 	let rollback_claim = assert_success(&rollback_claim_bytes, "claimed");
-	assert_eq!(text(&rollback_claim, "wake_id"), expected_wake_order[0].2.as_str(),);
+	assert_eq!(
+		text(&rollback_claim, "wake_id"),
+		registered.expected_wake_order[0].2.as_str(),
+	);
 	assert_eq!(integer(&rollback_claim, "transitioned_at_micros"), ready_at);
 	let rollback_claim_outbox_id = integer(&rollback_claim["outbox_effects"][0], "id");
 	owner.batch_execute("ROLLBACK").await?;
@@ -182,22 +302,47 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 	let claimed = assert_success(&claimed_bytes, "claimed");
-	assert_eq!(text(&claimed, "wake_id"), expected_wake_order[0].2.as_str());
+	assert_eq!(text(&claimed, "wake_id"), registered.expected_wake_order[0].2.as_str());
 	assert_eq!(integer(&claimed, "transitioned_at_micros"), equal_ready_at);
 	let first_expiry = integer(&claimed, "lease_expires_at_micros");
 	assert_eq!(first_expiry, equal_ready_at + 60_000_000);
 	let first_fence = text(&claimed, "lease_fence_id").to_owned();
 	assert_transition_readback(owner, &claimed_bytes).await?;
+	Ok(ClaimedWake {
+		claimed_bytes,
+		claimed,
+		claim_operation,
+		claim_id,
+		first_holder,
+		first_expiry,
+		first_fence,
+	})
+}
 
+async fn assert_supersession_and_cancellation(
+	store: &PostgresStore,
+	migration: &Config,
+	owner: &Client,
+	registered: &RegisteredWakes,
+	equal_ready_at: i64,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let (supersede_registered, cancel_registered_bytes) =
-		if text(&reordered_stale, "wake_id") < text(&reordered_cancel, "wake_id") {
-			(&reordered_stale, &reordered_cancel_bytes)
+		if text(&registered.reordered_stale, "wake_id")
+			< text(&registered.reordered_cancel, "wake_id")
+		{
+			(&registered.reordered_stale, &registered.reordered_cancel_bytes)
 		} else {
-			(&reordered_cancel, &reordered_stale_bytes)
+			(&registered.reordered_cancel, &registered.reordered_stale_bytes)
 		};
-	assert_eq!(text(supersede_registered, "wake_id"), expected_wake_order[1].2.as_str(),);
+	assert_eq!(
+		text(supersede_registered, "wake_id"),
+		registered.expected_wake_order[1].2.as_str(),
+	);
 	let cancel_registered = assert_success(cancel_registered_bytes, "registered");
-	assert_eq!(text(&cancel_registered, "wake_id"), expected_wake_order[2].2.as_str(),);
+	assert_eq!(
+		text(&cancel_registered, "wake_id"),
+		registered.expected_wake_order[2].2.as_str(),
+	);
 	advance_stale_policy(store, owner, text(supersede_registered, "routing_policy_id")).await?;
 	let superseded_bytes = internal_claim(
 		owner,
@@ -209,7 +354,10 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 	let superseded = assert_success(&superseded_bytes, "superseded");
-	assert_eq!(text(&superseded, "wake_id"), expected_wake_order[1].2.as_str(),);
+	assert_eq!(
+		text(&superseded, "wake_id"),
+		registered.expected_wake_order[1].2.as_str(),
+	);
 	assert_eq!(text(&superseded, "terminal_reason"), "policy_revision_stale");
 	assert!(superseded.get("routing_resolution_request_id").is_some_and(Value::is_null));
 	assert_transition_readback(owner, &superseded_bytes).await?;
@@ -228,14 +376,20 @@ pub(super) async fn assert_waiting_wake_contract(
 	)
 	.await?;
 	assert_rejection(&superseded_terminal, "wake_terminal");
+	Ok(())
+}
 
+async fn reclaim_waiting_wake(
+	owner: &Client,
+	claimed: &ClaimedWake,
+) -> Result<ReclaimedWake, Box<dyn std::error::Error>> {
 	let pre_expiry = internal_claim(
 		owner,
 		"v19-reclaim-before-expiry",
 		&uuid(0xaa, 3),
 		&uuid(0xab, 3),
 		&uuid(0xac, 3),
-		first_expiry - 1,
+		claimed.first_expiry - 1,
 	)
 	.await?;
 	assert_rejection(&pre_expiry, "no_due_wake");
@@ -248,18 +402,28 @@ pub(super) async fn assert_waiting_wake_contract(
 		&reclaim_operation,
 		&uuid(0xab, 4),
 		&second_holder,
-		first_expiry,
+		claimed.first_expiry,
 	)
 	.await?;
 	let reclaimed = assert_success(&reclaimed_bytes, "reclaimed");
 	let second_fence = text(&reclaimed, "lease_fence_id").to_owned();
-	assert_ne!(second_fence, first_fence);
-	assert_eq!(integer(&reclaimed, "transitioned_at_micros"), first_expiry);
+	assert_ne!(second_fence, claimed.first_fence);
+	assert_eq!(integer(&reclaimed, "transitioned_at_micros"), claimed.first_expiry);
 	assert_transition_readback(owner, &reclaimed_bytes).await?;
+	Ok(ReclaimedWake { reclaimed, second_holder, second_fence })
+}
 
-	let wake_id = text(&reclaimed, "wake_id");
-	let reclaimed_revision = integer(&reclaimed, "revision");
-	let reclaimed_transition = text(&reclaimed, "transition_id");
+async fn assert_fire_contract(
+	owner: &Client,
+	routing: &RoutingFixture,
+	registration_operation: &str,
+	registered: &RegisteredWakes,
+	claimed: &ClaimedWake,
+	reclaimed: &ReclaimedWake,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let wake_id = text(&reclaimed.reclaimed, "wake_id");
+	let reclaimed_revision = integer(&reclaimed.reclaimed, "revision");
+	let reclaimed_transition = text(&reclaimed.reclaimed, "transition_id");
 	let stale_fence = internal_fire(
 		owner,
 		"v19-fire-stale-fence",
@@ -267,9 +431,9 @@ pub(super) async fn assert_waiting_wake_contract(
 		wake_id,
 		reclaimed_revision,
 		reclaimed_transition,
-		&second_holder,
-		&first_fence,
-		first_expiry,
+		&reclaimed.second_holder,
+		&claimed.first_fence,
+		claimed.first_expiry,
 	)
 	.await?;
 	assert_rejection(&stale_fence, "lease_lost");
@@ -279,16 +443,16 @@ pub(super) async fn assert_waiting_wake_contract(
 		"v19-fire-stale-tip",
 		&uuid(0xad, 2),
 		wake_id,
-		integer(&claimed, "revision"),
-		text(&claimed, "transition_id"),
-		&second_holder,
-		&second_fence,
-		first_expiry,
+		integer(&claimed.claimed, "revision"),
+		text(&claimed.claimed, "transition_id"),
+		&reclaimed.second_holder,
+		&reclaimed.second_fence,
+		claimed.first_expiry,
 	)
 	.await?;
 	assert_rejection(&stale_tip, "stale_wake_tip");
 
-	let fire_at = first_expiry + 1;
+	let fire_at = claimed.first_expiry + 1;
 	let fired_bytes = internal_fire(
 		owner,
 		"v19-fire-valid",
@@ -296,8 +460,8 @@ pub(super) async fn assert_waiting_wake_contract(
 		wake_id,
 		reclaimed_revision,
 		reclaimed_transition,
-		&second_holder,
-		&second_fence,
+		&reclaimed.second_holder,
+		&reclaimed.second_fence,
 		fire_at,
 	)
 	.await?;
@@ -337,24 +501,33 @@ pub(super) async fn assert_waiting_wake_contract(
 	let cross_key_claim = internal_claim(
 		owner,
 		"v19-claim-cross-key-after-fire",
-		&claim_operation,
-		&claim_id,
-		&first_holder,
+		&claimed.claim_operation,
+		&claimed.claim_id,
+		&claimed.first_holder,
 		fire_at + 2,
 	)
 	.await?;
-	assert_eq!(cross_key_claim, claimed_bytes);
+	assert_eq!(cross_key_claim, claimed.claimed_bytes);
 	let cross_key_registration = internal_register(
 		owner,
 		"v19-register-cross-key-after-fire",
-		&registration_operation,
+		registration_operation,
 		&routing.waiting.decision_id,
 		1,
 		fire_at + 3,
 	)
 	.await?;
-	assert_eq!(cross_key_registration, registered_bytes);
+	assert_eq!(cross_key_registration, registered.registered_bytes);
+	Ok(())
+}
 
+async fn assert_restart_replay(
+	migration: &Config,
+	runtime: &Config,
+	routing: &RoutingFixture,
+	registration_operation: String,
+	registered: &RegisteredWakes,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let restarted =
 		PostgresStore::connect(migration.clone(), runtime.clone(), super::expected_peer_uid())
 			.await?;
@@ -370,9 +543,7 @@ pub(super) async fn assert_waiting_wake_contract(
 		.await?;
 	assert!(matches!(restart_replay, WaitingUsageWakeCommandOutcome::Success(
 		ref transition
-	) if transition.transition_id == text(&registered, "transition_id")));
-
-	assert_exact_chain(owner).await?;
+	) if transition.transition_id == text(&registered.registered, "transition_id")));
 	Ok(())
 }
 
