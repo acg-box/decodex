@@ -299,16 +299,22 @@ receipt remains provenance only; malformed, substituted, duplicate, or out-of-bi
 cannot attest the Phase B source.
 
 The unified PostgreSQL aggregate is scheduled by one explicit top-level stage graph. Fatal
-configuration/cluster preflight covers mode and arguments, clean source and output binding, private
-temporary-root setup, PostgreSQL tool discovery, cluster init/start, and base-role creation. Every
+configuration/cluster preflight covers mode and arguments, clean source binding, private
+temporary-root setup, PostgreSQL tool discovery, cluster init/start, and base-role creation. Phase
+A/B output and receipt-lineage validation remains direct and outside this graph. Every
 meaningful semantic suite has `passed`, `failed`, or `blocked` state. Expected `TestFailure` blocks
 only declared consumers and leaves independent branches schedulable; dependency consumers never
-run after failure. Mutation probes and restorations are separate stages, restoration remains
-eligible after a failed probe, and subsequent shared-fixture probes depend on restoration.
+run after failure. Required nested restore work is part of its owning suite's outcome: a failed or
+unavailable capture, restore, parity check, or production check prevents owner success and blocks
+its consumers. Each live-doctor mutation probe owns and reaps its subprocess across every exit.
+Mutation probes and restorations are separate stages, restoration remains eligible after a failed
+probe, and subsequent shared-fixture probes depend on restoration.
 Unexpected assertion/key/type failures, corrupt stage/report state, source-binding failure,
 redaction failure, or another unexpected exception stops new work as harness corruption. After a
 cluster starts, teardown and final report emission still run and record secondary failures without
-overwriting the first failure. Focused and Phase A/B modes remain outside the normal aggregate.
+overwriting the first failure. Only the normal aggregate emits
+`decodex/postgres-aggregate-stage-report/1`; focused and Phase A/B modes retain their direct output
+and receipt behavior.
 
 Falsifiers are evaluated in this fixed priority order: architecture, then
 stability/recoverability, security/authority, verification, integrity, and performance.
