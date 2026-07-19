@@ -82,6 +82,21 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         message = str(failure.exception)
         return artifact, message, json.loads(message[message.index("{") :])
 
+    def restore_parity_failure(
+        self, source_rows, restored_rows, *, secret_markers=("xy1300-secret",)
+    ):
+        source = json.dumps(source_rows, separators=(",", ":"))
+        restored = json.dumps(restored_rows, separators=(",", ":"))
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
+            POSTGRES_STORE_TEST.require_restore_parity(
+                "schema",
+                source,
+                restored,
+                secret_markers=secret_markers,
+            )
+        message = str(failure.exception)
+        return source, restored, message, json.loads(message[message.index("{") :])
+
     def test_database_query_error_is_structured_bounded_and_redacted(self):
         message_prefix = "permission denied xy1300-secret "
         query_error = json.dumps({
@@ -228,6 +243,193 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
                 "malformed schema dependency contract",
             ):
                 POSTGRES_STORE_TEST.decode_dependency_manifest_row(row)
+
+    def test_restore_parity_diagnostic_is_bounded_deterministic_and_fail_closed(self):
+        source_only = [
+            [
+                "relation",
+                ["source_only", index, "xy1300-secret", "i" * 400],
+                json.dumps(["source", "xy1300-secret", "s" * 400]),
+            ]
+            for index in range(10)
+        ]
+        restored_only = [
+            [
+                "relation",
+                ["restored_only", index, "xy1300-secret", "i" * 400],
+                json.dumps(["restored", "xy1300-secret", "r" * 400]),
+            ]
+            for index in range(10)
+        ]
+        source_shared = [
+            ["column", ["shared", index], json.dumps(["before", index])]
+            for index in range(10)
+        ]
+        restored_shared = [
+            ["column", ["shared", index], json.dumps(["after", index])]
+            for index in range(10)
+        ]
+
+        source, restored, first_message, diagnostic = self.restore_parity_failure(
+            source_only + source_shared,
+            restored_only + restored_shared,
+        )
+        _, _, second_message, _ = self.restore_parity_failure(
+            source_only + source_shared,
+            restored_only + restored_shared,
+        )
+        serialized = json.dumps(diagnostic, sort_keys=True)
+
+        self.assertEqual(first_message, second_message)
+        self.assertTrue(first_message.startswith(
+            "authority candidate restore parity diagnostic: {"
+        ))
+        self.assertNotIn("xy1300-secret", serialized)
+        self.assertEqual(
+            set(diagnostic), {"changes", "component", "restored", "schema", "source"}
+        )
+        self.assertEqual(
+            diagnostic["schema"],
+            POSTGRES_STORE_TEST.RESTORE_PARITY_DIAGNOSTIC_SCHEMA,
+        )
+        self.assertEqual(diagnostic["component"], "schema")
+        self.assertEqual(
+            set(diagnostic["changes"]),
+            {"before_only", "after_only", "contract_mismatches"},
+        )
+        self.assertEqual(diagnostic["source"]["row_count"], 20)
+        self.assertEqual(diagnostic["restored"]["row_count"], 20)
+        self.assertEqual(
+            diagnostic["source"]["sha256"], hashlib.sha256(source.encode()).hexdigest()
+        )
+        self.assertEqual(
+            diagnostic["restored"]["sha256"],
+            hashlib.sha256(restored.encode()).hexdigest(),
+        )
+        self.assertEqual(
+            diagnostic["source"]["grouped_kind_counts"],
+            [{"count": 10, "kind": "column"}, {"count": 10, "kind": "relation"}],
+        )
+        self.assertEqual(
+            diagnostic["restored"]["grouped_kind_counts"],
+            [{"count": 10, "kind": "column"}, {"count": 10, "kind": "relation"}],
+        )
+        for category in ("before_only", "after_only", "contract_mismatches"):
+            with self.subTest(category=category):
+                change = diagnostic["changes"][category]
+                self.assertEqual(change["count"], 10)
+                self.assertEqual(len(change["samples"]), 8)
+                self.assertTrue(change["truncated"])
+        before_sample = diagnostic["changes"]["before_only"]["samples"][0]
+        self.assertLessEqual(
+            len(before_sample["identity"]),
+            POSTGRES_STORE_TEST.MANIFEST_DIAGNOSTIC_IDENTITY_LIMIT,
+        )
+        self.assertEqual(set(before_sample), {"identity", "kind"})
+        mismatch_sample = diagnostic["changes"]["contract_mismatches"]["samples"][0]
+        self.assertNotEqual(
+            mismatch_sample["before_redacted_sha256"],
+            mismatch_sample["after_redacted_sha256"],
+        )
+        self.assertEqual(set(mismatch_sample), {
+            "after_redacted_sha256",
+            "before_redacted_sha256",
+            "identity",
+            "kind",
+        })
+
+    def test_restore_parity_samples_sort_only_after_redaction(self):
+        markers = ("zzz-secret", "aaa-secret")
+        changes = []
+        for marker in markers:
+            source_only = [
+                ["relation", [marker], json.dumps(["constant"])]
+            ] + [
+                ["relation", [f"stable-{index}"], json.dumps(["constant"])]
+                for index in range(8)
+            ]
+            _, _, _, result = self.restore_parity_failure(
+                source_only + [["column", ["shared"], json.dumps([marker])]],
+                [["column", ["shared"], json.dumps(["restored"])]],
+                secret_markers=markers,
+            )
+            changes.append(result["changes"])
+
+        self.assertEqual(changes[0], changes[1])
+        serialized = json.dumps(changes, sort_keys=True)
+        for marker in markers:
+            self.assertNotIn(marker, serialized)
+
+    def test_restore_parity_dependency_only_samples_include_null_reference(self):
+        source = dependency_row(
+            "dependency", ["source"], "i", ["trigger"], None, False
+        )
+        restored = dependency_row(
+            "dependency", ["restored"], "n", ["namespace"],
+            ["namespace", "decodex"], True,
+        )
+
+        _, _, _, diagnostic = self.restore_parity_failure([source], [restored])
+        before = diagnostic["changes"]["before_only"]["samples"][0]
+        after = diagnostic["changes"]["after_only"]["samples"][0]
+
+        self.assertEqual(before["reference_key"], "null")
+        self.assertFalse(before["resolved"])
+        self.assertEqual(after["reference_key"], '["namespace","decodex"]')
+        self.assertTrue(after["resolved"])
+
+    def test_restore_parity_formatter_failure_keeps_parity_classification(self):
+        malformed = [["dependency", ["invalid"], json.dumps([False])]]
+
+        _, _, message, diagnostic = self.restore_parity_failure(malformed, [])
+
+        self.assertTrue(message.startswith(
+            "authority candidate restore parity diagnostic: {"
+        ))
+        self.assertEqual(diagnostic, {
+            "classification": "diagnostic_unavailable",
+            "schema": POSTGRES_STORE_TEST.RESTORE_PARITY_DIAGNOSTIC_SCHEMA,
+        })
+
+    def test_restore_parity_dependency_mismatch_decodes_only_semantic_fields(self):
+        source = dependency_row(
+            "dependency",
+            ["constraint", "xy1300-secret"],
+            "i",
+            ["trigger"],
+            ["trigger", ["user_trigger", ["decodex", "runs", "r"], "stable"]],
+            True,
+        )
+        restored = [source[0], source[1], json.dumps([False])]
+
+        _, _, _, diagnostic = self.restore_parity_failure([source], [restored])
+        serialized = json.dumps(diagnostic, sort_keys=True)
+        change = diagnostic["changes"]["contract_mismatches"]
+        sample = change["samples"][0]
+
+        self.assertNotIn("xy1300-secret", serialized)
+        self.assertEqual(change["count"], 1)
+        self.assertFalse(change["truncated"])
+        self.assertEqual(set(sample), {
+            "after_resolved",
+            "before_resolved",
+            "dependency_type",
+            "reference_class",
+            "reference_key",
+            "source_identity",
+            "source_kind",
+        })
+        self.assertEqual(sample["source_kind"], "constraint")
+        self.assertEqual(sample["source_identity"], '["constraint","[REDACTED]"]')
+        self.assertEqual(sample["dependency_type"], "i")
+        self.assertEqual(sample["reference_class"], '["trigger"]')
+        self.assertEqual(
+            sample["reference_key"],
+            '["trigger",["user_trigger",["decodex","runs","r"],"stable"]]',
+        )
+        self.assertTrue(sample["before_resolved"])
+        self.assertFalse(sample["after_resolved"])
+        self.assertNotIn("contract", sample)
 
     def test_malformed_artifact_diagnostic_is_bounded_and_does_not_echo_bytes(self):
         artifact = b'{"secret":"xy1300-secret"}'

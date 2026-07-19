@@ -309,6 +309,7 @@ MANIFEST_DIAGNOSTIC_IDENTITY_LIMIT = 256
 MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT = 8
 MANIFEST_DIAGNOSTIC_SCHEMA = "decodex/postgres-manifest-component-diagnostic/1"
 MANIFEST_QUERY_ERROR_SCHEMA = "decodex/postgres-manifest-query-error/1"
+RESTORE_PARITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-restore-parity-diagnostic/1"
 MANIFEST_CLIENT_ERROR_MESSAGE = "manifest query failed without PostgreSQL database error"
 
 
@@ -1224,13 +1225,18 @@ def component_manifest(
 	return manifest
 
 
-def bounded_redacted_text(
-	value: str, secret_markers: tuple[str, ...], limit: int
-) -> tuple[str, bool]:
+def redacted_text(value: str, secret_markers: tuple[str, ...]) -> str:
 	redacted = value
 	for marker in secret_markers:
 		if marker:
 			redacted = redacted.replace(marker, "[REDACTED]")
+	return redacted
+
+
+def bounded_redacted_text(
+	value: str, secret_markers: tuple[str, ...], limit: int
+) -> tuple[str, bool]:
+	redacted = redacted_text(value, secret_markers)
 	truncated = len(redacted) > limit
 	return redacted[:limit], truncated
 
@@ -1556,6 +1562,183 @@ def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
 			if before_index[key][2] != after_index[key][2]
 		],
 	}
+
+
+def redacted_contract_sha256(
+	contract: object, secret_markers: tuple[str, ...]
+) -> str:
+	encoded = contract if isinstance(contract, str) else json.dumps(
+		contract, sort_keys=True, separators=(",", ":")
+	)
+	redacted = redacted_text(encoded, secret_markers)
+	return hashlib.sha256(redacted.encode("utf-8")).hexdigest()
+
+
+def semantic_manifest_summary(
+	manifest: str, secret_markers: tuple[str, ...]
+) -> dict[str, object]:
+	rows = json.loads(manifest)
+	if not isinstance(rows, list):
+		raise TestFailure("semantic manifest component is not a row array")
+	grouped_counts: Counter[str] = Counter()
+	for row in rows:
+		if (
+			not isinstance(row, list) or len(row) != 3
+			or not isinstance(row[0], str)
+		):
+			raise TestFailure("semantic manifest row is not a kind/identity/contract tuple")
+		grouped_counts[row[0]] += 1
+	return {
+		"grouped_kind_counts": [
+			{
+				"count": count,
+				"kind": bounded_evidence_value(kind, secret_markers),
+			}
+			for kind, count in sorted(grouped_counts.items())
+		],
+		"row_count": len(rows),
+		"sha256": hashlib.sha256(manifest.encode("utf-8")).hexdigest(),
+	}
+
+
+def semantic_row_sample(
+	row: object, secret_markers: tuple[str, ...]
+) -> dict[str, object]:
+	if not isinstance(row, list) or len(row) != 3 or not isinstance(row[0], str):
+		raise TestFailure("semantic manifest row is not a kind/identity/contract tuple")
+	dependency = decode_dependency_manifest_row(row)
+	if dependency is not None:
+		(
+			source_kind,
+			source_identity,
+			dependency_type,
+			reference_class,
+			reference_key,
+			resolved,
+		) = dependency
+		return {
+			"dependency_type": bounded_evidence_value(
+				dependency_type, secret_markers
+			),
+			"reference_class": bounded_evidence_value(
+				reference_class, secret_markers
+			),
+			"reference_key": bounded_evidence_value(
+				reference_key, secret_markers
+			),
+			"resolved": resolved,
+			"source_identity": bounded_evidence_value(
+				source_identity, secret_markers
+			),
+			"source_kind": bounded_evidence_value(source_kind, secret_markers),
+		}
+	return {
+		"identity": bounded_evidence_value(row[1], secret_markers),
+		"kind": bounded_evidence_value(row[0], secret_markers),
+	}
+
+
+def semantic_contract_mismatch_sample(
+	mismatch: object, secret_markers: tuple[str, ...]
+) -> dict[str, object]:
+	if not isinstance(mismatch, dict) or set(mismatch) != {
+		"kind", "identity", "before_contract", "after_contract"
+	}:
+		raise TestFailure("semantic manifest contract mismatch is malformed")
+	before = semantic_row_sample([
+		mismatch["kind"], mismatch["identity"], mismatch["before_contract"]
+	], secret_markers)
+	after = semantic_row_sample([
+		mismatch["kind"], mismatch["identity"], mismatch["after_contract"]
+	], secret_markers)
+	if "source_kind" in before:
+		return {
+			**{key: value for key, value in before.items() if key != "resolved"},
+			"after_resolved": after["resolved"],
+			"before_resolved": before["resolved"],
+		}
+	return {
+		"after_redacted_sha256": redacted_contract_sha256(
+			mismatch["after_contract"], secret_markers
+		),
+		"before_redacted_sha256": redacted_contract_sha256(
+			mismatch["before_contract"], secret_markers
+		),
+		"identity": before["identity"],
+		"kind": before["kind"],
+	}
+
+
+def restore_parity_diagnostic(
+	component: str,
+	source_manifest: str,
+	restored_manifest: str,
+	diff: dict[str, list[object]],
+	*,
+	secret_markers: tuple[str, ...],
+) -> str:
+	if component not in {"schema", "authority"}:
+		raise TestFailure("restore parity diagnostic component is invalid")
+	changes: dict[str, object] = {}
+	for category in ("before_only", "after_only", "contract_mismatches"):
+		projected = [
+			(
+				semantic_contract_mismatch_sample(row, secret_markers)
+				if category == "contract_mismatches"
+				else semantic_row_sample(row, secret_markers)
+			)
+			for row in diff[category]
+		]
+		projected.sort(
+			key=lambda sample: json.dumps(
+				sample, sort_keys=True, separators=(",", ":")
+			)
+		)
+		changes[category] = {
+			"count": len(projected),
+			"samples": projected[:MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT],
+			"truncated": len(projected) > MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT,
+		}
+	diagnostic = {
+		"changes": changes,
+		"component": component,
+		"restored": semantic_manifest_summary(restored_manifest, secret_markers),
+		"schema": RESTORE_PARITY_DIAGNOSTIC_SCHEMA,
+		"source": semantic_manifest_summary(source_manifest, secret_markers),
+	}
+	serialized = json.dumps(diagnostic, sort_keys=True, separators=(",", ":"))
+	if any(marker and marker in serialized for marker in secret_markers):
+		raise TestFailure("restore parity diagnostic redaction failed")
+	return serialized
+
+
+def require_restore_parity(
+	component: str,
+	source_manifest: str,
+	restored_manifest: str,
+	*,
+	secret_markers: tuple[str, ...],
+) -> dict[str, list[object]]:
+	diff = semantic_row_diff(source_manifest, restored_manifest)
+	if any(diff.values()):
+		try:
+			diagnostic = restore_parity_diagnostic(
+				component,
+				source_manifest,
+				restored_manifest,
+				diff,
+				secret_markers=secret_markers,
+			)
+		except Exception:
+			diagnostic = json.dumps({
+				"classification": "diagnostic_unavailable",
+				"schema": RESTORE_PARITY_DIAGNOSTIC_SCHEMA,
+			}, sort_keys=True, separators=(",", ":"))
+		raise TestFailure(
+			"authority candidate restore parity diagnostic: "
+			+ diagnostic
+		)
+	return diff
 
 
 def semantic_state_diff(before: list[object], after: list[object]) -> dict[str, list[object]]:
@@ -2930,9 +3113,12 @@ def run_authority_candidate_capture(
 			"source": source_evidence,
 			"restored": restored_evidence,
 		}
-		manifest_diffs[component] = semantic_row_diff(source_manifest, restored_manifest)
-		if any(manifest_diffs[component].values()):
-			raise TestFailure(f"authority candidate {component} manifest changed on restore")
+		manifest_diffs[component] = require_restore_parity(
+			component,
+			source_manifest,
+			restored_manifest,
+			secret_markers=secret_markers,
+		)
 		if source_evidence["duplicate_key_multiplicities"] or restored_evidence[
 			"duplicate_key_multiplicities"
 		]:
