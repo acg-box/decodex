@@ -253,7 +253,7 @@ BEGIN
 		'routing_snapshot_id',p_routing_snapshot_id,'account_id',p_account_id,
 		'account_revision',p_account_revision,'role_profile_revision',p_role_profile_revision,
 		'build_id',p_build_id,'repository_cwd',p_repository_cwd,'thread_title',p_thread_title,
-		'prepared_at_micros',(pg_catalog.extract(epoch FROM prepared)*1000000)::bigint);
+		'prepared_at_micros',(extract(epoch FROM prepared)*1000000)::bigint);
 	effect:=core||pg_catalog.jsonb_build_object('effect_digest_source',core::text,
 		'effect_digest',pg_catalog.encode(public.digest(
 			pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'));
@@ -307,7 +307,7 @@ BEGIN
 	core:=pg_catalog.jsonb_build_object('operation','mark_codex_experiment_creation_possible',
 		'experiment_id',p_experiment_id,'revision',2,'state','creation_possible',
 		'attempt_id',p_attempt_id,
-		'fenced_at_micros',(pg_catalog.extract(epoch FROM fenced)*1000000)::bigint);
+		'fenced_at_micros',(extract(epoch FROM fenced)*1000000)::bigint);
 	effect:=core||pg_catalog.jsonb_build_object('effect_digest_source',core::text,
 		'effect_digest',pg_catalog.encode(public.digest(
 			pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'));
@@ -367,7 +367,7 @@ BEGIN
 		'experiment_id',p_experiment_id,'revision',3,'state','thread_bound',
 		'attempt_id',p_attempt_id,'thread_id',p_thread_id,'response_id',p_response_id,
 		'marker',experiment_row.marker,
-		'bound_at_micros',(pg_catalog.extract(epoch FROM bound)*1000000)::bigint);
+		'bound_at_micros',(extract(epoch FROM bound)*1000000)::bigint);
 	effect:=core||pg_catalog.jsonb_build_object('effect_digest_source',core::text,
 		'effect_digest',pg_catalog.encode(public.digest(
 			pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'));
@@ -433,7 +433,7 @@ BEGIN
 		'experiment_id',p_experiment_id,'experiment_revision',3,
 		'observation_id',p_observation_id,'kind',p_kind,'thread_id',p_thread_id,
 		'marker',p_marker,'source_id',p_source_id,'fact_digest',p_fact_digest,
-		'observed_at_micros',(pg_catalog.extract(epoch FROM observed)*1000000)::bigint);
+		'observed_at_micros',(extract(epoch FROM observed)*1000000)::bigint);
 	effect:=core||pg_catalog.jsonb_build_object('effect_digest_source',core::text,
 		'effect_digest',pg_catalog.encode(public.digest(
 			pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'));

@@ -572,11 +572,11 @@ AS $$
 		transition.state::text,transition.claim_id::text,transition.lease_holder::text,
 		transition.lease_fence_id::text,
 		CASE WHEN transition.lease_acquired_at IS NULL THEN NULL ELSE
-			(pg_catalog.extract(epoch FROM transition.lease_acquired_at)*1000000)::bigint END,
+			(extract(epoch FROM transition.lease_acquired_at)*1000000)::bigint END,
 		CASE WHEN transition.lease_expires_at IS NULL THEN NULL ELSE
-			(pg_catalog.extract(epoch FROM transition.lease_expires_at)*1000000)::bigint END,
-		(pg_catalog.extract(epoch FROM transition.registered_at)*1000000)::bigint,
-		(pg_catalog.extract(epoch FROM transition.transitioned_at)*1000000)::bigint,
+			(extract(epoch FROM transition.lease_expires_at)*1000000)::bigint END,
+		(extract(epoch FROM transition.registered_at)*1000000)::bigint,
+		(extract(epoch FROM transition.transitioned_at)*1000000)::bigint,
 		transition.terminal_reason::text,transition.routing_resolution_request_id::text,
 		transition.fresh_routing_resolution_only,transition.prior_decision_reusable,
 		transition.production_enabled,transition.effect_envelope,transition.response_bytes
@@ -672,8 +672,8 @@ BEGIN
 		'earliest_ready_at_micros',decision_row.waiting_ready_at_micros,'state','pending',
 		'claim_id',NULL,'lease_holder',NULL,'lease_fence_id',NULL,
 		'lease_acquired_at_micros',NULL,'lease_expires_at_micros',NULL,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
-		'transitioned_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
+		'transitioned_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
 		'terminal_reason',NULL,'routing_resolution_request_id',NULL,
 		'fresh_routing_resolution_only',true,'prior_decision_reusable',false,
 		'production_enabled',false,
@@ -753,7 +753,7 @@ BEGIN
 			p_protocol,p_idempotency_key,'claim_due_waiting_usage_wake','claim_identity_conflict');
 	END IF;
 	now_value:=pg_catalog.clock_timestamp();
-	now_micros:=(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint;
+	now_micros:=(extract(epoch FROM now_value)*1000000)::bigint;
 	SELECT * INTO head FROM decodex.waiting_usage_wake_heads
 	WHERE earliest_ready_at_micros<=now_micros
 		AND (state='pending' OR (state='leased' AND lease_expires_at<=now_value))
@@ -812,7 +812,7 @@ BEGIN
 		'lease_fence_id',fence_uuid,
 		'lease_acquired_at_micros',CASE WHEN reason IS NULL THEN now_micros ELSE NULL END,
 		'lease_expires_at_micros',CASE WHEN reason IS NULL THEN now_micros+60000000 ELSE NULL END,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM head.registered_at)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM head.registered_at)*1000000)::bigint,
 		'transitioned_at_micros',now_micros,'terminal_reason',reason,
 		'routing_resolution_request_id',NULL,'fresh_routing_resolution_only',true,
 		'prior_decision_reusable',false,'production_enabled',false,'claimed',claimed_value,
@@ -963,8 +963,8 @@ BEGIN
 		'earliest_ready_at_micros',head.earliest_ready_at_micros,'state',state_value,
 		'claim_id',NULL,'lease_holder',NULL,'lease_fence_id',NULL,
 		'lease_acquired_at_micros',NULL,'lease_expires_at_micros',NULL,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM head.registered_at)*1000000)::bigint,
-		'transitioned_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM head.registered_at)*1000000)::bigint,
+		'transitioned_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
 		'terminal_reason',reason,'routing_resolution_request_id',request_uuid,
 		'fresh_routing_resolution_only',true,'prior_decision_reusable',false,
 		'production_enabled',false,
@@ -1073,8 +1073,8 @@ BEGIN
 		'earliest_ready_at_micros',head.earliest_ready_at_micros,'state','cancelled',
 		'claim_id',NULL,'lease_holder',NULL,'lease_fence_id',NULL,
 		'lease_acquired_at_micros',NULL,'lease_expires_at_micros',NULL,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM head.registered_at)*1000000)::bigint,
-		'transitioned_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM head.registered_at)*1000000)::bigint,
+		'transitioned_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
 		'terminal_reason','explicit_cancellation','routing_resolution_request_id',NULL,
 		'fresh_routing_resolution_only',true,'prior_decision_reusable',false,
 		'production_enabled',false,
