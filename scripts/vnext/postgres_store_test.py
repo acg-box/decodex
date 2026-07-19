@@ -310,6 +310,24 @@ MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT = 8
 MANIFEST_DIAGNOSTIC_SCHEMA = "decodex/postgres-manifest-component-diagnostic/1"
 MANIFEST_QUERY_ERROR_SCHEMA = "decodex/postgres-manifest-query-error/1"
 RESTORE_PARITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-restore-parity-diagnostic/1"
+CONSTRAINT_CONTRACT_FIELDS = (
+	"constraint_type",
+	"definition",
+	"deferrable",
+	"deferred",
+	"validated",
+	"enforced",
+	"update_action",
+	"delete_action",
+	"match_type",
+	"is_local",
+	"inheritance_count",
+	"no_inherit",
+	"source_columns",
+	"referenced_columns",
+	"referenced_namespace",
+	"referenced_relation",
+)
 MANIFEST_CLIENT_ERROR_MESSAGE = "manifest query failed without PostgreSQL database error"
 
 
@@ -1574,6 +1592,55 @@ def redacted_contract_sha256(
 	return hashlib.sha256(redacted.encode("utf-8")).hexdigest()
 
 
+def constraint_contract_changes(
+	mismatch: dict[str, object],
+) -> list[tuple[str, object, object]]:
+	contracts: list[list[object]] = []
+	for name in ("before_contract", "after_contract"):
+		encoded = mismatch[name]
+		if not isinstance(encoded, str):
+			raise TestFailure("constraint contract is not encoded JSON")
+		contract = json.loads(encoded)
+		if not isinstance(contract, list) or len(contract) != len(CONSTRAINT_CONTRACT_FIELDS):
+			raise TestFailure("constraint contract does not have the expected field shape")
+		if not isinstance(contract[1], str):
+			raise TestFailure("constraint definition is not text")
+		contracts.append(contract)
+	before, after = contracts
+	changes = [
+		(field, before_value, after_value)
+		for field, before_value, after_value in zip(
+			CONSTRAINT_CONTRACT_FIELDS, before, after, strict=True
+		)
+		if before_value != after_value
+	]
+	if not changes:
+		raise TestFailure("constraint contract mismatch has no changed fields")
+	return changes
+
+
+def constraint_definition_change(
+	before: object, after: object, secret_markers: tuple[str, ...]
+) -> dict[str, object]:
+	if not isinstance(before, str) or not isinstance(after, str):
+		raise TestFailure("constraint definition is not text")
+	before_bytes = redacted_text(before, secret_markers).encode("utf-8")
+	after_bytes = redacted_text(after, secret_markers).encode("utf-8")
+	common_prefix = 0
+	for before_byte, after_byte in zip(before_bytes, after_bytes):
+		if before_byte != after_byte:
+			break
+		common_prefix += 1
+	return {
+		"after_sha256": hashlib.sha256(after_bytes).hexdigest(),
+		"after_utf8_byte_length": len(after_bytes),
+		"before_sha256": hashlib.sha256(before_bytes).hexdigest(),
+		"before_utf8_byte_length": len(before_bytes),
+		"common_prefix_utf8_byte_length": common_prefix,
+		"field": "definition",
+	}
+
+
 def semantic_manifest_summary(
 	manifest: str, secret_markers: tuple[str, ...]
 ) -> dict[str, object]:
@@ -1657,6 +1724,24 @@ def semantic_contract_mismatch_sample(
 			"after_resolved": after["resolved"],
 			"before_resolved": before["resolved"],
 		}
+	if mismatch["kind"] == "constraint":
+		changed_fields = []
+		for field, before_value, after_value in constraint_contract_changes(mismatch):
+			if field == "definition":
+				changed_fields.append(constraint_definition_change(
+					before_value, after_value, secret_markers
+				))
+			else:
+				changed_fields.append({
+					"after": bounded_evidence_value(after_value, secret_markers),
+					"before": bounded_evidence_value(before_value, secret_markers),
+					"field": field,
+				})
+		return {
+			"changed_fields": changed_fields,
+			"identity": before["identity"],
+			"kind": before["kind"],
+		}
 	return {
 		"after_redacted_sha256": redacted_contract_sha256(
 			mismatch["after_contract"], secret_markers
@@ -1681,6 +1766,13 @@ def restore_parity_diagnostic(
 		raise TestFailure("restore parity diagnostic component is invalid")
 	changes: dict[str, object] = {}
 	for category in ("before_only", "after_only", "contract_mismatches"):
+		field_counts: Counter[str] = Counter()
+		if category == "contract_mismatches":
+			for mismatch in diff[category]:
+				if isinstance(mismatch, dict) and mismatch.get("kind") == "constraint":
+					field_counts.update(
+						field for field, _, _ in constraint_contract_changes(mismatch)
+					)
 		projected = [
 			(
 				semantic_contract_mismatch_sample(row, secret_markers)
@@ -1694,11 +1786,18 @@ def restore_parity_diagnostic(
 				sample, sort_keys=True, separators=(",", ":")
 			)
 		)
-		changes[category] = {
+		category_changes: dict[str, object] = {
 			"count": len(projected),
 			"samples": projected[:MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT],
 			"truncated": len(projected) > MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT,
 		}
+		if field_counts:
+			category_changes["constraint_field_change_counts"] = [
+				{"count": field_counts[field], "field": field}
+				for field in CONSTRAINT_CONTRACT_FIELDS
+				if field in field_counts
+			]
+		changes[category] = category_changes
 	diagnostic = {
 		"changes": changes,
 		"component": component,
