@@ -11,7 +11,7 @@ ALTER TABLE decodex.routing_snapshot_members ADD CONSTRAINT routing_snapshot_mem
 CREATE TABLE decodex.routing_decisions (
 	decision_id uuid PRIMARY KEY DEFAULT pg_catalog.gen_random_uuid(),
 	operation_id uuid NOT NULL UNIQUE,
-	snapshot_id uuid NOT NULL REFERENCES decodex.routing_snapshots(snapshot_id),
+	snapshot_id uuid NOT NULL,
 	routing_policy_id uuid NOT NULL,
 	routing_policy_revision bigint NOT NULL CHECK (routing_policy_revision > 0),
 	managed_run_id uuid NOT NULL,
@@ -22,8 +22,14 @@ CREATE TABLE decodex.routing_decisions (
 	no_route_reason decodex.routing_no_route_reason,
 	decided_at timestamptz NOT NULL,
 	CONSTRAINT routing_decisions_snapshot_identity UNIQUE (decision_id, snapshot_id),
-	CONSTRAINT routing_decisions_run_fk FOREIGN KEY (managed_run_id, managed_run_revision)
-		REFERENCES decodex.managed_runs(managed_run_id, revision),
+	CONSTRAINT routing_decisions_run_revision_authority UNIQUE (
+		decision_id, managed_run_id, managed_run_revision
+	),
+	CONSTRAINT routing_decisions_snapshot_run_revision_fk FOREIGN KEY (
+		snapshot_id, managed_run_id, managed_run_revision
+	) REFERENCES decodex.routing_snapshots(
+		snapshot_id, managed_run_id, managed_run_revision
+	),
 	CONSTRAINT routing_decisions_shape CHECK (
 		(kind = 'selected' AND selected_account_id IS NOT NULL
 			AND waiting_ready_at_micros IS NULL AND no_route_reason IS NULL)

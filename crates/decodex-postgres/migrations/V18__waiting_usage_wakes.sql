@@ -14,9 +14,6 @@ CREATE TYPE decodex.waiting_usage_wake_terminal_reason AS ENUM (
 	'ambiguous_decision_lineage'
 );
 
-ALTER TABLE decodex.routing_decisions ADD CONSTRAINT routing_decisions_wake_lineage_unique
-	UNIQUE (decision_id, managed_run_id, managed_run_revision);
-
 CREATE TABLE decodex.waiting_usage_wake_transitions (
 	transition_id uuid PRIMARY KEY,
 	wake_id uuid NOT NULL,
