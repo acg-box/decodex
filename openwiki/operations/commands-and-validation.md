@@ -139,20 +139,25 @@ their recorded binding. For one or two mismatches, any unreported array change o
 delta invalidates the candidate.
 
 The normal aggregate uses one explicit stage report. Configuration and cluster preflight are fatal:
-mode/argument validation, clean source binding, private output and temporary-root validation,
-PostgreSQL tool discovery, temporary cluster initialization/start, and base-role creation must all
-pass before semantic work is scheduled. Meaningful suites then report `passed`, `failed`, or
-`blocked`. Ordinary `TestFailure` leaves independent branches schedulable but blocks every declared
-consumer of the failed prerequisite. RoleProfile, RuntimeSession, migration-boundary, blob-restart,
-primary-store, managed-repository, account-composition, bootstrap/doctor, collation, authority
-safety, hostile-search-path, primary restore, redaction, default-ACL restore, authority-drift, and
-final-evidence work are all represented. Each authority-drift mutation probe and its restoration
-are separate stages: restoration is attempted after a failed probe, and the next shared-fixture
-probe depends on that restoration. Assertion/type/key failures, invalid stage/report state,
-source-binding failures, redaction failures, and other unexpected exceptions are harness
+mode/argument validation, clean source binding, temporary-root validation, PostgreSQL tool
+discovery, temporary cluster initialization/start, and base-role creation must all pass before
+semantic work is scheduled. Phase A/B instead validate their private output and receipt/source
+lineage directly, outside the aggregate scheduler. Meaningful aggregate suites then report `passed`,
+`failed`, or `blocked`. Ordinary `TestFailure` leaves independent branches schedulable but blocks
+every declared consumer of the failed prerequisite. RoleProfile, RuntimeSession, migration-boundary,
+blob-restart, primary-store, managed-repository, account-composition, bootstrap/doctor, collation,
+authority safety, hostile-search-path, primary restore, redaction, default-ACL restore,
+authority-drift, and final-evidence work are all represented. A restore-owning suite cannot pass
+when one of its required nested captures, restores, parity checks, or production checks failed or
+became unavailable, so its consumers are blocked truthfully. Each live-doctor mutation probe owns
+and reaps its child process across every mutation/probe/synchronization exit. The probe and fixture
+restoration are separate stages: restoration is attempted after a failed probe, and the next
+shared-fixture probe depends on that restoration. Assertion/type/key failures, invalid stage/report
+state, source-binding failures, redaction failures, and other unexpected exceptions are harness
 corruption and stop new scheduling. Once PostgreSQL has started, teardown and final stage-report
-emission still run; their failures are recorded without replacing the first failure. Focused and
-Phase A/B capture modes remain separate from this normal aggregate.
+emission still run; their failures are recorded without replacing the first failure. The
+`decodex/postgres-aggregate-stage-report/1` document is emitted only by the normal aggregate;
+focused and Phase A/B capture modes preserve their direct output/receipt behavior and never emit it.
 
 An unavailable or incomplete raw schema/authority component publishes no receipt. Before its private
 cluster is removed, the capture emits a versioned, bounded diagnostic to the operator-owned combined
