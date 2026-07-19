@@ -2,6 +2,7 @@
 
 use deadpool_postgres::Client;
 use sha2::{Digest as _, Sha256};
+use tokio_postgres::Client as TokioClient;
 
 use crate::StoreError;
 
@@ -3899,13 +3900,10 @@ impl SemanticAuthorityEvidence {
 
 #[cfg(feature = "test-support")]
 pub(crate) async fn semantic_authority_fixture(
-	client: &Client,
-	migration_role: &str,
+	client: &TokioClient,
 	runtime_role: &str,
 ) -> Result<Vec<(&'static str, bool)>, StoreError> {
-	Ok(semantic_authority_evidence(client, migration_role, runtime_role)
-		.await?
-		.predicates)
+	Ok(semantic_authority_evidence(client, runtime_role).await?.predicates)
 }
 
 pub(crate) async fn verify_runtime(
@@ -3913,7 +3911,7 @@ pub(crate) async fn verify_runtime(
 	migration_role: &str,
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
-	verify_semantic_authority(client, migration_role, runtime_role).await?;
+	verify_semantic_authority(&**client, runtime_role).await?;
 	verify_manifest_contracts(client, migration_role, runtime_role).await
 }
 
@@ -4155,7 +4153,7 @@ fn function_is_security_definer(function_name: &str) -> bool {
 }
 
 async fn inspect_function_contract(
-	client: &Client,
+	client: &TokioClient,
 	evidence: &mut SemanticAuthorityEvidence,
 ) -> Result<(), StoreError> {
 	let actual_count: i64 = client
@@ -4240,7 +4238,7 @@ async fn inspect_function_contract(
 }
 
 async fn inspect_retention_contract(
-	client: &Client,
+	client: &TokioClient,
 	evidence: &mut SemanticAuthorityEvidence,
 ) -> Result<(), StoreError> {
 	let rows = client.query(TRIGGER_CONTRACT_SQL, &[]).await?;
@@ -4267,8 +4265,7 @@ async fn inspect_retention_contract(
 }
 
 async fn semantic_authority_evidence(
-	client: &Client,
-	_migration_role: &str,
+	client: &TokioClient,
 	runtime_role: &str,
 ) -> Result<SemanticAuthorityEvidence, StoreError> {
 	let mut evidence = SemanticAuthorityEvidence::new();
@@ -4352,11 +4349,10 @@ async fn semantic_authority_evidence(
 }
 
 async fn verify_semantic_authority(
-	client: &Client,
-	migration_role: &str,
+	client: &TokioClient,
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
-	let evidence = semantic_authority_evidence(client, migration_role, runtime_role).await?;
+	let evidence = semantic_authority_evidence(client, runtime_role).await?;
 	if evidence.unsafe_failure {
 		return Err(StoreError::UnsafeAuthority(
 			"PostgreSQL semantic runtime authority differs from the shipped contract",
