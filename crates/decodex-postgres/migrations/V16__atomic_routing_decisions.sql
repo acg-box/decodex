@@ -213,10 +213,10 @@ BEGIN
 					AND (quota.remaining_percent IS NULL OR quota.remaining_percent=0
 						OR quota.confidence<>'high' OR quota.source_id IS NULL
 						OR quota.observed_at_micros IS NULL OR quota.resets_at_micros IS NULL
-						OR quota.observed_at_micros>(pg_catalog.extract(epoch FROM decision_row.decided_at)*1000000)::bigint
-						OR (pg_catalog.extract(epoch FROM decision_row.decided_at)*1000000)::bigint
+						OR quota.observed_at_micros>(extract(epoch FROM decision_row.decided_at)*1000000)::bigint
+						OR (extract(epoch FROM decision_row.decided_at)*1000000)::bigint
 							-quota.observed_at_micros>300000000
-						OR quota.resets_at_micros<=(pg_catalog.extract(epoch FROM decision_row.decided_at)*1000000)::bigint)
+						OR quota.resets_at_micros<=(extract(epoch FROM decision_row.decided_at)*1000000)::bigint)
 			)
 	)) THEN
 		RAISE EXCEPTION 'V16 routing decision lineage is incomplete'
@@ -382,10 +382,10 @@ BEGIN
 				AND (quota.remaining_percent IS NULL OR quota.confidence<>'high'
 					OR quota.source_id IS NULL OR quota.observed_at_micros IS NULL
 					OR quota.resets_at_micros IS NULL
-					OR quota.observed_at_micros>(pg_catalog.extract(epoch FROM decision_row.decided_at)*1000000)::bigint
-					OR (pg_catalog.extract(epoch FROM decision_row.decided_at)*1000000)::bigint
+					OR quota.observed_at_micros>(extract(epoch FROM decision_row.decided_at)*1000000)::bigint
+					OR (extract(epoch FROM decision_row.decided_at)*1000000)::bigint
 						-quota.observed_at_micros>300000000
-					OR quota.resets_at_micros<=(pg_catalog.extract(epoch FROM decision_row.decided_at)*1000000)::bigint)
+					OR quota.resets_at_micros<=(extract(epoch FROM decision_row.decided_at)*1000000)::bigint)
 		) OR decision_row.waiting_ready_at_micros IS DISTINCT FROM (
 			SELECT pg_catalog.min(account_ready) FROM (
 				SELECT pg_catalog.max(resets_at_micros) AS account_ready
@@ -497,7 +497,7 @@ BEGIN
 			p_protocol,p_idempotency_key,'route_account','concurrent_authority_change');
 	END IF;
 	decided:=pg_catalog.clock_timestamp();
-	decided_micros:=(pg_catalog.extract(epoch FROM decided)*1000000)::bigint;
+	decided_micros:=(extract(epoch FROM decided)*1000000)::bigint;
 
 	-- A decision may consume only a snapshot still equal to every mutable source fact.
 	IF EXISTS (
@@ -552,9 +552,9 @@ BEGIN
 			OR fact.observation_revision IS DISTINCT FROM quota.revision
 			OR fact.remaining_percent IS DISTINCT FROM quota.remaining_percent
 			OR fact.observed_at_micros IS DISTINCT FROM
-				(pg_catalog.extract(epoch FROM quota.observed_at)*1000000)::bigint
+				(extract(epoch FROM quota.observed_at)*1000000)::bigint
 			OR fact.resets_at_micros IS DISTINCT FROM
-				(pg_catalog.extract(epoch FROM quota.resets_at)*1000000)::bigint
+				(extract(epoch FROM quota.resets_at)*1000000)::bigint
 			OR fact.confidence IS DISTINCT FROM quota.confidence)
 	) THEN RETURN decodex.complete_exact_routing_rejection(
 		p_protocol,p_idempotency_key,'route_account','concurrent_authority_change'); END IF;

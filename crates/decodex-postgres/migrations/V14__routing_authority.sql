@@ -815,7 +815,7 @@ BEGIN
 		'process_account_id',p_process_account_id,
 		'capabilities',p_capabilities,'states',p_states,
 		'ingested_at_micros',(SELECT
-			(pg_catalog.extract(epoch FROM ingested_at)*1000000)::bigint
+			(extract(epoch FROM ingested_at)*1000000)::bigint
 			FROM decodex.routing_compatibility_evidence WHERE evidence_id=p_evidence_id));
 	effect := core || pg_catalog.jsonb_build_object('effect_digest_source',core::text,
 		'effect_digest',pg_catalog.encode(
@@ -1046,9 +1046,9 @@ BEGIN
 		SELECT new_snapshot_id,member.account_id,definition.position,definition.window_class,
 			definition.duration_minutes,quota.revision,quota.remaining_percent,
 			CASE WHEN quota.resets_at IS NULL THEN NULL ELSE
-				(pg_catalog.extract(epoch FROM quota.resets_at)*1000000)::bigint END,
+				(extract(epoch FROM quota.resets_at)*1000000)::bigint END,
 			CASE WHEN quota.observed_at IS NULL THEN NULL ELSE
-				(pg_catalog.extract(epoch FROM quota.observed_at)*1000000)::bigint END,quota.confidence
+				(extract(epoch FROM quota.observed_at)*1000000)::bigint END,quota.confidence
 		FROM (VALUES (1::smallint,'five_hour'::decodex.quota_window_class,300::smallint),
 			(2::smallint,'seven_day'::decodex.quota_window_class,10080::smallint))
 			AS definition(position,window_class,duration_minutes)
@@ -1088,7 +1088,7 @@ BEGIN
 		'account_snapshot_source_revision',session_row.account_source_revision,
 		'profile_snapshot_id',session_row.profile_snapshot_id,
 		'profile_snapshot_source_revision',session_row.profile_source_revision,
-		'resolved_at_micros',(pg_catalog.extract(epoch FROM resolved)*1000000)::bigint,
+		'resolved_at_micros',(extract(epoch FROM resolved)*1000000)::bigint,
 		'members',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(member_row) ORDER BY position)
 			FROM decodex.routing_snapshot_members AS member_row WHERE snapshot_id=new_snapshot_id),
 		'quota_facts',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(quota_row) ORDER BY snapshot_member.position,quota_row.position)

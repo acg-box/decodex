@@ -17,11 +17,11 @@ DECLARE payload jsonb;
 BEGIN
 	IF p_authority_now IS NOT NULL THEN
 		IF NOT pg_catalog.isfinite(p_authority_now)
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000 < 0
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
+			OR extract(epoch FROM p_authority_now)*1000000 < 0
+			OR extract(epoch FROM p_authority_now)*1000000
 				> 253402300739999999
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
-				<> pg_catalog.trunc(pg_catalog.extract(epoch FROM p_authority_now)*1000000)
+			OR extract(epoch FROM p_authority_now)*1000000
+				<> pg_catalog.trunc(extract(epoch FROM p_authority_now)*1000000)
 		THEN
 			RAISE EXCEPTION 'explicit waiting-usage wake authority time is outside the canonical range'
 				USING ERRCODE='22023', CONSTRAINT='waiting_usage_wake_authority_time';
@@ -111,8 +111,8 @@ BEGIN
 		'earliest_ready_at_micros',decision_row.waiting_ready_at_micros,'state','pending',
 		'claim_id',NULL,'lease_holder',NULL,'lease_fence_id',NULL,
 		'lease_acquired_at_micros',NULL,'lease_expires_at_micros',NULL,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
-		'transitioned_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
+		'transitioned_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
 		'terminal_reason',NULL,'routing_resolution_request_id',NULL,
 		'fresh_routing_resolution_only',true,'prior_decision_reusable',false,
 		'production_enabled',false,
@@ -176,11 +176,11 @@ DECLARE payload jsonb; event_kind text; claimed_value boolean;
 BEGIN
 	IF p_authority_now IS NOT NULL THEN
 		IF NOT pg_catalog.isfinite(p_authority_now)
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000 < 0
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
+			OR extract(epoch FROM p_authority_now)*1000000 < 0
+			OR extract(epoch FROM p_authority_now)*1000000
 				> 253402300739999999
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
-				<> pg_catalog.trunc(pg_catalog.extract(epoch FROM p_authority_now)*1000000)
+			OR extract(epoch FROM p_authority_now)*1000000
+				<> pg_catalog.trunc(extract(epoch FROM p_authority_now)*1000000)
 		THEN
 			RAISE EXCEPTION 'explicit waiting-usage wake authority time is outside the canonical range'
 				USING ERRCODE='22023', CONSTRAINT='waiting_usage_wake_authority_time';
@@ -207,7 +207,7 @@ BEGIN
 	END IF;
 	now_value:=CASE WHEN p_authority_now IS NULL THEN pg_catalog.clock_timestamp()
 		ELSE p_authority_now END;
-	now_micros:=(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint;
+	now_micros:=(extract(epoch FROM now_value)*1000000)::bigint;
 	SELECT * INTO head FROM decodex.waiting_usage_wake_heads
 	WHERE earliest_ready_at_micros<=now_micros
 		AND (state='pending' OR (state='leased' AND lease_expires_at<=now_value))
@@ -270,7 +270,7 @@ BEGIN
 		'lease_fence_id',fence_uuid,
 		'lease_acquired_at_micros',CASE WHEN reason IS NULL THEN now_micros ELSE NULL END,
 		'lease_expires_at_micros',CASE WHEN reason IS NULL THEN now_micros+60000000 ELSE NULL END,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM head.registered_at)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM head.registered_at)*1000000)::bigint,
 		'transitioned_at_micros',now_micros,'terminal_reason',reason,
 		'routing_resolution_request_id',NULL,'fresh_routing_resolution_only',true,
 		'prior_decision_reusable',false,'production_enabled',false,'claimed',claimed_value,
@@ -344,11 +344,11 @@ DECLARE payload jsonb; state_value text; event_kind text; run_uuid uuid;
 BEGIN
 	IF p_authority_now IS NOT NULL THEN
 		IF NOT pg_catalog.isfinite(p_authority_now)
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000 < 0
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
+			OR extract(epoch FROM p_authority_now)*1000000 < 0
+			OR extract(epoch FROM p_authority_now)*1000000
 				> 253402300739999999
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
-				<> pg_catalog.trunc(pg_catalog.extract(epoch FROM p_authority_now)*1000000)
+			OR extract(epoch FROM p_authority_now)*1000000
+				<> pg_catalog.trunc(extract(epoch FROM p_authority_now)*1000000)
 		THEN
 			RAISE EXCEPTION 'explicit waiting-usage wake authority time is outside the canonical range'
 				USING ERRCODE='22023', CONSTRAINT='waiting_usage_wake_authority_time';
@@ -440,8 +440,8 @@ BEGIN
 		'earliest_ready_at_micros',head.earliest_ready_at_micros,'state',state_value,
 		'claim_id',NULL,'lease_holder',NULL,'lease_fence_id',NULL,
 		'lease_acquired_at_micros',NULL,'lease_expires_at_micros',NULL,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM head.registered_at)*1000000)::bigint,
-		'transitioned_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM head.registered_at)*1000000)::bigint,
+		'transitioned_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
 		'terminal_reason',reason,'routing_resolution_request_id',request_uuid,
 		'fresh_routing_resolution_only',true,'prior_decision_reusable',false,
 		'production_enabled',false,
@@ -507,11 +507,11 @@ DECLARE core jsonb; effect jsonb; response bytea; payload jsonb;
 BEGIN
 	IF p_authority_now IS NOT NULL THEN
 		IF NOT pg_catalog.isfinite(p_authority_now)
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000 < 0
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
+			OR extract(epoch FROM p_authority_now)*1000000 < 0
+			OR extract(epoch FROM p_authority_now)*1000000
 				> 253402300739999999
-			OR pg_catalog.extract(epoch FROM p_authority_now)*1000000
-				<> pg_catalog.trunc(pg_catalog.extract(epoch FROM p_authority_now)*1000000)
+			OR extract(epoch FROM p_authority_now)*1000000
+				<> pg_catalog.trunc(extract(epoch FROM p_authority_now)*1000000)
 		THEN
 			RAISE EXCEPTION 'explicit waiting-usage wake authority time is outside the canonical range'
 				USING ERRCODE='22023', CONSTRAINT='waiting_usage_wake_authority_time';
@@ -570,8 +570,8 @@ BEGIN
 		'earliest_ready_at_micros',head.earliest_ready_at_micros,'state','cancelled',
 		'claim_id',NULL,'lease_holder',NULL,'lease_fence_id',NULL,
 		'lease_acquired_at_micros',NULL,'lease_expires_at_micros',NULL,
-		'registered_at_micros',(pg_catalog.extract(epoch FROM head.registered_at)*1000000)::bigint,
-		'transitioned_at_micros',(pg_catalog.extract(epoch FROM now_value)*1000000)::bigint,
+		'registered_at_micros',(extract(epoch FROM head.registered_at)*1000000)::bigint,
+		'transitioned_at_micros',(extract(epoch FROM now_value)*1000000)::bigint,
 		'terminal_reason','explicit_cancellation','routing_resolution_request_id',NULL,
 		'fresh_routing_resolution_only',true,'prior_decision_reusable',false,
 		'production_enabled',false,

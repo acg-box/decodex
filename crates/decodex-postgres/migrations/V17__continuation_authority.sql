@@ -708,7 +708,7 @@ BEGIN
 		'effect_barrier_state',barrier_row.state,'effect_barrier_revision',barrier_row.revision,
 		'submitted_turn_receipt_count',submitted_count,'replay_permitted',false,
 		'dispatch_enabled',false,'planned_at_micros',
-		(pg_catalog.extract(epoch FROM planned)*1000000)::bigint);
+		(extract(epoch FROM planned)*1000000)::bigint);
 	payload:=core||pg_catalog.jsonb_build_object('continuation_plan_id',p_plan_id);
 	INSERT INTO decodex.activity(aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload)
 	VALUES('continuation_plan',p_plan_id::text,1,'continuation_plan_created',p_idempotency_key,payload)
