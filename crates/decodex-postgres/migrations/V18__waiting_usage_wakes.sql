@@ -432,31 +432,51 @@ DECLARE owner_name name; linked boolean;
 BEGIN
 	SELECT role.rolname INTO owner_name FROM pg_catalog.pg_class AS class
 	JOIN pg_catalog.pg_roles AS role ON role.oid=class.relowner WHERE class.oid=TG_RELID;
-	linked:=NEW.aggregate_kind IN ('waiting_usage_wake','routing_resolution_request')
-		OR (TG_TABLE_NAME='activity' AND NEW.event_kind LIKE 'waiting_usage_wake_%')
-		OR pg_catalog.jsonb_path_exists(NEW.payload,'$.** ? (
-			exists(@.waiting_usage_wake_id) || exists(@.waiting_usage_wake_transition_id)
-			|| exists(@.routing_resolution_request_id))');
-	IF TG_OP='UPDATE' THEN
-		linked:=linked OR OLD.aggregate_kind IN ('waiting_usage_wake','routing_resolution_request')
-			OR (TG_TABLE_NAME='activity' AND OLD.event_kind LIKE 'waiting_usage_wake_%')
-			OR pg_catalog.jsonb_path_exists(OLD.payload,'$.** ? (
+	IF TG_TABLE_NAME='activity' THEN
+		linked:=NEW.aggregate_kind IN ('waiting_usage_wake','routing_resolution_request')
+			OR NEW.event_kind LIKE 'waiting_usage_wake_%'
+			OR pg_catalog.jsonb_path_exists(NEW.payload,'$.** ? (
 				exists(@.waiting_usage_wake_id) || exists(@.waiting_usage_wake_transition_id)
 				|| exists(@.routing_resolution_request_id))');
-	END IF;
-	IF linked AND current_user::name<>owner_name THEN
-		IF TG_TABLE_NAME='activity' OR TG_OP='INSERT' THEN
+		IF TG_OP='UPDATE' THEN
+			linked:=linked OR OLD.aggregate_kind IN ('waiting_usage_wake','routing_resolution_request')
+				OR OLD.event_kind LIKE 'waiting_usage_wake_%'
+				OR pg_catalog.jsonb_path_exists(OLD.payload,'$.** ? (
+					exists(@.waiting_usage_wake_id) || exists(@.waiting_usage_wake_transition_id)
+					|| exists(@.routing_resolution_request_id))');
+		END IF;
+		IF linked AND current_user::name<>owner_name THEN
 			RAISE EXCEPTION 'waiting-usage wake activity/outbox namespace is command-owned'
 				USING ERRCODE='42501', CONSTRAINT='waiting_usage_wake_event_namespace';
-		ELSIF NEW.id IS DISTINCT FROM OLD.id OR NEW.effect_key IS DISTINCT FROM OLD.effect_key
+		END IF;
+	ELSIF TG_TABLE_NAME='outbox' THEN
+		linked:=NEW.aggregate_kind IN ('waiting_usage_wake','routing_resolution_request')
+			OR pg_catalog.jsonb_path_exists(NEW.payload,'$.** ? (
+				exists(@.waiting_usage_wake_id) || exists(@.waiting_usage_wake_transition_id)
+				|| exists(@.routing_resolution_request_id))');
+		IF TG_OP='UPDATE' THEN
+			linked:=linked OR OLD.aggregate_kind IN ('waiting_usage_wake','routing_resolution_request')
+				OR pg_catalog.jsonb_path_exists(OLD.payload,'$.** ? (
+					exists(@.waiting_usage_wake_id) || exists(@.waiting_usage_wake_transition_id)
+					|| exists(@.routing_resolution_request_id))');
+		END IF;
+		IF linked AND current_user::name<>owner_name THEN
+			IF TG_OP='INSERT' THEN
+				RAISE EXCEPTION 'waiting-usage wake activity/outbox namespace is command-owned'
+					USING ERRCODE='42501', CONSTRAINT='waiting_usage_wake_event_namespace';
+			ELSIF NEW.id IS DISTINCT FROM OLD.id OR NEW.effect_key IS DISTINCT FROM OLD.effect_key
 			OR NEW.aggregate_kind IS DISTINCT FROM OLD.aggregate_kind
 			OR NEW.aggregate_id IS DISTINCT FROM OLD.aggregate_id
 			OR NEW.aggregate_revision IS DISTINCT FROM OLD.aggregate_revision
 			OR NEW.payload IS DISTINCT FROM OLD.payload OR NEW.created_at IS DISTINCT FROM OLD.created_at
-		THEN
-			RAISE EXCEPTION 'waiting-usage wake outbox authority fields are command-owned'
-				USING ERRCODE='42501', CONSTRAINT='waiting_usage_wake_event_namespace';
+			THEN
+				RAISE EXCEPTION 'waiting-usage wake outbox authority fields are command-owned'
+					USING ERRCODE='42501', CONSTRAINT='waiting_usage_wake_event_namespace';
+			END IF;
 		END IF;
+	ELSE
+		RAISE EXCEPTION 'waiting-usage wake event namespace has unexpected trigger relation'
+			USING ERRCODE='42501', CONSTRAINT='waiting_usage_wake_event_namespace';
 	END IF;
 	RETURN NEW;
 END

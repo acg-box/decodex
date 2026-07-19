@@ -4753,6 +4753,33 @@ mod tests {
 	}
 
 	#[test]
+	fn event_namespace_safety_functions_branch_before_relation_specific_fields() {
+		for function_name in [
+			"enforce_continuation_event_namespace",
+			"enforce_waiting_usage_wake_event_namespace",
+		] {
+			let source = super::canonical_safety_function_source(function_name)
+				.unwrap_or_else(|| panic!("event namespace body is unresolved: {function_name}"));
+			let activity = source
+				.find("IF TG_TABLE_NAME='activity' THEN")
+				.expect("activity relation branch is explicit");
+			let outbox = source
+				.find("ELSIF TG_TABLE_NAME='outbox' THEN")
+				.expect("outbox relation branch is explicit");
+			let unexpected = source
+				.find("\tELSE\n\t\tRAISE EXCEPTION")
+				.expect("unexpected relation branch fails closed");
+
+			assert!(activity < outbox && outbox < unexpected, "{function_name}");
+			assert!(source[unexpected..].contains("unexpected trigger relation"));
+			assert!(source[activity..outbox].contains("NEW.event_kind"), "{function_name}");
+			assert!(source[activity..outbox].contains("OLD.event_kind"), "{function_name}");
+			assert!(!source[outbox..unexpected].contains("event_kind"), "{function_name}");
+			assert!(!source.contains("TG_TABLE_NAME='activity' AND"), "{function_name}");
+		}
+	}
+
+	#[test]
 	fn canonical_lookup_uses_newest_replacement_body() {
 		for function_name in [
 			"register_waiting_usage_wake_exact",
