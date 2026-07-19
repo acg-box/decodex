@@ -29,6 +29,25 @@ const WAITING_USAGE_WAKE_MIGRATION: &str =
 	include_str!("../migrations/V18__waiting_usage_wakes.sql");
 const WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION: &str =
 	include_str!("../migrations/V19__waiting_usage_wake_time_authority.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 17] = [
+	FOUNDATION_MIGRATION,
+	CONVERSATION_MIGRATION,
+	PROJECT_AGENT_MIGRATION,
+	POLICY_MIGRATION,
+	PROGRAM_OBJECTIVE_MIGRATION,
+	QUOTA_MIGRATION,
+	ROLE_PROFILE_MIGRATION,
+	RUNTIME_SESSION_MIGRATION,
+	WORK_ITEM_MIGRATION,
+	MANAGED_RUN_MIGRATION,
+	MANAGED_REPOSITORY_MIGRATION,
+	ROUTING_MIGRATION,
+	CODEX_EXPERIMENT_MIGRATION,
+	ROUTING_DECISION_MIGRATION,
+	CONTINUATION_MIGRATION,
+	WAITING_USAGE_WAKE_MIGRATION,
+	WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION,
+];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
 static FUNCTION_CONTRACTS: [FunctionContract; 156] = [
@@ -3891,43 +3910,41 @@ fn canonical_safety_function_source(function_name: &str) -> Option<&'static str>
 }
 
 fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str> {
+	CANONICAL_FUNCTION_MIGRATIONS
+		.into_iter()
+		.rev()
+		.find_map(|migration| canonical_function_source_in_migration(migration, contract))
+}
+
+fn canonical_function_source_in_migration<'a>(
+	migration: &'a str,
+	contract: &FunctionContract,
+) -> Option<&'a str> {
 	let declarations = [
 		format!("CREATE FUNCTION decodex.{}", contract.migration_signature),
 		format!("CREATE OR REPLACE FUNCTION decodex.{}", contract.migration_signature),
 	];
-	[
-		FOUNDATION_MIGRATION,
-		CONVERSATION_MIGRATION,
-		PROJECT_AGENT_MIGRATION,
-		POLICY_MIGRATION,
-		PROGRAM_OBJECTIVE_MIGRATION,
-		QUOTA_MIGRATION,
-		ROLE_PROFILE_MIGRATION,
-		RUNTIME_SESSION_MIGRATION,
-		WORK_ITEM_MIGRATION,
-		MANAGED_RUN_MIGRATION,
-		MANAGED_REPOSITORY_MIGRATION,
-		ROUTING_MIGRATION,
-		CODEX_EXPERIMENT_MIGRATION,
-		ROUTING_DECISION_MIGRATION,
-		CONTINUATION_MIGRATION,
-		WAITING_USAGE_WAKE_MIGRATION,
-		WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION,
-	]
-	.into_iter()
-	.rev()
-	.find_map(|migration| {
-		let (declaration_index, declaration_length) = declarations
-			.iter()
-			.filter_map(|declaration| {
-				migration.rfind(declaration.as_str()).map(|index| (index, declaration.len()))
-			})
-			.max_by_key(|(index, _)| *index)?;
-		let declaration_and_tail = &migration[declaration_index + declaration_length..];
-		let (_, source_and_tail) = declaration_and_tail.split_once("\nAS $$")?;
-		let (source, _) = source_and_tail.split_once("$$;")?;
-		Some(source)
-	})
+	let (declaration_index, declaration_length) = declarations
+		.iter()
+		.filter_map(|declaration| {
+			migration.rfind(declaration.as_str()).map(|index| (index, declaration.len()))
+		})
+		.max_by_key(|(index, _)| *index)?;
+	let declaration_and_tail = &migration[declaration_index + declaration_length..];
+	let declaration_end = ["CREATE FUNCTION decodex.", "CREATE OR REPLACE FUNCTION decodex."]
+		.into_iter()
+		.filter_map(|next_declaration| declaration_and_tail.find(next_declaration))
+		.min()
+		.unwrap_or(declaration_and_tail.len());
+	let declaration = &declaration_and_tail[..declaration_end];
+	let (source_index, delimiter_length) = ["\nAS $$", " AS $$"]
+		.into_iter()
+		.filter_map(|delimiter| declaration.find(delimiter).map(|index| (index, delimiter.len())))
+		.min_by_key(|(index, _)| *index)?;
+	let source_and_tail = &declaration[source_index + delimiter_length..];
+	let (source, _) = source_and_tail.split_once("$$;")?;
+
+	Some(source)
 }
 
 async fn verify_identity_cast_authority(client: &Client) -> Result<(), StoreError> {
@@ -4144,7 +4161,10 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 		}
 
 		let expected_source = canonical_function_source(contract).ok_or_else(|| {
-			StoreError::Incompatible("unknown canonical PostgreSQL function contract".into())
+			StoreError::Incompatible(format!(
+				"unknown canonical PostgreSQL function contract: {}",
+				contract.lookup_signature
+			))
 		})?;
 
 		if installed_source != expected_source {
@@ -4255,7 +4275,9 @@ async fn verify_retention_contract(client: &Client) -> Result<(), StoreError> {
 
 		let expected_source =
 			canonical_safety_function_source(&function_name).ok_or_else(|| {
-				StoreError::Incompatible("unknown PostgreSQL retention function contract".into())
+				StoreError::Incompatible(format!(
+					"unknown PostgreSQL retention function contract: {function_name}"
+				))
 			})?;
 
 		if !function_metadata_matches || installed_source.as_deref() != Some(expected_source) {
@@ -4272,12 +4294,9 @@ mod tests {
 	use std::collections::HashSet;
 
 	use crate::authority::{
-		CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL, CONVERSATION_MIGRATION,
-		FOUNDATION_MIGRATION, FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL,
-		MANAGED_REPOSITORY_MIGRATION, MANAGED_RUN_MIGRATION, OWNED_OBJECT_CATALOGS,
-		POLICY_MIGRATION, PROGRAM_OBJECTIVE_MIGRATION, PROJECT_AGENT_MIGRATION, QUOTA_MIGRATION,
-		ROLE_AUTHORITY_SQL, ROLE_PROFILE_MIGRATION, RUNTIME_SESSION_MIGRATION, SAFETY_FUNCTIONS,
-		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL, WORK_ITEM_MIGRATION,
+		CANONICAL_FUNCTION_MIGRATIONS, CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL,
+		FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, ROLE_AUTHORITY_SQL,
+		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 	};
 
 	#[test]
@@ -4412,20 +4431,10 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 17);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 156);
 		assert_eq!(
-			[
-				FOUNDATION_MIGRATION,
-				CONVERSATION_MIGRATION,
-				PROJECT_AGENT_MIGRATION,
-				POLICY_MIGRATION,
-				PROGRAM_OBJECTIVE_MIGRATION,
-				QUOTA_MIGRATION,
-				ROLE_PROFILE_MIGRATION,
-				RUNTIME_SESSION_MIGRATION,
-				WORK_ITEM_MIGRATION,
-				MANAGED_RUN_MIGRATION,
-				MANAGED_REPOSITORY_MIGRATION,
-			]
+			CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
 			.sum::<usize>(),
@@ -4435,35 +4444,87 @@ mod tests {
 		let mut lookup_signatures = HashSet::new();
 
 		for contract in &FUNCTION_CONTRACTS {
-			assert!(lookup_signatures.insert(contract.lookup_signature));
+			assert!(
+				lookup_signatures.insert(contract.lookup_signature),
+				"duplicate lookup signature: {}",
+				contract.lookup_signature
+			);
 			assert_eq!(
-				[
-					FOUNDATION_MIGRATION,
-					CONVERSATION_MIGRATION,
-					PROJECT_AGENT_MIGRATION,
-					POLICY_MIGRATION,
-					PROGRAM_OBJECTIVE_MIGRATION,
-					QUOTA_MIGRATION,
-					ROLE_PROFILE_MIGRATION,
-					RUNTIME_SESSION_MIGRATION,
-					WORK_ITEM_MIGRATION,
-					MANAGED_RUN_MIGRATION,
-					MANAGED_REPOSITORY_MIGRATION,
-				]
+				CANONICAL_FUNCTION_MIGRATIONS
 				.into_iter()
 				.map(|migration| migration
 					.matches(&format!("CREATE FUNCTION decodex.{}", contract.migration_signature))
 					.count())
 				.sum::<usize>(),
-				1
+				1,
+				"{}",
+				contract.lookup_signature
 			);
 
-			let source = super::canonical_function_source(contract)
-				.expect("shipped function has a canonical migration body");
+			let source = super::canonical_function_source(contract).unwrap_or_else(|| {
+				panic!(
+					"shipped function has no canonical migration body: {}",
+					contract.lookup_signature
+				)
+			});
 
-			assert!(source.starts_with('\n'));
-			assert!(source.ends_with('\n'));
-			assert!(!source.trim().is_empty());
+			assert!(source.starts_with('\n'), "{}", contract.lookup_signature);
+			assert!(source.ends_with('\n'), "{}", contract.lookup_signature);
+			assert!(!source.trim().is_empty(), "{}", contract.lookup_signature);
+		}
+	}
+
+	#[test]
+	fn canonical_body_extraction_is_bounded_to_one_declaration() {
+		let contract = FUNCTION_CONTRACTS
+			.iter()
+			.find(|contract| contract.name == "forbid_routing_history_mutation")
+			.expect("routing safety contract is inventoried");
+		let adjacent_declarations = "CREATE FUNCTION decodex.forbid_routing_history_mutation()\nRETURNS trigger\nCREATE FUNCTION decodex.adjacent()\nRETURNS trigger\nAS $$\nBEGIN\nEND\n$$;\n";
+
+		assert_eq!(
+			super::canonical_function_source_in_migration(adjacent_declarations, contract),
+			None
+		);
+	}
+
+	#[test]
+	fn compact_v14_through_v16_safety_declarations_preserve_canonical_bodies() {
+		for function_name in [
+			"forbid_routing_history_mutation",
+			"enforce_routing_completeness",
+			"enforce_routing_command_owner",
+			"forbid_codex_experiment_history_mutation",
+			"enforce_codex_experiment_command_owner",
+			"forbid_routing_decision_mutation",
+			"enforce_routing_decision_completeness",
+		] {
+			let source = super::canonical_safety_function_source(function_name)
+				.unwrap_or_else(|| panic!("compact safety body is unresolved: {function_name}"));
+
+			assert!(source.starts_with("\nBEGIN\n") || source.starts_with("\nDECLARE "), "{function_name}");
+			assert!(source.ends_with("END\n"), "{function_name}");
+		}
+	}
+
+	#[test]
+	fn canonical_lookup_uses_newest_replacement_body() {
+		for function_name in [
+			"register_waiting_usage_wake_exact",
+			"claim_due_waiting_usage_wake_exact",
+			"fire_waiting_usage_wake_exact",
+			"cancel_waiting_usage_wake_exact",
+		] {
+			let contract = FUNCTION_CONTRACTS
+				.iter()
+				.find(|contract| contract.name == function_name)
+				.unwrap_or_else(|| panic!("replacement contract is unresolved: {function_name}"));
+			let source = super::canonical_function_source(contract)
+				.unwrap_or_else(|| panic!("replacement body is unresolved: {}", contract.lookup_signature));
+
+			assert!(source.contains(&format!("decodex.{function_name}_internal(")), "{}", contract.lookup_signature);
+			assert!(source.contains("NULL::pg_catalog.timestamptz);"), "{}", contract.lookup_signature);
+			assert!(!source.contains("pg_catalog.clock_timestamp()"), "{}", contract.lookup_signature);
 		}
 	}
 
@@ -4502,13 +4563,14 @@ mod tests {
 
 	#[test]
 	fn every_safety_function_has_one_nonempty_canonical_migration_body() {
+		assert_eq!(SAFETY_FUNCTIONS.len(), 67);
 		for function_name in SAFETY_FUNCTIONS {
 			let source = super::canonical_safety_function_source(function_name)
-				.expect("shipped safety function has a canonical migration body");
+				.unwrap_or_else(|| panic!("shipped safety function is unresolved: {function_name}"));
 
-			assert!(source.starts_with('\n'));
-			assert!(source.ends_with("END\n") || source.ends_with("END;\n"));
-			assert!(!source.trim().is_empty());
+			assert!(source.starts_with('\n'), "{function_name}");
+			assert!(source.ends_with("END\n") || source.ends_with("END;\n"), "{function_name}");
+			assert!(!source.trim().is_empty(), "{function_name}");
 		}
 	}
 }
