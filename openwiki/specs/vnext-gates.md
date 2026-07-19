@@ -288,10 +288,27 @@ There is no separate checked-in XY-1353 manifest/digest generator. The existing 
 PostgreSQL harness produces and verifies those inventories only as part of the unified frozen-tree
 gate, so source-freeze work must not invent a second generator or execute the harness early.
 When the canonical semantic identity or closure model changes, final acceptance uses two exact
-freezes: one derivation execution first proves dependency closure plus source/restore parity and
-emits the candidate digest; one digest-only source batch binds that receipt; then a new exact frozen
-unified execution validates the bound production constant. A derivation receipt is evidence for the
-digest-only batch, not acceptance evidence for the subsequently bound tree.
+phases. Phase A first proves dependency closure plus S0→R1→R2 source/restore parity and emits an
+immutable candidate receipt whose mismatch array is the exact canonical subset of schema then
+configured authority: zero, either singleton, or both. Phase B runs from the same clean HEAD/tree
+when that array is empty; otherwise it runs from one clean direct child that changes exactly the
+reported digest array or arrays and nothing else. Phase B verifies both source bindings, the
+candidate hash, clean state, mismatch order, and exact transition shape before repeating the full
+capture and emitting a fresh acceptance receipt explicitly bound to Phase A. A derivation or older
+receipt remains provenance only; malformed, substituted, duplicate, or out-of-binding evidence
+cannot attest the Phase B source.
+
+The unified PostgreSQL aggregate is scheduled by one explicit top-level stage graph. Fatal
+configuration/cluster preflight covers mode and arguments, clean source and output binding, private
+temporary-root setup, PostgreSQL tool discovery, cluster init/start, and base-role creation. Every
+meaningful semantic suite has `passed`, `failed`, or `blocked` state. Expected `TestFailure` blocks
+only declared consumers and leaves independent branches schedulable; dependency consumers never
+run after failure. Mutation probes and restorations are separate stages, restoration remains
+eligible after a failed probe, and subsequent shared-fixture probes depend on restoration.
+Unexpected assertion/key/type failures, corrupt stage/report state, source-binding failure,
+redaction failure, or another unexpected exception stops new work as harness corruption. After a
+cluster starts, teardown and final report emission still run and record secondary failures without
+overwriting the first failure. Focused and Phase A/B modes remain outside the normal aggregate.
 
 Falsifiers are evaluated in this fixed priority order: architecture, then
 stability/recoverability, security/authority, verification, integrity, and performance.

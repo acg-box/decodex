@@ -96,26 +96,30 @@ phase:
 python3 scripts/vnext/postgres_store_test.py \
   --capture-authority-candidate /absolute/private/directory/postgres-authority-candidate.json
 
-# After committing only the two receipt-derived digest arrays, run Phase B from that clean commit.
+# Follow the receipt's zero-, one-, or two-array transition, then run Phase B.
 python3 scripts/vnext/postgres_store_test.py \
   --accept-authority-candidate \
   /absolute/private/directory/postgres-authority-candidate.json \
   /absolute/private/directory/postgres-authority-acceptance.json
 ```
 
-Phase A must start from one clean committed repaired pre-digest tree. After its immutable candidate
-receipt is validated, the operator updates and commits only `SCHEMA_CONTRACT_SHA256` and
-`CONFIGURED_AUTHORITY_SHA256`; that clean digest-only commit is the Phase B source for the acceptance
-command. The Phase B commit must be the direct single-parent child of the Phase A commit. No
-particular commit hash is prescribed: the receipt and Phase B consumer bind and verify the actual
-Phase A commit/tree, Phase B commit/tree, direct-parent transition, and exact two-array delta.
+Phase A must start from one clean committed repaired tree. Its mismatch array is the exact ordered
+subset of `schema`, then `configured_authority`: it may be empty, contain either one component, or
+contain both in that canonical order. No unrelated component, duplicate, or reordered mismatch is
+valid. For one or two mismatches, the operator creates one clean direct single-parent child that
+changes exactly the reported digest array or arrays in `authority.rs`; every unreported digest and
+every other path remains byte-identical. For zero mismatches, Phase B uses the same clean HEAD and
+tree without an intervening commit. No particular commit hash is prescribed: the receipt and Phase
+B consumer bind and verify the actual Phase A commit/tree, candidate-receipt hash, clean Phase B
+commit/tree, exact mismatch set/order, and the corresponding same-tree or digest-only-child shape.
 
 The capture-only mode migrates and provisions an isolated PostgreSQL 18 database, captures raw
 source S0, first-restore R1, and second-restore R2 evidence, and separately proves the exact
 V13-to-V20 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
 used by production readiness must pass at S0, R1, and R2 before it atomically publishes
-`decodex/postgres-authority-candidate/2`; the Phase A mismatch set must be exactly the schema and
-configured-authority digests, while complete, unique, resolved manifests, migration ledger,
+`decodex/postgres-authority-candidate/2`; the Phase A mismatch set must be exactly the canonical
+zero-, one-, or two-component subset described above, while complete, unique, resolved manifests,
+migration ledger,
 semantic state, population, runtime-authority shape, and semantic evidence satisfy both restore
 edges. Raw manifests
 and temporary cluster state are not retained in the receipt. Capture, PostgreSQL shutdown/removal,
@@ -125,12 +129,30 @@ rolls back the final path. Directory fsync completes the normal-success durabili
 failure or interruption after the link is an ambiguous producer outcome resolved by reading the
 immutable receipt. Exit status and stdout are not evidence. The receipt has `acceptance=false`; it
 never substitutes for the normal aggregate. Phase B alone validates the exact immutable receipt,
-its hash and Phase A HEAD/tree, and the exact two-constant source delta. It then repeats S0→R1→R2,
+its hash and Phase A HEAD/tree, and the exact transition authorized by the mismatch array. It then repeats S0→R1→R2,
 requires every semantic predicate and restore edge to pass with zero digest mismatches, and publishes
 the only `acceptance=true` receipt bound to both trees and the Phase A receipt hash. Existing
-malformed, substituted, duplicate, or mismatched receipts fail closed. Phase B may change only
-`SCHEMA_CONTRACT_SHA256` and `CONFIGURED_AUTHORITY_SHA256`; any other source delta invalidates the
-candidate.
+malformed, substituted, duplicate, or mismatched receipts fail closed. A zero-mismatch acceptance
+receipt is freshly emitted from the unchanged clean Phase A HEAD/tree and is explicitly bound to
+the Phase A receipt; existing receipts remain provenance only and cannot attest a source outside
+their recorded binding. For one or two mismatches, any unreported array change or other source
+delta invalidates the candidate.
+
+The normal aggregate uses one explicit stage report. Configuration and cluster preflight are fatal:
+mode/argument validation, clean source binding, private output and temporary-root validation,
+PostgreSQL tool discovery, temporary cluster initialization/start, and base-role creation must all
+pass before semantic work is scheduled. Meaningful suites then report `passed`, `failed`, or
+`blocked`. Ordinary `TestFailure` leaves independent branches schedulable but blocks every declared
+consumer of the failed prerequisite. RoleProfile, RuntimeSession, migration-boundary, blob-restart,
+primary-store, managed-repository, account-composition, bootstrap/doctor, collation, authority
+safety, hostile-search-path, primary restore, redaction, default-ACL restore, authority-drift, and
+final-evidence work are all represented. Each authority-drift mutation probe and its restoration
+are separate stages: restoration is attempted after a failed probe, and the next shared-fixture
+probe depends on that restoration. Assertion/type/key failures, invalid stage/report state,
+source-binding failures, redaction failures, and other unexpected exceptions are harness
+corruption and stop new scheduling. Once PostgreSQL has started, teardown and final stage-report
+emission still run; their failures are recorded without replacing the first failure. Focused and
+Phase A/B capture modes remain separate from this normal aggregate.
 
 An unavailable or incomplete raw schema/authority component publishes no receipt. Before its private
 cluster is removed, the capture emits a versioned, bounded diagnostic to the operator-owned combined
