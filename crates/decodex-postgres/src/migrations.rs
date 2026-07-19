@@ -37,6 +37,13 @@ pub(crate) async fn run_through_v9(client: &mut Client) -> Result<(), StoreError
 	Ok(())
 }
 
+#[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v13(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(13)).run_async(&mut ***client).await?;
+
+	Ok(())
+}
+
 pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 	let row = client
 		.query_one(

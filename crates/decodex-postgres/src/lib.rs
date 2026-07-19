@@ -394,6 +394,35 @@ impl PostgresStore {
 		result
 	}
 
+	/// Apply the immutable migration ledger only through V13 for the V14 authority upgrade proof.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v13(
+		mut config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v13(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
+	}
+
 	#[cfg(not(unix))]
 	pub async fn migrate(_config: Config, _expected_peer_uid: u32) -> Result<(), StoreError> {
 		Err(StoreError::Incompatible("PostgreSQL Unix sockets require a Unix host".into()))

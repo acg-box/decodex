@@ -151,6 +151,37 @@ exactly table SELECT. Ownership, SET-reachable authority, table or column grant 
 TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN are unsafe; missing SELECT is incompatible before the
 history row query runs. The ordered ledger must exactly match every embedded migration version,
 name, and checksum; missing, extra, duplicate, reordered, or tampered identity is incompatible.
+V14–V19 bind intended runtime enum and command privileges through the exact migration-owned V12
+ManagedRun-safety procedure ACL. The binding accepts zero runtime grantees for
+migrate-before-provision and exactly one direct, non-grantable runtime grantee for an already
+provisioned database; ambiguous owners, grantors, overloads, or grantees fail closed. V19 uses the
+same binding when revoking its internal explicit-time entry points. Production authority failures
+remain generic. Authority digest changes use two explicit phases. Phase A's capture-only PostgreSQL
+18 mode migrates and provisions a non-default runtime principal, captures raw normalized source and
+restored manifests without constructing `PostgresStore`, and atomically publishes a versioned
+candidate receipt only for one configured-authority digest mismatch with schema, ledger, binding,
+identity, and dump/restore parity intact. A separate V13 upgrade database binds only the exact
+ManagedRun-safety anchor, then proves the migration-owned 15-function/five-type runtime delta and
+V19 internal sealing from raw catalogs. The receipt is derivation evidence, never acceptance.
+Phase A finishes capture, PostgreSQL shutdown and workspace removal, and final source-tree
+revalidation before preparing a mode-0600 receipt in the operator-selected private external
+directory. After the complete bytes are flushed and fsynced, a create-only hard link publishes the
+final path. That link is the commit and linearization point: pre-link failure leaves no new final
+path, while post-link temporary cleanup, directory-fsync, signal, crash, or status failure never
+rolls the immutable receipt back. Directory fsync is still required for a normal-success durability
+claim; failure after the link creates an ambiguous producer outcome resolved only by receipt
+readback. Phase A exit status and output are not evidence.
+Phase B is the sole consumer and acceptance boundary. It ignores producer exit and output, never
+overwrites an existing path, and may consume only an extant exact-schema receipt whose immutable
+bytes attest the exact Phase A tree, `capture_only=true`, `acceptance=false`, the sole allowed
+configured-authority mismatch, exact database/principal/migration-ledger evidence, and complete
+source/restore parity. Malformed, substituted, duplicate, or lineage-mismatched receipts fail
+closed. This bounded contract assumes one clean committed writer and an operator-owned private
+external directory; it creates no persistent PostgreSQL authority or producer/consumer protocol.
+Phase B may change only `CONFIGURED_AUTHORITY_SHA256` and the designated candidate-evidence surface,
+must record both Phase A and Phase B trees, and is invalidated by any other source delta. Normal
+acceptance has no expected-mismatch branch: manifest readiness must pass before behavioral or
+restart stages run.
 The three bound identity sequences must be exact. Runtime receives USAGE only on the activity and
 outbox sequences; the migration-owned history-version sequence remains inaccessible. SELECT,
 UPDATE/`setval`, ownership, grant options, and SET-reachable surplus authority are unsafe. Every
