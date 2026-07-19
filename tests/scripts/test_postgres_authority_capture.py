@@ -68,6 +68,14 @@ def dependency_row(
     return [kind, identity, json.dumps([resolved], separators=(",", ":"))]
 
 
+def constraint_contract(definition, *, validated=True):
+    return json.dumps([
+        "f", definition, False, False, validated, True, "a", "a", "s", True,
+        0, False, ["managed_run_id"], ["managed_run_id"], "decodex",
+        "managed_runs",
+    ], separators=(",", ":"))
+
+
 class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
     def artifact_failure(self, document):
         artifact = json.dumps(document, separators=(",", ":")).encode()
@@ -360,6 +368,89 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         for marker in markers:
             self.assertNotIn(marker, serialized)
 
+    def test_constraint_mismatches_label_all_definition_changes_before_sampling(self):
+        expected_fields = (
+            "constraint_type", "definition", "deferrable", "deferred",
+            "validated", "enforced", "update_action", "delete_action",
+            "match_type", "is_local", "inheritance_count", "no_inherit",
+            "source_columns", "referenced_columns", "referenced_namespace",
+            "referenced_relation",
+        )
+        self.assertEqual(
+            POSTGRES_STORE_TEST.CONSTRAINT_CONTRACT_FIELDS, expected_fields
+        )
+        markers = ("first-definition-secret", "second-definition-secret")
+        changes = []
+        for marker in markers:
+            source = [
+                [
+                    "constraint", ["decodex", "runs", f"constraint-{index}"],
+                    constraint_contract(f"before definition {index} {marker}"),
+                ]
+                for index in range(9)
+            ]
+            restored = [
+                [
+                    "constraint", ["decodex", "runs", f"constraint-{index}"],
+                    constraint_contract(f"after definition {index} {marker}"),
+                ]
+                for index in range(9)
+            ]
+            _, _, _, result = self.restore_parity_failure(
+                source, restored, secret_markers=markers
+            )
+            changes.append(result["changes"])
+
+        self.assertEqual(changes[0], changes[1])
+        mismatch = changes[0]["contract_mismatches"]
+        self.assertEqual(mismatch["count"], 9)
+        self.assertEqual(len(mismatch["samples"]), 8)
+        self.assertTrue(mismatch["truncated"])
+        self.assertEqual(mismatch["constraint_field_change_counts"], [
+            {"count": 9, "field": "definition"}
+        ])
+        for sample in mismatch["samples"]:
+            self.assertEqual(set(sample), {"changed_fields", "identity", "kind"})
+            self.assertEqual(len(sample["changed_fields"]), 1)
+            definition = sample["changed_fields"][0]
+            self.assertEqual(set(definition), {
+                "after_sha256",
+                "after_utf8_byte_length",
+                "before_sha256",
+                "before_utf8_byte_length",
+                "common_prefix_utf8_byte_length",
+                "field",
+            })
+            self.assertEqual(definition["field"], "definition")
+        serialized = json.dumps(changes, sort_keys=True)
+        self.assertNotIn("before definition", serialized)
+        self.assertNotIn("after definition", serialized)
+        for marker in markers:
+            self.assertNotIn(marker, serialized)
+
+    def test_constraint_nondefinition_change_surfaces_bounded_semantic_values(self):
+        source = [[
+            "constraint", ["decodex", "runs", "runs_fk"],
+            constraint_contract("FOREIGN KEY (...) REFERENCES ...", validated=True),
+        ]]
+        restored = [[
+            "constraint", ["decodex", "runs", "runs_fk"],
+            constraint_contract("FOREIGN KEY (...) REFERENCES ...", validated=False),
+        ]]
+
+        _, _, _, diagnostic = self.restore_parity_failure(source, restored)
+        mismatch = diagnostic["changes"]["contract_mismatches"]
+
+        self.assertEqual(mismatch["constraint_field_change_counts"], [
+            {"count": 1, "field": "validated"}
+        ])
+        self.assertEqual(mismatch["samples"][0]["changed_fields"], [{
+            "after": "false",
+            "before": "true",
+            "field": "validated",
+        }])
+        self.assertNotIn("FOREIGN KEY", json.dumps(mismatch, sort_keys=True))
+
     def test_restore_parity_dependency_only_samples_include_null_reference(self):
         source = dependency_row(
             "dependency", ["source"], "i", ["trigger"], None, False
@@ -378,10 +469,14 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         self.assertEqual(after["reference_key"], '["namespace","decodex"]')
         self.assertTrue(after["resolved"])
 
-    def test_restore_parity_formatter_failure_keeps_parity_classification(self):
-        malformed = [["dependency", ["invalid"], json.dumps([False])]]
+    def test_malformed_constraint_contract_keeps_parity_classification(self):
+        malformed_contract = json.dumps([None] * 15, separators=(",", ":"))
+        malformed = [["constraint", ["invalid"], malformed_contract]]
+        restored = [[
+            "constraint", ["invalid"], constraint_contract("valid definition")
+        ]]
 
-        _, _, message, diagnostic = self.restore_parity_failure(malformed, [])
+        _, _, message, diagnostic = self.restore_parity_failure(malformed, restored)
 
         self.assertTrue(message.startswith(
             "authority candidate restore parity diagnostic: {"
