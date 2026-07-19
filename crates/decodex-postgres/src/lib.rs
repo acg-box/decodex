@@ -132,7 +132,7 @@ use std::{sync::Arc, time::Duration};
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use serde_json::Value;
 #[cfg(test)] use tokio as _;
-use tokio_postgres::{Config, config::Host};
+use tokio_postgres::{Client as TokioClient, Config, config::Host};
 
 #[cfg(unix)] use self::socket::VerifiedSocketConnect;
 use decodex_core::{Availability, PostgresConnectionConfig, PostgresIdentityConfig, ProductState};
@@ -197,11 +197,10 @@ impl PostgresStore {
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
 	pub async fn semantic_authority_fixture(
-		client: &Client,
-		migration_role: &str,
+		client: &TokioClient,
 		runtime_role: &str,
 	) -> Result<Vec<(&'static str, bool)>, StoreError> {
-		authority::semantic_authority_fixture(client, migration_role, runtime_role).await
+		authority::semantic_authority_fixture(client, runtime_role).await
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.

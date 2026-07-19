@@ -532,12 +532,7 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 	};
 	let semantic_authority = if structured_errors {
 		Some(
-			PostgresStore::semantic_authority_fixture(
-				&client,
-				&migration_role,
-				&runtime_role,
-			)
-			.await?,
+			PostgresStore::semantic_authority_fixture(&client, &runtime_role).await?,
 		)
 	} else {
 		None
