@@ -3035,13 +3035,13 @@ WITH catalog_context AS MATERIALIZED (
             privilege.privilege_type,
             privilege.is_grantable
           ) ORDER BY
-            CASE
+            pg_catalog.convert_to((CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
               WHEN privilege.grantee = namespace.nspowner THEN 'migration'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
               ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
-            END,
-            privilege.privilege_type,
+            END)::pg_catalog.text, 'UTF8'),
+            pg_catalog.convert_to(privilege.privilege_type, 'UTF8'),
             privilege.is_grantable
         )
         FROM pg_catalog.aclexplode(
@@ -3100,13 +3100,13 @@ WITH catalog_context AS MATERIALIZED (
             privilege.privilege_type,
             privilege.is_grantable
           ) ORDER BY
-            CASE
+            pg_catalog.convert_to((CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
               WHEN privilege.grantee = namespace.nspowner THEN 'migration'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
               ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
-            END,
-            privilege.privilege_type,
+            END)::pg_catalog.text, 'UTF8'),
+            pg_catalog.convert_to(privilege.privilege_type, 'UTF8'),
             privilege.is_grantable
         )
         FROM pg_catalog.aclexplode(
@@ -3158,18 +3158,18 @@ WITH catalog_context AS MATERIALIZED (
           privilege.privilege_type,
           privilege.is_grantable
         ) ORDER BY
-          CASE
+          pg_catalog.convert_to((CASE
             WHEN privilege.grantor = namespace.nspowner THEN 'migration'
             WHEN privilege.grantor = (SELECT oid FROM runtime_role) THEN 'runtime'
             ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantor)
-          END,
-          CASE
+          END)::pg_catalog.text, 'UTF8'),
+          pg_catalog.convert_to((CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
             WHEN privilege.grantee = default_acl.defaclrole THEN 'migration'
             WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
             ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
-          END,
-          privilege.privilege_type,
+          END)::pg_catalog.text, 'UTF8'),
+          pg_catalog.convert_to(privilege.privilege_type, 'UTF8'),
           privilege.is_grantable
       )
       FROM pg_catalog.aclexplode(default_acl.defaclacl) AS privilege
@@ -3205,7 +3205,10 @@ SELECT
   (
     SELECT pg_catalog.jsonb_agg(
       pg_catalog.jsonb_build_array(kind, identity, contract)
-      ORDER BY kind, identity, contract
+      ORDER BY
+        pg_catalog.convert_to(kind, 'UTF8'),
+        pg_catalog.convert_to(identity::pg_catalog.text, 'UTF8'),
+        pg_catalog.convert_to(contract, 'UTF8')
     )::pg_catalog.text
     FROM contract_rows
   ),
@@ -3470,22 +3473,22 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
             privilege.privilege_type,
             privilege.is_grantable
           ) ORDER BY
-            CASE
+            pg_catalog.convert_to((CASE
               WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
                 THEN 'migration'
               WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
                 THEN 'runtime'
               ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
-            END,
-            CASE
+            END)::pg_catalog.text, 'UTF8'),
+            pg_catalog.convert_to((CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
               WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
                 THEN 'migration'
               WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
                 THEN 'runtime'
               ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
-            END,
-            privilege.privilege_type,
+            END)::pg_catalog.text, 'UTF8'),
+            pg_catalog.convert_to(privilege.privilege_type, 'UTF8'),
             privilege.is_grantable
         )
         FROM pg_catalog.aclexplode(object.acl) AS privilege
@@ -3527,22 +3530,22 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
           privilege.privilege_type,
           privilege.is_grantable
         ) ORDER BY
-          CASE
+          pg_catalog.convert_to((CASE
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
               THEN 'migration'
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
-          END,
-          CASE
+          END)::pg_catalog.text, 'UTF8'),
+          pg_catalog.convert_to((CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
               THEN 'migration'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
-          END,
-          privilege.privilege_type,
+          END)::pg_catalog.text, 'UTF8'),
+          pg_catalog.convert_to(privilege.privilege_type, 'UTF8'),
           privilege.is_grantable
       )
       FROM pg_catalog.aclexplode(
@@ -3615,14 +3618,14 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(policy_role)
           END ORDER BY
-          CASE
+          pg_catalog.convert_to((CASE
             WHEN policy_role = 0 THEN 'PUBLIC'
             WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'migration')
               THEN 'migration'
             WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(policy_role)
-          END
+          END)::pg_catalog.text, 'UTF8')
         )
         FROM pg_catalog.unnest(policy.polroles) AS policy_role
       ), '[]'::pg_catalog.jsonb),
@@ -3677,22 +3680,22 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
           privilege.privilege_type,
           privilege.is_grantable
         ) ORDER BY
-          CASE
+          pg_catalog.convert_to((CASE
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
               THEN 'migration'
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
-          END,
-          CASE
+          END)::pg_catalog.text, 'UTF8'),
+          pg_catalog.convert_to((CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
               THEN 'migration'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
-          END,
-          privilege.privilege_type,
+          END)::pg_catalog.text, 'UTF8'),
+          pg_catalog.convert_to(privilege.privilege_type, 'UTF8'),
           privilege.is_grantable
       )
       FROM pg_catalog.aclexplode(default_acl.defaclacl) AS privilege
@@ -3706,7 +3709,10 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
 )
 SELECT pg_catalog.jsonb_agg(
   pg_catalog.jsonb_build_array(kind, identity, contract)
-  ORDER BY kind, identity, contract
+  ORDER BY
+    pg_catalog.convert_to(kind, 'UTF8'),
+    pg_catalog.convert_to(identity, 'UTF8'),
+    pg_catalog.convert_to(contract, 'UTF8')
 )::pg_catalog.text
 FROM contract_rows
 "#;
