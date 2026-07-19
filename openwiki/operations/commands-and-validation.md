@@ -96,19 +96,22 @@ python3 scripts/vnext/postgres_store_test.py \
 ```
 
 This capture-only mode migrates and provisions an isolated PostgreSQL 18 database, captures raw
-source and populated dump/restore evidence, separately proves the exact V13-to-V19 one-grantee
-runtime ACL delta from raw catalogs, and atomically publishes
-`decodex/postgres-authority-candidate/1` only when schema readiness is unchanged and configured
-authority is the sole candidate mismatch. Capture, PostgreSQL shutdown/removal, and final source
-binding complete before publication. A complete fsynced mode-0600 temporary receipt is published by
-one create-only hard link; that link is the commit point and never overwrites or rolls back the final
-path. Directory fsync completes the normal-success durability claim, but any failure or interruption
-after the link is an ambiguous producer outcome resolved by reading the immutable receipt. Exit
-status and stdout are not evidence. The receipt has `acceptance=false`; it never substitutes for the
-normal aggregate. Phase B alone validates the exact receipt schema, Phase A tree, sole mismatch,
-database/principal/ledger bindings, and source/restore parity; existing malformed, substituted,
-duplicate, or mismatched receipts fail closed. A subsequent digest-refreeze phase may change only
-`CONFIGURED_AUTHORITY_SHA256` and the designated captured evidence surface, must record both source
+source S0, first-restore R1, and second-restore R2 evidence, and separately proves the exact
+V13-to-V20 one-grantee runtime ACL delta from raw catalogs. It atomically publishes
+`decodex/postgres-authority-candidate/1` only when the Phase A mismatch set is exactly the schema and
+configured-authority digests and the complete, unique, resolved manifests, migration ledger,
+semantic state, population, and runtime-authority shape satisfy both S0=R1 and R1=R2. Raw manifests
+and temporary cluster state are not retained in the receipt. Capture, PostgreSQL shutdown/removal,
+and final source binding complete before publication. A complete fsynced mode-0600 temporary receipt
+is published by one create-only hard link; that link is the commit point and never overwrites or
+rolls back the final path. Directory fsync completes the normal-success durability claim, but any
+failure or interruption after the link is an ambiguous producer outcome resolved by reading the
+immutable receipt. Exit status and stdout are not evidence. The receipt has `acceptance=false`; it
+never substitutes for the normal aggregate. Phase B alone validates the exact receipt schema,
+Phase A tree, exact two-digest mismatch set, database/principal/ledger bindings, and both restore
+edges; existing malformed, substituted, duplicate, or mismatched receipts fail closed. A subsequent
+digest-refreeze phase may change only `SCHEMA_CONTRACT_SHA256`,
+`CONFIGURED_AUTHORITY_SHA256`, and the designated captured evidence surface, must record both source
 trees, and must discard the candidate if any other source changes.
 
 An unavailable or incomplete raw schema/authority component publishes no receipt. Before its private

@@ -76,6 +76,19 @@ def constraint_contract(definition, *, validated=True):
     ], separators=(",", ":"))
 
 
+def runtime_authority(database):
+    return {
+        "database": database,
+        "migration_role": "decodex_migration",
+        "runtime_role": "decodex_runtime_xy1300",
+        "non_default_runtime_role": True,
+        "runtime_login": True,
+        "anchor_execute": True,
+        "direct_non_grantable_execute_count": 15,
+        "direct_non_grantable_type_usage_count": 5,
+    }
+
+
 class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
     def artifact_failure(self, document):
         artifact = json.dumps(document, separators=(",", ":")).encode()
@@ -198,6 +211,7 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
 
         self.assertEqual(evidence["row_count"], 3)
         self.assertEqual(evidence["duplicate_key_multiplicities"], [])
+        self.assertNotIn("rows", evidence)
         self.assertEqual(len({json.dumps(row[:2], sort_keys=True) for row in rows}), 3)
 
     def test_duplicate_semantic_dependency_edge_remains_rejected(self):
@@ -215,6 +229,7 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             evidence["duplicate_key_multiplicities"][0]["multiplicity"], 2
         )
+        self.assertNotIn("rows", evidence)
         with self.assertRaisesRegex(
             POSTGRES_STORE_TEST.TestFailure, "duplicate kind/identity key"
         ):
@@ -367,6 +382,74 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         serialized = json.dumps(changes, sort_keys=True)
         for marker in markers:
             self.assertNotIn(marker, serialized)
+
+    def test_authority_capture_requires_both_complete_restore_edges(self):
+        self.assertEqual(POSTGRES_STORE_TEST.AUTHORITY_CAPTURE_RESTORE_EDGES, (
+            ("source_to_restored_once", "source", "restored_once"),
+            ("restored_once_to_restored_twice", "restored_once", "restored_twice"),
+        ))
+        manifests = {"schema": "[]", "authority": "[]"}
+        expected = {
+            "schema_manifest": True,
+            "configured_authority_manifest": True,
+            "migration_ledger": True,
+            "semantic_state": True,
+            "runtime_authority_shape": True,
+            "populated_fixture": True,
+        }
+        for checkpoint, before, after in (
+            POSTGRES_STORE_TEST.AUTHORITY_CAPTURE_RESTORE_EDGES
+        ):
+            with self.subTest(checkpoint=checkpoint):
+                evidence = POSTGRES_STORE_TEST.restore_edge_evidence(
+                    checkpoint,
+                    manifests,
+                    manifests,
+                    before_ledger=[{"version": 20}],
+                    after_ledger=[{"version": 20}],
+                    before_semantic_state=[],
+                    after_semantic_state=[],
+                    before_runtime_authority=runtime_authority(before),
+                    after_runtime_authority=runtime_authority(after),
+                    before_population={"account_id": "stable"},
+                    after_population={"account_id": "stable"},
+                    secret_markers=("xy1300-secret",),
+                )
+                self.assertEqual(evidence, expected)
+
+    def test_second_restore_mismatch_names_only_the_bounded_checkpoint(self):
+        before = {
+            "schema": json.dumps([
+                ["relation", ["xy1300-secret"], json.dumps(["before"])]
+            ], separators=(",", ":")),
+            "authority": "[]",
+        }
+        after = {
+            "schema": json.dumps([
+                ["relation", ["xy1300-secret"], json.dumps(["after"])]
+            ], separators=(",", ":")),
+            "authority": "[]",
+        }
+
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
+            POSTGRES_STORE_TEST.restore_edge_evidence(
+                "restored_once_to_restored_twice",
+                before,
+                after,
+                before_ledger=[{"version": 20}],
+                after_ledger=[{"version": 20}],
+                before_semantic_state=[],
+                after_semantic_state=[],
+                before_runtime_authority=runtime_authority("before"),
+                after_runtime_authority=runtime_authority("after"),
+                before_population={"account_id": "stable"},
+                after_population={"account_id": "stable"},
+                secret_markers=("xy1300-secret",),
+            )
+
+        message = str(failure.exception)
+        self.assertIn("restored_once_to_restored_twice", message)
+        self.assertNotIn("xy1300-secret", message)
 
     def test_constraint_mismatches_label_all_definition_changes_before_sampling(self):
         expected_fields = (
