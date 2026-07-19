@@ -7,15 +7,14 @@ use super::{
 };
 use decodex_core::{
 	BlobStore, CodexExperimentCommandOutcome, CodexExperimentIdentity,
-	CodexExperimentObservationKind,
-	ContextPack, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
-	ContinuationEffectBarrierState, ContinuationPlanKind, ContinuationRejection,
-	PinnedContextSource, PossibleSideEffects,
+	CodexExperimentObservationKind, ContextPack, ContextPackInput, ContextPackPolicy,
+	ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlanKind,
+	ContinuationRejection, PinnedContextSource, PossibleSideEffects,
 };
 use decodex_postgres::{
-	BindCodexExperimentThread, CodexExperimentCreationFenceOutcome, PlanContinuation,
-	ContinuationPlanEffect, PostgresStore, PrepareCodexExperiment,
-	RecordCodexExperimentObservation, RouteAccount,
+	BindCodexExperimentThread, CodexExperimentCreationFenceOutcome, ContinuationPlanEffect,
+	PlanContinuation, PostgresStore, PrepareCodexExperiment, RecordCodexExperimentObservation,
+	RouteAccount,
 };
 
 const SUBMITTED_RECEIPT_ID: &str = "f1000000-0000-4000-8000-000000000017";
@@ -104,12 +103,7 @@ async fn assert_missing_fallback_contract(
 	let missing_request = plan_request(1, &routing.selected.decision_id);
 	let missing = continuation_success(
 		store
-			.plan_continuation(
-				blob_store,
-				"v17-missing-fallback",
-				&missing_request,
-				fallback_pack,
-			)
+			.plan_continuation(blob_store, "v17-missing-fallback", &missing_request, fallback_pack)
 			.await?,
 	)?;
 	assert_eq!(missing.plan.kind, ContinuationPlanKind::ContextPackFallback);
@@ -121,12 +115,7 @@ async fn assert_missing_fallback_contract(
 	let missing_bytes = receipt_bytes(owner, "v17-missing-fallback").await?;
 	assert_eq!(
 		store
-			.plan_continuation(
-				blob_store,
-				"v17-missing-fallback",
-				&missing_request,
-				fallback_pack,
-			)
+			.plan_continuation(blob_store, "v17-missing-fallback", &missing_request, fallback_pack,)
 			.await?,
 		ContinuationCommandOutcome::Success(missing.clone()),
 	);
@@ -179,12 +168,7 @@ async fn assert_missing_fallback_contract(
 	assert_eq!(conflicting_inventory["outbox"].as_array().map(|rows| rows.len()), Some(2),);
 	assert!(matches!(
 		store
-			.plan_continuation(
-				blob_store,
-				"v17-duplicate-consumption",
-				&conflicting,
-				fallback_pack,
-			)
+			.plan_continuation(blob_store, "v17-duplicate-consumption", &conflicting, fallback_pack,)
 			.await?,
 		ContinuationCommandOutcome::Rejected(ContinuationRejection::DecisionAlreadyConsumed)
 	));
