@@ -27,7 +27,12 @@ COLLATION_DATABASE = "decodex_xy1267_tr"
 RESTORE_DATABASE = "decodex_xy1267_restore"
 AUTHORITY_CAPTURE_DATABASE = "decodex_xy1300_authority_capture"
 AUTHORITY_CAPTURE_RESTORE_DATABASE = "decodex_xy1300_authority_capture_restore"
+AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE = "decodex_xy1300_authority_capture_restore_2"
 AUTHORITY_CAPTURE_UPGRADE_DATABASE = "decodex_xy1300_authority_upgrade"
+AUTHORITY_CAPTURE_RESTORE_EDGES = (
+	("source_to_restored_once", "source", "restored_once"),
+	("restored_once_to_restored_twice", "restored_once", "restored_twice"),
+)
 DEFAULT_ACL_TAMPER_DATABASE = "decodex_xy1315_default_acl_tamper"
 DEFAULT_ACL_RESTORE_DATABASE = "decodex_xy1315_default_acl_restore"
 AUTHORITY_DATABASE = "decodex_xy1307_authority"
@@ -1840,6 +1845,29 @@ def require_restore_parity(
 	return diff
 
 
+def require_restore_checkpoint_parity(
+	checkpoint: str,
+	component: str,
+	before_manifest: str,
+	after_manifest: str,
+	*,
+	secret_markers: tuple[str, ...],
+) -> dict[str, list[object]]:
+	if checkpoint not in {edge[0] for edge in AUTHORITY_CAPTURE_RESTORE_EDGES}:
+		raise TestFailure("authority candidate restore checkpoint is invalid")
+	try:
+		return require_restore_parity(
+			component,
+			before_manifest,
+			after_manifest,
+			secret_markers=secret_markers,
+		)
+	except TestFailure as error:
+		raise TestFailure(
+			f"authority candidate restore checkpoint {checkpoint} failed: {error}"
+		) from error
+
+
 def semantic_state_diff(before: list[object], after: list[object]) -> dict[str, list[object]]:
 	encode = lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"))
 	before_counter = Counter(encode(row) for row in before)
@@ -2670,7 +2698,6 @@ def authority_manifest_evidence(manifest: str) -> dict[str, object]:
 		if count > 1
 	]
 	return {
-		"rows": rows,
 		"row_count": len(rows),
 		"grouped_row_counts": dict(sorted(grouped_counts.items())),
 		"duplicate_key_multiplicities": duplicates,
@@ -2679,7 +2706,7 @@ def authority_manifest_evidence(manifest: str) -> dict[str, object]:
 
 
 def capture_migration_ledger(
-	database: str, env: dict[str, str], *, through_version: int = 19
+	database: str, env: dict[str, str], *, through_version: int = 20
 ) -> list[object]:
 	ledger = json.loads(psql(
 		database,
@@ -2755,6 +2782,62 @@ def capture_runtime_authority(database: str, env: dict[str, str]) -> dict[str, o
 	):
 		raise TestFailure("configured non-default runtime authority is not populated")
 	return probe
+
+
+def comparable_runtime_authority(probe: dict[str, object]) -> dict[str, object]:
+	return {
+		key: probe[key]
+		for key in (
+			"migration_role",
+			"runtime_role",
+			"non_default_runtime_role",
+			"runtime_login",
+			"anchor_execute",
+			"direct_non_grantable_execute_count",
+			"direct_non_grantable_type_usage_count",
+		)
+	}
+
+
+def restore_edge_evidence(
+	checkpoint: str,
+	before_manifests: dict[str, str],
+	after_manifests: dict[str, str],
+	*,
+	before_ledger: list[object],
+	after_ledger: list[object],
+	before_semantic_state: object,
+	after_semantic_state: object,
+	before_runtime_authority: dict[str, object],
+	after_runtime_authority: dict[str, object],
+	before_population: object,
+	after_population: object,
+	secret_markers: tuple[str, ...],
+) -> dict[str, bool]:
+	diffs = {
+		component: require_restore_checkpoint_parity(
+			checkpoint,
+			component,
+			before_manifests[component],
+			after_manifests[component],
+			secret_markers=secret_markers,
+		)
+		for component in ("schema", "authority")
+	}
+	evidence = {
+		"schema_manifest": not any(diffs["schema"].values()),
+		"configured_authority_manifest": not any(diffs["authority"].values()),
+		"migration_ledger": before_ledger == after_ledger,
+		"semantic_state": before_semantic_state == after_semantic_state,
+		"runtime_authority_shape": (
+			comparable_runtime_authority(before_runtime_authority)
+			== comparable_runtime_authority(after_runtime_authority)
+		),
+		"populated_fixture": before_population == after_population,
+	}
+	if not all(evidence.values()):
+		raise TestFailure(f"authority candidate restore checkpoint {checkpoint} is incomplete")
+	return evidence
 
 
 def capture_zero_grantee_migration_authority(
@@ -3067,7 +3150,6 @@ def publish_authority_candidate(path: Path, receipt: dict[str, object]) -> None:
 
 
 def run_authority_candidate_capture(
-	output_path: Path,
 	socket_dir: Path,
 	port: int,
 	work: Path,
@@ -3105,7 +3187,7 @@ def run_authority_candidate_capture(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 	run_migration(env)
-	upgrade_v19_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	upgrade_v20_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
 	upgrade_runtime_authority = capture_upgrade_runtime_authority(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
@@ -3196,37 +3278,105 @@ def run_authority_candidate_capture(
 	if not isinstance(restored_population, dict):
 		raise TestFailure("authority candidate restored database is not populated")
 
-	manifest_evidence: dict[str, object] = {}
-	manifest_diffs: dict[str, object] = {}
+	second_dump_path = work / "authority-candidate-restored-once.dump"
+	run([
+		"pg_dump", "-Fc", "-f", str(second_dump_path),
+		AUTHORITY_CAPTURE_RESTORE_DATABASE,
+	], env)
+	create_database(AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, env)
+	run(
+		["pg_restore", "--exit-on-error", "-d", AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+		 str(second_dump_path)],
+		env,
+	)
+	set_contract_urls(
+		env, socket_dir, port, AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, RUNTIME_ROLE
+	)
+	second_restored_path = work / "authority-candidate-restored-twice.json"
+	dump_schema_manifest(
+		second_restored_path,
+		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+		env,
+		structured_errors=True,
+	)
+	second_restored = load_capture_manifest(
+		second_restored_path,
+		"restored_twice",
+		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+		source_binding=start_binding,
+		secret_markers=secret_markers,
+	)
+	second_restored_manifests = require_capture_components(
+		second_restored,
+		"restored_twice",
+		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+		source_binding=start_binding,
+		secret_markers=secret_markers,
+	)
+	second_restored_ledger = capture_migration_ledger(
+		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, env
+	)
+	second_restored_runtime_authority = capture_runtime_authority(
+		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, env
+	)
+	second_restored_population = json.loads(psql(
+		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+		"SELECT pg_catalog.row_to_json(row)::text FROM (SELECT account_id::text,"
+		"display_label,state::text,metadata,revision,observed_at,updated_at FROM "
+		"decodex.accounts WHERE account_id='10000000-0000-4000-8000-000000001300') AS row",
+		env,
+	))
+	if not isinstance(second_restored_population, dict):
+		raise TestFailure("authority candidate second-restored database is not populated")
+
+	checkpoint_manifests = {
+		"source": source_manifests,
+		"restored_once": restored_manifests,
+		"restored_twice": second_restored_manifests,
+	}
+	checkpoint_documents = {
+		"source": source,
+		"restored_once": restored,
+		"restored_twice": second_restored,
+	}
+	checkpoint_ledgers = {
+		"source": source_ledger,
+		"restored_once": restored_ledger,
+		"restored_twice": second_restored_ledger,
+	}
+	checkpoint_runtime_authority = {
+		"source": source_runtime_authority,
+		"restored_once": restored_runtime_authority,
+		"restored_twice": second_restored_runtime_authority,
+	}
+	checkpoint_population = {
+		"source": source_population,
+		"restored_once": restored_population,
+		"restored_twice": second_restored_population,
+	}
+	manifest_evidence: dict[str, dict[str, object]] = {
+		"schema": {},
+		"authority": {},
+	}
 	expected_digests = {
 		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
 		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
 	}
 	mismatches: list[dict[str, object]] = []
 	for component in ("schema", "authority"):
-		source_manifest = source_manifests[component]
-		restored_manifest = restored_manifests[component]
-		source_evidence = authority_manifest_evidence(source_manifest)
-		restored_evidence = authority_manifest_evidence(restored_manifest)
-		manifest_evidence[component] = {
-			"source": source_evidence,
-			"restored": restored_evidence,
-		}
-		manifest_diffs[component] = require_restore_parity(
-			component,
-			source_manifest,
-			restored_manifest,
-			secret_markers=secret_markers,
-		)
-		if source_evidence["duplicate_key_multiplicities"] or restored_evidence[
-			"duplicate_key_multiplicities"
-		]:
-			raise TestFailure(f"authority candidate {component} identities are duplicated")
-		if component == "schema" and (
-			unresolved_dependency_rows(source_manifest)
-			or unresolved_dependency_rows(restored_manifest)
-		):
-			raise TestFailure("authority candidate schema has unresolved dependencies")
+		for checkpoint, manifests in checkpoint_manifests.items():
+			manifest = manifests[component]
+			evidence = authority_manifest_evidence(manifest)
+			manifest_evidence[component][checkpoint] = evidence
+			if evidence["duplicate_key_multiplicities"]:
+				raise TestFailure(
+					f"authority candidate {checkpoint} {component} identities are duplicated"
+				)
+			if component == "schema" and unresolved_dependency_rows(manifest):
+				raise TestFailure(
+					f"authority candidate {checkpoint} schema has unresolved dependencies"
+				)
+		source_evidence = manifest_evidence[component]["source"]
 		if source_evidence["sha256"] != expected_digests[component]:
 			mismatches.append({
 				"component": "configured_authority" if component == "authority" else "schema",
@@ -3235,31 +3385,37 @@ def run_authority_candidate_capture(
 				"actual_sha256": source_evidence["sha256"],
 			})
 
-	semantic_state_match = source["sequence_state"] == restored["sequence_state"]
-	restore_parity = {
-		"schema_manifest": not any(manifest_diffs["schema"].values()),
-		"configured_authority_manifest": not any(manifest_diffs["authority"].values()),
-		"migration_ledger": source_ledger == restored_ledger,
-		"semantic_state": semantic_state_match,
-		"runtime_authority_shape": (
-			source_runtime_authority["runtime_role"]
-			== restored_runtime_authority["runtime_role"]
-			and source_runtime_authority["direct_non_grantable_execute_count"]
-			== restored_runtime_authority["direct_non_grantable_execute_count"]
-			and source_runtime_authority["direct_non_grantable_type_usage_count"]
-			== restored_runtime_authority["direct_non_grantable_type_usage_count"]
-		),
-		"populated_fixture": source_population == restored_population,
-	}
-	if not all(restore_parity.values()):
-		raise TestFailure("authority candidate dump/restore parity is incomplete")
-	if mismatches != [{
-		"component": "configured_authority",
-		"classification": "candidate_digest_mismatch",
-		"expected_sha256": expected_digests["authority"],
-		"actual_sha256": manifest_evidence["authority"]["source"]["sha256"],
-	}]:
-		raise TestFailure("authority candidate is not exactly one configured-authority mismatch")
+	restore_edges: dict[str, dict[str, bool]] = {}
+	for edge, before, after in AUTHORITY_CAPTURE_RESTORE_EDGES:
+		restore_edges[edge] = restore_edge_evidence(
+			edge,
+			checkpoint_manifests[before],
+			checkpoint_manifests[after],
+			before_ledger=checkpoint_ledgers[before],
+			after_ledger=checkpoint_ledgers[after],
+			before_semantic_state=checkpoint_documents[before]["sequence_state"],
+			after_semantic_state=checkpoint_documents[after]["sequence_state"],
+			before_runtime_authority=checkpoint_runtime_authority[before],
+			after_runtime_authority=checkpoint_runtime_authority[after],
+			before_population=checkpoint_population[before],
+			after_population=checkpoint_population[after],
+			secret_markers=secret_markers,
+		)
+	if mismatches != [
+		{
+			"component": "schema",
+			"classification": "candidate_digest_mismatch",
+			"expected_sha256": expected_digests["schema"],
+			"actual_sha256": manifest_evidence["schema"]["source"]["sha256"],
+		},
+		{
+			"component": "configured_authority",
+			"classification": "candidate_digest_mismatch",
+			"expected_sha256": expected_digests["authority"],
+			"actual_sha256": manifest_evidence["authority"]["source"]["sha256"],
+		},
+	]:
+		raise TestFailure("authority candidate digest mismatch set is not exact")
 
 	end_binding = frozen_source_binding()
 	if end_binding != start_binding:
@@ -3268,54 +3424,58 @@ def run_authority_candidate_capture(
 		"schema": "decodex/postgres-authority-candidate/1",
 		"capture_only": True,
 		"acceptance": False,
-		"output_path": str(output_path),
 		"source_binding": {"start": start_binding, "end": end_binding},
 		"postgres": pg_version,
 		"bindings": {
 			"source_database": source["binding"],
-			"restored_database": restored["binding"],
+			"restored_once_database": restored["binding"],
+			"restored_twice_database": second_restored["binding"],
 			"migration_role": MIGRATION_ROLE,
 			"runtime_role": RUNTIME_ROLE,
-			"socket_directory": str(socket_dir),
-			"port": port,
 			"expected_peer_uid": os.geteuid(),
 		},
-		"migration_ledger": {"source": source_ledger, "restored": restored_ledger},
+		"migration_ledger": checkpoint_ledgers,
 		"one_grantee_upgrade": {
 			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
 			"v13_ledger": upgrade_v13_ledger,
 			"pre_v14_anchor_binding": upgrade_anchor_binding,
-			"v19_ledger": upgrade_v19_ledger,
+			"v20_ledger": upgrade_v20_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		},
 		"runtime_authority": {
 			"zero_grantee_migration": zero_grantee_migration_authority,
 			"source": source_runtime_authority,
-			"restored": restored_runtime_authority,
+			"restored_once": restored_runtime_authority,
+			"restored_twice": second_restored_runtime_authority,
 		},
 		"expected_digests": expected_digests,
 		"digests": {
 			component: {
 				"expected_sha256": expected_digests[component],
-				"source_actual_sha256": manifest_evidence[component]["source"]["sha256"],
-				"restored_actual_sha256": manifest_evidence[component]["restored"]["sha256"],
+				"actual_sha256": {
+					checkpoint: manifest_evidence[component][checkpoint]["sha256"]
+					for checkpoint in ("source", "restored_once", "restored_twice")
+				},
 			}
 			for component in ("schema", "authority")
 		},
 		"manifests": manifest_evidence,
 		"semantic_state": {
 			"source": source["sequence_state"],
-			"restored": restored["sequence_state"],
+			"restored_once": restored["sequence_state"],
+			"restored_twice": second_restored["sequence_state"],
 		},
-		"population": {"source": source_population, "restored": restored_population},
-		"restore_parity": restore_parity,
+		"population": checkpoint_population,
+		"restore_edges": restore_edges,
 		"mismatches": mismatches,
 		"phase_b_provenance": {
 			"phase_a_tree": end_binding["tree"],
-			"allowed_source_delta": ["CONFIGURED_AUTHORITY_SHA256"],
+			"allowed_source_delta": [
+				"SCHEMA_CONTRACT_SHA256",
+				"CONFIGURED_AUTHORITY_SHA256",
+			],
 			"designated_evidence_surface": {
 				"schema": "decodex/postgres-authority-candidate/1",
-				"capture_path": str(output_path),
 			},
 			"phase_b_must_record_phase_a_and_phase_b_trees": True,
 			"any_other_source_delta_invalidates_candidate": True,
@@ -3492,7 +3652,6 @@ def main() -> int | AuthorityCandidatePublication:
 			return 0
 		if capture_output is not None:
 			capture_receipt = run_authority_candidate_capture(
-				capture_output,
 				socket_dir,
 				port,
 				work,
@@ -5087,7 +5246,7 @@ def main() -> int | AuthorityCandidatePublication:
 				"checkpoint_state": restore_report,
 			}
 			raise TestFailure(
-				"aggregate V14-V19 PostgreSQL acceptance failure:\n"
+				"aggregate V14-V20 PostgreSQL acceptance failure:\n"
 				+ json.dumps(diagnostics, sort_keys=True)
 			)
 		print(migration_output)

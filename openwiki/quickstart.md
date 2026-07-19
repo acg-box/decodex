@@ -65,6 +65,9 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   same locks, while four migration-owner-only internals accept a bounded explicit instant for the
   deferred acceptance gate. Runtime cannot execute those internals, inject time, or reach V18/V19
   through another API. No runtime or application composition root imports the wake adapter.
+  Forward-only V20 recreates only nine named CHECK constraints with equivalent explicit lower/upper
+  predicates so their exact definitions are stable across restoration. Phase A authority capture
+  requires the source S0, first restore R1, and second restore R2 to satisfy both S0=R1 and R1=R2.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while the authority-defined XY-1269 P/K/L/S slices are still unimplemented. Its checked-in diagnostic still says XY-1263 remains failed; that text is stale, and P must align it with the accepted foundation and disabled slice posture before P validation.

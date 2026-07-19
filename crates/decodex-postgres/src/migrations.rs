@@ -8,7 +8,10 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 19;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 20;
+#[cfg(test)]
+const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
+	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -87,7 +90,7 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		!= Some(EXPECTED_LATEST_MIGRATION_VERSION)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V19 ledger".into(),
+			"embedded migration inventory does not end at the canonical V20 ledger".into(),
 		));
 	}
 	if actual.len() != expected.len() {
@@ -114,4 +117,73 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION;
+
+	const CONSTRAINTS: [&str; 9] = [
+		"repository_admissions_identity_bounded",
+		"repository_admissions_base_bounded",
+		"repository_admissions_path_bounded",
+		"repository_operations_descriptor_bounded",
+		"repository_authority_transitions_head_bounded",
+		"managed_repositories_worktree_path_bounded",
+		"managed_repositories_head_bounded",
+		"routing_policy_revisions_build",
+		"routing_decision_exclusion_range",
+	];
+
+	#[test]
+	fn v20_recreates_only_the_nine_restore_canonical_constraints() {
+		let migration = CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION;
+
+		assert_eq!(migration.matches("DROP CONSTRAINT").count(), CONSTRAINTS.len());
+		assert_eq!(migration.matches("ADD CONSTRAINT").count(), CONSTRAINTS.len());
+		for constraint in CONSTRAINTS {
+			assert_eq!(
+				migration.matches(&format!("DROP CONSTRAINT {constraint};")).count(),
+				1
+			);
+			assert_eq!(
+				migration.matches(&format!("ADD CONSTRAINT {constraint} CHECK")).count(),
+				1
+			);
+		}
+		assert!(!migration.lines().any(
+			|line| !line.trim_start().starts_with("--") && line.contains("BETWEEN")
+		));
+		assert!(!migration.contains("CASCADE"));
+	}
+
+	#[test]
+	fn v20_uses_explicit_restore_canonical_range_predicates() {
+		let migration = CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION;
+
+		for required in [
+			"pg_catalog.octet_length(admitted_identity) >= 1",
+			"pg_catalog.octet_length(admitted_identity) <= 256",
+			"pg_catalog.octet_length(admitted_base) >= 1",
+			"pg_catalog.octet_length(admitted_base) <= 256",
+			"pg_catalog.octet_length(repository_absolute_path) >= 2",
+			"pg_catalog.octet_length(repository_absolute_path) <= 4096",
+			"pg_catalog.octet_length(descriptor::text) >= 2",
+			"pg_catalog.octet_length(descriptor::text) <= 1048576",
+			"pg_catalog.octet_length(payload::text) >= 2",
+			"pg_catalog.octet_length(payload::text) <= 262144",
+			"pg_catalog.octet_length(head) >= 1",
+			"pg_catalog.octet_length(head) <= 256",
+			"pg_catalog.octet_length(worktree_absolute_path) >= 2",
+			"pg_catalog.octet_length(worktree_absolute_path) <= 4096",
+			"pg_catalog.octet_length(required_build_id) >= 1",
+			"pg_catalog.octet_length(required_build_id) <= 256",
+			"observed_at_micros >= 0",
+			"observed_at_micros <= 253402300799999999",
+			"resets_at_micros >= observed_at_micros + 1",
+			"resets_at_micros <= 253402300799999999",
+		] {
+			assert!(migration.contains(required), "{required}");
+		}
+	}
 }
