@@ -420,6 +420,17 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 V13 migration harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_migration_through_v13_fixture() -> Result<(), Box<dyn std::error::Error>> {
+	let (migration, _) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::migrate_fixture_through_v13(migration, expected_peer_uid()).await?;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 hostile-search-path harness"]
 #[cfg(feature = "test-support")]
 async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn std::error::Error>> {
@@ -458,6 +469,9 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 	let (mut migration, mut runtime) = separated_configs("DECODEX_TEST")?;
 	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
 	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
+	if runtime_role == "decodex_runtime" {
+		return Err("configured-authority fixture requires a non-default runtime role".into());
+	}
 	let migration_database =
 		migration.get_dbname().ok_or("migration database is absent")?.to_owned();
 	let runtime_database = runtime.get_dbname().ok_or("runtime database is absent")?.to_owned();

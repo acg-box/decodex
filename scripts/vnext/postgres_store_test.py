@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import json
@@ -24,6 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATABASE = "decodex_xy1267"
 COLLATION_DATABASE = "decodex_xy1267_tr"
 RESTORE_DATABASE = "decodex_xy1267_restore"
+AUTHORITY_CAPTURE_DATABASE = "decodex_xy1300_authority_capture"
+AUTHORITY_CAPTURE_RESTORE_DATABASE = "decodex_xy1300_authority_capture_restore"
+AUTHORITY_CAPTURE_UPGRADE_DATABASE = "decodex_xy1300_authority_upgrade"
 DEFAULT_ACL_TAMPER_DATABASE = "decodex_xy1315_default_acl_tamper"
 DEFAULT_ACL_RESTORE_DATABASE = "decodex_xy1315_default_acl_restore"
 AUTHORITY_DATABASE = "decodex_xy1307_authority"
@@ -60,7 +64,7 @@ WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
 MANAGED_RUN_DATABASE = "decodex_xy1338_managed_runs"
 MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1338_managed_runs_restore"
 MIGRATION_ROLE = "decodex_migration"
-RUNTIME_ROLE = "decodex_runtime"
+RUNTIME_ROLE = "decodex_runtime_xy1300"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
 SET_BYPASS_ROLE = "decodex_set_bypass"
 SET_LEDGER_WRITE_ROLE = "decodex_set_ledger_write"
@@ -264,10 +268,53 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.routing_blocker",
 	"decodex.codex_experiment_observation_kind",
 )
+AUTHORITY_ANCHOR_SIGNATURE = (
+	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,"
+	"pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,"
+	"decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)"
+)
+UPGRADE_RUNTIME_EXECUTE_SIGNATURES = (
+	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
+	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
+	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
+	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+)
+UPGRADE_RUNTIME_TYPE_NAMES = (
+	"decodex.routing_member_disposition",
+	"decodex.codex_capability",
+	"decodex.capability_evidence_state",
+	"decodex.routing_blocker",
+	"decodex.codex_experiment_observation_kind",
+)
+V19_INTERNAL_SIGNATURES = (
+	"decodex.register_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.timestamptz)",
+	"decodex.claim_due_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.timestamptz)",
+	"decodex.fire_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.timestamptz)",
+	"decodex.cancel_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.timestamptz)",
+)
 
 
 class TestFailure(RuntimeError):
 	"""Raised when isolated PostgreSQL setup or the integration test fails."""
+
+
+@dataclass(frozen=True)
+class AuthorityCandidatePublication:
+	"""An exception-free capture awaiting post-cleanup atomic publication."""
+
+	output_path: Path
+	receipt: dict[str, object]
 
 
 class ClusterStatus(Enum):
@@ -701,6 +748,17 @@ def run_migration(env: dict[str, str]) -> str:
 	)
 
 
+def run_migration_through_v13(env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			"postgres_migration_through_v13_fixture", "--exact",
+		],
+		env,
+	)
+
+
 def dump_schema_manifest(
 	path: Path, database: str, env: dict[str, str]
 ) -> str:
@@ -1035,19 +1093,30 @@ def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
 	after_rows = json.loads(after)
 	if not isinstance(before_rows, list) or not isinstance(after_rows, list):
 		raise TestFailure("semantic manifest component is not a row array")
-	encode = lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"))
-	before_counter = Counter(encode(row) for row in before_rows)
-	after_counter = Counter(encode(row) for row in after_rows)
+	def keyed(rows: list[object]) -> dict[str, list[object]]:
+		indexed: dict[str, list[object]] = {}
+		for row in rows:
+			if not isinstance(row, list) or len(row) != 3:
+				raise TestFailure("semantic manifest row is not a kind/identity/contract tuple")
+			key = json.dumps(row[:2], sort_keys=True, separators=(",", ":"))
+			if key in indexed:
+				raise TestFailure("semantic manifest contains a duplicate kind/identity key")
+			indexed[key] = row
+		return indexed
+	before_index = keyed(before_rows)
+	after_index = keyed(after_rows)
 	return {
-		"before_only": [
-			json.loads(row)
-			for row, count in sorted((before_counter - after_counter).items())
-			for _ in range(count)
-		],
-		"after_only": [
-			json.loads(row)
-			for row, count in sorted((after_counter - before_counter).items())
-			for _ in range(count)
+		"before_only": [before_index[key] for key in sorted(before_index.keys()-after_index.keys())],
+		"after_only": [after_index[key] for key in sorted(after_index.keys()-before_index.keys())],
+		"contract_mismatches": [
+			{
+				"kind": before_index[key][0],
+				"identity": before_index[key][1],
+				"before_contract": before_index[key][2],
+				"after_contract": after_index[key][2],
+			}
+			for key in sorted(before_index.keys() & after_index.keys())
+			if before_index[key][2] != after_index[key][2]
 		],
 	}
 
@@ -1261,6 +1330,7 @@ def finalize_restore_report(report: dict[str, object]) -> list[str]:
 		for component_name, value in comparison.items():
 			if isinstance(value, dict) and (
 				value.get("before_only") or value.get("after_only")
+				or value.get("contract_mismatches")
 			):
 				failures.append(
 					f"restore comparison {name} changed {component_name} evidence"
@@ -1854,6 +1924,662 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 	)
 
 
+def authority_manifest_evidence(manifest: str) -> dict[str, object]:
+	rows = json.loads(manifest)
+	if not isinstance(rows, list):
+		raise TestFailure("authority candidate manifest is not a row array")
+	grouped_counts: Counter[str] = Counter()
+	identities: Counter[str] = Counter()
+	decoded_identities: dict[str, list[object]] = {}
+	for row in rows:
+		if (
+			not isinstance(row, list) or len(row) != 3
+			or not isinstance(row[0], str)
+		):
+			raise TestFailure("authority candidate manifest row is malformed")
+		grouped_counts[row[0]] += 1
+		key = json.dumps(row[:2], sort_keys=True, separators=(",", ":"))
+		identities[key] += 1
+		decoded_identities[key] = row[:2]
+	duplicates = [
+		{
+			"kind": decoded_identities[key][0],
+			"identity": decoded_identities[key][1],
+			"multiplicity": count,
+		}
+		for key, count in sorted(identities.items())
+		if count > 1
+	]
+	return {
+		"rows": rows,
+		"row_count": len(rows),
+		"grouped_row_counts": dict(sorted(grouped_counts.items())),
+		"duplicate_key_multiplicities": duplicates,
+		"sha256": hashlib.sha256(manifest.encode("utf-8")).hexdigest(),
+	}
+
+
+def capture_migration_ledger(
+	database: str, env: dict[str, str], *, through_version: int = 19
+) -> list[object]:
+	ledger = json.loads(psql(
+		database,
+		"SELECT COALESCE(pg_catalog.json_agg(pg_catalog.json_build_object("
+		"'version',version,'name',name,'checksum',checksum) ORDER BY version),"
+		"'[]'::pg_catalog.json)::text FROM public.refinery_schema_history",
+		env,
+	))
+	if not isinstance(ledger, list) or not ledger:
+		raise TestFailure("authority candidate migration ledger is empty or malformed")
+	actual_identity = []
+	for row in ledger:
+		if (
+			not isinstance(row, dict)
+			or not isinstance(row.get("version"), int)
+			or not isinstance(row.get("name"), str)
+			or not isinstance(row.get("checksum"), str)
+			or not row["checksum"]
+		):
+			raise TestFailure("authority candidate migration ledger row is malformed")
+		actual_identity.append((row["version"], row["name"]))
+	expected_identity = []
+	for path in (REPO_ROOT / "crates/decodex-postgres/migrations").glob("V*__*.sql"):
+		match = re.fullmatch(r"V([1-9][0-9]*)__([a-z0-9_]+)\.sql", path.name)
+		if match is None:
+			raise TestFailure("embedded migration filename is malformed")
+		expected_identity.append((int(match.group(1)), match.group(2)))
+	expected_identity.sort()
+	expected_identity = [
+		identity for identity in expected_identity if identity[0] <= through_version
+	]
+	if actual_identity != expected_identity:
+		raise TestFailure("authority candidate migration ledger differs from embedded source")
+	return ledger
+
+
+def capture_runtime_authority(database: str, env: dict[str, str]) -> dict[str, object]:
+	probe = json.loads(psql(
+		database,
+		"SELECT pg_catalog.json_build_object("
+		f"'database',pg_catalog.current_database(),'migration_role','{MIGRATION_ROLE}',"
+		f"'runtime_role','{RUNTIME_ROLE}',"
+		f"'non_default_runtime_role','{RUNTIME_ROLE}'<>'decodex_runtime',"
+		f"'runtime_login',(SELECT rolcanlogin FROM pg_catalog.pg_roles WHERE rolname='{RUNTIME_ROLE}'),"
+		f"'anchor_execute',pg_catalog.has_function_privilege('{RUNTIME_ROLE}',"
+		"'decodex.apply_managed_run_safety_input_exact(text,text,uuid,uuid,bigint,"
+		"decodex.managed_run_safety_input_kind,uuid,uuid,uuid)','EXECUTE'),"
+		"'direct_non_grantable_execute_count',(SELECT pg_catalog.count(*) FROM "
+		"pg_catalog.pg_proc AS procedure CROSS JOIN LATERAL "
+		"pg_catalog.aclexplode(procedure.proacl) AS privilege WHERE "
+		f"privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole AND "
+		f"privilege.grantor='{MIGRATION_ROLE}'::pg_catalog.regrole AND "
+		"privilege.privilege_type='EXECUTE' AND NOT privilege.is_grantable),"
+		"'direct_non_grantable_type_usage_count',(SELECT pg_catalog.count(*) FROM "
+		"pg_catalog.pg_type AS type CROSS JOIN LATERAL "
+		"pg_catalog.aclexplode(type.typacl) AS privilege WHERE "
+		f"privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole AND "
+		f"privilege.grantor='{MIGRATION_ROLE}'::pg_catalog.regrole AND "
+		"privilege.privilege_type='USAGE' AND NOT privilege.is_grantable))::text",
+		env,
+	))
+	if not isinstance(probe, dict) or (
+		probe.get("database") != database
+		or probe.get("migration_role") != MIGRATION_ROLE
+		or probe.get("runtime_role") != RUNTIME_ROLE
+		or probe.get("non_default_runtime_role") is not True
+		or probe.get("runtime_login") is not True
+		or probe.get("anchor_execute") is not True
+		or not isinstance(probe.get("direct_non_grantable_execute_count"), int)
+		or probe["direct_non_grantable_execute_count"] <= 0
+		or not isinstance(probe.get("direct_non_grantable_type_usage_count"), int)
+		or probe["direct_non_grantable_type_usage_count"] <= 0
+	):
+		raise TestFailure("configured non-default runtime authority is not populated")
+	return probe
+
+
+def capture_zero_grantee_migration_authority(
+	database: str, env: dict[str, str]
+) -> dict[str, object]:
+	probe = json.loads(psql(
+		database,
+		"SELECT pg_catalog.json_build_object("
+		"'database',pg_catalog.current_database(),"
+		"'direct_function_acl_rows',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_proc "
+		"AS procedure JOIN pg_catalog.pg_namespace AS namespace ON "
+		"namespace.oid=procedure.pronamespace CROSS JOIN LATERAL "
+		"pg_catalog.aclexplode(COALESCE(procedure.proacl,"
+		"pg_catalog.acldefault('f',procedure.proowner))) AS privilege WHERE "
+		"namespace.nspname='decodex' "
+		f"AND privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'direct_type_acl_rows',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_type AS type "
+		"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=type.typnamespace "
+		"CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(type.typacl,"
+		"pg_catalog.acldefault('T',type.typowner))) AS privilege WHERE "
+		"namespace.nspname='decodex' "
+		f"AND privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole))::text",
+		env,
+	))
+	if probe != {
+		"database": database,
+		"direct_function_acl_rows": 0,
+		"direct_type_acl_rows": 0,
+	}:
+		raise TestFailure("fresh migration did not take the zero-grantee authority branch")
+	return probe
+
+
+def capture_upgrade_anchor_binding(database: str, env: dict[str, str]) -> dict[str, object]:
+	rows = json.loads(psql(
+		database,
+		"SELECT COALESCE(pg_catalog.json_agg(pg_catalog.json_build_object("
+		f"'identity','{AUTHORITY_ANCHOR_SIGNATURE}',"
+		"'catalog_identity',procedure.oid::pg_catalog.regprocedure::text,"
+		"'grantor',pg_catalog.pg_get_userbyid(privilege.grantor),"
+		"'grantee',pg_catalog.pg_get_userbyid(privilege.grantee),"
+		"'is_grantable',privilege.is_grantable)),'[]'::pg_catalog.json)::text "
+		"FROM pg_catalog.pg_proc AS procedure CROSS JOIN LATERAL "
+		"pg_catalog.aclexplode(COALESCE(procedure.proacl,"
+		"pg_catalog.acldefault('f',procedure.proowner))) AS privilege WHERE "
+		f"procedure.oid=pg_catalog.to_regprocedure('{AUTHORITY_ANCHOR_SIGNATURE}') "
+		"AND privilege.privilege_type='EXECUTE' "
+		f"AND privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole",
+		env,
+	))
+	if (
+		not isinstance(rows, list)
+		or len(rows) != 1
+		or not isinstance(rows[0], dict)
+		or rows[0].get("identity") != AUTHORITY_ANCHOR_SIGNATURE
+		or rows[0].get("grantor") != MIGRATION_ROLE
+		or rows[0].get("grantee") != RUNTIME_ROLE
+		or rows[0].get("is_grantable") is not False
+	):
+		raise TestFailure("V13 upgrade anchor binding is not direct and non-grantable")
+	return rows[0]
+
+
+def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dict[str, object]:
+	allowed_function_identities = tuple(sorted((
+		AUTHORITY_ANCHOR_SIGNATURE,
+		*UPGRADE_RUNTIME_EXECUTE_SIGNATURES,
+	)))
+	function_values = ",".join(
+		f"('{identity}',pg_catalog.to_regprocedure('{identity}'))"
+		for identity in allowed_function_identities
+	)
+	type_values = ",".join(
+		f"('{identity}',pg_catalog.to_regtype('{identity}'))"
+		for identity in sorted(UPGRADE_RUNTIME_TYPE_NAMES)
+	)
+	internal_values = ",".join(
+		f"('{identity}',pg_catalog.to_regprocedure('{identity}'))"
+		for identity in sorted(V19_INTERNAL_SIGNATURES)
+	)
+
+	function_grants = json.loads(psql(
+		database,
+		"WITH allowed(identity,oid) AS (VALUES " + function_values + ") "
+		"SELECT COALESCE(pg_catalog.json_agg(pg_catalog.json_build_object("
+		"'identity',allowed.identity,'catalog_identity',procedure.oid::pg_catalog.regprocedure::text,"
+		"'grantor',pg_catalog.pg_get_userbyid(privilege.grantor),"
+		"'grantee',pg_catalog.pg_get_userbyid(privilege.grantee),"
+		"'is_grantable',privilege.is_grantable) ORDER BY allowed.identity),"
+		"'[]'::pg_catalog.json)::text FROM pg_catalog.pg_proc AS procedure "
+		"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=procedure.pronamespace "
+		"CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(procedure.proacl,"
+		"pg_catalog.acldefault('f',procedure.proowner))) AS privilege "
+		"LEFT JOIN allowed ON allowed.oid=procedure.oid "
+		"WHERE namespace.nspname='decodex' AND privilege.privilege_type='EXECUTE' "
+		f"AND privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole",
+		env,
+	))
+	type_grants = json.loads(psql(
+		database,
+		"WITH allowed(identity,oid) AS (VALUES " + type_values + ") "
+		"SELECT COALESCE(pg_catalog.json_agg(pg_catalog.json_build_object("
+		"'identity',allowed.identity,'catalog_identity',type.oid::pg_catalog.regtype::text,"
+		"'grantor',pg_catalog.pg_get_userbyid(privilege.grantor),"
+		"'grantee',pg_catalog.pg_get_userbyid(privilege.grantee),"
+		"'is_grantable',privilege.is_grantable) ORDER BY allowed.identity),"
+		"'[]'::pg_catalog.json)::text FROM pg_catalog.pg_type AS type "
+		"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=type.typnamespace "
+		"CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(type.typacl,"
+		"pg_catalog.acldefault('T',type.typowner))) AS privilege "
+		"LEFT JOIN allowed ON allowed.oid=type.oid "
+		"WHERE namespace.nspname='decodex' AND privilege.privilege_type='USAGE' "
+		f"AND privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole",
+		env,
+	))
+	internal_sealing = json.loads(psql(
+		database,
+		"WITH internal(identity,oid) AS (VALUES " + internal_values + ") "
+		"SELECT COALESCE(pg_catalog.json_agg(pg_catalog.json_build_object("
+		"'identity',internal.identity,"
+		"'runtime_effective_execute',pg_catalog.has_function_privilege("
+		f"'{RUNTIME_ROLE}'::pg_catalog.regrole,internal.oid,'EXECUTE'),"
+		"'runtime_direct_execute',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_proc "
+		"AS procedure CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(procedure.proacl,"
+		"pg_catalog.acldefault('f',procedure.proowner))) AS privilege WHERE "
+		"procedure.oid=internal.oid AND privilege.privilege_type='EXECUTE' AND "
+		f"privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'public_execute',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_proc AS procedure "
+		"CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(procedure.proacl,"
+		"pg_catalog.acldefault('f',procedure.proowner))) AS privilege WHERE "
+		"procedure.oid=internal.oid AND privilege.privilege_type='EXECUTE' AND "
+		"privilege.grantee=0)) ORDER BY internal.identity),'[]'::pg_catalog.json)::text "
+		"FROM internal JOIN pg_catalog.pg_proc AS procedure ON procedure.oid=internal.oid",
+		env,
+	))
+	unrelated_authority = json.loads(psql(
+		database,
+		"SELECT pg_catalog.json_build_object("
+		"'relation_acl_rows',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_class AS class "
+		"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=class.relnamespace "
+		"CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(class.relacl,"
+		"pg_catalog.acldefault(CASE WHEN class.relkind='S' THEN 's'::\"char\" ELSE "
+		"'r'::\"char\" END,class.relowner))) AS privilege WHERE namespace.nspname='decodex' "
+		f"AND privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'schema_acl_rows',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_namespace AS namespace "
+		"CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(namespace.nspacl,"
+		"pg_catalog.acldefault('n',namespace.nspowner))) AS privilege WHERE "
+		"namespace.nspname='decodex' "
+		f"AND privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'owned_relations',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_class AS class "
+		"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=class.relnamespace "
+		"WHERE namespace.nspname='decodex' "
+		f"AND class.relowner='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'owned_functions',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_proc AS procedure "
+		"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=procedure.pronamespace "
+		"WHERE namespace.nspname='decodex' "
+		f"AND procedure.proowner='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'owned_types',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_type AS type "
+		"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=type.typnamespace "
+		"WHERE namespace.nspname='decodex' "
+		f"AND type.typowner='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'owned_schemas',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_namespace "
+		f"WHERE nspowner='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'owned_databases',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_database "
+		f"WHERE datdba='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'role_memberships',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_auth_members "
+		f"WHERE member='{RUNTIME_ROLE}'::pg_catalog.regrole OR "
+		f"roleid='{RUNTIME_ROLE}'::pg_catalog.regrole),"
+		"'default_acl_rows',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_default_acl "
+		"CROSS JOIN LATERAL pg_catalog.aclexplode(defaclacl) AS privilege "
+		f"WHERE privilege.grantee='{RUNTIME_ROLE}'::pg_catalog.regrole))::text",
+		env,
+	))
+
+	if (
+		not isinstance(function_grants, list)
+		or [row.get("identity") for row in function_grants if isinstance(row, dict)]
+		!= list(allowed_function_identities)
+		or any(
+			not isinstance(row, dict)
+			or row.get("grantor") != MIGRATION_ROLE
+			or row.get("grantee") != RUNTIME_ROLE
+			or row.get("is_grantable") is not False
+			for row in function_grants
+		)
+	):
+		raise TestFailure("V13 upgrade runtime function authority is not exact")
+	if (
+		not isinstance(type_grants, list)
+		or [row.get("identity") for row in type_grants if isinstance(row, dict)]
+		!= list(sorted(UPGRADE_RUNTIME_TYPE_NAMES))
+		or any(
+			not isinstance(row, dict)
+			or row.get("grantor") != MIGRATION_ROLE
+			or row.get("grantee") != RUNTIME_ROLE
+			or row.get("is_grantable") is not False
+			for row in type_grants
+		)
+	):
+		raise TestFailure("V13 upgrade runtime type authority is not exact")
+	if (
+		not isinstance(internal_sealing, list)
+		or [row.get("identity") for row in internal_sealing if isinstance(row, dict)]
+		!= list(sorted(V19_INTERNAL_SIGNATURES))
+		or any(
+			not isinstance(row, dict)
+			or row.get("runtime_effective_execute") is not False
+			or row.get("runtime_direct_execute") != 0
+			or row.get("public_execute") != 0
+			for row in internal_sealing
+		)
+	):
+		raise TestFailure("V19 internal function sealing is not exact")
+	if not isinstance(unrelated_authority, dict) or any(
+		value != 0 for value in unrelated_authority.values()
+	):
+		raise TestFailure("V13 upgrade added unrelated runtime authority")
+
+	return {
+		"database": database,
+		"migration_role": MIGRATION_ROLE,
+		"runtime_role": RUNTIME_ROLE,
+		"anchor_binding": next(
+			row for row in function_grants if row["identity"] == AUTHORITY_ANCHOR_SIGNATURE
+		),
+		"migration_delta": {
+			"execute_count": len(UPGRADE_RUNTIME_EXECUTE_SIGNATURES),
+			"execute_grants": [
+				row for row in function_grants
+				if row["identity"] != AUTHORITY_ANCHOR_SIGNATURE
+			],
+			"type_usage_count": len(UPGRADE_RUNTIME_TYPE_NAMES),
+			"type_usage_grants": type_grants,
+		},
+		"all_direct_runtime_function_grants": function_grants,
+		"v19_internal_sealing": internal_sealing,
+		"unrelated_authority": unrelated_authority,
+	}
+
+
+def require_manifest_binding(document: dict[str, object], database: str) -> None:
+	binding = document.get("binding")
+	expected = {
+		"requested": database,
+		"migration_url": database,
+		"runtime_url": database,
+		"observed_migration": database,
+		"observed_runtime": database,
+	}
+	if binding != expected:
+		raise TestFailure(f"authority candidate database binding differs for {database}")
+
+
+def validate_authority_candidate_output_path(path: Path) -> None:
+	if not path.is_absolute():
+		raise TestFailure("authority candidate output path must be absolute")
+	try:
+		path.relative_to(REPO_ROOT)
+	except ValueError:
+		pass
+	else:
+		raise TestFailure("authority candidate output path must be outside the source tree")
+	parent = path.parent
+	for component in (parent, *parent.parents):
+		if component.is_symlink():
+			raise TestFailure("authority candidate output path must not contain a symlink")
+	if not parent.is_dir() or parent.resolve(strict=True) != parent:
+		raise TestFailure("authority candidate output parent must be an exact existing directory")
+	parent_metadata = parent.stat()
+	if parent_metadata.st_uid != os.geteuid() or parent_metadata.st_mode & 0o077:
+		raise TestFailure("authority candidate output parent must be operator-owned and private")
+	if path.exists() or path.is_symlink():
+		raise TestFailure("authority candidate output already exists")
+
+
+def publish_authority_candidate(path: Path, receipt: dict[str, object]) -> None:
+	validate_authority_candidate_output_path(path)
+	parent = path.parent
+	payload = (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode()
+	file_descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=parent)
+	temporary_path = Path(temporary_name)
+	try:
+		with os.fdopen(file_descriptor, "wb") as output:
+			os.fchmod(output.fileno(), 0o600)
+			output.write(payload)
+			output.flush()
+			os.fsync(output.fileno())
+	except BaseException:
+		try:
+			temporary_path.unlink(missing_ok=True)
+		except BaseException:
+			pass
+		raise
+	try:
+		os.link(temporary_path, path)
+	except BaseException:
+		try:
+			temporary_path.unlink(missing_ok=True)
+		except BaseException:
+			pass
+		raise
+	# The create-only hard link is the publication commit. Nothing after this point
+	# removes or mutates the final receipt; later failure is reconciled by readback.
+	temporary_path.unlink(missing_ok=True)
+	directory_descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+	try:
+		os.fsync(directory_descriptor)
+	finally:
+		os.close(directory_descriptor)
+
+
+def run_authority_candidate_capture(
+	output_path: Path,
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	log_path: Path,
+	env: dict[str, str],
+	secret_markers: tuple[str, ...],
+) -> dict[str, object]:
+	start_binding = frozen_source_binding()
+	pg_version = json.loads(psql(
+		"postgres",
+		"SELECT pg_catalog.json_build_object("
+		"'version',pg_catalog.current_setting('server_version'),"
+		"'version_num',pg_catalog.current_setting('server_version_num')::integer,"
+		"'major',pg_catalog.current_setting('server_version_num')::integer/10000)::text",
+		env,
+	))
+	if not isinstance(pg_version, dict) or pg_version.get("major") != 18:
+		raise TestFailure("authority candidate capture requires PostgreSQL major 18")
+
+	create_database(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	set_contract_urls(
+		env, socket_dir, port, AUTHORITY_CAPTURE_UPGRADE_DATABASE, RUNTIME_ROLE
+	)
+	run_migration_through_v13(env)
+	upgrade_v13_ledger = capture_migration_ledger(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env, through_version=13
+	)
+	psql_as(
+		MIGRATION_ROLE,
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE,
+		f"GRANT EXECUTE ON FUNCTION {AUTHORITY_ANCHOR_SIGNATURE} TO {RUNTIME_ROLE}",
+		env,
+	)
+	upgrade_anchor_binding = capture_upgrade_anchor_binding(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
+	)
+	run_migration(env)
+	upgrade_v19_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	upgrade_runtime_authority = capture_upgrade_runtime_authority(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
+	)
+
+	create_database(AUTHORITY_CAPTURE_DATABASE, env)
+	set_contract_urls(env, socket_dir, port, AUTHORITY_CAPTURE_DATABASE, RUNTIME_ROLE)
+	run_migration(env)
+	zero_grantee_migration_authority = capture_zero_grantee_migration_authority(
+		AUTHORITY_CAPTURE_DATABASE, env
+	)
+	provision_runtime(AUTHORITY_CAPTURE_DATABASE, RUNTIME_ROLE, env)
+	psql_as(
+		RUNTIME_ROLE,
+		AUTHORITY_CAPTURE_DATABASE,
+		"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
+		"('10000000-0000-4000-8000-000000001300','XY-1300 capture fixture')",
+		env,
+	)
+
+	source_path = work / "authority-candidate-source.json"
+	dump_schema_manifest(source_path, AUTHORITY_CAPTURE_DATABASE, env)
+	source = load_semantic_manifest(source_path)
+	require_manifest_binding(source, AUTHORITY_CAPTURE_DATABASE)
+	source_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_DATABASE, env)
+	source_runtime_authority = capture_runtime_authority(AUTHORITY_CAPTURE_DATABASE, env)
+	source_population = json.loads(psql(
+		AUTHORITY_CAPTURE_DATABASE,
+		"SELECT pg_catalog.row_to_json(row)::text FROM (SELECT account_id::text,"
+		"display_label,state::text,metadata,revision,observed_at,updated_at FROM "
+		"decodex.accounts WHERE account_id='10000000-0000-4000-8000-000000001300') AS row",
+		env,
+	))
+	if not isinstance(source_population, dict):
+		raise TestFailure("authority candidate source database is not populated")
+
+	dump_path = work / "authority-candidate.dump"
+	run(["pg_dump", "-Fc", "-f", str(dump_path), AUTHORITY_CAPTURE_DATABASE], env)
+	create_database(AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
+	run(
+		["pg_restore", "--exit-on-error", "-d", AUTHORITY_CAPTURE_RESTORE_DATABASE,
+		 str(dump_path)],
+		env,
+	)
+	set_contract_urls(env, socket_dir, port, AUTHORITY_CAPTURE_RESTORE_DATABASE, RUNTIME_ROLE)
+	restored_path = work / "authority-candidate-restored.json"
+	dump_schema_manifest(restored_path, AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
+	restored = load_semantic_manifest(restored_path)
+	require_manifest_binding(restored, AUTHORITY_CAPTURE_RESTORE_DATABASE)
+	restored_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
+	restored_runtime_authority = capture_runtime_authority(
+		AUTHORITY_CAPTURE_RESTORE_DATABASE, env
+	)
+	restored_population = json.loads(psql(
+		AUTHORITY_CAPTURE_RESTORE_DATABASE,
+		"SELECT pg_catalog.row_to_json(row)::text FROM (SELECT account_id::text,"
+		"display_label,state::text,metadata,revision,observed_at,updated_at FROM "
+		"decodex.accounts WHERE account_id='10000000-0000-4000-8000-000000001300') AS row",
+		env,
+	))
+	if not isinstance(restored_population, dict):
+		raise TestFailure("authority candidate restored database is not populated")
+
+	manifest_evidence: dict[str, object] = {}
+	manifest_diffs: dict[str, object] = {}
+	expected_digests = {
+		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+	}
+	mismatches: list[dict[str, object]] = []
+	for component in ("schema", "authority"):
+		source_manifest = component_manifest(source, component)
+		restored_manifest = component_manifest(restored, component)
+		if source_manifest is None or restored_manifest is None:
+			raise TestFailure(f"authority candidate {component} manifest is incomplete")
+		source_evidence = authority_manifest_evidence(source_manifest)
+		restored_evidence = authority_manifest_evidence(restored_manifest)
+		manifest_evidence[component] = {
+			"source": source_evidence,
+			"restored": restored_evidence,
+		}
+		manifest_diffs[component] = semantic_row_diff(source_manifest, restored_manifest)
+		if any(manifest_diffs[component].values()):
+			raise TestFailure(f"authority candidate {component} manifest changed on restore")
+		if source_evidence["duplicate_key_multiplicities"] or restored_evidence[
+			"duplicate_key_multiplicities"
+		]:
+			raise TestFailure(f"authority candidate {component} identities are duplicated")
+		if component == "schema" and (
+			unresolved_dependency_rows(source_manifest)
+			or unresolved_dependency_rows(restored_manifest)
+		):
+			raise TestFailure("authority candidate schema has unresolved dependencies")
+		if source_evidence["sha256"] != expected_digests[component]:
+			mismatches.append({
+				"component": "configured_authority" if component == "authority" else "schema",
+				"classification": "candidate_digest_mismatch",
+				"expected_sha256": expected_digests[component],
+				"actual_sha256": source_evidence["sha256"],
+			})
+
+	semantic_state_match = source["sequence_state"] == restored["sequence_state"]
+	restore_parity = {
+		"schema_manifest": not any(manifest_diffs["schema"].values()),
+		"configured_authority_manifest": not any(manifest_diffs["authority"].values()),
+		"migration_ledger": source_ledger == restored_ledger,
+		"semantic_state": semantic_state_match,
+		"runtime_authority_shape": (
+			source_runtime_authority["runtime_role"]
+			== restored_runtime_authority["runtime_role"]
+			and source_runtime_authority["direct_non_grantable_execute_count"]
+			== restored_runtime_authority["direct_non_grantable_execute_count"]
+			and source_runtime_authority["direct_non_grantable_type_usage_count"]
+			== restored_runtime_authority["direct_non_grantable_type_usage_count"]
+		),
+		"populated_fixture": source_population == restored_population,
+	}
+	if not all(restore_parity.values()):
+		raise TestFailure("authority candidate dump/restore parity is incomplete")
+	if mismatches != [{
+		"component": "configured_authority",
+		"classification": "candidate_digest_mismatch",
+		"expected_sha256": expected_digests["authority"],
+		"actual_sha256": manifest_evidence["authority"]["source"]["sha256"],
+	}]:
+		raise TestFailure("authority candidate is not exactly one configured-authority mismatch")
+
+	end_binding = frozen_source_binding()
+	if end_binding != start_binding:
+		raise TestFailure("authority candidate source binding changed during capture")
+	receipt = {
+		"schema": "decodex/postgres-authority-candidate/1",
+		"capture_only": True,
+		"acceptance": False,
+		"output_path": str(output_path),
+		"source_binding": {"start": start_binding, "end": end_binding},
+		"postgres": pg_version,
+		"bindings": {
+			"source_database": source["binding"],
+			"restored_database": restored["binding"],
+			"migration_role": MIGRATION_ROLE,
+			"runtime_role": RUNTIME_ROLE,
+			"socket_directory": str(socket_dir),
+			"port": port,
+			"expected_peer_uid": os.geteuid(),
+		},
+		"migration_ledger": {"source": source_ledger, "restored": restored_ledger},
+		"one_grantee_upgrade": {
+			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
+			"v13_ledger": upgrade_v13_ledger,
+			"pre_v14_anchor_binding": upgrade_anchor_binding,
+			"v19_ledger": upgrade_v19_ledger,
+			"runtime_authority": upgrade_runtime_authority,
+		},
+		"runtime_authority": {
+			"zero_grantee_migration": zero_grantee_migration_authority,
+			"source": source_runtime_authority,
+			"restored": restored_runtime_authority,
+		},
+		"expected_digests": expected_digests,
+		"digests": {
+			component: {
+				"expected_sha256": expected_digests[component],
+				"source_actual_sha256": manifest_evidence[component]["source"]["sha256"],
+				"restored_actual_sha256": manifest_evidence[component]["restored"]["sha256"],
+			}
+			for component in ("schema", "authority")
+		},
+		"manifests": manifest_evidence,
+		"semantic_state": {
+			"source": source["sequence_state"],
+			"restored": restored["sequence_state"],
+		},
+		"population": {"source": source_population, "restored": restored_population},
+		"restore_parity": restore_parity,
+		"mismatches": mismatches,
+		"phase_b_provenance": {
+			"phase_a_tree": end_binding["tree"],
+			"allowed_source_delta": ["CONFIGURED_AUTHORITY_SHA256"],
+			"designated_evidence_surface": {
+				"schema": "decodex/postgres-authority-candidate/1",
+				"capture_path": str(output_path),
+			},
+			"phase_b_must_record_phase_a_and_phase_b_trees": True,
+			"any_other_source_delta_invalidates_candidate": True,
+		},
+	}
+	serialized = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
+	if any(marker in serialized for marker in secret_markers):
+		raise TestFailure("authority candidate receipt contains a secret marker")
+	assert_postgres_logs_redact((log_path,), secret_markers)
+	return receipt
+
+
 def write_bootstrap_config(
 	root: Path,
 	socket_dir: Path,
@@ -1898,13 +2624,18 @@ max_entry_bytes = 4096
 	config_path.chmod(0o600)
 
 
-def main() -> int:
+def main() -> int | AuthorityCandidatePublication:
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
-	if sys.argv[1:] and not (focused_work_items or focused_managed_runs):
+	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
+	capture_output = Path(sys.argv[2]) if capture_only else None
+	if sys.argv[1:] and not (focused_work_items or focused_managed_runs or capture_only):
 		raise TestFailure(
-			"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs]"
+			"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
+			"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH]"
 		)
+	if capture_output is not None:
+		validate_authority_candidate_output_path(capture_output)
 	temp_root_value = os.environ.get("DECODEX_TEST_TEMP_ROOT")
 	temp_root = None
 	if temp_root_value:
@@ -1920,7 +2651,8 @@ def main() -> int:
 	work = Path(
 		tempfile.mkdtemp(
 			prefix=("decodex-xy1343-" if focused_work_items else
-				"decodex-xy1338-" if focused_managed_runs else "decodex-xy1267-"),
+				"decodex-xy1338-" if focused_managed_runs else
+				"decodex-xy1300-capture-" if capture_only else "decodex-xy1267-"),
 			dir=temp_root,
 		)
 	).resolve()
@@ -1973,18 +2705,18 @@ def main() -> int:
 			],
 			env,
 		)
-		roles = [
-			MIGRATION_ROLE,
-			RUNTIME_ROLE,
-			MISSING_SELECT_ROLE,
-			HOSTILE_SEARCH_ROLE,
-			FUNCTION_OWNER_ROLE,
-			SET_BYPASS_ROLE,
-			SET_LEDGER_WRITE_ROLE,
-			SET_SEQUENCE_UPDATE_ROLE,
-			MEMBERSHIP_ADMIN_ROLE,
-			*UNSAFE_ROLES.values(),
-		]
+		roles = [MIGRATION_ROLE, RUNTIME_ROLE]
+		if not capture_only:
+			roles.extend((
+				MISSING_SELECT_ROLE,
+				HOSTILE_SEARCH_ROLE,
+				FUNCTION_OWNER_ROLE,
+				SET_BYPASS_ROLE,
+				SET_LEDGER_WRITE_ROLE,
+				SET_SEQUENCE_UPDATE_ROLE,
+				MEMBERSHIP_ADMIN_ROLE,
+				*UNSAFE_ROLES.values(),
+			))
 		for role in roles:
 			group_roles = {
 				FUNCTION_OWNER_ROLE,
@@ -2010,6 +2742,17 @@ def main() -> int:
 			output = run_managed_run_focused_contracts(socket_dir, port, work, env)
 			print(output)
 			return 0
+		if capture_output is not None:
+			capture_receipt = run_authority_candidate_capture(
+				capture_output,
+				socket_dir,
+				port,
+				work,
+				log_path,
+				env,
+				(role_setting_canary_guc, role_setting_secret_canary),
+			)
+			return AuthorityCandidatePublication(capture_output, capture_receipt)
 		source_binding = frozen_source_binding()
 		restore_report: dict[str, object] = {
 			"checkpoints": {},
@@ -2017,7 +2760,6 @@ def main() -> int:
 			"stages": {},
 		}
 		acceptance_failures: list[str] = []
-
 		create_database(DATABASE, env)
 		set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 		migration_output = run_migration(env)
@@ -2027,6 +2769,16 @@ def main() -> int:
 			"source",
 			work / "schema-manifest-initial.json",
 			DATABASE,
+			env,
+		)
+		initial_stages = restore_report["stages"]
+		assert isinstance(initial_stages, dict)
+		if initial_stages.get("source_capture") != {"status": "passed"}:
+			raise TestFailure("initial raw PostgreSQL manifest capture did not pass")
+		readiness_output = run(
+			["cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
+			 "postgres_store", "--run-ignored", "all", "--",
+			 "postgres_manifest_readiness_fixture", "--exact"],
 			env,
 		)
 		try:
@@ -3592,6 +4344,7 @@ def main() -> int:
 			)
 		print(migration_output)
 		print(initial_manifest_output)
+		print(readiness_output)
 		print(role_profile_output)
 		print(runtime_session_output)
 		print(restart_output)
@@ -3670,5 +4423,24 @@ def main() -> int:
 				raise stop_error
 
 
+def publish_completed_authority_candidate(
+	publication: AuthorityCandidatePublication,
+) -> None:
+	source_binding = publication.receipt.get("source_binding")
+	if not isinstance(source_binding, dict):
+		raise TestFailure("authority candidate receipt has no source binding")
+	final_binding = frozen_source_binding()
+	if (
+		source_binding.get("start") != final_binding
+		or source_binding.get("end") != final_binding
+	):
+		raise TestFailure("authority candidate source binding changed before publication")
+	publish_authority_candidate(publication.output_path, publication.receipt)
+
+
 if __name__ == "__main__":
-	raise SystemExit(main())
+	result = main()
+	if isinstance(result, AuthorityCandidatePublication):
+		publish_completed_authority_candidate(result)
+		raise SystemExit(0)
+	raise SystemExit(result)

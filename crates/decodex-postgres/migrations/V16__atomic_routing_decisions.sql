@@ -819,5 +819,51 @@ REVOKE ALL ON TYPE decodex.routing_decision_kind, decodex.routing_no_route_reaso
 REVOKE ALL ON FUNCTION decodex.forbid_routing_decision_mutation(),
 	decodex.enforce_routing_decision_completeness(),
 	decodex.route_account_exact(text,text,uuid,uuid,bigint,uuid,bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION decodex.route_account_exact(text,text,uuid,uuid,bigint,uuid,bigint)
-	TO decodex_runtime;
+
+-- Bind the V16 entrypoint only to the exact unambiguous migration-owned V12 anchor grantee.
+DO $$
+DECLARE anchor_oid pg_catalog.oid;
+DECLARE migration_role_oid pg_catalog.oid;
+DECLARE owner_execute_count pg_catalog.int8;
+DECLARE runtime_role_count pg_catalog.int8;
+DECLARE invalid_execute_count pg_catalog.int8;
+DECLARE runtime_role pg_catalog.name;
+BEGIN
+	SELECT role.oid INTO migration_role_oid FROM pg_catalog.pg_roles AS role
+	WHERE role.rolname=current_user;
+	anchor_oid:=pg_catalog.to_regprocedure(
+		'decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)');
+	IF anchor_oid IS NULL OR NOT EXISTS (
+		SELECT 1 FROM pg_catalog.pg_proc AS procedure
+		WHERE procedure.oid=anchor_oid AND procedure.proowner=migration_role_oid
+	) THEN
+		RAISE EXCEPTION 'V16 runtime principal anchor is missing or not migration-owned'
+			USING ERRCODE='42501';
+	END IF;
+	SELECT
+		pg_catalog.count(*) FILTER (WHERE privilege.grantee=migration_role_oid),
+		pg_catalog.count(*) FILTER (
+			WHERE privilege.grantee<>migration_role_oid AND role.oid IS NOT NULL),
+		pg_catalog.count(*) FILTER (WHERE privilege.grantee=0
+			OR privilege.grantor<>migration_role_oid
+			OR (privilege.grantee<>migration_role_oid
+				AND (privilege.is_grantable OR role.oid IS NULL))),
+		pg_catalog.min(role.rolname) FILTER (
+			WHERE privilege.grantee<>migration_role_oid AND role.oid IS NOT NULL)
+	INTO owner_execute_count,runtime_role_count,invalid_execute_count,runtime_role
+	FROM pg_catalog.pg_proc AS procedure
+	CROSS JOIN LATERAL pg_catalog.aclexplode(
+		COALESCE(procedure.proacl,pg_catalog.acldefault('f',procedure.proowner))) AS privilege
+	LEFT JOIN pg_catalog.pg_roles AS role ON role.oid=privilege.grantee
+	WHERE procedure.oid=anchor_oid AND privilege.privilege_type='EXECUTE';
+	IF owner_execute_count<>1 OR runtime_role_count>1 OR invalid_execute_count<>0 THEN
+		RAISE EXCEPTION 'V16 runtime principal anchor ACL is ambiguous or unsafe'
+			USING ERRCODE='42501';
+	END IF;
+	IF runtime_role_count=1 THEN
+		EXECUTE pg_catalog.format(
+			'GRANT EXECUTE ON FUNCTION decodex.route_account_exact(text,text,uuid,uuid,bigint,uuid,bigint) TO %I',
+			runtime_role);
+	END IF;
+END
+$$;
