@@ -997,14 +997,14 @@ BEGIN
 				AND actual.state IS DISTINCT FROM 'supported') THEN
 			blockers:=blockers||'required_capability_unsatisfied';
 		END IF;
-		FOR quota IN SELECT definition.window_class,definition.duration_minutes,window.revision,
-			window.remaining_percent,window.resets_at,window.observed_at,window.confidence
+		FOR quota IN SELECT definition.window_class,definition.duration_minutes,quota_window.revision,
+			quota_window.remaining_percent,quota_window.resets_at,quota_window.observed_at,quota_window.confidence
 			FROM (VALUES ('five_hour'::decodex.quota_window_class,300::smallint),
 				('seven_day'::decodex.quota_window_class,10080::smallint))
 				AS definition(window_class,duration_minutes)
-			LEFT JOIN decodex.quota_windows AS window ON window.account_id=member.account_id
-				AND window.window_class=definition.window_class
-				AND window.duration_minutes=definition.duration_minutes
+			LEFT JOIN decodex.quota_windows AS quota_window ON quota_window.account_id=member.account_id
+				AND quota_window.window_class=definition.window_class
+				AND quota_window.duration_minutes=definition.duration_minutes
 		LOOP
 			IF quota.revision IS NULL THEN
 				blockers:=blockers||CASE quota.window_class WHEN 'five_hour'
