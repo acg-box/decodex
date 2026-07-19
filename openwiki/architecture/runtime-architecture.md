@@ -398,7 +398,14 @@ only as ambiguous readback and cannot reconstruct its private one-shot fresh per
 no transition, Rust API, or Codex API here that retries, searches for, or adopts a thread.
 Observations are append-only positive exact facts bound by experiment revision, thread, deterministic
 marker, source identity, and payload digest. List omission, pagination exhaustion, missing events,
-lossy history, and stale caches have no persisted representation and authorize nothing.
+lossy history, and stale caches have no persisted representation and authorize nothing. The
+immutable V14 snapshot is the run-revision provenance authority for V15 experiments; V16 decisions
+retain that same composite snapshot lineage, and V17 plans retain the composite V16 decision
+lineage. The snapshot likewise retains its source RuntimeSession revision as immutable provenance
+after checking the locked current session. Later legitimate ManagedRun and RuntimeSession advances
+therefore neither rewrite historical evidence nor invalidate its foreign keys, while creation still
+rejects a revision that is not current under the command's hierarchy, ManagedRun, experiment,
+snapshot, and RuntimeSession lock boundary before committing `creation_possible`.
 
 The composition also reports conversation execution unavailable. Authentication, TLS,
 remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, mutating

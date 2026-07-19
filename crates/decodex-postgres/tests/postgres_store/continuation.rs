@@ -9,12 +9,13 @@ use decodex_core::{
 	BlobStore, CodexExperimentCommandOutcome, CodexExperimentIdentity,
 	CodexExperimentObservationKind, ContextPack, ContextPackInput, ContextPackPolicy,
 	ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlanKind,
-	ContinuationRejection, PinnedContextSource, PossibleSideEffects,
+	ContinuationRejection, ManagedRunSafetyInput, PinnedContextSource, PossibleSideEffects,
+	ProjectId, SafetyObservationId, TurnId,
 };
 use decodex_postgres::{
 	BindCodexExperimentThread, CodexExperimentCreationFenceOutcome, ContinuationPlanEffect,
-	PlanContinuation, PostgresStore, PrepareCodexExperiment, RecordCodexExperimentObservation,
-	RouteAccount,
+	ManagedRunSafetyOutcome, PlanContinuation, PostgresStore, PrepareCodexExperiment,
+	RecordCodexExperimentObservation, RouteAccount,
 };
 
 const SUBMITTED_RECEIPT_ID: &str = "f1000000-0000-4000-8000-000000000017";
@@ -34,6 +35,7 @@ pub(super) async fn assert_continuation_contract(
 	let (same_thread, same_thread_request) =
 		assert_same_thread_contract(store, routing, &blob_store, &fallback_pack).await?;
 	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
+	assert_historical_lineage_survives_managed_run_advance(store, owner, routing).await?;
 	assert_lineage_and_restart_contract(
 		owner,
 		(migration, runtime),
@@ -43,6 +45,127 @@ pub(super) async fn assert_continuation_contract(
 		same_thread,
 	)
 	.await?;
+	Ok(())
+}
+
+async fn assert_historical_lineage_survives_managed_run_advance(
+	store: &PostgresStore,
+	owner: &Client,
+	routing: &RoutingFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let experiment_id = uuid(0xef, 1);
+	let attempt_id = uuid(0xef, 2);
+	let marker = format!("decodex.experiment.v1:{experiment_id}");
+	let identity = CodexExperimentIdentity {
+		experiment_id: experiment_id.clone(),
+		managed_run_id: routing.selected_request.managed_run_id.clone(),
+		managed_run_revision: 1,
+		routing_snapshot_id: routing.selected.decision.snapshot_id.clone(),
+		account_id: routing.selected_account_id.clone(),
+		account_revision: 1,
+		role_profile_revision: 1,
+		build_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+		repository_cwd: "/srv/vnext-acceptance".into(),
+		thread_title: format!("V15 stale authority {marker}"),
+	};
+	assert!(matches!(
+		store
+			.prepare_codex_experiment(
+				"v15-stale-authority-prepare",
+				&PrepareCodexExperiment { identity },
+			)
+			.await?,
+		CodexExperimentCommandOutcome::Applied(_)
+	));
+	let project_id: String = owner
+		.query_one(
+			"SELECT project_id::text FROM decodex.managed_runs WHERE managed_run_id=$1::text::uuid",
+			&[&routing.selected_request.managed_run_id.as_str()],
+		)
+		.await?
+		.get(0);
+	let outcome = store
+		.apply_managed_run_safety_input(
+			"v17-run-revision-advance",
+			&ProjectId::new(project_id)?,
+			&routing.selected_request.managed_run_id,
+			1,
+			&ManagedRunSafetyInput::PositivelyObservedUnknownTurn {
+				observation_id: SafetyObservationId::new(uuid(0xef, 3))?,
+				runtime_session_id: routing.selected_runtime_session_id.clone(),
+				turn_id: TurnId::new("ef000000-0000-1000-8000-000000000003")?,
+			},
+		)
+		.await?;
+	let ManagedRunSafetyOutcome::Success(effect) = outcome else {
+		return Err("ManagedRun revision advance was rejected".into());
+	};
+	assert_eq!(effect.managed_run_revision, 2);
+	assert!(effect.runtime_session_diverged);
+	let fence = store
+		.mark_codex_experiment_creation_possible(
+			"v15-stale-authority-fence",
+			&experiment_id,
+			1,
+			&attempt_id,
+		)
+		.await?;
+	let CodexExperimentCreationFenceOutcome::Rejected(rejection) = fence else {
+		return Err("stale V15 authority granted fresh creation permission".into());
+	};
+	assert_eq!(rejection.operation, "mark_codex_experiment_creation_possible");
+	assert_eq!(rejection.code, "creation_not_authorized");
+	let stale_fence_absent: bool = owner
+		.query_one(
+			"SELECT experiment.revision=1 AND experiment.state='prepared'\
+			 AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_revisions AS revision\
+			  WHERE revision.experiment_id=experiment.experiment_id AND revision.revision=2)\
+			 AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_creation_attempts AS attempt\
+			  WHERE attempt.experiment_id=experiment.experiment_id)\
+			 FROM decodex.codex_experiments AS experiment\
+			 WHERE experiment.experiment_id=$1::text::uuid",
+			&[&experiment_id],
+		)
+		.await?
+		.get(0);
+	assert!(stale_fence_absent);
+
+	let lineage = owner
+		.query_one(
+			"SELECT run.revision=2 AND run.runtime_session_revision=2\
+			  AND session.revision=2 AND session.state='diverged',\
+			 EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment\
+			  WHERE experiment.managed_run_id=run.managed_run_id) AND\
+			 NOT EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment\
+			  LEFT JOIN decodex.routing_snapshots AS snapshot\
+			  ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=\
+			   (experiment.routing_snapshot_id,experiment.managed_run_id,\
+			    experiment.managed_run_revision)\
+			  WHERE experiment.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),\
+			 EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision\
+			  WHERE decision.managed_run_id=run.managed_run_id) AND\
+			 NOT EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision\
+			  LEFT JOIN decodex.routing_snapshots AS snapshot\
+			  ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=\
+			   (decision.snapshot_id,decision.managed_run_id,decision.managed_run_revision)\
+			  WHERE decision.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),\
+			 EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan\
+			  WHERE plan.managed_run_id=run.managed_run_id) AND\
+			 NOT EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan\
+			  LEFT JOIN decodex.routing_decisions AS decision\
+			  ON (decision.decision_id,decision.managed_run_id,decision.managed_run_revision)=\
+			   (plan.routing_decision_id,plan.managed_run_id,plan.managed_run_revision)\
+			  WHERE plan.managed_run_id=run.managed_run_id AND decision.decision_id IS NULL)\
+			 FROM decodex.managed_runs AS run\
+			 JOIN decodex.runtime_sessions AS session\
+			  ON session.runtime_session_id=run.runtime_session_id\
+			 WHERE run.managed_run_id=$1::text::uuid",
+			&[&routing.selected_request.managed_run_id.as_str()],
+		)
+		.await?;
+	for index in 0..4 {
+		assert!(lineage.get::<_, bool>(index), "historical run lineage assertion {index}");
+	}
 	Ok(())
 }
 

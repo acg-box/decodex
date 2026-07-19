@@ -178,6 +178,9 @@ CREATE TABLE decodex.routing_snapshots (
 	profile_snapshot_id uuid NOT NULL,
 	profile_snapshot_source_revision bigint NOT NULL CHECK (profile_snapshot_source_revision > 0),
 	resolved_at timestamptz NOT NULL,
+	CONSTRAINT routing_snapshots_run_revision_authority UNIQUE (
+		snapshot_id, managed_run_id, managed_run_revision
+	),
 	CONSTRAINT routing_snapshots_policy_fk FOREIGN KEY (
 		routing_policy_id, routing_policy_revision
 	) REFERENCES decodex.routing_policy_revisions(routing_policy_id, revision) ON DELETE RESTRICT,
@@ -192,9 +195,8 @@ CREATE TABLE decodex.routing_snapshots (
 	),
 	CONSTRAINT routing_snapshots_managed_run_fk FOREIGN KEY (managed_run_id)
 		REFERENCES decodex.managed_runs(managed_run_id) ON DELETE RESTRICT,
-	CONSTRAINT routing_snapshots_session_fk FOREIGN KEY (
-		runtime_session_id, runtime_session_revision
-	) REFERENCES decodex.runtime_sessions(runtime_session_id, revision) ON DELETE RESTRICT,
+	CONSTRAINT routing_snapshots_session_fk FOREIGN KEY (runtime_session_id)
+		REFERENCES decodex.runtime_sessions(runtime_session_id) ON DELETE RESTRICT,
 	CONSTRAINT routing_snapshots_account_snapshot_fk FOREIGN KEY (account_snapshot_id)
 		REFERENCES decodex.account_snapshots(account_snapshot_id) ON DELETE RESTRICT,
 	CONSTRAINT routing_snapshots_profile_snapshot_fk FOREIGN KEY (profile_snapshot_id)
