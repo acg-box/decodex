@@ -21,13 +21,7 @@ pub(super) async fn assert_waiting_wake_contract(
 	let registration_at = ready_at - 1;
 	let equal_registration_at = ready_at - 2;
 	let registration_operation = uuid(0xa8, 1);
-	assert_registration_rollback(
-		owner,
-		routing,
-		&registration_operation,
-		registration_at,
-	)
-	.await?;
+	assert_registration_rollback(owner, routing, &registration_operation, registration_at).await?;
 
 	let stale_ready =
 		routing.stale_waiting.decision.ready_at_micros.expect("stale waiting decision is timed");
@@ -47,16 +41,11 @@ pub(super) async fn assert_waiting_wake_contract(
 		equal_ready_at,
 	)
 	.await?;
-	let claimed = assert_initial_claims(owner, &registered, registration_at, ready_at, equal_ready_at)
+	let claimed =
+		assert_initial_claims(owner, &registered, registration_at, ready_at, equal_ready_at)
+			.await?;
+	assert_supersession_and_cancellation(store, migration, owner, &registered, equal_ready_at)
 		.await?;
-	assert_supersession_and_cancellation(
-		store,
-		migration,
-		owner,
-		&registered,
-		equal_ready_at,
-	)
-	.await?;
 	let reclaimed = reclaim_waiting_wake(owner, &claimed).await?;
 	assert_fire_contract(
 		owner,
@@ -67,14 +56,7 @@ pub(super) async fn assert_waiting_wake_contract(
 		&reclaimed,
 	)
 	.await?;
-	assert_restart_replay(
-		migration,
-		runtime,
-		routing,
-		registration_operation,
-		&registered,
-	)
-	.await?;
+	assert_restart_replay(migration, runtime, routing, registration_operation, &registered).await?;
 	assert_exact_chain(owner).await?;
 	Ok(())
 }
@@ -274,10 +256,7 @@ async fn assert_initial_claims(
 	)
 	.await?;
 	let rollback_claim = assert_success(&rollback_claim_bytes, "claimed");
-	assert_eq!(
-		text(&rollback_claim, "wake_id"),
-		registered.expected_wake_order[0].2.as_str(),
-	);
+	assert_eq!(text(&rollback_claim, "wake_id"), registered.expected_wake_order[0].2.as_str(),);
 	assert_eq!(integer(&rollback_claim, "transitioned_at_micros"), ready_at);
 	let rollback_claim_outbox_id = integer(&rollback_claim["outbox_effects"][0], "id");
 	owner.batch_execute("ROLLBACK").await?;
@@ -334,15 +313,9 @@ async fn assert_supersession_and_cancellation(
 		} else {
 			(&registered.reordered_cancel, &registered.reordered_stale_bytes)
 		};
-	assert_eq!(
-		text(supersede_registered, "wake_id"),
-		registered.expected_wake_order[1].2.as_str(),
-	);
+	assert_eq!(text(supersede_registered, "wake_id"), registered.expected_wake_order[1].2.as_str(),);
 	let cancel_registered = assert_success(cancel_registered_bytes, "registered");
-	assert_eq!(
-		text(&cancel_registered, "wake_id"),
-		registered.expected_wake_order[2].2.as_str(),
-	);
+	assert_eq!(text(&cancel_registered, "wake_id"), registered.expected_wake_order[2].2.as_str(),);
 	advance_stale_policy(store, owner, text(supersede_registered, "routing_policy_id")).await?;
 	let superseded_bytes = internal_claim(
 		owner,
@@ -354,10 +327,7 @@ async fn assert_supersession_and_cancellation(
 	)
 	.await?;
 	let superseded = assert_success(&superseded_bytes, "superseded");
-	assert_eq!(
-		text(&superseded, "wake_id"),
-		registered.expected_wake_order[1].2.as_str(),
-	);
+	assert_eq!(text(&superseded, "wake_id"), registered.expected_wake_order[1].2.as_str(),);
 	assert_eq!(text(&superseded, "terminal_reason"), "policy_revision_stale");
 	assert!(superseded.get("routing_resolution_request_id").is_some_and(Value::is_null));
 	assert_transition_readback(owner, &superseded_bytes).await?;

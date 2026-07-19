@@ -313,8 +313,7 @@ async fn assert_alternate_routing_decisions(
 		.await?;
 	assert!(matches!(stale, RoutingCommandOutcome::Rejected(ref rejection)
 		if rejection.code == "stale_managed_run"));
-	let cancel_waiting =
-		success(store.route_account("v16-cancel-waiting", cancel_request).await?)?;
+	let cancel_waiting = success(store.route_account("v16-cancel-waiting", cancel_request).await?)?;
 	let stale_waiting = success(store.route_account("v16-stale-waiting", stale_request).await?)?;
 	assert_eq!(cancel_waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
 	assert_eq!(stale_waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
