@@ -4405,7 +4405,7 @@ mod tests {
 			"pg_catalog.pg_get_expr(attrdef.adbin",
 			"function_keys AS MATERIALIZED",
 			"type_keys AS MATERIALIZED",
-			"dependency_rows(kind, identity, dependency_type, reference_key)",
+			"dependency_rows(kind, identity, dependency_type, reference_class, reference_key, resolved)",
 			"JOIN pg_catalog.pg_sequence AS sequence",
 			"ownership.deptype IN ('a', 'i')",
 		] {
