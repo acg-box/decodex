@@ -141,7 +141,9 @@ function merely because runtime DML fires it.
 One version-specific canonical PostgreSQL 18 manifest additionally closes all Decodex relations,
 columns, defaults, constraints, indexes, enum labels, and internally generated constraint triggers.
 Defaults, constraints, indexes, and internal triggers include their exact stable catalog dependency
-identities rather than raw OIDs.
+identities rather than raw OIDs. Reverse dependency edges from constraints to user constraint
+triggers resolve through a stable relation-and-trigger-name key without promoting those user
+triggers into dependency targets or internal-trigger rows.
 Constraint inventory covers both `conrelid` in Decodex and external constraints whose `confrelid`
 references Decodex. Internal trigger identity is tied to the exact canonical constraint, relation
 side, trigger function, event semantics, deferral state, and referenced relation/index rather than
