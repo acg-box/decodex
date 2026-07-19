@@ -392,8 +392,8 @@ async fn insert_quota_pair(
 				 pg_catalog.clock_timestamp()+CASE WHEN $2::smallint=300
 				  THEN interval '5 hours' ELSE interval '7 days' END AS resets_at
 				), encoded AS (
-				 SELECT *, (pg_catalog.extract(epoch FROM observed_at)*1000000)::bigint AS observed,
-				 (pg_catalog.extract(epoch FROM resets_at)*1000000)::bigint AS resets FROM fact
+				 SELECT *, (extract(epoch FROM observed_at)*1000000)::bigint AS observed,
+				 (extract(epoch FROM resets_at)*1000000)::bigint AS resets FROM fact
 				)
 				INSERT INTO decodex.quota_windows(account_id,window_class,duration_minutes,
 				 remaining_percent,resets_at,observed_at,confidence,metadata,revision)
@@ -415,7 +415,7 @@ async fn align_tied_waiting_ready_time(owner: &Client) -> Result<(), Box<dyn std
 			"UPDATE decodex.quota_windows AS target SET \
 			 resets_at=source.resets_at+INTERVAL '1 microsecond',\
 			 updated_at=pg_catalog.clock_timestamp(),metadata=pg_catalog.jsonb_set(\
-			 target.metadata,'{raw_resets_at}',pg_catalog.to_jsonb(((pg_catalog.extract(\
+			 target.metadata,'{raw_resets_at}',pg_catalog.to_jsonb(((extract(\
 			 epoch FROM source.resets_at+INTERVAL '1 microsecond')*1000000)::bigint)::text)) \
 			 FROM decodex.quota_windows AS source WHERE target.account_id=$1::text::uuid \
 			 AND source.account_id=$2::text::uuid AND target.window_class=source.window_class \
