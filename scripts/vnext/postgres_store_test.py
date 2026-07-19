@@ -81,6 +81,7 @@ WORK_ITEM_DATABASE = "decodex_xy1343_work_items"
 WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
 MANAGED_RUN_DATABASE = "decodex_xy1338_managed_runs"
 MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1338_managed_runs_restore"
+MANAGED_REPOSITORY_DATABASE = "decodex_xy1364_managed_repositories"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime_xy1300"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -1088,6 +1089,19 @@ def run_managed_repository_test(test: str, env: dict[str, str]) -> str:
 		],
 		env,
 	)
+
+
+def run_managed_repository_focused_contracts(
+	socket_dir: Path, port: int, env: dict[str, str]
+) -> str:
+	create_database(MANAGED_REPOSITORY_DATABASE, env)
+	set_contract_urls(env, socket_dir, port, MANAGED_REPOSITORY_DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(MANAGED_REPOSITORY_DATABASE, RUNTIME_ROLE, env)
+	contract_output = run_managed_repository_test(
+		"postgres_managed_repository_authority_contract", env
+	)
+	return "\n".join((migration_output, contract_output))
 
 
 def rust_digest_constant(name: str) -> str:
@@ -4515,6 +4529,7 @@ max_entry_bytes = 4096
 def main() -> int | AuthorityCandidatePublication:
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
+	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
 	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
 	acceptance_mode = len(sys.argv) == 4 and sys.argv[1] == "--accept-authority-candidate"
 	phase_a = load_phase_a_authority_receipt(Path(sys.argv[2])) if acceptance_mode else None
@@ -4527,10 +4542,12 @@ def main() -> int | AuthorityCandidatePublication:
 	)
 	authority_mode = capture_only or acceptance_mode
 	if sys.argv[1:] and not (
-		focused_work_items or focused_managed_runs or authority_mode
+		focused_work_items or focused_managed_runs or focused_managed_repositories
+		or authority_mode
 	):
 		raise TestFailure(
 			"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
+			"--focus-managed-repositories|"
 			"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
 			"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
 		)
@@ -4552,6 +4569,7 @@ def main() -> int | AuthorityCandidatePublication:
 		tempfile.mkdtemp(
 			prefix=("decodex-xy1343-" if focused_work_items else
 				"decodex-xy1338-" if focused_managed_runs else
+				"decodex-xy1364-" if focused_managed_repositories else
 				"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
 			dir=temp_root,
 		)
@@ -4640,6 +4658,10 @@ def main() -> int | AuthorityCandidatePublication:
 			return 0
 		if focused_managed_runs:
 			output = run_managed_run_focused_contracts(socket_dir, port, work, env)
+			print(output)
+			return 0
+		if focused_managed_repositories:
+			output = run_managed_repository_focused_contracts(socket_dir, port, env)
 			print(output)
 			return 0
 		if capture_output is not None:
