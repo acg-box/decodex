@@ -5289,10 +5289,19 @@ async fn assert_no_credential_columns_or_routing(
 		)
 		.await?
 		.get(0);
-	let routing_functions: i64 = client
+	let expected_inert_routing_functions: i64 = client
 		.query_one(
 			"SELECT count(*) FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace \
-			 WHERE nspname = 'decodex' AND (proname LIKE '%eligible%' OR proname LIKE '%route%' \
+			 WHERE nspname = 'decodex' AND proname = 'route_account_exact'",
+			&[],
+		)
+		.await?
+		.get(0);
+	let unexpected_routing_functions: i64 = client
+		.query_one(
+			"SELECT count(*) FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace \
+			 WHERE nspname = 'decodex' AND (proname LIKE '%eligible%' \
+			 OR (proname LIKE '%route%' AND proname <> 'route_account_exact') \
 			 OR proname LIKE '%select_account%')",
 			&[],
 		)
@@ -5300,7 +5309,8 @@ async fn assert_no_credential_columns_or_routing(
 		.get(0);
 
 	assert_eq!(forbidden_columns, 0);
-	assert_eq!(routing_functions, 0);
+	assert_eq!(expected_inert_routing_functions, 1);
+	assert_eq!(unexpected_routing_functions, 0);
 
 	Ok(())
 }
