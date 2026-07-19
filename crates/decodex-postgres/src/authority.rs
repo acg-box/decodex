@@ -2355,14 +2355,44 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT * FROM decodex_domain_constraints AS domain_constraint
   WHERE domain_constraint.oid NOT IN (SELECT oid FROM touching_constraints)
-), relevant_internal_triggers AS (
+), relevant_triggers AS (
   SELECT trigger.*
   FROM pg_catalog.pg_trigger AS trigger
+  WHERE trigger.tgrelid IN (SELECT oid FROM decodex_relations)
+     OR trigger.tgconstraint IN (SELECT oid FROM touching_constraints)
+), relevant_internal_triggers AS (
+  SELECT trigger.*
+  FROM relevant_triggers AS trigger
   WHERE trigger.tgisinternal
-    AND (
-      trigger.tgrelid IN (SELECT oid FROM decodex_relations)
-      OR trigger.tgconstraint IN (SELECT oid FROM touching_constraints)
-    )
+), trigger_keys AS MATERIALIZED (
+  SELECT
+    trigger.oid,
+    CASE
+      WHEN trigger.tgisinternal THEN pg_catalog.jsonb_build_array(
+        relation_namespace.nspname,
+        relation.relname,
+        constraint_key.key,
+        function_key.key
+      )
+      ELSE pg_catalog.jsonb_build_array(
+        'user_trigger', relation_key.key, trigger.tgname
+      )
+    END AS key,
+    CASE
+      WHEN trigger.tgisinternal THEN COALESCE(function_key.resolved AND (
+        trigger.tgconstraint = 0 OR constraint_key.resolved
+      ), false)
+      ELSE relation_key.oid IS NOT NULL
+    END AS resolved,
+    trigger.tgisinternal AS is_internal
+  FROM relevant_triggers AS trigger
+  JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
+  JOIN pg_catalog.pg_namespace AS relation_namespace
+    ON relation_namespace.oid = relation.relnamespace
+  JOIN relation_keys AS relation_key ON relation_key.oid = trigger.tgrelid
+  LEFT JOIN touching_constraints AS con ON con.oid = trigger.tgconstraint
+  LEFT JOIN constraint_keys AS constraint_key ON constraint_key.oid = con.oid
+  JOIN function_keys AS function_key ON function_key.oid = trigger.tgfoid
 ), decodex_functions AS (
   SELECT proc.*
   FROM pg_catalog.pg_proc AS proc
@@ -2435,33 +2465,25 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'internal_trigger',
-    pg_catalog.jsonb_build_array(
-      relation_namespace.nspname,
-      relation.relname,
-      constraint_key.key,
-      function_key.key
-    ),
+    trigger_key.key,
     'pg_catalog.pg_trigger'::pg_catalog.regclass,
     trigger.oid,
     0,
-    COALESCE(function_key.resolved AND (
-      trigger.tgconstraint = 0 OR constraint_key.resolved
-    ), false)
+    trigger_key.resolved
   FROM relevant_internal_triggers AS trigger
-  JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
-  JOIN pg_catalog.pg_namespace AS relation_namespace ON relation_namespace.oid = relation.relnamespace
-  LEFT JOIN touching_constraints AS con ON con.oid = trigger.tgconstraint
-  LEFT JOIN constraint_keys AS constraint_key ON constraint_key.oid = con.oid
-  JOIN function_keys AS function_key ON function_key.oid = trigger.tgfoid
-  LEFT JOIN pg_catalog.pg_namespace AS constraint_namespace
-    ON constraint_namespace.oid = con.connamespace
+  JOIN trigger_keys AS trigger_key
+    ON trigger_key.oid = trigger.oid AND trigger_key.is_internal
 ), raw_dependency_rows(
-  kind, identity, target_resolved, dependency_type, refclassid, refobjid, refobjsubid
+  kind, identity, target_resolved, target_classid, target_objid, target_objsubid,
+  dependency_type, refclassid, refobjid, refobjsubid
 ) AS (
   SELECT
     target.kind,
     target.identity,
     target.resolved,
+    target.classid,
+    target.objid,
+    target.objsubid,
     dependency.deptype,
     dependency.refclassid,
     dependency.refobjid,
@@ -2489,6 +2511,8 @@ WITH catalog_context AS MATERIALIZED (
         THEN pg_catalog.jsonb_build_array('relation_or_column')
       WHEN dependency.refclassid = 'pg_catalog.pg_constraint'::pg_catalog.regclass
         THEN pg_catalog.jsonb_build_array('constraint')
+      WHEN dependency.refclassid = 'pg_catalog.pg_trigger'::pg_catalog.regclass
+        THEN pg_catalog.jsonb_build_array('trigger')
       WHEN dependency.refclassid = 'pg_catalog.pg_collation'::pg_catalog.regclass
         THEN pg_catalog.jsonb_build_array('collation')
       WHEN dependency.refclassid = 'pg_catalog.pg_operator'::pg_catalog.regclass
@@ -2546,6 +2570,12 @@ WITH catalog_context AS MATERIALIZED (
           SELECT pg_catalog.jsonb_build_array('constraint', constraint_key.key)
           FROM constraint_keys AS constraint_key
           WHERE constraint_key.oid = dependency.refobjid
+        )
+        WHEN dependency.refclassid = 'pg_catalog.pg_trigger'::pg_catalog.regclass THEN (
+          SELECT pg_catalog.jsonb_build_array('trigger', trigger_key.key)
+          FROM trigger_keys AS trigger_key
+          WHERE trigger_key.oid = dependency.refobjid
+            AND dependency.refobjsubid = 0
         )
         WHEN dependency.refclassid = 'pg_catalog.pg_collation'::pg_catalog.regclass THEN (
           SELECT pg_catalog.jsonb_build_array('collation', namespace.nspname, coll.collname)
@@ -2664,6 +2694,20 @@ WITH catalog_context AS MATERIALIZED (
         dependency.refobjsubid = 0 AND EXISTS (
           SELECT 1 FROM constraint_keys AS constraint_key
           WHERE constraint_key.oid = dependency.refobjid AND constraint_key.resolved
+        )
+      WHEN dependency.refclassid = 'pg_catalog.pg_trigger'::pg_catalog.regclass THEN
+        dependency.refobjsubid = 0 AND EXISTS (
+          SELECT 1
+          FROM trigger_keys AS trigger_key
+          JOIN pg_catalog.pg_trigger AS referenced_trigger
+            ON referenced_trigger.oid = trigger_key.oid
+          WHERE trigger_key.oid = dependency.refobjid
+            AND trigger_key.resolved
+            AND (
+              dependency.target_classid <> 'pg_catalog.pg_constraint'::pg_catalog.regclass
+              OR dependency.target_objsubid = 0
+                AND referenced_trigger.tgconstraint = dependency.target_objid
+            )
         )
       WHEN dependency.refclassid = 'pg_catalog.pg_collation'::pg_catalog.regclass THEN
         dependency.refobjsubid = 0 AND EXISTS (
@@ -2869,12 +2913,7 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'internal_trigger',
-    pg_catalog.jsonb_build_array(
-      relation_namespace.nspname,
-      relation.relname,
-      constraint_key.key,
-      function_key.key
-    ),
+    trigger_key.key,
     pg_catalog.jsonb_build_array(
       trigger.tgtype, trigger.tgenabled, trigger.tgparentid = 0,
       trigger.tgconstraint = con.oid, trigger.tgdeferrable,
@@ -2884,13 +2923,9 @@ WITH catalog_context AS MATERIALIZED (
       trigger.tgoldtable, trigger.tgnewtable
     )::pg_catalog.text
   FROM relevant_internal_triggers AS trigger
-  JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
-  JOIN pg_catalog.pg_namespace AS relation_namespace ON relation_namespace.oid = relation.relnamespace
+  JOIN trigger_keys AS trigger_key
+    ON trigger_key.oid = trigger.oid AND trigger_key.is_internal
   LEFT JOIN touching_constraints AS con ON con.oid = trigger.tgconstraint
-  LEFT JOIN constraint_keys AS constraint_key ON constraint_key.oid = con.oid
-  JOIN function_keys AS function_key ON function_key.oid = trigger.tgfoid
-  LEFT JOIN pg_catalog.pg_namespace AS constraint_namespace
-    ON constraint_namespace.oid = con.connamespace
   LEFT JOIN pg_catalog.pg_class AS referenced ON referenced.oid = trigger.tgconstrrelid
   LEFT JOIN pg_catalog.pg_namespace AS referenced_namespace
     ON referenced_namespace.oid = referenced.relnamespace
@@ -4416,6 +4451,93 @@ mod tests {
 		assert!(!SCHEMA_CONTRACT_SQL.contains("ORDER BY privilege.grantee"));
 
 		assert_ne!(SCHEMA_CONTRACT_SHA256, [0; 32]);
+	}
+
+	#[test]
+	fn schema_manifest_maps_trigger_references_through_disjoint_semantic_keys() {
+		let trigger_keys = SCHEMA_CONTRACT_SQL
+			.split_once("), trigger_keys AS MATERIALIZED (")
+			.expect("trigger key inventory starts")
+			.1
+			.split_once("\n), decodex_functions AS (")
+			.expect("trigger key inventory ends")
+			.0;
+		assert_eq!(trigger_keys.matches("FROM relevant_triggers AS trigger").count(), 1);
+
+		let identities = trigger_keys
+			.split_once("CASE\n      WHEN trigger.tgisinternal THEN ")
+			.expect("trigger identity case starts")
+			.1
+			.split_once("\n    END AS key")
+			.expect("trigger identity case ends")
+			.0;
+		let (internal_identity, user_identity) = identities
+			.split_once("\n      ELSE ")
+			.expect("trigger identities are disjoint");
+		assert!(internal_identity.contains(
+			"pg_catalog.jsonb_build_array(\n        relation_namespace.nspname,\n        relation.relname,\n        constraint_key.key,\n        function_key.key\n      )"
+		));
+		assert!(!internal_identity.contains("tgname"));
+		assert!(!internal_identity.contains("oid"));
+		assert_eq!(
+			user_identity,
+			"pg_catalog.jsonb_build_array(\n        'user_trigger', relation_key.key, trigger.tgname\n      )"
+		);
+		assert!(!user_identity.contains("oid"));
+		assert!(!trigger_keys.contains("pg_catalog.pg_get_triggerdef"));
+
+		let mapper = SCHEMA_CONTRACT_SQL
+			.split_once("), mapped_dependency_references AS MATERIALIZED (")
+			.expect("dependency mapper starts")
+			.1
+			.split_once("\n), dependency_rows(")
+			.expect("dependency mapper ends")
+			.0;
+		assert_eq!(
+			mapper
+				.matches("dependency.refclassid = 'pg_catalog.pg_trigger'::pg_catalog.regclass")
+				.count(),
+			3
+		);
+		assert_eq!(mapper.matches("FROM trigger_keys AS trigger_key").count(), 2);
+		assert!(mapper.contains(
+			"WHERE trigger_key.oid = dependency.refobjid\n            AND dependency.refobjsubid = 0"
+		));
+		assert!(mapper.contains(
+			"dependency.target_classid <> 'pg_catalog.pg_constraint'::pg_catalog.regclass\n              OR dependency.target_objsubid = 0\n                AND referenced_trigger.tgconstraint = dependency.target_objid"
+		));
+
+		let raw_dependencies = SCHEMA_CONTRACT_SQL
+			.split_once("), raw_dependency_rows(")
+			.expect("raw dependency inventory starts")
+			.1
+			.split_once("\n), mapped_dependency_references AS MATERIALIZED (")
+			.expect("raw dependency inventory ends")
+			.0;
+		assert!(raw_dependencies.contains(
+			"target.classid,\n    target.objid,\n    target.objsubid,\n    dependency.deptype"
+		));
+
+		let dependency_output = SCHEMA_CONTRACT_SQL
+			.split_once("), dependency_rows(")
+			.expect("dependency output starts")
+			.1
+			.split_once("\n), contract_rows(")
+			.expect("dependency output ends")
+			.0;
+		assert!(!dependency_output.contains("target_classid"));
+		assert!(!dependency_output.contains("target_objid"));
+		assert!(!dependency_output.contains("target_objsubid"));
+
+		let targets = SCHEMA_CONTRACT_SQL
+			.split_once("), dependency_targets(")
+			.expect("dependency targets start")
+			.1
+			.split_once("\n), raw_dependency_rows(")
+			.expect("dependency targets end")
+			.0;
+		assert_eq!(targets.matches("FROM relevant_internal_triggers AS trigger").count(), 1);
+		assert!(!targets.contains("FROM relevant_triggers AS trigger"));
 	}
 
 	#[test]
