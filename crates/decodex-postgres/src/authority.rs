@@ -2473,6 +2473,29 @@ WITH catalog_context AS MATERIALIZED (
   FROM relevant_internal_triggers AS trigger
   JOIN trigger_keys AS trigger_key
     ON trigger_key.oid = trigger.oid AND trigger_key.is_internal
+), all_dependency_targets(
+  kind, identity, classid, objid, objsubid, resolved
+) AS MATERIALIZED (
+  SELECT * FROM authority_dependency_targets
+  UNION ALL
+  SELECT * FROM dependency_targets
+), raw_dependency_edges(
+  target_classid, target_objid, target_objsubid,
+  dependency_type, refclassid, refobjid, refobjsubid
+) AS MATERIALIZED (
+  SELECT DISTINCT
+    target.classid,
+    target.objid,
+    target.objsubid,
+    dependency.deptype,
+    dependency.refclassid,
+    dependency.refobjid,
+    dependency.refobjsubid
+  FROM all_dependency_targets AS target
+  JOIN pg_catalog.pg_depend AS dependency
+    ON dependency.classid = target.classid
+   AND dependency.objid = target.objid
+   AND dependency.objsubid = target.objsubid
 ), raw_dependency_rows(
   kind, identity, target_resolved, target_classid, target_objid, target_objsubid,
   dependency_type, refclassid, refobjid, refobjsubid
@@ -2484,19 +2507,15 @@ WITH catalog_context AS MATERIALIZED (
     target.classid,
     target.objid,
     target.objsubid,
-    dependency.deptype,
+    dependency.dependency_type,
     dependency.refclassid,
     dependency.refobjid,
     dependency.refobjsubid
-  FROM (
-    SELECT * FROM authority_dependency_targets
-    UNION ALL
-    SELECT * FROM dependency_targets
-  ) AS target
-  JOIN pg_catalog.pg_depend AS dependency
-    ON dependency.classid = target.classid
-   AND dependency.objid = target.objid
-   AND dependency.objsubid = target.objsubid
+  FROM all_dependency_targets AS target
+  JOIN raw_dependency_edges AS dependency
+    ON dependency.target_classid = target.classid
+   AND dependency.target_objid = target.objid
+   AND dependency.target_objsubid = target.objsubid
 ), mapped_dependency_references AS MATERIALIZED (
   SELECT
     dependency.kind,
@@ -2799,8 +2818,15 @@ WITH catalog_context AS MATERIALIZED (
     dependency.dependency_type,
     dependency.reference_class,
     dependency.reference_key,
-    dependency.resolved
+    COALESCE(pg_catalog.bool_and(dependency.resolved), false)
+      AND pg_catalog.count(*) = 1
   FROM mapped_dependency_references AS dependency
+  GROUP BY
+    dependency.kind,
+    dependency.identity,
+    dependency.dependency_type,
+    dependency.reference_class,
+    dependency.reference_key
 ), contract_rows(kind, identity, contract) AS (
   SELECT
     'relation',
@@ -3085,13 +3111,13 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     dependency.kind,
-    dependency.identity,
     pg_catalog.jsonb_build_array(
+      dependency.identity,
       dependency.dependency_type,
       dependency.reference_class,
-      dependency.resolved,
       dependency.reference_key
-    )::pg_catalog.text
+    ),
+    pg_catalog.jsonb_build_array(dependency.resolved)::pg_catalog.text
   FROM dependency_rows AS dependency
   WHERE dependency.kind IN ('function_dependency', 'type_dependency')
   UNION ALL
@@ -3145,13 +3171,14 @@ WITH catalog_context AS MATERIALIZED (
   UNION ALL
   SELECT
     'dependency',
-    pg_catalog.jsonb_build_array(dependency.kind, dependency.identity),
     pg_catalog.jsonb_build_array(
+      dependency.kind,
+      dependency.identity,
       dependency.dependency_type,
       dependency.reference_class,
-      dependency.resolved,
       dependency.reference_key
-    )::pg_catalog.text
+    ),
+    pg_catalog.jsonb_build_array(dependency.resolved)::pg_catalog.text
   FROM dependency_rows AS dependency
   WHERE dependency.kind NOT IN ('function_dependency', 'type_dependency')
   UNION ALL
@@ -4515,7 +4542,7 @@ mod tests {
 			.expect("raw dependency inventory ends")
 			.0;
 		assert!(raw_dependencies.contains(
-			"target.classid,\n    target.objid,\n    target.objsubid,\n    dependency.deptype"
+			"target.classid,\n    target.objid,\n    target.objsubid,\n    dependency.dependency_type"
 		));
 
 		let dependency_output = SCHEMA_CONTRACT_SQL
@@ -4538,6 +4565,68 @@ mod tests {
 			.0;
 		assert_eq!(targets.matches("FROM relevant_internal_triggers AS trigger").count(), 1);
 		assert!(!targets.contains("FROM relevant_triggers AS trigger"));
+	}
+
+	#[test]
+	fn schema_manifest_canonicalizes_stable_semantic_dependency_edges() {
+		let physical_edges = SCHEMA_CONTRACT_SQL
+			.split_once("), raw_dependency_edges(")
+			.expect("physical dependency normalization starts")
+			.1
+			.split_once("\n), raw_dependency_rows(")
+			.expect("physical dependency normalization ends")
+			.0;
+		let distinct_columns = physical_edges
+			.split_once("SELECT DISTINCT\n")
+			.expect("physical dependencies are distinct")
+			.1
+			.split_once("\n  FROM all_dependency_targets")
+			.expect("physical dependency columns end")
+			.0;
+		for column in [
+			"target.classid",
+			"target.objid",
+			"target.objsubid",
+			"dependency.deptype",
+			"dependency.refclassid",
+			"dependency.refobjid",
+			"dependency.refobjsubid",
+		] {
+			assert_eq!(distinct_columns.matches(column).count(), 1, "{column}");
+		}
+		assert!(!distinct_columns.contains("identity"));
+		assert!(!distinct_columns.contains("resolved"));
+
+		let semantic_edges = SCHEMA_CONTRACT_SQL
+			.split_once("), dependency_rows(")
+			.expect("semantic dependency set starts")
+			.1
+			.split_once("\n), contract_rows(")
+			.expect("semantic dependency set ends")
+			.0;
+		assert!(semantic_edges.contains(
+			"COALESCE(pg_catalog.bool_and(dependency.resolved), false)\n      AND pg_catalog.count(*) = 1"
+		));
+		assert!(semantic_edges.contains(
+			"GROUP BY\n    dependency.kind,\n    dependency.identity,\n    dependency.dependency_type,\n    dependency.reference_class,\n    dependency.reference_key"
+		));
+
+		let contracts = SCHEMA_CONTRACT_SQL
+			.split_once("), contract_rows(kind, identity, contract) AS (")
+			.expect("schema contract rows start")
+			.1;
+		assert!(contracts.contains(
+			"dependency.identity,\n      dependency.dependency_type,\n      dependency.reference_class,\n      dependency.reference_key"
+		));
+		assert!(contracts.contains(
+			"dependency.kind,\n      dependency.identity,\n      dependency.dependency_type,\n      dependency.reference_class,\n      dependency.reference_key"
+		));
+		assert_eq!(
+			contracts
+				.matches("pg_catalog.jsonb_build_array(dependency.resolved)")
+				.count(),
+			2
+		);
 	}
 
 	#[test]
