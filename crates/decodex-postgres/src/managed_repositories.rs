@@ -227,7 +227,7 @@ impl PostgresStore {
 				&[&repository_id.as_str()],
 			)
 			.await?;
-		let admission = load_admission_for_update(&transaction, repository_id)
+		let admission = load_admission(&transaction, repository_id)
 			.await?
 			.ok_or(StoreError::InvalidInput("managed repository admission is absent"))?;
 		if load_facts(&transaction, repository_id, true).await?.is_some() {
@@ -1039,22 +1039,6 @@ async fn load_admission(
 			 admission_descriptor_digest,repository_absolute_path,
 			 admission_descriptor_schema,admission_descriptor
 			 FROM decodex.repository_admissions WHERE repository_id=$1::text::uuid",
-			&[&repository_id.as_str()],
-		)
-		.await?;
-	row.as_ref().map(parse_admission_row).transpose()
-}
-
-async fn load_admission_for_update(
-	transaction: &Transaction<'_>,
-	repository_id: &ManagedRepositoryId,
-) -> Result<Option<RepositoryAdmissionFacts>, StoreError> {
-	let row = transaction
-		.query_opt(
-			"SELECT project_id::text,repository_id::text,admitted_identity,admitted_base,
-			 admission_descriptor_digest,repository_absolute_path,
-			 admission_descriptor_schema,admission_descriptor
-			 FROM decodex.repository_admissions WHERE repository_id=$1::text::uuid FOR UPDATE",
 			&[&repository_id.as_str()],
 		)
 		.await?;
