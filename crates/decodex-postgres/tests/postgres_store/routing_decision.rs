@@ -49,12 +49,58 @@ struct RunFixture {
 	thread_id: String,
 }
 
+struct RoutingContractSetup {
+	selected_run: RunFixture,
+	selected_request: RouteAccount,
+	waiting_request: RouteAccount,
+	no_route_request: RouteAccount,
+	cancel_request: RouteAccount,
+	stale_request: RouteAccount,
+}
+
 pub(super) async fn assert_routing_decision_contract(
 	store: &PostgresStore,
 	owner: &Client,
 	migration: &Config,
 	runtime: &Config,
 ) -> Result<RoutingFixture, Box<dyn std::error::Error>> {
+	let setup = prepare_routing_contract(store, owner).await?;
+	assert_rolled_back_routing_decision(owner, &setup.selected_run).await?;
+	let selected = assert_selected_routing_decision(store, owner, &setup.selected_request).await?;
+	let (waiting, cancel_waiting, stale_waiting) = assert_alternate_routing_decisions(
+		store,
+		&setup.waiting_request,
+		&setup.no_route_request,
+		&setup.cancel_request,
+		&setup.stale_request,
+	)
+	.await?;
+	assert_concurrent_routing_replay(store, owner, &setup.selected_request).await?;
+
+	let restarted =
+		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+	assert_eq!(
+		restarted.route_account("v16-selected", &setup.selected_request).await?,
+		RoutingCommandOutcome::Success(selected.clone()),
+	);
+
+	Ok(RoutingFixture {
+		selected,
+		waiting,
+		cancel_waiting,
+		stale_waiting,
+		selected_request: setup.selected_request,
+		selected_account_id: AccountId::new(SELECTED_ACCOUNT_ID)?,
+		selected_runtime_session_id: setup.selected_run.runtime_session_id,
+		selected_thread_id: setup.selected_run.thread_id,
+		stale_policy_id: STALE_POLICY_ID.to_owned(),
+	})
+}
+
+async fn prepare_routing_contract(
+	store: &PostgresStore,
+	owner: &Client,
+) -> Result<RoutingContractSetup, Box<dyn std::error::Error>> {
 	create_project_and_policy(owner).await?;
 	for (account_id, label) in [
 		(SELECTED_ACCOUNT_ID, "V16 account 16"),
@@ -137,6 +183,20 @@ pub(super) async fn assert_routing_decision_contract(
 	)
 	.await?;
 
+	Ok(RoutingContractSetup {
+		selected_run,
+		selected_request,
+		waiting_request,
+		no_route_request,
+		cancel_request,
+		stale_request,
+	})
+}
+
+async fn assert_rolled_back_routing_decision(
+	owner: &Client,
+	selected_run: &RunFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
 	owner.batch_execute("BEGIN").await?;
 	let rolled_back: Vec<u8> = owner
 		.query_one(
@@ -149,8 +209,15 @@ pub(super) async fn assert_routing_decision_contract(
 	owner.batch_execute("ROLLBACK").await?;
 	assert!(!rolled_back.is_empty());
 	assert_eq!(receipt_count(owner, "v16-rollback").await?, 0);
+	Ok(())
+}
 
-	let selected = success(store.route_account("v16-selected", &selected_request).await?)?;
+async fn assert_selected_routing_decision(
+	store: &PostgresStore,
+	owner: &Client,
+	selected_request: &RouteAccount,
+) -> Result<PersistedRoutingDecision, Box<dyn std::error::Error>> {
+	let selected = success(store.route_account("v16-selected", selected_request).await?)?;
 	assert_eq!(selected.decision.kind, RoutingDecisionKind::Selected);
 	assert_eq!(
 		selected.decision.selected_account_id.as_ref(),
@@ -177,7 +244,7 @@ pub(super) async fn assert_routing_decision_contract(
 	}
 	let selected_bytes = receipt_bytes(owner, "v16-selected").await?;
 	assert_eq!(
-		store.route_account("v16-selected", &selected_request).await?,
+		store.route_account("v16-selected", selected_request).await?,
 		RoutingCommandOutcome::Success(selected.clone()),
 	);
 	assert_eq!(receipt_bytes(owner, "v16-selected").await?, selected_bytes);
@@ -188,7 +255,7 @@ pub(super) async fn assert_routing_decision_contract(
 		Err(StoreError::IdempotencyConflict)
 	));
 	let alias_error = store
-		.route_account("v16-cross-key-alias", &selected_request)
+		.route_account("v16-cross-key-alias", selected_request)
 		.await
 		.expect_err("one routing operation cannot alias a second exact key");
 	assert!(matches!(
@@ -209,8 +276,20 @@ pub(super) async fn assert_routing_decision_contract(
 		.await?;
 	assert_eq!(decision_counts.get::<_, i64>(0), 1);
 	assert_eq!(decision_counts.get::<_, i64>(1), 1);
+	Ok(selected)
+}
 
-	let waiting = success(store.route_account("v16-waiting", &waiting_request).await?)?;
+async fn assert_alternate_routing_decisions(
+	store: &PostgresStore,
+	waiting_request: &RouteAccount,
+	no_route_request: &RouteAccount,
+	cancel_request: &RouteAccount,
+	stale_request: &RouteAccount,
+) -> Result<
+	(PersistedRoutingDecision, PersistedRoutingDecision, PersistedRoutingDecision),
+	Box<dyn std::error::Error>,
+> {
+	let waiting = success(store.route_account("v16-waiting", waiting_request).await?)?;
 	assert_eq!(waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
 	assert_eq!(waiting.decision.exclusions.len(), 2);
 	assert_ne!(
@@ -223,7 +302,7 @@ pub(super) async fn assert_routing_decision_contract(
 	);
 	assert!(waiting.decision.ready_at_micros.is_some());
 
-	let no_route = success(store.route_account("v16-no-route", &no_route_request).await?)?;
+	let no_route = success(store.route_account("v16-no-route", no_route_request).await?)?;
 	assert_eq!(no_route.decision.kind, RoutingDecisionKind::NoRoute);
 	assert!(no_route.decision.exclusions.is_empty());
 	let stale = store
@@ -235,11 +314,18 @@ pub(super) async fn assert_routing_decision_contract(
 	assert!(matches!(stale, RoutingCommandOutcome::Rejected(ref rejection)
 		if rejection.code == "stale_managed_run"));
 	let cancel_waiting =
-		success(store.route_account("v16-cancel-waiting", &cancel_request).await?)?;
-	let stale_waiting = success(store.route_account("v16-stale-waiting", &stale_request).await?)?;
+		success(store.route_account("v16-cancel-waiting", cancel_request).await?)?;
+	let stale_waiting = success(store.route_account("v16-stale-waiting", stale_request).await?)?;
 	assert_eq!(cancel_waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
 	assert_eq!(stale_waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
+	Ok((waiting, cancel_waiting, stale_waiting))
+}
 
+async fn assert_concurrent_routing_replay(
+	store: &PostgresStore,
+	owner: &Client,
+	selected_request: &RouteAccount,
+) -> Result<(), Box<dyn std::error::Error>> {
 	let race_request = RouteAccount { operation_id: uuid(0xb6, 2), ..selected_request.clone() };
 	let mut racers = JoinSet::new();
 	for _ in 0..2 {
@@ -257,25 +343,7 @@ pub(super) async fn assert_routing_decision_contract(
 		}
 	}
 	assert_eq!(receipt_count(owner, "v16-concurrent-replay").await?, 1);
-
-	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
-	assert_eq!(
-		restarted.route_account("v16-selected", &selected_request).await?,
-		RoutingCommandOutcome::Success(selected.clone()),
-	);
-
-	Ok(RoutingFixture {
-		selected,
-		waiting,
-		cancel_waiting,
-		stale_waiting,
-		selected_request,
-		selected_account_id: AccountId::new(SELECTED_ACCOUNT_ID)?,
-		selected_runtime_session_id: selected_run.runtime_session_id,
-		selected_thread_id: selected_run.thread_id,
-		stale_policy_id: STALE_POLICY_ID.to_owned(),
-	})
+	Ok(())
 }
 
 async fn create_project_and_policy(owner: &Client) -> Result<(), Box<dyn std::error::Error>> {
