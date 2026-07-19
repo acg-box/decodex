@@ -58,6 +58,16 @@ def diagnostic(*, document=None, components=(), **artifact):
     ))
 
 
+def dependency_row(
+    kind, source_identity, dependency_type, reference_class, reference_key, resolved,
+    *, source_kind="constraint",
+):
+    identity = [source_identity, dependency_type, reference_class, reference_key]
+    if kind == "dependency":
+        identity.insert(0, source_kind)
+    return [kind, identity, json.dumps([resolved], separators=(",", ":"))]
+
+
 class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
     def artifact_failure(self, document):
         artifact = json.dumps(document, separators=(",", ":")).encode()
@@ -104,16 +114,16 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
 
     def test_incomplete_dependencies_include_only_bounded_reference_evidence(self):
         rows = [
-            [
+            dependency_row(
                 "dependency",
                 ["source", index, "xy1300-secret"],
-                json.dumps([
-                    "normal",
-                    "pg_catalog.pg_proc",
-                    False,
-                    ["function", index, "xy1300-secret", "x" * 400],
-                ]),
-            ]
+                "normal",
+                ["function"],
+                None if index == 0 else [
+                    "function", index, "xy1300-secret", "x" * 400
+                ],
+                False,
+            )
             for index in range(10)
         ]
         manifest = json.dumps(rows, separators=(",", ":"))
@@ -136,10 +146,88 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         self.assertEqual(len(unresolved["evidence"]), 8)
         self.assertTrue(unresolved["evidence_truncated"])
         evidence = unresolved["evidence"][0]
+        self.assertEqual(evidence["kind"], "constraint")
         self.assertEqual(evidence["dependency_type"], "normal")
-        self.assertEqual(evidence["reference_class"], "pg_catalog.pg_proc")
-        self.assertIn("reference_key", evidence)
+        self.assertEqual(evidence["reference_class"], '["function"]')
+        self.assertEqual(evidence["reference_key"], "null")
         self.assertNotIn("contract", evidence)
+
+    def test_semantic_dependency_identity_preserves_endpoints_and_deptypes(self):
+        source = ["relation", "decodex", "managed_runs", "constraint", "t"]
+        rows = [
+            dependency_row(
+                "dependency",
+                source,
+                "i",
+                ["trigger"],
+                [
+                    "trigger",
+                    ["user_trigger", ["decodex", "managed_runs", "r"], name],
+                ],
+                True,
+            )
+            for name in ("first_trigger", "second_trigger")
+        ]
+        rows.append(dependency_row(
+            "dependency", source, "n", ["trigger"], rows[0][1][-1], True
+        ))
+        evidence = POSTGRES_STORE_TEST.authority_manifest_evidence(json.dumps(rows))
+
+        self.assertEqual(evidence["row_count"], 3)
+        self.assertEqual(evidence["duplicate_key_multiplicities"], [])
+        self.assertEqual(len({json.dumps(row[:2], sort_keys=True) for row in rows}), 3)
+
+    def test_duplicate_semantic_dependency_edge_remains_rejected(self):
+        row = dependency_row(
+            "function_dependency",
+            ["decodex", "function", []],
+            "n",
+            ["namespace"],
+            ["namespace", "decodex"],
+            True,
+        )
+        manifest = json.dumps([row, row])
+        evidence = POSTGRES_STORE_TEST.authority_manifest_evidence(manifest)
+
+        self.assertEqual(
+            evidence["duplicate_key_multiplicities"][0]["multiplicity"], 2
+        )
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "duplicate kind/identity key"
+        ):
+            POSTGRES_STORE_TEST.semantic_row_diff(manifest, "[]")
+
+    def test_dependency_row_shape_validation_is_exact(self):
+        rows = [
+            dependency_row(
+                "dependency", ["constraint"], "i", ["trigger"], None, False
+            ),
+            dependency_row(
+                "function_dependency", ["decodex", "function", []], "n",
+                ["namespace"], ["namespace", "decodex"], True,
+            ),
+            dependency_row(
+                "type_dependency", ["decodex", "type"], "n", ["namespace"],
+                ["namespace", "decodex"], True,
+            ),
+        ]
+        for row in rows:
+            with self.subTest(kind=row[0]):
+                self.assertIsNotNone(
+                    POSTGRES_STORE_TEST.decode_dependency_manifest_row(row)
+                )
+
+        malformed = [
+            ["dependency", rows[0][1][1:], json.dumps([False])],
+            ["function_dependency", rows[1][1], json.dumps([True, False])],
+            ["type_dependency", rows[2][1][:-1] + ["namespace"], json.dumps([True])],
+        ]
+        for row in malformed:
+            with self.subTest(row=row), self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure,
+                "malformed schema dependency contract",
+            ):
+                POSTGRES_STORE_TEST.decode_dependency_manifest_row(row)
 
     def test_malformed_artifact_diagnostic_is_bounded_and_does_not_echo_bytes(self):
         artifact = b'{"secret":"xy1300-secret"}'
