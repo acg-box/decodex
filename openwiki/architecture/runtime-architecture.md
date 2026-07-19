@@ -206,17 +206,23 @@ acceptance has no expected-mismatch branch: manifest readiness must pass before 
 restart stages run.
 
 The PostgreSQL harness has one top-level stage authority for the normal aggregate. Fatal preflight
-owns argument/mode validation, clean source and private output binding, PostgreSQL tool and
-temporary-root discovery, cluster initialization/start, and base-role creation. After preflight,
-meaningful semantic suites form explicit prerequisite edges and produce only `passed`, `failed`, or
-`blocked`: an ordinary expected failure blocks its consumers while independent branches continue.
-Authority-drift mutation probes and restorations are distinct stages; restoration remains eligible
-after a probe failure, and later probes on the shared fixture depend on restoration. Unexpected
-assertion/key/type failures, corrupt report state, source-binding or redaction failure, and other
-unexpected exceptions stop new scheduling as harness corruption. Once the cluster has started,
-teardown and final report emission always remain eligible, and a teardown/report failure is
-secondary to the first failure. Focused suites and Phase A/B receipt modes do not enter the normal
-aggregate graph.
+owns argument/mode validation, clean source binding, PostgreSQL tool and temporary-root discovery,
+cluster initialization/start, and base-role creation. Phase A/B private-output and receipt-lineage
+validation remains on those direct entrypoints rather than entering the aggregate graph. After
+preflight, meaningful semantic suites form explicit prerequisite edges and produce only `passed`,
+`failed`, or `blocked`: an ordinary expected failure blocks its consumers while independent
+branches continue.
+Required nested restore results are promoted to their owning suite, so a capture, restore, parity,
+or production-check failure cannot be reported as owner success. Each live-doctor mutation probe
+owns and reaps its subprocess on every exit. Mutation probes and fixture restorations remain
+distinct stages; restoration stays eligible after a probe failure, and later probes on the shared
+fixture depend on restoration. Unexpected assertion/key/type failures, corrupt report state,
+source-binding or redaction failure, and other unexpected exceptions stop new scheduling as harness
+corruption. Once the cluster has started, teardown and final report emission always remain eligible,
+and a teardown/report failure is secondary to the first failure. Only the normal aggregate emits
+`decodex/postgres-aggregate-stage-report/1`; focused suites and Phase A/B receipt modes retain their
+direct output/capture behavior and never enter that report path.
+
 The three bound identity sequences must be exact. Runtime receives USAGE only on the activity and
 outbox sequences; the migration-owned history-version sequence remains inaccessible. SELECT,
 UPDATE/`setval`, ownership, grant options, and SET-reachable surplus authority are unsafe. Every

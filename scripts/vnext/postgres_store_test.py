@@ -404,7 +404,6 @@ class StageOrchestrator:
 	primary_failure: Exception | None = None
 	corruption: Exception | None = None
 	scheduling_stopped: bool = False
-	cluster_started: bool = False
 
 
 def require_stage_report(orchestrator: StageOrchestrator) -> None:
@@ -473,6 +472,10 @@ def run_stage(
 		result = action()
 	except Exception as error:
 		corruption = corruption_failure(error)
+		if corruption is None and not isinstance(error, TestFailure):
+			corruption = HarnessCorruption(
+				f"unexpected {type(error).__name__}: {error}"
+			)
 		failure = corruption or error
 		orchestrator.stages[name] = {
 			"status": "failed",
@@ -483,14 +486,6 @@ def run_stage(
 			orchestrator.primary_failure = failure
 		if corruption is not None:
 			orchestrator.corruption = corruption
-			orchestrator.scheduling_stopped = True
-		elif not isinstance(error, TestFailure):
-			orchestrator.corruption = HarnessCorruption(
-				f"unexpected {type(error).__name__}: {error}"
-			)
-			orchestrator.stages[name]["classification"] = "harness_corruption"
-			if orchestrator.primary_failure is None:
-				orchestrator.primary_failure = orchestrator.corruption
 			orchestrator.scheduling_stopped = True
 		elif fatal:
 			orchestrator.scheduling_stopped = True
@@ -659,56 +654,81 @@ def run_live_doctor_mutation(
 		env=test_env,
 		cwd=REPO_ROOT,
 	)
-	deadline = time.monotonic() + 20
+	try:
+		deadline = time.monotonic() + 20
+		while not (sync / "ready").exists():
+			if process.poll() is not None:
+				stdout, stderr = process.communicate()
+				if secret_sql:
+					raise TestFailure("live doctor exited before secret-bearing mutation")
+				raise TestFailure(
+					f"live doctor exited before {case} mutation\nstdout:\n{stdout}\nstderr:\n{stderr}"
+				)
+			if time.monotonic() >= deadline:
+				process.kill()
+				stdout, stderr = process.communicate()
+				if secret_sql:
+					raise TestFailure(
+						"live doctor did not reach the secret-bearing mutation barrier"
+					)
+				raise TestFailure(
+					f"live doctor did not reach {case} barrier\n"
+					f"stdout:\n{stdout}\nstderr:\n{stderr}"
+				)
+			time.sleep(0.01)
 
-	while not (sync / "ready").exists():
-		if process.poll() is not None:
-			stdout, stderr = process.communicate()
+		if cluster_authority:
 			if secret_sql:
-				raise TestFailure("live doctor exited before secret-bearing mutation")
-			raise TestFailure(
-				f"live doctor exited before {case} mutation\nstdout:\n{stdout}\nstderr:\n{stderr}"
-			)
-		if time.monotonic() >= deadline:
+				psql_secret(database, sql, env)
+			else:
+				psql(database, sql, env)
+		else:
+			psql_as(MIGRATION_ROLE, database, sql, env)
+		if mutation_probe is not None and psql(database, mutation_probe, env) != "t":
+			raise TestFailure(f"{case} authority mutation probe is vacuous")
+		(sync / "mutated").write_text("mutated", encoding="utf-8")
+		try:
+			stdout, stderr = process.communicate(timeout=30)
+		except subprocess.TimeoutExpired as error:
 			process.kill()
 			stdout, stderr = process.communicate()
 			if secret_sql:
-				raise TestFailure("live doctor did not reach the secret-bearing mutation barrier")
+				raise TestFailure(
+					"live doctor did not finish the secret-bearing drift check"
+				) from error
 			raise TestFailure(
-				f"live doctor did not reach {case} barrier\nstdout:\n{stdout}\nstderr:\n{stderr}"
+				f"live doctor did not finish {case}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+			) from error
+		if process.returncode != 0:
+			if secret_sql:
+				raise TestFailure("live doctor failed after the secret-bearing mutation")
+			raise TestFailure(
+				f"live doctor failed after {case} mutation\nstdout:\n{stdout}\nstderr:\n{stderr}"
 			)
-		time.sleep(0.01)
-
-	if cluster_authority:
-		if secret_sql:
-			psql_secret(database, sql, env)
-		else:
-			psql(database, sql, env)
-	else:
-		psql_as(MIGRATION_ROLE, database, sql, env)
-	if mutation_probe is not None and psql(database, mutation_probe, env) != "t":
-		process.terminate()
-		process.communicate(timeout=10)
-		raise TestFailure(f"{case} authority mutation probe is vacuous")
-	(sync / "mutated").write_text("mutated", encoding="utf-8")
-	try:
-		stdout, stderr = process.communicate(timeout=30)
-	except subprocess.TimeoutExpired as error:
-		process.kill()
-		stdout, stderr = process.communicate()
-		if secret_sql:
-			raise TestFailure("live doctor did not finish the secret-bearing drift check") from error
-		raise TestFailure(
-			f"live doctor did not finish {case}\nstdout:\n{stdout}\nstderr:\n{stderr}"
-		) from error
-	if process.returncode != 0:
-		if secret_sql:
-			raise TestFailure("live doctor failed after the secret-bearing mutation")
-		raise TestFailure(
-			f"live doctor failed after {case} mutation\nstdout:\n{stdout}\nstderr:\n{stderr}"
-		)
-
-	return stdout.strip() or stderr.strip()
+		return stdout.strip() or stderr.strip()
+	finally:
+		active_error = sys.exc_info()[1]
+		try:
+			if process.poll() is None:
+				try:
+					process.terminate()
+				finally:
+					try:
+						process.communicate(timeout=10)
+					except subprocess.TimeoutExpired:
+						process.kill()
+						process.communicate()
+			else:
+				process.wait()
+		except Exception as cleanup_error:
+			if active_error is None:
+				raise HarnessCorruption(
+					f"live doctor child cleanup failed: {cleanup_error}"
+				) from cleanup_error
+			print(
+				f"Secondary live doctor child cleanup failure: {cleanup_error}",
+				file=sys.stderr,
+			)
 
 
 def postgres_status(data_dir: Path, env: dict[str, str]) -> ClusterStatus:
@@ -2184,6 +2204,27 @@ def record_restore_production_check(
 		return ""
 
 
+def require_restore_work_passed(
+	report: dict[str, object], owner: str, required: tuple[str, ...]
+) -> None:
+	"""Promote required nested restore results to their top-level owner stage."""
+	stages = report.get("stages")
+	if not isinstance(stages, dict):
+		raise HarnessCorruption(f"{owner} restore report state is invalid")
+	failures: list[str] = []
+	for name in required:
+		result = stages.get(name)
+		if not isinstance(result, dict):
+			raise HarnessCorruption(f"{owner} restore result {name} is missing or invalid")
+		status = result.get("status")
+		if status not in {"passed", "failed", "unavailable"}:
+			raise HarnessCorruption(f"{owner} restore result {name} has invalid status")
+		if status != "passed":
+			failures.append(f"{name} is {status}")
+	if failures:
+		raise TestFailure(f"{owner} required restore work failed: {', '.join(failures)}")
+
+
 def finalize_restore_report(report: dict[str, object]) -> list[str]:
 	checkpoints = report["checkpoints"]
 	assert isinstance(checkpoints, dict)
@@ -2424,13 +2465,13 @@ def run_work_item_focused_contracts(
 	try:
 		dump_schema_manifest(baseline_path, WORK_ITEM_DATABASE, env)
 		checkpoints["baseline"] = load_semantic_manifest(baseline_path)
-	except TestFailure as error:
+	except Exception as error:
 		stage_failures.append(f"baseline manifest capture failed:\n{error}")
 
 	if checkpoints["baseline"] is not None:
 		try:
 			command_output = run_work_item_test("postgres_exact_work_item_commands", env)
-		except TestFailure as error:
+		except Exception as error:
 			source_behavior_error = error
 	else:
 		source_behavior_error = TestFailure(
@@ -2440,7 +2481,7 @@ def run_work_item_focused_contracts(
 	try:
 		dump_schema_manifest(post_attempt_path, WORK_ITEM_DATABASE, env)
 		checkpoints["post_attempt"] = load_semantic_manifest(post_attempt_path)
-	except TestFailure as error:
+	except Exception as error:
 		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
 
 	dump_path = work / "xy1343-work-items.dump"
@@ -2449,13 +2490,13 @@ def run_work_item_focused_contracts(
 	try:
 		run(["pg_dump", "-Fc", "-f", str(dump_path), WORK_ITEM_DATABASE], env)
 		dump_succeeded = True
-	except TestFailure as error:
+	except Exception as error:
 		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
 	if dump_succeeded:
 		try:
 			create_database(WORK_ITEM_RESTORE_DATABASE, env)
 			restore_database_created = True
-		except TestFailure as error:
+		except Exception as error:
 			stage_failures.append(f"restore database creation failed:\n{error}")
 	if restore_database_created:
 		try:
@@ -2466,13 +2507,13 @@ def run_work_item_focused_contracts(
 				],
 				env,
 			)
-		except TestFailure as error:
+		except Exception as error:
 			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
 		set_contract_urls(env, socket_dir, port, WORK_ITEM_RESTORE_DATABASE, RUNTIME_ROLE)
 		try:
 			dump_schema_manifest(restored_path, WORK_ITEM_RESTORE_DATABASE, env)
 			checkpoints["restored"] = load_semantic_manifest(restored_path)
-		except TestFailure as error:
+		except Exception as error:
 			stage_failures.append(f"restored manifest capture failed:\n{error}")
 
 	diagnostics, manifest_failures = manifest_diagnostics(checkpoints)
@@ -2490,7 +2531,7 @@ def run_work_item_focused_contracts(
 	if not failures:
 		try:
 			restore_output = run_work_item_test("postgres_exact_work_item_restore", env)
-		except TestFailure as error:
+		except Exception as error:
 			failures.append(f"restored verifier/behavior failed:\n{error}")
 	if failures:
 		raise TestFailure(
@@ -2528,14 +2569,14 @@ def run_managed_run_focused_contracts(
 	try:
 		dump_schema_manifest(paths["baseline"], MANAGED_RUN_DATABASE, env)
 		checkpoints["baseline"] = load_semantic_manifest(paths["baseline"])
-	except TestFailure as error:
+	except Exception as error:
 		stage_failures.append(f"baseline manifest capture failed:\n{error}")
 	if checkpoints["baseline"] is not None:
 		try:
 			command_output = run_managed_run_test(
 				"postgres_managed_run_safety_contract", env
 			)
-		except TestFailure as error:
+		except Exception as error:
 			source_behavior_error = error
 	else:
 		source_behavior_error = TestFailure(
@@ -2544,7 +2585,7 @@ def run_managed_run_focused_contracts(
 	try:
 		dump_schema_manifest(paths["post_attempt"], MANAGED_RUN_DATABASE, env)
 		checkpoints["post_attempt"] = load_semantic_manifest(paths["post_attempt"])
-	except TestFailure as error:
+	except Exception as error:
 		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
 
 	dump_path = work / "xy1338-managed-runs.dump"
@@ -2553,13 +2594,13 @@ def run_managed_run_focused_contracts(
 	try:
 		run(["pg_dump", "-Fc", "-f", str(dump_path), MANAGED_RUN_DATABASE], env)
 		dump_succeeded = True
-	except TestFailure as error:
+	except Exception as error:
 		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
 	if dump_succeeded:
 		try:
 			create_database(MANAGED_RUN_RESTORE_DATABASE, env)
 			restore_database_created = True
-		except TestFailure as error:
+		except Exception as error:
 			stage_failures.append(f"restore database creation failed:\n{error}")
 	if restore_database_created:
 		try:
@@ -2568,13 +2609,13 @@ def run_managed_run_focused_contracts(
 				 str(dump_path)],
 				env,
 			)
-		except TestFailure as error:
+		except Exception as error:
 			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
 		set_contract_urls(env, socket_dir, port, MANAGED_RUN_RESTORE_DATABASE, RUNTIME_ROLE)
 		try:
 			dump_schema_manifest(paths["restored"], MANAGED_RUN_RESTORE_DATABASE, env)
 			checkpoints["restored"] = load_semantic_manifest(paths["restored"])
-		except TestFailure as error:
+		except Exception as error:
 			stage_failures.append(f"restored manifest capture failed:\n{error}")
 
 	diagnostics, manifest_failures = manifest_diagnostics(checkpoints)
@@ -2593,7 +2634,7 @@ def run_managed_run_focused_contracts(
 			restore_output = run_managed_run_test(
 				"postgres_managed_run_safety_restore", env
 			)
-		except TestFailure as error:
+		except Exception as error:
 			failures.append(f"restored verifier/behavior failed:\n{error}")
 	if failures:
 		raise TestFailure(
@@ -4656,7 +4697,6 @@ max_entry_bytes = 4096
 
 
 def main() -> int | AuthorityCandidatePublication:
-	orchestrator = StageOrchestrator({}, [])
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
 	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
@@ -4668,6 +4708,11 @@ def main() -> int | AuthorityCandidatePublication:
 		else None
 	)
 	authority_mode = capture_only or acceptance_mode
+	normal_aggregate = not (
+		focused_work_items or focused_managed_runs or focused_managed_repositories
+		or authority_mode
+	)
+	orchestrator = StageOrchestrator({}, []) if normal_aggregate else None
 	def configuration_preflight() -> dict[str, object]:
 		if sys.argv[1:] and not (
 			focused_work_items or focused_managed_runs or focused_managed_repositories
@@ -4679,13 +4724,13 @@ def main() -> int | AuthorityCandidatePublication:
 				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
 				"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
 			)
-		source_binding = frozen_source_binding()
+		source_binding = frozen_source_binding() if normal_aggregate else None
 		phase_a = (
 			load_phase_a_authority_receipt(Path(sys.argv[2]))
 			if acceptance_mode else None
 		)
 		if phase_a is not None:
-			validate_phase_b_source_delta(phase_a, source_binding)
+			validate_phase_b_source_delta(phase_a, frozen_source_binding())
 		if capture_output is not None:
 			validate_authority_candidate_output_path(capture_output)
 		temp_root: Path | None = None
@@ -4721,18 +4766,22 @@ def main() -> int | AuthorityCandidatePublication:
 			"tools": tools,
 			"work": work,
 		}
-	preflight = run_stage(
-		orchestrator, "configuration_preflight", configuration_preflight, fatal=True
+	preflight = (
+		run_stage(
+			orchestrator, "configuration_preflight", configuration_preflight, fatal=True
+		)
+		if orchestrator is not None
+		else configuration_preflight()
 	)
 	if not isinstance(preflight, dict):
-		if orchestrator.primary_failure is None:
+		if orchestrator is None or orchestrator.primary_failure is None:
 			raise HarnessCorruption("configuration preflight lost its primary failure")
 		raise orchestrator.primary_failure
 	phase_a = preflight["phase_a"]
 	if phase_a is not None and not isinstance(phase_a, PhaseAAuthorityReceipt):
 		raise HarnessCorruption("configuration preflight Phase A state is invalid")
 	source_binding = preflight["source_binding"]
-	if not isinstance(source_binding, dict):
+	if normal_aggregate and not isinstance(source_binding, dict):
 		raise HarnessCorruption("configuration preflight source binding is invalid")
 	tools = preflight["tools"]
 	work = preflight["work"]
@@ -4759,8 +4808,10 @@ def main() -> int | AuthorityCandidatePublication:
 			"DECODEX_TEST_BLOB_ROOT": str(work / "blob-root"),
 		}
 	)
+	cluster_started = False
 	try:
 		def fatal_postgres_preflight() -> None:
+			nonlocal cluster_started
 			socket_dir.mkdir()
 			run(
 				[
@@ -4790,7 +4841,7 @@ def main() -> int | AuthorityCandidatePublication:
 				],
 				env,
 			)
-			orchestrator.cluster_started = True
+			cluster_started = True
 			roles = [MIGRATION_ROLE, RUNTIME_ROLE]
 			if not authority_mode:
 				roles.extend((
@@ -4821,74 +4872,43 @@ def main() -> int | AuthorityCandidatePublication:
 				psql("postgres", f"CREATE ROLE {role}{attributes}", env)
 
 			return None
-		run_stage(
-			orchestrator,
-			"cluster_preflight",
-			fatal_postgres_preflight,
-			depends_on=("configuration_preflight",),
-			fatal=True,
-		)
-		if orchestrator.stages["cluster_preflight"]["status"] != "passed":
-			if orchestrator.primary_failure is None:
-				raise HarnessCorruption("fatal preflight lost its primary failure")
-			raise orchestrator.primary_failure
+		if orchestrator is None:
+			fatal_postgres_preflight()
+		else:
+			run_stage(
+				orchestrator,
+				"cluster_preflight",
+				fatal_postgres_preflight,
+				depends_on=("configuration_preflight",),
+				fatal=True,
+			)
+			if orchestrator.stages["cluster_preflight"]["status"] != "passed":
+				if orchestrator.primary_failure is None:
+					raise HarnessCorruption("fatal preflight lost its primary failure")
+				raise orchestrator.primary_failure
 
 		if focused_work_items:
-			output = run_stage(
-				orchestrator,
-				"focused_work_items",
-				lambda: run_work_item_focused_contracts(socket_dir, port, work, env),
-				depends_on=("cluster_preflight",),
-			)
-			if isinstance(output, str):
-				print(output)
-			if orchestrator.primary_failure is not None:
-				raise orchestrator.primary_failure
+			print(run_work_item_focused_contracts(socket_dir, port, work, env))
 			return 0
 		if focused_managed_runs:
-			output = run_stage(
-				orchestrator,
-				"focused_managed_runs",
-				lambda: run_managed_run_focused_contracts(socket_dir, port, work, env),
-				depends_on=("cluster_preflight",),
-			)
-			if isinstance(output, str):
-				print(output)
-			if orchestrator.primary_failure is not None:
-				raise orchestrator.primary_failure
+			print(run_managed_run_focused_contracts(socket_dir, port, work, env))
 			return 0
 		if focused_managed_repositories:
-			output = run_stage(
-				orchestrator,
-				"focused_managed_repositories",
-				lambda: run_managed_repository_focused_contracts(socket_dir, port, env),
-				depends_on=("cluster_preflight",),
-			)
-			if isinstance(output, str):
-				print(output)
-			if orchestrator.primary_failure is not None:
-				raise orchestrator.primary_failure
+			print(run_managed_repository_focused_contracts(socket_dir, port, env))
 			return 0
 		if capture_output is not None:
-			capture_receipt = run_stage(
-				orchestrator,
-				"authority_acceptance" if phase_a is not None else "authority_capture",
-				lambda: run_authority_candidate_capture(
-					socket_dir,
-					port,
-					work,
-					log_path,
-					env,
-					(role_setting_canary_guc, role_setting_secret_canary),
-					phase_a,
-				),
-				depends_on=("cluster_preflight",),
+			capture_receipt = run_authority_candidate_capture(
+				socket_dir,
+				port,
+				work,
+				log_path,
+				env,
+				(role_setting_canary_guc, role_setting_secret_canary),
+				phase_a,
 			)
-			if not isinstance(capture_receipt, dict):
-				if orchestrator.primary_failure is None:
-					raise HarnessCorruption("authority receipt stage lost its result")
-				raise orchestrator.primary_failure
 			return AuthorityCandidatePublication(capture_output, capture_receipt)
+		if orchestrator is None or not isinstance(source_binding, dict):
+			raise HarnessCorruption("normal aggregate orchestration state is invalid")
 		restore_report: dict[str, object] = {
 			"checkpoints": {},
 			"production_checks": {},
@@ -4927,9 +4947,20 @@ def main() -> int | AuthorityCandidatePublication:
 		)
 
 		def role_profile_suite() -> str:
-			return run_role_profile_final_gate_contracts(
+			output = run_role_profile_final_gate_contracts(
 				data_dir, log_path, socket_dir, port, work, env, restore_report
 			)
+			require_restore_work_passed(
+				restore_report,
+				"RoleProfile suite",
+				(
+					"role_profile_post_command_capture",
+					"role_profile_restore",
+					"role_profile_restored_capture",
+					"role_profile_restored_check",
+				),
+			)
+			return output
 		run_stage(
 			orchestrator,
 			"role_profile_suite",
@@ -4938,9 +4969,15 @@ def main() -> int | AuthorityCandidatePublication:
 		)
 
 		def runtime_session_suite() -> str:
-			return run_runtime_session_final_gate_contracts(
+			output = run_runtime_session_final_gate_contracts(
 				data_dir, log_path, socket_dir, port, work, env, restore_report
 			)
+			require_restore_work_passed(
+				restore_report,
+				"RuntimeSession suite",
+				("runtime_session_restore", "runtime_session_restored_check"),
+			)
+			return output
 		run_stage(
 			orchestrator,
 			"runtime_session_suite",
@@ -5977,6 +6014,7 @@ def main() -> int | AuthorityCandidatePublication:
 
 		aggregate_context: dict[str, object] = {}
 		def primary_restore_suite() -> str:
+			failure_offset = len(acceptance_failures)
 			live_manifest_path = work / "schema-manifest-live.json"
 			set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 			capture_restore_checkpoint(
@@ -6065,6 +6103,26 @@ def main() -> int | AuthorityCandidatePublication:
 			live_authority = component_manifest(
 				live_document, "authority", require_complete=False
 			)
+			stage_failures = acceptance_failures[failure_offset:]
+			try:
+				require_restore_work_passed(
+					restore_report,
+					"primary restore suite",
+					(
+						"primary_post_command_capture",
+						"primary_restore",
+						"primary_restored_capture",
+						"primary_sequence_state",
+						"primary_store_restored_check",
+						"managed_repository_restored_check",
+					),
+				)
+			except TestFailure as error:
+				stage_failures.append(str(error))
+			if stage_failures:
+				raise TestFailure(
+					"primary restore suite failed: " + "; ".join(stage_failures)
+				)
 			aggregate_context["dump_path"] = dump_path
 			aggregate_context["live_authority"] = live_authority
 			return "\n".join((restore_output, managed_repository_restore_output))
@@ -6073,7 +6131,16 @@ def main() -> int | AuthorityCandidatePublication:
 			"primary_restore_suite",
 			primary_restore_suite,
 			depends_on=(
-				"primary_foundation", "role_profile_suite", "runtime_session_suite",
+				"primary_foundation",
+				"role_profile_suite",
+				"runtime_session_suite",
+				"blob_session_restart",
+				"postgres_store_contract",
+				"managed_repository_contracts",
+				"account_composition",
+				"bootstrap_doctor_history_daemon",
+				"live_endpoint_doctor",
+				"authentication_rejection",
 			),
 		)
 
@@ -6151,6 +6218,11 @@ def main() -> int | AuthorityCandidatePublication:
 				env,
 			) != "0":
 				raise TestFailure("secret-bearing role-setting canary was not restored")
+			require_restore_work_passed(
+				restore_report,
+				"redaction canary suite",
+				("authority_canary_manifest",),
+			)
 			return None
 		run_stage(
 			orchestrator,
@@ -6432,6 +6504,7 @@ def main() -> int | AuthorityCandidatePublication:
 					True,
 				),
 			))
+		authority_drift_stages: list[str] = []
 		previous_restoration: str | None = None
 		for mutation, restore, case, cluster_authority in authority_drift_cases:
 			secret_sql = case == "credential-setting-redaction"
@@ -6466,7 +6539,11 @@ def main() -> int | AuthorityCandidatePublication:
 					raise HarnessCorruption("doctor output redaction failed")
 				return output
 			probe_stage = f"authority_drift::{case}::mutation_probe"
-			probe_dependencies = ("primary_foundation", "bootstrap_configuration")
+			probe_dependencies = (
+				"primary_foundation",
+				"bootstrap_configuration",
+				"redaction_canary_suite",
+			)
 			if previous_restoration is not None:
 				probe_dependencies += (previous_restoration,)
 			run_stage(
@@ -6475,27 +6552,24 @@ def main() -> int | AuthorityCandidatePublication:
 				authority_mutation_probe,
 				depends_on=probe_dependencies,
 			)
+			authority_drift_stages.append(probe_stage)
 			restoration_stage = f"authority_drift::{case}::restoration"
-			if mutation_attempted:
-				def restore_authority_fixture() -> None:
-					if cluster_authority:
-						if secret_sql:
-							psql_secret(DATABASE, restore, env)
-						else:
-							psql(DATABASE, restore, env)
+			def restore_authority_fixture() -> None:
+				if cluster_authority:
+					if secret_sql:
+						psql_secret(DATABASE, restore, env)
 					else:
-						psql_as(MIGRATION_ROLE, DATABASE, restore, env)
-				run_stage(
-					orchestrator,
-					restoration_stage,
-					restore_authority_fixture,
-					always_run=True,
-				)
-			else:
-				orchestrator.stages[restoration_stage] = {
-					"status": "blocked",
-					"blocked_by": [probe_stage],
-				}
+						psql(DATABASE, restore, env)
+				else:
+					psql_as(MIGRATION_ROLE, DATABASE, restore, env)
+			run_stage(
+				orchestrator,
+				restoration_stage,
+				restore_authority_fixture,
+				depends_on=(probe_stage,),
+				always_run=mutation_attempted,
+			)
+			authority_drift_stages.append(restoration_stage)
 			previous_restoration = restoration_stage
 		run_stage(
 			orchestrator,
@@ -6609,9 +6683,25 @@ def main() -> int | AuthorityCandidatePublication:
 				)
 			return json.dumps(artifact_evidence, sort_keys=True)
 		final_dependencies = (
+			"primary_foundation",
+			"role_profile_suite",
+			"runtime_session_suite",
+			"v8_migration_boundary",
+			"blob_session_restart",
+			"postgres_store_contract",
+			"managed_repository_contracts",
+			"account_composition",
+			"bootstrap_configuration",
+			"bootstrap_doctor_history_daemon",
+			"live_endpoint_doctor",
+			"authentication_rejection",
+			"turkish_collation_contract",
+			"authority_safety_suite",
+			"hostile_search_path_suite",
 			"primary_restore_suite",
 			"redaction_canary_suite",
 			"default_acl_restore_suite",
+			*authority_drift_stages,
 			"authority_drift_redaction",
 		)
 		run_stage(
@@ -6628,7 +6718,11 @@ def main() -> int | AuthorityCandidatePublication:
 	finally:
 		active_error = sys.exc_info()[1]
 		primary_failure = active_error is not None
-		if isinstance(active_error, Exception) and orchestrator.primary_failure is None:
+		if (
+			orchestrator is not None
+			and isinstance(active_error, Exception)
+			and orchestrator.primary_failure is None
+		):
 			orchestrator.primary_failure = active_error
 			orchestrator.corruption = corruption_failure(active_error) or HarnessCorruption(
 				f"unexpected {type(active_error).__name__}: {active_error}"
@@ -6653,6 +6747,7 @@ def main() -> int | AuthorityCandidatePublication:
 				stop_failures.append(f"PostgreSQL status failed:\n{error}")
 				return ClusterStatus.UNKNOWN
 		status = teardown_status()
+		cluster_observed_running = status is ClusterStatus.RUNNING
 		if status is ClusterStatus.RUNNING:
 			try:
 				run(["pg_ctl", "-D", str(data_dir), "-m", "fast", "-w", "stop"], env)
@@ -6692,7 +6787,7 @@ def main() -> int | AuthorityCandidatePublication:
 				)
 		elif stop_error is not None:
 			teardown_error = stop_error
-		if orchestrator.cluster_started:
+		if orchestrator is not None and (cluster_started or cluster_observed_running):
 			orchestrator.stages["teardown"] = (
 				{"status": "passed"} if teardown_error is None
 				else {"status": "failed", "error": str(teardown_error)}
