@@ -65,6 +65,12 @@ use decodex_postgres::{
 	RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
 };
 
+#[cfg(feature = "test-support")]
+const MANIFEST_QUERY_ERROR_TEXT_LIMIT: usize = 512;
+#[cfg(feature = "test-support")]
+const MANIFEST_CLIENT_ERROR_MESSAGE: &str =
+	"manifest query failed without PostgreSQL database error";
+
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
 const HOLDER_A: &str = "20000000-0000-0000-0000-000000000001";
 const HOLDER_B: &str = "20000000-0000-0000-0000-000000000002";
@@ -466,6 +472,12 @@ async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn st
 async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
 	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
 	let expected_database = env::var("DECODEX_EXPECTED_MANIFEST_DATABASE")?;
+	let structured_errors = match env::var("DECODEX_SCHEMA_MANIFEST_STRUCTURED_ERRORS") {
+		Ok(value) if value == "1" => true,
+		Ok(_) => return Err("structured manifest errors must equal 1 when configured".into()),
+		Err(env::VarError::NotPresent) => false,
+		Err(error) => return Err(error.into()),
+	};
 	let (mut migration, mut runtime) = separated_configs("DECODEX_TEST")?;
 	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
 	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
@@ -498,7 +510,11 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 	let (schema, schema_complete, schema_error) =
 		match client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await {
 			Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
-			Err(error) => (None, false, Some(error.to_string())),
+			Err(error) => (None, false, Some(if structured_errors {
+				manifest_query_error(&error)
+			} else {
+				error.to_string()
+			})),
 		};
 	let (authority, authority_error) = match client
 		.query_one(
@@ -508,8 +524,14 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		.await
 	{
 		Ok(row) => (row.get::<_, Option<String>>(0), None),
-		Err(error) => (None, Some(error.to_string())),
+		Err(error) => (None, Some(if structured_errors {
+			manifest_query_error(&error)
+		} else {
+			error.to_string()
+		})),
 	};
+	let has_structured_component_failure =
+		structured_errors && (schema_error.is_some() || authority_error.is_some());
 	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
 	let migration_connection_task = tokio::spawn(migration_connection);
 	let observed_migration_database: String =
@@ -549,10 +571,43 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 	drop(client);
 	drop(migration_client);
 
-	connection_task.await??;
+	let runtime_connection_result = connection_task.await?;
+	if !has_structured_component_failure {
+		runtime_connection_result?;
+	}
 	migration_connection_task.await??;
 
 	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+fn manifest_query_error(error: &tokio_postgres::Error) -> String {
+	fn bounded(value: &str) -> (String, bool) {
+		let mut characters = value.chars();
+		let text = characters.by_ref().take(MANIFEST_QUERY_ERROR_TEXT_LIMIT).collect();
+		(text, characters.next().is_some())
+	}
+
+	if let Some(database) = error.as_db_error() {
+		let (message, truncated) = bounded(database.message());
+		serde_json::json!({
+			"classification": "database_error",
+			"message": message,
+			"message_truncated": truncated,
+			"schema": "decodex/postgres-manifest-query-error/1",
+			"sqlstate": database.code().code(),
+		})
+		.to_string()
+	} else {
+		serde_json::json!({
+			"classification": "client_error",
+			"message": MANIFEST_CLIENT_ERROR_MESSAGE,
+			"message_truncated": false,
+			"schema": "decodex/postgres-manifest-query-error/1",
+			"sqlstate": null,
+		})
+		.to_string()
+	}
 }
 
 #[cfg(feature = "test-support")]

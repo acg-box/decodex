@@ -304,6 +304,13 @@ V19_INTERNAL_SIGNATURES = (
 	"decodex.cancel_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.timestamptz)",
 )
 
+MANIFEST_DIAGNOSTIC_ERROR_LIMIT = 512
+MANIFEST_DIAGNOSTIC_IDENTITY_LIMIT = 256
+MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT = 8
+MANIFEST_DIAGNOSTIC_SCHEMA = "decodex/postgres-manifest-component-diagnostic/1"
+MANIFEST_QUERY_ERROR_SCHEMA = "decodex/postgres-manifest-query-error/1"
+MANIFEST_CLIENT_ERROR_MESSAGE = "manifest query failed without PostgreSQL database error"
+
 
 class TestFailure(RuntimeError):
 	"""Raised when isolated PostgreSQL setup or the integration test fails."""
@@ -760,11 +767,18 @@ def run_migration_through_v13(env: dict[str, str]) -> str:
 
 
 def dump_schema_manifest(
-	path: Path, database: str, env: dict[str, str]
+	path: Path,
+	database: str,
+	env: dict[str, str],
+	*,
+	structured_errors: bool = False,
 ) -> str:
 	manifest_env = env.copy()
 	manifest_env["DECODEX_SCHEMA_MANIFEST_PATH"] = str(path)
 	manifest_env["DECODEX_EXPECTED_MANIFEST_DATABASE"] = database
+	manifest_env.pop("DECODEX_SCHEMA_MANIFEST_STRUCTURED_ERRORS", None)
+	if structured_errors:
+		manifest_env["DECODEX_SCHEMA_MANIFEST_STRUCTURED_ERRORS"] = "1"
 	return run(
 		["cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
 		 "test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
@@ -1031,35 +1045,122 @@ def unavailable_checkpoint(reason: str) -> dict[str, object]:
 	}
 
 
-def load_semantic_manifest(path: Path) -> dict[str, object]:
-	document = json.loads(path.read_text(encoding="utf-8"))
+def validate_semantic_manifest(
+	document: object, location: str
+) -> dict[str, object]:
+	if not isinstance(document, dict):
+		raise TestFailure(f"invalid semantic manifest envelope at {location}")
 	if set(document) != {"schema", "authority", "binding", "sequence_state"}:
-		raise TestFailure(f"invalid semantic manifest envelope at {path}")
+		raise TestFailure(f"invalid semantic manifest envelope at {location}")
 	if not isinstance(document["binding"], dict) or not isinstance(
 		document["sequence_state"], list
 	):
-		raise TestFailure(f"invalid semantic manifest evidence at {path}")
+		raise TestFailure(f"invalid semantic manifest evidence at {location}")
 	for component_name in ("schema", "authority"):
 		component = document[component_name]
 		if not isinstance(component, dict) or set(component) != {
 			"available", "complete", "error", "manifest"
 		}:
-			raise TestFailure(f"invalid {component_name} component at {path}")
+			raise TestFailure(f"invalid {component_name} component at {location}")
 		available = component["available"]
 		complete = component["complete"]
 		manifest = component["manifest"]
 		error = component["error"]
 		if not isinstance(available, bool) or not isinstance(complete, bool):
-			raise TestFailure(f"invalid {component_name} status at {path}")
+			raise TestFailure(f"invalid {component_name} status at {location}")
 		if error is not None and not isinstance(error, str):
-			raise TestFailure(f"invalid {component_name} error at {path}")
+			raise TestFailure(f"invalid {component_name} error at {location}")
 		if available != isinstance(manifest, str) or complete and not available:
-			raise TestFailure(f"incoherent {component_name} availability at {path}")
+			raise TestFailure(f"incoherent {component_name} availability at {location}")
 		if isinstance(manifest, str):
 			rows = json.loads(manifest)
 			if not isinstance(rows, list):
-				raise TestFailure(f"invalid {component_name} row manifest at {path}")
+				raise TestFailure(
+					f"invalid {component_name} row manifest at {location}"
+				)
 	return document
+
+
+def load_semantic_manifest(path: Path) -> dict[str, object]:
+	return validate_semantic_manifest(
+		json.loads(path.read_text(encoding="utf-8")), str(path)
+	)
+
+
+def validate_capture_manifest_rows(document: dict[str, object]) -> None:
+	for component_name in ("schema", "authority"):
+		component = document[component_name]
+		assert isinstance(component, dict)
+		manifest = component.get("manifest")
+		if not isinstance(manifest, str):
+			continue
+		rows = json.loads(manifest)
+		for row in rows:
+			if (
+				not isinstance(row, list) or len(row) != 3
+				or not isinstance(row[0], str) or not isinstance(row[2], str)
+			):
+				raise TestFailure(f"malformed {component_name} manifest row")
+			contract = json.loads(row[2])
+			if not isinstance(contract, list):
+				raise TestFailure(f"malformed {component_name} manifest contract")
+			if row[0] in {"dependency", "function_dependency", "type_dependency"} and (
+				len(contract) != 4 or not isinstance(contract[2], bool)
+			):
+				raise TestFailure("malformed schema dependency contract")
+
+
+def structured_manifest_query_error(error: str) -> dict[str, object]:
+	try:
+		document = json.loads(error)
+	except json.JSONDecodeError:
+		raise TestFailure("invalid structured manifest query error") from None
+	if (
+		not isinstance(document, dict)
+		or set(document) != {
+			"classification", "message", "message_truncated", "schema", "sqlstate"
+		}
+		or document["schema"] != MANIFEST_QUERY_ERROR_SCHEMA
+		or document["classification"] not in {"database_error", "client_error"}
+		or not isinstance(document["message"], str)
+		or not isinstance(document["message_truncated"], bool)
+	):
+		raise TestFailure("invalid structured manifest query error")
+	if document["classification"] == "database_error":
+		sqlstate = document["sqlstate"]
+		if (
+			not document["message"]
+			or len(document["message"]) > MANIFEST_DIAGNOSTIC_ERROR_LIMIT
+			or (
+				document["message_truncated"] is True
+				and len(document["message"]) != MANIFEST_DIAGNOSTIC_ERROR_LIMIT
+			)
+			or not isinstance(sqlstate, str)
+			or len(sqlstate) != 5
+			or not sqlstate.isascii()
+			or not sqlstate.isalnum()
+			or sqlstate != sqlstate.upper()
+		):
+			raise TestFailure("invalid structured manifest database error")
+	elif (
+		document["message"] != MANIFEST_CLIENT_ERROR_MESSAGE
+		or document["message_truncated"] is not False
+		or document["sqlstate"] is not None
+	):
+		raise TestFailure("invalid structured manifest client error")
+	return document
+
+
+def validate_capture_component_errors(document: dict[str, object]) -> None:
+	for component_name in ("schema", "authority"):
+		component = document[component_name]
+		assert isinstance(component, dict)
+		error = component.get("error")
+		if error is None:
+			continue
+		if component.get("available") is True or not isinstance(error, str):
+			raise TestFailure(f"invalid {component_name} query error")
+		structured_manifest_query_error(error)
 
 
 def component_manifest(
@@ -1074,6 +1175,49 @@ def component_manifest(
 	return manifest
 
 
+def bounded_redacted_text(
+	value: str, secret_markers: tuple[str, ...], limit: int
+) -> tuple[str, bool]:
+	redacted = value
+	for marker in secret_markers:
+		if marker:
+			redacted = redacted.replace(marker, "[REDACTED]")
+	truncated = len(redacted) > limit
+	return redacted[:limit], truncated
+
+
+def bounded_binding(
+	binding: object, secret_markers: tuple[str, ...]
+) -> dict[str, object] | None:
+	if not isinstance(binding, dict):
+		return None
+	result: dict[str, object] = {}
+	for key in (
+		"requested", "migration_url", "runtime_url", "observed_migration",
+		"observed_runtime", "head", "tree",
+	):
+		value = binding.get(key)
+		if isinstance(value, str):
+			text, truncated = bounded_redacted_text(
+				value, secret_markers, MANIFEST_DIAGNOSTIC_IDENTITY_LIMIT
+			)
+			result[key] = text
+			if truncated:
+				result[f"{key}_truncated"] = True
+	return result
+
+
+def bounded_evidence_value(
+	value: object, secret_markers: tuple[str, ...]
+) -> str:
+	text = value if isinstance(value, str) else json.dumps(
+		value, sort_keys=True, separators=(",", ":")
+	)
+	return bounded_redacted_text(
+		text, secret_markers, MANIFEST_DIAGNOSTIC_IDENTITY_LIMIT
+	)[0]
+
+
 def unresolved_dependency_rows(manifest: str) -> list[object]:
 	rows = json.loads(manifest)
 	unresolved = []
@@ -1086,6 +1230,247 @@ def unresolved_dependency_rows(manifest: str) -> list[object]:
 		if isinstance(contract, list) and len(contract) == 4 and contract[2] is False:
 			unresolved.append(row)
 	return unresolved
+
+
+def manifest_component_diagnostic(
+	document: dict[str, object],
+	component_name: str,
+	*,
+	secret_markers: tuple[str, ...] = (),
+) -> dict[str, object]:
+	component = document[component_name]
+	assert isinstance(component, dict)
+	available = component.get("available") is True
+	complete = component.get("complete") is True
+	error = component.get("error")
+	manifest = component.get("manifest")
+	manifest_present = isinstance(manifest, str)
+	if isinstance(error, str):
+		structured_error = structured_manifest_query_error(error)
+		classification = structured_error["classification"]
+		sqlstate = structured_error["sqlstate"]
+		error_text, bounded_truncated = bounded_redacted_text(
+			structured_error["message"],
+			secret_markers,
+			MANIFEST_DIAGNOSTIC_ERROR_LIMIT,
+		)
+		error_truncated = structured_error["message_truncated"] or bounded_truncated
+	elif manifest_present and not complete:
+		classification = "incomplete_manifest"
+		sqlstate = None
+		error_text = "manifest reported incomplete"
+		error_truncated = False
+	elif not available:
+		classification = "unavailable_without_error"
+		sqlstate = None
+		error_text = "manifest unavailable without a query error"
+		error_truncated = False
+	else:
+		classification = None
+		sqlstate = None
+		error_text = None
+		error_truncated = False
+
+	manifest_diagnostic: dict[str, object] = {
+		"present": manifest_present,
+		"row_count": None,
+		"sha256": None,
+	}
+	unresolved_count = 0
+	unresolved_evidence: list[dict[str, object]] = []
+	if isinstance(manifest, str):
+		rows = json.loads(manifest)
+		assert isinstance(rows, list)
+		manifest_diagnostic["row_count"] = len(rows)
+		manifest_diagnostic["sha256"] = hashlib.sha256(
+			manifest.encode("utf-8")
+		).hexdigest()
+		if component_name == "schema" and not complete:
+			unresolved = unresolved_dependency_rows(manifest)
+			unresolved_count = len(unresolved)
+			for row in unresolved[:MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT]:
+				assert isinstance(row, list) and len(row) == 3
+				kind, identity = row[:2]
+				contract = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+				assert isinstance(contract, list) and len(contract) == 4
+				dependency_type, reference_class, _, reference_key = contract
+				unresolved_evidence.append({
+					"dependency_type": bounded_evidence_value(
+						dependency_type, secret_markers
+					),
+					"identity": bounded_evidence_value(identity, secret_markers),
+					"kind": bounded_evidence_value(kind, secret_markers),
+					"reference_class": bounded_evidence_value(
+						reference_class, secret_markers
+					),
+					"reference_key": bounded_evidence_value(
+						reference_key, secret_markers
+					),
+				})
+
+	return {
+		"available": available,
+		"complete": complete,
+		"component": component_name,
+		"error": {
+			"classification": classification,
+			"sqlstate": sqlstate,
+			"text": error_text,
+			"truncated": error_truncated,
+		},
+		"manifest": manifest_diagnostic,
+		"unresolved_dependencies": {
+			"count": unresolved_count,
+			"evidence": unresolved_evidence,
+			"evidence_truncated": (
+				unresolved_count > MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT
+			),
+		},
+	}
+
+
+def capture_manifest_diagnostic(
+	checkpoint: str,
+	expected_database: str,
+	*,
+	source_binding: dict[str, str],
+	secret_markers: tuple[str, ...],
+	document: dict[str, object] | None = None,
+	component_names: tuple[str, ...] = (),
+	artifact_classification: str | None = None,
+	artifact_bytes: bytes | None = None,
+	artifact_error: str | None = None,
+) -> str:
+	diagnostic = {
+		"capture_only": True,
+		"checkpoint": {
+			"database_binding": bounded_binding(
+				None if document is None else document.get("binding"), secret_markers
+			),
+			"expected_database": expected_database,
+			"name": checkpoint,
+		},
+		"components": [] if document is None else [
+			manifest_component_diagnostic(
+				document, component_name, secret_markers=secret_markers
+			)
+			for component_name in component_names
+		],
+		"schema": MANIFEST_DIAGNOSTIC_SCHEMA,
+		"source_binding": bounded_binding(source_binding, secret_markers),
+	}
+	if artifact_classification is not None:
+		error_text, error_truncated = bounded_redacted_text(
+			artifact_error or "artifact unavailable without parser error",
+			secret_markers,
+			MANIFEST_DIAGNOSTIC_ERROR_LIMIT,
+		)
+		diagnostic["artifact"] = {
+			"byte_length": None if artifact_bytes is None else len(artifact_bytes),
+			"classification": artifact_classification,
+			"error": {"text": error_text, "truncated": error_truncated},
+			"readable": artifact_bytes is not None,
+			"sha256": None if artifact_bytes is None else hashlib.sha256(
+				artifact_bytes
+			).hexdigest(),
+		}
+	serialized = json.dumps(diagnostic, sort_keys=True, separators=(",", ":"))
+	if any(marker and marker in serialized for marker in secret_markers):
+		raise TestFailure("manifest diagnostic redaction failed")
+	return serialized
+
+
+def parse_capture_manifest(
+	artifact_bytes: bytes,
+	checkpoint: str,
+	expected_database: str,
+	*,
+	source_binding: dict[str, str],
+	secret_markers: tuple[str, ...],
+) -> dict[str, object]:
+	try:
+		document = json.loads(artifact_bytes.decode("utf-8"))
+		validated = validate_semantic_manifest(document, checkpoint)
+		validate_capture_manifest_rows(validated)
+		require_manifest_binding(validated, expected_database)
+		validate_capture_component_errors(validated)
+		return validated
+	except Exception as error:
+		raise TestFailure(
+			"authority candidate capture diagnostic: "
+			+ capture_manifest_diagnostic(
+				checkpoint,
+				expected_database,
+				source_binding=source_binding,
+				secret_markers=secret_markers,
+				artifact_classification="artifact_malformed",
+				artifact_bytes=artifact_bytes,
+				artifact_error=str(error),
+			)
+		) from None
+
+
+def load_capture_manifest(
+	path: Path,
+	checkpoint: str,
+	expected_database: str,
+	*,
+	source_binding: dict[str, str],
+	secret_markers: tuple[str, ...],
+) -> dict[str, object]:
+	try:
+		artifact_bytes = path.read_bytes()
+	except Exception as error:
+		raise TestFailure(
+			"authority candidate capture diagnostic: "
+			+ capture_manifest_diagnostic(
+				checkpoint,
+				expected_database,
+				source_binding=source_binding,
+				secret_markers=secret_markers,
+				artifact_classification="artifact_unreadable",
+				artifact_error=str(error),
+			)
+		) from None
+	return parse_capture_manifest(
+		artifact_bytes,
+		checkpoint,
+		expected_database,
+		source_binding=source_binding,
+		secret_markers=secret_markers,
+	)
+
+
+def require_capture_components(
+	document: dict[str, object],
+	checkpoint: str,
+	expected_database: str,
+	*,
+	source_binding: dict[str, str],
+	secret_markers: tuple[str, ...],
+) -> dict[str, str]:
+	manifests = {
+		component_name: component_manifest(document, component_name)
+		for component_name in ("schema", "authority")
+	}
+	failed_components = tuple(
+		component_name for component_name, manifest in manifests.items()
+		if manifest is None
+	)
+	if failed_components:
+		raise TestFailure(
+			"authority candidate capture diagnostic: "
+			+ capture_manifest_diagnostic(
+				checkpoint,
+				expected_database,
+				source_binding=source_binding,
+				secret_markers=secret_markers,
+				document=document,
+				component_names=failed_components,
+			)
+		)
+	assert all(isinstance(manifest, str) for manifest in manifests.values())
+	return {name: manifest for name, manifest in manifests.items() if manifest is not None}
 
 
 def semantic_row_diff(before: str, after: str) -> dict[str, list[object]]:
@@ -2407,9 +2792,23 @@ def run_authority_candidate_capture(
 	)
 
 	source_path = work / "authority-candidate-source.json"
-	dump_schema_manifest(source_path, AUTHORITY_CAPTURE_DATABASE, env)
-	source = load_semantic_manifest(source_path)
-	require_manifest_binding(source, AUTHORITY_CAPTURE_DATABASE)
+	dump_schema_manifest(
+		source_path, AUTHORITY_CAPTURE_DATABASE, env, structured_errors=True
+	)
+	source = load_capture_manifest(
+		source_path,
+		"source",
+		AUTHORITY_CAPTURE_DATABASE,
+		source_binding=start_binding,
+		secret_markers=secret_markers,
+	)
+	source_manifests = require_capture_components(
+		source,
+		"source",
+		AUTHORITY_CAPTURE_DATABASE,
+		source_binding=start_binding,
+		secret_markers=secret_markers,
+	)
 	source_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_DATABASE, env)
 	source_runtime_authority = capture_runtime_authority(AUTHORITY_CAPTURE_DATABASE, env)
 	source_population = json.loads(psql(
@@ -2432,9 +2831,23 @@ def run_authority_candidate_capture(
 	)
 	set_contract_urls(env, socket_dir, port, AUTHORITY_CAPTURE_RESTORE_DATABASE, RUNTIME_ROLE)
 	restored_path = work / "authority-candidate-restored.json"
-	dump_schema_manifest(restored_path, AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
-	restored = load_semantic_manifest(restored_path)
-	require_manifest_binding(restored, AUTHORITY_CAPTURE_RESTORE_DATABASE)
+	dump_schema_manifest(
+		restored_path, AUTHORITY_CAPTURE_RESTORE_DATABASE, env, structured_errors=True
+	)
+	restored = load_capture_manifest(
+		restored_path,
+		"restored",
+		AUTHORITY_CAPTURE_RESTORE_DATABASE,
+		source_binding=start_binding,
+		secret_markers=secret_markers,
+	)
+	restored_manifests = require_capture_components(
+		restored,
+		"restored",
+		AUTHORITY_CAPTURE_RESTORE_DATABASE,
+		source_binding=start_binding,
+		secret_markers=secret_markers,
+	)
 	restored_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
 	restored_runtime_authority = capture_runtime_authority(
 		AUTHORITY_CAPTURE_RESTORE_DATABASE, env
@@ -2457,10 +2870,8 @@ def run_authority_candidate_capture(
 	}
 	mismatches: list[dict[str, object]] = []
 	for component in ("schema", "authority"):
-		source_manifest = component_manifest(source, component)
-		restored_manifest = component_manifest(restored, component)
-		if source_manifest is None or restored_manifest is None:
-			raise TestFailure(f"authority candidate {component} manifest is incomplete")
+		source_manifest = source_manifests[component]
+		restored_manifest = restored_manifests[component]
 		source_evidence = authority_manifest_evidence(source_manifest)
 		restored_evidence = authority_manifest_evidence(restored_manifest)
 		manifest_evidence[component] = {
