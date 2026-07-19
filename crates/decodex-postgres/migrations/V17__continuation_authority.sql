@@ -347,7 +347,7 @@ BEGIN
 		||pg_catalog.int4send(p_max_bytes)||pg_catalog.int2send(p_recent_item_limit::smallint)
 		||pg_catalog.int2send(source_count::smallint)||pg_catalog.convert_to(p_manifest_digest,'UTF8')
 		||pg_catalog.decode(CASE WHEN p_truncated THEN '01' ELSE '00' END,'hex');
-	IF pg_catalog.substring(p_compiled_bytes FROM 1 FOR pg_catalog.octet_length(header))<>header
+	IF pg_catalog.substr(p_compiled_bytes, 1, pg_catalog.octet_length(header))<>header
 	THEN RETURN false; END IF;
 	cursor:=pg_catalog.octet_length(header)+1;
 	FOR position IN 1..source_count LOOP
@@ -363,7 +363,7 @@ BEGIN
 		IF encoded_position<>position-1 OR encoded_length<>p_included_lengths[position]
 			OR cursor+encoded_length-1>pg_catalog.octet_length(p_compiled_bytes)
 		THEN RETURN false; END IF;
-		represented:=pg_catalog.substring(p_compiled_bytes FROM cursor FOR encoded_length::integer);
+		represented:=pg_catalog.substr(p_compiled_bytes, cursor, encoded_length::integer);
 		IF pg_catalog.encode(public.digest(represented,'sha256'),'hex')<>p_included_digests[position]
 		THEN RETURN false; END IF;
 		cursor:=cursor+encoded_length::integer;
