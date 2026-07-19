@@ -88,31 +88,49 @@ database unavailability, plugin/vault/blob unknown states, and redaction. Protoc
 fixtures separately force wrong major/minor, malformed/oversized response, timeout, and
 untrusted server-text cases.
 
-PostgreSQL authority digest changes use a separate derivation phase:
+PostgreSQL authority digest changes use an explicit derivation phase followed by one acceptance
+phase:
 
 ```sh
+# Run Phase A from one clean committed repaired pre-digest tree.
 python3 scripts/vnext/postgres_store_test.py \
   --capture-authority-candidate /absolute/private/directory/postgres-authority-candidate.json
+
+# After committing only the two receipt-derived digest arrays, run Phase B from that clean commit.
+python3 scripts/vnext/postgres_store_test.py \
+  --accept-authority-candidate \
+  /absolute/private/directory/postgres-authority-candidate.json \
+  /absolute/private/directory/postgres-authority-acceptance.json
 ```
 
-This capture-only mode migrates and provisions an isolated PostgreSQL 18 database, captures raw
+Phase A must start from one clean committed repaired pre-digest tree. After its immutable candidate
+receipt is validated, the operator updates and commits only `SCHEMA_CONTRACT_SHA256` and
+`CONFIGURED_AUTHORITY_SHA256`; that clean digest-only commit is the Phase B source for the acceptance
+command. The Phase B commit must be the direct single-parent child of the Phase A commit. No
+particular commit hash is prescribed: the receipt and Phase B consumer bind and verify the actual
+Phase A commit/tree, Phase B commit/tree, direct-parent transition, and exact two-array delta.
+
+The capture-only mode migrates and provisions an isolated PostgreSQL 18 database, captures raw
 source S0, first-restore R1, and second-restore R2 evidence, and separately proves the exact
-V13-to-V20 one-grantee runtime ACL delta from raw catalogs. It atomically publishes
-`decodex/postgres-authority-candidate/1` only when the Phase A mismatch set is exactly the schema and
-configured-authority digests and the complete, unique, resolved manifests, migration ledger,
-semantic state, population, and runtime-authority shape satisfy both S0=R1 and R1=R2. Raw manifests
+V13-to-V20 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
+used by production readiness must pass at S0, R1, and R2 before it atomically publishes
+`decodex/postgres-authority-candidate/2`; the Phase A mismatch set must be exactly the schema and
+configured-authority digests, while complete, unique, resolved manifests, migration ledger,
+semantic state, population, runtime-authority shape, and semantic evidence satisfy both restore
+edges. Raw manifests
 and temporary cluster state are not retained in the receipt. Capture, PostgreSQL shutdown/removal,
 and final source binding complete before publication. A complete fsynced mode-0600 temporary receipt
 is published by one create-only hard link; that link is the commit point and never overwrites or
 rolls back the final path. Directory fsync completes the normal-success durability claim, but any
 failure or interruption after the link is an ambiguous producer outcome resolved by reading the
 immutable receipt. Exit status and stdout are not evidence. The receipt has `acceptance=false`; it
-never substitutes for the normal aggregate. Phase B alone validates the exact receipt schema,
-Phase A tree, exact two-digest mismatch set, database/principal/ledger bindings, and both restore
-edges; existing malformed, substituted, duplicate, or mismatched receipts fail closed. A subsequent
-digest-refreeze phase may change only `SCHEMA_CONTRACT_SHA256`,
-`CONFIGURED_AUTHORITY_SHA256`, and the designated captured evidence surface, must record both source
-trees, and must discard the candidate if any other source changes.
+never substitutes for the normal aggregate. Phase B alone validates the exact immutable receipt,
+its hash and Phase A HEAD/tree, and the exact two-constant source delta. It then repeats S0→R1→R2,
+requires every semantic predicate and restore edge to pass with zero digest mismatches, and publishes
+the only `acceptance=true` receipt bound to both trees and the Phase A receipt hash. Existing
+malformed, substituted, duplicate, or mismatched receipts fail closed. Phase B may change only
+`SCHEMA_CONTRACT_SHA256` and `CONFIGURED_AUTHORITY_SHA256`; any other source delta invalidates the
+candidate.
 
 An unavailable or incomplete raw schema/authority component publishes no receipt. Before its private
 cluster is removed, the capture emits a versioned, bounded diagnostic to the operator-owned combined
@@ -122,6 +140,8 @@ database failures contain SQLSTATE and primary message; non-database failures us
 Malformed artifacts report only classification, expected binding, byte length/hash when readable,
 and a bounded parser error. Diagnostic text and identities are length-bounded and secret-marker
 redacted; full manifests and raw contracts are never emitted.
+Semantic diagnostics contain only the checkpoint and the complete bounded set of false canonical
+predicate names; they never contain SQL, ACL bodies, object identities, connection data, or paths.
 
 The XY-1267/XY-1307 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. The PostgreSQL command provisions fixture-only migration/runtime roles, proves least-privilege daemon bootstrap, and rejects 27 unsafe roots covering direct, inherited, NOINHERIT/SET-only, and membership-admin paths to forbidden role attributes, PostgreSQL 18 namespace-object ownership (including distinct collation, conversion, operator, and text-search cases), DDL, table/ledger/sequence mutation, grant options, `session_replication_role` SET/ALTER SYSTEM, retention bypass, trigger drift, extension-member control, an indirect public-function trigger, and a genuinely additional function. It closes every runtime-callable Decodex function over exact signatures, overloads, metadata, settings, and canonical source. At the frozen V9 boundary, all 72 shipped functions have the exact secure `pg_catalog, decodex` function-local search path, and all 52 non-internal shipped trigger bindings—including deferred constraint triggers—have exact catalog attestations. The 16 shipped security definers comprise three V3 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two V9 RoleProfile command entrypoints; runtime cannot insert cursors or execute capture directly. The additional fixture-only seventy-third function is migration-owned, runtime-executable, `SECURITY DEFINER`, configured with an unsafe setting, and is invoked as runtime to perform owner-authority trigger DDL before fixture restoration and independent rejection. The separate substitution fixture replaces a shipped safety body without changing its signature. The indirect-trigger fixture proves runtime DML executes a public definer function despite direct `EXECUTE`, protected-table `UPDATE`, and `TRIGGER` all being denied. The extension fixture proves a public runtime-owned extension can transactionally drop it. Six incompatible roots cover missing ledger SELECT, canonical-function drift, a dropped credential constraint with demonstrated credential insertion, an external child cascade with demonstrated runtime-mediated deletion, a same-count tampered migration ledger, and absent `pgcrypto`. The canonical PostgreSQL 18 schema manifest closes defaults, constraints on both foreign-key sides, indexes, enums, and internal constraint-trigger semantics. Descriptor-pinned socket unit fixtures reject a same-UID pre-planted endpoint in a world-writable configured directory, a mismatched operator UID pin, replaced ancestors, replaced endpoints, and deterministic replacement between precheck and failed connect; an unchanged secure stale socket maps to unreachable. An isolated daemon fixture starts Ready, replaces the configured endpoint, and proves a fresh V1.2 doctor query becomes unsafe-host-path without migration or repinning. The runtime protocol tests keep mutation receipt lookup/capacity independent across V1.1/V1.2 and prove repeated, ordered, concurrent live queries neither replay nor consume receipts. The adapter contract tampers a ledger name at constant row count and removes `pgcrypto` after bootstrap, proving read-only live revalidation reports both as incompatible before restoration. The harness also exercises an in-flight Rust BlobSession across an immediate PostgreSQL restart: the old session loses its hash lock and transaction-B connection, its stale claim cannot complete, and a reassigned exact retry verifies already-published bytes before committing metadata. It also proves `setval` denial, same-signature callable hostile-`search_path` safety, Turkish ICU credential behavior, and populated dump/restore. The XY-1264 proof additionally exercises rollback, blob, and cache behavior (`crates/decodex-postgres/src/socket.rs`, `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
 

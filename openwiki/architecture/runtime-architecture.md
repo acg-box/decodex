@@ -163,9 +163,10 @@ same binding when revoking its internal explicit-time entry points. Production a
 remain generic. Authority digest changes use two explicit phases. Phase A's capture-only PostgreSQL
 18 mode migrates and provisions a non-default runtime principal, captures normalized manifests at
 source S0, first restore R1, and second restore R2 without constructing `PostgresStore`, and
-atomically publishes a versioned summary receipt only for one configured-authority digest mismatch
-and V20's one schema-contract digest mismatch, with ledger, binding, identity, and both S0=R1 and
-R1=R2 restore edges intact. Raw manifests
+uses the same canonical non-digest semantic authority verifier as production readiness at every
+checkpoint. It atomically publishes a versioned summary receipt only for V20's schema-contract
+digest mismatch followed by the configured-authority digest mismatch, with semantic predicates,
+ledger, binding, identity, and both S0=R1 and R1=R2 restore edges intact. Raw manifests
 and temporary cluster state are not retained in the receipt. A separate V13 upgrade database binds
 only the exact
 ManagedRun-safety anchor, then proves the migration-owned 15-function/five-type runtime delta and
@@ -184,10 +185,13 @@ claim; failure after the link creates an ambiguous producer outcome resolved onl
 readback. Phase A exit status and output are not evidence.
 Phase B is the sole consumer and acceptance boundary. It ignores producer exit and output, never
 overwrites an existing path, and may consume only an extant exact-schema receipt whose immutable
-bytes attest the exact Phase A tree, `capture_only=true`, `acceptance=false`, the exact allowed
-configured-authority mismatch plus V20's schema-contract mismatch, exact
+bytes and hash attest the exact Phase A HEAD/tree, `capture_only=true`, `acceptance=false`, V20's
+schema-contract mismatch followed by the configured-authority mismatch, exact
 database/principal/migration-ledger evidence, and complete
-source/restore parity. Malformed, substituted, duplicate, or lineage-mismatched receipts fail
+source/restore and semantic-authority parity. It proves the current tree changes only the two digest
+arrays, repeats the full S0→R1→R2 capture, and publishes `acceptance=true` only for zero digest
+mismatches and complete semantic evidence, bound to both trees and the Phase A receipt hash.
+Malformed, substituted, duplicate, or lineage-mismatched receipts fail
 closed. This bounded contract assumes one clean committed writer and an operator-owned private
 external directory; it creates no persistent PostgreSQL authority or producer/consumer protocol.
 Phase B may change only `SCHEMA_CONTRACT_SHA256`, `CONFIGURED_AUTHORITY_SHA256`, and the

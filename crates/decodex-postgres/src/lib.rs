@@ -193,6 +193,17 @@ impl PostgresStore {
 		authority::execution_path_contract_fixture()
 	}
 
+	/// Evaluate the production non-digest authority predicates for capture-only evidence.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub async fn semantic_authority_fixture(
+		client: &Client,
+		migration_role: &str,
+		runtime_role: &str,
+	) -> Result<Vec<(&'static str, bool)>, StoreError> {
+		authority::semantic_authority_fixture(client, migration_role, runtime_role).await
+	}
+
 	/// Apply the production connection-startup invariant to an isolated raw fixture.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]

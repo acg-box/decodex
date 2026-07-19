@@ -1635,7 +1635,16 @@ WITH set_roles AS (
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
 )
 SELECT
-  (SELECT count(*) FROM tables WHERE table_name IS NOT NULL) = 73
+  NOT EXISTS (
+    SELECT expected.table_name FROM expected
+    EXCEPT
+    SELECT tables.relname FROM tables
+  )
+    AND NOT EXISTS (
+      SELECT tables.relname FROM tables
+      EXCEPT
+      SELECT expected.table_name FROM expected
+    )
     AND COALESCE((
       SELECT pg_catalog.bool_and(
         pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
@@ -3861,20 +3870,51 @@ pub(crate) fn execution_path_contract_fixture() -> (&'static str, Vec<&'static s
 	)
 }
 
+#[derive(Debug)]
+struct SemanticAuthorityEvidence {
+	predicates: Vec<(&'static str, bool)>,
+	unsafe_failure: bool,
+	incompatible_failure: bool,
+}
+
+impl SemanticAuthorityEvidence {
+	fn new() -> Self {
+		Self {
+			predicates: Vec::new(),
+			unsafe_failure: false,
+			incompatible_failure: false,
+		}
+	}
+
+	fn record_unsafe(&mut self, name: &'static str, passed: bool) {
+		self.predicates.push((name, passed));
+		self.unsafe_failure |= !passed;
+	}
+
+	fn record_incompatible(&mut self, name: &'static str, passed: bool) {
+		self.predicates.push((name, passed));
+		self.incompatible_failure |= !passed;
+	}
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn semantic_authority_fixture(
+	client: &Client,
+	migration_role: &str,
+	runtime_role: &str,
+) -> Result<Vec<(&'static str, bool)>, StoreError> {
+	Ok(semantic_authority_evidence(client, migration_role, runtime_role)
+		.await?
+		.predicates)
+}
+
 pub(crate) async fn verify_runtime(
 	client: &Client,
 	migration_role: &str,
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
-	verify_configured_authority(client, migration_role, runtime_role).await?;
-	verify_forbidden_authority(client).await?;
-	verify_identity_cast_authority(client).await?;
-	verify_execution_path_contract(client).await?;
-	verify_retention_contract(client).await?;
-	verify_function_contract(client).await?;
-	verify_schema_contract(client).await?;
-
-	verify_required_authority(client).await
+	verify_semantic_authority(client, migration_role, runtime_role).await?;
+	verify_manifest_contracts(client, migration_role, runtime_role).await
 }
 
 const fn trigger_contract(
@@ -4009,16 +4049,13 @@ fn canonical_function_source_in_migration<'a>(
 	Some(source)
 }
 
-async fn verify_identity_cast_authority(client: &Client) -> Result<(), StoreError> {
-	let closed: bool = client.query_one(IDENTITY_CAST_AUTHORITY_SQL, &[]).await?.get(0);
-
-	if !closed {
-		return Err(StoreError::UnsafeAuthority(
-			"PostgreSQL permits an implicit UUID-to-text identity conversion",
-		));
-	}
-
-	Ok(())
+async fn verify_manifest_contracts(
+	client: &Client,
+	migration_role: &str,
+	runtime_role: &str,
+) -> Result<(), StoreError> {
+	verify_schema_contract(client).await?;
+	verify_configured_authority(client, migration_role, runtime_role).await
 }
 
 async fn verify_schema_contract(client: &Client) -> Result<(), StoreError> {
@@ -4051,20 +4088,6 @@ async fn verify_configured_authority(
 	migration_role: &str,
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
-	let session_is_runtime: bool = client
-		.query_one(
-			"SELECT session_user = $1::pg_catalog.name AND current_user = $1::pg_catalog.name",
-			&[&runtime_role],
-		)
-		.await?
-		.get(0);
-
-	if !session_is_runtime {
-		return Err(StoreError::UnsafeAuthority(
-			"PostgreSQL session identity differs from the configured runtime principal",
-		));
-	}
-
 	let manifest: Option<String> =
 		client.query_one(CONFIGURED_AUTHORITY_SQL, &[&migration_role, &runtime_role]).await?.get(0);
 	let manifest = manifest.ok_or_else(|| {
@@ -4080,26 +4103,6 @@ async fn verify_configured_authority(
 		);
 		return Err(StoreError::UnsafeAuthority(
 			"PostgreSQL configured principal or ACL authority differs from the shipped PG18 inventory",
-		));
-	}
-
-	Ok(())
-}
-async fn verify_execution_path_contract(client: &Client) -> Result<(), StoreError> {
-	let allowed_functions = FUNCTION_CONTRACTS
-		.iter()
-		.map(|contract| contract.lookup_signature)
-		.chain(ALLOWED_EXECUTION_DEPENDENCIES)
-		.collect::<Vec<_>>();
-	let row = client.query_one(EXECUTION_PATH_CONTRACT_SQL, &[&allowed_functions]).await?;
-	let exact_triggers: bool = row.get(0);
-	let no_rules: bool = row.get(1);
-	let no_policies: bool = row.get(2);
-	let closed_function_dependencies: bool = row.get(3);
-
-	if !exact_triggers || !no_rules || !no_policies || !closed_function_dependencies {
-		return Err(StoreError::UnsafeAuthority(
-			"PostgreSQL exposes an unexpected executable path on a Decodex relation",
 		));
 	}
 
@@ -4151,7 +4154,10 @@ fn function_is_security_definer(function_name: &str) -> bool {
 	)
 }
 
-async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
+async fn inspect_function_contract(
+	client: &Client,
+	evidence: &mut SemanticAuthorityEvidence,
+) -> Result<(), StoreError> {
 	let actual_count: i64 = client
 		.query_one(
 			r#"SELECT count(*)
@@ -4165,25 +4171,18 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 	let expected_count = i64::try_from(FUNCTION_CONTRACTS.len()).map_err(|_| {
 		StoreError::Incompatible("PostgreSQL function inventory is too large".into())
 	})?;
-
-	if actual_count > expected_count {
-		return Err(StoreError::UnsafeAuthority(
-			"PostgreSQL exposes an unexpected runtime-callable Decodex function",
-		));
-	}
-	if actual_count < expected_count {
-		return Err(StoreError::Incompatible(
-			"PostgreSQL runtime function inventory is incomplete".into(),
-		));
-	}
+	let mut exact_inventory = actual_count == expected_count;
+	let mut metadata_matches = true;
+	let mut semantics_match = true;
+	let mut execute_authority_matches = true;
 
 	for contract in &FUNCTION_CONTRACTS {
-		let Some(row) =
-			client.query_opt(FUNCTION_CONTRACT_SQL, &[&contract.lookup_signature]).await?
+		let Some(row) = client
+			.query_opt(FUNCTION_CONTRACT_SQL, &[&contract.lookup_signature])
+			.await?
 		else {
-			return Err(StoreError::UnsafeAuthority(
-				"PostgreSQL substitutes an unexpected Decodex function or overload",
-			));
+			exact_inventory = false;
+			continue;
 		};
 		let arguments: String = row.get(0);
 		let result: String = row.get(1);
@@ -4204,7 +4203,7 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 		let expected_executable = RUNTIME_EXECUTE_FUNCTIONS.contains(&contract.lookup_signature);
 		let expected_settings = vec!["search_path=pg_catalog, decodex".to_owned()];
 
-		if unsafe_metadata
+		metadata_matches &= !(unsafe_metadata
 			|| security_definer != expected_security_definer
 			|| settings.as_ref() != Some(&expected_settings)
 			|| arguments != contract.arguments
@@ -4215,12 +4214,7 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 			|| strict != contract.strict
 			|| returns_set != contract.returns_set
 			|| cost != 100.0
-			|| rows != contract.rows
-		{
-			return Err(StoreError::UnsafeAuthority(
-				"PostgreSQL runtime-callable Decodex function metadata is unsafe",
-			));
-		}
+			|| rows != contract.rows);
 
 		let expected_source = canonical_function_source(contract).ok_or_else(|| {
 			StoreError::Incompatible(format!(
@@ -4229,124 +4223,149 @@ async fn verify_function_contract(client: &Client) -> Result<(), StoreError> {
 			))
 		})?;
 
-		if installed_source != expected_source {
-			return Err(StoreError::Incompatible(
-				"PostgreSQL function semantics differ from the shipped migration".into(),
-			));
-		}
-		if executable != expected_executable || public_executable {
-			return Err(StoreError::Incompatible(
-				"runtime identity has an incorrect PostgreSQL function privilege".into(),
-			));
-		}
+		semantics_match &= installed_source == expected_source;
+		execute_authority_matches &= executable == expected_executable && !public_executable;
 	}
+
+	if !exact_inventory && actual_count >= expected_count {
+		evidence.record_unsafe("exact_function_inventory", exact_inventory);
+	} else {
+		evidence.record_incompatible("exact_function_inventory", exact_inventory);
+	}
+	evidence.record_unsafe("function_metadata", metadata_matches);
+	evidence.record_incompatible("function_semantics", semantics_match);
+	evidence.record_incompatible("function_execute_authority", execute_authority_matches);
 
 	Ok(())
 }
 
-async fn verify_forbidden_authority(client: &Client) -> Result<(), StoreError> {
-	let role = client.query_one(ROLE_AUTHORITY_SQL, &[]).await?;
-	let forbidden_role_attributes: bool = role.get(0);
-	let database_create: bool = role.get(1);
-	let schema_create: bool = role.get(2);
-	let effective_object_ownership: bool = role.get(3);
-	let function_grant_option: bool = role.get(4);
-	let trigger_bypass: bool = role.get(5);
-	let alter_system_bypass: bool = role.get(6);
-	let unsafe_replication_role: bool = role.get(7);
-	let membership_admin: bool = role.get(8);
-	let table = client.query_one(TABLE_AUTHORITY_SQL, &[]).await?;
-	let unsafe_table_authority: bool = table.get(1);
-	let history = client.query_one(MIGRATION_HISTORY_AUTHORITY_SQL, &[]).await?;
-	let unsafe_history_authority: bool = history.get(2);
-	let sequence = client.query_one(SEQUENCE_AUTHORITY_SQL, &[]).await?;
-	let unsafe_sequence_authority: bool = sequence.get(2);
-	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
-
-	if forbidden_role_attributes
-		|| database_create
-		|| schema_create
-		|| effective_object_ownership
-		|| function_grant_option
-		|| trigger_bypass
-		|| alter_system_bypass
-		|| unsafe_replication_role
-		|| membership_admin
-		|| unsafe_table_authority
-		|| unsafe_history_authority
-		|| unsafe_sequence_authority
-		|| extension_control
-	{
-		return Err(StoreError::UnsafeAuthority(
-			"runtime identity or a SET-reachable role retains forbidden PostgreSQL authority",
-		));
-	}
-
-	Ok(())
-}
-
-async fn verify_required_authority(client: &Client) -> Result<(), StoreError> {
-	let schema_usage: bool = client
-		.query_one("SELECT pg_catalog.has_schema_privilege(session_user, 'decodex', 'USAGE')", &[])
-		.await?
-		.get(0);
-	let table = client.query_one(TABLE_AUTHORITY_SQL, &[]).await?;
-	let exact_table_authority: bool = table.get(0);
-	let history = client.query_one(MIGRATION_HISTORY_AUTHORITY_SQL, &[]).await?;
-	let migration_history_exists: bool = history.get(0);
-	let migration_history_select: bool = history.get(1);
-	let sequence = client.query_one(SEQUENCE_AUTHORITY_SQL, &[]).await?;
-	let exact_sequence_contract: bool = sequence.get(0);
-	let sequence_usage: bool = sequence.get(1);
-
-	if !schema_usage
-		|| !exact_table_authority
-		|| !migration_history_exists
-		|| !migration_history_select
-		|| !exact_sequence_contract
-		|| !sequence_usage
-	{
-		return Err(StoreError::Incompatible(
-			"runtime identity lacks the exact required PostgreSQL privileges".into(),
-		));
-	}
-
-	Ok(())
-}
-
-async fn verify_retention_contract(client: &Client) -> Result<(), StoreError> {
+async fn inspect_retention_contract(
+	client: &Client,
+	evidence: &mut SemanticAuthorityEvidence,
+) -> Result<(), StoreError> {
 	let rows = client.query(TRIGGER_CONTRACT_SQL, &[]).await?;
-
-	if rows.len() != SAFETY_TRIGGER_COUNT {
-		return Err(StoreError::Incompatible(
-			"PostgreSQL retention function contract is incomplete".into(),
-		));
-	}
+	let inventory_matches = rows.len() == SAFETY_TRIGGER_COUNT;
+	let mut trigger_bindings_match = true;
+	let mut function_metadata_matches = true;
+	let mut function_semantics_match = true;
 
 	for row in rows {
 		let function_name: String = row.get(0);
-		let trigger_matches: bool = row.get(1);
-		let function_metadata_matches: bool = row.get(2);
+		trigger_bindings_match &= row.get::<_, bool>(1);
+		function_metadata_matches &= row.get::<_, bool>(2);
 		let installed_source: Option<String> = row.get(3);
+		function_semantics_match &= canonical_safety_function_source(&function_name)
+			.is_some_and(|expected| installed_source.as_deref() == Some(expected));
+	}
 
-		if !trigger_matches {
-			return Err(StoreError::UnsafeAuthority(
-				"PostgreSQL retention trigger contract is disabled or misbound",
-			));
-		}
+	evidence.record_incompatible("retention_inventory", inventory_matches);
+	evidence.record_unsafe("retention_trigger_bindings", trigger_bindings_match);
+	evidence.record_incompatible("retention_function_metadata", function_metadata_matches);
+	evidence.record_incompatible("retention_function_semantics", function_semantics_match);
 
-		let expected_source =
-			canonical_safety_function_source(&function_name).ok_or_else(|| {
-				StoreError::Incompatible(format!(
-					"unknown PostgreSQL retention function contract: {function_name}"
-				))
-			})?;
+	Ok(())
+}
 
-		if !function_metadata_matches || installed_source.as_deref() != Some(expected_source) {
-			return Err(StoreError::Incompatible(
-				"PostgreSQL retention function semantics differ from the shipped migration".into(),
-			));
-		}
+async fn semantic_authority_evidence(
+	client: &Client,
+	_migration_role: &str,
+	runtime_role: &str,
+) -> Result<SemanticAuthorityEvidence, StoreError> {
+	let mut evidence = SemanticAuthorityEvidence::new();
+	let session_is_runtime: bool = client
+		.query_one(
+			"SELECT session_user = $1::pg_catalog.name AND current_user = $1::pg_catalog.name",
+			&[&runtime_role],
+		)
+		.await?
+		.get(0);
+	evidence.record_unsafe("configured_runtime_session", session_is_runtime);
+
+	let role = client.query_one(ROLE_AUTHORITY_SQL, &[]).await?;
+	for (name, index) in [
+		("no_forbidden_role_attributes", 0),
+		("no_database_create", 1),
+		("no_schema_create", 2),
+		("no_effective_object_ownership", 3),
+		("no_function_grant_option", 4),
+		("no_trigger_bypass", 5),
+		("no_alter_system_bypass", 6),
+		("session_replication_role_origin", 7),
+		("no_membership_admin", 8),
+	] {
+		evidence.record_unsafe(name, !role.get::<_, bool>(index));
+	}
+
+	let table = client.query_one(TABLE_AUTHORITY_SQL, &[]).await?;
+	evidence.record_incompatible("exact_table_authority", table.get(0));
+	evidence.record_unsafe("no_unsafe_table_authority", !table.get::<_, bool>(1));
+
+	let history = client.query_one(MIGRATION_HISTORY_AUTHORITY_SQL, &[]).await?;
+	evidence.record_incompatible("migration_history_exists", history.get(0));
+	evidence.record_incompatible("migration_history_select", history.get(1));
+	evidence.record_unsafe("no_unsafe_migration_history_authority", !history.get::<_, bool>(2));
+
+	let sequence = client.query_one(SEQUENCE_AUTHORITY_SQL, &[]).await?;
+	evidence.record_incompatible("exact_sequence_contract", sequence.get(0));
+	evidence.record_incompatible("sequence_usage", sequence.get(1));
+	evidence.record_unsafe("no_unsafe_sequence_authority", !sequence.get::<_, bool>(2));
+
+	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
+	evidence.record_unsafe("no_extension_control", !extension_control);
+
+	let schema_usage: bool = client
+		.query_one(
+			"SELECT COALESCE((SELECT pg_catalog.has_schema_privilege(\
+			 session_user, namespace.oid, 'USAGE') FROM pg_catalog.pg_namespace AS namespace \
+			 WHERE namespace.nspname = 'decodex'), false)",
+			&[],
+		)
+		.await?
+		.get(0);
+	evidence.record_incompatible("schema_usage", schema_usage);
+
+	let identity_cast_closed: bool =
+		client.query_one(IDENTITY_CAST_AUTHORITY_SQL, &[]).await?.get(0);
+	evidence.record_unsafe("identity_cast_closed", identity_cast_closed);
+
+	let allowed_functions = FUNCTION_CONTRACTS
+		.iter()
+		.map(|contract| contract.lookup_signature)
+		.chain(ALLOWED_EXECUTION_DEPENDENCIES)
+		.collect::<Vec<_>>();
+	let execution = client
+		.query_one(EXECUTION_PATH_CONTRACT_SQL, &[&allowed_functions])
+		.await?;
+	for (name, index) in [
+		("exact_trigger_inventory", 0),
+		("no_relation_rules", 1),
+		("no_relation_policies", 2),
+		("closed_function_dependencies", 3),
+	] {
+		evidence.record_unsafe(name, execution.get(index));
+	}
+
+	inspect_function_contract(client, &mut evidence).await?;
+	inspect_retention_contract(client, &mut evidence).await?;
+
+	Ok(evidence)
+}
+
+async fn verify_semantic_authority(
+	client: &Client,
+	migration_role: &str,
+	runtime_role: &str,
+) -> Result<(), StoreError> {
+	let evidence = semantic_authority_evidence(client, migration_role, runtime_role).await?;
+	if evidence.unsafe_failure {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL semantic runtime authority differs from the shipped contract",
+		));
+	}
+	if evidence.incompatible_failure {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL semantic runtime contract differs from the shipped contract".into(),
+		));
 	}
 
 	Ok(())
@@ -4358,8 +4377,21 @@ mod tests {
 	use crate::authority::{
 		CANONICAL_FUNCTION_MIGRATIONS, CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL,
 		FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, ROLE_AUTHORITY_SQL,
-		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL, TABLE_AUTHORITY_SQL,
 	};
+
+	#[test]
+	fn table_authority_uses_exact_relation_set_equality_without_cardinality_literals() {
+		for required in [
+			"SELECT expected.table_name FROM expected\n    EXCEPT\n    SELECT tables.relname FROM tables",
+			"SELECT tables.relname FROM tables\n      EXCEPT\n      SELECT expected.table_name FROM expected",
+			"pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select",
+		] {
+			assert!(TABLE_AUTHORITY_SQL.contains(required), "{required}");
+		}
+		assert!(!TABLE_AUTHORITY_SQL.contains("count(*) FROM tables WHERE table_name IS NOT NULL"));
+		assert!(!TABLE_AUTHORITY_SQL.contains("= 73"));
+	}
 
 	#[test]
 	fn configured_authority_manifest_closes_postgres_18_principals_and_memberships() {

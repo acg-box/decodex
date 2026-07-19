@@ -1,9 +1,12 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -42,6 +45,13 @@ def envelope(schema, authority=None, binding=None):
             available=True, complete=True, manifest="[]"
         ),
         "binding": binding,
+        "semantic_authority": {
+            "predicates": [
+                {"name": name, "passed": True}
+                for name in POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_PREDICATES
+            ],
+            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_SCHEMA,
+        },
         "sequence_state": [],
     }
 
@@ -211,6 +221,9 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
 
         self.assertEqual(evidence["row_count"], 3)
         self.assertEqual(evidence["duplicate_key_multiplicities"], [])
+        self.assertTrue(evidence["complete"])
+        self.assertTrue(evidence["resolved"])
+        self.assertTrue(evidence["unique"])
         self.assertNotIn("rows", evidence)
         self.assertEqual(len({json.dumps(row[:2], sort_keys=True) for row in rows}), 3)
 
@@ -229,6 +242,7 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             evidence["duplicate_key_multiplicities"][0]["multiplicity"], 2
         )
+        self.assertFalse(evidence["unique"])
         self.assertNotIn("rows", evidence)
         with self.assertRaisesRegex(
             POSTGRES_STORE_TEST.TestFailure, "duplicate kind/identity key"
@@ -416,6 +430,281 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
                     secret_markers=("xy1300-secret",),
                 )
                 self.assertEqual(evidence, expected)
+
+    def test_semantic_authority_failure_reports_only_bounded_predicate_names(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        for predicate in document["semantic_authority"]["predicates"]:
+            if predicate["name"] in {"schema_usage", "exact_table_authority"}:
+                predicate["passed"] = False
+
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
+            POSTGRES_STORE_TEST.require_capture_semantic_authority(
+                document, "source", secret_markers=("xy1300-secret",)
+            )
+
+        message = str(failure.exception)
+        diagnostic = json.loads(message[message.index("{") :])
+        self.assertEqual(diagnostic, {
+            "checkpoint": "source",
+            "failed_predicates": ["exact_table_authority", "schema_usage"],
+            "predicate_count": len(POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_PREDICATES),
+            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+        })
+        self.assertNotIn(DATABASE, message)
+
+    def test_semantic_authority_evidence_requires_the_canonical_predicate_order(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        predicates = document["semantic_authority"]["predicates"]
+        predicates[0], predicates[1] = predicates[1], predicates[0]
+
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "predicate contract differs"
+        ):
+            POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                document["semantic_authority"]
+            )
+
+    def test_private_receipt_read_is_descriptor_pinned_and_bounded(self):
+        with tempfile.TemporaryDirectory(
+            dir=Path(tempfile.gettempdir()).resolve()
+        ) as directory:
+            parent = Path(directory)
+            parent.chmod(0o700)
+            receipt = parent / "candidate.json"
+            payload = b'{"schema":"candidate"}\n'
+            receipt.write_bytes(payload)
+            receipt.chmod(0o600)
+
+            observed, digest = POSTGRES_STORE_TEST.read_private_authority_receipt(
+                receipt
+            )
+            self.assertEqual(observed, payload)
+            self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
+
+            parent.chmod(0o755)
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure, "parent is not operator-private"
+            ):
+                POSTGRES_STORE_TEST.read_private_authority_receipt(receipt)
+            parent.chmod(0o700)
+
+            receipt.write_bytes(
+                b"x" * (POSTGRES_STORE_TEST.AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES + 1)
+            )
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure, "file metadata is invalid"
+            ):
+                POSTGRES_STORE_TEST.read_private_authority_receipt(receipt)
+
+            if hasattr(os, "O_NOFOLLOW"):
+                receipt.unlink()
+                target = parent / "target.json"
+                target.write_bytes(payload)
+                target.chmod(0o600)
+                receipt.symlink_to(target.name)
+                with self.assertRaisesRegex(
+                    POSTGRES_STORE_TEST.TestFailure, "could not be read safely"
+                ):
+                    POSTGRES_STORE_TEST.read_private_authority_receipt(receipt)
+
+    def test_phase_a_receipt_rejects_duplicate_json_without_echoing_input(self):
+        with tempfile.TemporaryDirectory(
+            dir=Path(tempfile.gettempdir()).resolve()
+        ) as directory:
+            parent = Path(directory)
+            parent.chmod(0o700)
+            receipt = parent / "candidate.json"
+            receipt.write_bytes(b'{"private-payload":1,"private-payload":2}\n')
+            receipt.chmod(0o600)
+
+            with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
+                POSTGRES_STORE_TEST.load_phase_a_authority_receipt(receipt)
+
+            self.assertEqual(str(failure.exception), "Phase A receipt is malformed")
+            self.assertNotIn("private-payload", str(failure.exception))
+
+    def test_phase_a_binding_requires_a_real_commit_with_the_exact_tree(self):
+        binding = POSTGRES_STORE_TEST.frozen_source_binding()
+        POSTGRES_STORE_TEST.require_commit_tree_binding(binding)
+
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "commit binding is invalid"
+        ):
+            POSTGRES_STORE_TEST.require_commit_tree_binding({
+                "head": binding["tree"],
+                "tree": binding["tree"],
+            })
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "commit tree binding differs"
+        ):
+            POSTGRES_STORE_TEST.require_commit_tree_binding({
+                "head": binding["head"],
+                "tree": "0" * 40,
+            })
+
+    def test_git_lineage_reads_are_bounded_timed_and_strictly_decoded(self):
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "Git source lineage is unavailable"
+        ):
+            POSTGRES_STORE_TEST.git_read_bytes(
+                "rev-parse", "HEAD", byte_limit=1
+            )
+        class PendingGitProcess:
+            def __init__(self):
+                self.stdout = tempfile.TemporaryFile()
+                self.returncode = None
+                self.killed = False
+                self.reaped = False
+
+            def poll(self):
+                return self.returncode
+
+            def kill(self):
+                self.killed = True
+
+            def wait(self, timeout=None):
+                self.assert_no_timeout(timeout)
+                self.reaped = True
+                self.returncode = -9
+                return self.returncode
+
+            @staticmethod
+            def assert_no_timeout(timeout):
+                if timeout is not None:
+                    raise AssertionError("reap must be definitive")
+
+        pending = PendingGitProcess()
+        with mock.patch.object(
+            POSTGRES_STORE_TEST.subprocess, "Popen", return_value=pending
+        ), mock.patch.object(
+            POSTGRES_STORE_TEST.select, "select", return_value=([], [], [])
+        ):
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure, "Git source lineage is unavailable"
+            ):
+                POSTGRES_STORE_TEST.git_read_bytes(
+                    "rev-parse", "HEAD", byte_limit=1024
+                )
+        self.assertTrue(pending.killed)
+        self.assertTrue(pending.reaped)
+        self.assertEqual(pending.returncode, -9)
+        with mock.patch.object(
+            POSTGRES_STORE_TEST, "git_read_bytes", return_value=b"\xff"
+        ):
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure, "Git source lineage is unavailable"
+            ):
+                POSTGRES_STORE_TEST.git_read_text(
+                    "rev-parse", "HEAD", byte_limit=1024
+                )
+
+    def test_phase_b_requires_the_direct_single_parent_transition(self):
+        phase_a = "a" * 40
+        phase_b = "b" * 40
+        POSTGRES_STORE_TEST.require_direct_parent_lineage(
+            phase_a, (phase_a,)
+        )
+        for invalid in (
+            ("c" * 40,),
+            (phase_a, "c" * 40),
+            (phase_b,),
+        ):
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure,
+                "Phase B source commit lineage is invalid",
+            ):
+                POSTGRES_STORE_TEST.require_direct_parent_lineage(
+                    phase_a, invalid
+                )
+
+    def test_phase_b_source_delta_allows_only_both_authorized_digest_arrays(self):
+        def source(schema_byte, authority_byte, suffix=""):
+            schema = ", ".join([f"0x{schema_byte:02x}"] * 32)
+            authority = ", ".join([f"0x{authority_byte:02x}"] * 32)
+            return (
+                f"const SCHEMA_CONTRACT_SHA256: [u8; 32] = [{schema}];\n"
+                "middle\n"
+                f"const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [{authority}];\n"
+                + suffix
+            )
+
+        mismatches = [
+            {
+                "component": "schema",
+                "expected_sha256": "00" * 32,
+                "actual_sha256": "aa" * 32,
+            },
+            {
+                "component": "configured_authority",
+                "expected_sha256": "11" * 32,
+                "actual_sha256": "bb" * 32,
+            },
+        ]
+        before = source(0x00, 0x11)
+        after = source(0xAA, 0xBB)
+        self.assertEqual(POSTGRES_STORE_TEST.digest_constants_from_source(after), {
+            "schema": "aa" * 32,
+            "configured_authority": "bb" * 32,
+        })
+        POSTGRES_STORE_TEST.require_digest_only_authority_source(
+            before, after, mismatches
+        )
+        POSTGRES_STORE_TEST.require_phase_b_changed_paths([
+            "crates/decodex-postgres/src/authority.rs"
+        ])
+
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.require_digest_only_authority_source(
+                before, after + "unauthorized source delta\n", mismatches
+            )
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.require_phase_b_changed_paths([
+                "crates/decodex-postgres/src/authority.rs",
+                "scripts/vnext/postgres_store_test.py",
+            ])
+
+        hex_comment = ", ".join(["0xaa"] * 32)
+        counterexample = after.replace(
+            "const SCHEMA_CONTRACT_SHA256: [u8; 32] = ["
+            + ", ".join(["0xaa"] * 32)
+            + "];",
+            "const SCHEMA_CONTRACT_SHA256: [u8; 32] = "
+            f"[0; 32 /* {hex_comment} */];",
+        )
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.digest_constants_from_source(counterexample)
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.normalized_digest_source(counterexample)
+
+    def test_phase_fields_distinguish_derivation_from_acceptance(self):
+        phase_b_binding = {"head": "c" * 40, "tree": "d" * 40}
+        derivation = POSTGRES_STORE_TEST.authority_candidate_phase_fields(
+            None, SOURCE_BINDING, SOURCE_BINDING
+        )
+        self.assertEqual(derivation, {
+            "acceptance": False,
+            "acceptance_lineage": {
+                "phase_a_receipt_sha256": None,
+                "phase_a_source_binding": SOURCE_BINDING,
+                "phase_b_source_binding": None,
+            },
+        })
+
+        phase_a = POSTGRES_STORE_TEST.PhaseAAuthorityReceipt(
+            {"source_binding": {"end": SOURCE_BINDING}}, "e" * 64
+        )
+        acceptance = POSTGRES_STORE_TEST.authority_candidate_phase_fields(
+            phase_a, phase_b_binding, phase_b_binding
+        )
+        self.assertTrue(acceptance["acceptance"])
+        self.assertEqual(acceptance["acceptance_lineage"], {
+            "phase_a_receipt_sha256": "e" * 64,
+            "phase_a_source_binding": SOURCE_BINDING,
+            "phase_b_source_binding": {
+                "start": phase_b_binding,
+                "end": phase_b_binding,
+            },
+        })
 
     def test_second_restore_mismatch_names_only_the_bounded_checkpoint(self):
         before = {
