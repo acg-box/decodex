@@ -164,9 +164,11 @@ remain generic. Authority digest changes use two explicit phases. Phase A's capt
 18 mode migrates and provisions a non-default runtime principal, captures normalized manifests at
 source S0, first restore R1, and second restore R2 without constructing `PostgresStore`, and
 uses the same canonical non-digest semantic authority verifier as production readiness at every
-checkpoint. It atomically publishes a versioned summary receipt only for V20's schema-contract
-digest mismatch followed by the configured-authority digest mismatch, with semantic predicates,
-ledger, binding, identity, and both S0=R1 and R1=R2 restore edges intact. Raw manifests
+checkpoint. It atomically publishes a versioned summary receipt only when the mismatch array is the
+exact ordered subset of V20's schema-contract digest followed by the configured-authority digest:
+zero, either singleton, or both in canonical order. Unrelated, duplicate, or reordered mismatches
+fail closed. Semantic predicates, ledger, binding, identity, and both S0=R1 and R1=R2 restore edges
+remain intact. Raw manifests
 and temporary cluster state are not retained in the receipt. A separate V13 upgrade database binds
 only the exact
 ManagedRun-safety anchor, then proves the migration-owned 15-function/five-type runtime delta and
@@ -185,20 +187,36 @@ claim; failure after the link creates an ambiguous producer outcome resolved onl
 readback. Phase A exit status and output are not evidence.
 Phase B is the sole consumer and acceptance boundary. It ignores producer exit and output, never
 overwrites an existing path, and may consume only an extant exact-schema receipt whose immutable
-bytes and hash attest the exact Phase A HEAD/tree, `capture_only=true`, `acceptance=false`, V20's
-schema-contract mismatch followed by the configured-authority mismatch, exact
+bytes and hash attest the exact Phase A HEAD/tree, `capture_only=true`, `acceptance=false`, the
+canonical zero/one/two mismatch set and order, exact
 database/principal/migration-ledger evidence, and complete
-source/restore and semantic-authority parity. It proves the current tree changes only the two digest
-arrays, repeats the full S0→R1→R2 capture, and publishes `acceptance=true` only for zero digest
+source/restore and semantic-authority parity. For one or two mismatches it requires a clean direct
+single-parent child that changes exactly the reported digest array or arrays and no other source;
+for zero mismatches it requires the same clean Phase A HEAD and tree. It repeats the full S0→R1→R2
+capture and publishes `acceptance=true` only for zero digest
 mismatches and complete semantic evidence, bound to both trees and the Phase A receipt hash.
 Malformed, substituted, duplicate, or lineage-mismatched receipts fail
 closed. This bounded contract assumes one clean committed writer and an operator-owned private
 external directory; it creates no persistent PostgreSQL authority or producer/consumer protocol.
-Phase B may change only `SCHEMA_CONTRACT_SHA256`, `CONFIGURED_AUTHORITY_SHA256`, and the
-designated candidate-evidence surface,
-must record both Phase A and Phase B trees, and is invalidated by any other source delta. Normal
+Phase B may change only the digest arrays reported by Phase A, must record both Phase A and Phase B
+trees, and is invalidated by an unreported array or any other source delta. An unchanged-tree Phase
+B still emits a fresh acceptance receipt explicitly bound to Phase A. Older receipts are immutable
+provenance only and cannot attest source changes outside their binding. Normal
 acceptance has no expected-mismatch branch: manifest readiness must pass before behavioral or
 restart stages run.
+
+The PostgreSQL harness has one top-level stage authority for the normal aggregate. Fatal preflight
+owns argument/mode validation, clean source and private output binding, PostgreSQL tool and
+temporary-root discovery, cluster initialization/start, and base-role creation. After preflight,
+meaningful semantic suites form explicit prerequisite edges and produce only `passed`, `failed`, or
+`blocked`: an ordinary expected failure blocks its consumers while independent branches continue.
+Authority-drift mutation probes and restorations are distinct stages; restoration remains eligible
+after a probe failure, and later probes on the shared fixture depend on restoration. Unexpected
+assertion/key/type failures, corrupt report state, source-binding or redaction failure, and other
+unexpected exceptions stop new scheduling as harness corruption. Once the cluster has started,
+teardown and final report emission always remain eligible, and a teardown/report failure is
+secondary to the first failure. Focused suites and Phase A/B receipt modes do not enter the normal
+aggregate graph.
 The three bound identity sequences must be exact. Runtime receives USAGE only on the activity and
 outbox sequences; the migration-owned history-version sequence remains inaccessible. SELECT,
 UPDATE/`setval`, ownership, grant options, and SET-reachable surplus authority are unsafe. Every
