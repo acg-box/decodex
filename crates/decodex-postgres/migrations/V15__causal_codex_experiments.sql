@@ -14,7 +14,7 @@ CREATE TABLE decodex.codex_experiments (
 	experiment_id uuid PRIMARY KEY,
 	managed_run_id uuid NOT NULL,
 	managed_run_revision bigint NOT NULL CHECK (managed_run_revision > 0),
-	routing_snapshot_id uuid NOT NULL REFERENCES decodex.routing_snapshots(snapshot_id),
+	routing_snapshot_id uuid NOT NULL,
 	account_id uuid NOT NULL REFERENCES decodex.accounts(account_id),
 	account_revision bigint NOT NULL CHECK (account_revision > 0),
 	role_profile_revision bigint NOT NULL CHECK (role_profile_revision > 0),
@@ -29,8 +29,11 @@ CREATE TABLE decodex.codex_experiments (
 	CONSTRAINT codex_experiments_marker_unique UNIQUE (marker),
 	CONSTRAINT codex_experiments_marker_retained CHECK (position(marker IN thread_title) > 0),
 	CONSTRAINT codex_experiments_time_order CHECK (updated_at >= prepared_at),
-	CONSTRAINT codex_experiments_run_fk FOREIGN KEY (managed_run_id, managed_run_revision)
-		REFERENCES decodex.managed_runs(managed_run_id, revision)
+	CONSTRAINT codex_experiments_run_revision_authority_fk FOREIGN KEY (
+		routing_snapshot_id, managed_run_id, managed_run_revision
+	) REFERENCES decodex.routing_snapshots(
+		snapshot_id, managed_run_id, managed_run_revision
+	)
 );
 
 CREATE TABLE decodex.codex_experiment_revisions (
@@ -272,6 +275,7 @@ CREATE FUNCTION decodex.mark_codex_experiment_creation_possible_exact(
 ) RETURNS TABLE(response_bytes bytea, replayed boolean) LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, decodex AS $$
 DECLARE request jsonb; replay bytea; fenced timestamptz; experiment_row record;
+DECLARE authority_run_id uuid;
 DECLARE core jsonb; effect jsonb; response bytea;
 BEGIN
 	request:=pg_catalog.jsonb_build_object('operation','mark_codex_experiment_creation_possible',
@@ -279,12 +283,43 @@ BEGIN
 		'expected_revision',p_expected_revision,'attempt_id',p_attempt_id);
 	replay:=decodex.reserve_exact_codex_experiment_command(p_protocol,p_idempotency_key,request);
 	IF replay IS NOT NULL THEN RETURN QUERY SELECT replay,true; RETURN; END IF;
+	PERFORM pg_catalog.pg_advisory_xact_lock(1271);
+	SELECT managed_run_id INTO authority_run_id FROM decodex.codex_experiments
+	WHERE experiment_id=p_experiment_id;
+	IF NOT FOUND THEN
+		response:=decodex.complete_exact_codex_experiment_rejection(
+			p_protocol,p_idempotency_key,'mark_codex_experiment_creation_possible',
+			'creation_not_authorized');
+		RETURN QUERY SELECT response,false; RETURN;
+	END IF;
+	PERFORM pg_catalog.pg_advisory_xact_lock(
+		1338,pg_catalog.hashtext(authority_run_id::text));
 	PERFORM pg_catalog.pg_advisory_xact_lock(1358);
 	PERFORM pg_catalog.pg_advisory_xact_lock(1358,pg_catalog.hashtext(p_experiment_id::text));
 	SELECT * INTO experiment_row FROM decodex.codex_experiments
 	WHERE experiment_id=p_experiment_id FOR UPDATE;
 	IF NOT FOUND OR experiment_row.revision<>p_expected_revision OR p_expected_revision<>1
-		OR experiment_row.state<>'prepared' OR p_attempt_id IS NULL THEN
+		OR experiment_row.state<>'prepared'
+		OR experiment_row.managed_run_id<>authority_run_id OR p_attempt_id IS NULL THEN
+		response:=decodex.complete_exact_codex_experiment_rejection(
+			p_protocol,p_idempotency_key,'mark_codex_experiment_creation_possible',
+			'creation_not_authorized');
+		RETURN QUERY SELECT response,false; RETURN;
+	END IF;
+	PERFORM 1 FROM decodex.routing_snapshots AS snapshot
+	JOIN decodex.managed_runs AS run
+		ON run.managed_run_id=snapshot.managed_run_id
+		AND run.revision=snapshot.managed_run_revision
+	JOIN decodex.runtime_sessions AS session
+		ON session.runtime_session_id=snapshot.runtime_session_id
+		AND session.revision=snapshot.runtime_session_revision
+	WHERE (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=
+		(experiment_row.routing_snapshot_id,experiment_row.managed_run_id,
+			experiment_row.managed_run_revision)
+		AND (run.runtime_session_id,run.runtime_session_revision)=
+			(snapshot.runtime_session_id,snapshot.runtime_session_revision)
+	FOR SHARE OF snapshot,run,session;
+	IF NOT FOUND THEN
 		response:=decodex.complete_exact_codex_experiment_rejection(
 			p_protocol,p_idempotency_key,'mark_codex_experiment_creation_possible',
 			'creation_not_authorized');

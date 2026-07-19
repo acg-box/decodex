@@ -7,7 +7,7 @@ CREATE TYPE decodex.continuation_plan_kind AS ENUM ('same_thread', 'context_pack
 CREATE TABLE decodex.continuation_plans (
 	plan_id uuid PRIMARY KEY,
 	operation_id uuid NOT NULL UNIQUE,
-	routing_decision_id uuid NOT NULL UNIQUE REFERENCES decodex.routing_decisions(decision_id),
+	routing_decision_id uuid NOT NULL UNIQUE,
 	managed_run_id uuid NOT NULL,
 	managed_run_revision bigint NOT NULL CHECK (managed_run_revision > 0),
 	conversation_id uuid NOT NULL REFERENCES decodex.conversations(conversation_id),
@@ -34,11 +34,11 @@ CREATE TABLE decodex.continuation_plans (
 	effect_envelope jsonb NOT NULL,
 	response_bytes bytea NOT NULL,
 	planned_at timestamptz NOT NULL,
-	CONSTRAINT continuation_plans_run_fk FOREIGN KEY (managed_run_id, managed_run_revision)
-		REFERENCES decodex.managed_runs(managed_run_id, revision),
-	CONSTRAINT continuation_plans_source_session_fk FOREIGN KEY (
-		source_runtime_session_id, source_runtime_session_revision
-	) REFERENCES decodex.runtime_sessions(runtime_session_id, revision),
+	CONSTRAINT continuation_plans_run_revision_authority_fk FOREIGN KEY (
+		routing_decision_id, managed_run_id, managed_run_revision
+	) REFERENCES decodex.routing_decisions(
+		decision_id, managed_run_id, managed_run_revision
+	),
 	CONSTRAINT continuation_plans_source_conversation_fk FOREIGN KEY (
 		source_runtime_session_id, conversation_id
 	) REFERENCES decodex.runtime_sessions(runtime_session_id, conversation_id),
