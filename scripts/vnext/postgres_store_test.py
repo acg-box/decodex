@@ -3976,23 +3976,23 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		receipt["migration_ledger"], checkpoints, "Phase A ledger checkpoints are malformed"
 	)
 	for ledger in ledgers.values():
-		require_receipt_ledger(ledger, through_version=20)
+		require_receipt_ledger(ledger, through_version=21)
 	if ledgers["source"] != ledgers["restored_once"] or ledgers["source"] != ledgers["restored_twice"]:
-		raise TestFailure("Phase A V20 ledgers differ across restore checkpoints")
-	if ledgers["source"][-1]["name"] != "constraint_restore_canonicalization":
-		raise TestFailure("Phase A ledger does not end at V20")
+		raise TestFailure("Phase A V21 ledgers differ across restore checkpoints")
+	if ledgers["source"][-1]["name"] != "runtime_session_event_reference_authority":
+		raise TestFailure("Phase A ledger does not end at V21")
 	upgrade = require_exact_keys(
 		receipt["one_grantee_upgrade"],
-		{"database", "pre_v14_anchor_binding", "runtime_authority", "v13_ledger", "v20_ledger"},
+		{"database", "pre_v14_anchor_binding", "runtime_authority", "v13_ledger", "v21_ledger"},
 		"Phase A one-grantee upgrade evidence is malformed",
 	)
 	require_receipt_ledger(upgrade["v13_ledger"], through_version=13)
-	upgrade_v20 = require_receipt_ledger(upgrade["v20_ledger"], through_version=20)
+	upgrade_v21 = require_receipt_ledger(upgrade["v21_ledger"], through_version=21)
 	if (
 		upgrade["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
-		or upgrade_v20 != ledgers["source"]
+		or upgrade_v21 != ledgers["source"]
 	):
-		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V20 ledger")
+		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V21 ledger")
 	upgrade_authority = require_exact_keys(
 		upgrade["runtime_authority"],
 		{
@@ -4661,7 +4661,7 @@ def run_authority_candidate_capture(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 	run_migration(env)
-	upgrade_v20_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	upgrade_v21_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
 	upgrade_runtime_authority = capture_upgrade_runtime_authority(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
@@ -4916,7 +4916,7 @@ def run_authority_candidate_capture(
 			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
 			"v13_ledger": upgrade_v13_ledger,
 			"pre_v14_anchor_binding": upgrade_anchor_binding,
-			"v20_ledger": upgrade_v20_ledger,
+			"v21_ledger": upgrade_v21_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		}
 		if phase_b_upgrade != phase_a.document["one_grantee_upgrade"]:
@@ -4955,7 +4955,7 @@ def run_authority_candidate_capture(
 			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
 			"v13_ledger": upgrade_v13_ledger,
 			"pre_v14_anchor_binding": upgrade_anchor_binding,
-			"v20_ledger": upgrade_v20_ledger,
+			"v21_ledger": upgrade_v21_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		},
 		"runtime_authority": {
@@ -7097,7 +7097,7 @@ def main() -> int | AuthorityCandidatePublication:
 					"checkpoint_state": restore_report,
 				}
 				raise TestFailure(
-					"aggregate V14-V20 PostgreSQL acceptance failure:\n"
+					"aggregate V14-V21 PostgreSQL acceptance failure:\n"
 					+ json.dumps(diagnostics, sort_keys=True)
 				)
 			return json.dumps(artifact_evidence, sort_keys=True)

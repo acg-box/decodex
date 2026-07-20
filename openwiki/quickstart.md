@@ -68,6 +68,10 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   Forward-only V20 recreates only nine named CHECK constraints with equivalent explicit lower/upper
   predicates so their exact definitions are stable across restoration. Phase A authority capture
   requires the source S0, first restore R1, and second restore R2 to satisfy both S0=R1 and R1=R2.
+  Forward-only V21 repairs the RuntimeSession event classifier without rebinding its triggers:
+  scalar RuntimeSession/profile/account snapshot identities are cross-domain provenance, while
+  RuntimeSession aggregate/event/kind markers, complete session or snapshot objects, and outbox
+  links to activity carrying those ownership shapes remain migration-owner-only.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while the authority-defined XY-1269 P/K/L/S slices are still unimplemented. Its checked-in diagnostic still says XY-1263 remains failed; that text is stale, and P must align it with the accepted foundation and disabled slice posture before P validation.

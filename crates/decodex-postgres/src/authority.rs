@@ -30,7 +30,9 @@ const WAITING_USAGE_WAKE_MIGRATION: &str =
 	include_str!("../migrations/V18__waiting_usage_wakes.sql");
 const WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION: &str =
 	include_str!("../migrations/V19__waiting_usage_wake_time_authority.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 17] = [
+const RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION: &str =
+	include_str!("../migrations/V21__runtime_session_event_reference_authority.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 18] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -48,6 +50,7 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 17] = [
 	CONTINUATION_MIGRATION,
 	WAITING_USAGE_WAKE_MIGRATION,
 	WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION,
+	RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
@@ -4380,7 +4383,8 @@ mod tests {
 	use crate::authority::{
 		CANONICAL_FUNCTION_MIGRATIONS, CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL,
 		FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, ROLE_AUTHORITY_SQL,
-		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL, TABLE_AUTHORITY_SQL,
+		RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION, SAFETY_FUNCTIONS,
+		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL, TABLE_AUTHORITY_SQL,
 	};
 
 	#[test]
@@ -4677,7 +4681,7 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 17);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 18);
 		assert_eq!(FUNCTION_CONTRACTS.len(), 156);
 		assert_eq!(
 			CANONICAL_FUNCTION_MIGRATIONS
@@ -4721,6 +4725,53 @@ mod tests {
 			assert!(source.ends_with('\n'), "{}", contract.lookup_signature);
 			assert!(!source.trim().is_empty(), "{}", contract.lookup_signature);
 		}
+	}
+
+	#[test]
+	fn runtime_session_event_authority_distinguishes_references_from_ownership() {
+		assert_eq!(
+			RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION
+				.matches("CREATE OR REPLACE FUNCTION decodex.enforce_runtime_session_event_namespace()")
+				.count(),
+			1
+		);
+		assert!(!RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION.contains("CREATE TRIGGER"));
+		assert!(!RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION.contains("DROP TRIGGER"));
+		let source = super::canonical_safety_function_source(
+			"enforce_runtime_session_event_namespace",
+		)
+		.expect("RuntimeSession event authority has canonical migration source");
+
+		for ownership_marker in [
+			"NEW.aggregate_kind = 'runtime_session'",
+			"NEW.event_kind IN ('runtime_session_recorded'",
+			"@.aggregate_kind == \"runtime_session\"",
+			"@.kind == \"runtime_session\"",
+			"@.event_kind == \"runtime_session_transitioned\"",
+			"exists(@.runtime_session)",
+			"exists(@.runtime_session_snapshot)",
+			"exists(@.profile_snapshot)",
+			"exists(@.account_snapshot)",
+			"NEW.payload, '$.**.activity_sequence'",
+			"OLD.payload, '$.**.activity_sequence'",
+		] {
+			assert!(source.contains(ownership_marker), "{ownership_marker}");
+		}
+		for complete_shape in [
+			"exists(@.runtime_session_id) && exists(@.conversation_id)",
+			"exists(@.profile_snapshot_id) && exists(@.source_profile_id)",
+			"exists(@.account_snapshot_id) && exists(@.source_account_id)",
+		] {
+			assert!(source.contains(complete_shape), "{complete_shape}");
+		}
+		assert_eq!(source.matches("exists(@.runtime_session_id)").count(), 1);
+		assert_eq!(source.matches("exists(@.profile_snapshot_id)").count(), 2);
+		assert_eq!(source.matches("exists(@.account_snapshot_id)").count(), 2);
+		assert_eq!(source.matches("jsonb_path_exists(NEW.payload, ownership_path)").count(), 2);
+		assert_eq!(source.matches("jsonb_path_exists(OLD.payload, ownership_path)").count(), 2);
+		assert_eq!(source.matches("jsonb_path_exists(activity.payload, ownership_path)").count(), 2);
+		assert!(source.contains("RuntimeSession event namespace has unexpected trigger relation"));
+		assert!(source.contains("NEW.payload IS DISTINCT FROM OLD.payload"));
 	}
 
 	#[test]
