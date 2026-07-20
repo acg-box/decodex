@@ -111,12 +111,20 @@ impl AccountUsageHistoryRecord {
 		account: &mut AccountSummary,
 		now_unix_epoch: i64,
 	) {
-		let window_seconds = self.secondary_window_seconds.or(self.window_seconds);
-		let remaining_percent = self
-			.secondary_remaining_percent
-			.or_else(|| Some(usage_history::remaining_percent_from_used(self.used_percent)));
+		let (legacy_window_seconds, legacy_remaining_percent, legacy_resets_at_unix_epoch) =
+			if self.legacy_usage_matches_primary_window() {
+				(None, None, None)
+			} else {
+				(
+					self.window_seconds,
+					Some(usage_history::remaining_percent_from_used(self.used_percent)),
+					self.resets_at_unix_epoch,
+				)
+			};
+		let window_seconds = self.secondary_window_seconds.or(legacy_window_seconds);
+		let remaining_percent = self.secondary_remaining_percent.or(legacy_remaining_percent);
 		let resets_at_unix_epoch =
-			self.secondary_resets_at_unix_epoch.or(self.resets_at_unix_epoch);
+			self.secondary_resets_at_unix_epoch.or(legacy_resets_at_unix_epoch);
 
 		if usage_history::has_usage_window(
 			account.secondary_window_seconds,
@@ -133,5 +141,14 @@ impl AccountUsageHistoryRecord {
 		account.secondary_window_seconds = window_seconds;
 		account.secondary_remaining_percent = remaining_percent;
 		account.secondary_resets_at_unix_epoch = resets_at_unix_epoch;
+	}
+
+	fn legacy_usage_matches_primary_window(&self) -> bool {
+		self.window_seconds
+			.zip(self.primary_window_seconds)
+			.is_some_and(|(legacy, primary)| legacy == primary)
+			&& self.primary_remaining_percent.is_some_and(|remaining| {
+				remaining == usage_history::remaining_percent_from_used(self.used_percent)
+			}) && self.resets_at_unix_epoch == self.primary_resets_at_unix_epoch
 	}
 }

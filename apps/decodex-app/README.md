@@ -26,6 +26,13 @@ operations and interactive login flows that need streamed command output:
 - run isolated Codex device login, then import the resulting auth file
 - remove a stored account from the local pool
 
+For account login, an explicitly configured `CODEX_CLI_PATH` overrides automatic
+discovery. Otherwise, the App first resolves the CLI from the Codex macOS application
+registered with Launch Services, then falls back to a `codex` executable in the
+inherited `PATH`. This keeps Finder-launched builds independent of a shell-initialized
+`PATH`; the resolved executable is passed to the helper through its existing
+`codex_bin` request field.
+
 The app does not schedule Decodex runs itself, own project registration, or replace the
 Rust control plane. It is a native UI over the shared Rust account-management service
 and uses the bundled `decodex` server only when no compatible local server is already
@@ -40,6 +47,9 @@ estimate file at `~/.codex/decodex/account-usage-history.jsonl`; it stores daily
 percentage snapshots for account-pool display and does not contain token material.
 
 ## Development
+
+The app targets macOS 27 and uses the Swift 6.4 toolchain. Older macOS releases are
+not supported.
 
 Build the SwiftPM app in release mode:
 

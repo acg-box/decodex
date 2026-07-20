@@ -113,7 +113,7 @@ struct AccountRunStripEdgeButton: View {
 		isPressed = true
 		clickAction()
 		pressTask = Task {
-			try? await Task.sleep(nanoseconds: AccountRunStripLayout.continuousScrollStartDelayNanoseconds)
+			try? await Task.sleep(for: AccountRunStripLayout.continuousScrollStartDelay)
 			guard Task.isCancelled == false else {
 				return
 			}

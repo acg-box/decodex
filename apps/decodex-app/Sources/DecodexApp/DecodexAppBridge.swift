@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum DecodexAppBridgeError: LocalizedError {
@@ -21,6 +22,9 @@ enum DecodexAppBridgeError: LocalizedError {
 }
 
 struct DecodexAppBridge: Sendable {
+	static let codexApplicationBundleIdentifier = "com.openai.codex"
+	static let codexExecutableOverrideKey = "CODEX_CLI_PATH"
+
 	func runJSON<T: Decodable & Sendable>(_ request: AppBridgeRequest, as type: T.Type) async throws -> T {
 		try await runStreaming(request, as: type, onOutput: nil)
 	}
@@ -117,5 +121,76 @@ struct DecodexAppBridge: Sendable {
 		throw DecodexAppBridgeError.helperMissing(
 			"Bundled Decodex App helper is missing. Rebuild the app bundle with apps/decodex-app/script/build_and_run.sh."
 		)
+	}
+
+	@MainActor
+	func codexExecutablePath() throws -> String {
+		let applicationURL = NSWorkspace.shared.urlForApplication(
+			withBundleIdentifier: Self.codexApplicationBundleIdentifier
+		)
+		let resourceURL = applicationURL.flatMap {
+			Bundle(url: $0)?.url(forResource: "codex", withExtension: nil)
+		}
+
+		return try Self.codexExecutablePath(
+			environment: ProcessInfo.processInfo.environment,
+			applicationResourceURL: resourceURL,
+			isExecutableFile: FileManager.default.isExecutableFile(atPath:)
+		)
+	}
+
+	static func codexExecutablePath(
+		environment: [String: String],
+		applicationResourceURL: URL?,
+		isExecutableFile: (String) -> Bool
+	) throws -> String {
+		if let override = environment[codexExecutableOverrideKey]?
+			.trimmingCharacters(in: .whitespacesAndNewlines),
+			override.isEmpty == false
+		{
+			guard let path = executablePath(override, isExecutableFile: isExecutableFile) else {
+				throw DecodexAppBridgeError.helperMissing(
+					"CODEX_CLI_PATH does not point to an executable Codex CLI."
+				)
+			}
+
+			return path
+		}
+
+		if let applicationResourceURL,
+			let path = executablePath(
+				applicationResourceURL.path,
+				isExecutableFile: isExecutableFile
+			)
+		{
+			return path
+		}
+
+		if let searchPath = environment["PATH"] {
+			for directory in searchPath.split(separator: ":", omittingEmptySubsequences: true) {
+				let candidate = URL(fileURLWithPath: String(directory), isDirectory: true)
+					.appendingPathComponent("codex")
+				if let path = executablePath(candidate.path, isExecutableFile: isExecutableFile) {
+					return path
+				}
+			}
+		}
+
+		throw DecodexAppBridgeError.helperMissing(
+			"Codex CLI executable was not found. Install the Codex app, add codex to PATH, or set CODEX_CLI_PATH to its executable path."
+		)
+	}
+
+	private static func executablePath(
+		_ path: String,
+		isExecutableFile: (String) -> Bool
+	) -> String? {
+		let standardizedURL = URL(fileURLWithPath: path).standardizedFileURL
+		let resourceValues = try? standardizedURL.resourceValues(forKeys: [.isDirectoryKey])
+		guard resourceValues?.isDirectory != true else {
+			return nil
+		}
+
+		return isExecutableFile(standardizedURL.path) ? standardizedURL.path : nil
 	}
 }
