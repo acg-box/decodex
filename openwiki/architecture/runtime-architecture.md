@@ -214,12 +214,17 @@ preflight, meaningful semantic suites form explicit prerequisite edges and produ
 branches continue.
 Required nested restore results are promoted to their owning suite, so a capture, restore, parity,
 or production-check failure cannot be reported as owner success. Each live-doctor mutation probe
-owns and reaps its subprocess on every exit. Mutation probes and fixture restorations remain
-distinct stages; restoration stays eligible after a probe failure, and later probes on the shared
-fixture depend on restoration. Unexpected assertion/key/type failures, corrupt report state,
-source-binding or redaction failure, and other unexpected exceptions stop new scheduling as harness
-corruption. Once the cluster has started, teardown and final report emission always remain eligible,
-and a teardown/report failure is secondary to the first failure. Only the normal aggregate emits
+owns its subprocess through bounded terminate, kill-fallback, and reap attempts on every exit;
+failure to establish a reaped state is harness corruption. Mutation probes and fixture restorations
+remain distinct stages. The probe records invocation, readiness, mutation-SQL attempt, and applied
+mutation separately; restoration is eligible exactly once only after the SQL-attempt boundary, and
+later probes on the shared fixture require that restoration to pass. Unexpected assertion/key/type
+failures, corrupt report state, source-binding or redaction failure, and other unexpected exceptions
+stop new scheduling as harness corruption. Before cluster start the same outer owner attempts direct
+removal of a created private work directory without reporting cluster teardown. Once the cluster
+has started, teardown and final report emission always remain eligible. The process-visible primary
+is selected before aggregate output/report emission; cleanup or emission corruption remains
+secondary when an earlier semantic failure exists. Only the normal aggregate emits
 `decodex/postgres-aggregate-stage-report/1`; focused suites and Phase A/B receipt modes retain their
 direct output/capture behavior and never enter that report path.
 

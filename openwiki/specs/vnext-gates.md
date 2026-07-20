@@ -306,15 +306,21 @@ meaningful semantic suite has `passed`, `failed`, or `blocked` state. Expected `
 only declared consumers and leaves independent branches schedulable; dependency consumers never
 run after failure. Required nested restore work is part of its owning suite's outcome: a failed or
 unavailable capture, restore, parity check, or production check prevents owner success and blocks
-its consumers. Each live-doctor mutation probe owns and reaps its subprocess across every exit.
-Mutation probes and restorations are separate stages, restoration remains eligible after a failed
-probe, and subsequent shared-fixture probes depend on restoration.
+its consumers. Each live-doctor mutation probe owns bounded terminate, kill-fallback, and reap
+attempts across every exit; an unreaped or indeterminate child is harness corruption. Mutation
+probes and restorations are separate stages. Restoration is eligible exactly when the probe crossed
+the mutation-SQL attempt boundary, including a SQL call that then fails; spawn, pre-readiness exit,
+or readiness timeout leaves restoration blocked. Subsequent shared-fixture probes depend on a
+passed restoration.
 Unexpected assertion/key/type failures, corrupt stage/report state, source-binding failure,
 redaction failure, or another unexpected exception stops new work as harness corruption. After a
-cluster starts, teardown and final report emission still run and record secondary failures without
-overwriting the first failure. Only the normal aggregate emits
-`decodex/postgres-aggregate-stage-report/1`; focused and Phase A/B modes retain their direct output
-and receipt behavior.
+private directory is created, its outer cleanup owner covers every later exit and attempts direct
+removal if cluster start was never attempted, reporting removal failure without replacing an
+earlier primary. After a cluster starts, teardown and final report
+emission still run. Aggregate output/report failures are primary only when no earlier failure was
+selected; otherwise cleanup and emission failures are recorded as secondary. Only the normal
+aggregate emits `decodex/postgres-aggregate-stage-report/1`; focused and Phase A/B modes retain
+their direct output and receipt behavior.
 
 Falsifiers are evaluated in this fixed priority order: architecture, then
 stability/recoverability, security/authority, verification, integrity, and performance.
