@@ -467,14 +467,16 @@ async fn create_run(
 	assert!(matches!(outcome, RuntimeSessionCommandOutcome::Success(_)));
 	let work_item_id = uuid(0xc5, marker);
 	let managed_run_id = ManagedRunId::new(uuid(0xc6, marker))?;
-	owner
-		.execute(
-			r#"INSERT INTO decodex.work_items(work_item_id,project_id,lead_agent_id,title,
-			description,priority,acceptance_criteria,validation_criteria,last_changed_by,
-			last_correlation_id,last_provenance)
-			VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid,$4,'acceptance fixture','high',
-			ARRAY['routing authority is exact'],ARRAY['unified PostgreSQL gate'],$3::text::uuid,
-			$5::text::uuid,'vNext PostgreSQL acceptance')"#,
+	let initial_work_item = owner
+		.query_one(
+			r#"WITH operation AS (SELECT pg_catalog.clock_timestamp() AS operation_time)
+			INSERT INTO decodex.work_items(work_item_id,project_id,lead_agent_id,title,
+			description,priority,acceptance_criteria,validation_criteria,state,revision,
+			last_changed_by,last_correlation_id,last_provenance,created_at,updated_at)
+			SELECT $1::text::uuid,$2::text::uuid,$3::text::uuid,$4,'acceptance fixture','high',
+			ARRAY['routing authority is exact'],ARRAY['unified PostgreSQL gate'],'inbox',1,
+			$3::text::uuid,$5::text::uuid,'vNext PostgreSQL acceptance',operation_time,
+			operation_time FROM operation RETURNING state::text,revision,created_at=updated_at"#,
 			&[
 				&work_item_id,
 				&PROJECT_ID,
@@ -484,15 +486,34 @@ async fn create_run(
 			],
 		)
 		.await?;
-	owner
-		.execute(
-			"INSERT INTO decodex.managed_runs(managed_run_id,project_id,work_item_id,\
-			 runtime_session_id,runtime_session_revision,phase,lifecycle,wait_reason,blocked)\
-			 VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid,$4::text::uuid,1,\
-			 'execute','waiting','usage',true)",
+	assert_eq!(
+		(
+			initial_work_item.get::<_, String>(0),
+			initial_work_item.get::<_, i64>(1),
+			initial_work_item.get::<_, bool>(2),
+		),
+		("inbox".to_owned(), 1, true),
+	);
+	let initial_managed_run = owner
+		.query_one(
+			"WITH operation AS (SELECT pg_catalog.clock_timestamp() AS operation_time) \
+			 INSERT INTO decodex.managed_runs(managed_run_id,project_id,work_item_id,\
+			 runtime_session_id,runtime_session_revision,phase,lifecycle,wait_reason,blocked,\
+			 revision,created_at,updated_at) SELECT $1::text::uuid,$2::text::uuid,$3::text::uuid,\
+			 $4::text::uuid,1,'execute','waiting','usage',true,1,operation_time,operation_time \
+			 FROM operation RETURNING lifecycle::text,blocked,revision,created_at=updated_at",
 			&[&managed_run_id.as_str(), &PROJECT_ID, &work_item_id, &runtime_session_id.as_str()],
 		)
 		.await?;
+	assert_eq!(
+		(
+			initial_managed_run.get::<_, String>(0),
+			initial_managed_run.get::<_, bool>(1),
+			initial_managed_run.get::<_, i64>(2),
+			initial_managed_run.get::<_, bool>(3),
+		),
+		("waiting".to_owned(), true, 1, true),
+	);
 	owner
 		.execute(
 			"INSERT INTO decodex.managed_run_assignments(\
