@@ -649,7 +649,9 @@ BEGIN
 	SELECT pg_catalog.count(*) INTO inventory_count FROM decodex.accounts;
 	IF inventory_count <> pg_catalog.cardinality(p_account_ids) OR EXISTS (
 		SELECT account_id,revision FROM decodex.accounts
-		EXCEPT SELECT account_id,revision FROM pg_catalog.unnest(p_account_ids,p_account_revisions)
+		EXCEPT SELECT account_id,revision FROM ROWS FROM (
+			pg_catalog.unnest(p_account_ids), pg_catalog.unnest(p_account_revisions)
+		)
 			AS requested(account_id,revision)
 	) THEN
 		RETURN decodex.complete_exact_routing_rejection(
@@ -698,7 +700,10 @@ BEGIN
 		p_required_build_id,pg_catalog.clock_timestamp());
 	INSERT INTO decodex.routing_policy_members
 	SELECT p_routing_policy_id,new_revision,ordinality::integer,account_id,account_revision,disposition
-	FROM pg_catalog.unnest(p_account_ids,p_account_revisions,p_dispositions) WITH ORDINALITY
+	FROM ROWS FROM (
+		pg_catalog.unnest(p_account_ids), pg_catalog.unnest(p_account_revisions),
+		pg_catalog.unnest(p_dispositions)
+	) WITH ORDINALITY
 		AS item(account_id,account_revision,disposition,ordinality);
 	INSERT INTO decodex.routing_policy_required_capabilities
 	SELECT p_routing_policy_id,new_revision,ordinality::integer,capability
@@ -808,7 +813,9 @@ BEGIN
 		p_build_id,p_process_id,p_process_account_id,p_schema_fingerprint,next_revision);
 	INSERT INTO decodex.routing_capability_evidence
 	SELECT p_evidence_id,ordinality::integer,capability,state
-	FROM pg_catalog.unnest(p_capabilities,p_states) WITH ORDINALITY
+	FROM ROWS FROM (
+		pg_catalog.unnest(p_capabilities), pg_catalog.unnest(p_states)
+	) WITH ORDINALITY
 		AS item(capability,state,ordinality);
 	core := pg_catalog.jsonb_build_object('operation','publish_routing_evidence',
 		'evidence_id',p_evidence_id,'account_id',p_account_id,'account_revision',p_expected_account_revision,
