@@ -337,7 +337,7 @@ fn parse_envelope(bytes: &[u8]) -> Result<(String, Value), StoreError> {
 	})?;
 	require_keys(&document, &["classification", "effect"])?;
 	let classification = text(&document, "classification")?;
-	if !matches!(classification, "completed_success" | "stable_domain_rejection") {
+	if !matches!(classification, "success" | "stable_domain_rejection") {
 		return incompatible("stored continuation response classification is unknown");
 	}
 	let effect = document.get("effect").filter(|value| value.is_object()).ok_or_else(|| {
