@@ -3,7 +3,7 @@ use std::{env, path::PathBuf};
 use tokio::{task::JoinSet, time};
 use tokio_postgres::{Client, NoTls};
 
-use super::{expected_peer_uid, separated_configs};
+use super::{expected_peer_uid, separated_configs, wait_for_blocker};
 use decodex_core::{ConversationId, RuntimeSessionId, RuntimeSessionState};
 use decodex_postgres::{
 	AccountId, AccountState, BootstrapRoleProfiles, CommandIdentity, CreateConversation,
@@ -1032,6 +1032,7 @@ async fn postgres_v10_fences_blocked_old_runtime_writer() -> Result<(), Box<dyn 
 		)
 		.await?;
 	let old_pid: i32 = old_writer.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+	let admin_pid: i32 = admin.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
 	admin.query_one("SELECT pg_advisory_lock(991337)", &[]).await?;
 	let writer = tokio::spawn(async move {
 		old_writer
@@ -1041,20 +1042,10 @@ async fn postgres_v10_fences_blocked_old_runtime_writer() -> Result<(), Box<dyn 
 			)
 			.await
 	});
-	for _ in 0..1_000 {
-		let blocked: bool = admin
-			.query_one(
-				"SELECT wait_event_type='Lock' AND wait_event='advisory' \
-				 FROM pg_stat_activity WHERE pid=$1",
-				&[&old_pid],
-			)
-			.await?
-			.get(0);
-		if blocked {
-			break;
-		}
-		time::sleep(std::time::Duration::from_millis(10)).await;
-	}
+	assert!(
+		wait_for_blocker(&admin, admin_pid, old_pid).await?,
+		"admin backend must block the old writer before V10"
+	);
 	assert!(!writer.is_finished(), "old writer must be blocked before V10");
 	PostgresStore::migrate_fixture_through_v10(migration, expected_peer_uid()).await?;
 	admin.query_one("SELECT pg_advisory_unlock(991337)", &[]).await?;
