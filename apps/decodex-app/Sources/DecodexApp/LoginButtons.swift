@@ -27,6 +27,7 @@ struct LoginIconActionButton: View {
 			}
 		}
 		.help(help)
+		.accessibilityLabel(help)
 	}
 }
 

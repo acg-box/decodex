@@ -2,8 +2,8 @@ import Foundation
 import OSLog
 
 private let accountStoreLog = Logger(subsystem: "ink.hack.DecodexApp", category: "AccountStore")
-private let operatorSnapshotReconnectInitialDelay: UInt64 = 1_000_000_000
-private let operatorSnapshotReconnectMaxDelay: UInt64 = 30_000_000_000
+private let operatorSnapshotReconnectInitialDelay: Duration = .seconds(1)
+private let operatorSnapshotReconnectMaxDelay: Duration = .seconds(30)
 
 extension AccountStore {
 	func startOperatorSnapshotStream() {
@@ -32,11 +32,11 @@ extension AccountStore {
 			}
 
 			do {
-				try await Task.sleep(nanoseconds: reconnectDelay)
+				try await Task.sleep(for: reconnectDelay)
 			} catch {
 				return
 			}
-			reconnectDelay = min(operatorSnapshotReconnectMaxDelay, reconnectDelay * 2)
+			reconnectDelay = min(operatorSnapshotReconnectMaxDelay, reconnectDelay + reconnectDelay)
 		}
 	}
 

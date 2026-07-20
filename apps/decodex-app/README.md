@@ -48,6 +48,9 @@ percentage snapshots for account-pool display and does not contain token materia
 
 ## Development
 
+The app targets macOS 27 and uses the Swift 6.4 toolchain. Older macOS releases are
+not supported.
+
 Build the SwiftPM app in release mode:
 
 ```sh
