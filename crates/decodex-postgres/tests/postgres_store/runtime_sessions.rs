@@ -317,55 +317,29 @@ async fn assert_transition_command(
 	Ok(())
 }
 
-async fn assert_profile_snapshot_race(
-	store: &PostgresStore,
-	updater_store: &PostgresStore,
-	migration: &tokio_postgres::Config,
-	client: &Client,
-	conversation_id: &ConversationId,
-	created: &RuntimeSessionCommandEffect,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let before_update = created.runtime_session.profile_snapshot.clone();
-	assert!(matches!(
-		store.update_role_profile("task-v2", RoleProfileRole::Task, 1, &profile("task-v2")).await?,
-		RoleProfileCommandOutcome::Success(_)
-	));
-	let after_update_request = creation(
-		"41000000-0000-4000-8000-000000000004",
-		conversation_id,
-		"43000000-0000-4000-8000-000000000004",
-		"four",
-	)?;
-	let after_update = success(
-		"post-profile-update creation",
-		"session-after-profile-update",
-		store.create_runtime_session("session-after-profile-update", &after_update_request).await?,
-	);
-	assert_eq!(before_update.source_revision, 1);
-	assert_eq!(after_update.runtime_session.profile_snapshot.source_revision, 2);
-	let preserved: bool = client
-		.query_one(
-			"SELECT model=$2 AND instructions=$3 AND source_revision=1 \
-			 FROM decodex.profile_snapshots WHERE profile_snapshot_id=$1::text::uuid",
-			&[
-				&before_update.profile_snapshot_id,
-				&before_update.model,
-				&before_update.instructions,
-			],
-		)
-		.await?
-		.get(0);
-	assert!(preserved);
+type ProfileRaceCreatorTask = tokio::task::JoinHandle<
+	Result<RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>, StoreError>,
+>;
+type ProfileRaceUpdaterTask =
+	tokio::task::JoinHandle<Result<RoleProfileCommandOutcome, StoreError>>;
 
-	let race_request = creation(
-		"41000000-0000-4000-8000-000000000064",
-		conversation_id,
-		"43000000-0000-4000-8000-000000000064",
-		"profile-race",
-	)?;
-	let (observer, observer_connection) = migration.connect(NoTls).await?;
-	let mut observer_task = tokio::spawn(observer_connection);
-	let fixture_install = observer
+struct ProfileSnapshotRaceFixture {
+	observer: Client,
+	observer_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
+	gate_held: bool,
+	creator_task: Option<ProfileRaceCreatorTask>,
+	updater_task: Option<ProfileRaceUpdaterTask>,
+}
+
+struct ProfileSnapshotRaceOutcome {
+	creator_outcome: RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>,
+	profile_update: RoleProfileCommandOutcome,
+}
+
+async fn install_profile_snapshot_race_fixture(
+	observer: &Client,
+) -> Result<(), tokio_postgres::Error> {
+	observer
 		.batch_execute(&format!(
 			"CREATE FUNCTION public.xy1364_block_profile_race_creation() \
 			 RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,decodex AS $$ \
@@ -380,144 +354,157 @@ async fn assert_profile_snapshot_race(
 			 BEFORE INSERT ON decodex.runtime_sessions FOR EACH ROW \
 			 EXECUTE FUNCTION public.xy1364_block_profile_race_creation()"
 		))
-		.await;
+		.await
+}
 
-	let mut gate_held = false;
-	let mut creator_task = None;
-	let mut updater_task = None;
-	let race_result: Result<_, Box<dyn std::error::Error>> = match fixture_install {
-		Err(error) => Err(error.into()),
-		Ok(()) => {
-			async {
-				let blocker_pid: i32 =
-					observer.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
-				observer
-					.query_one("SELECT pg_advisory_lock($1::bigint)", &[&PROFILE_RACE_GATE])
-					.await?;
-				gate_held = true;
-
-				let creating_store = store.clone();
-				creator_task = Some(tokio::spawn(async move {
-					creating_store
-						.create_runtime_session("session-profile-race", &race_request)
-						.await
-				}));
-				// This trigger runs after the typed command has selected the task profile
-				// FOR SHARE. The advisory waiter therefore identifies the exact creator
-				// transaction that holds the revision-2 profile lock.
-				let (creator_pid, creator_blockers) =
-					time::timeout(std::time::Duration::from_secs(5), async {
-						loop {
-							let rows = observer
-								.query(
-									"SELECT waiter.pid, pg_catalog.pg_blocking_pids(waiter.pid) \
-							 FROM pg_catalog.pg_locks AS holder \
-							 JOIN pg_catalog.pg_locks AS waiter \
-							   ON waiter.locktype=holder.locktype \
-							  AND waiter.database IS NOT DISTINCT FROM holder.database \
-							  AND waiter.classid IS NOT DISTINCT FROM holder.classid \
-							  AND waiter.objid IS NOT DISTINCT FROM holder.objid \
-							  AND waiter.objsubid IS NOT DISTINCT FROM holder.objsubid \
-							 WHERE holder.pid=$1 AND holder.locktype='advisory' \
-							   AND holder.granted AND NOT waiter.granted",
-									&[&blocker_pid],
-								)
-								.await?;
-							if rows.len() == 1 {
-								return Ok::<_, tokio_postgres::Error>((
-									rows[0].get::<_, i32>(0),
-									rows[0].get::<_, Vec<i32>>(1),
-								));
-							}
-							tokio::task::yield_now().await;
-						}
-					})
-					.await
-					.map_err(|_| {
-						std::io::Error::other("RuntimeSession creator did not reach its gate")
-					})??;
-				if creator_blockers != [blocker_pid] {
-					return Err(std::io::Error::other(
-						"RuntimeSession creator gate had an unexpected blocker set",
-					)
-					.into());
-				}
-
-				let updating_store = updater_store.clone();
-				updater_task = Some(tokio::spawn(async move {
-					updating_store
-						.update_role_profile(
-							"task-v3",
-							RoleProfileRole::Task,
-							2,
-							&profile("task-v3"),
-						)
-						.await
-				}));
-				let (updater_pid, updater_blockers) =
-					time::timeout(std::time::Duration::from_secs(5), async {
-						loop {
-							let rows = observer
-								.query(
-									"SELECT DISTINCT waiting.pid, pg_catalog.pg_blocking_pids(waiting.pid) \
-							 FROM pg_catalog.pg_locks AS waiting \
-							 WHERE waiting.locktype='transactionid' AND NOT waiting.granted \
-							   AND waiting.pid<>$1 \
-							   AND $1=ANY(pg_catalog.pg_blocking_pids(waiting.pid))",
-									&[&creator_pid],
-								)
-								.await?;
-							if rows.len() == 1 {
-								return Ok::<_, tokio_postgres::Error>((
-									rows[0].get::<_, i32>(0),
-									rows[0].get::<_, Vec<i32>>(1),
-								));
-							}
-							tokio::task::yield_now().await;
-						}
-					})
-					.await
-					.map_err(|_| {
-						std::io::Error::other("RoleProfile updater did not block on the creator")
-					})??;
-				if updater_pid == creator_pid || updater_blockers != [creator_pid] {
-					return Err(std::io::Error::other(
-						"RoleProfile updater did not have exactly the creator as its blocker",
-					)
-					.into());
-				}
-
-				let unlocked: bool = observer
-					.query_one("SELECT pg_advisory_unlock($1::bigint)", &[&PROFILE_RACE_GATE])
-					.await?
-					.get(0);
-				if !unlocked {
-					return Err(std::io::Error::other("profile-race gate was not held").into());
-				}
-				gate_held = false;
-
-				let creator_join = time::timeout(
-					std::time::Duration::from_secs(5),
-					creator_task.as_mut().expect("creator task must exist"),
+async fn probe_profile_snapshot_race_creator(
+	observer: &Client,
+	blocker_pid: i32,
+) -> Result<i32, Box<dyn std::error::Error>> {
+	// This trigger runs after the typed command has selected the task profile FOR SHARE.
+	// The advisory waiter therefore identifies the exact creator transaction that holds
+	// the revision-2 profile lock.
+	let (creator_pid, creator_blockers) = time::timeout(std::time::Duration::from_secs(5), async {
+		loop {
+			let rows = observer
+				.query(
+					"SELECT waiter.pid, pg_catalog.pg_blocking_pids(waiter.pid) \
+						 FROM pg_catalog.pg_locks AS holder \
+						 JOIN pg_catalog.pg_locks AS waiter \
+						   ON waiter.locktype=holder.locktype \
+						  AND waiter.database IS NOT DISTINCT FROM holder.database \
+						  AND waiter.classid IS NOT DISTINCT FROM holder.classid \
+						  AND waiter.objid IS NOT DISTINCT FROM holder.objid \
+						  AND waiter.objsubid IS NOT DISTINCT FROM holder.objsubid \
+						 WHERE holder.pid=$1 AND holder.locktype='advisory' \
+						   AND holder.granted AND NOT waiter.granted",
+					&[&blocker_pid],
 				)
-				.await
-				.map_err(|_| std::io::Error::other("RuntimeSession creator did not finish"))?;
-				creator_task.take();
-				let creator_outcome = creator_join??;
-				let updater_join = time::timeout(
-					std::time::Duration::from_secs(5),
-					updater_task.as_mut().expect("updater task must exist"),
-				)
-				.await
-				.map_err(|_| std::io::Error::other("RoleProfile updater did not finish"))?;
-				updater_task.take();
-				let profile_update = updater_join??;
-				Ok((creator_outcome, profile_update))
+				.await?;
+			if rows.len() == 1 {
+				return Ok::<_, tokio_postgres::Error>((
+					rows[0].get::<_, i32>(0),
+					rows[0].get::<_, Vec<i32>>(1),
+				));
 			}
-			.await
-		},
-	};
+			tokio::task::yield_now().await;
+		}
+	})
+	.await
+	.map_err(|_| std::io::Error::other("RuntimeSession creator did not reach its gate"))??;
+	if creator_blockers != [blocker_pid] {
+		return Err(std::io::Error::other(
+			"RuntimeSession creator gate had an unexpected blocker set",
+		)
+		.into());
+	}
+	Ok(creator_pid)
+}
 
+async fn probe_profile_snapshot_race_updater(
+	observer: &Client,
+	creator_pid: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let (updater_pid, updater_blockers) = time::timeout(std::time::Duration::from_secs(5), async {
+		loop {
+			let rows = observer
+				.query(
+					"SELECT DISTINCT waiting.pid, pg_catalog.pg_blocking_pids(waiting.pid) \
+						 FROM pg_catalog.pg_locks AS waiting \
+						 WHERE waiting.locktype='transactionid' AND NOT waiting.granted \
+						   AND waiting.pid<>$1 \
+						   AND $1=ANY(pg_catalog.pg_blocking_pids(waiting.pid))",
+					&[&creator_pid],
+				)
+				.await?;
+			if rows.len() == 1 {
+				return Ok::<_, tokio_postgres::Error>((
+					rows[0].get::<_, i32>(0),
+					rows[0].get::<_, Vec<i32>>(1),
+				));
+			}
+			tokio::task::yield_now().await;
+		}
+	})
+	.await
+	.map_err(|_| std::io::Error::other("RoleProfile updater did not block on the creator"))??;
+	if updater_pid == creator_pid || updater_blockers != [creator_pid] {
+		return Err(std::io::Error::other(
+			"RoleProfile updater did not have exactly the creator as its blocker",
+		)
+		.into());
+	}
+	Ok(())
+}
+
+async fn orchestrate_profile_snapshot_race(
+	fixture: &mut ProfileSnapshotRaceFixture,
+	store: &PostgresStore,
+	updater_store: &PostgresStore,
+	race_request: CreateRuntimeSession,
+) -> Result<ProfileSnapshotRaceOutcome, Box<dyn std::error::Error>> {
+	let blocker_pid: i32 = fixture.observer.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+	fixture
+		.observer
+		.query_one("SELECT pg_advisory_lock($1::bigint)", &[&PROFILE_RACE_GATE])
+		.await?;
+	fixture.gate_held = true;
+
+	let creating_store = store.clone();
+	fixture.creator_task = Some(tokio::spawn(async move {
+		creating_store.create_runtime_session("session-profile-race", &race_request).await
+	}));
+	let creator_pid = probe_profile_snapshot_race_creator(&fixture.observer, blocker_pid).await?;
+
+	let updating_store = updater_store.clone();
+	fixture.updater_task = Some(tokio::spawn(async move {
+		updating_store
+			.update_role_profile("task-v3", RoleProfileRole::Task, 2, &profile("task-v3"))
+			.await
+	}));
+	probe_profile_snapshot_race_updater(&fixture.observer, creator_pid).await?;
+
+	let unlocked: bool = fixture
+		.observer
+		.query_one("SELECT pg_advisory_unlock($1::bigint)", &[&PROFILE_RACE_GATE])
+		.await?
+		.get(0);
+	if !unlocked {
+		return Err(std::io::Error::other("profile-race gate was not held").into());
+	}
+	fixture.gate_held = false;
+
+	let creator_task = fixture
+		.creator_task
+		.as_mut()
+		.ok_or(std::io::Error::other("creator task was not installed"))?;
+	let creator_join = time::timeout(std::time::Duration::from_secs(5), creator_task)
+	.await
+	.map_err(|_| std::io::Error::other("RuntimeSession creator did not finish"))?;
+	fixture.creator_task.take();
+	let creator_outcome = creator_join??;
+	let updater_task = fixture
+		.updater_task
+		.as_mut()
+		.ok_or(std::io::Error::other("updater task was not installed"))?;
+	let updater_join = time::timeout(std::time::Duration::from_secs(5), updater_task)
+	.await
+	.map_err(|_| std::io::Error::other("RoleProfile updater did not finish"))?;
+	fixture.updater_task.take();
+	let profile_update = updater_join??;
+	Ok(ProfileSnapshotRaceOutcome { creator_outcome, profile_update })
+}
+
+async fn cleanup_profile_snapshot_race_unconditionally(
+	fixture: ProfileSnapshotRaceFixture,
+) -> Option<Box<dyn std::error::Error>> {
+	let ProfileSnapshotRaceFixture {
+		observer,
+		mut observer_task,
+		gate_held,
+		mut creator_task,
+		mut updater_task,
+	} = fixture;
 	let mut cleanup_error: Option<Box<dyn std::error::Error>> = None;
 	if gate_held {
 		match observer
@@ -578,18 +565,83 @@ async fn assert_profile_snapshot_race(
 			}
 		},
 	}
-	let (creator_outcome, profile_update) = match (race_result, cleanup_error) {
+	cleanup_error
+}
+
+async fn assert_profile_snapshot_race(
+	store: &PostgresStore,
+	updater_store: &PostgresStore,
+	migration: &tokio_postgres::Config,
+	client: &Client,
+	conversation_id: &ConversationId,
+	created: &RuntimeSessionCommandEffect,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let before_update = created.runtime_session.profile_snapshot.clone();
+	assert!(matches!(
+		store.update_role_profile("task-v2", RoleProfileRole::Task, 1, &profile("task-v2")).await?,
+		RoleProfileCommandOutcome::Success(_)
+	));
+	let after_update_request = creation(
+		"41000000-0000-4000-8000-000000000004",
+		conversation_id,
+		"43000000-0000-4000-8000-000000000004",
+		"four",
+	)?;
+	let after_update = success(
+		"post-profile-update creation",
+		"session-after-profile-update",
+		store.create_runtime_session("session-after-profile-update", &after_update_request).await?,
+	);
+	assert_eq!(before_update.source_revision, 1);
+	assert_eq!(after_update.runtime_session.profile_snapshot.source_revision, 2);
+	let preserved: bool = client
+		.query_one(
+			"SELECT model=$2 AND instructions=$3 AND source_revision=1 \
+			 FROM decodex.profile_snapshots WHERE profile_snapshot_id=$1::text::uuid",
+			&[
+				&before_update.profile_snapshot_id,
+				&before_update.model,
+				&before_update.instructions,
+			],
+		)
+		.await?
+		.get(0);
+	assert!(preserved);
+
+	let race_request = creation(
+		"41000000-0000-4000-8000-000000000064",
+		conversation_id,
+		"43000000-0000-4000-8000-000000000064",
+		"profile-race",
+	)?;
+	let (observer, observer_connection) = migration.connect(NoTls).await?;
+	let mut fixture = ProfileSnapshotRaceFixture {
+		observer,
+		observer_task: tokio::spawn(observer_connection),
+		gate_held: false,
+		creator_task: None,
+		updater_task: None,
+	};
+	let race_result = match install_profile_snapshot_race_fixture(&fixture.observer).await {
+		Ok(()) =>
+			orchestrate_profile_snapshot_race(&mut fixture, store, updater_store, race_request)
+				.await,
+		Err(error) => Err(error.into()),
+	};
+	let cleanup_error = cleanup_profile_snapshot_race_unconditionally(fixture).await;
+	let outcome = match (race_result, cleanup_error) {
 		(Err(error), _) => return Err(error),
 		(Ok(_), Some(error)) => return Err(error),
-		(Ok(result), None) => result,
+		(Ok(outcome), None) => outcome,
 	};
 
-	let effect = success("profile-snapshot race creation", "session-profile-race", creator_outcome);
+	let effect =
+		success("profile-snapshot race creation", "session-profile-race", outcome.creator_outcome);
 	let snapshot = effect.runtime_session.profile_snapshot;
 	assert_eq!(snapshot.source_revision, 2);
 	assert_eq!(snapshot.model, "gpt-5.6-task-v2");
 	assert_eq!(snapshot.instructions, "Immutable XY-1337 task-v2 instructions.");
-	assert!(matches!(profile_update, RoleProfileCommandOutcome::Success(_)));
+	assert!(matches!(outcome.profile_update, RoleProfileCommandOutcome::Success(_)));
 
 	let after_race_request = creation(
 		"41000000-0000-4000-8000-000000000200",
