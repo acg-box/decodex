@@ -117,13 +117,15 @@ async fn assert_historical_lineage_survives_managed_run_advance(
 	assert_eq!(rejection.code, "creation_not_authorized");
 	let stale_fence_absent: bool = owner
 		.query_one(
-			"SELECT experiment.revision=1 AND experiment.state='prepared'\
-			 AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_revisions AS revision\
-			  WHERE revision.experiment_id=experiment.experiment_id AND revision.revision=2)\
-			 AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_creation_attempts AS attempt\
-			  WHERE attempt.experiment_id=experiment.experiment_id)\
-			 FROM decodex.codex_experiments AS experiment\
-			 WHERE experiment.experiment_id=$1::text::uuid",
+			concat!(
+				"SELECT experiment.revision=1 AND experiment.state='prepared'",
+				"AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_revisions AS revision ",
+				"WHERE revision.experiment_id=experiment.experiment_id AND revision.revision=2)",
+				"AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_creation_attempts AS attempt ",
+				"WHERE attempt.experiment_id=experiment.experiment_id)",
+				"FROM decodex.codex_experiments AS experiment ",
+				"WHERE experiment.experiment_id=$1::text::uuid",
+			),
 			&[&experiment_id],
 		)
 		.await?
@@ -132,34 +134,36 @@ async fn assert_historical_lineage_survives_managed_run_advance(
 
 	let lineage = owner
 		.query_one(
-			"SELECT run.revision=2 AND run.runtime_session_revision=2\
-			  AND session.revision=2 AND session.state='diverged',\
-			 EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment\
-			  WHERE experiment.managed_run_id=run.managed_run_id) AND\
-			 NOT EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment\
-			  LEFT JOIN decodex.routing_snapshots AS snapshot\
-			  ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=\
-			   (experiment.routing_snapshot_id,experiment.managed_run_id,\
-			    experiment.managed_run_revision)\
-			  WHERE experiment.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),\
-			 EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision\
-			  WHERE decision.managed_run_id=run.managed_run_id) AND\
-			 NOT EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision\
-			  LEFT JOIN decodex.routing_snapshots AS snapshot\
-			  ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=\
-			   (decision.snapshot_id,decision.managed_run_id,decision.managed_run_revision)\
-			  WHERE decision.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),\
-			 EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan\
-			  WHERE plan.managed_run_id=run.managed_run_id) AND\
-			 NOT EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan\
-			  LEFT JOIN decodex.routing_decisions AS decision\
-			  ON (decision.decision_id,decision.managed_run_id,decision.managed_run_revision)=\
-			   (plan.routing_decision_id,plan.managed_run_id,plan.managed_run_revision)\
-			  WHERE plan.managed_run_id=run.managed_run_id AND decision.decision_id IS NULL)\
-			 FROM decodex.managed_runs AS run\
-			 JOIN decodex.runtime_sessions AS session\
-			  ON session.runtime_session_id=run.runtime_session_id\
-			 WHERE run.managed_run_id=$1::text::uuid",
+			concat!(
+				"SELECT run.revision=2 AND run.runtime_session_revision=2 ",
+				"AND session.revision=2 AND session.state='diverged',",
+				"EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment ",
+				"WHERE experiment.managed_run_id=run.managed_run_id) AND ",
+				"NOT EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment ",
+				"LEFT JOIN decodex.routing_snapshots AS snapshot ",
+				"ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=",
+				"(experiment.routing_snapshot_id,experiment.managed_run_id,",
+				"experiment.managed_run_revision)",
+				"WHERE experiment.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),",
+				"EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision ",
+				"WHERE decision.managed_run_id=run.managed_run_id) AND ",
+				"NOT EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision ",
+				"LEFT JOIN decodex.routing_snapshots AS snapshot ",
+				"ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=",
+				"(decision.snapshot_id,decision.managed_run_id,decision.managed_run_revision)",
+				"WHERE decision.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),",
+				"EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan ",
+				"WHERE plan.managed_run_id=run.managed_run_id) AND ",
+				"NOT EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan ",
+				"LEFT JOIN decodex.routing_decisions AS decision ",
+				"ON (decision.decision_id,decision.managed_run_id,decision.managed_run_revision)=",
+				"(plan.routing_decision_id,plan.managed_run_id,plan.managed_run_revision)",
+				"WHERE plan.managed_run_id=run.managed_run_id AND decision.decision_id IS NULL)",
+				"FROM decodex.managed_runs AS run ",
+				"JOIN decodex.runtime_sessions AS session ",
+				"ON session.runtime_session_id=run.runtime_session_id ",
+				"WHERE run.managed_run_id=$1::text::uuid",
+			),
 			&[&routing.selected_request.managed_run_id.as_str()],
 		)
 		.await?;
@@ -175,12 +179,14 @@ async fn prepare_continuation_fixture(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	owner
 		.execute(
-			"INSERT INTO decodex.managed_run_submitted_turn_receipts(\
-			 receipt_id,managed_run_id,project_id,runtime_session_id,runtime_session_revision,\
-			 turn_id,submitted_at) SELECT $1::text::uuid,run.managed_run_id,run.project_id,\
-			 run.runtime_session_id,run.runtime_session_revision,$2::text::uuid,\
-			 pg_catalog.clock_timestamp() FROM decodex.managed_runs AS run\
-			 WHERE run.managed_run_id=$3::text::uuid",
+			concat!(
+				"INSERT INTO decodex.managed_run_submitted_turn_receipts(",
+				"receipt_id,managed_run_id,project_id,runtime_session_id,runtime_session_revision,",
+				"turn_id,submitted_at) SELECT $1::text::uuid,run.managed_run_id,run.project_id,",
+				"run.runtime_session_id,run.runtime_session_revision,$2::text::uuid,",
+				"pg_catalog.clock_timestamp() FROM decodex.managed_runs AS run ",
+				"WHERE run.managed_run_id=$3::text::uuid",
+			),
 			&[
 				&SUBMITTED_RECEIPT_ID,
 				&"f2000000-0000-1000-8000-000000000017",
@@ -259,20 +265,22 @@ async fn assert_missing_fallback_contract(
 	assert_eq!(continuation_effect_inventory(owner, &missing_request).await?, replay_inventory,);
 	let fallback_lineage = owner
 		.query_one(
-			"SELECT session.revision=1 AND session.state='starting',\
-			 snapshot.source_account_id=$4::text::uuid AND snapshot.source_revision=1,\
-			 pack.context_pack_id=$3::text::uuid AND pack.conversation_id=plan.conversation_id,\
-			 (SELECT count(*) FROM decodex.activity WHERE correlation_key=$5)=3,\
-			 (SELECT count(*) FROM decodex.outbox AS work JOIN decodex.activity AS event\
-			  ON work.effect_key='activity/'||event.sequence::text WHERE event.correlation_key=$5)=3\
-			 FROM decodex.continuation_plans AS plan\
-			 JOIN decodex.runtime_sessions AS session\
-			  ON session.runtime_session_id=plan.fallback_runtime_session_id\
-			 JOIN decodex.account_snapshots AS snapshot\
-			  ON snapshot.account_snapshot_id=session.account_snapshot_id\
-			 JOIN decodex.context_packs AS pack\
-			  ON pack.context_pack_id=plan.fallback_context_pack_id\
-			 WHERE plan.plan_id=$1::text::uuid AND session.runtime_session_id=$2::text::uuid",
+			concat!(
+				"SELECT session.revision=1 AND session.state='starting',",
+				"snapshot.source_account_id=$4::text::uuid AND snapshot.source_revision=1,",
+				"pack.context_pack_id=$3::text::uuid AND pack.conversation_id=plan.conversation_id,",
+				"(SELECT count(*) FROM decodex.activity WHERE correlation_key=$5)=3,",
+				"(SELECT count(*) FROM decodex.outbox AS work JOIN decodex.activity AS event ",
+				"ON work.effect_key='activity/'||event.sequence::text WHERE event.correlation_key=$5)=3 ",
+				"FROM decodex.continuation_plans AS plan ",
+				"JOIN decodex.runtime_sessions AS session ",
+				"ON session.runtime_session_id=plan.fallback_runtime_session_id ",
+				"JOIN decodex.account_snapshots AS snapshot ",
+				"ON snapshot.account_snapshot_id=session.account_snapshot_id ",
+				"JOIN decodex.context_packs AS pack ",
+				"ON pack.context_pack_id=plan.fallback_context_pack_id ",
+				"WHERE plan.plan_id=$1::text::uuid AND session.runtime_session_id=$2::text::uuid",
+			),
 			&[
 				&missing.plan.plan_id,
 				&missing_request.fallback_runtime_session_id,
@@ -444,15 +452,17 @@ async fn assert_lineage_and_restart_contract(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let lineage = owner
 		.query_one(
-			"SELECT plan.effect_barrier_state::text,plan.effect_barrier_revision,\
-			 plan.submitted_turn_receipt_count,NOT plan.replay_permitted,NOT plan.dispatch_enabled,\
-			 (SELECT count(*) FROM decodex.managed_run_submitted_turn_receipts\
-			  WHERE managed_run_id=plan.managed_run_id AND receipt_id=$2::text::uuid)=1,\
-			 (SELECT count(*) FROM decodex.activity WHERE aggregate_kind='continuation_plan'\
-			  AND aggregate_id=plan.plan_id::text AND event_kind='continuation_plan_created')=1,\
-			 (SELECT count(*) FROM decodex.outbox WHERE aggregate_kind='continuation_plan'\
-			  AND aggregate_id=plan.plan_id::text)=1\
-			 FROM decodex.continuation_plans AS plan WHERE plan.plan_id=$1::text::uuid",
+			concat!(
+				"SELECT plan.effect_barrier_state::text,plan.effect_barrier_revision,",
+				"plan.submitted_turn_receipt_count,NOT plan.replay_permitted,NOT plan.dispatch_enabled,",
+				"(SELECT count(*) FROM decodex.managed_run_submitted_turn_receipts ",
+				"WHERE managed_run_id=plan.managed_run_id AND receipt_id=$2::text::uuid)=1,",
+				"(SELECT count(*) FROM decodex.activity WHERE aggregate_kind='continuation_plan'",
+				"AND aggregate_id=plan.plan_id::text AND event_kind='continuation_plan_created')=1,",
+				"(SELECT count(*) FROM decodex.outbox WHERE aggregate_kind='continuation_plan'",
+				"AND aggregate_id=plan.plan_id::text)=1 ",
+				"FROM decodex.continuation_plans AS plan WHERE plan.plan_id=$1::text::uuid",
+			),
 			&[&same_thread.plan.plan_id, &SUBMITTED_RECEIPT_ID],
 		)
 		.await?;
@@ -531,8 +541,10 @@ async fn fallback_pack(
 ) -> Result<ContextPack, Box<dyn std::error::Error>> {
 	let conversation_id: String = owner
 		.query_one(
-			"SELECT conversation_id::text FROM decodex.runtime_sessions\
-			 WHERE runtime_session_id=$1::text::uuid",
+			concat!(
+				"SELECT conversation_id::text FROM decodex.runtime_sessions ",
+				"WHERE runtime_session_id=$1::text::uuid",
+			),
 			&[&routing.selected_runtime_session_id.as_str()],
 		)
 		.await?
@@ -769,13 +781,15 @@ pub(super) async fn assert_restored_continuation_contract(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let row = client
 		.query_one(
-			"SELECT (SELECT count(*) FROM decodex.continuation_plans\
-			  WHERE kind='same_thread' AND NOT replay_permitted AND NOT dispatch_enabled)=1,\
-			 (SELECT count(*) FROM decodex.continuation_plans\
-			  WHERE kind='context_pack_fallback' AND fallback_context_pack_id IS NOT NULL\
-			  AND fallback_runtime_session_id IS NOT NULL)=4,\
-			 (SELECT bool_and(submitted_turn_receipt_count=1 AND effect_barrier_revision=1)\
-			  FROM decodex.continuation_plans)",
+			concat!(
+				"SELECT (SELECT count(*) FROM decodex.continuation_plans ",
+				"WHERE kind='same_thread' AND NOT replay_permitted AND NOT dispatch_enabled)=1,",
+				"(SELECT count(*) FROM decodex.continuation_plans ",
+				"WHERE kind='context_pack_fallback' AND fallback_context_pack_id IS NOT NULL ",
+				"AND fallback_runtime_session_id IS NOT NULL)=4,",
+				"(SELECT bool_and(submitted_turn_receipt_count=1 AND effect_barrier_revision=1)",
+				"FROM decodex.continuation_plans)",
+			),
 			&[],
 		)
 		.await?;
