@@ -1546,11 +1546,10 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the isolated PostgreSQL 18 missing-extension harness"]
-async fn postgres_store_missing_pgcrypto_is_incompatible(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn postgres_store_missing_pgcrypto_is_incompatible() -> Result<(), Box<dyn std::error::Error>>
+{
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let live =
-		PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let live = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 
