@@ -120,11 +120,11 @@ async fn prepare_routing_contract(
 	insert_quota_pair(owner, NO_ROUTE_ACCOUNT_ID, Some(0), Some(0), "no-route").await?;
 	align_tied_waiting_ready_time(owner).await?;
 
-	let selected_run = create_run(store, owner, SELECTED_ACCOUNT_ID, 16).await?;
-	let waiting_run = create_run(store, owner, WAITING_ACCOUNT_ID, 17).await?;
-	let no_route_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, 18).await?;
-	let cancel_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, 19).await?;
-	let stale_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, 20).await?;
+	let selected_run = create_run(store, owner, SELECTED_ACCOUNT_ID, "V16 account 16", 16).await?;
+	let waiting_run = create_run(store, owner, WAITING_ACCOUNT_ID, "V16 account 17", 17).await?;
+	let no_route_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 18).await?;
+	let cancel_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 19).await?;
+	let stale_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 20).await?;
 
 	for (marker, account_id) in
 		[(16_u8, SELECTED_ACCOUNT_ID), (17_u8, WAITING_ACCOUNT_ID), (18_u8, NO_ROUTE_ACCOUNT_ID)]
@@ -431,6 +431,7 @@ async fn create_run(
 	store: &PostgresStore,
 	owner: &Client,
 	account_id: &str,
+	account_display_label: &str,
 	marker: u8,
 ) -> Result<RunFixture, Box<dyn std::error::Error>> {
 	let conversation_id = ConversationId::new(uuid(0xc1, marker))?;
@@ -455,7 +456,7 @@ async fn create_run(
 				account_snapshot: CreateRuntimeSessionAccountSnapshot {
 					account_snapshot_id: uuid(0xc4, marker),
 					source_account_id: AccountId::new(account_id)?,
-					display_label: format!("V16 account {marker}"),
+					display_label: account_display_label.to_owned(),
 					observed_state: AccountState::Available,
 					source_revision: 1,
 				},
@@ -620,7 +621,10 @@ async fn create_policy_snapshot_and_request(
 			1,
 		)
 		.await?;
-	assert!(matches!(snapshot, RoutingCommandOutcome::Success(_)));
+	assert!(
+		matches!(&snapshot, RoutingCommandOutcome::Success(_)),
+		"unexpected routing snapshot outcome: {snapshot:?}",
+	);
 	Ok(RouteAccount {
 		operation_id: uuid(0xe1, marker),
 		routing_policy_id: routing_policy_id.to_owned(),
