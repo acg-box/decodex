@@ -213,17 +213,26 @@ preflight, meaningful semantic suites form explicit prerequisite edges and produ
 `failed`, or `blocked`: an ordinary expected failure blocks its consumers while independent
 branches continue.
 Required nested restore results are promoted to their owning suite, so a capture, restore, parity,
-or production-check failure cannot be reported as owner success. Each live-doctor mutation probe
-owns its subprocess through bounded terminate, kill-fallback, and reap attempts on every exit;
-failure to establish a reaped state is harness corruption. Mutation probes and fixture restorations
-remain distinct stages. The probe records invocation, readiness, mutation-SQL attempt, and applied
-mutation separately; restoration is eligible exactly once only after the SQL-attempt boundary, and
-later probes on the shared fixture require that restoration to pass. Unexpected assertion/key/type
-failures, corrupt report state, source-binding or redaction failure, and other unexpected exceptions
-stop new scheduling as harness corruption. Before cluster start the same outer owner attempts direct
-removal of a created private work directory without reporting cluster teardown. Once the cluster
-has started, teardown and final report emission always remain eligible. The process-visible primary
-is selected before aggregate output/report emission; cleanup or emission corruption remains
+or production-check failure cannot be reported as owner success. One private live-doctor mutation
+SQL executor owns every ordinary, role-as, and secret-bearing mutation child, SQL delivery state,
+command completion, output handling, and cleanup; the live-doctor coordinator owns only probe
+readiness and its own child. Both child kinds receive bounded terminate, kill-fallback, and reap
+attempts on every exit, and failure to establish a reaped state is harness corruption. Mutation
+probes and fixture restorations remain distinct stages. Ordinary mutation delivery remains blocked
+when `Popen` fails; once successful `Popen` returns with the SQL payload owned in argv, delivery is
+possible and every later failure remains restoration-eligible. A secret mutation remains blocked
+through its completed fail-closed logging prelude, becomes may-have-dispatched immediately before
+the first mutation-frame payload write, and remains restoration-eligible after any later write,
+flush, timeout, protocol, exit, or cleanup failure. Successful exit records only command
+acknowledgement, never exact server receipt or non-vacuous mutation application; an optional
+postcondition probe is separate evidence. The scheduler consumes one restoration claim from the
+attempt record exactly once. Pre-dispatch failure blocks restoration, eligible probe failure still
+attempts it, and later probes on the shared fixture require restoration to pass. Unexpected
+assertion/key/type failures, corrupt report state, source-binding or redaction failure, and other
+unexpected exceptions stop new scheduling as harness corruption. Before cluster start the same
+outer owner attempts direct removal of a created private work directory without reporting cluster
+teardown. Once the cluster has started, teardown and final report emission always remain eligible.
+The process-visible primary is selected before aggregate output/report emission; cleanup or emission corruption remains
 secondary when an earlier semantic failure exists. Only the normal aggregate emits
 `decodex/postgres-aggregate-stage-report/1`; focused suites and Phase A/B receipt modes retain their
 direct output/capture behavior and never enter that report path.
