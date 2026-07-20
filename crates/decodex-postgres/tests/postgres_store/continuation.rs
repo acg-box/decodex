@@ -33,7 +33,7 @@ pub(super) async fn assert_continuation_contract(
 	assert_missing_fallback_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_alternate_fallback_contracts(store, owner, routing, &blob_store, &fallback_pack).await?;
 	let (same_thread, same_thread_request) =
-		assert_same_thread_contract(store, routing, &blob_store, &fallback_pack).await?;
+		assert_same_thread_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_historical_lineage_survives_managed_run_advance(store, owner, routing).await?;
 	assert_lineage_and_restart_contract(
@@ -269,6 +269,9 @@ async fn assert_missing_fallback_contract(
 				"SELECT session.revision=1 AND session.state='starting',",
 				"snapshot.source_account_id=$4::text::uuid AND snapshot.source_revision=1,",
 				"pack.context_pack_id=$3::text::uuid AND pack.conversation_id=plan.conversation_id,",
+				"plan.routing_evidence_id IS NULL,plan.routing_evidence_revision IS NULL,",
+				"plan.schema_fingerprint IS NULL,plan.codex_experiment_id IS NULL,",
+				"plan.codex_experiment_revision IS NULL,plan.codex_observation_id IS NULL,",
 				"(SELECT count(*) FROM decodex.activity WHERE correlation_key=$5)=3,",
 				"(SELECT count(*) FROM decodex.outbox AS work JOIN decodex.activity AS event ",
 				"ON work.effect_key='activity/'||event.sequence::text WHERE event.correlation_key=$5)=3 ",
@@ -290,7 +293,7 @@ async fn assert_missing_fallback_contract(
 			],
 		)
 		.await?;
-	for index in 0..5 {
+	for index in 0..11 {
 		assert!(fallback_lineage.get::<_, bool>(index), "V17 fallback lineage {index}");
 	}
 	let conflicting = PlanContinuation { plan_id: uuid(0xf4, 99), ..missing_request.clone() };
@@ -377,6 +380,7 @@ async fn assert_alternate_fallback_contracts(
 
 async fn assert_same_thread_contract(
 	store: &PostgresStore,
+	owner: &Client,
 	routing: &RoutingFixture,
 	blob_store: &BlobStore,
 	fallback_pack: &ContextPack,
@@ -401,7 +405,27 @@ async fn assert_same_thread_contract(
 		same_thread.plan.codex_thread_id.as_deref(),
 		Some(routing.selected_thread_id.as_str())
 	);
-	assert!(same_thread.plan.same_thread_evidence.is_some());
+	let evidence = same_thread
+		.plan
+		.same_thread_evidence
+		.as_ref()
+		.expect("same-thread response carries typed evidence");
+	let persisted = owner
+		.query_one(
+			concat!(
+				"SELECT routing_evidence_id::text,routing_evidence_revision,schema_fingerprint,",
+				"codex_experiment_id::text,codex_experiment_revision,codex_observation_id::text ",
+				"FROM decodex.continuation_plans WHERE plan_id=$1::text::uuid",
+			),
+			&[&same_thread.plan.plan_id],
+		)
+		.await?;
+	assert_eq!(persisted.get::<_, String>(0), evidence.routing_evidence_id);
+	assert_eq!(persisted.get::<_, i64>(1), evidence.routing_evidence_revision);
+	assert_eq!(persisted.get::<_, String>(2), evidence.schema_fingerprint);
+	assert_eq!(persisted.get::<_, String>(3), evidence.experiment_id);
+	assert_eq!(persisted.get::<_, i64>(4), evidence.experiment_revision);
+	assert_eq!(persisted.get::<_, String>(5), evidence.observation_id);
 	assert!(same_thread.fallback_context_pack.is_none());
 	assert_barrier(&same_thread.plan);
 	Ok((same_thread, same_thread_request))

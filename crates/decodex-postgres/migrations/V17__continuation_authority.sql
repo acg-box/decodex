@@ -479,7 +479,10 @@ AS $$
 DECLARE request jsonb; replay bytea; existing_plan record; decision_row record;
 DECLARE snapshot_row record; run_row record; session_row record; profile_row record;
 DECLARE conversation_row record; member_row record; barrier_row record;
-DECLARE evidence_count bigint; evidence_row record;
+DECLARE evidence_count bigint; selected_evidence_id uuid:=NULL;
+DECLARE selected_evidence_revision bigint:=NULL; selected_schema_fingerprint text:=NULL;
+DECLARE selected_experiment_id uuid:=NULL; selected_experiment_revision bigint:=NULL;
+DECLARE selected_observation_id uuid:=NULL;
 DECLARE planned timestamptz; pack_revision bigint; source_count integer;
 DECLARE position integer; inline_value bytea; blob_value text; submitted_count bigint;
 DECLARE plan_kind decodex.continuation_plan_kind; thread_value uuid;
@@ -608,9 +611,9 @@ BEGIN
 	) AS canonical_experiment;
 	IF evidence_count=1 THEN
 		SELECT evidence.evidence_id,evidence.evidence_revision,evidence.schema_fingerprint,
-			experiment.experiment_id,experiment.revision,
-			observation.observation_id,observation.observed_at
-		INTO evidence_row
+			experiment.experiment_id,experiment.revision,observation.observation_id
+		INTO selected_evidence_id,selected_evidence_revision,selected_schema_fingerprint,
+			selected_experiment_id,selected_experiment_revision,selected_observation_id
 		FROM decodex.routing_compatibility_evidence AS evidence
 		JOIN decodex.codex_experiments AS experiment
 			ON experiment.managed_run_id=decision_row.managed_run_id
@@ -721,12 +724,12 @@ BEGIN
 		'fallback_context_pack_id',CASE WHEN plan_kind='context_pack_fallback' THEN p_context_pack_id END,
 		'fallback_context_pack_revision',CASE WHEN plan_kind='context_pack_fallback' THEN pack_revision END,
 		'fallback_runtime_session_id',CASE WHEN plan_kind='context_pack_fallback' THEN p_fallback_session_id END,
-		'routing_evidence_id',CASE WHEN plan_kind='same_thread' THEN evidence_row.evidence_id END,
-		'routing_evidence_revision',CASE WHEN plan_kind='same_thread' THEN evidence_row.evidence_revision END,
-		'schema_fingerprint',CASE WHEN plan_kind='same_thread' THEN evidence_row.schema_fingerprint END,
-		'codex_experiment_id',CASE WHEN plan_kind='same_thread' THEN evidence_row.experiment_id END,
-		'codex_experiment_revision',CASE WHEN plan_kind='same_thread' THEN evidence_row.revision END,
-		'codex_observation_id',CASE WHEN plan_kind='same_thread' THEN evidence_row.observation_id END,
+		'routing_evidence_id',selected_evidence_id,
+		'routing_evidence_revision',selected_evidence_revision,
+		'schema_fingerprint',selected_schema_fingerprint,
+		'codex_experiment_id',selected_experiment_id,
+		'codex_experiment_revision',selected_experiment_revision,
+		'codex_observation_id',selected_observation_id,
 		'effect_barrier_state',barrier_row.state,'effect_barrier_revision',barrier_row.revision,
 		'submitted_turn_receipt_count',submitted_count,'replay_permitted',false,
 		'dispatch_enabled',false,'planned_at_micros',
@@ -807,12 +810,8 @@ BEGIN
 		decision_row.selected_account_id,plan_kind,thread_value,
 		CASE WHEN plan_kind='context_pack_fallback' THEN p_context_pack_id END,
 		CASE WHEN plan_kind='context_pack_fallback' THEN p_fallback_session_id END,
-		CASE WHEN plan_kind='same_thread' THEN evidence_row.evidence_id END,
-		CASE WHEN plan_kind='same_thread' THEN evidence_row.evidence_revision END,
-		CASE WHEN plan_kind='same_thread' THEN evidence_row.schema_fingerprint END,
-		CASE WHEN plan_kind='same_thread' THEN evidence_row.experiment_id END,
-		CASE WHEN plan_kind='same_thread' THEN evidence_row.revision END,
-		CASE WHEN plan_kind='same_thread' THEN evidence_row.observation_id END,
+		selected_evidence_id,selected_evidence_revision,selected_schema_fingerprint,
+		selected_experiment_id,selected_experiment_revision,selected_observation_id,
 		barrier_row.state,barrier_row.revision,submitted_count,false,false,1,request,effect,response,planned);
 	UPDATE decodex.exact_command_receipts SET receipt_state='completed_success',
 		outcome_class='success',effect_envelope=effect,response_bytes=response,
