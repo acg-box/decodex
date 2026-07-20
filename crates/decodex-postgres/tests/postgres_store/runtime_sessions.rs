@@ -13,6 +13,45 @@ use decodex_postgres::{
 };
 
 const PROFILE_RACE_GATE: i64 = 913_371_364;
+const MIGRATION_NAMES_THROUGH_V10: [&str; 10] = [
+	"persistence_foundation",
+	"claim_indexes",
+	"conversation_history",
+	"account_readiness",
+	"project_agent_authority",
+	"project_policy_authority",
+	"program_objective_authority",
+	"quota_exclusions",
+	"exact_role_profiles",
+	"runtime_session_snapshots",
+];
+
+async fn exact_migration_history(
+	client: &Client,
+	expected_names: &[&str],
+) -> Result<Vec<(i32, String, String)>, tokio_postgres::Error> {
+	let history = client
+		.query(
+			"SELECT version, name, checksum \
+			 FROM public.refinery_schema_history ORDER BY version",
+			&[],
+		)
+		.await?
+		.into_iter()
+		.map(|row| (row.get(0), row.get(1), row.get(2)))
+		.collect::<Vec<_>>();
+
+	assert_eq!(history.len(), expected_names.len());
+	for (index, ((version, name, checksum), expected_name)) in
+		history.iter().zip(expected_names).enumerate()
+	{
+		assert_eq!(*version, i32::try_from(index + 1).expect("migration index fits i32"));
+		assert_eq!(name.as_str(), *expected_name);
+		assert!(!checksum.is_empty());
+	}
+
+	Ok(history)
+}
 
 fn profile(marker: &str) -> RoleProfileConfiguration {
 	RoleProfileConfiguration {
@@ -862,13 +901,7 @@ async fn postgres_v9_to_v10_runtime_session_upgrade() -> Result<(), Box<dyn std:
 	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
 	let (client, connection) = migration.clone().connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	assert_eq!(
-		client
-			.query_one("SELECT max(version) FROM public.refinery_schema_history", &[])
-			.await?
-			.get::<_, i32>(0),
-		9,
-	);
+	exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?;
 	let identities_before: (u32, u32, u32) = {
 		let row = client
 			.query_one(
@@ -882,20 +915,22 @@ async fn postgres_v9_to_v10_runtime_session_upgrade() -> Result<(), Box<dyn std:
 	};
 	drop(client);
 	connection_task.await??;
-	PostgresStore::migrate(migration.clone(), expected_peer_uid()).await?;
+	PostgresStore::migrate_fixture_through_v10(migration.clone(), expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let row = client
 		.query_one(
-			"SELECT max(version), 'decodex.profile_snapshots'::regclass::oid, \
+			"SELECT 'decodex.profile_snapshots'::regclass::oid, \
 			 'decodex.account_snapshots'::regclass::oid, \
-			 'decodex.runtime_sessions'::regclass::oid",
+			 'decodex.runtime_sessions'::regclass::oid, \
+			 to_regclass('decodex.work_items') IS NULL",
 			&[],
 		)
 		.await?;
-	assert_eq!(row.get::<_, i32>(0), 10);
+	exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10).await?;
+	assert!(row.get::<_, bool>(3), "V11 WorkItem relation must be absent at V10");
 	assert_eq!(
-		(row.get::<_, u32>(1), row.get::<_, u32>(2), row.get::<_, u32>(3)),
+		(row.get::<_, u32>(0), row.get::<_, u32>(1), row.get::<_, u32>(2)),
 		identities_before,
 	);
 	drop(client);
@@ -911,6 +946,8 @@ async fn postgres_v10_rejects_classified_runtime_state() -> Result<(), Box<dyn s
 	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
 	let (client, connection) = migration.clone().connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
+	let history_before =
+		exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?;
 	let statement = match variant.as_str() {
 		"profile_snapshot" =>
 			"INSERT INTO decodex.profile_snapshots(profile_snapshot_id,source_profile_id,role,model,reasoning_effort,service_tier,instructions_digest,source_revision) VALUES ('42000000-0000-4000-8000-000000000090','task','task','model','medium','priority',repeat('a',64),1)",
@@ -937,17 +974,28 @@ async fn postgres_v10_rejects_classified_runtime_state() -> Result<(), Box<dyn s
 		_ => return Err(format!("unknown V10 prior-state fixture {variant}").into()),
 	};
 	client.batch_execute(statement).await?;
-	let error = PostgresStore::migrate(migration, expected_peer_uid())
+	let error = PostgresStore::migrate_fixture_through_v10(migration, expected_peer_uid())
 		.await
 		.expect_err("classified V9 RuntimeSession state must reject V10 atomically");
 	assert!(format!("{error:?}").contains("zero incompatible state"));
 	assert_eq!(
-		client
-			.query_one("SELECT max(version) FROM public.refinery_schema_history", &[])
-			.await?
-			.get::<_, i32>(0),
-		9,
+		exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?,
+		history_before,
 	);
+	let v10_schema_absent: bool = client
+		.query_one(
+			"SELECT NOT EXISTS ( \
+			 SELECT 1 FROM pg_catalog.pg_attribute AS attribute \
+			 JOIN pg_catalog.pg_class AS class ON class.oid=attribute.attrelid \
+			 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=class.relnamespace \
+			 WHERE namespace.nspname='decodex' AND class.relname='profile_snapshots' \
+			 AND attribute.attname='instructions' AND attribute.attnum>0 \
+			 AND NOT attribute.attisdropped)",
+			&[],
+		)
+		.await?
+		.get(0);
+	assert!(v10_schema_absent, "V10 profile instructions column must be absent after rejection");
 	drop(client);
 	connection_task.await??;
 	Ok(())
@@ -1008,13 +1056,14 @@ async fn postgres_v10_fences_blocked_old_runtime_writer() -> Result<(), Box<dyn 
 		time::sleep(std::time::Duration::from_millis(10)).await;
 	}
 	assert!(!writer.is_finished(), "old writer must be blocked before V10");
-	PostgresStore::migrate(migration, expected_peer_uid()).await?;
+	PostgresStore::migrate_fixture_through_v10(migration, expected_peer_uid()).await?;
 	admin.query_one("SELECT pg_advisory_unlock(991337)", &[]).await?;
 	let error = writer.await?.expect_err("pre-V10 writer must fail behind the committed fence");
 	assert_eq!(error.code().map(|code| code.code()), Some("42501"));
+	exact_migration_history(&admin, &MIGRATION_NAMES_THROUGH_V10).await?;
 	let fenced: bool = admin
 		.query_one(
-			"SELECT (SELECT max(version)=11 FROM public.refinery_schema_history) \
+			"SELECT to_regclass('decodex.work_items') IS NULL \
 			 AND NOT EXISTS (SELECT 1 FROM decodex.profile_snapshots)",
 			&[],
 		)
@@ -1120,7 +1169,6 @@ async fn postgres_exact_runtime_session_restore() -> Result<(), Box<dyn std::err
 	let valid: bool = client
 		.query_one(
 			"SELECT \
-			 (SELECT max(version)=11 FROM public.refinery_schema_history) AND \
 			 NOT EXISTS (SELECT 1 FROM decodex.exact_command_receipts \
 			  WHERE receipt_state='executing' OR response_bytes IS NULL \
 			  OR convert_from(response_bytes,'UTF8')::jsonb->'effect' IS DISTINCT FROM effect_envelope) AND \

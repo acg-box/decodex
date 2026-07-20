@@ -41,6 +41,13 @@ pub(crate) async fn run_through_v9(client: &mut Client) -> Result<(), StoreError
 }
 
 #[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v10(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(10)).run_async(&mut ***client).await?;
+
+	verify_exact_ledger(client, 10, false).await
+}
+
+#[cfg(feature = "test-support")]
 pub(crate) async fn run_through_v13(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().set_target(Target::Version(13)).run_async(&mut ***client).await?;
 
@@ -75,6 +82,14 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		return Err(StoreError::Incompatible(format!("pgcrypto version {pgcrypto}, expected 1.4")));
 	}
 
+	verify_exact_ledger(client, EXPECTED_LATEST_MIGRATION_VERSION, true).await
+}
+
+async fn verify_exact_ledger(
+	client: &Client,
+	terminal_version: i32,
+	require_embedded_terminal: bool,
+) -> Result<(), StoreError> {
 	let actual = client
 		.query(
 			"SELECT version, name, checksum FROM public.refinery_schema_history ORDER BY version",
@@ -86,16 +101,38 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 
 	expected.sort_by_key(|migration| migration.version());
 
-	if expected.last().map(|migration| migration.version())
-		!= Some(EXPECTED_LATEST_MIGRATION_VERSION)
+	if require_embedded_terminal
+		&& expected.last().map(|migration| migration.version()) != Some(terminal_version)
 	{
 		return Err(StoreError::Incompatible(
 			"embedded migration inventory does not end at the canonical V21 ledger".into(),
 		));
 	}
+	expected.retain(|migration| migration.version() <= terminal_version);
+	if expected.last().map(|migration| migration.version()) != Some(terminal_version) {
+		return Err(StoreError::Incompatible(format!(
+			"embedded migration inventory does not contain terminal V{terminal_version}"
+		)));
+	}
+	let expected_len = usize::try_from(terminal_version).map_err(|_| {
+		StoreError::Incompatible(format!("invalid terminal migration V{terminal_version}"))
+	})?;
+	if expected.len() != expected_len
+		|| expected
+			.iter()
+			.enumerate()
+			.any(|(index, migration)| {
+				migration.version()
+					!= i32::try_from(index + 1).expect("migration prefix index fits i32")
+			})
+	{
+		return Err(StoreError::Incompatible(format!(
+			"embedded migration inventory is not the contiguous V1-V{terminal_version} prefix"
+		)));
+	}
 	if actual.len() != expected.len() {
 		return Err(StoreError::Incompatible(format!(
-			"expected {} migration history entries, found {}",
+			"expected {} migration history entries through V{terminal_version}, found {}",
 			expected.len(),
 			actual.len()
 		)));
@@ -110,8 +147,8 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		if version != expected.version() || name != expected.name() || checksum != expected_checksum
 		{
 			return Err(StoreError::Incompatible(format!(
-				"migration history entry {} does not match the embedded migration",
-				index + 1
+				"migration history entry {} through V{terminal_version} does not match the embedded migration",
+				index + 1,
 			)));
 		}
 	}
