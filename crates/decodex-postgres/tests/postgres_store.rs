@@ -1348,8 +1348,16 @@ async fn assert_concurrent_hierarchy_serialization(
 	let (client_b, connection_b) = runtime.clone().connect(NoTls).await?;
 	let connection_a = tokio::spawn(connection_a);
 	let connection_b = tokio::spawn(connection_b);
-	let profile = "42000000-0000-4000-8000-000000000001";
-	let account = "43000000-0000-4000-8000-000000000001";
+	let snapshot_ids = setup
+		.query_one(
+			"SELECT profile_snapshot_id::text,account_snapshot_id::text \
+			 FROM decodex.runtime_sessions \
+			 WHERE runtime_session_id='41000000-0000-4000-8000-000000000001'::uuid",
+			&[],
+		)
+		.await?;
+	let profile = snapshot_ids.get::<_, String>(0);
+	let account = snapshot_ids.get::<_, String>(1);
 	let session = |suffix: u8| format!("49100000-0000-4000-8000-{suffix:012x}");
 	let turn = |suffix: u8| format!("49200000-0000-4000-8000-{suffix:012x}");
 	let artifact = |suffix: u8| format!("49300000-0000-4000-8000-{suffix:012x}");
@@ -1420,14 +1428,14 @@ async fn assert_concurrent_hierarchy_serialization(
 	setup.execute(&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000009','{}',1,'assistant')", turn(9), session(9)), &[]).await?;
 
 	assert_concurrent_history_positions(setup, &client_a, &client_b, &turn(9)).await?;
-	assert_cursor_capacity_and_retention(setup, &client_a, &client_b, profile, account).await?;
+	assert_cursor_capacity_and_retention(setup, &client_a, &client_b, &profile, &account).await?;
 	assert_mixed_history_artifact_lock_order(store, setup).await?;
 	assert_executor_prelock_order(setup, &client_a, &client_b).await?;
 	assert_receipt_precedes_hierarchy(store, setup, &client_a).await?;
 	assert_transition_writer_lock_order(store, setup, &client_a).await?;
 	assert_typed_mixed_operation_progress(store, setup).await?;
 	assert_direct_transition_cursor_lock_order(store, setup, &client_a).await?;
-	assert_global_cursor_capacity_and_expiry(store, setup, &client_a, profile, account).await?;
+	assert_global_cursor_capacity_and_expiry(store, setup, &client_a, &profile, &account).await?;
 	drop(client_a);
 	drop(client_b);
 
@@ -1925,6 +1933,16 @@ async fn seed_lock_order_fixture(
 	let artifact_id = ArtifactId::new(format!("49300000-0000-4000-8000-{suffix:012x}"))?;
 	let bytes = format!("lock-order-artifact-{suffix}").into_bytes();
 	let hash = blob_store.put(&bytes)?;
+	let snapshot_ids = setup
+		.query_one(
+			"SELECT profile_snapshot_id::text,account_snapshot_id::text \
+			 FROM decodex.runtime_sessions \
+			 WHERE runtime_session_id='41000000-0000-4000-8000-000000000001'::uuid",
+			&[],
+		)
+		.await?;
+	let profile = snapshot_ids.get::<_, String>(0);
+	let account = snapshot_ids.get::<_, String>(1);
 
 	setup
 		.execute(
@@ -1939,8 +1957,7 @@ async fn seed_lock_order_fixture(
 			 VALUES ('{conversation_id}','mixed lock fixture'); \
 			 INSERT INTO decodex.runtime_sessions \
 			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) \
-			 VALUES ('{session_id}','{conversation_id}','42000000-0000-4000-8000-000000000001', \
-			 '43000000-0000-4000-8000-000000000001','active'); \
+			 VALUES ('{session_id}','{conversation_id}','{profile}','{account}','active'); \
 			 INSERT INTO decodex.turns \
 			 (turn_id,conversation_id,runtime_session_id,sequence,role) \
 			 VALUES ('{turn_id}','{conversation_id}','{session_id}',1,'assistant'); \
@@ -7661,7 +7678,30 @@ async fn assert_transition_proposal_and_session_terminalization(
 	client.execute("INSERT INTO decodex.conversations (conversation_id,title) VALUES ('40000000-0000-4000-8000-000000000099','Other conversation')", &[]).await?;
 
 	assert!(client.batch_execute("INSERT INTO decodex.transition_proposals (transition_id,conversation_id,from_runtime_session_id,context_pack_id,kind,reason) VALUES ('47000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','41000000-0000-4000-8000-000000000001','46000000-0000-4000-8000-000000000001','fallback','cross conversation')").await.is_err());
-	assert!(client.batch_execute("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('41000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','42000000-0000-4000-8000-000000000001','43000000-0000-4000-8000-000000000001','ended')").await.is_err());
+	let session_snapshots = client
+		.query_one(
+			"SELECT profile_snapshot_id::text,account_snapshot_id::text \
+			 FROM decodex.runtime_sessions WHERE runtime_session_id=$1::text::uuid",
+			&[&fixture.session_a_id.as_str()],
+		)
+		.await?;
+	let profile_snapshot_id = session_snapshots.get::<_, String>(0);
+	let account_snapshot_id = session_snapshots.get::<_, String>(1);
+	let invalid_initial_state = client
+		.execute(
+			"INSERT INTO decodex.runtime_sessions \
+			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) \
+			 VALUES ('41000000-0000-4000-8000-000000000099', \
+			 '40000000-0000-4000-8000-000000000099',$1::text::uuid,$2::text::uuid,'ended')",
+			&[&profile_snapshot_id, &account_snapshot_id],
+		)
+		.await
+		.expect_err("a RuntimeSession cannot be inserted initially terminal");
+	assert_eq!(
+		invalid_initial_state.as_db_error().map(tokio_postgres::error::DbError::message),
+		Some("illegal initial runtime session state"),
+		"terminal-state rejection must come from the RuntimeSession invariant",
+	);
 	assert!(matches!(
 		store
 			.transition_runtime_session(

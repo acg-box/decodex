@@ -74,12 +74,16 @@ async fn stored_response(client: &Client, key: &str) -> Result<Vec<u8>, tokio_po
 }
 
 fn success(
+	phase: &str,
+	key: &str,
 	value: RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>,
 ) -> RuntimeSessionCommandEffect {
-	let RuntimeSessionCommandOutcome::Success(effect) = value else {
-		panic!("exact RuntimeSession command must succeed")
-	};
-	effect
+	match value {
+		RuntimeSessionCommandOutcome::Success(effect) => effect,
+		RuntimeSessionCommandOutcome::Rejected(rejection) => {
+			panic!("exact RuntimeSession {phase} command {key:?} was rejected: {rejection:?}")
+		},
+	}
 }
 
 struct CreatedSessionFixture {
@@ -98,7 +102,11 @@ async fn assert_creation_command(
 		"43000000-0000-4000-8000-000000000001",
 		"one",
 	)?;
-	let created = success(store.create_runtime_session("session-create", &create).await?);
+	let created = success(
+		"creation",
+		"session-create",
+		store.create_runtime_session("session-create", &create).await?,
+	);
 	assert_eq!(created.prior_state, None);
 	assert_eq!(created.prior_revision, None);
 	assert_eq!(created.new_state, RuntimeSessionState::Starting);
@@ -191,6 +199,8 @@ async fn assert_transition_command(
 	create: &CreateRuntimeSession,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let transitioned = success(
+		"transition",
+		"session-active",
 		store
 			.transition_runtime_session(
 				"session-active",
@@ -284,6 +294,8 @@ async fn assert_profile_snapshot_race(
 		"four",
 	)?;
 	let after_update = success(
+		"post-profile-update creation",
+		"session-after-profile-update",
 		store.create_runtime_session("session-after-profile-update", &after_update_request).await?,
 	);
 	assert_eq!(before_update.source_revision, 1);
@@ -302,43 +314,71 @@ async fn assert_profile_snapshot_race(
 		.get(0);
 	assert!(preserved);
 
-	let mut profile_race = JoinSet::new();
-	for index in 0..24 {
-		let store = store.clone();
-		let conversation_id = conversation_id.clone();
-		profile_race.spawn(async move {
-			let identity = index + 100;
-			let create = creation(
-				&format!("41000000-0000-4000-8000-{identity:012x}"),
-				&conversation_id,
-				&format!("43000000-0000-4000-8000-{identity:012x}"),
-				&format!("profile-race-{index}"),
-			)?;
-			store.create_runtime_session(&format!("session-profile-race-{index}"), &create).await
-		});
-	}
+	client.batch_execute("BEGIN").await?;
+	let locked_revision: i64 = client
+		.query_one(
+			"SELECT current_revision FROM decodex.role_profiles \
+			 WHERE role='task' FOR SHARE",
+			&[],
+		)
+		.await?
+		.get(0);
+	assert_eq!(locked_revision, 2);
 	let updating_store = store.clone();
 	let profile_update = tokio::spawn(async move {
 		updating_store
 			.update_role_profile("task-v3", RoleProfileRole::Task, 2, &profile("task-v3"))
 			.await
 	});
-	while let Some(result) = profile_race.join_next().await {
-		let effect = success(result??);
-		let snapshot = effect.runtime_session.profile_snapshot;
-		match snapshot.source_revision {
-			2 => {
-				assert_eq!(snapshot.model, "gpt-5.6-task-v2");
-				assert_eq!(snapshot.instructions, "Immutable XY-1337 task-v2 instructions.");
-			},
-			3 => {
-				assert_eq!(snapshot.model, "gpt-5.6-task-v3");
-				assert_eq!(snapshot.instructions, "Immutable XY-1337 task-v3 instructions.");
-			},
-			other => panic!("profile race selected unexpected revision {other}"),
-		}
+	tokio::task::yield_now().await;
+	assert!(!profile_update.is_finished(), "profile update must wait behind the fixture lock");
+
+	let mut profile_race = JoinSet::new();
+	for index in 0..24 {
+		let store = store.clone();
+		let conversation_id = conversation_id.clone();
+		profile_race.spawn(async move {
+			let identity = index + 100;
+			let key = format!("session-profile-race-{index}");
+			let create = creation(
+				&format!("41000000-0000-4000-8000-{identity:012x}"),
+				&conversation_id,
+				&format!("43000000-0000-4000-8000-{identity:012x}"),
+				&format!("profile-race-{index}"),
+			)?;
+			let outcome = store.create_runtime_session(&key, &create).await?;
+			Ok::<_, StoreError>((key, outcome))
+		});
 	}
+	while let Some(result) = profile_race.join_next().await {
+		let (key, outcome) = result??;
+		let effect = success("profile-snapshot race creation", &key, outcome);
+		let snapshot = effect.runtime_session.profile_snapshot;
+		assert_eq!(snapshot.source_revision, 2);
+		assert_eq!(snapshot.model, "gpt-5.6-task-v2");
+		assert_eq!(snapshot.instructions, "Immutable XY-1337 task-v2 instructions.");
+	}
+	assert!(!profile_update.is_finished(), "profile update must remain blocked during the race");
+	client.batch_execute("COMMIT").await?;
 	assert!(matches!(profile_update.await??, RoleProfileCommandOutcome::Success(_)));
+
+	let after_race_request = creation(
+		"41000000-0000-4000-8000-000000000200",
+		conversation_id,
+		"43000000-0000-4000-8000-000000000200",
+		"after-profile-race",
+	)?;
+	let after_race = success(
+		"post-profile-race creation",
+		"session-after-profile-race",
+		store.create_runtime_session("session-after-profile-race", &after_race_request).await?,
+	);
+	assert_eq!(after_race.runtime_session.profile_snapshot.source_revision, 3);
+	assert_eq!(after_race.runtime_session.profile_snapshot.model, "gpt-5.6-task-v3");
+	assert_eq!(
+		after_race.runtime_session.profile_snapshot.instructions,
+		"Immutable XY-1337 task-v3 instructions."
+	);
 	Ok(())
 }
 
