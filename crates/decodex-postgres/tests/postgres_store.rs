@@ -693,7 +693,7 @@ async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error:
 			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
 			  FROM information_schema.columns WHERE table_schema='decodex' \
 			  AND table_name='quota_windows' AND column_name='window_class'), \
-				 (SELECT count(*)=20 FROM public.refinery_schema_history)",
+				 (SELECT count(*)=21 FROM public.refinery_schema_history)",
 			&[],
 		)
 		.await?;
@@ -2693,6 +2693,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 		"waiting_usage_wakes",
 		"waiting_usage_wake_time_authority",
 		"constraint_restore_canonicalization",
+		"runtime_session_event_reference_authority",
 	];
 	assert_eq!(history.len(), expected_history.len());
 	for (index, ((version, name, checksum), expected_name)) in

@@ -124,7 +124,7 @@ non-internal trigger bindings, including regular and deferred constraint trigger
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V14. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V21. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
@@ -165,7 +165,7 @@ remain generic. Authority digest changes use two explicit phases. Phase A's capt
 source S0, first restore R1, and second restore R2 without constructing `PostgresStore`, and
 uses the same canonical non-digest semantic authority verifier as production readiness at every
 checkpoint. It atomically publishes a versioned summary receipt only when the mismatch array is the
-exact ordered subset of V20's schema-contract digest followed by the configured-authority digest:
+exact ordered subset of the post-V21 schema-contract digest followed by the configured-authority digest:
 zero, either singleton, or both in canonical order. Unrelated, duplicate, or reordered mismatches
 fail closed. Semantic predicates, ledger, binding, identity, and both S0=R1 and R1=R2 restore edges
 remain intact. Raw manifests
@@ -536,7 +536,16 @@ identities. One access-exclusive fence rejects every legacy RuntimeSession recei
 session, Turn, or structurally classified activity/outbox row before altering the empty tables.
 Classification closes aggregate, event, effect, link, and payload representations recursively,
 including legacy `runtime_session_recorded` events under another aggregate and nested aggregate
-markers; the steady-state trigger applies the same fail-closed family.
+markers. Forward-only V21 replaces only the steady-state function behind the existing trigger
+bindings: scalar `runtime_session_id`, `profile_snapshot_id`, and `account_snapshot_id` values are
+foreign provenance references and do not claim event ownership by themselves. RuntimeSession
+aggregate/event/kind markers, complete `runtime_session`/`runtime_session_snapshot`,
+`profile_snapshot`, or `account_snapshot` objects, structurally complete canonical session or
+snapshot field sets under any other key, and outbox links to activity carrying any of those
+ownership shapes remain reserved. Runtime callers may therefore publish canonical
+cross-domain activity such as HistoryItem provenance, but cannot forge RuntimeSession activity or
+outbox authority; delivery-only updates to an already reserved outbox row remain permitted while
+its immutable authority fields are unchanged.
 Creation accepts only the RuntimeSession and Conversation identities, one role, the complete
 non-secret account snapshot identity/facts, nullable Codex thread identity, and initial state.
 PostgreSQL acquires hierarchy coordinator 1271 before selecting or locking an open Conversation or
