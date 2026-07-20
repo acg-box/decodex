@@ -797,7 +797,7 @@ BEGIN
 			FROM decodex.routing_decision_capability_refs AS capability
 			JOIN decodex.routing_decision_member_refs AS member USING(decision_id,account_id)
 			WHERE capability.decision_id=decision_uuid),
-		'exclusions',(SELECT pg_catalog.coalesce(pg_catalog.jsonb_agg(
+		'exclusions',(SELECT COALESCE(pg_catalog.jsonb_agg(
 			pg_catalog.to_jsonb(exclusion)-'decision_id' ORDER BY member_position,window_class),'[]'::jsonb)
 			FROM decodex.routing_decision_exclusions AS exclusion WHERE decision_id=decision_uuid));
 	effect:=core||pg_catalog.jsonb_build_object('effect_digest_source',core::text,'effect_digest',

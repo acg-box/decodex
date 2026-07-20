@@ -614,7 +614,7 @@ async fn assert_v19_catalog_authority(
 				"AND proparallel='u' AND proconfig=ARRAY['search_path=pg_catalog, decodex']) ",
 				"FROM internal),(SELECT bool_and(NOT pg_catalog.has_function_privilege(",
 				"$1,oid,'EXECUTE')) FROM internal),(SELECT NOT EXISTS (SELECT 1 FROM internal ",
-				"CROSS JOIN LATERAL pg_catalog.aclexplode(pg_catalog.coalesce(proacl,",
+				"CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(proacl,",
 				"pg_catalog.acldefault('f',proowner))) AS acl WHERE acl.privilege_type='EXECUTE' ",
 				"AND acl.grantee<>internal.proowner)),(SELECT count(*)=4 AND bool_and(prosecdef ",
 				"AND pronargs=CASE proname WHEN 'register_waiting_usage_wake_exact' THEN 5 ",
