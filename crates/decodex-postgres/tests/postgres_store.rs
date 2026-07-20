@@ -1545,6 +1545,38 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the isolated PostgreSQL 18 missing-extension harness"]
+async fn postgres_store_missing_pgcrypto_is_incompatible(
+) -> Result<(), Box<dyn std::error::Error>> {
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let live =
+		PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (client, connection) = migration.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+
+	client.batch_execute("DROP EXTENSION pgcrypto CASCADE").await?;
+
+	assert!(matches!(live.revalidate().await, Err(StoreError::Incompatible(_))));
+
+	let pgcrypto_absent: bool = client
+		.query_one(
+			"SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_extension \
+			 WHERE extname='pgcrypto')",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(pgcrypto_absent);
+
+	live.close();
+	drop(client);
+	connection_task.await??;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the isolated PostgreSQL 18 restart harness"]
 async fn postgres_blob_session_restart_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let sync = PathBuf::from(env::var("DECODEX_TEST_BLOB_RESTART_SYNC")?);
@@ -9126,12 +9158,6 @@ async fn assert_incompatible_history_fails_closed(
 			&[],
 		)
 		.await?;
-	live.revalidate().await?;
-	client.batch_execute("DROP EXTENSION pgcrypto CASCADE").await?;
-
-	assert!(matches!(live.revalidate().await, Err(StoreError::Incompatible(_))));
-
-	client.batch_execute("CREATE EXTENSION pgcrypto").await?;
 	live.revalidate().await?;
 	live.close();
 
