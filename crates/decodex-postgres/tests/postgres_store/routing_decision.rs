@@ -225,17 +225,19 @@ async fn assert_selected_routing_decision(
 	);
 	let closed_selected = owner
 		.query_one(
-			"SELECT pg_catalog.string_agg(member.position::text||':'||snapshot.disposition::text,','\
-			 ORDER BY member.position)='1:excluded,2:included,3:excluded,4:excluded',\
-			 (SELECT count(*) FROM decodex.routing_decision_quota_refs AS quota\
-			  WHERE quota.decision_id=member.decision_id)=8,\
-			 (SELECT count(*) FROM decodex.routing_decision_capability_refs AS capability\
-			  WHERE capability.decision_id=member.decision_id)=32\
-			 FROM decodex.routing_decision_member_refs AS member\
-			 JOIN decodex.routing_snapshot_members AS snapshot\
-			  ON snapshot.snapshot_id=member.snapshot_id\
-			  AND snapshot.account_id=member.account_id AND snapshot.position=member.position\
-			 WHERE member.decision_id=$1::text::uuid GROUP BY member.decision_id",
+			concat!(
+				"SELECT pg_catalog.string_agg(member.position::text||':'||snapshot.disposition::text,','",
+				"ORDER BY member.position)='1:excluded,2:included,3:excluded,4:excluded',",
+				"(SELECT count(*) FROM decodex.routing_decision_quota_refs AS quota ",
+				"WHERE quota.decision_id=member.decision_id)=8,",
+				"(SELECT count(*) FROM decodex.routing_decision_capability_refs AS capability ",
+				"WHERE capability.decision_id=member.decision_id)=32 ",
+				"FROM decodex.routing_decision_member_refs AS member ",
+				"JOIN decodex.routing_snapshot_members AS snapshot ",
+				"ON snapshot.snapshot_id=member.snapshot_id ",
+				"AND snapshot.account_id=member.account_id AND snapshot.position=member.position ",
+				"WHERE member.decision_id=$1::text::uuid GROUP BY member.decision_id",
+			),
 			&[&selected.decision_id],
 		)
 		.await?;
@@ -779,12 +781,14 @@ pub(super) async fn assert_restored_routing_contract(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let row = client
 		.query_one(
-			"SELECT (SELECT count(*) FROM decodex.routing_decisions WHERE kind='selected')=7,\
-			 (SELECT count(*) FROM decodex.routing_decisions WHERE kind='waiting_usage')=3,\
-			 (SELECT count(*) FROM decodex.routing_decisions WHERE kind='no_route')=1,\
-			 (SELECT count(DISTINCT duration_minutes) FROM decodex.routing_decision_exclusions\
-			  WHERE decision_id=(SELECT decision_id FROM decodex.routing_decisions\
-			  WHERE operation_id=$1::text::uuid))=2",
+			concat!(
+				"SELECT (SELECT count(*) FROM decodex.routing_decisions WHERE kind='selected')=7,",
+				"(SELECT count(*) FROM decodex.routing_decisions WHERE kind='waiting_usage')=3,",
+				"(SELECT count(*) FROM decodex.routing_decisions WHERE kind='no_route')=1,",
+				"(SELECT count(DISTINCT duration_minutes) FROM decodex.routing_decision_exclusions ",
+				"WHERE decision_id=(SELECT decision_id FROM decodex.routing_decisions ",
+				"WHERE operation_id=$1::text::uuid))=2",
+			),
 			&[&uuid(0xe1, 17)],
 		)
 		.await?;
