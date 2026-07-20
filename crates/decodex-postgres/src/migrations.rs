@@ -251,9 +251,7 @@ mod tests {
 					&& POSTGRESQL_SYNTAX_CONSTRUCTS
 						.iter()
 						.any(|construct| name.eq_ignore_ascii_case(construct)) =>
-				{
-					Some(*name)
-				},
+					Some(*name),
 				_ => None,
 			})
 			.collect()
