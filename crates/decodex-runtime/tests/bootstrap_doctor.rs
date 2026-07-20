@@ -3,8 +3,7 @@
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
-#[cfg(unix)]
-use std::os::unix::net::UnixListener;
+#[cfg(unix)] use std::os::unix::net::UnixListener;
 use std::{
 	env,
 	fs::{self, OpenOptions, Permissions},
