@@ -320,8 +320,9 @@ async fn assert_transition_command(
 type ProfileRaceCreatorTask = tokio::task::JoinHandle<
 	Result<RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>, StoreError>,
 >;
-type ProfileRaceUpdaterTask =
-	tokio::task::JoinHandle<Result<RoleProfileCommandOutcome, StoreError>>;
+type ProfileRaceUpdaterTask = tokio::task::JoinHandle<
+	Result<RoleProfileCommandOutcome<decodex_postgres::RoleProfileRevision>, StoreError>,
+>;
 
 struct ProfileSnapshotRaceFixture {
 	observer: Client,
@@ -333,7 +334,7 @@ struct ProfileSnapshotRaceFixture {
 
 struct ProfileSnapshotRaceOutcome {
 	creator_outcome: RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>,
-	profile_update: RoleProfileCommandOutcome,
+	profile_update: RoleProfileCommandOutcome<decodex_postgres::RoleProfileRevision>,
 }
 
 async fn install_profile_snapshot_race_fixture(
@@ -479,8 +480,8 @@ async fn orchestrate_profile_snapshot_race(
 		.as_mut()
 		.ok_or(std::io::Error::other("creator task was not installed"))?;
 	let creator_join = time::timeout(std::time::Duration::from_secs(5), creator_task)
-	.await
-	.map_err(|_| std::io::Error::other("RuntimeSession creator did not finish"))?;
+		.await
+		.map_err(|_| std::io::Error::other("RuntimeSession creator did not finish"))?;
 	fixture.creator_task.take();
 	let creator_outcome = creator_join??;
 	let updater_task = fixture
@@ -488,8 +489,8 @@ async fn orchestrate_profile_snapshot_race(
 		.as_mut()
 		.ok_or(std::io::Error::other("updater task was not installed"))?;
 	let updater_join = time::timeout(std::time::Duration::from_secs(5), updater_task)
-	.await
-	.map_err(|_| std::io::Error::other("RoleProfile updater did not finish"))?;
+		.await
+		.map_err(|_| std::io::Error::other("RoleProfile updater did not finish"))?;
 	fixture.updater_task.take();
 	let profile_update = updater_join??;
 	Ok(ProfileSnapshotRaceOutcome { creator_outcome, profile_update })
