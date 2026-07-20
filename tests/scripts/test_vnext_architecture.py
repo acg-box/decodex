@@ -41,6 +41,20 @@ def _strip_sql_prose(source):
     return re.sub(r"'(?:''|[^'])*'", "''", source, flags=re.DOTALL)
 
 
+def _rust_braced_body_after(source, marker):
+    start = source.index(marker) + len(marker)
+    opening = source.index("{", start)
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[opening + 1 : index]
+    raise AssertionError(f"unclosed Rust body after {marker}")
+
+
 def forbidden_goal_contracts(source, suffix, ownership="active_vnext"):
     """Return product Goal authority, not ordinary prose or bounded external ownership."""
     if ownership in {"frozen_legacy", "external_codex_adapter"}:
@@ -491,6 +505,81 @@ class VnextArchitectureTests(unittest.TestCase):
             "codex process",
         ):
             self.assertNotIn(live_token, migration)
+
+    def test_v16_decision_and_v17_handoff_have_one_disabled_runtime_path(self):
+        core_routing = _strip_rust_prose(
+            (ROOT / "crates/decodex-core/src/routing.rs").read_text()
+        )
+        postgres_routing = _strip_rust_prose(
+            (ROOT / "crates/decodex-postgres/src/routing_decisions.rs").read_text()
+        )
+        orchestration = _strip_rust_prose(
+            (ROOT / "crates/decodex-runtime/src/routing_orchestration.rs").read_text()
+        )
+
+        self.assertEqual(core_routing.count("fn decide_routing"), 1)
+        self.assertEqual(postgres_routing.count("decide_routing("), 1)
+        runtime_invokers = {
+            path.relative_to(ROOT).as_posix()
+            for path in (ROOT / "crates/decodex-runtime/src").rglob("*.rs")
+            if ".route_account(" in _strip_rust_prose(path.read_text())
+        }
+        self.assertEqual(
+            runtime_invokers,
+            {"crates/decodex-runtime/src/routing_orchestration.rs"},
+        )
+        self.assertIn("struct DisabledRoutingOrchestration", orchestration)
+
+        selected = _rust_braced_body_after(
+            orchestration, "RoutingDecisionKind::Selected =>"
+        )
+        waiting = _rust_braced_body_after(
+            orchestration, "RoutingDecisionKind::WaitingUsage =>"
+        )
+        no_route = _rust_braced_body_after(
+            orchestration, "RoutingDecisionKind::NoRoute =>"
+        )
+        self.assertIn("plan_selected", selected)
+        self.assertNotIn("plan_selected", waiting)
+        self.assertNotIn("plan_selected", no_route)
+        self.assertIn("WaitingUsageHandoff", waiting)
+        self.assertNotIn("WaitingUsageWake", waiting)
+
+    def test_routing_freeze_introduces_no_live_consumer_or_v18_composition(self):
+        isolated_roots = (
+            ROOT / "crates/decodex-protocol/src",
+            ROOT / "crates/decodex-codex/src",
+            ROOT / "apps/decodexd/src",
+            ROOT / "apps/decodex-cli/src",
+            ROOT / "apps/decodex-gpui/src",
+        )
+        isolated_source = "\n".join(
+            _strip_rust_prose(path.read_text())
+            for root in isolated_roots
+            for path in sorted(root.rglob("*.rs"))
+        )
+        for identifier in (
+            "DisabledRoutingOrchestration",
+            "RouteAccount",
+            "RoutingDecisionSnapshot",
+            "PlanContinuation",
+            "WaitingUsageHandoff",
+            "WaitingUsageWake",
+        ):
+            self.assertNotIn(identifier, isolated_source)
+
+        runtime_source = "\n".join(
+            _strip_rust_prose(path.read_text())
+            for path in sorted((ROOT / "crates/decodex-runtime/src").rglob("*.rs"))
+        )
+        for identifier in (
+            "RegisterWaitingUsageWake",
+            "ClaimDueWaitingUsageWake",
+            "FireWaitingUsageWake",
+            "CancelWaitingUsageWake",
+            "WaitingUsageWakeTransition",
+        ):
+            self.assertNotIn(identifier, runtime_source)
 
     def test_program_objective_identity_and_effect_boundaries_are_exact(self):
         core = (ROOT / "crates/decodex-core/src/program.rs").read_text()

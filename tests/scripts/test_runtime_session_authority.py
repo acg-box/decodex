@@ -11,6 +11,10 @@ RUST_API = ROOT / "crates/decodex-postgres/src/runtime_sessions.rs"
 CONVERSATIONS = ROOT / "crates/decodex-postgres/src/conversations.rs"
 AUTHORITY = ROOT / "crates/decodex-postgres/src/authority.rs"
 MIGRATIONS = ROOT / "crates/decodex-postgres/src/migrations.rs"
+FIXTURE = ROOT / "crates/decodex-postgres/tests/postgres_store/runtime_sessions.rs"
+CANONICAL_MIGRATION_NAME = re.compile(
+    r"V([1-9]\d*)__[a-z0-9]+(?:_[a-z0-9]+)*\.sql"
+)
 
 
 class RuntimeSessionAuthorityTests(unittest.TestCase):
@@ -21,14 +25,34 @@ class RuntimeSessionAuthorityTests(unittest.TestCase):
         cls.conversations = CONVERSATIONS.read_text(encoding="utf-8")
         cls.authority = AUTHORITY.read_text(encoding="utf-8")
         cls.migrations = MIGRATIONS.read_text(encoding="utf-8")
+        cls.fixture = FIXTURE.read_text(encoding="utf-8")
 
-    def test_v10_remains_the_zero_state_predecessor_in_the_v12_ledger(self) -> None:
-        versions = sorted(
-            int(path.name.split("__", 1)[0][1:])
-            for path in MIGRATION.parent.glob("V*.sql")
+    def current_migration_versions(self) -> list[int]:
+        migration_files = sorted(
+            path
+            for path in MIGRATION.parent.iterdir()
+            if path.is_file() and path.name.startswith("V")
         )
-        self.assertEqual(versions, list(range(1, 13)))
-        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 12", self.migrations)
+        self.assertTrue(migration_files, "migration ledger must not be empty")
+        versions = []
+        for path in migration_files:
+            match = CANONICAL_MIGRATION_NAME.fullmatch(path.name)
+            self.assertIsNotNone(match, f"noncanonical migration filename: {path.name}")
+            versions.append(int(match.group(1)))
+        self.assertEqual(len(versions), len(set(versions)), "migration versions must be unique")
+        versions.sort()
+        self.assertEqual(versions, list(range(1, versions[-1] + 1)))
+        return versions
+
+    def test_v10_remains_the_zero_state_boundary_in_the_current_ledger(self) -> None:
+        versions = self.current_migration_versions()
+        latest = re.findall(
+            r"(?m)^const EXPECTED_LATEST_MIGRATION_VERSION: i32 = (\d+);$",
+            self.migrations,
+        )
+        self.assertEqual(len(latest), 1)
+        self.assertEqual(int(latest[0]), versions[-1])
+        self.assertEqual(versions[9:11], [10, 11])
         self.assertIn("IN ACCESS EXCLUSIVE MODE", self.migration)
         self.assertIn("runtime_session_v10_zero_state", self.migration)
         self.assertIn("operation IN ('create_runtime_session', 'transition_runtime_session')", self.migration)
@@ -156,10 +180,7 @@ class RuntimeSessionAuthorityTests(unittest.TestCase):
         self.assertIn("stored RuntimeSession UUID is invalid", self.rust_api)
 
     def test_focused_final_gate_fixtures_are_named_without_running_them(self) -> None:
-        fixture = (
-            ROOT
-            / "crates/decodex-postgres/tests/postgres_store/runtime_sessions.rs"
-        ).read_text(encoding="utf-8")
+        fixture = self.fixture
         for fixture_name in (
             "postgres_exact_runtime_session_commands",
             "postgres_exact_runtime_session_atomic_rollback",
