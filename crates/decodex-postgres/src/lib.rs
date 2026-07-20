@@ -5,15 +5,22 @@
 //! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
 //! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
 //! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
-//! managed-repository authority with append-only operations/evidence. It does not select accounts,
-//! route work, store credentials, schedule or advance runs, execute repository effects, or expose
-//! protocol/client behavior.
+//! managed-repository authority with append-only operations/evidence, plus revisioned routing
+//! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
+//! Codex experiment intent/fences/bindings/positive observations, atomic routing decisions, and
+//! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
+//! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
+//! cancellation, supersession, and fresh-routing requests. It does not compose a scheduler,
+//! dispatch work, switch credentials, advance runs,
+//! replay turns or effects, or expose protocol/client behavior.
 
 mod accounts;
 mod authority;
+mod continuations;
 mod conversations;
 mod error;
 mod exact_commands;
+mod experiments;
 mod leases;
 mod managed_repositories;
 mod managed_runs;
@@ -24,18 +31,26 @@ mod programs;
 mod project_agents;
 mod quota;
 mod role_profiles;
+mod routing;
+mod routing_decisions;
 mod runtime_sessions;
 #[cfg(unix)] mod socket;
 mod types;
+mod wakes;
 mod work_items;
 
 pub use self::{
+	continuations::{ContinuationPlanEffect, PlanContinuation},
 	conversations::{
 		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
 		HistoryEntry, HistoryPage, PersistContextPack, ProposeTransition, RecordHistoryItem,
 		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
+	experiments::{
+		BindCodexExperimentThread, CodexExperimentCreationFenceOutcome,
+		FreshCodexExperimentCreation, PrepareCodexExperiment, RecordCodexExperimentObservation,
+	},
 	managed_repositories::{
 		RepositoryAdmissionOutcome, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,
 		RepositoryPreparationOutcome, RepositoryReadbackEvidence, RepositoryReadbackWork,
@@ -51,6 +66,8 @@ pub use self::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
 		RoleProfileRejection, RoleProfileRevision, RoleProfileRole,
 	},
+	routing::{PublishRoutingEvidence, ReplaceRoutingPolicy, RoutingPolicyMemberInput},
+	routing_decisions::{PersistedRoutingDecision, RouteAccount},
 	runtime_sessions::{
 		CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, RuntimeSessionAccountSnapshot,
 		RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionProfileSnapshot,
@@ -61,6 +78,10 @@ pub use self::{
 		HypotheticalFallbackFact, LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState,
 		QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow,
 		QuotaWindowMutation, ReconciliationOutcome,
+	},
+	wakes::{
+		CancelWaitingUsageWake, ClaimDueWaitingUsageWake, FireWaitingUsageWake,
+		RegisterWaitingUsageWake, WaitingUsageWakeClaimEffect,
 	},
 	work_items::{
 		AcceptWorkItem, CreateWorkItem, StoredWorkItem, UpdateWorkItem, WorkItemCommandEffect,
@@ -73,17 +94,18 @@ pub use decodex_core::{
 	AdmittedRepositoryIdentity, Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint,
 	AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
 	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
-	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, EffectId,
-	ExactCommitEvidence, ExactRegistrationEvidence, ExactRepositoryReadbackScope,
-	ExactWorktreeReadyEvidence, ExecutionAssignment, ExecutionAssignmentRole,
-	ExecutorContractVersion, ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId,
-	ManagedRepositoryPhase, ManagedRunError, ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle,
-	ManagedRunPhase, ManagedRunSafetyInput, ManagedRunState, ManagedRunWaitReason,
-	ManagedWorktreeId, NoDispatch, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId,
-	ObjectiveId, ObjectiveState, OperationDescriptorVersion, OperationView, PersistedAbsolutePath,
-	Policy, PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
-	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
-	Program, ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
+	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, ContinuationCommandOutcome,
+	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, EffectId, ExactCommitEvidence,
+	ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
+	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedRepositoryError,
+	ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError,
+	ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
+	ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
+	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
+	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
+	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
+	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence, Program,
+	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
 	ProjectRepositoryBinding, ProjectStatus, RegistrationEvidence, RegistrationReadbackRequest,
@@ -95,10 +117,13 @@ pub use decodex_core::{
 	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
 	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
 	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
-	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SubmittedTurnReceiptId, WorkItem,
-	WorkItemCorrelationId, WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode,
-	WorkItemObjectiveRef, WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState,
-	WorkItemTimestamp, WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
+	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SameThreadContinuationEvidence,
+	SubmittedTurnReceiptId, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
+	WaitingUsageWakeRejection, WaitingUsageWakeState, WaitingUsageWakeTerminalReason,
+	WaitingUsageWakeTransition, WaitingUsageWakeTransitionKind, WorkItem, WorkItemCorrelationId,
+	WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode, WorkItemObjectiveRef,
+	WorkItemPriority, WorkItemProgramRef, WorkItemProvenance, WorkItemState, WorkItemTimestamp,
+	WorktreeReadyEvidence, WorktreeReadyPolicy, WorktreeReadyReadbackRequest,
 };
 pub use quota::parse_quota_timestamp_rfc3339;
 
@@ -107,6 +132,7 @@ use std::{sync::Arc, time::Duration};
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use serde_json::Value;
 #[cfg(test)] use tokio as _;
+#[cfg(feature = "test-support")] use tokio_postgres::Client as TokioClient;
 use tokio_postgres::{Config, config::Host};
 
 #[cfg(unix)] use self::socket::VerifiedSocketConnect;
@@ -166,6 +192,16 @@ impl PostgresStore {
 	#[doc(hidden)]
 	pub fn execution_path_contract_fixture() -> (&'static str, Vec<&'static str>) {
 		authority::execution_path_contract_fixture()
+	}
+
+	/// Evaluate the production non-digest authority predicates for capture-only evidence.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub async fn semantic_authority_fixture(
+		client: &TokioClient,
+		runtime_role: &str,
+	) -> Result<Vec<(&'static str, bool)>, StoreError> {
+		authority::semantic_authority_fixture(client, runtime_role).await
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.
@@ -361,6 +397,64 @@ impl PostgresStore {
 		let pool = Pool::builder(manager).max_size(1).build()?;
 		let mut client = checkout(&pool, &connector).await?;
 		let result = migrations::run_through_v9(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
+	}
+
+	/// Apply the immutable migration ledger only through V10 for isolated acceptance fixtures.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v10(
+		mut config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v10(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
+	}
+
+	/// Apply the immutable migration ledger only through V13 for the V14 authority upgrade proof.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v13(
+		mut config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v13(&mut client).await;
 
 		drop(client);
 

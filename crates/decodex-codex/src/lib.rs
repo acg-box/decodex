@@ -19,6 +19,7 @@
 mod capability;
 mod dispatch;
 mod event;
+mod experiment;
 
 pub use self::{
 	capability::{
@@ -32,6 +33,7 @@ pub use self::{
 		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
 		RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
 	},
+	experiment::{PositiveExperimentFact, PositiveExperimentFactKind, TypedThreadStartResponse},
 	protocol::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, DecodexThreadSearchTerm,
 		ExactThreadFacts, ExactThreadId, ExactThreadListFilter, ExactThreadListResult,

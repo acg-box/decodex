@@ -11,6 +11,27 @@ impl PostgresStore {
 		statement: &str,
 		parameters: &[&(dyn ToSql + Sync)],
 	) -> Result<Vec<u8>, StoreError> {
+		let row = self.execute_exact_row_with_retry(statement, parameters).await?;
+
+		response_bytes(row)
+	}
+
+	pub(crate) async fn execute_exact_with_replay_status(
+		&self,
+		statement: &str,
+		parameters: &[&(dyn ToSql + Sync)],
+	) -> Result<(Vec<u8>, bool), StoreError> {
+		let row = self.execute_exact_row_with_retry(statement, parameters).await?;
+		let replayed: bool = row.get(1);
+
+		Ok((response_bytes(row)?, replayed))
+	}
+
+	async fn execute_exact_row_with_retry(
+		&self,
+		statement: &str,
+		parameters: &[&(dyn ToSql + Sync)],
+	) -> Result<Row, StoreError> {
 		let mut last_retryable = None;
 
 		for _ in 0..MAX_EXACT_ATTEMPTS {
@@ -34,10 +55,8 @@ impl PostgresStore {
 				},
 				Err(error) => return Err(StoreError::from(error)),
 			};
-			let response = response_bytes(row)?;
-
 			match transaction.commit().await {
-				Ok(()) => return Ok(response),
+				Ok(()) => return Ok(row),
 				Err(error) if is_retryable_exact_database_error(&error) => {
 					last_retryable = Some(error);
 				},

@@ -1,6 +1,7 @@
 """Static regressions for the XY-1343 V11 exact WorkItem boundary."""
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -10,6 +11,9 @@ RUST_API = ROOT / "crates/decodex-postgres/src/work_items.rs"
 AUTHORITY = ROOT / "crates/decodex-postgres/src/authority.rs"
 MIGRATIONS = ROOT / "crates/decodex-postgres/src/migrations.rs"
 HARNESS = ROOT / "scripts/vnext/postgres_store_test.py"
+CANONICAL_MIGRATION_NAME = re.compile(
+    r"V([1-9]\d*)__[a-z0-9]+(?:_[a-z0-9]+)*\.sql"
+)
 
 
 class WorkItemAuthorityTests(unittest.TestCase):
@@ -21,13 +25,32 @@ class WorkItemAuthorityTests(unittest.TestCase):
         cls.migrations = MIGRATIONS.read_text(encoding="utf-8")
         cls.harness = HARNESS.read_text(encoding="utf-8")
 
-    def test_v11_remains_the_exact_predecessor_to_v12(self) -> None:
-        versions = sorted(
-            int(path.name.split("__", 1)[0][1:])
-            for path in MIGRATION.parent.glob("V*.sql")
+    def current_migration_versions(self) -> list[int]:
+        migration_files = sorted(
+            path
+            for path in MIGRATION.parent.iterdir()
+            if path.is_file() and path.name.startswith("V")
         )
-        self.assertEqual(versions, list(range(1, 13)))
-        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 12", self.migrations)
+        self.assertTrue(migration_files, "migration ledger must not be empty")
+        versions = []
+        for path in migration_files:
+            match = CANONICAL_MIGRATION_NAME.fullmatch(path.name)
+            self.assertIsNotNone(match, f"noncanonical migration filename: {path.name}")
+            versions.append(int(match.group(1)))
+        self.assertEqual(len(versions), len(set(versions)), "migration versions must be unique")
+        versions.sort()
+        self.assertEqual(versions, list(range(1, versions[-1] + 1)))
+        return versions
+
+    def test_v11_remains_the_exact_predecessor_to_v12_in_the_current_ledger(self) -> None:
+        versions = self.current_migration_versions()
+        latest = re.findall(
+            r"(?m)^const EXPECTED_LATEST_MIGRATION_VERSION: i32 = (\d+);$",
+            self.migrations,
+        )
+        self.assertEqual(len(latest), 1)
+        self.assertEqual(int(latest[0]), versions[-1])
+        self.assertEqual(versions[10:12], [11, 12])
         self.assertIn("WORK_ITEM_MIGRATION", self.authority)
 
     def test_v11_schema_is_a_singleton_pg18_restore_fixed_point(self) -> None:

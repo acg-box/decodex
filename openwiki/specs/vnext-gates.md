@@ -17,9 +17,9 @@ its dependent implementation uses the result.
 
 | Range | Accepted downstream ownership |
 | --- | --- |
-| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its final aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
+| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence, while XY-1304 owns only the final aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence, while XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -103,7 +103,8 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1274 | Exact-microsecond quota persistence, `/2` canonical mutation identity, atomic V8 zero-state migration, and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
 | XY-1275 | Umbrella for user-owned profile persistence and RuntimeSession snapshots. It closes only through the serial XY-1345 -> XY-1346 -> XY-1337 order. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
 | XY-1276 | Production Quick Task creation; remains blocked by XY-1304. |
-| XY-1304 | Final aggregate live-routing gate and separate reviewed enablement amendment only. It owns no migration, policy snapshot, candidate construction, experiment schema, continuation, orchestration, wake lifecycle, or Desktop discovery implementation. |
+| XY-1300 | Later whole-product E2E, fault, UI, packaging, cutover, and release acceptance after XY-1304; no pre-XY-1304 frozen-core gate ownership. |
+| XY-1304 | Live-routing aggregate gate and separate reviewed enablement amendment after XY-1364 frozen-core acceptance. It owns no migration, policy snapshot, candidate construction, experiment schema, continuation, orchestration, wake lifecycle, or Desktop discovery implementation. |
 | XY-1345 | Accepted exact-command authority and isolated PostgreSQL 18 prototype only; no production migration or Rust command path. |
 | XY-1346 | PostgreSQL V9: separate exact receipts plus immutable global RoleProfile bootstrap/update. Starts only after XY-1345 lands. |
 | XY-1337 | Re-bounded RuntimeSession snapshot creation/transition migration, expected V10 after XY-1346. It does not own exact-receipt or RoleProfile redesign. |
@@ -122,15 +123,52 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1357 | One post-freeze natural provider timestamp-precision receipt; no deliberate quota consumption or routing enablement. |
 | XY-1358 | Sole V15 migration owner for causal positive-only Codex experiment authority. |
 | XY-1359 | Sole V16 migration owner plus pure routing kernel and atomic persisted decisions; no dispatch. |
-| XY-1360 | Same-thread continuation and one atomic Context-Pack/RuntimeSession fallback after V16; no migration is pre-reserved. |
+| XY-1360 | Sole V17 migration owner for same-thread continuation and one atomic Context-Pack/RuntimeSession fallback after V16; no dispatch. |
 | XY-1361 | Runtime orchestration over persisted authorities with production dispatch structurally disabled. |
-| XY-1362 | Scheduler-owned `waiting_usage` wake lifecycle and fresh re-resolution; no selection authority. |
+| XY-1362 | Sole V18 migration owner for the inert `waiting_usage` wake lifecycle, plus its forward-only V19 deterministic time-authority repair; no selection or production scheduler authority. |
 | XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. |
+| XY-1364 | Frozen-core integration and acceptance for the checked-in V14-V21 ledger, including the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference repair; production routing remains disabled. |
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
 cannot close the missing account-owned receipt. Existing doctor `unknown(plugin)` is the
 first-release result, and `plugin_unready` remains inert reserved state.
+
+### XY-1356 deferred V14 acceptance inventory
+
+V14 source review precedes executable validation. The frozen integration gate must execute the
+following as one coherent boundary, not as per-command repair loops:
+
+- fresh V1-to-V14 initialization and V13-to-V14 forward upgrade; exact migration ledger,
+  configured-principal ACL, 60-relation, 119-function, and 110-trigger inventories; derivation and
+  binding of the new schema/configured-authority digests; populated dump/restore parity;
+- policy replacement with empty, one-member, and multi-member inventories; every omission,
+  duplicate, foreign member, order gap, account-revision race, accepted-Policy race,
+  RoleProfile race, BuildId mismatch, and same-expected-revision/different-key schedule;
+- evidence publication with the exact eight-capability order and every closed state; account,
+  process, RoleProfile, BuildId, schema-fingerprint, and evidence-revision conflict schedules;
+  explicit rejection of timestamps and causal experiment, plugin, skill, MCP, marketplace,
+  OAuth/login-management, account-configuration, host-file, digest-only, and credential-shaped
+  sources;
+- snapshot resolution under the 1271 -> 1338 -> 1356 coordinator order and fixed SHARE bridge;
+  concurrent account, quota, Policy, RoleProfile, RuntimeSession, ManagedRun, evidence, and
+  inventory writers; resolution-clock capture only after the full lock/recheck set;
+- exact 300-second freshness acceptance and 300-seconds-plus-one-microsecond rejection for
+  account/evidence/quota facts; future facts; negative disabled/auth-failed facts independent of
+  age; exact raw quota timestamp preservation; separate ordered 300/10080 facts;
+- complete policy-order snapshots, one sticky source, exact account/profile snapshot lineage,
+  eight-cell capability matrices, explicit applicability, deterministic blocker arrays, and
+  deferred commit failure for every partial member, quota, matrix, blocker, or evidence child set;
+- byte-identical replay and lost-response recovery for all three operations; same-key changed
+  envelope/operation `DX001`; stable rejection replay after later state changes; rollback at every
+  receipt/domain/child/response boundary; no committed executing receipt;
+- runtime/PUBLIC direct relation, helper, receipt, activity, outbox, trigger, grant, ownership,
+  or DDL denial; EXECUTE only for the three public V14 functions; hostile search path, overload,
+  function-body, trigger-binding, ACL, default-privilege, and extension-dependency substitutions;
+- strict Rust rejection of malformed bytes, unknown/missing/null/defaulted fields, identity
+  duplication/reordering, position gaps, quota-pair or capability-matrix drift, blocker/disposition
+  inconsistency, cross-linked revisions/provenance, and effect-digest mismatch; and proof that V14
+  exposes no account selection, `waiting_usage`, continuation, wake, dispatch, or live enablement.
 
 ### XY-1345 exact-command reset gate
 
@@ -215,11 +253,14 @@ XY-1353 ────────────────────────
 ```
 
 The migration ledger is a singleton serial-writer domain. XY-1349's V13 is accepted on
-`main`. The fixed next order is XY-1356/V14 durable routing-policy authority, then
-XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions. No
-V17 is reserved. XY-1360 may allocate a later migration only if then-current source
-inspection proves additional durable state is required. XY-1350 and the remaining
-managed-repository children retain their accepted non-routing ownership.
+`main`. The checked-in order continues through XY-1356/V14 durable routing-policy authority,
+XY-1358/V15 causal experiment authority, XY-1359/V16 atomic routing decisions, and
+XY-1360/V17 continuation authority. XY-1362 owns the V18 inert `waiting_usage` wake lifecycle;
+V19 is its forward-only deterministic time-authority repair. XY-1364 frozen-core acceptance
+incorporates the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference
+repair. These versions are allocated in source. A later owner may allocate another migration only
+when then-current source inspection proves that additional durable state is required. XY-1350 and
+the remaining managed-repository children retain their accepted non-routing ownership.
 
 No managed-repository implementation executes validation before the integration tree is
 frozen. One complete unified validation runs once on that exact frozen tree. Its concise
@@ -251,10 +292,47 @@ There is no separate checked-in XY-1353 manifest/digest generator. The existing 
 PostgreSQL harness produces and verifies those inventories only as part of the unified frozen-tree
 gate, so source-freeze work must not invent a second generator or execute the harness early.
 When the canonical semantic identity or closure model changes, final acceptance uses two exact
-freezes: one derivation execution first proves dependency closure plus source/restore parity and
-emits the candidate digest; one digest-only source batch binds that receipt; then a new exact frozen
-unified execution validates the bound production constant. A derivation receipt is evidence for the
-digest-only batch, not acceptance evidence for the subsequently bound tree.
+phases. Phase A first proves dependency closure plus S0→R1→R2 source/restore parity and emits an
+immutable candidate receipt whose mismatch array is the exact canonical subset of schema then
+configured authority: zero, either singleton, or both. Phase B runs from the same clean HEAD/tree
+when that array is empty; otherwise it runs from one clean direct child that changes exactly the
+reported digest array or arrays and nothing else. Phase B verifies both source bindings, the
+candidate hash, clean state, mismatch order, and exact transition shape before repeating the full
+capture and emitting a fresh acceptance receipt explicitly bound to Phase A. A derivation or older
+receipt remains provenance only; malformed, substituted, duplicate, or out-of-binding evidence
+cannot attest the Phase B source.
+
+The unified PostgreSQL aggregate is scheduled by one explicit top-level stage graph. Fatal
+configuration/cluster preflight covers mode and arguments, clean source binding, private
+temporary-root setup, PostgreSQL tool discovery, cluster init/start, and base-role creation. Phase
+A/B output and receipt-lineage validation remains direct and outside this graph. Every
+meaningful semantic suite has `passed`, `failed`, or `blocked` state. Expected `TestFailure` blocks
+only declared consumers and leaves independent branches schedulable; dependency consumers never
+run after failure. Required nested restore work is part of its owning suite's outcome: a failed or
+unavailable capture, restore, parity check, or production check prevents owner success and blocks
+its consumers. A private live-doctor mutation SQL executor alone owns ordinary, role-as, and
+secret-bearing mutation process spawn, dispatch/completion facts, output handling, and cleanup; the
+coordinator owns doctor readiness and the doctor child. Every mutation and doctor child receives
+bounded terminate, kill-fallback, and reap attempts across every exit; an unreaped or indeterminate
+child is harness corruption. Mutation probes and restorations are separate stages. Failed ordinary
+`Popen` and secret prelude failure are pre-dispatch and block restoration. Successful ordinary
+`Popen` owns the SQL payload in argv and makes delivery possible. A secret mutation becomes
+may-have-dispatched immediately before its first mutation-frame payload write. Every later write,
+flush, timeout, protocol, nonzero-exit, lost-acknowledgement, semantic, or cleanup failure remains
+restoration-eligible. Successful exit records command acknowledgement only, not exact server
+receipt or a non-vacuous catalog mutation; optional postcondition probes remain separate evidence.
+The scheduler consumes exactly one restoration claim from each shared-fixture attempt. An eligible
+failed probe still attempts restoration, and failed restoration blocks all subsequent shared-fixture
+probes and final evidence.
+Unexpected assertion/key/type failures, corrupt stage/report state, source-binding failure,
+redaction failure, or another unexpected exception stops new work as harness corruption. After a
+private directory is created, its outer cleanup owner covers every later exit and attempts direct
+removal if cluster start was never attempted, reporting removal failure without replacing an
+earlier primary. After a cluster starts, teardown and final report
+emission still run. Aggregate output/report failures are primary only when no earlier failure was
+selected; otherwise cleanup and emission failures are recorded as secondary. Only the normal
+aggregate emits `decodex/postgres-aggregate-stage-report/1`; focused and Phase A/B modes retain
+their direct output and receipt behavior.
 
 Falsifiers are evaluated in this fixed priority order: architecture, then
 stability/recoverability, security/authority, verification, integrity, and performance.
@@ -699,10 +777,10 @@ production routing.
 ### Failed live account-routing enablement gate
 
 The [live gate issue](https://linear.app/hack-ink/issue/XY-1304) remains failed and
-fail-closed. It is only the final aggregate evidence gate and owner of a later separate
-repository-authority enablement amendment. Production routing remains structurally default-
-disabled until XY-1355, V14, V15, V16, continuation, disabled orchestration, scheduler wake,
-natural timestamp evidence, and Desktop discovery have all landed and one post-freeze aggregate
+fail-closed. It follows XY-1364 frozen-core acceptance and owns only the live-routing aggregate
+evidence gate plus a later separate repository-authority enablement amendment. Production routing
+remains structurally default-disabled until XY-1355, V14-V21, disabled orchestration, scheduler
+wake, natural timestamp evidence, and Desktop discovery have all landed and the XY-1304 aggregate
 gate passes.
 
 The required dependency order is:
@@ -719,8 +797,10 @@ XY-1359 -> XY-1362 scheduler-owned waiting_usage wake lifecycle
 XY-1358 -> XY-1363 retained-title Desktop discovery evidence
 XY-1355 -> XY-1357 natural timestamp precision evidence
 
-all children + XY-1300 unified post-freeze acceptance -> XY-1304 aggregate gate
+all implementation children -> XY-1364 frozen-core acceptance
+XY-1364 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
 -> separate reviewed repository amendment to enable production routing
+-> XY-1300 later whole-product E2E/fault/UI/packaging/cutover acceptance
 ```
 
 The aggregate gate must bind one exact source tree and prove PostgreSQL-produced complete
@@ -772,15 +852,120 @@ combined experiment/routing schema, and sequential exclusion -> RuntimeSession -
 composition are superseded and must not be revived. Before core freeze, executable validation is
 deferred: no formatter, compile/check/lint, migration or SQL parser, tests or matrices, wrappers or
 generators, PostgreSQL, live experiments, or UI/Accessibility/Desktop checks. After freeze,
-XY-1300 owns one mechanical preflight, one unified complete gate, coherent batched repairs, and one
-final aggregate rerun.
+XY-1364 owns one mechanical preflight, one unified complete core gate, coherent batched repairs,
+and one final aggregate rerun. XY-1304 follows with live-routing evidence and its reviewed
+enablement amendment. XY-1300 then owns the later whole-product E2E, fault, UI, packaging,
+cutover, and release acceptance.
+
+#### XY-1358 deferred acceptance matrix
+
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It must run against
+one exact tree and may not enable a live experiment while collecting evidence.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Preparation and crash | Crash before preparation leaves no authority; crash after preparation leaves only `prepared`; a ManagedRun or RuntimeSession advance after preparation makes the pre-effect fence reject without revision 2; crash after the committed pre-effect fence leaves terminal `creation_possible` and cannot authorize another create. |
+| Lost response and replay | A discarded successful command response replays byte-identically, while replay of the pre-effect fence is typed only as ambiguity and cannot recreate its private fresh permission; a lost app-server creation response never retries creation, searches broadly, adopts a thread, or converts ambiguity to absence. |
+| Exact typed binding | Wrong attempt, experiment, marker, title, cwd, ephemeral flag, response ID, reused thread ID, or immutable V14 snapshot/run-revision lineage is rejected atomically; one exact response binds once. Later ManagedRun revision advances preserve that immutable historical provenance. |
+| Positive observations | Exact list/read/event/message facts append once with owned experiment, revision, thread, marker, source ID, digest, and database clock; malformed or cross-thread facts fail closed. |
+| Lossy readback | Empty pages, pagination exhaustion, list omission, missing events, truncated history, stale caches, and incomplete readback persist no negative fact and cannot prove absence, completion, failure, or recreate authority. |
+| Exact-command recovery | Same envelope/key replays stored bytes; changed envelope/key conflicts; aborts at receipt/domain/history completion roll back; no executing receipt commits. |
+| ACL and hostile catalog | Runtime has only the four V15 command entrypoints plus required enum usage; PUBLIC, direct table writes, helpers, trigger bypass, hostile search path, overloads, default ACL drift, and dump/restore authority drift fail closed. |
+| Production isolation | Reverse dependency inspection proves no production runtime or application reaches a V15 experiment execution root; Codex remains a typed fact adapter and dispatch remains disabled. |
+
+#### XY-1359 deferred acceptance matrix
+
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It binds the V16
+source, migration, configured-authority inventory, schema manifest, and authority digests to one
+exact tree; no case may dispatch work or enable a production consumer.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Deterministic order | Policy order and canonical account identity produce the same selected result across caller reorder, map order, pagination, and timing variation; caller omission, substitution, duplication, or extra candidates cannot alter the PostgreSQL universe. |
+| Sticky eligibility | A sticky account wins only with the same current policy, identity/revision, capability, compatibility, blocker, and exact quota evidence required of every candidate; stale, disabled, auth-failed, incompatible, or depleted sticky accounts cannot bypass blockers. |
+| Duration and precision | 300-minute and 10080-minute facts remain distinct; missing/unsupported duration, unknown/low confidence, malformed raw provenance, non-microsecond precision, and any would-round or would-truncate timestamp fail closed. Exact raw observed/reset text, source identity, evidence revision, and UTC Unix microseconds round-trip unchanged. |
+| Selected exclusions | Every depleted predecessor ahead of the selected member has one normalized account/window exclusion tied to its immutable snapshot fact, observation revision, exact raw timestamps, source, precision, and deterministic `usage_depleted` reason; unrelated blockers are retained as references. |
+| Waiting versus blocked | All otherwise eligible accounts depleted produces only `waiting_usage`, complete per-account/per-window exclusions, per-account maximum readiness, and the exact minimum of those readiness instants. Mixed depletion with unknown, incompatible, disabled, auth-failed, missing-duration, stale, or precision-incompatible evidence produces `no_route`, never a wake-ready decision. |
+| Exact command replay | Same key and envelope replays byte-identical decision/evidence readback; changed operation or envelope conflicts; malformed input is a stable typed rejection; abort, lost response, deadlock, serialization failure, and restart never commit a partial decision, executing receipt, or duplicate effect. |
+| Concurrent authority | Policy, snapshot, account, RoleProfile, capability, compatibility, blocker, quota, or ManagedRun changes before or during resolution either serialize against the complete lock boundary or return a typed stale/concurrent rejection; no mixed-universe decision commits. |
+| Immutability and completeness | Decision, member, quota, capability, blocker, and exclusion rows commit together, are append-only after commit, retain the exact immutable V14 snapshot/run-revision lineage across later ManagedRun advances, and match strict Rust readback plus the pure kernel; missing, reordered, extra, cross-linked, or malformed fields fail closed. |
+| ACL and hostile catalog | Runtime has only the V16 command entrypoint; PUBLIC, direct table writes, private helpers, trigger bypass, hostile search path, overload/default-ACL drift, ownership drift, and dump/restore catalog drift fail closed. Regenerated schema/configured-authority digests match the integrated frozen tree. |
+| Production isolation | Reverse dependency inspection proves only the disabled XY-1361 runtime orchestration invokes exactly one V16 decision per request; no protocol, CLI, daemon, application, scheduler, Codex, credential, or UI production root constructs it. Selected alone may consume one exact V17 plan, while `waiting_usage` yields inert handoff facts for the separately uncomposed V18 wake authority. |
+
+#### XY-1360 deferred acceptance matrix
+
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It binds V10, V12,
+V15, V16, V17, V21, the strict Rust adapter, schema/configured-authority inventories, and
+regenerated digests to one exact integrated tree; no case may dispatch work or enable a production
+consumer.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Decision consumption | Only one persisted `selected` V16 decision identity plus its exact immutable ManagedRun revision lineage is accepted; waiting/no-route, missing, stale, cross-run, substituted, or already-consumed decisions fail closed. Caller candidates, policy, exclusions, selection, evidence, and account facts cannot alter the database-derived lineage, and later ManagedRun advances do not rewrite or orphan the persisted plan. |
+| Same-thread evidence | Exact selected account/revision, build, RoleProfile and source RuntimeSession identity, bound thread, V14 schema/capability profile, and fresh positive V15 thread-read evidence permit exactly one same-thread plan. Unknown, stale, future, negative, mismatched, incomplete, duplicate-experiment, unsupported, noncanonical, or lossy absence evidence produces fallback, never inferred compatibility. |
+| Atomic fallback | Crash before/after blob publication, exact-receipt reservation, source staging, Context-Pack seal, account snapshot, RuntimeSession, plan, activity, outbox, receipt completion, commit, or response loss leaves either no durable fallback state or one complete linked Context Pack + RuntimeSession + plan. No Context Pack-only, RuntimeSession-only, two-session, or V10/V16 two-command orphan is possible. |
+| Cross-domain event references | Canonical HistoryItem and other non-RuntimeSession activity/outbox may carry scalar `runtime_session_id`, `profile_snapshot_id`, or `account_snapshot_id` provenance. RuntimeSession aggregate/event/kind markers, complete RuntimeSession/profile/account snapshot objects under any wrapper, and outbox links to activity carrying those shapes remain migration-owner-only; direct forgery and immutable-authority updates fail, while delivery-only outbox updates remain permitted. A neutral array whose incomplete object elements only collectively contain a complete shape remains allowed; one genuinely complete snapshot object nested in an array remains reserved. |
+| Replay and concurrency | Same key replays exact bytes; a second key with the identical request reads the one stored plan; changed requests conflict or reject. Concurrent decision consumers, Context-Pack revisions, fallback identities, Conversation closure, ManagedRun revision change, and blob reclamation serialize or fail closed without duplicate state. |
+| ManagedRun safety | Conversation and ManagedRun identities remain unchanged. Guarded/closed barrier revision and submitted-turn receipt count are snapshotted; `replay_permitted=false` and `dispatch_enabled=false` remain immutable for no-receipt, stale-receipt, possible-side-effect, unknown-side-effect, diverged, and reconciled fixtures. No turn, tool, repository, worktree, Git, or artifact effect is replayed. |
+| Context-Pack hostile input | Canonical binary header, digest, manifest digest, source order, pinned source, disposition, represented-byte digest, bounds, credential-negative identities, Artifact revision/blob provenance, and inline/offloaded shape round-trip through strict readback. Truncated, reordered, forged, cross-Conversation, credential-shaped, oversized, malformed, and hash/length-conflicting inputs fail closed. |
+| ACL and catalogs | PUBLIC, direct plan DML, helper execution, activity/outbox lineage forgery, trigger bypass, hostile `search_path`, overload/default-ACL drift, ownership drift, restore drift, and surplus runtime privileges fail closed. The exact V17 function, relation, enum, constraint, trigger, dependency, migration, schema, and configured-authority inventories and regenerated digests match. |
+| End to end and isolation | One exact selected decision yields either one same-thread plan or one atomically verified fallback and survives restart readback byte-for-byte. Reverse dependency inspection proves only the disabled XY-1361 runtime orchestration reaches V17 and only after one selected V16 decision; no protocol, daemon, CLI, application, scheduler, credential, Codex, UI, or production composition root constructs it. |
+
+#### XY-1362 V18/V19 deferred acceptance matrix
+
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It binds V10-V21, the
+strict Rust adapter, migration and configured-authority inventories, and regenerated digests to one
+exact integrated tree. It must not enable or compose a production scheduler.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Exact registration and hostile input | Only one persisted V16 `waiting_usage` identity and its exact ManagedRun revision are accepted. Database-derived `earliest_ready_at` round-trips at exact microseconds. Caller timestamps, candidates, quota facts, eligibility, exclusions, accounts, policy bodies, and replacement decisions are absent from the API; missing, selected/no-route, forged, cross-run, malformed, or stale lineage fails closed. |
+| Ledger-first registration and operation identity | One registered transition and one derived head bind the exact decision/run revision. Same-key replay returns stored receipt bytes; the same operation under a new key returns only its immutable registration result after canonical request equality. Retrying registration after later claim/fire cannot acquire later head state. A new operation ID targeting the registered decision, OR/non-strict identity lookup, conflicting reuse, concurrent registrar, or same-run competing decision rejects without aliasing or orphan state. |
+| Deterministic time authority and fairness | Owner-only explicit time proves before/equal/after-ready behavior, including exact-ready claim, equal readiness, microsecond boundaries, and reordered callers while preserving order by earliest-ready instant, registration time, and wake identity. Explicit values outside `0..=253402300739999999`, infinity, registration before locked decision/run authority, and successor time before the locked tip reject without committed mutation. Typed-`NULL` runtime wrappers retain PostgreSQL-authored post-lock sampling and provide no injectable time. Independent account quotas are never pooled, merged, summed, averaged, or caller-ranked. |
+| Transition chain and projection | Every accepted operation appends one immutable transition with the exact predecessor revision/tip and complete result, then atomically advances the head to that exact tip. Forged/skipped predecessors, direct head mutation, projection/ledger inequality, duplicate operation IDs, history rewrites, post-terminal successors, partial activity/outbox clusters, and mutable-head historical readback fail closed. |
+| Lease, crash, and restart | Crash or rollback before/after transition insertion, head advance, activity/outbox insertion, receipt completion, commit, or response loss yields complete cluster absence or one complete command, never a partial cluster. The fixed literal 60-second lease excludes concurrent holders; pre-expiry reclaim rejects, exact expiry appends a reclaim with a new fence, and the old fence and stale tip reject. Strict restart/readback preserves both lease transitions without rewriting history. |
+| Replay, concurrency, and exactly once | Same command key/envelope replays byte-identical bytes; changed envelopes conflict. Cross-key operation replay at a different valid explicit time, including after head movement, verifies the canonical domain request and returns only immutable result bytes. Duplicate fire, cancellation/fire, expiry/fire, and concurrent-holder schedules have the legal outcome multiset with at most one fired transition/request/effect. Stale fences and stale tips reject; no executing receipt or half-written transition/head/activity/outbox cluster commits. |
+| Fire, cancellation, and stale lineage | A valid unexpired leased tip fires once. Explicit cancellation and every ManagedRun, policy, or decision staleness case append the appropriate cause-bound terminal transition and advance the exact head before delivery. Terminal transitions cannot have successors or return to pending/leased, and a stale expected revision/tip or lost lease fence cannot mutate the head. |
+| Fresh resolution only | Fired readback contains one new routing-resolution request identity with `fresh_routing_resolution_only=true`, `prior_decision_reusable=false`, and `production_enabled=false`. Old member order, eligibility universe, quota/capability evidence, exclusions, selected account, V16 decision result, credential, continuation, dispatch, or retry authority cannot be reconstructed or reused from the effect. |
+| ACL, search path, and catalogs | PUBLIC, direct transition/head DML, runtime execution of any V19 internal, private replay/helper execution, inherited or `SET ROLE` time injection, forged predecessor or decision/run/policy lineage, activity/outbox namespace forgery, trigger bypass, hostile `search_path`, overload/default-argument/default-ACL drift, ownership or grant-option drift, relation/enum/constraint/index/function-dependency drift, dump/restore drift, and surplus runtime privileges fail closed. The four exact internal and four exact wrapper bodies/metadata/settings/ACLs, unchanged 51-function runtime allowlist, 73 relations, 67 safety functions, 138 triggers, V1-V21 migration ledger, transition-bound strict readback, and regenerated schema/configured-authority digests match. |
+| End to end and production isolation | Exact V16 wait -> registered transition/head -> claimed or reclaimed transition/head -> one fired transition with a fresh-resolution request survives restart and immutable strict readback; cancellation and every stale case emit no request. No command response is reconstructed from the head. Reverse dependency inspection proves no runtime, protocol, daemon, CLI, Codex, credential, continuation, dispatch, UI, or production composition root imports or invokes V18. XY-1304 remains the sole live gate. |
+
+#### Integrated vNext core freeze deferred acceptance matrix
+
+The `fd1e351` core freeze was reopened for the forward V19 time-authority repair. Forward-only V20
+then canonicalized restore-unstable constraints, and V21 repairs only RuntimeSession event-reference
+classification and its final inventories without changing the trusted command or trigger boundary.
+The current core refreezes at the exact approved V21 tree. This is the single integrated
+source-candidate matrix for the XY-1364 refrozen core. It defines the post-freeze mechanical and
+behavioral gate for the exact integrated candidate. Every result must bind the exact approved
+integration tree and both immutable merge parents; evidence from either parent alone is
+insufficient.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Scheduler timing and fairness | Before, equal, and after exact database-authored readiness; equal-ready deterministic ordering; clock-microsecond edges; bounded acquisition under a large independent-account inventory; no starvation introduced by caller order; and no pooling, merging, summing, averaging, or caller ranking of account quotas. |
+| Crash and partial-transaction boundaries | Crash before or after exact-receipt reservation, V16 decision completion, V17 barrier/plan or fallback publication, V18 transition append, head advance, activity/outbox insertion, receipt completion, commit, and response loss yields either no durable command or one complete authoritative cluster, never a partial plan, wake, projection, effect, activity, or outbox result. |
+| Same-key and cross-key replay | Same protocol key and canonical envelope replays byte-identical stored bytes; changed envelopes conflict. A V17 decision cannot be consumed twice across keys. A V18 operation under a new key verifies canonical request equality and returns only its immutable transition result, never later mutable-head state. |
+| Concurrent lifecycle operations | Concurrent register/register, claim/claim, claim/reclaim, reclaim/reclaim, fire/fire, cancel/cancel, fire/cancel, expiry/fire, and supersede races serialize to one legal append-only chain and exact head tip. Same-run competing V16 decisions cannot alias a wake, and every losing stale tip, claim, fence, or operation identity fails closed. |
+| Lease expiry and restart reclaim | A fixed database-authored lease excludes concurrent holders; pre-expiry reclaim and stale-token fire reject; exact expiry and process restart append one reclaimed transition with a new fence while preserving the prior claim and lease history unchanged. |
+| Stale ManagedRun, decision, and policy lineage | Missing, cross-run, wrong-kind, replaced, or ambiguous V16 decisions; stale ManagedRun revision/lifecycle/wait reason/barrier state; divergence; changed policy head; and substituted requested policy/run provenance reject or append only the cause-bound V18 supersession allowed by the exact current tip. |
+| Terminal fencing | Fired, cancelled, and superseded tips admit no successor, reclaim, refire, recancel, or return to pending/leased. Lost leases, old transitions, forged predecessors, skipped revisions, and mutable-head/ledger inequality cannot mutate authority or reconstruct success. |
+| V17 barrier readback | Same-thread and fallback plans round-trip the exact ManagedRun barrier revision, barrier state, submitted-turn receipt count, and submitted-turn lineage from the committed plan and strict readback. Stale or substituted values fail closed; replay and dispatch remain structurally false. |
+| V16/V17/V18 provenance | Every disabled-orchestration outcome retains the exact requested routing policy and ManagedRun provenance. Exactly one V16 decision exists per request; selected alone consumes its one exact V17 plan; waiting exposes only its decision, ManagedRun revision, and exact earliest-ready handoff; V18 registration derives all remaining decision/policy/run lineage from PostgreSQL. |
+| ACL, search path, catalog, and hostile input | PUBLIC and runtime authority close exactly over the intended V16-V18 entrypoints and enum usage. Direct relation writes, private helpers, trigger bypass, overload/default-ACL/ownership drift, hostile `search_path`, malformed UUID/revision/time/JSON/digest input, forged lineage, relation/enum/constraint/index/dependency drift, and dump/restore drift fail closed. |
+| Exact effect, activity, outbox, and operation readback | Every accepted V17/V18 command binds immutable response/effect bytes, digest source, exact activity sequence/event, outbox identity/effect key, aggregate revision, operation identity, and transition/plan lineage. Missing, extra, reordered, cross-linked, half-written, or head-reconstructed values fail strict readback. |
+| Fresh-resolution behavior | One valid leased V18 fire emits exactly one opaque new routing-resolution request with no old candidate universe, selection, account, eligibility, quota/capability evidence, exclusion, credential, continuation, dispatch, or retry authority; old-decision reuse and production enablement remain structurally false. |
+| Production isolation and protocol vocabulary | Reverse dependencies prove no production root constructs the disabled V16/V17 orchestration and no runtime or application root imports V18. V18 remains scheduler-uncomposed; no dispatch, credentials, Codex mutation, wake execution, replay, live production composition, or new V1 protocol command exists. |
+| Regenerated schema and configured-authority digests | The canonical post-freeze derivation and final bound run agree on the immutable V1-V21 migration ledger, 73 relations, 67 safety functions, 138 triggers, all public-wrapper and internal function source/metadata/signatures/ACLs, enum labels, constraints, indexes, dependencies, schema manifest, configured-authority inventory, and expected digests for the exact refrozen tree. |
+| Representative end-to-end flow | One request persists exactly one V16 result. Selected produces exactly one strict-readback V17 same-thread or atomic fallback plan and remains inert. Waiting produces only handoff facts, then an independently invoked V18 register -> claim or expiry/reclaim -> fire chain yields one immutable fresh-resolution request; cancellation and stale-lineage paths yield none. Restart preserves all readback and no production effect executes. |
 
 
 ## Cutover gate
 
 Cutover may occur only after replacement behavior has accepted tests, XY-1304 has passed
-through explicit repository authority, and the v0.2 inventory is frozen. The accepted
-procedure stops v0.2, verifies the trusted tag/cold
+through explicit repository authority, XY-1300 has accepted the later whole-product E2E, fault,
+UI, packaging, and cutover boundary, and the v0.2 inventory is frozen. The accepted procedure
+stops v0.2, verifies the trusted tag/cold
 backup, initializes empty PostgreSQL state, explicitly recreates selected Projects and
 Automations, and starts only vNext. It imports no legacy execution history and enables no
 dual authority. Removal of old Linear/SQLite/Goal/operator transport follows replacement

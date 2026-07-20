@@ -159,7 +159,7 @@ pub enum RuntimeSessionCommandOutcome<T> {
 }
 
 impl PostgresStore {
-	/// Create one RuntimeSession and both snapshots through the command-complete V10 owner.
+	/// Create one RuntimeSession and both snapshots through the final V12 command definition.
 	pub async fn create_runtime_session(
 		&self,
 		idempotency_key: &str,
@@ -201,7 +201,7 @@ impl PostgresStore {
 		parse_create_response(&response, create)
 	}
 
-	/// Transition one RuntimeSession through the command-complete V10 owner.
+	/// Transition one RuntimeSession through the final V12 command definition.
 	pub async fn transition_runtime_session(
 		&self,
 		idempotency_key: &str,

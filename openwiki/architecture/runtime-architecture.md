@@ -119,29 +119,33 @@ runtime-effective, regardless of `pg_extension.extnamespace`.
 Superuser/BYPASSRLS/role/database administration, database/schema CREATE,
 TRUNCATE/TRIGGER/REFERENCES/MAINTAIN, excess table DML or grant options,
 `session_replication_role` SET/ALTER SYSTEM, and any effective non-`origin` login value are unsafe
-in any reachable authority state. At the V12 boundary, the audit verifies all eighty-four shipped
+in any reachable authority state. At the V14 boundary, the audit verifies all 110 shipped
 non-internal trigger bindings, including regular and deferred constraint triggers, by table, event
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V12. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V21. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
 are unsafe; missing functions or noncanonical source are incompatible. Disabled or misbound triggers
 are unsafe; a replaced same-signature safety-function body is incompatible.
-Every non-internal trigger on a Decodex runtime relation must be one of those eighty-four exact V12 bindings.
+Every non-internal trigger on a Decodex runtime relation must be one of those 110 exact V14 bindings.
 The same closed execution-path audit permits no user rule, row-security policy, or enabled/forced RLS
 on those relations and rejects non-`pg_catalog` function/operator dependencies from defaults,
 generated expressions, constraints, indexes, rules, or policies unless they resolve to one of the
-107 canonical V12 functions. Every canonical function has the exact function-local
+119 canonical V14 functions. Every canonical function has the exact function-local
 `pg_catalog, decodex` search path, so runtime-selected callable or operator shadows cannot redirect
 trigger or constraint execution. A trigger cannot therefore invoke an adjacent public owner-executed
 function merely because runtime DML fires it.
 One version-specific canonical PostgreSQL 18 manifest additionally closes all Decodex relations,
 columns, defaults, constraints, indexes, enum labels, and internally generated constraint triggers.
 Defaults, constraints, indexes, and internal triggers include their exact stable catalog dependency
-identities rather than raw OIDs.
+identities rather than raw OIDs. The manifest emits one row per stable semantic dependency edge,
+normalizing exact physical catalog duplicates before semantic mapping while preserving distinct
+dependency types and endpoints. Reverse dependency edges from constraints to user constraint
+triggers resolve through a stable relation-and-trigger-name key without promoting those user
+triggers into dependency targets or internal-trigger rows.
 Constraint inventory covers both `conrelid` in Decodex and external constraints whose `confrelid`
 references Decodex. Internal trigger identity is tied to the exact canonical constraint, relation
 side, trigger function, event semantics, deferral state, and referenced relation/index rather than
@@ -151,6 +155,88 @@ exactly table SELECT. Ownership, SET-reachable authority, table or column grant 
 TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN are unsafe; missing SELECT is incompatible before the
 history row query runs. The ordered ledger must exactly match every embedded migration version,
 name, and checksum; missing, extra, duplicate, reordered, or tampered identity is incompatible.
+V14–V19 bind intended runtime enum and command privileges through the exact migration-owned V12
+ManagedRun-safety procedure ACL. The binding accepts zero runtime grantees for
+migrate-before-provision and exactly one direct, non-grantable runtime grantee for an already
+provisioned database; ambiguous owners, grantors, overloads, or grantees fail closed. V19 uses the
+same binding when revoking its internal explicit-time entry points. Production authority failures
+remain generic. Authority digest changes use two explicit phases. Phase A's capture-only PostgreSQL
+18 mode migrates and provisions a non-default runtime principal, captures normalized manifests at
+source S0, first restore R1, and second restore R2 without constructing `PostgresStore`, and
+uses the same canonical non-digest semantic authority verifier as production readiness at every
+checkpoint. It atomically publishes a versioned summary receipt only when the mismatch array is the
+exact ordered subset of the post-V21 schema-contract digest followed by the configured-authority digest:
+zero, either singleton, or both in canonical order. Unrelated, duplicate, or reordered mismatches
+fail closed. Semantic predicates, ledger, binding, identity, and both S0=R1 and R1=R2 restore edges
+remain intact. Raw manifests
+and temporary cluster state are not retained in the receipt. A separate V13 upgrade database binds
+only the exact
+ManagedRun-safety anchor, then proves the migration-owned 15-function/five-type runtime delta and
+V19 internal sealing from raw catalogs. The receipt is derivation evidence, never acceptance.
+Forward-only V20 leaves the exact schema observer unchanged and recreates only nine named CHECK
+constraints whose leading `BETWEEN` expressions were not a dump/restore textual fixed point. Their
+equivalent explicit lower/upper predicates preserve behavior and dependencies; the two-restore
+capture proves the resulting authoritative definitions are stable across repeated restoration.
+Phase A finishes capture, PostgreSQL shutdown and workspace removal, and final source-tree
+revalidation before preparing a mode-0600 receipt in the operator-selected private external
+directory. After the complete bytes are flushed and fsynced, a create-only hard link publishes the
+final path. That link is the commit and linearization point: pre-link failure leaves no new final
+path, while post-link temporary cleanup, directory-fsync, signal, crash, or status failure never
+rolls the immutable receipt back. Directory fsync is still required for a normal-success durability
+claim; failure after the link creates an ambiguous producer outcome resolved only by receipt
+readback. Phase A exit status and output are not evidence.
+Phase B is the sole consumer and acceptance boundary. It ignores producer exit and output, never
+overwrites an existing path, and may consume only an extant exact-schema receipt whose immutable
+bytes and hash attest the exact Phase A HEAD/tree, `capture_only=true`, `acceptance=false`, the
+canonical zero/one/two mismatch set and order, exact
+database/principal/migration-ledger evidence, and complete
+source/restore and semantic-authority parity. For one or two mismatches it requires a clean direct
+single-parent child that changes exactly the reported digest array or arrays and no other source;
+for zero mismatches it requires the same clean Phase A HEAD and tree. It repeats the full S0→R1→R2
+capture and publishes `acceptance=true` only for zero digest
+mismatches and complete semantic evidence, bound to both trees and the Phase A receipt hash.
+Malformed, substituted, duplicate, or lineage-mismatched receipts fail
+closed. This bounded contract assumes one clean committed writer and an operator-owned private
+external directory; it creates no persistent PostgreSQL authority or producer/consumer protocol.
+Phase B may change only the digest arrays reported by Phase A, must record both Phase A and Phase B
+trees, and is invalidated by an unreported array or any other source delta. An unchanged-tree Phase
+B still emits a fresh acceptance receipt explicitly bound to Phase A. Older receipts are immutable
+provenance only and cannot attest source changes outside their binding. Normal
+acceptance has no expected-mismatch branch: manifest readiness must pass before behavioral or
+restart stages run.
+
+The PostgreSQL harness has one top-level stage authority for the normal aggregate. Fatal preflight
+owns argument/mode validation, clean source binding, PostgreSQL tool and temporary-root discovery,
+cluster initialization/start, and base-role creation. Phase A/B private-output and receipt-lineage
+validation remains on those direct entrypoints rather than entering the aggregate graph. After
+preflight, meaningful semantic suites form explicit prerequisite edges and produce only `passed`,
+`failed`, or `blocked`: an ordinary expected failure blocks its consumers while independent
+branches continue.
+Required nested restore results are promoted to their owning suite, so a capture, restore, parity,
+or production-check failure cannot be reported as owner success. One private live-doctor mutation
+SQL executor owns every ordinary, role-as, and secret-bearing mutation child, SQL delivery state,
+command completion, output handling, and cleanup; the live-doctor coordinator owns only probe
+readiness and its own child. Both child kinds receive bounded terminate, kill-fallback, and reap
+attempts on every exit, and failure to establish a reaped state is harness corruption. Mutation
+probes and fixture restorations remain distinct stages. Ordinary mutation delivery remains blocked
+when `Popen` fails; once successful `Popen` returns with the SQL payload owned in argv, delivery is
+possible and every later failure remains restoration-eligible. A secret mutation remains blocked
+through its completed fail-closed logging prelude, becomes may-have-dispatched immediately before
+the first mutation-frame payload write, and remains restoration-eligible after any later write,
+flush, timeout, protocol, exit, or cleanup failure. Successful exit records only command
+acknowledgement, never exact server receipt or non-vacuous mutation application; an optional
+postcondition probe is separate evidence. The scheduler consumes one restoration claim from the
+attempt record exactly once. Pre-dispatch failure blocks restoration, eligible probe failure still
+attempts it, and later probes on the shared fixture require restoration to pass. Unexpected
+assertion/key/type failures, corrupt report state, source-binding or redaction failure, and other
+unexpected exceptions stop new scheduling as harness corruption. Before cluster start the same
+outer owner attempts direct removal of a created private work directory without reporting cluster
+teardown. Once the cluster has started, teardown and final report emission always remain eligible.
+The process-visible primary is selected before aggregate output/report emission; cleanup or emission corruption remains
+secondary when an earlier semantic failure exists. Only the normal aggregate emits
+`decodex/postgres-aggregate-stage-report/1`; focused suites and Phase A/B receipt modes retain their
+direct output/capture behavior and never enter that report path.
+
 The three bound identity sequences must be exact. Runtime receives USAGE only on the activity and
 outbox sequences; the migration-owned history-version sequence remains inaccessible. SELECT,
 UPDATE/`setval`, ownership, grant options, and SET-reachable surplus authority are unsafe. Every
@@ -158,23 +244,23 @@ string-to-system-catalog identity explicitly qualifies `pg_catalog`; the
 authority audit and schema-qualified migration-ledger verification remain correct under a hostile
 runtime `search_path` that shadows both ledger and system-catalog names. Missing required schema,
 table, sequence, function, or ledger-read authority is incompatible.
-At the V12 boundary, twenty-four canonical `SECURITY DEFINER` functions comprise the three V3
+At the V14 boundary, twenty-seven canonical `SECURITY DEFINER` functions comprise the three V3
 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two
 V9 RoleProfile command entrypoints, two V10 RuntimeSession command entrypoints, and four V11 exact
-WorkItem commands, the inert future running/resume guard, and the one V12 ManagedRun safety
-consumer. The cursor issuer derives Conversation,
+WorkItem commands, the inert future running/resume guard, the one V12 ManagedRun safety
+consumer, and the three V14 routing-authority commands. The cursor issuer derives Conversation,
 snapshot version, parent, page size, position, item identity, and expiry under serialized
 Conversation authority; the bounded pruner is callable by runtime, while the capture function is
 trigger-only and runtime cannot execute it directly. Runtime has no cursor-table INSERT authority.
-The other eighty-three canonical V12 functions are security invokers. The additional-function adversarial fixture creates a fixture-only 108th migration-owned,
+The other ninety-two canonical V14 functions are security invokers. The additional-function adversarial fixture creates a fixture-only migration-owned,
 runtime-executable `SECURITY DEFINER` function with an unsafe per-function setting and migration-owner
 trigger authority, proves runtime direct trigger DDL is denied, executes the owner-authority effect,
 and restores the trigger before the independent doctor rejection. A separate public-function trigger
 fixture proves runtime DML can execute an owner effect without direct function `EXECUTE`, protected
-table `UPDATE`, or `TRIGGER`; the exact eighty-four-trigger V12 inventory rejects that path. A public,
+table `UPDATE`, or `TRIGGER`; the closed V14 trigger inventory rejects that path. A public,
 runtime-owned extension fixture attaches a migration-owned Decodex collation as an extension member,
 proves the runtime can transactionally drop it, and is rejected through the dependency audit. The
-closed 107-function V12 inventory remains independent of the distinct same-signature canonical-source
+closed 119-function V14 inventory remains independent of the distinct same-signature canonical-source
 substitution fixture. Missing, malformed, unsafe, unreachable,
 authentication-failed, or incompatible bootstrap retains a typed unavailable adapter;
 there is no ambient/default database or alternate state authority. Repository and
@@ -277,11 +363,14 @@ fresh exact PostgreSQL pre- and post-observations for the same manually selected
 inventory, automatic selector, weighting, stickiness, fallback, quota wake, or live routing API;
 XY-1304 remains the separate failed dispatch gate.
 
-The accepted XY-1355 target adds no executable path here. V14 will make PostgreSQL the sole owner
+The accepted XY-1355 target adds no live execution path here. V14 makes PostgreSQL the sole owner
 of a revisioned complete routing-policy snapshot over the entire account inventory, canonical
 user order, explicit per-member disposition, sticky affinity plus source RuntimeSession revision,
 account/profile/build compatibility, exact evidence revisions, and required-capability
-applicability. Runtime and callers cannot supply that universe. The core routing component will be
+applicability. Runtime and callers cannot supply that universe. V14 exposes only exact policy
+replacement, ordinary compatibility-evidence publication, and immutable snapshot-resolution
+commands; resolution classifies facts and blockers but cannot select, wait, wake, continue, or
+dispatch. The core routing component will be
 a pure kernel over the database-produced snapshot; V16 will atomically persist its decision and
 complete evidence linkage. Codex remains a positive-evidence adapter. An unknown required
 capability blocks, while an empty required-capability set makes unknown plugin inventory non-
@@ -386,6 +475,24 @@ configured-principal and ACL authority closure against V8. XY-1345 owns accepted
 authority/prototype evidence, XY-1346 owns expected V9 exact receipts plus RoleProfiles, and
 re-bounded XY-1337 owns expected V10 RuntimeSession snapshots and transitions.
 
+V15 is a persistence protocol, not an execution composition root. PostgreSQL first records immutable
+intent, then a one-way `creation_possible` fence before any `thread/start` could occur. Only the exact
+typed successful response for that same attempt can bind one globally unique thread. A retained
+`creation_possible` row after a crash or lost response is terminal ambiguous creation authority:
+stored response bytes remain replayable for audit, but the PostgreSQL adapter reports that replay
+only as ambiguous readback and cannot reconstruct its private one-shot fresh permission. There is
+no transition, Rust API, or Codex API here that retries, searches for, or adopts a thread.
+Observations are append-only positive exact facts bound by experiment revision, thread, deterministic
+marker, source identity, and payload digest. List omission, pagination exhaustion, missing events,
+lossy history, and stale caches have no persisted representation and authorize nothing. The
+immutable V14 snapshot is the run-revision provenance authority for V15 experiments; V16 decisions
+retain that same composite snapshot lineage, and V17 plans retain the composite V16 decision
+lineage. The snapshot likewise retains its source RuntimeSession revision as immutable provenance
+after checking the locked current session. Later legitimate ManagedRun and RuntimeSession advances
+therefore neither rewrite historical evidence nor invalidate its foreign keys, while creation still
+rejects a revision that is not current under the command's hierarchy, ManagedRun, experiment,
+snapshot, and RuntimeSession lock boundary before committing `creation_possible`.
+
 The composition also reports conversation execution unavailable. Authentication, TLS,
 remote binding, HTTP artifact transfer, MCP, scheduling, live Codex execution, mutating
 CLI operations, and GPUI behavior remain disabled and belong to later issues.
@@ -429,7 +536,16 @@ identities. One access-exclusive fence rejects every legacy RuntimeSession recei
 session, Turn, or structurally classified activity/outbox row before altering the empty tables.
 Classification closes aggregate, event, effect, link, and payload representations recursively,
 including legacy `runtime_session_recorded` events under another aggregate and nested aggregate
-markers; the steady-state trigger applies the same fail-closed family.
+markers. Forward-only V21 replaces only the steady-state function behind the existing trigger
+bindings: scalar `runtime_session_id`, `profile_snapshot_id`, and `account_snapshot_id` values are
+foreign provenance references and do not claim event ownership by themselves. RuntimeSession
+aggregate/event/kind markers, complete `runtime_session`/`runtime_session_snapshot`,
+`profile_snapshot`, or `account_snapshot` objects, structurally complete canonical session or
+snapshot field sets under any other key, and outbox links to activity carrying any of those
+ownership shapes remain reserved. Runtime callers may therefore publish canonical
+cross-domain activity such as HistoryItem provenance, but cannot forge RuntimeSession activity or
+outbox authority; delivery-only updates to an already reserved outbox row remain permitted while
+its immutable authority fields are unchanged.
 Creation accepts only the RuntimeSession and Conversation identities, one role, the complete
 non-secret account snapshot identity/facts, nullable Codex thread identity, and initial state.
 PostgreSQL acquires hierarchy coordinator 1271 before selecting or locking an open Conversation or
@@ -497,13 +613,112 @@ rollback detection. XY-1349 solely owns V13 persistence, XY-1350 owns only read-
 and executor/readback mechanics against this contract, and XY-1351 owns the first shared saga path.
 
 V13 is accepted. The routing migration order is XY-1356/V14 complete policy and candidate-set
-authority, XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions; no
-V17 is reserved. XY-1361 composes these boundaries only with production dispatch disabled. The
+authority, XY-1358/V15 causal experiment authority, XY-1359/V16 atomic routing decisions, then
+XY-1360/V17 continuation authority after source inspection proved durable atomic fallback state was
+required. XY-1361 composes these boundaries only with production dispatch disabled. The
 existing ManagedRun barrier, submitted-turn receipt, and repository/worktree/Git/artifact
 reconciliation authorities retain ambiguous-effect ownership; routing never reclassifies or
 replays those effects.
 
-The production runtime composes those three accepted owners exactly once during daemon bootstrap.
+V16 is the sole routing-decision authority. It adds a pure routing kernel and one
+operation-specific PostgreSQL exact command. The command selects and locks the immutable V14
+snapshot and its current policy, run, account, compatibility, capability, blocker, and quota
+sources; callers provide no candidate array or evidence. It persists one inert `selected`,
+`waiting_usage`, or `no_route` row together with complete member, quota, capability, blocker, and
+normalized exact-depletion references in the same transaction. Five-hour and seven-day facts,
+raw timestamp text, source identity, exact microsecond precision, and evidence revision remain
+separate. Missing or inexact provenance cannot establish eligibility. The adapter strictly reads
+the database result back through the pure kernel. The disabled XY-1361 runtime orchestration may
+invoke exactly one V16 command per request, but no daemon, application, protocol, scheduler, Codex,
+credential, or UI composition root constructs that orchestration. Digest regeneration plus
+executable validation remain deferred to the integrated freeze.
+
+V17 consumes only one persisted selected V16 decision identity plus its expected ManagedRun
+revision. PostgreSQL derives the selected account, V14 snapshot, source RuntimeSession,
+Conversation, RoleProfile snapshot, and evidence universe; callers cannot provide candidates,
+policy, exclusions, compatibility, or selection. One qualifying same-thread path requires exactly
+one canonical V15 experiment lineage whose bound thread equals the source RuntimeSession thread,
+a fresh positive exact `thread_read_item`, exact selected account/revision/build/RoleProfile facts,
+and supported initialize/account-read/thread-read/paginated-history evidence from the exact V14
+profile. Unknown, stale, negative, mismatched, incomplete, or ambiguous evidence selects the
+fallback path rather than inferring compatibility.
+
+The fallback path validates the complete deterministic Context-Pack encoding and manifest, stages
+any content-addressed bytes under the existing blob coordination, then inserts its Context Pack,
+selected-account snapshot, starting RuntimeSession, continuation plan, audit rows, outbox rows, and
+exact receipt in one PostgreSQL transaction. A unique decision link makes both paths mutually
+exclusive and exactly once across keys and replay. The plan snapshots the accepted ManagedRun
+effect barrier and submitted-turn receipt count, while `replay_permitted` and `dispatch_enabled`
+are structurally false. No ManagedRun identity or Conversation identity changes, no turn is
+submitted or replayed. The disabled XY-1361 runtime orchestration consumes one exact V17 plan only
+for a selected V16 decision; no daemon, application, protocol, scheduler, credential, Codex, or UI
+composition root constructs it. Schema and configured-authority digest regeneration and all
+executable acceptance remain deferred to the single integrated post-freeze gate, so ordinary
+runtime readiness continues to fail closed on this moving-core tree.
+
+V18 consumes only the exact persisted V16 `waiting_usage` decision identity and expected
+ManagedRun revision. PostgreSQL derives the exact earliest-ready instant, policy lineage, run
+lineage, and database clock; the caller supplies no timestamp, candidate, quota evidence,
+eligibility, exclusion, account, or replacement decision. One append-only transition relation is
+the lifecycle, domain-operation result, historical-readback, and cross-key replay authority. Every
+accepted registration, claim, reclaim, fire, cancellation, or supersession operation has one
+globally unique operation identity, canonical request, exact predecessor revision/tip, complete
+resultant state, immutable effect/response bytes, and transaction-bound activity/outbox identities.
+The mutable wake head is only a due-order index and current-tip fence; deferred equality and chain
+checks require it to point to the exact newly appended transition. No command success or historical
+readback is constructed from the head.
+
+Unique registration-decision and run-revision links make registration converge to one durable
+wake, while a different operation identity targeting an existing decision rejects instead of
+aliasing it. V9 exact receipts replay byte-identically by protocol key; the same domain operation
+under a new key can return only its immutable transition result after canonical request equality.
+Due acquisition orders independent waits by exact earliest-ready instant, registration time, and
+wake identity and never pools account quotas. A fixed sixty-second database-authored lease is
+recorded on a claim or reclaim transition after global scheduler serialization. Lease expiry and
+restart append a new reclaim transition rather than rewriting history. Registration, claim, fire,
+and cancellation retain V16's hierarchy/run lock order, so replacement decisions cannot cross a
+stale-lineage check.
+
+Pending or leased heads advance to terminal immutable transitions when explicit cancellation,
+ManagedRun revision/lifecycle/wait reason, divergence, policy revision, V16 decision kind, or
+ambiguous replacement lineage is stale. A valid leased wake fires exactly once into one immutable
+transition containing one `routing_resolution_request_id` whose only authority is fresh routing resolution;
+`fresh_routing_resolution_only=true`, `prior_decision_reusable=false`, and
+`production_enabled=false` are structural. The fired record carries no old universe or evidence,
+and no runtime, protocol, daemon, CLI, scheduler composition root, Codex adapter, credential owner,
+or UI imports V18. Executable timing, crash, replay, concurrency, restart, ACL, hostile-input, and
+isolation acceptance remains deferred to the single integrated post-freeze gate.
+
+V19 is an acceptance-enabling authority repair, not a scheduler feature. V18 and its checksum are
+immutable history. Four new command-complete `SECURITY INVOKER` internals retain the exact V18
+register, claim/reclaim, fire, and cancel transaction paths and add one nullable authority instant.
+Each unchanged public `SECURITY DEFINER` command calls its schema-qualified internal with typed
+`NULL`, so production still samples `clock_timestamp()` only at the original post-lock point; the
+existing Rust/domain/adapter signatures and 51-function runtime execute allowlist do not change.
+Only the migration owner can execute an internal with explicit time. PUBLIC and runtime execution
+are revoked, the internals have no overloads or defaults, and startup closes their exact source,
+metadata, ACL, dependencies, ownership, and role reachability with the canonical function and
+configured-authority inventories.
+
+An explicit instant must be finite and exactly representable in the nonnegative Unix-microsecond
+domain, at most `253402300739999999`, leaving the literal 60-second lease inside the canonical
+application ceiling. Registration cannot precede either the locked V16 decision time or locked
+ManagedRun update time; every later explicit transition cannot precede the locked head timestamp.
+These checks do not change the typed-`NULL` production path. The repair is forward-only: rollback
+means restoring a pre-V19 cluster where the four internals are absent, never editing or reversing
+V18. Schema and configured-authority digest regeneration remains deferred to the refrozen unified
+acceptance boundary.
+
+No production crate or application imports or constructs a V15 experiment execution root. The
+mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
+the complete V15 source boundary. XY-1361 now owns the only disabled runtime orchestration over
+V16 and V17: it makes one exact V16 decision per request, consumes one exact V17 plan only for
+`selected`, and exposes only inert handoff facts for `waiting_usage`. It does not import V18 or
+provide scheduler registration, claiming, firing, cancellation, supersession, credentials, Codex
+mutation, dispatch, replay, or production enablement. The V1 protocol vocabulary remains unchanged
+and exposes none of these authority commands. Production dispatch remains disabled until the
+separate enablement gate.
+The production runtime composes the already accepted repository owners exactly once during daemon bootstrap.
 When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
 same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol
 listener can serve. Executor-open or restart-reconciliation failure leaves the repository runtime
