@@ -655,7 +655,7 @@ BEGIN
 			RETURN decodex.complete_exact_continuation_rejection(
 				p_protocol,p_idempotency_key,'fallback_identity_conflict');
 		END IF;
-		SELECT pg_catalog.coalesce(pg_catalog.max(pack_revision),0)+1 INTO pack_revision
+		SELECT COALESCE(pg_catalog.max(pack_revision),0)+1 INTO pack_revision
 		FROM decodex.context_packs WHERE conversation_id=session_row.conversation_id;
 		source_count:=pg_catalog.cardinality(p_source_kinds);
 		FOR position IN 1..source_count LOOP
