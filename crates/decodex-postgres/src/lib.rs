@@ -132,8 +132,7 @@ use std::{sync::Arc, time::Duration};
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use serde_json::Value;
 #[cfg(test)] use tokio as _;
-#[cfg(feature = "test-support")]
-use tokio_postgres::Client as TokioClient;
+#[cfg(feature = "test-support")] use tokio_postgres::Client as TokioClient;
 use tokio_postgres::{Config, config::Host};
 
 #[cfg(unix)] use self::socket::VerifiedSocketConnect;

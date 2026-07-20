@@ -118,14 +118,10 @@ async fn verify_exact_ledger(
 		StoreError::Incompatible(format!("invalid terminal migration V{terminal_version}"))
 	})?;
 	if expected.len() != expected_len
-		|| expected
-			.iter()
-			.enumerate()
-			.any(|(index, migration)| {
-				migration.version()
-					!= i32::try_from(index + 1).expect("migration prefix index fits i32")
-			})
-	{
+		|| expected.iter().enumerate().any(|(index, migration)| {
+			migration.version()
+				!= i32::try_from(index + 1).expect("migration prefix index fits i32")
+		}) {
 		return Err(StoreError::Incompatible(format!(
 			"embedded migration inventory is not the contiguous V1-V{terminal_version} prefix"
 		)));
@@ -179,18 +175,14 @@ mod tests {
 		assert_eq!(migration.matches("DROP CONSTRAINT").count(), CONSTRAINTS.len());
 		assert_eq!(migration.matches("ADD CONSTRAINT").count(), CONSTRAINTS.len());
 		for constraint in CONSTRAINTS {
-			assert_eq!(
-				migration.matches(&format!("DROP CONSTRAINT {constraint};")).count(),
-				1
-			);
-			assert_eq!(
-				migration.matches(&format!("ADD CONSTRAINT {constraint} CHECK")).count(),
-				1
-			);
+			assert_eq!(migration.matches(&format!("DROP CONSTRAINT {constraint};")).count(), 1);
+			assert_eq!(migration.matches(&format!("ADD CONSTRAINT {constraint} CHECK")).count(), 1);
 		}
-		assert!(!migration.lines().any(
-			|line| !line.trim_start().starts_with("--") && line.contains("BETWEEN")
-		));
+		assert!(
+			!migration
+				.lines()
+				.any(|line| !line.trim_start().starts_with("--") && line.contains("BETWEEN"))
+		);
 		assert!(!migration.contains("CASCADE"));
 	}
 
