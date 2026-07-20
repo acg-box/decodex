@@ -92,9 +92,15 @@ extension AccountStore {
 		notice = nil
 
 		do {
-			applyAccountList(try await bridge.runStreaming(.accountLogin(), as: AccountListResponse.self) { [weak self] chunk in
-				self?.loginTranscript += chunk
-			})
+			let codexBin = try bridge.codexExecutablePath()
+			applyAccountList(
+				try await bridge.runStreaming(
+					.accountLogin(codexBin: codexBin),
+					as: AccountListResponse.self
+				) { [weak self] chunk in
+					self?.loginTranscript += chunk
+				}
+			)
 			notice = nil
 			await refreshFastMode()
 		} catch {
