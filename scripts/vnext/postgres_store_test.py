@@ -7179,6 +7179,21 @@ def main() -> int | AuthorityCandidatePublication:
 				)
 		elif stop_error is not None:
 			teardown_error = stop_error
+		if (
+			not cluster_start_attempted
+			and teardown_error is not None
+			and selected_primary is not None
+		):
+			if isinstance(selected_primary, StageActionFailure):
+				selected_primary = StageActionFailure(
+					selected_primary.primary,
+					selected_primary.secondary + (teardown_error,),
+				)
+			else:
+				selected_primary = StageActionFailure(
+					selected_primary,
+					(teardown_error,),
+				)
 		if selected_primary is None and teardown_error is not None:
 			selected_primary = teardown_error
 			if orchestrator is not None:
