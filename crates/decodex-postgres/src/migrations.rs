@@ -154,7 +154,110 @@ async fn verify_exact_ledger(
 
 #[cfg(test)]
 mod tests {
-	use super::CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION;
+	use super::{CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, migrations};
+
+	const POSTGRESQL_SYNTAX_CONSTRUCTS: [&str; 7] =
+		["coalesce", "nullif", "greatest", "least", "extract", "substring", "position"];
+
+	#[derive(Clone, Copy)]
+	enum SqlToken<'a> {
+		Identifier(&'a str),
+		Dot,
+		LeftParen,
+		Other,
+	}
+
+	fn sql_tokens(sql: &str) -> Vec<SqlToken<'_>> {
+		let bytes = sql.as_bytes();
+		let mut tokens = Vec::new();
+		let mut offset = 0;
+
+		while offset < bytes.len() {
+			match bytes[offset] {
+				byte if byte.is_ascii_whitespace() => offset += 1,
+				b'-' if bytes.get(offset + 1) == Some(&b'-') => {
+					offset += 2;
+					while offset < bytes.len() && bytes[offset] != b'\n' {
+						offset += 1;
+					}
+				},
+				b'/' if bytes.get(offset + 1) == Some(&b'*') => {
+					offset += 2;
+					let mut depth = 1;
+					while offset < bytes.len() && depth > 0 {
+						if bytes[offset..].starts_with(b"/*") {
+							depth += 1;
+							offset += 2;
+						} else if bytes[offset..].starts_with(b"*/") {
+							depth -= 1;
+							offset += 2;
+						} else {
+							offset += 1;
+						}
+					}
+				},
+				b'\'' => {
+					offset += 1;
+					while offset < bytes.len() {
+						if bytes[offset] != b'\'' {
+							offset += 1;
+						} else if bytes.get(offset + 1) == Some(&b'\'') {
+							offset += 2;
+						} else {
+							offset += 1;
+							break;
+						}
+					}
+				},
+				b'.' => {
+					tokens.push(SqlToken::Dot);
+					offset += 1;
+				},
+				b'(' => {
+					tokens.push(SqlToken::LeftParen);
+					offset += 1;
+				},
+				byte if byte.is_ascii_alphabetic() || byte == b'_' => {
+					let start = offset;
+					offset += 1;
+					while offset < bytes.len()
+						&& (bytes[offset].is_ascii_alphanumeric()
+							|| matches!(bytes[offset], b'_' | b'$'))
+					{
+						offset += 1;
+					}
+					tokens.push(SqlToken::Identifier(&sql[start..offset]));
+				},
+				_ => {
+					tokens.push(SqlToken::Other);
+					offset += 1;
+				},
+			}
+		}
+
+		tokens
+	}
+
+	fn schema_qualified_syntax_constructs(sql: &str) -> Vec<&str> {
+		sql_tokens(sql)
+			.windows(4)
+			.filter_map(|tokens| match tokens {
+				[
+					SqlToken::Identifier(schema),
+					SqlToken::Dot,
+					SqlToken::Identifier(name),
+					SqlToken::LeftParen,
+				] if schema.eq_ignore_ascii_case("pg_catalog")
+					&& POSTGRESQL_SYNTAX_CONSTRUCTS
+						.iter()
+						.any(|construct| name.eq_ignore_ascii_case(construct)) =>
+				{
+					Some(*name)
+				},
+				_ => None,
+			})
+			.collect()
+	}
 
 	const CONSTRAINTS: [&str; 9] = [
 		"repository_admissions_identity_bounded",
@@ -167,6 +270,34 @@ mod tests {
 		"routing_policy_revisions_build",
 		"routing_decision_exclusion_range",
 	];
+
+	#[test]
+	fn embedded_migrations_do_not_schema_qualify_postgresql_syntax_constructs() {
+		for migration in migrations::runner().get_migrations() {
+			let sql = migration.sql().expect("embedded migrations retain their SQL");
+			let invalid = schema_qualified_syntax_constructs(sql);
+
+			assert!(
+				invalid.is_empty(),
+				"V{} schema-qualifies PostgreSQL syntax constructs: {invalid:?}",
+				migration.version(),
+			);
+		}
+	}
+
+	#[test]
+	fn syntax_construct_guard_covers_the_category_without_rejecting_catalog_functions() {
+		for construct in POSTGRESQL_SYNTAX_CONSTRUCTS {
+			let sql = format!("SELECT pg_catalog /* qualification */ . {construct} (value)");
+			assert_eq!(schema_qualified_syntax_constructs(&sql), [construct]);
+		}
+		assert!(
+			schema_qualified_syntax_constructs(
+				"SELECT pg_catalog.jsonb_build_object('value', pg_catalog.max(value))",
+			)
+			.is_empty()
+		);
+	}
 
 	#[test]
 	fn v20_recreates_only_the_nine_restore_canonical_constraints() {

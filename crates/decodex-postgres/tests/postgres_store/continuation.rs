@@ -710,7 +710,7 @@ async fn continuation_effect_inventory(
 	let row = client
 		.query_one(
 			concat!(
-				"SELECT pg_catalog.jsonb_build_object('activity',pg_catalog.coalesce((",
+				"SELECT pg_catalog.jsonb_build_object('activity',COALESCE((",
 				"SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(",
 				"'sequence',sequence,'aggregate_kind',aggregate_kind,'aggregate_id',aggregate_id,",
 				"'revision',revision,'event_kind',event_kind,'correlation_key',correlation_key,",
@@ -718,7 +718,7 @@ async fn continuation_effect_inventory(
 				"(aggregate_kind='continuation_plan' AND aggregate_id=$1) OR ",
 				"(aggregate_kind='runtime_session' AND aggregate_id=$2) OR ",
 				"(aggregate_kind='context_pack' AND aggregate_id=$3)), '[]'::jsonb),",
-				"'outbox',pg_catalog.coalesce((SELECT pg_catalog.jsonb_agg(",
+				"'outbox',COALESCE((SELECT pg_catalog.jsonb_agg(",
 				"pg_catalog.jsonb_build_object('id',id,'effect_key',effect_key,",
 				"'aggregate_kind',aggregate_kind,'aggregate_id',aggregate_id,",
 				"'aggregate_revision',aggregate_revision,'payload',payload) ORDER BY id) ",
