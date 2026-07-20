@@ -52,7 +52,7 @@ struct AccountRunChipView: View {
 	private func schedulePopover() {
 		hoverPopoverTask?.cancel()
 		hoverPopoverTask = Task {
-			try? await Task.sleep(nanoseconds: AccountRunChipLayout.popoverHoverDelayNanoseconds)
+			try? await Task.sleep(for: AccountRunChipLayout.popoverHoverDelay)
 			guard Task.isCancelled == false else {
 				return
 			}

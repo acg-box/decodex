@@ -22,19 +22,6 @@ extension ModernGlassSurfaceModifier {
 		}
 	}
 
-	var materialStyle: AnyShapeStyle {
-		switch depth {
-		case .panel:
-			return AnyShapeStyle(.ultraThinMaterial)
-		case .section:
-			return AnyShapeStyle(.thinMaterial)
-		case .row:
-			return colorScheme == .dark ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)
-		case .control:
-			return colorScheme == .dark ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)
-		}
-	}
-
 	var surfaceFill: Color {
 		switch depth {
 		case .panel:
