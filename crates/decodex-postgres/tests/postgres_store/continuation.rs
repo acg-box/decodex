@@ -515,7 +515,7 @@ async fn create_ambiguous_creation_fence(
 	snapshot_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let experiment_id = uuid(0xe8, marker);
-	let identity = CodexExperimentIdentity {
+	let mut identity = CodexExperimentIdentity {
 		experiment_id: experiment_id.clone(),
 		managed_run_id: routing.selected_request.managed_run_id.clone(),
 		managed_run_revision: 1,
@@ -525,8 +525,9 @@ async fn create_ambiguous_creation_fence(
 		role_profile_revision: 1,
 		build_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
 		repository_cwd: "/srv/vnext-acceptance".into(),
-		thread_title: "V17 ambiguous creation fence".into(),
+		thread_title: String::new(),
 	};
+	identity.thread_title = format!("V17 ambiguous creation fence {}", identity.retained_marker());
 	assert!(matches!(
 		store
 			.prepare_codex_experiment("v17-ambiguous-prepare", &PrepareCodexExperiment { identity },)
