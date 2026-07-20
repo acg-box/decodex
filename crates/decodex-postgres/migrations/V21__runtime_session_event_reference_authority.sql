@@ -8,15 +8,15 @@ SET search_path = pg_catalog, decodex
 AS $$
 DECLARE owner_name name;
 DECLARE linked_runtime_session boolean := false;
+-- Complete shapes are object-local: lax array access must not combine fields from siblings.
 DECLARE ownership_path CONSTANT pg_catalog.jsonpath := '$.** ? (
 	@.aggregate_kind == "runtime_session" ||
 	@.kind == "runtime_session" ||
 	@.event_kind == "runtime_session_recorded" ||
 	@.event_kind == "runtime_session_created" ||
 	@.event_kind == "runtime_session_transitioned" ||
-	exists(@.runtime_session) || exists(@.runtime_session_snapshot) ||
-	exists(@.profile_snapshot) || exists(@.account_snapshot) ||
 	(
+		@.type() == "object" &&
 		exists(@.runtime_session_id) && exists(@.conversation_id) &&
 		exists(@.profile_snapshot_id) && exists(@.account_snapshot_id) &&
 		exists(@.codex_thread_id) && exists(@.last_known_turn_id) &&
@@ -24,6 +24,7 @@ DECLARE ownership_path CONSTANT pg_catalog.jsonpath := '$.** ? (
 		exists(@.updated_at) && exists(@.ended_at)
 	) ||
 	(
+		@.type() == "object" &&
 		exists(@.profile_snapshot_id) && exists(@.source_profile_id) &&
 		exists(@.role) && exists(@.model) && exists(@.reasoning_effort) &&
 		exists(@.service_tier) && exists(@.instructions_digest) &&
@@ -31,6 +32,7 @@ DECLARE ownership_path CONSTANT pg_catalog.jsonpath := '$.** ? (
 		exists(@.source_revision) && exists(@.created_at)
 	) ||
 	(
+		@.type() == "object" &&
 		exists(@.account_snapshot_id) && exists(@.source_account_id) &&
 		exists(@.display_label) && exists(@.observed_state) &&
 		exists(@.source_revision) && exists(@.created_at)
@@ -114,7 +116,7 @@ BEGIN
 
 	RETURN NEW;
 EXCEPTION
-	WHEN invalid_text_representation THEN
+	WHEN invalid_text_representation OR numeric_value_out_of_range THEN
 		RAISE EXCEPTION 'RuntimeSession activity/outbox link is malformed'
 			USING ERRCODE = '42501', CONSTRAINT = 'runtime_session_event_namespace';
 END

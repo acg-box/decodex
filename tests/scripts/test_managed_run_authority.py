@@ -38,14 +38,28 @@ class ManagedRunAuthorityTests(unittest.TestCase):
         cls.authority = AUTHORITY.read_text(encoding="utf-8")
         cls.migrations = MIGRATIONS.read_text(encoding="utf-8")
 
-    def test_v12_is_the_only_next_forward_migration(self) -> None:
+    def test_v12_historical_command_definitions_remain_canonical(self) -> None:
+        self.assertEqual(MIGRATION.name, "V12__managed_run_safety.sql")
+        self.assertIn(
+            "CREATE OR REPLACE FUNCTION decodex.create_runtime_session_exact(",
+            self.migration,
+        )
+        self.assertIn(
+            "CREATE OR REPLACE FUNCTION decodex.transition_runtime_session_exact(",
+            self.migration,
+        )
+        self.assertIn("MANAGED_RUN_MIGRATION", self.authority)
+
+    def test_integrated_authority_ends_at_v21(self) -> None:
         versions = sorted(
             int(path.name.split("__", 1)[0][1:])
             for path in MIGRATION.parent.glob("V*.sql")
         )
-        self.assertEqual(versions, list(range(1, 13)))
-        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 12", self.migrations)
-        self.assertIn("MANAGED_RUN_MIGRATION", self.authority)
+        self.assertEqual(versions, list(range(1, 22)))
+        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 21", self.migrations)
+        self.assertIn(
+            "RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION", self.authority
+        )
 
     def test_execution_path_trigger_inventory_matches_canonical_full_identities(self) -> None:
         canonical_source = self.authority.split(
@@ -62,7 +76,8 @@ class ManagedRunAuthorityTests(unittest.TestCase):
             r"\('([^']+)', '([^']+)', 'decodex\.([^']+)\(\)'\)",
             execution_source,
         ))
-        self.assertEqual(len(canonical), 84)
+        self.assertIn("const SAFETY_TRIGGER_COUNT: usize = 138;", self.authority)
+        self.assertEqual(len(canonical), 138)
         self.assertEqual(execution, canonical)
 
     def test_event_namespace_uses_relation_aware_row_shapes(self) -> None:
