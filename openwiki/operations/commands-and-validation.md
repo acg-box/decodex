@@ -129,8 +129,9 @@ rolls back the final path. Directory fsync completes the normal-success durabili
 failure or interruption after the link is an ambiguous producer outcome resolved by reading the
 immutable receipt. Exit status and stdout are not evidence. The receipt has `acceptance=false`; it
 never substitutes for the normal aggregate. Phase B alone validates the exact immutable receipt,
-its hash and Phase A HEAD/tree, and the exact transition authorized by the mismatch array. It then repeats S0→R1→R2,
-requires every semantic predicate and restore edge to pass with zero digest mismatches, and publishes
+its hash and Phase A HEAD/tree, and the exact transition authorized by the mismatch array. It then
+repeats S0→R1→R2, requires every semantic predicate and restore edge to pass with zero digest
+mismatches, and publishes
 the only `acceptance=true` receipt bound to both trees and the Phase A receipt hash. Existing
 malformed, substituted, duplicate, or mismatched receipts fail closed. A zero-mismatch acceptance
 receipt is freshly emitted from the unchanged clean Phase A HEAD/tree and is explicitly bound to
@@ -150,12 +151,18 @@ authority safety, hostile-search-path, primary restore, redaction, default-ACL r
 authority-drift, and final-evidence work are all represented. A restore-owning suite cannot pass
 when one of its required nested captures, restores, parity checks, or production checks failed or
 became unavailable, so its consumers are blocked truthfully. Each live-doctor mutation probe owns
-and reaps its child process across every mutation/probe/synchronization exit. The probe and fixture
-restoration are separate stages: restoration is attempted after a failed probe, and the next
-shared-fixture probe depends on that restoration. Assertion/type/key failures, invalid stage/report
-state, source-binding failures, redaction failures, and other unexpected exceptions are harness
-corruption and stop new scheduling. Once PostgreSQL has started, teardown and final stage-report
-emission still run; their failures are recorded without replacing the first failure. The
+its child process through a bounded terminate, kill-fallback, and reap sequence across every
+mutation/probe/synchronization exit; an indeterminate or unreaped child is harness corruption. The
+probe and fixture restoration are separate stages. Probe invocation, readiness, mutation-SQL
+attempt, and successful application are distinct states: restoration is eligible exactly after the
+mutation SQL is attempted, including a failing SQL call, and remains blocked when spawn or readiness
+fails first. The next shared-fixture probe depends on successful restoration. Assertion/type/key
+failures, invalid stage/report state, source-binding failures, redaction failures, and other
+unexpected exceptions are harness corruption and stop new scheduling. A private work directory is
+cleaned directly when preflight fails before cluster start, with cleanup failure remaining
+subordinate; after PostgreSQL has started, teardown and final stage-report emission still run. The
+semantic/stage failure is selected before aggregate output and report emission, so cleanup or
+emission failures are recorded without replacing it. The
 `decodex/postgres-aggregate-stage-report/1` document is emitted only by the normal aggregate;
 focused and Phase A/B capture modes preserve their direct output/receipt behavior and never emit it.
 
