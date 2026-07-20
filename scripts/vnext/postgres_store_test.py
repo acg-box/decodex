@@ -3314,7 +3314,7 @@ def authority_manifest_evidence(manifest: str) -> dict[str, object]:
 
 
 def capture_migration_ledger(
-	database: str, env: dict[str, str], *, through_version: int = 20
+	database: str, env: dict[str, str], *, through_version: int | None = None
 ) -> list[object]:
 	ledger = json.loads(psql(
 		database,
@@ -3343,9 +3343,10 @@ def capture_migration_ledger(
 			raise TestFailure("embedded migration filename is malformed")
 		expected_identity.append((int(match.group(1)), match.group(2)))
 	expected_identity.sort()
-	expected_identity = [
-		identity for identity in expected_identity if identity[0] <= through_version
-	]
+	if through_version is not None:
+		expected_identity = [
+			identity for identity in expected_identity if identity[0] <= through_version
+		]
 	if actual_identity != expected_identity:
 		raise TestFailure("authority candidate migration ledger differs from embedded source")
 	return ledger
