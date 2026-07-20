@@ -4741,6 +4741,7 @@ mod tests {
 			"enforce_runtime_session_event_namespace",
 		)
 		.expect("RuntimeSession event authority has canonical migration source");
+		assert!(source.contains("ownership_path CONSTANT pg_catalog.jsonpath := '$.** ? ("));
 
 		for ownership_marker in [
 			"NEW.aggregate_kind = 'runtime_session'",
@@ -4748,10 +4749,6 @@ mod tests {
 			"@.aggregate_kind == \"runtime_session\"",
 			"@.kind == \"runtime_session\"",
 			"@.event_kind == \"runtime_session_transitioned\"",
-			"exists(@.runtime_session)",
-			"exists(@.runtime_session_snapshot)",
-			"exists(@.profile_snapshot)",
-			"exists(@.account_snapshot)",
 			"NEW.payload, '$.**.activity_sequence'",
 			"OLD.payload, '$.**.activity_sequence'",
 		] {
@@ -4764,12 +4761,28 @@ mod tests {
 		] {
 			assert!(source.contains(complete_shape), "{complete_shape}");
 		}
+		assert_eq!(
+			source.matches("@.type() == \"object\"").count(),
+			3,
+			"each complete shape must be object-local"
+		);
 		assert_eq!(source.matches("exists(@.runtime_session_id)").count(), 1);
 		assert_eq!(source.matches("exists(@.profile_snapshot_id)").count(), 2);
 		assert_eq!(source.matches("exists(@.account_snapshot_id)").count(), 2);
 		assert_eq!(source.matches("jsonb_path_exists(NEW.payload, ownership_path)").count(), 2);
 		assert_eq!(source.matches("jsonb_path_exists(OLD.payload, ownership_path)").count(), 2);
 		assert_eq!(source.matches("jsonb_path_exists(activity.payload, ownership_path)").count(), 2);
+		for non_owning_named_wrapper in [
+			"exists(@.runtime_session)",
+			"exists(@.runtime_session_snapshot)",
+			"exists(@.profile_snapshot)",
+			"exists(@.account_snapshot)",
+		] {
+			assert!(!source.contains(non_owning_named_wrapper), "{non_owning_named_wrapper}");
+		}
+		assert!(source.contains(
+			"WHEN invalid_text_representation OR numeric_value_out_of_range THEN"
+		));
 		assert!(source.contains("RuntimeSession event namespace has unexpected trigger relation"));
 		assert!(source.contains("NEW.payload IS DISTINCT FROM OLD.payload"));
 	}

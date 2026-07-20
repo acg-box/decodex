@@ -159,7 +159,7 @@ pub enum RuntimeSessionCommandOutcome<T> {
 }
 
 impl PostgresStore {
-	/// Create one RuntimeSession and both snapshots through the command-complete V10 owner.
+	/// Create one RuntimeSession and both snapshots through the final V12 command definition.
 	pub async fn create_runtime_session(
 		&self,
 		idempotency_key: &str,
@@ -201,7 +201,7 @@ impl PostgresStore {
 		parse_create_response(&response, create)
 	}
 
-	/// Transition one RuntimeSession through the command-complete V10 owner.
+	/// Transition one RuntimeSession through the final V12 command definition.
 	pub async fn transition_runtime_session(
 		&self,
 		idempotency_key: &str,
@@ -280,7 +280,7 @@ fn parse_response(
 
 	let effect = required_pointer(&document, "/effect")?;
 	validate_request_context(required_value(effect, "request")?, context)?;
-	let session = required_value(effect, "runtime_session")?;
+	let session = required_value(effect, "runtime_session_snapshot")?;
 	let profile = profile_from_value(required_value(effect, "profile_snapshot")?)?;
 	let account = account_from_value(required_value(effect, "account_snapshot")?)?;
 	let state = session_state_from_sql(required_str(session, "state")?)?;
@@ -355,7 +355,7 @@ fn parse_response(
 		|| required_str(effect, "outbox_aggregate_kind")? != "runtime_session"
 		|| required_str(effect, "outbox_aggregate_id")? != session_id
 		|| required_i64(effect, "outbox_aggregate_revision")? != new_revision
-		|| activity_payload.get("runtime_session") != Some(session)
+		|| activity_payload.get("runtime_session_snapshot") != Some(session)
 		|| activity_payload.get("profile_snapshot") != effect.get("profile_snapshot")
 		|| activity_payload.get("account_snapshot") != effect.get("account_snapshot")
 		|| activity_payload.get("kind").and_then(Value::as_str) != Some("runtime_session")
@@ -757,7 +757,7 @@ mod tests {
 	#[test]
 	fn success_parser_requires_complete_immutable_snapshots() {
 		let incomplete =
-			br#"{"classification":"success","effect":{"runtime_session":{}}}"#;
+			br#"{"classification":"success","effect":{"runtime_session_snapshot":{}}}"#;
 		assert!(parse_create_response(incomplete, &create()).is_err());
 	}
 
@@ -799,7 +799,7 @@ mod tests {
 		});
 		let activity = json!({
 			"kind": "runtime_session",
-			"runtime_session": session,
+			"runtime_session_snapshot": session,
 			"profile_snapshot": profile,
 			"account_snapshot": account
 		});
@@ -815,7 +815,7 @@ mod tests {
 			"classification": "success",
 			"effect": {
 				"request": create_request(),
-				"runtime_session": session,
+				"runtime_session_snapshot": session,
 				"profile_snapshot": profile,
 				"account_snapshot": account,
 				"prior_state": null,
@@ -845,7 +845,7 @@ mod tests {
 		assert_eq!(effect.activity_sequence, 1);
 
 		let mut substituted = response;
-		substituted["effect"]["runtime_session"]["profile_snapshot_id"] =
+		substituted["effect"]["runtime_session_snapshot"]["profile_snapshot_id"] =
 			json!("42000000-0000-4000-8000-000000000099");
 		assert!(
 			parse_create_response(&serde_json::to_vec(&substituted).unwrap(), &create()).is_err()
@@ -856,7 +856,7 @@ mod tests {
 	fn success_parser_rejects_wrong_request_and_malformed_stored_uuid_as_incompatible() {
 		let incomplete = json!({
 			"classification": "success",
-			"effect": {"request": create_request(), "runtime_session": {}}
+			"effect": {"request": create_request(), "runtime_session_snapshot": {}}
 		});
 		let mut wrong = create();
 		wrong.account_snapshot.display_label = "Other account".into();
@@ -882,7 +882,7 @@ mod tests {
 			"classification": "success",
 			"effect": {
 				"request": create_request(),
-				"runtime_session": {},
+				"runtime_session_snapshot": {},
 				"profile_snapshot": malformed,
 				"account_snapshot": {}
 			}

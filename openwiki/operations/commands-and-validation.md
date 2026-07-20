@@ -218,19 +218,22 @@ covers exact replay and concurrent convergence, cycle rollback, readiness blocke
 guard inertness, acceptance immutability and non-completion, clean V1-to-V11 bootstrap, and populated
 dump/restore.
 
-V12 adds only inert blocked/waiting ManagedRuns and one safety consumer transaction. The closed
-inventory is 107 functions, 84 non-internal triggers, and 24 security definers. Runtime receives
+V12 adds only inert blocked/waiting ManagedRuns and one safety consumer transaction. At the
+historical V12 boundary, the closed inventory was 107 functions, 84 non-internal triggers, and 24
+security definers. Runtime receives
 SELECT-only access to six ManagedRun/effect/readback relations and EXECUTE on one command-complete
 safety entrypoint; it has no ManagedRun creation, acquisition, activation, progress, completion,
 assignment, submitted-receipt production, or effect-lineage writer authority. Task and Reviewer
 assignments bind exact RuntimeSessions and cannot encode Advisor, Lead, or durable Agent identity.
-The barrier has only fail-closed `guarded` and `closed` states. The focused V12 command
-`cargo make test-vnext-postgres-managed-runs` covers Project/WorkItem/RuntimeSession FK scope,
+The barrier has only fail-closed `guarded` and `closed` states. The focused command
+`cargo make test-vnext-postgres-managed-runs` retains those historical V12 definition checks while
+binding them to the current integrated V1-V21 ledger and 138-trigger inventory. It covers
+Project/WorkItem/RuntimeSession FK scope,
 state algebra, unknown-turn divergence with an active turn retained, current/stale submitted
 receipts, explicit inconclusive input, rollback/retry, durable cross-key input replay, exactly-once
 barrier closure, exact revisioned restart readback, runtime-role Turn and HistoryItem writes through
 the V12 forward-repaired invoker guards, fail-closed non-`READ COMMITTED` hierarchy DML, and the
-receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1-to-V12 bootstrap
+receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1-to-V21 bootstrap
 and populated restore.
 The final schema produced by every migration version must be a PostgreSQL 18 dump/restore fixed
 point so the one exact full-manifest digest remains identical before and after logical restore.
