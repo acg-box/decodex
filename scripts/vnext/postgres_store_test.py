@@ -7194,6 +7194,9 @@ def main() -> int | AuthorityCandidatePublication:
 					selected_primary,
 					(teardown_error,),
 				)
+			selected_primary.add_note(
+				f"Secondary pre-start private-work cleanup failure: {teardown_error}"
+			)
 		if selected_primary is None and teardown_error is not None:
 			selected_primary = teardown_error
 			if orchestrator is not None:
