@@ -1,21 +1,25 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
-#[path = "postgres_store/continuation.rs"] mod continuation;
+#[path = "postgres_store/continuation.rs"]
+mod continuation;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_repositories.rs"]
 mod managed_repositories;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_runs.rs"]
 mod managed_runs;
-#[path = "postgres_store/quota.rs"] mod quota;
+#[path = "postgres_store/quota.rs"]
+mod quota;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
 mod role_profiles;
-#[path = "postgres_store/routing_decision.rs"] mod routing_decision;
+#[path = "postgres_store/routing_decision.rs"]
+mod routing_decision;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/runtime_sessions.rs"]
 mod runtime_sessions;
-#[path = "postgres_store/waiting_wake.rs"] mod waiting_wake;
+#[path = "postgres_store/waiting_wake.rs"]
+mod waiting_wake;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/work_items.rs"]
 mod work_items;
@@ -57,12 +61,12 @@ use decodex_core::{
 };
 use decodex_postgres::{
 	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus,
-	BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord, CreateArtifact,
-	CreateConversation, CreateProject, CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot,
-	HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation,
-	PersistContextPack, PostgresStore, ProposeTransition, ReconciliationOutcome, RecordHistoryItem,
-	RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
-	RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
+	BootstrapFailure, BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord,
+	CreateArtifact, CreateConversation, CreateProject, CreateRuntimeSession,
+	CreateRuntimeSessionAccountSnapshot, HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS,
+	OutboxClaim, OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition,
+	ReconciliationOutcome, RecordHistoryItem, RoleProfileCommandOutcome, RoleProfileConfiguration,
+	RoleProfileRole, RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
 };
 
 #[cfg(feature = "test-support")]
@@ -507,15 +511,17 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		)
 		.into());
 	}
-	let (schema, schema_complete, schema_error) =
-		match client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await {
-			Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
-			Err(error) => (None, false, Some(if structured_errors {
-				manifest_query_error(&error)
-			} else {
-				error.to_string()
-			})),
-		};
+	let (schema, schema_complete, schema_error) = match client
+		.query_one(PostgresStore::schema_contract_sql_fixture(), &[])
+		.await
+	{
+		Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
+		Err(error) => (
+			None,
+			false,
+			Some(if structured_errors { manifest_query_error(&error) } else { error.to_string() }),
+		),
+	};
 	let (authority, authority_error) = match client
 		.query_one(
 			PostgresStore::configured_authority_sql_fixture(),
@@ -524,16 +530,13 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		.await
 	{
 		Ok(row) => (row.get::<_, Option<String>>(0), None),
-		Err(error) => (None, Some(if structured_errors {
-			manifest_query_error(&error)
-		} else {
-			error.to_string()
-		})),
+		Err(error) => (
+			None,
+			Some(if structured_errors { manifest_query_error(&error) } else { error.to_string() }),
+		),
 	};
 	let semantic_authority = if structured_errors {
-		Some(
-			PostgresStore::semantic_authority_fixture(&client, &runtime_role).await?,
-		)
+		Some(PostgresStore::semantic_authority_fixture(&client, &runtime_role).await?)
 	} else {
 		None
 	};
@@ -661,6 +664,576 @@ async fn manifest_sequence_state(
 	Ok(state_rows)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AuthorityClassification {
+	UnsafeDatabaseAuthority,
+	DatabaseIncompatible,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AuthorityStoreError {
+	UnsafeAuthority,
+	Incompatible,
+	Migration,
+	Database,
+	Pool,
+	UnsafeHostPath,
+	SocketUnavailable,
+	Other,
+}
+
+#[derive(Debug)]
+struct AuthorityScenario {
+	admin_url: String,
+	baseline_migration_url: String,
+	baseline_runtime_url: String,
+	case_id: String,
+	case_migration_url: String,
+	case_runtime_url: String,
+	expected: AuthorityClassification,
+	expected_store_error: AuthorityStoreError,
+	invariant_sql: Option<String>,
+	mutation_sql: String,
+	post_runtime_rejected_sql: Option<String>,
+	post_runtime_rejected_sqlstate: Option<String>,
+	postcondition_sql: String,
+	pre_runtime_rejected_sql: Option<String>,
+	pre_runtime_rejected_sqlstate: Option<String>,
+	precondition_sql: String,
+	restore_postcondition_sql: Option<String>,
+	restore_sql: Option<String>,
+	runtime_effect_sql: Option<String>,
+}
+
+fn authority_scenarios() -> Vec<AuthorityScenario> {
+	let payload: Value = serde_json::from_str(
+		&env::var("DECODEX_TEST_POSTGRES_AUTHORITY_SCENARIOS")
+			.expect("isolated PostgreSQL authority scenario environment is present"),
+	)
+	.expect("isolated PostgreSQL authority scenarios are JSON");
+	let scenarios = payload.as_array().expect("authority scenario payload is an array");
+	let required = |scenario: &Value, key: &str| {
+		let value = scenario
+			.as_object()
+			.unwrap_or_else(|| panic!("authority scenario is an object"))
+			.get(key)
+			.unwrap_or_else(|| panic!("authority scenario {key} is required"));
+		match value {
+			Value::String(value) if !value.is_empty() => value.clone(),
+			_ => panic!("authority scenario {key} is a nonempty string"),
+		}
+	};
+	let optional = |scenario: &Value, key: &str| match scenario
+		.as_object()
+		.unwrap_or_else(|| panic!("authority scenario is an object"))
+		.get(key)
+	{
+		None | Some(Value::Null) => None,
+		Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
+		Some(_) => panic!("authority scenario {key} is a nonempty string or null"),
+	};
+
+	scenarios
+		.iter()
+		.map(|scenario| {
+			let object = scenario.as_object().expect("authority scenario is an object");
+			let case_id = required(scenario, "case_id");
+			const FIELDS: [&str; 19] = [
+				"admin_url",
+				"baseline_migration_url",
+				"baseline_runtime_url",
+				"case_id",
+				"case_migration_url",
+				"case_runtime_url",
+				"expected",
+				"expected_store_error",
+				"invariant_sql",
+				"mutation_sql",
+				"post_runtime_rejected_sql",
+				"post_runtime_rejected_sqlstate",
+				"postcondition_sql",
+				"pre_runtime_rejected_sql",
+				"pre_runtime_rejected_sqlstate",
+				"precondition_sql",
+				"restore_postcondition_sql",
+				"restore_sql",
+				"runtime_effect_sql",
+			];
+			assert_eq!(object.len(), FIELDS.len(), "{case_id}: authority scenario field count");
+			assert!(
+				object.keys().all(|key| FIELDS.contains(&key.as_str())),
+				"{case_id}: authority scenario has no unknown fields"
+			);
+			let expected = match required(scenario, "expected").as_str() {
+				"unsafe_database_authority" => AuthorityClassification::UnsafeDatabaseAuthority,
+				"database_incompatible" => AuthorityClassification::DatabaseIncompatible,
+				other => panic!("unsupported authority classification {other}"),
+			};
+			let expected_store_error = match required(scenario, "expected_store_error").as_str() {
+				"unsafe_authority" => AuthorityStoreError::UnsafeAuthority,
+				"incompatible" => AuthorityStoreError::Incompatible,
+				"migration" => AuthorityStoreError::Migration,
+				other => panic!("unsupported expected StoreError {other}"),
+			};
+			let authority_scenario = AuthorityScenario {
+				admin_url: required(scenario, "admin_url"),
+				baseline_migration_url: required(scenario, "baseline_migration_url"),
+				baseline_runtime_url: required(scenario, "baseline_runtime_url"),
+				case_id,
+				case_migration_url: required(scenario, "case_migration_url"),
+				case_runtime_url: required(scenario, "case_runtime_url"),
+				expected,
+				expected_store_error,
+				invariant_sql: optional(scenario, "invariant_sql"),
+				mutation_sql: required(scenario, "mutation_sql"),
+				post_runtime_rejected_sql: optional(scenario, "post_runtime_rejected_sql"),
+				post_runtime_rejected_sqlstate: optional(
+					scenario,
+					"post_runtime_rejected_sqlstate",
+				),
+				postcondition_sql: required(scenario, "postcondition_sql"),
+				pre_runtime_rejected_sql: optional(scenario, "pre_runtime_rejected_sql"),
+				pre_runtime_rejected_sqlstate: optional(scenario, "pre_runtime_rejected_sqlstate"),
+				precondition_sql: required(scenario, "precondition_sql"),
+				restore_postcondition_sql: optional(scenario, "restore_postcondition_sql"),
+				restore_sql: optional(scenario, "restore_sql"),
+				runtime_effect_sql: optional(scenario, "runtime_effect_sql"),
+			};
+			validate_authority_scenario(&authority_scenario);
+			authority_scenario
+		})
+		.collect()
+}
+
+fn authority_config(url: &str, field: &str) -> Config {
+	Config::from_str(url)
+		.unwrap_or_else(|_| panic!("authority scenario {field} is a PostgreSQL URL"))
+}
+
+fn same_authority_endpoint(left: &Config, right: &Config) -> bool {
+	left.get_hosts() == right.get_hosts()
+		&& left.get_ports() == right.get_ports()
+		&& left.get_dbname() == right.get_dbname()
+}
+
+fn validate_authority_scenario(scenario: &AuthorityScenario) {
+	assert_eq!(
+		scenario.baseline_migration_url, scenario.case_migration_url,
+		"{}: baseline and case migration endpoint/identity differ",
+		scenario.case_id
+	);
+	assert_eq!(
+		scenario.baseline_runtime_url, scenario.case_runtime_url,
+		"{}: baseline and case runtime endpoint/identity differ",
+		scenario.case_id
+	);
+	let migration = authority_config(&scenario.case_migration_url, "case_migration_url");
+	let runtime = authority_config(&scenario.case_runtime_url, "case_runtime_url");
+	let admin = authority_config(&scenario.admin_url, "admin_url");
+	assert!(
+		same_authority_endpoint(&migration, &runtime)
+			&& same_authority_endpoint(&migration, &admin),
+		"{}: causal connections do not share one database endpoint",
+		scenario.case_id
+	);
+	assert!(
+		migration.get_user().is_some()
+			&& runtime.get_user().is_some()
+			&& migration.get_user() != runtime.get_user(),
+		"{}: migration and runtime identities are not distinct",
+		scenario.case_id
+	);
+
+	for (name, sql, sqlstate) in [
+		(
+			"pre-mutation rejection",
+			scenario.pre_runtime_rejected_sql.as_ref(),
+			scenario.pre_runtime_rejected_sqlstate.as_ref(),
+		),
+		(
+			"post-mutation rejection",
+			scenario.post_runtime_rejected_sql.as_ref(),
+			scenario.post_runtime_rejected_sqlstate.as_ref(),
+		),
+	] {
+		assert_eq!(
+			sql.is_some(),
+			sqlstate.is_some(),
+			"{}: {name} SQL and SQLSTATE must be paired",
+			scenario.case_id
+		);
+		if let Some(sqlstate) = sqlstate {
+			assert!(
+				sqlstate.len() == 5
+					&& sqlstate
+						.bytes()
+						.all(|byte| byte.is_ascii_digit() || byte.is_ascii_uppercase()),
+				"{}: {name} SQLSTATE is invalid",
+				scenario.case_id
+			);
+		}
+	}
+	assert_eq!(
+		scenario.restore_sql.is_some(),
+		scenario.restore_postcondition_sql.is_some(),
+		"{}: restoration SQL and postcondition must be paired",
+		scenario.case_id
+	);
+	let expected_projection = match scenario.expected_store_error {
+		AuthorityStoreError::UnsafeAuthority => AuthorityClassification::UnsafeDatabaseAuthority,
+		AuthorityStoreError::Incompatible | AuthorityStoreError::Migration => {
+			AuthorityClassification::DatabaseIncompatible
+		},
+		_ => panic!("{}: unsupported expected StoreError", scenario.case_id),
+	};
+	assert_eq!(
+		scenario.expected, expected_projection,
+		"{}: concrete StoreError and bootstrap projection disagree",
+		scenario.case_id
+	);
+}
+
+fn postgres_error_code(error: &tokio_postgres::Error) -> &str {
+	error.code().map_or("client", |code| code.code())
+}
+
+async fn authority_batch(url: &str, sql: &str) -> Result<(), String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = client
+		.batch_execute(sql)
+		.await
+		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)));
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+async fn authority_rejected_batch(
+	url: &str,
+	sql: &str,
+	expected_sqlstate: Option<&str>,
+) -> Result<(), String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = match client.batch_execute(sql).await {
+		Ok(()) => Err("SQL unexpectedly succeeded".to_owned()),
+		Err(error) => {
+			let actual = postgres_error_code(&error);
+			if expected_sqlstate.is_none_or(|expected| expected == actual) {
+				Ok(())
+			} else {
+				Err(format!(
+					"SQL rejected with {actual}, expected {}",
+					expected_sqlstate.expect("checked expected SQLSTATE")
+				))
+			}
+		},
+	};
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+async fn authority_boolean(url: &str, sql: &str) -> Result<bool, String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = client
+		.query_one(sql, &[])
+		.await
+		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)))
+		.and_then(|row| row.try_get(0).map_err(|_| "SQL did not return one boolean".to_owned()));
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+async fn authority_text(url: &str, sql: &str) -> Result<String, String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = client
+		.query_one(sql, &[])
+		.await
+		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)))
+		.and_then(|row| row.try_get(0).map_err(|_| "SQL did not return one text value".to_owned()));
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+fn authority_store_error(error: &StoreError) -> (AuthorityStoreError, BootstrapFailure) {
+	let variant = match error {
+		StoreError::UnsafeAuthority(_) => AuthorityStoreError::UnsafeAuthority,
+		StoreError::Incompatible(_) => AuthorityStoreError::Incompatible,
+		StoreError::Migration(_) => AuthorityStoreError::Migration,
+		StoreError::Database(_) => AuthorityStoreError::Database,
+		StoreError::Pool(_) => AuthorityStoreError::Pool,
+		StoreError::UnsafeHostPath => AuthorityStoreError::UnsafeHostPath,
+		StoreError::SocketUnavailable => AuthorityStoreError::SocketUnavailable,
+		_ => AuthorityStoreError::Other,
+	};
+	(variant, error.bootstrap_failure())
+}
+
+async fn authority_store_result(migration_url: &str, runtime_url: &str) -> Result<(), StoreError> {
+	let migration = Config::from_str(migration_url)
+		.map_err(|error| StoreError::Incompatible(format!("invalid migration fixture: {error}")))?;
+	let runtime = Config::from_str(runtime_url)
+		.map_err(|error| StoreError::Incompatible(format!("invalid runtime fixture: {error}")))?;
+	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	store.close();
+	Ok(())
+}
+
+async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String> {
+	let mut failures = Vec::new();
+	let mut causal_evidence_complete = true;
+	if let Err(error) =
+		authority_store_result(&scenario.baseline_migration_url, &scenario.baseline_runtime_url)
+			.await
+	{
+		let (variant, class) = authority_store_error(&error);
+		failures.push(format!("baseline expected Ready, actual {variant:?}/{class:?}"));
+		causal_evidence_complete = false;
+	}
+
+	match authority_boolean(&scenario.admin_url, &scenario.precondition_sql).await {
+		Ok(true) => {},
+		Ok(false) => {
+			failures.push("precondition expected true, actual false".into());
+			causal_evidence_complete = false;
+		},
+		Err(error) => {
+			failures.push(format!("precondition {error}"));
+			causal_evidence_complete = false;
+		},
+	}
+	let invariant_before = if let Some(sql) = scenario.invariant_sql.as_deref() {
+		match authority_text(&scenario.admin_url, sql).await {
+			Ok(value) => Some(value),
+			Err(error) => {
+				failures.push(format!("pre-mutation invariant {error}"));
+				causal_evidence_complete = false;
+				None
+			},
+		}
+	} else {
+		None
+	};
+	if let Some(sql) = scenario.pre_runtime_rejected_sql.as_deref()
+		&& let Err(error) = authority_rejected_batch(
+			&scenario.case_runtime_url,
+			sql,
+			scenario.pre_runtime_rejected_sqlstate.as_deref(),
+		)
+		.await
+	{
+		failures.push(format!("pre-mutation runtime rejection {error}"));
+		causal_evidence_complete = false;
+	}
+
+	let mutation_applied = if causal_evidence_complete {
+		match authority_batch(&scenario.admin_url, &scenario.mutation_sql).await {
+			Ok(()) => true,
+			Err(error) => {
+				failures.push(format!("mutation {error}"));
+				causal_evidence_complete = false;
+				false
+			},
+		}
+	} else {
+		false
+	};
+	if mutation_applied {
+		if let Some(sql) = scenario.post_runtime_rejected_sql.as_deref()
+			&& let Err(error) = authority_rejected_batch(
+				&scenario.case_runtime_url,
+				sql,
+				scenario.post_runtime_rejected_sqlstate.as_deref(),
+			)
+			.await
+		{
+			failures.push(format!("post-mutation runtime rejection {error}"));
+			causal_evidence_complete = false;
+		}
+		if let Some(sql) = scenario.runtime_effect_sql.as_deref()
+			&& let Err(error) = authority_batch(&scenario.case_runtime_url, sql).await
+		{
+			failures.push(format!("runtime effect {error}"));
+			causal_evidence_complete = false;
+		}
+		match authority_boolean(&scenario.admin_url, &scenario.postcondition_sql).await {
+			Ok(true) => {},
+			Ok(false) => {
+				failures.push("postcondition expected true, actual false".into());
+				causal_evidence_complete = false;
+			},
+			Err(error) => {
+				failures.push(format!("postcondition {error}"));
+				causal_evidence_complete = false;
+			},
+		}
+		if let (Some(before), Some(sql)) = (invariant_before, scenario.invariant_sql.as_deref()) {
+			match authority_text(&scenario.admin_url, sql).await {
+				Ok(after) if after == before => {},
+				Ok(_) => {
+					failures.push("non-body invariant changed".into());
+					causal_evidence_complete = false;
+				},
+				Err(error) => {
+					failures.push(format!("post-mutation invariant {error}"));
+					causal_evidence_complete = false;
+				},
+			}
+		}
+	}
+
+	if causal_evidence_complete {
+		let expected_bootstrap = match scenario.expected {
+			AuthorityClassification::UnsafeDatabaseAuthority => BootstrapFailure::UnsafeAuthority,
+			AuthorityClassification::DatabaseIncompatible => BootstrapFailure::Incompatible,
+		};
+		match authority_store_result(&scenario.case_migration_url, &scenario.case_runtime_url).await
+		{
+			Ok(()) => failures.push(format!(
+				"classification expected {:?}/{expected_bootstrap:?}, actual Ready",
+				scenario.expected_store_error
+			)),
+			Err(error) => {
+				let (actual_store_error, actual_bootstrap) = authority_store_error(&error);
+				if actual_store_error != scenario.expected_store_error
+					|| actual_bootstrap != expected_bootstrap
+				{
+					failures.push(format!(
+						"classification expected {:?}/{expected_bootstrap:?}, actual \
+						 {actual_store_error:?}/{actual_bootstrap:?}",
+						scenario.expected_store_error
+					));
+				}
+			},
+		}
+	} else {
+		failures.push("classification not evaluated because causal evidence is incomplete".into());
+	}
+
+	if mutation_applied
+		&& let (Some(restore_sql), Some(restored_sql)) =
+			(scenario.restore_sql.as_deref(), scenario.restore_postcondition_sql.as_deref())
+	{
+		if let Err(error) = authority_batch(&scenario.admin_url, restore_sql).await {
+			failures.push(format!("post-classification cleanup {error}"));
+		}
+		match authority_boolean(&scenario.admin_url, restored_sql).await {
+			Ok(true) => {},
+			Ok(false) => failures
+				.push("post-classification cleanup expected restored, actual unrestored".into()),
+			Err(error) => failures.push(format!("post-classification cleanup predicate {error}")),
+		}
+	}
+
+	failures
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 authority classification harness"]
+async fn postgres_authority_classification_matrix() {
+	let scenarios = authority_scenarios();
+	let unsafe_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected == AuthorityClassification::UnsafeDatabaseAuthority)
+		.count();
+	let incompatible_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected == AuthorityClassification::DatabaseIncompatible)
+		.count();
+	let unsafe_store_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::UnsafeAuthority)
+		.count();
+	let incompatible_store_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::Incompatible)
+		.count();
+	let migration_store_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::Migration)
+		.count();
+	let identities =
+		scenarios.iter().map(|scenario| scenario.case_id.as_str()).collect::<HashSet<_>>();
+
+	assert_eq!(unsafe_count, 27, "unsafe authority scenario count");
+	assert_eq!(incompatible_count, 6, "incompatible authority scenario count");
+	assert_eq!(unsafe_store_count, 27, "StoreError::UnsafeAuthority scenario count");
+	assert_eq!(incompatible_store_count, 5, "StoreError::Incompatible scenario count");
+	assert_eq!(migration_store_count, 1, "StoreError::Migration scenario count");
+	assert_eq!(identities.len(), scenarios.len(), "authority scenario identities are unique");
+	assert!(
+		scenarios.iter().any(|scenario| {
+			scenario.case_id == "missing-ledger-select"
+				&& scenario.expected_store_error == AuthorityStoreError::Incompatible
+				&& scenario.expected == AuthorityClassification::DatabaseIncompatible
+		}),
+		"missing-ledger-select is exclusively incompatible"
+	);
+	assert!(
+		scenarios.iter().any(|scenario| {
+			scenario.case_id == "ledger-tamper"
+				&& scenario.expected_store_error == AuthorityStoreError::Migration
+				&& scenario.expected == AuthorityClassification::DatabaseIncompatible
+		}),
+		"ledger-tamper is migration failure projected as incompatible"
+	);
+
+	let mut failures = Vec::new();
+	for scenario in &scenarios {
+		for failure in evaluate_authority_scenario(scenario).await {
+			failures.push(format!("{}: {failure}", scenario.case_id));
+		}
+	}
+
+	assert!(
+		failures.is_empty(),
+		"PostgreSQL authority classification matrix failures:\n{}",
+		failures.join("\n")
+	);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an isolated PostgreSQL 18 configured-authority database"]
 async fn postgres_manifest_readiness_fixture() -> Result<(), Box<dyn std::error::Error>> {
@@ -774,24 +1347,27 @@ async fn insert_v7_prior_state(
 	variant: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let statement = match variant {
-		"quota_row" =>
+		"quota_row" => {
 			"INSERT INTO decodex.accounts (account_id,display_label) VALUES \
 			 ('10000000-0000-0000-0000-000000000091','V7 quota fixture'); \
 			 INSERT INTO decodex.quota_windows \
 			 (account_id,window_class,duration_seconds,observed_at,confidence) VALUES \
 			 ('10000000-0000-0000-0000-000000000091','five_hour',18000, \
-			  '2026-07-16T10:00:00Z',1)",
-		"receipt_operation" =>
+			  '2026-07-16T10:00:00Z',1)"
+		},
+		"receipt_operation" => {
 			"INSERT INTO decodex.command_receipts \
 			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
 			 ('v7-operation',repeat('a',64),'mutate_quota_window',gen_random_uuid(), \
-			  clock_timestamp()+interval '4 minutes')",
-		"receipt_scope" =>
+			  clock_timestamp()+interval '4 minutes')"
+		},
+		"receipt_scope" => {
 			"INSERT INTO decodex.command_receipts \
 			 (idempotency_key,request_hash,scope_id,claim_token,claim_expires_at) VALUES \
 			 ('v7-scope',repeat('b',64),'quota_windows',gen_random_uuid(), \
-			  clock_timestamp()+interval '4 minutes')",
-		"receipt_completed" =>
+			  clock_timestamp()+interval '4 minutes')"
+		},
+		"receipt_completed" => {
 			"INSERT INTO decodex.command_receipts \
 			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
 			 ('v7-completed',repeat('c',64),'mutate_quota_window',gen_random_uuid(), \
@@ -799,79 +1375,95 @@ async fn insert_v7_prior_state(
 			 UPDATE decodex.command_receipts SET receipt_state='completed',response='{}', \
 			 response_bytes=convert_to('{}','UTF8'),completion_claim_token=claim_token, \
 			 completed_at=clock_timestamp(),claim_token=NULL,claim_expires_at=NULL \
-			 WHERE idempotency_key='v7-completed'",
-		"activity_aggregate" =>
+			 WHERE idempotency_key='v7-completed'"
+		},
+		"activity_aggregate" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('quota_window','v7',1,'observed','v7-activity-aggregate','{}')",
-		"activity_event" =>
+			 ('quota_window','v7',1,'observed','v7-activity-aggregate','{}')"
+		},
+		"activity_event" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'quota_window_updated','v7-activity-event','{}')",
-		"activity_payload_window" =>
+			 ('account','v7',1,'quota_window_updated','v7-activity-event','{}')"
+		},
+		"activity_payload_window" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
 			 ('account','v7',1,'observed','v7-activity-payload', \
-			  '{\"nested\":true,\"window_class\":\"five_hour\"}')",
-		"activity_payload_kind" =>
+			  '{\"nested\":true,\"window_class\":\"five_hour\"}')"
+		},
+		"activity_payload_kind" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-kind','{\"kind\":\"quota_exclusion\"}')",
-		"activity_payload_seconds" =>
+			 ('account','v7',1,'observed','v7-activity-kind','{\"kind\":\"quota_exclusion\"}')"
+		},
+		"activity_payload_seconds" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-seconds','{\"duration_seconds\":18000}')",
-		"activity_payload_minutes" =>
+			 ('account','v7',1,'observed','v7-activity-seconds','{\"duration_seconds\":18000}')"
+		},
+		"activity_payload_minutes" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-minutes','{\"duration_minutes\":300}')",
-		"outbox_aggregate" =>
+			 ('account','v7',1,'observed','v7-activity-minutes','{\"duration_minutes\":300}')"
+		},
+		"outbox_aggregate" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-aggregate','quota_window','v7',1,'{}')",
-		"outbox_envelope" =>
+			 ('v7-outbox-aggregate','quota_window','v7',1,'{}')"
+		},
+		"outbox_envelope" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope','account','v7',1, \
-			  '{\"payload\":{\"duration_minutes\":300}}')",
-		"outbox_envelope_aggregate" =>
+			  '{\"payload\":{\"duration_minutes\":300}}')"
+		},
+		"outbox_envelope_aggregate" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-aggregate','account','v7',1, \
-			  '{\"aggregate_kind\":\"quota_window\"}')",
-		"outbox_envelope_event" =>
+			  '{\"aggregate_kind\":\"quota_window\"}')"
+		},
+		"outbox_envelope_event" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-event','account','v7',1, \
-			  '{\"event_kind\":\"quota_window_excluded\"}')",
-		"outbox_envelope_kind" =>
+			  '{\"event_kind\":\"quota_window_excluded\"}')"
+		},
+		"outbox_envelope_kind" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-kind','account','v7',1, \
-			  '{\"payload\":{\"kind\":\"quota_window\"}}')",
-		"outbox_envelope_window" =>
+			  '{\"payload\":{\"kind\":\"quota_window\"}}')"
+		},
+		"outbox_envelope_window" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-window','account','v7',1, \
-			  '{\"payload\":{\"window_class\":\"five_hour\"}}')",
-		"outbox_envelope_seconds" =>
+			  '{\"payload\":{\"window_class\":\"five_hour\"}}')"
+		},
+		"outbox_envelope_seconds" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-seconds','account','v7',1, \
-			  '{\"payload\":{\"duration_seconds\":18000}}')",
-		"outbox_link" =>
+			  '{\"payload\":{\"duration_seconds\":18000}}')"
+		},
+		"outbox_link" => {
 			"WITH event AS (INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
 			 ('quota_window','v7-link',1,'observed','v7-link','{}') RETURNING sequence) \
 			 INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) \
 			 SELECT 'v7-outbox-link','account','v7-link',1, \
-			 jsonb_build_object('activity_sequence',sequence) FROM event",
-		"outbox_orphan" =>
+			 jsonb_build_object('activity_sequence',sequence) FROM event"
+		},
+		"outbox_orphan" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-orphan','account','v7',1, \
-			  '{\"payload\":{\"kind\":\"quota_exclusion\"},\"activity_sequence\":9223372036854775807}')",
+			  '{\"payload\":{\"kind\":\"quota_exclusion\"},\"activity_sequence\":9223372036854775807}')"
+		},
 		_ => return Err(format!("unknown V8 prior-state fixture {variant}").into()),
 	};
 
@@ -3924,8 +4516,9 @@ async fn assert_program_transition_replay(
 
 		match result {
 			Ok(_) => winner_count += 1,
-			Err(StoreError::RevisionConflict { actual: Some(3), .. }) =>
-				loser = Some((command, state)),
+			Err(StoreError::RevisionConflict { actual: Some(3), .. }) => {
+				loser = Some((command, state))
+			},
 			Err(error) => return Err(error.into()),
 		}
 	}
