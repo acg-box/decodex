@@ -3,8 +3,8 @@ import Foundation
 import SwiftUI
 
 struct AccountPanelView: View {
-	@ObservedObject var store: AccountStore
-	@ObservedObject var loginWindowState: LoginWindowState
+	let store: AccountStore
+	let loginWindowState: LoginWindowState
 	@Environment(\.colorScheme) var colorScheme
 	@State var accountScrollOffset: CGFloat = 0
 	@State var armedLogoutAccountID: String?
@@ -13,18 +13,17 @@ struct AccountPanelView: View {
 	@AppStorage("decodex.operator.accountPrivacy") var accountPrivacy = AccountPrivacy.hiddenValue
 
 	var body: some View {
-		Group {
-			if #available(macOS 26.0, *) {
-				GlassEffectContainer(spacing: 6) {
-					panelContent
-				}
-			} else {
-				panelContent
-			}
+		GlassEffectContainer(spacing: 6) {
+			panelContent
 		}
 		.background {
-			LoginPanelPresenter(store: store, state: loginWindowState)
-				.frame(width: 0, height: 0)
+			LoginPanelPresenter(
+				store: store,
+				state: loginWindowState,
+				isPresented: loginWindowState.isPresented,
+				mode: loginWindowState.mode
+			)
+			.frame(width: 0, height: 0)
 		}
 		.onDisappear {
 			disarmLogout()

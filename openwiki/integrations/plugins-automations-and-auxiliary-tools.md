@@ -147,7 +147,10 @@ decodex-publisher validate-social .agent/automations/decodex/cache/social/x
 - Lists stored accounts without token material.
 - Pins future Decodex runs to one account or returns to balanced selection.
 - Forces Codex to use a stored account by writing `auth.json`.
-- Runs isolated Codex device login and imports the resulting auth file.
+- Runs isolated Codex device login and imports the resulting auth file. The App
+  honors an explicit `CODEX_CLI_PATH` override; otherwise it resolves the login
+  executable from the Codex macOS application registered with Launch Services,
+  then falls back to a `codex` executable in the inherited `PATH`.
 - Removes stored accounts from the local pool.
 - Connects to a default local `decodex serve` when available, otherwise starts bundled `decodex serve --listen-address 127.0.0.1:8192`.
 

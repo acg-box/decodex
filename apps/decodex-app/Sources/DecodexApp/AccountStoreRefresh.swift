@@ -1,8 +1,19 @@
 import Foundation
 
-private let accountUsageRefreshIntervalNanoseconds: UInt64 = 15_000_000_000
+private let accountUsageRefreshInterval: Duration = .seconds(15)
 
 extension AccountStore {
+	func start() {
+		guard startupTask == nil else {
+			return
+		}
+
+		startAutomaticRefresh()
+		startupTask = Task { [weak self] in
+			await self?.refreshIfNeeded()
+		}
+	}
+
 	func refresh(force: Bool = false) async {
 		guard isRefreshing == false else {
 			return
@@ -41,7 +52,7 @@ extension AccountStore {
 		automaticRefreshTask = Task { [weak self] in
 			while Task.isCancelled == false {
 				do {
-					try await Task.sleep(nanoseconds: accountUsageRefreshIntervalNanoseconds)
+					try await Task.sleep(for: accountUsageRefreshInterval)
 				} catch {
 					return
 				}
