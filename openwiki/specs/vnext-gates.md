@@ -17,9 +17,9 @@ its dependent implementation uses the result.
 
 | Range | Accepted downstream ownership |
 | --- | --- |
-| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its final aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
+| [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence, while XY-1304 owns only the final aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence, while XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -103,7 +103,8 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1274 | Exact-microsecond quota persistence, `/2` canonical mutation identity, atomic V8 zero-state migration, and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
 | XY-1275 | Umbrella for user-owned profile persistence and RuntimeSession snapshots. It closes only through the serial XY-1345 -> XY-1346 -> XY-1337 order. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
 | XY-1276 | Production Quick Task creation; remains blocked by XY-1304. |
-| XY-1304 | Final aggregate live-routing gate and separate reviewed enablement amendment only. It owns no migration, policy snapshot, candidate construction, experiment schema, continuation, orchestration, wake lifecycle, or Desktop discovery implementation. |
+| XY-1300 | Later whole-product E2E, fault, UI, packaging, cutover, and release acceptance after XY-1304; no pre-XY-1304 frozen-core gate ownership. |
+| XY-1304 | Live-routing aggregate gate and separate reviewed enablement amendment after XY-1364 frozen-core acceptance. It owns no migration, policy snapshot, candidate construction, experiment schema, continuation, orchestration, wake lifecycle, or Desktop discovery implementation. |
 | XY-1345 | Accepted exact-command authority and isolated PostgreSQL 18 prototype only; no production migration or Rust command path. |
 | XY-1346 | PostgreSQL V9: separate exact receipts plus immutable global RoleProfile bootstrap/update. Starts only after XY-1345 lands. |
 | XY-1337 | Re-bounded RuntimeSession snapshot creation/transition migration, expected V10 after XY-1346. It does not own exact-receipt or RoleProfile redesign. |
@@ -122,10 +123,11 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1357 | One post-freeze natural provider timestamp-precision receipt; no deliberate quota consumption or routing enablement. |
 | XY-1358 | Sole V15 migration owner for causal positive-only Codex experiment authority. |
 | XY-1359 | Sole V16 migration owner plus pure routing kernel and atomic persisted decisions; no dispatch. |
-| XY-1360 | Same-thread continuation and one atomic Context-Pack/RuntimeSession fallback after V16; no migration is pre-reserved. |
+| XY-1360 | Sole V17 migration owner for same-thread continuation and one atomic Context-Pack/RuntimeSession fallback after V16; no dispatch. |
 | XY-1361 | Runtime orchestration over persisted authorities with production dispatch structurally disabled. |
-| XY-1362 | Scheduler-owned `waiting_usage` wake lifecycle and fresh re-resolution; no selection authority. |
+| XY-1362 | Sole V18 migration owner for the inert `waiting_usage` wake lifecycle, plus its forward-only V19 deterministic time-authority repair; no selection or production scheduler authority. |
 | XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. |
+| XY-1364 | Frozen-core integration and acceptance for the checked-in V14-V21 ledger, including the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference repair; production routing remains disabled. |
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
@@ -251,12 +253,14 @@ XY-1353 ────────────────────────
 ```
 
 The migration ledger is a singleton serial-writer domain. XY-1349's V13 is accepted on
-`main`. The fixed next order is XY-1356/V14 durable routing-policy authority, then
-XY-1358/V15 causal experiment authority, then XY-1359/V16 atomic routing decisions, then
-XY-1360/V17 continuation authority after bounded source inspection proved durable atomic state
-was required. Later owners may allocate another migration only if then-current source
-inspection proves additional durable state is required. XY-1350 and the remaining
-managed-repository children retain their accepted non-routing ownership.
+`main`. The checked-in order continues through XY-1356/V14 durable routing-policy authority,
+XY-1358/V15 causal experiment authority, XY-1359/V16 atomic routing decisions, and
+XY-1360/V17 continuation authority. XY-1362 owns the V18 inert `waiting_usage` wake lifecycle;
+V19 is its forward-only deterministic time-authority repair. XY-1364 frozen-core acceptance
+incorporates the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference
+repair. These versions are allocated in source. A later owner may allocate another migration only
+when then-current source inspection proves that additional durable state is required. XY-1350 and
+the remaining managed-repository children retain their accepted non-routing ownership.
 
 No managed-repository implementation executes validation before the integration tree is
 frozen. One complete unified validation runs once on that exact frozen tree. Its concise
@@ -773,10 +777,10 @@ production routing.
 ### Failed live account-routing enablement gate
 
 The [live gate issue](https://linear.app/hack-ink/issue/XY-1304) remains failed and
-fail-closed. It is only the final aggregate evidence gate and owner of a later separate
-repository-authority enablement amendment. Production routing remains structurally default-
-disabled until XY-1355, V14, V15, V16, continuation, disabled orchestration, scheduler wake,
-natural timestamp evidence, and Desktop discovery have all landed and one post-freeze aggregate
+fail-closed. It follows XY-1364 frozen-core acceptance and owns only the live-routing aggregate
+evidence gate plus a later separate repository-authority enablement amendment. Production routing
+remains structurally default-disabled until XY-1355, V14-V21, disabled orchestration, scheduler
+wake, natural timestamp evidence, and Desktop discovery have all landed and the XY-1304 aggregate
 gate passes.
 
 The required dependency order is:
@@ -793,8 +797,10 @@ XY-1359 -> XY-1362 scheduler-owned waiting_usage wake lifecycle
 XY-1358 -> XY-1363 retained-title Desktop discovery evidence
 XY-1355 -> XY-1357 natural timestamp precision evidence
 
-all children + XY-1300 unified post-freeze acceptance -> XY-1304 aggregate gate
+all implementation children -> XY-1364 frozen-core acceptance
+XY-1364 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
 -> separate reviewed repository amendment to enable production routing
+-> XY-1300 later whole-product E2E/fault/UI/packaging/cutover acceptance
 ```
 
 The aggregate gate must bind one exact source tree and prove PostgreSQL-produced complete
@@ -846,13 +852,15 @@ combined experiment/routing schema, and sequential exclusion -> RuntimeSession -
 composition are superseded and must not be revived. Before core freeze, executable validation is
 deferred: no formatter, compile/check/lint, migration or SQL parser, tests or matrices, wrappers or
 generators, PostgreSQL, live experiments, or UI/Accessibility/Desktop checks. After freeze,
-XY-1300 owns one mechanical preflight, one unified complete gate, coherent batched repairs, and one
-final aggregate rerun.
+XY-1364 owns one mechanical preflight, one unified complete core gate, coherent batched repairs,
+and one final aggregate rerun. XY-1304 follows with live-routing evidence and its reviewed
+enablement amendment. XY-1300 then owns the later whole-product E2E, fault, UI, packaging,
+cutover, and release acceptance.
 
 #### XY-1358 deferred acceptance matrix
 
-This source-only matrix is deferred to the unified post-freeze gate. It must run against one exact
-tree and may not enable a live experiment while collecting evidence.
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It must run against
+one exact tree and may not enable a live experiment while collecting evidence.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -867,9 +875,9 @@ tree and may not enable a live experiment while collecting evidence.
 
 #### XY-1359 deferred acceptance matrix
 
-This source-only matrix is deferred to the unified post-freeze gate. It binds the V16 source,
-migration, configured-authority inventory, schema manifest, and authority digests to one exact
-tree; no case may dispatch work or enable a production consumer.
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It binds the V16
+source, migration, configured-authority inventory, schema manifest, and authority digests to one
+exact tree; no case may dispatch work or enable a production consumer.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -886,9 +894,10 @@ tree; no case may dispatch work or enable a production consumer.
 
 #### XY-1360 deferred acceptance matrix
 
-This source-only matrix is deferred to the unified post-freeze gate. It binds V10, V12, V15,
-V16, V17, V21, the strict Rust adapter, schema/configured-authority inventories, and regenerated
-digests to one exact integrated tree; no case may dispatch work or enable a production consumer.
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It binds V10, V12,
+V15, V16, V17, V21, the strict Rust adapter, schema/configured-authority inventories, and
+regenerated digests to one exact integrated tree; no case may dispatch work or enable a production
+consumer.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -904,9 +913,9 @@ digests to one exact integrated tree; no case may dispatch work or enable a prod
 
 #### XY-1362 V18/V19 deferred acceptance matrix
 
-This source-only matrix is deferred to the unified post-freeze gate. It binds V10-V21, the strict
-Rust adapter, migration and configured-authority inventories, and regenerated digests to one exact
-integrated tree. It must not enable or compose a production scheduler.
+This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It binds V10-V21, the
+strict Rust adapter, migration and configured-authority inventories, and regenerated digests to one
+exact integrated tree. It must not enable or compose a production scheduler.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -927,10 +936,10 @@ The `fd1e351` core freeze was reopened for the forward V19 time-authority repair
 then canonicalized restore-unstable constraints, and V21 repairs only RuntimeSession event-reference
 classification and its final inventories without changing the trusted command or trigger boundary.
 The current core refreezes at the exact approved V21 tree. This is the single integrated
-source-candidate matrix for that refrozen core. It inventories the
-post-freeze mechanical and behavioral gate without implementing or executing any case during this
-integration task. Every result must bind the exact approved integration tree and both immutable
-merge parents; evidence from either parent alone is insufficient.
+source-candidate matrix for the XY-1364 refrozen core. It defines the post-freeze mechanical and
+behavioral gate for the exact integrated candidate. Every result must bind the exact approved
+integration tree and both immutable merge parents; evidence from either parent alone is
+insufficient.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -954,8 +963,9 @@ merge parents; evidence from either parent alone is insufficient.
 ## Cutover gate
 
 Cutover may occur only after replacement behavior has accepted tests, XY-1304 has passed
-through explicit repository authority, and the v0.2 inventory is frozen. The accepted
-procedure stops v0.2, verifies the trusted tag/cold
+through explicit repository authority, XY-1300 has accepted the later whole-product E2E, fault,
+UI, packaging, and cutover boundary, and the v0.2 inventory is frozen. The accepted procedure
+stops v0.2, verifies the trusted tag/cold
 backup, initializes empty PostgreSQL state, explicitly recreates selected Projects and
 Automations, and starts only vNext. It imports no legacy execution history and enables no
 dual authority. Removal of old Linear/SQLite/Goal/operator transport follows replacement
