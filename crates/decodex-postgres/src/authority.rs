@@ -4058,8 +4058,9 @@ async fn verify_manifest_contracts(
 	migration_role: &str,
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
-	verify_schema_contract(client).await?;
-	verify_configured_authority(client, migration_role, runtime_role).await
+	// ACL facts intentionally overlap both manifests; classify unsafe authority before incompatibility.
+	verify_configured_authority(client, migration_role, runtime_role).await?;
+	verify_schema_contract(client).await
 }
 
 async fn verify_schema_contract(client: &Client) -> Result<(), StoreError> {
