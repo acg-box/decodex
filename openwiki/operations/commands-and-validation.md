@@ -150,15 +150,23 @@ blob-restart, primary-store, managed-repository, account-composition, bootstrap/
 authority safety, hostile-search-path, primary restore, redaction, default-ACL restore,
 authority-drift, and final-evidence work are all represented. A restore-owning suite cannot pass
 when one of its required nested captures, restores, parity checks, or production checks failed or
-became unavailable, so its consumers are blocked truthfully. Each live-doctor mutation probe owns
-its child process through a bounded terminate, kill-fallback, and reap sequence across every
-mutation/probe/synchronization exit; an indeterminate or unreaped child is harness corruption. The
-probe and fixture restoration are separate stages. Probe invocation, readiness, mutation-SQL
-attempt, and successful application are distinct states: restoration is eligible exactly after the
-mutation SQL is attempted, including a failing SQL call, and remains blocked when spawn or readiness
-fails first. The next shared-fixture probe depends on successful restoration. Assertion/type/key
-failures, invalid stage/report state, source-binding failures, redaction failures, and other
-unexpected exceptions are harness corruption and stop new scheduling. A private work directory is
+became unavailable, so its consumers are blocked truthfully. One private live-doctor mutation SQL
+executor owns the ordinary, role-as, and secret-bearing mutation subprocesses, their dispatch and
+completion facts, output handling, and cleanup; the coordinator owns doctor readiness and the
+doctor child only. Every mutation and doctor child receives bounded terminate, kill-fallback, and
+reap attempts on every exit; an indeterminate or unreaped child is harness corruption. The probe
+and fixture restoration are separate stages. A failed ordinary `Popen` is pre-dispatch and blocks
+restoration; successful `Popen` owning SQL in argv makes delivery possible, so every later failure
+remains restoration-eligible. A secret mutation completes its fail-closed logging prelude before
+dispatch, becomes may-have-dispatched immediately before the first mutation-frame payload write,
+and remains eligible after any later write, flush, timeout, protocol, exit, or cleanup failure.
+Successful exit means only command acknowledged, not exact server receipt or non-vacuous mutation
+application; an optional postcondition query is separate evidence. The scheduler consumes exactly
+one restoration claim per shared-fixture attempt: pre-dispatch probe failure blocks restoration,
+eligible probe failure still attempts it, and the next shared-fixture probe depends on successful
+restoration. Assertion/type/key failures, invalid stage/report state, source-binding failures,
+redaction failures, and other unexpected exceptions are harness corruption and stop new scheduling.
+A private work directory is
 cleaned directly when preflight fails before cluster start, with cleanup failure remaining
 subordinate; after PostgreSQL has started, teardown and final stage-report emission still run. The
 semantic/stage failure is selected before aggregate output and report emission, so cleanup or

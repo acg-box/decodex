@@ -306,12 +306,20 @@ meaningful semantic suite has `passed`, `failed`, or `blocked` state. Expected `
 only declared consumers and leaves independent branches schedulable; dependency consumers never
 run after failure. Required nested restore work is part of its owning suite's outcome: a failed or
 unavailable capture, restore, parity check, or production check prevents owner success and blocks
-its consumers. Each live-doctor mutation probe owns bounded terminate, kill-fallback, and reap
-attempts across every exit; an unreaped or indeterminate child is harness corruption. Mutation
-probes and restorations are separate stages. Restoration is eligible exactly when the probe crossed
-the mutation-SQL attempt boundary, including a SQL call that then fails; spawn, pre-readiness exit,
-or readiness timeout leaves restoration blocked. Subsequent shared-fixture probes depend on a
-passed restoration.
+its consumers. A private live-doctor mutation SQL executor alone owns ordinary, role-as, and
+secret-bearing mutation process spawn, dispatch/completion facts, output handling, and cleanup; the
+coordinator owns doctor readiness and the doctor child. Every mutation and doctor child receives
+bounded terminate, kill-fallback, and reap attempts across every exit; an unreaped or indeterminate
+child is harness corruption. Mutation probes and restorations are separate stages. Failed ordinary
+`Popen` and secret prelude failure are pre-dispatch and block restoration. Successful ordinary
+`Popen` owns the SQL payload in argv and makes delivery possible. A secret mutation becomes
+may-have-dispatched immediately before its first mutation-frame payload write. Every later write,
+flush, timeout, protocol, nonzero-exit, lost-acknowledgement, semantic, or cleanup failure remains
+restoration-eligible. Successful exit records command acknowledgement only, not exact server
+receipt or a non-vacuous catalog mutation; optional postcondition probes remain separate evidence.
+The scheduler consumes exactly one restoration claim from each shared-fixture attempt. An eligible
+failed probe still attempts restoration, and failed restoration blocks all subsequent shared-fixture
+probes and final evidence.
 Unexpected assertion/key/type failures, corrupt stage/report state, source-binding failure,
 redaction failure, or another unexpected exception stops new work as harness corruption. After a
 private directory is created, its outer cleanup owner covers every later exit and attempts direct

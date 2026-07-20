@@ -550,36 +550,80 @@ class ClusterStatus(Enum):
 	UNKNOWN = "unknown"
 
 
-class MutationBoundary(Enum):
-	"""Truthful progress through one live-doctor mutation lifecycle."""
+class LiveDoctorProbeProgress(Enum):
+	"""Observable progress of the live-doctor side of one mutation attempt."""
 
-	NOT_ATTEMPTED = "not_attempted"
-	PROBE_ATTEMPTED = "probe_attempted"
+	NOT_STARTED = "not_started"
+	STARTED = "started"
 	READINESS_REACHED = "readiness_reached"
-	SQL_ATTEMPTED = "sql_attempted"
-	MUTATION_APPLIED = "mutation_applied"
+
+
+class MutationSqlDispatch(Enum):
+	"""Conservative delivery facts owned only by the mutation process owner."""
+
+	NOT_DISPATCHED = "not_dispatched"
+	DELIVERY_POSSIBLE = "delivery_possible"
+	MAY_HAVE_DISPATCHED = "may_have_dispatched"
+
+
+class MutationCommandCompletion(Enum):
+	"""Observable command acknowledgement, independent of mutation postconditions."""
+
+	PENDING = "pending"
+	COMMAND_ACKNOWLEDGED = "command_acknowledged"
+
+
+class RestorationClaim(Enum):
+	"""The single scheduler claim derived from conservative dispatch evidence."""
+
+	BLOCKED_BEFORE_DISPATCH = "blocked_before_dispatch"
+	ELIGIBLE_AFTER_DISPATCH = "eligible_after_dispatch"
 
 
 @dataclass
-class LiveDoctorMutationLifecycle:
-	"""Own the monotonic mutation boundary used to decide restoration eligibility."""
+class LiveDoctorMutationAttempt:
+	"""Keep orthogonal live-doctor, SQL-delivery, and completion facts."""
 
-	boundary: MutationBoundary = MutationBoundary.NOT_ATTEMPTED
+	probe: LiveDoctorProbeProgress = LiveDoctorProbeProgress.NOT_STARTED
+	dispatch: MutationSqlDispatch = MutationSqlDispatch.NOT_DISPATCHED
+	completion: MutationCommandCompletion = MutationCommandCompletion.PENDING
+	_restoration_claim_consumed: bool = False
 
-	def advance(self, expected: MutationBoundary, reached: MutationBoundary) -> None:
-		if self.boundary is not expected:
-			raise HarnessCorruption(
-				"live doctor mutation lifecycle transition is invalid: "
-				f"{self.boundary.value} -> {reached.value}"
-			)
-		self.boundary = reached
+	def mark_probe_started(self) -> None:
+		if self.probe is not LiveDoctorProbeProgress.NOT_STARTED:
+			raise HarnessCorruption("live doctor probe was started more than once")
+		self.probe = LiveDoctorProbeProgress.STARTED
 
-	@property
-	def restoration_eligible(self) -> bool:
-		return self.boundary in {
-			MutationBoundary.SQL_ATTEMPTED,
-			MutationBoundary.MUTATION_APPLIED,
-		}
+	def mark_readiness_reached(self) -> None:
+		if self.probe is not LiveDoctorProbeProgress.STARTED:
+			raise HarnessCorruption("live doctor readiness was recorded out of order")
+		self.probe = LiveDoctorProbeProgress.READINESS_REACHED
+
+	def _mark_delivery_possible(self) -> None:
+		if self.dispatch is not MutationSqlDispatch.NOT_DISPATCHED:
+			raise HarnessCorruption("ordinary mutation SQL dispatch was recorded more than once")
+		self.dispatch = MutationSqlDispatch.DELIVERY_POSSIBLE
+
+	def _mark_may_have_dispatched(self) -> None:
+		if self.dispatch is not MutationSqlDispatch.NOT_DISPATCHED:
+			raise HarnessCorruption("secret mutation SQL dispatch was recorded more than once")
+		self.dispatch = MutationSqlDispatch.MAY_HAVE_DISPATCHED
+
+	def _mark_command_acknowledged(self) -> None:
+		if (
+			self.dispatch is MutationSqlDispatch.NOT_DISPATCHED
+			or self.completion is not MutationCommandCompletion.PENDING
+		):
+			raise HarnessCorruption("mutation command acknowledgement is inconsistent")
+		self.completion = MutationCommandCompletion.COMMAND_ACKNOWLEDGED
+
+	def consume_restoration_claim(self) -> RestorationClaim:
+		if self._restoration_claim_consumed:
+			raise HarnessCorruption("mutation restoration claim was consumed more than once")
+		self._restoration_claim_consumed = True
+		if self.dispatch is MutationSqlDispatch.NOT_DISPATCHED:
+			return RestorationClaim.BLOCKED_BEFORE_DISPATCH
+		return RestorationClaim.ELIGIBLE_AFTER_DISPATCH
 
 
 def run(command: list[str], env: dict[str, str]) -> str:
@@ -682,8 +726,8 @@ def run_blob_session_restart_contract(
 			process.wait(timeout=10)
 
 
-def reap_live_doctor_process(
-	process: subprocess.Popen[str],
+def _reap_live_doctor_child(
+	process: subprocess.Popen[str], child: str,
 ) -> HarnessCorruption | None:
 	"""Bound termination and reap attempts without abandoning fallback cleanup."""
 	diagnostics: list[str] = []
@@ -710,7 +754,7 @@ def reap_live_doctor_process(
 	else:
 		try:
 			process.wait(timeout=10)
-			reaped = True
+			reaped = process.returncode is not None
 		except Exception as error:
 			record("wait after exit", error)
 	if not reaped:
@@ -726,13 +770,206 @@ def reap_live_doctor_process(
 	if not reaped:
 		try:
 			process.wait(timeout=10)
-			reaped = True
+			reaped = process.returncode is not None
 		except Exception as error:
 			record("final wait", error)
 	if reaped:
 		return None
 	detail = ", ".join(diagnostics) or "process state remained indeterminate"
-	return HarnessCorruption(f"live doctor child was not reaped ({detail})")
+	return HarnessCorruption(f"{child} child was not reaped ({detail})")
+
+
+def _raise_child_cleanup_corruption(cleanup: HarnessCorruption | None) -> None:
+	if cleanup is None:
+		return
+	active_error = sys.exc_info()[1]
+	if isinstance(active_error, StageActionFailure):
+		raise StageActionFailure(
+			active_error.primary,
+			active_error.secondary + (cleanup,),
+		) from active_error.primary
+	if isinstance(active_error, Exception):
+		raise StageActionFailure(active_error, (cleanup,)) from active_error
+	raise cleanup
+
+
+class _LiveDoctorMutationSqlExecutor:
+	"""Own every mutation child and the conservative SQL-delivery facts it exposes."""
+
+	def __init__(self, attempt: LiveDoctorMutationAttempt) -> None:
+		self._attempt = attempt
+
+	def execute(
+		self,
+		database: str,
+		sql: str,
+		env: dict[str, str],
+		*,
+		role: str | None,
+		secret_sql: bool,
+	) -> None:
+		if self._attempt.probe is not LiveDoctorProbeProgress.READINESS_REACHED:
+			raise HarnessCorruption("mutation SQL executor ran before live-doctor readiness")
+		if secret_sql:
+			if role is not None:
+				raise HarnessCorruption("secret live-doctor mutation cannot select a role")
+			self._execute_secret(database, sql, env)
+		else:
+			self._execute_ordinary(database, sql, env, role=role)
+
+	def _execute_ordinary(
+		self,
+		database: str,
+		sql: str,
+		env: dict[str, str],
+		*,
+		role: str | None,
+	) -> None:
+		mutation_env = env if role is None else env.copy()
+		if role is not None:
+			mutation_env["PGUSER"] = role
+		try:
+			process = subprocess.Popen(
+				[
+					"psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-d", database,
+					"-c", sql,
+				],
+				text=True,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				env=mutation_env,
+				cwd=REPO_ROOT,
+			)
+		except Exception as error:
+			raise TestFailure("live-doctor mutation SQL process did not start") from error
+		try:
+			# A returned Popen owns the payload in argv; delivery is now possible.
+			self._attempt._mark_delivery_possible()
+			try:
+				stdout, stderr = process.communicate(timeout=10)
+			except subprocess.TimeoutExpired as error:
+				raise TestFailure("live-doctor mutation SQL command timed out") from error
+			if process.returncode != 0:
+				raise TestFailure(
+					f"live-doctor mutation SQL command failed ({process.returncode})\n"
+					f"stdout:\n{stdout}\nstderr:\n{stderr}"
+				)
+			self._attempt._mark_command_acknowledged()
+		finally:
+			_raise_child_cleanup_corruption(
+				_reap_live_doctor_child(process, "live-doctor mutation SQL")
+			)
+
+	def _execute_secret(
+		self, database: str, sql: str, env: dict[str, str]
+	) -> None:
+		ready_marker = "XY1272_SECRET_LOGGING_READY"
+		done_marker = "XY1272_SECRET_SQL_DONE"
+		try:
+			process = subprocess.Popen(
+				["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-d", database],
+				text=True,
+				bufsize=1,
+				stdin=subprocess.PIPE,
+				stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE,
+				env=env,
+				cwd=REPO_ROOT,
+			)
+		except Exception as error:
+			raise TestFailure(
+				"secret live-doctor mutation process failed before payload dispatch"
+			) from error
+		try:
+			if process.stdin is None or process.stdout is None or process.stderr is None:
+				raise TestFailure("secret live-doctor mutation pipes are unavailable")
+			try:
+				process.stdin.write(
+					"SET log_min_error_statement=PANIC;\n"
+					"SET log_min_messages=PANIC;\n"
+					"SET log_statement=none;\n"
+					"SET log_duration=off;\n"
+					"SET log_min_duration_statement=-1;\n"
+					"SET log_min_duration_sample=-1;\n"
+					"SET log_statement_sample_rate=0;\n"
+					"SET log_transaction_sample_rate=0;\n"
+					"SET log_parameter_max_length=0;\n"
+					"SET log_parameter_max_length_on_error=0;\n"
+					"SET debug_print_parse=off;\n"
+					"SET debug_print_rewritten=off;\n"
+					"SET debug_print_plan=off;\n"
+					"SET log_parser_stats=off;\n"
+					"SET log_planner_stats=off;\n"
+					"SET log_executor_stats=off;\n"
+					"SET log_statement_stats=off;\n"
+					"SELECT pg_catalog.concat_ws('|',"
+					"pg_catalog.current_setting('log_min_error_statement'),"
+					"pg_catalog.current_setting('log_min_messages'),"
+					"pg_catalog.current_setting('log_statement'),"
+					"pg_catalog.current_setting('log_duration'),"
+					"pg_catalog.current_setting('log_min_duration_statement'),"
+					"pg_catalog.current_setting('log_min_duration_sample'),"
+					"pg_catalog.current_setting('log_statement_sample_rate'),"
+					"pg_catalog.current_setting('log_transaction_sample_rate'),"
+					"pg_catalog.current_setting('log_parameter_max_length'),"
+					"pg_catalog.current_setting('log_parameter_max_length_on_error'),"
+					"pg_catalog.current_setting('debug_print_parse'),"
+					"pg_catalog.current_setting('debug_print_rewritten'),"
+					"pg_catalog.current_setting('debug_print_plan'),"
+					"pg_catalog.current_setting('log_parser_stats'),"
+					"pg_catalog.current_setting('log_planner_stats'),"
+					"pg_catalog.current_setting('log_executor_stats'),"
+					"pg_catalog.current_setting('log_statement_stats'),"
+					"pg_catalog.current_setting('logging_collector'),"
+					"pg_catalog.current_setting('log_destination'));\n"
+					f"\\echo {ready_marker}\n"
+				)
+				process.stdin.flush()
+				ready, _, _ = select.select([process.stdout], [], [], 10)
+				if not ready:
+					raise TestFailure("secret live-doctor mutation logging check timed out")
+				settings = process.stdout.readline().strip()
+				ready, _, _ = select.select([process.stdout], [], [], 10)
+				if not ready:
+					raise TestFailure("secret live-doctor mutation logging check timed out")
+				if process.stdout.readline().strip() != ready_marker:
+					raise TestFailure("secret live-doctor mutation logging check did not complete")
+				expected = (
+					"panic|panic|none|off|-1|-1|0|0|0|0|off|off|off|off|off|off|off|off|stderr"
+				)
+				if settings != expected:
+					raise TestFailure("secret live-doctor mutation logging is not fail-closed")
+
+				process.stdin.write("\\set VERBOSITY terse\n")
+				# A buffered write can fail after accepting a payload prefix.
+				self._attempt._mark_may_have_dispatched()
+				process.stdin.write(sql)
+				if not sql.rstrip().endswith(";"):
+					process.stdin.write(";")
+				process.stdin.write(f"\n\\echo {done_marker}\n\\quit\n")
+				process.stdin.flush()
+				stdout, stderr = process.communicate(timeout=10)
+				if process.returncode != 0 or done_marker not in stdout.splitlines() or stderr:
+					raise TestFailure("secret live-doctor mutation command failed")
+				self._attempt._mark_command_acknowledged()
+			except subprocess.TimeoutExpired as error:
+				raise TestFailure("secret live-doctor mutation command timed out") from error
+			except HarnessCorruption:
+				raise
+			except TestFailure:
+				raise
+			except Exception as error:
+				if self._attempt.dispatch is MutationSqlDispatch.NOT_DISPATCHED:
+					raise TestFailure(
+						"secret live-doctor mutation failed before payload dispatch"
+					) from error
+				raise TestFailure(
+					"secret live-doctor mutation failed after payload dispatch"
+				) from error
+		finally:
+			_raise_child_cleanup_corruption(
+				_reap_live_doctor_child(process, "secret live-doctor mutation SQL")
+			)
 
 
 def run_live_doctor_mutation(
@@ -742,7 +979,7 @@ def run_live_doctor_mutation(
 	case: str,
 	work: Path,
 	env: dict[str, str],
-	lifecycle: LiveDoctorMutationLifecycle,
+	attempt: LiveDoctorMutationAttempt,
 	*,
 	unsafe_authority: bool = False,
 	cluster_authority: bool = False,
@@ -750,7 +987,7 @@ def run_live_doctor_mutation(
 	mutation_probe: str | None = None,
 ) -> str:
 	"""Coordinate a real daemon query around an adapter-owned database mutation."""
-	lifecycle.advance(MutationBoundary.NOT_ATTEMPTED, MutationBoundary.PROBE_ATTEMPTED)
+	attempt.mark_probe_started()
 	sync = work / f"live-doctor-{case}"
 	sync.mkdir()
 	test_env = env.copy()
@@ -789,36 +1026,13 @@ def run_live_doctor_mutation(
 				raise TestFailure(f"live doctor did not reach {case} barrier")
 			time.sleep(0.01)
 
-		lifecycle.advance(
-			MutationBoundary.PROBE_ATTEMPTED,
-			MutationBoundary.READINESS_REACHED,
-		)
-		if cluster_authority:
-			if secret_sql:
-				psql_secret(
-					database,
-					sql,
-					env,
-					on_sql_attempt=lambda: lifecycle.advance(
-						MutationBoundary.READINESS_REACHED,
-						MutationBoundary.SQL_ATTEMPTED,
-					),
-				)
-			else:
-				lifecycle.advance(
-					MutationBoundary.READINESS_REACHED,
-					MutationBoundary.SQL_ATTEMPTED,
-				)
-				psql(database, sql, env)
-		else:
-			lifecycle.advance(
-				MutationBoundary.READINESS_REACHED,
-				MutationBoundary.SQL_ATTEMPTED,
-			)
-			psql_as(MIGRATION_ROLE, database, sql, env)
-		lifecycle.advance(
-			MutationBoundary.SQL_ATTEMPTED,
-			MutationBoundary.MUTATION_APPLIED,
+		attempt.mark_readiness_reached()
+		_LiveDoctorMutationSqlExecutor(attempt).execute(
+			database,
+			sql,
+			env,
+			role=None if cluster_authority else MIGRATION_ROLE,
+			secret_sql=secret_sql,
 		)
 		if mutation_probe is not None and psql(database, mutation_probe, env) != "t":
 			raise TestFailure(f"{case} authority mutation probe is vacuous")
@@ -839,16 +1053,9 @@ def run_live_doctor_mutation(
 			)
 		return stdout.strip() or stderr.strip()
 	finally:
-		active_error = sys.exc_info()[1]
-		cleanup_corruption = reap_live_doctor_process(process)
-		if cleanup_corruption is not None:
-			if isinstance(active_error, Exception):
-				raise StageActionFailure(
-					active_error,
-					(cleanup_corruption,),
-				) from active_error
-			if active_error is None:
-				raise cleanup_corruption
+		_raise_child_cleanup_corruption(
+			_reap_live_doctor_child(process, "live doctor")
+		)
 
 
 def postgres_status(data_dir: Path, env: dict[str, str]) -> ClusterStatus:
@@ -880,12 +1087,7 @@ def psql(database: str, sql: str, env: dict[str, str]) -> str:
 
 
 def psql_secret(
-	database: str,
-	sql: str,
-	env: dict[str, str],
-	*,
-	expect_failure: bool = False,
-	on_sql_attempt: Callable[[], None] | None = None,
+	database: str, sql: str, env: dict[str, str], *, expect_failure: bool = False
 ) -> str:
 	"""Execute secret-bearing SQL only after one live session disables statement logging."""
 	ready_marker = "XY1272_SECRET_LOGGING_READY"
@@ -957,8 +1159,6 @@ def psql_secret(
 		process.stdin.write("\\set VERBOSITY terse\n")
 		if expect_failure:
 			process.stdin.write("\\set ON_ERROR_STOP off\n")
-		if on_sql_attempt is not None:
-			on_sql_attempt()
 		process.stdin.write(sql)
 		if not sql.rstrip().endswith(";"):
 			process.stdin.write(";")
@@ -6011,7 +6211,7 @@ def main() -> int | AuthorityCandidatePublication:
 				"ledger-tamper",
 				work,
 				env,
-				LiveDoctorMutationLifecycle(),
+				LiveDoctorMutationAttempt(),
 			)
 			if psql(
 				LEDGER_TAMPER_DATABASE,
@@ -6041,7 +6241,7 @@ def main() -> int | AuthorityCandidatePublication:
 				"missing-pgcrypto",
 				work,
 				env,
-				LiveDoctorMutationLifecycle(),
+				LiveDoctorMutationAttempt(),
 			)
 			if psql(
 				MISSING_EXTENSION_DATABASE,
@@ -6421,7 +6621,7 @@ def main() -> int | AuthorityCandidatePublication:
 				"schema-default-acl",
 				work,
 				env,
-				LiveDoctorMutationLifecycle(),
+				LiveDoctorMutationAttempt(),
 				unsafe_authority=True,
 			)
 			default_acl_probe = (
@@ -6678,7 +6878,7 @@ def main() -> int | AuthorityCandidatePublication:
 					f"AND NOT pg_catalog.has_table_privilege('{MISSING_SELECT_ROLE}', "
 					"'public.refinery_schema_history', 'SELECT')"
 				)
-			mutation_lifecycle = LiveDoctorMutationLifecycle()
+			mutation_attempt = LiveDoctorMutationAttempt()
 			def authority_mutation_probe() -> str:
 				output = run_live_doctor_mutation(
 					bootstrap_root,
@@ -6687,7 +6887,7 @@ def main() -> int | AuthorityCandidatePublication:
 					case,
 					work,
 					env,
-					mutation_lifecycle,
+					mutation_attempt,
 					unsafe_authority=True,
 					cluster_authority=cluster_authority,
 					secret_sql=secret_sql,
@@ -6715,6 +6915,7 @@ def main() -> int | AuthorityCandidatePublication:
 			)
 			authority_drift_stages.append(probe_stage)
 			restoration_stage = f"authority_drift::{case}::restoration"
+			restoration_claim = mutation_attempt.consume_restoration_claim()
 			def restore_authority_fixture() -> None:
 				if cluster_authority:
 					if secret_sql:
@@ -6728,7 +6929,9 @@ def main() -> int | AuthorityCandidatePublication:
 				restoration_stage,
 				restore_authority_fixture,
 				depends_on=(probe_stage,),
-				always_run=mutation_lifecycle.restoration_eligible,
+				always_run=(
+					restoration_claim is RestorationClaim.ELIGIBLE_AFTER_DISPATCH
+				),
 			)
 			authority_drift_stages.append(restoration_stage)
 			previous_restoration = restoration_stage
