@@ -212,10 +212,11 @@ async fn assert_migration_role_profile_invariants(
 		(
 			"INSERT INTO decodex.exact_command_receipts( \
 			 protocol_version,idempotency_key,request_envelope,request_digest,receipt_state, \
-			 outcome_class,effect_envelope,response_bytes,completed_at) \
+			 outcome_class,effect_envelope,response_bytes,created_at,completed_at) \
 			 VALUES ('decodex/exact-command/1','owner-malformed-response','{\"operation\":\"hostile\"}', \
 			 public.digest(convert_to('{\"operation\": \"hostile\"}'::jsonb::text,'UTF8'),'sha256'), \
-			 'completed_success','success','{}',convert_to('{\"classification\":\"success\"}','UTF8'),clock_timestamp())",
+			 'completed_success','success','{}',convert_to('{\"classification\":\"success\"}','UTF8'), \
+			 statement_timestamp(),statement_timestamp())",
 			"23514",
 		),
 		(

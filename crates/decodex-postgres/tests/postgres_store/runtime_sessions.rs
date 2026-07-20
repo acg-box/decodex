@@ -3,7 +3,7 @@ use std::{env, path::PathBuf};
 use tokio::{task::JoinSet, time};
 use tokio_postgres::{Client, NoTls};
 
-use super::{expected_peer_uid, separated_configs};
+use super::{expected_peer_uid, separated_configs, wait_for_blocker};
 use decodex_core::{ConversationId, RuntimeSessionId, RuntimeSessionState};
 use decodex_postgres::{
 	AccountId, AccountState, BootstrapRoleProfiles, CommandIdentity, CreateConversation,
@@ -11,6 +11,47 @@ use decodex_postgres::{
 	RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
 	RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionRejection, StoreError,
 };
+
+const PROFILE_RACE_GATE: i64 = 913_371_364;
+const MIGRATION_NAMES_THROUGH_V10: [&str; 10] = [
+	"persistence_foundation",
+	"claim_indexes",
+	"conversation_history",
+	"account_readiness",
+	"project_agent_authority",
+	"project_policy_authority",
+	"program_objective_authority",
+	"quota_exclusions",
+	"exact_role_profiles",
+	"runtime_session_snapshots",
+];
+
+async fn exact_migration_history(
+	client: &Client,
+	expected_names: &[&str],
+) -> Result<Vec<(i32, String, String)>, tokio_postgres::Error> {
+	let history = client
+		.query(
+			"SELECT version, name, checksum \
+			 FROM public.refinery_schema_history ORDER BY version",
+			&[],
+		)
+		.await?
+		.into_iter()
+		.map(|row| (row.get::<_, i32>(0), row.get::<_, String>(1), row.get::<_, String>(2)))
+		.collect::<Vec<_>>();
+
+	assert_eq!(history.len(), expected_names.len());
+	for (index, ((version, name, checksum), expected_name)) in
+		history.iter().zip(expected_names).enumerate()
+	{
+		assert_eq!(*version, i32::try_from(index + 1).expect("migration index fits i32"));
+		assert_eq!(name.as_str(), *expected_name);
+		assert!(!checksum.is_empty());
+	}
+
+	Ok(history)
+}
 
 fn profile(marker: &str) -> RoleProfileConfiguration {
 	RoleProfileConfiguration {
@@ -74,12 +115,16 @@ async fn stored_response(client: &Client, key: &str) -> Result<Vec<u8>, tokio_po
 }
 
 fn success(
+	phase: &str,
+	key: &str,
 	value: RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>,
 ) -> RuntimeSessionCommandEffect {
-	let RuntimeSessionCommandOutcome::Success(effect) = value else {
-		panic!("exact RuntimeSession command must succeed")
-	};
-	effect
+	match value {
+		RuntimeSessionCommandOutcome::Success(effect) => effect,
+		RuntimeSessionCommandOutcome::Rejected(rejection) => {
+			panic!("exact RuntimeSession {phase} command {key:?} was rejected: {rejection:?}")
+		},
+	}
 }
 
 struct CreatedSessionFixture {
@@ -98,7 +143,11 @@ async fn assert_creation_command(
 		"43000000-0000-4000-8000-000000000001",
 		"one",
 	)?;
-	let created = success(store.create_runtime_session("session-create", &create).await?);
+	let created = success(
+		"creation",
+		"session-create",
+		store.create_runtime_session("session-create", &create).await?,
+	);
 	assert_eq!(created.prior_state, None);
 	assert_eq!(created.prior_revision, None);
 	assert_eq!(created.new_state, RuntimeSessionState::Starting);
@@ -191,6 +240,8 @@ async fn assert_transition_command(
 	create: &CreateRuntimeSession,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let transitioned = success(
+		"transition",
+		"session-active",
 		store
 			.transition_runtime_session(
 				"session-active",
@@ -266,8 +317,262 @@ async fn assert_transition_command(
 	Ok(())
 }
 
+type ProfileRaceCreatorTask = tokio::task::JoinHandle<
+	Result<RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>, StoreError>,
+>;
+type ProfileRaceUpdaterTask = tokio::task::JoinHandle<
+	Result<RoleProfileCommandOutcome<decodex_postgres::RoleProfileRevision>, StoreError>,
+>;
+
+struct ProfileSnapshotRaceFixture {
+	observer: Client,
+	observer_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
+	gate_held: bool,
+	creator_task: Option<ProfileRaceCreatorTask>,
+	updater_task: Option<ProfileRaceUpdaterTask>,
+}
+
+struct ProfileSnapshotRaceOutcome {
+	creator_outcome: RuntimeSessionCommandOutcome<RuntimeSessionCommandEffect>,
+	profile_update: RoleProfileCommandOutcome<decodex_postgres::RoleProfileRevision>,
+}
+
+async fn install_profile_snapshot_race_fixture(
+	observer: &Client,
+) -> Result<(), tokio_postgres::Error> {
+	observer
+		.batch_execute(&format!(
+			"CREATE FUNCTION public.xy1364_block_profile_race_creation() \
+			 RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,decodex AS $$ \
+			 BEGIN \
+			   IF NEW.runtime_session_id = \
+			      '41000000-0000-4000-8000-000000000064'::pg_catalog.uuid THEN \
+			     PERFORM pg_catalog.pg_advisory_xact_lock({PROFILE_RACE_GATE}); \
+			   END IF; \
+			   RETURN NEW; \
+			 END $$; \
+			 CREATE TRIGGER xy1364_block_profile_race_creation \
+			 BEFORE INSERT ON decodex.runtime_sessions FOR EACH ROW \
+			 EXECUTE FUNCTION public.xy1364_block_profile_race_creation()"
+		))
+		.await
+}
+
+async fn probe_profile_snapshot_race_creator(
+	observer: &Client,
+	blocker_pid: i32,
+) -> Result<i32, Box<dyn std::error::Error>> {
+	// This trigger runs after the typed command has selected the task profile FOR SHARE.
+	// The advisory waiter therefore identifies the exact creator transaction that holds
+	// the revision-2 profile lock.
+	let (creator_pid, creator_blockers) = time::timeout(std::time::Duration::from_secs(5), async {
+		loop {
+			let rows = observer
+				.query(
+					"SELECT waiter.pid, pg_catalog.pg_blocking_pids(waiter.pid) \
+						 FROM pg_catalog.pg_locks AS holder \
+						 JOIN pg_catalog.pg_locks AS waiter \
+						   ON waiter.locktype=holder.locktype \
+						  AND waiter.database IS NOT DISTINCT FROM holder.database \
+						  AND waiter.classid IS NOT DISTINCT FROM holder.classid \
+						  AND waiter.objid IS NOT DISTINCT FROM holder.objid \
+						  AND waiter.objsubid IS NOT DISTINCT FROM holder.objsubid \
+						 WHERE holder.pid=$1 AND holder.locktype='advisory' \
+						   AND holder.granted AND NOT waiter.granted",
+					&[&blocker_pid],
+				)
+				.await?;
+			if rows.len() == 1 {
+				return Ok::<_, tokio_postgres::Error>((
+					rows[0].get::<_, i32>(0),
+					rows[0].get::<_, Vec<i32>>(1),
+				));
+			}
+			tokio::task::yield_now().await;
+		}
+	})
+	.await
+	.map_err(|_| std::io::Error::other("RuntimeSession creator did not reach its gate"))??;
+	if creator_blockers != [blocker_pid] {
+		return Err(std::io::Error::other(
+			"RuntimeSession creator gate had an unexpected blocker set",
+		)
+		.into());
+	}
+	Ok(creator_pid)
+}
+
+async fn probe_profile_snapshot_race_updater(
+	observer: &Client,
+	creator_pid: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let (updater_pid, updater_blockers) = time::timeout(std::time::Duration::from_secs(5), async {
+		loop {
+			let rows = observer
+				.query(
+					"SELECT DISTINCT waiting.pid, pg_catalog.pg_blocking_pids(waiting.pid) \
+						 FROM pg_catalog.pg_locks AS waiting \
+						 WHERE waiting.locktype='transactionid' AND NOT waiting.granted \
+						   AND waiting.pid<>$1 \
+						   AND $1=ANY(pg_catalog.pg_blocking_pids(waiting.pid))",
+					&[&creator_pid],
+				)
+				.await?;
+			if rows.len() == 1 {
+				return Ok::<_, tokio_postgres::Error>((
+					rows[0].get::<_, i32>(0),
+					rows[0].get::<_, Vec<i32>>(1),
+				));
+			}
+			tokio::task::yield_now().await;
+		}
+	})
+	.await
+	.map_err(|_| std::io::Error::other("RoleProfile updater did not block on the creator"))??;
+	if updater_pid == creator_pid || updater_blockers != [creator_pid] {
+		return Err(std::io::Error::other(
+			"RoleProfile updater did not have exactly the creator as its blocker",
+		)
+		.into());
+	}
+	Ok(())
+}
+
+async fn orchestrate_profile_snapshot_race(
+	fixture: &mut ProfileSnapshotRaceFixture,
+	store: &PostgresStore,
+	updater_store: &PostgresStore,
+	race_request: CreateRuntimeSession,
+) -> Result<ProfileSnapshotRaceOutcome, Box<dyn std::error::Error>> {
+	let blocker_pid: i32 = fixture.observer.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+	fixture
+		.observer
+		.query_one("SELECT pg_advisory_lock($1::bigint)", &[&PROFILE_RACE_GATE])
+		.await?;
+	fixture.gate_held = true;
+
+	let creating_store = store.clone();
+	fixture.creator_task = Some(tokio::spawn(async move {
+		creating_store.create_runtime_session("session-profile-race", &race_request).await
+	}));
+	let creator_pid = probe_profile_snapshot_race_creator(&fixture.observer, blocker_pid).await?;
+
+	let updating_store = updater_store.clone();
+	fixture.updater_task = Some(tokio::spawn(async move {
+		updating_store
+			.update_role_profile("task-v3", RoleProfileRole::Task, 2, &profile("task-v3"))
+			.await
+	}));
+	probe_profile_snapshot_race_updater(&fixture.observer, creator_pid).await?;
+
+	let unlocked: bool = fixture
+		.observer
+		.query_one("SELECT pg_advisory_unlock($1::bigint)", &[&PROFILE_RACE_GATE])
+		.await?
+		.get(0);
+	if !unlocked {
+		return Err(std::io::Error::other("profile-race gate was not held").into());
+	}
+	fixture.gate_held = false;
+
+	let creator_task = fixture
+		.creator_task
+		.as_mut()
+		.ok_or(std::io::Error::other("creator task was not installed"))?;
+	let creator_join = time::timeout(std::time::Duration::from_secs(5), creator_task)
+		.await
+		.map_err(|_| std::io::Error::other("RuntimeSession creator did not finish"))?;
+	fixture.creator_task.take();
+	let creator_outcome = creator_join??;
+	let updater_task = fixture
+		.updater_task
+		.as_mut()
+		.ok_or(std::io::Error::other("updater task was not installed"))?;
+	let updater_join = time::timeout(std::time::Duration::from_secs(5), updater_task)
+		.await
+		.map_err(|_| std::io::Error::other("RoleProfile updater did not finish"))?;
+	fixture.updater_task.take();
+	let profile_update = updater_join??;
+	Ok(ProfileSnapshotRaceOutcome { creator_outcome, profile_update })
+}
+
+async fn cleanup_profile_snapshot_race_unconditionally(
+	fixture: ProfileSnapshotRaceFixture,
+) -> Option<Box<dyn std::error::Error>> {
+	let ProfileSnapshotRaceFixture {
+		observer,
+		mut observer_task,
+		gate_held,
+		mut creator_task,
+		mut updater_task,
+	} = fixture;
+	let mut cleanup_error: Option<Box<dyn std::error::Error>> = None;
+	if gate_held {
+		match observer
+			.query_one("SELECT pg_advisory_unlock($1::bigint)", &[&PROFILE_RACE_GATE])
+			.await
+		{
+			Ok(row) if row.get::<_, bool>(0) => {},
+			Ok(_) =>
+				cleanup_error =
+					Some(std::io::Error::other("profile-race cleanup gate was not held").into()),
+			Err(error) => cleanup_error = Some(error.into()),
+		}
+	}
+	if let Some(task) = creator_task.take() {
+		if !task.is_finished() {
+			task.abort();
+		}
+		if let Err(error) = task.await
+			&& !error.is_cancelled()
+			&& cleanup_error.is_none()
+		{
+			cleanup_error = Some(error.into());
+		}
+	}
+	if let Some(task) = updater_task.take() {
+		if !task.is_finished() {
+			task.abort();
+		}
+		if let Err(error) = task.await
+			&& !error.is_cancelled()
+			&& cleanup_error.is_none()
+		{
+			cleanup_error = Some(error.into());
+		}
+	}
+	if let Err(error) = observer
+		.batch_execute(
+			"DROP TRIGGER IF EXISTS xy1364_block_profile_race_creation \
+			 ON decodex.runtime_sessions; \
+			 DROP FUNCTION IF EXISTS public.xy1364_block_profile_race_creation()",
+		)
+		.await && cleanup_error.is_none()
+	{
+		cleanup_error = Some(error.into());
+	}
+	drop(observer);
+	match time::timeout(std::time::Duration::from_secs(5), &mut observer_task).await {
+		Ok(Ok(Ok(()))) => {},
+		Ok(Ok(Err(error))) if cleanup_error.is_none() => cleanup_error = Some(error.into()),
+		Ok(Err(error)) if cleanup_error.is_none() => cleanup_error = Some(error.into()),
+		Ok(_) => {},
+		Err(_) => {
+			observer_task.abort();
+			let _ = observer_task.await;
+			if cleanup_error.is_none() {
+				cleanup_error =
+					Some(std::io::Error::other("fixture observer did not close").into());
+			}
+		},
+	}
+	cleanup_error
+}
+
 async fn assert_profile_snapshot_race(
 	store: &PostgresStore,
+	updater_store: &PostgresStore,
+	migration: &tokio_postgres::Config,
 	client: &Client,
 	conversation_id: &ConversationId,
 	created: &RuntimeSessionCommandEffect,
@@ -284,6 +589,8 @@ async fn assert_profile_snapshot_race(
 		"four",
 	)?;
 	let after_update = success(
+		"post-profile-update creation",
+		"session-after-profile-update",
 		store.create_runtime_session("session-after-profile-update", &after_update_request).await?,
 	);
 	assert_eq!(before_update.source_revision, 1);
@@ -302,43 +609,58 @@ async fn assert_profile_snapshot_race(
 		.get(0);
 	assert!(preserved);
 
-	let mut profile_race = JoinSet::new();
-	for index in 0..24 {
-		let store = store.clone();
-		let conversation_id = conversation_id.clone();
-		profile_race.spawn(async move {
-			let identity = index + 100;
-			let create = creation(
-				&format!("41000000-0000-4000-8000-{identity:012x}"),
-				&conversation_id,
-				&format!("43000000-0000-4000-8000-{identity:012x}"),
-				&format!("profile-race-{index}"),
-			)?;
-			store.create_runtime_session(&format!("session-profile-race-{index}"), &create).await
-		});
-	}
-	let updating_store = store.clone();
-	let profile_update = tokio::spawn(async move {
-		updating_store
-			.update_role_profile("task-v3", RoleProfileRole::Task, 2, &profile("task-v3"))
-			.await
-	});
-	while let Some(result) = profile_race.join_next().await {
-		let effect = success(result??);
-		let snapshot = effect.runtime_session.profile_snapshot;
-		match snapshot.source_revision {
-			2 => {
-				assert_eq!(snapshot.model, "gpt-5.6-task-v2");
-				assert_eq!(snapshot.instructions, "Immutable XY-1337 task-v2 instructions.");
-			},
-			3 => {
-				assert_eq!(snapshot.model, "gpt-5.6-task-v3");
-				assert_eq!(snapshot.instructions, "Immutable XY-1337 task-v3 instructions.");
-			},
-			other => panic!("profile race selected unexpected revision {other}"),
-		}
-	}
-	assert!(matches!(profile_update.await??, RoleProfileCommandOutcome::Success(_)));
+	let race_request = creation(
+		"41000000-0000-4000-8000-000000000064",
+		conversation_id,
+		"43000000-0000-4000-8000-000000000064",
+		"profile-race",
+	)?;
+	let (observer, observer_connection) = migration.connect(NoTls).await?;
+	let mut fixture = ProfileSnapshotRaceFixture {
+		observer,
+		observer_task: tokio::spawn(observer_connection),
+		gate_held: false,
+		creator_task: None,
+		updater_task: None,
+	};
+	let race_result = match install_profile_snapshot_race_fixture(&fixture.observer).await {
+		Ok(()) =>
+			orchestrate_profile_snapshot_race(&mut fixture, store, updater_store, race_request)
+				.await,
+		Err(error) => Err(error.into()),
+	};
+	let cleanup_error = cleanup_profile_snapshot_race_unconditionally(fixture).await;
+	let outcome = match (race_result, cleanup_error) {
+		(Err(error), _) => return Err(error),
+		(Ok(_), Some(error)) => return Err(error),
+		(Ok(outcome), None) => outcome,
+	};
+
+	let effect =
+		success("profile-snapshot race creation", "session-profile-race", outcome.creator_outcome);
+	let snapshot = effect.runtime_session.profile_snapshot;
+	assert_eq!(snapshot.source_revision, 2);
+	assert_eq!(snapshot.model, "gpt-5.6-task-v2");
+	assert_eq!(snapshot.instructions, "Immutable XY-1337 task-v2 instructions.");
+	assert!(matches!(outcome.profile_update, RoleProfileCommandOutcome::Success(_)));
+
+	let after_race_request = creation(
+		"41000000-0000-4000-8000-000000000200",
+		conversation_id,
+		"43000000-0000-4000-8000-000000000200",
+		"after-profile-race",
+	)?;
+	let after_race = success(
+		"post-profile-race creation",
+		"session-after-profile-race",
+		store.create_runtime_session("session-after-profile-race", &after_race_request).await?,
+	);
+	assert_eq!(after_race.runtime_session.profile_snapshot.source_revision, 3);
+	assert_eq!(after_race.runtime_session.profile_snapshot.model, "gpt-5.6-task-v3");
+	assert_eq!(
+		after_race.runtime_session.profile_snapshot.instructions,
+		"Immutable XY-1337 task-v3 instructions."
+	);
 	Ok(())
 }
 
@@ -405,6 +727,9 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 	let store =
 		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+	let updater_store =
+		PostgresStore::connect_fixture(migration.clone(), runtime.clone(), expected_peer_uid())
+			.await?;
 	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
 	let migration_task = tokio::spawn(migration_connection);
 
@@ -425,8 +750,15 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 
 	let created = assert_creation_command(&store, &migration_client, &conversation_id).await?;
 	assert_transition_command(&store, &migration_client, &created.request).await?;
-	assert_profile_snapshot_race(&store, &migration_client, &conversation_id, &created.effect)
-		.await?;
+	assert_profile_snapshot_race(
+		&store,
+		&updater_store,
+		&migration,
+		&migration_client,
+		&conversation_id,
+		&created.effect,
+	)
+	.await?;
 	assert_runtime_authority_denials(&runtime).await?;
 	assert_duplicate_creation_race(&store, &conversation_id).await?;
 
@@ -622,13 +954,7 @@ async fn postgres_v9_to_v10_runtime_session_upgrade() -> Result<(), Box<dyn std:
 	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
 	let (client, connection) = migration.clone().connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	assert_eq!(
-		client
-			.query_one("SELECT max(version) FROM public.refinery_schema_history", &[])
-			.await?
-			.get::<_, i32>(0),
-		9,
-	);
+	exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?;
 	let identities_before: (u32, u32, u32) = {
 		let row = client
 			.query_one(
@@ -642,20 +968,22 @@ async fn postgres_v9_to_v10_runtime_session_upgrade() -> Result<(), Box<dyn std:
 	};
 	drop(client);
 	connection_task.await??;
-	PostgresStore::migrate(migration.clone(), expected_peer_uid()).await?;
+	PostgresStore::migrate_fixture_through_v10(migration.clone(), expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let row = client
 		.query_one(
-			"SELECT max(version), 'decodex.profile_snapshots'::regclass::oid, \
+			"SELECT 'decodex.profile_snapshots'::regclass::oid, \
 			 'decodex.account_snapshots'::regclass::oid, \
-			 'decodex.runtime_sessions'::regclass::oid",
+			 'decodex.runtime_sessions'::regclass::oid, \
+			 to_regclass('decodex.work_items') IS NULL",
 			&[],
 		)
 		.await?;
-	assert_eq!(row.get::<_, i32>(0), 10);
+	exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10).await?;
+	assert!(row.get::<_, bool>(3), "V11 WorkItem relation must be absent at V10");
 	assert_eq!(
-		(row.get::<_, u32>(1), row.get::<_, u32>(2), row.get::<_, u32>(3)),
+		(row.get::<_, u32>(0), row.get::<_, u32>(1), row.get::<_, u32>(2)),
 		identities_before,
 	);
 	drop(client);
@@ -671,6 +999,8 @@ async fn postgres_v10_rejects_classified_runtime_state() -> Result<(), Box<dyn s
 	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
 	let (client, connection) = migration.clone().connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
+	let history_before =
+		exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?;
 	let statement = match variant.as_str() {
 		"profile_snapshot" =>
 			"INSERT INTO decodex.profile_snapshots(profile_snapshot_id,source_profile_id,role,model,reasoning_effort,service_tier,instructions_digest,source_revision) VALUES ('42000000-0000-4000-8000-000000000090','task','task','model','medium','priority',repeat('a',64),1)",
@@ -681,7 +1011,7 @@ async fn postgres_v10_rejects_classified_runtime_state() -> Result<(), Box<dyn s
 		"legacy_receipt" =>
 			"INSERT INTO decodex.command_receipts(idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES ('v9-runtime',repeat('a',64),'create_runtime_session',gen_random_uuid(),clock_timestamp()+interval '1 minute')",
 		"exact_receipt" =>
-			"WITH request(value) AS (VALUES ('{\"operation\":\"create_runtime_session\"}'::jsonb)), effect(value) AS (VALUES ('{\"changed\":false,\"code\":\"missing_target\"}'::jsonb)) INSERT INTO decodex.exact_command_receipts(protocol_version,idempotency_key,request_envelope,request_digest,receipt_state,outcome_class,effect_envelope,response_bytes,completed_at) SELECT 'decodex/exact-command/1','v9-runtime',request.value,public.digest(convert_to(request.value::text,'UTF8'),'sha256'),'completed_rejected','stable_domain_rejection',effect.value,convert_to(jsonb_build_object('classification','stable_domain_rejection','code','missing_target','effect',effect.value)::text,'UTF8'),clock_timestamp() FROM request,effect",
+			"WITH request(value) AS (VALUES ('{\"operation\":\"create_runtime_session\"}'::jsonb)), effect(value) AS (VALUES ('{\"changed\":false,\"code\":\"missing_target\"}'::jsonb)) INSERT INTO decodex.exact_command_receipts(protocol_version,idempotency_key,request_envelope,request_digest,receipt_state,outcome_class,effect_envelope,response_bytes,created_at,completed_at) SELECT 'decodex/exact-command/1','v9-runtime',request.value,public.digest(convert_to(request.value::text,'UTF8'),'sha256'),'completed_rejected','stable_domain_rejection',effect.value,convert_to(jsonb_build_object('classification','stable_domain_rejection','code','missing_target','effect',effect.value)::text,'UTF8'),statement_timestamp(),statement_timestamp() FROM request,effect",
 		"activity" =>
 			"INSERT INTO decodex.activity(aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES ('runtime_session','v9',1,'runtime_session_recorded','v9-runtime','{}')",
 		"activity_nested_aggregate" =>
@@ -697,17 +1027,28 @@ async fn postgres_v10_rejects_classified_runtime_state() -> Result<(), Box<dyn s
 		_ => return Err(format!("unknown V10 prior-state fixture {variant}").into()),
 	};
 	client.batch_execute(statement).await?;
-	let error = PostgresStore::migrate(migration, expected_peer_uid())
+	let error = PostgresStore::migrate_fixture_through_v10(migration, expected_peer_uid())
 		.await
 		.expect_err("classified V9 RuntimeSession state must reject V10 atomically");
 	assert!(format!("{error:?}").contains("zero incompatible state"));
 	assert_eq!(
-		client
-			.query_one("SELECT max(version) FROM public.refinery_schema_history", &[])
-			.await?
-			.get::<_, i32>(0),
-		9,
+		exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?,
+		history_before,
 	);
+	let v10_schema_absent: bool = client
+		.query_one(
+			"SELECT NOT EXISTS ( \
+			 SELECT 1 FROM pg_catalog.pg_attribute AS attribute \
+			 JOIN pg_catalog.pg_class AS class ON class.oid=attribute.attrelid \
+			 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=class.relnamespace \
+			 WHERE namespace.nspname='decodex' AND class.relname='profile_snapshots' \
+			 AND attribute.attname='instructions' AND attribute.attnum>0 \
+			 AND NOT attribute.attisdropped)",
+			&[],
+		)
+		.await?
+		.get(0);
+	assert!(v10_schema_absent, "V10 profile instructions column must be absent after rejection");
 	drop(client);
 	connection_task.await??;
 	Ok(())
@@ -744,6 +1085,7 @@ async fn postgres_v10_fences_blocked_old_runtime_writer() -> Result<(), Box<dyn 
 		)
 		.await?;
 	let old_pid: i32 = old_writer.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
+	let admin_pid: i32 = admin.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
 	admin.query_one("SELECT pg_advisory_lock(991337)", &[]).await?;
 	let writer = tokio::spawn(async move {
 		old_writer
@@ -753,28 +1095,19 @@ async fn postgres_v10_fences_blocked_old_runtime_writer() -> Result<(), Box<dyn 
 			)
 			.await
 	});
-	for _ in 0..1_000 {
-		let blocked: bool = admin
-			.query_one(
-				"SELECT wait_event_type='Lock' AND wait_event='advisory' \
-				 FROM pg_stat_activity WHERE pid=$1",
-				&[&old_pid],
-			)
-			.await?
-			.get(0);
-		if blocked {
-			break;
-		}
-		time::sleep(std::time::Duration::from_millis(10)).await;
-	}
+	assert!(
+		wait_for_blocker(&admin, admin_pid, old_pid).await?,
+		"admin backend must block the old writer before V10"
+	);
 	assert!(!writer.is_finished(), "old writer must be blocked before V10");
-	PostgresStore::migrate(migration, expected_peer_uid()).await?;
+	PostgresStore::migrate_fixture_through_v10(migration, expected_peer_uid()).await?;
 	admin.query_one("SELECT pg_advisory_unlock(991337)", &[]).await?;
 	let error = writer.await?.expect_err("pre-V10 writer must fail behind the committed fence");
 	assert_eq!(error.code().map(|code| code.code()), Some("42501"));
+	exact_migration_history(&admin, &MIGRATION_NAMES_THROUGH_V10).await?;
 	let fenced: bool = admin
 		.query_one(
-			"SELECT (SELECT max(version)=11 FROM public.refinery_schema_history) \
+			"SELECT to_regclass('decodex.work_items') IS NULL \
 			 AND NOT EXISTS (SELECT 1 FROM decodex.profile_snapshots)",
 			&[],
 		)
@@ -880,7 +1213,6 @@ async fn postgres_exact_runtime_session_restore() -> Result<(), Box<dyn std::err
 	let valid: bool = client
 		.query_one(
 			"SELECT \
-			 (SELECT max(version)=11 FROM public.refinery_schema_history) AND \
 			 NOT EXISTS (SELECT 1 FROM decodex.exact_command_receipts \
 			  WHERE receipt_state='executing' OR response_bytes IS NULL \
 			  OR convert_from(response_bytes,'UTF8')::jsonb->'effect' IS DISTINCT FROM effect_envelope) AND \

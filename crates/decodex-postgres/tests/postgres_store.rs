@@ -1,5 +1,6 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
+#[path = "postgres_store/continuation.rs"] mod continuation;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_repositories.rs"]
 mod managed_repositories;
@@ -10,9 +11,11 @@ mod managed_runs;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
 mod role_profiles;
+#[path = "postgres_store/routing_decision.rs"] mod routing_decision;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/runtime_sessions.rs"]
 mod runtime_sessions;
+#[path = "postgres_store/waiting_wake.rs"] mod waiting_wake;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/work_items.rs"]
 mod work_items;
@@ -54,13 +57,19 @@ use decodex_core::{
 };
 use decodex_postgres::{
 	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus,
-	BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord, CreateArtifact,
-	CreateConversation, CreateProject, CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot,
-	HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation,
-	PersistContextPack, PostgresStore, ProposeTransition, ReconciliationOutcome, RecordHistoryItem,
-	RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
-	RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
+	BootstrapFailure, BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord,
+	CreateArtifact, CreateConversation, CreateProject, CreateRuntimeSession,
+	CreateRuntimeSessionAccountSnapshot, HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS,
+	OutboxClaim, OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition,
+	ReconciliationOutcome, RecordHistoryItem, RoleProfileCommandOutcome, RoleProfileConfiguration,
+	RoleProfileRole, RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
 };
+
+#[cfg(feature = "test-support")]
+const MANIFEST_QUERY_ERROR_TEXT_LIMIT: usize = 512;
+#[cfg(feature = "test-support")]
+const MANIFEST_CLIENT_ERROR_MESSAGE: &str =
+	"manifest query failed without PostgreSQL database error";
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
 const HOLDER_A: &str = "20000000-0000-0000-0000-000000000001";
@@ -139,11 +148,32 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.update_role_profile_exact(pg_catalog.text,pg_catalog.text,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.create_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,decodex.role_profile_role,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex.account_state,pg_catalog.int8,pg_catalog.uuid,decodex.runtime_session_state)",
 	"decodex.transition_runtime_session_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.runtime_session_state)",
+	"decodex.create_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.update_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog._uuid,pg_catalog.text,pg_catalog.text,decodex.work_item_priority,pg_catalog._text,pg_catalog._text,decodex.work_item_state,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
+	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
+	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
+	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
 	"decodex.enforce_outbox_operation_time()",
+	"decodex.enforce_quota_observation_monotonicity()",
 	"decodex.forbid_mutation_of_activity()",
 	"decodex.enforce_outbox_terminal_retention()",
 	"decodex.forbid_outbox_truncate()",
@@ -178,12 +208,36 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_runtime_session_command_owner()",
 	"decodex.forbid_runtime_snapshot_mutation()",
 	"decodex.enforce_runtime_session_event_namespace()",
+	"decodex.enforce_work_item_state()",
+	"decodex.enforce_work_item_command_owner()",
+	"decodex.forbid_work_item_acceptance_mutation()",
+	"decodex.enforce_work_item_acceptance_coherence()",
+	"decodex.enforce_work_item_event_namespace()",
 	"decodex.enforce_managed_run_command_owner()",
 	"decodex.forbid_managed_run_immutable_mutation()",
 	"decodex.enforce_managed_run_assignment_scope()",
 	"decodex.enforce_managed_run_state()",
 	"decodex.enforce_effect_barrier_state()",
 	"decodex.enforce_managed_run_event_namespace()",
+	"decodex.forbid_managed_repository_history_mutation()",
+	"decodex.enforce_managed_repository_projection()",
+	"decodex.enforce_repository_operation_scope()",
+	"decodex.enforce_repository_history_completeness()",
+	"decodex.forbid_routing_history_mutation()",
+	"decodex.enforce_routing_completeness()",
+	"decodex.enforce_routing_command_owner()",
+	"decodex.forbid_codex_experiment_history_mutation()",
+	"decodex.enforce_codex_experiment_command_owner()",
+	"decodex.forbid_routing_decision_mutation()",
+	"decodex.enforce_routing_decision_completeness()",
+	"decodex.forbid_continuation_plan_mutation()",
+	"decodex.enforce_continuation_plan_completeness()",
+	"decodex.enforce_continuation_event_namespace()",
+	"decodex.enforce_waiting_usage_wake_command_owner()",
+	"decodex.forbid_waiting_usage_wake_transition_mutation()",
+	"decodex.enforce_waiting_usage_wake_transition_complete()",
+	"decodex.enforce_waiting_usage_wake_head_projection()",
+	"decodex.enforce_waiting_usage_wake_event_namespace()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(
@@ -372,6 +426,17 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 V13 migration harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_migration_through_v13_fixture() -> Result<(), Box<dyn std::error::Error>> {
+	let (migration, _) = separated_configs("DECODEX_TEST")?;
+
+	PostgresStore::migrate_fixture_through_v13(migration, expected_peer_uid()).await?;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 hostile-search-path harness"]
 #[cfg(feature = "test-support")]
 async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn std::error::Error>> {
@@ -407,10 +472,18 @@ async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn st
 async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
 	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
 	let expected_database = env::var("DECODEX_EXPECTED_MANIFEST_DATABASE")?;
+	let structured_errors = match env::var("DECODEX_SCHEMA_MANIFEST_STRUCTURED_ERRORS") {
+		Ok(value) if value == "1" => true,
+		Ok(_) => return Err("structured manifest errors must equal 1 when configured".into()),
+		Err(env::VarError::NotPresent) => false,
+		Err(error) => return Err(error.into()),
+	};
 	let (mut migration, mut runtime) = separated_configs("DECODEX_TEST")?;
-	let migration_role =
-		migration.get_user().ok_or("migration role is absent")?.to_owned();
+	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
 	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
+	if runtime_role == "decodex_runtime" {
+		return Err("configured-authority fixture requires a non-default runtime role".into());
+	}
 	let migration_database =
 		migration.get_dbname().ok_or("migration database is absent")?.to_owned();
 	let runtime_database = runtime.get_dbname().ok_or("runtime database is absent")?.to_owned();
@@ -439,7 +512,11 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		.await
 	{
 		Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
-		Err(error) => (None, false, Some(error.to_string())),
+		Err(error) => (
+			None,
+			false,
+			Some(if structured_errors { manifest_query_error(&error) } else { error.to_string() }),
+		),
 	};
 	let (authority, authority_error) = match client
 		.query_one(
@@ -449,14 +526,22 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		.await
 	{
 		Ok(row) => (row.get::<_, Option<String>>(0), None),
-		Err(error) => (None, Some(error.to_string())),
+		Err(error) => (
+			None,
+			Some(if structured_errors { manifest_query_error(&error) } else { error.to_string() }),
+		),
 	};
+	let semantic_authority = if structured_errors {
+		Some(PostgresStore::semantic_authority_fixture(&client, &runtime_role).await?)
+	} else {
+		None
+	};
+	let has_structured_component_failure =
+		structured_errors && (schema_error.is_some() || authority_error.is_some());
 	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
 	let migration_connection_task = tokio::spawn(migration_connection);
-	let observed_migration_database: String = migration_client
-		.query_one("SELECT pg_catalog.current_database()", &[])
-		.await?
-		.get(0);
+	let observed_migration_database: String =
+		migration_client.query_one("SELECT pg_catalog.current_database()", &[]).await?.get(0);
 	if observed_migration_database != expected_database {
 		return Err(format!(
 			"migration manifest connection selected {observed_migration_database}, expected {expected_database}"
@@ -464,7 +549,7 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		.into());
 	}
 	let sequence_state = manifest_sequence_state(&migration_client).await?;
-	let manifest = serde_json::to_string(&serde_json::json!({
+	let mut manifest = serde_json::json!({
 		"authority": {
 			"available": authority.is_some(),
 			"complete": authority.is_some(),
@@ -485,17 +570,62 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 			"manifest": schema,
 		},
 		"sequence_state": sequence_state,
-	}))?;
+	});
+	if let Some(predicates) = semantic_authority {
+		manifest.as_object_mut().ok_or("manifest envelope is not an object")?.insert(
+			"semantic_authority".into(),
+			serde_json::json!({
+				"predicates": predicates.into_iter().map(|(name, passed)| {
+					serde_json::json!({"name": name, "passed": passed})
+				}).collect::<Vec<_>>(),
+				"schema": "decodex/postgres-semantic-authority/1",
+			}),
+		);
+	}
+	let manifest = serde_json::to_string(&manifest)?;
 
 	fs::write(path, manifest)?;
 
 	drop(client);
 	drop(migration_client);
 
-	connection_task.await??;
+	let runtime_connection_result = connection_task.await?;
+	if !has_structured_component_failure {
+		runtime_connection_result?;
+	}
 	migration_connection_task.await??;
 
 	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+fn manifest_query_error(error: &tokio_postgres::Error) -> String {
+	fn bounded(value: &str) -> (String, bool) {
+		let mut characters = value.chars();
+		let text = characters.by_ref().take(MANIFEST_QUERY_ERROR_TEXT_LIMIT).collect();
+		(text, characters.next().is_some())
+	}
+
+	if let Some(database) = error.as_db_error() {
+		let (message, truncated) = bounded(database.message());
+		serde_json::json!({
+			"classification": "database_error",
+			"message": message,
+			"message_truncated": truncated,
+			"schema": "decodex/postgres-manifest-query-error/1",
+			"sqlstate": database.code().code(),
+		})
+		.to_string()
+	} else {
+		serde_json::json!({
+			"classification": "client_error",
+			"message": MANIFEST_CLIENT_ERROR_MESSAGE,
+			"message_truncated": false,
+			"schema": "decodex/postgres-manifest-query-error/1",
+			"sqlstate": null,
+		})
+		.to_string()
+	}
 }
 
 #[cfg(feature = "test-support")]
@@ -530,6 +660,614 @@ async fn manifest_sequence_state(
 	Ok(state_rows)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AuthorityClassification {
+	UnsafeDatabaseAuthority,
+	DatabaseIncompatible,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AuthorityStoreError {
+	UnsafeAuthority,
+	Incompatible,
+	Migration,
+	Database,
+	Pool,
+	UnsafeHostPath,
+	SocketUnavailable,
+	Other,
+}
+
+#[derive(Debug)]
+struct AuthorityScenario {
+	admin_url: String,
+	baseline_migration_url: String,
+	baseline_runtime_url: String,
+	case_id: String,
+	case_migration_url: String,
+	case_runtime_url: String,
+	expected: AuthorityClassification,
+	expected_store_error: AuthorityStoreError,
+	invariant_sql: Option<String>,
+	mutation_sql: String,
+	post_runtime_rejected_sql: Option<String>,
+	post_runtime_rejected_sqlstate: Option<String>,
+	postcondition_sql: String,
+	pre_runtime_rejected_sql: Option<String>,
+	pre_runtime_rejected_sqlstate: Option<String>,
+	precondition_sql: String,
+	restore_postcondition_sql: Option<String>,
+	restore_sql: Option<String>,
+	runtime_effect_sql: Option<String>,
+}
+
+fn authority_scenarios() -> Vec<AuthorityScenario> {
+	let payload: Value = serde_json::from_str(
+		&env::var("DECODEX_TEST_POSTGRES_AUTHORITY_SCENARIOS")
+			.expect("isolated PostgreSQL authority scenario environment is present"),
+	)
+	.expect("isolated PostgreSQL authority scenarios are JSON");
+	let scenarios = payload.as_array().expect("authority scenario payload is an array");
+	let required = |scenario: &Value, key: &str| {
+		let value = scenario
+			.as_object()
+			.unwrap_or_else(|| panic!("authority scenario is an object"))
+			.get(key)
+			.unwrap_or_else(|| panic!("authority scenario {key} is required"));
+		match value {
+			Value::String(value) if !value.is_empty() => value.clone(),
+			_ => panic!("authority scenario {key} is a nonempty string"),
+		}
+	};
+	let optional = |scenario: &Value, key: &str| match scenario
+		.as_object()
+		.unwrap_or_else(|| panic!("authority scenario is an object"))
+		.get(key)
+	{
+		None | Some(Value::Null) => None,
+		Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
+		Some(_) => panic!("authority scenario {key} is a nonempty string or null"),
+	};
+
+	scenarios
+		.iter()
+		.map(|scenario| {
+			let object = scenario.as_object().expect("authority scenario is an object");
+			let case_id = required(scenario, "case_id");
+			const FIELDS: [&str; 19] = [
+				"admin_url",
+				"baseline_migration_url",
+				"baseline_runtime_url",
+				"case_id",
+				"case_migration_url",
+				"case_runtime_url",
+				"expected",
+				"expected_store_error",
+				"invariant_sql",
+				"mutation_sql",
+				"post_runtime_rejected_sql",
+				"post_runtime_rejected_sqlstate",
+				"postcondition_sql",
+				"pre_runtime_rejected_sql",
+				"pre_runtime_rejected_sqlstate",
+				"precondition_sql",
+				"restore_postcondition_sql",
+				"restore_sql",
+				"runtime_effect_sql",
+			];
+			assert_eq!(object.len(), FIELDS.len(), "{case_id}: authority scenario field count");
+			assert!(
+				object.keys().all(|key| FIELDS.contains(&key.as_str())),
+				"{case_id}: authority scenario has no unknown fields"
+			);
+			let expected = match required(scenario, "expected").as_str() {
+				"unsafe_database_authority" => AuthorityClassification::UnsafeDatabaseAuthority,
+				"database_incompatible" => AuthorityClassification::DatabaseIncompatible,
+				other => panic!("unsupported authority classification {other}"),
+			};
+			let expected_store_error = match required(scenario, "expected_store_error").as_str() {
+				"unsafe_authority" => AuthorityStoreError::UnsafeAuthority,
+				"incompatible" => AuthorityStoreError::Incompatible,
+				"migration" => AuthorityStoreError::Migration,
+				other => panic!("unsupported expected StoreError {other}"),
+			};
+			let authority_scenario = AuthorityScenario {
+				admin_url: required(scenario, "admin_url"),
+				baseline_migration_url: required(scenario, "baseline_migration_url"),
+				baseline_runtime_url: required(scenario, "baseline_runtime_url"),
+				case_id,
+				case_migration_url: required(scenario, "case_migration_url"),
+				case_runtime_url: required(scenario, "case_runtime_url"),
+				expected,
+				expected_store_error,
+				invariant_sql: optional(scenario, "invariant_sql"),
+				mutation_sql: required(scenario, "mutation_sql"),
+				post_runtime_rejected_sql: optional(scenario, "post_runtime_rejected_sql"),
+				post_runtime_rejected_sqlstate: optional(
+					scenario,
+					"post_runtime_rejected_sqlstate",
+				),
+				postcondition_sql: required(scenario, "postcondition_sql"),
+				pre_runtime_rejected_sql: optional(scenario, "pre_runtime_rejected_sql"),
+				pre_runtime_rejected_sqlstate: optional(scenario, "pre_runtime_rejected_sqlstate"),
+				precondition_sql: required(scenario, "precondition_sql"),
+				restore_postcondition_sql: optional(scenario, "restore_postcondition_sql"),
+				restore_sql: optional(scenario, "restore_sql"),
+				runtime_effect_sql: optional(scenario, "runtime_effect_sql"),
+			};
+			validate_authority_scenario(&authority_scenario);
+			authority_scenario
+		})
+		.collect()
+}
+
+fn authority_config(url: &str, field: &str) -> Config {
+	Config::from_str(url)
+		.unwrap_or_else(|_| panic!("authority scenario {field} is a PostgreSQL URL"))
+}
+
+fn same_authority_endpoint(left: &Config, right: &Config) -> bool {
+	left.get_hosts() == right.get_hosts()
+		&& left.get_ports() == right.get_ports()
+		&& left.get_dbname() == right.get_dbname()
+}
+
+fn validate_authority_scenario(scenario: &AuthorityScenario) {
+	assert_eq!(
+		scenario.baseline_migration_url, scenario.case_migration_url,
+		"{}: baseline and case migration endpoint/identity differ",
+		scenario.case_id
+	);
+	assert_eq!(
+		scenario.baseline_runtime_url, scenario.case_runtime_url,
+		"{}: baseline and case runtime endpoint/identity differ",
+		scenario.case_id
+	);
+	let migration = authority_config(&scenario.case_migration_url, "case_migration_url");
+	let runtime = authority_config(&scenario.case_runtime_url, "case_runtime_url");
+	let admin = authority_config(&scenario.admin_url, "admin_url");
+	assert!(
+		same_authority_endpoint(&migration, &runtime)
+			&& same_authority_endpoint(&migration, &admin),
+		"{}: causal connections do not share one database endpoint",
+		scenario.case_id
+	);
+	assert!(
+		migration.get_user().is_some()
+			&& runtime.get_user().is_some()
+			&& migration.get_user() != runtime.get_user(),
+		"{}: migration and runtime identities are not distinct",
+		scenario.case_id
+	);
+
+	for (name, sql, sqlstate) in [
+		(
+			"pre-mutation rejection",
+			scenario.pre_runtime_rejected_sql.as_ref(),
+			scenario.pre_runtime_rejected_sqlstate.as_ref(),
+		),
+		(
+			"post-mutation rejection",
+			scenario.post_runtime_rejected_sql.as_ref(),
+			scenario.post_runtime_rejected_sqlstate.as_ref(),
+		),
+	] {
+		assert_eq!(
+			sql.is_some(),
+			sqlstate.is_some(),
+			"{}: {name} SQL and SQLSTATE must be paired",
+			scenario.case_id
+		);
+		if let Some(sqlstate) = sqlstate {
+			assert!(
+				sqlstate.len() == 5
+					&& sqlstate
+						.bytes()
+						.all(|byte| byte.is_ascii_digit() || byte.is_ascii_uppercase()),
+				"{}: {name} SQLSTATE is invalid",
+				scenario.case_id
+			);
+		}
+	}
+	assert_eq!(
+		scenario.restore_sql.is_some(),
+		scenario.restore_postcondition_sql.is_some(),
+		"{}: restoration SQL and postcondition must be paired",
+		scenario.case_id
+	);
+	let expected_projection = match scenario.expected_store_error {
+		AuthorityStoreError::UnsafeAuthority => AuthorityClassification::UnsafeDatabaseAuthority,
+		AuthorityStoreError::Incompatible | AuthorityStoreError::Migration =>
+			AuthorityClassification::DatabaseIncompatible,
+		_ => panic!("{}: unsupported expected StoreError", scenario.case_id),
+	};
+	assert_eq!(
+		scenario.expected, expected_projection,
+		"{}: concrete StoreError and bootstrap projection disagree",
+		scenario.case_id
+	);
+}
+
+fn postgres_error_code(error: &tokio_postgres::Error) -> &str {
+	error.code().map_or("client", |code| code.code())
+}
+
+async fn authority_batch(url: &str, sql: &str) -> Result<(), String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = client
+		.batch_execute(sql)
+		.await
+		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)));
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+async fn authority_rejected_batch(
+	url: &str,
+	sql: &str,
+	expected_sqlstate: Option<&str>,
+) -> Result<(), String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = match client.batch_execute(sql).await {
+		Ok(()) => Err("SQL unexpectedly succeeded".to_owned()),
+		Err(error) => {
+			let actual = postgres_error_code(&error);
+			if expected_sqlstate.is_none_or(|expected| expected == actual) {
+				Ok(())
+			} else {
+				Err(format!(
+					"SQL rejected with {actual}, expected {}",
+					expected_sqlstate.expect("checked expected SQLSTATE")
+				))
+			}
+		},
+	};
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+async fn authority_boolean(url: &str, sql: &str) -> Result<bool, String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = client
+		.query_one(sql, &[])
+		.await
+		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)))
+		.and_then(|row| row.try_get(0).map_err(|_| "SQL did not return one boolean".to_owned()));
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+async fn authority_text(url: &str, sql: &str) -> Result<String, String> {
+	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
+	let (client, connection) = config
+		.connect(NoTls)
+		.await
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
+	let connection_task = tokio::spawn(connection);
+	let result = client
+		.query_one(sql, &[])
+		.await
+		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)))
+		.and_then(|row| row.try_get(0).map_err(|_| "SQL did not return one text value".to_owned()));
+
+	drop(client);
+	let connection_result = connection_task
+		.await
+		.map_err(|_| "connection task failed".to_owned())?
+		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
+
+	connection_result.and(result)
+}
+
+fn authority_store_error(error: &StoreError) -> (AuthorityStoreError, BootstrapFailure) {
+	let variant = match error {
+		StoreError::UnsafeAuthority(_) => AuthorityStoreError::UnsafeAuthority,
+		StoreError::Incompatible(_) => AuthorityStoreError::Incompatible,
+		StoreError::Migration(_) => AuthorityStoreError::Migration,
+		StoreError::Database(_) => AuthorityStoreError::Database,
+		StoreError::Pool(_) => AuthorityStoreError::Pool,
+		StoreError::UnsafeHostPath => AuthorityStoreError::UnsafeHostPath,
+		StoreError::SocketUnavailable => AuthorityStoreError::SocketUnavailable,
+		_ => AuthorityStoreError::Other,
+	};
+	(variant, error.bootstrap_failure())
+}
+
+async fn authority_store_result(migration_url: &str, runtime_url: &str) -> Result<(), StoreError> {
+	let migration = Config::from_str(migration_url)
+		.map_err(|error| StoreError::Incompatible(format!("invalid migration fixture: {error}")))?;
+	let runtime = Config::from_str(runtime_url)
+		.map_err(|error| StoreError::Incompatible(format!("invalid runtime fixture: {error}")))?;
+	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	store.close();
+	Ok(())
+}
+
+struct AuthorityCausalEvidence {
+	failures: Vec<String>,
+	complete: bool,
+	mutation_applied: bool,
+	invariant_before: Option<String>,
+}
+
+async fn collect_pre_mutation_authority_evidence(
+	scenario: &AuthorityScenario,
+) -> AuthorityCausalEvidence {
+	let mut evidence = AuthorityCausalEvidence {
+		failures: Vec::new(),
+		complete: true,
+		mutation_applied: false,
+		invariant_before: None,
+	};
+	if let Err(error) =
+		authority_store_result(&scenario.baseline_migration_url, &scenario.baseline_runtime_url)
+			.await
+	{
+		let (variant, class) = authority_store_error(&error);
+		evidence.failures.push(format!("baseline expected Ready, actual {variant:?}/{class:?}"));
+		evidence.complete = false;
+	}
+
+	match authority_boolean(&scenario.admin_url, &scenario.precondition_sql).await {
+		Ok(true) => {},
+		Ok(false) => {
+			evidence.failures.push("precondition expected true, actual false".into());
+			evidence.complete = false;
+		},
+		Err(error) => {
+			evidence.failures.push(format!("precondition {error}"));
+			evidence.complete = false;
+		},
+	}
+	if let Some(sql) = scenario.invariant_sql.as_deref() {
+		match authority_text(&scenario.admin_url, sql).await {
+			Ok(value) => evidence.invariant_before = Some(value),
+			Err(error) => {
+				evidence.failures.push(format!("pre-mutation invariant {error}"));
+				evidence.complete = false;
+			},
+		}
+	}
+	if let Some(sql) = scenario.pre_runtime_rejected_sql.as_deref()
+		&& let Err(error) = authority_rejected_batch(
+			&scenario.case_runtime_url,
+			sql,
+			scenario.pre_runtime_rejected_sqlstate.as_deref(),
+		)
+		.await
+	{
+		evidence.failures.push(format!("pre-mutation runtime rejection {error}"));
+		evidence.complete = false;
+	}
+	if evidence.complete {
+		match authority_batch(&scenario.admin_url, &scenario.mutation_sql).await {
+			Ok(()) => evidence.mutation_applied = true,
+			Err(error) => {
+				evidence.failures.push(format!("mutation {error}"));
+				evidence.complete = false;
+			},
+		}
+	}
+	evidence
+}
+
+async fn collect_post_mutation_authority_evidence(
+	scenario: &AuthorityScenario,
+	evidence: &mut AuthorityCausalEvidence,
+) {
+	if !evidence.mutation_applied {
+		return;
+	}
+	if let Some(sql) = scenario.post_runtime_rejected_sql.as_deref()
+		&& let Err(error) = authority_rejected_batch(
+			&scenario.case_runtime_url,
+			sql,
+			scenario.post_runtime_rejected_sqlstate.as_deref(),
+		)
+		.await
+	{
+		evidence.failures.push(format!("post-mutation runtime rejection {error}"));
+		evidence.complete = false;
+	}
+	if let Some(sql) = scenario.runtime_effect_sql.as_deref()
+		&& let Err(error) = authority_batch(&scenario.case_runtime_url, sql).await
+	{
+		evidence.failures.push(format!("runtime effect {error}"));
+		evidence.complete = false;
+	}
+	match authority_boolean(&scenario.admin_url, &scenario.postcondition_sql).await {
+		Ok(true) => {},
+		Ok(false) => {
+			evidence.failures.push("postcondition expected true, actual false".into());
+			evidence.complete = false;
+		},
+		Err(error) => {
+			evidence.failures.push(format!("postcondition {error}"));
+			evidence.complete = false;
+		},
+	}
+	let invariant_before = evidence.invariant_before.clone();
+	if let (Some(before), Some(sql)) =
+		(invariant_before.as_deref(), scenario.invariant_sql.as_deref())
+	{
+		match authority_text(&scenario.admin_url, sql).await {
+			Ok(after) if after == before => {},
+			Ok(_) => {
+				evidence.failures.push("non-body invariant changed".into());
+				evidence.complete = false;
+			},
+			Err(error) => {
+				evidence.failures.push(format!("post-mutation invariant {error}"));
+				evidence.complete = false;
+			},
+		}
+	}
+}
+
+async fn run_authority_classification_phase(
+	scenario: &AuthorityScenario,
+	evidence: &mut AuthorityCausalEvidence,
+) {
+	if !evidence.complete {
+		evidence
+			.failures
+			.push("classification not evaluated because causal evidence is incomplete".into());
+		return;
+	}
+	let expected_bootstrap = match scenario.expected {
+		AuthorityClassification::UnsafeDatabaseAuthority => BootstrapFailure::UnsafeAuthority,
+		AuthorityClassification::DatabaseIncompatible => BootstrapFailure::Incompatible,
+	};
+	match authority_store_result(&scenario.case_migration_url, &scenario.case_runtime_url).await {
+		Ok(()) => evidence.failures.push(format!(
+			"classification expected {:?}/{expected_bootstrap:?}, actual Ready",
+			scenario.expected_store_error
+		)),
+		Err(error) => {
+			let (actual_store_error, actual_bootstrap) = authority_store_error(&error);
+			if actual_store_error != scenario.expected_store_error
+				|| actual_bootstrap != expected_bootstrap
+			{
+				evidence.failures.push(format!(
+					"classification expected {:?}/{expected_bootstrap:?}, actual \
+					 {actual_store_error:?}/{actual_bootstrap:?}",
+					scenario.expected_store_error
+				));
+			}
+		},
+	}
+}
+
+async fn run_authority_restoration_phase(
+	scenario: &AuthorityScenario,
+	evidence: &mut AuthorityCausalEvidence,
+) {
+	if !evidence.mutation_applied {
+		return;
+	}
+	let (Some(restore_sql), Some(restored_sql)) =
+		(scenario.restore_sql.as_deref(), scenario.restore_postcondition_sql.as_deref())
+	else {
+		return;
+	};
+	if let Err(error) = authority_batch(&scenario.admin_url, restore_sql).await {
+		evidence.failures.push(format!("post-classification cleanup {error}"));
+	}
+	match authority_boolean(&scenario.admin_url, restored_sql).await {
+		Ok(true) => {},
+		Ok(false) => evidence
+			.failures
+			.push("post-classification cleanup expected restored, actual unrestored".into()),
+		Err(error) =>
+			evidence.failures.push(format!("post-classification cleanup predicate {error}")),
+	}
+}
+
+async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String> {
+	let mut evidence = collect_pre_mutation_authority_evidence(scenario).await;
+	collect_post_mutation_authority_evidence(scenario, &mut evidence).await;
+	run_authority_classification_phase(scenario, &mut evidence).await;
+	run_authority_restoration_phase(scenario, &mut evidence).await;
+	evidence.failures
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 authority classification harness"]
+async fn postgres_authority_classification_matrix() {
+	let scenarios = authority_scenarios();
+	let unsafe_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected == AuthorityClassification::UnsafeDatabaseAuthority)
+		.count();
+	let incompatible_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected == AuthorityClassification::DatabaseIncompatible)
+		.count();
+	let unsafe_store_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::UnsafeAuthority)
+		.count();
+	let incompatible_store_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::Incompatible)
+		.count();
+	let migration_store_count = scenarios
+		.iter()
+		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::Migration)
+		.count();
+	let identities =
+		scenarios.iter().map(|scenario| scenario.case_id.as_str()).collect::<HashSet<_>>();
+
+	assert_eq!(unsafe_count, 27, "unsafe authority scenario count");
+	assert_eq!(incompatible_count, 6, "incompatible authority scenario count");
+	assert_eq!(unsafe_store_count, 27, "StoreError::UnsafeAuthority scenario count");
+	assert_eq!(incompatible_store_count, 5, "StoreError::Incompatible scenario count");
+	assert_eq!(migration_store_count, 1, "StoreError::Migration scenario count");
+	assert_eq!(identities.len(), scenarios.len(), "authority scenario identities are unique");
+	assert!(
+		scenarios.iter().any(|scenario| {
+			scenario.case_id == "missing-ledger-select"
+				&& scenario.expected_store_error == AuthorityStoreError::Incompatible
+				&& scenario.expected == AuthorityClassification::DatabaseIncompatible
+		}),
+		"missing-ledger-select is exclusively incompatible"
+	);
+	assert!(
+		scenarios.iter().any(|scenario| {
+			scenario.case_id == "ledger-tamper"
+				&& scenario.expected_store_error == AuthorityStoreError::Migration
+				&& scenario.expected == AuthorityClassification::DatabaseIncompatible
+		}),
+		"ledger-tamper is migration failure projected as incompatible"
+	);
+
+	let mut failures = Vec::new();
+	for scenario in &scenarios {
+		for failure in evaluate_authority_scenario(scenario).await {
+			failures.push(format!("{}: {failure}", scenario.case_id));
+		}
+	}
+
+	assert!(
+		failures.is_empty(),
+		"PostgreSQL authority classification matrix failures:\n{}",
+		failures.join("\n")
+	);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an isolated PostgreSQL 18 configured-authority database"]
 async fn postgres_manifest_readiness_fixture() -> Result<(), Box<dyn std::error::Error>> {
@@ -562,7 +1300,7 @@ async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error:
 			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
 			  FROM information_schema.columns WHERE table_schema='decodex' \
 			  AND table_name='quota_windows' AND column_name='window_class'), \
-			 (SELECT count(*)=8 FROM public.refinery_schema_history)",
+				 (SELECT count(*)=21 FROM public.refinery_schema_history)",
 			&[],
 		)
 		.await?;
@@ -820,6 +1558,14 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	assert_concurrent_hierarchy_serialization(&store, &client, &runtime).await?;
 	assert_duration_validation(&store, &client).await?;
 	assert_lease_contention_and_reclaim(&store).await?;
+
+	let routing =
+		routing_decision::assert_routing_decision_contract(&store, &client, &migration, &runtime)
+			.await?;
+	continuation::assert_continuation_contract(&store, &client, &migration, &runtime, &routing)
+		.await?;
+	waiting_wake::assert_waiting_wake_contract(&store, &client, &migration, &runtime, &routing)
+		.await?;
 	assert_outbox_concurrency_retry_and_restart(&store, &client, &migration, &runtime).await?;
 
 	assert_eq!(store.availability(), Availability::Unavailable { reason: CLOSED });
@@ -833,6 +1579,37 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	connection_task.await??;
 
 	runtime_connection_task.await??;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the isolated PostgreSQL 18 missing-extension harness"]
+async fn postgres_store_missing_pgcrypto_is_incompatible() -> Result<(), Box<dyn std::error::Error>>
+{
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let live = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (client, connection) = migration.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+
+	client.batch_execute("DROP EXTENSION pgcrypto CASCADE").await?;
+
+	assert!(matches!(live.revalidate().await, Err(StoreError::Incompatible(_))));
+
+	let pgcrypto_absent: bool = client
+		.query_one(
+			"SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_extension \
+			 WHERE extname='pgcrypto')",
+			&[],
+		)
+		.await?
+		.get(0);
+
+	assert!(pgcrypto_absent);
+
+	live.close();
+	drop(client);
+	connection_task.await??;
 
 	Ok(())
 }
@@ -1209,8 +1986,16 @@ async fn assert_concurrent_hierarchy_serialization(
 	let (client_b, connection_b) = runtime.clone().connect(NoTls).await?;
 	let connection_a = tokio::spawn(connection_a);
 	let connection_b = tokio::spawn(connection_b);
-	let profile = "42000000-0000-4000-8000-000000000001";
-	let account = "43000000-0000-4000-8000-000000000001";
+	let snapshot_ids = setup
+		.query_one(
+			"SELECT profile_snapshot_id::text,account_snapshot_id::text \
+			 FROM decodex.runtime_sessions \
+			 WHERE runtime_session_id='41000000-0000-4000-8000-000000000001'::uuid",
+			&[],
+		)
+		.await?;
+	let profile = snapshot_ids.get::<_, String>(0);
+	let account = snapshot_ids.get::<_, String>(1);
 	let session = |suffix: u8| format!("49100000-0000-4000-8000-{suffix:012x}");
 	let turn = |suffix: u8| format!("49200000-0000-4000-8000-{suffix:012x}");
 	let artifact = |suffix: u8| format!("49300000-0000-4000-8000-{suffix:012x}");
@@ -1281,14 +2066,14 @@ async fn assert_concurrent_hierarchy_serialization(
 	setup.execute(&format!("INSERT INTO decodex.turns (turn_id,conversation_id,runtime_session_id,sequence,role) VALUES ('{}','49000000-0000-4000-8000-000000000009','{}',1,'assistant')", turn(9), session(9)), &[]).await?;
 
 	assert_concurrent_history_positions(setup, &client_a, &client_b, &turn(9)).await?;
-	assert_cursor_capacity_and_retention(setup, &client_a, &client_b, profile, account).await?;
+	assert_cursor_capacity_and_retention(setup, &client_a, &client_b, &profile, &account).await?;
 	assert_mixed_history_artifact_lock_order(store, setup).await?;
 	assert_executor_prelock_order(setup, &client_a, &client_b).await?;
 	assert_receipt_precedes_hierarchy(store, setup, &client_a).await?;
 	assert_transition_writer_lock_order(store, setup, &client_a).await?;
 	assert_typed_mixed_operation_progress(store, setup).await?;
 	assert_direct_transition_cursor_lock_order(store, setup, &client_a).await?;
-	assert_global_cursor_capacity_and_expiry(store, setup, &client_a, profile, account).await?;
+	assert_global_cursor_capacity_and_expiry(store, setup, &client_a, &profile, &account).await?;
 	drop(client_a);
 	drop(client_b);
 
@@ -1786,6 +2571,16 @@ async fn seed_lock_order_fixture(
 	let artifact_id = ArtifactId::new(format!("49300000-0000-4000-8000-{suffix:012x}"))?;
 	let bytes = format!("lock-order-artifact-{suffix}").into_bytes();
 	let hash = blob_store.put(&bytes)?;
+	let snapshot_ids = setup
+		.query_one(
+			"SELECT profile_snapshot_id::text,account_snapshot_id::text \
+			 FROM decodex.runtime_sessions \
+			 WHERE runtime_session_id='41000000-0000-4000-8000-000000000001'::uuid",
+			&[],
+		)
+		.await?;
+	let profile = snapshot_ids.get::<_, String>(0);
+	let account = snapshot_ids.get::<_, String>(1);
 
 	setup
 		.execute(
@@ -1800,8 +2595,7 @@ async fn seed_lock_order_fixture(
 			 VALUES ('{conversation_id}','mixed lock fixture'); \
 			 INSERT INTO decodex.runtime_sessions \
 			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) \
-			 VALUES ('{session_id}','{conversation_id}','42000000-0000-4000-8000-000000000001', \
-			 '43000000-0000-4000-8000-000000000001','active'); \
+			 VALUES ('{session_id}','{conversation_id}','{profile}','{account}','active'); \
 			 INSERT INTO decodex.turns \
 			 (turn_id,conversation_id,runtime_session_id,sequence,role) \
 			 VALUES ('{turn_id}','{conversation_id}','{session_id}',1,'assistant'); \
@@ -2275,6 +3069,9 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 	assert_bootstrap_and_history(&client).await?;
 
 	assert!(store.account(&AccountId::new(ACCOUNT_ID)?).await?.is_some());
+	routing_decision::assert_restored_routing_contract(&client).await?;
+	continuation::assert_restored_continuation_contract(&client).await?;
+	waiting_wake::assert_restored_waiting_wake_contract(&client).await?;
 
 	let advisor = store.advisor().await?.expect("restored global Advisor exists");
 
@@ -2449,7 +3246,6 @@ async fn postgres_store_rejects_implicit_uuid_to_text_cast()
 #[ignore = "requires the isolated PostgreSQL 18 Turkish ICU collation harness"]
 async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (migration, runtime) = separated_configs("DECODEX_TEST_COLLATION")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
 	let (client, connection) = migration.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let locale = client
@@ -2463,7 +3259,14 @@ async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::
 	let locale: Option<String> = locale.get(1);
 
 	assert_eq!(provider, "i");
-	assert!(locale.as_deref().is_some_and(|value| value.starts_with("tr")));
+	assert!(
+		locale
+			.as_deref()
+			.and_then(|value| value.split('-').next())
+			.is_some_and(|language| language.eq_ignore_ascii_case("tr"))
+	);
+
+	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
 
 	for (index, response) in [
 		serde_json::json!({"AUTHORIZATION": "forbidden"}),
@@ -2524,37 +3327,37 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	assert_eq!(history.len(), 10);
-	assert_eq!(history[0].0, 1);
-	assert_eq!(history[0].1, "persistence_foundation");
-	assert!(!history[0].2.is_empty());
-	assert_eq!(history[1].0, 2);
-	assert_eq!(history[1].1, "claim_indexes");
-	assert!(!history[1].2.is_empty());
-	assert_eq!(history[2].0, 3);
-	assert_eq!(history[2].1, "conversation_history");
-	assert!(!history[2].2.is_empty());
-	assert_eq!(history[3].0, 4);
-	assert_eq!(history[3].1, "account_readiness");
-	assert!(!history[3].2.is_empty());
-	assert_eq!(history[4].0, 5);
-	assert_eq!(history[4].1, "project_agent_authority");
-	assert!(!history[4].2.is_empty());
-	assert_eq!(history[5].0, 6);
-	assert_eq!(history[5].1, "project_policy_authority");
-	assert!(!history[5].2.is_empty());
-	assert_eq!(history[6].0, 7);
-	assert_eq!(history[6].1, "program_objective_authority");
-	assert!(!history[6].2.is_empty());
-	assert_eq!(history[7].0, 8);
-	assert_eq!(history[7].1, "quota_exclusions");
-	assert!(!history[7].2.is_empty());
-	assert_eq!(history[8].0, 9);
-	assert_eq!(history[8].1, "exact_role_profiles");
-	assert!(!history[8].2.is_empty());
-	assert_eq!(history[9].0, 10);
-	assert_eq!(history[9].1, "runtime_session_snapshots");
-	assert!(!history[9].2.is_empty());
+	let expected_history = [
+		"persistence_foundation",
+		"claim_indexes",
+		"conversation_history",
+		"account_readiness",
+		"project_agent_authority",
+		"project_policy_authority",
+		"program_objective_authority",
+		"quota_exclusions",
+		"exact_role_profiles",
+		"runtime_session_snapshots",
+		"work_item_authority",
+		"managed_run_safety",
+		"managed_repository_authority",
+		"routing_authority",
+		"causal_codex_experiments",
+		"atomic_routing_decisions",
+		"continuation_authority",
+		"waiting_usage_wakes",
+		"waiting_usage_wake_time_authority",
+		"constraint_restore_canonicalization",
+		"runtime_session_event_reference_authority",
+	];
+	assert_eq!(history.len(), expected_history.len());
+	for (index, ((version, name, checksum), expected_name)) in
+		history.iter().zip(expected_history).enumerate()
+	{
+		assert_eq!(*version, i32::try_from(index + 1)?);
+		assert_eq!(name, expected_name);
+		assert!(!checksum.is_empty());
+	}
 
 	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
 
@@ -5148,10 +5951,19 @@ async fn assert_no_credential_columns_or_routing(
 		)
 		.await?
 		.get(0);
-	let routing_functions: i64 = client
+	let expected_inert_routing_functions: i64 = client
 		.query_one(
 			"SELECT count(*) FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace \
-			 WHERE nspname = 'decodex' AND (proname LIKE '%eligible%' OR proname LIKE '%route%' \
+			 WHERE nspname = 'decodex' AND proname = 'route_account_exact'",
+			&[],
+		)
+		.await?
+		.get(0);
+	let unexpected_routing_functions: i64 = client
+		.query_one(
+			"SELECT count(*) FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace \
+			 WHERE nspname = 'decodex' AND (proname LIKE '%eligible%' \
+			 OR (proname LIKE '%route%' AND proname <> 'route_account_exact') \
 			 OR proname LIKE '%select_account%')",
 			&[],
 		)
@@ -5159,7 +5971,8 @@ async fn assert_no_credential_columns_or_routing(
 		.get(0);
 
 	assert_eq!(forbidden_columns, 0);
-	assert_eq!(routing_functions, 0);
+	assert_eq!(expected_inert_routing_functions, 1);
+	assert_eq!(unexpected_routing_functions, 0);
 
 	Ok(())
 }
@@ -7503,7 +8316,30 @@ async fn assert_transition_proposal_and_session_terminalization(
 	client.execute("INSERT INTO decodex.conversations (conversation_id,title) VALUES ('40000000-0000-4000-8000-000000000099','Other conversation')", &[]).await?;
 
 	assert!(client.batch_execute("INSERT INTO decodex.transition_proposals (transition_id,conversation_id,from_runtime_session_id,context_pack_id,kind,reason) VALUES ('47000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','41000000-0000-4000-8000-000000000001','46000000-0000-4000-8000-000000000001','fallback','cross conversation')").await.is_err());
-	assert!(client.batch_execute("INSERT INTO decodex.runtime_sessions (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) VALUES ('41000000-0000-4000-8000-000000000099','40000000-0000-4000-8000-000000000099','42000000-0000-4000-8000-000000000001','43000000-0000-4000-8000-000000000001','ended')").await.is_err());
+	let session_snapshots = client
+		.query_one(
+			"SELECT profile_snapshot_id::text,account_snapshot_id::text \
+			 FROM decodex.runtime_sessions WHERE runtime_session_id=$1::text::uuid",
+			&[&fixture.session_a_id.as_str()],
+		)
+		.await?;
+	let profile_snapshot_id = session_snapshots.get::<_, String>(0);
+	let account_snapshot_id = session_snapshots.get::<_, String>(1);
+	let invalid_initial_state = client
+		.execute(
+			"INSERT INTO decodex.runtime_sessions \
+			 (runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id,state) \
+			 VALUES ('41000000-0000-4000-8000-000000000099', \
+			 '40000000-0000-4000-8000-000000000099',$1::text::uuid,$2::text::uuid,'ended')",
+			&[&profile_snapshot_id, &account_snapshot_id],
+		)
+		.await
+		.expect_err("a RuntimeSession cannot be inserted initially terminal");
+	assert_eq!(
+		invalid_initial_state.as_db_error().map(tokio_postgres::error::DbError::message),
+		Some("illegal initial runtime session state"),
+		"terminal-state rejection must come from the RuntimeSession invariant",
+	);
 	assert!(matches!(
 		store
 			.transition_runtime_session(
@@ -8360,12 +9196,6 @@ async fn assert_incompatible_history_fails_closed(
 			&[],
 		)
 		.await?;
-	live.revalidate().await?;
-	client.batch_execute("DROP EXTENSION pgcrypto CASCADE").await?;
-
-	assert!(matches!(live.revalidate().await, Err(StoreError::Incompatible(_))));
-
-	client.batch_execute("CREATE EXTENSION pgcrypto").await?;
 	live.revalidate().await?;
 	live.close();
 

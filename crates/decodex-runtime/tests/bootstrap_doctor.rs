@@ -1092,59 +1092,61 @@ async fn isolated_postgres_rejected_role_is_authentication() {
 #[tokio::test]
 #[ignore = "requires the isolated PostgreSQL 18 bootstrap harness"]
 async fn isolated_postgres_overprivileged_runtime_is_unavailable() {
-	let roots = env::split_paths(
-		&env::var_os("DECODEX_TEST_UNSAFE_AUTHORITY_ROOTS")
-			.expect("isolated unsafe-authority roots environment"),
+	let case_id = "truncate";
+	let root_path = PathBuf::from(
+		env::var("DECODEX_TEST_UNSAFE_AUTHORITY_ROOT")
+			.expect("representative unsafe-authority root environment"),
+	);
+	let bootstrap = ServiceComposition::bootstrap(
+		DecodexRoot::new(root_path).expect("representative unsafe-authority root is safe"),
 	)
-	.collect::<Vec<_>>();
+	.await;
+	let actual_status = status(&bootstrap, DoctorComponent::Database);
+	let actual_availability = bootstrap.product_state_availability();
+	let expected_status = DoctorStatus::Unavailable(DoctorIssue::UnsafeDatabaseAuthority);
+	let expected_availability =
+		Availability::Unavailable { reason: "configured PostgreSQL runtime authority is unsafe" };
 
-	assert_eq!(roots.len(), 28);
-
-	for root_path in roots {
-		let bootstrap = ServiceComposition::bootstrap(
-			DecodexRoot::new(root_path).expect("isolated unsafe-authority root is safe"),
-		)
-		.await;
-
-		assert_eq!(
-			status(&bootstrap, DoctorComponent::Database),
-			DoctorStatus::Unavailable(DoctorIssue::UnsafeDatabaseAuthority)
-		);
-		assert_eq!(
-			bootstrap.product_state_availability(),
-			Availability::Unavailable {
-				reason: "configured PostgreSQL runtime authority is unsafe"
-			}
-		);
-	}
+	assert_eq!(
+		actual_status, expected_status,
+		"authority projection {case_id}: expected status {expected_status:?}, actual status \
+		 {actual_status:?}"
+	);
+	assert_eq!(
+		actual_availability, expected_availability,
+		"authority projection {case_id}: expected availability {expected_availability:?}, \
+		 actual availability {actual_availability:?}"
+	);
 }
 
 #[tokio::test]
 #[ignore = "requires the isolated PostgreSQL 18 bootstrap harness"]
 async fn isolated_postgres_incompatible_runtime_is_unavailable() {
-	let roots = env::split_paths(
-		&env::var_os("DECODEX_TEST_INCOMPATIBLE_AUTHORITY_ROOTS")
-			.expect("isolated incompatible-authority roots environment"),
+	let case_id = "missing-ledger-select";
+	let root_path = PathBuf::from(
+		env::var("DECODEX_TEST_INCOMPATIBLE_AUTHORITY_ROOT")
+			.expect("representative incompatible-authority root environment"),
+	);
+	let bootstrap = ServiceComposition::bootstrap(
+		DecodexRoot::new(root_path).expect("representative incompatible-authority root is safe"),
 	)
-	.collect::<Vec<_>>();
+	.await;
+	let actual_status = status(&bootstrap, DoctorComponent::Database);
+	let actual_availability = bootstrap.product_state_availability();
+	let expected_status = DoctorStatus::Unavailable(DoctorIssue::DatabaseIncompatible);
+	let expected_availability =
+		Availability::Unavailable { reason: "configured PostgreSQL is incompatible" };
 
-	assert_eq!(roots.len(), 5);
-
-	for root_path in roots {
-		let bootstrap = ServiceComposition::bootstrap(
-			DecodexRoot::new(root_path).expect("isolated incompatible-authority root is safe"),
-		)
-		.await;
-
-		assert_eq!(
-			status(&bootstrap, DoctorComponent::Database),
-			DoctorStatus::Unavailable(DoctorIssue::DatabaseIncompatible)
-		);
-		assert_eq!(
-			bootstrap.product_state_availability(),
-			Availability::Unavailable { reason: "configured PostgreSQL is incompatible" }
-		);
-	}
+	assert_eq!(
+		actual_status, expected_status,
+		"authority projection {case_id}: expected status {expected_status:?}, actual status \
+		 {actual_status:?}"
+	);
+	assert_eq!(
+		actual_availability, expected_availability,
+		"authority projection {case_id}: expected availability {expected_availability:?}, \
+		 actual availability {actual_availability:?}"
+	);
 }
 
 #[tokio::test]

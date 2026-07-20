@@ -5,7 +5,9 @@ mod agent;
 mod blob;
 mod cache;
 mod config;
+mod continuation;
 mod conversation;
+mod experiment;
 mod identity;
 mod managed_repository;
 mod managed_run;
@@ -15,7 +17,9 @@ mod policy;
 mod program;
 mod project;
 mod quota;
+mod routing;
 mod storage;
+mod wake;
 mod work_item;
 
 pub use self::{
@@ -37,6 +41,10 @@ pub use self::{
 		MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig, ProfileName,
 		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
 	},
+	continuation::{
+		ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlan,
+		ContinuationPlanKind, ContinuationRejection, SameThreadContinuationEvidence,
+	},
 	conversation::{
 		AccountSnapshot, ArtifactId, ArtifactReference, ArtifactStatus, ContextPack,
 		ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceDisposition,
@@ -50,6 +58,11 @@ pub use self::{
 		ProposedTransition, ProposedTransitionKind, RuntimeSession, RuntimeSessionId,
 		RuntimeSessionState, Turn, TurnId, TurnRole, TurnStatus, compile_context_pack,
 		contains_credential_material, is_canonical_media_type, is_credential_metadata_key,
+	},
+	experiment::{
+		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
+		CodexExperimentObservation, CodexExperimentObservationKind, CodexExperimentPrepared,
+		CodexExperimentRejection, CodexExperimentState, CodexExperimentThreadBinding,
 	},
 	identity::ServerIdentity,
 	managed_repository::{
@@ -121,7 +134,21 @@ pub use self::{
 		TimeOverflow, UnknownObservation, UnknownWindowDuration, WindowDurationObservation,
 		classify_account_quota, classify_all_accounts,
 	},
+	routing::{
+		CodexCapability, RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome,
+		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind,
+		RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingEvidenceEffect,
+		RoutingKernelError, RoutingMemberDisposition, RoutingNoRouteReason, RoutingPolicyEffect,
+		RoutingPolicyMember, RoutingRejection, RoutingSnapshot, RoutingSnapshotCapabilityFact,
+		RoutingSnapshotMember, RoutingSnapshotQuotaFact, RoutingTimestampPrecision,
+		RoutingTimestampProvenance, decide_routing,
+	},
 	storage::StorageError,
+	wake::{
+		WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease, WaitingUsageWakeRejection,
+		WaitingUsageWakeState, WaitingUsageWakeTerminalReason, WaitingUsageWakeTransition,
+		WaitingUsageWakeTransitionKind,
+	},
 	work_item::{
 		MAX_WORK_ITEM_CRITERIA, MAX_WORK_ITEM_GRAPH_EDGES, MAX_WORK_ITEM_GRAPH_NODES,
 		MAX_WORK_ITEM_OBJECTIVES, MAX_WORK_ITEM_READINESS_CONTEXT,

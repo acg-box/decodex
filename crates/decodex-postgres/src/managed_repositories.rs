@@ -227,7 +227,7 @@ impl PostgresStore {
 				&[&repository_id.as_str()],
 			)
 			.await?;
-		let admission = load_admission_for_update(&transaction, repository_id)
+		let admission = load_admission(&transaction, repository_id)
 			.await?
 			.ok_or(StoreError::InvalidInput("managed repository admission is absent"))?;
 		if load_facts(&transaction, repository_id, true).await?.is_some() {
@@ -608,8 +608,12 @@ impl PostgresStore {
 				 FROM decodex.managed_repositories repository
 				 JOIN decodex.repository_operations operation
 				 ON operation.operation_id=repository.active_operation_id
-				 JOIN decodex.repository_admissions admission USING(repository_id)
-				 LEFT JOIN decodex.repository_operation_results result USING(operation_id)
+				 AND operation.repository_id=repository.repository_id
+				 JOIN decodex.repository_admissions admission
+				 ON admission.repository_id=repository.repository_id
+				 LEFT JOIN decodex.repository_operation_results result
+				 ON result.operation_id=operation.operation_id
+				 AND result.repository_id=operation.repository_id
 				 JOIN decodex.repository_operation_evidence evidence
 				 ON evidence.repository_id=repository.repository_id
 				 AND evidence.operation_id IS NULL AND evidence.kind='allocation'
@@ -1045,22 +1049,6 @@ async fn load_admission(
 	row.as_ref().map(parse_admission_row).transpose()
 }
 
-async fn load_admission_for_update(
-	transaction: &Transaction<'_>,
-	repository_id: &ManagedRepositoryId,
-) -> Result<Option<RepositoryAdmissionFacts>, StoreError> {
-	let row = transaction
-		.query_opt(
-			"SELECT project_id::text,repository_id::text,admitted_identity,admitted_base,
-			 admission_descriptor_digest,repository_absolute_path,
-			 admission_descriptor_schema,admission_descriptor
-			 FROM decodex.repository_admissions WHERE repository_id=$1::text::uuid FOR UPDATE",
-			&[&repository_id.as_str()],
-		)
-		.await?;
-	row.as_ref().map(parse_admission_row).transpose()
-}
-
 fn parse_admission_row(row: &Row) -> Result<RepositoryAdmissionFacts, StoreError> {
 	parse_admission_columns(row, 0)
 }
@@ -1168,11 +1156,14 @@ const OPERATION_SELECT: &str = "SELECT operation.descriptor,result.state::text,
  result.ambiguity::text,result.result,admission.project_id::text,
  admission.repository_id::text,admission.admitted_identity,admission.admitted_base,
  admission.admission_descriptor_digest,admission.repository_absolute_path,
- admission.admission_descriptor_schema,admission.admission_descriptor
- FROM decodex.repository_operations operation
- LEFT JOIN decodex.repository_operation_results result USING(operation_id)
- JOIN decodex.repository_admissions admission USING(repository_id)
- WHERE operation.operation_id=$1::text::uuid";
+	 admission.admission_descriptor_schema,admission.admission_descriptor
+	 FROM decodex.repository_operations operation
+	 LEFT JOIN decodex.repository_operation_results result
+	 ON result.operation_id=operation.operation_id
+	 AND result.repository_id=operation.repository_id
+	 JOIN decodex.repository_admissions admission
+	 ON admission.repository_id=operation.repository_id
+	 WHERE operation.operation_id=$1::text::uuid";
 
 async fn load_operation(
 	transaction: &Transaction<'_>,

@@ -8,7 +8,10 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 13;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 21;
+#[cfg(test)]
+const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
+	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -33,6 +36,20 @@ pub(crate) async fn run_through_v8(client: &mut Client) -> Result<(), StoreError
 #[cfg(feature = "test-support")]
 pub(crate) async fn run_through_v9(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().set_target(Target::Version(9)).run_async(&mut ***client).await?;
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v10(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(10)).run_async(&mut ***client).await?;
+
+	verify_exact_ledger(client, 10, false).await
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v13(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(13)).run_async(&mut ***client).await?;
 
 	Ok(())
 }
@@ -65,6 +82,14 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		return Err(StoreError::Incompatible(format!("pgcrypto version {pgcrypto}, expected 1.4")));
 	}
 
+	verify_exact_ledger(client, EXPECTED_LATEST_MIGRATION_VERSION, true).await
+}
+
+async fn verify_exact_ledger(
+	client: &Client,
+	terminal_version: i32,
+	require_embedded_terminal: bool,
+) -> Result<(), StoreError> {
 	let actual = client
 		.query(
 			"SELECT version, name, checksum FROM public.refinery_schema_history ORDER BY version",
@@ -76,16 +101,34 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 
 	expected.sort_by_key(|migration| migration.version());
 
-	if expected.last().map(|migration| migration.version())
-		!= Some(EXPECTED_LATEST_MIGRATION_VERSION)
+	if require_embedded_terminal
+		&& expected.last().map(|migration| migration.version()) != Some(terminal_version)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V13 ledger".into(),
+			"embedded migration inventory does not end at the canonical V21 ledger".into(),
 		));
+	}
+	expected.retain(|migration| migration.version() <= terminal_version);
+	if expected.last().map(|migration| migration.version()) != Some(terminal_version) {
+		return Err(StoreError::Incompatible(format!(
+			"embedded migration inventory does not contain terminal V{terminal_version}"
+		)));
+	}
+	let expected_len = usize::try_from(terminal_version).map_err(|_| {
+		StoreError::Incompatible(format!("invalid terminal migration V{terminal_version}"))
+	})?;
+	if expected.len() != expected_len
+		|| expected.iter().enumerate().any(|(index, migration)| {
+			migration.version()
+				!= i32::try_from(index + 1).expect("migration prefix index fits i32")
+		}) {
+		return Err(StoreError::Incompatible(format!(
+			"embedded migration inventory is not the contiguous V1-V{terminal_version} prefix"
+		)));
 	}
 	if actual.len() != expected.len() {
 		return Err(StoreError::Incompatible(format!(
-			"expected {} migration history entries, found {}",
+			"expected {} migration history entries through V{terminal_version}, found {}",
 			expected.len(),
 			actual.len()
 		)));
@@ -100,11 +143,205 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		if version != expected.version() || name != expected.name() || checksum != expected_checksum
 		{
 			return Err(StoreError::Incompatible(format!(
-				"migration history entry {} does not match the embedded migration",
-				index + 1
+				"migration history entry {} through V{terminal_version} does not match the embedded migration",
+				index + 1,
 			)));
 		}
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, migrations};
+
+	const POSTGRESQL_SYNTAX_CONSTRUCTS: [&str; 7] =
+		["coalesce", "nullif", "greatest", "least", "extract", "substring", "position"];
+
+	#[derive(Clone, Copy)]
+	enum SqlToken<'a> {
+		Identifier(&'a str),
+		Dot,
+		LeftParen,
+		Other,
+	}
+
+	fn sql_tokens(sql: &str) -> Vec<SqlToken<'_>> {
+		let bytes = sql.as_bytes();
+		let mut tokens = Vec::new();
+		let mut offset = 0;
+
+		while offset < bytes.len() {
+			match bytes[offset] {
+				byte if byte.is_ascii_whitespace() => offset += 1,
+				b'-' if bytes.get(offset + 1) == Some(&b'-') => {
+					offset += 2;
+					while offset < bytes.len() && bytes[offset] != b'\n' {
+						offset += 1;
+					}
+				},
+				b'/' if bytes.get(offset + 1) == Some(&b'*') => {
+					offset += 2;
+					let mut depth = 1;
+					while offset < bytes.len() && depth > 0 {
+						if bytes[offset..].starts_with(b"/*") {
+							depth += 1;
+							offset += 2;
+						} else if bytes[offset..].starts_with(b"*/") {
+							depth -= 1;
+							offset += 2;
+						} else {
+							offset += 1;
+						}
+					}
+				},
+				b'\'' => {
+					offset += 1;
+					while offset < bytes.len() {
+						if bytes[offset] != b'\'' {
+							offset += 1;
+						} else if bytes.get(offset + 1) == Some(&b'\'') {
+							offset += 2;
+						} else {
+							offset += 1;
+							break;
+						}
+					}
+				},
+				b'.' => {
+					tokens.push(SqlToken::Dot);
+					offset += 1;
+				},
+				b'(' => {
+					tokens.push(SqlToken::LeftParen);
+					offset += 1;
+				},
+				byte if byte.is_ascii_alphabetic() || byte == b'_' => {
+					let start = offset;
+					offset += 1;
+					while offset < bytes.len()
+						&& (bytes[offset].is_ascii_alphanumeric()
+							|| matches!(bytes[offset], b'_' | b'$'))
+					{
+						offset += 1;
+					}
+					tokens.push(SqlToken::Identifier(&sql[start..offset]));
+				},
+				_ => {
+					tokens.push(SqlToken::Other);
+					offset += 1;
+				},
+			}
+		}
+
+		tokens
+	}
+
+	fn schema_qualified_syntax_constructs(sql: &str) -> Vec<&str> {
+		sql_tokens(sql)
+			.windows(4)
+			.filter_map(|tokens| match tokens {
+				[
+					SqlToken::Identifier(schema),
+					SqlToken::Dot,
+					SqlToken::Identifier(name),
+					SqlToken::LeftParen,
+				] if schema.eq_ignore_ascii_case("pg_catalog")
+					&& POSTGRESQL_SYNTAX_CONSTRUCTS
+						.iter()
+						.any(|construct| name.eq_ignore_ascii_case(construct)) =>
+					Some(*name),
+				_ => None,
+			})
+			.collect()
+	}
+
+	const CONSTRAINTS: [&str; 9] = [
+		"repository_admissions_identity_bounded",
+		"repository_admissions_base_bounded",
+		"repository_admissions_path_bounded",
+		"repository_operations_descriptor_bounded",
+		"repository_authority_transitions_head_bounded",
+		"managed_repositories_worktree_path_bounded",
+		"managed_repositories_head_bounded",
+		"routing_policy_revisions_build",
+		"routing_decision_exclusion_range",
+	];
+
+	#[test]
+	fn embedded_migrations_do_not_schema_qualify_postgresql_syntax_constructs() {
+		for migration in migrations::runner().get_migrations() {
+			let sql = migration.sql().expect("embedded migrations retain their SQL");
+			let invalid = schema_qualified_syntax_constructs(sql);
+
+			assert!(
+				invalid.is_empty(),
+				"V{} schema-qualifies PostgreSQL syntax constructs: {invalid:?}",
+				migration.version(),
+			);
+		}
+	}
+
+	#[test]
+	fn syntax_construct_guard_covers_the_category_without_rejecting_catalog_functions() {
+		for construct in POSTGRESQL_SYNTAX_CONSTRUCTS {
+			let sql = format!("SELECT pg_catalog /* qualification */ . {construct} (value)");
+			assert_eq!(schema_qualified_syntax_constructs(&sql), [construct]);
+		}
+		assert!(
+			schema_qualified_syntax_constructs(
+				"SELECT pg_catalog.jsonb_build_object('value', pg_catalog.max(value))",
+			)
+			.is_empty()
+		);
+	}
+
+	#[test]
+	fn v20_recreates_only_the_nine_restore_canonical_constraints() {
+		let migration = CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION;
+
+		assert_eq!(migration.matches("DROP CONSTRAINT").count(), CONSTRAINTS.len());
+		assert_eq!(migration.matches("ADD CONSTRAINT").count(), CONSTRAINTS.len());
+		for constraint in CONSTRAINTS {
+			assert_eq!(migration.matches(&format!("DROP CONSTRAINT {constraint};")).count(), 1);
+			assert_eq!(migration.matches(&format!("ADD CONSTRAINT {constraint} CHECK")).count(), 1);
+		}
+		assert!(
+			!migration
+				.lines()
+				.any(|line| !line.trim_start().starts_with("--") && line.contains("BETWEEN"))
+		);
+		assert!(!migration.contains("CASCADE"));
+	}
+
+	#[test]
+	fn v20_uses_explicit_restore_canonical_range_predicates() {
+		let migration = CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION;
+
+		for required in [
+			"pg_catalog.octet_length(admitted_identity) >= 1",
+			"pg_catalog.octet_length(admitted_identity) <= 256",
+			"pg_catalog.octet_length(admitted_base) >= 1",
+			"pg_catalog.octet_length(admitted_base) <= 256",
+			"pg_catalog.octet_length(repository_absolute_path) >= 2",
+			"pg_catalog.octet_length(repository_absolute_path) <= 4096",
+			"pg_catalog.octet_length(descriptor::text) >= 2",
+			"pg_catalog.octet_length(descriptor::text) <= 1048576",
+			"pg_catalog.octet_length(payload::text) >= 2",
+			"pg_catalog.octet_length(payload::text) <= 262144",
+			"pg_catalog.octet_length(head) >= 1",
+			"pg_catalog.octet_length(head) <= 256",
+			"pg_catalog.octet_length(worktree_absolute_path) >= 2",
+			"pg_catalog.octet_length(worktree_absolute_path) <= 4096",
+			"pg_catalog.octet_length(required_build_id) >= 1",
+			"pg_catalog.octet_length(required_build_id) <= 256",
+			"observed_at_micros >= 0",
+			"observed_at_micros <= 253402300799999999",
+			"resets_at_micros >= observed_at_micros + 1",
+			"resets_at_micros <= 253402300799999999",
+		] {
+			assert!(migration.contains(required), "{required}");
+		}
+	}
 }
