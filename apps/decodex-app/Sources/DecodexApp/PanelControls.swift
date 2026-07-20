@@ -84,6 +84,7 @@ struct PanelIconButtonView: View {
 		.disabled(isDisabled)
 		.opacity(isDisabled && isActive == false ? 0.56 : 1)
 		.help(help)
+		.accessibilityLabel(help)
 	}
 
 	@ViewBuilder
@@ -142,4 +143,3 @@ struct PanelIconButtonView: View {
 		size * 0.5
 	}
 }
-

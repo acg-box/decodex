@@ -43,8 +43,8 @@ struct AppBridgeRequest: Encodable, Sendable {
 		AppBridgeRequest(operation: "account_logout", selector: selector, includeUsage: true)
 	}
 
-	static func accountLogin() -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_login", includeUsage: true)
+	static func accountLogin(codexBin: String) -> AppBridgeRequest {
+		AppBridgeRequest(operation: "account_login", codexBin: codexBin, includeUsage: true)
 	}
 
 	static let codexFastModeStatus = AppBridgeRequest(operation: "codex_fast_mode_status")
