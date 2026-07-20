@@ -38,7 +38,7 @@ async fn exact_migration_history(
 		)
 		.await?
 		.into_iter()
-		.map(|row| (row.get(0), row.get(1), row.get(2)))
+		.map(|row| (row.get::<_, i32>(0), row.get::<_, String>(1), row.get::<_, String>(2)))
 		.collect::<Vec<_>>();
 
 	assert_eq!(history.len(), expected_names.len());
