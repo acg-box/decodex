@@ -7,7 +7,7 @@ enum AccountRunChipLayout {
 	static let horizontalPadding: CGFloat = 6.5
 	static let iconWidth: CGFloat = 9.5
 	static let spacing: CGFloat = 4
-	static let popoverHoverDelayNanoseconds: UInt64 = 320_000_000
+	static let popoverHoverDelay: Duration = .milliseconds(320)
 }
 
 enum AccountRunStripLayout {
@@ -21,7 +21,7 @@ enum AccountRunStripLayout {
 	static let wheelLineDeltaScale: CGFloat = 11
 	static let wheelMinimumDelta: CGFloat = 0.1
 	static let clickScrollDuration: TimeInterval = 0.14
-	static let continuousScrollStartDelayNanoseconds: UInt64 = 200_000_000
+	static let continuousScrollStartDelay: Duration = .milliseconds(200)
 	static let continuousScrollTickInterval: TimeInterval = 1.0 / 120.0
 	static let continuousScrollMaximumFrameInterval: TimeInterval = 1.0 / 20.0
 	static let continuousScrollVelocity: CGFloat = 285

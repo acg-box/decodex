@@ -1,25 +1,29 @@
 import Foundation
+import Observation
 
 @MainActor
-final class AccountStore: ObservableObject {
-	@Published var accountList: AccountListResponse?
-	@Published var fastMode: CodexFastModeResponse?
-	@Published var operatorSnapshot: OperatorSnapshotResponse?
-	@Published var operatorPresentation: OperatorSnapshotPresentation?
-	@Published var operatorSnapshotUpdatedAt: Date?
-	@Published var isRefreshing = false
-	@Published var isLoggingIn = false
-	@Published var isSettingFastMode = false
-	@Published var loginTranscript = ""
-	@Published var notice: String?
-	@Published var pendingLogoutRemovalKeys = Set<String>()
+@Observable
+final class AccountStore {
+	var accountList: AccountListResponse?
+	var fastMode: CodexFastModeResponse?
+	var operatorSnapshot: OperatorSnapshotResponse?
+	var operatorPresentation: OperatorSnapshotPresentation?
+	var operatorSnapshotUpdatedAt: Date?
+	var isRefreshing = false
+	var isLoggingIn = false
+	var isSettingFastMode = false
+	var loginTranscript = ""
+	var notice: String?
+	var pendingLogoutRemovalKeys = Set<String>()
 
-	let bridge = DecodexAppBridge()
-	var automaticRefreshTask: Task<Void, Never>?
-	var operatorSnapshotStreamTask: Task<Void, Never>?
-	var operatorSnapshotPublishedAtUnixEpoch: Int64?
+	@ObservationIgnored let bridge = DecodexAppBridge()
+	@ObservationIgnored var startupTask: Task<Void, Never>?
+	@ObservationIgnored var automaticRefreshTask: Task<Void, Never>?
+	@ObservationIgnored var operatorSnapshotStreamTask: Task<Void, Never>?
+	@ObservationIgnored var operatorSnapshotPublishedAtUnixEpoch: Int64?
 
 	deinit {
+		startupTask?.cancel()
 		automaticRefreshTask?.cancel()
 		operatorSnapshotStreamTask?.cancel()
 	}
@@ -72,8 +76,8 @@ final class AccountStore: ObservableObject {
 			return "Ready"
 		}
 
-			return "Importing account"
-		}
+		return "Importing account"
+	}
 
 	func resetLoginSession() {
 		guard isLoggingIn == false else {

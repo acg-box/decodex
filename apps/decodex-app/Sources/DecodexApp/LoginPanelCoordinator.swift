@@ -2,8 +2,10 @@ import AppKit
 import SwiftUI
 
 struct LoginPanelPresenter: NSViewRepresentable {
-	@ObservedObject var store: AccountStore
-	@ObservedObject var state: LoginWindowState
+	let store: AccountStore
+	let state: LoginWindowState
+	let isPresented: Bool
+	let mode: AccountLoginSheetMode
 
 	func makeCoordinator() -> Coordinator {
 		Coordinator()
@@ -18,7 +20,12 @@ struct LoginPanelPresenter: NSViewRepresentable {
 
 	func updateNSView(_ nsView: NSView, context: Context) {
 		context.coordinator.hostView = nsView
-		context.coordinator.update(store: store, state: state)
+		context.coordinator.update(
+			store: store,
+			state: state,
+			isPresented: isPresented,
+			mode: mode
+		)
 	}
 }
 
@@ -88,15 +95,20 @@ extension LoginPanelPresenter {
 		private var isClosingProgrammatically = false
 
 		@MainActor
-		func update(store: AccountStore, state: LoginWindowState) {
+		func update(
+			store: AccountStore,
+			state: LoginWindowState,
+			isPresented: Bool,
+			mode: AccountLoginSheetMode
+		) {
 			self.state = state
 
-			guard state.isPresented else {
+			guard isPresented else {
 				closePanel()
 				return
 			}
 
-			let rootView = makeRootView(store: store, state: state)
+			let rootView = makeRootView(store: store, state: state, mode: mode)
 			if let panel, let hostingView {
 				hostingView.rootView = rootView
 				let parentChanged = show(panel)
@@ -138,10 +150,14 @@ extension LoginPanelPresenter {
 		}
 
 		@MainActor
-		private func makeRootView(store: AccountStore, state: LoginWindowState) -> LoginSheetView {
+		private func makeRootView(
+			store: AccountStore,
+			state: LoginWindowState,
+			mode: AccountLoginSheetMode
+		) -> LoginSheetView {
 			LoginSheetView(
 				store: store,
-				mode: state.mode,
+				mode: mode,
 				onCancel: { [weak state] in
 					state?.isPresented = false
 				},
