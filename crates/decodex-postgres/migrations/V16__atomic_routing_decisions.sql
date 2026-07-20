@@ -803,9 +803,9 @@ BEGIN
 	effect:=core||pg_catalog.jsonb_build_object('effect_digest_source',core::text,'effect_digest',
 		pg_catalog.encode(public.digest(pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'));
 	response:=pg_catalog.convert_to(pg_catalog.jsonb_build_object(
-		'classification','completed_success','effect',effect)::text,'UTF8');
+		'classification','success','effect',effect)::text,'UTF8');
 	UPDATE decodex.exact_command_receipts SET receipt_state='completed_success',
-		outcome_class='completed_success',effect_envelope=effect,response_bytes=response,
+		outcome_class='success',effect_envelope=effect,response_bytes=response,
 		completed_at=pg_catalog.clock_timestamp()
 	WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key;
 	RETURN response;

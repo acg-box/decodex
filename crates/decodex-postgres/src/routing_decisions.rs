@@ -116,7 +116,7 @@ fn parse_response(
 			code: code.to_owned(),
 		}));
 	}
-	if classification != "completed_success" {
+	if classification != "success" {
 		return incompatible("stored V16 response classification is unknown");
 	}
 	require_keys(

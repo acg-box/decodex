@@ -527,7 +527,7 @@ BEGIN
 				p_protocol,p_idempotency_key,'decision_already_consumed');
 		END IF;
 		UPDATE decodex.exact_command_receipts SET receipt_state='completed_success',
-			outcome_class='completed_success',effect_envelope=existing_plan.effect_envelope,
+			outcome_class='success',effect_envelope=existing_plan.effect_envelope,
 			response_bytes=existing_plan.response_bytes,completed_at=pg_catalog.clock_timestamp()
 		WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key;
 		RETURN existing_plan.response_bytes;
@@ -793,7 +793,7 @@ BEGIN
 		'outbox_effects',outbox_rows,'effect_digest_source',core::text,
 		'effect_digest',pg_catalog.encode(public.digest(pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'));
 	response:=pg_catalog.convert_to(pg_catalog.jsonb_build_object(
-		'classification','completed_success','effect',effect)::text,'UTF8');
+		'classification','success','effect',effect)::text,'UTF8');
 	INSERT INTO decodex.continuation_plans(plan_id,operation_id,routing_decision_id,
 		managed_run_id,managed_run_revision,conversation_id,source_runtime_session_id,
 		source_runtime_session_revision,selected_account_id,kind,codex_thread_id,
@@ -815,7 +815,7 @@ BEGIN
 		CASE WHEN plan_kind='same_thread' THEN evidence_row.observation_id END,
 		barrier_row.state,barrier_row.revision,submitted_count,false,false,1,request,effect,response,planned);
 	UPDATE decodex.exact_command_receipts SET receipt_state='completed_success',
-		outcome_class='completed_success',effect_envelope=effect,response_bytes=response,
+		outcome_class='success',effect_envelope=effect,response_bytes=response,
 		completed_at=pg_catalog.clock_timestamp()
 	WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key;
 	RETURN response;
