@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -8,10 +9,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor
-final class AppAppearanceStore: ObservableObject {
-	@Published private(set) var colorScheme = AppAppearanceStore.currentColorScheme()
-	private var observation: NSKeyValueObservation?
-	private var distributedNotificationTokens = [NSObjectProtocol]()
+@Observable
+final class AppAppearanceStore {
+	private(set) var colorScheme = AppAppearanceStore.currentColorScheme()
+	@ObservationIgnored private var observation: NSKeyValueObservation?
+	@ObservationIgnored private var distributedNotificationTokens = [NSObjectProtocol]()
 
 	init() {
 		refreshColorScheme()
@@ -70,27 +72,25 @@ enum AppAssets {
 }
 
 @MainActor
-final class LoginWindowState: ObservableObject {
-	@Published var mode = AccountLoginSheetMode.newAccount
-	@Published var isPresented = false
+@Observable
+final class LoginWindowState {
+	var mode = AccountLoginSheetMode.newAccount
+	var isPresented = false
 }
 
 @main
 struct DecodexApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-	@StateObject private var appAppearance = AppAppearanceStore()
-	@StateObject private var store: AccountStore
-	@StateObject private var loginWindowState = LoginWindowState()
+	@State private var appAppearance = AppAppearanceStore()
+	@State private var store: AccountStore
+	@State private var loginWindowState = LoginWindowState()
 
 	@MainActor
 	init() {
 		let accountStore = AccountStore()
 
-		_store = StateObject(wrappedValue: accountStore)
-		Task {
-			accountStore.startAutomaticRefresh()
-			await accountStore.refreshIfNeeded()
-		}
+		_store = State(initialValue: accountStore)
+		accountStore.start()
 	}
 
 	var body: some Scene {
@@ -109,19 +109,9 @@ struct DecodexApp: App {
 
 	@ViewBuilder
 	private var menuBarContent: some View {
-		let content = AccountPanelView(store: store, loginWindowState: loginWindowState)
+		AccountPanelView(store: store, loginWindowState: loginWindowState)
 			.environment(\.colorScheme, appAppearance.colorScheme)
 			.preferredColorScheme(appAppearance.colorScheme)
-			.task {
-				await store.refreshIfNeeded()
-				store.startOperatorSnapshotStream()
-			}
-
-		if #available(macOS 15.0, *) {
-			content
-				.containerBackground(.clear, for: .window)
-		} else {
-			content
-		}
+			.containerBackground(.clear, for: .window)
 	}
 }

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct LoginSheetView: View {
-	@ObservedObject var store: AccountStore
+	let store: AccountStore
 	let mode: AccountLoginSheetMode
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var requestStarted = false
@@ -26,14 +26,8 @@ struct LoginSheetView: View {
 	}
 
 	var body: some View {
-		Group {
-			if #available(macOS 26.0, *) {
-				GlassEffectContainer(spacing: 7) {
-					content
-				}
-			} else {
-				content
-			}
+		GlassEffectContainer(spacing: 7) {
+			content
 		}
 	}
 
@@ -146,7 +140,7 @@ struct LoginSheetView: View {
 		}
 
 		Task { @MainActor in
-			try? await Task.sleep(nanoseconds: 850_000_000)
+			try? await Task.sleep(for: .milliseconds(850))
 			guard copyFeedbackToken == token else {
 				return
 			}
@@ -164,7 +158,7 @@ struct LoginSheetView: View {
 		}
 
 		Task { @MainActor in
-			try? await Task.sleep(nanoseconds: 650_000_000)
+			try? await Task.sleep(for: .milliseconds(650))
 			guard openFeedbackToken == token else {
 				return
 			}

@@ -10,6 +10,7 @@ extension AccountPanelView {
 				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
 				.frame(width: 20, height: 20)
 				.frame(width: 28, height: 28)
+				.accessibilityHidden(true)
 
 			VStack(alignment: .leading, spacing: 2) {
 				Text("Decodex")
