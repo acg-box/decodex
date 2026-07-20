@@ -41,6 +41,9 @@ fn usage_history_backfills_seven_day_estimate_when_current_windows_are_absent() 
 	let estimate = response.usage_estimate.as_ref().expect("usage estimate should exist");
 
 	assert_eq!(response.accounts[0].primary_remaining_percent, None);
+	assert_eq!(response.accounts[0].secondary_window_seconds, Some(604_800));
+	assert_eq!(response.accounts[0].secondary_remaining_percent, Some(37));
+	assert_eq!(response.accounts[0].secondary_resets_at_unix_epoch, Some(1_800_604_900));
 	assert_eq!(response.accounts[0].seven_day_used_percent, Some(63));
 
 	tests::assert_close(response.accounts[0].seven_day_daily_average_percent, 63.0 / 7.0);
