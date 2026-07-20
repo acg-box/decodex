@@ -1,10 +1,10 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.4
 
 import PackageDescription
 
 let package = Package(
 	name: "DecodexApp",
-	platforms: [.macOS(.v14)],
+	platforms: [.macOS(.v27)],
 	products: [
 		.executable(name: "DecodexApp", targets: ["DecodexApp"]),
 	],

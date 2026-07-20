@@ -7,7 +7,7 @@ EXECUTABLE_NAME="DecodexApp"
 HELPER_NAME="decodex-app-helper"
 SERVER_NAME="decodex"
 BUNDLE_ID="space.decodex.app"
-MIN_SYSTEM_VERSION="14.0"
+MIN_SYSTEM_VERSION="27.0"
 DEFAULT_SIGN_IDENTITY="x@acg.box"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

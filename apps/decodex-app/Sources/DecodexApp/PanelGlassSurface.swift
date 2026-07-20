@@ -10,51 +10,30 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 		let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 		let appearanceID = colorScheme == .dark ? "dark" : "light"
 
-		if #available(macOS 26.0, *) {
-			content
-				.background {
-					shape.fill(surfaceFill)
-				}
-				.glassEffect(
-					configuredGlass,
-					in: shape
-				)
-				.overlay {
-					shape
-						.strokeBorder(surfaceStroke, lineWidth: strokeWidth)
-						.allowsHitTesting(false)
-				}
-				.shadow(
-					color: surfaceShadow,
-					radius: shadowRadius,
-					x: 0,
-					y: shadowY
-				)
-				// Menu-bar glass layers can keep a stale material across system appearance flips.
-				// Re-key only the surface wrapper so light/dark changes redraw immediately.
-				.id(appearanceID)
-		} else {
-			content
-				.background {
-					shape.fill(materialStyle)
-					shape.fill(surfaceFill)
-				}
-				.overlay {
-					shape
-						.strokeBorder(surfaceStroke, lineWidth: strokeWidth)
-						.allowsHitTesting(false)
-				}
-				.shadow(
-					color: surfaceShadow,
-					radius: shadowRadius,
-					x: 0,
-					y: shadowY
-				)
-				.id(appearanceID)
-		}
+		content
+			.background {
+				shape.fill(surfaceFill)
+			}
+			.glassEffect(
+				configuredGlass,
+				in: shape
+			)
+			.overlay {
+				shape
+					.strokeBorder(surfaceStroke, lineWidth: strokeWidth)
+					.allowsHitTesting(false)
+			}
+			.shadow(
+				color: surfaceShadow,
+				radius: shadowRadius,
+				x: 0,
+				y: shadowY
+			)
+			// Menu-bar glass layers can keep a stale material across system appearance flips.
+			// Re-key only the surface wrapper so light/dark changes redraw immediately.
+			.id(appearanceID)
 	}
 
-	@available(macOS 26.0, *)
 	var configuredGlass: Glass {
 		var glass = Glass.regular.tint(glassTint)
 		if depth == .control {
