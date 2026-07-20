@@ -1016,41 +1016,51 @@ async fn authority_store_result(migration_url: &str, runtime_url: &str) -> Resul
 	Ok(())
 }
 
-async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String> {
-	let mut failures = Vec::new();
-	let mut causal_evidence_complete = true;
+struct AuthorityCausalEvidence {
+	failures: Vec<String>,
+	complete: bool,
+	mutation_applied: bool,
+	invariant_before: Option<String>,
+}
+
+async fn collect_pre_mutation_authority_evidence(
+	scenario: &AuthorityScenario,
+) -> AuthorityCausalEvidence {
+	let mut evidence = AuthorityCausalEvidence {
+		failures: Vec::new(),
+		complete: true,
+		mutation_applied: false,
+		invariant_before: None,
+	};
 	if let Err(error) =
 		authority_store_result(&scenario.baseline_migration_url, &scenario.baseline_runtime_url)
 			.await
 	{
 		let (variant, class) = authority_store_error(&error);
-		failures.push(format!("baseline expected Ready, actual {variant:?}/{class:?}"));
-		causal_evidence_complete = false;
+		evidence.failures.push(format!("baseline expected Ready, actual {variant:?}/{class:?}"));
+		evidence.complete = false;
 	}
 
 	match authority_boolean(&scenario.admin_url, &scenario.precondition_sql).await {
 		Ok(true) => {},
 		Ok(false) => {
-			failures.push("precondition expected true, actual false".into());
-			causal_evidence_complete = false;
+			evidence.failures.push("precondition expected true, actual false".into());
+			evidence.complete = false;
 		},
 		Err(error) => {
-			failures.push(format!("precondition {error}"));
-			causal_evidence_complete = false;
+			evidence.failures.push(format!("precondition {error}"));
+			evidence.complete = false;
 		},
 	}
-	let invariant_before = if let Some(sql) = scenario.invariant_sql.as_deref() {
+	if let Some(sql) = scenario.invariant_sql.as_deref() {
 		match authority_text(&scenario.admin_url, sql).await {
-			Ok(value) => Some(value),
+			Ok(value) => evidence.invariant_before = Some(value),
 			Err(error) => {
-				failures.push(format!("pre-mutation invariant {error}"));
-				causal_evidence_complete = false;
-				None
+				evidence.failures.push(format!("pre-mutation invariant {error}"));
+				evidence.complete = false;
 			},
 		}
-	} else {
-		None
-	};
+	}
 	if let Some(sql) = scenario.pre_runtime_rejected_sql.as_deref()
 		&& let Err(error) = authority_rejected_batch(
 			&scenario.case_runtime_url,
@@ -1059,110 +1069,139 @@ async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String
 		)
 		.await
 	{
-		failures.push(format!("pre-mutation runtime rejection {error}"));
-		causal_evidence_complete = false;
+		evidence.failures.push(format!("pre-mutation runtime rejection {error}"));
+		evidence.complete = false;
 	}
-
-	let mutation_applied = if causal_evidence_complete {
+	if evidence.complete {
 		match authority_batch(&scenario.admin_url, &scenario.mutation_sql).await {
-			Ok(()) => true,
+			Ok(()) => evidence.mutation_applied = true,
 			Err(error) => {
-				failures.push(format!("mutation {error}"));
-				causal_evidence_complete = false;
-				false
+				evidence.failures.push(format!("mutation {error}"));
+				evidence.complete = false;
 			},
-		}
-	} else {
-		false
-	};
-	if mutation_applied {
-		if let Some(sql) = scenario.post_runtime_rejected_sql.as_deref()
-			&& let Err(error) = authority_rejected_batch(
-				&scenario.case_runtime_url,
-				sql,
-				scenario.post_runtime_rejected_sqlstate.as_deref(),
-			)
-			.await
-		{
-			failures.push(format!("post-mutation runtime rejection {error}"));
-			causal_evidence_complete = false;
-		}
-		if let Some(sql) = scenario.runtime_effect_sql.as_deref()
-			&& let Err(error) = authority_batch(&scenario.case_runtime_url, sql).await
-		{
-			failures.push(format!("runtime effect {error}"));
-			causal_evidence_complete = false;
-		}
-		match authority_boolean(&scenario.admin_url, &scenario.postcondition_sql).await {
-			Ok(true) => {},
-			Ok(false) => {
-				failures.push("postcondition expected true, actual false".into());
-				causal_evidence_complete = false;
-			},
-			Err(error) => {
-				failures.push(format!("postcondition {error}"));
-				causal_evidence_complete = false;
-			},
-		}
-		if let (Some(before), Some(sql)) = (invariant_before, scenario.invariant_sql.as_deref()) {
-			match authority_text(&scenario.admin_url, sql).await {
-				Ok(after) if after == before => {},
-				Ok(_) => {
-					failures.push("non-body invariant changed".into());
-					causal_evidence_complete = false;
-				},
-				Err(error) => {
-					failures.push(format!("post-mutation invariant {error}"));
-					causal_evidence_complete = false;
-				},
-			}
 		}
 	}
+	evidence
+}
 
-	if causal_evidence_complete {
-		let expected_bootstrap = match scenario.expected {
-			AuthorityClassification::UnsafeDatabaseAuthority => BootstrapFailure::UnsafeAuthority,
-			AuthorityClassification::DatabaseIncompatible => BootstrapFailure::Incompatible,
-		};
-		match authority_store_result(&scenario.case_migration_url, &scenario.case_runtime_url).await
-		{
-			Ok(()) => failures.push(format!(
-				"classification expected {:?}/{expected_bootstrap:?}, actual Ready",
-				scenario.expected_store_error
-			)),
-			Err(error) => {
-				let (actual_store_error, actual_bootstrap) = authority_store_error(&error);
-				if actual_store_error != scenario.expected_store_error
-					|| actual_bootstrap != expected_bootstrap
-				{
-					failures.push(format!(
-						"classification expected {:?}/{expected_bootstrap:?}, actual \
-						 {actual_store_error:?}/{actual_bootstrap:?}",
-						scenario.expected_store_error
-					));
-				}
-			},
-		}
-	} else {
-		failures.push("classification not evaluated because causal evidence is incomplete".into());
+async fn collect_post_mutation_authority_evidence(
+	scenario: &AuthorityScenario,
+	evidence: &mut AuthorityCausalEvidence,
+) {
+	if !evidence.mutation_applied {
+		return;
 	}
-
-	if mutation_applied
-		&& let (Some(restore_sql), Some(restored_sql)) =
-			(scenario.restore_sql.as_deref(), scenario.restore_postcondition_sql.as_deref())
+	if let Some(sql) = scenario.post_runtime_rejected_sql.as_deref()
+		&& let Err(error) = authority_rejected_batch(
+			&scenario.case_runtime_url,
+			sql,
+			scenario.post_runtime_rejected_sqlstate.as_deref(),
+		)
+		.await
 	{
-		if let Err(error) = authority_batch(&scenario.admin_url, restore_sql).await {
-			failures.push(format!("post-classification cleanup {error}"));
-		}
-		match authority_boolean(&scenario.admin_url, restored_sql).await {
-			Ok(true) => {},
-			Ok(false) => failures
-				.push("post-classification cleanup expected restored, actual unrestored".into()),
-			Err(error) => failures.push(format!("post-classification cleanup predicate {error}")),
+		evidence.failures.push(format!("post-mutation runtime rejection {error}"));
+		evidence.complete = false;
+	}
+	if let Some(sql) = scenario.runtime_effect_sql.as_deref()
+		&& let Err(error) = authority_batch(&scenario.case_runtime_url, sql).await
+	{
+		evidence.failures.push(format!("runtime effect {error}"));
+		evidence.complete = false;
+	}
+	match authority_boolean(&scenario.admin_url, &scenario.postcondition_sql).await {
+		Ok(true) => {},
+		Ok(false) => {
+			evidence.failures.push("postcondition expected true, actual false".into());
+			evidence.complete = false;
+		},
+		Err(error) => {
+			evidence.failures.push(format!("postcondition {error}"));
+			evidence.complete = false;
+		},
+	}
+	let invariant_before = evidence.invariant_before.clone();
+	if let (Some(before), Some(sql)) =
+		(invariant_before.as_deref(), scenario.invariant_sql.as_deref())
+	{
+		match authority_text(&scenario.admin_url, sql).await {
+			Ok(after) if after == before => {},
+			Ok(_) => {
+				evidence.failures.push("non-body invariant changed".into());
+				evidence.complete = false;
+			},
+			Err(error) => {
+				evidence.failures.push(format!("post-mutation invariant {error}"));
+				evidence.complete = false;
+			},
 		}
 	}
+}
 
-	failures
+async fn run_authority_classification_phase(
+	scenario: &AuthorityScenario,
+	evidence: &mut AuthorityCausalEvidence,
+) {
+	if !evidence.complete {
+		evidence
+			.failures
+			.push("classification not evaluated because causal evidence is incomplete".into());
+		return;
+	}
+	let expected_bootstrap = match scenario.expected {
+		AuthorityClassification::UnsafeDatabaseAuthority => BootstrapFailure::UnsafeAuthority,
+		AuthorityClassification::DatabaseIncompatible => BootstrapFailure::Incompatible,
+	};
+	match authority_store_result(&scenario.case_migration_url, &scenario.case_runtime_url).await {
+		Ok(()) => evidence.failures.push(format!(
+			"classification expected {:?}/{expected_bootstrap:?}, actual Ready",
+			scenario.expected_store_error
+		)),
+		Err(error) => {
+			let (actual_store_error, actual_bootstrap) = authority_store_error(&error);
+			if actual_store_error != scenario.expected_store_error
+				|| actual_bootstrap != expected_bootstrap
+			{
+				evidence.failures.push(format!(
+					"classification expected {:?}/{expected_bootstrap:?}, actual \
+					 {actual_store_error:?}/{actual_bootstrap:?}",
+					scenario.expected_store_error
+				));
+			}
+		},
+	}
+}
+
+async fn run_authority_restoration_phase(
+	scenario: &AuthorityScenario,
+	evidence: &mut AuthorityCausalEvidence,
+) {
+	if !evidence.mutation_applied {
+		return;
+	}
+	let (Some(restore_sql), Some(restored_sql)) =
+		(scenario.restore_sql.as_deref(), scenario.restore_postcondition_sql.as_deref())
+	else {
+		return;
+	};
+	if let Err(error) = authority_batch(&scenario.admin_url, restore_sql).await {
+		evidence.failures.push(format!("post-classification cleanup {error}"));
+	}
+	match authority_boolean(&scenario.admin_url, restored_sql).await {
+		Ok(true) => {},
+		Ok(false) => evidence
+			.failures
+			.push("post-classification cleanup expected restored, actual unrestored".into()),
+		Err(error) =>
+			evidence.failures.push(format!("post-classification cleanup predicate {error}")),
+	}
+}
+
+async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String> {
+	let mut evidence = collect_pre_mutation_authority_evidence(scenario).await;
+	collect_post_mutation_authority_evidence(scenario, &mut evidence).await;
+	run_authority_classification_phase(scenario, &mut evidence).await;
+	run_authority_restoration_phase(scenario, &mut evidence).await;
+	evidence.failures
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
