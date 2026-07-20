@@ -975,28 +975,28 @@ BEGIN
 		ORDER BY policy_member.position
 	LOOP
 		blockers := ARRAY[]::decodex.routing_blocker[];
-		IF member.disposition='excluded' THEN blockers:=blockers||'excluded_by_policy'; END IF;
-		IF member.account_revision<>member.current_account_revision THEN blockers:=blockers||'account_stale'; END IF;
-		IF member.observed_at>resolved THEN blockers:=blockers||'account_from_future';
-		ELSIF resolved-member.observed_at>INTERVAL '300 seconds' THEN blockers:=blockers||'account_stale'; END IF;
-		blockers:=blockers||CASE member.state
+		IF member.disposition='excluded' THEN blockers:=pg_catalog.array_append(blockers,'excluded_by_policy'::decodex.routing_blocker); END IF;
+		IF member.account_revision<>member.current_account_revision THEN blockers:=pg_catalog.array_append(blockers,'account_stale'::decodex.routing_blocker); END IF;
+		IF member.observed_at>resolved THEN blockers:=pg_catalog.array_append(blockers,'account_from_future'::decodex.routing_blocker);
+		ELSIF resolved-member.observed_at>INTERVAL '300 seconds' THEN blockers:=pg_catalog.array_append(blockers,'account_stale'::decodex.routing_blocker); END IF;
+		blockers:=pg_catalog.array_append(blockers,CASE member.state
 			WHEN 'unavailable' THEN 'account_unavailable'::decodex.routing_blocker
 			WHEN 'unknown' THEN 'account_unknown'::decodex.routing_blocker
 			WHEN 'depleted' THEN 'account_depleted'::decodex.routing_blocker
 			WHEN 'auth_failed' THEN 'account_auth_failed'::decodex.routing_blocker
 			WHEN 'plugin_unready' THEN 'account_plugin_unready'::decodex.routing_blocker
-			WHEN 'disabled' THEN 'account_disabled'::decodex.routing_blocker ELSE NULL END;
+			WHEN 'disabled' THEN 'account_disabled'::decodex.routing_blocker ELSE NULL END);
 		blockers:=pg_catalog.array_remove(blockers,NULL);
 		SELECT candidate.* INTO evidence FROM decodex.routing_compatibility_evidence AS candidate
 		WHERE candidate.account_id=member.account_id ORDER BY candidate.evidence_revision DESC LIMIT 1;
-		IF NOT FOUND THEN blockers:=blockers||'evidence_missing';
+		IF NOT FOUND THEN blockers:=pg_catalog.array_append(blockers,'evidence_missing'::decodex.routing_blocker);
 		ELSE
-			IF evidence.ingested_at>resolved THEN blockers:=blockers||'evidence_from_future';
-			ELSIF resolved-evidence.ingested_at>INTERVAL '300 seconds' THEN blockers:=blockers||'evidence_stale'; END IF;
-			IF evidence.account_revision<>member.current_account_revision THEN blockers:=blockers||'evidence_account_mismatch'; END IF;
+			IF evidence.ingested_at>resolved THEN blockers:=pg_catalog.array_append(blockers,'evidence_from_future'::decodex.routing_blocker);
+			ELSIF resolved-evidence.ingested_at>INTERVAL '300 seconds' THEN blockers:=pg_catalog.array_append(blockers,'evidence_stale'::decodex.routing_blocker); END IF;
+			IF evidence.account_revision<>member.current_account_revision THEN blockers:=pg_catalog.array_append(blockers,'evidence_account_mismatch'::decodex.routing_blocker); END IF;
 			IF evidence.role<>policy_row.required_role OR evidence.role_profile_revision<>policy_row.required_role_profile_revision
-				THEN blockers:=blockers||'evidence_profile_mismatch'; END IF;
-			IF evidence.build_id<>policy_row.required_build_id THEN blockers:=blockers||'evidence_build_mismatch'; END IF;
+				THEN blockers:=pg_catalog.array_append(blockers,'evidence_profile_mismatch'::decodex.routing_blocker); END IF;
+			IF evidence.build_id<>policy_row.required_build_id THEN blockers:=pg_catalog.array_append(blockers,'evidence_build_mismatch'::decodex.routing_blocker); END IF;
 		END IF;
 		IF EXISTS (SELECT 1 FROM decodex.routing_policy_required_capabilities AS required
 			LEFT JOIN decodex.routing_capability_evidence AS actual ON actual.evidence_id=evidence.evidence_id
@@ -1004,7 +1004,7 @@ BEGIN
 			WHERE required.routing_policy_id=p_routing_policy_id
 				AND required.routing_policy_revision=p_expected_routing_policy_revision
 				AND actual.state IS DISTINCT FROM 'supported') THEN
-			blockers:=blockers||'required_capability_unsatisfied';
+			blockers:=pg_catalog.array_append(blockers,'required_capability_unsatisfied'::decodex.routing_blocker);
 		END IF;
 		FOR quota IN SELECT definition.window_class,definition.duration_minutes,quota_window.revision,
 			quota_window.remaining_percent,quota_window.resets_at,quota_window.observed_at,quota_window.confidence
@@ -1016,29 +1016,29 @@ BEGIN
 				AND quota_window.duration_minutes=definition.duration_minutes
 		LOOP
 			IF quota.revision IS NULL THEN
-				blockers:=blockers||CASE quota.window_class WHEN 'five_hour'
+				blockers:=pg_catalog.array_append(blockers,CASE quota.window_class WHEN 'five_hour'
 					THEN 'quota_five_hour_missing'::decodex.routing_blocker
-					ELSE 'quota_seven_day_missing'::decodex.routing_blocker END;
+					ELSE 'quota_seven_day_missing'::decodex.routing_blocker END);
 			ELSIF quota.observed_at>resolved THEN
-				blockers:=blockers||CASE quota.window_class WHEN 'five_hour'
+				blockers:=pg_catalog.array_append(blockers,CASE quota.window_class WHEN 'five_hour'
 					THEN 'quota_five_hour_from_future'::decodex.routing_blocker
-					ELSE 'quota_seven_day_from_future'::decodex.routing_blocker END;
+					ELSE 'quota_seven_day_from_future'::decodex.routing_blocker END);
 			ELSIF resolved-quota.observed_at>INTERVAL '300 seconds' THEN
-				blockers:=blockers||CASE quota.window_class WHEN 'five_hour'
+				blockers:=pg_catalog.array_append(blockers,CASE quota.window_class WHEN 'five_hour'
 					THEN 'quota_five_hour_stale'::decodex.routing_blocker
-					ELSE 'quota_seven_day_stale'::decodex.routing_blocker END;
+					ELSE 'quota_seven_day_stale'::decodex.routing_blocker END);
 			ELSIF quota.remaining_percent IS NULL OR quota.confidence<>'high' THEN
-				blockers:=blockers||CASE quota.window_class WHEN 'five_hour'
+				blockers:=pg_catalog.array_append(blockers,CASE quota.window_class WHEN 'five_hour'
 					THEN 'quota_five_hour_unknown'::decodex.routing_blocker
-					ELSE 'quota_seven_day_unknown'::decodex.routing_blocker END;
+					ELSE 'quota_seven_day_unknown'::decodex.routing_blocker END);
 			ELSIF quota.resets_at IS NOT NULL AND quota.resets_at<=resolved THEN
-				blockers:=blockers||CASE quota.window_class WHEN 'five_hour'
+				blockers:=pg_catalog.array_append(blockers,CASE quota.window_class WHEN 'five_hour'
 					THEN 'quota_five_hour_reset_elapsed'::decodex.routing_blocker
-					ELSE 'quota_seven_day_reset_elapsed'::decodex.routing_blocker END;
+					ELSE 'quota_seven_day_reset_elapsed'::decodex.routing_blocker END);
 			ELSIF quota.remaining_percent=0 THEN
-				blockers:=blockers||CASE quota.window_class WHEN 'five_hour'
+				blockers:=pg_catalog.array_append(blockers,CASE quota.window_class WHEN 'five_hour'
 					THEN 'quota_five_hour_depleted'::decodex.routing_blocker
-					ELSE 'quota_seven_day_depleted'::decodex.routing_blocker END;
+					ELSE 'quota_seven_day_depleted'::decodex.routing_blocker END);
 			END IF;
 		END LOOP;
 		SELECT pg_catalog.array_agg(DISTINCT blocker ORDER BY blocker)
