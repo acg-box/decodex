@@ -627,10 +627,11 @@ def prove_wait_replay_and_conflicts(harness: Harness, report: dict[str, object])
 	harness.must_psql(
 		"SET ROLE decodex_exact_owner; INSERT INTO decodex.exact_command_receipts("
 		"protocol_version,idempotency_key,request_envelope,request_digest,receipt_state,"
-		"outcome_class,effect_envelope,response_bytes,completed_at) VALUES ("
+		"outcome_class,effect_envelope,response_bytes,created_at,completed_at) VALUES ("
 		f"'{PROTOCOL}','cross-operation','{request}'::jsonb,"
 		f"decodex_crypto.digest(convert_to('{request}'::jsonb::text,'UTF8'),'sha256'),'completed_rejected',"
-		"'stable_domain_rejection','{\"changed\":false}'::jsonb,convert_to('{}','UTF8'),clock_timestamp()); RESET ROLE;"
+		"'stable_domain_rejection','{\"changed\":false}'::jsonb,convert_to('{}','UTF8'),"
+		"statement_timestamp(),statement_timestamp()); RESET ROLE;"
 	)
 	cross = runtime_call(harness, harness.transition_sql("cross-operation", session, 2, "ended"))
 	expect(classify(cross) == "idempotency_conflict", "cross-operation key reuse did not conflict")
