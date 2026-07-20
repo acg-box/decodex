@@ -60,7 +60,7 @@ extension DecodexServerBridge {
 				return defaultBaseURL
 			}
 
-			try await Task.sleep(nanoseconds: 100_000_000)
+			try await Task.sleep(for: .milliseconds(100))
 		}
 
 		throw DecodexAppBridgeError.launchFailed("Decodex server did not become ready on \(defaultListenAddress)")
