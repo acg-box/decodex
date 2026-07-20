@@ -63,6 +63,7 @@ IDENTITY_CAST_DATABASE = "decodex_xy1315_identity_cast"
 EXTERNAL_CASCADE_DATABASE = "decodex_xy1307_external_cascade"
 LEDGER_TAMPER_DATABASE = "decodex_xy1307_ledger_tamper"
 MISSING_EXTENSION_DATABASE = "decodex_xy1307_missing_extension"
+DIRECT_MISSING_EXTENSION_DATABASE = "decodex_xy1364_direct_missing_extension"
 V8_EMPTY_DATABASE = "decodex_xy1274_v8_empty"
 V8_LOCK_DATABASE = "decodex_xy1274_v8_lock"
 ROLE_PROFILE_CONCURRENCY_DATABASE = "decodex_xy1346_concurrency"
@@ -1990,6 +1991,69 @@ def run_managed_repository_focused_contracts(
 		"postgres_managed_repository_authority_contract", env
 	)
 	return "\n".join((migration_output, contract_output))
+
+
+def run_postgres_store_test(test: str, env: dict[str, str]) -> str:
+	return run(
+		[
+			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			test, "--exact",
+		],
+		env,
+	)
+
+
+def run_postgres_store_contracts(
+	socket_dir: Path, port: int, env: dict[str, str]
+) -> str:
+	if psql_as(
+		RUNTIME_ROLE,
+		DATABASE,
+		"SELECT current_setting('session_replication_role'), "
+		"has_parameter_privilege(current_user, 'session_replication_role', 'SET'), "
+		"has_parameter_privilege(current_user, 'session_replication_role', 'ALTER SYSTEM'), "
+		"has_table_privilege(current_user, 'public.refinery_schema_history', 'UPDATE'), "
+		"has_sequence_privilege(current_user, "
+		"'decodex.activity_sequence_seq', 'USAGE'), "
+		"has_sequence_privilege(current_user, "
+		"'decodex.activity_sequence_seq', 'UPDATE'), "
+		"has_sequence_privilege(current_user, "
+		"'decodex.activity_sequence_seq', 'USAGE WITH GRANT OPTION')",
+		env,
+	) != "origin|f|f|f|t|f|f":
+		raise TestFailure(
+			"valid runtime role is not a non-vacuous least-privilege fixture"
+		)
+	primary_output = run_postgres_store_test("postgres_store_contract", env)
+	isolated_env = env.copy()
+	create_database(DIRECT_MISSING_EXTENSION_DATABASE, isolated_env)
+	set_contract_urls(
+		isolated_env,
+		socket_dir,
+		port,
+		DIRECT_MISSING_EXTENSION_DATABASE,
+		RUNTIME_ROLE,
+	)
+	migration_output = run_migration(isolated_env)
+	provision_runtime(DIRECT_MISSING_EXTENSION_DATABASE, RUNTIME_ROLE, isolated_env)
+	missing_extension_output = run_postgres_store_test(
+		"postgres_store_missing_pgcrypto_is_incompatible", isolated_env
+	)
+	return "\n".join((primary_output, migration_output, missing_extension_output))
+
+
+def run_continuation_focused_contracts(
+	socket_dir: Path, port: int, env: dict[str, str]
+) -> str:
+	create_database(DATABASE, env)
+	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(DATABASE, RUNTIME_ROLE, env)
+	return "\n".join((
+		migration_output,
+		run_postgres_store_contracts(socket_dir, port, env),
+	))
 
 
 def rust_digest_constant(name: str) -> str:
@@ -5524,6 +5588,7 @@ def main() -> int | AuthorityCandidatePublication:
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
 	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
+	focused_continuation = sys.argv[1:] == ["--focus-continuation"]
 	focused_authority = sys.argv[1:] == ["--focus-authority-classification"]
 	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
 	acceptance_mode = len(sys.argv) == 4 and sys.argv[1] == "--accept-authority-candidate"
@@ -5535,17 +5600,18 @@ def main() -> int | AuthorityCandidatePublication:
 	authority_mode = capture_only or acceptance_mode
 	normal_aggregate = not (
 		focused_work_items or focused_managed_runs or focused_managed_repositories
-		or focused_authority or authority_mode
+		or focused_continuation or focused_authority or authority_mode
 	)
 	orchestrator = StageOrchestrator({}, []) if normal_aggregate or focused_authority else None
 	def configuration_preflight() -> dict[str, object]:
 		if sys.argv[1:] and not (
 			focused_work_items or focused_managed_runs or focused_managed_repositories
-			or focused_authority or authority_mode
+			or focused_continuation or focused_authority or authority_mode
 		):
 			raise TestFailure(
 				"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
-				"--focus-managed-repositories|--focus-authority-classification|"
+				"--focus-managed-repositories|--focus-continuation|"
+				"--focus-authority-classification|"
 				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
 				"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
 			)
@@ -5635,6 +5701,7 @@ def main() -> int | AuthorityCandidatePublication:
 				prefix=("decodex-xy1343-" if focused_work_items else
 					"decodex-xy1338-" if focused_managed_runs else
 					"decodex-xy1364-" if focused_managed_repositories else
+					"decodex-xy1364-continuation-" if focused_continuation else
 					"decodex-xy1364-authority-" if focused_authority else
 					"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
 				dir=temp_root,
@@ -5774,6 +5841,9 @@ def main() -> int | AuthorityCandidatePublication:
 		if focused_managed_repositories:
 			print(run_managed_repository_focused_contracts(socket_dir, port, env))
 			return 0
+		if focused_continuation:
+			print(run_continuation_focused_contracts(socket_dir, port, env))
+			return 0
 		if capture_output is not None:
 			capture_receipt = run_authority_candidate_capture(
 				socket_dir,
@@ -5885,43 +5955,7 @@ def main() -> int | AuthorityCandidatePublication:
 			depends_on=("primary_foundation",),
 		)
 		def postgres_store_contract() -> str:
-			if psql_as(
-				RUNTIME_ROLE,
-				DATABASE,
-				"SELECT current_setting('session_replication_role'), "
-				"has_parameter_privilege(current_user, 'session_replication_role', 'SET'), "
-				"has_parameter_privilege(current_user, 'session_replication_role', 'ALTER SYSTEM'), "
-				"has_table_privilege(current_user, 'public.refinery_schema_history', 'UPDATE'), "
-				"has_sequence_privilege(current_user, "
-				"'decodex.activity_sequence_seq', 'USAGE'), "
-				"has_sequence_privilege(current_user, "
-				"'decodex.activity_sequence_seq', 'UPDATE'), "
-				"has_sequence_privilege(current_user, "
-				"'decodex.activity_sequence_seq', 'USAGE WITH GRANT OPTION')",
-				env,
-			) != "origin|f|f|f|t|f|f":
-				raise TestFailure(
-					"valid runtime role is not a non-vacuous least-privilege fixture"
-				)
-			return run(
-				[
-				"cargo",
-				"nextest",
-				"run",
-				"-p",
-				"decodex-postgres",
-				"--features",
-				"test-support",
-				"--test",
-				"postgres_store",
-				"--run-ignored",
-				"all",
-				"--",
-				"postgres_store_contract",
-				"--exact",
-				],
-				env,
-			)
+			return run_postgres_store_contracts(socket_dir, port, env)
 		run_stage(
 			orchestrator,
 			"postgres_store_contract",
