@@ -395,6 +395,15 @@ class HarnessCorruption(RuntimeError):
 	"""Raised when the harness cannot truthfully continue or report ordinary failure."""
 
 
+class StageActionFailure(RuntimeError):
+	"""Carry one authoritative stage failure plus subordinate cleanup failures."""
+
+	def __init__(self, primary: Exception, secondary: tuple[Exception, ...]) -> None:
+		super().__init__(str(primary))
+		self.primary = primary
+		self.secondary = secondary
+
+
 @dataclass
 class StageOrchestrator:
 	"""Local aggregate scheduler for meaningful PostgreSQL harness stages."""
@@ -470,22 +479,43 @@ def run_stage(
 		return None
 	try:
 		result = action()
-	except Exception as error:
+	except Exception as caught:
+		error = caught.primary if isinstance(caught, StageActionFailure) else caught
+		secondary_errors = caught.secondary if isinstance(caught, StageActionFailure) else ()
 		corruption = corruption_failure(error)
 		if corruption is None and not isinstance(error, TestFailure):
 			corruption = HarnessCorruption(
 				f"unexpected {type(error).__name__}: {error}"
 			)
 		failure = corruption or error
-		orchestrator.stages[name] = {
+		stage_result: dict[str, object] = {
 			"status": "failed",
 			"classification": "harness_corruption" if corruption else "test_failure",
 			"error": str(failure),
 		}
+		secondary_corruptions: list[HarnessCorruption] = []
+		if secondary_errors:
+			secondary_results: list[dict[str, str]] = []
+			for secondary_error in secondary_errors:
+				secondary_corruption = corruption_failure(secondary_error)
+				if secondary_corruption is None:
+					secondary_corruption = HarnessCorruption(
+						f"unexpected secondary {type(secondary_error).__name__}: "
+						f"{secondary_error}"
+					)
+				secondary_corruptions.append(secondary_corruption)
+				secondary_results.append({
+					"classification": "harness_corruption",
+					"error": str(secondary_corruption),
+				})
+			stage_result["secondary_failures"] = secondary_results
+		orchestrator.stages[name] = stage_result
 		if orchestrator.primary_failure is None:
 			orchestrator.primary_failure = failure
-		if corruption is not None:
-			orchestrator.corruption = corruption
+		if corruption is not None or secondary_corruptions:
+			orchestrator.corruption = (
+				orchestrator.corruption or corruption or secondary_corruptions[0]
+			)
 			orchestrator.scheduling_stopped = True
 		elif fatal:
 			orchestrator.scheduling_stopped = True
@@ -518,6 +548,38 @@ class ClusterStatus(Enum):
 	RUNNING = "running"
 	STOPPED = "stopped"
 	UNKNOWN = "unknown"
+
+
+class MutationBoundary(Enum):
+	"""Truthful progress through one live-doctor mutation lifecycle."""
+
+	NOT_ATTEMPTED = "not_attempted"
+	PROBE_ATTEMPTED = "probe_attempted"
+	READINESS_REACHED = "readiness_reached"
+	SQL_ATTEMPTED = "sql_attempted"
+	MUTATION_APPLIED = "mutation_applied"
+
+
+@dataclass
+class LiveDoctorMutationLifecycle:
+	"""Own the monotonic mutation boundary used to decide restoration eligibility."""
+
+	boundary: MutationBoundary = MutationBoundary.NOT_ATTEMPTED
+
+	def advance(self, expected: MutationBoundary, reached: MutationBoundary) -> None:
+		if self.boundary is not expected:
+			raise HarnessCorruption(
+				"live doctor mutation lifecycle transition is invalid: "
+				f"{self.boundary.value} -> {reached.value}"
+			)
+		self.boundary = reached
+
+	@property
+	def restoration_eligible(self) -> bool:
+		return self.boundary in {
+			MutationBoundary.SQL_ATTEMPTED,
+			MutationBoundary.MUTATION_APPLIED,
+		}
 
 
 def run(command: list[str], env: dict[str, str]) -> str:
@@ -620,6 +682,59 @@ def run_blob_session_restart_contract(
 			process.wait(timeout=10)
 
 
+def reap_live_doctor_process(
+	process: subprocess.Popen[str],
+) -> HarnessCorruption | None:
+	"""Bound termination and reap attempts without abandoning fallback cleanup."""
+	diagnostics: list[str] = []
+	reaped = False
+
+	def record(operation: str, error: Exception) -> None:
+		diagnostics.append(f"{operation}: {type(error).__name__}")
+
+	try:
+		returncode = process.poll()
+	except Exception as error:
+		record("poll", error)
+		returncode = None
+	if returncode is None:
+		try:
+			process.terminate()
+		except Exception as error:
+			record("terminate", error)
+		try:
+			process.communicate(timeout=10)
+			reaped = process.returncode is not None
+		except Exception as error:
+			record("communicate after terminate", error)
+	else:
+		try:
+			process.wait(timeout=10)
+			reaped = True
+		except Exception as error:
+			record("wait after exit", error)
+	if not reaped:
+		try:
+			process.kill()
+		except Exception as error:
+			record("kill", error)
+		try:
+			process.communicate(timeout=10)
+			reaped = process.returncode is not None
+		except Exception as error:
+			record("communicate after kill", error)
+	if not reaped:
+		try:
+			process.wait(timeout=10)
+			reaped = True
+		except Exception as error:
+			record("final wait", error)
+	if reaped:
+		return None
+	detail = ", ".join(diagnostics) or "process state remained indeterminate"
+	return HarnessCorruption(f"live doctor child was not reaped ({detail})")
+
+
 def run_live_doctor_mutation(
 	root: Path,
 	database: str,
@@ -627,6 +742,7 @@ def run_live_doctor_mutation(
 	case: str,
 	work: Path,
 	env: dict[str, str],
+	lifecycle: LiveDoctorMutationLifecycle,
 	*,
 	unsafe_authority: bool = False,
 	cluster_authority: bool = False,
@@ -634,6 +750,7 @@ def run_live_doctor_mutation(
 	mutation_probe: str | None = None,
 ) -> str:
 	"""Coordinate a real daemon query around an adapter-owned database mutation."""
+	lifecycle.advance(MutationBoundary.NOT_ATTEMPTED, MutationBoundary.PROBE_ATTEMPTED)
 	sync = work / f"live-doctor-{case}"
 	sync.mkdir()
 	test_env = env.copy()
@@ -658,47 +775,62 @@ def run_live_doctor_mutation(
 		deadline = time.monotonic() + 20
 		while not (sync / "ready").exists():
 			if process.poll() is not None:
-				stdout, stderr = process.communicate()
+				stdout, stderr = process.communicate(timeout=10)
 				if secret_sql:
 					raise TestFailure("live doctor exited before secret-bearing mutation")
 				raise TestFailure(
 					f"live doctor exited before {case} mutation\nstdout:\n{stdout}\nstderr:\n{stderr}"
 				)
 			if time.monotonic() >= deadline:
-				process.kill()
-				stdout, stderr = process.communicate()
 				if secret_sql:
 					raise TestFailure(
 						"live doctor did not reach the secret-bearing mutation barrier"
 					)
-				raise TestFailure(
-					f"live doctor did not reach {case} barrier\n"
-					f"stdout:\n{stdout}\nstderr:\n{stderr}"
-				)
+				raise TestFailure(f"live doctor did not reach {case} barrier")
 			time.sleep(0.01)
 
+		lifecycle.advance(
+			MutationBoundary.PROBE_ATTEMPTED,
+			MutationBoundary.READINESS_REACHED,
+		)
 		if cluster_authority:
 			if secret_sql:
-				psql_secret(database, sql, env)
+				psql_secret(
+					database,
+					sql,
+					env,
+					on_sql_attempt=lambda: lifecycle.advance(
+						MutationBoundary.READINESS_REACHED,
+						MutationBoundary.SQL_ATTEMPTED,
+					),
+				)
 			else:
+				lifecycle.advance(
+					MutationBoundary.READINESS_REACHED,
+					MutationBoundary.SQL_ATTEMPTED,
+				)
 				psql(database, sql, env)
 		else:
+			lifecycle.advance(
+				MutationBoundary.READINESS_REACHED,
+				MutationBoundary.SQL_ATTEMPTED,
+			)
 			psql_as(MIGRATION_ROLE, database, sql, env)
+		lifecycle.advance(
+			MutationBoundary.SQL_ATTEMPTED,
+			MutationBoundary.MUTATION_APPLIED,
+		)
 		if mutation_probe is not None and psql(database, mutation_probe, env) != "t":
 			raise TestFailure(f"{case} authority mutation probe is vacuous")
 		(sync / "mutated").write_text("mutated", encoding="utf-8")
 		try:
 			stdout, stderr = process.communicate(timeout=30)
 		except subprocess.TimeoutExpired as error:
-			process.kill()
-			stdout, stderr = process.communicate()
 			if secret_sql:
 				raise TestFailure(
 					"live doctor did not finish the secret-bearing drift check"
 				) from error
-			raise TestFailure(
-				f"live doctor did not finish {case}\nstdout:\n{stdout}\nstderr:\n{stderr}"
-			) from error
+			raise TestFailure(f"live doctor did not finish {case}") from error
 		if process.returncode != 0:
 			if secret_sql:
 				raise TestFailure("live doctor failed after the secret-bearing mutation")
@@ -708,27 +840,15 @@ def run_live_doctor_mutation(
 		return stdout.strip() or stderr.strip()
 	finally:
 		active_error = sys.exc_info()[1]
-		try:
-			if process.poll() is None:
-				try:
-					process.terminate()
-				finally:
-					try:
-						process.communicate(timeout=10)
-					except subprocess.TimeoutExpired:
-						process.kill()
-						process.communicate()
-			else:
-				process.wait()
-		except Exception as cleanup_error:
+		cleanup_corruption = reap_live_doctor_process(process)
+		if cleanup_corruption is not None:
+			if isinstance(active_error, Exception):
+				raise StageActionFailure(
+					active_error,
+					(cleanup_corruption,),
+				) from active_error
 			if active_error is None:
-				raise HarnessCorruption(
-					f"live doctor child cleanup failed: {cleanup_error}"
-				) from cleanup_error
-			print(
-				f"Secondary live doctor child cleanup failure: {cleanup_error}",
-				file=sys.stderr,
-			)
+				raise cleanup_corruption
 
 
 def postgres_status(data_dir: Path, env: dict[str, str]) -> ClusterStatus:
@@ -760,7 +880,12 @@ def psql(database: str, sql: str, env: dict[str, str]) -> str:
 
 
 def psql_secret(
-	database: str, sql: str, env: dict[str, str], *, expect_failure: bool = False
+	database: str,
+	sql: str,
+	env: dict[str, str],
+	*,
+	expect_failure: bool = False,
+	on_sql_attempt: Callable[[], None] | None = None,
 ) -> str:
 	"""Execute secret-bearing SQL only after one live session disables statement logging."""
 	ready_marker = "XY1272_SECRET_LOGGING_READY"
@@ -832,6 +957,8 @@ def psql_secret(
 		process.stdin.write("\\set VERBOSITY terse\n")
 		if expect_failure:
 			process.stdin.write("\\set ON_ERROR_STOP off\n")
+		if on_sql_attempt is not None:
+			on_sql_attempt()
 		process.stdin.write(sql)
 		if not sql.rstrip().endswith(";"):
 			process.stdin.write(";")
@@ -4753,18 +4880,11 @@ def main() -> int | AuthorityCandidatePublication:
 			if location is None:
 				raise TestFailure(f"required PostgreSQL tool is unavailable: {name}")
 			tools[name] = Path(location).resolve(strict=True)
-		work = Path(tempfile.mkdtemp(
-			prefix=("decodex-xy1343-" if focused_work_items else
-				"decodex-xy1338-" if focused_managed_runs else
-				"decodex-xy1364-" if focused_managed_repositories else
-				"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
-			dir=temp_root,
-		)).resolve()
 		return {
 			"phase_a": phase_a,
 			"source_binding": source_binding,
+			"temp_root": temp_root,
 			"tools": tools,
-			"work": work,
 		}
 	preflight = (
 		run_stage(
@@ -4783,35 +4903,73 @@ def main() -> int | AuthorityCandidatePublication:
 	source_binding = preflight["source_binding"]
 	if normal_aggregate and not isinstance(source_binding, dict):
 		raise HarnessCorruption("configuration preflight source binding is invalid")
+	temp_root = preflight["temp_root"]
 	tools = preflight["tools"]
-	work = preflight["work"]
-	if not isinstance(tools, dict) or not isinstance(work, Path):
+	if temp_root is not None and not isinstance(temp_root, Path):
+		raise HarnessCorruption("configuration preflight temporary root is invalid")
+	if not isinstance(tools, dict):
 		raise HarnessCorruption("configuration preflight result is invalid")
-	data_dir = work / "postgres"
-	socket_dir = work / "socket"
-	log_path = work / "postgres.log"
+	work: Path | None = None
+	data_dir: Path | None = None
+	socket_dir: Path | None = None
+	log_path: Path | None = None
+	env: dict[str, str] | None = None
+	postgres_share: Path | None = None
 	# TCP is disabled; the port only distinguishes the socket filename inside this unique directory.
 	port = 55_432
-	role_setting_canary_guc = f"xy1272.canary_{secrets.token_hex(16)}"
-	role_setting_secret_canary = secrets.token_hex(32)
-	env = os.environ.copy()
-	initdb_path = tools["initdb"]
-	if not isinstance(initdb_path, Path):
-		raise HarnessCorruption("PostgreSQL tool discovery state is invalid")
-	postgres_share = initdb_path.parent.parent / "share" / "postgresql"
-	env.update(
-		{
-			"PATH": f"{initdb_path.parent}{os.pathsep}{env['PATH']}",
-			"PGHOST": str(socket_dir),
-			"PGPORT": str(port),
-			"PGUSER": os.environ.get("USER", "postgres"),
-			"DECODEX_TEST_BLOB_ROOT": str(work / "blob-root"),
-		}
-	)
+	role_setting_canary_guc = ""
+	role_setting_secret_canary = ""
+	cluster_start_attempted = False
 	cluster_started = False
 	try:
+		def private_environment_setup() -> Path:
+			nonlocal work, data_dir, socket_dir, log_path, env, postgres_share
+			nonlocal role_setting_canary_guc, role_setting_secret_canary
+			work = Path(tempfile.mkdtemp(
+				prefix=("decodex-xy1343-" if focused_work_items else
+					"decodex-xy1338-" if focused_managed_runs else
+					"decodex-xy1364-" if focused_managed_repositories else
+					"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
+				dir=temp_root,
+			))
+			work = work.resolve()
+			data_dir = work / "postgres"
+			socket_dir = work / "socket"
+			log_path = work / "postgres.log"
+			role_setting_canary_guc = f"xy1272.canary_{secrets.token_hex(16)}"
+			role_setting_secret_canary = secrets.token_hex(32)
+			env = os.environ.copy()
+			initdb_path = tools["initdb"]
+			if not isinstance(initdb_path, Path):
+				raise HarnessCorruption("PostgreSQL tool discovery state is invalid")
+			postgres_share = initdb_path.parent.parent / "share" / "postgresql"
+			env.update(
+				{
+					"PATH": f"{initdb_path.parent}{os.pathsep}{env['PATH']}",
+					"PGHOST": str(socket_dir),
+					"PGPORT": str(port),
+					"PGUSER": os.environ.get("USER", "postgres"),
+					"DECODEX_TEST_BLOB_ROOT": str(work / "blob-root"),
+				}
+			)
+			return work
+		created_work = (
+			run_stage(
+				orchestrator,
+				"private_environment_setup",
+				private_environment_setup,
+				depends_on=("configuration_preflight",),
+				fatal=True,
+			)
+			if orchestrator is not None else
+			private_environment_setup()
+		)
+		if not isinstance(created_work, Path):
+			if orchestrator is None or orchestrator.primary_failure is None:
+				raise HarnessCorruption("private environment setup lost its primary failure")
+			raise orchestrator.primary_failure
 		def fatal_postgres_preflight() -> None:
-			nonlocal cluster_started
+			nonlocal cluster_start_attempted, cluster_started
 			socket_dir.mkdir()
 			run(
 				[
@@ -4827,6 +4985,7 @@ def main() -> int | AuthorityCandidatePublication:
 				],
 				env,
 			)
+			cluster_start_attempted = True
 			run(
 				[
 					"pg_ctl",
@@ -4879,7 +5038,7 @@ def main() -> int | AuthorityCandidatePublication:
 				orchestrator,
 				"cluster_preflight",
 				fatal_postgres_preflight,
-				depends_on=("configuration_preflight",),
+				depends_on=("private_environment_setup",),
 				fatal=True,
 			)
 			if orchestrator.stages["cluster_preflight"]["status"] != "passed":
@@ -5852,6 +6011,7 @@ def main() -> int | AuthorityCandidatePublication:
 				"ledger-tamper",
 				work,
 				env,
+				LiveDoctorMutationLifecycle(),
 			)
 			if psql(
 				LEDGER_TAMPER_DATABASE,
@@ -5881,6 +6041,7 @@ def main() -> int | AuthorityCandidatePublication:
 				"missing-pgcrypto",
 				work,
 				env,
+				LiveDoctorMutationLifecycle(),
 			)
 			if psql(
 				MISSING_EXTENSION_DATABASE,
@@ -6260,6 +6421,7 @@ def main() -> int | AuthorityCandidatePublication:
 				"schema-default-acl",
 				work,
 				env,
+				LiveDoctorMutationLifecycle(),
 				unsafe_authority=True,
 			)
 			default_acl_probe = (
@@ -6516,10 +6678,8 @@ def main() -> int | AuthorityCandidatePublication:
 					f"AND NOT pg_catalog.has_table_privilege('{MISSING_SELECT_ROLE}', "
 					"'public.refinery_schema_history', 'SELECT')"
 				)
-			mutation_attempted = False
+			mutation_lifecycle = LiveDoctorMutationLifecycle()
 			def authority_mutation_probe() -> str:
-				nonlocal mutation_attempted
-				mutation_attempted = True
 				output = run_live_doctor_mutation(
 					bootstrap_root,
 					DATABASE,
@@ -6527,6 +6687,7 @@ def main() -> int | AuthorityCandidatePublication:
 					case,
 					work,
 					env,
+					mutation_lifecycle,
 					unsafe_authority=True,
 					cluster_authority=cluster_authority,
 					secret_sql=secret_sql,
@@ -6567,7 +6728,7 @@ def main() -> int | AuthorityCandidatePublication:
 				restoration_stage,
 				restore_authority_fixture,
 				depends_on=(probe_stage,),
-				always_run=mutation_attempted,
+				always_run=mutation_lifecycle.restoration_eligible,
 			)
 			authority_drift_stages.append(restoration_stage)
 			previous_restoration = restoration_stage
@@ -6710,14 +6871,16 @@ def main() -> int | AuthorityCandidatePublication:
 			final_acceptance_evidence,
 			depends_on=final_dependencies,
 		)
-		for output in orchestrator.outputs:
-			print(output)
 		if orchestrator.primary_failure is not None:
 			raise orchestrator.primary_failure
 		return 0
 	finally:
 		active_error = sys.exc_info()[1]
-		primary_failure = active_error is not None
+		selected_primary = (
+			orchestrator.primary_failure
+			if orchestrator is not None else
+			active_error if isinstance(active_error, Exception) else None
+		)
 		if (
 			orchestrator is not None
 			and isinstance(active_error, Exception)
@@ -6733,12 +6896,16 @@ def main() -> int | AuthorityCandidatePublication:
 				"classification": "harness_corruption",
 				"error": str(orchestrator.corruption),
 			}
+			selected_primary = active_error
 		stop_error: Exception | None = None
 		teardown_error: Exception | None = None
 		report_error: Exception | None = None
+		diagnostic_error: Exception | None = None
 		stop_failures: list[str] = []
 		def teardown_status() -> ClusterStatus:
 			try:
+				if data_dir is None or env is None:
+					raise HarnessCorruption("PostgreSQL teardown state is invalid")
 				return (
 					postgres_status(data_dir, env)
 					if data_dir.exists() else ClusterStatus.STOPPED
@@ -6746,20 +6913,32 @@ def main() -> int | AuthorityCandidatePublication:
 			except Exception as error:
 				stop_failures.append(f"PostgreSQL status failed:\n{error}")
 				return ClusterStatus.UNKNOWN
-		status = teardown_status()
-		cluster_observed_running = status is ClusterStatus.RUNNING
-		if status is ClusterStatus.RUNNING:
+		status = ClusterStatus.STOPPED
+		cluster_observed_running = False
+		work_removed = False
+		if work is not None and not cluster_start_attempted:
 			try:
-				run(["pg_ctl", "-D", str(data_dir), "-m", "fast", "-w", "stop"], env)
+				shutil.rmtree(work)
+				work_removed = True
 			except Exception as error:
-				stop_failures.append(f"fast shutdown failed:\n{error}")
+				teardown_error = TestFailure(
+					f"failed to remove private preflight directory {work}: {error}"
+				)
+		elif cluster_start_attempted:
 			status = teardown_status()
-		if status is ClusterStatus.RUNNING:
-			try:
-				run(["pg_ctl", "-D", str(data_dir), "-m", "immediate", "-w", "stop"], env)
-			except Exception as error:
-				stop_failures.append(f"immediate shutdown failed:\n{error}")
-			status = teardown_status()
+			cluster_observed_running = status is ClusterStatus.RUNNING
+			if status is ClusterStatus.RUNNING:
+				try:
+					run(["pg_ctl", "-D", str(data_dir), "-m", "fast", "-w", "stop"], env)
+				except Exception as error:
+					stop_failures.append(f"fast shutdown failed:\n{error}")
+				status = teardown_status()
+			if status is ClusterStatus.RUNNING:
+				try:
+					run(["pg_ctl", "-D", str(data_dir), "-m", "immediate", "-w", "stop"], env)
+				except Exception as error:
+					stop_failures.append(f"immediate shutdown failed:\n{error}")
+				status = teardown_status()
 		stop_diagnostics = "\n\n".join(stop_failures)
 		if stop_diagnostics:
 			stop_diagnostics = f"\n\nShutdown diagnostics:\n{stop_diagnostics}"
@@ -6773,12 +6952,22 @@ def main() -> int | AuthorityCandidatePublication:
 				f"PostgreSQL status is unknown; retained isolated cluster at {work}"
 				f"{stop_diagnostics}"
 			)
-		if status is ClusterStatus.STOPPED:
+		if (
+			cluster_start_attempted
+			and status is ClusterStatus.STOPPED
+			and work is not None
+			and not work_removed
+		):
 			if stop_diagnostics:
-				print(
-					f"PostgreSQL shutdown recovered after an error:{stop_diagnostics}",
-					file=sys.stderr,
-				)
+				try:
+					print(
+						f"PostgreSQL shutdown recovered after an error:{stop_diagnostics}",
+						file=sys.stderr,
+					)
+				except Exception as error:
+					diagnostic_error = HarnessCorruption(
+						f"PostgreSQL shutdown diagnostic emission failed: {error}"
+					)
 			try:
 				shutil.rmtree(work)
 			except Exception as error:
@@ -6787,21 +6976,52 @@ def main() -> int | AuthorityCandidatePublication:
 				)
 		elif stop_error is not None:
 			teardown_error = stop_error
+		if selected_primary is None and teardown_error is not None:
+			selected_primary = teardown_error
+			if orchestrator is not None:
+				orchestrator.primary_failure = teardown_error
+		if selected_primary is None and diagnostic_error is not None:
+			selected_primary = diagnostic_error
+			if orchestrator is not None:
+				orchestrator.primary_failure = diagnostic_error
+				orchestrator.corruption = orchestrator.corruption or diagnostic_error
 		if orchestrator is not None and (cluster_started or cluster_observed_running):
-			orchestrator.stages["teardown"] = (
+			teardown_result: dict[str, object] = (
 				{"status": "passed"} if teardown_error is None
 				else {"status": "failed", "error": str(teardown_error)}
 			)
-			reported_primary = orchestrator.primary_failure
-			if reported_primary is None and isinstance(active_error, Exception):
-				reported_primary = active_error
-			if reported_primary is None:
-				reported_primary = teardown_error
+			if stop_failures:
+				teardown_result["diagnostics"] = stop_failures
+			if diagnostic_error is not None:
+				teardown_result["secondary_failures"] = [{
+					"classification": "harness_corruption",
+					"error": str(diagnostic_error),
+				}]
+			orchestrator.stages["teardown"] = teardown_result
+			try:
+				for output in orchestrator.outputs:
+					print(output)
+			except Exception as error:
+				output_error = HarnessCorruption(
+					f"aggregate output emission failed: {error}"
+				)
+				orchestrator.stages["aggregate_output"] = {
+					"status": "failed",
+					"classification": "harness_corruption",
+					"error": str(output_error),
+				}
+				orchestrator.corruption = orchestrator.corruption or output_error
+				orchestrator.scheduling_stopped = True
+				if selected_primary is None:
+					selected_primary = output_error
+					orchestrator.primary_failure = output_error
+			else:
+				orchestrator.stages["aggregate_output"] = {"status": "passed"}
 			orchestrator.stages["final_report"] = {"status": "passed"}
 			report = {
 				"schema": "decodex/postgres-aggregate-stage-report/1",
 				"primary_failure": (
-					None if reported_primary is None else str(reported_primary)
+					None if selected_primary is None else str(selected_primary)
 				),
 				"stages": orchestrator.stages,
 			}
@@ -6816,13 +7036,12 @@ def main() -> int | AuthorityCandidatePublication:
 					"classification": "harness_corruption",
 					"error": str(report_error),
 				}
-		if teardown_error is not None:
-			if primary_failure:
-				print(teardown_error, file=sys.stderr)
-			else:
-				raise teardown_error
-		if report_error is not None and not primary_failure and teardown_error is None:
-			raise report_error
+				orchestrator.corruption = orchestrator.corruption or report_error
+				if selected_primary is None:
+					selected_primary = report_error
+					orchestrator.primary_failure = report_error
+		if selected_primary is not None and selected_primary is not active_error:
+			raise selected_primary
 
 
 def publish_completed_authority_candidate(
