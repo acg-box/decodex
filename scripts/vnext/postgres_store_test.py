@@ -545,6 +545,456 @@ class PhaseAAuthorityReceipt:
 	sha256: str
 
 
+class AuthorityClassification(Enum):
+	"""Production PostgreSQL classification expected from one named scenario."""
+
+	UNSAFE_DATABASE_AUTHORITY = "unsafe_database_authority"
+	DATABASE_INCOMPATIBLE = "database_incompatible"
+
+
+class AuthorityStoreError(Enum):
+	"""Exact concrete StoreError expected before its bootstrap projection."""
+
+	UNSAFE_AUTHORITY = "unsafe_authority"
+	INCOMPATIBLE = "incompatible"
+	MIGRATION = "migration"
+
+
+@dataclass(frozen=True)
+class AuthorityScenario:
+	"""One independent case database verified before its semantic adversarial scenario."""
+
+	case_id: str
+	expected_store_error: AuthorityStoreError
+	expected: AuthorityClassification
+	baseline_migration_url: str
+	baseline_runtime_url: str
+	case_migration_url: str
+	case_runtime_url: str
+	admin_url: str
+	mutation_sql: str
+	precondition_sql: str
+	postcondition_sql: str
+	pre_runtime_rejected_sql: str | None = None
+	pre_runtime_rejected_sqlstate: str | None = None
+	post_runtime_rejected_sql: str | None = None
+	post_runtime_rejected_sqlstate: str | None = None
+	runtime_effect_sql: str | None = None
+	restore_sql: str | None = None
+	restore_postcondition_sql: str | None = None
+	invariant_sql: str | None = None
+
+
+def authority_scenario_payload(scenarios: list[AuthorityScenario]) -> str:
+	case_ids = [scenario.case_id for scenario in scenarios]
+	case_urls = [scenario.case_migration_url for scenario in scenarios]
+	if (
+		len(case_ids) != len(set(case_ids))
+		or len(case_urls) != len(set(case_urls))
+	):
+		raise HarnessCorruption(
+			"authority scenarios must have unique identities and independent databases"
+		)
+	return json.dumps(
+		[
+			{
+				"admin_url": scenario.admin_url,
+				"baseline_migration_url": scenario.baseline_migration_url,
+				"baseline_runtime_url": scenario.baseline_runtime_url,
+				"case_id": scenario.case_id,
+				"case_migration_url": scenario.case_migration_url,
+				"case_runtime_url": scenario.case_runtime_url,
+				"expected": scenario.expected.value,
+				"expected_store_error": scenario.expected_store_error.value,
+				"invariant_sql": scenario.invariant_sql,
+				"mutation_sql": scenario.mutation_sql,
+				"post_runtime_rejected_sql": scenario.post_runtime_rejected_sql,
+				"post_runtime_rejected_sqlstate": scenario.post_runtime_rejected_sqlstate,
+				"postcondition_sql": scenario.postcondition_sql,
+				"pre_runtime_rejected_sql": scenario.pre_runtime_rejected_sql,
+				"pre_runtime_rejected_sqlstate": scenario.pre_runtime_rejected_sqlstate,
+				"precondition_sql": scenario.precondition_sql,
+				"restore_sql": scenario.restore_sql,
+				"restore_postcondition_sql": scenario.restore_postcondition_sql,
+				"runtime_effect_sql": scenario.runtime_effect_sql,
+			}
+			for scenario in scenarios
+		],
+		sort_keys=True,
+		separators=(",", ":"),
+	)
+
+
+def register_authority_scenarios(add: object) -> None:
+	"""Declare the complete named matrix; execution and classification live in Rust."""
+	if not callable(add):
+		raise HarnessCorruption("authority scenario registrar is not callable")
+	unsafe = AuthorityClassification.UNSAFE_DATABASE_AUTHORITY
+	incompatible = AuthorityClassification.DATABASE_INCOMPATIBLE
+	unsafe_store = AuthorityStoreError.UNSAFE_AUTHORITY
+	incompatible_store = AuthorityStoreError.INCOMPATIBLE
+	migration_store = AuthorityStoreError.MIGRATION
+
+	role_scenarios = (
+		("table-owner", "ALTER TABLE decodex.accounts OWNER TO $RUNTIME_ROLE",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE oid='decodex.accounts'::regclass AND relowner='$RUNTIME_ROLE'::regrole)"),
+		("truncate", "GRANT TRUNCATE ON TABLE decodex.outbox TO $RUNTIME_ROLE",
+		 "has_table_privilege('$RUNTIME_ROLE','decodex.outbox','TRUNCATE')"),
+		("bypassrls", "ALTER ROLE $RUNTIME_ROLE BYPASSRLS",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='$RUNTIME_ROLE' AND rolbypassrls)"),
+		("schema-create", "GRANT CREATE ON SCHEMA decodex TO $RUNTIME_ROLE",
+		 "has_schema_privilege('$RUNTIME_ROLE','decodex','CREATE')"),
+		("trigger-bypass", "GRANT SET ON PARAMETER session_replication_role TO $RUNTIME_ROLE",
+		 "has_parameter_privilege('$RUNTIME_ROLE','session_replication_role','SET')"),
+		("alter-system-bypass", "GRANT ALTER SYSTEM ON PARAMETER session_replication_role TO $RUNTIME_ROLE",
+		 "has_parameter_privilege('$RUNTIME_ROLE','session_replication_role','ALTER SYSTEM')"),
+		("login-default-replica", "ALTER ROLE $RUNTIME_ROLE SET session_replication_role=replica",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting WHERE setrole='$RUNTIME_ROLE'::regrole AND setdatabase=0 AND 'session_replication_role=replica'=ANY(setconfig))"),
+		("function-owner-membership",
+		 f"GRANT CREATE ON SCHEMA decodex TO {FUNCTION_OWNER_ROLE}; "
+		 f"ALTER FUNCTION decodex.enforce_outbox_terminal_retention() OWNER TO {FUNCTION_OWNER_ROLE}; "
+		 f"GRANT {FUNCTION_OWNER_ROLE} TO $RUNTIME_ROLE WITH INHERIT FALSE, SET TRUE",
+		 f"pg_has_role('$RUNTIME_ROLE','{FUNCTION_OWNER_ROLE}','SET') AND "
+		 f"has_schema_privilege('{FUNCTION_OWNER_ROLE}','decodex','CREATE') AND "
+		 f"EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid='decodex.enforce_outbox_terminal_retention()'::regprocedure AND proowner='{FUNCTION_OWNER_ROLE}'::regrole)"),
+		("migration-history-write", "GRANT UPDATE ON TABLE public.refinery_schema_history TO $RUNTIME_ROLE",
+		 "has_table_privilege('$RUNTIME_ROLE','public.refinery_schema_history','UPDATE')"),
+		("set-role-bypass",
+		 f"GRANT USAGE ON SCHEMA decodex TO {SET_BYPASS_ROLE}; "
+		 f"GRANT TRUNCATE ON TABLE decodex.outbox TO {SET_BYPASS_ROLE}; "
+		 f"GRANT SET ON PARAMETER session_replication_role TO {SET_BYPASS_ROLE}; "
+		 f"GRANT {SET_BYPASS_ROLE} TO $RUNTIME_ROLE WITH INHERIT FALSE, SET TRUE",
+		 f"pg_has_role('$RUNTIME_ROLE','{SET_BYPASS_ROLE}','SET') AND "
+		 f"has_table_privilege('{SET_BYPASS_ROLE}','decodex.outbox','TRUNCATE') AND "
+		 f"has_parameter_privilege('{SET_BYPASS_ROLE}','session_replication_role','SET')"),
+		("migration-history-column-grant",
+		 "GRANT SELECT (version) ON TABLE public.refinery_schema_history TO $RUNTIME_ROLE WITH GRANT OPTION",
+		 "has_column_privilege('$RUNTIME_ROLE','public.refinery_schema_history','version','SELECT WITH GRANT OPTION')"),
+		("migration-history-set-write",
+		 f"GRANT UPDATE ON TABLE public.refinery_schema_history TO {SET_LEDGER_WRITE_ROLE}; "
+		 f"GRANT {SET_LEDGER_WRITE_ROLE} TO $RUNTIME_ROLE WITH INHERIT FALSE, SET TRUE",
+		 f"pg_has_role('$RUNTIME_ROLE','{SET_LEDGER_WRITE_ROLE}','SET') AND "
+		 f"has_table_privilege('{SET_LEDGER_WRITE_ROLE}','public.refinery_schema_history','UPDATE')"),
+		("sequence-update", "GRANT UPDATE ON ALL SEQUENCES IN SCHEMA decodex TO $RUNTIME_ROLE",
+		 "has_sequence_privilege('$RUNTIME_ROLE','decodex.outbox_id_seq','UPDATE')"),
+		("sequence-set-update",
+		 f"GRANT USAGE ON SCHEMA decodex TO {SET_SEQUENCE_UPDATE_ROLE}; "
+		 f"GRANT UPDATE ON ALL SEQUENCES IN SCHEMA decodex TO {SET_SEQUENCE_UPDATE_ROLE}; "
+		 f"GRANT {SET_SEQUENCE_UPDATE_ROLE} TO $RUNTIME_ROLE WITH INHERIT FALSE, SET TRUE",
+		 f"pg_has_role('$RUNTIME_ROLE','{SET_SEQUENCE_UPDATE_ROLE}','SET') AND "
+		 f"has_schema_privilege('{SET_SEQUENCE_UPDATE_ROLE}','decodex','USAGE') AND "
+		 f"has_sequence_privilege('{SET_SEQUENCE_UPDATE_ROLE}','decodex.outbox_id_seq','UPDATE')"),
+		("sequence-grant-option", "GRANT USAGE ON ALL SEQUENCES IN SCHEMA decodex TO $RUNTIME_ROLE WITH GRANT OPTION",
+		 "has_sequence_privilege('$RUNTIME_ROLE','decodex.outbox_id_seq','USAGE WITH GRANT OPTION')"),
+		("table-grant-option", "GRANT SELECT ON TABLE decodex.accounts TO $RUNTIME_ROLE WITH GRANT OPTION",
+		 "has_table_privilege('$RUNTIME_ROLE','decodex.accounts','SELECT WITH GRANT OPTION')"),
+		("function-grant-option", "GRANT EXECUTE ON FUNCTION decodex.enforce_lease_operation_time() TO $RUNTIME_ROLE WITH GRANT OPTION",
+		 "has_function_privilege('$RUNTIME_ROLE','decodex.enforce_lease_operation_time()','EXECUTE WITH GRANT OPTION')"),
+		("collation-owner",
+		 "CREATE COLLATION decodex.unsafe_owned_collation FROM pg_catalog.\"C\"; ALTER COLLATION decodex.unsafe_owned_collation OWNER TO $RUNTIME_ROLE",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_collation WHERE oid=pg_catalog.to_regcollation('decodex.unsafe_owned_collation') AND collowner='$RUNTIME_ROLE'::regrole)"),
+		("conversion-owner",
+		 "CREATE CONVERSION decodex.unsafe_owned_conversion FOR 'UTF8' TO 'LATIN1' FROM pg_catalog.utf8_to_iso8859_1; ALTER CONVERSION decodex.unsafe_owned_conversion OWNER TO $RUNTIME_ROLE",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_conversion c JOIN pg_catalog.pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='decodex' AND c.conname='unsafe_owned_conversion' AND c.conowner='$RUNTIME_ROLE'::regrole)"),
+		("operator-owner",
+		 "CREATE OPERATOR decodex.=== (FUNCTION=pg_catalog.int4eq, LEFTARG=integer, RIGHTARG=integer); ALTER OPERATOR decodex.=== (integer,integer) OWNER TO $RUNTIME_ROLE",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid=o.oprnamespace WHERE n.nspname='decodex' AND o.oprname='===' AND o.oprleft='integer'::regtype AND o.oprright='integer'::regtype AND o.oprowner='$RUNTIME_ROLE'::regrole)"),
+		("text-search-owner",
+		 "CREATE TEXT SEARCH CONFIGURATION decodex.unsafe_owned_text_search (COPY=pg_catalog.simple); ALTER TEXT SEARCH CONFIGURATION decodex.unsafe_owned_text_search OWNER TO $RUNTIME_ROLE",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_ts_config c JOIN pg_catalog.pg_namespace n ON n.oid=c.cfgnamespace WHERE n.nspname='decodex' AND c.cfgname='unsafe_owned_text_search' AND c.cfgowner='$RUNTIME_ROLE'::regrole)"),
+		("membership-admin",
+		 f"GRANT {MEMBERSHIP_ADMIN_ROLE} TO $RUNTIME_ROLE WITH ADMIN TRUE, INHERIT FALSE, SET FALSE",
+		 f"EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE roleid='{MEMBERSHIP_ADMIN_ROLE}'::regrole AND member='$RUNTIME_ROLE'::regrole AND admin_option AND NOT set_option)"),
+		("superuser", "ALTER ROLE $RUNTIME_ROLE SUPERUSER",
+		 "EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='$RUNTIME_ROLE' AND rolsuper)"),
+	)
+	if {case_id for case_id, _, _ in role_scenarios} != set(UNSAFE_ROLES):
+		raise HarnessCorruption("unsafe role scenarios do not exactly cover the role inventory")
+	for case_id, mutation, predicate in role_scenarios:
+		kwargs: dict[str, object] = {}
+		precondition_sql = f"SELECT NOT ({predicate})"
+		postcondition_sql = f"SELECT {predicate}"
+		if case_id == "login-default-replica":
+			kwargs["runtime_effect_sql"] = (
+				"DO $$ BEGIN IF current_setting('session_replication_role') <> 'replica' "
+				"THEN RAISE EXCEPTION 'role default ineffective'; END IF; END $$"
+			)
+		elif case_id == "function-owner-membership":
+			kwargs["runtime_effect_sql"] = (
+				f"SET ROLE {FUNCTION_OWNER_ROLE}; DO $$ BEGIN IF NOT "
+				"has_schema_privilege(current_user,'decodex','CREATE') THEN "
+				"RAISE EXCEPTION 'owner role ineffective'; END IF; END $$"
+			)
+		elif case_id == "set-role-bypass":
+			kwargs["runtime_effect_sql"] = (
+				f"SET ROLE {SET_BYPASS_ROLE}; DO $$ BEGIN IF NOT "
+				"has_table_privilege(current_user,'decodex.outbox','TRUNCATE') OR NOT "
+				"has_parameter_privilege(current_user,'session_replication_role','SET') THEN "
+				"RAISE EXCEPTION 'SET role authority ineffective'; END IF; END $$"
+			)
+		elif case_id == "migration-history-set-write":
+			kwargs["runtime_effect_sql"] = (
+				f"BEGIN; SET ROLE {SET_LEDGER_WRITE_ROLE}; UPDATE "
+				"public.refinery_schema_history SET name='xy1364_constant_update_probe'; ROLLBACK"
+			)
+		elif case_id == "sequence-set-update":
+			kwargs["runtime_effect_sql"] = (
+				f"SET ROLE {SET_SEQUENCE_UPDATE_ROLE}; SELECT pg_catalog.setval("
+				"'decodex.outbox_id_seq', 424242, false)"
+			)
+			precondition_sql = (
+				f"SELECT NOT ({predicate}) AND (SELECT last_value=1 AND NOT is_called "
+				"FROM decodex.outbox_id_seq)"
+			)
+			postcondition_sql = (
+				f"SELECT ({predicate}) AND (SELECT last_value=424242 AND NOT is_called "
+				"FROM decodex.outbox_id_seq)"
+			)
+			kwargs["restore_sql"] = (
+				"SELECT pg_catalog.setval('decodex.outbox_id_seq', 1, false)"
+			)
+			kwargs["restore_postcondition_sql"] = (
+				"SELECT last_value=1 AND NOT is_called FROM decodex.outbox_id_seq"
+			)
+		add(case_id, unsafe_store, unsafe, UNSAFE_ROLES[case_id], mutation_sql=mutation,
+			precondition_sql=precondition_sql, postcondition_sql=postcondition_sql,
+			**kwargs)
+
+	add(
+		"trigger-contract", unsafe_store, unsafe, RUNTIME_ROLE,
+		mutation_sql=(
+			"ALTER TABLE decodex.outbox DISABLE TRIGGER outbox_terminal_retention; "
+			"DROP TRIGGER leases_operation_time ON decodex.leases; "
+			"CREATE TRIGGER leases_operation_time BEFORE INSERT OR UPDATE ON decodex.leases "
+			"FOR EACH ROW EXECUTE FUNCTION decodex.enforce_outbox_operation_time()"
+		),
+		precondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE "
+			"tgrelid='decodex.outbox'::regclass AND tgname='outbox_terminal_retention' "
+			"AND tgenabled='O') AND EXISTS (SELECT 1 "
+			"FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid "
+			"WHERE t.tgrelid='decodex.leases'::regclass AND t.tgname='leases_operation_time' "
+			"AND p.proname='enforce_lease_operation_time' AND t.tgenabled='O')"
+		),
+		postcondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE "
+			"tgrelid='decodex.outbox'::regclass AND tgname='outbox_terminal_retention' "
+			"AND tgenabled='D') AND EXISTS (SELECT 1 "
+			"FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid "
+			"WHERE t.tgrelid='decodex.leases'::regclass AND t.tgname='leases_operation_time' "
+			"AND p.proname='enforce_outbox_operation_time' AND t.tgenabled='O')"
+		),
+	)
+	add(
+		"additional-privileged-function", unsafe_store, unsafe, RUNTIME_ROLE,
+		mutation_sql=(
+			"CREATE FUNCTION decodex.privileged_runtime_escape() RETURNS boolean LANGUAGE plpgsql "
+			"SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$ BEGIN EXECUTE "
+			"'ALTER TABLE decodex.outbox DISABLE TRIGGER outbox_terminal_retention'; RETURN false; END $$; "
+			"GRANT EXECUTE ON FUNCTION decodex.privileged_runtime_escape() TO $RUNTIME_ROLE"
+		),
+		precondition_sql="SELECT pg_catalog.to_regprocedure('decodex.privileged_runtime_escape()') IS NULL",
+		post_runtime_rejected_sql="ALTER TABLE decodex.outbox DISABLE TRIGGER outbox_terminal_retention",
+		post_runtime_rejected_sqlstate="42501",
+		runtime_effect_sql="SELECT decodex.privileged_runtime_escape()",
+		postcondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p WHERE "
+			"p.oid='decodex.privileged_runtime_escape()'::regprocedure AND p.prosecdef AND "
+			"p.proconfig=ARRAY['search_path=pg_catalog, decodex'] AND "
+			"has_function_privilege('$RUNTIME_ROLE',p.oid,'EXECUTE')) AND EXISTS "
+			"(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='decodex.outbox'::regclass "
+			"AND tgname='outbox_terminal_retention' AND tgenabled='D')"
+		),
+		restore_sql="ALTER TABLE decodex.outbox ENABLE TRIGGER outbox_terminal_retention",
+		restore_postcondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE "
+			"tgrelid='decodex.outbox'::regclass AND tgname='outbox_terminal_retention' "
+			"AND tgenabled='O')"
+		),
+	)
+	add(
+		"indirect-trigger-owner-effect", unsafe_store, unsafe, RUNTIME_ROLE,
+		mutation_sql=(
+			"CREATE FUNCTION public.indirect_owner_escape() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER "
+			"SET search_path=pg_catalog,decodex AS $$ BEGIN EXECUTE 'ALTER TABLE decodex.outbox "
+			"DISABLE TRIGGER outbox_terminal_retention'; RETURN NULL; END $$; "
+			"REVOKE ALL ON FUNCTION public.indirect_owner_escape() FROM PUBLIC,$RUNTIME_ROLE; "
+			"CREATE TRIGGER accounts_indirect_owner_escape AFTER INSERT ON decodex.accounts "
+			"FOR EACH STATEMENT EXECUTE FUNCTION public.indirect_owner_escape()"
+		),
+		precondition_sql=(
+			"SELECT pg_catalog.to_regprocedure('public.indirect_owner_escape()') IS NULL AND NOT EXISTS "
+			"(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='decodex.accounts'::regclass "
+			"AND tgname='accounts_indirect_owner_escape')"
+		),
+		runtime_effect_sql=(
+			"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
+			"('91000000-0000-4000-8000-000000000001','indirect owner escape')"
+		),
+		postcondition_sql=(
+			"SELECT pg_catalog.to_regprocedure('public.indirect_owner_escape()') IS NOT NULL AND "
+			"NOT has_function_privilege('$RUNTIME_ROLE','public.indirect_owner_escape()','EXECUTE') AND "
+			"EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='decodex.accounts'::regclass "
+			"AND tgname='accounts_indirect_owner_escape') AND EXISTS (SELECT 1 FROM "
+			"pg_catalog.pg_trigger WHERE tgrelid='decodex.outbox'::regclass "
+			"AND tgname='outbox_terminal_retention' AND tgenabled='D')"
+		),
+		restore_sql="ALTER TABLE decodex.outbox ENABLE TRIGGER outbox_terminal_retention",
+		restore_postcondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE "
+			"tgrelid='decodex.outbox'::regclass AND tgname='outbox_terminal_retention' "
+			"AND tgenabled='O')"
+		),
+	)
+	add(
+		"extension-member-control", unsafe_store, unsafe, RUNTIME_ROLE,
+		mutation_sql=(
+			"GRANT CREATE ON DATABASE $CASE_DATABASE TO $RUNTIME_ROLE; "
+			"GRANT CREATE ON SCHEMA public,decodex TO $RUNTIME_ROLE; SET ROLE $RUNTIME_ROLE; "
+			"CREATE EXTENSION hstore WITH SCHEMA public; CREATE COLLATION "
+			"decodex.extension_control_member FROM pg_catalog.\"C\"; ALTER EXTENSION hstore "
+			"ADD COLLATION decodex.extension_control_member; RESET ROLE; ALTER COLLATION "
+			f"decodex.extension_control_member OWNER TO {MIGRATION_ROLE}; "
+			"REVOKE CREATE ON SCHEMA public,decodex FROM $RUNTIME_ROLE; "
+			"REVOKE CREATE ON DATABASE $CASE_DATABASE FROM $RUNTIME_ROLE"
+		),
+		precondition_sql=(
+			"SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='hstore') AND "
+			"pg_catalog.to_regcollation('decodex.extension_control_member') IS NULL"
+		),
+		runtime_effect_sql="BEGIN; DROP EXTENSION hstore; ROLLBACK",
+		postcondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_depend d "
+			"ON d.refclassid='pg_catalog.pg_extension'::regclass AND d.refobjid=e.oid JOIN "
+			"pg_catalog.pg_collation c ON d.classid='pg_catalog.pg_collation'::regclass AND "
+			"d.objid=c.oid WHERE e.extname='hstore' AND e.extowner='$RUNTIME_ROLE'::regrole AND "
+			"c.oid='decodex.extension_control_member'::regcollation AND "
+			f"c.collowner='{MIGRATION_ROLE}'::regrole AND d.deptype='e')"
+		),
+	)
+
+	add(
+		"missing-ledger-select", incompatible_store, incompatible, MISSING_SELECT_ROLE,
+		mutation_sql="REVOKE SELECT ON TABLE public.refinery_schema_history FROM $RUNTIME_ROLE",
+		precondition_sql="SELECT has_table_privilege('$RUNTIME_ROLE','public.refinery_schema_history','SELECT')",
+		postcondition_sql="SELECT NOT has_table_privilege('$RUNTIME_ROLE','public.refinery_schema_history','SELECT')",
+	)
+	function_fingerprint = (
+		"SELECT pg_catalog.json_build_object('security_definer',p.prosecdef,'leakproof',p.proleakproof,"
+		"'volatility',p.provolatile,'parallel',p.proparallel,'kind',p.prokind,'strict',p.proisstrict,"
+		"'returns_set',p.proretset,'return_type',p.prorettype::regtype::text,'language',l.lanname,"
+		"'cost',p.procost,'rows',p.prorows,'binary',p.probin,'sql_body',p.prosqlbody,"
+		"'support',p.prosupport,'variadic',p.provariadic,'transform_types',p.protrftypes,"
+		"'argument_defaults_count',p.pronargdefaults,'argument_defaults',p.proargdefaults,"
+		"'config',p.proconfig,'acl',p.proacl,'owner',r.rolname,'arguments',"
+		"pg_catalog.pg_get_function_arguments(p.oid),'result',pg_catalog.pg_get_function_result(p.oid))::text "
+		"FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid=p.prolang JOIN "
+		"pg_catalog.pg_roles r ON r.oid=p.proowner WHERE "
+		"p.oid='decodex.enforce_outbox_terminal_retention()'::regprocedure"
+	)
+	add(
+		"function-contract", incompatible_store, incompatible, RUNTIME_ROLE,
+		mutation_sql=(
+			"CREATE OR REPLACE FUNCTION decodex.enforce_outbox_terminal_retention() RETURNS trigger "
+			"LANGUAGE plpgsql SET search_path=pg_catalog,decodex AS $$ BEGIN RETURN NEW; END $$"
+		),
+		precondition_sql=(
+			"SELECT prosrc LIKE '%retention pruning%' AND proconfig=ARRAY['search_path=pg_catalog, decodex'] "
+			"FROM pg_catalog.pg_proc WHERE oid='decodex.enforce_outbox_terminal_retention()'::regprocedure"
+		),
+		postcondition_sql=(
+			"SELECT prosrc LIKE '%RETURN NEW%' AND prosrc NOT LIKE '%retention pruning%' AND "
+			"proconfig=ARRAY['search_path=pg_catalog, decodex'] FROM pg_catalog.pg_proc WHERE "
+			"oid='decodex.enforce_outbox_terminal_retention()'::regprocedure"
+		),
+		invariant_sql=function_fingerprint,
+	)
+	credential_insert = (
+		"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
+		"('92000000-0000-4000-8000-000000000001','token=fixture-secret')"
+	)
+	add(
+		"credential-constraint", incompatible_store, incompatible, RUNTIME_ROLE,
+		mutation_sql="ALTER TABLE decodex.accounts DROP CONSTRAINT accounts_no_credentials",
+		precondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid="
+			"'decodex.accounts'::regclass AND conname='accounts_no_credentials') AND NOT EXISTS "
+			"(SELECT 1 FROM decodex.accounts WHERE account_id='92000000-0000-4000-8000-000000000001')"
+		),
+		pre_runtime_rejected_sql=credential_insert,
+		pre_runtime_rejected_sqlstate="23514",
+		runtime_effect_sql=credential_insert,
+		postcondition_sql=(
+			"SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid="
+			"'decodex.accounts'::regclass AND conname='accounts_no_credentials') AND EXISTS "
+			"(SELECT 1 FROM decodex.accounts WHERE account_id='92000000-0000-4000-8000-000000000001')"
+		),
+	)
+	add(
+		"external-cascade", incompatible_store, incompatible, RUNTIME_ROLE,
+		mutation_sql=(
+			"CREATE TABLE public.external_outbox_child(child_id bigint PRIMARY KEY,outbox_id bigint NOT NULL, "
+			"CONSTRAINT external_outbox_child_outbox_fk FOREIGN KEY(outbox_id) "
+			"REFERENCES decodex.outbox(id) ON DELETE CASCADE); REVOKE ALL ON TABLE "
+			"public.external_outbox_child FROM PUBLIC; INSERT INTO decodex.outbox(id,effect_key,"
+			"aggregate_kind,aggregate_id,aggregate_revision,payload,state,effect_state,receipt,"
+			"reconciliation,created_at,delivered_at,retain_until) OVERRIDING SYSTEM VALUE "
+			"WITH anchor AS MATERIALIZED (SELECT pg_catalog.date_trunc('milliseconds', "
+			"pg_catalog.statement_timestamp()) AS at) SELECT 920001,'external-cascade','account',"
+			"'fixture',1,'{}','delivered','receipt_recorded','{\"ok\":true}','{\"ok\":true}',"
+			"anchor.at-interval '2 days',anchor.at-interval '1 day',anchor.at-interval '1 second' "
+			"FROM anchor; "
+			"INSERT INTO public.external_outbox_child VALUES (1,920001)"
+		),
+		precondition_sql=(
+			"SELECT pg_catalog.to_regclass('public.external_outbox_child') IS NULL AND NOT EXISTS "
+			"(SELECT 1 FROM decodex.outbox WHERE id=920001)"
+		),
+		post_runtime_rejected_sql="DELETE FROM public.external_outbox_child WHERE child_id=1",
+		post_runtime_rejected_sqlstate="42501",
+		runtime_effect_sql="DELETE FROM decodex.outbox WHERE id=920001",
+		postcondition_sql=(
+			"SELECT pg_catalog.to_regclass('public.external_outbox_child') IS NOT NULL AND EXISTS "
+			"(SELECT 1 FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_class child ON "
+			"child.oid=c.conrelid JOIN pg_catalog.pg_namespace child_namespace ON "
+			"child_namespace.oid=child.relnamespace JOIN pg_catalog.pg_class parent ON "
+			"parent.oid=c.confrelid JOIN pg_catalog.pg_namespace parent_namespace ON "
+			"parent_namespace.oid=parent.relnamespace WHERE "
+			"c.conname='external_outbox_child_outbox_fk' AND c.contype='f' AND c.confdeltype='c' "
+			"AND child_namespace.nspname='public' AND child.relname='external_outbox_child' "
+			"AND parent_namespace.nspname='decodex' AND parent.relname='outbox' AND c.conkey="
+			"ARRAY[(SELECT attribute.attnum FROM pg_catalog.pg_attribute attribute WHERE "
+			"attribute.attrelid=child.oid AND attribute.attname='outbox_id' AND NOT "
+			"attribute.attisdropped)]::pg_catalog.int2[] AND c.confkey=ARRAY[(SELECT "
+			"attribute.attnum FROM pg_catalog.pg_attribute attribute WHERE "
+			"attribute.attrelid=parent.oid AND attribute.attname='id' AND NOT "
+			"attribute.attisdropped)]::pg_catalog.int2[]) AND NOT "
+			"pg_catalog.has_table_privilege('$RUNTIME_ROLE','public.external_outbox_child','DELETE') "
+			"AND pg_catalog.has_table_privilege('$RUNTIME_ROLE','decodex.outbox','DELETE') AND NOT EXISTS "
+			"(SELECT 1 FROM decodex.outbox WHERE id=920001) AND NOT EXISTS "
+			"(SELECT 1 FROM public.external_outbox_child WHERE child_id=1)"
+		),
+	)
+	add(
+		"ledger-tamper", migration_store, incompatible, RUNTIME_ROLE,
+		mutation_sql="UPDATE public.refinery_schema_history SET name=name||'_tampered' WHERE version=1",
+		precondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM public.refinery_schema_history WHERE version=1 "
+			"AND name NOT LIKE '%_tampered')"
+		),
+		postcondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM public.refinery_schema_history WHERE version=1 "
+			"AND name LIKE '%_tampered')"
+		),
+	)
+	add(
+		"missing-pgcrypto", incompatible_store, incompatible, RUNTIME_ROLE,
+		mutation_sql="DROP EXTENSION pgcrypto CASCADE",
+		precondition_sql="SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='pgcrypto')",
+		postcondition_sql="SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='pgcrypto')",
+	)
+
+
 class ClusterStatus(Enum):
 	"""Tri-state result from pg_ctl status."""
 
@@ -1245,6 +1695,21 @@ def create_database(database: str, env: dict[str, str], *, locale: str | None = 
 		f"REVOKE CREATE ON DATABASE {database} FROM PUBLIC; "
 		f"GRANT CONNECT, CREATE ON DATABASE {database} TO {MIGRATION_ROLE}; "
 		f"GRANT CONNECT ON DATABASE {database} TO {RUNTIME_ROLE}",
+		env,
+	)
+
+
+def clone_authority_database(source: str, target: str, env: dict[str, str]) -> None:
+	"""Clone the migrated role-neutral template without adding a runtime identity."""
+	psql(
+		"postgres",
+		f"CREATE DATABASE {target} WITH TEMPLATE {source} OWNER {MIGRATION_ROLE}",
+		env,
+	)
+	psql(
+		"postgres",
+		f"REVOKE CREATE ON DATABASE {target} FROM PUBLIC; "
+		f"GRANT CONNECT, CREATE ON DATABASE {target} TO {MIGRATION_ROLE}",
 		env,
 	)
 
@@ -5059,6 +5524,7 @@ def main() -> int | AuthorityCandidatePublication:
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
 	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
+	focused_authority = sys.argv[1:] == ["--focus-authority-classification"]
 	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
 	acceptance_mode = len(sys.argv) == 4 and sys.argv[1] == "--accept-authority-candidate"
 	capture_output = (
@@ -5069,17 +5535,17 @@ def main() -> int | AuthorityCandidatePublication:
 	authority_mode = capture_only or acceptance_mode
 	normal_aggregate = not (
 		focused_work_items or focused_managed_runs or focused_managed_repositories
-		or authority_mode
+		or focused_authority or authority_mode
 	)
-	orchestrator = StageOrchestrator({}, []) if normal_aggregate else None
+	orchestrator = StageOrchestrator({}, []) if normal_aggregate or focused_authority else None
 	def configuration_preflight() -> dict[str, object]:
 		if sys.argv[1:] and not (
 			focused_work_items or focused_managed_runs or focused_managed_repositories
-			or authority_mode
+			or focused_authority or authority_mode
 		):
 			raise TestFailure(
 				"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
-				"--focus-managed-repositories|"
+				"--focus-managed-repositories|--focus-authority-classification|"
 				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
 				"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
 			)
@@ -5169,6 +5635,7 @@ def main() -> int | AuthorityCandidatePublication:
 				prefix=("decodex-xy1343-" if focused_work_items else
 					"decodex-xy1338-" if focused_managed_runs else
 					"decodex-xy1364-" if focused_managed_repositories else
+					"decodex-xy1364-authority-" if focused_authority else
 					"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
 				dir=temp_root,
 			))
@@ -5277,13 +5744,9 @@ def main() -> int | AuthorityCandidatePublication:
 					SET_SEQUENCE_UPDATE_ROLE,
 					MEMBERSHIP_ADMIN_ROLE,
 				}
-				attributes = "" if role in group_roles else " LOGIN"
-				if role in {MIGRATION_ROLE, RUNTIME_ROLE}:
-					attributes += " NOINHERIT VALID UNTIL 'infinity'"
-				if role == UNSAFE_ROLES["bypassrls"]:
-					attributes += " BYPASSRLS"
-				elif role == UNSAFE_ROLES["superuser"]:
-					attributes += " SUPERUSER"
+				attributes = (
+					"" if role in group_roles else " LOGIN NOINHERIT VALID UNTIL 'infinity'"
+				)
 				psql("postgres", f"CREATE ROLE {role}{attributes}", env)
 
 			return None
@@ -5322,8 +5785,13 @@ def main() -> int | AuthorityCandidatePublication:
 				phase_a,
 			)
 			return AuthorityCandidatePublication(capture_output, capture_receipt)
-		if orchestrator is None or not isinstance(source_binding, dict):
+		if orchestrator is None or (
+			normal_aggregate and not isinstance(source_binding, dict)
+		):
 			raise HarnessCorruption("normal aggregate orchestration state is invalid")
+		if focused_authority:
+			# Schedule definitions stay canonical, but only the authority boundary executes.
+			orchestrator.scheduling_stopped = True
 		restore_report: dict[str, object] = {
 			"checkpoints": {},
 			"production_checks": {},
@@ -5603,739 +6071,229 @@ def main() -> int | AuthorityCandidatePublication:
 
 		def authority_safety_suite() -> str:
 			create_database(AUTHORITY_DATABASE, env)
+			psql(
+				"postgres",
+				f"REVOKE ALL ON DATABASE {AUTHORITY_DATABASE} FROM {RUNTIME_ROLE}",
+				env,
+			)
 			set_contract_urls(env, socket_dir, port, AUTHORITY_DATABASE, RUNTIME_ROLE)
 			run_migration(env)
-			for role in UNSAFE_ROLES.values():
-				provision_runtime(AUTHORITY_DATABASE, role, env)
-			provision_runtime(AUTHORITY_DATABASE, MISSING_SELECT_ROLE, env)
-			psql(
-				AUTHORITY_DATABASE,
-				f"ALTER TABLE decodex.accounts OWNER TO {UNSAFE_ROLES['table-owner']}; "
-				f"GRANT TRUNCATE ON TABLE decodex.outbox TO {UNSAFE_ROLES['truncate']}; "
-				f"GRANT CREATE ON SCHEMA decodex TO {UNSAFE_ROLES['schema-create']}; "
-				f"GRANT SET ON PARAMETER session_replication_role "
-				f"TO {UNSAFE_ROLES['trigger-bypass']}; "
-				f"GRANT ALTER SYSTEM ON PARAMETER session_replication_role "
-				f"TO {UNSAFE_ROLES['alter-system-bypass']}; "
-				f"ALTER ROLE {UNSAFE_ROLES['login-default-replica']} "
-				f"SET session_replication_role = replica; "
-				f"GRANT UPDATE ON TABLE public.refinery_schema_history "
-				f"TO {UNSAFE_ROLES['migration-history-write']}; "
-				f"GRANT SELECT (version) ON TABLE public.refinery_schema_history "
-				f"TO {UNSAFE_ROLES['migration-history-column-grant']} WITH GRANT OPTION; "
-				f"GRANT UPDATE ON TABLE public.refinery_schema_history "
-				f"TO {SET_LEDGER_WRITE_ROLE}; "
-				f"GRANT {SET_LEDGER_WRITE_ROLE} "
-				f"TO {UNSAFE_ROLES['migration-history-set-write']} "
-				f"WITH INHERIT FALSE, SET TRUE; "
-				f"GRANT UPDATE ON ALL SEQUENCES IN SCHEMA decodex "
-				f"TO {UNSAFE_ROLES['sequence-update']}; "
-				f"GRANT UPDATE ON ALL SEQUENCES IN SCHEMA decodex "
-				f"TO {SET_SEQUENCE_UPDATE_ROLE}; "
-				f"GRANT {SET_SEQUENCE_UPDATE_ROLE} "
-				f"TO {UNSAFE_ROLES['sequence-set-update']} "
-				f"WITH INHERIT FALSE, SET TRUE; "
-				f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA decodex "
-				f"TO {UNSAFE_ROLES['sequence-grant-option']} WITH GRANT OPTION; "
-				f"GRANT SELECT ON TABLE decodex.accounts "
-				f"TO {UNSAFE_ROLES['table-grant-option']} WITH GRANT OPTION; "
-				f"GRANT EXECUTE ON FUNCTION decodex.enforce_lease_operation_time() "
-				f"TO {UNSAFE_ROLES['function-grant-option']} WITH GRANT OPTION; "
-				f"CREATE COLLATION decodex.unsafe_owned_collation FROM pg_catalog.\"C\"; "
-				f"ALTER COLLATION decodex.unsafe_owned_collation "
-				f"OWNER TO {UNSAFE_ROLES['collation-owner']}; "
-				f"CREATE CONVERSION decodex.unsafe_owned_conversion "
-				f"FOR 'UTF8' TO 'LATIN1' FROM pg_catalog.utf8_to_iso8859_1; "
-				f"ALTER CONVERSION decodex.unsafe_owned_conversion "
-				f"OWNER TO {UNSAFE_ROLES['conversion-owner']}; "
-				f"CREATE OPERATOR decodex.=== (FUNCTION = pg_catalog.int4eq, "
-				f"LEFTARG = integer, RIGHTARG = integer); "
-				f"ALTER OPERATOR decodex.=== (integer, integer) "
-				f"OWNER TO {UNSAFE_ROLES['operator-owner']}; "
-				f"CREATE TEXT SEARCH CONFIGURATION decodex.unsafe_owned_text_search "
-				f"(COPY = pg_catalog.simple); "
-				f"ALTER TEXT SEARCH CONFIGURATION decodex.unsafe_owned_text_search "
-				f"OWNER TO {UNSAFE_ROLES['text-search-owner']}; "
-				f"GRANT USAGE ON SCHEMA decodex TO {SET_BYPASS_ROLE}; "
-				f"GRANT TRUNCATE ON TABLE decodex.outbox TO {SET_BYPASS_ROLE}; "
-				f"GRANT SET ON PARAMETER session_replication_role TO {SET_BYPASS_ROLE}; "
-				f"GRANT {SET_BYPASS_ROLE} TO {UNSAFE_ROLES['set-role-bypass']} "
-				f"WITH INHERIT FALSE, SET TRUE; "
-				f"GRANT CREATE ON SCHEMA decodex TO {FUNCTION_OWNER_ROLE}; "
-				f"ALTER FUNCTION decodex.enforce_outbox_terminal_retention() "
-				f"OWNER TO {FUNCTION_OWNER_ROLE}; "
-				f"GRANT {FUNCTION_OWNER_ROLE} "
-				f"TO {UNSAFE_ROLES['function-owner-membership']} "
-				f"WITH INHERIT FALSE, SET TRUE; "
-				f"GRANT {MEMBERSHIP_ADMIN_ROLE} TO {UNSAFE_ROLES['membership-admin']} "
-				f"WITH ADMIN TRUE, INHERIT FALSE, SET FALSE; "
-				f"REVOKE SELECT ON TABLE public.refinery_schema_history "
-				f"FROM {MISSING_SELECT_ROLE}",
-				env,
+			scenarios: list[AuthorityScenario] = []
+			def add_authority_scenario(
+				case_id: str,
+				expected_store_error: AuthorityStoreError,
+				expected: AuthorityClassification,
+				role: str,
+				*,
+				mutation_sql: str,
+				precondition_sql: str,
+				postcondition_sql: str,
+				pre_runtime_rejected_sql: str | None = None,
+				pre_runtime_rejected_sqlstate: str | None = None,
+				post_runtime_rejected_sql: str | None = None,
+				post_runtime_rejected_sqlstate: str | None = None,
+				runtime_effect_sql: str | None = None,
+				restore_sql: str | None = None,
+				restore_postcondition_sql: str | None = None,
+				invariant_sql: str | None = None,
+			) -> None:
+				index = len(scenarios)
+				case_database = f"decodex_xy1364_case_{index:02d}"
+				clone_authority_database(AUTHORITY_DATABASE, case_database, env)
+				provision_runtime(case_database, role, env)
+				def expand(sql: str | None) -> str | None:
+					if sql is None:
+						return None
+					return sql.replace("$CASE_DATABASE", case_database).replace(
+						"$RUNTIME_ROLE", role
+					)
+				scenarios.append(AuthorityScenario(
+					case_id=case_id,
+					expected_store_error=expected_store_error,
+					expected=expected,
+					baseline_migration_url=database_url(
+						socket_dir, port, case_database, MIGRATION_ROLE
+					),
+					baseline_runtime_url=database_url(
+						socket_dir, port, case_database, role
+					),
+					case_migration_url=database_url(
+						socket_dir, port, case_database, MIGRATION_ROLE
+					),
+					case_runtime_url=database_url(socket_dir, port, case_database, role),
+					admin_url=database_url(socket_dir, port, case_database, env["PGUSER"]),
+					mutation_sql=expand(mutation_sql),
+					precondition_sql=expand(precondition_sql),
+					postcondition_sql=expand(postcondition_sql),
+					pre_runtime_rejected_sql=expand(pre_runtime_rejected_sql),
+					pre_runtime_rejected_sqlstate=pre_runtime_rejected_sqlstate,
+					post_runtime_rejected_sql=expand(post_runtime_rejected_sql),
+					post_runtime_rejected_sqlstate=post_runtime_rejected_sqlstate,
+					runtime_effect_sql=expand(runtime_effect_sql),
+					restore_sql=expand(restore_sql),
+					restore_postcondition_sql=expand(restore_postcondition_sql),
+					invariant_sql=expand(invariant_sql),
+				))
+				if case_id == "truncate":
+					root = work / "decodex-unsafe-truncate"
+					write_bootstrap_config(
+						root, socket_dir, port, case_database, MIGRATION_ROLE, role
+					)
+					env["DECODEX_TEST_UNSAFE_AUTHORITY_ROOT"] = str(root)
+				elif case_id == "missing-ledger-select":
+					root = work / "decodex-incompatible-missing-history-select"
+					write_bootstrap_config(
+						root, socket_dir, port, case_database, MIGRATION_ROLE, role
+					)
+					env["DECODEX_TEST_INCOMPATIBLE_AUTHORITY_ROOT"] = str(root)
+			register_authority_scenarios(add_authority_scenario)
+			unsafe_count = sum(
+				scenario.expected is AuthorityClassification.UNSAFE_DATABASE_AUTHORITY
+				for scenario in scenarios
 			)
-			if psql_as(
-				UNSAFE_ROLES["collation-owner"],
-				AUTHORITY_DATABASE,
-				"SELECT count(*) FROM pg_catalog.pg_collation AS object "
-				"JOIN pg_catalog.pg_namespace AS namespace "
-				"ON namespace.oid = object.collnamespace "
-				"WHERE namespace.nspname = 'decodex' AND object.collowner = current_user::regrole",
-				env,
-			) != "1":
-				raise TestFailure("collation ownership fixture is vacuous")
-			if psql_as(
-				UNSAFE_ROLES["conversion-owner"],
-				AUTHORITY_DATABASE,
-				"SELECT count(*) FROM pg_catalog.pg_conversion AS object "
-				"JOIN pg_catalog.pg_namespace AS namespace "
-				"ON namespace.oid = object.connamespace "
-				"WHERE namespace.nspname = 'decodex' AND object.conowner = current_user::regrole",
-				env,
-			) != "1":
-				raise TestFailure("conversion ownership fixture is vacuous")
-			if psql_as(
-				UNSAFE_ROLES["operator-owner"],
-				AUTHORITY_DATABASE,
-				"SELECT count(*) FROM pg_catalog.pg_operator AS object "
-				"JOIN pg_catalog.pg_namespace AS namespace "
-				"ON namespace.oid = object.oprnamespace "
-				"WHERE namespace.nspname = 'decodex' AND object.oprowner = current_user::regrole",
-				env,
-			) != "1":
-				raise TestFailure("operator ownership fixture is vacuous")
-			if psql_as(
-				UNSAFE_ROLES["text-search-owner"],
-				AUTHORITY_DATABASE,
-				"SELECT count(*) FROM pg_catalog.pg_ts_config AS object "
-				"JOIN pg_catalog.pg_namespace AS namespace "
-				"ON namespace.oid = object.cfgnamespace "
-				"WHERE namespace.nspname = 'decodex' AND object.cfgowner = current_user::regrole",
-				env,
-			) != "1":
-				raise TestFailure("text-search ownership fixture is vacuous")
-			if psql_as(
-				UNSAFE_ROLES["function-owner-membership"],
-				AUTHORITY_DATABASE,
-				f"SELECT has_schema_privilege(current_user, 'decodex', 'CREATE'), "
-				f"pg_has_role(current_user, '{FUNCTION_OWNER_ROLE}', 'SET')",
-				env,
-			) != "f|t":
-				raise TestFailure("function-owner fixture is not isolated to SET ROLE authority")
-			if psql_as(
-				UNSAFE_ROLES["login-default-replica"],
-				AUTHORITY_DATABASE,
-				"SELECT current_setting('session_replication_role'), "
-				"has_parameter_privilege(current_user, 'session_replication_role', 'SET')",
-				env,
-			) != "replica|f":
-				raise TestFailure("login-default replica fixture is not effective without SET")
-			if psql_as(
-				UNSAFE_ROLES["alter-system-bypass"],
-				AUTHORITY_DATABASE,
-				"SELECT has_parameter_privilege(current_user, 'session_replication_role', 'SET'), "
-				"has_parameter_privilege(current_user, 'session_replication_role', 'ALTER SYSTEM')",
-				env,
-			) != "f|t":
-				raise TestFailure("ALTER SYSTEM fixture is not isolated from SET authority")
-			if psql_as(
-				UNSAFE_ROLES["migration-history-write"],
-				AUTHORITY_DATABASE,
-				"SELECT has_table_privilege(current_user, "
-				"'public.refinery_schema_history', 'UPDATE')",
-				env,
-			) != "t":
-				raise TestFailure("migration-history fixture lacks write authority")
-			if psql_as(
-				UNSAFE_ROLES["set-role-bypass"],
-				AUTHORITY_DATABASE,
-				f"SELECT has_table_privilege(current_user, 'decodex.outbox', 'TRUNCATE'), "
-				f"has_parameter_privilege(current_user, 'session_replication_role', 'SET'), "
-				f"(SELECT rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user), "
-				f"has_schema_privilege(current_user, 'decodex', 'CREATE'), "
-				f"pg_has_role(current_user, '{SET_BYPASS_ROLE}', 'SET')",
-				env,
-			) != "f|f|f|f|t":
-				raise TestFailure("SET-only retention fixture leaks authority without SET ROLE")
-			if psql_as(
-				UNSAFE_ROLES["set-role-bypass"],
-				AUTHORITY_DATABASE,
-				f"SET ROLE {SET_BYPASS_ROLE}; "
-				f"SELECT current_user, "
-				f"has_table_privilege(current_user, 'decodex.outbox', 'TRUNCATE'), "
-				f"has_parameter_privilege(current_user, 'session_replication_role', 'SET'), "
-				f"(SELECT rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user), "
-				f"has_schema_privilege(current_user, 'decodex', 'CREATE')",
-				env,
-			) != f"{SET_BYPASS_ROLE}|t|t|f|f":
-				raise TestFailure("SET-only retention fixture lacks authority after SET ROLE")
-			if psql_as(
-				UNSAFE_ROLES["migration-history-set-write"],
-				AUTHORITY_DATABASE,
-				f"SELECT has_table_privilege(current_user, "
-				f"'public.refinery_schema_history', 'UPDATE'), "
-				f"pg_has_role(current_user, '{SET_LEDGER_WRITE_ROLE}', 'SET')",
-				env,
-			) != "f|t":
-				raise TestFailure("SET-only migration-ledger fixture is not isolated")
-			if psql_as(
-				UNSAFE_ROLES["sequence-set-update"],
-				AUTHORITY_DATABASE,
-				f"SELECT has_sequence_privilege(current_user, "
-				f"'decodex.activity_sequence_seq', 'UPDATE'), "
-				f"pg_has_role(current_user, '{SET_SEQUENCE_UPDATE_ROLE}', 'SET')",
-				env,
-			) != "f|t":
-				raise TestFailure("SET-only sequence fixture is not isolated")
-			if psql_as(
-				UNSAFE_ROLES["migration-history-column-grant"],
-				AUTHORITY_DATABASE,
-				"SELECT has_any_column_privilege(current_user, "
-				"'public.refinery_schema_history', 'SELECT WITH GRANT OPTION')",
-				env,
-			) != "t":
-				raise TestFailure("migration-ledger column grant-option fixture is vacuous")
-			if psql_as(
-				UNSAFE_ROLES["membership-admin"],
-				AUTHORITY_DATABASE,
-				f"SELECT pg_has_role(current_user, '{MEMBERSHIP_ADMIN_ROLE}', "
-				f"'MEMBER WITH ADMIN OPTION'), "
-				f"pg_has_role(current_user, '{MEMBERSHIP_ADMIN_ROLE}', 'SET')",
-				env,
-			) != "t|f":
-				raise TestFailure("membership-admin fixture is not isolated from SET authority")
-			if psql_as(
-				MISSING_SELECT_ROLE,
-				AUTHORITY_DATABASE,
-				"SELECT has_table_privilege(current_user, "
-				"'public.refinery_schema_history', 'SELECT')",
-				env,
-			) != "f":
-				raise TestFailure("missing migration-ledger SELECT fixture is vacuous")
-			unsafe_roots = []
-			for case, role in UNSAFE_ROLES.items():
-				unsafe_root = work / f"decodex-unsafe-{case}"
-				write_bootstrap_config(
-					unsafe_root, socket_dir, port, AUTHORITY_DATABASE, MIGRATION_ROLE, role
+			incompatible_count = sum(
+				scenario.expected is AuthorityClassification.DATABASE_INCOMPATIBLE
+				for scenario in scenarios
+			)
+			unsafe_store_count = sum(
+				scenario.expected_store_error is AuthorityStoreError.UNSAFE_AUTHORITY
+				for scenario in scenarios
+			)
+			incompatible_store_count = sum(
+				scenario.expected_store_error is AuthorityStoreError.INCOMPATIBLE
+				for scenario in scenarios
+			)
+			migration_store_count = sum(
+				scenario.expected_store_error is AuthorityStoreError.MIGRATION
+				for scenario in scenarios
+			)
+			if unsafe_count != 27 or incompatible_count != 6:
+				raise HarnessCorruption(
+					"authority scenario inventory must contain exactly 27 unsafe and 6 incompatible cases"
 				)
-				unsafe_roots.append(unsafe_root)
-			missing_select_root = work / "decodex-unsafe-missing-history-select"
-			write_bootstrap_config(
-				missing_select_root,
-				socket_dir,
-				port,
-				AUTHORITY_DATABASE,
-				MIGRATION_ROLE,
-				MISSING_SELECT_ROLE,
-			)
-			unsafe_roots.append(missing_select_root)
-
-			create_database(TRIGGER_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, TRIGGER_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(TRIGGER_DATABASE, RUNTIME_ROLE, env)
-			psql(
-				TRIGGER_DATABASE,
-				"ALTER TABLE decodex.outbox DISABLE TRIGGER outbox_terminal_retention; "
-				"DROP TRIGGER leases_operation_time ON decodex.leases; "
-				"CREATE TRIGGER leases_operation_time BEFORE INSERT OR UPDATE "
-				"ON decodex.leases FOR EACH ROW EXECUTE FUNCTION "
-				"decodex.enforce_outbox_operation_time()",
-				env,
-			)
-			trigger_contract = psql(
-				TRIGGER_DATABASE,
-				"SELECT string_agg(trigger.tgenabled::text || ':' || proc.proname, ',' "
-				"ORDER BY trigger.tgname) FROM pg_trigger AS trigger "
-				"JOIN pg_proc AS proc ON proc.oid = trigger.tgfoid "
-				"WHERE trigger.tgname IN ('leases_operation_time', "
-				"'outbox_terminal_retention')",
-				env,
-			)
-			if trigger_contract != (
-				"O:enforce_outbox_operation_time,D:enforce_outbox_terminal_retention"
+			if (
+				unsafe_store_count != 27
+				or incompatible_store_count != 5
+				or migration_store_count != 1
 			):
-				raise TestFailure("trigger-contract fixture did not preserve both adversarial deltas")
-			trigger_root = work / "decodex-unsafe-trigger-contract"
-			write_bootstrap_config(
-				trigger_root,
-				socket_dir,
-				port,
-				TRIGGER_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
+				raise HarnessCorruption(
+					"authority scenario inventory must contain exact 27 unsafe, "
+					"5 incompatible, and 1 migration StoreError expectations"
+				)
+			missing_select = [
+				scenario for scenario in scenarios if scenario.case_id == "missing-ledger-select"
+			]
+			if (
+				len(missing_select) != 1
+				or missing_select[0].expected_store_error is not AuthorityStoreError.INCOMPATIBLE
+				or missing_select[0].expected is not AuthorityClassification.DATABASE_INCOMPATIBLE
+			):
+				raise HarnessCorruption("missing-ledger-select must be exclusively incompatible")
+			ledger_tamper = [
+				scenario for scenario in scenarios if scenario.case_id == "ledger-tamper"
+			]
+			if (
+				len(ledger_tamper) != 1
+				or ledger_tamper[0].expected_store_error is not AuthorityStoreError.MIGRATION
+				or ledger_tamper[0].expected is not AuthorityClassification.DATABASE_INCOMPATIBLE
+			):
+				raise HarnessCorruption(
+					"ledger-tamper must be migration failure projected as incompatible"
+				)
+			env["DECODEX_TEST_POSTGRES_AUTHORITY_SCENARIOS"] = authority_scenario_payload(
+				scenarios
 			)
-			unsafe_roots.append(trigger_root)
-
-			create_database(PRIVILEGED_FUNCTION_DATABASE, env)
-			set_contract_urls(
-				env, socket_dir, port, PRIVILEGED_FUNCTION_DATABASE, RUNTIME_ROLE
-			)
-			run_migration(env)
-			provision_runtime(PRIVILEGED_FUNCTION_DATABASE, RUNTIME_ROLE, env)
-			psql_as(
-				MIGRATION_ROLE,
-				PRIVILEGED_FUNCTION_DATABASE,
-				"CREATE FUNCTION decodex.privileged_runtime_escape() "
-				"RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER "
-				"SET search_path = pg_catalog, decodex AS $$ BEGIN "
-				"EXECUTE 'ALTER TABLE decodex.outbox DISABLE TRIGGER "
-				"outbox_terminal_retention'; RETURN false; END $$; "
-				f"GRANT EXECUTE ON FUNCTION decodex.privileged_runtime_escape() "
-				f"TO {RUNTIME_ROLE}",
+			outputs = [run(
+				[
+					"cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
+					"postgres_store", "--run-ignored", "all", "--",
+					"postgres_authority_classification_matrix", "--exact",
+				],
 				env,
-			)
-			if psql(
-				PRIVILEGED_FUNCTION_DATABASE,
-				f"SELECT proc.prosecdef, proc.proconfig IS NOT NULL, "
-				f"owner.rolname = '{MIGRATION_ROLE}', "
-				f"has_function_privilege('{RUNTIME_ROLE}', proc.oid, 'EXECUTE'), "
-				f"proc.prosrc LIKE '%ALTER TABLE decodex.outbox DISABLE TRIGGER%', "
-				f"NOT has_schema_privilege('{RUNTIME_ROLE}', 'decodex', 'CREATE'), "
-				f"NOT has_table_privilege("
-				f"'{RUNTIME_ROLE}', 'decodex.outbox', 'TRIGGER'), "
-				f"has_table_privilege("
-				f"'{MIGRATION_ROLE}', 'decodex.outbox', 'TRIGGER') "
-				f"FROM pg_catalog.pg_proc AS proc "
-				f"JOIN pg_catalog.pg_namespace AS namespace "
-				f"ON namespace.oid = proc.pronamespace "
-				f"JOIN pg_catalog.pg_roles AS owner ON owner.oid = proc.proowner "
-				f"WHERE namespace.nspname = 'decodex' "
-				f"AND proc.oid = 'decodex.privileged_runtime_escape()'::regprocedure "
-				f"AND (SELECT count(*) FROM pg_catalog.pg_proc AS inventory "
-				f"JOIN pg_catalog.pg_namespace AS inventory_namespace "
-				f"ON inventory_namespace.oid = inventory.pronamespace "
-				f"WHERE inventory_namespace.nspname = 'decodex') = 157",
-				env,
-			) != "t|t|t|t|t|t|t|t":
-				raise TestFailure("additional privileged-function fixture is vacuous")
-			assert_psql_rejected(
-				RUNTIME_ROLE,
-				PRIVILEGED_FUNCTION_DATABASE,
-				"ALTER TABLE decodex.outbox DISABLE TRIGGER outbox_terminal_retention",
-				env,
-				"runtime direct trigger DDL",
-			)
-			if psql_as(
-				RUNTIME_ROLE,
-				PRIVILEGED_FUNCTION_DATABASE,
-				"SELECT decodex.privileged_runtime_escape(); "
-				"SELECT tgenabled = 'D' FROM pg_catalog.pg_trigger "
-				"WHERE tgrelid = 'decodex.outbox'::pg_catalog.regclass "
-				"AND tgname = 'outbox_terminal_retention'",
-				env,
-			) != "f\nt":
-				raise TestFailure("runtime did not exercise the additional function's owner authority")
-			psql_as(
-				MIGRATION_ROLE,
-				PRIVILEGED_FUNCTION_DATABASE,
-				"ALTER TABLE decodex.outbox ENABLE TRIGGER outbox_terminal_retention",
-				env,
-			)
-			if psql(
-				PRIVILEGED_FUNCTION_DATABASE,
-				"SELECT tgenabled FROM pg_catalog.pg_trigger "
-				"WHERE tgrelid = 'decodex.outbox'::pg_catalog.regclass "
-				"AND tgname = 'outbox_terminal_retention'",
-				env,
-			) != "O":
-				raise TestFailure("additional function fixture did not restore trigger state")
-			privileged_function_root = work / "decodex-unsafe-additional-privileged-function"
-			write_bootstrap_config(
-				privileged_function_root,
-				socket_dir,
-				port,
-				PRIVILEGED_FUNCTION_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-			unsafe_roots.append(privileged_function_root)
-
-			create_database(TRIGGER_ESCAPE_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, TRIGGER_ESCAPE_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(TRIGGER_ESCAPE_DATABASE, RUNTIME_ROLE, env)
-			psql_as(
-				MIGRATION_ROLE,
-				TRIGGER_ESCAPE_DATABASE,
-				"CREATE FUNCTION public.indirect_owner_escape() RETURNS trigger "
-				"LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, decodex AS $$ "
-				"BEGIN EXECUTE 'ALTER TABLE decodex.outbox DISABLE TRIGGER "
-				"outbox_terminal_retention'; RETURN NULL; END $$; "
-				"REVOKE ALL ON FUNCTION public.indirect_owner_escape() FROM PUBLIC; "
-				f"REVOKE ALL ON FUNCTION public.indirect_owner_escape() FROM {RUNTIME_ROLE}; "
-				"CREATE TRIGGER accounts_indirect_owner_escape AFTER INSERT ON decodex.accounts "
-				"FOR EACH STATEMENT EXECUTE FUNCTION public.indirect_owner_escape()",
-				env,
-			)
-			if psql(
-				TRIGGER_ESCAPE_DATABASE,
-				f"SELECT has_function_privilege('{RUNTIME_ROLE}', "
-				"'public.indirect_owner_escape()', 'EXECUTE'), "
-				f"has_table_privilege('{RUNTIME_ROLE}', 'decodex.activity', 'UPDATE'), "
-				f"has_table_privilege('{RUNTIME_ROLE}', 'decodex.outbox', 'TRIGGER')",
-				env,
-			) != "f|f|f":
-				raise TestFailure("indirect trigger fixture leaked direct runtime authority")
-			psql_as(
-				RUNTIME_ROLE,
-				TRIGGER_ESCAPE_DATABASE,
-				"INSERT INTO decodex.accounts(account_id, display_label) "
-				"VALUES ('91000000-0000-0000-0000-000000000001', 'indirect owner escape')",
-				env,
-			)
-			if psql(
-				TRIGGER_ESCAPE_DATABASE,
-				"SELECT tgenabled = 'D' FROM pg_catalog.pg_trigger "
-				"WHERE tgrelid = 'decodex.outbox'::pg_catalog.regclass "
-				"AND tgname = 'outbox_terminal_retention'",
-				env,
-			) != "t":
-				raise TestFailure("runtime-triggered owner effect did not execute")
-			psql_as(
-				MIGRATION_ROLE,
-				TRIGGER_ESCAPE_DATABASE,
-				"ALTER TABLE decodex.outbox ENABLE TRIGGER outbox_terminal_retention",
-				env,
-			)
-			trigger_escape_root = work / "decodex-unsafe-indirect-trigger-owner-effect"
-			write_bootstrap_config(
-				trigger_escape_root,
-				socket_dir,
-				port,
-				TRIGGER_ESCAPE_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-			unsafe_roots.append(trigger_escape_root)
-
-			create_database(EXTENSION_CONTROL_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, EXTENSION_CONTROL_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(EXTENSION_CONTROL_DATABASE, RUNTIME_ROLE, env)
-			psql(
-				"postgres",
-				f"GRANT CREATE ON DATABASE {EXTENSION_CONTROL_DATABASE} TO {RUNTIME_ROLE}",
-				env,
-			)
-			psql(
-				EXTENSION_CONTROL_DATABASE,
-				f"GRANT CREATE ON SCHEMA public, decodex TO {RUNTIME_ROLE}",
-				env,
-			)
-			psql_as(
-				RUNTIME_ROLE,
-				EXTENSION_CONTROL_DATABASE,
-				"CREATE EXTENSION hstore WITH SCHEMA public; "
-				"CREATE COLLATION decodex.extension_control_member FROM pg_catalog.\"C\"; "
-				"ALTER EXTENSION hstore ADD COLLATION decodex.extension_control_member",
-				env,
-			)
-			psql(
-				EXTENSION_CONTROL_DATABASE,
-				f"ALTER COLLATION decodex.extension_control_member OWNER TO {MIGRATION_ROLE}; "
-				f"REVOKE CREATE ON SCHEMA public, decodex FROM {RUNTIME_ROLE}",
-				env,
-			)
-			psql(
-				"postgres",
-				f"REVOKE CREATE ON DATABASE {EXTENSION_CONTROL_DATABASE} FROM {RUNTIME_ROLE}",
-				env,
-			)
-			if psql(
-				EXTENSION_CONTROL_DATABASE,
-				f"SELECT extension.extowner = '{RUNTIME_ROLE}'::pg_catalog.regrole, "
-				f"owned_collation.collowner = '{MIGRATION_ROLE}'::pg_catalog.regrole, "
-				"dependency.deptype = 'e' FROM pg_catalog.pg_extension AS extension "
-				"JOIN pg_catalog.pg_depend AS dependency "
-				"ON dependency.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass "
-				"AND dependency.refobjid = extension.oid "
-				"JOIN pg_catalog.pg_collation AS owned_collation "
-				"ON dependency.classid = 'pg_catalog.pg_collation'::pg_catalog.regclass "
-				"AND dependency.objid = owned_collation.oid "
-				"WHERE extension.extname = 'hstore' "
-				"AND owned_collation.oid = "
-				"'decodex.extension_control_member'::pg_catalog.regcollation",
-				env,
-			) != "t|t|t":
-				raise TestFailure("extension dependency-control fixture is vacuous")
-			if psql_as(
-				RUNTIME_ROLE,
-				EXTENSION_CONTROL_DATABASE,
-				"BEGIN; DROP EXTENSION hstore; "
-				"SELECT pg_catalog.to_regcollation('decodex.extension_control_member') IS NULL; "
-				"ROLLBACK",
-				env,
-			) != "t":
-				raise TestFailure("runtime extension owner could not drop the Decodex member")
-			extension_control_root = work / "decodex-unsafe-extension-member-control"
-			write_bootstrap_config(
-				extension_control_root,
-				socket_dir,
-				port,
-				EXTENSION_CONTROL_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-			unsafe_roots.append(extension_control_root)
-			env["DECODEX_TEST_UNSAFE_AUTHORITY_ROOTS"] = os.pathsep.join(
-				str(root) for root in unsafe_roots
-			)
-			unsafe_authority_output = run(
+			)]
+			outputs.append(run(
 				[
 					"cargo", "nextest", "run", "-p", "decodex-runtime", "--test",
 					"bootstrap_doctor", "--run-ignored", "all", "--",
 					"isolated_postgres_overprivileged_runtime_is_unavailable", "--exact",
 				],
 				env,
-			)
-
-			create_database(FUNCTION_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, FUNCTION_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(FUNCTION_DATABASE, RUNTIME_ROLE, env)
-			psql(
-				FUNCTION_DATABASE,
-				"CREATE OR REPLACE FUNCTION decodex.enforce_outbox_terminal_retention() "
-				"RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
-				env,
-			)
-			if psql(
-				FUNCTION_DATABASE,
-				"SELECT prosrc LIKE '%RETURN NEW%' AND prosrc NOT LIKE '%retention pruning%' "
-				"FROM pg_catalog.pg_proc AS proc "
-				"JOIN pg_catalog.pg_namespace AS namespace "
-				"ON namespace.oid = proc.pronamespace "
-				"WHERE namespace.nspname = 'decodex' "
-				"AND proc.proname = 'enforce_outbox_terminal_retention'",
-				env,
-			) != "t":
-				raise TestFailure("same-metadata no-op retention fixture is vacuous")
-
-			function_contract_root = work / "decodex-incompatible-function-contract"
-			write_bootstrap_config(
-				function_contract_root,
-				socket_dir,
-				port,
-				FUNCTION_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-
-			create_database(CONSTRAINT_DRIFT_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, CONSTRAINT_DRIFT_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(CONSTRAINT_DRIFT_DATABASE, RUNTIME_ROLE, env)
-			assert_psql_rejected(
-				RUNTIME_ROLE,
-				CONSTRAINT_DRIFT_DATABASE,
-				"INSERT INTO decodex.accounts(account_id, display_label) "
-				"VALUES ('92000000-0000-0000-0000-000000000001', 'token=fixture-secret')",
-				env,
-				"canonical account credential boundary",
-			)
-			psql_as(
-				MIGRATION_ROLE,
-				CONSTRAINT_DRIFT_DATABASE,
-				"ALTER TABLE decodex.accounts DROP CONSTRAINT accounts_no_credentials",
-				env,
-			)
-			psql_as(
-				RUNTIME_ROLE,
-				CONSTRAINT_DRIFT_DATABASE,
-				"INSERT INTO decodex.accounts(account_id, display_label) "
-				"VALUES ('92000000-0000-0000-0000-000000000001', 'token=fixture-secret')",
-				env,
-			)
-			if psql(
-				CONSTRAINT_DRIFT_DATABASE,
-				"SELECT count(*) FROM decodex.accounts WHERE account_id = "
-				"'92000000-0000-0000-0000-000000000001'",
-				env,
-			) != "1":
-				raise TestFailure("dropped credential constraint did not change the boundary")
-			constraint_drift_root = work / "decodex-incompatible-credential-constraint"
-			write_bootstrap_config(
-				constraint_drift_root,
-				socket_dir,
-				port,
-				CONSTRAINT_DRIFT_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-
-			create_database(IDENTITY_CAST_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, IDENTITY_CAST_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(IDENTITY_CAST_DATABASE, RUNTIME_ROLE, env)
-			psql(
-				IDENTITY_CAST_DATABASE,
-				"CREATE FUNCTION public.xy1315_uuid_to_text(pg_catalog.uuid) "
-				"RETURNS pg_catalog.text LANGUAGE sql IMMUTABLE STRICT "
-				"AS 'SELECT $1::pg_catalog.text'; "
-				"CREATE CAST (pg_catalog.uuid AS pg_catalog.text) "
-				"WITH FUNCTION public.xy1315_uuid_to_text(pg_catalog.uuid) AS IMPLICIT",
-				env,
-			)
-			if psql(
-				IDENTITY_CAST_DATABASE,
-				"SELECT count(*) FROM pg_catalog.pg_cast AS conversion "
-				"WHERE conversion.castsource='pg_catalog.uuid'::pg_catalog.regtype "
-				"AND conversion.casttarget='pg_catalog.text'::pg_catalog.regtype "
-				"AND conversion.castcontext='i'",
-				env,
-			) != "1":
-				raise TestFailure("implicit UUID-to-text cast fixture is vacuous")
-			identity_cast_output = run(
-				[
-					"cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
-					"postgres_store", "--run-ignored", "all", "--",
-					"postgres_store_rejects_implicit_uuid_to_text_cast", "--exact",
-				],
-				env,
-			)
-
-			create_database(EXTERNAL_CASCADE_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, EXTERNAL_CASCADE_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(EXTERNAL_CASCADE_DATABASE, RUNTIME_ROLE, env)
-			psql_as(
-				MIGRATION_ROLE,
-				EXTERNAL_CASCADE_DATABASE,
-				"CREATE TABLE public.external_outbox_child ("
-				"child_id bigint PRIMARY KEY, outbox_id bigint NOT NULL REFERENCES "
-				"decodex.outbox(id) ON DELETE CASCADE); "
-				"REVOKE ALL ON TABLE public.external_outbox_child FROM PUBLIC; "
-				"INSERT INTO decodex.outbox (id, effect_key, aggregate_kind, aggregate_id, "
-				"aggregate_revision, payload, state, effect_state, receipt, reconciliation, "
-				"created_at, delivered_at, retain_until) OVERRIDING SYSTEM VALUE VALUES (920001, "
-				"'external-cascade', 'account', 'fixture', 1, '{}', 'delivered', "
-				"'receipt_recorded', '{\"ok\":true}', '{\"ok\":true}', "
-				"date_trunc('milliseconds', clock_timestamp()) - interval '2 days', "
-				"date_trunc('milliseconds', clock_timestamp()) - interval '1 day', "
-				"date_trunc('milliseconds', clock_timestamp()) - interval '1 second'); "
-				"INSERT INTO public.external_outbox_child(child_id, outbox_id) "
-				"VALUES (1, 920001)",
-				env,
-			)
-			assert_psql_rejected(
-				RUNTIME_ROLE,
-				EXTERNAL_CASCADE_DATABASE,
-				"DELETE FROM public.external_outbox_child WHERE child_id = 1",
-				env,
-				"runtime direct external-child delete",
-			)
-			psql_as(
-				RUNTIME_ROLE,
-				EXTERNAL_CASCADE_DATABASE,
-				"DELETE FROM decodex.outbox WHERE id = 920001",
-				env,
-			)
-			if psql(
-				EXTERNAL_CASCADE_DATABASE,
-				"SELECT count(*) FROM public.external_outbox_child WHERE child_id = 1",
-				env,
-			) != "0":
-				raise TestFailure("runtime parent delete did not exercise owner-mediated cascade")
-			external_cascade_root = work / "decodex-incompatible-external-cascade"
-			write_bootstrap_config(
-				external_cascade_root,
-				socket_dir,
-				port,
-				EXTERNAL_CASCADE_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-
-			create_database(LEDGER_TAMPER_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, LEDGER_TAMPER_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(LEDGER_TAMPER_DATABASE, RUNTIME_ROLE, env)
-			ledger_tamper_root = work / "decodex-incompatible-ledger-tamper"
-			write_bootstrap_config(
-				ledger_tamper_root,
-				socket_dir,
-				port,
-				LEDGER_TAMPER_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-			ledger_live_doctor_output = run_live_doctor_mutation(
-				ledger_tamper_root,
-				LEDGER_TAMPER_DATABASE,
-				"UPDATE public.refinery_schema_history SET name = name || '_tampered' "
-				"WHERE version = 1",
-				"ledger-tamper",
-				work,
-				env,
-				LiveDoctorMutationAttempt(),
-			)
-			if psql(
-				LEDGER_TAMPER_DATABASE,
-				"SELECT count(*), count(*) FILTER (WHERE name LIKE '%_tampered') "
-				"FROM public.refinery_schema_history",
-				env,
-			) != "19|1":
-				raise TestFailure("migration-ledger tamper did not preserve the row count")
-
-			create_database(MISSING_EXTENSION_DATABASE, env)
-			set_contract_urls(env, socket_dir, port, MISSING_EXTENSION_DATABASE, RUNTIME_ROLE)
-			run_migration(env)
-			provision_runtime(MISSING_EXTENSION_DATABASE, RUNTIME_ROLE, env)
-			missing_extension_root = work / "decodex-incompatible-missing-pgcrypto"
-			write_bootstrap_config(
-				missing_extension_root,
-				socket_dir,
-				port,
-				MISSING_EXTENSION_DATABASE,
-				MIGRATION_ROLE,
-				RUNTIME_ROLE,
-			)
-			missing_extension_live_doctor_output = run_live_doctor_mutation(
-				missing_extension_root,
-				MISSING_EXTENSION_DATABASE,
-				"DROP EXTENSION pgcrypto CASCADE",
-				"missing-pgcrypto",
-				work,
-				env,
-				LiveDoctorMutationAttempt(),
-			)
-			if psql(
-				MISSING_EXTENSION_DATABASE,
-				"SELECT count(*) FROM pg_catalog.pg_extension WHERE extname = 'pgcrypto'",
-				env,
-			) != "0":
-				raise TestFailure("missing-pgcrypto fixture retained the extension")
-			env["DECODEX_TEST_INCOMPATIBLE_AUTHORITY_ROOTS"] = os.pathsep.join(
-				[
-					str(function_contract_root),
-					str(constraint_drift_root),
-					str(external_cascade_root),
-					str(ledger_tamper_root),
-					str(missing_extension_root),
-				]
-			)
-			incompatible_authority_output = run(
+			))
+			outputs.append(run(
 				[
 					"cargo", "nextest", "run", "-p", "decodex-runtime", "--test",
 					"bootstrap_doctor", "--run-ignored", "all", "--",
 					"isolated_postgres_incompatible_runtime_is_unavailable", "--exact",
 				],
 				env,
-			)
-
-			return "\n".join((
-				unsafe_authority_output,
-				identity_cast_output,
-				ledger_live_doctor_output,
-				missing_extension_live_doctor_output,
-				incompatible_authority_output,
 			))
-		run_stage(
+
+			if normal_aggregate:
+				clone_authority_database(AUTHORITY_DATABASE, IDENTITY_CAST_DATABASE, env)
+				provision_runtime(IDENTITY_CAST_DATABASE, RUNTIME_ROLE, env)
+				set_contract_urls(env, socket_dir, port, IDENTITY_CAST_DATABASE, RUNTIME_ROLE)
+				psql(
+					IDENTITY_CAST_DATABASE,
+					"CREATE FUNCTION public.xy1315_uuid_to_text(pg_catalog.uuid) "
+					"RETURNS pg_catalog.text LANGUAGE sql IMMUTABLE STRICT "
+					"AS 'SELECT $1::pg_catalog.text'; CREATE CAST "
+					"(pg_catalog.uuid AS pg_catalog.text) WITH FUNCTION "
+					"public.xy1315_uuid_to_text(pg_catalog.uuid) AS IMPLICIT",
+					env,
+				)
+				outputs.append(run(
+					[
+						"cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
+						"postgres_store", "--run-ignored", "all", "--",
+						"postgres_store_rejects_implicit_uuid_to_text_cast", "--exact",
+					],
+					env,
+				))
+				for database, case_id, mutation in (
+					(
+						LEDGER_TAMPER_DATABASE,
+						"ledger-tamper",
+						"UPDATE public.refinery_schema_history SET name=name||'_tampered' WHERE version=1",
+					),
+					(
+						MISSING_EXTENSION_DATABASE,
+						"missing-pgcrypto",
+						"DROP EXTENSION pgcrypto CASCADE",
+					),
+				):
+					clone_authority_database(AUTHORITY_DATABASE, database, env)
+					provision_runtime(database, RUNTIME_ROLE, env)
+					root = work / f"decodex-incompatible-live-{case_id}"
+					write_bootstrap_config(
+						root, socket_dir, port, database, MIGRATION_ROLE, RUNTIME_ROLE
+					)
+					outputs.append(run_live_doctor_mutation(
+						root,
+						database,
+						mutation,
+						case_id,
+						work,
+						env,
+						LiveDoctorMutationAttempt(),
+					))
+
+			return "\n".join(outputs)
+		if focused_authority:
+			orchestrator.scheduling_stopped = False
+		authority_output = run_stage(
 			orchestrator,
 			"authority_safety_suite",
 			authority_safety_suite,
 			depends_on=("cluster_preflight",),
 		)
+		if focused_authority:
+			if orchestrator.primary_failure is not None:
+				raise orchestrator.primary_failure
+			if not isinstance(authority_output, str):
+				raise HarnessCorruption("focused authority suite produced no evidence")
+			print(authority_output)
+			orchestrator.outputs.clear()
+			return 0
 
 		def hostile_search_path_suite() -> str:
 			create_database(HOSTILE_SEARCH_DATABASE, env)
@@ -7262,7 +7220,11 @@ def main() -> int | AuthorityCandidatePublication:
 			if orchestrator is not None:
 				orchestrator.primary_failure = diagnostic_error
 				orchestrator.corruption = orchestrator.corruption or diagnostic_error
-		if orchestrator is not None and (cluster_started or cluster_observed_running):
+		if (
+			normal_aggregate
+			and orchestrator is not None
+			and (cluster_started or cluster_observed_running)
+		):
 			teardown_result: dict[str, object] = (
 				{"status": "passed"} if teardown_error is None
 				else {"status": "failed", "error": str(teardown_error)}
