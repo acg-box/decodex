@@ -8,7 +8,7 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 20;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 21;
 #[cfg(test)]
 const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
 	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
@@ -90,7 +90,7 @@ pub(crate) async fn verify(client: &Client) -> Result<(), StoreError> {
 		!= Some(EXPECTED_LATEST_MIGRATION_VERSION)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V20 ledger".into(),
+			"embedded migration inventory does not end at the canonical V21 ledger".into(),
 		));
 	}
 	if actual.len() != expected.len() {

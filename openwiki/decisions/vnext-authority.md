@@ -87,6 +87,11 @@ activity/outbox effects, and immutable response bytes; stable rejection complete
 transaction. V10 is a zero-state forward cutover, preserves the existing table identities, removes
 runtime snapshot/session DML, fences RuntimeSession audit namespaces, and does not authorize Codex
 creation, reconciliation, routing, scheduling, WorkItems, ManagedRuns, UI, or plugin readiness.
+Forward-only V21 repairs that fence without changing the command or trigger boundary: a scalar
+RuntimeSession/profile/account snapshot identity is provenance owned by the enclosing domain event,
+not a RuntimeSession ownership claim. Aggregate/event/kind markers, complete RuntimeSession or
+profile/account snapshot objects under any wrapper, and outbox links to activity carrying those
+shapes remain reserved.
 
 XY-1284 managed-repository authority reset was finalized by the accepted XY-1348
 stage-two amendment on 2026-07-17. PostgreSQL is the durable authority for the current

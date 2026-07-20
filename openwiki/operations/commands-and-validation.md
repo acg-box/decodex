@@ -115,7 +115,7 @@ commit/tree, exact mismatch set/order, and the corresponding same-tree or digest
 
 The capture-only mode migrates and provisions an isolated PostgreSQL 18 database, captures raw
 source S0, first-restore R1, and second-restore R2 evidence, and separately proves the exact
-V13-to-V20 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
+V13-to-V21 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
 used by production readiness must pass at S0, R1, and R2 before it atomically publishes
 `decodex/postgres-authority-candidate/2`; the Phase A mismatch set must be exactly the canonical
 zero-, one-, or two-component subset described above, while complete, unique, resolved manifests,
