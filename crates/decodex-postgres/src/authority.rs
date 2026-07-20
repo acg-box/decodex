@@ -3917,7 +3917,7 @@ pub(crate) async fn verify_runtime(
 	migration_role: &str,
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
-	verify_semantic_authority(&**client, runtime_role).await?;
+	verify_semantic_authority(client, runtime_role).await?;
 	verify_manifest_contracts(client, migration_role, runtime_role).await
 }
 
