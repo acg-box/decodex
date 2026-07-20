@@ -787,18 +787,18 @@ BEGIN
 			'position',member.position,'account_id',member.account_id,'disposition',member.disposition,
 			'sticky',member.sticky,'blockers',member.blockers) ORDER BY member.position)
 			FROM decodex.routing_snapshot_members AS member WHERE member.snapshot_id=snapshot_row.snapshot_id),
-		'quota_facts',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(quota)-'decision_id'-'snapshot_id'
+		'quota_facts',(SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(quota.*)-'decision_id'-'snapshot_id'
 			ORDER BY member.position,quota.position)
 			FROM decodex.routing_decision_quota_refs AS quota
 			JOIN decodex.routing_decision_member_refs AS member USING(decision_id,account_id)
 			WHERE quota.decision_id=decision_uuid),
 		'capability_facts',(SELECT pg_catalog.jsonb_agg(
-			pg_catalog.to_jsonb(capability)-'decision_id'-'snapshot_id' ORDER BY member.position,capability.position)
+			pg_catalog.to_jsonb(capability.*)-'decision_id'-'snapshot_id' ORDER BY member.position,capability.position)
 			FROM decodex.routing_decision_capability_refs AS capability
 			JOIN decodex.routing_decision_member_refs AS member USING(decision_id,account_id)
 			WHERE capability.decision_id=decision_uuid),
 		'exclusions',(SELECT COALESCE(pg_catalog.jsonb_agg(
-			pg_catalog.to_jsonb(exclusion)-'decision_id' ORDER BY member_position,window_class),'[]'::jsonb)
+			pg_catalog.to_jsonb(exclusion.*)-'decision_id' ORDER BY member_position,window_class),'[]'::jsonb)
 			FROM decodex.routing_decision_exclusions AS exclusion WHERE decision_id=decision_uuid));
 	effect:=core||pg_catalog.jsonb_build_object('effect_digest_source',core::text,'effect_digest',
 		pg_catalog.encode(public.digest(pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'));
