@@ -1053,17 +1053,17 @@ BEGIN
 			evidence.process_id,evidence.schema_fingerprint,member.account_id=sticky_account,blockers);
 		INSERT INTO decodex.routing_snapshot_quota_facts
 		SELECT new_snapshot_id,member.account_id,definition.position,definition.window_class,
-			definition.duration_minutes,quota.revision,quota.remaining_percent,
-			CASE WHEN quota.resets_at IS NULL THEN NULL ELSE
-				(extract(epoch FROM quota.resets_at)*1000000)::bigint END,
-			CASE WHEN quota.observed_at IS NULL THEN NULL ELSE
-				(extract(epoch FROM quota.observed_at)*1000000)::bigint END,quota.confidence
+			definition.duration_minutes,quota_window.revision,quota_window.remaining_percent,
+			CASE WHEN quota_window.resets_at IS NULL THEN NULL ELSE
+				(extract(epoch FROM quota_window.resets_at)*1000000)::bigint END,
+			CASE WHEN quota_window.observed_at IS NULL THEN NULL ELSE
+				(extract(epoch FROM quota_window.observed_at)*1000000)::bigint END,quota_window.confidence
 		FROM (VALUES (1::smallint,'five_hour'::decodex.quota_window_class,300::smallint),
 			(2::smallint,'seven_day'::decodex.quota_window_class,10080::smallint))
 			AS definition(position,window_class,duration_minutes)
-		LEFT JOIN decodex.quota_windows AS quota ON quota.account_id=member.account_id
-			AND quota.window_class=definition.window_class
-			AND quota.duration_minutes=definition.duration_minutes;
+		LEFT JOIN decodex.quota_windows AS quota_window ON quota_window.account_id=member.account_id
+			AND quota_window.window_class=definition.window_class
+			AND quota_window.duration_minutes=definition.duration_minutes;
 		INSERT INTO decodex.routing_snapshot_capability_facts
 		SELECT new_snapshot_id,member.account_id,definition.position,definition.capability,
 			required.capability IS NOT NULL,actual.state
