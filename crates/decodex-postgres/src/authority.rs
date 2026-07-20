@@ -3890,11 +3890,7 @@ struct SemanticAuthorityEvidence {
 
 impl SemanticAuthorityEvidence {
 	fn new() -> Self {
-		Self {
-			predicates: Vec::new(),
-			unsafe_failure: false,
-			incompatible_failure: false,
-		}
+		Self { predicates: Vec::new(), unsafe_failure: false, incompatible_failure: false }
 	}
 
 	fn record_unsafe(&mut self, name: &'static str, passed: bool) {
@@ -4185,9 +4181,8 @@ async fn inspect_function_contract(
 	let mut execute_authority_matches = true;
 
 	for contract in &FUNCTION_CONTRACTS {
-		let Some(row) = client
-			.query_opt(FUNCTION_CONTRACT_SQL, &[&contract.lookup_signature])
-			.await?
+		let Some(row) =
+			client.query_opt(FUNCTION_CONTRACT_SQL, &[&contract.lookup_signature]).await?
 		else {
 			exact_inventory = false;
 			continue;
@@ -4340,9 +4335,7 @@ async fn semantic_authority_evidence(
 		.map(|contract| contract.lookup_signature)
 		.chain(ALLOWED_EXECUTION_DEPENDENCIES)
 		.collect::<Vec<_>>();
-	let execution = client
-		.query_one(EXECUTION_PATH_CONTRACT_SQL, &[&allowed_functions])
-		.await?;
+	let execution = client.query_one(EXECUTION_PATH_CONTRACT_SQL, &[&allowed_functions]).await?;
 	for (name, index) in [
 		("exact_trigger_inventory", 0),
 		("no_relation_rules", 1),
@@ -4537,9 +4530,8 @@ mod tests {
 			.split_once("\n    END AS key")
 			.expect("trigger identity case ends")
 			.0;
-		let (internal_identity, user_identity) = identities
-			.split_once("\n      ELSE ")
-			.expect("trigger identities are disjoint");
+		let (internal_identity, user_identity) =
+			identities.split_once("\n      ELSE ").expect("trigger identities are disjoint");
 		assert!(internal_identity.contains(
 			"pg_catalog.jsonb_build_array(\n        relation_namespace.nspname,\n        relation.relname,\n        constraint_key.key,\n        function_key.key\n      )"
 		));
@@ -4661,9 +4653,7 @@ mod tests {
 			"dependency.kind,\n      dependency.identity,\n      dependency.dependency_type,\n      dependency.reference_class,\n      dependency.reference_key"
 		));
 		assert_eq!(
-			contracts
-				.matches("pg_catalog.jsonb_build_array(dependency.resolved)")
-				.count(),
+			contracts.matches("pg_catalog.jsonb_build_array(dependency.resolved)").count(),
 			2
 		);
 	}
@@ -4731,16 +4721,17 @@ mod tests {
 	fn runtime_session_event_authority_distinguishes_references_from_ownership() {
 		assert_eq!(
 			RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION
-				.matches("CREATE OR REPLACE FUNCTION decodex.enforce_runtime_session_event_namespace()")
+				.matches(
+					"CREATE OR REPLACE FUNCTION decodex.enforce_runtime_session_event_namespace()"
+				)
 				.count(),
 			1
 		);
 		assert!(!RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION.contains("CREATE TRIGGER"));
 		assert!(!RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION.contains("DROP TRIGGER"));
-		let source = super::canonical_safety_function_source(
-			"enforce_runtime_session_event_namespace",
-		)
-		.expect("RuntimeSession event authority has canonical migration source");
+		let source =
+			super::canonical_safety_function_source("enforce_runtime_session_event_namespace")
+				.expect("RuntimeSession event authority has canonical migration source");
 		assert!(source.contains("ownership_path CONSTANT pg_catalog.jsonpath := '$.** ? ("));
 
 		for ownership_marker in [
@@ -4771,7 +4762,10 @@ mod tests {
 		assert_eq!(source.matches("exists(@.account_snapshot_id)").count(), 2);
 		assert_eq!(source.matches("jsonb_path_exists(NEW.payload, ownership_path)").count(), 2);
 		assert_eq!(source.matches("jsonb_path_exists(OLD.payload, ownership_path)").count(), 2);
-		assert_eq!(source.matches("jsonb_path_exists(activity.payload, ownership_path)").count(), 2);
+		assert_eq!(
+			source.matches("jsonb_path_exists(activity.payload, ownership_path)").count(),
+			2
+		);
 		for non_owning_named_wrapper in [
 			"exists(@.runtime_session)",
 			"exists(@.runtime_session_snapshot)",
@@ -4780,9 +4774,9 @@ mod tests {
 		] {
 			assert!(!source.contains(non_owning_named_wrapper), "{non_owning_named_wrapper}");
 		}
-		assert!(source.contains(
-			"WHEN invalid_text_representation OR numeric_value_out_of_range THEN"
-		));
+		assert!(
+			source.contains("WHEN invalid_text_representation OR numeric_value_out_of_range THEN")
+		);
 		assert!(source.contains("RuntimeSession event namespace has unexpected trigger relation"));
 		assert!(source.contains("NEW.payload IS DISTINCT FROM OLD.payload"));
 	}
@@ -4825,10 +4819,9 @@ mod tests {
 
 	#[test]
 	fn event_namespace_safety_functions_branch_before_relation_specific_fields() {
-		for function_name in [
-			"enforce_continuation_event_namespace",
-			"enforce_waiting_usage_wake_event_namespace",
-		] {
+		for function_name in
+			["enforce_continuation_event_namespace", "enforce_waiting_usage_wake_event_namespace"]
+		{
 			let source = super::canonical_safety_function_source(function_name)
 				.unwrap_or_else(|| panic!("event namespace body is unresolved: {function_name}"));
 			let activity = source
