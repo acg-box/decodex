@@ -699,7 +699,9 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
             POSTGRES_STORE_TEST.digest_constants_from_source(counterexample)
         with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
-            POSTGRES_STORE_TEST.normalized_digest_source(counterexample)
+            POSTGRES_STORE_TEST.normalized_digest_source(
+                counterexample, {"schema", "configured_authority"}
+            )
 
     def test_phase_fields_distinguish_derivation_from_acceptance(self):
         phase_b_binding = {"head": "c" * 40, "tree": "d" * 40}
