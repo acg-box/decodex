@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -100,6 +101,28 @@ def runtime_authority(database):
 
 
 class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
+    def test_secret_logging_reader_consumes_coalesced_pipe_frames(self):
+        read_descriptor, write_descriptor = os.pipe()
+        try:
+            expected = (
+                "panic|panic|none|off|-1|-1|0|0|0|0|off|off|off|off|off|off|off|off|stderr",
+                "XY1272_SECRET_LOGGING_READY",
+            )
+            payload = ("\n".join(expected) + "\n").encode("ascii")
+            self.assertEqual(os.write(write_descriptor, payload), len(payload))
+            os.close(write_descriptor)
+            write_descriptor = -1
+
+            frames = POSTGRES_STORE_TEST._read_bounded_secret_logging_frames(
+                read_descriptor, deadline=time.monotonic() + 1.0
+            )
+        finally:
+            os.close(read_descriptor)
+            if write_descriptor >= 0:
+                os.close(write_descriptor)
+
+        self.assertEqual(frames, expected)
+
     def artifact_failure(self, document):
         artifact = json.dumps(document, separators=(",", ":")).encode()
         with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
@@ -642,26 +665,28 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         ]
         before = source(0x00, 0x11)
         after = source(0xAA, 0xBB)
+        expected_digests = {"schema": "00" * 32, "authority": "11" * 32}
         self.assertEqual(POSTGRES_STORE_TEST.digest_constants_from_source(after), {
             "schema": "aa" * 32,
             "configured_authority": "bb" * 32,
         })
         POSTGRES_STORE_TEST.require_digest_only_authority_source(
-            before, after, mismatches
+            before, after, mismatches, expected_digests
         )
         POSTGRES_STORE_TEST.require_phase_b_changed_paths([
             "crates/decodex-postgres/src/authority.rs"
-        ])
+        ], mismatches)
 
         with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
             POSTGRES_STORE_TEST.require_digest_only_authority_source(
-                before, after + "unauthorized source delta\n", mismatches
+                before, after + "unauthorized source delta\n", mismatches,
+                expected_digests,
             )
         with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
             POSTGRES_STORE_TEST.require_phase_b_changed_paths([
                 "crates/decodex-postgres/src/authority.rs",
                 "scripts/vnext/postgres_store_test.py",
-            ])
+            ], mismatches)
 
         hex_comment = ", ".join(["0xaa"] * 32)
         counterexample = after.replace(

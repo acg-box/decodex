@@ -45,6 +45,55 @@ GIT_COMMIT_MAX_BYTES = 64 * 1024
 GIT_STATUS_MAX_BYTES = 64 * 1024
 GIT_PATH_LIST_MAX_BYTES = 64 * 1024
 GIT_AUTHORITY_SOURCE_MAX_BYTES = 512 * 1024
+SECRET_LOGGING_READY_MARKER = "XY1272_SECRET_LOGGING_READY"
+SECRET_SQL_DONE_MARKER = "XY1272_SECRET_SQL_DONE"
+SECRET_LOGGING_READY_TIMEOUT_SECONDS = 10.0
+SECRET_LOGGING_FRAME_MAX_BYTES = 256
+SECRET_LOGGING_HANDSHAKE_MAX_BYTES = 512
+SECRET_LOGGING_EXPECTED_FRAMES = (
+	"panic|panic|none|off|-1|-1|0|0|0|0|off|off|off|off|off|off|off|off|stderr",
+	SECRET_LOGGING_READY_MARKER,
+)
+SECRET_LOGGING_PRELUDE = (
+	"SET log_min_error_statement=PANIC;\n"
+	"SET log_min_messages=PANIC;\n"
+	"SET log_statement=none;\n"
+	"SET log_duration=off;\n"
+	"SET log_min_duration_statement=-1;\n"
+	"SET log_min_duration_sample=-1;\n"
+	"SET log_statement_sample_rate=0;\n"
+	"SET log_transaction_sample_rate=0;\n"
+	"SET log_parameter_max_length=0;\n"
+	"SET log_parameter_max_length_on_error=0;\n"
+	"SET debug_print_parse=off;\n"
+	"SET debug_print_rewritten=off;\n"
+	"SET debug_print_plan=off;\n"
+	"SET log_parser_stats=off;\n"
+	"SET log_planner_stats=off;\n"
+	"SET log_executor_stats=off;\n"
+	"SET log_statement_stats=off;\n"
+	"SELECT pg_catalog.concat_ws('|',"
+	"pg_catalog.current_setting('log_min_error_statement'),"
+	"pg_catalog.current_setting('log_min_messages'),"
+	"pg_catalog.current_setting('log_statement'),"
+	"pg_catalog.current_setting('log_duration'),"
+	"pg_catalog.current_setting('log_min_duration_statement'),"
+	"pg_catalog.current_setting('log_min_duration_sample'),"
+	"pg_catalog.current_setting('log_statement_sample_rate'),"
+	"pg_catalog.current_setting('log_transaction_sample_rate'),"
+	"pg_catalog.current_setting('log_parameter_max_length'),"
+	"pg_catalog.current_setting('log_parameter_max_length_on_error'),"
+	"pg_catalog.current_setting('debug_print_parse'),"
+	"pg_catalog.current_setting('debug_print_rewritten'),"
+	"pg_catalog.current_setting('debug_print_plan'),"
+	"pg_catalog.current_setting('log_parser_stats'),"
+	"pg_catalog.current_setting('log_planner_stats'),"
+	"pg_catalog.current_setting('log_executor_stats'),"
+	"pg_catalog.current_setting('log_statement_stats'),"
+	"pg_catalog.current_setting('logging_collector'),"
+	"pg_catalog.current_setting('log_destination'));\n"
+	f"\\echo {SECRET_LOGGING_READY_MARKER}\n"
+).encode("ascii")
 AUTHORITY_DIGEST_CONSTANTS = (
 	("schema", "SCHEMA_CONTRACT_SHA256"),
 	("configured_authority", "CONFIGURED_AUTHORITY_SHA256"),
@@ -1181,7 +1230,7 @@ def run_blob_session_restart_contract(
 
 
 def _reap_live_doctor_child(
-	process: subprocess.Popen[str], child: str,
+	process: subprocess.Popen[str] | subprocess.Popen[bytes], child: str,
 ) -> HarnessCorruption | None:
 	"""Bound termination and reap attempts without abandoning fallback cleanup."""
 	diagnostics: list[str] = []
@@ -1245,6 +1294,97 @@ def _raise_child_cleanup_corruption(cleanup: HarnessCorruption | None) -> None:
 	if isinstance(active_error, Exception):
 		raise StageActionFailure(active_error, (cleanup,)) from active_error
 	raise cleanup
+
+
+def _write_pipe_bytes(descriptor: int, payload: bytes) -> None:
+	view = memoryview(payload)
+	while view:
+		written = os.write(descriptor, view)
+		if written <= 0:
+			raise OSError("pipe write made no progress")
+		view = view[written:]
+
+
+def _read_bounded_secret_logging_frames(
+	descriptor: int, *, deadline: float
+) -> tuple[str, ...]:
+	"""Read the exact newline-framed logging handshake without text buffering."""
+	buffer = bytearray()
+	frames: list[str] = []
+	total_bytes = 0
+	while len(frames) < len(SECRET_LOGGING_EXPECTED_FRAMES):
+		terminator = buffer.find(b"\n")
+		if terminator >= 0:
+			if terminator == 0 or terminator > SECRET_LOGGING_FRAME_MAX_BYTES:
+				raise TestFailure(
+					"secret-bearing PostgreSQL logging readiness framing is invalid"
+				)
+			frame = bytes(buffer[:terminator])
+			del buffer[:terminator + 1]
+			if any(byte < 0x20 or byte > 0x7e for byte in frame):
+				raise TestFailure(
+					"secret-bearing PostgreSQL logging readiness framing is invalid"
+				)
+			frames.append(frame.decode("ascii"))
+			if len(frames) == len(SECRET_LOGGING_EXPECTED_FRAMES):
+				if buffer:
+					raise TestFailure(
+						"secret-bearing PostgreSQL logging readiness framing is invalid"
+					)
+				return tuple(frames)
+			continue
+		if len(buffer) > SECRET_LOGGING_FRAME_MAX_BYTES:
+			raise TestFailure(
+				"secret-bearing PostgreSQL logging readiness exceeded framing bounds"
+			)
+		remaining = deadline - time.monotonic()
+		if remaining <= 0:
+			raise TestFailure("secret-bearing PostgreSQL logging readiness timed out")
+		try:
+			readable, _, _ = select.select([descriptor], [], [], remaining)
+		except (OSError, ValueError):
+			raise TestFailure(
+				"secret-bearing PostgreSQL logging readiness could not be read"
+			) from None
+		if not readable:
+			raise TestFailure("secret-bearing PostgreSQL logging readiness timed out")
+		try:
+			chunk = os.read(
+				descriptor,
+				min(4096, SECRET_LOGGING_HANDSHAKE_MAX_BYTES + 1 - total_bytes),
+			)
+		except OSError:
+			raise TestFailure(
+				"secret-bearing PostgreSQL logging readiness could not be read"
+			) from None
+		if not chunk:
+			raise TestFailure(
+				"secret-bearing PostgreSQL logging readiness ended before completion"
+			)
+		total_bytes += len(chunk)
+		if total_bytes > SECRET_LOGGING_HANDSHAKE_MAX_BYTES:
+			raise TestFailure(
+				"secret-bearing PostgreSQL logging readiness exceeded framing bounds"
+			)
+		buffer.extend(chunk)
+	raise HarnessCorruption("secret logging frame reader exited without a result")
+
+
+def _establish_secret_logging_guard(
+	stdin_descriptor: int, stdout_descriptor: int
+) -> None:
+	try:
+		_write_pipe_bytes(stdin_descriptor, SECRET_LOGGING_PRELUDE)
+	except OSError:
+		raise TestFailure(
+			"secret-bearing PostgreSQL logging prelude could not be written"
+		) from None
+	frames = _read_bounded_secret_logging_frames(
+		stdout_descriptor,
+		deadline=time.monotonic() + SECRET_LOGGING_READY_TIMEOUT_SECONDS,
+	)
+	if frames != SECRET_LOGGING_EXPECTED_FRAMES:
+		raise TestFailure("secret-bearing PostgreSQL logging is not fail-closed")
 
 
 class _LiveDoctorMutationSqlExecutor:
@@ -1317,13 +1457,10 @@ class _LiveDoctorMutationSqlExecutor:
 	def _execute_secret(
 		self, database: str, sql: str, env: dict[str, str]
 	) -> None:
-		ready_marker = "XY1272_SECRET_LOGGING_READY"
-		done_marker = "XY1272_SECRET_SQL_DONE"
 		try:
 			process = subprocess.Popen(
 				["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-d", database],
-				text=True,
-				bufsize=1,
+				bufsize=0,
 				stdin=subprocess.PIPE,
 				stdout=subprocess.PIPE,
 				stderr=subprocess.PIPE,
@@ -1338,72 +1475,25 @@ class _LiveDoctorMutationSqlExecutor:
 			if process.stdin is None or process.stdout is None or process.stderr is None:
 				raise TestFailure("secret live-doctor mutation pipes are unavailable")
 			try:
-				process.stdin.write(
-					"SET log_min_error_statement=PANIC;\n"
-					"SET log_min_messages=PANIC;\n"
-					"SET log_statement=none;\n"
-					"SET log_duration=off;\n"
-					"SET log_min_duration_statement=-1;\n"
-					"SET log_min_duration_sample=-1;\n"
-					"SET log_statement_sample_rate=0;\n"
-					"SET log_transaction_sample_rate=0;\n"
-					"SET log_parameter_max_length=0;\n"
-					"SET log_parameter_max_length_on_error=0;\n"
-					"SET debug_print_parse=off;\n"
-					"SET debug_print_rewritten=off;\n"
-					"SET debug_print_plan=off;\n"
-					"SET log_parser_stats=off;\n"
-					"SET log_planner_stats=off;\n"
-					"SET log_executor_stats=off;\n"
-					"SET log_statement_stats=off;\n"
-					"SELECT pg_catalog.concat_ws('|',"
-					"pg_catalog.current_setting('log_min_error_statement'),"
-					"pg_catalog.current_setting('log_min_messages'),"
-					"pg_catalog.current_setting('log_statement'),"
-					"pg_catalog.current_setting('log_duration'),"
-					"pg_catalog.current_setting('log_min_duration_statement'),"
-					"pg_catalog.current_setting('log_min_duration_sample'),"
-					"pg_catalog.current_setting('log_statement_sample_rate'),"
-					"pg_catalog.current_setting('log_transaction_sample_rate'),"
-					"pg_catalog.current_setting('log_parameter_max_length'),"
-					"pg_catalog.current_setting('log_parameter_max_length_on_error'),"
-					"pg_catalog.current_setting('debug_print_parse'),"
-					"pg_catalog.current_setting('debug_print_rewritten'),"
-					"pg_catalog.current_setting('debug_print_plan'),"
-					"pg_catalog.current_setting('log_parser_stats'),"
-					"pg_catalog.current_setting('log_planner_stats'),"
-					"pg_catalog.current_setting('log_executor_stats'),"
-					"pg_catalog.current_setting('log_statement_stats'),"
-					"pg_catalog.current_setting('logging_collector'),"
-					"pg_catalog.current_setting('log_destination'));\n"
-					f"\\echo {ready_marker}\n"
+				stdin_descriptor = process.stdin.fileno()
+				_establish_secret_logging_guard(
+					stdin_descriptor, process.stdout.fileno()
 				)
-				process.stdin.flush()
-				ready, _, _ = select.select([process.stdout], [], [], 10)
-				if not ready:
-					raise TestFailure("secret live-doctor mutation logging check timed out")
-				settings = process.stdout.readline().strip()
-				ready, _, _ = select.select([process.stdout], [], [], 10)
-				if not ready:
-					raise TestFailure("secret live-doctor mutation logging check timed out")
-				if process.stdout.readline().strip() != ready_marker:
-					raise TestFailure("secret live-doctor mutation logging check did not complete")
-				expected = (
-					"panic|panic|none|off|-1|-1|0|0|0|0|off|off|off|off|off|off|off|off|stderr"
-				)
-				if settings != expected:
-					raise TestFailure("secret live-doctor mutation logging is not fail-closed")
-
-				process.stdin.write("\\set VERBOSITY terse\n")
-				# A buffered write can fail after accepting a payload prefix.
-				self._attempt._mark_may_have_dispatched()
-				process.stdin.write(sql)
+				_write_pipe_bytes(stdin_descriptor, b"\\set VERBOSITY terse\n")
+				payload = sql
 				if not sql.rstrip().endswith(";"):
-					process.stdin.write(";")
-				process.stdin.write(f"\n\\echo {done_marker}\n\\quit\n")
-				process.stdin.flush()
+					payload += ";"
+				payload += f"\n\\echo {SECRET_SQL_DONE_MARKER}\n\\quit\n"
+				payload_bytes = payload.encode("utf-8")
+				# A write can fail after accepting a payload prefix.
+				self._attempt._mark_may_have_dispatched()
+				_write_pipe_bytes(stdin_descriptor, payload_bytes)
 				stdout, stderr = process.communicate(timeout=10)
-				if process.returncode != 0 or done_marker not in stdout.splitlines() or stderr:
+				if (
+					process.returncode != 0
+					or SECRET_SQL_DONE_MARKER.encode("ascii") not in stdout.splitlines()
+					or stderr
+				):
 					raise TestFailure("secret live-doctor mutation command failed")
 				self._attempt._mark_command_acknowledged()
 			except subprocess.TimeoutExpired as error:
@@ -1544,83 +1634,41 @@ def psql_secret(
 	database: str, sql: str, env: dict[str, str], *, expect_failure: bool = False
 ) -> str:
 	"""Execute secret-bearing SQL only after one live session disables statement logging."""
-	ready_marker = "XY1272_SECRET_LOGGING_READY"
-	done_marker = "XY1272_SECRET_SQL_DONE"
 	process = subprocess.Popen(
 		["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-d", database],
-		text=True,
-		bufsize=1,
+		bufsize=0,
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
 		stderr=subprocess.PIPE,
 		env=env,
 		cwd=REPO_ROOT,
 	)
-	if process.stdin is None or process.stdout is None or process.stderr is None:
-		raise TestFailure("secret-bearing PostgreSQL fixture pipes are unavailable")
 	try:
-		process.stdin.write(
-			"SET log_min_error_statement=PANIC;\n"
-			"SET log_min_messages=PANIC;\n"
-			"SET log_statement=none;\n"
-			"SET log_duration=off;\n"
-			"SET log_min_duration_statement=-1;\n"
-			"SET log_min_duration_sample=-1;\n"
-			"SET log_statement_sample_rate=0;\n"
-			"SET log_transaction_sample_rate=0;\n"
-			"SET log_parameter_max_length=0;\n"
-			"SET log_parameter_max_length_on_error=0;\n"
-			"SET debug_print_parse=off;\n"
-			"SET debug_print_rewritten=off;\n"
-			"SET debug_print_plan=off;\n"
-			"SET log_parser_stats=off;\n"
-			"SET log_planner_stats=off;\n"
-			"SET log_executor_stats=off;\n"
-			"SET log_statement_stats=off;\n"
-			"SELECT pg_catalog.concat_ws('|',"
-			"pg_catalog.current_setting('log_min_error_statement'),"
-			"pg_catalog.current_setting('log_min_messages'),"
-			"pg_catalog.current_setting('log_statement'),"
-			"pg_catalog.current_setting('log_duration'),"
-			"pg_catalog.current_setting('log_min_duration_statement'),"
-			"pg_catalog.current_setting('log_min_duration_sample'),"
-			"pg_catalog.current_setting('log_statement_sample_rate'),"
-			"pg_catalog.current_setting('log_transaction_sample_rate'),"
-			"pg_catalog.current_setting('log_parameter_max_length'),"
-			"pg_catalog.current_setting('log_parameter_max_length_on_error'),"
-			"pg_catalog.current_setting('debug_print_parse'),"
-			"pg_catalog.current_setting('debug_print_rewritten'),"
-			"pg_catalog.current_setting('debug_print_plan'),"
-			"pg_catalog.current_setting('log_parser_stats'),"
-			"pg_catalog.current_setting('log_planner_stats'),"
-			"pg_catalog.current_setting('log_executor_stats'),"
-			"pg_catalog.current_setting('log_statement_stats'),"
-			"pg_catalog.current_setting('logging_collector'),"
-			"pg_catalog.current_setting('log_destination'));\n"
-			f"\\echo {ready_marker}\n"
+		if process.stdin is None or process.stdout is None or process.stderr is None:
+			raise TestFailure("secret-bearing PostgreSQL fixture pipes are unavailable")
+		stdin_descriptor = process.stdin.fileno()
+		_establish_secret_logging_guard(
+			stdin_descriptor, process.stdout.fileno()
 		)
-		process.stdin.flush()
-		ready, _, _ = select.select([process.stdout], [], [], 10)
-		if not ready:
-			raise TestFailure("secret-bearing PostgreSQL fixture logging check timed out")
-		settings = process.stdout.readline().strip()
-		if process.stdout.readline().strip() != ready_marker:
-			raise TestFailure("secret-bearing PostgreSQL fixture logging check did not complete")
-		expected = "panic|panic|none|off|-1|-1|0|0|0|0|off|off|off|off|off|off|off|off|stderr"
-		if settings != expected:
-			raise TestFailure("secret-bearing PostgreSQL fixture logging is not fail-closed")
-
-		process.stdin.write("\\set VERBOSITY terse\n")
+		control = b"\\set VERBOSITY terse\n"
 		if expect_failure:
-			process.stdin.write("\\set ON_ERROR_STOP off\n")
-		process.stdin.write(sql)
+			control += b"\\set ON_ERROR_STOP off\n"
+		_write_pipe_bytes(stdin_descriptor, control)
+		payload = sql
 		if not sql.rstrip().endswith(";"):
-			process.stdin.write(";")
-		process.stdin.write(f"\n\\echo {done_marker}\n\\quit\n")
-		process.stdin.flush()
-		stdout, stderr = process.communicate(timeout=10)
+			payload += ";"
+		payload += f"\n\\echo {SECRET_SQL_DONE_MARKER}\n\\quit\n"
+		_write_pipe_bytes(stdin_descriptor, payload.encode("utf-8"))
+		stdout_bytes, stderr_bytes = process.communicate(timeout=10)
+		try:
+			stdout = stdout_bytes.decode("utf-8")
+			stderr = stderr_bytes.decode("utf-8")
+		except UnicodeDecodeError:
+			raise TestFailure(
+				"secret-bearing PostgreSQL fixture emitted invalid output"
+			) from None
 		lines = stdout.splitlines()
-		if process.returncode != 0 or done_marker not in lines:
+		if process.returncode != 0 or SECRET_SQL_DONE_MARKER not in lines:
 			raise TestFailure("secret-bearing PostgreSQL fixture command failed")
 		if expect_failure:
 			if "ERROR:" not in stderr:
@@ -1628,15 +1676,15 @@ def psql_secret(
 			return ""
 		if stderr:
 			raise TestFailure("secret-bearing PostgreSQL fixture emitted diagnostics")
-		return "\n".join(line for line in lines if line != done_marker).strip()
+		return "\n".join(
+			line for line in lines if line != SECRET_SQL_DONE_MARKER
+		).strip()
 	except subprocess.TimeoutExpired as error:
-		process.kill()
-		process.communicate()
 		raise TestFailure("secret-bearing PostgreSQL fixture command timed out") from error
 	finally:
-		if process.poll() is None:
-			process.terminate()
-			process.wait(timeout=10)
+		_raise_child_cleanup_corruption(
+			_reap_live_doctor_child(process, "secret-bearing PostgreSQL fixture")
+		)
 
 
 def psql_as(role: str, database: str, sql: str, env: dict[str, str]) -> str:
