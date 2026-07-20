@@ -167,10 +167,16 @@ eligible probe failure still attempts it, and the next shared-fixture probe depe
 restoration. Assertion/type/key failures, invalid stage/report state, source-binding failures,
 redaction failures, and other unexpected exceptions are harness corruption and stop new scheduling.
 A private work directory is
-cleaned directly when preflight fails before cluster start, with cleanup failure remaining
-subordinate; after PostgreSQL has started, teardown and final stage-report emission still run. The
-semantic/stage failure is selected before aggregate output and report emission, so cleanup or
-emission failures are recorded without replacing it. The
+created with mode 0700 under `/private/tmp` by default on macOS; the existing validated
+`DECODEX_TEST_TEMP_ROOT` override remains available. Before cluster initialization, the harness
+rejects any resolved workspace whose final `.s.PGSQL.<port>` pathname plus terminating NUL exceeds
+the portable 104-byte Unix-socket bound. The directory is cleaned directly when preflight fails
+before cluster start, with cleanup failure remaining subordinate. If `pg_ctl start` fails, its
+primary `TestFailure` includes a bounded, secret-marker-redacted tail of `postgres.log` before the
+stopped cluster is removed; no log or cluster retention is introduced. After PostgreSQL has
+started, teardown and final stage-report emission still run. The semantic/stage failure is selected
+before aggregate output and report emission, so cleanup or emission failures are recorded without
+replacing it. The
 `decodex/postgres-aggregate-stage-report/1` document is emitted only by the normal aggregate;
 focused and Phase A/B capture modes preserve their direct output/receipt behavior and never emit it.
 

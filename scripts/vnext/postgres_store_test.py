@@ -36,6 +36,9 @@ AUTHORITY_CAPTURE_RESTORE_EDGES = (
 )
 AUTHORITY_CANDIDATE_SCHEMA = "decodex/postgres-authority-candidate/2"
 AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES = 128 * 1024
+POSTGRES_START_LOG_EXCERPT_MAX_BYTES = 4 * 1024
+# Darwin's sockaddr_un.sun_path is 104 bytes, including the terminating NUL.
+POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES = 104
 GIT_READ_TIMEOUT_SECONDS = 5.0
 GIT_METADATA_MAX_BYTES = 4 * 1024
 GIT_COMMIT_MAX_BYTES = 64 * 1024
@@ -1813,6 +1816,34 @@ def bounded_redacted_text(
 	redacted = redacted_text(value, secret_markers)
 	truncated = len(redacted) > limit
 	return redacted[:limit], truncated
+
+
+def postgres_start_failure(
+	error: TestFailure, log_path: Path, secret_markers: tuple[str, ...]
+) -> TestFailure:
+	"""Retain one bounded, redacted startup diagnostic in the primary failure."""
+	try:
+		with log_path.open("rb") as log_file:
+			size = os.fstat(log_file.fileno()).st_size
+			offset = max(0, size - POSTGRES_START_LOG_EXCERPT_MAX_BYTES)
+			log_file.seek(offset)
+			payload = log_file.read(POSTGRES_START_LOG_EXCERPT_MAX_BYTES)
+	except OSError as diagnostic_error:
+		excerpt = f"<unavailable: {type(diagnostic_error).__name__}>"
+		truncated = False
+	else:
+		excerpt, text_truncated = bounded_redacted_text(
+			payload.decode("utf-8", errors="replace"),
+			secret_markers,
+			POSTGRES_START_LOG_EXCERPT_MAX_BYTES,
+		)
+		truncated = offset > 0 or text_truncated
+		if not excerpt:
+			excerpt = "<empty>"
+	return TestFailure(
+		f"{error}\nPostgreSQL startup log excerpt"
+		f"{' (tail truncated)' if truncated else ''}:\n{excerpt}"
+	)
 
 
 def bounded_binding(
@@ -5074,6 +5105,14 @@ def main() -> int | AuthorityCandidatePublication:
 					"DECODEX_TEST_TEMP_ROOT must be a real existing directory"
 				)
 			temp_root = requested_root.resolve(strict=True)
+		elif sys.platform == "darwin":
+			default_root = Path("/private/tmp")
+			if not default_root.is_dir():
+				raise TestFailure(
+					"default macOS PostgreSQL temporary root is unavailable; set "
+					"DECODEX_TEST_TEMP_ROOT to a short existing absolute directory"
+				)
+			temp_root = default_root.resolve(strict=True)
 		tools: dict[str, Path] = {}
 		for name in ("initdb", "pg_ctl", "psql", "pg_dump", "pg_restore"):
 			location = shutil.which(name)
@@ -5136,6 +5175,15 @@ def main() -> int | AuthorityCandidatePublication:
 			data_dir = work / "postgres"
 			socket_dir = work / "socket"
 			log_path = work / "postgres.log"
+			socket_path = socket_dir / f".s.PGSQL.{port}"
+			socket_path_bytes = len(os.fsencode(socket_path)) + 1
+			if socket_path_bytes > POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES:
+				raise TestFailure(
+					"PostgreSQL Unix socket path is too long: "
+					f"{socket_path_bytes} bytes including the terminating NUL exceeds "
+					f"the portable {POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES}-byte limit; "
+					"set DECODEX_TEST_TEMP_ROOT to a shorter absolute directory"
+				)
 			role_setting_canary_guc = f"xy1272.canary_{secrets.token_hex(16)}"
 			role_setting_secret_canary = secrets.token_hex(32)
 			env = os.environ.copy()
@@ -5186,20 +5234,27 @@ def main() -> int | AuthorityCandidatePublication:
 				env,
 			)
 			cluster_start_attempted = True
-			run(
-				[
-					"pg_ctl",
-					"-D",
-					str(data_dir),
-					"-l",
-					str(log_path),
-					"-o",
-					f"-k {socket_dir} -p {port} -h '' -F",
-					"-w",
-					"start",
-				],
-				env,
-			)
+			try:
+				run(
+					[
+						"pg_ctl",
+						"-D",
+						str(data_dir),
+						"-l",
+						str(log_path),
+						"-o",
+						f"-k {socket_dir} -p {port} -h '' -F",
+						"-w",
+						"start",
+					],
+					env,
+				)
+			except TestFailure as error:
+				raise postgres_start_failure(
+					error,
+					log_path,
+					(role_setting_canary_guc, role_setting_secret_canary),
+				) from error
 			cluster_started = True
 			roles = [MIGRATION_ROLE, RUNTIME_ROLE]
 			if not authority_mode:
