@@ -174,6 +174,32 @@ authoritative request shape, Rust authorization wrapper used as provenance, glob
 exclusion -> RuntimeSession -> decision composition are superseded evidence only. They must not
 be repaired, revived, or wholesale transplanted.
 
+XY-1372 private-artifact capability evidence accepted 2026-07-21 freezes one
+`decodex-core` Unix authority. It uses descriptor-pinned bounded capture and one semantic
+publication, retirement, and collection state machine with private macOS
+`renameatx_np(RENAME_EXCL)` and Linux `renameat2(RENAME_NOREPLACE)` shims. A
+`PrivateArtifactDirectory` can capture and publish create-new artifacts. Only a
+Decodex-created, operation-unique `OwnedEphemeralArtifactRoot` can grant retirement authority.
+Retirement moves the whole owned root into a controlled, unique, same-device quarantine before
+`QuarantinedPrivateArtifact` can grant collection authority. A path, retained descriptor, or
+ordinary Decodex child never gains retirement authority by observation.
+
+The operation token and expected digest are durable before the first namespace effect. Staging
+occurs in the retained target parent. Every no-replace effect requires exact post-effect
+verification and synchronization before it grants a success capability. Ambiguous or unexpected
+results preserve the stage, target, active root, or quarantine for targeted reconciliation. No
+publication, retirement, error, or rollback path may unlink one of those objects. Producer stop
+means tracked leader exit plus tracked process-group absence. Exclusive maintenance means
+cooperative Decodex quiescence; it is not containment of hostile same-UID code. Collection is
+separate maintenance and cannot determine whether capture, publication, or attestation succeeded.
+
+The exact supported and excluded environments, proof lineage, typed stops, and no-overclaim
+boundary are recorded in the [XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md).
+Unsupported or unproven semantics require a future enablement gate. XY-1373 must receive fresh
+exact-candidate review before XY-1371 implementation resumes. The accepted XY-1371 implementation
+must exist before XY-1369 or XY-1370 resumes, and both accepted preflight receipts remain required
+before a new XY-1363 live-effect decision.
+
 The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
 repository-effect owner. Its in-process repository executor is a correctness,
 determinism, and admitted-authority-continuity boundary, not isolation from malicious
