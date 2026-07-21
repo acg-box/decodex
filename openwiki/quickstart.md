@@ -18,6 +18,7 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
 - [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates, downstream issue ownership, and decision-changing falsifiers.
 - [XY-1262 Codex runtime proof](evidence/vnext-codex-runtime-proof.md): shared-home, ownership, schema, collaboration, cross-account, fallback, crash, and typed-quota evidence for the Codex feasibility gate.
 - [XY-1345 exact-command authority proof](evidence/xy-1345-exact-command-authority.md): corrected pure-PostgreSQL command authority, deterministic/concurrency schedules, privilege/catalog closure, restore receipt, and V9/V10 ownership order.
+- [XY-1372 private-artifact capability evidence](evidence/xy-1372-private-artifact-capabilities.md): accepted exact APFS, OrbStack overlayfs, and OrbStack virtiofs feasibility; no-replace outcomes, preservation, durability boundaries, manifest identities, and future enablement gates.
 - [Lane Authority v2](decisions/lane-authority-v2.md): superseded historical target retained as architecture and incident provenance; C1-C7 are frozen and must not be implemented.
 - [Drift audits](evidence/drift-audits.md): public-safe evidence notes, current MCP remote-control watched claims, reverse checks, validation commands, and stop conditions.
 - [v0.2 freeze receipt](evidence/v0.2-freeze.md): exact trusted tag, cold-config and automation inventory, frozen legacy work, preserved incident evidence, cleanup ownership, and the unresolved SQLite-backup gap.
@@ -269,3 +270,7 @@ XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only
 end-to-end diagnostic matrix.
 Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
 later owners and gates.
+The private-artifact API is also not implemented. Its accepted capability evidence and normative
+contract are frozen in the linked XY-1372 evidence, vNext decision, authority contract, and gate
+manifest. XY-1371 implementation remains blocked until a fresh reviewer accepts the exact XY-1373
+authority candidate.

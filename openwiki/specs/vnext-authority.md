@@ -135,6 +135,192 @@ admission serialize create-only verified publication; transaction B atomically r
 metadata/domain references/evidence, stores the exact response bytes, and completes the fenced
 receipt. Exact replay returns those bytes; conflicting reuse fails before effects.
 
+### Private artifact authority
+
+`decodex-core` owns one semantic Unix private-artifact state machine. It reuses the retained
+descriptor and symlink-free traversal primitives of the Unix path owner. Private macOS and Linux
+shims supply only the platform syscall and synchronization differences. No adapter or downstream
+consumer may implement a second artifact authority.
+
+The capability split is normative:
+
+- `PrivateArtifactDirectory` can capture bounded artifacts and publish create-new artifacts for
+  an admitted absolute operator-owned private directory or an admitted relative DecodexRoot child.
+- `OwnedEphemeralArtifactRoot` grants retirement authority. Decodex can mint it only when Decodex
+  creates one operation-unique, non-reused root below a retained controlled immediate parent.
+- `QuarantinedPrivateArtifact` grants collection authority only after verified whole-root
+  retirement.
+- `ProducerStopped` means that the tracked producer leader has exited and every tracked process
+  group is absent.
+- `ExclusiveMaintenancePermit` represents cooperative Decodex scheduler and namespace quiescence
+  after `ProducerStopped`. It does not isolate the namespace from an escaped or hostile same-UID
+  process.
+
+Opening or capturing a path never grants `OwnedEphemeralArtifactRoot`. A retained descriptor,
+ordinary Decodex child, discovered directory, or caller assertion cannot be upgraded to retirement
+authority.
+
+Final capture, publication, retirement, and collection require `ProducerStopped` and cooperative
+exclusive authority for every Decodex actor that can change the active, stage, target, or
+quarantine namespace. Decodex guarantees descriptor-relative resolution, bounded validation,
+no-clobber publication, and rejection of drift observed under that cooperative boundary. It does
+not guarantee an immutable filesystem snapshot, detection after the final observation,
+identity-conditional unlink, hostile same-UID containment, or secure byte erasure.
+
+#### Bounded capture and second observation
+
+Capture uses retained directory and ancestor descriptors. It applies checked bounds to file and
+directory counts, aggregate and per-file bytes, depth, names, types, identity, ownership, full
+`0o7777` policy modes, link policy, allocations, and one monotonic deadline. Admitted relative
+names contain only normal lexical components. Symbolic links and unsupported special files are
+rejected without following them. Path, name, allocation, and randomness failures return bounded
+redacted typed errors and authorize no cleanup effect.
+
+The state machine is:
+
+```text
+Opened
+-> initial bounded descriptor-relative capture
+-> complete deterministic manifest and returned-byte buffer
+-> final descriptor-relative layout and metadata observation
+-> bounded streaming comparison against the captured bytes
+-> CapturedPrivateArtifact
+```
+
+The final observation reopens each file relative to retained descriptors. It verifies identity,
+type, owner, full mode, link policy, tree layout, and relevant metadata. It compares bytes through
+a fixed-size buffer and requires exact EOF. It does not allocate a second file-sized buffer. With
+checked arithmetic, the combined data-read bound is no more than
+`2 * maximum_total_bytes + maximum_files`, under the same deadline. The second observation proves
+only that the two bounded observed streams are equal under producer teardown and cooperative
+quiescence. No bytes or manifest become `CapturedPrivateArtifact` authority until it succeeds.
+
+#### Create-new publication
+
+Publication follows one state machine:
+
+```text
+TokenKnown
+-> StageCreated
+-> FullyWritten
+-> FileSyncAcknowledged
+-> source identity, policy, and bytes revalidated
+-> atomic no-replace rename
+-> target identity, policy, and bytes verified
+-> every changed parent synchronized
+-> PublishedPrivateArtifact
+```
+
+The following preconditions are mandatory:
+
+1. The durable `ArtifactOperationToken` and expected content digest exist before `StageCreated`,
+   which is the first namespace effect.
+2. The target parent is controlled, retained by descriptor, and on the exact supported
+   filesystem and device.
+3. The stage is created inside that retained target parent. Its descriptor remains open.
+4. `ProducerStopped` and cooperative namespace quiescence hold.
+5. The stage and target parent are on the same supported device.
+6. The retained stage identity, policy, and expected bytes are revalidated immediately before the
+   no-replace syscall.
+
+macOS invokes only `renameatx_np(..., RENAME_EXCL)`. Linux invokes only
+`renameat2(..., RENAME_NOREPLACE)`. After a possible effect, Decodex verifies the target identity,
+policy, and digest and synchronizes every changed parent with the required platform primitive.
+The target pathname is not evidence or receipt authority until all steps grant
+`PublishedPrivateArtifact`.
+
+The result mapping is exact:
+
+| Observation | Required typed result and preservation |
+| --- | --- |
+| The exact no-replace syscall returns `EEXIST`. | `StageRetained(TargetExists)`; retain the stage and leave the destination unchanged. |
+| A pre-effect device check fails or the exact syscall returns `EXDEV`. | `StageRetained(CrossDeviceArtifactFilesystem)`; retain the stage. |
+| The actual platform, filesystem, runtime, mount, or lifecycle is outside the frozen matrix. | `NoEffect(UnsupportedArtifactFilesystem)` before staging, or the equivalent capability-carrying `StageRetained` result after staging. |
+| A pre-effect capability check reports the required no-replace primitive invalid or unsupported, or the exact valid Linux wrapper returns `ENOSYS`. | `NoEffect(UnsupportedNoReplaceSemantics)` or capability-carrying `StageRetained`; never fall back. `EINVAL` from the production valid call is unexpected, not unsupported. |
+| A pre-effect capability check reports required synchronization invalid or unsupported, or the primitive returns `ENOTSUP` or `EOPNOTSUPP` before a namespace effect. | `NoEffect(UnsupportedSynchronizationSemantics)` or capability-carrying `StageRetained`; never fall back. |
+| An error does not match one of the exact cases above. | Preserve its operation and errno as `UnexpectedFilesystemError`; retain every existing source, stage, target, or quarantine. |
+| The rename may have occurred, or source substitution, target verification, or post-effect synchronization is ambiguous or fails. | `PublishedNeedsAttention`; preserve the target, retained stage or mismatch evidence, descriptors, and operation token for targeted reconciliation. |
+| The exact effect, verification, and synchronization complete. | `PublishedPrivateArtifact`. |
+
+An unresolved operation token blocks uncontrolled retry. Read-only targeted reconciliation can use
+only the pre-recorded token and retained facts. There is no fallback to plain `rename`, direct
+final-target writing, `linkat`, check-then-rename, overwrite, move-back, or a second publication
+architecture. No rollback or error path may unlink the target, stage, active root, quarantine,
+source, or any mismatch object.
+
+#### Owned-root retirement
+
+Retirement uses this state machine:
+
+```text
+OwnedEphemeralArtifactRoot
++ ProducerStopped
++ PublishedPrivateArtifact
++ ExclusiveMaintenancePermit
+-> atomic no-replace rename to operation-token quarantine
+-> source and quarantine identity and tree verification
+-> changed-parent synchronization
+-> QuarantinedPrivateArtifact
+```
+
+The root must be Decodex-created, operation-unique, non-reused, and below a retained controlled
+immediate parent. The root, parent, and unique opaque quarantine name must use the same supported
+device. The published receipt must be durable. Decodex must confirm that the quarantine name is
+absent and revalidate the owned-root identity immediately before the exact platform no-replace
+rename. Mount roots, untrusted parents, reused active names, cross-device movement, and unsupported
+semantics stop before retirement.
+
+After a possible effect, Decodex verifies the quarantine identity, complete owned tree, and
+owned-root marker before it synchronizes every changed parent and grants
+`QuarantinedPrivateArtifact`. `EEXIST` from the exact retirement syscall returns a capability-
+carrying `NoEffect(TargetExists)` and preserves the owned root and existing quarantine for targeted
+reconciliation. A pre-effect device mismatch or `EXDEV` returns
+`NoEffect(CrossDeviceArtifactFilesystem)` and preserves the owned root. Unsupported and unexpected
+errors use the exact publication classification and preservation rules. If the effect is ambiguous,
+synchronization fails, or the moved object does not match the owned root, Decodex returns
+`QuarantineRetainedNeedsAttention`. It preserves the quarantine, active root, original retained
+object, or mismatch. It does not move an object back, overwrite another name, or remove an object.
+
+#### Quarantine collection
+
+Collection is a separate destructive maintenance operation:
+
+```text
+QuarantinedPrivateArtifact
++ ExclusiveMaintenancePermit
+-> complete descriptor-relative preflight
+-> destructive descriptor-relative collection
+-> changed-parent synchronization
+-> Collected | CollectionIncomplete
+```
+
+Collection accepts only `QuarantinedPrivateArtifact`, never an active path, generic directory,
+captured artifact, or caller assertion. Partial failure returns `CollectionIncomplete` with an
+observable residual. The default multi-link policy removes only admitted quarantine names. The
+opt-in single-link policy rejects known aliases. Neither policy promises secure erasure.
+Collection completion cannot create, revoke, or replace capture, publication, receipt, schema, or
+attestation authority. A successful attestation remains successful when later collection is
+incomplete; the maintenance residual remains observable and requires its own reconciliation.
+
+#### Frozen platform boundary
+
+The initial supported matrix is exact:
+
+| Environment | Authority boundary |
+| --- | --- |
+| macOS 27.0 build 26A5388g, Darwin 27 arm64, APFS Data `/System/Volumes/Data`, `/dev/disk3s1`, device `16777233` | File `fsync`, successful `F_FULLFSYNC`, changed-parent synchronization, process exit, and separate-process readback were observed. |
+| Docker 29.4.0 under OrbStack kernel `7.0.11-orbstack-00360-gc9bc4d96ac70`, aarch64 overlayfs device `1048589` | Support is limited to the recorded image, configuration, and retained-container lifecycle. File and changed-parent `fsync` plus second-start readback were observed. |
+| The exact OrbStack virtiofs bind backed by the recorded APFS path, statfs type `65735546`, device `35` | Guest file and changed-parent `fsync` plus second-start readback were observed. Guest synchronization does not prove host-storage persistence. |
+| APFS image device `16777240` | This is only the distinct cross-device `EXDEV` fixture. It is not a supported artifact store. |
+| tmpfs device `1048605` | Excluded from the durable matrix. It establishes the recorded rename semantics and expected non-retention only. |
+
+This contract does not claim Docker-daemon restart, VM restart, host reboot, kernel-crash
+recovery, power-loss persistence, hostile same-UID writer containment, other kernels, runtimes,
+mounts or configurations, other APFS volumes, ext4, XFS, Btrfs, remote filesystems, or broader
+overlayfs or virtiofs support. Every unsupported or unproven environment or semantic requires a
+separate accepted enablement gate. The accepted proof and its manifest identities are recorded in
+[XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md).
+
 ### Managed repository authority
 
 The accepted XY-1348 stage-two contract makes PostgreSQL the current durable authority
