@@ -19,7 +19,7 @@ its dependent implementation uses the result.
 | --- | --- |
 | [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence, while XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence. XY-1372 proves the frozen private-artifact platform matrix, XY-1373 owns its repository-authority promotion, and XY-1371 owns the shared implementation prerequisite for XY-1369 and XY-1370. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -42,19 +42,23 @@ planning metadata, not product/runtime identity.
    quota depletion, durable exclusion before fallback, crash-safe exactly-one
    continuation, real resume-denied Context-Pack fallback, all-depleted wait/wakeup
    readback, side-effect reconciliation, and supported Codex Desktop title discovery.
-4. Empty PostgreSQL bootstrap, backup/rollback, and concurrent lease/outbox tests
+4. The accepted XY-1372 private-artifact capability gate, the XY-1373 normative
+   authority freeze, and the later XY-1371 shared implementation gate. XY-1369 and
+   XY-1370 must consume the shared capabilities before XY-1363 can use their
+   published preflight receipts.
+5. Empty PostgreSQL bootstrap, backup/rollback, and concurrent lease/outbox tests
    (XY-1264). The scoped proof choices, measurements, recovery procedure, and downstream
    boundary are recorded in [vNext storage feasibility evidence](../evidence/vnext-storage-feasibility.md).
-5. WebSocket reconnect, cursor resume, command idempotency, and current/previous-minor
+6. WebSocket reconnect, cursor resume, command idempotency, and current/previous-minor
    compatibility tests (XY-1266 and regression owner XY-1300).
-6. Large-history pagination/cache test proving multi-GB history is never eagerly loaded
+7. Large-history pagination/cache test proving multi-GB history is never eagerly loaded
    (XY-1263, implementation XY-1295, and regression owner XY-1300).
-7. ManagedRun restart and side-effect reconciliation fault injection, including the
+8. ManagedRun restart and side-effect reconciliation fault injection, including the
     Task-owned independent review loop and typed reviewer wait/failure states (XY-1283,
     XY-1285, and regression owner XY-1300).
-8. Real Program/Automation/Lead/Task/Reviewer dogfood, using PubFi or equivalent
+9. Real Program/Automation/Lead/Task/Reviewer dogfood, using PubFi or equivalent
     (XY-1290 and release dogfood owner XY-1303).
-9. Remote binding stays disabled until authentication, TLS, authorization, and
+10. Remote binding stays disabled until authentication, TLS, authorization, and
     redaction gates pass (XY-1299).
 
 ### XY-1262 foundation acceptance
@@ -780,6 +784,81 @@ transaction ordering but cannot satisfy the live gate. Readiness cannot authoriz
 eligibility, assignment, reassignment, fallback, scheduling, wakeup, continuation, or
 production routing.
 
+### XY-1372 private-artifact capability and consumption gate
+
+The [XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md)
+is accepted for only the recorded APFS Data volume, OrbStack overlayfs retained-container
+lifecycle, and exact OrbStack virtiofs bind. The APFS image is only the distinct `EXDEV`
+fixture. tmpfs is rename and non-retention evidence only. Every other platform, filesystem,
+runtime, mount, lifecycle, crash, or persistence claim needs a separate enablement gate.
+
+The authority and implementation dependencies are:
+
+```text
+XY-1372 accepted capability evidence
+-> XY-1373 normative decision/specification/gate/evidence freeze
+-> fresh independent review of the exact XY-1373 authority candidate
+-> XY-1371 shared decodex-core implementation and exact-source review
+XY-1371 -> XY-1369 no-DDL preflight implementation and private receipt gate
+XY-1371 -> XY-1370 exact-build schema attestation implementation and private receipt gate
+XY-1368 + XY-1369 + XY-1370
+-> a new repository-authority decision with fresh identities and one explicit effect budget
+-> XY-1363 retained-title Desktop discovery evidence
+```
+
+XY-1371 must prove one shared implementation of the normative
+[private-artifact contract](vnext-authority.md#private-artifact-authority). Its exact candidate
+must prove all of these conditions without weakening them:
+
+- descriptor-pinned bounded capture returns relative names and bytes only after the bounded second
+  observation succeeds;
+- `PrivateArtifactDirectory` and Decodex-minted `OwnedEphemeralArtifactRoot` are distinct and
+  cannot be upgraded from one another;
+- `ProducerStopped` is tracked leader exit plus tracked process-group absence, and
+  `ExclusiveMaintenancePermit` provides cooperative quiescence only;
+- the operation token and expected digest are durable before the first namespace effect;
+- staging is in the retained target parent, the stage descriptor remains open, and only the exact
+  private macOS or Linux no-replace shim can publish or retire;
+- `EEXIST`, `EXDEV`, exact unsupported semantics, unclassified errors, possible effects, final
+  verification, and synchronization map to the normative retained-stage or attention results;
+- every unexpected or ambiguous result preserves evidence for targeted reconciliation, with no
+  plain-rename, overwrite, move-back, check-then-rename, `linkat`, direct-final-write, or rollback-
+  unlink path;
+- only an operation-unique owned root can move into a controlled unique same-device quarantine;
+  only `QuarantinedPrivateArtifact` can authorize collection; and collection remains separate from
+  capture, publication, receipt, and attestation success; and
+- capability checks bind the exact supported matrix. An unproven environment returns a typed stop
+  before a production experiment and cannot infer support from a syscall name or another mount.
+
+XY-1369 consumes the shared authority for its preserved operator-owned request and create-new
+receipt. It opens the owning directory through `PrivateArtifactDirectory`, captures the request
+under producer stop and cooperative quiescence, and passes bytes rather than evidence pathnames to
+its consumer. It makes the receipt token and expected digest durable before staging and accepts
+only `PublishedPrivateArtifact` as receipt authority. The preserved request path never gains owned-
+root retirement authority.
+
+XY-1370 creates its generated schema directory as one operation-unique
+`OwnedEphemeralArtifactRoot` below a controlled same-device parent. After complete generator leader
+and process-group teardown, it captures the bounded schema tree and passes relative names and bytes
+to `decodex-codex`; that consumer never enumerates or reopens schema paths. It publishes its receipt
+through the shared create-new state machine. Only after `PublishedPrivateArtifact` exists can it
+retire the whole root into its unique quarantine. Collection accepts only the resulting
+`QuarantinedPrivateArtifact` and remains separate destructive maintenance.
+
+XY-1363 can consume only accepted durable XY-1369 and XY-1370 receipts in
+`PublishedPrivateArtifact`. `StageRetained`, unsupported semantics, an unexpected error,
+`PublishedNeedsAttention`, `QuarantineRetainedNeedsAttention`, or an incomplete preflight remains a
+stop and cannot become live-effect authority. A later `CollectionIncomplete` remains observable
+maintenance debt but does not invalidate an otherwise accepted published preflight receipt or
+attestation. Retirement or collection never expands the one-shot Codex effect budget, authorizes a
+retry or adopted thread, or substitutes for the new repository-authority decision that XY-1363
+still requires.
+
+No XY-1371 production implementation can start until a fresh reviewer accepts the exact XY-1373
+authority candidate. No XY-1369 or XY-1370 implementation can resume until the signed and
+independently accepted XY-1371 shared implementation exists. No private-artifact gate enables
+production routing; XY-1304 remains the sole aggregate live-routing gate.
+
 ### Failed live account-routing enablement gate
 
 The [live gate issue](https://linear.app/hack-ink/issue/XY-1304) remains failed and
@@ -805,6 +884,12 @@ XY-1355 -> XY-1357 natural timestamp precision evidence
 
 V14-V21 implementation children -> XY-1364 accepted frozen-core base
 XY-1364 + XY-1367 -> XY-1368 frozen mechanical and semantic acceptance
+
+XY-1372 capability evidence -> XY-1373 repository authority freeze
+-> XY-1371 accepted shared private-artifact implementation
+XY-1371 -> XY-1369 no-DDL preflight receipt gate
+XY-1371 -> XY-1370 exact-build schema attestation receipt gate
+XY-1368 + XY-1369 + XY-1370 -> fresh XY-1363 live-effect authority
 -> XY-1363 retained-title Desktop discovery evidence
 XY-1368 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
 -> separate reviewed repository amendment to enable production routing
