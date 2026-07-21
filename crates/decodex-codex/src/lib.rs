@@ -33,7 +33,11 @@ pub use self::{
 		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
 		RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
 	},
-	experiment::{PositiveExperimentFact, PositiveExperimentFactKind, TypedThreadStartResponse},
+	experiment::{
+		ExactRpcRequestFact, ExactRpcResponseFact, PositiveExperimentFact,
+		PositiveExperimentFactKind, TypedRetainedTitleReadResponse, TypedThreadNameSetRequest,
+		TypedThreadStartResponse,
+	},
 	protocol::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, DecodexThreadSearchTerm,
 		ExactThreadFacts, ExactThreadId, ExactThreadListFilter, ExactThreadListResult,

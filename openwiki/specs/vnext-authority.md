@@ -344,7 +344,9 @@ and unsupported, oversized, or credential-shaped forms are rejected.
 `thread/read(includeTurns=true)` and paginated/list evidence are lossy reconciliation sources.
 They may support positive observations, but never authorize a negative `Present`, `Complete`, or
 context-free `Absent` conclusion. Missing, truncated, or unobserved evidence remains unknown.
-Experiment creation and positive-only observation authority belong to XY-1358/V15; production
+Experiment intent and the first creation fence belong to XY-1358/V15. XY-1367/V22 binds the exact
+nullable-name start response. It fences the separate name-set effect. It requires exact-ID
+retained-title attestation before positive observations or V17 same-thread authority. Production
 Quick Task creation belongs to XY-1276. External Codex activity may be provenance-imported for ordinary
 Quick/Advisor/Lead conversations; on an active ManagedRun it marks the session `diverged` and blocks
 side effects until tool/repository readback reconciles them.
@@ -506,7 +508,8 @@ positive readiness evidence and does not change an account to ready. XY-1336 rem
 passive-receipt tracking. Host-owned before/after receipts prove causal no-mutation integrity only
 and cannot establish account-owned readiness.
 
-XY-1358 owns causal positive-only experiment evidence. After an exact V16 decision, XY-1360 owns
+XY-1358 owns the original causal experiment ledger. XY-1367/V22 repairs its two-effect retained-title
+authority without changing V15. After an exact V16 decision, XY-1360 owns
 same-thread continuation when exact positive account/profile/build evidence permits it, otherwise
 one atomic Context-Pack plus RuntimeSession fallback that preserves Conversation and ManagedRun
 identity. It allocates no V17 in advance. XY-1361 composes these authorities with production
