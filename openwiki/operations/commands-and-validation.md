@@ -115,7 +115,7 @@ commit/tree, exact mismatch set/order, and the corresponding same-tree or digest
 
 The capture-only mode migrates and provisions an isolated PostgreSQL 18 database, captures raw
 source S0, first-restore R1, and second-restore R2 evidence, and separately proves the exact
-V13-to-V21 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
+V13-to-V22 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
 used by production readiness must pass at S0, R1, and R2 before it atomically publishes
 `decodex/postgres-authority-candidate/2`; the Phase A mismatch set must be exactly the canonical
 zero-, one-, or two-component subset described above, while complete, unique, resolved manifests,
@@ -227,13 +227,13 @@ assignment, submitted-receipt production, or effect-lineage writer authority. Ta
 assignments bind exact RuntimeSessions and cannot encode Advisor, Lead, or durable Agent identity.
 The barrier has only fail-closed `guarded` and `closed` states. The focused command
 `cargo make test-vnext-postgres-managed-runs` retains those historical V12 definition checks while
-binding them to the current integrated V1-V21 ledger and 138-trigger inventory. It covers
+binding them to the current integrated V1-V22 ledger and 142-trigger inventory. It covers
 Project/WorkItem/RuntimeSession FK scope,
 state algebra, unknown-turn divergence with an active turn retained, current/stale submitted
 receipts, explicit inconclusive input, rollback/retry, durable cross-key input replay, exactly-once
 barrier closure, exact revisioned restart readback, runtime-role Turn and HistoryItem writes through
 the V12 forward-repaired invoker guards, fail-closed non-`READ COMMITTED` hierarchy DML, and the
-receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1-to-V21 bootstrap
+receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1-to-V22 bootstrap
 and populated restore.
 The final schema produced by every migration version must be a PostgreSQL 18 dump/restore fixed
 point so the one exact full-manifest digest remains identical before and after logical restore.
@@ -310,10 +310,57 @@ matrices, and results from any other tree are not acceptance evidence.
 
 The authoritative deferred cases are the
 [XY-1353 deferred acceptance matrix](../specs/vnext-gates.md#xy-1353-deferred-acceptance-matrix).
+For the V22 retained-title bridge, XY-1368 also owns the
+[XY-1367 V22 deferred acceptance matrix](../specs/vnext-gates.md#xy-1367-v22-deferred-acceptance-matrix).
 The repository has no standalone XY-1353 artifact generator: migration, configured-authority, and
 schema inventories plus their expected/actual digests are emitted and checked by the canonical
 PostgreSQL frozen-tree harness during that one unified gate. Do not run it as integration-time
 code generation or create parallel manifest authority.
+
+## Manual V22 retained-title experiment
+
+The manual runner is not a validation command. Run it only under separate live-effect authority.
+Do not run it during XY-1367 or XY-1368.
+
+The runner requires the `retained-title-experiment` feature. No default feature enables it.
+The `decodexd` application does not depend on this feature or binary.
+
+```sh
+cargo run -p decodex-runtime \
+  --features retained-title-experiment \
+  --bin decodex-retained-title-experiment -- REQUEST.json
+```
+
+`REQUEST.json` has one closed JSON object. It contains these fields:
+
+- `identity`: The complete V14 experiment identity.
+- `creation_attempt_id`: The UUID for the one start fence.
+- `title_attempt_id`: The UUID for the one title-set fence.
+- `attestation_id`: The UUID for the exact-ID retained-title attestation.
+- `observation_id`: The UUID for the positive read observation.
+- `timeout_milliseconds`: A value from 1000 through 60000.
+
+The runner fixes the app-server request IDs to 3, 4, and 5. They identify start, title set, and
+read. It derives each database idempotency key from the experiment ID and operation name.
+
+The runner first verifies configuration, database readiness, executable identity, schema, and
+account identity. It then permits only this effect sequence:
+
+1. Prepare the experiment.
+2. Commit the creation fence.
+3. Send one `thread/start` request after a fresh fence.
+4. Bind the exact start request and response immediately.
+5. Commit the title-set fence.
+6. Send one `thread/name/set` request after a fresh title fence.
+7. Read only the exact bound thread ID.
+8. Commit the retained-title attestation.
+9. Commit the positive observation.
+
+A creation-fence replay can only read the exact durable start receipt. An absent receipt is
+terminally ambiguous. A title-fence replay can only read the exact bound thread.
+
+A lost title-set response can only continue to exact-ID readback. No path retries an external
+request. Database transport can retry only the same key and byte-equivalent envelope.
 
 ## Validation scope selection
 
