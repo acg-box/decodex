@@ -117,7 +117,7 @@ The capture-only mode migrates and provisions an isolated PostgreSQL 18 database
 source S0, first-restore R1, and second-restore R2 evidence, and separately proves the exact
 V13-to-V22 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
 used by production readiness must pass at S0, R1, and R2 before it atomically publishes
-`decodex/postgres-authority-candidate/2`; the Phase A mismatch set must be exactly the canonical
+`decodex/postgres-authority-candidate/3`; the Phase A mismatch set must be exactly the canonical
 zero-, one-, or two-component subset described above, while complete, unique, resolved manifests,
 migration ledger,
 semantic state, population, runtime-authority shape, and semantic evidence satisfy both restore
@@ -138,6 +138,10 @@ receipt is freshly emitted from the unchanged clean Phase A HEAD/tree and is exp
 the Phase A receipt; existing receipts remain provenance only and cannot attest a source outside
 their recorded binding. For one or two mismatches, any unreported array change or other source
 delta invalidates the candidate.
+
+The [XY-1368 retained-title validation](xy-1368-retained-title-validation.md) defines the two
+partial-boundary commands. It owns the one-pass preparation command and the staged-tree semantic
+boundary. Neither command authorizes full-check publication or production enablement.
 
 The normal aggregate uses one explicit stage report. Configuration and cluster preflight are fatal:
 mode/argument validation, clean source binding, temporary-root validation, PostgreSQL tool
