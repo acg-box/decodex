@@ -12,6 +12,35 @@ use crate::{
 	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
 };
 
+const BIND_CODEX_EXPERIMENT_START_SQL: &str = "SELECT decodex.bind_codex_experiment_start_exact($1,$2,$3::text::uuid,$4,\
+	 $5::text::uuid,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)";
+const READ_CODEX_EXPERIMENT_START_SQL: &str = "SELECT experiment_id::text,attempt_id::text,experiment_revision,thread_id,\
+	 start_request_id,start_request_digest,request_cwd,request_marker,request_ephemeral,\
+	 start_response_id,start_response_digest,response_cwd,response_marker,\
+	 response_ephemeral,returned_name,bound_at_micros \
+	 FROM decodex.read_codex_experiment_start_exact($1::text::uuid,$2::text::uuid)";
+const MARK_CODEX_EXPERIMENT_TITLE_SET_POSSIBLE_SQL: &str = "SELECT response_bytes,replayed FROM \
+	 decodex.mark_codex_experiment_title_set_possible_exact(\
+	 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6,$7,$8,$9)";
+const ATTEST_CODEX_EXPERIMENT_RETAINED_TITLE_SQL: &str = "SELECT decodex.attest_codex_experiment_retained_title_exact(\
+	 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6::text::uuid,$7,$8,$9,$10,$11,$12,$13,$14)";
+const RECORD_ATTESTED_CODEX_EXPERIMENT_OBSERVATION_SQL: &str = "SELECT decodex.record_attested_codex_experiment_observation_exact(\
+	 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6::text::uuid,\
+	 $7::text::decodex.codex_experiment_observation_kind,$8,$9,$10,$11)";
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn prepare_retained_title_sql(
+	client: &tokio_postgres::Client,
+) -> Result<(), StoreError> {
+	client.prepare(BIND_CODEX_EXPERIMENT_START_SQL).await?;
+	client.prepare(READ_CODEX_EXPERIMENT_START_SQL).await?;
+	client.prepare(MARK_CODEX_EXPERIMENT_TITLE_SET_POSSIBLE_SQL).await?;
+	client.prepare(ATTEST_CODEX_EXPERIMENT_RETAINED_TITLE_SQL).await?;
+	client.prepare(RECORD_ATTESTED_CODEX_EXPERIMENT_OBSERVATION_SQL).await?;
+
+	Ok(())
+}
+
 /// Preparation input. PostgreSQL rechecks the complete V14 lineage and owns the clock.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrepareCodexExperiment {
@@ -438,8 +467,7 @@ impl PostgresStore {
 		}
 		let response = self
 			.execute_exact_with_retry(
-				"SELECT decodex.bind_codex_experiment_start_exact($1,$2,$3::text::uuid,$4,\
-				 $5::text::uuid,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)",
+				BIND_CODEX_EXPERIMENT_START_SQL,
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
@@ -539,14 +567,7 @@ impl PostgresStore {
 		validate_uuid(attempt_id, "creation attempt identity")?;
 		let client = self.pool().get().await?;
 		let row = client
-			.query_opt(
-				"SELECT experiment_id::text,attempt_id::text,experiment_revision,thread_id,\
-				 start_request_id,start_request_digest,request_cwd,request_marker,request_ephemeral,\
-				 start_response_id,start_response_digest,response_cwd,response_marker,\
-				 response_ephemeral,returned_name,bound_at_micros \
-				 FROM decodex.read_codex_experiment_start_exact($1::text::uuid,$2::text::uuid)",
-				&[&experiment_id, &attempt_id],
-			)
+			.query_opt(READ_CODEX_EXPERIMENT_START_SQL, &[&experiment_id, &attempt_id])
 			.await?;
 		let Some(row) = row else { return Ok(None) };
 		let receipt = CodexExperimentStartReceipt {
@@ -607,9 +628,7 @@ impl PostgresStore {
 		}
 		let (response, replayed) = self
 			.execute_exact_with_replay_status(
-				"SELECT response_bytes,replayed FROM \
-				 decodex.mark_codex_experiment_title_set_possible_exact(\
-				 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6,$7,$8,$9)",
+				MARK_CODEX_EXPERIMENT_TITLE_SET_POSSIBLE_SQL,
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
@@ -680,7 +699,8 @@ impl PostgresStore {
 		&self,
 		idempotency_key: &str,
 		request: &AttestCodexExperimentRetainedTitle,
-	) -> Result<CodexExperimentCommandOutcome<CodexExperimentRetainedTitleAttestation>, StoreError> {
+	) -> Result<CodexExperimentCommandOutcome<CodexExperimentRetainedTitleAttestation>, StoreError>
+	{
 		validate_exact_key(idempotency_key)?;
 		validate_uuid(&request.experiment_id, "experiment identity")?;
 		validate_uuid(&request.attestation_id, "attestation identity")?;
@@ -699,8 +719,7 @@ impl PostgresStore {
 		}
 		let response = self
 			.execute_exact_with_retry(
-				"SELECT decodex.attest_codex_experiment_retained_title_exact(\
-				 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6::text::uuid,$7,$8,$9,$10,$11,$12,$13,$14)",
+				ATTEST_CODEX_EXPERIMENT_RETAINED_TITLE_SQL,
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
@@ -760,22 +779,20 @@ impl PostgresStore {
 		{
 			return incompatible("V22 retained-title attestation response is cross-linked");
 		}
-		Ok(CodexExperimentCommandOutcome::Applied(
-			CodexExperimentRetainedTitleAttestation {
-				experiment_id: request.experiment_id.clone(),
-				attestation_id: request.attestation_id.clone(),
-				title_attempt_id: request.title_attempt_id.clone(),
-				thread_id: request.thread_id.clone(),
-				read_request_id: request.read_request_id,
-				read_request_digest: request.read_request_digest.clone(),
-				read_response_id: request.read_response_id,
-				read_response_digest: request.read_response_digest.clone(),
-				retained_title: request.returned_title.clone(),
-				returned_cwd: request.returned_cwd.clone(),
-				marker: request.returned_marker.clone(),
-				attested_at_micros: required_i64(&effect, "attested_at_micros")?,
-			},
-		))
+		Ok(CodexExperimentCommandOutcome::Applied(CodexExperimentRetainedTitleAttestation {
+			experiment_id: request.experiment_id.clone(),
+			attestation_id: request.attestation_id.clone(),
+			title_attempt_id: request.title_attempt_id.clone(),
+			thread_id: request.thread_id.clone(),
+			read_request_id: request.read_request_id,
+			read_request_digest: request.read_request_digest.clone(),
+			read_response_id: request.read_response_id,
+			read_response_digest: request.read_response_digest.clone(),
+			retained_title: request.returned_title.clone(),
+			returned_cwd: request.returned_cwd.clone(),
+			marker: request.returned_marker.clone(),
+			attested_at_micros: required_i64(&effect, "attested_at_micros")?,
+		}))
 	}
 
 	/// Append one causally bound positive exact observation.
@@ -799,9 +816,7 @@ impl PostgresStore {
 		let kind = request.kind.as_sql();
 		let response = self
 			.execute_exact_with_retry(
-				"SELECT decodex.record_attested_codex_experiment_observation_exact(\
-			 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6::text::uuid,\
-			 $7::text::decodex.codex_experiment_observation_kind,$8,$9,$10,$11)",
+				RECORD_ATTESTED_CODEX_EXPERIMENT_OBSERVATION_SQL,
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
@@ -922,18 +937,21 @@ fn parse_rejection(effect: &Value) -> Result<CodexExperimentRejection, StoreErro
 	let operation = required_str(effect, "operation")?;
 	let code = required_str(effect, "rejection")?;
 	let known = match operation {
-		"prepare_codex_experiment" =>
-			matches!(code, "invalid_identity" | "lineage_mismatch" | "experiment_exists"),
-		"mark_codex_experiment_creation_possible" =>
-			matches!(code, "creation_not_authorized" | "attempt_identity_conflict"),
-		"bind_codex_experiment_start" =>
-			matches!(code, "start_response_mismatch" | "start_identity_conflict"),
-		"mark_codex_experiment_title_set_possible" => matches!(
-			code,
-			"title_set_not_authorized" | "title_attempt_identity_conflict"
-		),
-		"attest_codex_experiment_retained_title" =>
-			matches!(code, "retained_title_mismatch" | "attestation_identity_conflict"),
+		"prepare_codex_experiment" => {
+			matches!(code, "invalid_identity" | "lineage_mismatch" | "experiment_exists")
+		},
+		"mark_codex_experiment_creation_possible" => {
+			matches!(code, "creation_not_authorized" | "attempt_identity_conflict")
+		},
+		"bind_codex_experiment_start" => {
+			matches!(code, "start_response_mismatch" | "start_identity_conflict")
+		},
+		"mark_codex_experiment_title_set_possible" => {
+			matches!(code, "title_set_not_authorized" | "title_attempt_identity_conflict")
+		},
+		"attest_codex_experiment_retained_title" => {
+			matches!(code, "retained_title_mismatch" | "attestation_identity_conflict")
+		},
 		"record_attested_codex_experiment_observation" => matches!(
 			code,
 			"attested_observation_lineage_mismatch"

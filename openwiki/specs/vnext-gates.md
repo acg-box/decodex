@@ -131,6 +131,9 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1367 | Sole V22 owner for the two-effect retained-title experiment bridge and inert manual Rust runner. It does not execute validation or live effects. |
 | XY-1368 | Frozen mechanical, migration, semantic, authority-digest, and production-isolation acceptance for the exact XY-1367 candidate. |
 
+The [XY-1368 retained-title freeze](xy-1368-retained-title-freeze.md) preserves XY-1364 as the
+historical V14-V21 acceptance. It defines the V22 receipt and the deferred XY-1363 and XY-1304 work.
+
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
 cannot close the missing account-owned receipt. Existing doctor `unknown(plugin)` is the

@@ -34,7 +34,7 @@ AUTHORITY_CAPTURE_RESTORE_EDGES = (
 	("source_to_restored_once", "source", "restored_once"),
 	("restored_once_to_restored_twice", "restored_once", "restored_twice"),
 )
-AUTHORITY_CANDIDATE_SCHEMA = "decodex/postgres-authority-candidate/2"
+AUTHORITY_CANDIDATE_SCHEMA = "decodex/postgres-authority-candidate/3"
 AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES = 128 * 1024
 POSTGRES_START_LOG_EXCERPT_MAX_BYTES = 4 * 1024
 # Darwin's sockaddr_un.sun_path is 104 bytes, including the terminating NUL.
@@ -135,6 +135,7 @@ WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
 MANAGED_RUN_DATABASE = "decodex_xy1338_managed_runs"
 MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1338_managed_runs_restore"
 MANAGED_REPOSITORY_DATABASE = "decodex_xy1364_managed_repositories"
+RETAINED_TITLE_PREPARATION_DATABASE = "decodex_xy1368_preparation"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime_xy1300"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -211,8 +212,11 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
-	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
+	"decodex.read_codex_experiment_start_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
+	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -221,6 +225,13 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+)
+RETAINED_TITLE_SQL_SOURCES = (
+	"BIND_CODEX_EXPERIMENT_START_SQL",
+	"READ_CODEX_EXPERIMENT_START_SQL",
+	"MARK_CODEX_EXPERIMENT_TITLE_SET_POSSIBLE_SQL",
+	"ATTEST_CODEX_EXPERIMENT_RETAINED_TITLE_SQL",
+	"RECORD_ATTESTED_CODEX_EXPERIMENT_OBSERVATION_SQL",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -351,8 +362,11 @@ UPGRADE_RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
-	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
+	"decodex.read_codex_experiment_start_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
+	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -1162,6 +1176,35 @@ def frozen_source_binding() -> dict[str, str]:
 		).strip(),
 	}
 	require_commit_tree_binding(binding)
+	return binding
+
+
+def staged_source_binding() -> dict[str, str]:
+	"""Bind a complete candidate to its base commit and exact staged tree."""
+	status = git_read_text(
+		"status", "--porcelain=v1", "--untracked-files=all",
+		byte_limit=GIT_STATUS_MAX_BYTES,
+	).splitlines()
+	if not status:
+		raise TestFailure("retained-title boundary requires a non-empty staged candidate")
+	if any(len(entry) < 3 or entry[0] in {" ", "?"} or entry[1] != " " for entry in status):
+		raise TestFailure(
+			"retained-title boundary requires all candidate changes in the index"
+		)
+	binding = {
+		"head": git_read_text(
+			"rev-parse", "--verify", "HEAD", byte_limit=GIT_METADATA_MAX_BYTES
+		).strip(),
+		"tree": git_read_text(
+			"write-tree", byte_limit=GIT_METADATA_MAX_BYTES
+		).strip(),
+	}
+	if any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in binding.values()):
+		raise TestFailure("retained-title staged source binding is invalid")
+	if git_read_text(
+		"cat-file", "-t", binding["tree"], byte_limit=GIT_METADATA_MAX_BYTES
+	).strip() != "tree":
+		raise TestFailure("retained-title staged source tree is invalid")
 	return binding
 
 
@@ -2102,6 +2145,150 @@ def run_continuation_focused_contracts(
 		migration_output,
 		run_postgres_store_contracts(socket_dir, port, env),
 	))
+
+
+def retained_title_authority_inventory(
+	work: Path,
+	database: str,
+	env: dict[str, str],
+	source_binding: dict[str, str],
+) -> dict[str, object]:
+	manifest_path = work / f"{database}-retained-title-authority.json"
+	dump_schema_manifest(manifest_path, database, env, structured_errors=True)
+	document = load_capture_manifest(
+		manifest_path,
+		"retained_title",
+		database,
+		source_binding=source_binding,
+		secret_markers=(),
+	)
+	manifests = require_capture_components(
+		document,
+		"retained_title",
+		database,
+		source_binding=source_binding,
+		secret_markers=(),
+	)
+	actual_digests = {
+		component: hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+		for component, manifest in manifests.items()
+	}
+	expected_digests = {
+		"schema": rust_digest_constant("SCHEMA_CONTRACT_SHA256"),
+		"authority": rust_digest_constant("CONFIGURED_AUTHORITY_SHA256"),
+	}
+	return {
+		"actual_digests": actual_digests,
+		"configured_authority_inventory": authority_manifest_evidence(
+			manifests["authority"]
+		),
+		"expected_digests": expected_digests,
+		"schema_inventory": authority_manifest_evidence(manifests["schema"]),
+	}
+
+
+def prepare_retained_title_authority_inventory(
+	work: Path, env: dict[str, str]
+) -> str:
+	working_binding = {
+		"head": git_read_text(
+			"rev-parse", "--verify", "HEAD", byte_limit=GIT_METADATA_MAX_BYTES
+		).strip(),
+		"tree": git_read_text(
+			"rev-parse", "--verify", "HEAD^{tree}", byte_limit=GIT_METADATA_MAX_BYTES
+		).strip(),
+	}
+	return json.dumps(
+		retained_title_authority_inventory(
+			work, RETAINED_TITLE_PREPARATION_DATABASE, env, working_binding
+		),
+		sort_keys=True,
+	)
+
+
+def run_retained_title_core_boundary(
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	env: dict[str, str],
+	source_binding: dict[str, str],
+) -> dict[str, object]:
+	run(
+		[
+			"python3", "-m", "unittest",
+			"tests.scripts.test_vnext_architecture.VnextArchitectureTests."
+			"test_v22_retained_title_bridge_is_two_effect_and_production_inert",
+		],
+		env,
+	)
+	create_database(DATABASE, env)
+	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+	run_migration(env)
+	ledger = capture_migration_ledger(DATABASE, env)
+	if (
+		len(ledger) != 22
+		or ledger[-1].get("version") != 22
+		or ledger[-1].get("name") != "retained_title_experiment_bridge"
+	):
+		raise TestFailure("retained-title boundary migration ledger is not exact V14-V22")
+	provision_runtime(DATABASE, RUNTIME_ROLE, env)
+	runtime_authority = capture_runtime_authority(DATABASE, env)
+	authority_inventory = retained_title_authority_inventory(
+		work, DATABASE, env, source_binding
+	)
+	if authority_inventory["actual_digests"] != authority_inventory["expected_digests"]:
+		raise TestFailure("retained-title boundary authority digests do not match source")
+	run_postgres_store_test("postgres_store_contract", env)
+	end_binding = staged_source_binding()
+	if end_binding != source_binding:
+		raise TestFailure("retained-title staged source binding changed during execution")
+	return {
+		"acceptance": "V14-V22 retained-title core",
+		"architecture_contract": {"status": "passed"},
+		"commands": {
+			"architecture": (
+				"python3 -m unittest tests.scripts.test_vnext_architecture."
+				"VnextArchitectureTests."
+				"test_v22_retained_title_bridge_is_two_effect_and_production_inert"
+			),
+			"postgres": (
+				"cargo nextest run -p decodex-postgres --features test-support "
+				"--test postgres_store --run-ignored all -- "
+				"postgres_store_contract --exact"
+			),
+		},
+		"deferred": {
+			"XY-1363": "live creation and Desktop discovery",
+			"XY-1304": (
+				"aggregate validation, production enablement, trusted full-check "
+				"publication, and landing"
+			),
+		},
+		"ledger": ledger,
+		"pinned_app_server": {
+			"primary_source": (
+				"https://github.com/openai/codex/tree/rust-v0.145.0-alpha.18/"
+				"codex-rs/app-server-protocol/src/protocol/v2"
+			),
+			"thread_name_on_start_result": "nullable",
+			"title_mutation": "thread/name/set",
+			"version": "codex-cli 0.145.0-alpha.18",
+		},
+		"postgres_contract": {"status": "passed"},
+		"proofs": [
+			"one-shot creation fence",
+			"one-shot title fence",
+			"exact start response binding",
+			"exact-ID thread/read binding",
+			"retained-title attestation",
+			"V17 eligibility transition",
+			"structural production non-reachability",
+		],
+		"runtime_authority": runtime_authority,
+		"schema": "decodex/postgres-retained-title-acceptance/1",
+		"source_binding": {"start": source_binding, "end": end_binding},
+		**authority_inventory,
+	}
 
 
 def rust_digest_constant(name: str) -> str:
@@ -3929,6 +4116,50 @@ def capture_migration_ledger(
 	return ledger
 
 
+def prepare_retained_title_migrations(
+	socket_dir: Path, port: int, env: dict[str, str]
+) -> str:
+	create_database(RETAINED_TITLE_PREPARATION_DATABASE, env)
+	set_contract_urls(
+		env, socket_dir, port, RETAINED_TITLE_PREPARATION_DATABASE, RUNTIME_ROLE
+	)
+	run([
+		"cargo", "nextest", "run", "-p", "decodex-postgres", "--lib", "--",
+		"migrations::tests::embedded_migrations_do_not_schema_qualify_postgresql_syntax_constructs",
+		"--exact",
+	], env)
+	run_migration(env)
+	ledger = capture_migration_ledger(RETAINED_TITLE_PREPARATION_DATABASE, env)
+	if (
+		len(ledger) != 22
+		or ledger[-1].get("version") != 22
+		or ledger[-1].get("name") != "retained_title_experiment_bridge"
+		or not isinstance(ledger[-1].get("checksum"), str)
+	):
+		raise TestFailure("retained-title preparation did not reach the exact V1-V22 ledger")
+	return json.dumps({
+		"schema": "decodex/retained-title-preparation-stage/1",
+		"stage": "migration_syntax",
+		"migration_count": len(ledger),
+		"terminal_migration": ledger[-1],
+	}, sort_keys=True)
+
+
+def prepare_retained_title_embedded_sql(env: dict[str, str]) -> str:
+	provision_runtime(RETAINED_TITLE_PREPARATION_DATABASE, RUNTIME_ROLE, env)
+	run([
+		"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
+		"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+		"postgres_retained_title_sql_preparation_contract", "--exact",
+	], env)
+	return json.dumps({
+		"schema": "decodex/retained-title-preparation-stage/1",
+		"stage": "changed_embedded_sql_prepare",
+		"source_count": len(RETAINED_TITLE_SQL_SOURCES),
+		"sources": RETAINED_TITLE_SQL_SOURCES,
+	}, sort_keys=True)
+
+
 def capture_runtime_authority(database: str, env: dict[str, str]) -> dict[str, object]:
 	probe = json.loads(psql(
 		database,
@@ -4554,23 +4785,23 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		receipt["migration_ledger"], checkpoints, "Phase A ledger checkpoints are malformed"
 	)
 	for ledger in ledgers.values():
-		require_receipt_ledger(ledger, through_version=21)
+		require_receipt_ledger(ledger, through_version=22)
 	if ledgers["source"] != ledgers["restored_once"] or ledgers["source"] != ledgers["restored_twice"]:
-		raise TestFailure("Phase A V21 ledgers differ across restore checkpoints")
-	if ledgers["source"][-1]["name"] != "runtime_session_event_reference_authority":
-		raise TestFailure("Phase A ledger does not end at V21")
+		raise TestFailure("Phase A V22 ledgers differ across restore checkpoints")
+	if ledgers["source"][-1]["name"] != "retained_title_experiment_bridge":
+		raise TestFailure("Phase A ledger does not end at V22")
 	upgrade = require_exact_keys(
 		receipt["one_grantee_upgrade"],
-		{"database", "pre_v14_anchor_binding", "runtime_authority", "v13_ledger", "v21_ledger"},
+		{"database", "pre_v14_anchor_binding", "runtime_authority", "v13_ledger", "v22_ledger"},
 		"Phase A one-grantee upgrade evidence is malformed",
 	)
 	require_receipt_ledger(upgrade["v13_ledger"], through_version=13)
-	upgrade_v21 = require_receipt_ledger(upgrade["v21_ledger"], through_version=21)
+	upgrade_v22 = require_receipt_ledger(upgrade["v22_ledger"], through_version=22)
 	if (
 		upgrade["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
-		or upgrade_v21 != ledgers["source"]
+		or upgrade_v22 != ledgers["source"]
 	):
-		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V21 ledger")
+		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V22 ledger")
 	upgrade_authority = require_exact_keys(
 		upgrade["runtime_authority"],
 		{
@@ -4589,16 +4820,17 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		upgrade_authority["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
 		or upgrade_authority["migration_role"] != MIGRATION_ROLE
 		or upgrade_authority["runtime_role"] != RUNTIME_ROLE
-		or delta["execute_count"] != 15
+		or delta["execute_count"] != len(UPGRADE_RUNTIME_EXECUTE_SIGNATURES)
 		or not isinstance(delta["execute_grants"], list)
-		or len(delta["execute_grants"]) != 15
-		or delta["type_usage_count"] != 5
+		or len(delta["execute_grants"]) != len(UPGRADE_RUNTIME_EXECUTE_SIGNATURES)
+		or delta["type_usage_count"] != len(UPGRADE_RUNTIME_TYPE_NAMES)
 		or not isinstance(delta["type_usage_grants"], list)
-		or len(delta["type_usage_grants"]) != 5
+		or len(delta["type_usage_grants"]) != len(UPGRADE_RUNTIME_TYPE_NAMES)
 		or not isinstance(upgrade_authority["all_direct_runtime_function_grants"], list)
-		or len(upgrade_authority["all_direct_runtime_function_grants"]) != 16
+		or len(upgrade_authority["all_direct_runtime_function_grants"])
+		!= 1 + len(UPGRADE_RUNTIME_EXECUTE_SIGNATURES)
 		or not isinstance(upgrade_authority["v19_internal_sealing"], list)
-		or len(upgrade_authority["v19_internal_sealing"]) != 4
+		or len(upgrade_authority["v19_internal_sealing"]) != len(V19_INTERNAL_SIGNATURES)
 		or upgrade_authority["unrelated_authority"] != {
 			"default_acl_rows": 0,
 			"owned_databases": 0,
@@ -5239,7 +5471,7 @@ def run_authority_candidate_capture(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 	run_migration(env)
-	upgrade_v21_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	upgrade_v22_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
 	upgrade_runtime_authority = capture_upgrade_runtime_authority(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
@@ -5494,7 +5726,7 @@ def run_authority_candidate_capture(
 			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
 			"v13_ledger": upgrade_v13_ledger,
 			"pre_v14_anchor_binding": upgrade_anchor_binding,
-			"v21_ledger": upgrade_v21_ledger,
+			"v22_ledger": upgrade_v22_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		}
 		if phase_b_upgrade != phase_a.document["one_grantee_upgrade"]:
@@ -5533,7 +5765,7 @@ def run_authority_candidate_capture(
 			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
 			"v13_ledger": upgrade_v13_ledger,
 			"pre_v14_anchor_binding": upgrade_anchor_binding,
-			"v21_ledger": upgrade_v21_ledger,
+			"v22_ledger": upgrade_v22_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		},
 		"runtime_authority": {
@@ -5638,6 +5870,8 @@ def main() -> int | AuthorityCandidatePublication:
 	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
 	focused_continuation = sys.argv[1:] == ["--focus-continuation"]
 	focused_authority = sys.argv[1:] == ["--focus-authority-classification"]
+	focused_retained_title = sys.argv[1:] == ["--focus-retained-title-core"]
+	preparation_mode = sys.argv[1:] == ["--prepare-retained-title-core"]
 	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
 	acceptance_mode = len(sys.argv) == 4 and sys.argv[1] == "--accept-authority-candidate"
 	capture_output = (
@@ -5648,22 +5882,29 @@ def main() -> int | AuthorityCandidatePublication:
 	authority_mode = capture_only or acceptance_mode
 	normal_aggregate = not (
 		focused_work_items or focused_managed_runs or focused_managed_repositories
-		or focused_continuation or focused_authority or authority_mode
+		or focused_continuation or focused_authority or focused_retained_title
+		or preparation_mode or authority_mode
 	)
-	orchestrator = StageOrchestrator({}, []) if normal_aggregate or focused_authority else None
+	reported_run = normal_aggregate or preparation_mode or focused_retained_title
+	orchestrator = StageOrchestrator({}, []) if reported_run or focused_authority else None
 	def configuration_preflight() -> dict[str, object]:
 		if sys.argv[1:] and not (
 			focused_work_items or focused_managed_runs or focused_managed_repositories
-			or focused_continuation or focused_authority or authority_mode
+			or focused_continuation or focused_authority or focused_retained_title
+			or preparation_mode or authority_mode
 		):
 			raise TestFailure(
 				"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
 				"--focus-managed-repositories|--focus-continuation|"
-				"--focus-authority-classification|"
+				"--focus-authority-classification|--focus-retained-title-core|"
+				"--prepare-retained-title-core|"
 				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
 				"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
 			)
-		source_binding = frozen_source_binding() if normal_aggregate else None
+		source_binding = (
+			frozen_source_binding() if normal_aggregate
+			else staged_source_binding() if focused_retained_title else None
+		)
 		phase_a = (
 			load_phase_a_authority_receipt(Path(sys.argv[2]))
 			if acceptance_mode else None
@@ -5721,7 +5962,9 @@ def main() -> int | AuthorityCandidatePublication:
 	if phase_a is not None and not isinstance(phase_a, PhaseAAuthorityReceipt):
 		raise HarnessCorruption("configuration preflight Phase A state is invalid")
 	source_binding = preflight["source_binding"]
-	if normal_aggregate and not isinstance(source_binding, dict):
+	if (normal_aggregate or focused_retained_title) and not isinstance(
+		source_binding, dict
+	):
 		raise HarnessCorruption("configuration preflight source binding is invalid")
 	temp_root = preflight["temp_root"]
 	tools = preflight["tools"]
@@ -5751,6 +5994,8 @@ def main() -> int | AuthorityCandidatePublication:
 					"decodex-xy1364-" if focused_managed_repositories else
 					"decodex-xy1364-continuation-" if focused_continuation else
 					"decodex-xy1364-authority-" if focused_authority else
+					"decodex-xy1368-boundary-" if focused_retained_title else
+					"decodex-xy1368-preparation-" if preparation_mode else
 					"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
 				dir=temp_root,
 			))
@@ -5840,7 +6085,7 @@ def main() -> int | AuthorityCandidatePublication:
 				) from error
 			cluster_started = True
 			roles = [MIGRATION_ROLE, RUNTIME_ROLE]
-			if not authority_mode:
+			if not authority_mode and not preparation_mode:
 				roles.extend((
 					MISSING_SELECT_ROLE,
 					HOSTILE_SEARCH_ROLE,
@@ -5891,6 +6136,43 @@ def main() -> int | AuthorityCandidatePublication:
 			return 0
 		if focused_continuation:
 			print(run_continuation_focused_contracts(socket_dir, port, env))
+			return 0
+		if focused_retained_title:
+			if not isinstance(source_binding, dict):
+				raise HarnessCorruption("retained-title source binding is invalid")
+			receipt = run_stage(
+				orchestrator,
+				"retained_title_postgres_boundary",
+				lambda: run_retained_title_core_boundary(
+					socket_dir, port, work, env, source_binding
+				),
+				depends_on=("cluster_preflight",),
+			)
+			if orchestrator.primary_failure is not None:
+				raise orchestrator.primary_failure
+			print(json.dumps(receipt, sort_keys=True, separators=(",", ":")))
+			return 0
+		if preparation_mode:
+			run_stage(
+				orchestrator,
+				"migration_syntax",
+				lambda: prepare_retained_title_migrations(socket_dir, port, env),
+				depends_on=("cluster_preflight",),
+			)
+			run_stage(
+				orchestrator,
+				"changed_embedded_sql_prepare",
+				lambda: prepare_retained_title_embedded_sql(env),
+				depends_on=("migration_syntax",),
+			)
+			run_stage(
+				orchestrator,
+				"generated_authority_inventory",
+				lambda: prepare_retained_title_authority_inventory(work, env),
+				depends_on=("changed_embedded_sql_prepare",),
+			)
+			if orchestrator.primary_failure is not None:
+				raise orchestrator.primary_failure
 			return 0
 		if capture_output is not None:
 			capture_receipt = run_authority_candidate_capture(
@@ -7138,7 +7420,7 @@ def main() -> int | AuthorityCandidatePublication:
 					"checkpoint_state": restore_report,
 				}
 				raise TestFailure(
-					"aggregate V14-V21 PostgreSQL acceptance failure:\n"
+					"aggregate V14-V22 PostgreSQL acceptance failure:\n"
 					+ json.dumps(diagnostics, sort_keys=True)
 				)
 			return json.dumps(artifact_evidence, sort_keys=True)
@@ -7303,7 +7585,7 @@ def main() -> int | AuthorityCandidatePublication:
 				orchestrator.primary_failure = diagnostic_error
 				orchestrator.corruption = orchestrator.corruption or diagnostic_error
 		if (
-			normal_aggregate
+			reported_run
 			and orchestrator is not None
 			and (cluster_started or cluster_observed_running)
 		):
@@ -7340,7 +7622,20 @@ def main() -> int | AuthorityCandidatePublication:
 				orchestrator.stages["aggregate_output"] = {"status": "passed"}
 			orchestrator.stages["final_report"] = {"status": "passed"}
 			report = {
-				"schema": "decodex/postgres-aggregate-stage-report/1",
+				"schema": (
+					"decodex/postgres-preparation-stage-report/1"
+					if preparation_mode
+					else "decodex/postgres-retained-title-stage-report/1"
+					if focused_retained_title
+					else "decodex/postgres-aggregate-stage-report/1"
+				),
+				"mode": (
+					"retained_title_preparation"
+					if preparation_mode
+					else "retained_title_boundary"
+					if focused_retained_title
+					else "aggregate"
+				),
 				"primary_failure": (
 					None if selected_primary is None else str(selected_primary)
 				),

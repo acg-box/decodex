@@ -35,7 +35,8 @@ mod role_profiles;
 mod routing;
 mod routing_decisions;
 mod runtime_sessions;
-#[cfg(unix)] mod socket;
+#[cfg(unix)]
+mod socket;
 mod types;
 mod wakes;
 mod work_items;
@@ -135,11 +136,14 @@ use std::{sync::Arc, time::Duration};
 
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use serde_json::Value;
-#[cfg(test)] use tokio as _;
-#[cfg(feature = "test-support")] use tokio_postgres::Client as TokioClient;
+#[cfg(test)]
+use tokio as _;
+#[cfg(feature = "test-support")]
+use tokio_postgres::Client as TokioClient;
 use tokio_postgres::{Config, config::Host};
 
-#[cfg(unix)] use self::socket::VerifiedSocketConnect;
+#[cfg(unix)]
+use self::socket::VerifiedSocketConnect;
 use decodex_core::{Availability, PostgresConnectionConfig, PostgresIdentityConfig, ProductState};
 
 /// PostgreSQL major accepted by the vNext storage authority.
@@ -206,6 +210,15 @@ impl PostgresStore {
 		runtime_role: &str,
 	) -> Result<Vec<(&'static str, bool)>, StoreError> {
 		authority::semantic_authority_fixture(client, runtime_role).await
+	}
+
+	/// Parse and prepare the five V22 retained-title SQL sources without executing them.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub async fn prepare_retained_title_sql_fixture(
+		client: &TokioClient,
+	) -> Result<(), StoreError> {
+		experiments::prepare_retained_title_sql(client).await
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.
@@ -612,18 +625,20 @@ pub(crate) fn ensure_credential_negative_text(value: &str) -> Result<(), StoreEr
 
 pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 	match value {
-		Value::Object(entries) =>
+		Value::Object(entries) => {
 			for (key, value) in entries {
 				if decodex_core::is_credential_metadata_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
 
 				ensure_credential_negative_json(value)?;
-			},
-		Value::Array(entries) =>
+			}
+		},
+		Value::Array(entries) => {
 			for value in entries {
 				ensure_credential_negative_json(value)?;
-			},
+			}
+		},
 		Value::String(value) => ensure_credential_negative_text(value)?,
 		_ => {},
 	}
