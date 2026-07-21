@@ -640,6 +640,109 @@ class VnextArchitectureTests(unittest.TestCase):
 
         self.assertEqual(findings, {})
 
+    def test_v22_retained_title_bridge_is_two_effect_and_production_inert(self):
+        migration = (
+            ROOT
+            / "crates/decodex-postgres/migrations/V22__retained_title_experiment_bridge.sql"
+        ).read_text()
+        runner = (
+            ROOT
+            / "crates/decodex-runtime/src/account_launch/retained_title_experiment.rs"
+        ).read_text()
+        runtime_manifest = (ROOT / "crates/decodex-runtime/Cargo.toml").read_text()
+        runtime_lib = (ROOT / "crates/decodex-runtime/src/lib.rs").read_text()
+        daemon_manifest = (ROOT / "apps/decodexd/Cargo.toml").read_text()
+        daemon_source = "\n".join(
+            path.read_text()
+            for path in sorted((ROOT / "apps/decodexd/src").rglob("*.rs"))
+        )
+
+        for exact_fact in (
+            "start_request_id",
+            "start_request_digest",
+            "request_cwd",
+            "request_marker",
+            "request_ephemeral",
+            "start_response_id",
+            "start_response_digest",
+            "response_ephemeral",
+            "returned_name",
+            "requested_title",
+            "read_request_digest",
+            "read_response_digest",
+            "returned_cwd",
+        ):
+            self.assertIn(exact_fact, migration)
+        self.assertIn("p_returned_name IS NOT NULL", migration)
+        self.assertIn("returned_name text CHECK (returned_name IS NULL)", migration)
+        self.assertIn("codex_experiment_title_set_attempts", migration)
+        self.assertIn("codex_experiment_retained_title_attestations", migration)
+        self.assertIn("codex_experiment_attested_observations", migration)
+        self.assertIn("attestation.attested_at<=observation.observed_at", migration)
+        self.assertIn(
+            "REVOKE EXECUTE ON FUNCTION decodex.bind_codex_experiment_thread_exact",
+            migration,
+        )
+        self.assertIn(
+            "REVOKE EXECUTE ON FUNCTION decodex.record_codex_experiment_observation_exact",
+            migration,
+        )
+
+        ordered_calls = (
+            ".prepare_codex_experiment(",
+            ".mark_codex_experiment_creation_possible(",
+            ".start_retained_title_thread(",
+            ".bind_codex_experiment_start(",
+            ".mark_codex_experiment_title_set_possible(",
+            ".set_retained_title(",
+            ".read_retained_title_thread(",
+            ".attest_codex_experiment_retained_title(",
+            ".record_attested_codex_experiment_observation(",
+        )
+        positions = [runner.index(call) for call in ordered_calls]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("const START_REQUEST_ID: i64 = 3", runner)
+        self.assertIn("const TITLE_SET_REQUEST_ID: i64 = 4", runner)
+        self.assertIn("const READ_REQUEST_ID: i64 = 5", runner)
+        self.assertRegex(
+            runner,
+            r"Err\(RpcError::MethodRejected\(_\)\)\s*=>\s*"
+            r"return Err\(ManualRetainedTitleExperimentError::RetainedTitleAmbiguous\)",
+        )
+        self.assertNotIn("Err(RpcError::MethodRejected(_)) => false", runner)
+        self.assertIn("Err(RpcError::Supervision(_)) => false", runner)
+        self.assertIn('format!("v22:retained-title:{experiment_id}:{operation}")', runner)
+        for forbidden_method in (
+            "thread/list",
+            "thread/search",
+            "thread/archive",
+            "turn/start",
+            "thread/resume",
+        ):
+            self.assertNotIn(forbidden_method, runner)
+
+        self.assertIn('retained-title-experiment = []', runtime_manifest)
+        self.assertIn('required-features = ["retained-title-experiment"]', runtime_manifest)
+        self.assertIn('#[cfg(feature = "retained-title-experiment")]', runtime_lib)
+        self.assertNotIn("retained-title-experiment", daemon_manifest)
+        self.assertNotIn("run_manual_retained_title_experiment", daemon_source)
+
+        production_roots = (
+            ROOT / "crates/decodex-protocol/src",
+            ROOT / "apps/decodexd/src",
+        )
+        production_files = (
+            ROOT / "crates/decodex-runtime/src/application.rs",
+            ROOT / "crates/decodex-runtime/src/routing_orchestration.rs",
+        )
+        production_source = "\n".join(
+            path.read_text()
+            for root in production_roots
+            for path in sorted(root.rglob("*.rs"))
+        ) + "\n".join(path.read_text() for path in production_files)
+        self.assertNotIn("run_manual_retained_title_experiment", production_source)
+        self.assertNotIn("FreshCodexExperimentCreation", production_source)
+
     def test_managed_run_success_requires_work_item_acceptance_authority(self):
         required = (
             "ManagedRun may reach successful terminal completion only from explicit "

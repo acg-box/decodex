@@ -7,7 +7,8 @@
 //! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
 //! managed-repository authority with append-only operations/evidence, plus revisioned routing
 //! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
-//! Codex experiment intent/fences/bindings/positive observations, atomic routing decisions, and
+//! Codex experiment intent, two one-shot fences, exact start receipts, retained-title
+//! attestations, and positive observations, plus atomic routing decisions and
 //! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
 //! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
 //! cancellation, supersession, and fresh-routing requests. It does not compose a scheduler,
@@ -48,8 +49,11 @@ pub use self::{
 	},
 	error::{BootstrapFailure, StoreError},
 	experiments::{
-		BindCodexExperimentThread, CodexExperimentCreationFenceOutcome,
-		FreshCodexExperimentCreation, PrepareCodexExperiment, RecordCodexExperimentObservation,
+		AttestCodexExperimentRetainedTitle, BindCodexExperimentStart,
+		CodexExperimentCreationFenceOutcome, CodexExperimentStartReceipt,
+		CodexExperimentTitleSetFenceOutcome, FenceCodexExperimentTitleSet,
+		FreshCodexExperimentCreation, FreshCodexExperimentTitleSet, PrepareCodexExperiment,
+		RecordCodexExperimentObservation,
 	},
 	managed_repositories::{
 		RepositoryAdmissionOutcome, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,

@@ -62,7 +62,8 @@ pub use self::{
 	experiment::{
 		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
 		CodexExperimentObservation, CodexExperimentObservationKind, CodexExperimentPrepared,
-		CodexExperimentRejection, CodexExperimentState, CodexExperimentThreadBinding,
+		CodexExperimentRejection, CodexExperimentRetainedTitleAttestation, CodexExperimentState,
+		CodexExperimentThreadBinding, CodexExperimentTitleSetPossible,
 	},
 	identity::ServerIdentity,
 	managed_repository::{

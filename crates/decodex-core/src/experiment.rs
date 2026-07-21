@@ -36,15 +36,14 @@ impl CodexExperimentIdentity {
 	}
 }
 
-/// Durable causal state. `CreationPossible` is terminal for creation authority unless the exact
-/// typed response is later bound; recovery cannot turn it back into preparation.
+/// Durable causal state. `CreationPossible` never grants creation authority on replay.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CodexExperimentState {
 	/// Immutable intent exists, but no external thread-creation effect is yet permitted.
 	Prepared,
 	/// The pre-effect fence is durable; recovery treats creation as terminally ambiguous.
 	CreationPossible,
-	/// One exact successful typed response has bound the lineage to one owned thread.
+	/// One exact nullable-name `thread/start` response has bound the lineage to one owned thread.
 	ThreadBound,
 }
 
@@ -102,7 +101,7 @@ pub struct CodexExperimentCreationPossible {
 	pub fenced_at_micros: i64,
 }
 
-/// Exact successful typed response bound to one immutable experiment lineage.
+/// Exact successful nullable-name `thread/start` response bound to one experiment lineage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexExperimentThreadBinding {
 	/// Canonical experiment UUID text owning the exact thread binding.
@@ -113,10 +112,80 @@ pub struct CodexExperimentThreadBinding {
 	pub attempt_id: String,
 	/// Exact Codex thread identity returned by that response; no searched thread may substitute.
 	pub thread_id: String,
-	/// Exact app-server response identity retained to prevent response aliasing.
-	pub response_id: String,
+	/// Exact numeric JSON-RPC request identity retained for the one external start effect.
+	pub start_request_id: i64,
+	/// Lowercase SHA-256 of the exact serialized `thread/start` request frame.
+	pub start_request_digest: String,
+	/// Exact prepared repository working directory sent by `thread/start`.
+	pub request_cwd: String,
+	/// Exact prepared provenance marker sent by `thread/start`.
+	pub request_marker: String,
+	/// Request ephemeral flag, fixed to false.
+	pub request_ephemeral: bool,
+	/// Exact numeric JSON-RPC response identity. It equals `start_request_id`.
+	pub start_response_id: i64,
+	/// Lowercase SHA-256 of the exact raw `thread/start` response frame.
+	pub start_response_digest: String,
+	/// Exact prepared repository working directory returned by `thread/start`.
+	pub response_cwd: String,
+	/// Exact prepared provenance marker returned by `thread/start`.
+	pub response_marker: String,
+	/// Response ephemeral flag, fixed to false.
+	pub response_ephemeral: bool,
+	/// Nullable name returned by `thread/start`. The pinned build requires `None`.
+	pub returned_name: Option<String>,
 	/// PostgreSQL-owned binding time in UTC Unix microseconds.
 	pub bound_at_micros: i64,
+}
+
+/// Durable one-shot pre-effect fence for `thread/name/set`.
+#[derive(Debug, Eq, PartialEq)]
+pub struct CodexExperimentTitleSetPossible {
+	/// Canonical experiment UUID text whose exact start binding owns this title effect.
+	pub experiment_id: String,
+	/// Exact experiment revision, fixed at three.
+	pub experiment_revision: i64,
+	/// Canonical UUID text identifying the sole title-set attempt.
+	pub title_attempt_id: String,
+	/// Exact thread identity returned by the bound `thread/start` response.
+	pub thread_id: String,
+	/// Exact numeric JSON-RPC identity for the one allowed `thread/name/set` request.
+	pub request_id: i64,
+	/// Lowercase SHA-256 of the exact serialized `thread/name/set` request frame.
+	pub request_digest: String,
+	/// Exact immutable prepared title bound into the fenced request.
+	pub requested_title: String,
+	/// PostgreSQL-owned fence time in UTC Unix microseconds.
+	pub fenced_at_micros: i64,
+}
+
+/// Positive exact-ID `thread/read` attestation for the retained prepared title.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexExperimentRetainedTitleAttestation {
+	/// Canonical experiment UUID text that owns the attestation.
+	pub experiment_id: String,
+	/// Canonical UUID text identifying this immutable attestation.
+	pub attestation_id: String,
+	/// Canonical UUID text identifying the fenced title-set effect.
+	pub title_attempt_id: String,
+	/// Exact thread identity read after the title-set fence.
+	pub thread_id: String,
+	/// Exact numeric JSON-RPC identity for the exact-ID read request.
+	pub read_request_id: i64,
+	/// Lowercase SHA-256 of the exact serialized `thread/read` request frame.
+	pub read_request_digest: String,
+	/// Exact numeric JSON-RPC response identity. It equals `read_request_id`.
+	pub read_response_id: i64,
+	/// Lowercase SHA-256 of the exact raw `thread/read` response frame.
+	pub read_response_digest: String,
+	/// Exact prepared title returned by the positive readback.
+	pub retained_title: String,
+	/// Exact prepared repository working directory returned by the positive readback.
+	pub returned_cwd: String,
+	/// Exact retained provenance marker returned by the positive readback.
+	pub marker: String,
+	/// PostgreSQL-owned attestation time in UTC Unix microseconds.
+	pub attested_at_micros: i64,
 }
 
 /// One append-only positive exact observation.
@@ -129,6 +198,8 @@ pub struct CodexExperimentObservation {
 	pub experiment_revision: i64,
 	/// Canonical UUID text uniquely identifying this append-only observation.
 	pub observation_id: String,
+	/// Exact retained-title attestation that authorizes this title-qualified observation.
+	pub attestation_id: String,
 	/// Closed positive fact shape; it has no absence or inferred-completion variant.
 	pub kind: CodexExperimentObservationKind,
 	/// Exact app-server source identity whose payload is retained by digest at persistence.
@@ -137,10 +208,10 @@ pub struct CodexExperimentObservation {
 	pub observed_at_micros: i64,
 }
 
-/// Closed stable domain rejection returned by a V15 exact command.
+/// Closed stable domain rejection returned by a V15 or V22 exact command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexExperimentRejection {
-	/// Fixed V15 command name that produced the durable stable rejection.
+	/// Fixed experiment command name that produced the durable stable rejection.
 	pub operation: String,
 	/// Closed operation-specific rejection code, not an external-effect or absence inference.
 	pub code: String,
