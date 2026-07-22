@@ -1,6 +1,7 @@
 # Decodex vNext Authority Decision
 
-Status: accepted repository authority for vNext.
+Status: accepted repository authority for vNext, with private-artifact authority carved out to the
+accepted package linked below.
 
 Tracking issue: [XY-1260](https://linear.app/hack-ink/issue/XY-1260/promote-the-vnext-authority-contract-and-supersede-lane-authority-v2)
 
@@ -174,31 +175,25 @@ authoritative request shape, Rust authorization wrapper used as provenance, glob
 exclusion -> RuntimeSession -> decision composition are superseded evidence only. They must not
 be repaired, revived, or wholesale transplanted.
 
-XY-1372 private-artifact capability evidence accepted 2026-07-21 freezes one
-`decodex-core` Unix authority. It uses descriptor-pinned bounded capture and one semantic
-publication, retirement, and collection state machine with private macOS
-`renameatx_np(RENAME_EXCL)` and Linux `renameat2(RENAME_NOREPLACE)` shims. A
-`PrivateArtifactDirectory` can capture and publish create-new artifacts. Only a
-Decodex-created, operation-unique `OwnedEphemeralArtifactRoot` can grant retirement authority.
-Retirement moves the whole owned root into a controlled, unique, same-device quarantine before
-`QuarantinedPrivateArtifact` can grant collection authority. A path, retained descriptor, or
-ordinary Decodex child never gains retirement authority by observation.
+Private-artifact authority is cut over to the accepted
+[private-artifact authority package](../specs/private-artifact/README.md). That package is the
+sole normative authority for the subsystem. All private-artifact text on this page is a
+nonnormative navigation and status projection. The package replaces the earlier XY-1373 and
+XY-1371 authority wording; the
+[XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md) remains
+evidence, not a second contract.
 
-The operation token and expected digest are durable before the first namespace effect. Staging
-occurs in the retained target parent. Every no-replace effect requires exact post-effect
-verification and synchronization before it grants a success capability. Ambiguous or unexpected
-results preserve the stage, target, active root, or quarantine for targeted reconciliation. No
-publication, retirement, error, or rollback path may unlink one of those objects. Producer stop
-means tracked leader exit plus tracked process-group absence. Exclusive maintenance means
-cooperative Decodex quiescence; it is not containment of hostile same-UID code. Collection is
-separate maintenance and cannot determine whether capture, publication, or attestation succeeded.
-
-The exact supported and excluded environments, proof lineage, typed stops, and no-overclaim
-boundary are recorded in the [XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md).
-Unsupported or unproven semantics require a future enablement gate. XY-1373 must receive fresh
-exact-candidate review before XY-1371 implementation resumes. The accepted XY-1371 implementation
-must exist before XY-1369 or XY-1370 resumes, and both accepted preflight receipts remain required
-before a new XY-1363 live-effect decision.
+This projection binds the frozen AR-PKG commit
+`4ebcec86e45a8c96752079c898857dff2334da2d`, package tree
+`bfb33e04e997ba6180f0a6d796366c735770a947`, and raw
+`authority/package.manifest` SHA-256
+`d30308074fdf1dbbaf08ae8a2e1e728e9735bad077a33bb6b40fed25e6abd286`.
+Read the package [decision](../specs/private-artifact/decision.md) and semantic modules for exact
+rules and inventories. Read its
+[operations and delivery contract](../specs/private-artifact/operations-delivery.md) for the
+future implementation, freeze, acceptance, preparation, and validation sequence. None of those
+future private-artifact runtime, API, task, or validation behaviors is implemented by this
+documentation cutover. The stacked cutover still requires AR-REV acceptance.
 
 The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
 repository-effect owner. Its in-process repository executor is a correctness,
@@ -231,7 +226,8 @@ workers must not silently reinterpret either source.
 Within vNext work, authority descends in this order:
 
 1. explicit user direction and checked-in project policy;
-2. this decision, the vNext authority contract, and the vNext gate manifest;
+2. for the private-artifact subsystem, the accepted private-artifact authority package; for all
+   other vNext scope, this decision, the vNext authority contract, and the vNext gate manifest;
 3. accepted project policies and versioned domain/protocol contracts created under
    those documents;
 4. source, tests, migrations, and operational runbooks implementing an accepted gate;

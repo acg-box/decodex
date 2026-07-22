@@ -1,11 +1,23 @@
 # Design Rationale
 
-Scope: current v0.2 rationale and historical decisions. For vNext target design, the
+Scope: current v0.2 rationale and historical decisions. For vNext target design outside the
+private-artifact carve-out, the
 [vNext authority decision](vnext-authority.md) and
 [vNext authority contract](../specs/vnext-authority.md) supersede conflicting product,
 runtime, state, identity, transport, migration, and delivery claims on this page.
 
 This page preserves durable "why" decisions that were previously scattered across historical decision records. It is not runtime authority by itself. Current authority lives in source, contracts, tests, checked-in manifests, and local runtime state; this page explains why those authority boundaries exist and where future agents should verify them.
+
+## Private-artifact projection boundary
+
+The accepted [private-artifact authority package](../specs/private-artifact/README.md) is the sole
+normative authority for that subsystem. Any private-artifact statement on this page is a
+nonnormative rationale or navigation projection. Generic Artifact, blob, filesystem, runtime, or
+validation rationale on this page must not be used to infer a private-artifact rule. Use the
+package [decision](../specs/private-artifact/decision.md) for the authority boundary and its
+[operations and delivery contract](../specs/private-artifact/operations-delivery.md) for future
+delivery. The package describes target behavior and future delivery contracts; it does not prove
+that a private-artifact API, runtime path, command, or validation gate is implemented.
 
 ## Current authority and status
 
