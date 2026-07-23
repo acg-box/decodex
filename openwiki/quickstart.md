@@ -289,5 +289,7 @@ Those other pages now provide navigation, current status, or evidence only. The 
 [delivery module](specs/private-artifact/operations-delivery.md) defines CORE-FREEZE, ACC, the
 future PostgreSQL preparation and retained-title task contracts, one mechanical preparation pass,
 and unified validation. All are future delivery contracts. Their appearance in documentation does
-not claim that the behavior or command exists. The stacked package-plus-projection candidate still
-requires AR-REV acceptance before implementation begins.
+not claim that the behavior or command exists. AR-CLOSE accepts signed C2 as the cutover baseline
+by policy, with historical semantic fidelity explicitly unproven, and quarantines the historical
+private corpus outside runtime and normal workflows. Private rereview is not a prerequisite. A0
+and D0a can begin from the accepted AR-CLOSE identity; the later dependency graph is unchanged.

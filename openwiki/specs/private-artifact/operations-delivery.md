@@ -104,7 +104,7 @@ test ownership, or a weaker authority rule.
 **[rule:PA-DEL-0001]** Delivery order is exact:
 
 ```text
-XY-1372 -> AR-PKG -> AR-CUT -> AR-REV -> {A0,D0a}
+XY-1372 -> AR-PKG -> AR-CUT -> AR-CLOSE -> {A0,D0a}
 A0 -> A1 -> B
 {B,D0a} -> C -> D
 D -> {XY-1369,XY-1370}
@@ -125,11 +125,14 @@ identity and owns only these seven projection paths:
 - `openwiki/operations/commands-and-validation.md`
 - `openwiki/quickstart.md`
 
-AR-CUT links and summarizes; it does not duplicate inventories, create rules, edit
-this package, or edit the XY-1368 runbook. AR-REV is read-only. It reviews one
-stacked exact candidate, recomputes all fingerprints, reads the complete corpus and
-census, checks every owner and projection, and returns one unconditional verdict.
-No implementation begins before accepted AR-REV.
+AR-CUT linked and summarized; it did not duplicate inventories, create rules, edit
+this package, or edit the XY-1368 runbook. AR-CLOSE is the one public
+package-native authority amendment that accepts signed C2, records the historical
+corpus quarantine and semantic-fidelity residual, retires private semantic
+rereview, and rebinds the affected projections. Acceptance of this amendment
+satisfies AR-CLOSE. A0 and D0a can then begin against its exact signed identity.
+All downstream A1/B/C/D/CORE-FREEZE/ACC/preparation/validation edges remain
+unchanged.
 
 ## Pre-freeze source ownership
 
@@ -493,5 +496,6 @@ Check the exact owned file set, raw byte counts and SHA-256 values, sorted manif
 rows, manifest exclusion of itself, exact V22 bindings and slices, source-corpus
 fingerprints, rule/census references, and clean scope. Do not run a package checker,
 build, compiler, formatter, migration, wrapper, test, probe, service, or executable
-validation for AR-PKG or AR-REV. Mechanical agreement proves identity only; the
-Manager commissions independent semantic review.
+validation for AR-PKG, AR-CLOSE, or another package-governance amendment.
+Mechanical agreement proves identity only. It does not prove historical semantic
+fidelity and does not require access to the quarantined private corpus.
