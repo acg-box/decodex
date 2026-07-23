@@ -1,6 +1,6 @@
 # Decodex vNext Gate Manifest
 
-Status: normative sequencing and acceptance boundary.
+Status: normative sequencing and acceptance boundary except for the private-artifact subsystem.
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Contract:
 [vNext authority contract](vnext-authority.md).
@@ -19,7 +19,7 @@ its dependent implementation uses the result.
 | --- | --- |
 | [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence, while XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence. Private-artifact authority and future delivery are owned only by the [private-artifact authority package](private-artifact/README.md); this row does not restate that sequence. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -42,19 +42,22 @@ planning metadata, not product/runtime identity.
    quota depletion, durable exclusion before fallback, crash-safe exactly-one
    continuation, real resume-denied Context-Pack fallback, all-depleted wait/wakeup
    readback, side-effect reconciliation, and supported Codex Desktop title discovery.
-4. Empty PostgreSQL bootstrap, backup/rollback, and concurrent lease/outbox tests
+4. The future private-artifact delivery and acceptance gates in the
+   [private-artifact authority package](private-artifact/README.md). This manifest is a
+   nonnormative projection for that subsystem and does not restate its exact sequence.
+5. Empty PostgreSQL bootstrap, backup/rollback, and concurrent lease/outbox tests
    (XY-1264). The scoped proof choices, measurements, recovery procedure, and downstream
    boundary are recorded in [vNext storage feasibility evidence](../evidence/vnext-storage-feasibility.md).
-5. WebSocket reconnect, cursor resume, command idempotency, and current/previous-minor
+6. WebSocket reconnect, cursor resume, command idempotency, and current/previous-minor
    compatibility tests (XY-1266 and regression owner XY-1300).
-6. Large-history pagination/cache test proving multi-GB history is never eagerly loaded
+7. Large-history pagination/cache test proving multi-GB history is never eagerly loaded
    (XY-1263, implementation XY-1295, and regression owner XY-1300).
-7. ManagedRun restart and side-effect reconciliation fault injection, including the
+8. ManagedRun restart and side-effect reconciliation fault injection, including the
     Task-owned independent review loop and typed reviewer wait/failure states (XY-1283,
     XY-1285, and regression owner XY-1300).
-8. Real Program/Automation/Lead/Task/Reviewer dogfood, using PubFi or equivalent
+9. Real Program/Automation/Lead/Task/Reviewer dogfood, using PubFi or equivalent
     (XY-1290 and release dogfood owner XY-1303).
-9. Remote binding stays disabled until authentication, TLS, authorization, and
+10. Remote binding stays disabled until authentication, TLS, authorization, and
     redaction gates pass (XY-1299).
 
 ### XY-1262 foundation acceptance
@@ -128,6 +131,14 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1362 | Sole V18 migration owner for the inert `waiting_usage` wake lifecycle, plus its forward-only V19 deterministic time-authority repair; no selection or production scheduler authority. |
 | XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. |
 | XY-1364 | Frozen-core integration and acceptance for the checked-in V14-V21 ledger, including the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference repair; production routing remains disabled. |
+| XY-1367 | Sole V22 owner for the two-effect retained-title experiment bridge and inert manual Rust runner. It does not execute validation or live effects. |
+| XY-1368 | Historical mechanical, migration, semantic, authority-digest, and production-isolation acceptance for the exact XY-1367 V22 candidate; it is not current command authority. |
+
+The [XY-1368 retained-title freeze](xy-1368-retained-title-freeze.md) is immutable V22 historical
+evidence. It preserves the historical V14-V21 acceptance and records the V22 receipt and deferred
+work as they existed at that freeze. It is not current command, task-runner, or V1-V23 delivery
+authority. Future retained-title preparation and semantic delivery contracts are owned only by the
+[private-artifact package delivery module](private-artifact/operations-delivery.md).
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
@@ -258,7 +269,8 @@ XY-1358/V15 causal experiment authority, XY-1359/V16 atomic routing decisions, a
 XY-1360/V17 continuation authority. XY-1362 owns the V18 inert `waiting_usage` wake lifecycle;
 V19 is its forward-only deterministic time-authority repair. XY-1364 frozen-core acceptance
 incorporates the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference
-repair. These versions are allocated in source. A later owner may allocate another migration only
+repair. XY-1367 adds only forward V22. XY-1368 owns its frozen acceptance. These versions are
+allocated in source. A later owner may allocate another migration only
 when then-current source inspection proves that additional durable state is required. XY-1350 and
 the remaining managed-repository children retain their accepted non-routing ownership.
 
@@ -774,6 +786,32 @@ transaction ordering but cannot satisfy the live gate. Readiness cannot authoriz
 eligibility, assignment, reassignment, fallback, scheduling, wakeup, continuation, or
 production routing.
 
+<a id="xy-1372-private-artifact-capability-and-consumption-gate"></a>
+
+### Private-artifact delivery projection
+
+This section is nonnormative. The accepted
+[private-artifact authority package](private-artifact/README.md) is the sole normative authority
+for private-artifact semantics, ownership, sequencing, and acceptance. The
+[XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md) remains an
+evidence input only. Earlier XY-1373 and XY-1371 wording on this page does not compete with or
+amend the package.
+
+The package [delivery module](private-artifact/operations-delivery.md) defines future
+CORE-FREEZE and ACC contracts, future canonical preparation and retained-title task contracts,
+one future mechanical preparation pass, and the later unified validation protocol. Those are
+delivery targets, not implemented behavior. Current source inspection shows no package-defined
+private-artifact runtime/API composition, and current task-runner names do not yet implement the
+package-defined command surfaces. Use the package for the exact order, owners, path sets,
+inventories, and stop conditions; do not copy them into this manifest. No private-artifact gate by
+itself enables production routing.
+
+AR-CLOSE accepts signed C2 as the cutover baseline by explicit policy and retires historical
+private-corpus semantic rereview as a prerequisite. Its accepted authority identity gates A0 and
+D0a. After that acceptance, both can begin and the package-owned downstream
+A1/B/C/D/CORE-FREEZE graph remains unchanged. The historical corpus has no runtime or normal
+workflow edge, and no private-review channel component exists.
+
 ### Failed live account-routing enablement gate
 
 The [live gate issue](https://linear.app/hack-ink/issue/XY-1304) remains failed and
@@ -789,19 +827,27 @@ The required dependency order is:
 XY-1355 authority amendment
 -> XY-1356 / V14 complete routing-policy authority
 -> XY-1358 / V15 causal experiment authority
+-> XY-1367 / V22 retained-title experiment bridge
 -> XY-1359 / V16 atomic routing decisions
 -> XY-1360 continuation and atomic Context-Pack fallback
 -> XY-1361 runtime orchestration with dispatch disabled
 
 XY-1359 -> XY-1362 scheduler-owned waiting_usage wake lifecycle
-XY-1358 -> XY-1363 retained-title Desktop discovery evidence
 XY-1355 -> XY-1357 natural timestamp precision evidence
 
-all implementation children -> XY-1364 frozen-core acceptance
-XY-1364 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
+V14-V21 implementation children -> XY-1364 accepted frozen-core base
+XY-1364 + XY-1367 -> XY-1368 frozen mechanical and semantic acceptance
+
+XY-1368 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
 -> separate reviewed repository amendment to enable production routing
 -> XY-1300 later whole-product E2E/fault/UI/packaging/cutover acceptance
 ```
+
+The private-artifact prerequisites and delivery path into XY-1363 are not restated in this
+diagram. The sole normative sequence is in the
+[private-artifact package delivery module](private-artifact/operations-delivery.md). `XY-1368` in
+the remaining routing edge denotes accepted V22 historical evidence; it is not current command
+authority.
 
 The aggregate gate must bind one exact source tree and prove PostgreSQL-produced complete
 routing snapshots and decisions. Caller omission, reordering, substitution, duplicate facts,
@@ -857,6 +903,10 @@ and one final aggregate rerun. XY-1304 follows with live-routing evidence and it
 enablement amendment. XY-1300 then owns the later whole-product E2E, fault, UI, packaging,
 cutover, and release acceptance.
 
+That paragraph records the historical routing-core freeze sequence. Its lower-case "core freeze"
+and unified core gate are not the future private-artifact CORE-FREEZE or unified validation
+contracts.
+
 #### XY-1358 deferred acceptance matrix
 
 This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It must run against
@@ -872,6 +922,24 @@ one exact tree and may not enable a live experiment while collecting evidence.
 | Exact-command recovery | Same envelope/key replays stored bytes; changed envelope/key conflicts; aborts at receipt/domain/history completion roll back; no executing receipt commits. |
 | ACL and hostile catalog | Runtime has only the four V15 command entrypoints plus required enum usage; PUBLIC, direct table writes, helpers, trigger bypass, hostile search path, overloads, default ACL drift, and dump/restore authority drift fail closed. |
 | Production isolation | Reverse dependency inspection proves no production runtime or application reaches a V15 experiment execution root; Codex remains a typed fact adapter and dispatch remains disabled. |
+
+#### XY-1367 V22 deferred acceptance matrix
+
+This matrix is preserved as historical V22 acceptance context. XY-1368 executed its acceptance
+against one exact staged V22 candidate after XY-1367 deferred executable validation. It does not
+define a current command or the future package-defined V1-V23 retained-title task. The immutable
+[XY-1368 freeze](xy-1368-retained-title-freeze.md) is historical evidence only; future delivery
+uses the [private-artifact package](private-artifact/operations-delivery.md).
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Exact nullable-name start | The durable binding retains exact numeric request and raw response IDs, exact-frame SHA-256 digests, exact thread ID, cwd, marker, `ephemeral=false`, and nullable returned name. The pinned build accepts only raw null. A title read later cannot substitute for a start response field. |
+| Creation crash and replay | A fresh creation fence authorizes one start. Fence replay never authorizes another start. An exact same-experiment and same-attempt durable binding resumes with only its exact ID. Missing binding after response loss remains terminally ambiguous. Search, list, adoption, retry, and inferred absence remain unavailable. |
+| Title effect fence | Only a freshly committed title fence authorizes one exact `thread/name/set` request. The fence stores fixed request ID 4, the prepared title, and the exact-frame digest. Replay, response loss, method rejection, or any mismatch never authorizes another set. Database command replay retains the same derived key and byte-equivalent envelope. External RPC transport never retries. |
+| Exact-ID retained-title attestation | After fence replay or a lost set response, one bounded exact-ID read can attest an already-correct title. Attestation requires the prepared title, marker, cwd, and thread ID plus exact read request and raw response IDs and digests. Missing, null, changed, or cross-thread facts remain ambiguous. |
+| Observation and continuation gate | Only observations linked to an immutable retained-title attestation qualify as title evidence. V17 same-thread completeness requires that mapping and exact attestation lineage. Historical V15 rows remain readable but cannot satisfy the V22 title gate. |
+| ACL and catalog closure | Runtime cannot execute the obsolete V15 title-in-start binder or unattested observation command. It can execute only the V22 bind, exact start readback, title fence, attestation, and attested observation additions. PUBLIC, direct DML, overload, trigger, owner, dependency, default-ACL, and restore drift fail closed across 77 relations, 161 functions, 67 safety functions, 142 triggers, and the V1-V22 ledger. |
+| Inert runner reachability | The manual Rust runner requires its explicit Cargo feature and binary. Its only effect flow is prepare, creation fence, start, bind, title fence, name set, exact-ID read, attestation, and positive observation. `decodexd`, protocol handlers, scheduler, routing orchestration, production dispatch, and default features cannot reach it. It exposes no turn, list, search, archive, retry, adoption, account switch, plugin, or UI operation. |
 
 #### XY-1359 deferred acceptance matrix
 
@@ -902,7 +970,7 @@ consumer.
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
 | Decision consumption | Only one persisted `selected` V16 decision identity plus its exact immutable ManagedRun revision lineage is accepted; waiting/no-route, missing, stale, cross-run, substituted, or already-consumed decisions fail closed. Caller candidates, policy, exclusions, selection, evidence, and account facts cannot alter the database-derived lineage, and later ManagedRun advances do not rewrite or orphan the persisted plan. |
-| Same-thread evidence | Exact selected account/revision, build, RoleProfile and source RuntimeSession identity, bound thread, V14 schema/capability profile, and fresh positive V15 thread-read evidence permit exactly one same-thread plan. Unknown, stale, future, negative, mismatched, incomplete, duplicate-experiment, unsupported, noncanonical, or lossy absence evidence produces fallback, never inferred compatibility. |
+| Same-thread evidence | Exact selected account/revision, build, RoleProfile and source RuntimeSession identity, bound thread, V14 schema/capability profile, and a fresh V22-attested positive thread-read observation permit exactly one same-thread plan. Unknown, unattested, stale, future, negative, mismatched, incomplete, duplicate-experiment, unsupported, noncanonical, or lossy absence evidence cannot authorize same-thread continuation. |
 | Atomic fallback | Crash before/after blob publication, exact-receipt reservation, source staging, Context-Pack seal, account snapshot, RuntimeSession, plan, activity, outbox, receipt completion, commit, or response loss leaves either no durable fallback state or one complete linked Context Pack + RuntimeSession + plan. No Context Pack-only, RuntimeSession-only, two-session, or V10/V16 two-command orphan is possible. |
 | Cross-domain event references | Canonical HistoryItem and other non-RuntimeSession activity/outbox may carry scalar `runtime_session_id`, `profile_snapshot_id`, or `account_snapshot_id` provenance. RuntimeSession aggregate/event/kind markers, complete RuntimeSession/profile/account snapshot objects under any wrapper, and outbox links to activity carrying those shapes remain migration-owner-only; direct forgery and immutable-authority updates fail, while delivery-only outbox updates remain permitted. A neutral array whose incomplete object elements only collectively contain a complete shape remains allowed; one genuinely complete snapshot object nested in an array remains reserved. |
 | Replay and concurrency | Same key replays exact bytes; a second key with the identical request reads the one stored plan; changed requests conflict or reject. Concurrent decision consumers, Context-Pack revisions, fallback identities, Conversation closure, ManagedRun revision change, and blob reclamation serialize or fail closed without duplicate state. |
@@ -935,28 +1003,27 @@ exact integrated tree. It must not enable or compose a production scheduler.
 The `fd1e351` core freeze was reopened for the forward V19 time-authority repair. Forward-only V20
 then canonicalized restore-unstable constraints, and V21 repairs only RuntimeSession event-reference
 classification and its final inventories without changing the trusted command or trigger boundary.
-The current core refreezes at the exact approved V21 tree. This is the single integrated
-source-candidate matrix for the XY-1364 refrozen core. It defines the post-freeze mechanical and
-behavioral gate for the exact integrated candidate. Every result must bind the exact approved
-integration tree and both immutable merge parents; evidence from either parent alone is
-insufficient.
+XY-1367 reopened that tree only for forward V22. This matrix records the integrated source
+candidate used by the historical XY-1368 V22 acceptance. It is not the future private-artifact
+CORE-FREEZE, ACC, preparation, or unified-validation contract. Those future contracts exist only
+in the [private-artifact package delivery module](private-artifact/operations-delivery.md).
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
 | Scheduler timing and fairness | Before, equal, and after exact database-authored readiness; equal-ready deterministic ordering; clock-microsecond edges; bounded acquisition under a large independent-account inventory; no starvation introduced by caller order; and no pooling, merging, summing, averaging, or caller ranking of account quotas. |
-| Crash and partial-transaction boundaries | Crash before or after exact-receipt reservation, V16 decision completion, V17 barrier/plan or fallback publication, V18 transition append, head advance, activity/outbox insertion, receipt completion, commit, and response loss yields either no durable command or one complete authoritative cluster, never a partial plan, wake, projection, effect, activity, or outbox result. |
+| Crash and partial-transaction boundaries | V22 start and title fences obey their distinct replay rules. Lost start response without a durable binding remains terminal. Lost title-set response permits only exact-ID readback. Database commands retain exact envelope replay. Existing V16-V18 transaction clusters remain atomic. |
 | Same-key and cross-key replay | Same protocol key and canonical envelope replays byte-identical stored bytes; changed envelopes conflict. A V17 decision cannot be consumed twice across keys. A V18 operation under a new key verifies canonical request equality and returns only its immutable transition result, never later mutable-head state. |
 | Concurrent lifecycle operations | Concurrent register/register, claim/claim, claim/reclaim, reclaim/reclaim, fire/fire, cancel/cancel, fire/cancel, expiry/fire, and supersede races serialize to one legal append-only chain and exact head tip. Same-run competing V16 decisions cannot alias a wake, and every losing stale tip, claim, fence, or operation identity fails closed. |
 | Lease expiry and restart reclaim | A fixed database-authored lease excludes concurrent holders; pre-expiry reclaim and stale-token fire reject; exact expiry and process restart append one reclaimed transition with a new fence while preserving the prior claim and lease history unchanged. |
 | Stale ManagedRun, decision, and policy lineage | Missing, cross-run, wrong-kind, replaced, or ambiguous V16 decisions; stale ManagedRun revision/lifecycle/wait reason/barrier state; divergence; changed policy head; and substituted requested policy/run provenance reject or append only the cause-bound V18 supersession allowed by the exact current tip. |
 | Terminal fencing | Fired, cancelled, and superseded tips admit no successor, reclaim, refire, recancel, or return to pending/leased. Lost leases, old transitions, forged predecessors, skipped revisions, and mutable-head/ledger inequality cannot mutate authority or reconstruct success. |
-| V17 barrier readback | Same-thread and fallback plans round-trip the exact ManagedRun barrier revision, barrier state, submitted-turn receipt count, and submitted-turn lineage from the committed plan and strict readback. Stale or substituted values fail closed; replay and dispatch remain structurally false. |
+| V17 barrier readback | Same-thread plans additionally require the exact V22 retained-title attestation and mapped observation. Same-thread and fallback plans round-trip the exact ManagedRun barrier facts. Stale or substituted values fail closed. Replay and dispatch remain structurally false. |
 | V16/V17/V18 provenance | Every disabled-orchestration outcome retains the exact requested routing policy and ManagedRun provenance. Exactly one V16 decision exists per request; selected alone consumes its one exact V17 plan; waiting exposes only its decision, ManagedRun revision, and exact earliest-ready handoff; V18 registration derives all remaining decision/policy/run lineage from PostgreSQL. |
 | ACL, search path, catalog, and hostile input | PUBLIC and runtime authority close exactly over the intended V16-V18 entrypoints and enum usage. Direct relation writes, private helpers, trigger bypass, overload/default-ACL/ownership drift, hostile `search_path`, malformed UUID/revision/time/JSON/digest input, forged lineage, relation/enum/constraint/index/dependency drift, and dump/restore drift fail closed. |
 | Exact effect, activity, outbox, and operation readback | Every accepted V17/V18 command binds immutable response/effect bytes, digest source, exact activity sequence/event, outbox identity/effect key, aggregate revision, operation identity, and transition/plan lineage. Missing, extra, reordered, cross-linked, half-written, or head-reconstructed values fail strict readback. |
 | Fresh-resolution behavior | One valid leased V18 fire emits exactly one opaque new routing-resolution request with no old candidate universe, selection, account, eligibility, quota/capability evidence, exclusion, credential, continuation, dispatch, or retry authority; old-decision reuse and production enablement remain structurally false. |
-| Production isolation and protocol vocabulary | Reverse dependencies prove no production root constructs the disabled V16/V17 orchestration and no runtime or application root imports V18. V18 remains scheduler-uncomposed; no dispatch, credentials, Codex mutation, wake execution, replay, live production composition, or new V1 protocol command exists. |
-| Regenerated schema and configured-authority digests | The canonical post-freeze derivation and final bound run agree on the immutable V1-V21 migration ledger, 73 relations, 67 safety functions, 138 triggers, all public-wrapper and internal function source/metadata/signatures/ACLs, enum labels, constraints, indexes, dependencies, schema manifest, configured-authority inventory, and expected digests for the exact refrozen tree. |
+| Production isolation and protocol vocabulary | Reverse dependencies prove no production root reaches the V22 runner. The runner requires its manual feature and binary. Existing V16/V17 orchestration and V18 remain disabled and uncomposed. No new V1 command exists. |
+| Regenerated schema and configured-authority digests | The canonical frozen derivation and final bound run agree on the immutable V1-V21 checksums plus V22, 77 relations, 161 functions, 67 safety functions, 142 triggers, exact source/metadata/signatures/ACLs, enums, constraints, indexes, dependencies, schema manifest, configured-authority inventory, and expected digests. |
 | Representative end-to-end flow | One request persists exactly one V16 result. Selected produces exactly one strict-readback V17 same-thread or atomic fallback plan and remains inert. Waiting produces only handoff facts, then an independently invoked V18 register -> claim or expiry/reclaim -> fire chain yields one immutable fresh-resolution request; cancellation and stale-lineage paths yield none. Restart preserves all readback and no production effect executes. |
 
 

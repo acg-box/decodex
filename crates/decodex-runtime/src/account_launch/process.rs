@@ -60,8 +60,9 @@ use crate::account_launch::{
 		AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
 		InitializeCapabilities, InitializeParams, InitializeResponse, JsonRpcResponse,
 		MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse, ThreadListParams,
-		ThreadListResponse, ThreadReadParams, ThreadReadResponse, ThreadSearchParams,
-		ThreadSearchResponse,
+		ProtocolThread, ThreadListResponse, ThreadReadParams, ThreadReadResponse, ThreadSearchParams,
+		ThreadSearchResponse, RetainedTitleNameSetParams, RetainedTitleNameSetResponse,
+		RetainedTitleThreadStartParams, RetainedTitleThreadStartResponse,
 	},
 };
 use decodex_codex::{
@@ -83,6 +84,8 @@ const THREAD_SEARCH_LIMIT: usize = 10;
 const MAX_VERSION_OUTPUT_BYTES: u64 = 4 * 1_024;
 const MAX_EXECUTABLE_BYTES: u64 = 512 * 1_024 * 1_024;
 const CAPABILITY_SEARCH_TERM: &str = "decodex-capability-probe-7f57a41a";
+const RETAINED_TITLE_DEVELOPER_INSTRUCTIONS: &str =
+	"This is an inert Decodex retained-title experiment. Do not start a turn or perform work.";
 const ACCOUNT_MISMATCH_SHUTDOWN: Duration = Duration::from_secs(1);
 const INBOUND_BLOCK_BYTES: usize = 8 * 1_024;
 const OUTBOUND_BLOCK_BYTES: usize = 8 * 1_024;
@@ -665,13 +668,33 @@ impl SupervisedProcess {
 	{
 		let request_id = self.next_request_id;
 
-		self.next_request_id = self
-			.next_request_id
+		self.request_rpc_with_id(request_id, method, params, timeout).map(|success| success.value)
+	}
+
+	fn request_rpc_with_id<P, R>(
+		&mut self,
+		request_id: u64,
+		method: &'static str,
+		params: &P,
+		timeout: Duration,
+	) -> Result<RpcSuccess<R>, RpcError>
+	where
+		P: Serialize,
+		R: DeserializeOwned,
+	{
+		if request_id < self.next_request_id || self.abandoned_request_ids.contains(&request_id) {
+			return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
+		}
+		self.next_request_id = request_id
 			.checked_add(1)
 			.ok_or(RpcError::Supervision(SupervisionError::ProtocolLimitExceeded))?;
+		let frame = exact_request_frame(request_id, method, params).map_err(rpc_supervision)?;
+		let request_digest = frame.sha256();
 
-		self.write_json(&OutboundRequest { jsonrpc: "2.0", id: request_id, method, params })
-			.map_err(rpc_supervision)?;
+		frame.write_to(&mut self.stdin).map_err(rpc_supervision)?;
+		self.stdin
+			.flush()
+			.map_err(|_| RpcError::Supervision(SupervisionError::WriteFailed))?;
 
 		let deadline = Instant::now() + timeout;
 
@@ -711,6 +734,7 @@ impl SupervisedProcess {
 				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
 			if header.id == Some(request_id) {
+				let response_digest = hex_digest(&Sha256::digest(&line));
 				let response: JsonRpcResponse<R> = serde_json::from_slice(&line)
 					.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
@@ -722,7 +746,19 @@ impl SupervisedProcess {
 				}
 
 				return match (response.result, response.error) {
-					(Some(result), None) => Ok(result),
+					(Some(result), None) => Ok(RpcSuccess {
+						value: result,
+						wire: RpcWireReceipt {
+							request_id: i64::try_from(request_id).map_err(|_| {
+								RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
+							})?,
+							request_digest,
+							response_id: i64::try_from(response.id).map_err(|_| {
+								RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
+							})?,
+							response_digest,
+						},
+					}),
 					(None, Some(error)) => Err(RpcError::MethodRejected(error.code)),
 					_ => Err(RpcError::Supervision(SupervisionError::InvalidProtocol)),
 				};
@@ -748,6 +784,63 @@ impl SupervisedProcess {
 				.map_err(rpc_supervision)?;
 			}
 		}
+	}
+
+	pub(super) fn start_retained_title_thread(
+		&mut self,
+		request_id: i64,
+		cwd: &str,
+		marker: &str,
+		timeout: Duration,
+	) -> Result<RetainedTitleStartFact, RpcError> {
+		let request_id = exact_rpc_id(request_id)?;
+		let success = self.request_rpc_with_id::<_, RetainedTitleThreadStartResponse>(
+			request_id,
+			"thread/start",
+			&RetainedTitleThreadStartParams {
+				cwd,
+				ephemeral: false,
+				history_mode: "legacy",
+				developer_instructions: RETAINED_TITLE_DEVELOPER_INSTRUCTIONS,
+				thread_source: marker,
+			},
+			timeout,
+		)?;
+
+		Ok(RetainedTitleStartFact { wire: success.wire, thread: success.value.thread })
+	}
+
+	pub(super) fn set_retained_title(
+		&mut self,
+		request_id: i64,
+		thread_id: &str,
+		title: &str,
+		timeout: Duration,
+	) -> Result<RpcWireReceipt, RpcError> {
+		let success = self.request_rpc_with_id::<_, RetainedTitleNameSetResponse>(
+			exact_rpc_id(request_id)?,
+			"thread/name/set",
+			&RetainedTitleNameSetParams { thread_id, name: title },
+			timeout,
+		)?;
+
+		Ok(success.wire)
+	}
+
+	pub(super) fn read_retained_title_thread(
+		&mut self,
+		request_id: i64,
+		thread_id: &str,
+		timeout: Duration,
+	) -> Result<RetainedTitleReadFact, RpcError> {
+		let success = self.request_rpc_with_id::<_, ThreadReadResponse>(
+			exact_rpc_id(request_id)?,
+			"thread/read",
+			&ThreadReadParams { thread_id, include_turns: false },
+			timeout,
+		)?;
+
+		Ok(RetainedTitleReadFact { wire: success.wire, thread: success.value.thread })
 	}
 
 	fn abandon_request(&mut self, request_id: u64) -> Result<(), RpcError> {
@@ -1403,6 +1496,81 @@ where
 	params: &'a P,
 }
 
+fn exact_rpc_id(value: i64) -> Result<u64, RpcError> {
+	u64::try_from(value)
+		.ok()
+		.filter(|value| *value > 0)
+		.ok_or(RpcError::Supervision(SupervisionError::InvalidProtocol))
+}
+
+fn exact_request_frame<P>(
+	request_id: u64,
+	method: &'static str,
+	params: &P,
+) -> Result<ZeroizingOutboundFrame, ProbeError>
+where
+	P: Serialize,
+{
+	ZeroizingOutboundFrame::serialize(&OutboundRequest {
+		jsonrpc: "2.0",
+		id: request_id,
+		method,
+		params,
+	})
+}
+
+pub(super) fn retained_title_name_set_request_digest(
+	request_id: i64,
+	thread_id: &str,
+	title: &str,
+) -> Result<String, SupervisionError> {
+	let request_id = exact_rpc_id(request_id).map_err(|error| match error {
+		RpcError::Supervision(error) => error,
+		RpcError::MethodRejected(_) => SupervisionError::InvalidProtocol,
+	})?;
+	exact_request_frame(
+		request_id,
+		"thread/name/set",
+		&RetainedTitleNameSetParams { thread_id, name: title },
+	)
+	.map(|frame| frame.sha256())
+	.map_err(|error| match error {
+		ProbeError::Supervision(error) => error,
+		_ => SupervisionError::InvalidProtocol,
+	})
+}
+
+pub(super) fn retained_title_start_request_digest(
+	request_id: i64,
+	cwd: &str,
+	marker: &str,
+) -> Result<String, SupervisionError> {
+	let request_id = exact_rpc_id(request_id).map_err(|error| match error {
+		RpcError::Supervision(error) => error,
+		RpcError::MethodRejected(_) => SupervisionError::InvalidProtocol,
+	})?;
+	exact_request_frame(
+		request_id,
+		"thread/start",
+		&RetainedTitleThreadStartParams {
+			cwd,
+			ephemeral: false,
+			history_mode: "legacy",
+			developer_instructions: RETAINED_TITLE_DEVELOPER_INSTRUCTIONS,
+			thread_source: marker,
+		},
+	)
+	.map(|frame| frame.sha256())
+	.map_err(|error| match error {
+		ProbeError::Supervision(error) => error,
+		_ => SupervisionError::InvalidProtocol,
+	})
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+	bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 #[derive(Serialize)]
 pub(super) struct OutboundNotification<'a, P>
 where
@@ -1919,9 +2087,31 @@ impl Drop for ProcessQuarantine {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum RpcError {
+pub(super) enum RpcError {
 	Supervision(SupervisionError),
 	MethodRejected(i64),
+}
+
+pub(super) struct RpcWireReceipt {
+	pub request_id: i64,
+	pub request_digest: String,
+	pub response_id: i64,
+	pub response_digest: String,
+}
+
+struct RpcSuccess<T> {
+	value: T,
+	wire: RpcWireReceipt,
+}
+
+pub(super) struct RetainedTitleStartFact {
+	pub wire: RpcWireReceipt,
+	pub thread: ProtocolThread,
+}
+
+pub(super) struct RetainedTitleReadFact {
+	pub wire: RpcWireReceipt,
+	pub thread: ProtocolThread,
 }
 
 struct ProcessQuarantineState {
@@ -2155,6 +2345,16 @@ impl ZeroizingOutboundFrame {
 
 			&block.bytes[..count]
 		})
+	}
+
+	fn sha256(&self) -> String {
+		let mut digest = Sha256::new();
+
+		for chunk in self.chunks() {
+			digest.update(chunk);
+		}
+
+		hex_digest(&digest.finalize())
 	}
 
 	fn write_to(&self, writer: &mut impl Write) -> Result<(), ProbeError> {
@@ -2635,6 +2835,42 @@ fn initialize_probe(
 	negotiation.observe(Capability::AccountRead, LiveMethodOutcome::Supported);
 
 	Ok(identity)
+}
+
+pub(super) fn launch_retained_title_process(
+	command: AppServerCommand,
+	binding: AccountBinding,
+	guard: RunnerPermit,
+	timeout: Duration,
+) -> Result<(BuildId, SupervisedProcess), ProbeError> {
+	let marker = SchemaMarker::accepted();
+
+	SchemaContract::validate(marker.clone())
+		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
+	let (build, generated, guard) = attest_executable(
+		&command,
+		&binding,
+		Some(marker.canonical_digests()),
+		timeout,
+		Some(guard),
+	)?;
+	let missing = ["thread/start", "thread/name/set", "thread/read"]
+		.into_iter()
+		.filter(|method| !generated.contract().advertises_request(method))
+		.map(|method| format!("request:{method}"))
+		.collect::<Vec<_>>();
+
+	if !missing.is_empty() {
+		return Err(ProbeError::SchemaMissing { markers: missing });
+	}
+	let guard = guard.ok_or(SupervisionError::SpawnFailed)?;
+	let mut process = SupervisedProcess::spawn_bound(command, binding, guard)?;
+	let mut cache = CapabilityCache::default();
+	let mut negotiation = ProbeNegotiation::new(&mut cache, &build, &generated);
+
+	initialize_probe(&mut process, None, timeout, &mut negotiation)?;
+
+	Ok((build, process))
 }
 
 fn probe_thread_list(

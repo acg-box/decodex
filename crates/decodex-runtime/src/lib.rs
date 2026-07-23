@@ -1,6 +1,7 @@
 //! `decodexd` lifecycle assembly and the loopback V1 connection owner.
 //!
-//! Account-process composition remains crate-private and cannot be called by a product root:
+//! Default account-process composition remains crate-private and cannot be called by a product
+//! root. The V22 manual runner requires an explicit non-production feature and binary:
 //!
 //! ```compile_fail
 //! use decodex_runtime::ManualAccountLauncher;
@@ -24,6 +25,11 @@ mod supervised_validation;
 mod websocket;
 
 pub use application::{Application, ApplicationPublication};
+#[cfg(feature = "retained-title-experiment")]
+pub use account_launch::retained_title_experiment::{
+	ManualRetainedTitleExperimentError, ManualRetainedTitleExperimentReport,
+	run_manual_retained_title_experiment,
+};
 pub use bootstrap::ServiceBootstrap;
 pub use decodex_protocol::ServerId;
 pub use managed_repository_runtime::ManagedRepositoryReadiness;
