@@ -604,7 +604,7 @@ async fn assert_v19_catalog_authority(
 				"'claim_due_waiting_usage_wake_exact_internal',",
 				"'fire_waiting_usage_wake_exact_internal',",
 				"'cancel_waiting_usage_wake_exact_internal')), ",
-				"wrappers AS (SELECT proc.prosecdef,proc.proname,proc.pronargs ",
+				"wrappers AS (SELECT proc.oid,proc.prosecdef,proc.proname,proc.pronargs ",
 				"FROM pg_catalog.pg_proc AS proc ",
 				"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=proc.pronamespace ",
 				"WHERE namespace.nspname='decodex' AND proc.proname IN ",
@@ -621,18 +621,27 @@ async fn assert_v19_catalog_authority(
 				"WHEN 'claim_due_waiting_usage_wake_exact' THEN 5 ",
 				"WHEN 'fire_waiting_usage_wake_exact' THEN 8 ",
 				"WHEN 'cancel_waiting_usage_wake_exact' THEN 6 END) FROM wrappers),",
-				"(SELECT count(*)=51 FROM pg_catalog.pg_proc AS proc ",
-				"JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=proc.pronamespace ",
-				"WHERE namespace.nspname='decodex' AND proc.prokind='f' ",
-				"AND pg_catalog.has_function_privilege($1,proc.oid,'EXECUTE')),",
+				"(SELECT count(*)=4 AND bool_and(pg_catalog.has_function_privilege(",
+				"$1,oid,'EXECUTE')) FROM wrappers),",
 				"(SELECT count(*)=2 AND min(version)=18 AND max(version)=19 ",
 				"FROM public.refinery_schema_history WHERE version IN (18,19))",
 			),
 			&[&runtime_role],
 		)
 		.await?;
-	for index in 0..6 {
-		assert!(row.get::<_, bool>(index), "V19 catalog authority assertion {index}");
+	let invariants = [
+		"four internal functions retain exact metadata and settings",
+		"runtime role cannot execute the four internal functions",
+		"internal function ACLs grant EXECUTE only to each owner",
+		"four wrappers retain exact security and arity metadata",
+		"runtime role can execute all four wrappers",
+		"V18 and V19 ledger entries are exact",
+	];
+	for (index, invariant) in invariants.iter().enumerate() {
+		assert!(
+			row.get::<_, bool>(index),
+			"V19 catalog authority invariant failed: {invariant}",
+		);
 	}
 	Ok(())
 }

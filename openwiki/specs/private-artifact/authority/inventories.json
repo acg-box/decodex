@@ -1,0 +1,1131 @@
+{
+  "a0_baseline": [
+    {
+      "expected": "blob:ec55e191b7582ee04221744d653b949e5b58a631",
+      "path": "crates/decodex-core/src/lib.rs"
+    },
+    {
+      "expected": "blob:054d77c6c070338c993277dfa43f0856995e57e4",
+      "path": "crates/decodex-core/src/path_unix.rs"
+    },
+    {
+      "expected": "absent",
+      "path": "crates/decodex-core/src/path_unix/artifact.rs"
+    },
+    {
+      "expected": "absent",
+      "path": "crates/decodex-core/src/private_artifact.rs"
+    }
+  ],
+  "canonical_root_owners": [
+    {
+      "owner": "Operations",
+      "roots": [
+        "Plan",
+        "OperationHead"
+      ]
+    },
+    {
+      "owner": "Operation events",
+      "roots": [
+        "ReducerInput",
+        "ReducerDecision",
+        "Event"
+      ]
+    },
+    {
+      "owner": "Steps, attempts, observations",
+      "roots": [
+        "Step",
+        "Attempt",
+        "Observation"
+      ]
+    },
+    {
+      "owner": "Preparation receipts",
+      "roots": [
+        "PreparationReceipt",
+        "Envelope",
+        "ExactResponse"
+      ]
+    },
+    {
+      "owner": "Prepared blobs and references",
+      "roots": [
+        "PreparedBlob",
+        "BlobReference"
+      ]
+    },
+    {
+      "owner": "Dependencies and debts",
+      "roots": [
+        "Dependency",
+        "SyncDebt"
+      ]
+    },
+    {
+      "owner": "Executor rows",
+      "roots": [
+        "ExecutorEpoch",
+        "ExecutorHead",
+        "BootScope",
+        "GuardIdentity"
+      ]
+    },
+    {
+      "owner": "Producer rows",
+      "roots": [
+        "ProducerAdmissionHead",
+        "ProducerLaunch"
+      ]
+    },
+    {
+      "owner": "Tombstones and receipts",
+      "roots": [
+        "Tombstone",
+        "PublishedArtifactReceipt"
+      ]
+    },
+    {
+      "owner": "Status rows",
+      "roots": [
+        "Attention",
+        "Incompatibility",
+        "OperatorProjection"
+      ]
+    },
+    {
+      "owner": "GC candidates",
+      "roots": [
+        "GcCandidate"
+      ]
+    },
+    {
+      "owner": "Existing proposals",
+      "roots": [
+        "TransitionProposal"
+      ]
+    },
+    {
+      "owner": "CAS-validated records",
+      "roots": [
+        "Manifest",
+        "CasReference",
+        "OwnershipMarker",
+        "CaptureEvidenceBundle"
+      ]
+    },
+    {
+      "owner": "Inline projections",
+      "roots": [
+        "LifecycleMilestone",
+        "ObjectIdentity"
+      ]
+    }
+  ],
+  "d0a_evidence_cases": [
+    "Cross-process flock exclusion",
+    "Guard release after normal exit and SIGKILL",
+    "Fork, descriptor duplication, O_CLOEXEC, exec, and last-close behavior",
+    "Lockfile replacement and identity drift",
+    "Exact boot-source stability and change behavior",
+    "Exact process-start identity and PID-reuse behavior",
+    "setsid, fork, exec, process-group inheritance, signal-zero, and ESRCH behavior",
+    "Guard behavior on the accepted APFS Data, overlayfs, and virtiofs configurations",
+    "Descriptor-relative lock, namespace, filesystem, identity, byte, digest, and negative-evidence facts"
+  ],
+  "deferred_acceptance_cases": [
+    {
+      "case_id": "DA-A0-01",
+      "owner": "A0",
+      "requirement": "The four rejected-source paths equal the accepted base blobs or absence states."
+    },
+    {
+      "case_id": "DA-A1-01",
+      "owner": "ACC",
+      "requirement": "Golden canonical bytes cover all 34 tags and every variant."
+    },
+    {
+      "case_id": "DA-A1-02",
+      "owner": "ACC",
+      "requirement": "Noncanonical order, range, version, tag, option, and trailing-byte inputs are rejected."
+    },
+    {
+      "case_id": "DA-A1-03",
+      "owner": "ACC",
+      "requirement": "Rust and PostgreSQL agree on digest vectors, projections, and raw-name/path ordering."
+    },
+    {
+      "case_id": "DA-A1-04",
+      "owner": "ACC",
+      "requirement": "Cap-stop transitions are total and panic-free."
+    },
+    {
+      "case_id": "DA-B-01",
+      "owner": "ACC",
+      "requirement": "An empty embedded V1-V23 migration reaches exact terminal V23."
+    },
+    {
+      "case_id": "DA-B-02",
+      "owner": "ACC",
+      "requirement": "A populated V22 database upgrades to exact V23."
+    },
+    {
+      "case_id": "DA-B-03",
+      "owner": "ACC",
+      "requirement": "Configured-principal bootstrap, schema inventory, configured-authority inventory, and digests match."
+    },
+    {
+      "case_id": "DA-B-04",
+      "owner": "ACC",
+      "requirement": "Populated custom dump and restore preserve exact authority."
+    },
+    {
+      "case_id": "DA-B-05",
+      "owner": "ACC",
+      "requirement": "Two- and three-session receipt, reference-writer, and GC contention obey total lock order."
+    },
+    {
+      "case_id": "DA-B-06",
+      "owner": "ACC",
+      "requirement": "Unknown Tx A, Tx B, transition, prune, GC authorization, and GC outcome commits never mint duplicate permits."
+    },
+    {
+      "case_id": "DA-B-07",
+      "owner": "ACC",
+      "requirement": "Exact replay and conflict reuse work before and after pruning."
+    },
+    {
+      "case_id": "DA-B-08",
+      "owner": "ACC",
+      "requirement": "Pending, missing, corrupt, exhausted, GC-blocked, and tombstone cases preserve roots and exact responses."
+    },
+    {
+      "case_id": "DA-B-09",
+      "owner": "ACC",
+      "requirement": "Stale revision, epoch, generation, ordinal, evidence cap, ACL, and direct-SQL attacks fail closed."
+    },
+    {
+      "case_id": "DA-B-10",
+      "owner": "ACC",
+      "requirement": "Function source, owner, dependency, search path, overload, and surplus privilege checks match the exact V23 inventory."
+    },
+    {
+      "case_id": "DA-D0A-01",
+      "owner": "D0a",
+      "requirement": "Every d0a_evidence_cases member is accepted on every exact supported environment."
+    },
+    {
+      "case_id": "DA-C-01",
+      "owner": "ACC",
+      "requirement": "All traversal is descriptor-relative and every handle stays within one turn."
+    },
+    {
+      "case_id": "DA-C-02",
+      "owner": "ACC",
+      "requirement": "Every admitted type, link, alias, collision, substitution, and identity-drift case maps to the exact result."
+    },
+    {
+      "case_id": "DA-C-03",
+      "owner": "ACC",
+      "requirement": "PublishFile and PublishTree marker, reacquisition, and no-replace cases preserve evidence."
+    },
+    {
+      "case_id": "DA-C-04",
+      "owner": "ACC",
+      "requirement": "Exact-owned repair requires the same admitted single-link inode and verified CAS bytes."
+    },
+    {
+      "case_id": "DA-C-05",
+      "owner": "ACC",
+      "requirement": "Immediate revalidation, post-effect observation, debt order, and partial collection match authority."
+    },
+    {
+      "case_id": "DA-D-01",
+      "owner": "ACC",
+      "requirement": "Every covered launch route commits admission before spawn."
+    },
+    {
+      "case_id": "DA-D-02",
+      "owner": "ACC",
+      "requirement": "Clean, closed, dirty, reserved, and active SIGKILL restart states match the matrix."
+    },
+    {
+      "case_id": "DA-D-03",
+      "owner": "ACC",
+      "requirement": "Fork, exec, PID reuse, process-group descendants, inspection ambiguity, boot change, and namespace change match authority."
+    },
+    {
+      "case_id": "DA-D-04",
+      "owner": "ACC",
+      "requirement": "Foreground and reconciliation use the same reducer, store, and executor path."
+    },
+    {
+      "case_id": "DA-D-05",
+      "owner": "ACC",
+      "requirement": "Startup row 257, preparation row 65, GC row 257, coalesced wake, and exclusive deadlines are truthful."
+    },
+    {
+      "case_id": "DA-D-06",
+      "owner": "ACC",
+      "requirement": "V1.3 protocol, doctor, CLI, ordering, saturation, truncation, and forbidden-data corpus remain read-only and redacted."
+    },
+    {
+      "case_id": "DA-D-07",
+      "owner": "ACC",
+      "requirement": "XY-1369 and XY-1370 DTOs cannot carry authority that the trusted runtime owns."
+    },
+    {
+      "case_id": "DA-PKG-01",
+      "owner": "ACC plus aggregate gate",
+      "requirement": "One source-census row is absent."
+    },
+    {
+      "case_id": "DA-B-BASELINE-01",
+      "owner": "ACC plus aggregate gate",
+      "requirement": "One V22 relation name changes while the count remains 78."
+    },
+    {
+      "case_id": "DA-B-BASELINE-02",
+      "owner": "ACC plus aggregate gate",
+      "requirement": "One byte changes in a V22 function snapshot."
+    },
+    {
+      "case_id": "DA-A1-REASON-01",
+      "owner": "ACC plus aggregate gate",
+      "requirement": "Reason(8,6) is removed, remapped, or projected differently."
+    },
+    {
+      "case_id": "DA-PKG-OWNER-01",
+      "owner": "ACC plus aggregate gate",
+      "requirement": "One rule has two owners or references a missing owner."
+    }
+  ],
+  "dependency_edges": [
+    "XY-1372 -> AR-PKG",
+    "AR-PKG -> AR-CUT",
+    "AR-CUT -> AR-CLOSE",
+    "AR-CLOSE -> A0",
+    "AR-CLOSE -> D0a",
+    "A0 -> A1",
+    "A1 -> B",
+    "B -> C",
+    "D0a -> C",
+    "C -> D",
+    "D -> XY-1369",
+    "D -> XY-1370",
+    "XY-1369 -> XY-1363",
+    "XY-1370 -> XY-1363",
+    "XY-1363 -> CORE-FREEZE",
+    "CORE-FREEZE -> ACC",
+    "ACC -> one mechanical preparation pass",
+    "one mechanical preparation pass -> unified complete validation protocol"
+  ],
+  "issue_path_owners": {
+    "A0": [
+      "crates/decodex-core/src/lib.rs",
+      "crates/decodex-core/src/path_unix.rs",
+      "crates/decodex-core/src/path_unix/artifact.rs",
+      "crates/decodex-core/src/private_artifact.rs"
+    ],
+    "A1": [
+      "crates/decodex-core/src/lib.rs",
+      "crates/decodex-core/src/private_artifact/mod.rs",
+      "crates/decodex-core/src/private_artifact/model.rs",
+      "crates/decodex-core/src/private_artifact/codec.rs",
+      "crates/decodex-core/src/private_artifact/reducer.rs"
+    ],
+    "ACC": [
+      "crates/decodex-core/tests/private_artifact_codec.rs",
+      "crates/decodex-core/tests/private_artifact_reducer.rs",
+      "crates/decodex-postgres/tests/postgres_store.rs",
+      "crates/decodex-postgres/tests/postgres_store/private_artifacts.rs",
+      "crates/decodex-core/tests/private_artifact_blob_gc.rs",
+      "scripts/vnext/postgres_store_test.py",
+      "tests/scripts/test_postgres_authority_capture.py",
+      "crates/decodex-runtime/src/private_artifact/tests.rs",
+      "crates/decodex-runtime/tests/private_artifact_integration.rs",
+      "crates/decodex-runtime/tests/bootstrap_doctor.rs",
+      "crates/decodex-runtime/tests/cli_diagnostics.rs",
+      "crates/decodex-runtime/tests/websocket_protocol.rs",
+      "tests/scripts/test_vnext_architecture.py",
+      "Makefile.toml",
+      "openwiki/operations/xy-1368-retained-title-validation.md"
+    ],
+    "B": [
+      "crates/decodex-postgres/migrations/V23__private_artifact_authority.sql",
+      "crates/decodex-postgres/src/private_artifacts.rs",
+      "crates/decodex-postgres/src/lib.rs",
+      "crates/decodex-postgres/src/migrations.rs",
+      "crates/decodex-postgres/src/authority.rs",
+      "crates/decodex-postgres/src/conversations.rs",
+      "crates/decodex-postgres/src/experiments.rs",
+      "crates/decodex-core/src/blob.rs"
+    ],
+    "C": [
+      "crates/decodex-runtime/src/private_artifact/mod.rs",
+      "crates/decodex-runtime/src/private_artifact/executor.rs",
+      "crates/decodex-runtime/src/private_artifact/unix.rs",
+      "crates/decodex-runtime/src/private_artifact/macos.rs",
+      "crates/decodex-runtime/src/private_artifact/linux.rs",
+      "crates/decodex-runtime/src/private_artifact/guard.rs",
+      "crates/decodex-runtime/src/private_artifact/boot.rs",
+      "crates/decodex-runtime/src/lib.rs"
+    ],
+    "D": [
+      "crates/decodex-runtime/src/private_artifact_runtime.rs",
+      "crates/decodex-runtime/src/producer_admission.rs",
+      "crates/decodex-runtime/src/lib.rs",
+      "crates/decodex-runtime/src/application.rs",
+      "crates/decodex-runtime/src/bootstrap.rs",
+      "crates/decodex-runtime/src/account_launch.rs",
+      "crates/decodex-runtime/src/account_launch/process.rs",
+      "crates/decodex-runtime/src/account_launch/retained_title_experiment.rs",
+      "crates/decodex-runtime/src/managed_repository_executor.rs",
+      "crates/decodex-runtime/src/managed_repository_runtime.rs",
+      "crates/decodex-runtime/src/supervised_validation.rs",
+      "crates/decodex-runtime/src/bin/decodex-retained-title-experiment.rs",
+      "crates/decodex-protocol/src/lib.rs",
+      "crates/decodex-protocol/src/wire.rs",
+      "crates/decodex-protocol/src/doctor.rs",
+      "crates/decodex-protocol/src/client.rs",
+      "apps/decodexd/src/main.rs",
+      "apps/decodex-cli/src/lib.rs",
+      "apps/decodex-cli/src/main.rs"
+    ],
+    "D0a": [
+      "openwiki/evidence/xy-1371-private-artifact-platform-prerequisites.md"
+    ]
+  },
+  "platform_sources": [
+    {
+      "environment": "macOS 27.0 build 26A5388g, Darwin 27 arm64, APFS Data /System/Volumes/Data, /dev/disk3s1, device 16777233",
+      "evidence": "Exact no-replace, file fsync, successful F_FULLFSYNC, changed-parent synchronization, process exit, and separate-process readback",
+      "support": "accepted"
+    },
+    {
+      "environment": "Docker 29.4.0 under OrbStack kernel 7.0.11-orbstack-00360-gc9bc4d96ac70, aarch64 overlayfs device 1048589",
+      "evidence": "File and changed-parent fsync plus second-start readback",
+      "support": "accepted only for the recorded image, configuration, and retained-container lifecycle"
+    },
+    {
+      "environment": "Exact OrbStack virtiofs bind backed by the recorded APFS path, statfs type 65735546, device 35",
+      "evidence": "Guest file and changed-parent fsync plus second-start readback",
+      "support": "accepted without a host-storage persistence claim"
+    },
+    {
+      "environment": "APFS image device 16777240",
+      "evidence": "Distinct cross-device EXDEV fixture",
+      "support": "not a supported artifact store"
+    },
+    {
+      "environment": "tmpfs device 1048605",
+      "evidence": "Recorded rename semantics and expected nonretention",
+      "support": "not durable support"
+    }
+  ],
+  "prior_closures": [
+    {
+      "closure_id": "CL-01",
+      "result": "A changed GC observation replaces the complete first observation and restarts the 86,400-second interval; it is not automatically residual."
+    },
+    {
+      "closure_id": "CL-02",
+      "result": "Reconciliation is total; no-effect attempt 3 enters the terminal attempt-exhausted result and cannot return Pending."
+    },
+    {
+      "closure_id": "CL-03",
+      "result": "A bounded failure before Tx A commits one canonical TerminalRejected receipt and response, with no Tx A, CAS, operation event, genesis, or permit side effect."
+    },
+    {
+      "closure_id": "CL-04",
+      "result": "Exact-owned repair can rewrite only the same admitted single-link nonaliased inode from verified CAS bytes after immediate revalidation."
+    },
+    {
+      "closure_id": "CL-05",
+      "result": "Boot authority uses only the exact accepted macOS and Linux acquisition sources."
+    },
+    {
+      "closure_id": "CL-06",
+      "result": "All 34 canonical roots have one exact PostgreSQL owner."
+    },
+    {
+      "closure_id": "CL-07",
+      "result": "Gc/LivenessMetadataMismatch is only Reason(8,6); existing GC codes 1-5 remain unchanged."
+    },
+    {
+      "closure_id": "CL-08",
+      "result": "Every stale V22 relation count is 78, not 77."
+    },
+    {
+      "closure_id": "CL-09",
+      "result": "projection_record equals validator output byte-for-byte; derived columns come only from that validated projection."
+    },
+    {
+      "closure_id": "CL-10",
+      "result": "Directory creation uses mkdirat; Linux files use fsync; macOS files use fsync followed by successful F_FULLFSYNC."
+    },
+    {
+      "closure_id": "CL-11",
+      "result": "Ordinary transitions use the initial authority read, exact five/eight-statement sequence, 197,784 maximum, and 74,109,517-byte retained-evidence formula."
+    },
+    {
+      "closure_id": "CL-12",
+      "result": "GC ordering is exactly (work_class, due_at, subject_variant, subject_bytes, candidate_id) with exact canonical and noncanonical subject bytes."
+    }
+  ],
+  "product_residual_risks": [
+    {
+      "risk_id": "PA-RISK-01",
+      "wording": "D0a facts are not yet accepted."
+    },
+    {
+      "risk_id": "PA-RISK-02",
+      "wording": "A hostile same-UID process can race after immediate revalidation. Post-effect observation detects known mismatches but cannot contain that process."
+    },
+    {
+      "risk_id": "PA-RISK-03",
+      "wording": "A synchronous filesystem syscall can block indefinitely."
+    },
+    {
+      "risk_id": "PA-RISK-04",
+      "wording": "Dirty or ambiguous same-boot producer state can keep private artifacts unavailable until a proven host-boot change."
+    },
+    {
+      "risk_id": "PA-RISK-05",
+      "wording": "Attention, incompatibility, dependency, GC residual, and replay tombstone rows can remain indefinitely."
+    },
+    {
+      "risk_id": "PA-RISK-06",
+      "wording": "PostgreSQL and CAS have no atomic online backup boundary."
+    },
+    {
+      "risk_id": "PA-RISK-07",
+      "wording": "A trusted whole-cluster administrator restore can redefine current authority."
+    },
+    {
+      "risk_id": "PA-RISK-08",
+      "wording": "Crash recovery can repeat filesystem observation and synchronization; exactly-once filesystem effects are not claimed."
+    },
+    {
+      "risk_id": "PA-RISK-09",
+      "wording": "SHA-256 collision resistance remains an assumption."
+    },
+    {
+      "risk_id": "PA-RISK-10",
+      "wording": "The Rust and PostgreSQL codec implementations remain independent code and require differential fixtures. Their shared prose grammar is authority; successful tests will be evidence, not a replacement for it."
+    }
+  ],
+  "reason_codes": [
+    {
+      "codes": [
+        {
+          "code": 0,
+          "name": "None"
+        }
+      ],
+      "domain": 0,
+      "name": "None"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "InvalidState"
+        },
+        {
+          "code": 2,
+          "name": "StaleRevision"
+        },
+        {
+          "code": 3,
+          "name": "StaleEpoch"
+        },
+        {
+          "code": 4,
+          "name": "StaleMaintenanceGeneration"
+        },
+        {
+          "code": 5,
+          "name": "WrongEventOrdinal"
+        },
+        {
+          "code": 6,
+          "name": "WrongStepOrdinal"
+        },
+        {
+          "code": 7,
+          "name": "WrongStep"
+        },
+        {
+          "code": 8,
+          "name": "WrongAttemptOrdinal"
+        },
+        {
+          "code": 9,
+          "name": "AttemptExhausted"
+        },
+        {
+          "code": 10,
+          "name": "DependencyNotReady"
+        },
+        {
+          "code": 11,
+          "name": "SyncDebtMismatch"
+        },
+        {
+          "code": 12,
+          "name": "InvalidOptionSet"
+        },
+        {
+          "code": 13,
+          "name": "PlanMismatch"
+        },
+        {
+          "code": 14,
+          "name": "ObservationMismatch"
+        }
+      ],
+      "domain": 1,
+      "name": "Transition"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "Files"
+        },
+        {
+          "code": 2,
+          "name": "Directories"
+        },
+        {
+          "code": 3,
+          "name": "AggregateBytes"
+        },
+        {
+          "code": 4,
+          "name": "Name"
+        },
+        {
+          "code": 5,
+          "name": "Depth"
+        },
+        {
+          "code": 6,
+          "name": "Manifest"
+        },
+        {
+          "code": 7,
+          "name": "Envelope"
+        },
+        {
+          "code": 8,
+          "name": "CasReferences"
+        },
+        {
+          "code": 9,
+          "name": "Steps"
+        },
+        {
+          "code": 10,
+          "name": "Attempts"
+        },
+        {
+          "code": 11,
+          "name": "Events"
+        },
+        {
+          "code": 12,
+          "name": "Observations"
+        },
+        {
+          "code": 13,
+          "name": "SyncDebts"
+        },
+        {
+          "code": 14,
+          "name": "EvidenceBytes"
+        },
+        {
+          "code": 15,
+          "name": "PrivateArtifactHandles"
+        },
+        {
+          "code": 16,
+          "name": "StartupRows"
+        },
+        {
+          "code": 17,
+          "name": "ReconciliationRows"
+        },
+        {
+          "code": 18,
+          "name": "StatusRows"
+        },
+        {
+          "code": 19,
+          "name": "SqlDeadline"
+        },
+        {
+          "code": 20,
+          "name": "FilesystemController"
+        },
+        {
+          "code": 21,
+          "name": "GcRows"
+        },
+        {
+          "code": 22,
+          "name": "QueueOccupancy"
+        }
+      ],
+      "domain": 2,
+      "name": "Bound"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "TargetExists"
+        },
+        {
+          "code": 2,
+          "name": "CrossDevice"
+        },
+        {
+          "code": 3,
+          "name": "UnsupportedEnvironment"
+        },
+        {
+          "code": 4,
+          "name": "Unexpected"
+        },
+        {
+          "code": 5,
+          "name": "AmbiguousNamespace"
+        },
+        {
+          "code": 6,
+          "name": "SourceReplaced"
+        },
+        {
+          "code": 7,
+          "name": "UnsafeType"
+        },
+        {
+          "code": 8,
+          "name": "AliasOrLink"
+        },
+        {
+          "code": 9,
+          "name": "SyncUncertain"
+        },
+        {
+          "code": 10,
+          "name": "CollectionIncomplete"
+        },
+        {
+          "code": 11,
+          "name": "InspectionAmbiguous"
+        },
+        {
+          "code": 12,
+          "name": "BootScopeChanged"
+        },
+        {
+          "code": 13,
+          "name": "TransientNoEffect"
+        },
+        {
+          "code": 14,
+          "name": "MissingObject"
+        },
+        {
+          "code": 15,
+          "name": "WrongIdentity"
+        }
+      ],
+      "domain": 3,
+      "name": "Filesystem"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "MissingBytes"
+        },
+        {
+          "code": 2,
+          "name": "CorruptBytes"
+        },
+        {
+          "code": 3,
+          "name": "Capacity"
+        },
+        {
+          "code": 4,
+          "name": "DeclaredSetMismatch"
+        },
+        {
+          "code": 5,
+          "name": "NoncanonicalEntry"
+        }
+      ],
+      "domain": 4,
+      "name": "Cas"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "Unavailable"
+        },
+        {
+          "code": 2,
+          "name": "GuardUnavailable"
+        },
+        {
+          "code": 3,
+          "name": "DirtyGeneration"
+        },
+        {
+          "code": 4,
+          "name": "ProducerPresent"
+        },
+        {
+          "code": 5,
+          "name": "ExecutorBusy"
+        },
+        {
+          "code": 6,
+          "name": "BootUnavailable"
+        }
+      ],
+      "domain": 5,
+      "name": "Maintenance"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "UnknownCommit"
+        },
+        {
+          "code": 2,
+          "name": "RetryScheduled"
+        },
+        {
+          "code": 3,
+          "name": "AttemptsExhausted"
+        },
+        {
+          "code": 4,
+          "name": "Residual"
+        }
+      ],
+      "domain": 6,
+      "name": "Reconciliation"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "UnknownVersion"
+        },
+        {
+          "code": 2,
+          "name": "UnknownTag"
+        },
+        {
+          "code": 3,
+          "name": "Noncanonical"
+        },
+        {
+          "code": 4,
+          "name": "DerivedColumnMismatch"
+        },
+        {
+          "code": 5,
+          "name": "StoredDigestMismatch"
+        },
+        {
+          "code": 6,
+          "name": "HostBootMismatch"
+        },
+        {
+          "code": 7,
+          "name": "EnvironmentMismatch"
+        }
+      ],
+      "domain": 7,
+      "name": "Compatibility"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "OrphanCorrupt"
+        },
+        {
+          "code": 2,
+          "name": "MetadataOnly"
+        },
+        {
+          "code": 3,
+          "name": "RepublishBlocked"
+        },
+        {
+          "code": 4,
+          "name": "UnlinkUncertain"
+        },
+        {
+          "code": 5,
+          "name": "ShardSyncUncertain"
+        },
+        {
+          "code": 6,
+          "name": "LivenessMetadataMismatch"
+        }
+      ],
+      "domain": 8,
+      "name": "Gc"
+    },
+    {
+      "codes": [
+        {
+          "code": 1,
+          "name": "MissingReceipt"
+        },
+        {
+          "code": 2,
+          "name": "ReceiptMismatch"
+        },
+        {
+          "code": 3,
+          "name": "Pending"
+        },
+        {
+          "code": 4,
+          "name": "PairMismatch"
+        }
+      ],
+      "domain": 9,
+      "name": "Dependency"
+    }
+  ],
+  "resource_ceilings": {
+    "absolute_authority_components": 64,
+    "absolute_authority_path_bytes": 4096,
+    "aggregate_data_bytes": 33554432,
+    "attempts_per_operation": 6180,
+    "attempts_per_step": 3,
+    "calculated_private_artifact_handles": 96,
+    "capture_deadline_seconds": 60,
+    "capture_evidence_entries": 2048,
+    "capture_evidence_framed_bytes": 198764,
+    "capture_read_bytes": 67109376,
+    "cas_object_bytes": 67108864,
+    "cas_preparation_bytes": 35910291,
+    "cas_preparation_deadline_seconds": 600,
+    "cas_references": 514,
+    "controlled_parent_bytes": 4036,
+    "controlled_parent_components": 63,
+    "data_bytes_per_file": 16777216,
+    "declared_blobs": 514,
+    "directories_including_root": 512,
+    "envelope_framed_bytes": 26426,
+    "files": 512,
+    "gc_candidate_protocol_statements": 210,
+    "gc_observation_interval_seconds": 86400,
+    "gc_pass_protocol_statements": 53764,
+    "gc_retention_seconds": 7776000,
+    "gc_rows_fetched": 257,
+    "gc_rows_per_pass": 256,
+    "hard_event_ordinal": 24753,
+    "hard_retained_evidence_bytes": 150994944,
+    "logical_steps": 2060,
+    "manifest_entries": 1024,
+    "manifest_framed_bytes": 2157095,
+    "marker_bytes": 256,
+    "marker_files": 1,
+    "normal_preparation_protocol_statements_known": 777,
+    "observations_per_operation": 24720,
+    "ordinary_event_ordinal": 24721,
+    "ordinary_evidence_ceiling_bytes": 150929408,
+    "ordinary_transition_protocol_statements_known": 5,
+    "ordinary_transition_protocol_statements_maximum": 8,
+    "ordinary_transition_protocol_statements_total_maximum": 197784,
+    "outcome_probes_per_attempt": 3,
+    "plan_dependencies": 2,
+    "plan_framed_bytes": 4675,
+    "postgres_lock_timeout_seconds": 5,
+    "postgres_statement_timeout_seconds": 15,
+    "preparation_completion_deadline_seconds": 600,
+    "preparation_completion_protocol_statements": 777,
+    "preparation_full_protocol_statements": 783,
+    "preparation_receipt_framed_bytes": 26644,
+    "preparation_scan_deadline_seconds": 30,
+    "preparation_scan_plus_completion_protocol_statements": 1037,
+    "preparation_scan_protocol_statements": 260,
+    "preparation_scan_rows": 64,
+    "preparation_scan_rows_fetched": 65,
+    "private_artifact_handles": 128,
+    "producer_launches": 64,
+    "raw_component_name_bytes": 255,
+    "relative_depth": 8,
+    "retained_evidence_calculated_bytes": 74109517,
+    "simultaneous_sync_debts": 1027,
+    "stage_directories": 513,
+    "startup_deadline_seconds": 30,
+    "startup_rows": 256,
+    "startup_rows_fetched": 257,
+    "status_lock_timeout_milliseconds": 100,
+    "status_rows_read": 65,
+    "status_rows_returned": 64,
+    "status_statement_timeout_seconds": 2,
+    "status_wall_deadline_seconds": 3,
+    "terminal_evidence_reserve_bytes": 65536,
+    "transition_deadline_seconds": 30,
+    "wake_queue_occupancy": 1
+  },
+  "schema": "decodex/private-artifact-authority-inventories/1",
+  "v23_functions": {
+    "final_function_contract_count": 185,
+    "final_runtime_execute_count": 76,
+    "private": [
+      "private_artifact_validate_record_v1",
+      "private_artifact_complete_dependency_from_receipt_v1"
+    ],
+    "retained_safety_function_count": 67,
+    "retained_trigger_count": 142,
+    "runtime": [
+      "private_artifact_register_executor_v1",
+      "private_artifact_begin_producer_launch_v1",
+      "private_artifact_record_producer_spawn_v1",
+      "private_artifact_record_producer_absence_v1",
+      "private_artifact_begin_maintenance_v1",
+      "private_artifact_commit_quiescence_v1",
+      "private_artifact_end_maintenance_v1",
+      "private_artifact_declare_prepare_v1",
+      "private_artifact_read_prepare_v1",
+      "private_artifact_complete_prepare_v1",
+      "private_artifact_reconcile_prepare_v1",
+      "private_artifact_lock_transition_v1",
+      "private_artifact_apply_transition_v1",
+      "private_artifact_read_operation_v1",
+      "private_artifact_load_startup_v1",
+      "private_artifact_probe_residual_v1",
+      "private_artifact_read_status_v1",
+      "private_artifact_read_published_receipt_v1",
+      "private_artifact_prune_cluster_v1",
+      "blob_gc_observe_candidate_v1",
+      "blob_gc_begin_unlink_v1",
+      "blob_gc_complete_unlink_v1"
+    ]
+  },
+  "v23_relations": [
+    "private_artifact_operations",
+    "private_artifact_operation_events",
+    "private_artifact_steps",
+    "private_artifact_attempts",
+    "private_artifact_observations",
+    "private_artifact_prepare_receipts",
+    "private_artifact_prepared_blobs",
+    "private_artifact_blob_refs",
+    "private_artifact_dependencies",
+    "private_artifact_sync_debts",
+    "private_artifact_published_receipts",
+    "private_artifact_executor_epochs",
+    "private_artifact_executor_head",
+    "private_artifact_producer_admission_head",
+    "private_artifact_producer_launches",
+    "private_artifact_tombstones",
+    "private_artifact_attention",
+    "private_artifact_incompatibilities",
+    "private_artifact_status_rows",
+    "private_artifact_status_counters",
+    "blob_gc_candidates"
+  ],
+  "v43_debt_source": {
+    "attempt_ordinal": "present and equal to the retained active attempt",
+    "errno": "absent",
+    "outcome_reason": "Reason(0,0)",
+    "phase": [
+      "PostEffect",
+      "Reconcile"
+    ],
+    "return_class": "Success",
+    "role_observations": "complete canonical successful-postcondition role set; same sequence supplies target latest identity and authority-root identity",
+    "step_id": "present and equal to the current step",
+    "syscall_kind": "authorized effect syscall for PostEffect; Inspect for Reconcile"
+  },
+  "v43_errno_evidence_matrix": [
+    {
+      "errno": "absent",
+      "evidence": "exact positive precondition role set",
+      "outcome": "Positive NotCalled",
+      "phase": "PreEffect",
+      "reason": "Reason(0,0)"
+    },
+    {
+      "errno": "absent",
+      "evidence": "exact negative precondition role set",
+      "outcome": "Blocked NotCalled",
+      "phase": "PreEffect",
+      "reason": "exact nonzero typed reason"
+    },
+    {
+      "errno": "absent",
+      "evidence": "exact state required by the successful reducer branch",
+      "outcome": "Success",
+      "phase": "PostEffect or Reconcile",
+      "reason": "Reason(0,0)"
+    },
+    {
+      "errno": "absent",
+      "evidence": "exact canonical end or absence evidence",
+      "outcome": "EndOfStream or Absent",
+      "phase": "already-permitted outcome phase",
+      "reason": "Reason(0,0)"
+    },
+    {
+      "errno": "actual nonzero syscall errno",
+      "evidence": "exact unchanged pre-state",
+      "outcome": "NoEffectError",
+      "phase": "PostEffect",
+      "reason": "exact nonzero typed reason"
+    },
+    {
+      "errno": "actual nonzero syscall errno",
+      "evidence": "cannot prove exact pre-state or exact post-state",
+      "outcome": "EffectUnknownError after syscall error",
+      "phase": "PostEffect or Reconcile",
+      "reason": "exact nonzero typed reason"
+    },
+    {
+      "errno": "absent",
+      "evidence": "complete ordered role set proves neither exact pre-state nor exact post-state",
+      "outcome": "EffectUnknownError after syscall success",
+      "phase": "PostEffect or Reconcile",
+      "reason": "exact nonzero typed reason"
+    }
+  ],
+  "xy1372_claim_limits": {
+    "accepted": [
+      "Exact macOS APFS Data no-replace, file fsync, F_FULLFSYNC, parent synchronization, process exit, and separate-process readback",
+      "Exact recorded OrbStack overlayfs retained-container configuration and lifecycle",
+      "Exact recorded OrbStack virtiofs guest no-replace, file/parent synchronization, and second-start readback",
+      "APFS image cross-device EXDEV fixture only",
+      "tmpfs rename and expected nonretention evidence only"
+    ],
+    "not_proven": [
+      "Host reboot, VM restart, Docker-daemon restart, kernel crash, or power-loss persistence",
+      "Hostile same-UID containment",
+      "Other APFS volumes or other overlayfs/virtiofs configurations",
+      "ext4, XFS, Btrfs, remote filesystems, Windows, or non-Unix support",
+      "Guard, boot, PID-reuse, process-group, namespace, or lock-release integration",
+      "Product implementation or production enablement"
+    ]
+  }
+}

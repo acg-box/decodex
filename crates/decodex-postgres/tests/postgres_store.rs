@@ -1,21 +1,25 @@
 //! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
 
-#[path = "postgres_store/continuation.rs"] mod continuation;
+#[path = "postgres_store/continuation.rs"]
+mod continuation;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_repositories.rs"]
 mod managed_repositories;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_runs.rs"]
 mod managed_runs;
-#[path = "postgres_store/quota.rs"] mod quota;
+#[path = "postgres_store/quota.rs"]
+mod quota;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
 mod role_profiles;
-#[path = "postgres_store/routing_decision.rs"] mod routing_decision;
+#[path = "postgres_store/routing_decision.rs"]
+mod routing_decision;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/runtime_sessions.rs"]
 mod runtime_sessions;
-#[path = "postgres_store/waiting_wake.rs"] mod waiting_wake;
+#[path = "postgres_store/waiting_wake.rs"]
+mod waiting_wake;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/work_items.rs"]
 mod work_items;
@@ -159,8 +163,11 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
-	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
+	"decodex.read_codex_experiment_start_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
+	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -421,6 +428,24 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 	let (migration, _) = separated_configs("DECODEX_TEST")?;
 
 	PostgresStore::migrate(migration, expected_peer_uid()).await?;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 V22 preparation harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_retained_title_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>>
+{
+	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
+	PostgresStore::pin_session_search_path_fixture(&mut runtime);
+
+	let (client, connection) = runtime.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	PostgresStore::prepare_retained_title_sql_fixture(&client).await?;
+
+	drop(client);
+	connection_task.await??;
 
 	Ok(())
 }
@@ -877,8 +902,9 @@ fn validate_authority_scenario(scenario: &AuthorityScenario) {
 	);
 	let expected_projection = match scenario.expected_store_error {
 		AuthorityStoreError::UnsafeAuthority => AuthorityClassification::UnsafeDatabaseAuthority,
-		AuthorityStoreError::Incompatible | AuthorityStoreError::Migration =>
-			AuthorityClassification::DatabaseIncompatible,
+		AuthorityStoreError::Incompatible | AuthorityStoreError::Migration => {
+			AuthorityClassification::DatabaseIncompatible
+		},
 		_ => panic!("{}: unsupported expected StoreError", scenario.case_id),
 	};
 	assert_eq!(
@@ -1191,8 +1217,9 @@ async fn run_authority_restoration_phase(
 		Ok(false) => evidence
 			.failures
 			.push("post-classification cleanup expected restored, actual unrestored".into()),
-		Err(error) =>
-			evidence.failures.push(format!("post-classification cleanup predicate {error}")),
+		Err(error) => {
+			evidence.failures.push(format!("post-classification cleanup predicate {error}"))
+		},
 	}
 }
 
@@ -1300,7 +1327,7 @@ async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error:
 			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
 			  FROM information_schema.columns WHERE table_schema='decodex' \
 			  AND table_name='quota_windows' AND column_name='window_class'), \
-				 (SELECT count(*)=21 FROM public.refinery_schema_history)",
+				 (SELECT count(*)=22 FROM public.refinery_schema_history)",
 			&[],
 		)
 		.await?;
@@ -1381,24 +1408,27 @@ async fn insert_v7_prior_state(
 	variant: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let statement = match variant {
-		"quota_row" =>
+		"quota_row" => {
 			"INSERT INTO decodex.accounts (account_id,display_label) VALUES \
 			 ('10000000-0000-0000-0000-000000000091','V7 quota fixture'); \
 			 INSERT INTO decodex.quota_windows \
 			 (account_id,window_class,duration_seconds,observed_at,confidence) VALUES \
 			 ('10000000-0000-0000-0000-000000000091','five_hour',18000, \
-			  '2026-07-16T10:00:00Z',1)",
-		"receipt_operation" =>
+			  '2026-07-16T10:00:00Z',1)"
+		},
+		"receipt_operation" => {
 			"INSERT INTO decodex.command_receipts \
 			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
 			 ('v7-operation',repeat('a',64),'mutate_quota_window',gen_random_uuid(), \
-			  clock_timestamp()+interval '4 minutes')",
-		"receipt_scope" =>
+			  clock_timestamp()+interval '4 minutes')"
+		},
+		"receipt_scope" => {
 			"INSERT INTO decodex.command_receipts \
 			 (idempotency_key,request_hash,scope_id,claim_token,claim_expires_at) VALUES \
 			 ('v7-scope',repeat('b',64),'quota_windows',gen_random_uuid(), \
-			  clock_timestamp()+interval '4 minutes')",
-		"receipt_completed" =>
+			  clock_timestamp()+interval '4 minutes')"
+		},
+		"receipt_completed" => {
 			"INSERT INTO decodex.command_receipts \
 			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
 			 ('v7-completed',repeat('c',64),'mutate_quota_window',gen_random_uuid(), \
@@ -1406,79 +1436,95 @@ async fn insert_v7_prior_state(
 			 UPDATE decodex.command_receipts SET receipt_state='completed',response='{}', \
 			 response_bytes=convert_to('{}','UTF8'),completion_claim_token=claim_token, \
 			 completed_at=clock_timestamp(),claim_token=NULL,claim_expires_at=NULL \
-			 WHERE idempotency_key='v7-completed'",
-		"activity_aggregate" =>
+			 WHERE idempotency_key='v7-completed'"
+		},
+		"activity_aggregate" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('quota_window','v7',1,'observed','v7-activity-aggregate','{}')",
-		"activity_event" =>
+			 ('quota_window','v7',1,'observed','v7-activity-aggregate','{}')"
+		},
+		"activity_event" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'quota_window_updated','v7-activity-event','{}')",
-		"activity_payload_window" =>
+			 ('account','v7',1,'quota_window_updated','v7-activity-event','{}')"
+		},
+		"activity_payload_window" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
 			 ('account','v7',1,'observed','v7-activity-payload', \
-			  '{\"nested\":true,\"window_class\":\"five_hour\"}')",
-		"activity_payload_kind" =>
+			  '{\"nested\":true,\"window_class\":\"five_hour\"}')"
+		},
+		"activity_payload_kind" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-kind','{\"kind\":\"quota_exclusion\"}')",
-		"activity_payload_seconds" =>
+			 ('account','v7',1,'observed','v7-activity-kind','{\"kind\":\"quota_exclusion\"}')"
+		},
+		"activity_payload_seconds" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-seconds','{\"duration_seconds\":18000}')",
-		"activity_payload_minutes" =>
+			 ('account','v7',1,'observed','v7-activity-seconds','{\"duration_seconds\":18000}')"
+		},
+		"activity_payload_minutes" => {
 			"INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-minutes','{\"duration_minutes\":300}')",
-		"outbox_aggregate" =>
+			 ('account','v7',1,'observed','v7-activity-minutes','{\"duration_minutes\":300}')"
+		},
+		"outbox_aggregate" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-aggregate','quota_window','v7',1,'{}')",
-		"outbox_envelope" =>
+			 ('v7-outbox-aggregate','quota_window','v7',1,'{}')"
+		},
+		"outbox_envelope" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope','account','v7',1, \
-			  '{\"payload\":{\"duration_minutes\":300}}')",
-		"outbox_envelope_aggregate" =>
+			  '{\"payload\":{\"duration_minutes\":300}}')"
+		},
+		"outbox_envelope_aggregate" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-aggregate','account','v7',1, \
-			  '{\"aggregate_kind\":\"quota_window\"}')",
-		"outbox_envelope_event" =>
+			  '{\"aggregate_kind\":\"quota_window\"}')"
+		},
+		"outbox_envelope_event" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-event','account','v7',1, \
-			  '{\"event_kind\":\"quota_window_excluded\"}')",
-		"outbox_envelope_kind" =>
+			  '{\"event_kind\":\"quota_window_excluded\"}')"
+		},
+		"outbox_envelope_kind" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-kind','account','v7',1, \
-			  '{\"payload\":{\"kind\":\"quota_window\"}}')",
-		"outbox_envelope_window" =>
+			  '{\"payload\":{\"kind\":\"quota_window\"}}')"
+		},
+		"outbox_envelope_window" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-window','account','v7',1, \
-			  '{\"payload\":{\"window_class\":\"five_hour\"}}')",
-		"outbox_envelope_seconds" =>
+			  '{\"payload\":{\"window_class\":\"five_hour\"}}')"
+		},
+		"outbox_envelope_seconds" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-envelope-seconds','account','v7',1, \
-			  '{\"payload\":{\"duration_seconds\":18000}}')",
-		"outbox_link" =>
+			  '{\"payload\":{\"duration_seconds\":18000}}')"
+		},
+		"outbox_link" => {
 			"WITH event AS (INSERT INTO decodex.activity \
 			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
 			 ('quota_window','v7-link',1,'observed','v7-link','{}') RETURNING sequence) \
 			 INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) \
 			 SELECT 'v7-outbox-link','account','v7-link',1, \
-			 jsonb_build_object('activity_sequence',sequence) FROM event",
-		"outbox_orphan" =>
+			 jsonb_build_object('activity_sequence',sequence) FROM event"
+		},
+		"outbox_orphan" => {
 			"INSERT INTO decodex.outbox \
 			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
 			 ('v7-outbox-orphan','account','v7',1, \
-			  '{\"payload\":{\"kind\":\"quota_exclusion\"},\"activity_sequence\":9223372036854775807}')",
+			  '{\"payload\":{\"kind\":\"quota_exclusion\"},\"activity_sequence\":9223372036854775807}')"
+		},
 		_ => return Err(format!("unknown V8 prior-state fixture {variant}").into()),
 	};
 
@@ -3349,6 +3395,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 		"waiting_usage_wake_time_authority",
 		"constraint_restore_canonicalization",
 		"runtime_session_event_reference_authority",
+		"retained_title_experiment_bridge",
 	];
 	assert_eq!(history.len(), expected_history.len());
 	for (index, ((version, name, checksum), expected_name)) in
@@ -4562,8 +4609,9 @@ async fn assert_program_transition_replay(
 
 		match result {
 			Ok(_) => winner_count += 1,
-			Err(StoreError::RevisionConflict { actual: Some(3), .. }) =>
-				loser = Some((command, state)),
+			Err(StoreError::RevisionConflict { actual: Some(3), .. }) => {
+				loser = Some((command, state))
+			},
 			Err(error) => return Err(error.into()),
 		}
 	}

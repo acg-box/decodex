@@ -50,15 +50,15 @@ class ManagedRunAuthorityTests(unittest.TestCase):
         )
         self.assertIn("MANAGED_RUN_MIGRATION", self.authority)
 
-    def test_integrated_authority_ends_at_v21(self) -> None:
+    def test_integrated_authority_ends_at_v22(self) -> None:
         versions = sorted(
             int(path.name.split("__", 1)[0][1:])
             for path in MIGRATION.parent.glob("V*.sql")
         )
-        self.assertEqual(versions, list(range(1, 22)))
-        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 21", self.migrations)
+        self.assertEqual(versions, list(range(1, 23)))
+        self.assertIn("EXPECTED_LATEST_MIGRATION_VERSION: i32 = 22", self.migrations)
         self.assertIn(
-            "RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION", self.authority
+            "RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION", self.authority
         )
 
     def test_execution_path_trigger_inventory_matches_canonical_full_identities(self) -> None:
@@ -76,8 +76,8 @@ class ManagedRunAuthorityTests(unittest.TestCase):
             r"\('([^']+)', '([^']+)', 'decodex\.([^']+)\(\)'\)",
             execution_source,
         ))
-        self.assertIn("const SAFETY_TRIGGER_COUNT: usize = 138;", self.authority)
-        self.assertEqual(len(canonical), 138)
+        self.assertIn("const SAFETY_TRIGGER_COUNT: usize = 142;", self.authority)
+        self.assertEqual(len(canonical), 142)
         self.assertEqual(execution, canonical)
 
     def test_event_namespace_uses_relation_aware_row_shapes(self) -> None:

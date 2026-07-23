@@ -7,7 +7,8 @@
 //! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
 //! managed-repository authority with append-only operations/evidence, plus revisioned routing
 //! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
-//! Codex experiment intent/fences/bindings/positive observations, atomic routing decisions, and
+//! Codex experiment intent, two one-shot fences, exact start receipts, retained-title
+//! attestations, and positive observations, plus atomic routing decisions and
 //! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
 //! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
 //! cancellation, supersession, and fresh-routing requests. It does not compose a scheduler,
@@ -34,7 +35,8 @@ mod role_profiles;
 mod routing;
 mod routing_decisions;
 mod runtime_sessions;
-#[cfg(unix)] mod socket;
+#[cfg(unix)]
+mod socket;
 mod types;
 mod wakes;
 mod work_items;
@@ -48,8 +50,11 @@ pub use self::{
 	},
 	error::{BootstrapFailure, StoreError},
 	experiments::{
-		BindCodexExperimentThread, CodexExperimentCreationFenceOutcome,
-		FreshCodexExperimentCreation, PrepareCodexExperiment, RecordCodexExperimentObservation,
+		AttestCodexExperimentRetainedTitle, BindCodexExperimentStart,
+		CodexExperimentCreationFenceOutcome, CodexExperimentStartReceipt,
+		CodexExperimentTitleSetFenceOutcome, FenceCodexExperimentTitleSet,
+		FreshCodexExperimentCreation, FreshCodexExperimentTitleSet, PrepareCodexExperiment,
+		RecordCodexExperimentObservation,
 	},
 	managed_repositories::{
 		RepositoryAdmissionOutcome, RepositoryDispatchFenceOutcome, RepositoryDispatchReceipt,
@@ -131,11 +136,14 @@ use std::{sync::Arc, time::Duration};
 
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use serde_json::Value;
-#[cfg(test)] use tokio as _;
-#[cfg(feature = "test-support")] use tokio_postgres::Client as TokioClient;
+#[cfg(test)]
+use tokio as _;
+#[cfg(feature = "test-support")]
+use tokio_postgres::Client as TokioClient;
 use tokio_postgres::{Config, config::Host};
 
-#[cfg(unix)] use self::socket::VerifiedSocketConnect;
+#[cfg(unix)]
+use self::socket::VerifiedSocketConnect;
 use decodex_core::{Availability, PostgresConnectionConfig, PostgresIdentityConfig, ProductState};
 
 /// PostgreSQL major accepted by the vNext storage authority.
@@ -202,6 +210,15 @@ impl PostgresStore {
 		runtime_role: &str,
 	) -> Result<Vec<(&'static str, bool)>, StoreError> {
 		authority::semantic_authority_fixture(client, runtime_role).await
+	}
+
+	/// Parse and prepare the five V22 retained-title SQL sources without executing them.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub async fn prepare_retained_title_sql_fixture(
+		client: &TokioClient,
+	) -> Result<(), StoreError> {
+		experiments::prepare_retained_title_sql(client).await
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.
@@ -608,18 +625,20 @@ pub(crate) fn ensure_credential_negative_text(value: &str) -> Result<(), StoreEr
 
 pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 	match value {
-		Value::Object(entries) =>
+		Value::Object(entries) => {
 			for (key, value) in entries {
 				if decodex_core::is_credential_metadata_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
 
 				ensure_credential_negative_json(value)?;
-			},
-		Value::Array(entries) =>
+			}
+		},
+		Value::Array(entries) => {
 			for value in entries {
 				ensure_credential_negative_json(value)?;
-			},
+			}
+		},
 		Value::String(value) => ensure_credential_negative_text(value)?,
 		_ => {},
 	}

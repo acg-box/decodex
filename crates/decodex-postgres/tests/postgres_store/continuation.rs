@@ -13,9 +13,11 @@ use decodex_core::{
 	ProjectId, SafetyObservationId, TurnId,
 };
 use decodex_postgres::{
-	BindCodexExperimentThread, CodexExperimentCreationFenceOutcome, ContinuationPlanEffect,
-	ManagedRunSafetyOutcome, PlanContinuation, PostgresStore, PrepareCodexExperiment,
-	RecordCodexExperimentObservation, RouteAccount,
+	AttestCodexExperimentRetainedTitle, BindCodexExperimentStart,
+	CodexExperimentCreationFenceOutcome, CodexExperimentTitleSetFenceOutcome,
+	ContinuationPlanEffect, FenceCodexExperimentTitleSet, ManagedRunSafetyOutcome,
+	PlanContinuation, PostgresStore, PrepareCodexExperiment, RecordCodexExperimentObservation,
+	RouteAccount,
 };
 
 const SUBMITTED_RECEIPT_ID: &str = "f1000000-0000-4000-8000-000000000017";
@@ -663,18 +665,70 @@ async fn create_positive_experiment(
 		if mismatched_thread { uuid(0xec, marker) } else { routing.selected_thread_id.clone() };
 	assert!(matches!(
 		store
-			.bind_codex_experiment_thread(
+			.bind_codex_experiment_start(
 				&format!("v17-experiment-bind-{marker}"),
-				&BindCodexExperimentThread {
+				&BindCodexExperimentStart {
 					experiment_id: experiment_id.clone(),
 					expected_revision: 2,
-					attempt_id,
+					attempt_id: attempt_id.clone(),
 					thread_id: thread_id.clone(),
-					response_id: uuid(0xed, marker),
-					response_title: identity.thread_title,
-					response_cwd: identity.repository_cwd,
+					start_request_id: 10_000 + i64::from(marker),
+					start_request_digest:
+						"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+					request_cwd: identity.repository_cwd.clone(),
+					request_marker: marker_text.clone(),
+					request_ephemeral: false,
+					start_response_id: 10_000 + i64::from(marker),
+					start_response_digest:
+						"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+					response_cwd: identity.repository_cwd.clone(),
 					response_marker: marker_text.clone(),
-					ephemeral: false,
+					response_ephemeral: false,
+					returned_name: None,
+				},
+			)
+			.await?,
+		CodexExperimentCommandOutcome::Applied(_)
+	));
+	let title_attempt_id = uuid(0xed, marker);
+	assert!(matches!(
+		store
+			.mark_codex_experiment_title_set_possible(
+				&format!("v17-experiment-title-fence-{marker}"),
+				&FenceCodexExperimentTitleSet {
+					experiment_id: experiment_id.clone(),
+					expected_revision: 3,
+					title_attempt_id: title_attempt_id.clone(),
+					thread_id: thread_id.clone(),
+					request_id: 20_000 + i64::from(marker),
+					request_digest:
+						"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into(),
+					requested_title: identity.thread_title.clone(),
+				},
+			)
+			.await?,
+		CodexExperimentTitleSetFenceOutcome::Fresh(_)
+	));
+	let attestation_id = uuid(0xee, marker);
+	assert!(matches!(
+		store
+			.attest_codex_experiment_retained_title(
+				&format!("v17-experiment-title-attest-{marker}"),
+				&AttestCodexExperimentRetainedTitle {
+					experiment_id: experiment_id.clone(),
+					expected_revision: 3,
+					attestation_id: attestation_id.clone(),
+					title_attempt_id,
+					thread_id: thread_id.clone(),
+					read_request_id: 30_000 + i64::from(marker),
+					read_request_digest:
+						"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".into(),
+					read_response_id: 30_000 + i64::from(marker),
+					read_response_digest:
+						"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".into(),
+					returned_title: identity.thread_title,
+					returned_cwd: identity.repository_cwd,
+					returned_marker: marker_text.clone(),
 				},
 			)
 			.await?,
@@ -682,12 +736,13 @@ async fn create_positive_experiment(
 	));
 	assert!(matches!(
 		store
-			.record_codex_experiment_observation(
+			.record_attested_codex_experiment_observation(
 				&format!("v17-experiment-observe-{marker}"),
 				&RecordCodexExperimentObservation {
 					experiment_id,
 					expected_revision: 3,
-					observation_id: uuid(0xee, marker),
+					attestation_id,
+					observation_id: uuid(0xef, marker),
 					kind: CodexExperimentObservationKind::ThreadReadItem,
 					thread_id,
 					marker: marker_text,

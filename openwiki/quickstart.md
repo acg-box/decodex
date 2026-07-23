@@ -9,15 +9,28 @@ outside the runtime rewrite until their owners adopt them.
 
 OpenWiki is the repo-local project knowledge surface for agents and maintainers. Runtime authority lives in source, project contracts, tests, manifests, and local runtime state; OpenWiki explains where to start and what to watch before editing.
 
+For the private-artifact subsystem, the accepted
+[private-artifact authority package](specs/private-artifact/README.md) is the sole normative
+authority. Private-artifact text elsewhere in OpenWiki, including this page, is a nonnormative
+navigation and current-status projection.
+
 ## Start here
 
 - [Runtime architecture](architecture/runtime-architecture.md): process topology, CLI bootstrap, app-server runs, operator HTTP/MCP, and state ownership.
 - [Design rationale](decisions/design-rationale.md): why Decodex keeps loop graphs internal, autonomy authority typed, MCP/skills split, the site static, and Radar/Publisher bounded.
-- [vNext authority decision](decisions/vnext-authority.md): the accepted product, ownership, state-authority, cutover, and delivery decision for the rebuild.
-- [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries, protocol, account continuity, non-goals, and migration contract for later implementation.
-- [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates, downstream issue ownership, and decision-changing falsifiers.
+- [vNext authority decision](decisions/vnext-authority.md): the accepted product, ownership,
+  state-authority, cutover, and delivery decision outside the private-artifact carve-out.
+- [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
+  protocol, account continuity, non-goals, and migration contract outside the private-artifact
+  carve-out.
+- [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates,
+  downstream issue ownership, and decision-changing falsifiers outside the private-artifact
+  carve-out.
+- [Private-artifact authority package](specs/private-artifact/README.md): sole normative
+  private-artifact decision, semantic modules, fixed authority data, and future delivery contract.
 - [XY-1262 Codex runtime proof](evidence/vnext-codex-runtime-proof.md): shared-home, ownership, schema, collaboration, cross-account, fallback, crash, and typed-quota evidence for the Codex feasibility gate.
 - [XY-1345 exact-command authority proof](evidence/xy-1345-exact-command-authority.md): corrected pure-PostgreSQL command authority, deterministic/concurrency schedules, privilege/catalog closure, restore receipt, and V9/V10 ownership order.
+- [XY-1372 private-artifact capability evidence](evidence/xy-1372-private-artifact-capabilities.md): accepted exact APFS, OrbStack overlayfs, and OrbStack virtiofs feasibility; no-replace outcomes, preservation, durability boundaries, manifest identities, and future enablement gates.
 - [Lane Authority v2](decisions/lane-authority-v2.md): superseded historical target retained as architecture and incident provenance; C1-C7 are frozen and must not be implemented.
 - [Drift audits](evidence/drift-audits.md): public-safe evidence notes, current MCP remote-control watched claims, reverse checks, validation commands, and stop conditions.
 - [v0.2 freeze receipt](evidence/v0.2-freeze.md): exact trusted tag, cold-config and automation inventory, frozen legacy work, preserved incident evidence, cleanup ownership, and the unresolved SQLite-backup gap.
@@ -48,8 +61,11 @@ OpenWiki is the repo-local project knowledge surface for agents and maintainers.
   global RoleProfile revisions. V14 additionally owns revisioned complete routing policies,
   database-timestamped ordinary Codex compatibility evidence, and immutable complete routing
   fact snapshots; it performs no selection or dispatch. V15 adds the uncomposed causal Codex
-  experiment persistence protocol: deterministic markers, pre-effect ambiguity fences, exact typed
-  thread binding, and positive-only observations. V16 adds inert atomic routing decisions over a
+  experiment persistence protocol. Forward-only V22 repairs its retained-title authority for the
+  pinned two-effect protocol. It stores the exact nullable-name `thread/start` request and response.
+  It then fences one `thread/name/set`. Only exact-ID `thread/read` can attest the prepared title.
+  Positive observations and V17 same-thread authority require that attestation. V16 adds inert
+  atomic routing decisions over a
   PostgreSQL-authored locked universe, exact evidence references, duration-typed depletion
   exclusions, and pure-kernel readback. No production root reaches either boundary and they enable no
   live execution. XY-1307 wires the typed connection data through runtime composition into the
@@ -123,7 +139,7 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical embedded migrations. The 138 expected safety/state/retention
+source bodies matching the canonical embedded migrations. The 142 expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
 indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
@@ -137,12 +153,12 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly thirty-nine narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly forty-four narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
 commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
 RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
-running/resume guard, one command-complete ManagedRun safety consumer, seven inert V14/V15 routing
-and causal-experiment entrypoints, the inert V16 exact routing-decision entrypoint, V17's inert
+running/resume guard, one command-complete ManagedRun safety consumer, twelve inert V14/V15/V22
+routing and causal-experiment entrypoints, the inert V16 exact routing-decision entrypoint, V17's inert
 exact continuation command plus strict readback, and V18's four exact wake commands plus strict
 readback.
 A selected V16 decision commits either one positive-evidence-bound same-thread plan or one Context
@@ -266,3 +282,14 @@ XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only
 end-to-end diagnostic matrix.
 Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
 later owners and gates.
+The private-artifact API and runtime composition are not implemented. The accepted
+[private-artifact authority package](specs/private-artifact/README.md), not the vNext decision,
+authority contract, gate manifest, or XY-1372 evidence, is the sole normative subsystem authority.
+Those other pages now provide navigation, current status, or evidence only. The package
+[delivery module](specs/private-artifact/operations-delivery.md) defines CORE-FREEZE, ACC, the
+future PostgreSQL preparation and retained-title task contracts, one mechanical preparation pass,
+and unified validation. All are future delivery contracts. Their appearance in documentation does
+not claim that the behavior or command exists. AR-CLOSE accepts signed C2 as the cutover baseline
+by policy, with historical semantic fidelity explicitly unproven, and quarantines the historical
+private corpus outside runtime and normal workflows. Private rereview is not a prerequisite. A0
+and D0a can begin from the accepted AR-CLOSE identity; the later dependency graph is unchanged.
