@@ -183,17 +183,27 @@ XY-1371 authority wording; the
 [XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md) remains
 evidence, not a second contract.
 
-This projection binds the frozen AR-PKG commit
-`a3a9c0dae384ac5e9ec257e54713d09505ddc595`, package tree
-`4e72b4371f09fc96db9b238ba85cd0841694b46e`, and raw
+AR-CLOSE accepts signed C2 commit
+`019f58a31b976056c000b73de3ec46b89284c6eb` and tree
+`a56976663774b1e901e27fdf4c5276a7e9c84cb8` as the private-artifact cutover
+baseline by explicit policy. This projection binds amended package tree
+`881a7d25801a4795a343d620164ed74a6dae136c` and raw
 `authority/package.manifest` SHA-256
-`8ae497fdc66c373a9a3582f3bf04b81fa4a02f5f8eddd300cbdb76b16662c5a7`.
+`f88d5706b08e70170531dcda991d841c3b43543cf96a77500c0304f4a469753e`.
 Read the package [decision](../specs/private-artifact/decision.md) and semantic modules for exact
 rules and inventories. Read its
 [operations and delivery contract](../specs/private-artifact/operations-delivery.md) for the
 future implementation, freeze, acceptance, preparation, and validation sequence. None of those
 future private-artifact runtime, API, task, or validation behaviors is implemented by this
-documentation cutover. The stacked cutover still requires AR-REV acceptance.
+authority amendment.
+
+Package identity and public consistency do not prove historical semantic fidelity. The package
+accepts the residual risk of an unknown historical omission, mistranscription, or census-mapping
+error. It quarantines the historical private corpus in place as non-runtime provenance with no
+read, copy, migration, indexing, automatic-discovery, or normal-workflow edge. It adds no private
+review channel or runtime component. The source census and corpus-derived product semantics remain
+unchanged. AR-CLOSE acceptance permits A0 and D0a to begin; the later dependency graph is unchanged.
+The external empty-state cutover and user-owned RoleProfile/RuntimeSession authority remain intact.
 
 The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
 repository-effect owner. Its in-process repository executor is a correctness,

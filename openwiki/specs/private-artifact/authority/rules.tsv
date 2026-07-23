@@ -1,6 +1,9 @@
 rule_id	owner_path	owner_locator	representation	origin_class	origin_ref
 PA-ACC-0001	openwiki/specs/private-artifact/operations-delivery.md	rule:PA-ACC-0001	markdown	package_native	PKG-NATIVE-006
 PA-ACC-0002	openwiki/specs/private-artifact/operations-delivery.md	rule:PA-ACC-0002	markdown	package_native	PKG-NATIVE-006
+PA-CLOSE-0001	openwiki/specs/private-artifact/decision.md	rule:PA-CLOSE-0001	markdown	package_native	PKG-NATIVE-010
+PA-CLOSE-0002	openwiki/specs/private-artifact/decision.md	rule:PA-CLOSE-0002	markdown	package_native	PKG-NATIVE-010
+PA-CLOSE-0003	openwiki/specs/private-artifact/decision.md	rule:PA-CLOSE-0003	markdown	package_native	PKG-NATIVE-010
 PA-DEC-0001	openwiki/specs/private-artifact/decision.md	rule:PA-DEC-0001	markdown	package_native	PKG-NATIVE-001
 PA-DEC-0002	openwiki/specs/private-artifact/decision.md	rule:PA-DEC-0002	markdown	package_native	PKG-NATIVE-001
 PA-DEC-0003	openwiki/specs/private-artifact/decision.md	rule:PA-DEC-0003	markdown	package_native	PKG-NATIVE-002

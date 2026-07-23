@@ -806,6 +806,12 @@ package-defined command surfaces. Use the package for the exact order, owners, p
 inventories, and stop conditions; do not copy them into this manifest. No private-artifact gate by
 itself enables production routing.
 
+AR-CLOSE accepts signed C2 as the cutover baseline by explicit policy and retires historical
+private-corpus semantic rereview as a prerequisite. Its accepted authority identity gates A0 and
+D0a. After that acceptance, both can begin and the package-owned downstream
+A1/B/C/D/CORE-FREEZE graph remains unchanged. The historical corpus has no runtime or normal
+workflow edge, and no private-review channel component exists.
+
 ### Failed live account-routing enablement gate
 
 The [live gate issue](https://linear.app/hack-ink/issue/XY-1304) remains failed and
