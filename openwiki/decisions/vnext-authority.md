@@ -1,6 +1,7 @@
 # Decodex vNext Authority Decision
 
-Status: accepted repository authority for vNext.
+Status: accepted repository authority for vNext, with private-artifact authority carved out to the
+accepted package linked below.
 
 Tracking issue: [XY-1260](https://linear.app/hack-ink/issue/XY-1260/promote-the-vnext-authority-contract-and-supersede-lane-authority-v2)
 
@@ -174,6 +175,36 @@ authoritative request shape, Rust authorization wrapper used as provenance, glob
 exclusion -> RuntimeSession -> decision composition are superseded evidence only. They must not
 be repaired, revived, or wholesale transplanted.
 
+Private-artifact authority is cut over to the accepted
+[private-artifact authority package](../specs/private-artifact/README.md). That package is the
+sole normative authority for the subsystem. All private-artifact text on this page is a
+nonnormative navigation and status projection. The package replaces the earlier XY-1373 and
+XY-1371 authority wording; the
+[XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md) remains
+evidence, not a second contract.
+
+AR-CLOSE accepts signed C2 commit
+`019f58a31b976056c000b73de3ec46b89284c6eb` and tree
+`a56976663774b1e901e27fdf4c5276a7e9c84cb8` as the private-artifact cutover
+baseline by explicit policy. This projection binds amended package tree
+`881a7d25801a4795a343d620164ed74a6dae136c` and raw
+`authority/package.manifest` SHA-256
+`f88d5706b08e70170531dcda991d841c3b43543cf96a77500c0304f4a469753e`.
+Read the package [decision](../specs/private-artifact/decision.md) and semantic modules for exact
+rules and inventories. Read its
+[operations and delivery contract](../specs/private-artifact/operations-delivery.md) for the
+future implementation, freeze, acceptance, preparation, and validation sequence. None of those
+future private-artifact runtime, API, task, or validation behaviors is implemented by this
+authority amendment.
+
+Package identity and public consistency do not prove historical semantic fidelity. The package
+accepts the residual risk of an unknown historical omission, mistranscription, or census-mapping
+error. It quarantines the historical private corpus in place as non-runtime provenance with no
+read, copy, migration, indexing, automatic-discovery, or normal-workflow edge. It adds no private
+review channel or runtime component. The source census and corpus-derived product semantics remain
+unchanged. AR-CLOSE acceptance permits A0 and D0a to begin; the later dependency graph is unchanged.
+The external empty-state cutover and user-owned RoleProfile/RuntimeSession authority remain intact.
+
 The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
 repository-effect owner. Its in-process repository executor is a correctness,
 determinism, and admitted-authority-continuity boundary, not isolation from malicious
@@ -205,7 +236,8 @@ workers must not silently reinterpret either source.
 Within vNext work, authority descends in this order:
 
 1. explicit user direction and checked-in project policy;
-2. this decision, the vNext authority contract, and the vNext gate manifest;
+2. for the private-artifact subsystem, the accepted private-artifact authority package; for all
+   other vNext scope, this decision, the vNext authority contract, and the vNext gate manifest;
 3. accepted project policies and versioned domain/protocol contracts created under
    those documents;
 4. source, tests, migrations, and operational runbooks implementing an accepted gate;

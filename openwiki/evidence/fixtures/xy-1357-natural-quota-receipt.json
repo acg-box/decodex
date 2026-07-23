@@ -1,0 +1,131 @@
+{
+  "capture": {
+    "account_login_or_configuration_call_count": 0,
+    "complete_unredacted_response_retained": false,
+    "completed_at_utc": "2026-07-20T22:44:24.911879000Z",
+    "method": "account/rateLimits/read",
+    "rate_limit_read_count": 1,
+    "raw_capture_boundary": "bounded UTF-8 response frame decoded with exact JSON number lexemes before conversion",
+    "request_sequence": [
+      "initialize",
+      "initialized",
+      "account/rateLimits/read"
+    ],
+    "routing_call_count": 0,
+    "started_at_utc": "2026-07-20T22:44:23.929416000Z",
+    "tool_invocation_count": 0,
+    "transport": "JSON-RPC 2.0 newline frames over app-server stdio",
+    "turn_start_count": 0
+  },
+  "failure": null,
+  "issue": "XY-1357",
+  "limitations": [],
+  "observations": [
+    {
+      "bucket_alias": "legacy-view",
+      "conversion": {
+        "exact_arithmetic": {
+          "division_remainder": 0,
+          "microsecond_scale": 1000000,
+          "scaled_numerator": 1785171262000000,
+          "seconds_denominator": 1,
+          "seconds_numerator": 1785171262
+        },
+        "representation": {
+          "decimal_exponent": 0,
+          "fractional_digits": 0,
+          "json_type": "number",
+          "lexical_form": "integer"
+        },
+        "status": "exact",
+        "utc": "2026-07-27T16:54:22.000000Z",
+        "utc_unix_microseconds": 1785171262000000
+      },
+      "raw_json_token": "1785171262",
+      "source_unit": "unix_seconds",
+      "source_view": "rateLimits",
+      "timestamp_role": "primary_window_reset",
+      "window_duration_minutes": 10080
+    },
+    {
+      "bucket_alias": "bucket-1",
+      "conversion": {
+        "exact_arithmetic": {
+          "division_remainder": 0,
+          "microsecond_scale": 1000000,
+          "scaled_numerator": 1785171262000000,
+          "seconds_denominator": 1,
+          "seconds_numerator": 1785171262
+        },
+        "representation": {
+          "decimal_exponent": 0,
+          "fractional_digits": 0,
+          "json_type": "number",
+          "lexical_form": "integer"
+        },
+        "status": "exact",
+        "utc": "2026-07-27T16:54:22.000000Z",
+        "utc_unix_microseconds": 1785171262000000
+      },
+      "raw_json_token": "1785171262",
+      "source_unit": "unix_seconds",
+      "source_view": "rateLimitsByLimitId",
+      "timestamp_role": "primary_window_reset",
+      "window_duration_minutes": 10080
+    },
+    {
+      "bucket_alias": "bucket-2",
+      "conversion": {
+        "exact_arithmetic": {
+          "division_remainder": 0,
+          "microsecond_scale": 1000000,
+          "scaled_numerator": 1785192264000000,
+          "seconds_denominator": 1,
+          "seconds_numerator": 1785192264
+        },
+        "representation": {
+          "decimal_exponent": 0,
+          "fractional_digits": 0,
+          "json_type": "number",
+          "lexical_form": "integer"
+        },
+        "status": "exact",
+        "utc": "2026-07-27T22:44:24.000000Z",
+        "utc_unix_microseconds": 1785192264000000
+      },
+      "raw_json_token": "1785192264",
+      "source_unit": "unix_seconds",
+      "source_view": "rateLimitsByLimitId",
+      "timestamp_role": "primary_window_reset",
+      "window_duration_minutes": 10080
+    }
+  ],
+  "redaction": {
+    "account_identity_retained": false,
+    "ambient_app_server_authentication_used": true,
+    "credential_or_auth_values_directly_read_by_capture_script": false,
+    "method": "strict constructed allowlist with opaque bucket and account aliases",
+    "raw_bucket_identifiers_retained": false,
+    "unrelated_response_fields_retained": false
+  },
+  "routing_enabled": false,
+  "schema": "decodex/xy-1357-natural-quota-evidence/1",
+  "source": {
+    "account_alias": "ambient-account-1",
+    "app_server_build_basis": "same exact executable as codex_cli_version",
+    "app_server_user_agent": "Codex Desktop/0.145.0-alpha.18 (Mac OS 27.0.0; arm64) ghostty/1.3.2-main-_f3c9a2b72 (decodex-xy-1357-evidence; 1)",
+    "codex_cli_version": "codex-cli 0.145.0-alpha.18",
+    "codex_executable_sha256": "f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9",
+    "generated_schema": {
+      "aggregate_v2_schema_sha256": "0f3e4ab3c86c4390ed3ce9468459ffcd990c59a77600dd6ade19896a5bcbf276",
+      "rate_limit_method_advertised": true,
+      "rate_limit_response_schema_sha256": "66be5e51929fa5a229ed2e243e3774d2c7f6a781500b8f0f5486f61e2e7ec58a",
+      "window_reset_json_types": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "verdict": "exact_microseconds_compatible",
+  "xy_1304_input": "exact_microseconds_compatible"
+}

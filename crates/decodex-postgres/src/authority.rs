@@ -32,7 +32,9 @@ const WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION: &str =
 	include_str!("../migrations/V19__waiting_usage_wake_time_authority.sql");
 const RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION: &str =
 	include_str!("../migrations/V21__runtime_session_event_reference_authority.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 18] = [
+const RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION: &str =
+	include_str!("../migrations/V22__retained_title_experiment_bridge.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 19] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -51,10 +53,11 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 18] = [
 	WAITING_USAGE_WAKE_MIGRATION,
 	WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION,
 	RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
+	RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-static FUNCTION_CONTRACTS: [FunctionContract; 156] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 161] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1061,6 +1064,57 @@ static FUNCTION_CONTRACTS: [FunctionContract; 156] = [
 		"plpgsql",
 		"v",
 	),
+	exact_function_contract(
+		"bind_codex_experiment_start_exact",
+		"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
+		"bind_codex_experiment_start_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_attempt_id uuid, p_thread_id text,\n\tp_start_request_id bigint, p_start_request_digest text,\n\tp_request_cwd text, p_request_marker text, p_request_ephemeral boolean,\n\tp_start_response_id bigint, p_start_response_digest text,\n\tp_response_cwd text, p_response_marker text, p_response_ephemeral boolean,\n\tp_returned_name text\n)",
+		"p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attempt_id uuid, p_thread_id text, p_start_request_id bigint, p_start_request_digest text, p_request_cwd text, p_request_marker text, p_request_ephemeral boolean, p_start_response_id bigint, p_start_response_digest text, p_response_cwd text, p_response_marker text, p_response_ephemeral boolean, p_returned_name text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	FunctionContract {
+		name: "read_codex_experiment_start_exact",
+		lookup_signature: "decodex.read_codex_experiment_start_exact(pg_catalog.uuid,pg_catalog.uuid)",
+		migration_signature: "read_codex_experiment_start_exact(\n\tp_experiment_id uuid, p_attempt_id uuid\n)",
+		arguments: "p_experiment_id uuid, p_attempt_id uuid",
+		result: "TABLE(experiment_id uuid, attempt_id uuid, experiment_revision bigint, thread_id text, start_request_id bigint, start_request_digest text, request_cwd text, request_marker text, request_ephemeral boolean, start_response_id bigint, start_response_digest text, response_cwd text, response_marker text, response_ephemeral boolean, returned_name text, bound_at_micros bigint)",
+		language: "sql",
+		volatility: "s",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	FunctionContract {
+		name: "mark_codex_experiment_title_set_possible_exact",
+		lookup_signature: "decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
+		migration_signature: "mark_codex_experiment_title_set_possible_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_title_attempt_id uuid, p_thread_id text,\n\tp_request_id bigint, p_request_digest text, p_requested_title text\n)",
+		arguments: "p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_title_attempt_id uuid, p_thread_id text, p_request_id bigint, p_request_digest text, p_requested_title text",
+		result: "TABLE(response_bytes bytea, replayed boolean)",
+		language: "plpgsql",
+		volatility: "v",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	exact_function_contract(
+		"attest_codex_experiment_retained_title_exact",
+		"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"attest_codex_experiment_retained_title_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_attestation_id uuid, p_title_attempt_id uuid,\n\tp_thread_id text, p_read_request_id bigint, p_read_request_digest text,\n\tp_read_response_id bigint, p_read_response_digest text,\n\tp_returned_title text, p_returned_cwd text, p_returned_marker text\n)",
+		"p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attestation_id uuid, p_title_attempt_id uuid, p_thread_id text, p_read_request_id bigint, p_read_request_digest text, p_read_response_id bigint, p_read_response_digest text, p_returned_title text, p_returned_cwd text, p_returned_marker text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"record_attested_codex_experiment_observation_exact",
+		"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"record_attested_codex_experiment_observation_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_attestation_id uuid, p_observation_id uuid,\n\tp_kind decodex.codex_experiment_observation_kind, p_thread_id text,\n\tp_marker text, p_source_id text, p_fact_digest text\n)",
+		"p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attestation_id uuid, p_observation_id uuid, p_kind decodex.codex_experiment_observation_kind, p_thread_id text, p_marker text, p_source_id text, p_fact_digest text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
 	trigger_contract(
 		"forbid_routing_decision_mutation",
 		"decodex.forbid_routing_decision_mutation()",
@@ -1283,7 +1337,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 156] = [
 		"v",
 	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 51] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 54] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -1325,8 +1379,11 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 51] = [
 	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-	"decodex.bind_codex_experiment_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool)",
-	"decodex.record_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
+	"decodex.read_codex_experiment_start_exact(pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
+	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -1405,7 +1462,7 @@ const SAFETY_FUNCTIONS: [&str; 67] = [
 	"enforce_waiting_usage_wake_head_projection",
 	"enforce_waiting_usage_wake_event_namespace",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 138;
+const SAFETY_TRIGGER_COUNT: usize = 142;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1622,6 +1679,10 @@ WITH set_roles AS (
 	,('codex_experiment_creation_attempts', false, false, false, false)
 	,('codex_experiment_thread_bindings', false, false, false, false)
 	,('codex_experiment_observations', false, false, false, false)
+	,('codex_experiment_start_receipts', false, false, false, false)
+	,('codex_experiment_title_set_attempts', false, false, false, false)
+	,('codex_experiment_retained_title_attestations', false, false, false, false)
+	,('codex_experiment_attested_observations', false, false, false, false)
 	,('routing_decisions', false, false, false, false)
 	,('routing_decision_member_refs', false, false, false, false)
 	,('routing_decision_quota_refs', false, false, false, false)
@@ -1918,6 +1979,10 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('codex_experiment_creation_attempts', 'codex_experiment_creation_attempts_immutable', 'forbid_codex_experiment_history_mutation', 58)
 	,('codex_experiment_thread_bindings', 'codex_experiment_thread_bindings_immutable', 'forbid_codex_experiment_history_mutation', 58)
 	,('codex_experiment_observations', 'codex_experiment_observations_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiment_start_receipts', 'codex_experiment_start_receipts_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiment_title_set_attempts', 'codex_experiment_title_set_attempts_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiment_retained_title_attestations', 'codex_experiment_retained_title_attestations_immutable', 'forbid_codex_experiment_history_mutation', 58)
+	,('codex_experiment_attested_observations', 'codex_experiment_attested_observations_immutable', 'forbid_codex_experiment_history_mutation', 58)
 	,('codex_experiments', 'codex_experiments_command_owner', 'enforce_codex_experiment_command_owner', 62)
 	,('routing_decisions', 'routing_decisions_immutable', 'forbid_routing_decision_mutation', 58)
 	,('routing_decision_member_refs', 'routing_decision_member_refs_immutable', 'forbid_routing_decision_mutation', 58)
@@ -2173,6 +2238,10 @@ WITH catalog_context AS MATERIALIZED (
 	,('codex_experiment_creation_attempts', 'codex_experiment_creation_attempts_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
 	,('codex_experiment_thread_bindings', 'codex_experiment_thread_bindings_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
 	,('codex_experiment_observations', 'codex_experiment_observations_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiment_start_receipts', 'codex_experiment_start_receipts_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiment_title_set_attempts', 'codex_experiment_title_set_attempts_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiment_retained_title_attestations', 'codex_experiment_retained_title_attestations_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
+	,('codex_experiment_attested_observations', 'codex_experiment_attested_observations_immutable', 'decodex.forbid_codex_experiment_history_mutation()')
 	,('codex_experiments', 'codex_experiments_command_owner', 'decodex.enforce_codex_experiment_command_owner()')
 	,('routing_decisions', 'routing_decisions_immutable', 'decodex.forbid_routing_decision_mutation()')
 	,('routing_decision_member_refs', 'routing_decision_member_refs_immutable', 'decodex.forbid_routing_decision_mutation()')
@@ -3221,8 +3290,8 @@ SELECT
   )
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x9f, 0x4e, 0x70, 0x92, 0xd7, 0x50, 0xce, 0xc7, 0x80, 0x2c, 0xc2, 0x1b, 0x94, 0x0a, 0x7c, 0xf4,
-	0xd5, 0xc5, 0xf6, 0x1b, 0xd3, 0xe7, 0x87, 0x73, 0xc8, 0x16, 0x03, 0x9a, 0x5c, 0xa2, 0xe9, 0x6e,
+	0xe0, 0x65, 0xed, 0xc7, 0x07, 0xe3, 0xec, 0x8c, 0xdb, 0x5b, 0x8e, 0x99, 0x6b, 0xd5, 0xaf, 0x67,
+	0xc5, 0x95, 0x00, 0xa3, 0x76, 0x8d, 0x89, 0x19, 0x60, 0x77, 0x27, 0xb3, 0xe4, 0x24, 0x0d, 0x8c,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -3721,8 +3790,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0x06, 0x13, 0x3d, 0x77, 0xc7, 0x7b, 0x67, 0x9a, 0xc4, 0xde, 0xd4, 0x3e, 0x50, 0x33, 0x39, 0x21,
-	0x94, 0x56, 0xba, 0x95, 0x1e, 0x52, 0xb8, 0x5d, 0x92, 0xee, 0x67, 0x8e, 0x92, 0x5a, 0xe0, 0x0b,
+	0x3c, 0xd9, 0xf2, 0x9d, 0x8a, 0x47, 0x2f, 0xcf, 0x46, 0xad, 0x57, 0xae, 0x56, 0x16, 0x92, 0x06,
+	0xf9, 0xea, 0x8d, 0xfd, 0x4f, 0x28, 0x72, 0xc6, 0x3d, 0x6f, 0x12, 0x8a, 0x38, 0xe5, 0xa2, 0x72,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -4149,6 +4218,11 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "mark_codex_experiment_creation_possible_exact"
 			| "bind_codex_experiment_thread_exact"
 			| "record_codex_experiment_observation_exact"
+			| "bind_codex_experiment_start_exact"
+			| "read_codex_experiment_start_exact"
+			| "mark_codex_experiment_title_set_possible_exact"
+			| "attest_codex_experiment_retained_title_exact"
+			| "record_attested_codex_experiment_observation_exact"
 			| "route_account_exact"
 			| "plan_continuation_exact"
 			| "read_continuation_plan_exact"
@@ -4673,8 +4747,8 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 18);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 156);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 19);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 161);
 		assert_eq!(
 			CANONICAL_FUNCTION_MIGRATIONS
 				.into_iter()

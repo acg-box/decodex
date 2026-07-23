@@ -2,7 +2,12 @@
 
 This page explains the active vNext ownership skeleton and preserves a map of the
 excluded v0.2 source for provenance. Checked-in manifests, source, tests, and the vNext
-authority documents remain authoritative.
+authority documents remain authoritative, subject to the private-artifact carve-out below.
+
+For the private-artifact subsystem, the accepted
+[private-artifact authority package](../specs/private-artifact/README.md) is the sole normative
+authority. Any private-artifact statement on this page is a nonnormative architecture or status
+projection.
 
 ## Workspace shape
 
@@ -124,7 +129,7 @@ non-internal trigger bindings, including regular and deferred constraint trigger
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V21. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V22. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
@@ -475,16 +480,32 @@ configured-principal and ACL authority closure against V8. XY-1345 owns accepted
 authority/prototype evidence, XY-1346 owns expected V9 exact receipts plus RoleProfiles, and
 re-bounded XY-1337 owns expected V10 RuntimeSession snapshots and transitions.
 
-V15 is a persistence protocol, not an execution composition root. PostgreSQL first records immutable
-intent, then a one-way `creation_possible` fence before any `thread/start` could occur. Only the exact
-typed successful response for that same attempt can bind one globally unique thread. A retained
-`creation_possible` row after a crash or lost response is terminal ambiguous creation authority:
-stored response bytes remain replayable for audit, but the PostgreSQL adapter reports that replay
-only as ambiguous readback and cannot reconstruct its private one-shot fresh permission. There is
-no transition, Rust API, or Codex API here that retries, searches for, or adopts a thread.
-Observations are append-only positive exact facts bound by experiment revision, thread, deterministic
-marker, source identity, and payload digest. List omission, pagination exhaustion, missing events,
-lossy history, and stale caches have no persisted representation and authorize nothing. The
+V15 is a persistence protocol, not an execution composition root. V22 is its forward-only
+retained-title bridge. PostgreSQL first records immutable intent. It then commits a one-way
+`creation_possible` fence before one `thread/start`. The V22 binding stores the exact request and
+raw response identities and SHA-256 digests. It also stores the exact thread ID, cwd, marker,
+non-ephemeral state, and nullable returned name. The pinned build requires that name to be null.
+A replayed creation fence never authorizes another start. Recovery can read only the exact durable
+binding for the same experiment and attempt. If that binding is absent, the start outcome is
+terminally ambiguous. Recovery never retries, searches, or adopts a thread.
+
+After a durable start binding, PostgreSQL commits one separate title-set fence. Only a fresh fence
+authorizes one `thread/name/set`. Fence replay or a lost set response authorizes one bounded
+`thread/read` for the exact bound ID. It never authorizes another set. PostgreSQL creates a
+retained-title attestation only when that read returns the prepared title, marker, cwd, and thread
+ID. Title-qualified positive observations require this attestation. V17 same-thread plans require
+an observation linked to it. Historical V15 rows and receipts remain immutable. Runtime cannot
+execute the obsolete title-in-start binder or unattested observation command.
+
+The V22 completeness trigger rejects a same-thread plan that cites historical unattested evidence.
+It does not reinterpret that evidence as retained-title authority.
+
+The feature-gated manual composition fixes request IDs 3, 4, and 5 for start, title set, and read.
+It derives database idempotency keys from the experiment ID and operation. No external RPC has a
+transport retry.
+
+List omission, pagination exhaustion, missing events, lossy history, and stale caches have no
+persisted representation and authorize nothing. The
 immutable V14 snapshot is the run-revision provenance authority for V15 experiments; V16 decisions
 retain that same composite snapshot lineage, and V17 plans retain the composite V16 decision
 lineage. The snapshot likewise retains its source RuntimeSession revision as immutable provenance
@@ -637,8 +658,8 @@ V17 consumes only one persisted selected V16 decision identity plus its expected
 revision. PostgreSQL derives the selected account, V14 snapshot, source RuntimeSession,
 Conversation, RoleProfile snapshot, and evidence universe; callers cannot provide candidates,
 policy, exclusions, compatibility, or selection. One qualifying same-thread path requires exactly
-one canonical V15 experiment lineage whose bound thread equals the source RuntimeSession thread,
-a fresh positive exact `thread_read_item`, exact selected account/revision/build/RoleProfile facts,
+one canonical V22-bridged experiment lineage whose bound thread equals the source RuntimeSession
+thread, a fresh attested exact `thread_read_item`, exact selected account/revision/build/RoleProfile facts,
 and supported initialize/account-read/thread-read/paginated-history evidence from the exact V14
 profile. Unknown, stale, negative, mismatched, incomplete, or ambiguous evidence selects the
 fallback path rather than inferring compatibility.
@@ -709,9 +730,11 @@ means restoring a pre-V19 cluster where the four internals are absent, never edi
 V18. Schema and configured-authority digest regeneration remains deferred to the refrozen unified
 acceptance boundary.
 
-No production crate or application imports or constructs a V15 experiment execution root. The
-mechanism-neutral core contract, PostgreSQL command adapter, and pure Codex typed-fact adapter are
-the complete V15 source boundary. XY-1361 now owns the only disabled runtime orchestration over
+No production crate or application imports or constructs a V15/V22 experiment execution root.
+The V22 manual Rust runner requires its explicit Cargo feature and binary target. `decodexd`,
+protocol handlers, routing orchestration, and schedulers do not enable or import it. The runner has
+no turn, list, search, archive, retry, adoption, routing, or dispatch API. XY-1361 now owns the only
+disabled runtime orchestration over
 V16 and V17: it makes one exact V16 decision per request, consumes one exact V17 plan only for
 `selected`, and exposes only inert handoff facts for `waiting_usage`. It does not import V18 or
 provide scheduler registration, claiming, firing, cancellation, supersession, credentials, Codex
@@ -772,6 +795,22 @@ Unix-microsecond construction succeeds. V14 through V16 do not assume a provider
 fail closed on any value that would require rounding or truncation. Natural characterization and
 retained-title Desktop discovery remain post-freeze evidence owned by XY-1357 and XY-1363,
 respectively; neither is a runtime authority path.
+
+## Future private-artifact runtime projection
+
+The package [foundations](../specs/private-artifact/foundations.md),
+[persistence and GC](../specs/private-artifact/persistence-gc.md), and
+[executor contract](../specs/private-artifact/executor-platform.md) define the target subsystem.
+This page does not restate their rules or exact inventories. Existing text below about the general
+Decodex root, blob store, repositories, Artifact revisions, and filesystem helpers describes
+current or other accepted surfaces. It does not grant private-artifact authority or change the
+package.
+
+The package-defined private-artifact runtime, API, controller, status, and command composition is
+not implemented in the current workspace. Its CORE-FREEZE, ACC, preparation, and unified
+validation boundaries are future delivery contracts in the package
+[operations module](../specs/private-artifact/operations-delivery.md), not current runtime
+capabilities.
 
 ## Owned vNext paths, configuration, blobs, and cache
 

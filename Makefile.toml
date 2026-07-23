@@ -19,6 +19,7 @@ args = [
 # | check-node        | composite |      |
 # | check-node-types  | command   | site |
 # | check-rust        | command   |      |
+# | check-vnext-retained-title-preparation | command | |
 
 [tasks.check]
 clear = true
@@ -55,6 +56,14 @@ args = [
 	"--all-features",
 	"--all-targets",
 	"--workspace",
+]
+
+[tasks.check-vnext-retained-title-preparation]
+workspace = false
+command = "python3"
+args = [
+	"scripts/vnext/postgres_store_test.py",
+	"--prepare-retained-title-core",
 ]
 
 # Build
@@ -230,6 +239,7 @@ args = [
 # | test-vnext-cli-diagnostics         | command   |     |
 # | test-vnext-postgres-managed-runs   | command   |     |
 # | test-vnext-postgres-store          | command   |     |
+# | test-vnext-retained-title-core      | command   |     |
 # | test-vnext-storage-proof           | command   |     |
 
 [tasks.test]
@@ -295,6 +305,12 @@ command = "python3"
 args = [
 	"scripts/vnext/postgres_store_test.py",
 ]
+
+[tasks.test-vnext-retained-title-core]
+workspace = false
+description = "Run the frozen V14-V22 retained-title PostgreSQL boundary"
+command = "python3"
+args = ["scripts/vnext/postgres_store_test.py", "--focus-retained-title-core"]
 
 [tasks.test-vnext-storage-proof]
 workspace = false
