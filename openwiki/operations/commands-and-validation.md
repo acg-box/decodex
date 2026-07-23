@@ -2,6 +2,11 @@
 
 Use this page when deciding which command validates a change. It summarizes current task-runner authority and maps test families to source areas.
 
+For the private-artifact subsystem, the accepted
+[private-artifact authority package](../specs/private-artifact/README.md) is the sole normative
+authority. Any private-artifact command or validation text on this page is a nonnormative current
+status or future delivery projection.
+
 ## Task runner authority
 
 `Makefile.toml` owns repository task names. The broad readiness gate is:
@@ -45,6 +50,28 @@ that exact formatter toolchain once; formatting fails closed when it is unavaila
 ```sh
 rustup toolchain install nightly-2026-07-16 --profile minimal --component cargo --component rustfmt
 ```
+
+## Future private-artifact delivery contracts
+
+The package [operations and delivery module](../specs/private-artifact/operations-delivery.md)
+owns the exact contracts. The following table describes their status without copying their path
+sets, inventories, arguments, or receipt schemas:
+
+| Contract | Current status and future boundary |
+| --- | --- |
+| CORE-FREEZE | Future read-only source-inspection freeze after the package-defined source phases. It is a receipt boundary, not a current task or implemented runtime feature. |
+| ACC | Future bounded acceptance-authoring phase that starts only from an exact CORE-FREEZE receipt. It has not changed the current tests, wrapper, task runner, or runbook. |
+| `check-vnext-postgres-preparation` | Future mechanical preparation task that ACC must add. It is absent from the current `Makefile.toml`; the existing retained-title preparation task is not an alias or substitute. |
+| `test-vnext-retained-title-core` | The task name exists today with the historical V14-V22 boundary. Its package-defined V1-V23 behavior and version-2 receipts are future ACC work and are not implemented by the current task. |
+| Single mechanical preparation pass | Future post-ACC pass over the exact frozen candidate. It is not a command that this projection can run or claim as completed. |
+| Unified complete validation protocol | Future gate after the mechanical pass, with the package-defined bounded repair policy. No current focused task or historical receipt satisfies it. |
+
+The immutable [XY-1368 retained-title freeze](../specs/xy-1368-retained-title-freeze.md) is V22
+historical evidence only. It is not current command or task-runner authority. Until future ACC
+changes land, current executable command names and behavior come from `Makefile.toml`, the current
+wrapper source, and the current
+[XY-1368 validation runbook](xy-1368-retained-title-validation.md). Do not infer future
+package-defined behavior from those current surfaces.
 
 ## Vstyle audit authority
 
@@ -139,9 +166,10 @@ the Phase A receipt; existing receipts remain provenance only and cannot attest 
 their recorded binding. For one or two mismatches, any unreported array change or other source
 delta invalidates the candidate.
 
-The [XY-1368 retained-title validation](xy-1368-retained-title-validation.md) defines the two
-partial-boundary commands. It owns the one-pass preparation command and the staged-tree semantic
-boundary. Neither command authorizes full-check publication or production enablement.
+The current [XY-1368 retained-title validation](xy-1368-retained-title-validation.md) documents the
+two historical V22-era partial-boundary command surfaces that still exist in source. Neither
+command authorizes full-check publication or production enablement, and neither implements the
+future private-artifact delivery contracts above.
 
 The normal aggregate uses one explicit stage report. Configuration and cluster preflight are fatal:
 mode/argument validation, clean source binding, temporary-root validation, PostgreSQL tool
@@ -303,6 +331,9 @@ compatibility targets.
 
 ## Managed repository frozen-tree validation
 
+This section describes the managed-repository and historical V22 frozen-tree boundary. It does not
+define or satisfy the future private-artifact unified validation protocol.
+
 Managed-repository stage-two work has no pre-freeze execution gate. Do not run compile, test,
 check, Clippy, format, migration, wrapper, matrix, doctest, behavioral, app, or benchmark commands
 while its parallel owners construct the candidate. After serial integration freezes one exact
@@ -312,10 +343,12 @@ Git/filesystem execution and operation-specific readback; first shared-saga comp
 and repository integration; and final digest/manifest agreement. Partial runs, expanded early test
 matrices, and results from any other tree are not acceptance evidence.
 
-The authoritative deferred cases are the
+The managed-repository deferred cases are the
 [XY-1353 deferred acceptance matrix](../specs/vnext-gates.md#xy-1353-deferred-acceptance-matrix).
-For the V22 retained-title bridge, XY-1368 also owns the
-[XY-1367 V22 deferred acceptance matrix](../specs/vnext-gates.md#xy-1367-v22-deferred-acceptance-matrix).
+For the V22 retained-title bridge, the
+[XY-1367 V22 deferred acceptance matrix](../specs/vnext-gates.md#xy-1367-v22-deferred-acceptance-matrix)
+is historical acceptance context. It does not grant current command authority or define the
+future package validation protocol.
 The repository has no standalone XY-1353 artifact generator: migration, configured-authority, and
 schema inventories plus their expected/actual digests are emitted and checked by the canonical
 PostgreSQL frozen-tree harness during that one unified gate. Do not run it as integration-time

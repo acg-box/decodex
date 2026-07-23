@@ -9,13 +9,25 @@ outside the runtime rewrite until their owners adopt them.
 
 OpenWiki is the repo-local project knowledge surface for agents and maintainers. Runtime authority lives in source, project contracts, tests, manifests, and local runtime state; OpenWiki explains where to start and what to watch before editing.
 
+For the private-artifact subsystem, the accepted
+[private-artifact authority package](specs/private-artifact/README.md) is the sole normative
+authority. Private-artifact text elsewhere in OpenWiki, including this page, is a nonnormative
+navigation and current-status projection.
+
 ## Start here
 
 - [Runtime architecture](architecture/runtime-architecture.md): process topology, CLI bootstrap, app-server runs, operator HTTP/MCP, and state ownership.
 - [Design rationale](decisions/design-rationale.md): why Decodex keeps loop graphs internal, autonomy authority typed, MCP/skills split, the site static, and Radar/Publisher bounded.
-- [vNext authority decision](decisions/vnext-authority.md): the accepted product, ownership, state-authority, cutover, and delivery decision for the rebuild.
-- [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries, protocol, account continuity, non-goals, and migration contract for later implementation.
-- [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates, downstream issue ownership, and decision-changing falsifiers.
+- [vNext authority decision](decisions/vnext-authority.md): the accepted product, ownership,
+  state-authority, cutover, and delivery decision outside the private-artifact carve-out.
+- [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
+  protocol, account continuity, non-goals, and migration contract outside the private-artifact
+  carve-out.
+- [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates,
+  downstream issue ownership, and decision-changing falsifiers outside the private-artifact
+  carve-out.
+- [Private-artifact authority package](specs/private-artifact/README.md): sole normative
+  private-artifact decision, semantic modules, fixed authority data, and future delivery contract.
 - [XY-1262 Codex runtime proof](evidence/vnext-codex-runtime-proof.md): shared-home, ownership, schema, collaboration, cross-account, fallback, crash, and typed-quota evidence for the Codex feasibility gate.
 - [XY-1345 exact-command authority proof](evidence/xy-1345-exact-command-authority.md): corrected pure-PostgreSQL command authority, deterministic/concurrency schedules, privilege/catalog closure, restore receipt, and V9/V10 ownership order.
 - [XY-1372 private-artifact capability evidence](evidence/xy-1372-private-artifact-capabilities.md): accepted exact APFS, OrbStack overlayfs, and OrbStack virtiofs feasibility; no-replace outcomes, preservation, durability boundaries, manifest identities, and future enablement gates.
@@ -270,7 +282,12 @@ XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only
 end-to-end diagnostic matrix.
 Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
 later owners and gates.
-The private-artifact API is also not implemented. Its accepted capability evidence and normative
-contract are frozen in the linked XY-1372 evidence, vNext decision, authority contract, and gate
-manifest. XY-1371 implementation remains blocked until a fresh reviewer accepts the exact XY-1373
-authority candidate.
+The private-artifact API and runtime composition are not implemented. The accepted
+[private-artifact authority package](specs/private-artifact/README.md), not the vNext decision,
+authority contract, gate manifest, or XY-1372 evidence, is the sole normative subsystem authority.
+Those other pages now provide navigation, current status, or evidence only. The package
+[delivery module](specs/private-artifact/operations-delivery.md) defines CORE-FREEZE, ACC, the
+future PostgreSQL preparation and retained-title task contracts, one mechanical preparation pass,
+and unified validation. All are future delivery contracts. Their appearance in documentation does
+not claim that the behavior or command exists. The stacked package-plus-projection candidate still
+requires AR-REV acceptance before implementation begins.
