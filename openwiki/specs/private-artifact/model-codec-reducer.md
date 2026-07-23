@@ -64,7 +64,7 @@ Path order compares each component as an unsigned byte sequence. A shorter equal
 prefix sorts first. Duplicate paths are invalid. Each nonroot manifest entry has
 an earlier directory parent. The exact internal names are:
 
-| Object | Exact name | Encoded name bytes |
+| Object | Exact name | Raw name bytes |
 | --- | --- | ---: |
 | Stage root | `.decodex-pa-stage-` plus the operation ID as a canonical lowercase UUID | 54 |
 | Owned root | `.decodex-pa-owned-` plus the operation ID as a canonical lowercase UUID | 54 |
