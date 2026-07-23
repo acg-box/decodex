@@ -304,9 +304,9 @@
   "dependency_edges": [
     "XY-1372 -> AR-PKG",
     "AR-PKG -> AR-CUT",
-    "AR-CUT -> AR-REV",
-    "AR-REV -> A0",
-    "AR-REV -> D0a",
+    "AR-CUT -> AR-CLOSE",
+    "AR-CLOSE -> A0",
+    "AR-CLOSE -> D0a",
     "A0 -> A1",
     "A1 -> B",
     "B -> C",
