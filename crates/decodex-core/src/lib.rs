@@ -38,8 +38,9 @@ pub use self::{
 	},
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
-		MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig, ProfileName,
-		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
+		LocalTrustPolicy, MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig,
+		ProfileName, RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile,
+		ServerRepositoryPath,
 	},
 	continuation::{
 		ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlan,
