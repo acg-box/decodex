@@ -10,6 +10,8 @@ struct AccountPanelView: View {
 	@State var armedLogoutAccountID: String?
 	@State var deletingLogoutAccountID: String?
 	@State var logoutErrorMessage: String?
+	@State var measuredAccountListContentHeight: CGFloat = 0
+	@State var panelScreenVisibleFrame: CGRect?
 	@AppStorage("decodex.operator.accountPrivacy") var accountPrivacy = AccountPrivacy.hiddenValue
 
 	var body: some View {
@@ -45,12 +47,18 @@ struct AccountPanelView: View {
 			}
 
 			if let notice = store.notice {
-				NoticeView(text: notice)
+				NoticeView(notice: notice, onDismiss: store.clearNotice)
+					.id(notice.id)
 					.transition(.panelSection)
 			}
 
 			if let usageProbeError = store.accountList?.usageProbeError {
-				NoticeView(text: "Usage probe: \(usageProbeError)")
+				NoticeView(
+					notice: .error(
+						"Some usage data is unavailable",
+						details: usageProbeError
+					)
+				)
 					.transition(.panelSection)
 			}
 
@@ -74,13 +82,18 @@ struct AccountPanelView: View {
 		.controlSize(.small)
 		.symbolRenderingMode(.hierarchical)
 		.animation(PanelMotion.panelLayout, value: panelAnimationKey)
-		.sizesPanelWindowToContent()
+		.sizesPanelWindowToContent { visibleFrame in
+			if panelScreenVisibleFrame != visibleFrame {
+				panelScreenVisibleFrame = visibleFrame
+			}
+		}
 	}
 
 	private var accountList: some View {
 		ScrollView(.vertical, showsIndicators: false) {
 			accountRows
 				.background(accountScrollProbe)
+				.background(accountRowsHeightProbe)
 		}
 		.coordinateSpace(name: AccountPanelLayout.accountListScrollSpace)
 		.frame(height: accountListViewportHeight)
@@ -95,6 +108,12 @@ struct AccountPanelView: View {
 		.onPreferenceChange(AccountScrollOffsetPreferenceKey.self) { minY in
 			let maxOffset = max(0, accountListContentHeight - accountListViewportHeight)
 			accountScrollOffset = min(max(0, -minY), maxOffset)
+		}
+		.onPreferenceChange(AccountRowsHeightPreferenceKey.self) { height in
+			let measuredHeight = ceil(height)
+			if abs(measuredAccountListContentHeight - measuredHeight) > 0.5 {
+				measuredAccountListContentHeight = measuredHeight
+			}
 		}
 		.onChange(of: accountListNeedsScrolling) { _, needsScrolling in
 			if needsScrolling == false {

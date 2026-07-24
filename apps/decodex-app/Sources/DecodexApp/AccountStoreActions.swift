@@ -3,7 +3,7 @@ import Foundation
 extension AccountStore {
 	func useInCodex(_ account: CodexAccount) async {
 		let previousAccountList = accountList
-		notice = nil
+		clearNotice(source: .accountAction)
 		accountList = accountList?.updatingCodexAuth(account.authIdentity)
 
 		do {
@@ -12,10 +12,10 @@ extension AccountStore {
 				as: CodexAuthUseResponse.self
 			)
 			accountList = accountList?.updatingCodexAuth(response.account)
-			notice = nil
+			clearNotice(source: .accountAction)
 		} catch {
 			accountList = previousAccountList
-			notice = error.localizedDescription
+			presentError("Couldn’t switch Codex account", error: error)
 		}
 	}
 
@@ -29,18 +29,18 @@ extension AccountStore {
 					as: AccountListResponse.self
 				))
 			}
-			notice = nil
+			clearNotice(source: .accountAction)
 		} catch {
-			notice = error.localizedDescription
+			presentError("Couldn’t update account routing", error: error)
 		}
 	}
 
 	func clearSelection() async {
 		do {
 			applyAccountList(try await bridge.runJSON(.accountClear, as: AccountListResponse.self))
-			notice = nil
+			clearNotice(source: .accountAction)
 		} catch {
-			notice = error.localizedDescription
+			presentError("Couldn’t update account routing", error: error)
 		}
 	}
 
@@ -64,10 +64,10 @@ extension AccountStore {
 				.codexFastModeSet(enabled: enabled),
 				as: CodexFastModeResponse.self
 			)
-			notice = nil
+			clearNotice(source: .fastMode)
 		} catch {
 			fastMode = previous
-			notice = error.localizedDescription
+			presentError("Couldn’t update fast mode", error: error, source: .fastMode)
 		}
 	}
 
@@ -79,17 +79,21 @@ extension AccountStore {
 				.accountLogout(selector: account.selector),
 				as: AccountListResponse.self
 			))
-			notice = nil
+			clearNotice(source: .accountAction)
 		} catch {
 			cancelOptimisticLogoutRemoval(account)
 			throw error
 		}
 	}
 
-	func login() async {
+	@discardableResult
+	func login() async -> Bool {
 		isLoggingIn = true
 		loginTranscript = ""
-		notice = nil
+		clearLoginNotice()
+		defer {
+			isLoggingIn = false
+		}
 
 		do {
 			let codexBin = try bridge.codexExecutablePath()
@@ -101,13 +105,18 @@ extension AccountStore {
 					self?.loginTranscript += chunk
 				}
 			)
-			notice = nil
+			clearLoginNotice()
 			await refreshFastMode()
+			return true
 		} catch {
-			notice = error.localizedDescription
+			presentError(
+				"Sign-in failed",
+				error: error,
+				scope: .signIn,
+				source: .signIn
+			)
+			return false
 		}
-
-		isLoggingIn = false
 	}
 
 	func prepareResetCredit(
@@ -115,7 +124,11 @@ extension AccountStore {
 		for account: CodexAccount
 	) async -> String? {
 		guard preparation.target.accountID == account.accountFingerprint else {
-			notice = ResetCreditUseError.accountChanged.localizedDescription
+			presentError(
+				"Couldn’t prepare reset card",
+				error: ResetCreditUseError.accountChanged,
+				source: .resetCredit
+			)
 			return nil
 		}
 		guard await refreshAccountsForResetCredit() else {
@@ -140,10 +153,10 @@ extension AccountStore {
 				preparation: preparation
 			)
 
-			notice = nil
+			clearNotice(source: .resetCredit)
 			return creditID
 		} catch {
-			notice = error.localizedDescription
+			presentError("Couldn’t prepare reset card", error: error, source: .resetCredit)
 			return nil
 		}
 	}
@@ -154,7 +167,11 @@ extension AccountStore {
 	) async -> Bool {
 		cancelUsageRefillAnimation(for: account.accountFingerprint)
 		guard attempt.target.accountID == account.accountFingerprint else {
-			notice = ResetCreditUseError.accountChanged.localizedDescription
+			presentError(
+				"Couldn’t use reset card",
+				error: ResetCreditUseError.accountChanged,
+				source: .resetCredit
+			)
 			return false
 		}
 		guard await refreshAccountsForResetCredit() else {
@@ -181,7 +198,6 @@ extension AccountStore {
 				attempt: attempt
 			)
 
-			let outcomeNotice = resetCreditNotice(for: outcome)
 			if outcome == .reset {
 				beginUsageRefillAnimation(refillAnimation)
 			}
@@ -191,16 +207,16 @@ extension AccountStore {
 				refreshSucceeded: outcome == .reset && refreshSucceeded
 			)
 			if refreshSucceeded {
-				notice = outcomeNotice
+				presentNotice(.resetCreditOutcome(outcome))
 			} else {
-				let refreshNotice = notice ?? "Account refresh failed."
-				notice = "\(outcomeNotice) \(refreshNotice)"
+				let refreshError = notice?.copyText ?? "Account refresh failed."
+				presentNotice(.resetCreditOutcome(outcome, refreshError: refreshError))
 			}
 			return true
 		} catch {
 			cancelUsageRefillAnimation(for: account.accountFingerprint)
 			_ = await refreshAccountsForResetCredit()
-			notice = error.localizedDescription
+			presentError("Couldn’t use reset card", error: error, source: .resetCredit)
 			return false
 		}
 	}
@@ -339,18 +355,6 @@ extension AccountStore {
 				.resolvingSymlinksInPath()
 	}
 
-	private func resetCreditNotice(for outcome: ResetCreditConsumeOutcome) -> String {
-		switch outcome {
-		case .reset:
-			return "Reset card used."
-		case .alreadyRedeemed:
-			return "Reset card was already used."
-		case .nothingToReset:
-			return "No current rate limit can be reset."
-		case .noCredit:
-			return "No reset card is available."
-		}
-	}
 }
 
 private enum ResetCreditUseError: LocalizedError {

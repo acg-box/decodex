@@ -4,7 +4,6 @@ import SwiftUI
 struct LoginSheetView: View {
 	let store: AccountStore
 	let mode: AccountLoginSheetMode
-	@Environment(\.colorScheme) private var colorScheme
 	@State private var requestStarted = false
 	@State private var copyFeedback = false
 	@State private var copyFeedbackToken = UUID()
@@ -36,7 +35,9 @@ struct LoginSheetView: View {
 			LoginSheetHeaderView(
 				mode: mode,
 				statusLabel: store.loginStatusLabel,
-				isActive: store.isLoggingIn || store.loginPrompt != nil || store.notice != nil
+				isActive: store.isLoggingIn
+					|| store.loginPrompt != nil
+					|| store.loginNotice != nil
 			)
 			LoginCodeCardView(
 				code: store.loginPrompt?.compactCode ?? "",
@@ -54,12 +55,9 @@ struct LoginSheetView: View {
 					.transition(.opacity.combined(with: .move(edge: .top)))
 			}
 
-			if let notice = store.notice {
-				Text(notice)
-					.font(LoginFont.caption)
-					.foregroundStyle(LoginPalette.warning(colorScheme))
-					.lineLimit(2)
-					.fixedSize(horizontal: false, vertical: true)
+			if let notice = store.loginNotice {
+				NoticeView(notice: notice, onDismiss: store.clearLoginNotice)
+					.id(notice.id)
 			}
 
 			LoginSheetActionsView(
@@ -83,7 +81,7 @@ struct LoginSheetView: View {
 				requestStarted = false
 			}
 		}
-		.onChange(of: store.notice) { _, notice in
+		.onChange(of: store.loginNotice) { _, notice in
 			if notice != nil {
 				requestStarted = false
 			}
@@ -105,9 +103,9 @@ struct LoginSheetView: View {
 	private func requestLogin() {
 		requestStarted = true
 		Task {
-			await store.login()
+			let succeeded = await store.login()
 			requestStarted = false
-			if store.notice == nil {
+			if succeeded {
 				onComplete()
 			}
 		}
