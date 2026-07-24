@@ -30,11 +30,15 @@ extension AccountStore {
 				.accountList(forceRefresh: force),
 				as: AccountListResponse.self
 			))
-			notice = nil
+			clearNotice(source: .accountRefresh)
 			await refreshFastMode()
 			return true
 		} catch {
-			notice = error.localizedDescription
+			presentError(
+				"Couldn’t refresh accounts",
+				error: error,
+				source: .accountRefresh
+			)
 			return false
 		}
 	}
@@ -73,8 +77,13 @@ extension AccountStore {
 				.codexFastModeStatus,
 				as: CodexFastModeResponse.self
 			)
+			clearNotice(source: .fastMode)
 		} catch {
-			notice = error.localizedDescription
+			presentError(
+				"Couldn’t refresh fast mode",
+				error: error,
+				source: .fastMode
+			)
 		}
 	}
 }
