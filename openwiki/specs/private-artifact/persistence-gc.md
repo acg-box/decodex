@@ -1,6 +1,18 @@
-# Private-artifact persistence and garbage collection
+# Private-artifact persistence and garbage collection (retired design)
 
-## Receipt-first authority
+Status: frozen historical, non-executable design evidence.
+
+At and after the [repository effective point](decision.md#repository-effective-point),
+every rule marker, relation, transaction, receipt, lock, recovery rule, retention
+rule, and modal verb in this file describes the retired private-artifact design
+only. Nothing in this file is a current schema rule, runtime input, migration
+instruction, garbage-collection instruction, or future vNext obligation. Before
+that point, the fail-closed conditions in the retirement decision apply and no
+private-artifact work can start.
+
+## Frozen historical persistence design
+
+### Receipt-first authority
 
 <a id="rule-PA-PERSIST-0001"></a>
 **[rule:PA-PERSIST-0001]** The request owner creates one UUIDv4 idempotency key,
@@ -20,7 +32,7 @@ A bounded failure before Tx A commits one canonical `TerminalRejected` receipt a
 response only. It creates no Tx A declaration, CAS object, operation event, genesis,
 or effect permit.
 
-## Tx A, create-only CAS, and Tx B
+### Tx A, create-only CAS, and Tx B
 
 <a id="rule-PA-PERSIST-0002"></a>
 **[rule:PA-PERSIST-0002]** For a new declaration, sort the complete deduplicated
@@ -56,7 +68,7 @@ are deleted in the same transaction that creates the new root; every
 `UnlinkSyncPending` substate and `Residual` blocks and rolls back. Candidate deletion
 is never a standalone precursor.
 
-## Pending preparation and reconciliation
+### Pending preparation and reconciliation
 
 <a id="rule-PA-PERSIST-0003"></a>
 **[rule:PA-PERSIST-0003]** `PendingDeclared` has no operation head and its
@@ -83,7 +95,7 @@ unknown Tx B commit permits at most three readbacks and no resubmission. Scan ti
 is 30 seconds; completion time is 600 seconds. The pass has one coalesced wake and
 cannot complete more than one receipt.
 
-## Cluster dependencies and immutable receipts
+### Cluster dependencies and immutable receipts
 
 <a id="rule-PA-PERSIST-0004"></a>
 **[rule:PA-PERSIST-0004]** Plans, not callers or DTOs, derive dependencies.
@@ -118,7 +130,7 @@ authority. A pruning-only completion changes no operation lifecycle or event
 ordinal. An immutable successful publication receipt remains successful after any
 later collection residual.
 
-## Locked transitions and stored incompatibility
+### Locked transitions and stored incompatibility
 
 <a id="rule-PA-PERSIST-0005"></a>
 **[rule:PA-PERSIST-0005]** One top-level `READ COMMITTED` transition locks and
@@ -194,7 +206,7 @@ decodex.private_artifact_apply_transition_v1(
 )
 ```
 
-## V22 baseline and V23 additions
+### V22 baseline and V23 additions
 
 <a id="rule-PA-PERSIST-0006"></a>
 **[rule:PA-PERSIST-0006]** Preserve the bound V22 baseline exactly. The 22 whole
@@ -217,7 +229,7 @@ grant-option, role-membership, or private-helper authority. Every runtime functi
 is migration-owned, `SECURITY DEFINER`, schema-qualified, fixed to
 `pg_catalog, decodex`, and uses no dynamic SQL.
 
-## GC liveness and writer exclusion
+### GC liveness and writer exclusion
 
 <a id="rule-PA-GC-0001"></a>
 **[rule:PA-GC-0001]** The complete liveness predicate includes every accepted
@@ -240,7 +252,7 @@ A noncanonical shard entry is identified only by shard and redacted fingerprint.
 No raw name or reversible path is stored or logged. It always enters sticky
 `Cas/NoncanonicalEntry` and never gains automatic unlink authority.
 
-## GC observations, attempts, and recovery
+### GC observations, attempts, and recovery
 
 <a id="rule-PA-GC-0002"></a>
 **[rule:PA-GC-0002]** GC orders work by
@@ -325,7 +337,7 @@ Counters are 0 through 3. An active ordinal is 1 through 3 and equals its phase
 counter. Active fields are all present or all absent. Authorization and success
 clear the earlier retry tuple. Exhaustion requires the matching counter to equal 3.
 
-## Retention, pruning, and tombstones
+### Retention, pruning, and tombstones
 
 <a id="rule-PA-GC-0003"></a>
 **[rule:PA-GC-0003]** Retain pending/attention receipts, nonterminal or residual
@@ -341,7 +353,7 @@ or incompatibility; the complete linked cluster terminal; and the full retention
 period elapsed. One transaction inserts the tombstone before deleting evidence and
 references. CAS GC then starts its independent observation period.
 
-## Backup and restore
+### Backup and restore
 
 <a id="rule-PA-PERSIST-0007"></a>
 **[rule:PA-PERSIST-0007]** V1 has no artifact export, backup API, backup receipt,
@@ -355,7 +367,7 @@ bytes enter missing attention; corrupt bytes enter corrupt attention; extra CAS
 bytes enter orphan observation; and restored tombstones remain authoritative.
 There is no automatic rollback detector or restore product gate.
 
-## Total lock order
+### Total lock order
 
 <a id="rule-PA-PERSIST-0008"></a>
 **[rule:PA-PERSIST-0008]** Acquire multiple categories in this total order:

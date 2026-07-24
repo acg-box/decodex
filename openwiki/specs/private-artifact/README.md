@@ -1,12 +1,14 @@
-# Private-artifact authority package
+# Retired private-artifact design archive
 
-This directory is the accepted cumulative authority for the Decodex private-artifact
-subsystem. The AR-CLOSE governance amendment accepts signed C2 commit
-`019f58a31b976056c000b73de3ec46b89284c6eb` and tree
-`a56976663774b1e901e27fdf4c5276a7e9c84cb8` as the cutover baseline by explicit
-policy. Package identity does not prove historical semantic fidelity.
+Status: XY-1403 Option 1 implementation candidate. Exact-candidate review is
+pending. The
+[retirement decision](decision.md) defines the exact repository effective point. A
+candidate commit does not become product authority before exact-candidate review,
+authoritative landing, and landed commit, tree, and path readback.
 
-Start with [decision.md](decision.md). Then read the semantic modules in this order:
+At and after that effective point, Decodex vNext has no private-artifact subsystem,
+delivery lane, or future-work promise. The semantic modules and their rule markers are
+frozen historical evidence only:
 
 1. [foundations.md](foundations.md)
 2. [model-codec-reducer.md](model-codec-reducer.md)
@@ -14,13 +16,20 @@ Start with [decision.md](decision.md). Then read the semantic modules in this or
 4. [executor-platform.md](executor-platform.md)
 5. [operations-delivery.md](operations-delivery.md)
 
-The `authority/` directory contains the current-rule ledger, the accepted-corpus
-census, fixed inventories, and immutable V22 source bindings. The optional
-`corpus/index.tsv` contains fingerprints only. No private session path, session
-identifier, task identifier, timestamp, or payload is part of the package.
+The protected package data describes the retired design. It is not a current rule
+ledger, dependency graph, runtime input, validation input, or future-work inventory.
+In particular, `authority/rules.tsv`, `authority/inventories.json`,
+`authority/source-census.tsv`, all four `authority/v22-*` files, and
+`corpus/index.tsv` remain byte-identical historical evidence. The role labels in
+`authority/package.manifest` identify archive members only. They do not restore
+authority to those members.
 
-AR-CLOSE changes package-native governance and affected projections only. It leaves
-the source census, corpus-derived product semantics, product source, executable
-behavior, and command authority unchanged. Its accepted quarantine, residual-risk,
-cutover, and delivery rules are in [decision.md](decision.md) and
-[operations-delivery.md](operations-delivery.md).
+The archive contains no private session path, session identifier, task identifier,
+timestamp, payload, or new runtime mechanism. Do not use it to create a service,
+schema, storage system, runtime route, platform layer, issue, compatibility path,
+command, test, or delivery gate.
+
+The accepted Artifact/BlobStore boundary remains unchanged for ordinary product
+evidence. XY-1369, XY-1370, and XY-1363 use the bounded canonical privacy-safe Git
+evidence contract in [decision.md](decision.md). They do not require a new product
+Artifact or any private-artifact machinery.

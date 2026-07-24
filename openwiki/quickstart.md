@@ -9,20 +9,21 @@ outside the runtime rewrite until their owners adopt them.
 
 OpenWiki is the repo-local project knowledge surface for agents and maintainers. Runtime authority lives in source, project contracts, tests, manifests, and local runtime state; OpenWiki explains where to start and what to watch before editing.
 
-For the private-artifact subsystem, the accepted
-[private-artifact authority package](specs/private-artifact/README.md) is the sole normative
-authority. Private-artifact text elsewhere in OpenWiki, including this page, is a nonnormative
-navigation and current-status projection.
+XY-1403 retires the private-artifact lane at the exact repository effective point
+defined in the [retirement decision](specs/private-artifact/decision.md#repository-effective-point).
+The [private-artifact archive](specs/private-artifact/README.md) is historical
+evidence only after that point. It is not a runtime or future-work input.
 
 ## Start here
 
 - [Runtime architecture](architecture/runtime-architecture.md): process topology, CLI bootstrap, app-server runs, operator HTTP/MCP, and state ownership.
 - [Design rationale](decisions/design-rationale.md): why Decodex keeps loop graphs internal, autonomy authority typed, MCP/skills split, the site static, and Radar/Publisher bounded.
-- [vNext authority decision](decisions/vnext-authority.md): the accepted product, ownership,
-  state-authority, cutover, and delivery decision outside the private-artifact carve-out.
+- [vNext authority decision](decisions/vnext-authority.md): the accepted product,
+  ownership, state-authority, cutover, delivery, and private-artifact retirement
+  decision.
 - [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
-  protocol, account continuity, non-goals, and migration contract outside the private-artifact
-  carve-out.
+  protocol, account continuity, non-goals, migration contract, and retained-title
+  Git evidence boundary.
 - [XY-1400 ProcessGeneration authority](specs/process-generation-authority.md): durable
   pre-spawn fencing, opaque exact-build launch attestation, macOS positive-death quarantine,
   exact process identity, ProviderAttempt ambiguity handoff, restore safety, and the deferred
@@ -35,13 +36,14 @@ navigation and current-status projection.
   closed Conversation/ManagedRun consumer integration, exact cause projection, V12
   retirement, production isolation, and the deferred unified acceptance matrix.
 - [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates,
-  downstream issue ownership, and decision-changing falsifiers outside the private-artifact
-  carve-out.
-- [Private-artifact authority package](specs/private-artifact/README.md): sole normative
-  private-artifact decision, semantic modules, fixed authority data, and future delivery contract.
+  downstream issue ownership, private-artifact retirement, and decision-changing
+  falsifiers.
+- [Private-artifact design archive](specs/private-artifact/README.md): frozen historical
+  decision, semantic modules, protected authority data, receipts, and retirement
+  controls. It contains no executable or future vNext obligation.
 - [XY-1262 Codex runtime proof](evidence/vnext-codex-runtime-proof.md): shared-home, ownership, schema, collaboration, cross-account, fallback, crash, and typed-quota evidence for the Codex feasibility gate.
 - [XY-1345 exact-command authority proof](evidence/xy-1345-exact-command-authority.md): corrected pure-PostgreSQL command authority, deterministic/concurrency schedules, privilege/catalog closure, restore receipt, and V9/V10 ownership order.
-- [XY-1372 private-artifact capability evidence](evidence/xy-1372-private-artifact-capabilities.md): accepted exact APFS, OrbStack overlayfs, and OrbStack virtiofs feasibility; no-replace outcomes, preservation, durability boundaries, manifest identities, and future enablement gates.
+- [XY-1372 private-artifact capability evidence](evidence/xy-1372-private-artifact-capabilities.md): historical accepted APFS, OrbStack overlayfs, and OrbStack virtiofs feasibility provenance; it authorizes no current platform or delivery gate.
 - [Lane Authority v2](decisions/lane-authority-v2.md): superseded historical target retained as architecture and incident provenance; C1-C7 are frozen and must not be implemented.
 - [Drift audits](evidence/drift-audits.md): public-safe evidence notes, current MCP remote-control watched claims, reverse checks, validation commands, and stop conditions.
 - [v0.2 freeze receipt](evidence/v0.2-freeze.md): exact trusted tag, cold-config and automation inventory, frozen legacy work, preserved incident evidence, cleanup ownership, and the unresolved SQLite-backup gap.
@@ -361,14 +363,18 @@ XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only
 end-to-end diagnostic matrix.
 Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
 later owners and gates.
-The private-artifact API and runtime composition are not implemented. The accepted
-[private-artifact authority package](specs/private-artifact/README.md), not the vNext decision,
-authority contract, gate manifest, or XY-1372 evidence, is the sole normative subsystem authority.
-Those other pages now provide navigation, current status, or evidence only. The package
-[delivery module](specs/private-artifact/operations-delivery.md) defines CORE-FREEZE, ACC, the
-future PostgreSQL preparation and retained-title task contracts, one mechanical preparation pass,
-and unified validation. All are future delivery contracts. Their appearance in documentation does
-not claim that the behavior or command exists. AR-CLOSE accepts signed C2 as the cutover baseline
-by policy, with historical semantic fidelity explicitly unproven, and quarantines the historical
-private corpus outside runtime and normal workflows. Private rereview is not a prerequisite. A0
-and D0a can begin from the accepted AR-CLOSE identity; the later dependency graph is unchanged.
+The private-artifact API and runtime composition are not implemented and are no
+longer vNext targets. At and after the XY-1403 repository effective point, the
+[private-artifact archive](specs/private-artifact/README.md) preserves the complete
+former design and receipt anchors as historical evidence. Its rules, A0/A1/B/D0a/C/D
+delivery graph, CORE-FREEZE, ACC, preparation tasks, mechanical pass, and unified
+validation are historical and non-executable. They do not define dependencies or
+future work.
+
+XY-1369 and XY-1370 keep their bounded operator checks and produce canonical
+privacy-safe Git attestations and digests for XY-1363. XY-1363 consumes the exact
+accepted receipt identities and uses the accepted V22 one-shot title path. This
+replacement creates no service, schema, storage system, runtime route, platform
+layer, issue, compatibility path, or product Artifact. The existing
+Artifact/BlobStore boundary remains unchanged, and production dispatch remains
+disabled.
