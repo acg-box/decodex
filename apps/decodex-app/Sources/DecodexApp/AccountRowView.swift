@@ -8,7 +8,10 @@ struct AccountRowView: View {
 	let isLogoutArmed: Bool
 	let isLogoutPending: Bool
 	let logoutErrorMessage: String?
+	let usageRefillAnimation: AccountUsageRefillAnimation?
 	let useInCodex: () -> Void
+	let prepareResetCredit: (ResetCreditUsePreparation) async -> String?
+	let consumeResetCredit: (ResetCreditUseAttempt) async -> Bool
 	let routeRunsHere: () -> Void
 	let login: () -> Void
 	let logout: () -> Void
@@ -65,7 +68,12 @@ struct AccountRowView: View {
 			}
 
 			if account.hasUsageSummary {
-				AccountUsageSummaryView(account: account)
+				AccountUsageSummaryView(
+					account: account,
+					usageRefillAnimation: usageRefillAnimation,
+					prepareResetCredit: prepareResetCredit,
+					consumeResetCredit: consumeResetCredit
+				)
 					.transition(.panelInline)
 			}
 		}
