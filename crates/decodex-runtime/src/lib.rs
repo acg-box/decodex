@@ -22,6 +22,7 @@ mod managed_repository_runtime;
 mod managed_repository_saga;
 mod process_platform;
 mod process_supervisor;
+mod provider_attempt_service;
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
@@ -44,6 +45,11 @@ pub use process_supervisor::{
 	ProcessGenerationControl, ProcessGenerationDiagnostic, ProcessGenerationExitWitnessKind,
 	ProcessGenerationObservation, ProcessGenerationReadiness, ProcessGenerationReconciliation,
 	ProcessGenerationTermination, ProcessSupervisorError,
+};
+pub use provider_attempt_service::{
+	ProviderAttemptControl, ProviderAttemptDiagnostic, ProviderAttemptReadiness,
+	ProviderAttemptReconciliation, ProviderAttemptServiceError, ProviderEvidenceLookupError,
+	ProviderPositiveEvidenceSource,
 };
 pub use routing_orchestration::{
 	ContinuationCoordinates, DisabledRoutingCommand, DisabledRoutingFailure,

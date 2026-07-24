@@ -26,6 +26,7 @@ use crate::managed_repository_runtime::{
 	ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
 };
 use crate::ProcessGenerationControl;
+use crate::ProviderAttemptControl;
 
 /// The only mutation/observation seam reachable from the WebSocket server.
 ///
@@ -103,6 +104,7 @@ pub(crate) struct ServiceApplication {
 	_managed_repository_readiness: ManagedRepositoryReadiness,
 	_managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
 	_process_generations: Option<ProcessGenerationControl>,
+	_provider_attempts: Option<ProviderAttemptControl>,
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
@@ -114,6 +116,7 @@ impl ServiceApplication {
 		managed_repository_readiness: ManagedRepositoryReadiness,
 		managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
 		process_generations: Option<ProcessGenerationControl>,
+		provider_attempts: Option<ProviderAttemptControl>,
 		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
 		doctor: DoctorReport,
@@ -124,6 +127,7 @@ impl ServiceApplication {
 			_managed_repository_readiness: managed_repository_readiness,
 			_managed_repository_startup_error: managed_repository_startup_error,
 			_process_generations: process_generations,
+			_provider_attempts: provider_attempts,
 			_codex: codex,
 			blob_store,
 			doctor,

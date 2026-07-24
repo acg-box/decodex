@@ -410,9 +410,40 @@ exits before witness attachment, the event cannot be reconstructed and the accou
 quarantined for the rest of the boot. ProcessGeneration makes no claim about credential revocation
 or provider-effect outcome; XY-1401 retains that ambiguity in ProviderAttempt.
 
-`ServiceBootstrap` exposes independent readiness and a runtime port for bounded/exact diagnostics,
-exact positive-only reconciliation, and exact owned-child termination. Spawn and ready remain
-crate-private and have no caller. `CodexAdapter::unavailable()` remains in the daemon composition.
+### Durable ProviderAttempt authority
+
+V24 adds the generic ProviderAttempt owner described in
+[the XY-1401 authority specification](../specs/provider-attempt-authority.md).
+One PostgreSQL preparation transaction binds exactly one reserved Conversation Turn identity or
+ManagedRun execution to its accepted V17 plan, V16 decision, RuntimeSession, selected account,
+live ready ProcessGeneration revision and epoch, request identity and digest, and provider
+idempotency or correlation keys. The Conversation owner can materialize the reserved Turn later;
+an existing Turn must match the same Conversation and accepted RuntimeSession.
+The fixed-search-path reservation trigger runs as the migration owner because runtime has Turn
+DML but no ProviderAttempt relation access; runtime and PUBLIC cannot execute the helper directly.
+Unreserved Turn writes pass, and conflicting reserved materialization fails closed.
+ProviderAttemptService selects no account and creates no RuntimeSession or Turn.
+
+The ordinary machine is `prepared -> canceled | dispatch_authorized`,
+`dispatch_authorized -> succeeded | failed_definitive | not_submitted | unknown`, and
+`unknown -> succeeded | failed_definitive | not_submitted` only from positive evidence.
+Restore projects present prepared and dispatch-authorized rows to `unknown` under the shared
+execution restore gate. A late positive result stays bound to the original attempt after process
+death. A replacement reconciles but cannot recreate a fresh dispatch fence.
+
+Daemon bootstrap completes restore projection and one bounded positive-only reconciliation pass
+before it reports ProviderAttempt readiness. It then runs bounded background passes. Diagnostics
+omit provider keys and request digests. The current composition has no provider evidence adapter
+that can dispatch, no public consumer for the fresh fence, and an unavailable `CodexAdapter`.
+V12 ManagedRun turn records are not consulted for ProviderAttempt submission or outcome. XY-1402
+owns their later retirement and the stateless Conversation/ManagedRun integration.
+
+`ServiceBootstrap` exposes independent ProcessGeneration and ProviderAttempt readiness and
+cloneable runtime ports. The ProcessGeneration port provides bounded or exact diagnostics,
+exact positive-only reconciliation, and exact owned-child termination. The ProviderAttempt port
+provides bounded redacted diagnostics, exact positive-only reconciliation, and an exact positive
+receipt operation. ProcessGeneration spawn and ready remain crate-private and have no caller.
+`CodexAdapter::unavailable()` remains in the daemon composition.
 No protocol, CLI, scheduler, routing, RuntimeSession, ProviderAttempt, credential, remote-auth, or
 UI path reaches ProcessGeneration spawn. Production dispatch remains structurally disabled.
 A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
