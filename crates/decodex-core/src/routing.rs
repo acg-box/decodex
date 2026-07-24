@@ -4,7 +4,7 @@
 //! provenance, persistence, eligibility authority, dispatch authority, or production enablement.
 
 use crate::{
-	AccountId, AccountState, ManagedRunId, ObservationConfidence, QuotaWindowClass,
+	AccountId, AccountState, ExecutionConsumer, ObservationConfidence, QuotaWindowClass,
 	RuntimeSessionId,
 };
 
@@ -143,6 +143,138 @@ pub enum RoutingBlocker {
 	QuotaSevenDayDepleted,
 	/// At least one policy-required capability lacks positive applicable evidence.
 	RequiredCapabilityUnsatisfied,
+	/// Authentication required by the execution consumer is unavailable or unresolved.
+	AuthenticationRequired,
+	/// Plugin readiness required by the execution consumer is unavailable or unresolved.
+	PluginUnready,
+	/// A declared dependency blocks this exact execution path.
+	DependencyBlocked,
+	/// Required approval is absent.
+	ApprovalRequired,
+	/// Explicit user input is required.
+	UserRequired,
+	/// An external authority or readback blocks this exact execution path.
+	ExternalBlocked,
+	/// Usage state is unavailable without complete current positive quota depletion evidence.
+	UsageUnproven,
+	/// ManagedRun reconciliation lacks an exact unresolved ProcessGeneration or ProviderAttempt.
+	ReconciliationUnproven,
+	/// No execution-scoped independent Reviewer is available.
+	ReviewerUnavailable,
+	/// Independent review rejected the result.
+	ReviewerFailed,
+	/// Reviewer output is missing or ambiguous and grants no approval.
+	ReviewerAmbiguous,
+	/// ProcessGeneration authority is unresolved for this account path.
+	ProcessGenerationUnresolved,
+	/// No live fenced ProcessGeneration exists and no reconciliation is pending.
+	ProcessGenerationUnavailable,
+	/// The exact ProviderAttempt remains unresolved.
+	ProviderAttemptUnresolved,
+	/// The exact consumer intent already has a terminal ProviderAttempt.
+	ProviderAttemptCompleted,
+}
+impl RoutingBlocker {
+	/// Return the exact stable PostgreSQL and protocol spelling.
+	pub const fn as_sql(self) -> &'static str {
+		use RoutingBlocker::*;
+		match self {
+			ExcludedByPolicy => "excluded_by_policy",
+			AccountFromFuture => "account_from_future",
+			AccountStale => "account_stale",
+			AccountUnavailable => "account_unavailable",
+			AccountUnknown => "account_unknown",
+			AccountDepleted => "account_depleted",
+			AccountAuthFailed => "account_auth_failed",
+			AccountPluginUnready => "account_plugin_unready",
+			AccountDisabled => "account_disabled",
+			EvidenceMissing => "evidence_missing",
+			EvidenceFromFuture => "evidence_from_future",
+			EvidenceStale => "evidence_stale",
+			EvidenceAccountMismatch => "evidence_account_mismatch",
+			EvidenceProfileMismatch => "evidence_profile_mismatch",
+			EvidenceBuildMismatch => "evidence_build_mismatch",
+			QuotaFiveHourMissing => "quota_five_hour_missing",
+			QuotaFiveHourFromFuture => "quota_five_hour_from_future",
+			QuotaFiveHourStale => "quota_five_hour_stale",
+			QuotaFiveHourUnknown => "quota_five_hour_unknown",
+			QuotaFiveHourResetElapsed => "quota_five_hour_reset_elapsed",
+			QuotaFiveHourDepleted => "quota_five_hour_depleted",
+			QuotaSevenDayMissing => "quota_seven_day_missing",
+			QuotaSevenDayFromFuture => "quota_seven_day_from_future",
+			QuotaSevenDayStale => "quota_seven_day_stale",
+			QuotaSevenDayUnknown => "quota_seven_day_unknown",
+			QuotaSevenDayResetElapsed => "quota_seven_day_reset_elapsed",
+			QuotaSevenDayDepleted => "quota_seven_day_depleted",
+			RequiredCapabilityUnsatisfied => "required_capability_unsatisfied",
+			AuthenticationRequired => "authentication_required",
+			PluginUnready => "plugin_unready",
+			DependencyBlocked => "dependency_blocked",
+			ApprovalRequired => "approval_required",
+			UserRequired => "user_required",
+			ExternalBlocked => "external_blocked",
+			UsageUnproven => "usage_unproven",
+			ReconciliationUnproven => "reconciliation_unproven",
+			ReviewerUnavailable => "reviewer_unavailable",
+			ReviewerFailed => "reviewer_failed",
+			ReviewerAmbiguous => "reviewer_ambiguous",
+			ProcessGenerationUnresolved => "process_generation_unresolved",
+			ProcessGenerationUnavailable => "process_generation_unavailable",
+			ProviderAttemptUnresolved => "provider_attempt_unresolved",
+			ProviderAttemptCompleted => "provider_attempt_completed",
+		}
+	}
+
+	/// Parse one exact stable PostgreSQL spelling.
+	pub fn from_sql(value: &str) -> Option<Self> {
+		use RoutingBlocker::*;
+		Some(match value {
+			"excluded_by_policy" => ExcludedByPolicy,
+			"account_from_future" => AccountFromFuture,
+			"account_stale" => AccountStale,
+			"account_unavailable" => AccountUnavailable,
+			"account_unknown" => AccountUnknown,
+			"account_depleted" => AccountDepleted,
+			"account_auth_failed" => AccountAuthFailed,
+			"account_plugin_unready" => AccountPluginUnready,
+			"account_disabled" => AccountDisabled,
+			"evidence_missing" => EvidenceMissing,
+			"evidence_from_future" => EvidenceFromFuture,
+			"evidence_stale" => EvidenceStale,
+			"evidence_account_mismatch" => EvidenceAccountMismatch,
+			"evidence_profile_mismatch" => EvidenceProfileMismatch,
+			"evidence_build_mismatch" => EvidenceBuildMismatch,
+			"quota_five_hour_missing" => QuotaFiveHourMissing,
+			"quota_five_hour_from_future" => QuotaFiveHourFromFuture,
+			"quota_five_hour_stale" => QuotaFiveHourStale,
+			"quota_five_hour_unknown" => QuotaFiveHourUnknown,
+			"quota_five_hour_reset_elapsed" => QuotaFiveHourResetElapsed,
+			"quota_five_hour_depleted" => QuotaFiveHourDepleted,
+			"quota_seven_day_missing" => QuotaSevenDayMissing,
+			"quota_seven_day_from_future" => QuotaSevenDayFromFuture,
+			"quota_seven_day_stale" => QuotaSevenDayStale,
+			"quota_seven_day_unknown" => QuotaSevenDayUnknown,
+			"quota_seven_day_reset_elapsed" => QuotaSevenDayResetElapsed,
+			"quota_seven_day_depleted" => QuotaSevenDayDepleted,
+			"required_capability_unsatisfied" => RequiredCapabilityUnsatisfied,
+			"authentication_required" => AuthenticationRequired,
+			"plugin_unready" => PluginUnready,
+			"dependency_blocked" => DependencyBlocked,
+			"approval_required" => ApprovalRequired,
+			"user_required" => UserRequired,
+			"external_blocked" => ExternalBlocked,
+			"usage_unproven" => UsageUnproven,
+			"reconciliation_unproven" => ReconciliationUnproven,
+			"reviewer_unavailable" => ReviewerUnavailable,
+			"reviewer_failed" => ReviewerFailed,
+			"reviewer_ambiguous" => ReviewerAmbiguous,
+			"process_generation_unresolved" => ProcessGenerationUnresolved,
+			"process_generation_unavailable" => ProcessGenerationUnavailable,
+			"provider_attempt_unresolved" => ProviderAttemptUnresolved,
+			"provider_attempt_completed" => ProviderAttemptCompleted,
+			_ => return None,
+		})
+	}
 }
 
 /// One member of an immutable policy replacement readback.
@@ -312,10 +444,8 @@ pub struct RoutingSnapshot {
 	pub required_role_profile_revision: i64,
 	/// Exact content-addressed Codex build required for compatibility.
 	pub required_build_id: String,
-	/// ManagedRun identity for which the snapshot was resolved.
-	pub managed_run_id: ManagedRunId,
-	/// Positive ManagedRun revision locked during resolution.
-	pub managed_run_revision: i64,
+	/// Exact ordinary or managed execution consumer for which the snapshot was resolved.
+	pub consumer: ExecutionConsumer,
 	/// RuntimeSession identity supplying the sticky-affinity source.
 	pub runtime_session_id: RuntimeSessionId,
 	/// Positive RuntimeSession revision bound by the snapshot.
@@ -446,6 +576,8 @@ pub enum RoutingDecisionKind {
 	Selected,
 	/// Every otherwise eligible account is blocked only by exact usage depletion.
 	WaitingUsage,
+	/// Every otherwise eligible path is blocked only by unresolved process or attempt authority.
+	WaitingReconciliation,
 	/// No account is routable, without implying a future wake instant.
 	NoRoute,
 }
@@ -484,6 +616,15 @@ pub struct RoutingDecisionExclusion {
 	pub resets_at_provenance: RoutingTimestampProvenance,
 }
 
+/// One exact account-scoped cause retained by a non-selected route projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoutingDecisionCause {
+	/// Account path to which the cause applies.
+	pub account_id: AccountId,
+	/// Exact persisted blocker without lossy category collapse.
+	pub blocker: RoutingBlocker,
+}
+
 /// Inert deterministic V16 result shape.
 ///
 /// Construction does not prove persistence and carries no routing, dispatch, or execution
@@ -502,6 +643,8 @@ pub struct RoutingDecision {
 	pub no_route_reason: Option<RoutingNoRouteReason>,
 	/// Complete normalized depletion lineage required by the selected or waiting shape.
 	pub exclusions: Vec<RoutingDecisionExclusion>,
+	/// Complete exact causes for waiting or no-route outcomes, in member and blocker order.
+	pub causes: Vec<RoutingDecisionCause>,
 }
 
 /// Structural failure of a supposedly closed database-authored snapshot.
@@ -560,7 +703,7 @@ pub fn decide_routing(
 		.filter(|(_, member)| member.disposition == RoutingMemberDisposition::Included)
 		.collect::<Vec<_>>();
 	if included.is_empty() {
-		return Ok(no_route(&snapshot.snapshot_id));
+		return Ok(no_route(&snapshot.snapshot_id, Vec::new()));
 	}
 
 	let sticky = included.iter().copied().find(|(_, member)| member.sticky);
@@ -586,7 +729,7 @@ pub fn decide_routing(
 			let required =
 				member.blockers.iter().filter(|blocker| is_depletion_blocker(**blocker)).count();
 			if account_exclusions.len() != required {
-				return Ok(no_route(&snapshot.snapshot_id));
+				return Ok(no_route(&snapshot.snapshot_id, routing_causes(&included)));
 			}
 			exclusions.extend(account_exclusions);
 		}
@@ -597,14 +740,32 @@ pub fn decide_routing(
 			ready_at_micros: None,
 			no_route_reason: None,
 			exclusions,
+			causes: Vec::new(),
 		});
 	}
 
-	if included.iter().any(|(_, member)| {
-		member.blockers.is_empty()
-			|| member.blockers.iter().any(|blocker| !is_depletion_blocker(*blocker))
-	}) {
-		return Ok(no_route(&snapshot.snapshot_id));
+	let causes = routing_causes(&included);
+	let only_depletion = included.iter().all(|(_, member)| {
+		!member.blockers.is_empty() && member.blockers.iter().all(|blocker| {
+			is_depletion_blocker(*blocker)
+		})
+	});
+	if !only_depletion {
+		if included.iter().all(|(_, member)| {
+			!member.blockers.is_empty()
+				&& member.blockers.iter().all(|blocker| is_reconciliation_blocker(*blocker))
+		}) {
+			return Ok(RoutingDecision {
+				snapshot_id: snapshot.snapshot_id.clone(),
+				kind: RoutingDecisionKind::WaitingReconciliation,
+				selected_account_id: None,
+				ready_at_micros: None,
+				no_route_reason: None,
+				exclusions: Vec::new(),
+				causes,
+			});
+		}
+		return Ok(no_route(&snapshot.snapshot_id, causes));
 	}
 	let mut exclusions = Vec::new();
 	let mut earliest_ready = None;
@@ -613,12 +774,12 @@ pub fn decide_routing(
 			.iter()
 			.all(|fact| quota_fact_current(fact, snapshot.decided_at_micros))
 		{
-			return Ok(no_route(&snapshot.snapshot_id));
+			return Ok(no_route(&snapshot.snapshot_id, causes.clone()));
 		}
 		let account_exclusions =
 			depletion_exclusions(member, &facts_by_member[index], snapshot.decided_at_micros)?;
 		if account_exclusions.is_empty() {
-			return Ok(no_route(&snapshot.snapshot_id));
+			return Ok(no_route(&snapshot.snapshot_id, causes.clone()));
 		}
 		let ready = account_exclusions
 			.iter()
@@ -635,10 +796,11 @@ pub fn decide_routing(
 		ready_at_micros: earliest_ready,
 		no_route_reason: None,
 		exclusions,
+		causes,
 	})
 }
 
-fn no_route(snapshot_id: &str) -> RoutingDecision {
+fn no_route(snapshot_id: &str, causes: Vec<RoutingDecisionCause>) -> RoutingDecision {
 	RoutingDecision {
 		snapshot_id: snapshot_id.to_owned(),
 		kind: RoutingDecisionKind::NoRoute,
@@ -646,7 +808,22 @@ fn no_route(snapshot_id: &str) -> RoutingDecision {
 		ready_at_micros: None,
 		no_route_reason: Some(RoutingNoRouteReason::BlockedEvidence),
 		exclusions: Vec::new(),
+		causes,
 	}
+}
+
+fn routing_causes(
+	members: &[(usize, &RoutingDecisionCandidate)],
+) -> Vec<RoutingDecisionCause> {
+	members
+		.iter()
+		.flat_map(|(_, member)| {
+			member.blockers.iter().copied().map(|blocker| RoutingDecisionCause {
+				account_id: member.account_id.clone(),
+				blocker,
+			})
+		})
+		.collect()
 }
 
 fn account_available(facts: &[&RoutingDecisionQuotaFact], decided_at_micros: i64) -> bool {
@@ -673,6 +850,14 @@ fn quota_fact_current(fact: &RoutingDecisionQuotaFact, decided_at_micros: i64) -
 
 fn is_depletion_blocker(blocker: RoutingBlocker) -> bool {
 	matches!(blocker, RoutingBlocker::QuotaFiveHourDepleted | RoutingBlocker::QuotaSevenDayDepleted)
+}
+
+fn is_reconciliation_blocker(blocker: RoutingBlocker) -> bool {
+	matches!(
+		blocker,
+		RoutingBlocker::ProcessGenerationUnresolved
+			| RoutingBlocker::ProviderAttemptUnresolved
+	)
 }
 
 fn provenance_complete(
