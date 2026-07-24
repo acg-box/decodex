@@ -1,6 +1,8 @@
 # Decodex vNext Gate Manifest
 
-Status: normative sequencing and acceptance boundary except for the private-artifact subsystem.
+Status: normative sequencing and acceptance boundary. The XY-1403 private-artifact
+retirement takes effect only at the exact repository effective point in the
+[retirement decision](private-artifact/decision.md#repository-effective-point).
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Contract:
 [vNext authority contract](vnext-authority.md).
@@ -19,7 +21,7 @@ its dependent implementation uses the result.
 | --- | --- |
 | [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence. Private-artifact authority and future delivery are owned only by the [private-artifact authority package](private-artifact/README.md); this row does not restate that sequence. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence. XY-1403 retires the private-artifact lane. XY-1369 and XY-1370 instead produce bounded canonical privacy-safe Git evidence for XY-1363. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -42,9 +44,9 @@ planning metadata, not product/runtime identity.
    quota depletion, durable exclusion before fallback, crash-safe exactly-one
    continuation, real resume-denied Context-Pack fallback, all-depleted wait/wakeup
    readback, side-effect reconciliation, and supported Codex Desktop title discovery.
-4. The future private-artifact delivery and acceptance gates in the
-   [private-artifact authority package](private-artifact/README.md). This manifest is a
-   nonnormative projection for that subsystem and does not restate its exact sequence.
+4. The bounded canonical privacy-safe Git receipt gates for XY-1369 and XY-1370,
+   followed by exact receipt consumption in XY-1363. These are retained-title
+   evidence gates. They do not create or restore a private-artifact product lane.
 5. Empty PostgreSQL bootstrap, backup/rollback, and concurrent lease/outbox tests
    (XY-1264). The scoped proof choices, measurements, recovery procedure, and downstream
    boundary are recorded in [vNext storage feasibility evidence](../evidence/vnext-storage-feasibility.md).
@@ -127,18 +129,65 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1358 | Sole V15 migration owner for causal positive-only Codex experiment authority. |
 | XY-1359 | Sole V16 migration owner plus pure routing kernel and atomic persisted decisions; no dispatch. |
 | XY-1360 | Sole V17 migration owner for same-thread continuation and one atomic Context-Pack/RuntimeSession fallback after V16; no dispatch. |
-| XY-1361 | Runtime orchestration over persisted authorities with production dispatch structurally disabled. |
+| XY-1361 | Historical disabled runtime orchestration over persisted V16/V17 authorities. XY-1402 supersedes its wrapper without enabling dispatch. |
 | XY-1362 | Sole V18 migration owner for the inert `waiting_usage` wake lifecycle, plus its forward-only V19 deterministic time-authority repair; no selection or production scheduler authority. |
-| XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. |
+| XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. It consumes the exact accepted bounded Git receipt identities from XY-1369 and XY-1370 and uses the accepted V22 one-shot path. |
 | XY-1364 | Frozen-core integration and acceptance for the checked-in V14-V21 ledger, including the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference repair; production routing remains disabled. |
 | XY-1367 | Sole V22 owner for the two-effect retained-title experiment bridge and inert manual Rust runner. It does not execute validation or live effects. |
 | XY-1368 | Historical mechanical, migration, semantic, authority-digest, and production-isolation acceptance for the exact XY-1367 V22 candidate; it is not current command authority. |
+| XY-1369 | Retained no-DDL read-only preflight gate. Its accepted output is one bounded canonical privacy-safe Git record and digest; it creates no private-artifact product Artifact. |
+| XY-1370 | Retained exact-build and bounded-schema attestation gate. Raw schema stays private; its accepted output is one bounded public-safe Git attestation and digest. |
+| XY-1373 | Historical private-artifact specification and moving-core integration work. Its former landing condition is non-executable. Its later cancellation preserves history and relations and does not claim completion. |
+| XY-1398 | Accepted V3 product decision for opaque attested launches, durable fenced provider-process generations, macOS positive-death quarantine, and ProviderAttempt ambiguity handoff; no guardian, takeover, or live dispatch. |
+| XY-1400 | Sole V23 and ProcessSupervisor implementation owner for opaque exact-build launch authority, ProcessGeneration fencing, exact supported-OS identity, account-local quarantine, positive-only death evidence, reconciliation, diagnostics, and exact owned termination. It adds no routing, RuntimeSession, ProviderAttempt, remote auth, UI, release, or live dispatch. |
+| XY-1401 | Sole V24 and ProviderAttemptService implementation owner for generic pre-dispatch consumer binding, exact V16/V17/ProcessGeneration lineage, positive-only evidence, restore projection, reconciliation, and redacted diagnostics. It adds no routing, RuntimeSession creation, consumer-domain mutation, second ledger, UI, release, or live dispatch. |
+| XY-1402 | Sole V25/V26 and stateless ExecutionCoordinator implementation owner for ordinary Conversation/ManagedRun consumer integration, exact cause projection, ProviderAttempt consumption, and drained V12 authority retirement. It adds no durable coordinator, account selection, RuntimeSession ownership, process ownership, provider-effect ownership, remote auth, UI, release, or live dispatch. |
 
 The [XY-1368 retained-title freeze](xy-1368-retained-title-freeze.md) is immutable V22 historical
 evidence. It preserves the historical V14-V21 acceptance and records the V22 receipt and deferred
 work as they existed at that freeze. It is not current command, task-runner, or V1-V23 delivery
-authority. Future retained-title preparation and semantic delivery contracts are owned only by the
-[private-artifact package delivery module](private-artifact/operations-delivery.md).
+authority. The former private-artifact preparation and delivery contracts are also
+historical and non-executable. The only retained evidence transport is the bounded
+canonical privacy-safe Git contract in the
+[retirement decision](private-artifact/decision.md#smallest-retained-title-evidence-replacement).
+
+### XY-1400 deferred acceptance
+
+The [XY-1400 ProcessGeneration authority](process-generation-authority.md) records the complete
+source-only implementation boundary and deferred adversarial acceptance matrix. Its unified gate
+must cover V23 migration/ACL/catalog closure, S0/R1/R2 manifest refreeze, opaque launch mismatch,
+exact-build startup-state evidence plus absence of a returned protocol writer, future gateway
+alternate-control rejection, fence and crash concurrency, macOS orphan and exit-before-witness
+schedules, generic Linux preflight isolation, Linux parent-death behavior only after an exact
+lifetime profile is accepted, PID/PGID reuse, positive-only death proof, account-local same-boot
+uncertainty, restore rollback safety, exact owned termination, ProviderAttempt ambiguity handoff,
+conversation continuity, and reverse production-isolation evidence. XY-1400 runs none of that
+matrix and enables no provider effect or production dispatch.
+
+### XY-1401 deferred acceptance
+
+The [XY-1401 ProviderAttempt authority](provider-attempt-authority.md) records the source-only
+implementation boundary and deferred adversarial acceptance matrix. Its unified gate must cover
+V24 migration, ACL, and catalog closure; S0/R1/R2 manifest refreeze; both consumer shapes; exact
+V16/V17/RuntimeSession/ProcessGeneration binding; every state edge; positive-only evidence;
+negative-observation rejection; late results; replacement without replay; duplicate-risk
+acknowledgement and concurrency; restore rollback safety; bounded background progress; V12 and
+XY-1402 handoff; and reverse production-isolation evidence. XY-1401 runs none of that matrix and
+enables no provider effect or production dispatch.
+
+### XY-1402 deferred acceptance
+
+The [XY-1402 stateless execution-coordination authority](execution-coordinator-authority.md)
+records the source-only implementation boundary, forward V25 enum expansion and V26 cutover,
+architecture falsifiers, and complete deferred acceptance matrix. The unified gate must cover
+V25/V26 migration, drained and
+cross-linked or ambiguous cutover rejection, S0/R1/R2 manifest refreeze, V12 writer removal, both
+consumer shapes, exact V16 cause projection, independent quota windows and V14-to-V16 aging, V17
+same-thread and atomic fallback paths, live ProcessGeneration fencing, ProviderAttempt binding,
+fresh-capability consumption, and positive-only reconciliation,
+Conversation and ManagedRun owner isolation, Reviewer ambiguity, same-UID transport, and reverse
+production isolation. XY-1402 executes none of that matrix and enables no provider effect or
+production dispatch.
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
@@ -788,29 +837,27 @@ production routing.
 
 <a id="xy-1372-private-artifact-capability-and-consumption-gate"></a>
 
-### Private-artifact delivery projection
+### Private-artifact retirement projection
 
-This section is nonnormative. The accepted
-[private-artifact authority package](private-artifact/README.md) is the sole normative authority
-for private-artifact semantics, ownership, sequencing, and acceptance. The
-[XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md) remains an
-evidence input only. Earlier XY-1373 and XY-1371 wording on this page does not compete with or
-amend the package.
+At and after the
+[repository effective point](private-artifact/decision.md#repository-effective-point),
+the [private-artifact archive](private-artifact/README.md) is historical evidence
+only. Its rules, owners, inventories, path sets, A0/A1/B/D0a/C/D graph,
+CORE-FREEZE, ACC, preparation tasks, mechanical pass, and unified validation
+protocol are non-executable. They are not gates, dependencies, or future vNext
+work. Current source has no private-artifact runtime or API composition, and this
+retirement creates none.
 
-The package [delivery module](private-artifact/operations-delivery.md) defines future
-CORE-FREEZE and ACC contracts, future canonical preparation and retained-title task contracts,
-one future mechanical preparation pass, and the later unified validation protocol. Those are
-delivery targets, not implemented behavior. Current source inspection shows no package-defined
-private-artifact runtime/API composition, and current task-runner names do not yet implement the
-package-defined command surfaces. Use the package for the exact order, owners, path sets,
-inventories, and stop conditions; do not copy them into this manifest. No private-artifact gate by
-itself enables production routing.
+The [XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md)
+remains historical feasibility provenance only. It cannot authorize a platform
+requirement, delivery start, or experiment. XY-1373's former moving-core condition
+is also historical and non-executable.
 
-AR-CLOSE accepts signed C2 as the cutover baseline by explicit policy and retires historical
-private-corpus semantic rereview as a prerequisite. Its accepted authority identity gates A0 and
-D0a. After that acceptance, both can begin and the package-owned downstream
-A1/B/C/D/CORE-FREEZE graph remains unchanged. The historical corpus has no runtime or normal
-workflow edge, and no private-review channel component exists.
+XY-1369 and XY-1370 keep only their existing bounded operator checks and commit
+reviewed public-safe attestations and digests as canonical Git evidence. XY-1363
+consumes their exact accepted receipt identities. The accepted Artifact/BlobStore
+boundary remains unchanged, and no new product Artifact or compatibility path is
+added. No retained-title evidence gate enables production routing.
 
 ### Failed live account-routing enablement gate
 
@@ -843,11 +890,10 @@ XY-1368 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
 -> XY-1300 later whole-product E2E/fault/UI/packaging/cutover acceptance
 ```
 
-The private-artifact prerequisites and delivery path into XY-1363 are not restated in this
-diagram. The sole normative sequence is in the
-[private-artifact package delivery module](private-artifact/operations-delivery.md). `XY-1368` in
-the remaining routing edge denotes accepted V22 historical evidence; it is not current command
-authority.
+The retired private-artifact prerequisites and delivery path into XY-1363 do not
+exist in this diagram. `XY-1368` in the remaining routing edge denotes accepted V22
+historical evidence; it is not current command authority. XY-1363 separately
+consumes exact accepted bounded Git receipt identities from XY-1369 and XY-1370.
 
 The aggregate gate must bind one exact source tree and prove PostgreSQL-produced complete
 routing snapshots and decisions. Caller omission, reordering, substitution, duplicate facts,
@@ -870,8 +916,9 @@ fresh resolution.
 
 Crash injection at every external-effect boundary must produce no duplicate turn, tool,
 repository, worktree, Git, or artifact effect. Possibly side-effecting turn replay remains under
-the accepted ManagedRun submitted-turn/effect-barrier and repository-effect reconciliation
-authorities, not routing. Host-owned before/after receipts prove no-mutation integrity only. The
+ProviderAttempt and the accepted repository-effect reconciliation authorities, not routing or a
+ManagedRun-local submitted-turn ledger. Host-owned before/after receipts prove no-mutation
+integrity only. The
 experiment and gate must not use plugin, skill, MCP, marketplace, login-management, OAuth-
 management, or account-configuration inventory/mutation calls to manufacture readiness. XY-1363
 must independently prove supported retained-title Desktop discovery after normal indexing without
@@ -903,9 +950,51 @@ and one final aggregate rerun. XY-1304 follows with live-routing evidence and it
 enablement amendment. XY-1300 then owns the later whole-product E2E, fault, UI, packaging,
 cutover, and release acceptance.
 
-That paragraph records the historical routing-core freeze sequence. Its lower-case "core freeze"
-and unified core gate are not the future private-artifact CORE-FREEZE or unified validation
-contracts.
+That paragraph records the historical routing-core freeze sequence. Its lower-case
+"core freeze" and unified core gate are separate from the retired
+private-artifact CORE-FREEZE and unified validation terms. The private-artifact
+terms are historical and non-executable.
+
+#### XY-1399 A-prime deferred acceptance matrix
+
+XY-1399 A-prime implements the architecture reset authorized by
+`e27dfc31-c10c-470a-aa51-197abf22de99`. Its product boundary is V3 authority
+`099fb36d-9a48-407e-abdd-80dd56d13051`; the failure receipt is
+`1d8402ed-703d-469f-8ade-a6a8f3a380aa`; and the approved reset skeptic receipt is
+`221bdde4-71b0-46aa-84bf-3bccb05f108d`. Rejected commits
+`a5e5a42ae3cad39442a865a08a468de859fe72d1`,
+`188bf19b1b1333da61a10339f74159e2a9baca66`, and
+`c367a94bc83013715541147aafcf96975ee7c607` are read-only provenance. They are not
+implementation ancestry or compatibility authority.
+
+This source-only inventory is deferred to the later unified integrated-core gate. The
+gate must bind every result to one exact tree and run on required macOS and Linux hosts.
+It cannot add remote or cross-UID admission, use PostgreSQL credentials as end-user
+authentication, create local PKI, enable provider dispatch or production routing, or add
+a production compatibility facade.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Policy and platform | `disabled` with no UID is a typed refusal. `same_uid` without an owner UID, `disabled` with a UID, a malformed policy, an owner UID different from the process effective UID, and an unsupported platform fail before endpoint use. `same_uid` plus the exact effective UID is the only enabled V1 state. |
+| Persistent namespace lock | The final server directory has the configured owner and exact mode 0700. Persistent regular `decodex.lock` has that owner, exact mode 0600, and one link. Symlink, wrong type, wrong owner, wrong mode, extra link, replaced directory, replaced lock path, lock conflict, overlong path, and ambiguous inspection fail closed. The exclusive nonblocking `flock` starts before stale inspection and remains held through cleanup, listener close, and release-last teardown. The lock file is not unlinked. |
+| Fixed staging recovery | Exercise absent, live, timed-out, exact refused, replaced, linked, wrongly typed, wrongly owned, and wrongly scoped `decodex.sock.stage` and `decodex.sock`. Only exact connection refusal from an unchanged secure socket under the verified lock permits descriptor-relative `unlinkat`. Success, timeout, another error, or any identity change preserves the entry and refuses startup. |
+| Atomic publication | Bind only fixed `decodex.sock.stage`, set exact mode 0600, capture its device/inode/owner/mode/link-count identity, require exactly one link, and validate the retained directory, lock, staging socket, and absent canonical name. Publish with same-directory descriptor-relative `renameat` to `decodex.sock` under the lock. Require the staging name to be absent and canonical name to have the captured identity before product admission. Inject ancestor, directory, lock, staging, and canonical replacement before and after each point. There is no self-connect challenge. |
+| Point-in-time identity | Publication, every server admission, every client connection or reconnect, and cleanup each re-open and validate the current no-follow directory path and exact socket identity against retained descriptors. Connect and accept races with parent rename, ancestor or final-component symlink, socket rename, inode replacement, and canonical replacement fail closed. There is no continuous 250-millisecond watchdog. Hostile same-UID mutation is an integrity-detection fixture, not a confinement claim. |
+| Kernel peer identity | Same-effective-UID client and daemon peers succeed on macOS and Linux. Wrong UID and unavailable or ambiguous kernel credentials return distinct closed refusals on both client connect and server admission. A wrong client peer is connection-local; namespace or listener drift invalidates the listener. Directory permissions and stable server identity do not substitute for kernel credentials. |
+| WebSocket continuity | V1.2 and the accepted V1.1 window continue at exact route `/v1/ws` over an already admitted Unix stream. The two exact `ws://localhost/v1/ws` constants are handshake metadata passed to `client_async_with_config`; they cannot resolve or dial. Doctor/status, hello, snapshot, event, command, query, refusal, frame, timeout, backpressure, and close behavior gain no TCP or Axum fallback. |
+| Single task owner | One top-level lifecycle owns the listener and lock. One `JoinSet` owns every session and command task. Each spawn receives a monotonic stable ID and closed `Session` or `Command` kind and is mapped to its Tokio ID. No upgrade callback, session spawn, command spawn, or detached handle exists outside that owner. Submitted command work enters that set before execution. |
+| One shutdown deadline | Requested shutdown, listener-invalidating refusal, child panic, or unexpected child failure creates one absolute non-extendable deadline. Sessions receive cooperative stop. The closed command receiver drains through `None`, including buffered submissions and outstanding pre-close permits. Commands received before the deadline can finish until that instant. Work that crosses an outstanding permit after expiry receives a stable task identity but is not polled. On expiry, the owner calls `abort_all` once and then explicitly calls `join_next_with_id` through `None`. Cancellation of a caller waiting on `BoundServer` does not detach or consume the stored lifecycle handle. |
+| Deterministic receipt | Terminate with no clients, incomplete handshake, active WebSocket, in-flight command, normal session completion, simultaneous completions, child panic, unexpected cancellation, and a non-quiescent task. Check exact session/command spawn counts, harvested and expected counts, panic/failure/forced/owner-integrity counts, and lowest stable abnormal identities. Primary rank is cleanup refusal, endpoint refusal, owner integrity, child panic, unexpected child failure, forced deadline, then requested shutdown. Task ties select the lowest spawn ID. |
+| Cleanup and daemon concurrency | Start two legitimate same-UID daemons against absent and stale names. Only the lock holder can inspect, remove, bind, publish, or clean. During shutdown with active sessions and commands, require zero owned tasks and an empty harvested set before cleanup. Remove only the retained canonical identity; a missing or different identity is a cleanup refusal and is preserved. Close the listener, then release the namespace lock last. A second legitimate daemon cannot publish until that release. |
+| Profile disagreement | Run the daemon with its active local profile and select a different declared local profile in the client. Policy or owner-UID disagreement fails before WebSocket admission. Client selection cannot rewrite daemon authority, select TCP, or use the stable server ID as a transport credential. Remote profiles remain inert. |
+| Exact deferred stale surfaces | In one post-freeze batch, convert and compile exactly: `crates/decodex-protocol/src/lib.rs`, `crates/decodex-protocol/src/client.rs`, `crates/decodex-protocol/src/retained_session.rs`, `crates/decodex-runtime/tests/websocket_protocol.rs`, `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `crates/decodex-runtime/tests/cli_diagnostics.rs`, `crates/decodex-runtime/tests/supervised_validation.rs`, `crates/decodex-core/tests/support/test_root.rs`, `crates/decodex-core/tests/config.rs`, `apps/decodex-gpui/src/client_lifecycle/tests.rs`, `scripts/vnext/postgres_store_test.py`, and `scripts/vnext/cli_diagnostics_test.py`. Until then these twelve surfaces remain deliberately stale and cannot authorize a facade. |
+| Clean-break reverse scan | Remove stale uses of `LoopbackEndpoint`, local `address`, URL-based retained-session construction, `InvalidEndpoint`, `TcpListener`, `TcpStream`, `SocketAddr`, `BoundServer::address`, TCP V1 URIs, `127.0.0.1:49152`, isolated-loopback-port text, and dependency-only `use axum as _`. Inspect production for Axum serving/upgrades, detached spawns, TCP bind/dial, self-connect, and watchdog code. After the twelve-surface conversion, remove the runtime Axum dev-dependency, workspace edge, and lock packages only if no other accepted active owner remains. |
+| Authority isolation | Reverse dependencies prove that no PostgreSQL client authentication/routing, `ProcessGeneration`, `RuntimeSession`, `ProviderAttempt`, account routing, scheduler, UI, packaging, release, remote transport, cross-UID transport, or provider effect enters this owner. Existing production dispatch remains structurally disabled. |
+
+Before core freeze, do not run formatters, builds, static checks, migration or SQL parsers,
+tests, fixtures, wrappers, generators, services, VMs, UI or Accessibility checks, live
+Codex experiments, account operations, or provider effects for this candidate. The later
+integrated gate runs the matrix once against its exact frozen tree.
 
 #### XY-1358 deferred acceptance matrix
 
@@ -927,9 +1016,10 @@ one exact tree and may not enable a live experiment while collecting evidence.
 
 This matrix is preserved as historical V22 acceptance context. XY-1368 executed its acceptance
 against one exact staged V22 candidate after XY-1367 deferred executable validation. It does not
-define a current command or the future package-defined V1-V23 retained-title task. The immutable
-[XY-1368 freeze](xy-1368-retained-title-freeze.md) is historical evidence only; future delivery
-uses the [private-artifact package](private-artifact/operations-delivery.md).
+define a current command or a future package-defined V1-V23 retained-title task. The immutable
+[XY-1368 freeze](xy-1368-retained-title-freeze.md) and the retired
+[private-artifact delivery design](private-artifact/operations-delivery.md) are
+historical and non-executable.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -1004,9 +1094,11 @@ The `fd1e351` core freeze was reopened for the forward V19 time-authority repair
 then canonicalized restore-unstable constraints, and V21 repairs only RuntimeSession event-reference
 classification and its final inventories without changing the trusted command or trigger boundary.
 XY-1367 reopened that tree only for forward V22. This matrix records the integrated source
-candidate used by the historical XY-1368 V22 acceptance. It is not the future private-artifact
-CORE-FREEZE, ACC, preparation, or unified-validation contract. Those future contracts exist only
-in the [private-artifact package delivery module](private-artifact/operations-delivery.md).
+candidate used by the historical XY-1368 V22 acceptance. It is not the retired
+private-artifact CORE-FREEZE, ACC, preparation, or unified-validation contract.
+Those package terms remain frozen historical evidence in the
+[private-artifact delivery archive](private-artifact/operations-delivery.md) and
+cannot authorize work.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -1025,6 +1117,12 @@ in the [private-artifact package delivery module](private-artifact/operations-de
 | Production isolation and protocol vocabulary | Reverse dependencies prove no production root reaches the V22 runner. The runner requires its manual feature and binary. Existing V16/V17 orchestration and V18 remain disabled and uncomposed. No new V1 command exists. |
 | Regenerated schema and configured-authority digests | The canonical frozen derivation and final bound run agree on the immutable V1-V21 checksums plus V22, 77 relations, 161 functions, 67 safety functions, 142 triggers, exact source/metadata/signatures/ACLs, enums, constraints, indexes, dependencies, schema manifest, configured-authority inventory, and expected digests. |
 | Representative end-to-end flow | One request persists exactly one V16 result. Selected produces exactly one strict-readback V17 same-thread or atomic fallback plan and remains inert. Waiting produces only handoff facts, then an independently invoked V18 register -> claim or expiry/reclaim -> fire chain yields one immutable fresh-resolution request; cancellation and stale-lineage paths yield none. Restart preserves all readback and no production effect executes. |
+
+The table above is historical V22 evidence. Its V12 effect-barrier and ManagedRun-only V16/V17
+rows do not describe the current V26 source. The
+[XY-1402 deferred acceptance matrix](execution-coordinator-authority.md#deferred-acceptance-matrix)
+supersedes those current-state projections. The V26 matrix must run at the later unified
+core-freeze gate before any acceptance or enablement claim.
 
 
 ## Cutover gate

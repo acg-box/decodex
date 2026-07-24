@@ -3,7 +3,6 @@
 use std::{
 	env, fs,
 	io::ErrorKind,
-	net::{IpAddr, Ipv4Addr, SocketAddr},
 	path::{Path, PathBuf},
 	sync::Arc,
 };
@@ -14,19 +13,22 @@ use crate::{
 	managed_repository_runtime::{
 		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
 	},
+	process_supervisor::{
+		ProcessGenerationControl, ProcessGenerationReadiness, ProcessSupervisorError,
+	},
+	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
 	Availability, BlobStore, ConfigError, DecodexConfig, DecodexRoot, PathError,
-	PostgresIdentityConfig, ProductState as _, ServerIdentity,
+	PostgresIdentityConfig, ProductState as _, ServerIdentity, ServerProfile,
 };
 use decodex_postgres::{BootstrapFailure, PostgresStore};
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, ServerId,
+	DoctorStatus, LocalTransportAuthority, LocalTransportRefusal, ServerId,
 };
 
-const DEFAULT_ADDRESS: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 49_152);
 const CONFIG_UNAVAILABLE: &str = "typed PostgreSQL configuration is unavailable";
 const AUTHENTICATION_UNAVAILABLE: &str = "PostgreSQL authentication is unavailable";
 const DATABASE_UNREACHABLE: &str = "configured PostgreSQL is unreachable";
@@ -37,20 +39,19 @@ const MANAGED_REPOSITORY_UNAVAILABLE: &str = "managed repository runtime is unav
 /// Complete daemon bootstrap result, including its stable identity and typed report.
 pub struct ServiceBootstrap {
 	server_id: ServerId,
-	address: SocketAddr,
+	local_transport: Result<LocalTransportAuthority, LocalTransportRefusal>,
 	store: ProductStore,
 	managed_repositories: Option<ManagedRepositoryRuntime>,
 	managed_repository_readiness: ManagedRepositoryReadiness,
 	managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+	process_generations: Option<ProcessGenerationControl>,
+	process_generation_readiness: ProcessGenerationReadiness,
+	provider_attempts: Option<ProviderAttemptControl>,
+	provider_attempt_readiness: ProviderAttemptReadiness,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
 }
 impl ServiceBootstrap {
-	/// Loopback listener retained by the current security gate.
-	pub const fn address(&self) -> SocketAddr {
-		self.address
-	}
-
 	/// Stable server-host identity used by welcome, pinning, and doctor readback.
 	pub fn server_id(&self) -> &ServerId {
 		&self.server_id
@@ -71,6 +72,26 @@ impl ServiceBootstrap {
 		self.managed_repository_readiness
 	}
 
+	/// Return the independent ProcessGeneration service readiness.
+	pub const fn process_generation_readiness(&self) -> ProcessGenerationReadiness {
+		self.process_generation_readiness
+	}
+
+	/// Clone the exact diagnostic/reconciliation port when startup completed.
+	pub fn process_generation_control(&self) -> Option<ProcessGenerationControl> {
+		self.process_generations.clone()
+	}
+
+	/// Return the independent ProviderAttempt restore and reconciliation readiness.
+	pub const fn provider_attempt_readiness(&self) -> ProviderAttemptReadiness {
+		self.provider_attempt_readiness
+	}
+
+	/// Clone the bounded diagnostic and positive-reconciliation port when startup completed.
+	pub fn provider_attempt_control(&self) -> Option<ProviderAttemptControl> {
+		self.provider_attempts.clone()
+	}
+
 	fn protocol_server(self, config: ServerConfig) -> ProtocolServer<ServiceApplication> {
 		ProtocolServer::new(
 			self.server_id,
@@ -79,6 +100,8 @@ impl ServiceBootstrap {
 				self.managed_repositories,
 				self.managed_repository_readiness,
 				self.managed_repository_startup_error,
+				self.process_generations,
+				self.provider_attempts,
 				CodexAdapter::unavailable(),
 				self.blob_store,
 				self.doctor,
@@ -87,20 +110,12 @@ impl ServiceBootstrap {
 		)
 	}
 
-	/// Bind the bootstrapped daemon on an explicitly selected loopback address.
-	pub async fn bind(
-		self,
-		address: SocketAddr,
-		config: ServerConfig,
-	) -> Result<BoundServer, ServerError> {
-		self.protocol_server(config).bind(address).await
-	}
+	/// Bind through the configured same-UID local transport authority.
+	pub async fn bind(self, config: ServerConfig) -> Result<BoundServer, ServerError> {
+		let local_transport =
+			self.local_transport.clone().map_err(ServerError::LocalTransport)?;
 
-	/// Run the bootstrapped daemon on its configured current local endpoint.
-	pub async fn run(self, config: ServerConfig) -> Result<(), ServerError> {
-		let address = self.address;
-
-		self.protocol_server(config).run(address).await
+		self.protocol_server(config).bind(local_transport).await
 	}
 }
 
@@ -132,6 +147,17 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	let identity = ServerIdentity::load_or_create(&paths);
 	let (server_id, identity_status) = server_identity(identity);
 	let loaded = DecodexConfig::load(&paths);
+	let local_transport = loaded.as_ref().map_or(
+		Err(LocalTransportRefusal::ConfigurationUnavailable),
+		|config| match config.active_profile() {
+			ServerProfile::Local(profile) => LocalTransportAuthority::new(
+				paths.clone(),
+				profile.policy(),
+				profile.service_owner_uid(),
+			),
+			ServerProfile::Remote(_) => Err(LocalTransportRefusal::Disabled),
+		},
+	);
 	let config_status = match &loaded {
 		Ok(_) => DoctorStatus::Ready,
 		Err(error) => DoctorStatus::Unavailable(config_issue(*error)),
@@ -162,6 +188,22 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		ProductStore::Available(postgres) => Some(postgres.clone()),
 		ProductStore::Unavailable { .. } => None,
 	};
+	let (process_generations, process_generation_readiness) = match postgres.clone() {
+		Some(postgres) => match ProcessGenerationControl::start(postgres).await {
+			Ok(control) => (Some(control), ProcessGenerationReadiness::Ready),
+			Err(ProcessSupervisorError::Platform) =>
+				(None, ProcessGenerationReadiness::PlatformUnavailable),
+			Err(_) => (None, ProcessGenerationReadiness::ProductStateUnavailable),
+		},
+		None => (None, ProcessGenerationReadiness::ProductStateUnavailable),
+	};
+	let (provider_attempts, provider_attempt_readiness) = match postgres.clone() {
+		Some(postgres) => match ProviderAttemptControl::start(postgres).await {
+			Ok(control) => (Some(control), ProviderAttemptReadiness::Ready),
+			Err(_) => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+		},
+		None => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+	};
 	let (managed_repositories, managed_repository_readiness, managed_repository_startup_error) =
 		match postgres {
 			Some(postgres) => match ManagedRepositoryRuntime::start(postgres).await {
@@ -190,11 +232,15 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		address: DEFAULT_ADDRESS,
+		local_transport,
 		store,
 		managed_repositories,
 		managed_repository_readiness,
 		managed_repository_startup_error,
+		process_generations,
+		process_generation_readiness,
+		provider_attempts,
+		provider_attempt_readiness,
 		blob_store: blob_store.ok(),
 		doctor,
 	}
@@ -217,11 +263,15 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		address: DEFAULT_ADDRESS,
+		local_transport: Err(LocalTransportRefusal::ConfigurationUnavailable),
 		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
 		managed_repositories: None,
 		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
 		managed_repository_startup_error: None,
+		process_generations: None,
+		process_generation_readiness: ProcessGenerationReadiness::ProductStateUnavailable,
+		provider_attempts: None,
+		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
 		doctor,
 	}
