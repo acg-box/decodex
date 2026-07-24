@@ -2,10 +2,10 @@
 
 Use this page when deciding which command validates a change. It summarizes current task-runner authority and maps test families to source areas.
 
-For the private-artifact subsystem, the accepted
-[private-artifact authority package](../specs/private-artifact/README.md) is the sole normative
-authority. Any private-artifact command or validation text on this page is a nonnormative current
-status or future delivery projection.
+The XY-1403 private-artifact retirement takes effect only at the exact
+[repository effective point](../specs/private-artifact/decision.md#repository-effective-point).
+At and after that point, the private-artifact archive defines no command or
+validation authority.
 
 ## Task runner authority
 
@@ -51,27 +51,29 @@ that exact formatter toolchain once; formatting fails closed when it is unavaila
 rustup toolchain install nightly-2026-07-16 --profile minimal --component cargo --component rustfmt
 ```
 
-## Future private-artifact delivery contracts
+## Retired private-artifact delivery contracts
 
-The package [operations and delivery module](../specs/private-artifact/operations-delivery.md)
-owns the exact contracts. The following table describes their status without copying their path
-sets, inventories, arguments, or receipt schemas:
+The archived
+[operations and delivery module](../specs/private-artifact/operations-delivery.md)
+preserves the former contracts. Every item in this table is historical and
+non-executable:
 
-| Contract | Current status and future boundary |
+| Former contract | Disposition |
 | --- | --- |
-| CORE-FREEZE | Future read-only source-inspection freeze after the package-defined source phases. It is a receipt boundary, not a current task or implemented runtime feature. |
-| ACC | Future bounded acceptance-authoring phase that starts only from an exact CORE-FREEZE receipt. It has not changed the current tests, wrapper, task runner, or runbook. |
-| `check-vnext-postgres-preparation` | Future mechanical preparation task that ACC must add. It is absent from the current `Makefile.toml`; the existing retained-title preparation task is not an alias or substitute. |
-| `test-vnext-retained-title-core` | The task name exists today with the historical V14-V22 boundary. Its package-defined V1-V23 behavior and version-2 receipts are future ACC work and are not implemented by the current task. |
-| Single mechanical preparation pass | Future post-ACC pass over the exact frozen candidate. It is not a command that this projection can run or claim as completed. |
-| Unified complete validation protocol | Future gate after the mechanical pass, with the package-defined bounded repair policy. No current focused task or historical receipt satisfies it. |
+| A0/A1/B/D0a/C/D and their delivery edges | Retired. They are not phases, dependencies, issue work, or future obligations. |
+| CORE-FREEZE | Retired. It is not a receipt boundary or current or future task. |
+| ACC | Retired. It cannot authorize acceptance-source changes. |
+| `check-vnext-postgres-preparation` | Retired package proposal. Do not add it from the archive. |
+| Package-defined `test-vnext-retained-title-core` behavior | Retired. The existing task name and current behavior come only from checked-in task, wrapper, and runbook authority. |
+| Single mechanical preparation pass | Retired. Do not run or recreate it from the archive. |
+| Unified complete validation protocol | Retired. It is not an acceptance or enablement gate. |
 
 The immutable [XY-1368 retained-title freeze](../specs/xy-1368-retained-title-freeze.md) is V22
-historical evidence only. It is not current command or task-runner authority. Until future ACC
-changes land, current executable command names and behavior come from `Makefile.toml`, the current
-wrapper source, and the current
-[XY-1368 validation runbook](xy-1368-retained-title-validation.md). Do not infer future
-package-defined behavior from those current surfaces.
+historical evidence only. It is not current command or task-runner authority.
+Current executable command names and behavior come from `Makefile.toml`, the current
+wrapper source, and the unchanged
+[XY-1368 validation runbook](xy-1368-retained-title-validation.md). Do not infer
+retired package behavior from those current surfaces.
 
 ## XY-1399 A-prime source-only validation boundary
 
@@ -249,7 +251,7 @@ delta invalidates the candidate.
 The current [XY-1368 retained-title validation](xy-1368-retained-title-validation.md) documents the
 two historical V22-era partial-boundary command surfaces that still exist in source. Neither
 command authorizes full-check publication or production enablement, and neither implements the
-future private-artifact delivery contracts above.
+retired private-artifact delivery contracts above.
 
 The normal aggregate uses one explicit stage report. Configuration and cluster preflight are fatal:
 mode/argument validation, clean source binding, temporary-root validation, PostgreSQL tool
@@ -412,7 +414,7 @@ compatibility targets.
 ## Managed repository frozen-tree validation
 
 This section describes the managed-repository and historical V22 frozen-tree boundary. It does not
-define or satisfy the future private-artifact unified validation protocol.
+define or satisfy the retired private-artifact unified validation protocol.
 
 Managed-repository stage-two work has no pre-freeze execution gate. Do not run compile, test,
 check, Clippy, format, migration, wrapper, matrix, doctest, behavioral, app, or benchmark commands

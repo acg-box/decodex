@@ -1,7 +1,8 @@
 # Decodex vNext Authority Contract
 
-Status: normative target contract except for the private-artifact subsystem; implementation is
-gate-controlled.
+Status: normative target contract; implementation is gate-controlled. The XY-1403
+private-artifact retirement takes effect only at the exact repository effective point
+in the [retirement decision](private-artifact/decision.md#repository-effective-point).
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 [vNext gate manifest](vnext-gates.md).
@@ -138,20 +139,30 @@ receipt. Exact replay returns those bytes; conflicting reuse fails before effect
 
 <a id="private-artifact-authority"></a>
 
-### Private artifact projection (nonnormative)
+### Private artifact retirement
 
-This section is a nonnormative projection. The accepted
-[private-artifact authority package](private-artifact/README.md) is the sole normative authority
-for the subsystem. Read its [decision](private-artifact/decision.md), then its ordered semantic
-modules, for exact rules and inventories. Text elsewhere in this contract about Artifact entities,
-the general blob store, filesystem paths, repositories, or validation does not amend that package.
+At and after the
+[repository effective point](private-artifact/decision.md#repository-effective-point),
+vNext has no private-artifact subsystem, API, runtime composition, controller,
+PostgreSQL authority, executor, platform contract, garbage collector, delivery lane,
+or future acceptance program. The
+[private-artifact archive](private-artifact/README.md) preserves the former design as
+historical evidence only. Its rule markers, inventories, dependency edges,
+A0/A1/B/D0a/C/D phases, CORE-FREEZE, ACC, preparation, and unified validation are
+non-executable and cannot authorize future work.
 
-The package defines a future subsystem and a future delivery sequence. The current product source
-does not implement the package-defined private-artifact API or runtime composition. The future
-source freeze, acceptance work, command surfaces, preparation pass, and unified validation are
-owned only by the package
-[operations and delivery contract](private-artifact/operations-delivery.md). Their names in a
-projection are not evidence that they exist.
+The accepted Artifact entity and BlobStore contract in this document remain
+unchanged. XY-1369 and XY-1370 use bounded canonical privacy-safe Git evidence for
+the exact retained-title receipts that XY-1363 consumes. That transport creates no
+new product Artifact, service, schema, storage system, runtime route, platform layer,
+issue, or compatibility path. Raw schema and other private or unbounded output do
+not enter Git, Linear, Artifact, logs, or receipts.
+
+XY-1373's former moving-core integration and landing condition is historical and
+non-executable. Its later cancellation preserves its complete history, parent, and
+`relatedTo` relations and does not claim that integration completed. Production
+dispatch stays disabled until integrated acceptance and the separate reviewed
+XY-1304 enablement amendment.
 
 ### Managed repository authority
 

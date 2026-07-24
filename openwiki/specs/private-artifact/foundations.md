@@ -1,6 +1,17 @@
-# Private-artifact foundations
+# Private-artifact foundations (retired design)
 
-## Authority and trust boundary
+Status: frozen historical, non-executable design evidence.
+
+At and after the [repository effective point](decision.md#repository-effective-point),
+every rule marker, owner, capability, invariant, state, dependency, and modal verb in
+this file describes the retired private-artifact design only. Nothing in this file is
+a current rule, runtime input, implementation instruction, or future vNext obligation.
+Before that point, the fail-closed conditions in the retirement decision apply and no
+private-artifact work can start.
+
+## Frozen historical foundations
+
+### Authority and trust boundary
 
 <a id="rule-PA-FND-0001"></a>
 **[rule:PA-FND-0001]** `decodex-core` owns one total, pure private-artifact
@@ -22,7 +33,7 @@ commit can mint an affine filesystem-effect permit. An unknown commit cannot min
 or reconstruct a permit. A permit is private-constructible, nonserializable, and
 lane-local. It cannot be queued for later use.
 
-## Capability separation
+### Capability separation
 
 <a id="rule-PA-FND-0002"></a>
 **[rule:PA-FND-0002]** Keep these capabilities distinct:
@@ -47,7 +58,7 @@ retained descriptor cannot upgrade one capability to another. Publication succes
 is immutable. Later stage collection, retirement, quarantine collection, or a
 collection residual cannot create, revoke, or replace publication authority.
 
-## Cluster and consumer boundary
+### Cluster and consumer boundary
 
 <a id="rule-PA-FND-0003"></a>
 **[rule:PA-FND-0003]** One private-artifact cluster contains exactly one plan of
@@ -86,7 +97,7 @@ receipt ID, operation ID, artifact kind, semantic digest, and canonical revision
 Downstream values cannot retire, collect, repair, prune, complete a dependency, or
 mint a receipt.
 
-## Frozen safety invariants
+### Frozen safety invariants
 
 <a id="rule-PA-FND-0004"></a>
 **[rule:PA-FND-0004]** Apply all of these invariants:
@@ -123,7 +134,7 @@ mint a receipt.
 The Unix restriction applies only to this private-artifact subsystem. It does not
 change unrelated accepted core modules.
 
-## Unsupported behavior and no-fallback rule
+### Unsupported behavior and no-fallback rule
 
 <a id="rule-PA-FND-0005"></a>
 **[rule:PA-FND-0005]** V1 does not support:
@@ -147,7 +158,7 @@ An unsupported, unproven, ambiguous, malformed, or unavailable condition returns
 typed stop or attention state. It does not authorize a fallback, override,
 compatibility layer, alternate store, or second daemon.
 
-## Redaction boundary
+### Redaction boundary
 
 <a id="rule-PA-FND-0006"></a>
 **[rule:PA-FND-0006]** Status, doctor, CLI, protocol errors, logs, panic text,
@@ -161,4 +172,3 @@ Metrics contain aggregate counts only by closed lifecycle, effect class, and
 reason. They contain no operation ID or status-row ID. Trusted in-process XY-1369
 and XY-1370 values can contain semantic digests and bounded bytes; they are not
 operator output.
-

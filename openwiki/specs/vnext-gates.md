@@ -1,6 +1,8 @@
 # Decodex vNext Gate Manifest
 
-Status: normative sequencing and acceptance boundary except for the private-artifact subsystem.
+Status: normative sequencing and acceptance boundary. The XY-1403 private-artifact
+retirement takes effect only at the exact repository effective point in the
+[retirement decision](private-artifact/decision.md#repository-effective-point).
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Contract:
 [vNext authority contract](vnext-authority.md).
@@ -19,7 +21,7 @@ its dependent implementation uses the result.
 | --- | --- |
 | [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence. Private-artifact authority and future delivery are owned only by the [private-artifact authority package](private-artifact/README.md); this row does not restate that sequence. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence. XY-1403 retires the private-artifact lane. XY-1369 and XY-1370 instead produce bounded canonical privacy-safe Git evidence for XY-1363. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -42,9 +44,9 @@ planning metadata, not product/runtime identity.
    quota depletion, durable exclusion before fallback, crash-safe exactly-one
    continuation, real resume-denied Context-Pack fallback, all-depleted wait/wakeup
    readback, side-effect reconciliation, and supported Codex Desktop title discovery.
-4. The future private-artifact delivery and acceptance gates in the
-   [private-artifact authority package](private-artifact/README.md). This manifest is a
-   nonnormative projection for that subsystem and does not restate its exact sequence.
+4. The bounded canonical privacy-safe Git receipt gates for XY-1369 and XY-1370,
+   followed by exact receipt consumption in XY-1363. These are retained-title
+   evidence gates. They do not create or restore a private-artifact product lane.
 5. Empty PostgreSQL bootstrap, backup/rollback, and concurrent lease/outbox tests
    (XY-1264). The scoped proof choices, measurements, recovery procedure, and downstream
    boundary are recorded in [vNext storage feasibility evidence](../evidence/vnext-storage-feasibility.md).
@@ -129,10 +131,13 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1360 | Sole V17 migration owner for same-thread continuation and one atomic Context-Pack/RuntimeSession fallback after V16; no dispatch. |
 | XY-1361 | Historical disabled runtime orchestration over persisted V16/V17 authorities. XY-1402 supersedes its wrapper without enabling dispatch. |
 | XY-1362 | Sole V18 migration owner for the inert `waiting_usage` wake lifecycle, plus its forward-only V19 deterministic time-authority repair; no selection or production scheduler authority. |
-| XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. |
+| XY-1363 | Post-freeze retained-title Codex Desktop discovery evidence only. It consumes the exact accepted bounded Git receipt identities from XY-1369 and XY-1370 and uses the accepted V22 one-shot path. |
 | XY-1364 | Frozen-core integration and acceptance for the checked-in V14-V21 ledger, including the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference repair; production routing remains disabled. |
 | XY-1367 | Sole V22 owner for the two-effect retained-title experiment bridge and inert manual Rust runner. It does not execute validation or live effects. |
 | XY-1368 | Historical mechanical, migration, semantic, authority-digest, and production-isolation acceptance for the exact XY-1367 V22 candidate; it is not current command authority. |
+| XY-1369 | Retained no-DDL read-only preflight gate. Its accepted output is one bounded canonical privacy-safe Git record and digest; it creates no private-artifact product Artifact. |
+| XY-1370 | Retained exact-build and bounded-schema attestation gate. Raw schema stays private; its accepted output is one bounded public-safe Git attestation and digest. |
+| XY-1373 | Historical private-artifact specification and moving-core integration work. Its former landing condition is non-executable. Its later cancellation preserves history and relations and does not claim completion. |
 | XY-1398 | Accepted V3 product decision for opaque attested launches, durable fenced provider-process generations, macOS positive-death quarantine, and ProviderAttempt ambiguity handoff; no guardian, takeover, or live dispatch. |
 | XY-1400 | Sole V23 and ProcessSupervisor implementation owner for opaque exact-build launch authority, ProcessGeneration fencing, exact supported-OS identity, account-local quarantine, positive-only death evidence, reconciliation, diagnostics, and exact owned termination. It adds no routing, RuntimeSession, ProviderAttempt, remote auth, UI, release, or live dispatch. |
 | XY-1401 | Sole V24 and ProviderAttemptService implementation owner for generic pre-dispatch consumer binding, exact V16/V17/ProcessGeneration lineage, positive-only evidence, restore projection, reconciliation, and redacted diagnostics. It adds no routing, RuntimeSession creation, consumer-domain mutation, second ledger, UI, release, or live dispatch. |
@@ -141,8 +146,10 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 The [XY-1368 retained-title freeze](xy-1368-retained-title-freeze.md) is immutable V22 historical
 evidence. It preserves the historical V14-V21 acceptance and records the V22 receipt and deferred
 work as they existed at that freeze. It is not current command, task-runner, or V1-V23 delivery
-authority. Future retained-title preparation and semantic delivery contracts are owned only by the
-[private-artifact package delivery module](private-artifact/operations-delivery.md).
+authority. The former private-artifact preparation and delivery contracts are also
+historical and non-executable. The only retained evidence transport is the bounded
+canonical privacy-safe Git contract in the
+[retirement decision](private-artifact/decision.md#smallest-retained-title-evidence-replacement).
 
 ### XY-1400 deferred acceptance
 
@@ -830,29 +837,27 @@ production routing.
 
 <a id="xy-1372-private-artifact-capability-and-consumption-gate"></a>
 
-### Private-artifact delivery projection
+### Private-artifact retirement projection
 
-This section is nonnormative. The accepted
-[private-artifact authority package](private-artifact/README.md) is the sole normative authority
-for private-artifact semantics, ownership, sequencing, and acceptance. The
-[XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md) remains an
-evidence input only. Earlier XY-1373 and XY-1371 wording on this page does not compete with or
-amend the package.
+At and after the
+[repository effective point](private-artifact/decision.md#repository-effective-point),
+the [private-artifact archive](private-artifact/README.md) is historical evidence
+only. Its rules, owners, inventories, path sets, A0/A1/B/D0a/C/D graph,
+CORE-FREEZE, ACC, preparation tasks, mechanical pass, and unified validation
+protocol are non-executable. They are not gates, dependencies, or future vNext
+work. Current source has no private-artifact runtime or API composition, and this
+retirement creates none.
 
-The package [delivery module](private-artifact/operations-delivery.md) defines future
-CORE-FREEZE and ACC contracts, future canonical preparation and retained-title task contracts,
-one future mechanical preparation pass, and the later unified validation protocol. Those are
-delivery targets, not implemented behavior. Current source inspection shows no package-defined
-private-artifact runtime/API composition, and current task-runner names do not yet implement the
-package-defined command surfaces. Use the package for the exact order, owners, path sets,
-inventories, and stop conditions; do not copy them into this manifest. No private-artifact gate by
-itself enables production routing.
+The [XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md)
+remains historical feasibility provenance only. It cannot authorize a platform
+requirement, delivery start, or experiment. XY-1373's former moving-core condition
+is also historical and non-executable.
 
-AR-CLOSE accepts signed C2 as the cutover baseline by explicit policy and retires historical
-private-corpus semantic rereview as a prerequisite. Its accepted authority identity gates A0 and
-D0a. After that acceptance, both can begin and the package-owned downstream
-A1/B/C/D/CORE-FREEZE graph remains unchanged. The historical corpus has no runtime or normal
-workflow edge, and no private-review channel component exists.
+XY-1369 and XY-1370 keep only their existing bounded operator checks and commit
+reviewed public-safe attestations and digests as canonical Git evidence. XY-1363
+consumes their exact accepted receipt identities. The accepted Artifact/BlobStore
+boundary remains unchanged, and no new product Artifact or compatibility path is
+added. No retained-title evidence gate enables production routing.
 
 ### Failed live account-routing enablement gate
 
@@ -885,11 +890,10 @@ XY-1368 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
 -> XY-1300 later whole-product E2E/fault/UI/packaging/cutover acceptance
 ```
 
-The private-artifact prerequisites and delivery path into XY-1363 are not restated in this
-diagram. The sole normative sequence is in the
-[private-artifact package delivery module](private-artifact/operations-delivery.md). `XY-1368` in
-the remaining routing edge denotes accepted V22 historical evidence; it is not current command
-authority.
+The retired private-artifact prerequisites and delivery path into XY-1363 do not
+exist in this diagram. `XY-1368` in the remaining routing edge denotes accepted V22
+historical evidence; it is not current command authority. XY-1363 separately
+consumes exact accepted bounded Git receipt identities from XY-1369 and XY-1370.
 
 The aggregate gate must bind one exact source tree and prove PostgreSQL-produced complete
 routing snapshots and decisions. Caller omission, reordering, substitution, duplicate facts,
@@ -946,9 +950,10 @@ and one final aggregate rerun. XY-1304 follows with live-routing evidence and it
 enablement amendment. XY-1300 then owns the later whole-product E2E, fault, UI, packaging,
 cutover, and release acceptance.
 
-That paragraph records the historical routing-core freeze sequence. Its lower-case "core freeze"
-and unified core gate are not the future private-artifact CORE-FREEZE or unified validation
-contracts.
+That paragraph records the historical routing-core freeze sequence. Its lower-case
+"core freeze" and unified core gate are separate from the retired
+private-artifact CORE-FREEZE and unified validation terms. The private-artifact
+terms are historical and non-executable.
 
 #### XY-1399 A-prime deferred acceptance matrix
 
@@ -1011,9 +1016,10 @@ one exact tree and may not enable a live experiment while collecting evidence.
 
 This matrix is preserved as historical V22 acceptance context. XY-1368 executed its acceptance
 against one exact staged V22 candidate after XY-1367 deferred executable validation. It does not
-define a current command or the future package-defined V1-V23 retained-title task. The immutable
-[XY-1368 freeze](xy-1368-retained-title-freeze.md) is historical evidence only; future delivery
-uses the [private-artifact package](private-artifact/operations-delivery.md).
+define a current command or a future package-defined V1-V23 retained-title task. The immutable
+[XY-1368 freeze](xy-1368-retained-title-freeze.md) and the retired
+[private-artifact delivery design](private-artifact/operations-delivery.md) are
+historical and non-executable.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |
@@ -1088,9 +1094,11 @@ The `fd1e351` core freeze was reopened for the forward V19 time-authority repair
 then canonicalized restore-unstable constraints, and V21 repairs only RuntimeSession event-reference
 classification and its final inventories without changing the trusted command or trigger boundary.
 XY-1367 reopened that tree only for forward V22. This matrix records the integrated source
-candidate used by the historical XY-1368 V22 acceptance. It is not the future private-artifact
-CORE-FREEZE, ACC, preparation, or unified-validation contract. Those future contracts exist only
-in the [private-artifact package delivery module](private-artifact/operations-delivery.md).
+candidate used by the historical XY-1368 V22 acceptance. It is not the retired
+private-artifact CORE-FREEZE, ACC, preparation, or unified-validation contract.
+Those package terms remain frozen historical evidence in the
+[private-artifact delivery archive](private-artifact/operations-delivery.md) and
+cannot authorize work.
 
 | Boundary | Representative deferred acceptance cases |
 | --- | --- |

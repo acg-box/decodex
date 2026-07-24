@@ -1,23 +1,29 @@
 # Design Rationale
 
-Scope: current v0.2 rationale and historical decisions. For vNext target design outside the
-private-artifact carve-out, the
+Scope: current v0.2 rationale and historical decisions. For the vNext target, the
 [vNext authority decision](vnext-authority.md) and
 [vNext authority contract](../specs/vnext-authority.md) supersede conflicting product,
 runtime, state, identity, transport, migration, and delivery claims on this page.
 
 This page preserves durable "why" decisions that were previously scattered across historical decision records. It is not runtime authority by itself. Current authority lives in source, contracts, tests, checked-in manifests, and local runtime state; this page explains why those authority boundaries exist and where future agents should verify them.
 
-## Private-artifact projection boundary
+## Private-artifact retirement rationale
 
-The accepted [private-artifact authority package](../specs/private-artifact/README.md) is the sole
-normative authority for that subsystem. Any private-artifact statement on this page is a
-nonnormative rationale or navigation projection. Generic Artifact, blob, filesystem, runtime, or
-validation rationale on this page must not be used to infer a private-artifact rule. Use the
-package [decision](../specs/private-artifact/decision.md) for the authority boundary and its
-[operations and delivery contract](../specs/private-artifact/operations-delivery.md) for future
-delivery. The package describes target behavior and future delivery contracts; it does not prove
-that a private-artifact API, runtime path, command, or validation gate is implemented.
+XY-1403 selects the smallest design that meets current obligations. At and after
+the [repository effective point](../specs/private-artifact/decision.md#repository-effective-point),
+the [private-artifact archive](../specs/private-artifact/README.md) is historical
+evidence only. Its model, reducer, persistence, executor, platform, controller,
+garbage-collection, delivery, CORE-FREEZE, ACC, preparation, and validation
+mechanisms have no current named vNext consumer. Keeping them as future authority
+would preserve cost and ambiguity without a product requirement.
+
+The accepted Artifact/BlobStore boundary remains unchanged for ordinary product
+evidence. The only retained need is evidence transport for XY-1369 and XY-1370 into
+XY-1363. Bounded canonical privacy-safe Git evidence meets that need without a new
+service, schema, storage system, runtime route, platform layer, issue, compatibility
+path, or product Artifact. A new material requirement that Artifact, BlobStore, and
+Git cannot meet must return to an explicit architecture decision. Historical package
+text cannot authorize that change.
 
 ## Current authority and status
 
