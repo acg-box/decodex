@@ -87,15 +87,15 @@ struct AccountResetCreditsSummaryView: View {
 	private var accessibilityLabel: String {
 		let dates = account.availableResetCredits
 			.map { credit in
-				"expires \(formatResetCreditDate(credit.expiresAtUnixEpoch)) BJT"
+				"expires \(formatResetCreditDate(credit.expiresAtUnixEpoch))"
 			}
 			.joined(separator: ", ")
 
-		return dates.isEmpty ? "reset cards \(summaryText) BJT" : "reset cards \(summaryText) BJT, \(dates)"
+		return dates.isEmpty ? "reset cards \(summaryText)" : "reset cards \(summaryText), \(dates)"
 	}
 
 	private func resetCreditHelp(_ credit: AccountResetCredit) -> String {
-		"Expires \(formatResetCreditDate(credit.expiresAtUnixEpoch)) BJT"
+		"Expires \(formatResetCreditDate(credit.expiresAtUnixEpoch))"
 	}
 }
 
@@ -198,7 +198,7 @@ struct AccountResetCreditExpiryStripView: View {
 	}
 
 	private func resetCreditHelp(_ credit: AccountResetCredit) -> String {
-		"Expires \(formatResetCreditDate(credit.expiresAtUnixEpoch)) BJT"
+		"Expires \(formatResetCreditDate(credit.expiresAtUnixEpoch))"
 	}
 
 	private func updateScrollMetrics(_ metrics: AccountRunStripMetrics) {
@@ -234,7 +234,10 @@ struct AccountResetCreditExpiryStripView: View {
 	}
 }
 
-func formatResetCreditDate(_ seconds: Int?) -> String {
+func formatResetCreditDate(
+	_ seconds: Int?,
+	timeZone: TimeZone = .autoupdatingCurrent
+) -> String {
 	guard let seconds, seconds > 0 else {
 		return "-"
 	}
@@ -245,7 +248,7 @@ func formatResetCreditDate(_ seconds: Int?) -> String {
 
 	let formatter = DateFormatter()
 	formatter.locale = Locale(identifier: "en_US_POSIX")
-	formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+	formatter.timeZone = timeZone
 	formatter.dateFormat = "MMM d HH:mm"
 	return formatter.string(from: date)
 }
