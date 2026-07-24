@@ -907,6 +907,47 @@ That paragraph records the historical routing-core freeze sequence. Its lower-ca
 and unified core gate are not the future private-artifact CORE-FREEZE or unified validation
 contracts.
 
+#### XY-1399 A-prime deferred acceptance matrix
+
+XY-1399 A-prime implements the architecture reset authorized by
+`e27dfc31-c10c-470a-aa51-197abf22de99`. Its product boundary is V3 authority
+`099fb36d-9a48-407e-abdd-80dd56d13051`; the failure receipt is
+`1d8402ed-703d-469f-8ade-a6a8f3a380aa`; and the approved reset skeptic receipt is
+`221bdde4-71b0-46aa-84bf-3bccb05f108d`. Rejected commits
+`a5e5a42ae3cad39442a865a08a468de859fe72d1`,
+`188bf19b1b1333da61a10339f74159e2a9baca66`, and
+`c367a94bc83013715541147aafcf96975ee7c607` are read-only provenance. They are not
+implementation ancestry or compatibility authority.
+
+This source-only inventory is deferred to the later unified integrated-core gate. The
+gate must bind every result to one exact tree and run on required macOS and Linux hosts.
+It cannot add remote or cross-UID admission, use PostgreSQL credentials as end-user
+authentication, create local PKI, enable provider dispatch or production routing, or add
+a production compatibility facade.
+
+| Boundary | Representative deferred acceptance cases |
+| --- | --- |
+| Policy and platform | `disabled` with no UID is a typed refusal. `same_uid` without an owner UID, `disabled` with a UID, a malformed policy, an owner UID different from the process effective UID, and an unsupported platform fail before endpoint use. `same_uid` plus the exact effective UID is the only enabled V1 state. |
+| Persistent namespace lock | The final server directory has the configured owner and exact mode 0700. Persistent regular `decodex.lock` has that owner, exact mode 0600, and one link. Symlink, wrong type, wrong owner, wrong mode, extra link, replaced directory, replaced lock path, lock conflict, overlong path, and ambiguous inspection fail closed. The exclusive nonblocking `flock` starts before stale inspection and remains held through cleanup, listener close, and release-last teardown. The lock file is not unlinked. |
+| Fixed staging recovery | Exercise absent, live, timed-out, exact refused, replaced, linked, wrongly typed, wrongly owned, and wrongly scoped `decodex.sock.stage` and `decodex.sock`. Only exact connection refusal from an unchanged secure socket under the verified lock permits descriptor-relative `unlinkat`. Success, timeout, another error, or any identity change preserves the entry and refuses startup. |
+| Atomic publication | Bind only fixed `decodex.sock.stage`, set exact mode 0600, capture its device/inode/owner/mode/link-count identity, require exactly one link, and validate the retained directory, lock, staging socket, and absent canonical name. Publish with same-directory descriptor-relative `renameat` to `decodex.sock` under the lock. Require the staging name to be absent and canonical name to have the captured identity before product admission. Inject ancestor, directory, lock, staging, and canonical replacement before and after each point. There is no self-connect challenge. |
+| Point-in-time identity | Publication, every server admission, every client connection or reconnect, and cleanup each re-open and validate the current no-follow directory path and exact socket identity against retained descriptors. Connect and accept races with parent rename, ancestor or final-component symlink, socket rename, inode replacement, and canonical replacement fail closed. There is no continuous 250-millisecond watchdog. Hostile same-UID mutation is an integrity-detection fixture, not a confinement claim. |
+| Kernel peer identity | Same-effective-UID client and daemon peers succeed on macOS and Linux. Wrong UID and unavailable or ambiguous kernel credentials return distinct closed refusals on both client connect and server admission. A wrong client peer is connection-local; namespace or listener drift invalidates the listener. Directory permissions and stable server identity do not substitute for kernel credentials. |
+| WebSocket continuity | V1.2 and the accepted V1.1 window continue at exact route `/v1/ws` over an already admitted Unix stream. The two exact `ws://localhost/v1/ws` constants are handshake metadata passed to `client_async_with_config`; they cannot resolve or dial. Doctor/status, hello, snapshot, event, command, query, refusal, frame, timeout, backpressure, and close behavior gain no TCP or Axum fallback. |
+| Single task owner | One top-level lifecycle owns the listener and lock. One `JoinSet` owns every session and command task. Each spawn receives a monotonic stable ID and closed `Session` or `Command` kind and is mapped to its Tokio ID. No upgrade callback, session spawn, command spawn, or detached handle exists outside that owner. Submitted command work enters that set before execution. |
+| One shutdown deadline | Requested shutdown, listener-invalidating refusal, child panic, or unexpected child failure creates one absolute non-extendable deadline. Sessions receive cooperative stop. The closed command receiver drains through `None`, including buffered submissions and outstanding pre-close permits. Commands received before the deadline can finish until that instant. Work that crosses an outstanding permit after expiry receives a stable task identity but is not polled. On expiry, the owner calls `abort_all` once and then explicitly calls `join_next_with_id` through `None`. Cancellation of a caller waiting on `BoundServer` does not detach or consume the stored lifecycle handle. |
+| Deterministic receipt | Terminate with no clients, incomplete handshake, active WebSocket, in-flight command, normal session completion, simultaneous completions, child panic, unexpected cancellation, and a non-quiescent task. Check exact session/command spawn counts, harvested and expected counts, panic/failure/forced/owner-integrity counts, and lowest stable abnormal identities. Primary rank is cleanup refusal, endpoint refusal, owner integrity, child panic, unexpected child failure, forced deadline, then requested shutdown. Task ties select the lowest spawn ID. |
+| Cleanup and daemon concurrency | Start two legitimate same-UID daemons against absent and stale names. Only the lock holder can inspect, remove, bind, publish, or clean. During shutdown with active sessions and commands, require zero owned tasks and an empty harvested set before cleanup. Remove only the retained canonical identity; a missing or different identity is a cleanup refusal and is preserved. Close the listener, then release the namespace lock last. A second legitimate daemon cannot publish until that release. |
+| Profile disagreement | Run the daemon with its active local profile and select a different declared local profile in the client. Policy or owner-UID disagreement fails before WebSocket admission. Client selection cannot rewrite daemon authority, select TCP, or use the stable server ID as a transport credential. Remote profiles remain inert. |
+| Exact deferred stale surfaces | In one post-freeze batch, convert and compile exactly: `crates/decodex-protocol/src/lib.rs`, `crates/decodex-protocol/src/client.rs`, `crates/decodex-protocol/src/retained_session.rs`, `crates/decodex-runtime/tests/websocket_protocol.rs`, `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `crates/decodex-runtime/tests/cli_diagnostics.rs`, `crates/decodex-runtime/tests/supervised_validation.rs`, `crates/decodex-core/tests/support/test_root.rs`, `crates/decodex-core/tests/config.rs`, `apps/decodex-gpui/src/client_lifecycle/tests.rs`, `scripts/vnext/postgres_store_test.py`, and `scripts/vnext/cli_diagnostics_test.py`. Until then these twelve surfaces remain deliberately stale and cannot authorize a facade. |
+| Clean-break reverse scan | Remove stale uses of `LoopbackEndpoint`, local `address`, URL-based retained-session construction, `InvalidEndpoint`, `TcpListener`, `TcpStream`, `SocketAddr`, `BoundServer::address`, TCP V1 URIs, `127.0.0.1:49152`, isolated-loopback-port text, and dependency-only `use axum as _`. Inspect production for Axum serving/upgrades, detached spawns, TCP bind/dial, self-connect, and watchdog code. After the twelve-surface conversion, remove the runtime Axum dev-dependency, workspace edge, and lock packages only if no other accepted active owner remains. |
+| Authority isolation | Reverse dependencies prove that no PostgreSQL client authentication/routing, `ProcessGeneration`, `RuntimeSession`, `ProviderAttempt`, account routing, scheduler, UI, packaging, release, remote transport, cross-UID transport, or provider effect enters this owner. Existing production dispatch remains structurally disabled. |
+
+Before core freeze, do not run formatters, builds, static checks, migration or SQL parsers,
+tests, fixtures, wrappers, generators, services, VMs, UI or Accessibility checks, live
+Codex experiments, account operations, or provider effects for this candidate. The later
+integrated gate runs the matrix once against its exact frozen tree.
+
 #### XY-1358 deferred acceptance matrix
 
 This source-only matrix is deferred to the XY-1364 unified frozen-core gate. It must run against

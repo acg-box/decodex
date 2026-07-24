@@ -21,7 +21,9 @@ vNext runtime boundary:
   bounded TOML/Serde parsing, SHA-256, OS randomness/no-follow filesystem support, and
   test-only temporary storage.
 - `decodex-protocol`: V1 typed wire contracts, current/previous-minor negotiation, and
-  loopback endpoint policy; depends only on core plus structured serialization.
+  the owner-only same-UID Unix transport authority. It depends only on core, structured
+  serialization, Tokio/Tungstenite, and the libc calls required for descriptor-relative
+  namespace ownership and kernel peer facts.
 - `decodex-postgres`: the PostgreSQL 18 product-state adapter; depends on core plus the
   accepted tokio-postgres/deadpool/refinery stack and owns embedded migrations,
   optimistic transactions, leases, append-only activity, outbox delivery, inert
@@ -34,7 +36,8 @@ vNext runtime boundary:
 - `decodex-runtime`: service lifecycle, connection/session execution, resumable event
   publication, idempotency receipts, private immutable-account process supervision, and the
   sole PostgreSQL/Codex adapter composition; depends on the other four owners plus the
-  maintained Axum/Tokio transport stack.
+  maintained Tokio/Tungstenite transport stack. Production runtime source has no Axum or
+  TCP listener. Axum remains a test-only dependency until the deferred stale caller batch.
 
 `apps/decodexd` depends only on runtime. The `apps/decodex-cli` and
 `apps/decodex-gpui` client roots depend only on protocol, so they cannot reach stores,
@@ -46,8 +49,12 @@ dependency graph and exclusion of the legacy package through Cargo metadata.
 contract. It reads only the client projection of typed configuration: profile data is
 validated, while server-host repositories, PostgreSQL data, and cache policy are consumed
 as opaque TOML and never represented by the client profile. A local profile uses its
-explicit identity pin or the shared-host stable identity file; a remote profile requires
-its explicit pin and carries only host and port. The client sends a pinned V1.2 hello,
+explicit identity pin or the shared-host stable identity file. It also carries only the
+closed `same_uid` or `disabled` policy and an optional service-owner UID whose presence is
+fixed by that policy. A remote profile requires its explicit pin and carries only inert
+host and port data. Each local connect captures the current fixed Unix endpoint, validates
+its directory and socket identities, connects that path, verifies the kernel server-peer
+UID, and validates the path again. The client then sends a pinned V1.2 hello,
 verifies welcome and snapshot version/identity, issues `get_doctor_status`, and re-verifies
 the result, embedded report, and exact complete current component set before returning status.
 Report ordering is not authority. Reads, writes, frames, messages,
@@ -62,9 +69,29 @@ typed check. JSON uses `decodex/cli-diagnostics/1`. Exit code 0 means every chec
 client/configuration/protocol failure. The CLI has no mutation command or infrastructure
 dependency.
 
-`decodexd` is the only V1 server composition root. It binds
-`ws://127.0.0.1:49152/v1/ws`, and the endpoint type refuses every non-loopback address
-before opening a socket. The single physical WebSocket uses structured JSON and typed
+`decodexd` is the only V1 server composition root. It derives
+`~/.decodex/server/decodex.sock` from the typed root. The server directory must have the
+configured owner and exact mode 0700. A persistent regular `decodex.lock` must have that
+owner, exact mode 0600, and one link. The daemon takes one nonblocking exclusive `flock`
+before it inspects either socket name and retains it through cleanup. It recovers only an
+unchanged, securely owned, single-link `decodex.sock.stage` or `decodex.sock` that returns exact
+connection refusal. Success, timeout, another error, changed identity, wrong type, wrong
+owner, wrong mode, or extra link preserves the entry and refuses startup.
+The authority states are `Configured -> Locked -> Staged -> Published -> Stopping ->
+Quiescent -> Cleaned -> Released`.
+
+Publication binds the fixed `decodex.sock.stage`, sets mode 0600, captures its
+device/inode/owner/mode/link-count identity,
+validates the retained directory, lock, staging socket, and absent canonical name, and
+uses same-directory descriptor-relative `renameat` to publish `decodex.sock`. It then
+requires the staging name to be absent and the canonical name to have the captured
+identity. There is no self-connect challenge. Pending accept has no 250-millisecond
+watchdog. Validation is point-in-time at publication, each accepted connection, each
+client reconnect, and cleanup.
+
+The local stream uses WebSocket route `/v1/ws`. The literal `ws://localhost/v1/ws` in
+each client is handshake metadata passed with an already admitted Unix stream. It cannot
+resolve or dial TCP. The WebSocket uses structured JSON and typed
 hello, command, receipt, result, snapshot, event, and refusal envelopes. Major versions
 must match exactly; this build accepts minors 2 and 1. Events carry server ID, monotonic
 cursor, entity revision, correlation, and causation. The stable server-host ID supports
@@ -74,6 +101,38 @@ changed epoch, stale cursor, or changed server ID receives a bounded snapshot fa
 Only a snapshot or event cursor fully applied by the client is a resume checkpoint; the
 Welcome cursor is an informational server high-water mark and must not advance client
 progress before following replay deltas are applied.
+
+Kernel credentials are mandatory on both sides. The daemon admits only a client whose
+kernel effective UID equals the exact configured service-owner UID. The client accepts
+only a daemon with that same kernel UID. Directory permissions, the stable server ID,
+PostgreSQL roles, environment credential references, and database identities cannot
+replace that principal. Remote and cross-UID transport remain inert. This boundary does
+not claim confinement against hostile code that already has the same UID.
+An established stream retains the kernel peer fact that admission proved. A later pathname
+change does not revoke that stream. A new connection or reconnect performs fresh endpoint
+and peer checks and fails closed.
+
+One top-level runtime task owns the listener and namespace lock. One `JoinSet` owns every
+session and command task. The owner assigns a monotonic stable spawn ID and a closed
+session/command kind before each spawn and maps it to the Tokio task ID. Requested
+shutdown, listener-invalidating refusal, child panic, or unexpected child failure starts
+one stopping phase and creates one absolute, non-extendable deadline. Sessions receive a
+cooperative stop signal. The owner closes command ingress and receives through `None`, so
+a buffered submission or outstanding pre-close permit cannot escape task accounting.
+Commands received before the deadline enter the same task set. A submission that crosses
+an outstanding permit after the deadline receives a stable task identity but its command
+future is never polled. The owner harvests `join_next_with_id`; it calls `abort_all` once
+only if the deadline expires, and it continues harvesting through `None`.
+
+The bounded `TerminationReceipt` records session and command spawn counts, harvested and
+expected counts, panic, failure, forced-cancellation, and owner-integrity counts, the
+lowest stable identity in each abnormal task class, and endpoint and cleanup refusals.
+Its deterministic rank is cleanup refusal, endpoint refusal, owner integrity, child
+panic, unexpected child failure, forced deadline, then requested shutdown. Stable task
+ties use the lowest spawn ID. Cleanup starts only after the task set is empty. It removes
+only the retained canonical socket identity, closes the listener, and releases the
+namespace lock last. A mismatch preserves the observed entry and returns a cleanup
+refusal.
 
 Runtime receipt lookup is keyed by the negotiated protocol version and command idempotency key;
 the stored request fingerprint additionally covers that version, typed payload, and optional
@@ -839,13 +898,19 @@ create-only hard-link publication. Root layout is fixed:
   aggregate-byte, and entry-count caps under hard ceilings; recovery removes only exact
   private `.tmp-<32 lowercase hex>` artifacts left by interrupted atomic writes; and
 - `server/identity`: one canonical RFC 9562 UUID version 4 generated from OS randomness,
-  persisted create-only, and stable across concurrent initialization.
+  persisted create-only, and stable across concurrent initialization;
+- `server/decodex.lock`: persistent regular one-link namespace lock with exact mode
+  0600; it is never unlinked during normal lifecycle;
+- `server/decodex.sock.stage`: fixed unpublished bind and crash-recovery name, absent
+  after successful publication; and
+- `server/decodex.sock`: fixed published same-UID Unix endpoint with exact mode 0600.
 
 `crates/decodex-core/src/config.rs` denies unknown fields and discards parser details and
 input excerpts from typed errors. Debug implementations redact operator-provided profile,
 host, repository, database, role, and credential-reference strings. Profiles are a closed
-`local`/`remote` enum: local addresses must be loopback; remote profiles carry only a
-bounded host, port, and required expected server identity. Repository roots exist only in
+`local`/`remote` enum. A local profile is valid only as `disabled` with no owner UID or
+`same_uid` with one exact owner UID. It contains no address. Remote profiles carry only a
+bounded host, port, and required expected server identity as inert data. Repository roots exist only in
 `ServerHostConfig` as absolute, normalized, at-most-4-KiB `ServerRepositoryPath` values,
 so a remote profile has no client-local repository-path field. PostgreSQL configuration
 is one explicit bounded Unix-socket directory/port/database, an expected server peer UID, plus

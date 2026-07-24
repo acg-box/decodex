@@ -52,7 +52,8 @@ navigation and current-status projection.
   Conversation/RuntimeSession/history and deterministic inspectable Context Pack types, plus the XY-1306
   typed `~/.decodex` root, bounded/redacted config profiles, stable server identity,
   content-addressed blobs, and disposable bounded cache foundation.
-- `crates/decodex-protocol/` owns the vNext version and loopback-only endpoint contract shared with clients.
+- `crates/decodex-protocol/` owns the vNext version and the owner-only, same-UID Unix
+  transport contract shared with clients.
 - `crates/decodex-postgres/` owns the PostgreSQL product-state adapter: explicit
   connection configuration, embedded immutable migrations, optimistic transactions,
   leases, append-only activity, transactional outbox delivery, inert account/window
@@ -104,8 +105,14 @@ navigation and current-status projection.
 ## Runtime in one minute
 
 `apps/decodexd` composes the PostgreSQL and Codex adapter boundaries through
-`decodex-runtime` and serves the typed V1 protocol at loopback-only
-`ws://127.0.0.1:49152/v1/ws`. It opens no repository or Codex process. It attempts only
+`decodex-runtime` and serves the typed V1 protocol at the fixed
+`~/.decodex/server/decodex.sock` endpoint. The active local profile must set
+`policy = "same_uid"` and the exact service-owner effective UID. The server directory
+has mode 0700. The persistent `decodex.lock`, fixed `decodex.sock.stage`, and published
+`decodex.sock` entries have owner-only mode 0600 and exactly one link whenever present.
+Publication binds the staging name and uses same-directory descriptor-relative `renameat`
+while the one-link lock is held.
+It opens no repository or Codex process. It attempts only
 the explicitly configured PostgreSQL Unix socket and otherwise retains a typed unavailable
 adapter. The protocol supports V1.2/V1.1 negotiation, typed command receipt/result and
 event envelopes, bounded snapshots/queues/wire text, fixed per-version-capacity in-lifetime
@@ -117,6 +124,15 @@ server-identity pinning, bounded doctor/status results, and a bounded typed Conv
 query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
 API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
+
+Each client reconnect captures the current socket identity and verifies the daemon kernel
+peer UID. Each server admission verifies the client kernel peer UID and the current
+directory, lock, and socket identities. There is no startup self-connect challenge and no
+continuous endpoint watchdog. One lifecycle task owns the listener. One `JoinSet` owns all
+session and command tasks with stable spawn IDs and kinds. Shutdown creates one absolute
+deadline, harvests `join_next_with_id` until empty, performs exact cleanup, closes the
+listener, and releases the lock last. This boundary serializes legitimate daemons. It does
+not claim confinement against hostile code that already has the same UID.
 
 When PostgreSQL is ready, daemon bootstrap also opens the accepted pinned repository executor,
 retains the single PostgreSQL/executor/saga composition, and completes bounded readback-only
@@ -234,8 +250,9 @@ cannot append, alter, delete, or commit an incomplete source manifest after pers
 The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
 Unsupported or mutating product CLI operations remain unavailable and belong to later slices, as do
 scheduling, account routing, a PostgreSQL installation or administration plane, live Codex dispatch,
-an authenticated HTTP artifact path, remote binding, and GPUI product behavior. Authentication and
-TLS are disabled; loopback refusal is the enforced network boundary until the later remote-security gate.
+an authenticated HTTP artifact path, remote or cross-UID binding, and GPUI product behavior.
+Kernel same-UID credentials are the complete local V1 principal. Application PKI and remote
+TLS remain outside this boundary and belong to the later remote-security gate.
 
 ## First commands
 
@@ -252,7 +269,7 @@ cargo make test-vnext-postgres-store
 cargo make check
 ```
 
-`decodexd` starts the loopback protocol service and runs until stopped. The CLI selects
+`decodexd` starts the same-UID Unix WebSocket service and runs until stopped. The CLI selects
 the configured active profile by default; `--profile NAME` selects an explicit declared
 profile and `--root PATH` selects a typed Decodex root. Human output is the default and
 `--output json` emits `decodex/cli-diagnostics/1`. GPUI still reports its disabled state.
@@ -261,6 +278,12 @@ prefer
 `cargo check --all-features --all-targets --workspace` or
 `cargo nextest run --workspace --all-targets --all-features` (`Makefile.toml`,
 `openwiki/operations/commands-and-validation.md`).
+
+XY-1399 A-prime is a pre-core-freeze source candidate. Do not run the commands in this
+section as acceptance for that candidate. Its formatter, build, static, parser, test,
+fixture, wrapper, generator, service, UI, and live-effect validation is deferred to the
+single integrated frozen-core gate. The exact stale caller inventory is in
+[vNext gates](specs/vnext-gates.md).
 
 ## Authority and safety rules
 
@@ -275,7 +298,8 @@ prefer
 ## Recent development context
 
 XY-1265 established compile-time ownership and composition. XY-1266 established the
-loopback protocol foundation; XY-1270 implements the bounded Codex adapter foundation
+historical loopback protocol foundation. XY-1399 A-prime replaces its active production
+transport with the same-UID Unix WebSocket authority; XY-1270 implements the bounded Codex adapter foundation
 without live dispatch. XY-1267 established PostgreSQL-backed product state and durable
 transactions. XY-1306 established the typed `~/.decodex` path/config/blob/cache child of
 XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only CLI and

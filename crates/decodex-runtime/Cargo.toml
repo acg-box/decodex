@@ -18,7 +18,6 @@ path              = "src/bin/decodex-retained-title-experiment.rs"
 required-features = ["retained-title-experiment"]
 
 [dependencies]
-axum             = { workspace = true }
 decodex-codex    = { workspace = true }
 decodex-core     = { workspace = true }
 decodex-postgres = { workspace = true }
@@ -30,9 +29,10 @@ serde_json       = { workspace = true }
 sha2             = { workspace = true }
 tempfile         = { workspace = true }
 tokio            = { workspace = true }
+tokio-tungstenite = { workspace = true }
 zeroize          = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+axum              = { workspace = true }
 tempfile          = { workspace = true }
 tokio-postgres    = { workspace = true }
-tokio-tungstenite = { workspace = true }
