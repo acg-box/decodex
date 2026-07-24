@@ -7,11 +7,11 @@ use decodex_runtime::{ServerConfig, ServiceComposition};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	let bootstrap = ServiceComposition::bootstrap_default().await;
-	let address = bootstrap.address();
+	let mut bound = bootstrap.bind(ServerConfig::default()).await?;
 
-	println!("decodexd listening on ws://{address}/v1/ws (loopback only; auth/TLS disabled)");
+	println!("decodexd serving WebSocket /v1/ws over same-UID local transport");
 
-	bootstrap.run(ServerConfig::default()).await?;
+	bound.wait().await?;
 
 	Ok(())
 }

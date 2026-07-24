@@ -282,6 +282,19 @@ impl ProviderAttemptControl {
 		self.commit_positive_evidence(&attempt, evidence).await
 	}
 
+	/// Prepare one exact attempt through the sole writer.
+	///
+	/// Only the stateless coordinator can call this crate-private seam. The result carries no
+	/// dispatch authorization.
+	pub(crate) async fn prepare(
+		&self,
+		plan: &ContinuationPlanEffect,
+		process: &FencedProcess,
+		preparation: &ProviderAttemptPreparation,
+	) -> Result<PrepareProviderAttemptOutcome, ProviderAttemptServiceError> {
+		self.inner.prepare(plan, process, preparation).await
+	}
+
 	async fn reconcile_loaded(
 		&self,
 		attempt: ProviderAttempt,
@@ -394,8 +407,6 @@ impl ProviderAttemptReconciliationCursor {
 impl ProviderAttemptService {
 	/// Prepare one attempt from an accepted V17 effect and exact live process fence.
 	///
-	/// Sealed until XY-1402 supplies the stateless consumer integration.
-	#[expect(dead_code, reason = "sealed until accepted Conversation/ManagedRun integration")]
 	async fn prepare(
 		&self,
 		plan: &ContinuationPlanEffect,

@@ -219,18 +219,17 @@ impl Display for ProcessSupervisorError {
 /// This receipt grants no process I/O or protocol authority. `ProcessSupervisor` privately
 /// retains the child's channels only for lifetime ownership. A future live-dispatch protocol
 /// gateway must be a separate typed authority that source-rejects alternate-control RPCs.
-#[expect(dead_code, reason = "sealed until an accepted product composition supplies launch input")]
 pub(crate) struct FencedProcess {
 	generation_id: ProcessGenerationId,
 	identity: ProcessIdentity,
 	revision: i64,
 }
-#[expect(dead_code, reason = "sealed until an accepted product composition supplies launch input")]
 impl FencedProcess {
 	pub(crate) fn generation_id(&self) -> &ProcessGenerationId {
 		&self.generation_id
 	}
 
+	#[allow(dead_code, reason = "reserved for the separately enabled live gateway")]
 	pub(crate) fn identity(&self) -> &ProcessIdentity {
 		&self.identity
 	}

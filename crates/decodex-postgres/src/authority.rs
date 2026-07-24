@@ -38,7 +38,9 @@ const PROCESS_GENERATION_MIGRATION: &str =
 	include_str!("../migrations/V23__process_generation_authority.sql");
 const PROVIDER_ATTEMPT_MIGRATION: &str =
 	include_str!("../migrations/V24__provider_attempt_authority.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 21] = [
+const EXECUTION_COORDINATOR_MIGRATION: &str =
+	include_str!("../migrations/V26__execution_coordinator_cutover.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 22] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -60,10 +62,11 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 21] = [
 	RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION,
 	PROCESS_GENERATION_MIGRATION,
 	PROVIDER_ATTEMPT_MIGRATION,
+	EXECUTION_COORDINATOR_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-static FUNCTION_CONTRACTS: [FunctionContract; 184] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 182] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -879,41 +882,9 @@ static FUNCTION_CONTRACTS: [FunctionContract; 184] = [
 		"enforce_managed_run_state()",
 	),
 	trigger_contract(
-		"enforce_effect_barrier_state",
-		"decodex.enforce_effect_barrier_state()",
-		"enforce_effect_barrier_state()",
-	),
-	trigger_contract(
 		"enforce_managed_run_event_namespace",
 		"decodex.enforce_managed_run_event_namespace()",
 		"enforce_managed_run_event_namespace()",
-	),
-	exact_function_contract(
-		"reserve_exact_managed_run_safety_command",
-		"decodex.reserve_exact_managed_run_safety_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
-		"reserve_exact_managed_run_safety_command(\n\tp_protocol text, p_idempotency_key text, p_request jsonb\n)",
-		"p_protocol text, p_idempotency_key text, p_request jsonb",
-		"bytea",
-		"plpgsql",
-		"v",
-	),
-	exact_function_contract(
-		"complete_exact_managed_run_safety_rejection",
-		"decodex.complete_exact_managed_run_safety_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
-		"complete_exact_managed_run_safety_rejection(\n\tp_protocol text, p_idempotency_key text, p_reason text, p_request jsonb\n)",
-		"p_protocol text, p_idempotency_key text, p_reason text, p_request jsonb",
-		"bytea",
-		"plpgsql",
-		"v",
-	),
-	exact_function_contract(
-		"apply_managed_run_safety_input_exact",
-		"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
-		"apply_managed_run_safety_input_exact(\n\tp_protocol text, p_idempotency_key text, p_managed_run_id uuid, p_project_id uuid,\n\tp_expected_run_revision bigint, p_input_kind decodex.managed_run_safety_input_kind,\n\tp_input_id uuid, p_runtime_session_id uuid, p_turn_id uuid\n)",
-		"p_protocol text, p_idempotency_key text, p_managed_run_id uuid, p_project_id uuid, p_expected_run_revision bigint, p_input_kind decodex.managed_run_safety_input_kind, p_input_id uuid, p_runtime_session_id uuid, p_turn_id uuid",
-		"bytea",
-		"plpgsql",
-		"v",
 	),
 	trigger_contract(
 		"forbid_managed_repository_history_mutation",
@@ -988,9 +959,9 @@ static FUNCTION_CONTRACTS: [FunctionContract; 184] = [
 	),
 	exact_function_contract(
 		"resolve_routing_snapshot_exact",
-		"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
-		"resolve_routing_snapshot_exact(\n\tp_protocol text, p_idempotency_key text, p_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint, p_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint\n)",
-		"p_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_managed_run_id uuid, p_expected_managed_run_revision bigint",
+		"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		"resolve_routing_snapshot_exact(\n\tp_protocol text,\n\tp_idempotency_key text,\n\tp_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_expected_conversation_revision bigint,\n\tp_source_runtime_session_id uuid,\n\tp_expected_source_runtime_session_revision bigint,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint,\n\tp_managed_execution_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid",
 		"bytea",
 		"plpgsql",
 		"v",
@@ -1133,9 +1104,9 @@ static FUNCTION_CONTRACTS: [FunctionContract; 184] = [
 	),
 	exact_function_contract(
 		"route_account_exact",
-		"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
-		"route_account_exact(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_routing_policy_id uuid, p_expected_routing_policy_revision bigint,\n\tp_managed_run_id uuid, p_expected_managed_run_revision bigint\n)",
-		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_managed_run_id uuid, p_expected_managed_run_revision bigint",
+		"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		"route_account_exact(\n\tp_protocol text,\n\tp_idempotency_key text,\n\tp_operation_id uuid,\n\tp_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_expected_conversation_revision bigint,\n\tp_source_runtime_session_id uuid,\n\tp_expected_source_runtime_session_revision bigint,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint,\n\tp_managed_execution_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid",
 		"bytea",
 		"plpgsql",
 		"v",
@@ -1200,11 +1171,29 @@ static FUNCTION_CONTRACTS: [FunctionContract; 184] = [
 	exact_function_contract(
 		"plan_continuation_exact",
 		"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
-		"plan_continuation_exact(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid,\n\tp_expected_managed_run_revision bigint, p_plan_id uuid, p_fallback_session_id uuid,\n\tp_account_snapshot_id uuid, p_context_pack_id uuid,\n\tp_compiled_bytes bytea, p_compiled_digest text, p_manifest_digest text,\n\tp_max_bytes integer, p_recent_item_limit integer, p_possible_side_effects text,\n\tp_truncated boolean, p_omitted_source_count integer,\n\tp_source_kinds text[], p_source_ids text[], p_source_revisions bigint[],\n\tp_content_digests text[], p_original_lengths bigint[], p_included_lengths bigint[],\n\tp_included_digests text[], p_dispositions text[], p_artifact_ids text[],\n\tp_artifact_revisions bigint[]\n)",
-		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid, p_expected_managed_run_revision bigint, p_plan_id uuid, p_fallback_session_id uuid, p_account_snapshot_id uuid, p_context_pack_id uuid, p_compiled_bytes bytea, p_compiled_digest text, p_manifest_digest text, p_max_bytes integer, p_recent_item_limit integer, p_possible_side_effects text, p_truncated boolean, p_omitted_source_count integer, p_source_kinds text[], p_source_ids text[], p_source_revisions bigint[], p_content_digests text[], p_original_lengths bigint[], p_included_lengths bigint[], p_included_digests text[], p_dispositions text[], p_artifact_ids text[], p_artifact_revisions bigint[]",
+		"plan_continuation_exact(\n\tp_protocol text,p_idempotency_key text,p_operation_id uuid,\n\tp_decision_id uuid,p_expected_consumer_revision bigint,p_plan_id uuid,\n\tp_fallback_session_id uuid,p_account_snapshot_id uuid,p_context_pack_id uuid,\n\tp_compiled_bytes bytea,p_compiled_digest text,p_manifest_digest text,\n\tp_max_bytes integer,p_recent_item_limit integer,p_possible_side_effects text,\n\tp_truncated boolean,p_omitted_source_count integer,\n\tp_source_kinds text[],p_source_ids text[],p_source_revisions bigint[],\n\tp_content_digests text[],p_original_lengths bigint[],p_included_lengths bigint[],\n\tp_included_digests text[],p_dispositions text[],p_artifact_ids text[],\n\tp_artifact_revisions bigint[]\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid, p_expected_consumer_revision bigint, p_plan_id uuid, p_fallback_session_id uuid, p_account_snapshot_id uuid, p_context_pack_id uuid, p_compiled_bytes bytea, p_compiled_digest text, p_manifest_digest text, p_max_bytes integer, p_recent_item_limit integer, p_possible_side_effects text, p_truncated boolean, p_omitted_source_count integer, p_source_kinds text[], p_source_ids text[], p_source_revisions bigint[], p_content_digests text[], p_original_lengths bigint[], p_included_lengths bigint[], p_included_digests text[], p_dispositions text[], p_artifact_ids text[], p_artifact_revisions bigint[]",
 		"bytea",
 		"plpgsql",
 		"v",
+	),
+	exact_function_contract(
+		"read_execution_decision_exact",
+		"decodex.read_execution_decision_exact(pg_catalog.uuid)",
+		"read_execution_decision_exact(p_decision_id uuid)",
+		"p_decision_id uuid",
+		"jsonb",
+		"plpgsql",
+		"s",
+	),
+	exact_function_contract(
+		"read_managed_run_execution_exact",
+		"decodex.read_managed_run_execution_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+		"read_managed_run_execution_exact(\n\tp_managed_run_id uuid,p_project_id uuid,p_expected_revision bigint\n)",
+		"p_managed_run_id uuid, p_project_id uuid, p_expected_revision bigint",
+		"jsonb",
+		"sql",
+		"s",
 	),
 	trigger_contract(
 		"enforce_waiting_usage_wake_command_owner",
@@ -1505,7 +1494,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 184] = [
 		"s",
 	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 69] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 70] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -1541,10 +1530,9 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 69] = [
 	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
 	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
-	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
 	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
-	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
@@ -1552,9 +1540,11 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 69] = [
 	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
 	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
-	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_execution_decision_exact(pg_catalog.uuid)",
+	"decodex.read_managed_run_execution_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
@@ -1576,7 +1566,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 69] = [
 	"decodex.project_provider_attempts_after_supervisor_loss_exact()",
 	"decodex.read_provider_attempts_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_state,pg_catalog.uuid,pg_catalog.int8)",
 ];
-const SAFETY_FUNCTIONS: [&str; 75] = [
+const SAFETY_FUNCTIONS: [&str; 74] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -1623,7 +1613,6 @@ const SAFETY_FUNCTIONS: [&str; 75] = [
 	"forbid_managed_run_immutable_mutation",
 	"enforce_managed_run_assignment_scope",
 	"enforce_managed_run_state",
-	"enforce_effect_barrier_state",
 	"enforce_managed_run_event_namespace",
 	"forbid_managed_repository_history_mutation",
 	"enforce_managed_repository_projection",
@@ -1653,7 +1642,7 @@ const SAFETY_FUNCTIONS: [&str; 75] = [
 	"enforce_provider_attempt_turn_materialization",
 	"forbid_provider_attempt_history_mutation",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 154;
+const SAFETY_TRIGGER_COUNT: usize = 146;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1843,10 +1832,6 @@ WITH set_roles AS (
   ('work_item_acceptances', true, false, false, false)
   ,('managed_runs', true, false, false, false)
   ,('managed_run_assignments', true, false, false, false)
-  ,('managed_run_effect_barriers', true, false, false, false)
-  ,('managed_run_effects', true, false, false, false)
-  ,('managed_run_submitted_turn_receipts', true, false, false, false)
-  ,('managed_run_safety_inputs', true, false, false, false)
 	,('repository_admissions', true, true, false, false)
 	,('managed_repositories', true, true, true, false)
 	,('repository_authority_transitions', true, true, false, false)
@@ -2218,17 +2203,9 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('outbox', 'outbox_work_item_namespace', 'enforce_work_item_event_namespace', 23)
 	,('managed_runs', 'managed_runs_command_owner', 'enforce_managed_run_command_owner', 62)
 	,('managed_run_assignments', 'managed_run_assignments_command_owner', 'enforce_managed_run_command_owner', 62)
-	,('managed_run_effect_barriers', 'managed_run_effect_barriers_command_owner', 'enforce_managed_run_command_owner', 62)
-	,('managed_run_effects', 'managed_run_effects_command_owner', 'enforce_managed_run_command_owner', 62)
-	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_command_owner', 'enforce_managed_run_command_owner', 62)
-	,('managed_run_safety_inputs', 'managed_run_safety_inputs_command_owner', 'enforce_managed_run_command_owner', 62)
 	,('managed_run_assignments', 'managed_run_assignments_immutable', 'forbid_managed_run_immutable_mutation', 27)
-	,('managed_run_effects', 'managed_run_effects_immutable', 'forbid_managed_run_immutable_mutation', 27)
-	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_immutable', 'forbid_managed_run_immutable_mutation', 27)
-	,('managed_run_safety_inputs', 'managed_run_safety_inputs_immutable', 'forbid_managed_run_immutable_mutation', 27)
 	,('managed_run_assignments', 'managed_run_assignment_scope', 'enforce_managed_run_assignment_scope', 5)
 	,('managed_runs', 'managed_runs_inert_state', 'enforce_managed_run_state', 31)
-	,('managed_run_effect_barriers', 'managed_run_effect_barriers_state', 'enforce_effect_barrier_state', 31)
 	,('activity', 'activity_managed_run_namespace', 'enforce_managed_run_event_namespace', 23)
 	,('outbox', 'outbox_managed_run_namespace', 'enforce_managed_run_event_namespace', 23)
 	,('repository_admissions', 'repository_admissions_immutable', 'forbid_managed_repository_history_mutation', 58)
@@ -2494,17 +2471,9 @@ WITH catalog_context AS MATERIALIZED (
 	,('outbox', 'outbox_work_item_namespace', 'decodex.enforce_work_item_event_namespace()')
 	,('managed_runs', 'managed_runs_command_owner', 'decodex.enforce_managed_run_command_owner()')
 	,('managed_run_assignments', 'managed_run_assignments_command_owner', 'decodex.enforce_managed_run_command_owner()')
-	,('managed_run_effect_barriers', 'managed_run_effect_barriers_command_owner', 'decodex.enforce_managed_run_command_owner()')
-	,('managed_run_effects', 'managed_run_effects_command_owner', 'decodex.enforce_managed_run_command_owner()')
-	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_command_owner', 'decodex.enforce_managed_run_command_owner()')
-	,('managed_run_safety_inputs', 'managed_run_safety_inputs_command_owner', 'decodex.enforce_managed_run_command_owner()')
 	,('managed_run_assignments', 'managed_run_assignments_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
-	,('managed_run_effects', 'managed_run_effects_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
-	,('managed_run_submitted_turn_receipts', 'managed_run_submitted_turn_receipts_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
-	,('managed_run_safety_inputs', 'managed_run_safety_inputs_immutable', 'decodex.forbid_managed_run_immutable_mutation()')
 	,('managed_run_assignments', 'managed_run_assignment_scope', 'decodex.enforce_managed_run_assignment_scope()')
 	,('managed_runs', 'managed_runs_inert_state', 'decodex.enforce_managed_run_state()')
-	,('managed_run_effect_barriers', 'managed_run_effect_barriers_state', 'decodex.enforce_effect_barrier_state()')
 	,('activity', 'activity_managed_run_namespace', 'decodex.enforce_managed_run_event_namespace()')
 	,('outbox', 'outbox_managed_run_namespace', 'decodex.enforce_managed_run_event_namespace()')
 	,('repository_admissions', 'repository_admissions_immutable', 'decodex.forbid_managed_repository_history_mutation()')
@@ -3595,9 +3564,10 @@ SELECT
         pg_catalog.convert_to(contract, 'UTF8')
     )::pg_catalog.text
     FROM contract_rows
-    -- XY-1400 and XY-1401 keep the frozen V22 digest until the prohibited unified PostgreSQL
-    -- gate can capture and accept the complete V24 manifest. Exact V23/V24 tables, functions,
-    -- triggers, execution dependencies, and runtime privileges still use semantic inventories.
+    -- XY-1400 through XY-1402 keep the frozen V22 digest until the prohibited unified
+    -- PostgreSQL gate can capture and accept the complete V26 manifest. Exact V23-V26
+    -- functions, triggers, execution dependencies, and runtime privileges still use semantic
+    -- inventories. The deferred gate must refresh this digest before executable acceptance.
     WHERE pg_catalog.position('process_generation' IN identity::pg_catalog.text) = 0
       AND pg_catalog.position('process_generation' IN contract) = 0
       AND pg_catalog.position('provider_attempt' IN identity::pg_catalog.text) = 0
@@ -4554,7 +4524,6 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "assess_work_item_readiness_exact"
 			| "accept_work_item_exact"
 			| "guard_work_item_running_resume"
-			| "apply_managed_run_safety_input_exact"
 			| "replace_routing_policy_exact"
 			| "publish_routing_evidence_exact"
 			| "resolve_routing_snapshot_exact"
@@ -4570,6 +4539,8 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "route_account_exact"
 			| "plan_continuation_exact"
 			| "read_continuation_plan_exact"
+			| "read_execution_decision_exact"
+			| "read_managed_run_execution_exact"
 			| "register_waiting_usage_wake_exact"
 			| "claim_due_waiting_usage_wake_exact"
 			| "fire_waiting_usage_wake_exact"
@@ -5130,15 +5101,15 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 21);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 184);
-		assert_eq!(
-			CANONICAL_FUNCTION_MIGRATIONS
-				.into_iter()
-				.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
-				.sum::<usize>(),
-			FUNCTION_CONTRACTS.len()
-		);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 22);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 182);
+		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
+			.into_iter()
+			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
+			.sum::<usize>();
+		// V26 removes four V12 functions and the superseded V14, V16, and V17
+		// definitions. Replacement bodies remain covered by their final contracts below.
+		assert_eq!(created_function_count - 7, FUNCTION_CONTRACTS.len());
 
 		let mut lookup_signatures = HashSet::new();
 
@@ -5371,7 +5342,7 @@ mod tests {
 
 	#[test]
 	fn every_safety_function_has_one_nonempty_canonical_migration_body() {
-		assert_eq!(SAFETY_FUNCTIONS.len(), 75);
+		assert_eq!(SAFETY_FUNCTIONS.len(), 74);
 		for function_name in SAFETY_FUNCTIONS {
 			let source =
 				super::canonical_safety_function_source(function_name).unwrap_or_else(|| {

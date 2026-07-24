@@ -135,6 +135,11 @@ impl DecodexPaths {
 		self.join("server/identity")
 	}
 
+	/// Fixed owner-only local product endpoint.
+	pub fn local_transport_socket(&self) -> PathBuf {
+		self.join("server/decodex.sock")
+	}
+
 	/// Create and verify the private fixed directory layout.
 	pub fn ensure_layout(&self) -> Result<(), PathError> {
 		#[cfg(unix)]

@@ -754,6 +754,11 @@ pub enum ClientMessage {
 pub enum QueryPayload {
 	/// Revalidate and return the bounded authoritative doctor/status report.
 	GetDoctorStatus,
+	/// Read one immutable V16 execution-route decision without acquiring execution authority.
+	GetExecutionDecision {
+		/// Stable V16 decision identity.
+		decision_id: EntityId,
+	},
 	/// Read one bounded deterministic logical-conversation history page.
 	GetConversationHistory {
 		/// Stable logical Conversation identity.
@@ -896,8 +901,232 @@ pub enum ResultPayload {
 pub enum QueryResultPayload {
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
+	/// Immutable execution-consumer and exact route-cause projection.
+	ExecutionDecision(ExecutionDecisionResult),
 	/// Bounded daemon-owned logical-conversation history result.
 	ConversationHistory(ConversationHistoryResult),
+}
+
+/// Result of an immutable V16 route-decision observation.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+pub enum ExecutionDecisionResult {
+	/// Complete verified decision projection.
+	Decision(ExecutionDecisionDto),
+	/// Closed unavailable result without infrastructure detail.
+	Unavailable {
+		/// Stable reason class.
+		error: ExecutionDecisionQueryError,
+	},
+}
+
+/// Closed execution-decision query failure classes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionDecisionQueryError {
+	/// Decision identity was invalid or no exact decision exists.
+	InvalidRequest,
+	/// Authoritative PostgreSQL state was unavailable.
+	ProductStateUnavailable,
+	/// Persisted decision evidence failed integrity verification.
+	IntegrityUnavailable,
+}
+
+/// Immutable V16 decision plus its exact ordinary or managed consumer.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ExecutionDecisionDto {
+	/// Stable immutable decision identity.
+	pub decision_id: EntityId,
+	/// Exact consumer whose account decision was persisted.
+	pub consumer: ExecutionConsumerDto,
+	/// Cause-preserving route projection.
+	pub route: ExecutionRouteDto,
+}
+
+/// Closed execution-consumer union. Ordinary Conversation work never implies a ManagedRun.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "identity", rename_all = "snake_case")]
+pub enum ExecutionConsumerDto {
+	/// One ordinary Conversation Turn with exact source RuntimeSession lineage.
+	ConversationTurn {
+		/// Conversation identity.
+		conversation_id: EntityId,
+		/// Positive Conversation revision.
+		conversation_revision: i64,
+		/// Source RuntimeSession identity.
+		source_runtime_session_id: EntityId,
+		/// Positive source RuntimeSession revision.
+		source_runtime_session_revision: i64,
+		/// Conversation-owned Turn identity.
+		turn_id: EntityId,
+	},
+	/// One exact ManagedRun execution intent.
+	ManagedRunExecution {
+		/// ManagedRun identity.
+		managed_run_id: EntityId,
+		/// Positive ManagedRun revision.
+		managed_run_revision: i64,
+		/// Exact execution intent identity.
+		managed_execution_id: EntityId,
+	},
+}
+
+/// Cause-preserving V16 route projection.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "data", rename_all = "snake_case")]
+pub enum ExecutionRouteDto {
+	/// One independently eligible account was selected.
+	Selected {
+		/// Persisted selected account identity.
+		account_id: EntityId,
+		/// Exact positive quota exclusions that were skipped before selection.
+		quota_exclusions: Vec<ExecutionQuotaExclusionDto>,
+	},
+	/// Every otherwise eligible account is blocked only by positive quota depletion.
+	WaitingUsage {
+		/// Earliest exact quota reset instant in Unix microseconds.
+		ready_at_micros: i64,
+		/// Complete exact account-scoped causes.
+		causes: Vec<ExecutionRouteCauseDto>,
+		/// Independent 300-minute and 10,080-minute depletion facts.
+		quota_exclusions: Vec<ExecutionQuotaExclusionDto>,
+	},
+	/// Every otherwise eligible path is blocked only by unresolved execution authority.
+	WaitingReconciliation {
+		/// Complete exact account-scoped process or attempt causes.
+		causes: Vec<ExecutionRouteCauseDto>,
+	},
+	/// No route exists and no wake or task failure is implied.
+	NoRoute {
+		/// Complete exact account-scoped mixed or non-wake causes.
+		causes: Vec<ExecutionRouteCauseDto>,
+	},
+}
+
+/// One exact account-scoped blocker retained without category collapse.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ExecutionRouteCauseDto {
+	/// Account path affected by this cause.
+	pub account_id: EntityId,
+	/// Exact typed blocker.
+	pub blocker: ExecutionRouteBlockerDto,
+}
+
+/// Exact typed blockers that V16 can persist.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionRouteBlockerDto {
+	/// Persisted policy excludes the account.
+	ExcludedByPolicy,
+	/// Account observation is later than the decision clock.
+	AccountFromFuture,
+	/// Account observation or revision is stale.
+	AccountStale,
+	/// Account is known to be unavailable.
+	AccountUnavailable,
+	/// Account state is unknown.
+	AccountUnknown,
+	/// Account state reports depletion independently of quota facts.
+	AccountDepleted,
+	/// Account authentication failed.
+	AccountAuthFailed,
+	/// Account-owned plugin readiness is absent.
+	AccountPluginUnready,
+	/// Account is administratively disabled.
+	AccountDisabled,
+	/// Compatibility evidence is absent.
+	EvidenceMissing,
+	/// Compatibility evidence is later than the decision clock.
+	EvidenceFromFuture,
+	/// Compatibility evidence is stale.
+	EvidenceStale,
+	/// Evidence names a different account identity or revision.
+	EvidenceAccountMismatch,
+	/// Evidence names a different role or role-profile revision.
+	EvidenceProfileMismatch,
+	/// Evidence names a different exact provider build.
+	EvidenceBuildMismatch,
+	/// The exact 300-minute quota fact is absent.
+	QuotaFiveHourMissing,
+	/// The 300-minute quota observation is from the future.
+	QuotaFiveHourFromFuture,
+	/// The 300-minute quota observation is stale.
+	QuotaFiveHourStale,
+	/// The 300-minute quota value or confidence is unknown.
+	QuotaFiveHourUnknown,
+	/// The 300-minute quota reset is not in the future.
+	QuotaFiveHourResetElapsed,
+	/// Positive 300-minute quota evidence reports depletion.
+	QuotaFiveHourDepleted,
+	/// The exact 10,080-minute quota fact is absent.
+	QuotaSevenDayMissing,
+	/// The 10,080-minute quota observation is from the future.
+	QuotaSevenDayFromFuture,
+	/// The 10,080-minute quota observation is stale.
+	QuotaSevenDayStale,
+	/// The 10,080-minute quota value or confidence is unknown.
+	QuotaSevenDayUnknown,
+	/// The 10,080-minute quota reset is not in the future.
+	QuotaSevenDayResetElapsed,
+	/// Positive 10,080-minute quota evidence reports depletion.
+	QuotaSevenDayDepleted,
+	/// A required capability lacks positive applicable evidence.
+	RequiredCapabilityUnsatisfied,
+	/// Authentication is required or unresolved.
+	AuthenticationRequired,
+	/// Required plugin readiness is unresolved.
+	PluginUnready,
+	/// An exact dependency blocks this path.
+	DependencyBlocked,
+	/// Required approval is absent.
+	ApprovalRequired,
+	/// Explicit user input is required.
+	UserRequired,
+	/// External authority blocks this path.
+	ExternalBlocked,
+	/// Usage state lacks pure positive depletion evidence.
+	UsageUnproven,
+	/// ManagedRun reconciliation lacks exact unresolved process or attempt authority.
+	ReconciliationUnproven,
+	/// No execution-scoped independent Reviewer is available.
+	ReviewerUnavailable,
+	/// Independent review rejected the result.
+	ReviewerFailed,
+	/// Reviewer output is missing or ambiguous.
+	ReviewerAmbiguous,
+	/// ProcessGeneration authority is unresolved.
+	ProcessGenerationUnresolved,
+	/// No live fenced ProcessGeneration exists.
+	ProcessGenerationUnavailable,
+	/// The exact ProviderAttempt is unresolved.
+	ProviderAttemptUnresolved,
+	/// The exact consumer intent already has a terminal ProviderAttempt.
+	ProviderAttemptCompleted,
+}
+
+/// One independently typed positive quota-depletion exclusion.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ExecutionQuotaExclusionDto {
+	/// Account identity excluded by this exact fact.
+	pub account_id: EntityId,
+	/// Exact quota-window class.
+	pub window: ExecutionQuotaWindowDto,
+	/// Exact duration: 300 or 10,080 minutes.
+	pub duration_minutes: u16,
+	/// Positive source observation revision.
+	pub observation_revision: i64,
+	/// Exact future reset instant in Unix microseconds.
+	pub resets_at_micros: i64,
+}
+
+/// Independent quota-window identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionQuotaWindowDto {
+	/// Exact 300-minute pool.
+	FiveHour,
+	/// Exact 10,080-minute pool.
+	SevenDay,
 }
 
 /// Result of a bounded Conversation-history observation.
