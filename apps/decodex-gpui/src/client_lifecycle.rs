@@ -753,7 +753,12 @@ impl ClientLifecycle {
 	fn closed_failure(&mut self, failure: RetainedSessionFailure) -> Option<RunResult> {
 		match failure {
 			RetainedSessionFailure::Cancelled => Some(self.finish_shutdown_now()),
-			RetainedSessionFailure::InvalidEndpoint => {
+			RetainedSessionFailure::LocalTransportDisabled
+			| RetainedSessionFailure::RemoteTransportDisabled
+			| RetainedSessionFailure::LocalTransportUnsupported
+			| RetainedSessionFailure::UnsafeLocalEndpoint
+			| RetainedSessionFailure::LocalPeerIdentityUnavailable
+			| RetainedSessionFailure::LocalPeerUidMismatch => {
 				self.set_view(ConnectionView::Incompatible(CompatibilityReason::InvalidEndpoint));
 
 				Some(RunResult::Incompatible)

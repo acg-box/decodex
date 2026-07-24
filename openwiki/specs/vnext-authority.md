@@ -1,7 +1,8 @@
 # Decodex vNext Authority Contract
 
-Status: normative target contract except for the private-artifact subsystem; implementation is
-gate-controlled.
+Status: normative target contract; implementation is gate-controlled. The XY-1403
+private-artifact retirement takes effect only at the exact repository effective point
+in the [retirement decision](private-artifact/decision.md#repository-effective-point).
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 [vNext gate manifest](vnext-gates.md).
@@ -18,6 +19,7 @@ Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 | WorkItem | Concrete board item/execution request; `inbox`, `planned`, `ready`, `running`, `review`, `blocked`, `done`, or `canceled`. |
 | Conversation | Durable logical dialogue presented by Decodex; `open` or `archived`. |
 | RuntimeSession | Codex thread segment bound to an account, process, and immutable RoleProfile snapshot; `starting`, `active`, `ended`, or `diverged`. |
+| ProviderAttempt | One durable external Codex turn effect bound to one Conversation Turn or ManagedRun execution, accepted runtime authorities, request identity, and positive-only outcome evidence. |
 | ManagedRun | Controlled WorkItem execution with independent lifecycle, phase, and wait reason as defined below. |
 | Automation | Deterministic trigger targeting a Program, WorkItem, Advisor, or Lead; `enabled`, `paused`, or `retired`. It is not an agent. |
 | ContextRevision | Immutable, inspectable, provenance-linked long-term context snapshot. |
@@ -72,31 +74,30 @@ reviewer, PR, harness, or Goal. A ManagedRun separates:
 - lifecycle: `queued`, `active`, `waiting`, `terminal`;
 - phase: `prepare`, `execute`, `validate`, `review`, `repair`, `land`, `close`;
 - wait reason: `usage`, `auth`, `plugin`, `dependency`, `approval`, `user`, `external`,
-  `reviewer_unavailable`, `reviewer_failed`.
+  `reconciliation`, `reviewer_unavailable`, `reviewer_failed`, `reviewer_ambiguous`.
 
-The inert V12 boundary persists only `waiting` ManagedRuns that remain blocked. Every run is
-foreign-key bound to its exact Project, canonical WorkItem, and authoritative RuntimeSession
-revision. Task and Reviewer assignments are exact-run RuntimeSession identities whose closed role
-type cannot represent Advisor or Lead and contains no durable Agent identity. Effect lineage is
-foreign-key bound to one run and one barrier. Barrier states are `guarded` or permanently `closed`;
-both deny effects, and there is no open state or positive execution transition in V12.
+Before V26, the inert V12 boundary persisted only `waiting` ManagedRuns that remained blocked.
+Every run was foreign-key bound to its exact Project, canonical WorkItem, and authoritative
+RuntimeSession revision. Task and Reviewer assignments remain exact-run RuntimeSession identities.
+Their closed role type cannot represent Advisor or Lead and contains no durable Agent identity.
+V12 effect lineage was foreign-key bound to one run and one barrier. Barrier states were `guarded`
+or permanently `closed`; both denied effects.
 
-The only V12 mutation consumes a positively observed unknown exact turn, a Decodex-owned exact
-submitted-turn receipt, or an explicit inconclusive observation. It atomically preserves a blocked
-waiting run, records divergence only from positive unknown-turn evidence, closes the barrier once,
-and stores exact replay bytes. A stale submitted receipt and an inconclusive observation remain
-fail-closed without asserting divergence. Missing, empty, exhausted, not-found, scan-exhaustion,
-no-event, or method-result absence is not an input and cannot authorize progress. Experiment
-creation, observation production, run creation/acquisition, scheduling, dispatch, progress,
-validation, completion, review verdicts, repair, and landing remain outside V12 and blocked by
-XY-1304 or later owners.
+The historical V12 mutation consumed a positively observed unknown exact turn, a Decodex-owned
+exact submitted-turn receipt, or an explicit inconclusive observation. It preserved a blocked
+waiting run and recorded divergence only from positive unknown-turn evidence. Missing, empty,
+exhausted, not-found, scan-exhaustion, no-event, or method-result absence never authorized
+progress.
 
-The safety transaction reserves its exact receipt and validates input before acquiring hierarchy
-coordinator 1271, then the run-scoped 1338 lock, before any run/session/barrier/Turn read or lock.
-V12 also forward-repairs the V3 Turn and HistoryItem invoker-rights guards for V10's SELECT-only
-RuntimeSession authority: they read but never row-lock RuntimeSessions, retain their legal
-Conversation and Turn row locks, and accept direct hierarchy DML only in `READ COMMITTED`.
-Unsupported isolation fails retryably with `40001`; it never authorizes a stale absence decision.
+V26 removes the drained V12 submitted-turn, safety-input, effect, and barrier relations and their
+exact writer. The cutover stops if any live row or V12 exact-command receipt remains. It does not
+create a compatibility or fallback writer. The V3 Turn and HistoryItem invoker-rights repairs that
+V12 introduced remain current and independent of the retired ManagedRun-local effect authority.
+
+V24 cuts external-turn authority over to the generic ProviderAttempt owner. V12 submitted-turn
+receipts, safety inputs, and effect barriers are not inputs to ProviderAttempt submission or
+outcome. V25/V26 adapt V14, V16, and V17 for both consumer paths and retire the old V12 shapes.
+ProviderAttempt remains the sole external-turn attempt, receipt, and ambiguity authority.
 
 Project/Program policy is versioned authority over allowed repositories, tools, paths, merge
 behavior, parallelism, budgets, approvals, and quiet periods. Commands use expected
@@ -138,20 +139,30 @@ receipt. Exact replay returns those bytes; conflicting reuse fails before effect
 
 <a id="private-artifact-authority"></a>
 
-### Private artifact projection (nonnormative)
+### Private artifact retirement
 
-This section is a nonnormative projection. The accepted
-[private-artifact authority package](private-artifact/README.md) is the sole normative authority
-for the subsystem. Read its [decision](private-artifact/decision.md), then its ordered semantic
-modules, for exact rules and inventories. Text elsewhere in this contract about Artifact entities,
-the general blob store, filesystem paths, repositories, or validation does not amend that package.
+At and after the
+[repository effective point](private-artifact/decision.md#repository-effective-point),
+vNext has no private-artifact subsystem, API, runtime composition, controller,
+PostgreSQL authority, executor, platform contract, garbage collector, delivery lane,
+or future acceptance program. The
+[private-artifact archive](private-artifact/README.md) preserves the former design as
+historical evidence only. Its rule markers, inventories, dependency edges,
+A0/A1/B/D0a/C/D phases, CORE-FREEZE, ACC, preparation, and unified validation are
+non-executable and cannot authorize future work.
 
-The package defines a future subsystem and a future delivery sequence. The current product source
-does not implement the package-defined private-artifact API or runtime composition. The future
-source freeze, acceptance work, command surfaces, preparation pass, and unified validation are
-owned only by the package
-[operations and delivery contract](private-artifact/operations-delivery.md). Their names in a
-projection are not evidence that they exist.
+The accepted Artifact entity and BlobStore contract in this document remain
+unchanged. XY-1369 and XY-1370 use bounded canonical privacy-safe Git evidence for
+the exact retained-title receipts that XY-1363 consumes. That transport creates no
+new product Artifact, service, schema, storage system, runtime route, platform layer,
+issue, or compatibility path. Raw schema and other private or unbounded output do
+not enter Git, Linear, Artifact, logs, or receipts.
+
+XY-1373's former moving-core integration and landing condition is historical and
+non-executable. Its later cancellation preserves its complete history, parent, and
+`relatedTo` relations and does not claim that integration completed. Production
+dispatch stays disabled until integrated acceptance and the separate reviewed
+XY-1304 enablement amendment.
 
 ### Managed repository authority
 
@@ -471,8 +482,60 @@ rejected before it exists. Cargo metadata proves the current
 workspace production dependency graph and absence of synthetic features on normal edges; compile-fail
 contracts prove the launcher and capacity authority are not crate API. Neither proves call provenance,
 the absence of future wrappers, or Rust friend visibility against arbitrary new downstream
-dependencies. Daemon/host crash can orphan OS descendants; restart reconstructs neither assignment
-nor launch authority and requires fresh exact PostgreSQL observations.
+dependencies. This dormant manual path is not product ProcessGeneration authority and cannot grant
+restart launch permission.
+
+### Durable ProcessGeneration authority
+
+XY-1400 implements the accepted XY-1398 V3 contract in
+[the ProcessGeneration authority specification](process-generation-authority.md).
+`ProcessSupervisor` is the sole product writer. A private opaque launch authority retains one
+protected executable snapshot and derives the durable launch-manifest identity and exact command.
+The manifest binds the image and BuildId, fixed `app-server --stdio` arguments, working directory,
+sanitized environment, account, and exact-build startup/lifetime capability. No caller can pair
+an independent digest with a raw command. The supervisor commits this intent before a fresh fence
+can authorize one spawn. It then binds the exact PID, process-start identity, process group, and
+session.
+
+The current exact profile accepts only the recorded macOS `codex-cli 0.145.0-alpha.18` image. It
+sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
+argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
+raw channels privately for lifetime ownership, and no returned ProcessGeneration capability
+contains a protocol writer. Other builds, including an unrecorded Linux image, fail closed before
+profile-dependent preflights. Generic session/descriptor setup does not install
+`PR_SET_PDEATHSIG`; a future Linux parent-death primitive requires a separately accepted exact
+Linux lifetime capability. `decodexd` remains the only product daemon.
+
+The durable states are `starting`, `ready`, `stopping`, `dead`, and `death_unknown`.
+All present restored nonterminal rows become `death_unknown`. A generation becomes `dead` only
+from positive generation-bound evidence: positive spawn non-creation, owned-child wait, exact
+Linux pidfd exit with group quiescence, exact macOS kqueue `NOTE_EXIT` with group quiescence,
+exact owned termination exit, or proof that the prior boot ended. PID or process-group absence,
+reuse, timeout, lease expiry, row absence, EOF, restart, identity mismatch, and negative search
+are never death evidence.
+
+Same-boot uncertainty blocks replacement only for the bound account. Reconciliation continues for
+other generations. On macOS, EOF is only a best-effort shutdown request. A restored process can
+receive a read-only exact kqueue witness after an exact pre-match and before the final exact
+recheck, but it is never adopted, reacquired, proxied, terminated, or signaled. If it exits before
+witness attachment, same-boot quarantine remains until boot change. Exact termination is
+available only while the original supervisor retains the unreaped child, and it never signals
+after reap.
+
+An external execution epoch and digest prevent PostgreSQL restore readback from becoming spawn
+authority. Replay never returns a fresh fence. An ambiguous rollback does not authorize launch.
+Persisted Codex thread identity carries Conversation continuity; process survival does not create
+or continue a RuntimeSession.
+
+ProcessGeneration proves replacement safety only. It does not prove provider non-submission,
+effect cancellation, or credential revocation. V24 keeps an unproved authorized ProviderAttempt
+`unknown`; process exit or boot change cannot make it `not_submitted`, a replacement cannot replay
+it, and any successor is a distinct user-authorized effect with duplicate-risk acknowledgement.
+The generic attempt transaction consumes one accepted V16 decision, V17 RuntimeSession, and ready
+ProcessGeneration without creating or changing them. XY-1400 adds no account selection, routing,
+ProviderAttempt storage, remote authentication, UI, packaging, release, or live dispatch.
+A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
+alternate-control RPCs before enablement. XY-1400 does not add that gateway.
 
 ### Durable routing-policy and candidate-set authority
 
@@ -503,6 +566,13 @@ Completeness is fail-closed. A duplicate, omitted, foreign, newly added, concurr
 revision-changed inventory member; an unbound sticky source; or an unknown required fact blocks the
 snapshot or decision. Silence never means excluded, eligible, or non-applicable.
 
+Selection and pure quota or reconciliation waits classify only included members after independent
+eligibility. Excluded members remain ineligible and do not alter those wait classifications.
+`no_route` instead projects the complete policy-member universe: every excluded member retains
+`excluded_by_policy` and its other persisted blockers, and every included member retains its exact
+blockers. An all-excluded universe is an explicit cause-complete `no_route`; a cause-free
+`no_route` is invalid.
+
 `decodex-core` is a pure deterministic decision kernel over this database-produced snapshot. It
 does not establish provenance or completeness. PostgreSQL atomically persists the resulting V16
 decision, its complete normalized exclusions, and every evidence reference. Runtime consumes one
@@ -527,13 +597,15 @@ passive-receipt tracking. Host-owned before/after receipts prove causal no-mutat
 and cannot establish account-owned readiness.
 
 XY-1358 owns the original causal experiment ledger. XY-1367/V22 repairs its two-effect retained-title
-authority without changing V15. After an exact V16 decision, XY-1360 owns
-same-thread continuation when exact positive account/profile/build evidence permits it, otherwise
-one atomic Context-Pack plus RuntimeSession fallback that preserves Conversation and ManagedRun
-identity. It allocates no V17 in advance. XY-1361 composes these authorities with production
-dispatch still structurally disabled. Ambiguous-turn replay remains blocked until the accepted
-ManagedRun submitted-turn, effect-barrier, repository/worktree/Git, and artifact authorities
-reconcile it; routing never owns or weakens that boundary.
+authority without changing V15. After an exact V16 decision, V17 owns same-thread continuation
+when exact positive account/profile/build evidence permits it. Otherwise, V17 owns one atomic
+Context Pack plus fallback RuntimeSession. V25/V26 preserve this authority for ordinary
+Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator sequences V16,
+V17, one live ProcessGeneration fence, and ProviderAttempt preparation. Production dispatch stays
+structurally disabled. Ambiguous-turn replay remains blocked by ProviderAttempt. ManagedRun
+consumes the attempt result and keeps only domain lifecycle authority.
+Repository/worktree/Git and artifact effects retain their own accepted authorities; routing never
+owns or weakens those boundaries.
 
 Those paragraphs define the target behavior, not current enablement. Until the separate
 [XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)

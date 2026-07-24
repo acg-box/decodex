@@ -1,4 +1,4 @@
-//! `decodexd` lifecycle assembly and the loopback V1 connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V1 local connection owner.
 //!
 //! Default account-process composition remains crate-private and cannot be called by a product
 //! root. The V22 manual runner requires an explicit non-production feature and binary:
@@ -7,9 +7,9 @@
 //! use decodex_runtime::ManualAccountLauncher;
 //! ```
 //!
-//! Persisted routing orchestration is explicitly disabled and can produce only an immutable V17
-//! plan, an inert scheduler handoff, a no-route result, or a typed fail-closed result. No dispatch
-//! gate is exported or constructed.
+//! Stateless execution coordination is not connected to a production root. It can produce only
+//! an immutable V17 plan and prepared ProviderAttempt binding, an inert wait projection, a
+//! no-route result, or a typed fail-closed result. No dispatch gate is exported or constructed.
 
 #[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
 mod account_launch;
@@ -20,6 +20,9 @@ pub(crate) mod github_effects;
 mod managed_repository_executor;
 mod managed_repository_runtime;
 mod managed_repository_saga;
+mod process_platform;
+mod process_supervisor;
+mod provider_attempt_service;
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
@@ -38,10 +41,20 @@ pub use managed_repository_saga::{
 	ManagedRepositorySagaOutcome, RepositoryDispatchFailure, RepositoryDispatchObservation,
 	RepositoryReadbackEvidence,
 };
+pub use process_supervisor::{
+	ProcessGenerationControl, ProcessGenerationDiagnostic, ProcessGenerationExitWitnessKind,
+	ProcessGenerationObservation, ProcessGenerationReadiness, ProcessGenerationReconciliation,
+	ProcessGenerationTermination, ProcessSupervisorError,
+};
+pub use provider_attempt_service::{
+	ProviderAttemptControl, ProviderAttemptDiagnostic, ProviderAttemptReadiness,
+	ProviderAttemptReconciliation, ProviderAttemptServiceError, ProviderEvidenceLookupError,
+	ProviderPositiveEvidenceSource,
+};
 pub use routing_orchestration::{
-	ContinuationCoordinates, DisabledRoutingCommand, DisabledRoutingFailure,
-	DisabledRoutingFailureKind, DisabledRoutingOrchestration, DisabledRoutingOutcome,
-	PersistedDecisionProvenance, RoutingAttemptProvenance, RoutingAuthorityRejection,
+	ContinuationCoordinates, ExecutionCommand, ExecutionCoordinator, ExecutionFailure,
+	ExecutionFailureKind, ExecutionOutcome, PersistedDecisionProvenance,
+	PreparedAttemptHandoff, RoutingAuthorityRejection, WaitingReconciliationHandoff,
 	WaitingUsageHandoff,
 };
 pub use supervised_validation::{
@@ -49,7 +62,10 @@ pub use supervised_validation::{
 	ValidationAcceptance, ValidationCancellation, ValidationCommandAuthority, ValidationRejection,
 	ValidationSupervisionError, ValidationTermination, supervise_validation,
 };
-pub use websocket::{BoundServer, ProtocolServer, ServerConfig, ServerError};
+pub use websocket::{
+	BoundServer, OwnedTaskIdentity, OwnedTaskKind, ProtocolServer, ServerConfig, ServerError,
+	SpawnId, TerminationPrimary, TerminationReceipt,
+};
 
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 

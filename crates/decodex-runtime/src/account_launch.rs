@@ -5,6 +5,8 @@ mod protocol;
 #[cfg(feature = "retained-title-experiment")]
 pub mod retained_title_experiment;
 
+pub(crate) use process::{AttestedAppServerLaunch, AttestedProcessChild};
+
 use std::{
 	error::Error,
 	fmt::{Debug, Display, Formatter},

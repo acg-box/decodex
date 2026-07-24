@@ -7,17 +7,24 @@ use std::{
 
 use decodex_codex::CodexAdapter;
 use decodex_core::{
-	Availability, BlobStore, ConversationId, HistoryItemKind, ItemStatus, PossibleSideEffects,
-	ProductState, TurnRole,
+	Availability, BlobStore, ConversationId, ExecutionConsumer, HistoryItemKind, ItemStatus,
+	PossibleSideEffects, ProductState, QuotaWindowClass, RoutingBlocker, RoutingDecisionKind,
+	TurnRole,
 };
-use decodex_postgres::{BootstrapFailure, HistoryCursor, HistoryEntry, PostgresStore, StoreError};
+use decodex_postgres::{
+	BootstrapFailure, ExecutionDecisionReadback, ExecutionQuotaExclusion, HistoryCursor,
+	HistoryEntry, PostgresStore, StoreError,
+};
 use decodex_protocol::{
 	Channel, CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
 	ConversationHistoryResult, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, EntityId, EntityRevision, EventPayload, HistoryArtifactId,
-	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
-	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
+	DoctorStatus, EntityId, EntityRevision, EventPayload, ExecutionConsumerDto,
+	ExecutionDecisionDto, ExecutionDecisionQueryError, ExecutionDecisionResult,
+	ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto, ExecutionRouteBlockerDto,
+	ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference,
+	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
+	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto,
+	HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
 	MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryPayload, QueryResultPayload, ResultPayload,
 	Sha256Digest, SnapshotItem, WireText,
 };
@@ -25,6 +32,8 @@ use decodex_protocol::{
 use crate::managed_repository_runtime::{
 	ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
 };
+use crate::ProcessGenerationControl;
+use crate::ProviderAttemptControl;
 
 /// The only mutation/observation seam reachable from the WebSocket server.
 ///
@@ -101,6 +110,8 @@ pub(crate) struct ServiceApplication {
 	_managed_repositories: Option<ManagedRepositoryRuntime>,
 	_managed_repository_readiness: ManagedRepositoryReadiness,
 	_managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+	_process_generations: Option<ProcessGenerationControl>,
+	_provider_attempts: Option<ProviderAttemptControl>,
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
@@ -111,6 +122,8 @@ impl ServiceApplication {
 		managed_repositories: Option<ManagedRepositoryRuntime>,
 		managed_repository_readiness: ManagedRepositoryReadiness,
 		managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+		process_generations: Option<ProcessGenerationControl>,
+		provider_attempts: Option<ProviderAttemptControl>,
 		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
 		doctor: DoctorReport,
@@ -120,6 +133,8 @@ impl ServiceApplication {
 			_managed_repositories: managed_repositories,
 			_managed_repository_readiness: managed_repository_readiness,
 			_managed_repository_startup_error: managed_repository_startup_error,
+			_process_generations: process_generations,
+			_provider_attempts: provider_attempts,
 			_codex: codex,
 			blob_store,
 			doctor,
@@ -152,6 +167,32 @@ impl ServiceApplication {
 }
 
 impl ServiceApplication {
+	async fn execution_decision(&self, decision_id: &EntityId) -> ExecutionDecisionResult {
+		let ProductStore::Available(store) = &self.store else {
+			return ExecutionDecisionResult::Unavailable {
+				error: ExecutionDecisionQueryError::ProductStateUnavailable,
+			};
+		};
+		match store.execution_decision(decision_id.as_str()).await {
+			Ok(Some(readback)) => match execution_decision_dto(readback) {
+				Ok(decision) => ExecutionDecisionResult::Decision(decision),
+				Err(()) => ExecutionDecisionResult::Unavailable {
+					error: ExecutionDecisionQueryError::IntegrityUnavailable,
+				},
+			},
+			Ok(None) | Err(StoreError::InvalidInput(_)) =>
+				ExecutionDecisionResult::Unavailable {
+					error: ExecutionDecisionQueryError::InvalidRequest,
+				},
+			Err(StoreError::Incompatible(_)) => ExecutionDecisionResult::Unavailable {
+				error: ExecutionDecisionQueryError::IntegrityUnavailable,
+			},
+			Err(_) => ExecutionDecisionResult::Unavailable {
+				error: ExecutionDecisionQueryError::ProductStateUnavailable,
+			},
+		}
+	}
+
 	async fn conversation_history(
 		&self,
 		conversation_id: &EntityId,
@@ -252,12 +293,150 @@ impl Application for ServiceApplication {
 		match &query.payload {
 			QueryPayload::GetDoctorStatus =>
 				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
+			QueryPayload::GetExecutionDecision { decision_id } =>
+				QueryResultPayload::ExecutionDecision(
+					self.execution_decision(decision_id).await,
+				),
 			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
 				QueryResultPayload::ConversationHistory(
 					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
 				),
 		}
 	}
+}
+
+fn execution_decision_dto(
+	readback: ExecutionDecisionReadback,
+) -> Result<ExecutionDecisionDto, ()> {
+	let consumer = match readback.consumer {
+		ExecutionConsumer::ConversationTurn {
+			conversation_id,
+			conversation_revision,
+			source_runtime_session_id,
+			source_runtime_session_revision,
+			turn_id,
+		} => ExecutionConsumerDto::ConversationTurn {
+			conversation_id: entity(conversation_id.as_str())?,
+			conversation_revision,
+			source_runtime_session_id: entity(source_runtime_session_id.as_str())?,
+			source_runtime_session_revision,
+			turn_id: entity(turn_id.as_str())?,
+		},
+		ExecutionConsumer::ManagedRunExecution {
+			managed_run_id,
+			managed_run_revision,
+			execution_id,
+		} => ExecutionConsumerDto::ManagedRunExecution {
+			managed_run_id: entity(managed_run_id.as_str())?,
+			managed_run_revision,
+			managed_execution_id: entity(execution_id.as_str())?,
+		},
+	};
+	let causes = readback
+		.causes
+		.into_iter()
+		.map(|cause| {
+			Ok(ExecutionRouteCauseDto {
+				account_id: entity(cause.account_id.as_str())?,
+				blocker: blocker_dto(cause.blocker),
+			})
+		})
+		.collect::<Result<Vec<_>, ()>>()?;
+	let quota_exclusions = readback
+		.quota_exclusions
+		.into_iter()
+		.map(quota_exclusion_dto)
+		.collect::<Result<Vec<_>, ()>>()?;
+	let route = match readback.kind {
+		RoutingDecisionKind::Selected => ExecutionRouteDto::Selected {
+			account_id: entity(readback.selected_account_id.as_ref().ok_or(())?.as_str())?,
+			quota_exclusions,
+		},
+		RoutingDecisionKind::WaitingUsage => ExecutionRouteDto::WaitingUsage {
+			ready_at_micros: readback.waiting_ready_at_micros.ok_or(())?,
+			causes,
+			quota_exclusions,
+		},
+		RoutingDecisionKind::WaitingReconciliation =>
+			ExecutionRouteDto::WaitingReconciliation { causes },
+		RoutingDecisionKind::NoRoute if !causes.is_empty() =>
+			ExecutionRouteDto::NoRoute { causes },
+		RoutingDecisionKind::NoRoute => return Err(()),
+	};
+	Ok(ExecutionDecisionDto {
+		decision_id: entity(&readback.decision_id)?,
+		consumer,
+		route,
+	})
+}
+
+fn quota_exclusion_dto(
+	exclusion: ExecutionQuotaExclusion,
+) -> Result<ExecutionQuotaExclusionDto, ()> {
+	Ok(ExecutionQuotaExclusionDto {
+		account_id: entity(exclusion.account_id.as_str())?,
+		window: match exclusion.window {
+			QuotaWindowClass::FiveHour => ExecutionQuotaWindowDto::FiveHour,
+			QuotaWindowClass::SevenDay => ExecutionQuotaWindowDto::SevenDay,
+		},
+		duration_minutes: exclusion.duration_minutes,
+		observation_revision: exclusion.observation_revision,
+		resets_at_micros: exclusion.resets_at_micros,
+	})
+}
+
+const fn blocker_dto(blocker: RoutingBlocker) -> ExecutionRouteBlockerDto {
+	use ExecutionRouteBlockerDto as Dto;
+	use RoutingBlocker as Core;
+	match blocker {
+		Core::ExcludedByPolicy => Dto::ExcludedByPolicy,
+		Core::AccountFromFuture => Dto::AccountFromFuture,
+		Core::AccountStale => Dto::AccountStale,
+		Core::AccountUnavailable => Dto::AccountUnavailable,
+		Core::AccountUnknown => Dto::AccountUnknown,
+		Core::AccountDepleted => Dto::AccountDepleted,
+		Core::AccountAuthFailed => Dto::AccountAuthFailed,
+		Core::AccountPluginUnready => Dto::AccountPluginUnready,
+		Core::AccountDisabled => Dto::AccountDisabled,
+		Core::EvidenceMissing => Dto::EvidenceMissing,
+		Core::EvidenceFromFuture => Dto::EvidenceFromFuture,
+		Core::EvidenceStale => Dto::EvidenceStale,
+		Core::EvidenceAccountMismatch => Dto::EvidenceAccountMismatch,
+		Core::EvidenceProfileMismatch => Dto::EvidenceProfileMismatch,
+		Core::EvidenceBuildMismatch => Dto::EvidenceBuildMismatch,
+		Core::QuotaFiveHourMissing => Dto::QuotaFiveHourMissing,
+		Core::QuotaFiveHourFromFuture => Dto::QuotaFiveHourFromFuture,
+		Core::QuotaFiveHourStale => Dto::QuotaFiveHourStale,
+		Core::QuotaFiveHourUnknown => Dto::QuotaFiveHourUnknown,
+		Core::QuotaFiveHourResetElapsed => Dto::QuotaFiveHourResetElapsed,
+		Core::QuotaFiveHourDepleted => Dto::QuotaFiveHourDepleted,
+		Core::QuotaSevenDayMissing => Dto::QuotaSevenDayMissing,
+		Core::QuotaSevenDayFromFuture => Dto::QuotaSevenDayFromFuture,
+		Core::QuotaSevenDayStale => Dto::QuotaSevenDayStale,
+		Core::QuotaSevenDayUnknown => Dto::QuotaSevenDayUnknown,
+		Core::QuotaSevenDayResetElapsed => Dto::QuotaSevenDayResetElapsed,
+		Core::QuotaSevenDayDepleted => Dto::QuotaSevenDayDepleted,
+		Core::RequiredCapabilityUnsatisfied => Dto::RequiredCapabilityUnsatisfied,
+		Core::AuthenticationRequired => Dto::AuthenticationRequired,
+		Core::PluginUnready => Dto::PluginUnready,
+		Core::DependencyBlocked => Dto::DependencyBlocked,
+		Core::ApprovalRequired => Dto::ApprovalRequired,
+		Core::UserRequired => Dto::UserRequired,
+		Core::ExternalBlocked => Dto::ExternalBlocked,
+		Core::UsageUnproven => Dto::UsageUnproven,
+		Core::ReconciliationUnproven => Dto::ReconciliationUnproven,
+		Core::ReviewerUnavailable => Dto::ReviewerUnavailable,
+		Core::ReviewerFailed => Dto::ReviewerFailed,
+		Core::ReviewerAmbiguous => Dto::ReviewerAmbiguous,
+		Core::ProcessGenerationUnresolved => Dto::ProcessGenerationUnresolved,
+		Core::ProcessGenerationUnavailable => Dto::ProcessGenerationUnavailable,
+		Core::ProviderAttemptUnresolved => Dto::ProviderAttemptUnresolved,
+		Core::ProviderAttemptCompleted => Dto::ProviderAttemptCompleted,
+	}
+}
+
+fn entity(value: &str) -> Result<EntityId, ()> {
+	EntityId::new(value.to_owned()).map_err(|_| ())
 }
 
 fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {

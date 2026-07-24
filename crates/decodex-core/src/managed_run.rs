@@ -1,4 +1,4 @@
-//! Inert ManagedRun identities, execution assignments, and fail-closed safety algebra.
+//! ManagedRun identities, execution assignments, and lifecycle algebra.
 
 use std::{
 	error::Error,
@@ -7,7 +7,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ProjectId, RuntimeSessionId, TurnId, WorkItemId};
+use crate::{ProjectId, RuntimeSessionId, WorkItemId};
 
 macro_rules! managed_run_id {
 	($name:ident, $label:literal, $error:ident) => {
@@ -38,21 +38,12 @@ macro_rules! managed_run_id {
 }
 
 managed_run_id!(ManagedRunId, "ManagedRun", InvalidManagedRunId);
-managed_run_id!(EffectId, "ManagedRun effect", InvalidEffectId);
-managed_run_id!(SubmittedTurnReceiptId, "submitted-turn receipt", InvalidReceiptId);
-managed_run_id!(SafetyObservationId, "safety observation", InvalidObservationId);
 
 /// Closed ManagedRun validation error without caller-controlled text.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ManagedRunError {
 	/// ManagedRun identity was not canonical UUID-v4 text.
 	InvalidManagedRunId,
-	/// Effect identity was not canonical UUID-v4 text.
-	InvalidEffectId,
-	/// Submitted-turn receipt identity was not canonical UUID-v4 text.
-	InvalidReceiptId,
-	/// Safety observation identity was not canonical UUID-v4 text.
-	InvalidObservationId,
 	/// Lifecycle, phase, and wait reason did not form a legal state.
 	InvalidState,
 	/// An optimistic revision was not positive.
@@ -63,9 +54,6 @@ impl Display for ManagedRunError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
 			Self::InvalidManagedRunId => "invalid ManagedRun identity",
-			Self::InvalidEffectId => "invalid ManagedRun effect identity",
-			Self::InvalidReceiptId => "invalid submitted-turn receipt identity",
-			Self::InvalidObservationId => "invalid safety observation identity",
 			Self::InvalidState => "invalid ManagedRun lifecycle, phase, and wait combination",
 			Self::InvalidRevision => "invalid ManagedRun revision",
 		})
@@ -124,10 +112,14 @@ pub enum ManagedRunWaitReason {
 	User,
 	/// An external authority or readback remains unresolved.
 	External,
+	/// ProcessGeneration or ProviderAttempt authority requires positive reconciliation.
+	Reconciliation,
 	/// No independent reviewer is available.
 	ReviewerUnavailable,
 	/// Independent review failed without accepted completion.
 	ReviewerFailed,
+	/// Reviewer output is missing or ambiguous and grants no completion.
+	ReviewerAmbiguous,
 }
 
 /// Pure, validated lifecycle algebra.
@@ -214,36 +206,6 @@ impl ManagedRunIdentity {
 	pub const fn validate(&self) -> Result<(), ManagedRunError> {
 		if self.revision == 0 { Err(ManagedRunError::InvalidRevision) } else { Ok(()) }
 	}
-}
-
-/// Monotonic positive or explicitly inconclusive input accepted by the safety transaction.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ManagedRunSafetyInput {
-	/// A positively observed exact turn not owned by a matching submitted-turn receipt.
-	PositivelyObservedUnknownTurn {
-		/// Durable observation identity.
-		observation_id: SafetyObservationId,
-		/// Exact RuntimeSession observed.
-		runtime_session_id: RuntimeSessionId,
-		/// Positively observed exact turn identity.
-		turn_id: TurnId,
-	},
-	/// A Decodex-owned submitted-turn receipt consumed without authorizing progress.
-	SubmittedTurnReceipt {
-		/// Durable receipt identity.
-		receipt_id: SubmittedTurnReceiptId,
-		/// Exact RuntimeSession recorded by the receipt.
-		runtime_session_id: RuntimeSessionId,
-		/// Exact submitted turn identity.
-		turn_id: TurnId,
-	},
-	/// Explicitly inconclusive observation; absence is never synthesized into this value.
-	InconclusiveObservation {
-		/// Durable observation identity.
-		observation_id: SafetyObservationId,
-		/// Exact RuntimeSession observed.
-		runtime_session_id: RuntimeSessionId,
-	},
 }
 
 fn is_canonical_uuid_v4(value: &str) -> bool {
