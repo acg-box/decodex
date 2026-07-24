@@ -27,6 +27,10 @@ navigation and current-status projection.
   pre-spawn fencing, opaque exact-build launch attestation, macOS positive-death quarantine,
   exact process identity, ProviderAttempt ambiguity handoff, restore safety, and the deferred
   adversarial acceptance matrix.
+- [XY-1401 ProviderAttempt authority](specs/provider-attempt-authority.md): generic
+  Conversation/ManagedRun consumer binding, exact V16/V17/ProcessGeneration lineage,
+  positive-only reconciliation, restore projection, duplicate-risk fencing, and the deferred
+  acceptance matrix.
 - [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates,
   downstream issue ownership, and decision-changing falsifiers outside the private-artifact
   carve-out.
@@ -71,7 +75,10 @@ navigation and current-status projection.
   Positive observations and V17 same-thread authority require that attestation. Forward-only V23
   adds durable ProcessGeneration intent, exact identity, append-only positive death evidence, and
   account-local quarantine. Runtime has function-only ProcessSupervisor authority and no relation
-  DML. V16 adds inert
+  DML. Forward-only V24 adds one generic ProviderAttempt authority for Conversation Turns and
+  ManagedRun executions, append-only transition and positive-evidence histories, restore
+  projection, and bounded positive-only reconciliation. Runtime has function-only
+  ProviderAttemptService authority and no relation DML. V16 adds inert
   atomic routing decisions over a
   PostgreSQL-authored locked universe, exact evidence references, duration-typed depletion
   exclusions, and pure-kernel readback. No production root reaches either boundary and they enable no
@@ -131,6 +138,13 @@ continues background reconciliation. Same-boot uncertainty remains local to its 
 runtime exposes an exact diagnostic/reconciliation/owned-termination port, but no protocol,
 CLI, routing, or production spawn path.
 
+Daemon bootstrap also projects every present nonterminal ProviderAttempt to `unknown`, performs
+one bounded positive-only reconciliation pass, and continues background reconciliation. A
+replacement can reconcile the original attempt but cannot replay it. Process death, boot change,
+EOF, timeout, restart, missing results, and negative search cannot prove `not_submitted`. The
+runtime exposes bounded redacted diagnostics and exact positive-receipt reconciliation, but no
+provider gateway or live dispatch path.
+
 When PostgreSQL is ready, daemon bootstrap also opens the accepted pinned repository executor,
 retains the single PostgreSQL/executor/saga composition, and completes bounded readback-only
 restart reconciliation before serving. No managed-repository or GitHub mutation is exposed by the
@@ -152,7 +166,7 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical embedded migrations. The 147 expected safety/state/retention
+source bodies matching the canonical embedded migrations. The 154 expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
 indirect execution path on a runtime relation. The accepted V22 canonical PostgreSQL 18 schema
@@ -166,7 +180,7 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly fifty-two narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly sixty narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
 commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
 RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
@@ -174,15 +188,20 @@ running/resume guard, one command-complete ManagedRun safety consumer, twelve in
 routing and causal-experiment entrypoints, the inert V16 exact routing-decision entrypoint, V17's inert
 exact continuation command plus strict readback, and V18's four exact wake commands plus strict
 readback, plus V23's eight ProcessSupervisor fence, transition, projection, evidence, and read
-entrypoints. V23 has an exact semantic inventory overlay for its 81-relation, 172-function,
-70-safety-function, 147-trigger, 62-runtime-function, and five-enum boundary. Full S0/R1/R2 V23
-manifest capture and digest refreeze remain in the deferred unified gate.
+entrypoints, plus V24's seven ProviderAttemptService preparation, transition, positive-evidence,
+projection, and read entrypoints and one trigger-only Turn-reservation helper. The helper has a
+fixed search path, runs as the migration owner, and grants no direct runtime or PUBLIC execution.
+V24 has an exact semantic inventory overlay for its 84-relation,
+184-function, 75-safety-function, 154-trigger, 69-runtime-function, and ten-post-V22-enum
+boundary. Full S0/R1/R2 V24 manifest capture and digest refreeze remain in the deferred unified
+gate.
 A selected V16 decision commits either one positive-evidence-bound same-thread plan or one Context
 Pack, fallback RuntimeSession, and plan in the same transaction. Runtime cannot insert
 cursor, exact-receipt, RoleProfile, RuntimeSession, RuntimeSession snapshot, WorkItem, ManagedRun,
 assignment, submitted-turn receipt, effect-lineage, routing-decision, decision-member, decision-quota,
 decision-capability, decision-blocker, decision-exclusion, continuation-plan, waiting-usage wake
-transition, or waiting-usage wake head rows or execute trigger/private helpers directly.
+transition, waiting-usage wake head, ProviderAttempt, provider-attempt evidence, or
+provider-attempt transition rows or execute trigger/private helpers directly.
 The two bound identity sequences require
 USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
 are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.

@@ -17,6 +17,7 @@ use crate::{
 	process_supervisor::{
 		ProcessGenerationControl, ProcessGenerationReadiness, ProcessSupervisorError,
 	},
+	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
@@ -47,6 +48,8 @@ pub struct ServiceBootstrap {
 	managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
 	process_generations: Option<ProcessGenerationControl>,
 	process_generation_readiness: ProcessGenerationReadiness,
+	provider_attempts: Option<ProviderAttemptControl>,
+	provider_attempt_readiness: ProviderAttemptReadiness,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
 }
@@ -86,6 +89,16 @@ impl ServiceBootstrap {
 		self.process_generations.clone()
 	}
 
+	/// Return the independent ProviderAttempt restore and reconciliation readiness.
+	pub const fn provider_attempt_readiness(&self) -> ProviderAttemptReadiness {
+		self.provider_attempt_readiness
+	}
+
+	/// Clone the bounded diagnostic and positive-reconciliation port when startup completed.
+	pub fn provider_attempt_control(&self) -> Option<ProviderAttemptControl> {
+		self.provider_attempts.clone()
+	}
+
 	fn protocol_server(self, config: ServerConfig) -> ProtocolServer<ServiceApplication> {
 		ProtocolServer::new(
 			self.server_id,
@@ -95,6 +108,7 @@ impl ServiceBootstrap {
 				self.managed_repository_readiness,
 				self.managed_repository_startup_error,
 				self.process_generations,
+				self.provider_attempts,
 				CodexAdapter::unavailable(),
 				self.blob_store,
 				self.doctor,
@@ -187,6 +201,13 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		},
 		None => (None, ProcessGenerationReadiness::ProductStateUnavailable),
 	};
+	let (provider_attempts, provider_attempt_readiness) = match postgres.clone() {
+		Some(postgres) => match ProviderAttemptControl::start(postgres).await {
+			Ok(control) => (Some(control), ProviderAttemptReadiness::Ready),
+			Err(_) => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+		},
+		None => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+	};
 	let (managed_repositories, managed_repository_readiness, managed_repository_startup_error) =
 		match postgres {
 			Some(postgres) => match ManagedRepositoryRuntime::start(postgres).await {
@@ -222,6 +243,8 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		managed_repository_startup_error,
 		process_generations,
 		process_generation_readiness,
+		provider_attempts,
+		provider_attempt_readiness,
 		blob_store: blob_store.ok(),
 		doctor,
 	}
@@ -251,6 +274,8 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		managed_repository_startup_error: None,
 		process_generations: None,
 		process_generation_readiness: ProcessGenerationReadiness::ProductStateUnavailable,
+		provider_attempts: None,
+		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
 		doctor,
 	}

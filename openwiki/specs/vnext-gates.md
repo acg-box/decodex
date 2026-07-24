@@ -135,6 +135,7 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1368 | Historical mechanical, migration, semantic, authority-digest, and production-isolation acceptance for the exact XY-1367 V22 candidate; it is not current command authority. |
 | XY-1398 | Accepted V3 product decision for opaque attested launches, durable fenced provider-process generations, macOS positive-death quarantine, and ProviderAttempt ambiguity handoff; no guardian, takeover, or live dispatch. |
 | XY-1400 | Sole V23 and ProcessSupervisor implementation owner for opaque exact-build launch authority, ProcessGeneration fencing, exact supported-OS identity, account-local quarantine, positive-only death evidence, reconciliation, diagnostics, and exact owned termination. It adds no routing, RuntimeSession, ProviderAttempt, remote auth, UI, release, or live dispatch. |
+| XY-1401 | Sole V24 and ProviderAttemptService implementation owner for generic pre-dispatch consumer binding, exact V16/V17/ProcessGeneration lineage, positive-only evidence, restore projection, reconciliation, and redacted diagnostics. It adds no routing, RuntimeSession creation, consumer-domain mutation, second ledger, UI, release, or live dispatch. |
 
 The [XY-1368 retained-title freeze](xy-1368-retained-title-freeze.md) is immutable V22 historical
 evidence. It preserves the historical V14-V21 acceptance and records the V22 receipt and deferred
@@ -154,6 +155,17 @@ lifetime profile is accepted, PID/PGID reuse, positive-only death proof, account
 uncertainty, restore rollback safety, exact owned termination, ProviderAttempt ambiguity handoff,
 conversation continuity, and reverse production-isolation evidence. XY-1400 runs none of that
 matrix and enables no provider effect or production dispatch.
+
+### XY-1401 deferred acceptance
+
+The [XY-1401 ProviderAttempt authority](provider-attempt-authority.md) records the source-only
+implementation boundary and deferred adversarial acceptance matrix. Its unified gate must cover
+V24 migration, ACL, and catalog closure; S0/R1/R2 manifest refreeze; both consumer shapes; exact
+V16/V17/RuntimeSession/ProcessGeneration binding; every state edge; positive-only evidence;
+negative-observation rejection; late results; replacement without replay; duplicate-risk
+acknowledgement and concurrency; restore rollback safety; bounded background progress; V12 and
+XY-1402 handoff; and reverse production-isolation evidence. XY-1401 runs none of that matrix and
+enables no provider effect or production dispatch.
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
@@ -885,8 +897,9 @@ fresh resolution.
 
 Crash injection at every external-effect boundary must produce no duplicate turn, tool,
 repository, worktree, Git, or artifact effect. Possibly side-effecting turn replay remains under
-the accepted ManagedRun submitted-turn/effect-barrier and repository-effect reconciliation
-authorities, not routing. Host-owned before/after receipts prove no-mutation integrity only. The
+ProviderAttempt and the accepted repository-effect reconciliation authorities, not routing or a
+ManagedRun-local submitted-turn ledger. Host-owned before/after receipts prove no-mutation
+integrity only. The
 experiment and gate must not use plugin, skill, MCP, marketplace, login-management, OAuth-
 management, or account-configuration inventory/mutation calls to manufacture readiness. XY-1363
 must independently prove supported retained-title Desktop discovery after normal indexing without

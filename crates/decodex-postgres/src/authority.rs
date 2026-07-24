@@ -36,7 +36,9 @@ const RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION: &str =
 	include_str!("../migrations/V22__retained_title_experiment_bridge.sql");
 const PROCESS_GENERATION_MIGRATION: &str =
 	include_str!("../migrations/V23__process_generation_authority.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 20] = [
+const PROVIDER_ATTEMPT_MIGRATION: &str =
+	include_str!("../migrations/V24__provider_attempt_authority.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 21] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -57,10 +59,11 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 20] = [
 	RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
 	RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION,
 	PROCESS_GENERATION_MIGRATION,
+	PROVIDER_ATTEMPT_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-static FUNCTION_CONTRACTS: [FunctionContract; 172] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 184] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1419,8 +1422,90 @@ static FUNCTION_CONTRACTS: [FunctionContract; 172] = [
 		"TABLE(generation_id uuid, account_id uuid, execution_epoch_id uuid, runner_identity text, intended_boot_id text, control_kind decodex.process_generation_control_kind, isolation_kind decodex.process_generation_isolation_kind, bound_boot_id text, process_id bigint, process_start_id text, process_group_id bigint, session_id bigint, state decodex.process_generation_state, revision bigint, authority_loss_reason decodex.process_generation_loss_reason, death_evidence_id uuid, created_at_micros bigint, updated_at_micros bigint)",
 		"s",
 	),
+	trigger_contract(
+		"enforce_provider_attempt_transition",
+		"decodex.enforce_provider_attempt_transition()",
+		"enforce_provider_attempt_transition()",
+	),
+	trigger_contract(
+		"enforce_provider_attempt_binding",
+		"decodex.enforce_provider_attempt_binding()",
+		"enforce_provider_attempt_binding()",
+	),
+	trigger_contract(
+		"record_provider_attempt_transition",
+		"decodex.record_provider_attempt_transition()",
+		"record_provider_attempt_transition()",
+	),
+	trigger_contract(
+		"enforce_provider_attempt_turn_materialization",
+		"decodex.enforce_provider_attempt_turn_materialization()",
+		"enforce_provider_attempt_turn_materialization()",
+	),
+	trigger_contract(
+		"forbid_provider_attempt_history_mutation",
+		"decodex.forbid_provider_attempt_history_mutation()",
+		"forbid_provider_attempt_history_mutation()",
+	),
+	table_function_contract(
+		"prepare_provider_attempt_exact",
+		"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text)",
+		"prepare_provider_attempt_exact(\n\tp_attempt_id uuid,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_managed_run_revision bigint,\n\tp_managed_execution_id uuid,\n\tp_continuation_plan_id uuid,\n\tp_process_generation_id uuid,\n\tp_process_generation_revision bigint,\n\tp_request_id uuid,\n\tp_request_digest text,\n\tp_provider_idempotency_key text,\n\tp_provider_correlation_key text,\n\tp_predecessor_attempt_id uuid,\n\tp_duplicate_risk_ack_digest text\n)",
+		"p_attempt_id uuid, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_turn_id uuid, p_managed_run_id uuid, p_managed_run_revision bigint, p_managed_execution_id uuid, p_continuation_plan_id uuid, p_process_generation_id uuid, p_process_generation_revision bigint, p_request_id uuid, p_request_digest text, p_provider_idempotency_key text, p_provider_correlation_key text, p_predecessor_attempt_id uuid, p_duplicate_risk_ack_digest text",
+		"TABLE(result_code text, revision bigint, state decodex.provider_attempt_state, created_at_micros bigint, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"authorize_provider_attempt_dispatch_exact",
+		"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+		"authorize_provider_attempt_dispatch_exact(\n\tp_attempt_id uuid,\n\tp_expected_revision bigint,\n\tp_process_generation_id uuid,\n\tp_process_generation_revision bigint\n)",
+		"p_attempt_id uuid, p_expected_revision bigint, p_process_generation_id uuid, p_process_generation_revision bigint",
+		"TABLE(result_code text, revision bigint, state decodex.provider_attempt_state, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"cancel_provider_attempt_exact",
+		"decodex.cancel_provider_attempt_exact(pg_catalog.uuid,pg_catalog.int8)",
+		"cancel_provider_attempt_exact(\n\tp_attempt_id uuid,\n\tp_expected_revision bigint\n)",
+		"p_attempt_id uuid, p_expected_revision bigint",
+		"TABLE(result_code text, revision bigint, state decodex.provider_attempt_state, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"mark_provider_attempt_unknown_exact",
+		"decodex.mark_provider_attempt_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_unknown_reason)",
+		"mark_provider_attempt_unknown_exact(\n\tp_attempt_id uuid,\n\tp_expected_revision bigint,\n\tp_reason decodex.provider_attempt_unknown_reason\n)",
+		"p_attempt_id uuid, p_expected_revision bigint, p_reason decodex.provider_attempt_unknown_reason",
+		"TABLE(result_code text, revision bigint, state decodex.provider_attempt_state, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"record_provider_attempt_positive_evidence_exact",
+		"decodex.record_provider_attempt_positive_evidence_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_evidence_source,decodex.provider_attempt_terminal_outcome,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+		"record_provider_attempt_positive_evidence_exact(\n\tp_attempt_id uuid,\n\tp_expected_revision bigint,\n\tp_evidence_id uuid,\n\tp_request_id uuid,\n\tp_source decodex.provider_attempt_evidence_source,\n\tp_outcome decodex.provider_attempt_terminal_outcome,\n\tp_provider_key text,\n\tp_provider_receipt_id text,\n\tp_provider_thread_id text,\n\tp_provider_turn_id text,\n\tp_witness_digest text\n)",
+		"p_attempt_id uuid, p_expected_revision bigint, p_evidence_id uuid, p_request_id uuid, p_source decodex.provider_attempt_evidence_source, p_outcome decodex.provider_attempt_terminal_outcome, p_provider_key text, p_provider_receipt_id text, p_provider_thread_id text, p_provider_turn_id text, p_witness_digest text",
+		"TABLE(result_code text, revision bigint, state decodex.provider_attempt_state, observed_at_micros bigint)",
+		"v",
+	),
+	exact_function_contract(
+		"project_provider_attempts_after_supervisor_loss_exact",
+		"decodex.project_provider_attempts_after_supervisor_loss_exact()",
+		"project_provider_attempts_after_supervisor_loss_exact()",
+		"",
+		"bigint",
+		"plpgsql",
+		"v",
+	),
+	table_function_contract(
+		"read_provider_attempts_exact",
+		"decodex.read_provider_attempts_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_state,pg_catalog.uuid,pg_catalog.int8)",
+		"read_provider_attempts_exact(\n\tp_attempt_id uuid,\n\tp_account_id uuid,\n\tp_state decodex.provider_attempt_state,\n\tp_after_attempt_id uuid,\n\tp_limit bigint\n)",
+		"p_attempt_id uuid, p_account_id uuid, p_state decodex.provider_attempt_state, p_after_attempt_id uuid, p_limit bigint",
+		"TABLE(attempt_id uuid, consumer_kind decodex.provider_attempt_consumer_kind, conversation_id uuid, turn_id uuid, managed_run_id uuid, managed_run_revision bigint, managed_execution_id uuid, continuation_plan_id uuid, routing_decision_id uuid, accepted_runtime_session_id uuid, accepted_runtime_session_revision bigint, selected_account_id uuid, process_generation_id uuid, process_generation_revision bigint, process_execution_epoch_id uuid, request_id uuid, request_digest text, provider_idempotency_key text, provider_correlation_key text, predecessor_attempt_id uuid, duplicate_risk_ack_digest text, state decodex.provider_attempt_state, unknown_reason decodex.provider_attempt_unknown_reason, terminal_evidence_id uuid, revision bigint, created_at_micros bigint, updated_at_micros bigint)",
+		"s",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 62] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 69] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -1483,8 +1568,15 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 62] = [
 	"decodex.record_process_generation_death_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.process_generation_death_evidence_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.text)",
 	"decodex.project_process_generations_after_supervisor_loss_exact()",
 	"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.cancel_provider_attempt_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.mark_provider_attempt_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_unknown_reason)",
+	"decodex.record_provider_attempt_positive_evidence_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_evidence_source,decodex.provider_attempt_terminal_outcome,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.project_provider_attempts_after_supervisor_loss_exact()",
+	"decodex.read_provider_attempts_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_state,pg_catalog.uuid,pg_catalog.int8)",
 ];
-const SAFETY_FUNCTIONS: [&str; 70] = [
+const SAFETY_FUNCTIONS: [&str; 75] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -1555,8 +1647,13 @@ const SAFETY_FUNCTIONS: [&str; 70] = [
 	"enforce_process_generation_transition",
 	"record_process_generation_transition",
 	"forbid_process_generation_history_mutation",
+	"enforce_provider_attempt_transition",
+	"enforce_provider_attempt_binding",
+	"record_provider_attempt_transition",
+	"enforce_provider_attempt_turn_materialization",
+	"forbid_provider_attempt_history_mutation",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 147;
+const SAFETY_TRIGGER_COUNT: usize = 154;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1790,6 +1887,9 @@ WITH set_roles AS (
 	,('process_generations', false, false, false, false)
 	,('process_generation_death_evidence', false, false, false, false)
 	,('process_generation_transitions', false, false, false, false)
+	,('provider_attempts', false, false, false, false)
+	,('provider_attempt_positive_evidence', false, false, false, false)
+	,('provider_attempt_transitions', false, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -2003,6 +2103,48 @@ SELECT
     WHERE pg_catalog.has_type_privilege(role.oid, actual.oid, 'USAGE WITH GRANT OPTION')
   )
 "#;
+const PROVIDER_ATTEMPT_TYPE_AUTHORITY_SQL: &str = r#"
+WITH set_roles AS (
+  SELECT role.oid
+  FROM pg_catalog.pg_roles AS role
+  WHERE role.rolname = session_user
+     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+), expected(type_name) AS (VALUES
+  ('provider_attempt_state'),
+  ('provider_attempt_consumer_kind'),
+  ('provider_attempt_unknown_reason'),
+  ('provider_attempt_evidence_source'),
+  ('provider_attempt_terminal_outcome')
+), actual AS (
+  SELECT type.oid, type.typname
+  FROM pg_catalog.pg_type AS type
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+  JOIN expected ON expected.type_name = type.typname
+  WHERE namespace.nspname = 'decodex' AND type.typtype = 'e'
+)
+SELECT
+  (SELECT count(*) FROM actual) = 5
+    AND COALESCE((
+      SELECT pg_catalog.bool_and(
+        pg_catalog.has_type_privilege(session_user, actual.oid, 'USAGE')
+      ) FROM actual
+    ), false),
+  EXISTS (
+    SELECT 1
+    FROM actual
+    JOIN pg_catalog.pg_type AS type ON type.oid = actual.oid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(
+      COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))
+    ) AS privilege
+    WHERE privilege.grantee = 0 AND privilege.privilege_type = 'USAGE'
+  ),
+  EXISTS (
+    SELECT 1
+    FROM set_roles AS role
+    CROSS JOIN actual
+    WHERE pg_catalog.has_type_privilege(role.oid, actual.oid, 'USAGE WITH GRANT OPTION')
+  )
+"#;
 const TRIGGER_CONTRACT_SQL: &str = r#"
 WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('leases', 'leases_operation_time', 'enforce_lease_operation_time', 23),
@@ -2152,6 +2294,13 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('process_generations', 'process_generation_transition_record', 'record_process_generation_transition', 21)
 	,('process_generation_death_evidence', 'process_generation_death_evidence_immutable', 'forbid_process_generation_history_mutation', 58)
 	,('process_generation_transitions', 'process_generation_transitions_immutable', 'forbid_process_generation_history_mutation', 58)
+	,('provider_attempts', 'provider_attempt_transition_guard', 'enforce_provider_attempt_transition', 23)
+	,('provider_attempts', 'provider_attempt_binding_complete', 'enforce_provider_attempt_binding', 5)
+	,('provider_attempts', 'provider_attempt_delete_immutable', 'forbid_provider_attempt_history_mutation', 42)
+	,('provider_attempts', 'provider_attempt_transition_record', 'record_provider_attempt_transition', 21)
+	,('turns', 'turns_provider_attempt_materialization', 'enforce_provider_attempt_turn_materialization', 23)
+	,('provider_attempt_positive_evidence', 'provider_attempt_positive_evidence_immutable', 'forbid_provider_attempt_history_mutation', 58)
+	,('provider_attempt_transitions', 'provider_attempt_transitions_immutable', 'forbid_provider_attempt_history_mutation', 58)
 )
 SELECT
   expected.function_name,
@@ -2160,15 +2309,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -2185,7 +2334,12 @@ SELECT
     AND language.lanname = 'plpgsql'
     AND proc.provolatile = 'v'
     AND proc.proparallel = 'u'
-    AND proc.prosecdef = (expected.function_name = 'capture_history_item_version')
+    AND proc.prosecdef = (
+      expected.function_name IN (
+        'capture_history_item_version',
+        'enforce_provider_attempt_turn_materialization'
+      )
+    )
     AND NOT proc.proleakproof
     AND NOT proc.proisstrict
     AND NOT proc.proretset
@@ -2416,6 +2570,13 @@ WITH catalog_context AS MATERIALIZED (
 	,('process_generations', 'process_generation_transition_record', 'decodex.record_process_generation_transition()')
 	,('process_generation_death_evidence', 'process_generation_death_evidence_immutable', 'decodex.forbid_process_generation_history_mutation()')
 	,('process_generation_transitions', 'process_generation_transitions_immutable', 'decodex.forbid_process_generation_history_mutation()')
+	,('provider_attempts', 'provider_attempt_transition_guard', 'decodex.enforce_provider_attempt_transition()')
+	,('provider_attempts', 'provider_attempt_binding_complete', 'decodex.enforce_provider_attempt_binding()')
+	,('provider_attempts', 'provider_attempt_delete_immutable', 'decodex.forbid_provider_attempt_history_mutation()')
+	,('provider_attempts', 'provider_attempt_transition_record', 'decodex.record_provider_attempt_transition()')
+	,('turns', 'turns_provider_attempt_materialization', 'decodex.enforce_provider_attempt_turn_materialization()')
+	,('provider_attempt_positive_evidence', 'provider_attempt_positive_evidence_immutable', 'decodex.forbid_provider_attempt_history_mutation()')
+	,('provider_attempt_transitions', 'provider_attempt_transitions_immutable', 'decodex.forbid_provider_attempt_history_mutation()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -3434,11 +3595,13 @@ SELECT
         pg_catalog.convert_to(contract, 'UTF8')
     )::pg_catalog.text
     FROM contract_rows
-    -- XY-1400 keeps the frozen V22 digest until the prohibited unified PostgreSQL gate can
-    -- capture and accept the complete V23 manifest. Exact V23 tables, functions, triggers,
-    -- execution dependencies, and runtime privileges are still checked by semantic inventories.
+    -- XY-1400 and XY-1401 keep the frozen V22 digest until the prohibited unified PostgreSQL
+    -- gate can capture and accept the complete V24 manifest. Exact V23/V24 tables, functions,
+    -- triggers, execution dependencies, and runtime privileges still use semantic inventories.
     WHERE pg_catalog.position('process_generation' IN identity::pg_catalog.text) = 0
       AND pg_catalog.position('process_generation' IN contract) = 0
+      AND pg_catalog.position('provider_attempt' IN identity::pg_catalog.text) = 0
+      AND pg_catalog.position('provider_attempt' IN contract) = 0
   ),
   NOT EXISTS (
     SELECT 1 FROM dependency_rows AS dependency WHERE NOT dependency.resolved
@@ -3945,6 +4108,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 WHERE pg_catalog.position('process_generation' IN identity) = 0
   AND pg_catalog.position('process_generation' IN contract) = 0
+  AND pg_catalog.position('provider_attempt' IN identity) = 0
+  AND pg_catalog.position('provider_attempt' IN contract) = 0
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
 	0x3c, 0xd9, 0xf2, 0x9d, 0x8a, 0x47, 0x2f, 0xcf, 0x46, 0xad, 0x57, 0xae, 0x56, 0x16, 0x92, 0x06,
@@ -4418,6 +4583,14 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "record_process_generation_death_exact"
 			| "project_process_generations_after_supervisor_loss_exact"
 			| "read_process_generations_exact"
+			| "enforce_provider_attempt_turn_materialization"
+			| "prepare_provider_attempt_exact"
+			| "authorize_provider_attempt_dispatch_exact"
+			| "cancel_provider_attempt_exact"
+			| "mark_provider_attempt_unknown_exact"
+			| "record_provider_attempt_positive_evidence_exact"
+			| "project_provider_attempts_after_supervisor_loss_exact"
+			| "read_provider_attempts_exact"
 	)
 }
 
@@ -4585,6 +4758,17 @@ async fn semantic_authority_evidence(
 	evidence.record_unsafe(
 		"no_process_generation_type_grant_option",
 		!generation_types.get::<_, bool>(2),
+	);
+
+	let attempt_types = client.query_one(PROVIDER_ATTEMPT_TYPE_AUTHORITY_SQL, &[]).await?;
+	evidence.record_incompatible("provider_attempt_type_usage", attempt_types.get(0));
+	evidence.record_unsafe(
+		"no_public_provider_attempt_type_usage",
+		!attempt_types.get::<_, bool>(1),
+	);
+	evidence.record_unsafe(
+		"no_provider_attempt_type_grant_option",
+		!attempt_types.get::<_, bool>(2),
 	);
 
 	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
@@ -4946,8 +5130,8 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 20);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 172);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 21);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 184);
 		assert_eq!(
 			CANONICAL_FUNCTION_MIGRATIONS
 				.into_iter()
@@ -5187,7 +5371,7 @@ mod tests {
 
 	#[test]
 	fn every_safety_function_has_one_nonempty_canonical_migration_body() {
-		assert_eq!(SAFETY_FUNCTIONS.len(), 70);
+		assert_eq!(SAFETY_FUNCTIONS.len(), 75);
 		for function_name in SAFETY_FUNCTIONS {
 			let source =
 				super::canonical_safety_function_source(function_name).unwrap_or_else(|| {
