@@ -28,6 +28,7 @@ enum PanelMotion {
 	static let inlineLayout = Animation.interactiveSpring(response: 0.2, dampingFraction: 0.9, blendDuration: 0.03)
 	static let panelLayout = Animation.interactiveSpring(response: 0.3, dampingFraction: 0.92, blendDuration: 0.05)
 	static let accountRemoval = Animation.interactiveSpring(response: 0.28, dampingFraction: 0.94, blendDuration: 0.04)
+	static let meterRefill = Animation.timingCurve(0.18, 0.82, 0.24, 1, duration: 0.72)
 }
 
 enum GlassSurfaceDepth {

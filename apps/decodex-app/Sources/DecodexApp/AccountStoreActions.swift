@@ -109,4 +109,343 @@ extension AccountStore {
 
 		isLoggingIn = false
 	}
+
+	func prepareResetCredit(
+		_ preparation: ResetCreditUsePreparation,
+		for account: CodexAccount
+	) async -> String? {
+		guard preparation.target.accountID == account.accountFingerprint else {
+			notice = ResetCreditUseError.accountChanged.localizedDescription
+			return nil
+		}
+		guard await refreshAccountsForResetCredit() else {
+			return nil
+		}
+
+		do {
+			let codexHomeURL = try makeResetCreditCodexHome()
+			defer {
+				try? FileManager.default.removeItem(at: codexHomeURL)
+			}
+
+			let credentials = try await resetCreditCredentials(
+				for: account,
+				in: codexHomeURL
+			)
+			let codexExecutableURL = URL(fileURLWithPath: try bridge.codexExecutablePath())
+			let creditID = try await CodexResetCreditBridge().prepare(
+				codexExecutableURL: codexExecutableURL,
+				codexHomeURL: codexHomeURL,
+				credentials: credentials,
+				preparation: preparation
+			)
+
+			notice = nil
+			return creditID
+		} catch {
+			notice = error.localizedDescription
+			return nil
+		}
+	}
+
+	func consumeResetCredit(
+		_ attempt: ResetCreditUseAttempt,
+		for account: CodexAccount
+	) async -> Bool {
+		cancelUsageRefillAnimation(for: account.accountFingerprint)
+		guard attempt.target.accountID == account.accountFingerprint else {
+			notice = ResetCreditUseError.accountChanged.localizedDescription
+			return false
+		}
+		guard await refreshAccountsForResetCredit() else {
+			return false
+		}
+
+		do {
+			let freshAccount = try uniqueFreshResetCreditAccount(matching: account)
+			let refillAnimation = AccountUsageRefillAnimation.make(from: freshAccount)
+			let codexHomeURL = try makeResetCreditCodexHome()
+			defer {
+				try? FileManager.default.removeItem(at: codexHomeURL)
+			}
+
+			let credentials = try await resetCreditCredentials(
+				for: account,
+				in: codexHomeURL
+			)
+			let codexExecutableURL = URL(fileURLWithPath: try bridge.codexExecutablePath())
+			let outcome = try await CodexResetCreditBridge().consume(
+				codexExecutableURL: codexExecutableURL,
+				codexHomeURL: codexHomeURL,
+				credentials: credentials,
+				attempt: attempt
+			)
+
+			let outcomeNotice = resetCreditNotice(for: outcome)
+			if outcome == .reset {
+				beginUsageRefillAnimation(refillAnimation)
+			}
+			let refreshSucceeded = await refreshAccountsForResetCredit()
+			finishUsageRefillAnimation(
+				refillAnimation,
+				refreshSucceeded: outcome == .reset && refreshSucceeded
+			)
+			if refreshSucceeded {
+				notice = outcomeNotice
+			} else {
+				let refreshNotice = notice ?? "Account refresh failed."
+				notice = "\(outcomeNotice) \(refreshNotice)"
+			}
+			return true
+		} catch {
+			cancelUsageRefillAnimation(for: account.accountFingerprint)
+			_ = await refreshAccountsForResetCredit()
+			notice = error.localizedDescription
+			return false
+		}
+	}
+
+	private func refreshAccountsForResetCredit() async -> Bool {
+		while isRefreshing {
+			guard Task.isCancelled == false else {
+				return false
+			}
+
+			try? await Task.sleep(for: .milliseconds(25))
+		}
+
+		return await refresh(force: true)
+	}
+
+	private func resetCreditCredentials(
+		for account: CodexAccount,
+		in codexHomeURL: URL
+	) async throws -> CodexResetCreditCredentials {
+		let account = try uniqueFreshResetCreditAccount(matching: account)
+		let expectedEmail = normalizedEmail(account.email)
+
+		let exportedAuthURL = codexHomeURL.appendingPathComponent("selected-account.json")
+		defer {
+			try? FileManager.default.removeItem(at: exportedAuthURL)
+		}
+
+		let authResponse = try await bridge.runJSON(
+			.accountUse(
+				selector: account.selector,
+				authJsonPath: exportedAuthURL.path
+			),
+			as: CodexAuthUseResponse.self
+		)
+		if let expectedEmail,
+			normalizedEmail(authResponse.account.email) != expectedEmail
+		{
+			throw ResetCreditUseError.accountChanged
+		}
+		guard pathsReferToSameLocation(authResponse.codexAuthPath, exportedAuthURL.path) else {
+			throw ResetCreditUseError.authPathChanged
+		}
+		guard try exportedAuthURL
+			.resourceValues(forKeys: [.isRegularFileKey])
+			.isRegularFile == true
+		else {
+			throw ResetCreditUseError.authPathChanged
+		}
+
+		let authData = try Data(contentsOf: exportedAuthURL)
+		let auth = try JSONDecoder().decode(ResetCreditStoredAuth.self, from: authData)
+		let accessToken = auth.tokens.accessToken
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		let accountID = auth.tokens.accountID
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard accessToken.isEmpty == false, accountID.isEmpty == false else {
+			throw ResetCreditUseError.invalidAuth
+		}
+		guard resetCreditFingerprint(for: accountID) == account.accountFingerprint else {
+			throw ResetCreditUseError.accountChanged
+		}
+
+		let stagedAuthData = try auth.stagedData(
+			refreshToken: "decodex-disabled-refresh-\(UUID().uuidString)"
+		)
+		let stagedAuthURL = codexHomeURL.appendingPathComponent("auth.json")
+		guard FileManager.default.createFile(
+			atPath: stagedAuthURL.path,
+			contents: stagedAuthData,
+			attributes: [.posixPermissions: 0o600]
+		) else {
+			throw ResetCreditUseError.authPathChanged
+		}
+
+		return CodexResetCreditCredentials(expectedEmail: expectedEmail)
+	}
+
+	func uniqueFreshResetCreditAccount(matching account: CodexAccount) throws -> CodexAccount {
+		let expectedEmail = normalizedEmail(account.email)
+		let matches = accounts.filter { candidate in
+			guard candidate.accountFingerprint == account.accountFingerprint else {
+				return false
+			}
+			guard let expectedEmail else {
+				return true
+			}
+
+			return normalizedEmail(candidate.email) == expectedEmail
+		}
+
+		guard matches.isEmpty == false else {
+			throw ResetCreditUseError.accountChanged
+		}
+		guard matches.count == 1 else {
+			throw ResetCreditUseError.accountAmbiguous
+		}
+
+		return matches[0]
+	}
+
+	private func normalizedEmail(_ value: String?) -> String? {
+		guard let email = value?
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+			.lowercased(),
+			email.isEmpty == false
+		else {
+			return nil
+		}
+
+		return email
+	}
+
+	private func resetCreditFingerprint(for accountID: String) -> String {
+		let tail = String(accountID.suffix(6))
+		return tail.isEmpty ? "unknown" : "...\(tail)"
+	}
+
+	private func makeResetCreditCodexHome() throws -> URL {
+		let url = FileManager.default.temporaryDirectory
+			.appendingPathComponent("decodex-reset-credit-\(UUID().uuidString)", isDirectory: true)
+		try FileManager.default.createDirectory(
+			at: url,
+			withIntermediateDirectories: false,
+			attributes: [.posixPermissions: 0o700]
+		)
+		return url
+	}
+
+	private func pathsReferToSameLocation(_ left: String, _ right: String) -> Bool {
+		URL(fileURLWithPath: left)
+			.standardizedFileURL
+			.resolvingSymlinksInPath()
+			== URL(fileURLWithPath: right)
+				.standardizedFileURL
+				.resolvingSymlinksInPath()
+	}
+
+	private func resetCreditNotice(for outcome: ResetCreditConsumeOutcome) -> String {
+		switch outcome {
+		case .reset:
+			return "Reset card used."
+		case .alreadyRedeemed:
+			return "Reset card was already used."
+		case .nothingToReset:
+			return "No current rate limit can be reset."
+		case .noCredit:
+			return "No reset card is available."
+		}
+	}
+}
+
+private enum ResetCreditUseError: LocalizedError {
+	case accountAmbiguous
+	case accountChanged
+	case authPathChanged
+	case invalidAuth
+
+	var errorDescription: String? {
+		switch self {
+		case .accountAmbiguous:
+			return "More than one stored account matches this reset card. Remove the duplicate account and try again."
+		case .accountChanged:
+			return "The account changed. Refresh and try again."
+		case .authPathChanged:
+			return "Could not create an isolated Codex account session."
+		case .invalidAuth:
+			return "The selected account has no usable Codex access token."
+		}
+	}
+}
+
+struct ResetCreditStoredAuth: Decodable {
+	let email: String?
+	let authMode: String?
+	let lastRefresh: String?
+	let tokens: Tokens
+
+	struct Tokens: Decodable {
+		let email: String?
+		let idToken: String?
+		let accessToken: String
+		let refreshToken: String
+		let accountID: String
+
+		enum CodingKeys: String, CodingKey {
+			case email
+			case idToken = "id_token"
+			case accessToken = "access_token"
+			case refreshToken = "refresh_token"
+			case accountID = "account_id"
+		}
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case email
+		case authMode = "auth_mode"
+		case lastRefresh = "last_refresh"
+		case tokens
+	}
+
+	func stagedData(refreshToken: String) throws -> Data {
+		try JSONEncoder().encode(
+			StagedAuth(
+				email: email,
+				authMode: "chatgpt",
+				lastRefresh: lastRefresh,
+				tokens: StagedAuth.Tokens(
+					email: tokens.email,
+					idToken: tokens.idToken,
+					accessToken: tokens.accessToken,
+					refreshToken: refreshToken,
+					accountID: tokens.accountID
+				)
+			)
+		)
+	}
+
+	private struct StagedAuth: Encodable {
+		let email: String?
+		let authMode: String
+		let lastRefresh: String?
+		let tokens: Tokens
+
+		struct Tokens: Encodable {
+			let email: String?
+			let idToken: String?
+			let accessToken: String
+			let refreshToken: String
+			let accountID: String
+
+			enum CodingKeys: String, CodingKey {
+				case email
+				case idToken = "id_token"
+				case accessToken = "access_token"
+				case refreshToken = "refresh_token"
+				case accountID = "account_id"
+			}
+		}
+
+		enum CodingKeys: String, CodingKey {
+			case email
+			case authMode = "auth_mode"
+			case lastRefresh = "last_refresh"
+			case tokens
+		}
+	}
 }

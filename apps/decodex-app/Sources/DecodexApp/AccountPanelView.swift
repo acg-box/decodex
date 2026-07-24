@@ -78,28 +78,27 @@ struct AccountPanelView: View {
 	}
 
 	private var accountList: some View {
-		Group {
-			if accountListNeedsScrolling {
-				ScrollView(.vertical, showsIndicators: false) {
-					accountRows
-						.background(accountScrollProbe)
-				}
-				.coordinateSpace(name: AccountPanelLayout.accountListScrollSpace)
-				.frame(height: accountListViewportHeight)
-				.overlay(alignment: .trailing) {
-					AccountListScrollIndicatorView(
-						contentHeight: accountListContentHeight,
-						viewportHeight: accountListViewportHeight,
-						scrollOffset: accountScrollOffset
-					)
-					.padding(.trailing, 1)
-				}
-				.onPreferenceChange(AccountScrollOffsetPreferenceKey.self) { minY in
-					let maxOffset = max(0, accountListContentHeight - accountListViewportHeight)
-					accountScrollOffset = min(max(0, -minY), maxOffset)
-				}
-			} else {
-				accountRows
+		ScrollView(.vertical, showsIndicators: false) {
+			accountRows
+				.background(accountScrollProbe)
+		}
+		.coordinateSpace(name: AccountPanelLayout.accountListScrollSpace)
+		.frame(height: accountListViewportHeight)
+		.overlay(alignment: .trailing) {
+			AccountListScrollIndicatorView(
+				contentHeight: accountListContentHeight,
+				viewportHeight: accountListViewportHeight,
+				scrollOffset: accountScrollOffset
+			)
+			.padding(.trailing, 1)
+		}
+		.onPreferenceChange(AccountScrollOffsetPreferenceKey.self) { minY in
+			let maxOffset = max(0, accountListContentHeight - accountListViewportHeight)
+			accountScrollOffset = min(max(0, -minY), maxOffset)
+		}
+		.onChange(of: accountListNeedsScrolling) { _, needsScrolling in
+			if needsScrolling == false {
+				accountScrollOffset = 0
 			}
 		}
 	}
@@ -119,10 +118,17 @@ struct AccountPanelView: View {
 					isLogoutArmed: armedLogoutAccountID == account.id,
 					isLogoutPending: deletingLogoutAccountID == account.id,
 					logoutErrorMessage: armedLogoutAccountID == account.id ? logoutErrorMessage : nil,
+					usageRefillAnimation: store.usageRefillAnimations[account.accountFingerprint],
 					useInCodex: {
 						Task {
 							await store.useInCodex(account)
 						}
+					},
+					prepareResetCredit: { preparation in
+						await store.prepareResetCredit(preparation, for: account)
+					},
+					consumeResetCredit: { attempt in
+						await store.consumeResetCredit(attempt, for: account)
 					},
 					routeRunsHere: {
 						Task {

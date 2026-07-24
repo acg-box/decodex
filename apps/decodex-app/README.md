@@ -23,6 +23,7 @@ operations and interactive login flows that need streamed command output:
 - pin future Decodex runs to one account
 - return future Decodex runs to balanced selection
 - force Codex itself to use a stored account
+- use an available reset card after an inline confirmation
 - run isolated Codex device login, then import the resulting auth file
 - remove a stored account from the local pool
 
@@ -109,6 +110,16 @@ staples the staged app before packaging; `APPLE_NOTARY_ISSUER` is used when pres
 The "Use in Codex" action overwrites Codex's `auth.json` from one stored
 `~/.codex/decodex/accounts.jsonl` entry. The destination is `$CODEX_HOME/auth.json`
 when `CODEX_HOME` is set, otherwise `~/.codex/auth.json`.
+
+The reset-card action requires two clicks on the same card. The first click reads the
+current opaque credit ID and then shows `Confirm Use` with a five-second countdown.
+The confirmation cancels when the countdown expires or the panel closes. A second
+click during the countdown consumes that exact ID and reuses one idempotency key for
+retries. Each request uses an isolated Codex app-server session with a short-lived
+file-auth copy for the selected account. The copy contains the current access token
+and a disabled refresh placeholder, not the managed refresh token. The action does
+not overwrite the user's normal Codex `auth.json`. Ambiguous duplicate cards and
+incomplete card-detail lists fail closed.
 
 App icon assets live under `assets/app-icon/` with `source/`, `composer/`, and
 `generated/` lanes. Menu bar icon assets live under `assets/tray-icon/` with matching
