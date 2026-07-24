@@ -525,7 +525,9 @@ affinity only after eligibility. It classifies both quota facts at its own decis
 fact that ages after V14 retains the exact stale or reset-elapsed cause. Pure current positive quota
 depletion produces `waiting_usage`. Pure unresolved ProcessGeneration or ProviderAttempt authority produces
 `waiting_reconciliation`. Any mixed set remains `no_route` with every exact cause and no wake or
-task failure.
+task failure. Selection and both pure waits inspect only included members. A `no_route` uses the
+complete persisted policy-member universe, retains `excluded_by_policy` for every excluded member,
+and cannot be cause-free.
 
 V17 remains the sole RuntimeSession continuation writer. An ordinary Conversation can reuse its
 thread only from positive exact-thread evidence on the original ProviderAttempt. A ManagedRun can

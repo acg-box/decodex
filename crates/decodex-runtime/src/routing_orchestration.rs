@@ -333,6 +333,7 @@ impl ExecutionCoordinator {
 				if persisted.decision.selected_account_id.is_some()
 					|| persisted.decision.ready_at_micros.is_some()
 					|| !persisted.decision.exclusions.is_empty()
+					|| persisted.decision.causes.is_empty()
 				{
 					return failed(
 						consumer,

@@ -998,9 +998,24 @@ pub enum ExecutionRouteDto {
 	},
 	/// No route exists and no wake or task failure is implied.
 	NoRoute {
-		/// Complete exact account-scoped mixed or non-wake causes.
+		/// Complete causes from the persisted policy-member universe.
+		#[serde(deserialize_with = "deserialize_nonempty_route_causes")]
 		causes: Vec<ExecutionRouteCauseDto>,
 	},
+}
+
+fn deserialize_nonempty_route_causes<'de, D>(
+	deserializer: D,
+) -> Result<Vec<ExecutionRouteCauseDto>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	let causes = Vec::<ExecutionRouteCauseDto>::deserialize(deserializer)?;
+	if causes.is_empty() {
+		Err(D::Error::custom("NoRoute requires at least one exact cause"))
+	} else {
+		Ok(causes)
+	}
 }
 
 /// One exact account-scoped blocker retained without category collapse.
