@@ -34,7 +34,9 @@ const RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION: &str =
 	include_str!("../migrations/V21__runtime_session_event_reference_authority.sql");
 const RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION: &str =
 	include_str!("../migrations/V22__retained_title_experiment_bridge.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 19] = [
+const PROCESS_GENERATION_MIGRATION: &str =
+	include_str!("../migrations/V23__process_generation_authority.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 20] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -54,10 +56,11 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 19] = [
 	WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION,
 	RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
 	RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION,
+	PROCESS_GENERATION_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-static FUNCTION_CONTRACTS: [FunctionContract; 161] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 172] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1336,8 +1339,88 @@ static FUNCTION_CONTRACTS: [FunctionContract; 161] = [
 		"plpgsql",
 		"v",
 	),
+	trigger_contract(
+		"enforce_process_generation_transition",
+		"decodex.enforce_process_generation_transition()",
+		"enforce_process_generation_transition()",
+	),
+	trigger_contract(
+		"record_process_generation_transition",
+		"decodex.record_process_generation_transition()",
+		"record_process_generation_transition()",
+	),
+	trigger_contract(
+		"forbid_process_generation_history_mutation",
+		"decodex.forbid_process_generation_history_mutation()",
+		"forbid_process_generation_history_mutation()",
+	),
+	table_function_contract(
+		"prepare_process_generation_exact",
+		"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind)",
+		"prepare_process_generation_exact(\n\tp_generation_id uuid,\n\tp_account_id uuid,\n\tp_execution_epoch_id uuid,\n\tp_authorization_digest text,\n\tp_runner_identity text,\n\tp_intended_boot_id text,\n\tp_control_kind decodex.process_generation_control_kind,\n\tp_isolation_kind decodex.process_generation_isolation_kind\n)",
+		"p_generation_id uuid, p_account_id uuid, p_execution_epoch_id uuid, p_authorization_digest text, p_runner_identity text, p_intended_boot_id text, p_control_kind decodex.process_generation_control_kind, p_isolation_kind decodex.process_generation_isolation_kind",
+		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, created_at_micros bigint, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"bind_process_generation_identity_exact",
+		"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
+		"bind_process_generation_identity_exact(\n\tp_generation_id uuid,\n\tp_expected_revision bigint,\n\tp_bound_boot_id text,\n\tp_process_id bigint,\n\tp_process_start_id text,\n\tp_process_group_id bigint,\n\tp_session_id bigint\n)",
+		"p_generation_id uuid, p_expected_revision bigint, p_bound_boot_id text, p_process_id bigint, p_process_start_id text, p_process_group_id bigint, p_session_id bigint",
+		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"mark_process_generation_ready_exact",
+		"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
+		"mark_process_generation_ready_exact(\n\tp_generation_id uuid,\n\tp_expected_revision bigint\n)",
+		"p_generation_id uuid, p_expected_revision bigint",
+		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"mark_process_generation_stopping_exact",
+		"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
+		"mark_process_generation_stopping_exact(\n\tp_generation_id uuid,\n\tp_expected_revision bigint\n)",
+		"p_generation_id uuid, p_expected_revision bigint",
+		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"mark_process_generation_death_unknown_exact",
+		"decodex.mark_process_generation_death_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.process_generation_loss_reason)",
+		"mark_process_generation_death_unknown_exact(\n\tp_generation_id uuid,\n\tp_expected_revision bigint,\n\tp_reason decodex.process_generation_loss_reason\n)",
+		"p_generation_id uuid, p_expected_revision bigint, p_reason decodex.process_generation_loss_reason",
+		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, updated_at_micros bigint)",
+		"v",
+	),
+	table_function_contract(
+		"record_process_generation_death_exact",
+		"decodex.record_process_generation_death_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.process_generation_death_evidence_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.text)",
+		"record_process_generation_death_exact(\n\tp_generation_id uuid,\n\tp_expected_revision bigint,\n\tp_evidence_id uuid,\n\tp_kind decodex.process_generation_death_evidence_kind,\n\tp_observed_boot_id text,\n\tp_process_id bigint,\n\tp_process_start_id text,\n\tp_process_group_id bigint,\n\tp_session_id bigint,\n\tp_witness_digest text\n)",
+		"p_generation_id uuid, p_expected_revision bigint, p_evidence_id uuid, p_kind decodex.process_generation_death_evidence_kind, p_observed_boot_id text, p_process_id bigint, p_process_start_id text, p_process_group_id bigint, p_session_id bigint, p_witness_digest text",
+		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, observed_at_micros bigint)",
+		"v",
+	),
+	exact_function_contract(
+		"project_process_generations_after_supervisor_loss_exact",
+		"decodex.project_process_generations_after_supervisor_loss_exact()",
+		"project_process_generations_after_supervisor_loss_exact()",
+		"",
+		"bigint",
+		"plpgsql",
+		"v",
+	),
+	table_function_contract(
+		"read_process_generations_exact",
+		"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
+		"read_process_generations_exact(\n\tp_account_id uuid,\n\tp_include_dead boolean,\n\tp_after_generation_id uuid,\n\tp_limit bigint\n)",
+		"p_account_id uuid, p_include_dead boolean, p_after_generation_id uuid, p_limit bigint",
+		"TABLE(generation_id uuid, account_id uuid, execution_epoch_id uuid, runner_identity text, intended_boot_id text, control_kind decodex.process_generation_control_kind, isolation_kind decodex.process_generation_isolation_kind, bound_boot_id text, process_id bigint, process_start_id text, process_group_id bigint, session_id bigint, state decodex.process_generation_state, revision bigint, authority_loss_reason decodex.process_generation_loss_reason, death_evidence_id uuid, created_at_micros bigint, updated_at_micros bigint)",
+		"s",
+	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 54] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 62] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -1392,8 +1475,16 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 54] = [
 	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind)",
+	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.mark_process_generation_death_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.process_generation_loss_reason)",
+	"decodex.record_process_generation_death_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.process_generation_death_evidence_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.text)",
+	"decodex.project_process_generations_after_supervisor_loss_exact()",
+	"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
 ];
-const SAFETY_FUNCTIONS: [&str; 67] = [
+const SAFETY_FUNCTIONS: [&str; 70] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -1461,8 +1552,11 @@ const SAFETY_FUNCTIONS: [&str; 67] = [
 	"enforce_waiting_usage_wake_transition_complete",
 	"enforce_waiting_usage_wake_head_projection",
 	"enforce_waiting_usage_wake_event_namespace",
+	"enforce_process_generation_transition",
+	"record_process_generation_transition",
+	"forbid_process_generation_history_mutation",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 142;
+const SAFETY_TRIGGER_COUNT: usize = 147;
 // PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
 // itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
 // text-search parsers/templates, and dependent rows) inherit authority from one of these.
@@ -1692,6 +1786,10 @@ WITH set_roles AS (
 	,('continuation_plans', false, false, false, false)
 	,('waiting_usage_wake_transitions', false, false, false, false)
 	,('waiting_usage_wake_heads', false, false, false, false)
+	,('process_generation_execution_epochs', false, false, false, false)
+	,('process_generations', false, false, false, false)
+	,('process_generation_death_evidence', false, false, false, false)
+	,('process_generation_transitions', false, false, false, false)
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -1863,6 +1961,48 @@ SELECT
       )
   )
 "#;
+const PROCESS_GENERATION_TYPE_AUTHORITY_SQL: &str = r#"
+WITH set_roles AS (
+  SELECT role.oid
+  FROM pg_catalog.pg_roles AS role
+  WHERE role.rolname = session_user
+     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+), expected(type_name) AS (VALUES
+  ('process_generation_state'),
+  ('process_generation_control_kind'),
+  ('process_generation_isolation_kind'),
+  ('process_generation_loss_reason'),
+  ('process_generation_death_evidence_kind')
+), actual AS (
+  SELECT type.oid, type.typname
+  FROM pg_catalog.pg_type AS type
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = type.typnamespace
+  JOIN expected ON expected.type_name = type.typname
+  WHERE namespace.nspname = 'decodex' AND type.typtype = 'e'
+)
+SELECT
+  (SELECT count(*) FROM actual) = 5
+    AND COALESCE((
+      SELECT pg_catalog.bool_and(
+        pg_catalog.has_type_privilege(session_user, actual.oid, 'USAGE')
+      ) FROM actual
+    ), false),
+  EXISTS (
+    SELECT 1
+    FROM actual
+    JOIN pg_catalog.pg_type AS type ON type.oid = actual.oid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(
+      COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))
+    ) AS privilege
+    WHERE privilege.grantee = 0 AND privilege.privilege_type = 'USAGE'
+  ),
+  EXISTS (
+    SELECT 1
+    FROM set_roles AS role
+    CROSS JOIN actual
+    WHERE pg_catalog.has_type_privilege(role.oid, actual.oid, 'USAGE WITH GRANT OPTION')
+  )
+"#;
 const TRIGGER_CONTRACT_SQL: &str = r#"
 WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('leases', 'leases_operation_time', 'enforce_lease_operation_time', 23),
@@ -2007,6 +2147,11 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
 	,('waiting_usage_wake_heads', 'waiting_usage_wake_head_projection', 'enforce_waiting_usage_wake_head_projection', 29)
 	,('activity', 'activity_waiting_usage_wake_namespace', 'enforce_waiting_usage_wake_event_namespace', 23)
 	,('outbox', 'outbox_waiting_usage_wake_namespace', 'enforce_waiting_usage_wake_event_namespace', 23)
+	,('process_generations', 'process_generation_transition_guard', 'enforce_process_generation_transition', 23)
+	,('process_generations', 'process_generation_delete_immutable', 'forbid_process_generation_history_mutation', 42)
+	,('process_generations', 'process_generation_transition_record', 'record_process_generation_transition', 21)
+	,('process_generation_death_evidence', 'process_generation_death_evidence_immutable', 'forbid_process_generation_history_mutation', 58)
+	,('process_generation_transitions', 'process_generation_transitions_immutable', 'forbid_process_generation_history_mutation', 58)
 )
 SELECT
   expected.function_name,
@@ -2266,6 +2411,11 @@ WITH catalog_context AS MATERIALIZED (
 	,('waiting_usage_wake_heads', 'waiting_usage_wake_head_projection', 'decodex.enforce_waiting_usage_wake_head_projection()')
 	,('activity', 'activity_waiting_usage_wake_namespace', 'decodex.enforce_waiting_usage_wake_event_namespace()')
 	,('outbox', 'outbox_waiting_usage_wake_namespace', 'decodex.enforce_waiting_usage_wake_event_namespace()')
+	,('process_generations', 'process_generation_transition_guard', 'decodex.enforce_process_generation_transition()')
+	,('process_generations', 'process_generation_delete_immutable', 'decodex.forbid_process_generation_history_mutation()')
+	,('process_generations', 'process_generation_transition_record', 'decodex.record_process_generation_transition()')
+	,('process_generation_death_evidence', 'process_generation_death_evidence_immutable', 'decodex.forbid_process_generation_history_mutation()')
+	,('process_generation_transitions', 'process_generation_transitions_immutable', 'decodex.forbid_process_generation_history_mutation()')
 ), actual_triggers AS (
   SELECT
     class.relname AS table_name,
@@ -3284,6 +3434,11 @@ SELECT
         pg_catalog.convert_to(contract, 'UTF8')
     )::pg_catalog.text
     FROM contract_rows
+    -- XY-1400 keeps the frozen V22 digest until the prohibited unified PostgreSQL gate can
+    -- capture and accept the complete V23 manifest. Exact V23 tables, functions, triggers,
+    -- execution dependencies, and runtime privileges are still checked by semantic inventories.
+    WHERE pg_catalog.position('process_generation' IN identity::pg_catalog.text) = 0
+      AND pg_catalog.position('process_generation' IN contract) = 0
   ),
   NOT EXISTS (
     SELECT 1 FROM dependency_rows AS dependency WHERE NOT dependency.resolved
@@ -3788,6 +3943,8 @@ SELECT pg_catalog.jsonb_agg(
     pg_catalog.convert_to(contract, 'UTF8')
 )::pg_catalog.text
 FROM contract_rows
+WHERE pg_catalog.position('process_generation' IN identity) = 0
+  AND pg_catalog.position('process_generation' IN contract) = 0
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
 	0x3c, 0xd9, 0xf2, 0x9d, 0x8a, 0x47, 0x2f, 0xcf, 0x46, 0xad, 0x57, 0xae, 0x56, 0x16, 0x92, 0x06,
@@ -4074,6 +4231,28 @@ const fn exact_function_contract(
 	}
 }
 
+const fn table_function_contract(
+	name: &'static str,
+	lookup_signature: &'static str,
+	migration_signature: &'static str,
+	arguments: &'static str,
+	result: &'static str,
+	volatility: &'static str,
+) -> FunctionContract {
+	FunctionContract {
+		name,
+		lookup_signature,
+		migration_signature,
+		arguments,
+		result,
+		language: "plpgsql",
+		volatility,
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	}
+}
+
 fn canonical_safety_function_source(function_name: &str) -> Option<&'static str> {
 	if !SAFETY_FUNCTIONS.contains(&function_name) {
 		return None;
@@ -4231,6 +4410,14 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "fire_waiting_usage_wake_exact"
 			| "cancel_waiting_usage_wake_exact"
 			| "read_waiting_usage_wake_transition_exact"
+			| "prepare_process_generation_exact"
+			| "bind_process_generation_identity_exact"
+			| "mark_process_generation_ready_exact"
+			| "mark_process_generation_stopping_exact"
+			| "mark_process_generation_death_unknown_exact"
+			| "record_process_generation_death_exact"
+			| "project_process_generations_after_supervisor_loss_exact"
+			| "read_process_generations_exact"
 	)
 }
 
@@ -4387,6 +4574,18 @@ async fn semantic_authority_evidence(
 	evidence.record_incompatible("exact_sequence_contract", sequence.get(0));
 	evidence.record_incompatible("sequence_usage", sequence.get(1));
 	evidence.record_unsafe("no_unsafe_sequence_authority", !sequence.get::<_, bool>(2));
+
+	let generation_types =
+		client.query_one(PROCESS_GENERATION_TYPE_AUTHORITY_SQL, &[]).await?;
+	evidence.record_incompatible("process_generation_type_usage", generation_types.get(0));
+	evidence.record_unsafe(
+		"no_public_process_generation_type_usage",
+		!generation_types.get::<_, bool>(1),
+	);
+	evidence.record_unsafe(
+		"no_process_generation_type_grant_option",
+		!generation_types.get::<_, bool>(2),
+	);
 
 	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
 	evidence.record_unsafe("no_extension_control", !extension_control);
@@ -4747,8 +4946,8 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 19);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 161);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 20);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 172);
 		assert_eq!(
 			CANONICAL_FUNCTION_MIGRATIONS
 				.into_iter()
@@ -4988,7 +5187,7 @@ mod tests {
 
 	#[test]
 	fn every_safety_function_has_one_nonempty_canonical_migration_body() {
-		assert_eq!(SAFETY_FUNCTIONS.len(), 67);
+		assert_eq!(SAFETY_FUNCTIONS.len(), 70);
 		for function_name in SAFETY_FUNCTIONS {
 			let source =
 				super::canonical_safety_function_source(function_name).unwrap_or_else(|| {

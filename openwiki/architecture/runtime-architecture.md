@@ -129,7 +129,7 @@ non-internal trigger bindings, including regular and deferred constraint trigger
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V22. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V23. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
@@ -361,12 +361,63 @@ contended-admission leak: the 65th permit is rejected before spawn. The failed a
 another group. PostgreSQL's
 exact revision/state predicate excludes stale, unavailable, unknown, depleted,
 authentication-failed, plugin-unready, and disabled observations. A fresh daemon starts with no
-persisted capacity or assignment authority, but uncatchable daemon/host termination can orphan an OS
-process group because the in-memory quarantine is not an external process supervisor. Restart never
-adopts such a group or recreates authority; a later observation requires
-fresh exact PostgreSQL pre- and post-observations for the same manually selected account. There is no account
+persisted capacity or assignment authority. This feature-gated manual path remains nonproduction
+and does not construct a V23 ProcessGeneration or create restart authority. There is no account
 inventory, automatic selector, weighting, stickiness, fallback, quota wake, or live routing API;
 XY-1304 remains the separate failed dispatch gate.
+
+### Durable ProcessGeneration supervision
+
+V23 adds the durable ProcessGeneration owner described in
+[the XY-1400 authority specification](../specs/process-generation-authority.md). PostgreSQL
+commits one account-exclusive `starting` intent before `ProcessSupervisor` can receive a fresh
+spawn fence. Replay is readback only. One private `AttestedAppServerLaunch` retains the protected
+executable snapshot and derives the intent's account and launch-manifest hash. That hash binds the
+exact image and BuildId, command, fixed `app-server --stdio` arguments, working directory,
+clear-then-set environment, account, and exact-build startup/lifetime capability. The supervisor
+accepts no independent runner digest or raw `Command`. After spawn, it persists the exact boot,
+PID, process-start, process-group, and session identities.
+
+The current launch profile accepts only the source-attested macOS
+`codex-cli 0.145.0-alpha.18` image and forces
+`CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1`. This is exact-build startup-state
+evidence: it selects disabled-ephemeral remote-control mode, but it is not a permanent denial
+policy. The supervisor retains child stdin and stdout privately for lifetime ownership.
+`FencedProcess` and every returned ProcessGeneration capability expose no raw channel or generic
+protocol writer. Every other build, including the current unrecorded Linux image, fails closed
+before profile-dependent version or schema preflight spawn.
+
+The supported-OS adapter owns boot and process identity, generic session/descriptor setup, exact
+owned signaling, group observation, and positive exit witnesses. Linux uses `/proc` start ticks
+and pidfd. macOS uses `KERN_BOOTTIME`, `proc_pidinfo`, and a one-shot kqueue `NOTE_EXIT` filter.
+Both use a new session. Generic retained-title and preflight setup grants no ProcessGeneration
+lifetime capability and does not install Linux `PR_SET_PDEATHSIG`. No exact Linux lifetime profile
+is accepted. A future parent-death primitive must be reachable only through such a profile. On
+macOS, stdio EOF is only a best-effort request and is not death evidence. Only the original
+unreaped child can authorize a group signal. A restored same-boot process can receive only a
+read-only exact witness; it is not adopted, reacquired, proxied, terminated, or signaled.
+
+Daemon startup projects present `starting`, `ready`, and `stopping` rows to
+`death_unknown`, runs one positive-only pass, and starts bounded background reconciliation. An
+old boot is positive prior-boot death proof. Same-boot absence, mismatch, an unbound identity,
+timeout, and group absence alone remain uncertain. The partial unique account index derives
+account-local quarantine without another writer. One item failure does not disable the store,
+managed repositories, or reconciliation for other accounts.
+
+On macOS, a restored generation becomes `dead` only after the attached exact kqueue witness returns
+`EVFILT_PROC/NOTE_EXIT` and the process group is quiescent, or after boot change. If the process
+exits before witness attachment, the event cannot be reconstructed and the account stays
+quarantined for the rest of the boot. ProcessGeneration makes no claim about credential revocation
+or provider-effect outcome; XY-1401 retains that ambiguity in ProviderAttempt.
+
+`ServiceBootstrap` exposes independent readiness and a runtime port for bounded/exact diagnostics,
+exact positive-only reconciliation, and exact owned-child termination. Spawn and ready remain
+crate-private and have no caller. `CodexAdapter::unavailable()` remains in the daemon composition.
+No protocol, CLI, scheduler, routing, RuntimeSession, ProviderAttempt, credential, remote-auth, or
+UI path reaches ProcessGeneration spawn. Production dispatch remains structurally disabled.
+A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
+`remoteControl/enable` and all alternate-control RPCs before dispatch can be enabled. This slice
+does not implement that gateway.
 
 The accepted XY-1355 target adds no live execution path here. V14 makes PostgreSQL the sole owner
 of a revisioned complete routing-policy snapshot over the entire account inventory, canonical

@@ -471,8 +471,59 @@ rejected before it exists. Cargo metadata proves the current
 workspace production dependency graph and absence of synthetic features on normal edges; compile-fail
 contracts prove the launcher and capacity authority are not crate API. Neither proves call provenance,
 the absence of future wrappers, or Rust friend visibility against arbitrary new downstream
-dependencies. Daemon/host crash can orphan OS descendants; restart reconstructs neither assignment
-nor launch authority and requires fresh exact PostgreSQL observations.
+dependencies. This dormant manual path is not product ProcessGeneration authority and cannot grant
+restart launch permission.
+
+### Durable ProcessGeneration authority
+
+XY-1400 implements the accepted XY-1398 V3 contract in
+[the ProcessGeneration authority specification](process-generation-authority.md).
+`ProcessSupervisor` is the sole product writer. A private opaque launch authority retains one
+protected executable snapshot and derives the durable launch-manifest identity and exact command.
+The manifest binds the image and BuildId, fixed `app-server --stdio` arguments, working directory,
+sanitized environment, account, and exact-build startup/lifetime capability. No caller can pair
+an independent digest with a raw command. The supervisor commits this intent before a fresh fence
+can authorize one spawn. It then binds the exact PID, process-start identity, process group, and
+session.
+
+The current exact profile accepts only the recorded macOS `codex-cli 0.145.0-alpha.18` image. It
+sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
+argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
+raw channels privately for lifetime ownership, and no returned ProcessGeneration capability
+contains a protocol writer. Other builds, including an unrecorded Linux image, fail closed before
+profile-dependent preflights. Generic session/descriptor setup does not install
+`PR_SET_PDEATHSIG`; a future Linux parent-death primitive requires a separately accepted exact
+Linux lifetime capability. `decodexd` remains the only product daemon.
+
+The durable states are `starting`, `ready`, `stopping`, `dead`, and `death_unknown`.
+All present restored nonterminal rows become `death_unknown`. A generation becomes `dead` only
+from positive generation-bound evidence: positive spawn non-creation, owned-child wait, exact
+Linux pidfd exit with group quiescence, exact macOS kqueue `NOTE_EXIT` with group quiescence,
+exact owned termination exit, or proof that the prior boot ended. PID or process-group absence,
+reuse, timeout, lease expiry, row absence, EOF, restart, identity mismatch, and negative search
+are never death evidence.
+
+Same-boot uncertainty blocks replacement only for the bound account. Reconciliation continues for
+other generations. On macOS, EOF is only a best-effort shutdown request. A restored process can
+receive a read-only exact kqueue witness after an exact pre-match and before the final exact
+recheck, but it is never adopted, reacquired, proxied, terminated, or signaled. If it exits before
+witness attachment, same-boot quarantine remains until boot change. Exact termination is
+available only while the original supervisor retains the unreaped child, and it never signals
+after reap.
+
+An external execution epoch and digest prevent PostgreSQL restore readback from becoming spawn
+authority. Replay never returns a fresh fence. An ambiguous rollback does not authorize launch.
+Persisted Codex thread identity carries Conversation continuity; process survival does not create
+or continue a RuntimeSession.
+
+ProcessGeneration proves replacement safety only. It does not prove provider non-submission,
+effect cancellation, or credential revocation. XY-1401 must keep an unproved authorized
+ProviderAttempt `unknown`; process exit or boot change cannot make it `not_submitted`, a
+replacement cannot replay it, and any successor is a distinct user-authorized effect with
+duplicate-risk acknowledgement. XY-1400 adds no account selection, routing, ProviderAttempt
+storage, remote authentication, UI, packaging, release, or live dispatch.
+A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
+alternate-control RPCs before enablement. XY-1400 does not add that gateway.
 
 ### Durable routing-policy and candidate-set authority
 

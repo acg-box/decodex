@@ -20,6 +20,8 @@ pub(crate) mod github_effects;
 mod managed_repository_executor;
 mod managed_repository_runtime;
 mod managed_repository_saga;
+mod process_platform;
+mod process_supervisor;
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
@@ -37,6 +39,11 @@ pub use managed_repository_saga::{
 	ManagedRepositoryEffectPort, ManagedRepositoryEffectSaga, ManagedRepositoryRestartOutcome,
 	ManagedRepositorySagaOutcome, RepositoryDispatchFailure, RepositoryDispatchObservation,
 	RepositoryReadbackEvidence,
+};
+pub use process_supervisor::{
+	ProcessGenerationControl, ProcessGenerationDiagnostic, ProcessGenerationExitWitnessKind,
+	ProcessGenerationObservation, ProcessGenerationReadiness, ProcessGenerationReconciliation,
+	ProcessGenerationTermination, ProcessSupervisorError,
 };
 pub use routing_orchestration::{
 	ContinuationCoordinates, DisabledRoutingCommand, DisabledRoutingFailure,
