@@ -140,4 +140,19 @@ final class DecodexAppBridgeTests: XCTestCase {
 		XCTAssertEqual(payload["codex_bin"] as? String, codexBin)
 		XCTAssertEqual(payload["include_usage"] as? Bool, true)
 	}
+
+	func testAccountUseRequestEncodesAnIsolatedAuthPath() throws {
+		let authPath = "/tmp/decodex-reset-credit/auth.json"
+		let data = try JSONEncoder().encode(
+			AppBridgeRequest.accountUse(
+				selector: "copy@example.com",
+				authJsonPath: authPath
+			)
+		)
+		let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+		XCTAssertEqual(payload["operation"] as? String, "account_use")
+		XCTAssertEqual(payload["selector"] as? String, "copy@example.com")
+		XCTAssertEqual(payload["auth_json_path"] as? String, authPath)
+	}
 }

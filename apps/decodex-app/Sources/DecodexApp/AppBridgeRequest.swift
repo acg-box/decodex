@@ -31,8 +31,15 @@ struct AppBridgeRequest: Encodable, Sendable {
 
 	static let accountClear = AppBridgeRequest(operation: "account_clear", includeUsage: true)
 
-	static func accountUse(selector: String) -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_use", selector: selector)
+	static func accountUse(
+		selector: String,
+		authJsonPath: String? = nil
+	) -> AppBridgeRequest {
+		AppBridgeRequest(
+			operation: "account_use",
+			selector: selector,
+			authJsonPath: authJsonPath
+		)
 	}
 
 	static func accountSelect(selector: String) -> AppBridgeRequest {

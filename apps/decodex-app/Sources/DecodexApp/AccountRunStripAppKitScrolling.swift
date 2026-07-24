@@ -52,6 +52,17 @@ final class AccountRunDragHostingView<Content: View>: NSHostingView<Content> {
 	weak var dragScrollView: NSScrollView?
 	var onDragScroll: (() -> Void)?
 	var onClick: ((NSPoint) -> Void)?
+	var allowsPointerPanning = true {
+		didSet {
+			guard allowsPointerPanning != oldValue else {
+				return
+			}
+
+			dragStartPoint = nil
+			isDraggingContent = false
+			window?.invalidateCursorRects(for: self)
+		}
+	}
 	private var dragStartPoint: NSPoint?
 	private var dragStartOffset: CGFloat = 0
 	private var isDraggingContent = false
@@ -113,7 +124,7 @@ final class AccountRunDragHostingView<Content: View>: NSHostingView<Content> {
 	}
 
 	private var canDrag: Bool {
-		guard let dragScrollView else {
+		guard allowsPointerPanning, let dragScrollView else {
 			return false
 		}
 
