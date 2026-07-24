@@ -5,7 +5,11 @@ struct UsageResetDisplay {
 	let date: String
 	let accessibility: String
 
-	static func make(resetAtUnixEpoch: Int?, now: Date = Date()) -> UsageResetDisplay {
+	static func make(
+		resetAtUnixEpoch: Int?,
+		now: Date = Date(),
+		timeZone: TimeZone = .autoupdatingCurrent
+	) -> UsageResetDisplay {
 		guard let seconds = resetAtUnixEpoch, seconds > 0 else {
 			return UsageResetDisplay(
 				short: "-",
@@ -25,7 +29,7 @@ struct UsageResetDisplay {
 
 		let distanceSeconds = Int(floor(resetAt.timeIntervalSince(now)))
 		if distanceSeconds <= 0 {
-			let date = formatResetDate(resetAt, now: now)
+			let date = formatResetDate(resetAt, now: now, timeZone: timeZone)
 			return UsageResetDisplay(
 				short: "0m",
 				date: date,
@@ -34,7 +38,7 @@ struct UsageResetDisplay {
 		}
 
 		let short = formatResetDuration(distanceSeconds)
-		let date = formatResetDate(resetAt, now: now)
+		let date = formatResetDate(resetAt, now: now, timeZone: timeZone)
 		return UsageResetDisplay(
 			short: short,
 			date: date,
@@ -63,10 +67,12 @@ struct UsageResetDisplay {
 		return "\(minutes)m"
 	}
 
-	private static func formatResetDate(_ date: Date, now: Date) -> String {
+	private static func formatResetDate(_ date: Date, now: Date, timeZone: TimeZone) -> String {
 		let formatter = DateFormatter()
 		formatter.locale = Locale(identifier: "en_US_POSIX")
-		let calendar = Calendar(identifier: .gregorian)
+		formatter.timeZone = timeZone
+		var calendar = Calendar(identifier: .gregorian)
+		calendar.timeZone = timeZone
 		formatter.dateFormat = calendar.component(.year, from: date) == calendar.component(.year, from: now)
 			? "MMM d HH:mm"
 			: "MMM d yyyy HH:mm"
