@@ -4,7 +4,7 @@
 //! immutable migrations, idempotent optimistic transactions, expiring leases, transactional
 //! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
 //! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
-//! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
+//! immutable global RoleProfiles, inert ManagedRuns, and current-row
 //! managed-repository authority with append-only operations/evidence, plus revisioned routing
 //! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
 //! Codex experiment intent, two one-shot fences, exact start receipts, retained-title
@@ -12,8 +12,9 @@
 //! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
 //! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
 //! cancellation, supersession, and fresh-routing requests, plus durable fenced ProcessGenerations,
-//! exact process identities, append-only positive death evidence, and generic ProviderAttempts
-//! with positive-only outcome evidence. It does not compose a scheduler, dispatch work, switch
+//! exact process identities, append-only positive death evidence, generic ProviderAttempts
+//! with positive-only outcome evidence, and read-only execution-decision projection. It does not
+//! compose a scheduler, dispatch work, switch
 //! credentials, advance runs, replay turns or effects, or expose protocol/client behavior.
 
 mod accounts;
@@ -21,6 +22,7 @@ mod authority;
 mod continuations;
 mod conversations;
 mod error;
+mod execution_decisions;
 mod exact_commands;
 mod experiments;
 mod leases;
@@ -52,6 +54,7 @@ pub use self::{
 		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
+	execution_decisions::{ExecutionDecisionReadback, ExecutionQuotaExclusion},
 	experiments::{
 		AttestCodexExperimentRetainedTitle, BindCodexExperimentStart,
 		CodexExperimentCreationFenceOutcome, CodexExperimentStartReceipt,
@@ -64,11 +67,7 @@ pub use self::{
 		RepositoryPreparationOutcome, RepositoryReadbackEvidence, RepositoryReadbackWork,
 		RepositoryReconciliationOutcome, RepositoryRestartState,
 	},
-	managed_runs::{
-		ManagedRunEffectBarrier, ManagedRunEffectBarrierState, ManagedRunEffectKind,
-		ManagedRunEffectLineage, ManagedRunSafetyEffect, ManagedRunSafetyOutcome,
-		ManagedRunSafetyRejection, StoredManagedRun,
-	},
+	managed_runs::{ManagedRunProviderAttempt, StoredManagedRun},
 	process_generations::{
 		FreshProcessGenerationFence, PrepareProcessGenerationOutcome,
 		ProcessGenerationMutation, ProcessGenerationMutationOutcome,
@@ -113,12 +112,12 @@ pub use decodex_core::{
 	AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
 	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
 	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, ContinuationCommandOutcome,
-	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, EffectId, ExactCommitEvidence,
+	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ExactCommitEvidence,
 	ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
 	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedRepositoryError,
 	ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError,
-	ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
-	ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
+	ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunState,
+	ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
 	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
 	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
 	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
@@ -146,8 +145,8 @@ pub use decodex_core::{
 	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
 	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
 	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
-	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SameThreadContinuationEvidence,
-	SubmittedTurnReceiptId, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
+	RepositoryRegistrationId, ReviewCadence, SameThreadContinuationEvidence,
+	WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
 	WaitingUsageWakeRejection, WaitingUsageWakeState, WaitingUsageWakeTerminalReason,
 	WaitingUsageWakeTransition, WaitingUsageWakeTransitionKind, WorkItem, WorkItemCorrelationId,
 	WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode, WorkItemObjectiveRef,

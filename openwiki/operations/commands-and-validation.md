@@ -73,6 +73,83 @@ wrapper source, and the current
 [XY-1368 validation runbook](xy-1368-retained-title-validation.md). Do not infer future
 package-defined behavior from those current surfaces.
 
+## XY-1399 A-prime source-only validation boundary
+
+XY-1399 A-prime is pre-core-freeze source work. Its candidate receipt must not contain a
+formatter, build, static check, migration or SQL parser, test, fixture, wrapper, generator,
+service, VM, UI, Accessibility, live Codex experiment, account operation, provider effect,
+or other executable validation. Source inspection and the required signed commit receipt
+are not acceptance execution.
+
+The later integrated frozen-core gate must bind all results to the exact candidate tree and
+run once on required macOS and Linux hosts. It must validate:
+
+- fixed staging-name and canonical-name stale recovery under the persistent single-link
+  namespace lock;
+- stage bind, exact mode, captured device/inode/owner/mode/link-count identity, exactly
+  one socket link, and same-directory descriptor-relative `renameat` publication;
+- directory, lock, and socket replacement at publication, server admission, client
+  reconnect, and cleanup;
+- client and server kernel peer credentials and exact effective-UID equality;
+- WebSocket `/v1/ws` with V1.2 and V1.1, without TCP, Axum, self-connect, watchdog, or
+  compatibility fallback;
+- concurrent legitimate daemons, active sessions, in-flight commands, child panic,
+  absolute-deadline cancellation, deterministic termination receipt readback, explicit
+  `join_next_with_id` harvesting through empty, and zero owned work before cleanup;
+- exact cleanup refusal, listener close, and namespace-lock release order; and
+- reverse dependency isolation for remote/cross-UID transport, PKI, PostgreSQL end-user
+  authentication, routing, `ProcessGeneration`, `RuntimeSession`, `ProviderAttempt`, UI,
+  packaging, release, and production dispatch.
+
+The same gate owns one batch conversion of the exact twelve stale TCP-era caller and
+fixture surfaces:
+
+1. `crates/decodex-protocol/src/lib.rs`
+2. `crates/decodex-protocol/src/client.rs`
+3. `crates/decodex-protocol/src/retained_session.rs`
+4. `crates/decodex-runtime/tests/websocket_protocol.rs`
+5. `crates/decodex-runtime/tests/bootstrap_doctor.rs`
+6. `crates/decodex-runtime/tests/cli_diagnostics.rs`
+7. `crates/decodex-runtime/tests/supervised_validation.rs`
+8. `crates/decodex-core/tests/support/test_root.rs`
+9. `crates/decodex-core/tests/config.rs`
+10. `apps/decodex-gpui/src/client_lifecycle/tests.rs`
+11. `scripts/vnext/postgres_store_test.py`
+12. `scripts/vnext/cli_diagnostics_test.py`
+
+That batch removes the retired `LoopbackEndpoint`, local `address`, URL-based retained
+session construction, `InvalidEndpoint`, TCP socket/address fixtures, `BoundServer::address`,
+TCP V1 URIs, the fixed `127.0.0.1:49152` replacement fixture, the isolated-loopback-port
+gate text, and dependency-only `use axum as _`. It then removes the runtime Axum
+dev-dependency, workspace edge, and lock packages only if the exact reverse scan finds no
+other accepted active owner. This source candidate must not add a production facade to
+make those stale surfaces pass early.
+
+## XY-1402 source-only validation boundary
+
+XY-1402 is pre-core-freeze source work. Do not run a formatter, build, compiler,
+lint or static analysis, migration or SQL parser, test, fixture, generator,
+service, VM, UI or Accessibility check, live Codex experiment, account operation,
+or provider effect for its candidate. Bounded source inspection and the required
+signed commit receipt are not executable acceptance.
+
+V25 adds the execution route and wait enum vocabulary in a separate committed
+transaction. V26 is the current execution-coordination cutover. It removes the drained V12
+ManagedRun-local submitted-turn and effect-barrier authority. Its source inventory
+contains 80 relations, 182 functions, 74 safety functions, 146
+safety/state/retention triggers, and 70 runtime-callable functions. The accepted
+schema and configured-authority digests stay frozen at the V22 boundary until the
+later unified gate derives and verifies the integrated V26 values.
+
+The later gate must bind its results to the exact candidate tree. It must run the
+complete [XY-1402 deferred acceptance matrix](../specs/execution-coordinator-authority.md#deferred-acceptance-matrix).
+That matrix includes clean and populated migration, drain, historical
+cross-link, and ambiguity falsifiers, S0/R1/R2 manifests, ACL closure, both
+consumer shapes, route causes, quota separation and aging, RuntimeSession
+continuity, ProcessGeneration fencing, ProviderAttempt capability consumption
+and ambiguity, same-UID transport, concurrency, hostile cross-links, and reverse
+production isolation.
+
 ## Vstyle audit authority
 
 Vstyle is an explicit read-only audit and is not part of the blocking `lint` or `check`
@@ -108,8 +185,11 @@ repository maintainers. It must be reevaluated by 2026-08-15, whenever executabl
 identity changes, whenever the accepted baseline changes, and before any scope is promoted
 to blocking.
 
-The CLI matrix builds the real `decodex` binary, binds the real runtime to an isolated
-OS-selected loopback port, and proves status/doctor, stable identity mismatch,
+The current CLI matrix is one of the deferred XY-1399 stale surfaces. Its historical
+fixture builds the real `decodex` binary and selects an isolated OS loopback port. It
+must not be treated as acceptance for the same-UID Unix transport. The frozen-core batch
+must replace that fixture with the fixed owner-only namespace and then prove status/doctor,
+stable identity mismatch,
 disconnection, malformed/missing profile configuration, unsafe server-host paths,
 database unavailability, plugin/vault/blob unknown states, and redaction. Protocol unit
 fixtures separately force wrong major/minor, malformed/oversized response, timeout, and
@@ -414,8 +494,8 @@ Use the owner path to choose the first validation surface:
   integrity-verifying blobs, and disposable bounded cache. For managed repositories it
   owns only mechanism-neutral values, facts, descriptors, evidence, and pure deciders;
   these are not durable authority.
-- `crates/decodex-protocol/`: version and loopback server boundary plus the bounded typed
-  client transport shared by CLI and future UI clients.
+- `crates/decodex-protocol/`: version, same-UID Unix namespace authority, and bounded
+  typed WebSocket client transport shared by CLI and future UI clients.
 - `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated
   real-PostgreSQL integration tests; XY-1307 runtime composition supplies only typed
   explicit configuration and retains unavailable on every bootstrap failure. XY-1349 is

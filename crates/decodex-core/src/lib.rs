@@ -7,6 +7,7 @@ mod cache;
 mod config;
 mod continuation;
 mod conversation;
+mod execution;
 mod experiment;
 mod identity;
 mod managed_repository;
@@ -40,12 +41,13 @@ pub use self::{
 	},
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
-		MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig, ProfileName,
-		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
+		LocalTrustPolicy, MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig,
+		ProfileName, RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile,
+		ServerRepositoryPath,
 	},
 	continuation::{
-		ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlan,
-		ContinuationPlanKind, ContinuationRejection, SameThreadContinuationEvidence,
+		ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind,
+		ContinuationRejection, SameThreadContinuationEvidence,
 	},
 	conversation::{
 		AccountSnapshot, ArtifactId, ArtifactReference, ArtifactStatus, ContextPack,
@@ -61,6 +63,7 @@ pub use self::{
 		RuntimeSessionState, Turn, TurnId, TurnRole, TurnStatus, compile_context_pack,
 		contains_credential_material, is_canonical_media_type, is_credential_metadata_key,
 	},
+	execution::ExecutionConsumer,
 	experiment::{
 		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
 		CodexExperimentObservation, CodexExperimentObservationKind, CodexExperimentPrepared,
@@ -100,9 +103,9 @@ pub use self::{
 		resolve_operation_assignment, worktree_ready_readback_request,
 	},
 	managed_run::{
-		EffectId, ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
-		ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
-		ManagedRunState, ManagedRunWaitReason, SafetyObservationId, SubmittedTurnReceiptId,
+		ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
+		ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunState,
+		ManagedRunWaitReason,
 	},
 	paths::{DecodexPaths, DecodexRoot, PathError},
 	policy::{
@@ -156,8 +159,9 @@ pub use self::{
 	},
 	routing::{
 		CodexCapability, RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome,
-		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind,
-		RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingEvidenceEffect,
+		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionCause,
+		RoutingDecisionExclusion, RoutingDecisionKind, RoutingDecisionQuotaFact,
+		RoutingDecisionSnapshot, RoutingEvidenceEffect,
 		RoutingKernelError, RoutingMemberDisposition, RoutingNoRouteReason, RoutingPolicyEffect,
 		RoutingPolicyMember, RoutingRejection, RoutingSnapshot, RoutingSnapshotCapabilityFact,
 		RoutingSnapshotMember, RoutingSnapshotQuotaFact, RoutingTimestampPrecision,

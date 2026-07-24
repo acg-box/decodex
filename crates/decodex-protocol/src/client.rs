@@ -3,7 +3,6 @@
 use std::{
 	fmt::{Debug, Display, Formatter},
 	io::ErrorKind,
-	net::IpAddr,
 	path::Path,
 	time::Duration,
 };
@@ -20,6 +19,7 @@ use crate::{
 	CURRENT_VERSION, ClientHello, ClientMessage, DoctorReport, ProtocolVersion, QueryEnvelope,
 	QueryId, QueryPayload, QueryResultPayload, Refusal, RefusalEnvelope, RetainedSessionConfig,
 	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
+	local_transport::{LocalTransportAuthority, LocalTransportRefusal},
 };
 use decodex_core::{
 	ConfigError, DecodexClientConfig, DecodexRoot, PathError, ServerIdentity, ServerProfile,
@@ -28,13 +28,15 @@ use decodex_core::{
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLIENT_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_INTERLEAVED_MESSAGES: usize = 64;
-const WS_PATH: &str = "/v1/ws";
+// This URI is WebSocket handshake metadata only. The client passes an already
+// admitted Unix stream, so this value cannot resolve or dial a TCP endpoint.
+const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 /// Whether one selected client profile targets the same host or a different host.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileKind {
-	/// Loopback service on the client host.
+	/// Same-UID service on the client host.
 	Local,
 	/// Explicit different-host service with a mandatory identity pin.
 	Remote,
@@ -47,7 +49,7 @@ pub enum ProfileKind {
 #[derive(Clone, Eq, PartialEq)]
 pub struct ClientProfile {
 	kind: ProfileKind,
-	url: String,
+	local_transport: Option<LocalTransportAuthority>,
 	expected_server_id: ServerId,
 }
 impl ClientProfile {
@@ -67,6 +69,12 @@ impl ClientProfile {
 
 		match profile {
 			ServerProfile::Local(profile) => {
+				let local_transport = LocalTransportAuthority::new(
+					paths.clone(),
+					profile.policy(),
+					profile.service_owner_uid(),
+				)
+				.map_err(map_local_transport_failure)?;
 				let expected = match profile.expected_server_identity() {
 					Some(identity) => identity.clone(),
 					None => ServerIdentity::load(&paths).map_err(map_identity_error)?,
@@ -74,24 +82,15 @@ impl ClientProfile {
 
 				Ok(Self {
 					kind: ProfileKind::Local,
-					url: format!("ws://{}{WS_PATH}", profile.address()),
+					local_transport: Some(local_transport),
 					expected_server_id: server_id(&expected)?,
 				})
 			},
-			ServerProfile::Remote(profile) => {
-				let host =
-					if profile.host().parse::<IpAddr>().is_ok_and(|address| address.is_ipv6()) {
-						format!("[{}]", profile.host())
-					} else {
-						profile.host().into()
-					};
-
-				Ok(Self {
-					kind: ProfileKind::Remote,
-					url: format!("ws://{host}:{}{WS_PATH}", profile.port()),
-					expected_server_id: server_id(profile.expected_server_identity())?,
-				})
-			},
+			ServerProfile::Remote(profile) => Ok(Self {
+				kind: ProfileKind::Remote,
+				local_transport: None,
+				expected_server_id: server_id(profile.expected_server_identity())?,
+			}),
 		}
 	}
 
@@ -102,9 +101,17 @@ impl ClientProfile {
 
 	/// Project this selected typed profile into the retained-session boundary.
 	///
-	/// Remote profiles remain fail-closed while retained sessions are loopback-only.
+	/// Remote profiles remain fail-closed while retained sessions are same-UID local only.
 	pub fn retained_session_config(&self) -> Result<RetainedSessionConfig, RetainedSessionFailure> {
-		RetainedSessionConfig::new(&self.url, self.expected_server_id.clone())
+		let local_transport = self
+			.local_transport
+			.clone()
+			.ok_or(RetainedSessionFailure::RemoteTransportDisabled)?;
+
+		Ok(RetainedSessionConfig::new(
+			local_transport,
+			self.expected_server_id.clone(),
+		))
 	}
 
 	#[cfg(test)]
@@ -149,15 +156,28 @@ impl DoctorClient {
 	}
 
 	async fn query_inner(&self) -> Result<DoctorReport, ClientFailure> {
+		let local_transport = self
+			.profile
+			.local_transport
+			.as_ref()
+			.ok_or(ClientFailure::RemoteTransportDisabled)?;
 		let config = WebSocketConfig::default()
 			.read_buffer_size(16 * 1_024)
 			.write_buffer_size(16 * 1_024)
 			.max_write_buffer_size(MAX_CLIENT_MESSAGE_BYTES)
 			.max_message_size(Some(MAX_CLIENT_MESSAGE_BYTES))
 			.max_frame_size(Some(MAX_CLIENT_MESSAGE_BYTES));
+		let stream = time::timeout(self.timeout, local_transport.connect())
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)?
+			.map_err(map_local_transport_failure)?;
 		let (mut socket, _) = time::timeout(
 			self.timeout,
-			tokio_tungstenite::connect_async_with_config(&self.profile.url, Some(config), false),
+			tokio_tungstenite::client_async_with_config(
+				LOCAL_WEBSOCKET_URI,
+				stream,
+				Some(config),
+			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)?
@@ -323,6 +343,18 @@ pub enum ClientFailure {
 	UnsafeHostPath,
 	/// A local profile had neither a pin nor a readable stable host identity.
 	ServerIdentityUnavailable,
+	/// Durable local policy disables the local endpoint.
+	LocalTransportDisabled,
+	/// The selected remote transport remains outside this implementation.
+	RemoteTransportDisabled,
+	/// The platform has no accepted kernel peer-identity implementation.
+	LocalTransportUnsupported,
+	/// The local directory, lock, socket, or captured identity is unsafe.
+	UnsafeLocalEndpoint,
+	/// The kernel did not provide an unambiguous local peer identity.
+	LocalPeerIdentityUnavailable,
+	/// The process or connected peer does not match the configured service UID.
+	LocalPeerUidMismatch,
 	/// No usable daemon WebSocket connection was established or retained.
 	ProtocolDisconnected,
 	/// A bounded connection or response deadline elapsed.
@@ -349,6 +381,13 @@ impl Display for ClientFailure {
 			Self::ProfileMissing => "selected profile is missing",
 			Self::UnsafeHostPath => "client configuration path is unsafe",
 			Self::ServerIdentityUnavailable => "stable server identity is unavailable",
+			Self::LocalTransportDisabled => "local daemon transport is disabled",
+			Self::RemoteTransportDisabled => "remote daemon transport is disabled",
+			Self::LocalTransportUnsupported =>
+				"local daemon transport is unsupported on this platform",
+			Self::UnsafeLocalEndpoint => "local daemon endpoint is unsafe",
+			Self::LocalPeerIdentityUnavailable => "local daemon peer identity is unavailable",
+			Self::LocalPeerUidMismatch => "local daemon peer UID does not match",
 			Self::ProtocolDisconnected => "daemon protocol is disconnected",
 			Self::ProtocolTimeout => "daemon protocol timed out",
 			Self::ProtocolMajorMismatch => "daemon protocol major version does not match",
@@ -390,6 +429,25 @@ fn map_identity_error(error: ConfigError) -> ClientFailure {
 		| ConfigError::InvalidServerIdentity => ClientFailure::ServerIdentityUnavailable,
 		ConfigError::Path(_) => ClientFailure::UnsafeHostPath,
 		_ => ClientFailure::ServerIdentityUnavailable,
+	}
+}
+
+fn map_local_transport_failure(failure: LocalTransportRefusal) -> ClientFailure {
+	match failure {
+		LocalTransportRefusal::Disabled => ClientFailure::LocalTransportDisabled,
+		LocalTransportRefusal::InvalidPolicy
+		| LocalTransportRefusal::ConfigurationUnavailable =>
+			ClientFailure::ConfigurationMalformed,
+		LocalTransportRefusal::UnsupportedPlatform => ClientFailure::LocalTransportUnsupported,
+		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch =>
+			ClientFailure::LocalPeerUidMismatch,
+		LocalTransportRefusal::UnsafeDirectory
+		| LocalTransportRefusal::UnsafeEndpoint
+		| LocalTransportRefusal::EndpointReplaced => ClientFailure::UnsafeLocalEndpoint,
+		LocalTransportRefusal::PeerCredentialsUnavailable =>
+			ClientFailure::LocalPeerIdentityUnavailable,
+		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse =>
+			ClientFailure::ProtocolDisconnected,
 	}
 }
 

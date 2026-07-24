@@ -73,37 +73,30 @@ reviewer, PR, harness, or Goal. A ManagedRun separates:
 - lifecycle: `queued`, `active`, `waiting`, `terminal`;
 - phase: `prepare`, `execute`, `validate`, `review`, `repair`, `land`, `close`;
 - wait reason: `usage`, `auth`, `plugin`, `dependency`, `approval`, `user`, `external`,
-  `reviewer_unavailable`, `reviewer_failed`.
+  `reconciliation`, `reviewer_unavailable`, `reviewer_failed`, `reviewer_ambiguous`.
 
-The inert V12 boundary persists only `waiting` ManagedRuns that remain blocked. Every run is
-foreign-key bound to its exact Project, canonical WorkItem, and authoritative RuntimeSession
-revision. Task and Reviewer assignments are exact-run RuntimeSession identities whose closed role
-type cannot represent Advisor or Lead and contains no durable Agent identity. Effect lineage is
-foreign-key bound to one run and one barrier. Barrier states are `guarded` or permanently `closed`;
-both deny effects, and there is no open state or positive execution transition in V12.
+Before V26, the inert V12 boundary persisted only `waiting` ManagedRuns that remained blocked.
+Every run was foreign-key bound to its exact Project, canonical WorkItem, and authoritative
+RuntimeSession revision. Task and Reviewer assignments remain exact-run RuntimeSession identities.
+Their closed role type cannot represent Advisor or Lead and contains no durable Agent identity.
+V12 effect lineage was foreign-key bound to one run and one barrier. Barrier states were `guarded`
+or permanently `closed`; both denied effects.
 
-The only V12 mutation consumes a positively observed unknown exact turn, a Decodex-owned exact
-submitted-turn receipt, or an explicit inconclusive observation. It atomically preserves a blocked
-waiting run, records divergence only from positive unknown-turn evidence, closes the barrier once,
-and stores exact replay bytes. A stale submitted receipt and an inconclusive observation remain
-fail-closed without asserting divergence. Missing, empty, exhausted, not-found, scan-exhaustion,
-no-event, or method-result absence is not an input and cannot authorize progress. Experiment
-creation, observation production, run creation/acquisition, scheduling, dispatch, progress,
-validation, completion, review verdicts, repair, and landing remain outside V12 and blocked by
-XY-1304 or later owners.
+The historical V12 mutation consumed a positively observed unknown exact turn, a Decodex-owned
+exact submitted-turn receipt, or an explicit inconclusive observation. It preserved a blocked
+waiting run and recorded divergence only from positive unknown-turn evidence. Missing, empty,
+exhausted, not-found, scan-exhaustion, no-event, or method-result absence never authorized
+progress.
 
-The safety transaction reserves its exact receipt and validates input before acquiring hierarchy
-coordinator 1271, then the run-scoped 1338 lock, before any run/session/barrier/Turn read or lock.
-V12 also forward-repairs the V3 Turn and HistoryItem invoker-rights guards for V10's SELECT-only
-RuntimeSession authority: they read but never row-lock RuntimeSessions, retain their legal
-Conversation and Turn row locks, and accept direct hierarchy DML only in `READ COMMITTED`.
-Unsupported isolation fails retryably with `40001`; it never authorizes a stale absence decision.
+V26 removes the drained V12 submitted-turn, safety-input, effect, and barrier relations and their
+exact writer. The cutover stops if any live row or V12 exact-command receipt remains. It does not
+create a compatibility or fallback writer. The V3 Turn and HistoryItem invoker-rights repairs that
+V12 introduced remain current and independent of the retired ManagedRun-local effect authority.
 
 V24 cuts external-turn authority over to the generic ProviderAttempt owner. V12 submitted-turn
 receipts, safety inputs, and effect barriers are not inputs to ProviderAttempt submission or
-outcome. They can remain as inert historical ManagedRun data until XY-1402 adapts both consumer
-paths and retires the old shapes. They cannot become a second attempt, receipt, or ambiguity
-ledger.
+outcome. V25/V26 adapt V14, V16, and V17 for both consumer paths and retire the old V12 shapes.
+ProviderAttempt remains the sole external-turn attempt, receipt, and ambiguity authority.
 
 Project/Program policy is versioned authority over allowed repositories, tools, paths, merge
 behavior, parallelism, budgets, approvals, and quiet periods. Commands use expected
@@ -586,12 +579,13 @@ passive-receipt tracking. Host-owned before/after receipts prove causal no-mutat
 and cannot establish account-owned readiness.
 
 XY-1358 owns the original causal experiment ledger. XY-1367/V22 repairs its two-effect retained-title
-authority without changing V15. After an exact V16 decision, XY-1360 owns
-same-thread continuation when exact positive account/profile/build evidence permits it, otherwise
-one atomic Context-Pack plus RuntimeSession fallback that preserves Conversation and ManagedRun
-identity. It allocates no V17 in advance. XY-1361 composes these authorities with production
-dispatch still structurally disabled. Ambiguous-turn replay remains blocked by ProviderAttempt.
-ManagedRun consumes the attempt result and keeps only domain lifecycle authority.
+authority without changing V15. After an exact V16 decision, V17 owns same-thread continuation
+when exact positive account/profile/build evidence permits it. Otherwise, V17 owns one atomic
+Context Pack plus fallback RuntimeSession. V25/V26 preserve this authority for ordinary
+Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator sequences V16,
+V17, one live ProcessGeneration fence, and ProviderAttempt preparation. Production dispatch stays
+structurally disabled. Ambiguous-turn replay remains blocked by ProviderAttempt. ManagedRun
+consumes the attempt result and keeps only domain lifecycle authority.
 Repository/worktree/Git and artifact effects retain their own accepted authorities; routing never
 owns or weakens those boundaries.
 

@@ -14,8 +14,11 @@ Local-first agent workspace orchestration.
 ## vNext foundation status
 
 The active Rust workspace is the product-incomplete vNext foundation. `decodexd` now
-serves the versioned structured-JSON WebSocket protocol at loopback-only
-`ws://127.0.0.1:49152/v1/ws`. It negotiates protocol V1 current/previous minor,
+serves the versioned structured-JSON WebSocket protocol at
+`~/.decodex/server/decodex.sock`. The local profile permits only the exact configured
+effective UID. Both client and server verify kernel peer credentials for every connection.
+The WebSocket route remains `/v1/ws`, and the handshake URI does not dial TCP. The server
+negotiates protocol V1 current/previous minor,
 publishes bounded snapshots and resumable ordered events, deduplicates commands for one
 server lifetime in a fixed-capacity ledger, and disconnects clients whose bounded
 outbound queue fills. It loads the typed `~/.decodex/config.toml`, retains the stable
@@ -31,7 +34,8 @@ login role and every SET-reachable role. The operator must also pin the expected
 Unix-peer UID; descriptor-pinned socket metadata and kernel peer credentials are verified before
 either identity authenticates. Missing, malformed, unsafe, unreachable, authentication-failed,
 or incompatible configuration remains typed unavailable with no fallback. Protocol V1.2
-adds one bounded, redacted doctor/status query outside mutation receipts that live-revalidates the retained PostgreSQL
+adds bounded read-only doctor/status, Conversation-history, and immutable execution-decision
+queries outside mutation receipts. The doctor query live-revalidates the retained PostgreSQL
 endpoint and authority without migration or repinning; V1.1 remains the previous-minor window.
 The active `decodex status` and `decodex doctor` commands are API-only clients of that
 V1.2 query. They select the active or `--profile NAME` typed profile without echoing its
@@ -39,8 +43,11 @@ name, pin the stable server identity before accepting a snapshot or report, and 
 `--output json` under `decodex/cli-diagnostics/1`. Exit status is 0 only when all checks
 are ready, 1 for a complete report containing unavailable or unknown checks, and 2 for a
 closed client/configuration/protocol failure, including an incomplete current component set.
-Codex live dispatch, authentication/TLS,
-remote binding, and product UI behavior are still unavailable until their owning slices land.
+The local namespace uses a persistent single-link lock, fixed staging socket, and
+same-directory descriptor-relative publication. The runtime owns all session and command
+tasks in one set and empties that set before identity-checked cleanup, listener close, and
+lock release. Codex live dispatch, remote or cross-UID transport, application PKI,
+and product UI behavior are still unavailable until their owning slices land.
 The frozen v0.2 source remains under
 `apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is not
 a compatibility runtime.
@@ -101,8 +108,8 @@ runtime.
   `crates/decodex-codex/`, and `crates/decodex-runtime/` are the five active vNext
   library owners.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are the active vNext
-  composition roots. `decodexd` owns the loopback server; the CLI is the bounded API-only
-  diagnostic client, while GPUI still reports disabled capability.
+  composition roots. `decodexd` owns the same-UID Unix WebSocket server; the CLI is the
+  bounded API-only diagnostic client, while GPUI still reports disabled capability.
 - `apps/decodex/` preserves the frozen v0.2 package outside the active Cargo workspace.
 - `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
   release-delta, signal rendering, validation, and local ledger workflows.
