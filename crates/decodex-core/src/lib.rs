@@ -15,6 +15,7 @@ mod managed_run;
 mod paths;
 mod policy;
 mod process_generation;
+mod provider_attempt;
 mod program;
 mod project;
 mod quota;
@@ -118,6 +119,14 @@ pub use self::{
 		ProcessGeneration, ProcessGenerationError, ProcessGenerationId, ProcessGenerationIntent,
 		ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
 		ProcessStartIdentity,
+	},
+	provider_attempt::{
+		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES,
+		ManagedExecutionId, ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError,
+		ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
+		ProviderAttemptUnknownReason, ProviderDuplicateRisk, ProviderEvidenceId,
+		ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey,
+		ProviderRequestKeys, ProviderTerminalOutcome,
 	},
 	program::{
 		MAX_OBJECTIVE_CRITERIA, MAX_PROGRAM_CONTEXT_BYTES, MAX_PROGRAM_CONTEXT_DECISIONS,

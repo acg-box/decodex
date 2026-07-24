@@ -12,9 +12,9 @@
 //! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
 //! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
 //! cancellation, supersession, and fresh-routing requests, plus durable fenced ProcessGenerations,
-//! exact process identities, and append-only positive death evidence. It does not compose a scheduler,
-//! dispatch work, switch credentials, advance runs,
-//! replay turns or effects, or expose protocol/client behavior.
+//! exact process identities, append-only positive death evidence, and generic ProviderAttempts
+//! with positive-only outcome evidence. It does not compose a scheduler, dispatch work, switch
+//! credentials, advance runs, replay turns or effects, or expose protocol/client behavior.
 
 mod accounts;
 mod authority;
@@ -30,6 +30,7 @@ mod migrations;
 mod outbox;
 mod policies;
 mod process_generations;
+mod provider_attempts;
 mod programs;
 mod project_agents;
 mod quota;
@@ -72,6 +73,11 @@ pub use self::{
 		FreshProcessGenerationFence, PrepareProcessGenerationOutcome,
 		ProcessGenerationMutation, ProcessGenerationMutationOutcome,
 		ProcessGenerationRejection,
+	},
+	provider_attempts::{
+		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt,
+		FreshProviderDispatchFence, PrepareProviderAttemptOutcome, ProviderAttemptMutation,
+		ProviderAttemptMutationOutcome, ProviderAttemptRejection,
 	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	role_profiles::{
@@ -123,6 +129,11 @@ pub use decodex_core::{
 	ProcessGeneration, ProcessGenerationError, ProcessGenerationId, ProcessGenerationIntent,
 	ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
 	ProcessStartIdentity,
+	ManagedExecutionId, ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError,
+	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
+	ProviderAttemptUnknownReason, ProviderDuplicateRisk, ProviderEvidenceId,
+	ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey,
+	ProviderRequestKeys, ProviderTerminalOutcome,
 	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,

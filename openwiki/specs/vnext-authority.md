@@ -18,6 +18,7 @@ Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 | WorkItem | Concrete board item/execution request; `inbox`, `planned`, `ready`, `running`, `review`, `blocked`, `done`, or `canceled`. |
 | Conversation | Durable logical dialogue presented by Decodex; `open` or `archived`. |
 | RuntimeSession | Codex thread segment bound to an account, process, and immutable RoleProfile snapshot; `starting`, `active`, `ended`, or `diverged`. |
+| ProviderAttempt | One durable external Codex turn effect bound to one Conversation Turn or ManagedRun execution, accepted runtime authorities, request identity, and positive-only outcome evidence. |
 | ManagedRun | Controlled WorkItem execution with independent lifecycle, phase, and wait reason as defined below. |
 | Automation | Deterministic trigger targeting a Program, WorkItem, Advisor, or Lead; `enabled`, `paused`, or `retired`. It is not an agent. |
 | ContextRevision | Immutable, inspectable, provenance-linked long-term context snapshot. |
@@ -97,6 +98,12 @@ V12 also forward-repairs the V3 Turn and HistoryItem invoker-rights guards for V
 RuntimeSession authority: they read but never row-lock RuntimeSessions, retain their legal
 Conversation and Turn row locks, and accept direct hierarchy DML only in `READ COMMITTED`.
 Unsupported isolation fails retryably with `40001`; it never authorizes a stale absence decision.
+
+V24 cuts external-turn authority over to the generic ProviderAttempt owner. V12 submitted-turn
+receipts, safety inputs, and effect barriers are not inputs to ProviderAttempt submission or
+outcome. They can remain as inert historical ManagedRun data until XY-1402 adapts both consumer
+paths and retires the old shapes. They cannot become a second attempt, receipt, or ambiguity
+ledger.
 
 Project/Program policy is versioned authority over allowed repositories, tools, paths, merge
 behavior, parallelism, budgets, approvals, and quiet periods. Commands use expected
@@ -517,11 +524,12 @@ Persisted Codex thread identity carries Conversation continuity; process surviva
 or continue a RuntimeSession.
 
 ProcessGeneration proves replacement safety only. It does not prove provider non-submission,
-effect cancellation, or credential revocation. XY-1401 must keep an unproved authorized
-ProviderAttempt `unknown`; process exit or boot change cannot make it `not_submitted`, a
-replacement cannot replay it, and any successor is a distinct user-authorized effect with
-duplicate-risk acknowledgement. XY-1400 adds no account selection, routing, ProviderAttempt
-storage, remote authentication, UI, packaging, release, or live dispatch.
+effect cancellation, or credential revocation. V24 keeps an unproved authorized ProviderAttempt
+`unknown`; process exit or boot change cannot make it `not_submitted`, a replacement cannot replay
+it, and any successor is a distinct user-authorized effect with duplicate-risk acknowledgement.
+The generic attempt transaction consumes one accepted V16 decision, V17 RuntimeSession, and ready
+ProcessGeneration without creating or changing them. XY-1400 adds no account selection, routing,
+ProviderAttempt storage, remote authentication, UI, packaging, release, or live dispatch.
 A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
 alternate-control RPCs before enablement. XY-1400 does not add that gateway.
 
@@ -582,9 +590,10 @@ authority without changing V15. After an exact V16 decision, XY-1360 owns
 same-thread continuation when exact positive account/profile/build evidence permits it, otherwise
 one atomic Context-Pack plus RuntimeSession fallback that preserves Conversation and ManagedRun
 identity. It allocates no V17 in advance. XY-1361 composes these authorities with production
-dispatch still structurally disabled. Ambiguous-turn replay remains blocked until the accepted
-ManagedRun submitted-turn, effect-barrier, repository/worktree/Git, and artifact authorities
-reconcile it; routing never owns or weakens that boundary.
+dispatch still structurally disabled. Ambiguous-turn replay remains blocked by ProviderAttempt.
+ManagedRun consumes the attempt result and keeps only domain lifecycle authority.
+Repository/worktree/Git and artifact effects retain their own accepted authorities; routing never
+owns or weakens those boundaries.
 
 Those paragraphs define the target behavior, not current enablement. Until the separate
 [XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
