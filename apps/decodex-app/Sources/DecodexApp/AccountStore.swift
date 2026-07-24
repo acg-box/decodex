@@ -15,17 +15,22 @@ final class AccountStore {
 	var loginTranscript = ""
 	var notice: String?
 	var pendingLogoutRemovalKeys = Set<String>()
+	var usageRefillAnimations: [String: AccountUsageRefillAnimation] = [:]
 
 	@ObservationIgnored let bridge = DecodexAppBridge()
 	@ObservationIgnored var startupTask: Task<Void, Never>?
 	@ObservationIgnored var automaticRefreshTask: Task<Void, Never>?
 	@ObservationIgnored var operatorSnapshotStreamTask: Task<Void, Never>?
 	@ObservationIgnored var operatorSnapshotPublishedAtUnixEpoch: Int64?
+	@ObservationIgnored var usageRefillCleanupTasks: [String: Task<Void, Never>] = [:]
 
 	deinit {
 		startupTask?.cancel()
 		automaticRefreshTask?.cancel()
 		operatorSnapshotStreamTask?.cancel()
+		for task in usageRefillCleanupTasks.values {
+			task.cancel()
+		}
 	}
 
 	var isInitialLoading: Bool {

@@ -3,6 +3,9 @@ import SwiftUI
 
 struct AccountUsageSummaryView: View {
 	let account: CodexAccount
+	let usageRefillAnimation: AccountUsageRefillAnimation?
+	let prepareResetCredit: (ResetCreditUsePreparation) async -> String?
+	let consumeResetCredit: (ResetCreditUseAttempt) async -> Bool
 
 	var body: some View {
 		TimelineView(.periodic(from: Date(), by: 30)) { timeline in
@@ -13,7 +16,11 @@ struct AccountUsageSummaryView: View {
 				}
 
 				if account.hasResetCreditsSummary {
-					AccountResetCreditsSummaryView(account: account)
+					AccountResetCreditsSummaryView(
+						account: account,
+						prepareResetCredit: prepareResetCredit,
+						consumeResetCredit: consumeResetCredit
+					)
 						.transition(.panelInline)
 				}
 
@@ -26,7 +33,11 @@ struct AccountUsageSummaryView: View {
 							forWindowSeconds: account.primaryWindowSeconds
 						),
 						tone: account.usageTone(remainingPercent: account.primaryRemainingPercent),
-						currentTime: timeline.date
+						currentTime: timeline.date,
+						refillAnimation: usageRefillAnimation?.meterAnimation(
+							for: .primary,
+							currentPercent: account.primaryRemainingPercent
+						)
 					)
 					.transition(.panelInline)
 				}
@@ -40,7 +51,11 @@ struct AccountUsageSummaryView: View {
 							forWindowSeconds: account.secondaryWindowSeconds
 						),
 						tone: account.usageTone(remainingPercent: account.secondaryRemainingPercent),
-						currentTime: timeline.date
+						currentTime: timeline.date,
+						refillAnimation: usageRefillAnimation?.meterAnimation(
+							for: .secondary,
+							currentPercent: account.secondaryRemainingPercent
+						)
 					)
 					.transition(.panelInline)
 				}
@@ -58,6 +73,8 @@ struct AccountUsageSummaryView: View {
 
 struct AccountResetCreditsSummaryView: View {
 	let account: CodexAccount
+	let prepareResetCredit: (ResetCreditUsePreparation) async -> String?
+	let consumeResetCredit: (ResetCreditUseAttempt) async -> Bool
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
@@ -66,17 +83,24 @@ struct AccountResetCreditsSummaryView: View {
 				symbol: "arrow.counterclockwise.circle",
 				tint: PanelPalette.routeAccent(colorScheme).opacity(0.84)
 			)
+				.accessibilityHidden(true)
 
 			Text(summaryText)
 				.font(PanelFont.usageLabel)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.86))
 				.lineLimit(1)
 				.fixedSize(horizontal: true, vertical: false)
+				.accessibilityHidden(true)
 
-			AccountResetCreditExpiryStripView(account: account)
+			AccountResetCreditExpiryStripView(
+				account: account,
+				prepareResetCredit: prepareResetCredit,
+				consumeResetCredit: consumeResetCredit
+			)
 		}
 		.frame(minHeight: 18)
-		.accessibilityLabel(accessibilityLabel)
+		.accessibilityElement(children: .contain)
+		.accessibilityLabel("Reset cards, \(summaryText)")
 	}
 
 	private var summaryText: String {
@@ -84,28 +108,21 @@ struct AccountResetCreditsSummaryView: View {
 		return "\(count) reset"
 	}
 
-	private var accessibilityLabel: String {
-		let dates = account.availableResetCredits
-			.map { credit in
-				"expires \(formatResetCreditDate(credit.expiresAtUnixEpoch))"
-			}
-			.joined(separator: ", ")
-
-		return dates.isEmpty ? "reset cards \(summaryText)" : "reset cards \(summaryText), \(dates)"
-	}
-
-	private func resetCreditHelp(_ credit: AccountResetCredit) -> String {
-		"Expires \(formatResetCreditDate(credit.expiresAtUnixEpoch))"
-	}
 }
 
 struct AccountResetCreditExpiryStripView: View {
+	private static let confirmationWindowSeconds = 5
+
 	let account: CodexAccount
+	let prepareResetCredit: (ResetCreditUsePreparation) async -> String?
+	let consumeResetCredit: (ResetCreditUseAttempt) async -> Bool
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var placementStore = AccountRunStripPlacementStore()
 	@State private var scrollProxy = AccountRunStripScrollProxy()
 	@State private var scrollMetrics = AccountRunStripMetrics()
 	@State private var showsEdgeControls = false
+	@State private var confirmation = ResetCreditUseConfirmation()
+	@State private var confirmationSecondsRemaining = 0
 
 	var body: some View {
 		HStack(spacing: AccountRunStripLayout.edgeControlSpacing) {
@@ -117,20 +134,34 @@ struct AccountResetCreditExpiryStripView: View {
 			AccountRunStripScrollView(
 				placementStore: placementStore,
 				scrollProxy: scrollProxy,
+				allowsPointerPanning: false,
 				onMetricsChange: { metrics in
 					updateScrollMetrics(metrics)
 				}
 			) {
 				HStack(spacing: 4) {
 					ForEach(Array(account.availableResetCredits.enumerated()), id: \.offset) { index, credit in
-						resetCreditChip(formatResetCreditDate(credit.expiresAtUnixEpoch))
+						let target = resetCreditTargets[index]
+
+						Button {
+							tapResetCredit(target)
+						} label: {
+							resetCreditChip(
+								formatResetCreditDate(credit.expiresAtUnixEpoch),
+								target: target
+							)
+						}
+							.buttonStyle(.plain)
 							.modifier(
 								AccountRunChipPlacementReporter(
 									runID: "reset-\(index)",
 									placementStore: placementStore
 								)
 							)
-							.help(resetCreditHelp(credit))
+							.disabled(confirmation.isBusy)
+							.accessibilityLabel(resetCreditAccessibilityLabel(credit, target: target))
+							.accessibilityHint(resetCreditAccessibilityHint(target))
+							.help(resetCreditHelp(credit, target: target))
 					}
 				}
 				.padding(.trailing, 1)
@@ -151,15 +182,38 @@ struct AccountResetCreditExpiryStripView: View {
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.onAppear {
 			placementStore.retainOnly(resetCreditIDs)
+			confirmation.retainOnly(Set(resetCreditTargets))
+		}
+		.onDisappear {
+			confirmation.cancelPendingConfirmation()
+			confirmationSecondsRemaining = 0
 		}
 		.onChange(of: resetCreditIDs) { _, ids in
 			placementStore.retainOnly(ids)
 		}
+		.onChange(of: resetCreditTargets) { _, targets in
+			confirmation.retainOnly(Set(targets))
+		}
+		.task(id: confirmationCountdownAttempt) {
+			await runConfirmationCountdown(for: confirmationCountdownAttempt)
+		}
 		.animation(PanelMotion.inlineLayout, value: showsEdgeControls)
+	}
+
+	private var resetCreditTargets: [ResetCreditUseTarget] {
+		ResetCreditUseTarget.makeTargets(
+			accountID: account.accountFingerprint,
+			reportedAvailableCount: account.resetCreditsAvailableCount,
+			credits: account.availableResetCredits
+		)
 	}
 
 	private var resetCreditIDs: Set<String> {
 		Set(account.availableResetCredits.indices.map { "reset-\($0)" })
+	}
+
+	private var confirmationCountdownAttempt: ResetCreditUseAttempt? {
+		confirmation.isSubmitting ? nil : confirmation.armedAttempt
 	}
 
 	private func edgeButton(_ direction: AccountRunStripScrollDirection) -> some View {
@@ -181,24 +235,191 @@ struct AccountResetCreditExpiryStripView: View {
 		}
 	}
 
-	private func resetCreditChip(_ text: String) -> some View {
-		Text(text)
+	private func resetCreditChip(
+		_ expiryText: String,
+		target: ResetCreditUseTarget
+	) -> some View {
+		Text(resetCreditChipText(expiryText, target: target))
 			.font(PanelFont.usageValue)
-			.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.88))
+			.foregroundStyle(resetCreditChipForeground(target))
 			.monospacedDigit()
 			.lineLimit(1)
 			.fixedSize(horizontal: true, vertical: false)
 			.padding(.horizontal, 4)
 			.padding(.vertical, 1)
-			.background(resetCreditChipBackground)
+			.background(resetCreditChipBackground(target))
+			.contentShape(Rectangle())
 	}
 
-	private var resetCreditChipBackground: some ShapeStyle {
-		PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.16 : 0.11)
+	private func resetCreditChipText(
+		_ expiryText: String,
+		target: ResetCreditUseTarget
+	) -> String {
+		if confirmation.isPreparing(target) {
+			return "Preparing"
+		}
+		if confirmation.isSubmitting(target) {
+			return "Using"
+		}
+		if confirmation.isArmed(target) {
+			let seconds = confirmationSecondsRemaining > 0
+				? confirmationSecondsRemaining
+				: Self.confirmationWindowSeconds
+			return "Confirm Use · \(seconds)s"
+		}
+
+		return expiryText
 	}
 
-	private func resetCreditHelp(_ credit: AccountResetCredit) -> String {
-		"Expires \(formatResetCreditDate(credit.expiresAtUnixEpoch))"
+	private func resetCreditChipForeground(_ target: ResetCreditUseTarget) -> Color {
+		if confirmation.isPreparing(target) || confirmation.isArmed(target) {
+			return PanelPalette.warning(colorScheme)
+		}
+
+		return PanelPalette.primaryText(colorScheme).opacity(0.88)
+	}
+
+	private func resetCreditChipBackground(_ target: ResetCreditUseTarget) -> Color {
+		if confirmation.isPreparing(target) || confirmation.isArmed(target) {
+			return PanelPalette.warning(colorScheme).opacity(colorScheme == .dark ? 0.2 : 0.14)
+		}
+
+		return PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.16 : 0.11)
+	}
+
+	private func resetCreditHelp(
+		_ credit: AccountResetCredit,
+		target: ResetCreditUseTarget
+	) -> String {
+		let expiry = formatResetCreditDate(credit.expiresAtUnixEpoch)
+		if confirmation.isPreparing {
+			return confirmation.isPreparing(target)
+				? "Preparing reset card that expires \(expiry)"
+				: "Wait until the current reset-card request finishes."
+		}
+		if confirmation.isSubmitting {
+			return confirmation.isSubmitting(target)
+				? "Using reset card that expires \(expiry)"
+				: "Wait until the current reset-card request finishes."
+		}
+		if confirmation.isArmed(target) {
+			return "Click again within \(Self.confirmationWindowSeconds) seconds to use the reset card that expires \(expiry). Otherwise, confirmation cancels automatically."
+		}
+
+		return "Expires \(expiry). Click once to prepare this reset card."
+	}
+
+	private func resetCreditAccessibilityLabel(
+		_ credit: AccountResetCredit,
+		target: ResetCreditUseTarget
+	) -> String {
+		let expiry = formatResetCreditDate(credit.expiresAtUnixEpoch)
+		if confirmation.isPreparing(target) {
+			return "Preparing reset card that expires \(expiry)"
+		}
+		if confirmation.isSubmitting(target) {
+			return "Using reset card that expires \(expiry)"
+		}
+		if confirmation.isArmed(target) {
+			let seconds = confirmationSecondsRemaining > 0
+				? confirmationSecondsRemaining
+				: Self.confirmationWindowSeconds
+			return "Confirm use of reset card that expires \(expiry), \(seconds) seconds remaining"
+		}
+
+		return "Reset card, expires \(expiry)"
+	}
+
+	private func resetCreditAccessibilityHint(_ target: ResetCreditUseTarget) -> String {
+		if confirmation.isPreparing {
+			return confirmation.isPreparing(target)
+				? "The reset card is being prepared for confirmation."
+				: "Wait until the current reset-card request finishes."
+		}
+		if confirmation.isSubmitting {
+			return confirmation.isSubmitting(target)
+				? "The reset-card request is in progress."
+				: "Wait until the current reset-card request finishes."
+		}
+
+		return confirmation.isArmed(target)
+			? "Activate again to use this reset card. Confirmation cancels automatically after \(Self.confirmationWindowSeconds) seconds."
+			: "Activate once to prepare this reset card."
+	}
+
+	@MainActor
+	private func runConfirmationCountdown(
+		for attempt: ResetCreditUseAttempt?
+	) async {
+		guard let attempt else {
+			confirmationSecondsRemaining = 0
+			return
+		}
+
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(
+			by: .seconds(Self.confirmationWindowSeconds)
+		)
+		confirmationSecondsRemaining = Self.confirmationWindowSeconds
+
+		while clock.now < deadline {
+			let nextWake = min(
+				clock.now.advanced(by: .seconds(1)),
+				deadline
+			)
+			do {
+				try await clock.sleep(until: nextWake)
+			} catch {
+				return
+			}
+			guard Task.isCancelled == false,
+				confirmation.isArmed(attempt),
+				confirmation.isSubmitting == false
+			else {
+				return
+			}
+
+			confirmationSecondsRemaining = Self.roundedUpSeconds(
+				clock.now.duration(to: deadline)
+			)
+		}
+		guard Task.isCancelled == false,
+			confirmation.isArmed(attempt),
+			confirmation.isSubmitting == false
+		else {
+			return
+		}
+
+		confirmation.disarm(attempt)
+		confirmationSecondsRemaining = 0
+	}
+
+	private static func roundedUpSeconds(_ duration: Duration) -> Int {
+		let components = duration.components
+		guard components.seconds >= 0 else {
+			return 0
+		}
+
+		return Int(components.seconds) + (components.attoseconds > 0 ? 1 : 0)
+	}
+
+	private func tapResetCredit(_ target: ResetCreditUseTarget) {
+		guard let action = confirmation.tap(target) else {
+			return
+		}
+
+		switch action {
+		case .prepare(let preparation):
+			Task {
+				let creditID = await prepareResetCredit(preparation)
+				confirmation.finishPreparation(preparation, creditID: creditID)
+			}
+		case .consume(let attempt):
+			Task {
+				let resolved = await consumeResetCredit(attempt)
+				confirmation.finish(attempt, resolved: resolved)
+			}
+		}
 	}
 
 	private func updateScrollMetrics(_ metrics: AccountRunStripMetrics) {
