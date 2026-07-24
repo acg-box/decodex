@@ -10,6 +10,7 @@ use std::{
 	io::{self, ErrorKind, Read, Write},
 	mem::{self, MaybeUninit},
 	os::unix::{
+		ffi::OsStrExt as _,
 		fs::{FileExt as _, MetadataExt as _, PermissionsExt as _},
 		io::AsRawFd as _,
 		process::CommandExt as _,
@@ -28,8 +29,7 @@ use std::{
 };
 
 use libc::{
-	EBADF, EPERM, ESRCH, F_GETFD, F_GETFL, F_SETFD, F_SETFL, FD_CLOEXEC, O_NONBLOCK, RLIMIT_FSIZE,
-	SIGKILL, SIGTERM,
+	EPERM, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL, SIGTERM,
 };
 #[cfg(target_os = "linux")]
 use libc::{
@@ -49,7 +49,6 @@ use {
 	libc::UF_IMMUTABLE,
 	std::ffi::CString,
 	std::fs::{OpenOptions, Permissions},
-	std::os::unix::ffi::OsStrExt as _,
 	std::os::unix::fs::OpenOptionsExt as _,
 };
 
@@ -72,12 +71,23 @@ use decodex_codex::{
 	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, ThreadSummary, UnavailableReason,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
 };
-use decodex_core::AccountId;
+use decodex_core::{
+	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
+	ProcessGenerationId, ProcessGenerationIntent, ProcessIsolationKind, ProcessRunnerIdentity,
+};
 
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
 
 const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+const PRIVATE_STDIO_STARTUP_ENV: &str = "CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED";
+const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
+const PRIVATE_STDIO_CAPABILITY_ID: &str =
+	"codex-app-server-private-stdio-disabled-ephemeral-startup-v1";
+const STDIO_ONLY_ATTESTED_PLATFORM: &str = "macos-aarch64";
+const STDIO_ONLY_ATTESTED_VERSION: &str = "codex-cli 0.145.0-alpha.18";
+const STDIO_ONLY_ATTESTED_EXECUTABLE_SHA256: &str =
+	"f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9";
 const PROTOCOL_QUEUE_CAPACITY: usize = 64;
 const THREAD_LIST_LIMIT: usize = 100;
 const THREAD_SEARCH_LIMIT: usize = 10;
@@ -367,6 +377,214 @@ impl Debug for AppServerCommand {
 	}
 }
 
+/// Exact-build source-attested launch capability.
+///
+/// This type has no public constructor. A version string alone is insufficient: the exact
+/// protected executable digest and the fixed app-server command must match the accepted source
+/// contract. For the accepted image, Codex consumes
+/// `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` at process startup and selects
+/// `DisabledEphemeral` when `app-server --stdio` has no remote-control argument. This marker is
+/// startup-state evidence, not a permanent in-process policy. ProcessGeneration therefore keeps
+/// the raw channels private and returns no protocol writer. Unsupported builds fail closed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExactBuildLaunchCapability {
+	PrivateStdioDisabledEphemeralStartupV1,
+}
+impl ExactBuildLaunchCapability {
+	/// Reject unsupported platforms and image profiles before a profile-dependent preflight can
+	/// spawn a child.
+	fn attest_profile(command: &AppServerCommand) -> Result<Self, SupervisionError> {
+		if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+		let exact_args = command.app_server_args.len() == 2
+			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
+			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
+		let exact_digest =
+			hex_digest(&command.executable_digest) == STDIO_ONLY_ATTESTED_EXECUTABLE_SHA256;
+		if !exact_args || !exact_digest {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+
+		Ok(Self::PrivateStdioDisabledEphemeralStartupV1)
+	}
+
+	fn attest_build(
+		self,
+		command: &AppServerCommand,
+		build: &BuildId,
+	) -> Result<(), SupervisionError> {
+		let expected_build =
+			BuildId::from_attestation(STDIO_ONLY_ATTESTED_VERSION, &command.executable_digest)
+				.map_err(|_| SupervisionError::LaunchCapabilityUnavailable)?;
+
+		if &expected_build != build {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+
+		Ok(())
+	}
+
+	const fn identity(self) -> &'static str {
+		match self {
+			Self::PrivateStdioDisabledEphemeralStartupV1 => PRIVATE_STDIO_CAPABILITY_ID,
+		}
+	}
+
+	const fn lifetime(self) -> ExactProcessGenerationLifetimeCapability {
+		match self {
+			Self::PrivateStdioDisabledEphemeralStartupV1 =>
+				ExactProcessGenerationLifetimeCapability::MacosPrivateStdioBestEffortEofV1,
+		}
+	}
+}
+
+/// Exact lifetime capability derived only from one accepted executable profile.
+///
+/// There is intentionally no Linux variant. Generic session and descriptor setup cannot install
+/// `PR_SET_PDEATHSIG`; a future Linux primitive requires a separately accepted exact profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExactProcessGenerationLifetimeCapability {
+	MacosPrivateStdioBestEffortEofV1,
+}
+impl ExactProcessGenerationLifetimeCapability {
+	const fn control_kind(self) -> ProcessControlKind {
+		match self {
+			Self::MacosPrivateStdioBestEffortEofV1 =>
+				ProcessControlKind::StdioOnlyBestEffortEof,
+		}
+	}
+
+	fn configure(self, _command: &mut Command) -> Result<(), SupervisionError> {
+		match self {
+			Self::MacosPrivateStdioBestEffortEofV1
+				if cfg!(all(target_os = "macos", target_arch = "aarch64")) =>
+				Ok(()),
+			Self::MacosPrivateStdioBestEffortEofV1 =>
+				Err(SupervisionError::LaunchCapabilityUnavailable),
+		}
+	}
+}
+
+/// One non-forgeable account-bound app-server launch.
+///
+/// It retains the protected executable snapshot and derives the durable launch-manifest identity
+/// from the same exact image, command, arguments, working directory, environment, account, and
+/// exact-build capability that it later spawns. No mutable [`Command`] or caller-supplied runner
+/// digest crosses the ProcessSupervisor boundary.
+pub(crate) struct AttestedAppServerLaunch {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	build: BuildId,
+	runner_identity: ProcessRunnerIdentity,
+	capability: ExactBuildLaunchCapability,
+	guard: RunnerPermit,
+}
+impl AttestedAppServerLaunch {
+	/// Construct the launch only inside the existing account-launch owner.
+	///
+	/// The current accepted exact profile is the source-attested 0.145.0-alpha.18 macOS image.
+	/// Every other version or image, including an unrecorded Linux image, remains disabled until
+	/// an accepted exact profile is added.
+	#[expect(dead_code, reason = "sealed until an accepted product composition supplies launch input")]
+	pub(super) fn attest(
+		command: AppServerCommand,
+		binding: AccountBinding,
+		timeout: Duration,
+		guard: RunnerPermit,
+	) -> Result<Self, ProbeError> {
+		if guard.account_id.as_str() != binding.account_id.as_str()
+			|| guard.account_revision < 1
+		{
+			return Err(SupervisionError::InvalidBinding.into());
+		}
+
+		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
+		let marker = SchemaMarker::accepted();
+		SchemaContract::validate(marker.clone())
+			.map_err(|markers| ProbeError::SchemaMissing { markers })?;
+		let (build, _generated, guard) = attest_executable(
+			&command,
+			&binding,
+			Some(marker.canonical_digests()),
+			timeout,
+			Some(guard),
+		)?;
+		capability.attest_build(&command, &build)?;
+		let runner_identity =
+			attested_launch_identity(&command, &binding, &build, capability)?;
+		let guard = guard.ok_or(SupervisionError::CleanupUnavailable)?;
+
+		Ok(Self { command, binding, build, runner_identity, capability, guard })
+	}
+
+	/// Derive all durable pre-spawn facts that belong to the opaque launch authority.
+	pub(crate) fn derive_intent(
+		&self,
+		generation_id: ProcessGenerationId,
+		intended_boot_id: ProcessBootIdentity,
+		execution_authorization: ProcessExecutionAuthorization,
+	) -> ProcessGenerationIntent {
+		ProcessGenerationIntent {
+			generation_id,
+			account_id: self.binding.account_id.clone(),
+			runner_identity: self.runner_identity.clone(),
+			intended_boot_id,
+			control_kind: self.capability.lifetime().control_kind(),
+			isolation_kind: ProcessIsolationKind::Session,
+			execution_authorization,
+		}
+	}
+
+	/// Spawn the exact retained image. This method returns an error only before a child exists.
+	pub(crate) fn spawn(self) -> Result<AttestedProcessChild, SupervisionError> {
+		if ExactBuildLaunchCapability::attest_profile(&self.command)? != self.capability {
+			return Err(SupervisionError::LaunchCapabilityUnavailable);
+		}
+		self.capability.attest_build(&self.command, &self.build)?;
+		let mut command =
+			configured_attested_app_server_process(&self.command, &self.binding, self.capability)?;
+		let child = command.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
+
+		Ok(AttestedProcessChild {
+			owner: ProcessGroupOwner::new(child, Some(self.guard)),
+		})
+	}
+}
+
+/// Exact newly spawned child plus the existing daemon-local capacity authority.
+pub(crate) struct AttestedProcessChild {
+	owner: ProcessGroupOwner,
+}
+impl AttestedProcessChild {
+	pub(crate) fn process_id(&self) -> u32 {
+		self.owner.process_id()
+	}
+
+	pub(crate) fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+		self.owner.try_wait()
+	}
+
+	pub(crate) fn may_signal_process_group(&self) -> bool {
+		self.owner.may_signal_process_group()
+	}
+
+	pub(crate) fn has_private_lifetime_channels(&self) -> bool {
+		self.owner
+			.child
+			.as_ref()
+			.is_some_and(|child| child.stdin.is_some() && child.stdout.is_some())
+	}
+
+	/// Close private lifetime channels without returning either raw protocol handle.
+	pub(crate) fn close_private_lifetime_channels(&mut self) {
+		if let Some(child) = self.owner.child.as_mut() {
+			drop(child.stdin.take());
+			drop(child.stdout.take());
+		}
+	}
+}
+
 /// Exact active-account identity retained only in zeroizing, redacted process memory.
 #[derive(Clone, Eq, PartialEq)]
 pub(super) struct AccountIdentity {
@@ -574,24 +792,7 @@ impl SupervisedProcess {
 		binding: AccountBinding,
 		guard: Option<RunnerPermit>,
 	) -> Result<Self, SupervisionError> {
-		verify_executable(&command)?;
-		run_before_spawn_test(&command);
-		verify_executable(&command)?;
-		run_after_verification_test(&command);
-
-		let mut process = Command::new(command.executable.execution_path());
-
-		process
-			.arg0(&command.program)
-			.args(&command.app_server_args)
-			.current_dir(&command.working_directory)
-			.stdin(Stdio::piped())
-			.stdout(Stdio::piped())
-			.stderr(Stdio::null());
-
-		configure_child_environment(&mut process, &binding)?;
-		configure_process_group(&mut process, None);
-
+		let mut process = configured_app_server_process(&command, &binding)?;
 		let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
 		let mut owner = ProcessGroupOwner::new(child, guard);
 		let stdin = owner.child_mut().stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
@@ -1393,6 +1594,8 @@ pub enum SupervisionError {
 	ExecutableChanged,
 	/// Executable version/schema attestation failed.
 	PreflightFailed,
+	/// The exact image cannot attest the required private-stdio launch capability.
+	LaunchCapabilityUnavailable,
 	/// Child could not be spawned.
 	SpawnFailed,
 	/// Autonomous bounded cleanup ownership could not be established.
@@ -1657,6 +1860,8 @@ impl<'a> ProbeNegotiation<'a> {
 pub(super) struct ReapJob {
 	child: Child,
 	process_group: u32,
+	// PID/PGID reuse makes signaling invalid after positive reap or an uncertain wait error.
+	may_signal_process_group: bool,
 	pump: Option<StdoutPump>,
 	_guard: Option<RunnerPermit>,
 	#[cfg(test)]
@@ -1666,6 +1871,8 @@ pub(super) struct ReapJob {
 pub(super) struct ProcessGroupOwner {
 	child: Option<Child>,
 	process_group: u32,
+	// This authority is monotonic: no observation can restore it after reap or wait failure.
+	may_signal_process_group: bool,
 	guard: Option<RunnerPermit>,
 	pump: Option<StdoutPump>,
 	#[cfg(test)]
@@ -1678,6 +1885,7 @@ impl ProcessGroupOwner {
 		Self {
 			child: Some(child),
 			process_group,
+			may_signal_process_group: true,
 			guard,
 			pump: None,
 			#[cfg(test)]
@@ -1693,6 +1901,20 @@ impl ProcessGroupOwner {
 
 	fn child_mut(&mut self) -> &mut Child {
 		self.child.as_mut().expect("live owner must retain its child")
+	}
+
+	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+		let result = self.child_mut().try_wait();
+
+		if !matches!(&result, Ok(None)) {
+			self.may_signal_process_group = false;
+		}
+
+		result
+	}
+
+	const fn may_signal_process_group(&self) -> bool {
+		self.may_signal_process_group
 	}
 
 	fn process_id(&self) -> u32 {
@@ -1714,7 +1936,12 @@ impl ProcessGroupOwner {
 		let Some(child) = self.child.as_mut() else {
 			return Ok((ShutdownOutcome::Exited, self.guard.take()));
 		};
-		let outcome = terminate_process_group(child, self.process_group, timeout)?;
+		let outcome = terminate_process_group(
+			child,
+			self.process_group,
+			timeout,
+			&mut self.may_signal_process_group,
+		)?;
 
 		if self
 			.pump
@@ -1728,7 +1955,10 @@ impl ProcessGroupOwner {
 
 		let mut child = self.child.take().expect("confirmed child was present");
 
-		if !matches!(child.try_wait(), Ok(Some(_))) {
+		let result = child.try_wait();
+
+		if !matches!(result, Ok(Some(_))) {
+			self.may_signal_process_group = false;
 			self.child = Some(child);
 
 			return Err(SupervisionError::ShutdownFailed);
@@ -1747,6 +1977,7 @@ impl ProcessGroupOwner {
 		let job = ReapJob {
 			child,
 			process_group: self.process_group,
+			may_signal_process_group: self.may_signal_process_group,
 			pump: self.pump.take(),
 			_guard: Some(guard),
 			#[cfg(test)]
@@ -2728,13 +2959,123 @@ fn run_after_verification_test(_command: &AppServerCommand) {
 	}
 }
 
+fn configured_app_server_process(
+	command: &AppServerCommand,
+	binding: &AccountBinding,
+) -> Result<Command, SupervisionError> {
+	verify_executable(command)?;
+	run_before_spawn_test(command);
+	verify_executable(command)?;
+	run_after_verification_test(command);
+
+	let mut process = Command::new(command.executable.execution_path());
+	process
+		.arg0(&command.program)
+		.args(&command.app_server_args)
+		.current_dir(&command.working_directory)
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null());
+	configure_child_environment(&mut process, binding)?;
+	configure_process_session(&mut process, None);
+
+	Ok(process)
+}
+
+fn configured_attested_app_server_process(
+	command: &AppServerCommand,
+	binding: &AccountBinding,
+	capability: ExactBuildLaunchCapability,
+) -> Result<Command, SupervisionError> {
+	let mut process = configured_app_server_process(command, binding)?;
+	match capability {
+		ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1 => {
+			process.env(PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE);
+		},
+	}
+	capability.lifetime().configure(&mut process)?;
+	Ok(process)
+}
+
+fn attested_launch_identity(
+	command: &AppServerCommand,
+	binding: &AccountBinding,
+	build: &BuildId,
+	capability: ExactBuildLaunchCapability,
+) -> Result<ProcessRunnerIdentity, SupervisionError> {
+	let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
+	let mut digest = Sha256::new();
+
+	hash_launch_field(&mut digest, b"schema", b"decodex/attested-app-server-launch/1");
+	hash_launch_field(&mut digest, b"exec-policy", b"protected-snapshot-v1");
+	hash_launch_field(&mut digest, b"platform", STDIO_ONLY_ATTESTED_PLATFORM.as_bytes());
+	hash_launch_field(
+		&mut digest,
+		b"control-kind",
+		capability.lifetime().control_kind().as_sql().as_bytes(),
+	);
+	hash_launch_field(
+		&mut digest,
+		b"isolation-kind",
+		ProcessIsolationKind::Session.as_sql().as_bytes(),
+	);
+	hash_launch_field(&mut digest, b"build", build.as_str().as_bytes());
+	hash_launch_field(&mut digest, b"image", &command.executable_digest);
+	hash_launch_field(&mut digest, b"arg0", command.program.as_os_str().as_bytes());
+	for argument in &command.app_server_args {
+		hash_launch_field(&mut digest, b"argument", argument.as_os_str().as_bytes());
+	}
+	hash_launch_field(
+		&mut digest,
+		b"working-directory",
+		command.working_directory.as_os_str().as_bytes(),
+	);
+	hash_launch_field(&mut digest, b"environment-policy", b"clear-then-set-v1");
+	hash_launch_field(&mut digest, b"environment-name", b"HOME");
+	hash_launch_field(&mut digest, b"environment-value", home.as_os_str().as_bytes());
+	hash_launch_field(&mut digest, b"environment-name", b"PATH");
+	hash_launch_field(&mut digest, b"environment-value", CHILD_PATH.as_bytes());
+	hash_launch_field(
+		&mut digest,
+		b"environment-name",
+		PRIVATE_STDIO_STARTUP_ENV.as_bytes(),
+	);
+	hash_launch_field(
+		&mut digest,
+		b"environment-value",
+		PRIVATE_STDIO_STARTUP_VALUE.as_bytes(),
+	);
+	hash_launch_field(&mut digest, b"account", binding.account_id.as_str().as_bytes());
+	hash_launch_field(&mut digest, b"capability", capability.identity().as_bytes());
+
+	ProcessRunnerIdentity::new(format!("sha256:{}", hex_digest(&digest.finalize())))
+		.map_err(|_| SupervisionError::LaunchCapabilityUnavailable)
+}
+
+fn hash_launch_field(hasher: &mut Sha256, label: &[u8], value: &[u8]) {
+	hasher.update((label.len() as u64).to_be_bytes());
+	hasher.update(label);
+	hasher.update((value.len() as u64).to_be_bytes());
+	hasher.update(value);
+}
+
 fn cleanup_process_group_once(job: &mut ReapJob) -> bool {
 	#[cfg(test)]
 	if job.not_before.is_some_and(|not_before| Instant::now() < not_before) {
 		return false;
 	}
 
-	let exited = matches!(job.child.try_wait(), Ok(Some(_)));
+	let exited = match job.child.try_wait() {
+		Ok(Some(_)) => {
+			job.may_signal_process_group = false;
+			true
+		},
+		Ok(None) => false,
+		Err(_) => {
+			job.may_signal_process_group = false;
+			false
+		},
+	};
 	let group_absent = matches!(process_group_exists(job.process_group), Ok(false));
 
 	if exited && group_absent {
@@ -2747,7 +3088,9 @@ fn cleanup_process_group_once(job: &mut ReapJob) -> bool {
 		}
 	}
 
-	let _ = signal_process_group(job.process_group, SIGKILL);
+	if job.may_signal_process_group {
+		let _ = signal_process_group(job.process_group, SIGKILL);
+	}
 
 	false
 }
@@ -3177,7 +3520,7 @@ fn run_preflight_command(
 		.stderr(Stdio::null());
 
 	configure_child_environment(&mut process, binding)?;
-	configure_process_group(&mut process, Some(max_file_bytes));
+	configure_process_session(&mut process, Some(max_file_bytes));
 
 	let started = Instant::now();
 	let term_deadline = started + timeout / 2;
@@ -3212,7 +3555,7 @@ fn run_preflight_command(
 
 	loop {
 		if status.is_none() {
-			status = owner.child_mut().try_wait().map_err(|_| SupervisionError::PreflightFailed)?;
+			status = owner.try_wait().map_err(|_| SupervisionError::PreflightFailed)?;
 		}
 
 		let group_exists = process_group_exists(owner.process_id())?;
@@ -3227,12 +3570,12 @@ fn run_preflight_command(
 
 		let now = Instant::now();
 
-		if !term_sent && (status.is_some() || now >= term_deadline) {
+		if owner.may_signal_process_group() && !term_sent && now >= term_deadline {
 			signal_process_group(owner.process_id(), SIGTERM)?;
 
 			term_sent = true;
 		}
-		if !kill_sent && now >= kill_deadline {
+		if owner.may_signal_process_group() && !kill_sent && now >= kill_deadline {
 			signal_process_group(owner.process_id(), SIGKILL)?;
 
 			kill_sent = true;
@@ -3251,7 +3594,10 @@ fn configure_child_environment(
 ) -> Result<(), SupervisionError> {
 	let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
 
-	command.env_clear().env("HOME", home).env("PATH", CHILD_PATH);
+	command
+		.env_clear()
+		.env("HOME", home)
+		.env("PATH", CHILD_PATH);
 
 	Ok(())
 }
@@ -3278,21 +3624,24 @@ fn terminate_process_group(
 	child: &mut Child,
 	pid: u32,
 	timeout: Duration,
+	may_signal_process_group: &mut bool,
 ) -> Result<ShutdownOutcome, SupervisionError> {
-	let leader_exited = child.try_wait().map_err(|_| SupervisionError::ShutdownFailed)?.is_some();
+	let leader_exited = observe_owned_child_exit(child, may_signal_process_group)?;
 
 	if !process_group_exists(pid)? {
 		return Ok(ShutdownOutcome::Exited);
 	}
 
-	signal_process_group(pid, SIGTERM)?;
+	if *may_signal_process_group {
+		signal_process_group(pid, SIGTERM)?;
+	}
 
 	let started = Instant::now();
 	let term_deadline = started + timeout / 2;
 	let hard_deadline = started + timeout;
 
 	while Instant::now() < term_deadline {
-		let _ = child.try_wait().map_err(|_| SupervisionError::ShutdownFailed)?;
+		let _ = observe_owned_child_exit(child, may_signal_process_group)?;
 
 		if !process_group_exists(pid)? {
 			return Ok(if leader_exited {
@@ -3305,10 +3654,12 @@ fn terminate_process_group(
 		thread::sleep(Duration::from_millis(10));
 	}
 
-	signal_process_group(pid, SIGKILL)?;
+	if *may_signal_process_group {
+		signal_process_group(pid, SIGKILL)?;
+	}
 
 	while Instant::now() < hard_deadline {
-		let _ = child.try_wait().map_err(|_| SupervisionError::ShutdownFailed)?;
+		let _ = observe_owned_child_exit(child, may_signal_process_group)?;
 
 		if !process_group_exists(pid)? {
 			return Ok(ShutdownOutcome::KilledAfterTimeout);
@@ -3320,59 +3671,36 @@ fn terminate_process_group(
 	Err(SupervisionError::ShutdownFailed)
 }
 
-#[cfg(unix)]
-fn configure_process_group(command: &mut Command, max_file_bytes: Option<u64>) {
-	// Read before fork; the pre-exec closure must not perform non-async-signal-safe discovery.
-	let descriptor_limit = unsafe { libc::getdtablesize() }.max(3);
-
-	// SAFETY: `setsid`, `setrlimit`, and `fcntl` are async-signal-safe and the closure allocates
-	// nothing. Marking every non-stdio descriptor close-on-exec preserves Rust's exec-error pipe
-	// until exec while preventing all parent handles from entering the app-server image.
-	unsafe {
-		command.pre_exec(move || {
-			if libc::setsid() == -1 {
-				return Err(std::io::Error::last_os_error());
-			}
-
-			if let Some(limit) = max_file_bytes {
-				let limit = libc::rlimit { rlim_cur: limit, rlim_max: limit };
-
-				if libc::setrlimit(RLIMIT_FSIZE, &limit) == -1 {
-					return Err(std::io::Error::last_os_error());
-				}
-			}
-
-			for descriptor in 3..descriptor_limit {
-				mark_descriptor_close_on_exec(descriptor)?;
-			}
-
-			Ok(())
-		});
+fn observe_owned_child_exit(
+	child: &mut Child,
+	may_signal_process_group: &mut bool,
+) -> Result<bool, SupervisionError> {
+	match child.try_wait() {
+		Ok(Some(_)) => {
+			*may_signal_process_group = false;
+			Ok(true)
+		},
+		Ok(None) => Ok(false),
+		Err(_) => {
+			*may_signal_process_group = false;
+			Err(SupervisionError::ShutdownFailed)
+		},
 	}
 }
 
 #[cfg(unix)]
-unsafe fn mark_descriptor_close_on_exec(descriptor: i32) -> io::Result<()> {
-	// SAFETY: callers provide only an integer descriptor; fcntl is async-signal-safe.
-	let flags = unsafe { libc::fcntl(descriptor, F_GETFD) };
-
-	if flags == -1 {
-		let error = io::Error::last_os_error();
-
-		if error.raw_os_error() != Some(EBADF) {
-			return Err(error);
-		}
-	} else if flags & FD_CLOEXEC == 0
-		&& unsafe { libc::fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC) } == -1
-	{
-		return Err(io::Error::last_os_error());
-	}
-
-	Ok(())
+fn configure_process_session(
+	command: &mut Command,
+	max_file_bytes: Option<u64>,
+) {
+	crate::process_platform::configure_session_command(command, max_file_bytes);
 }
 
 #[cfg(not(unix))]
-fn configure_process_group(_command: &mut Command, _max_file_bytes: Option<u64>) {}
+fn configure_process_session(
+	_command: &mut Command,
+	_max_file_bytes: Option<u64>,
+) {}
 
 #[cfg(unix)]
 fn signal_process_group(pid: u32, signal: i32) -> Result<(), SupervisionError> {

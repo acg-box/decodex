@@ -23,6 +23,10 @@ navigation and current-status projection.
 - [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
   protocol, account continuity, non-goals, and migration contract outside the private-artifact
   carve-out.
+- [XY-1400 ProcessGeneration authority](specs/process-generation-authority.md): durable
+  pre-spawn fencing, opaque exact-build launch attestation, macOS positive-death quarantine,
+  exact process identity, ProviderAttempt ambiguity handoff, restore safety, and the deferred
+  adversarial acceptance matrix.
 - [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates,
   downstream issue ownership, and decision-changing falsifiers outside the private-artifact
   carve-out.
@@ -64,7 +68,10 @@ navigation and current-status projection.
   experiment persistence protocol. Forward-only V22 repairs its retained-title authority for the
   pinned two-effect protocol. It stores the exact nullable-name `thread/start` request and response.
   It then fences one `thread/name/set`. Only exact-ID `thread/read` can attest the prepared title.
-  Positive observations and V17 same-thread authority require that attestation. V16 adds inert
+  Positive observations and V17 same-thread authority require that attestation. Forward-only V23
+  adds durable ProcessGeneration intent, exact identity, append-only positive death evidence, and
+  account-local quarantine. Runtime has function-only ProcessSupervisor authority and no relation
+  DML. V16 adds inert
   atomic routing decisions over a
   PostgreSQL-authored locked universe, exact evidence references, duration-typed depletion
   exclusions, and pure-kernel readback. No production root reaches either boundary and they enable no
@@ -118,6 +125,12 @@ query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
 API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
 
+When PostgreSQL is ready, daemon bootstrap projects restored nonterminal
+ProcessGenerations to `death_unknown`, performs one positive-only reconciliation pass, and
+continues background reconciliation. Same-boot uncertainty remains local to its account. The
+runtime exposes an exact diagnostic/reconciliation/owned-termination port, but no protocol,
+CLI, routing, or production spawn path.
+
 When PostgreSQL is ready, daemon bootstrap also opens the accepted pinned repository executor,
 retains the single PostgreSQL/executor/saga composition, and completes bounded readback-only
 restart reconciliation before serving. No managed-repository or GitHub mutation is exposed by the
@@ -139,11 +152,11 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical embedded migrations. The 142 expected safety/state/retention
+source bodies matching the canonical embedded migrations. The 147 expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
-indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
-attests every shipped relation/column, default, constraint, index, enum label, and internal
+indirect execution path on a runtime relation. The accepted V22 canonical PostgreSQL 18 schema
+manifest attests its complete historical relation/column, default, constraint, index, enum-label, and internal
 constraint-trigger binding together with each stable catalog dependency identity. It includes
 foreign keys whose Decodex relation is either the child or
 the referenced parent, so external cascades and internally generated execution paths fail closed.
@@ -153,14 +166,17 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly forty-four narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly fifty-two narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
 commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
 RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
 running/resume guard, one command-complete ManagedRun safety consumer, twelve inert V14/V15/V22
 routing and causal-experiment entrypoints, the inert V16 exact routing-decision entrypoint, V17's inert
 exact continuation command plus strict readback, and V18's four exact wake commands plus strict
-readback.
+readback, plus V23's eight ProcessSupervisor fence, transition, projection, evidence, and read
+entrypoints. V23 has an exact semantic inventory overlay for its 81-relation, 172-function,
+70-safety-function, 147-trigger, 62-runtime-function, and five-enum boundary. Full S0/R1/R2 V23
+manifest capture and digest refreeze remain in the deferred unified gate.
 A selected V16 decision commits either one positive-evidence-bound same-thread plan or one Context
 Pack, fallback RuntimeSession, and plan in the same transaction. Runtime cannot insert
 cursor, exact-receipt, RoleProfile, RuntimeSession, RuntimeSession snapshot, WorkItem, ManagedRun,

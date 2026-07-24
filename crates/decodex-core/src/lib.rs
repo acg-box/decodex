@@ -14,6 +14,7 @@ mod managed_run;
 #[cfg(unix)] mod path_unix;
 mod paths;
 mod policy;
+mod process_generation;
 mod program;
 mod project;
 mod quota;
@@ -108,6 +109,15 @@ pub use self::{
 		MAX_POLICY_SNAPSHOT_KEY_BYTES, MAX_POLICY_SNAPSHOT_VALUE_BYTES, Policy, PolicyError,
 		PolicyId, PolicyProvenance, PolicyRepository, PolicyRevision, PolicyRevisionAcceptance,
 		PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp,
+	},
+	process_generation::{
+		MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES,
+		ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
+		ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId,
+		ProcessDeathEvidenceKind, ProcessExecutionAuthorization, ProcessExecutionEpochId,
+		ProcessGeneration, ProcessGenerationError, ProcessGenerationId, ProcessGenerationIntent,
+		ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
+		ProcessStartIdentity,
 	},
 	program::{
 		MAX_OBJECTIVE_CRITERIA, MAX_PROGRAM_CONTEXT_BYTES, MAX_PROGRAM_CONTEXT_DECISIONS,

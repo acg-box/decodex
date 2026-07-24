@@ -11,7 +11,8 @@
 //! attestations, and positive observations, plus atomic routing decisions and
 //! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
 //! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
-//! cancellation, supersession, and fresh-routing requests. It does not compose a scheduler,
+//! cancellation, supersession, and fresh-routing requests, plus durable fenced ProcessGenerations,
+//! exact process identities, and append-only positive death evidence. It does not compose a scheduler,
 //! dispatch work, switch credentials, advance runs,
 //! replay turns or effects, or expose protocol/client behavior.
 
@@ -28,6 +29,7 @@ mod managed_runs;
 mod migrations;
 mod outbox;
 mod policies;
+mod process_generations;
 mod programs;
 mod project_agents;
 mod quota;
@@ -65,6 +67,11 @@ pub use self::{
 		ManagedRunEffectBarrier, ManagedRunEffectBarrierState, ManagedRunEffectKind,
 		ManagedRunEffectLineage, ManagedRunSafetyEffect, ManagedRunSafetyOutcome,
 		ManagedRunSafetyRejection, StoredManagedRun,
+	},
+	process_generations::{
+		FreshProcessGenerationFence, PrepareProcessGenerationOutcome,
+		ProcessGenerationMutation, ProcessGenerationMutationOutcome,
+		ProcessGenerationRejection,
 	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
 	role_profiles::{
@@ -110,6 +117,12 @@ pub use decodex_core::{
 	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
 	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
 	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence, Program,
+	ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
+	ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId,
+	ProcessDeathEvidenceKind, ProcessExecutionAuthorization, ProcessExecutionEpochId,
+	ProcessGeneration, ProcessGenerationError, ProcessGenerationId, ProcessGenerationIntent,
+	ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
+	ProcessStartIdentity,
 	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
