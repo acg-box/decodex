@@ -1,6 +1,18 @@
-# Private-artifact executor and platform contract
+# Private-artifact executor and platform contract (retired design)
 
-## Bounded descriptor-relative capture
+Status: frozen historical, non-executable design evidence.
+
+At and after the [repository effective point](decision.md#repository-effective-point),
+every rule marker, executor step, platform claim, synchronization rule, capability,
+and modal verb in this file describes the retired private-artifact design only.
+Nothing in this file is a current runtime contract, platform requirement,
+implementation instruction, or future vNext obligation. Before that point, the
+fail-closed conditions in the retirement decision apply and no private-artifact
+work can start.
+
+## Frozen historical executor and platform design
+
+### Bounded descriptor-relative capture
 
 <a id="rule-PA-EXEC-0001"></a>
 **[rule:PA-EXEC-0001]** Capture is one bounded C-owned turn before Tx A. It uses
@@ -24,7 +36,7 @@ steps. Tx B validates the exact `ManifestV1`, content objects, and
 `CaptureEvidenceBundleV1`, then initializes the capture operation directly at
 `ContentRegistered`.
 
-## Executor-turn discipline
+### Executor-turn discipline
 
 <a id="rule-PA-EXEC-0002"></a>
 **[rule:PA-EXEC-0002]** A descriptor remains open for one executor turn only:
@@ -50,7 +62,7 @@ files and markers require link count one. Directory link count can exceed one bu
 must remain stable at required observations. Mount transition, duplicate directory
 identity, alias, or unsupported type is unsafe.
 
-## Create-new publication and retirement
+### Create-new publication and retirement
 
 <a id="rule-PA-EXEC-0003"></a>
 **[rule:PA-EXEC-0003]** Publication creates its stage inside the retained target
@@ -90,7 +102,7 @@ or failed post-effect sync enters the appropriate attention state. No path uses
 plain rename, overwrite, `linkat`, direct-final writing, check-then-rename,
 move-back, rollback unlink, or a second publication architecture.
 
-## Synchronization, collection, and exact-owned repair
+### Synchronization, collection, and exact-owned repair
 
 <a id="rule-PA-EXEC-0004"></a>
 **[rule:PA-EXEC-0004]** Linux durable files use `fsync`. macOS durable files use
@@ -110,7 +122,7 @@ nonaliased inode below the exact committed parent and marker. It needs verified 
 bytes and immediate identity revalidation. It cannot adopt a namespace object,
 change identity, repair a published target, or repair an uncommitted crash object.
 
-## Singleton kernel guard
+### Singleton kernel guard
 
 <a id="rule-PA-EXEC-0005"></a>
 **[rule:PA-EXEC-0005]** Production private-artifact effects are enabled only for
@@ -128,7 +140,7 @@ directory entry still names the guarded identity.
 or identity drift is unavailable. There is no PID-file, lock-directory,
 PostgreSQL-lease, or mutex fallback.
 
-## Boot scope and producer admission
+### Boot scope and producer admission
 
 <a id="rule-PA-EXEC-0006"></a>
 **[rule:PA-EXEC-0006]** macOS boot authority is exactly
@@ -153,7 +165,7 @@ remain in their inherited group. Escape through `setsid` or a changed process gr
 violates the cooperative producer contract. Concurrent covered launches are
 capped at 64; launch 65 fails before reservation and spawn.
 
-## Maintenance and restart
+### Maintenance and restart
 
 <a id="rule-PA-EXEC-0007"></a>
 **[rule:PA-EXEC-0007]** Maintenance changes admission to `Closing`, blocks new
@@ -174,7 +186,7 @@ producer generation, and only after accepted evidence proves that old processes
 cannot survive that exact change. Old operations become incompatible and do not
 resume. A same-host namespace-only or environment-only change is not absence proof.
 
-## Frozen platform claim boundary
+### Frozen platform claim boundary
 
 <a id="rule-PA-EXEC-0008"></a>
 **[rule:PA-EXEC-0008]** `authority/inventories.json#/platform_sources` and

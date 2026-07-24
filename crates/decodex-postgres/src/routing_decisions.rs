@@ -1,12 +1,13 @@
 use std::collections::BTreeSet;
 
 use decodex_core::{
-	AccountId, CodexCapability, ManagedRunId, ObservationConfidence, QuotaWindowClass,
+	AccountId, CodexCapability, ExecutionConsumer, ObservationConfidence, QuotaWindowClass,
 	RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome, RoutingDecision,
-	RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind,
-	RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingMemberDisposition,
-	RoutingNoRouteReason, RoutingRejection, RoutingSnapshotCapabilityFact,
-	RoutingTimestampPrecision, RoutingTimestampProvenance, decide_routing,
+	RoutingDecisionCandidate, RoutingDecisionCause, RoutingDecisionExclusion,
+	RoutingDecisionKind, RoutingDecisionQuotaFact, RoutingDecisionSnapshot,
+	RoutingMemberDisposition, RoutingNoRouteReason, RoutingRejection,
+	RoutingSnapshotCapabilityFact, RoutingTimestampPrecision, RoutingTimestampProvenance,
+	decide_routing,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -28,10 +29,8 @@ pub struct RouteAccount {
 	pub routing_policy_id: String,
 	/// Positive, exact policy revision PostgreSQL must lock for immutable snapshot selection.
 	pub expected_routing_policy_revision: i64,
-	/// Managed-run identity whose current routing lineage PostgreSQL must lock and resolve.
-	pub managed_run_id: ManagedRunId,
-	/// Positive, exact managed-run revision required while the complete snapshot is selected.
-	pub expected_managed_run_revision: i64,
+	/// Exact ordinary or managed execution consumer. It cannot carry an account choice.
+	pub consumer: ExecutionConsumer,
 }
 
 /// Exact immutable decision read back after PostgreSQL commits the complete evidence set.
@@ -45,6 +44,8 @@ pub struct PersistedRoutingDecision {
 	pub decision_id: String,
 	/// Semantic operation UUID carried through from the locked routing request lineage.
 	pub operation_id: String,
+	/// Exact consumer lineage committed with the immutable decision.
+	pub consumer: ExecutionConsumer,
 	/// PostgreSQL-owned decision instant as exact microseconds since the Unix epoch.
 	pub decided_at_micros: i64,
 	/// Inert pure-kernel outcome read back with its complete persisted evidence and exclusions.
@@ -61,27 +62,88 @@ impl PostgresStore {
 		validate_exact_key(idempotency_key)?;
 		validate_uuid(&request.operation_id, "routing operation identity")?;
 		validate_uuid(&request.routing_policy_id, "routing policy identity")?;
-		if request.expected_routing_policy_revision <= 0
-			|| request.expected_managed_run_revision <= 0
-		{
+		if request.expected_routing_policy_revision <= 0 || request.consumer.domain_revision() <= 0 {
 			return Err(StoreError::InvalidInput("routing decision revisions must be positive"));
+		}
+		let parts = ExecutionConsumerParts::from(&request.consumer);
+		if parts.source_runtime_session_revision.is_some_and(|revision| revision <= 0) {
+			return Err(StoreError::InvalidInput("source RuntimeSession revision must be positive"));
 		}
 		let response = self
 			.execute_exact_with_retry(
 				"SELECT decodex.route_account_exact($1,$2,$3::text::uuid,$4::text::uuid,$5,\
-				 $6::text::uuid,$7)",
+				 $6::text::decodex.provider_attempt_consumer_kind,$7::text::uuid,$8,\
+				 $9::text::uuid,$10,$11::text::uuid,$12::text::uuid,$13,$14::text::uuid)",
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
 					&request.operation_id,
 					&request.routing_policy_id,
 					&request.expected_routing_policy_revision,
-					&request.managed_run_id.as_str(),
-					&request.expected_managed_run_revision,
+					&parts.kind,
+					&parts.conversation_id,
+					&parts.conversation_revision,
+					&parts.source_runtime_session_id,
+					&parts.source_runtime_session_revision,
+					&parts.turn_id,
+					&parts.managed_run_id,
+					&parts.managed_run_revision,
+					&parts.managed_execution_id,
 				],
 			)
 			.await?;
 		parse_response(&response, request)
+	}
+}
+
+struct ExecutionConsumerParts<'a> {
+	kind: &'static str,
+	conversation_id: Option<&'a str>,
+	conversation_revision: Option<i64>,
+	source_runtime_session_id: Option<&'a str>,
+	source_runtime_session_revision: Option<i64>,
+	turn_id: Option<&'a str>,
+	managed_run_id: Option<&'a str>,
+	managed_run_revision: Option<i64>,
+	managed_execution_id: Option<&'a str>,
+}
+
+impl<'a> From<&'a ExecutionConsumer> for ExecutionConsumerParts<'a> {
+	fn from(value: &'a ExecutionConsumer) -> Self {
+		match value {
+			ExecutionConsumer::ConversationTurn {
+				conversation_id,
+				conversation_revision,
+				source_runtime_session_id,
+				source_runtime_session_revision,
+				turn_id,
+			} => Self {
+				kind: value.as_sql(),
+				conversation_id: Some(conversation_id.as_str()),
+				conversation_revision: Some(*conversation_revision),
+				source_runtime_session_id: Some(source_runtime_session_id.as_str()),
+				source_runtime_session_revision: Some(*source_runtime_session_revision),
+				turn_id: Some(turn_id.as_str()),
+				managed_run_id: None,
+				managed_run_revision: None,
+				managed_execution_id: None,
+			},
+			ExecutionConsumer::ManagedRunExecution {
+				managed_run_id,
+				managed_run_revision,
+				execution_id,
+			} => Self {
+				kind: value.as_sql(),
+				conversation_id: None,
+				conversation_revision: None,
+				source_runtime_session_id: None,
+				source_runtime_session_revision: None,
+				turn_id: None,
+				managed_run_id: Some(managed_run_id.as_str()),
+				managed_run_revision: Some(*managed_run_revision),
+				managed_execution_id: Some(execution_id.as_str()),
+			},
+		}
 	}
 }
 
@@ -105,7 +167,7 @@ fn parse_response(
 				code,
 				"malformed_input"
 					| "stale_routing_policy"
-					| "stale_managed_run"
+					| "stale_consumer"
 					| "snapshot_missing"
 					| "concurrent_authority_change"
 			) {
@@ -123,12 +185,19 @@ fn parse_response(
 		effect,
 		&[
 			"capability_facts",
+			"causes",
+			"consumer_kind",
+			"conversation_id",
+			"conversation_revision",
 			"decided_at_micros",
 			"decision_id",
 			"effect_digest",
 			"effect_digest_source",
 			"exclusions",
 			"kind",
+			"managed_execution_id",
+			"managed_run_id",
+			"managed_run_revision",
 			"members",
 			"no_route_reason",
 			"operation",
@@ -136,12 +205,16 @@ fn parse_response(
 			"quota_facts",
 			"selected_account_id",
 			"snapshot_id",
+			"source_runtime_session_id",
+			"source_runtime_session_revision",
+			"turn_id",
 			"waiting_ready_at_micros",
 		],
 	)?;
 	validate_digest(effect)?;
 	if text(effect, "operation")? != "route_account"
 		|| text(effect, "operation_id")? != request.operation_id
+		|| !effect_matches_consumer(effect, &request.consumer)?
 	{
 		return incompatible("stored V16 response is cross-linked");
 	}
@@ -164,15 +237,63 @@ fn parse_response(
 	Ok(RoutingCommandOutcome::Success(PersistedRoutingDecision {
 		decision_id: uuid(effect, "decision_id")?,
 		operation_id: request.operation_id.clone(),
+		consumer: request.consumer.clone(),
 		decided_at_micros: nonnegative_i64(effect, "decided_at_micros")?,
 		decision: actual,
 	}))
+}
+
+fn effect_matches_consumer(
+	effect: &Value,
+	consumer: &ExecutionConsumer,
+) -> Result<bool, StoreError> {
+	if text(effect, "consumer_kind")? != consumer.as_sql() {
+		return Ok(false);
+	}
+	match consumer {
+		ExecutionConsumer::ConversationTurn {
+			conversation_id,
+			conversation_revision,
+			source_runtime_session_id,
+			source_runtime_session_revision,
+			turn_id,
+		} => Ok(
+			optional_text(effect, "conversation_id")? == Some(conversation_id.as_str())
+				&& optional_positive_i64(effect, "conversation_revision")?
+					== Some(*conversation_revision)
+				&& optional_text(effect, "source_runtime_session_id")?
+					== Some(source_runtime_session_id.as_str())
+				&& optional_positive_i64(effect, "source_runtime_session_revision")?
+					== Some(*source_runtime_session_revision)
+				&& optional_text(effect, "turn_id")? == Some(turn_id.as_str())
+				&& optional_text(effect, "managed_run_id")?.is_none()
+				&& optional_positive_i64(effect, "managed_run_revision")?.is_none()
+				&& optional_text(effect, "managed_execution_id")?.is_none(),
+		),
+		ExecutionConsumer::ManagedRunExecution {
+			managed_run_id,
+			managed_run_revision,
+			execution_id,
+		} => Ok(
+			optional_text(effect, "conversation_id")?.is_none()
+				&& optional_positive_i64(effect, "conversation_revision")?.is_none()
+				&& optional_text(effect, "source_runtime_session_id")?.is_none()
+				&& optional_positive_i64(effect, "source_runtime_session_revision")?.is_none()
+				&& optional_text(effect, "turn_id")?.is_none()
+				&& optional_text(effect, "managed_run_id")? == Some(managed_run_id.as_str())
+				&& optional_positive_i64(effect, "managed_run_revision")?
+					== Some(*managed_run_revision)
+				&& optional_text(effect, "managed_execution_id")?
+					== Some(execution_id.as_str()),
+		),
+	}
 }
 
 fn parse_decision(effect: &Value, snapshot_id: String) -> Result<RoutingDecision, StoreError> {
 	let kind = match text(effect, "kind")? {
 		"selected" => RoutingDecisionKind::Selected,
 		"waiting_usage" => RoutingDecisionKind::WaitingUsage,
+		"waiting_reconciliation" => RoutingDecisionKind::WaitingReconciliation,
 		"no_route" => RoutingDecisionKind::NoRoute,
 		_ => return incompatible("stored V16 decision kind is unknown"),
 	};
@@ -193,7 +314,26 @@ fn parse_decision(effect: &Value, snapshot_id: String) -> Result<RoutingDecision
 		ready_at_micros,
 		no_route_reason,
 		exclusions: parse_exclusions(array(effect, "exclusions")?)?,
+		causes: parse_causes(array(effect, "causes")?)?,
 	})
+}
+
+fn parse_causes(values: &[Value]) -> Result<Vec<RoutingDecisionCause>, StoreError> {
+	values
+		.iter()
+		.map(|value| {
+			require_keys(value, &["account_id", "blocker"])?;
+			Ok(RoutingDecisionCause {
+				account_id: AccountId::new(text(value, "account_id")?.to_owned())
+					.map_err(|_| {
+						StoreError::Incompatible("stored route-cause account is malformed".into())
+					})?,
+				blocker: parse_blocker(value.get("blocker").ok_or_else(|| {
+					StoreError::Incompatible("stored route cause is incomplete".into())
+				})?)?,
+			})
+		})
+		.collect()
 }
 
 fn parse_members(values: &[Value]) -> Result<Vec<RoutingDecisionCandidate>, StoreError> {
@@ -204,21 +344,28 @@ fn parse_members(values: &[Value]) -> Result<Vec<RoutingDecisionCandidate>, Stor
 		if position != index + 1 {
 			return incompatible("stored V16 candidate order is noncanonical");
 		}
+		let disposition = match text(value, "disposition")? {
+			"included" => RoutingMemberDisposition::Included,
+			"excluded" => RoutingMemberDisposition::Excluded,
+			_ => return incompatible("stored candidate disposition is unknown"),
+		};
+		let blockers = array(value, "blockers")?
+			.iter()
+			.map(parse_blocker)
+			.collect::<Result<Vec<_>, _>>()?;
+		if (disposition == RoutingMemberDisposition::Excluded)
+			!= blockers.contains(&RoutingBlocker::ExcludedByPolicy)
+		{
+			return incompatible("stored candidate blocker disposition is inconsistent");
+		}
 		members.push(RoutingDecisionCandidate {
 			position,
 			account_id: AccountId::new(text(value, "account_id")?.to_owned()).map_err(|_| {
 				StoreError::Incompatible("stored candidate account is malformed".into())
 			})?,
-			disposition: match text(value, "disposition")? {
-				"included" => RoutingMemberDisposition::Included,
-				"excluded" => RoutingMemberDisposition::Excluded,
-				_ => return incompatible("stored candidate disposition is unknown"),
-			},
+			disposition,
 			sticky: boolean(value, "sticky")?,
-			blockers: array(value, "blockers")?
-				.iter()
-				.map(parse_blocker)
-				.collect::<Result<Vec<_>, _>>()?,
+			blockers,
 		});
 	}
 	Ok(members)
@@ -450,37 +597,8 @@ fn parse_blocker(value: &Value) -> Result<RoutingBlocker, StoreError> {
 	let value = value
 		.as_str()
 		.ok_or_else(|| StoreError::Incompatible("stored blocker is malformed".into()))?;
-	use RoutingBlocker::*;
-	Ok(match value {
-		"excluded_by_policy" => ExcludedByPolicy,
-		"account_from_future" => AccountFromFuture,
-		"account_stale" => AccountStale,
-		"account_unavailable" => AccountUnavailable,
-		"account_unknown" => AccountUnknown,
-		"account_depleted" => AccountDepleted,
-		"account_auth_failed" => AccountAuthFailed,
-		"account_plugin_unready" => AccountPluginUnready,
-		"account_disabled" => AccountDisabled,
-		"evidence_missing" => EvidenceMissing,
-		"evidence_from_future" => EvidenceFromFuture,
-		"evidence_stale" => EvidenceStale,
-		"evidence_account_mismatch" => EvidenceAccountMismatch,
-		"evidence_profile_mismatch" => EvidenceProfileMismatch,
-		"evidence_build_mismatch" => EvidenceBuildMismatch,
-		"quota_five_hour_missing" => QuotaFiveHourMissing,
-		"quota_five_hour_from_future" => QuotaFiveHourFromFuture,
-		"quota_five_hour_stale" => QuotaFiveHourStale,
-		"quota_five_hour_unknown" => QuotaFiveHourUnknown,
-		"quota_five_hour_reset_elapsed" => QuotaFiveHourResetElapsed,
-		"quota_five_hour_depleted" => QuotaFiveHourDepleted,
-		"quota_seven_day_missing" => QuotaSevenDayMissing,
-		"quota_seven_day_from_future" => QuotaSevenDayFromFuture,
-		"quota_seven_day_stale" => QuotaSevenDayStale,
-		"quota_seven_day_unknown" => QuotaSevenDayUnknown,
-		"quota_seven_day_reset_elapsed" => QuotaSevenDayResetElapsed,
-		"quota_seven_day_depleted" => QuotaSevenDayDepleted,
-		"required_capability_unsatisfied" => RequiredCapabilityUnsatisfied,
-		_ => return incompatible("stored blocker is unknown"),
+	RoutingBlocker::from_sql(value).ok_or_else(|| {
+		StoreError::Incompatible("stored blocker is unknown".into())
 	})
 }
 

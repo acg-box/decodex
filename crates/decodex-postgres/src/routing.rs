@@ -1,10 +1,11 @@
 use std::collections::BTreeSet;
 
 use decodex_core::{
-	AccountId, AccountState, CodexCapability, ManagedRunId, RoutingBlocker, RoutingCapabilityState,
-	RoutingCommandOutcome, RoutingEvidenceEffect, RoutingMemberDisposition, RoutingPolicyEffect,
-	RoutingPolicyMember, RoutingRejection, RoutingSnapshot, RoutingSnapshotCapabilityFact,
-	RoutingSnapshotMember, RoutingSnapshotQuotaFact,
+	AccountId, AccountState, CodexCapability, ExecutionConsumer, RoutingBlocker,
+	RoutingCapabilityState, RoutingCommandOutcome, RoutingEvidenceEffect,
+	RoutingMemberDisposition, RoutingPolicyEffect, RoutingPolicyMember, RoutingRejection,
+	RoutingSnapshot, RoutingSnapshotCapabilityFact, RoutingSnapshotMember,
+	RoutingSnapshotQuotaFact,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -195,25 +196,36 @@ impl PostgresStore {
 		idempotency_key: &str,
 		routing_policy_id: &str,
 		expected_routing_policy_revision: i64,
-		managed_run_id: &ManagedRunId,
-		expected_managed_run_revision: i64,
+		consumer: &ExecutionConsumer,
 	) -> Result<RoutingCommandOutcome<RoutingSnapshot>, StoreError> {
 		validate_exact_key(idempotency_key)?;
 		validate_uuid(routing_policy_id, "routing policy identity")?;
-		if expected_routing_policy_revision <= 0 || expected_managed_run_revision <= 0 {
+		if expected_routing_policy_revision <= 0 || consumer.domain_revision() <= 0 {
 			return Err(StoreError::InvalidInput("routing source revisions must be positive"));
+		}
+		let parts = ExecutionConsumerParts::from(consumer);
+		if parts.source_runtime_session_revision.is_some_and(|revision| revision <= 0) {
+			return Err(StoreError::InvalidInput("source RuntimeSession revision must be positive"));
 		}
 		let response = self
 			.execute_exact_with_retry(
 				"SELECT decodex.resolve_routing_snapshot_exact($1,$2,$3::text::uuid,$4,\
-				 $5::text::uuid,$6)",
+				 $5::text::decodex.provider_attempt_consumer_kind,$6::text::uuid,$7,\
+				 $8::text::uuid,$9,$10::text::uuid,$11::text::uuid,$12,$13::text::uuid)",
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
 					&routing_policy_id,
 					&expected_routing_policy_revision,
-					&managed_run_id.as_str(),
-					&expected_managed_run_revision,
+					&parts.kind,
+					&parts.conversation_id,
+					&parts.conversation_revision,
+					&parts.source_runtime_session_id,
+					&parts.source_runtime_session_revision,
+					&parts.turn_id,
+					&parts.managed_run_id,
+					&parts.managed_run_revision,
+					&parts.managed_execution_id,
 				],
 			)
 			.await?;
@@ -221,9 +233,59 @@ impl PostgresStore {
 			&response,
 			routing_policy_id,
 			expected_routing_policy_revision,
-			managed_run_id,
-			expected_managed_run_revision,
+			consumer,
 		)
+	}
+}
+
+struct ExecutionConsumerParts<'a> {
+	kind: &'static str,
+	conversation_id: Option<&'a str>,
+	conversation_revision: Option<i64>,
+	source_runtime_session_id: Option<&'a str>,
+	source_runtime_session_revision: Option<i64>,
+	turn_id: Option<&'a str>,
+	managed_run_id: Option<&'a str>,
+	managed_run_revision: Option<i64>,
+	managed_execution_id: Option<&'a str>,
+}
+
+impl<'a> From<&'a ExecutionConsumer> for ExecutionConsumerParts<'a> {
+	fn from(value: &'a ExecutionConsumer) -> Self {
+		match value {
+			ExecutionConsumer::ConversationTurn {
+				conversation_id,
+				conversation_revision,
+				source_runtime_session_id,
+				source_runtime_session_revision,
+				turn_id,
+			} => Self {
+				kind: value.as_sql(),
+				conversation_id: Some(conversation_id.as_str()),
+				conversation_revision: Some(*conversation_revision),
+				source_runtime_session_id: Some(source_runtime_session_id.as_str()),
+				source_runtime_session_revision: Some(*source_runtime_session_revision),
+				turn_id: Some(turn_id.as_str()),
+				managed_run_id: None,
+				managed_run_revision: None,
+				managed_execution_id: None,
+			},
+			ExecutionConsumer::ManagedRunExecution {
+				managed_run_id,
+				managed_run_revision,
+				execution_id,
+			} => Self {
+				kind: value.as_sql(),
+				conversation_id: None,
+				conversation_revision: None,
+				source_runtime_session_id: None,
+				source_runtime_session_revision: None,
+				turn_id: None,
+				managed_run_id: Some(managed_run_id.as_str()),
+				managed_run_revision: Some(*managed_run_revision),
+				managed_execution_id: Some(execution_id.as_str()),
+			},
+		}
 	}
 }
 
@@ -466,8 +528,7 @@ fn parse_snapshot_response(
 	response: &[u8],
 	routing_policy_id: &str,
 	routing_revision: i64,
-	managed_run_id: &ManagedRunId,
-	managed_run_revision: i64,
+	consumer: &ExecutionConsumer,
 ) -> Result<RoutingCommandOutcome<RoutingSnapshot>, StoreError> {
 	let (classification, effect) = parse_envelope(response, "resolve_routing_snapshot")?;
 	if classification == "stable_domain_rejection" {
@@ -484,8 +545,13 @@ fn parse_snapshot_response(
 			"capability_facts",
 			"effect_digest",
 			"effect_digest_source",
+			"consumer_kind",
+			"conversation_id",
+			"conversation_revision",
+			"turn_id",
 			"managed_run_id",
 			"managed_run_revision",
+			"managed_execution_id",
 			"members",
 			"operation",
 			"profile_snapshot_id",
@@ -504,8 +570,7 @@ fn parse_snapshot_response(
 	)?;
 	if required_str(&effect, "routing_policy_id")? != routing_policy_id
 		|| positive_i64(&effect, "routing_policy_revision")? != routing_revision
-		|| required_str(&effect, "managed_run_id")? != managed_run_id.as_str()
-		|| positive_i64(&effect, "managed_run_revision")? != managed_run_revision
+		|| !effect_matches_consumer(&effect, consumer)?
 	{
 		return incompatible("routing snapshot result is cross-linked");
 	}
@@ -557,8 +622,7 @@ fn parse_snapshot_response(
 		required_role,
 		required_role_profile_revision,
 		required_build_id,
-		managed_run_id: managed_run_id.clone(),
-		managed_run_revision,
+		consumer: consumer.clone(),
 		runtime_session_id: decodex_core::RuntimeSessionId::new(required_str(
 			&effect,
 			"runtime_session_id",
@@ -576,6 +640,52 @@ fn parse_snapshot_response(
 		quota_facts,
 		capability_facts,
 	}))
+}
+
+fn effect_matches_consumer(
+	effect: &Value,
+	consumer: &ExecutionConsumer,
+) -> Result<bool, StoreError> {
+	if required_str(effect, "consumer_kind")? != consumer.as_sql() {
+		return Ok(false);
+	}
+	match consumer {
+		ExecutionConsumer::ConversationTurn {
+			conversation_id,
+			conversation_revision,
+			source_runtime_session_id,
+			source_runtime_session_revision,
+			turn_id,
+		} => Ok(
+			optional_uuid(effect, "conversation_id")?.as_deref()
+				== Some(conversation_id.as_str())
+				&& optional_positive_i64(effect, "conversation_revision")?
+					== Some(*conversation_revision)
+				&& required_str(effect, "runtime_session_id")?
+					== source_runtime_session_id.as_str()
+				&& positive_i64(effect, "runtime_session_revision")?
+					== *source_runtime_session_revision
+				&& optional_uuid(effect, "turn_id")?.as_deref() == Some(turn_id.as_str())
+				&& optional_uuid(effect, "managed_run_id")?.is_none()
+				&& optional_positive_i64(effect, "managed_run_revision")?.is_none()
+				&& optional_uuid(effect, "managed_execution_id")?.is_none(),
+		),
+		ExecutionConsumer::ManagedRunExecution {
+			managed_run_id,
+			managed_run_revision,
+			execution_id,
+		} => Ok(
+			optional_uuid(effect, "conversation_id")?.is_none()
+				&& optional_positive_i64(effect, "conversation_revision")?.is_none()
+				&& optional_uuid(effect, "turn_id")?.is_none()
+				&& optional_uuid(effect, "managed_run_id")?.as_deref()
+					== Some(managed_run_id.as_str())
+				&& optional_positive_i64(effect, "managed_run_revision")?
+					== Some(*managed_run_revision)
+				&& optional_uuid(effect, "managed_execution_id")?.as_deref()
+					== Some(execution_id.as_str()),
+		),
+	}
 }
 
 fn parse_envelope(bytes: &[u8], expected_operation: &str) -> Result<(String, Value), StoreError> {
@@ -639,7 +749,11 @@ fn parse_rejection(effect: &Value) -> Result<RoutingRejection, StoreError> {
 		),
 		"resolve_routing_snapshot" => matches!(
 			code,
-			"routing_authority_mismatch" | "managed_run_mismatch" | "sticky_provenance_mismatch"
+			"malformed_input"
+				| "routing_authority_mismatch"
+				| "conversation_mismatch"
+				| "managed_run_mismatch"
+				| "sticky_provenance_mismatch"
 		),
 		_ => false,
 	};
@@ -1320,6 +1434,21 @@ fn parse_blocker(value: &Value) -> Result<RoutingBlocker, StoreError> {
 		"quota_seven_day_reset_elapsed" => Ok(RoutingBlocker::QuotaSevenDayResetElapsed),
 		"quota_seven_day_depleted" => Ok(RoutingBlocker::QuotaSevenDayDepleted),
 		"required_capability_unsatisfied" => Ok(RoutingBlocker::RequiredCapabilityUnsatisfied),
+		"authentication_required" => Ok(RoutingBlocker::AuthenticationRequired),
+		"plugin_unready" => Ok(RoutingBlocker::PluginUnready),
+		"dependency_blocked" => Ok(RoutingBlocker::DependencyBlocked),
+		"approval_required" => Ok(RoutingBlocker::ApprovalRequired),
+		"user_required" => Ok(RoutingBlocker::UserRequired),
+		"external_blocked" => Ok(RoutingBlocker::ExternalBlocked),
+		"usage_unproven" => Ok(RoutingBlocker::UsageUnproven),
+		"reconciliation_unproven" => Ok(RoutingBlocker::ReconciliationUnproven),
+		"reviewer_unavailable" => Ok(RoutingBlocker::ReviewerUnavailable),
+		"reviewer_failed" => Ok(RoutingBlocker::ReviewerFailed),
+		"reviewer_ambiguous" => Ok(RoutingBlocker::ReviewerAmbiguous),
+		"process_generation_unresolved" => Ok(RoutingBlocker::ProcessGenerationUnresolved),
+		"process_generation_unavailable" => Ok(RoutingBlocker::ProcessGenerationUnavailable),
+		"provider_attempt_unresolved" => Ok(RoutingBlocker::ProviderAttemptUnresolved),
+		"provider_attempt_completed" => Ok(RoutingBlocker::ProviderAttemptCompleted),
 		_ => incompatible("routing blocker is unknown"),
 	}
 }
