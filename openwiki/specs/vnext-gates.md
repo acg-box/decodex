@@ -133,12 +133,27 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1364 | Frozen-core integration and acceptance for the checked-in V14-V21 ledger, including the forward-only V20 restore canonicalization and V21 RuntimeSession event-reference repair; production routing remains disabled. |
 | XY-1367 | Sole V22 owner for the two-effect retained-title experiment bridge and inert manual Rust runner. It does not execute validation or live effects. |
 | XY-1368 | Historical mechanical, migration, semantic, authority-digest, and production-isolation acceptance for the exact XY-1367 V22 candidate; it is not current command authority. |
+| XY-1398 | Accepted V3 product decision for opaque attested launches, durable fenced provider-process generations, macOS positive-death quarantine, and ProviderAttempt ambiguity handoff; no guardian, takeover, or live dispatch. |
+| XY-1400 | Sole V23 and ProcessSupervisor implementation owner for opaque exact-build launch authority, ProcessGeneration fencing, exact supported-OS identity, account-local quarantine, positive-only death evidence, reconciliation, diagnostics, and exact owned termination. It adds no routing, RuntimeSession, ProviderAttempt, remote auth, UI, release, or live dispatch. |
 
 The [XY-1368 retained-title freeze](xy-1368-retained-title-freeze.md) is immutable V22 historical
 evidence. It preserves the historical V14-V21 acceptance and records the V22 receipt and deferred
 work as they existed at that freeze. It is not current command, task-runner, or V1-V23 delivery
 authority. Future retained-title preparation and semantic delivery contracts are owned only by the
 [private-artifact package delivery module](private-artifact/operations-delivery.md).
+
+### XY-1400 deferred acceptance
+
+The [XY-1400 ProcessGeneration authority](process-generation-authority.md) records the complete
+source-only implementation boundary and deferred adversarial acceptance matrix. Its unified gate
+must cover V23 migration/ACL/catalog closure, S0/R1/R2 manifest refreeze, opaque launch mismatch,
+exact-build startup-state evidence plus absence of a returned protocol writer, future gateway
+alternate-control rejection, fence and crash concurrency, macOS orphan and exit-before-witness
+schedules, generic Linux preflight isolation, Linux parent-death behavior only after an exact
+lifetime profile is accepted, PID/PGID reuse, positive-only death proof, account-local same-boot
+uncertainty, restore rollback safety, exact owned termination, ProviderAttempt ambiguity handoff,
+conversation continuity, and reverse production-isolation evidence. XY-1400 runs none of that
+matrix and enables no provider effect or production dispatch.
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration

@@ -25,6 +25,7 @@ use decodex_protocol::{
 use crate::managed_repository_runtime::{
 	ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
 };
+use crate::ProcessGenerationControl;
 
 /// The only mutation/observation seam reachable from the WebSocket server.
 ///
@@ -101,6 +102,7 @@ pub(crate) struct ServiceApplication {
 	_managed_repositories: Option<ManagedRepositoryRuntime>,
 	_managed_repository_readiness: ManagedRepositoryReadiness,
 	_managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+	_process_generations: Option<ProcessGenerationControl>,
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
@@ -111,6 +113,7 @@ impl ServiceApplication {
 		managed_repositories: Option<ManagedRepositoryRuntime>,
 		managed_repository_readiness: ManagedRepositoryReadiness,
 		managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+		process_generations: Option<ProcessGenerationControl>,
 		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
 		doctor: DoctorReport,
@@ -120,6 +123,7 @@ impl ServiceApplication {
 			_managed_repositories: managed_repositories,
 			_managed_repository_readiness: managed_repository_readiness,
 			_managed_repository_startup_error: managed_repository_startup_error,
+			_process_generations: process_generations,
 			_codex: codex,
 			blob_store,
 			doctor,
