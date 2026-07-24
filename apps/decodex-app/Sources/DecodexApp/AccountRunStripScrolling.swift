@@ -5,6 +5,7 @@ import SwiftUI
 struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 	let placementStore: AccountRunStripPlacementStore
 	let scrollProxy: AccountRunStripScrollProxy
+	let allowsPointerPanning: Bool
 	let onMetricsChange: (AccountRunStripMetrics) -> Void
 	@ViewBuilder let content: () -> Content
 
@@ -15,7 +16,8 @@ struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 	func makeNSView(context: Context) -> AccountRunStripContainerView<Content> {
 		let view = AccountRunStripContainerView(
 			rootView: content(),
-			placementStore: placementStore
+			placementStore: placementStore,
+			allowsPointerPanning: allowsPointerPanning
 		)
 		scrollProxy.attach(view)
 		view.onMetricsChange = { metrics in
@@ -31,6 +33,7 @@ struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 		nsView.onMetricsChange = { metrics in
 			context.coordinator.publish(metrics)
 		}
+		nsView.allowsPointerPanning = allowsPointerPanning
 		nsView.update(rootView: content())
 	}
 
@@ -92,10 +95,23 @@ final class AccountRunStripContainerView<Content: View>: NSView, AccountRunStrip
 	let placementStore: AccountRunStripPlacementStore
 	var measuredContentWidth: CGFloat = 0
 	var onMetricsChange: ((AccountRunStripMetrics) -> Void)?
+	var allowsPointerPanning: Bool {
+		get {
+			hostingView.allowsPointerPanning
+		}
+		set {
+			hostingView.allowsPointerPanning = newValue
+		}
+	}
 
-	init(rootView: Content, placementStore: AccountRunStripPlacementStore) {
+	init(
+		rootView: Content,
+		placementStore: AccountRunStripPlacementStore,
+		allowsPointerPanning: Bool
+	) {
 		self.placementStore = placementStore
 		hostingView = AccountRunDragHostingView(rootView: rootView)
+		hostingView.allowsPointerPanning = allowsPointerPanning
 
 		super.init(frame: .zero)
 

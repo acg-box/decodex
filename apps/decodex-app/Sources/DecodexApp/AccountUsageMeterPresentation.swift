@@ -25,6 +25,10 @@ extension AccountUsageMeterView {
 	}
 
 	var progress: CGFloat {
+		Self.normalizedProgress(for: remainingPercent)
+	}
+
+	static func normalizedProgress(for remainingPercent: Int?) -> CGFloat {
 		guard let remainingPercent else {
 			return 0
 		}
@@ -32,7 +36,21 @@ extension AccountUsageMeterView {
 		return CGFloat(max(0, min(100, remainingPercent))) / 100
 	}
 
-	func fillWidth(in width: CGFloat) -> CGFloat {
+	static func shouldAnimateRefill(
+		_ refillAnimation: AccountUsageMeterRefillAnimation?,
+		to current: Int?
+	) -> Bool {
+		guard let refillAnimation, let current else {
+			return false
+		}
+
+		return refillAnimation.fromPercent < 100 && current >= 100
+	}
+
+	func fillWidth(
+		in width: CGFloat,
+		progress: CGFloat
+	) -> CGFloat {
 		guard remainingPercent != nil else {
 			return 0
 		}
