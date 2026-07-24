@@ -26,6 +26,7 @@ struct AccountRunSummaryView: View {
 			AccountRunStripScrollView(
 				placementStore: placementStore,
 				scrollProxy: scrollProxy,
+				allowsPointerPanning: true,
 				onMetricsChange: { metrics in
 					updateScrollMetrics(metrics)
 				}

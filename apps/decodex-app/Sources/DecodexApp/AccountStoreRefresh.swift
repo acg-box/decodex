@@ -14,9 +14,10 @@ extension AccountStore {
 		}
 	}
 
-	func refresh(force: Bool = false) async {
+	@discardableResult
+	func refresh(force: Bool = false) async -> Bool {
 		guard isRefreshing == false else {
-			return
+			return false
 		}
 
 		isRefreshing = true
@@ -31,8 +32,10 @@ extension AccountStore {
 			))
 			notice = nil
 			await refreshFastMode()
+			return true
 		} catch {
 			notice = error.localizedDescription
+			return false
 		}
 	}
 
