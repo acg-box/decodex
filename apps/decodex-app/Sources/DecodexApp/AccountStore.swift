@@ -13,7 +13,8 @@ final class AccountStore {
 	var isLoggingIn = false
 	var isSettingFastMode = false
 	var loginTranscript = ""
-	var notice: String?
+	var notice: AccountNotice?
+	var loginNotice: AccountNotice?
 	var pendingLogoutRemovalKeys = Set<String>()
 	var usageRefillAnimations: [String: AccountUsageRefillAnimation] = [:]
 
@@ -23,11 +24,13 @@ final class AccountStore {
 	@ObservationIgnored var operatorSnapshotStreamTask: Task<Void, Never>?
 	@ObservationIgnored var operatorSnapshotPublishedAtUnixEpoch: Int64?
 	@ObservationIgnored var usageRefillCleanupTasks: [String: Task<Void, Never>] = [:]
+	@ObservationIgnored var noticeDismissalTask: Task<Void, Never>?
 
 	deinit {
 		startupTask?.cancel()
 		automaticRefreshTask?.cancel()
 		operatorSnapshotStreamTask?.cancel()
+		noticeDismissalTask?.cancel()
 		for task in usageRefillCleanupTasks.values {
 			task.cancel()
 		}
@@ -71,7 +74,7 @@ final class AccountStore {
 		if isLoggingIn {
 			return loginPrompt == nil ? "Requesting code" : "Waiting for browser sign-in"
 		}
-		if notice != nil {
+		if loginNotice?.tone == .error {
 			return "Login failed"
 		}
 		if loginPrompt != nil {
@@ -90,7 +93,80 @@ final class AccountStore {
 		}
 
 		loginTranscript = ""
+		clearLoginNotice()
+	}
+
+	func presentNotice(_ notice: AccountNotice) {
+		guard notice.scope == .general else {
+			loginNotice = notice
+			return
+		}
+
+		if notice.tone == .error,
+			self.notice?.hasSamePresentation(as: notice) == true
+		{
+			return
+		}
+
+		noticeDismissalTask?.cancel()
+		self.notice = notice
+
+		guard let delay = notice.automaticDismissalDelay else {
+			noticeDismissalTask = nil
+			return
+		}
+
+		let noticeID = notice.id
+		noticeDismissalTask = Task { [weak self] in
+			do {
+				try await Task.sleep(for: delay)
+			} catch {
+				return
+			}
+
+			guard let self, self.notice?.id == noticeID else {
+				return
+			}
+
+			self.notice = nil
+			self.noticeDismissalTask = nil
+		}
+	}
+
+	func presentError(
+		_ summary: String,
+		error: Error,
+		scope: AccountNotice.Scope = .general,
+		source: AccountNotice.Source = .accountAction
+	) {
+		presentNotice(.error(
+			summary,
+			details: error.localizedDescription,
+			scope: scope,
+			source: source
+		))
+	}
+
+	func clearNotice() {
+		dismissCurrentNotice()
+	}
+
+	func clearNotice(source: AccountNotice.Source) {
+		guard notice?.source == source else {
+			return
+		}
+
+		dismissCurrentNotice()
+	}
+
+	private func dismissCurrentNotice() {
+		noticeDismissalTask?.cancel()
+		noticeDismissalTask = nil
 		notice = nil
+	}
+
+	func clearLoginNotice() {
+		loginNotice = nil
 	}
 }
 

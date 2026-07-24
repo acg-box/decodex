@@ -16,8 +16,19 @@ enum AccountPanelLayout {
 	static let telemetryProfileHeight: CGFloat = 50
 	static let telemetryPoolHeight: CGFloat = 16
 	static let telemetryPoolMeasuredHeight: CGFloat = 29
-	static let noticeHeight: CGFloat = 44
+	static let noticeHeight: CGFloat = 30
 	static let minimumScrollableListHeight: CGFloat = 312
+
+	static func resolvedAccountListContentHeight(
+		measured: CGFloat,
+		estimated: CGFloat
+	) -> CGFloat {
+		guard measured.isFinite, measured > 0 else {
+			return estimated
+		}
+
+		return ceil(measured)
+	}
 
 	static func activeScreenVisibleHeight() -> CGFloat {
 		let mouseLocation = NSEvent.mouseLocation
@@ -26,6 +37,20 @@ enum AccountPanelLayout {
 		} ?? NSScreen.main
 
 		return screen?.visibleFrame.height ?? 760
+	}
+
+	static func resolvedScreenVisibleHeight(
+		windowVisibleFrame: CGRect?,
+		fallback: CGFloat
+	) -> CGFloat {
+		guard let windowVisibleFrame,
+			windowVisibleFrame.height.isFinite,
+			windowVisibleFrame.height > 0
+		else {
+			return fallback
+		}
+
+		return windowVisibleFrame.height
 	}
 }
 

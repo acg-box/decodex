@@ -8,6 +8,17 @@ struct AccountScrollOffsetPreferenceKey: PreferenceKey {
 	}
 }
 
+struct AccountRowsHeightPreferenceKey: PreferenceKey {
+	static let defaultValue: CGFloat = 0
+
+	static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+		let next = nextValue()
+		if next > 0 {
+			value = next
+		}
+	}
+}
+
 struct AccountListScrollIndicatorView: View {
 	let contentHeight: CGFloat
 	let viewportHeight: CGFloat
@@ -46,9 +57,14 @@ struct AccountListScrollIndicatorView: View {
 
 extension AccountPanelView {
 	var accountListContentHeight: CGFloat {
-		store.accounts.reduce(CGFloat(1)) { total, account in
+		let estimatedHeight = store.accounts.reduce(CGFloat(1)) { total, account in
 			total + accountRowHeight(for: account)
 		}
+
+		return AccountPanelLayout.resolvedAccountListContentHeight(
+			measured: measuredAccountListContentHeight,
+			estimated: estimatedHeight
+		)
 	}
 
 	var accountListViewportHeight: CGFloat {
@@ -60,7 +76,10 @@ extension AccountPanelView {
 	}
 
 	var accountListAvailableHeight: CGFloat {
-		let visibleHeight = AccountPanelLayout.activeScreenVisibleHeight()
+		let visibleHeight = AccountPanelLayout.resolvedScreenVisibleHeight(
+			windowVisibleFrame: panelScreenVisibleFrame,
+			fallback: AccountPanelLayout.activeScreenVisibleHeight()
+		)
 		let availableHeight = visibleHeight - accountPanelChromeHeight
 		let minimumHeight = min(
 			AccountPanelLayout.minimumScrollableListHeight,
@@ -95,6 +114,15 @@ extension AccountPanelView {
 			Color.clear.preference(
 				key: AccountScrollOffsetPreferenceKey.self,
 				value: proxy.frame(in: .named(AccountPanelLayout.accountListScrollSpace)).minY
+			)
+		}
+	}
+
+	var accountRowsHeightProbe: some View {
+		GeometryReader { proxy in
+			Color.clear.preference(
+				key: AccountRowsHeightPreferenceKey.self,
+				value: proxy.size.height
 			)
 		}
 	}
