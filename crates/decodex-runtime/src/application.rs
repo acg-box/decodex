@@ -359,7 +359,9 @@ fn execution_decision_dto(
 		},
 		RoutingDecisionKind::WaitingReconciliation =>
 			ExecutionRouteDto::WaitingReconciliation { causes },
-		RoutingDecisionKind::NoRoute => ExecutionRouteDto::NoRoute { causes },
+		RoutingDecisionKind::NoRoute if !causes.is_empty() =>
+			ExecutionRouteDto::NoRoute { causes },
+		RoutingDecisionKind::NoRoute => return Err(()),
 	};
 	Ok(ExecutionDecisionDto {
 		decision_id: entity(&readback.decision_id)?,

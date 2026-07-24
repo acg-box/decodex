@@ -555,6 +555,13 @@ Completeness is fail-closed. A duplicate, omitted, foreign, newly added, concurr
 revision-changed inventory member; an unbound sticky source; or an unknown required fact blocks the
 snapshot or decision. Silence never means excluded, eligible, or non-applicable.
 
+Selection and pure quota or reconciliation waits classify only included members after independent
+eligibility. Excluded members remain ineligible and do not alter those wait classifications.
+`no_route` instead projects the complete policy-member universe: every excluded member retains
+`excluded_by_policy` and its other persisted blockers, and every included member retains its exact
+blockers. An all-excluded universe is an explicit cause-complete `no_route`; a cause-free
+`no_route` is invalid.
+
 `decodex-core` is a pure deterministic decision kernel over this database-produced snapshot. It
 does not establish provenance or completeness. PostgreSQL atomically persists the resulting V16
 decision, its complete normalized exclusions, and every evidence reference. Runtime consumes one

@@ -344,21 +344,28 @@ fn parse_members(values: &[Value]) -> Result<Vec<RoutingDecisionCandidate>, Stor
 		if position != index + 1 {
 			return incompatible("stored V16 candidate order is noncanonical");
 		}
+		let disposition = match text(value, "disposition")? {
+			"included" => RoutingMemberDisposition::Included,
+			"excluded" => RoutingMemberDisposition::Excluded,
+			_ => return incompatible("stored candidate disposition is unknown"),
+		};
+		let blockers = array(value, "blockers")?
+			.iter()
+			.map(parse_blocker)
+			.collect::<Result<Vec<_>, _>>()?;
+		if (disposition == RoutingMemberDisposition::Excluded)
+			!= blockers.contains(&RoutingBlocker::ExcludedByPolicy)
+		{
+			return incompatible("stored candidate blocker disposition is inconsistent");
+		}
 		members.push(RoutingDecisionCandidate {
 			position,
 			account_id: AccountId::new(text(value, "account_id")?.to_owned()).map_err(|_| {
 				StoreError::Incompatible("stored candidate account is malformed".into())
 			})?,
-			disposition: match text(value, "disposition")? {
-				"included" => RoutingMemberDisposition::Included,
-				"excluded" => RoutingMemberDisposition::Excluded,
-				_ => return incompatible("stored candidate disposition is unknown"),
-			},
+			disposition,
 			sticky: boolean(value, "sticky")?,
-			blockers: array(value, "blockers")?
-				.iter()
-				.map(parse_blocker)
-				.collect::<Result<Vec<_>, _>>()?,
+			blockers,
 		});
 	}
 	Ok(members)

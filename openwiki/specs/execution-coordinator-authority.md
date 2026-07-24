@@ -108,6 +108,14 @@ dual-writer interval.
 V16 loads and locks the complete V14 account universe. The caller supplies no
 account list and cannot select an account.
 
+Selection and pure-wait classification use only independently eligible included
+members. Policy-excluded members never become eligible and do not participate in
+quota or reconciliation wait classification. A `no_route` projection instead
+uses the complete persisted policy-member universe. Each excluded member retains
+`excluded_by_policy` and every other persisted blocker, while each included
+member retains its exact blockers. An all-excluded universe therefore produces a
+cause-complete `no_route`. A cause-free `no_route` is invalid.
+
 The 300-minute and 10,080-minute quota facts stay independent. Each fact keeps
 its duration, source identity, observation revision, exact raw timestamp,
 microsecond value, confidence, and reset instant. V16 applies sticky affinity
@@ -205,6 +213,9 @@ execute any row.
 | Conversation Turn owner | Prepare one reserved Turn, then materialize it only through the Conversation owner. Reject a cross-Conversation, cross-session, changed, or duplicate Turn. | Conversation-owner integration is source-inspected only. |
 | ManagedRun | Route one exact managed execution and consume ProviderAttempt results without changing ManagedRun lifecycle ownership. | ManagedRun lifecycle and acceptance integration are not executed. |
 | Account authority | Supply no account list. Prove V16 loads the full persisted V14 universe and rejects policy, member, revision, and evidence drift. | A query or trigger error can weaken full-universe closure. |
+| All-excluded policy | Exclude every persisted policy member. Require one `no_route` containing `excluded_by_policy` for every member and every other persisted member blocker. | Database trigger and Rust-kernel cause completeness are not executed. |
+| Mixed included/excluded policy | Combine excluded members with included members carrying quota, reconciliation, and non-wake blockers. Require pure waits to use only included members; require every excluded and included cause when the result is `no_route`. | Mixed policy-disposition and blocker schedules are not executed. |
+| Cause-free NoRoute | Remove all causes or one required excluded-member cause from a `no_route` projection. Require PostgreSQL integrity, exact-command readback, read-only adapter, runtime projection, and protocol decoding to fail closed. | Cross-layer malformed-projection cases are source-inspected only. |
 | Quota separation | Exercise 300-minute and 10,080-minute facts independently and together. Prove duration, source, revision, raw value, precision, and reset identity stay separate. | SQL and Rust ordering parity are not executed. |
 | V14-to-V16 quota aging | Place each duration just before, at, and after its freshness and reset boundaries between snapshot and decision. Require the exact stale or reset-elapsed cause and never an empty, selected, or pure-depletion projection. | Cross-transaction clock boundaries are not executed. |
 | Sticky affinity | Prove sticky selection only after independent account, capability, quota, process, and attempt eligibility. | A data-dependent ordering defect can select too early. |
