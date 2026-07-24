@@ -1,13 +1,16 @@
 # XY-1372 private-artifact capability evidence
 
-Status: accepted feasibility evidence for the exact frozen matrix. This page records proof
-provenance and boundaries. The normative architecture is the
-[vNext authority decision](../decisions/vnext-authority.md),
-[private-artifact contract](../specs/vnext-authority.md#private-artifact-authority), and
-[gate manifest](../specs/vnext-gates.md#xy-1372-private-artifact-capability-and-consumption-gate).
+Status: historical accepted feasibility evidence for the exact frozen matrix. This
+page records proof provenance and boundaries. At and after the XY-1403
+[repository effective point](../specs/private-artifact/decision.md#repository-effective-point),
+it is nonnormative and non-executable.
 
 XY-1372 proves platform feasibility. It does not implement the API, enable a production
-composition root, or authorize a downstream experiment.
+composition root, authorize a downstream experiment, create a current platform
+requirement, or restore the retired private-artifact lane. The current disposition
+is in the [vNext authority decision](../decisions/vnext-authority.md),
+[vNext contract](../specs/vnext-authority.md#private-artifact-authority), and
+[gate manifest](../specs/vnext-gates.md#xy-1372-private-artifact-capability-and-consumption-gate).
 
 ## Evidence identity and integrity
 
@@ -89,11 +92,15 @@ broader overlayfs or virtiofs semantics.
 
 ## Decision and residual gates
 
-The accepted evidence supports one Unix semantic state machine with private macOS and Linux
-no-replace and synchronization shims. It supports the exact preservation, typed-stop, final-
-verification, same-device retirement, and no-rollback requirements in the normative contract.
+Historically, the accepted evidence supported one proposed Unix semantic state
+machine with private macOS and Linux no-replace and synchronization shims. It
+supported the former preservation, typed-stop, final-verification, same-device
+retirement, and no-rollback design. Those claims remain provenance. They are not
+current requirements or future enablement gates.
 
-Every unsupported or unobserved environment or semantic remains a future enablement gate. The
-accepted evidence does not approve the exact XY-1373 repository candidate. A fresh visible reviewer
-must review that candidate before XY-1371 implementation resumes. XY-1371 implementation and its
-own independent source review remain separate work.
+XY-1373's former repository-specification, moving-core integration, and landing
+condition is historical and non-executable at and after the repository effective
+point. Its later `Canceled` state preserves its history, comments, parent XY-1371,
+and `relatedTo` relations to XY-1374 and XY-1371. Cancellation does not claim that
+integration completed. This evidence page authorizes no XY-1371, XY-1373, runtime,
+platform, validation, or delivery work.

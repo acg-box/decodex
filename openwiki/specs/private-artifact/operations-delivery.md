@@ -1,6 +1,21 @@
-# Private-artifact operations and delivery
+# Private-artifact operations and delivery (retired design)
 
-## Deterministic controllers
+Status: frozen historical, non-executable design evidence.
+
+At and after the [repository effective point](decision.md#repository-effective-point),
+every rule marker, owner, delivery edge, issue phase, command, receipt, validation
+step, and modal verb in this file describes the retired private-artifact design
+only. A0, A1, B, D0a, C, D, CORE-FREEZE, ACC, preparation, and unified validation
+are historical and non-executable. They are not active work, deferred work,
+dependencies, command authority, or future vNext obligations. Do not create, run,
+or restore a task or implementation from this record.
+
+Before the effective point, the fail-closed conditions in the retirement decision
+apply and no private-artifact work can start.
+
+## Frozen historical operations and delivery design
+
+### Deterministic controllers
 
 <a id="rule-PA-OPS-0001"></a>
 **[rule:PA-OPS-0001]** Durable rows are authority. Controller cursors and claims
@@ -19,7 +34,7 @@ time, and an eligible second GC observation. Durable new state and explicit
 operator action are external wakes. A full wrap with only sticky or terminal work
 clears automatic timers. The queue contains at most one coalesced wake.
 
-## Status and readiness
+### Status and readiness
 
 <a id="rule-PA-OPS-0002"></a>
 **[rule:PA-OPS-0002]** Startup readiness remains unavailable until one full
@@ -74,7 +89,7 @@ decodex private-artifact status [--operation UUID]
 
 There is no mutating private-artifact command.
 
-## Resource ceilings
+### Resource ceilings
 
 <a id="rule-PA-OPS-0003"></a>
 **[rule:PA-OPS-0003]** `authority/inventories.json#/resource_ceilings` owns the
@@ -90,7 +105,7 @@ bounds authorize no effect. No cap truncates an authoritative record. Controller
 deadlines stop only the next syscall, handle open, or SQL statement. They cannot
 interrupt a syscall already in the kernel.
 
-## Product residual risks
+### Product residual risks
 
 <a id="rule-PA-OPS-0004"></a>
 **[rule:PA-OPS-0004]** `authority/inventories.json#/product_residual_risks` is the
@@ -98,7 +113,7 @@ closed ten-record product risk set. No risk authorizes fallback, adoption,
 override, compatibility mode, alternate persistence, an extra daemon, pre-freeze
 test ownership, or a weaker authority rule.
 
-## Authority-package sequence
+### Authority-package sequence
 
 <a id="rule-PA-DEL-0001"></a>
 **[rule:PA-DEL-0001]** Delivery order is exact:
@@ -134,7 +149,7 @@ satisfies AR-CLOSE. A0 and D0a can then begin against its exact signed identity.
 All downstream A1/B/C/D/CORE-FREEZE/ACC/preparation/validation edges remain
 unchanged.
 
-## Pre-freeze source ownership
+### Pre-freeze source ownership
 
 <a id="rule-PA-OWN-0001"></a>
 **[rule:PA-OWN-0001]** A0, A1, B, C, D, XY-1369, XY-1370, and XY-1363 are
@@ -174,7 +189,7 @@ manifest, `Makefile.toml`, the PostgreSQL wrapper, the XY-1368 runbook, or a tes
 fixture source. A required dependency, alias, third task, second preparation task,
 public command family, or test framework is a stop.
 
-## D0a exception
+### D0a exception
 
 <a id="rule-PA-OWN-0002"></a>
 **[rule:PA-OWN-0002]** D0a owns only
@@ -195,7 +210,7 @@ A failed, unavailable, incomplete, mismatched, unstable, or unbound fact blocks 
 D0a has no mechanical retry. A later attempt needs an explicit Manager decision,
 a materially changed condition or evidence design, and a new candidate identity.
 
-## CORE-FREEZE
+### CORE-FREEZE
 
 <a id="rule-PA-FREEZE-0001"></a>
 **[rule:PA-FREEZE-0001]** CORE-FREEZE begins only after D, XY-1369, XY-1370, and
@@ -216,7 +231,7 @@ creates a new CORE-FREEZE identity and invalidates dependent receipts. A canonic
 formatter delta can be recorded later as formatting-only. Any manual semantic or
 production repair is a new freeze identity.
 
-## ACC maximum scope and acceptance source
+### ACC maximum scope and acceptance source
 
 <a id="rule-PA-ACC-0001"></a>
 **[rule:PA-ACC-0001]** ACC starts from the exact CORE-FREEZE receipt and can write
@@ -265,7 +280,7 @@ Package-integrity assertions can check file presence, fixed TSV/JSON shapes, raw
 manifest hashes, row order, unique IDs, owner references, and V22 snapshot hashes.
 They cannot duplicate semantic constants or decide package acceptance.
 
-## Fixed production SQL locator
+### Fixed production SQL locator
 
 <a id="rule-PA-PREP-0001"></a>
 **[rule:PA-PREP-0001]** B adds one production-compiled, non-test-only fixed
@@ -296,7 +311,7 @@ one of those constants, it updates the same in-module reference set under an
 explicit sequential path transfer before CORE-FREEZE. A later embedded SQL source
 outside the locator stops work and returns to B; ACC cannot repair it.
 
-## Distinct canonical PostgreSQL tasks
+### Distinct canonical PostgreSQL tasks
 
 <a id="rule-PA-PREP-0002"></a>
 **[rule:PA-PREP-0002]** ACC owns one mechanical task:
@@ -357,7 +372,7 @@ schema is `decodex/postgres-retained-title-stage-report/2`; its mode remains
 The mechanical and semantic tasks do not call each other. Sharing one wrapper does
 not merge their contracts. Neither task can publish `decodex/local-full-check`.
 
-## Canonical surface-retirement table
+### Canonical surface-retirement table
 
 <a id="rule-PA-RET-0001"></a>
 **[rule:PA-RET-0001]** This table is the only non-callable canonical record of
@@ -386,7 +401,7 @@ another row. Base locations are bound to
 | `RET-16` | V22-terminal ledger predicate | Current wrapper requires 22 entries and terminal migration 22; current runbook repeats the old preparation scope | ACC: require exact 23-entry integrated ledger and explicit V22 semantic position | V23 terminal predicate plus V22 semantic predicate | Freeze page can preserve the historical V22-terminal acceptance fact |
 | `RET-17` | Five-source-only preparation capability | Current product helper/fixture, test, wrapper source tuple, count, and runbook describe a five-statement preparation boundary | B removes production surface; ACC removes delivery surface and renamed equivalents | One complete fixed production locator | No callable or current-command historical exception |
 
-## Surface-aware closure and historical classification
+### Surface-aware closure and historical classification
 
 <a id="rule-PA-RET-0002"></a>
 **[rule:PA-RET-0002]** After ACC authoring and before any command runs, inspect
@@ -433,7 +448,7 @@ projection occurrences as nonnormative summaries. ACC classifies every remaining
 callable, test, wrapper, task, and runbook occurrence. No occurrence can remain
 unclassified.
 
-## Mechanical preparation
+### Mechanical preparation
 
 <a id="rule-PA-VAL-0001"></a>
 **[rule:PA-VAL-0001]** Mechanical preparation begins only after ACC freezes the
@@ -460,7 +475,7 @@ inspect the whole boundary, make one coherent repair batch, re-freeze the affect
 identity, and run only the missing canonical preparation phase on the new exact
 candidate.
 
-## Bounded aggregate repair protocol
+### Bounded aggregate repair protocol
 
 <a id="rule-PA-VAL-0002"></a>
 **[rule:PA-VAL-0002]** The unified protocol runs one initial complete aggregate.
@@ -488,7 +503,7 @@ the cause, materially change setup or canonical harness, record it, and allow on
 bounded retry. Stop after two materially identical setup failures. D0a keeps its
 stricter no-retry rule.
 
-## Package identity inspection
+### Package identity inspection
 
 <a id="rule-PA-DEL-0003"></a>
 **[rule:PA-DEL-0003]** Reproduce package identity with ordinary read-only tools.

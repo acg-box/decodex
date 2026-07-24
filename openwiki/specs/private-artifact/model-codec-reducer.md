@@ -1,6 +1,17 @@
-# Private-artifact model, codec, and reducer
+# Private-artifact model, codec, and reducer (retired design)
 
-## Canonical frame and primitives
+Status: frozen historical, non-executable design evidence.
+
+At and after the [repository effective point](decision.md#repository-effective-point),
+every rule marker, model, codec, reducer transition, invariant, numeric value, and
+modal verb in this file describes the retired private-artifact design only. Nothing
+in this file is a current rule, schema contract, runtime input, implementation
+instruction, or future vNext obligation. Before that point, the fail-closed
+conditions in the retirement decision apply and no private-artifact work can start.
+
+## Frozen historical model
+
+### Canonical frame and primitives
 
 <a id="rule-PA-MODEL-0001"></a>
 **[rule:PA-MODEL-0001]** Every independently persisted semantic value, exact
@@ -76,7 +87,7 @@ The three root names are derived from the operation ID. A caller cannot supply o
 change them. No map, float, omitted field, duplicate field, alternate width,
 textual enum, padding, or trailing byte is valid.
 
-## Closed numeric vocabulary
+### Closed numeric vocabulary
 
 <a id="rule-PA-MODEL-0002"></a>
 **[rule:PA-MODEL-0002]** Every value below is one `u8`. An unlisted value is
@@ -125,7 +136,7 @@ complete `Reason(domain,code)` vocabulary. `Gc/LivenessMetadataMismatch` is only
 `Reason(8,6)`. GC codes 1 through 5 keep their earlier meanings. Role observations
 sort by `(role, subject ordinal with None first)` and are unique.
 
-## Inline records and root payloads
+### Inline records and root payloads
 
 <a id="rule-PA-MODEL-0004"></a>
 **[rule:PA-MODEL-0004]** The canonical inline records are:
@@ -318,7 +329,7 @@ Tags 0 and 35 through 255 are invalid. Exact framed maxima are:
 | TransitionProposal; ExactResponse; BootScope; GuardIdentity; ObjectIdentity | 131; 91; 104; 183; 82 |
 | PublishedArtifactReceipt; CaptureEvidenceBundle | 110; 198,764 |
 
-## Canonical validity, digests, and projection
+### Canonical validity, digests, and projection
 
 <a id="rule-PA-MODEL-0005"></a>
 **[rule:PA-MODEL-0005]** The decoder checks the root ceiling before allocation,
@@ -506,7 +517,7 @@ The validator returns the canonical projection record. Runtime roles cannot call
 it directly. Commands call it only inside their authority transaction and use its
 output for every relational projection comparison.
 
-## Subjects and fixed plans
+### Subjects and fixed plans
 
 <a id="rule-PA-MODEL-0006"></a>
 **[rule:PA-MODEL-0006]** Subject ordinals are: controlled parent 0, stage root 1,
@@ -597,7 +608,7 @@ record. Inside the lock, the adapter compares the verified manifest with the
 applicable plan fields or returned bound-reference record. The reducer borrows the
 verified value. No filesystem or CAS I/O occurs in the transaction.
 
-## Total reducer and lifecycle
+### Total reducer and lifecycle
 
 <a id="rule-PA-MODEL-0007"></a>
 **[rule:PA-MODEL-0007]** `reduce_v1` is total and pure. It accepts `Initialize`
@@ -668,7 +679,7 @@ after both post-publication syncs. Owned-root lifecycle progresses through
 | Owned-root step 8 | Running | QuarantinedDurable | Quarantined | QuarantineCollection |
 | Final quarantine-parent sync | Terminal | CollectedDurable | Collected | Complete |
 
-## Step safety and sync debt
+### Step safety and sync debt
 
 <a id="rule-PA-MODEL-0008"></a>
 **[rule:PA-MODEL-0008]** Every step has a fixed class, role, subject, syscall,
@@ -862,7 +873,7 @@ The reducer finds exactly one matching record and consumes it by debt ordinal an
 record digest. Missing, duplicate, differently rooted, differently phased, or
 differently roled debt is `Transition/SyncDebtMismatch`.
 
-## V4.3 observation amendments
+### V4.3 observation amendments
 
 <a id="rule-PA-MODEL-0009"></a>
 **[rule:PA-MODEL-0009]** A debt-producing successful outcome uses exactly one

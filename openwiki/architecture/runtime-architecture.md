@@ -2,12 +2,9 @@
 
 This page explains the active vNext ownership skeleton and preserves a map of the
 excluded v0.2 source for provenance. Checked-in manifests, source, tests, and the vNext
-authority documents remain authoritative, subject to the private-artifact carve-out below.
-
-For the private-artifact subsystem, the accepted
-[private-artifact authority package](../specs/private-artifact/README.md) is the sole normative
-authority. Any private-artifact statement on this page is a nonnormative architecture or status
-projection.
+authority documents remain authoritative. The XY-1403 private-artifact retirement
+takes effect only at the exact
+[repository effective point](../specs/private-artifact/decision.md#repository-effective-point).
 
 ## Workspace shape
 
@@ -969,21 +966,23 @@ fail closed on any value that would require rounding or truncation. Natural char
 retained-title Desktop discovery remain post-freeze evidence owned by XY-1357 and XY-1363,
 respectively; neither is a runtime authority path.
 
-## Future private-artifact runtime projection
+## Retired private-artifact runtime projection
 
-The package [foundations](../specs/private-artifact/foundations.md),
-[persistence and GC](../specs/private-artifact/persistence-gc.md), and
-[executor contract](../specs/private-artifact/executor-platform.md) define the target subsystem.
-This page does not restate their rules or exact inventories. Existing text below about the general
-Decodex root, blob store, repositories, Artifact revisions, and filesystem helpers describes
-current or other accepted surfaces. It does not grant private-artifact authority or change the
-package.
+At and after the repository effective point, vNext has no private-artifact runtime,
+API, controller, status surface, command composition, PostgreSQL authority, executor,
+platform layer, or garbage collector. The archived
+[foundations](../specs/private-artifact/foundations.md),
+[persistence and GC](../specs/private-artifact/persistence-gc.md),
+[executor contract](../specs/private-artifact/executor-platform.md), and
+[operations design](../specs/private-artifact/operations-delivery.md) are historical
+and non-executable. Their rules, inventories, delivery edges, CORE-FREEZE, ACC,
+preparation, and unified validation terms cannot authorize current or future work.
 
-The package-defined private-artifact runtime, API, controller, status, and command composition is
-not implemented in the current workspace. Its CORE-FREEZE, ACC, preparation, and unified
-validation boundaries are future delivery contracts in the package
-[operations module](../specs/private-artifact/operations-delivery.md), not current runtime
-capabilities.
+Existing text below about the general Decodex root, BlobStore, repositories, Artifact
+revisions, and filesystem helpers describes accepted non-private-artifact surfaces.
+XY-1403 does not change them. The retained-title evidence path uses bounded canonical
+privacy-safe Git receipts and creates no new runtime route, platform layer, storage
+system, schema, compatibility path, or product Artifact.
 
 ## Owned vNext paths, configuration, blobs, and cache
 
