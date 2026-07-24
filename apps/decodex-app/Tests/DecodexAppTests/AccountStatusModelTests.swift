@@ -119,14 +119,66 @@ final class AccountStatusModelTests: XCTestCase {
 		XCTAssertEqual(account.visibleResetCreditCount, 2)
 		XCTAssertEqual(account.availableResetCredits.count, 2)
 		XCTAssertEqual(
-			account.availableResetCredits.map { formatResetCreditDate($0.expiresAtUnixEpoch) },
-			["Jul 25 13:51", "Jul 25 13:51"]
+			account.availableResetCredits.map(\.expiresAtUnixEpoch),
+			[1_784_958_690, 1_784_958_690]
 		)
 	}
 
-	func testResetCreditDateUsesBeijingDisplayContract() {
-		XCTAssertEqual(formatResetCreditDate(1_784_958_690), "Jul 25 13:51")
-		XCTAssertEqual(formatResetCreditDate(nil), "-")
+	func testResetDatesUseProvidedTimeZone() throws {
+		let resetAtUnixEpoch = 1_784_958_690
+		let now = Date(timeIntervalSince1970: 1_784_950_000)
+		let newYork = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+		let shanghai = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+
+		XCTAssertEqual(
+			formatResetCreditDate(resetAtUnixEpoch, timeZone: newYork),
+			"Jul 25 01:51"
+		)
+		XCTAssertEqual(
+			UsageResetDisplay.make(
+				resetAtUnixEpoch: resetAtUnixEpoch,
+				now: now,
+				timeZone: newYork
+			).date,
+			"Jul 25 01:51"
+		)
+		XCTAssertEqual(
+			formatResetCreditDate(resetAtUnixEpoch, timeZone: shanghai),
+			"Jul 25 13:51"
+		)
+		XCTAssertEqual(
+			UsageResetDisplay.make(
+				resetAtUnixEpoch: resetAtUnixEpoch,
+				now: now,
+				timeZone: shanghai
+			).date,
+			"Jul 25 13:51"
+		)
+		XCTAssertEqual(formatResetCreditDate(nil, timeZone: newYork), "-")
+	}
+
+	func testUsageResetDateUsesProvidedTimeZoneAtYearBoundary() throws {
+		let now = Date(timeIntervalSince1970: 1_798_731_000)
+		let resetAtUnixEpoch = 1_798_734_600
+		let newYork = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+		let shanghai = try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai"))
+
+		XCTAssertEqual(
+			UsageResetDisplay.make(
+				resetAtUnixEpoch: resetAtUnixEpoch,
+				now: now,
+				timeZone: newYork
+			).date,
+			"Dec 31 11:30"
+		)
+		XCTAssertEqual(
+			UsageResetDisplay.make(
+				resetAtUnixEpoch: resetAtUnixEpoch,
+				now: now,
+				timeZone: shanghai
+			).date,
+			"Jan 1 2027 00:30"
+		)
 	}
 
 	func testUsageResetDisplayUsesInjectedClock() {
