@@ -9,6 +9,51 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		XCTAssertEqual(size, NSSize(width: 340, height: 642))
 	}
 
+	func testMeasuredAccountRowsHeightOverridesAnInflatedEstimate() {
+		let height = AccountPanelLayout.resolvedAccountListContentHeight(
+			measured: 612.2,
+			estimated: 730
+		)
+
+		XCTAssertEqual(height, 613)
+	}
+
+	func testAccountRowsHeightUsesEstimateUntilMeasurementArrives() {
+		XCTAssertEqual(
+			AccountPanelLayout.resolvedAccountListContentHeight(
+				measured: 0,
+				estimated: 730
+			),
+			730
+		)
+		XCTAssertEqual(
+			AccountPanelLayout.resolvedAccountListContentHeight(
+				measured: .nan,
+				estimated: 730
+			),
+			730
+		)
+	}
+
+	func testHostingWindowScreenHeightOverridesPointerScreenFallback() {
+		let height = AccountPanelLayout.resolvedScreenVisibleHeight(
+			windowVisibleFrame: NSRect(x: 1_000, y: 0, width: 800, height: 620),
+			fallback: 1_000
+		)
+
+		XCTAssertEqual(height, 620)
+	}
+
+	func testPointerScreenHeightIsFallbackBeforeWindowAttachment() {
+		XCTAssertEqual(
+			AccountPanelLayout.resolvedScreenVisibleHeight(
+				windowVisibleFrame: nil,
+				fallback: 760
+			),
+			760
+		)
+	}
+
 	func testFrameKeepsTopEdgeAndCenterWhenContentShrinks() {
 		let currentFrame = NSRect(x: 120, y: 200, width: 360, height: 700)
 		let frame = PanelWindowSizingLayout.frame(
@@ -41,16 +86,39 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 	}
 
 	func testOversizedFrameFallsBackToVisibleFrameLeadingMargin() {
+		let visibleFrame = NSRect(x: 0, y: 0, width: 800, height: 700)
 		let frame = PanelWindowSizingLayout.frame(
 			forContentSize: NSSize(width: 900, height: 760),
 			currentFrame: NSRect(x: 100, y: 100, width: 340, height: 220)
 		) { contentSize in
 			contentSize
 		} visibleFrame: {
-			NSRect(x: 0, y: 0, width: 800, height: 700)
+			visibleFrame
 		}
 
 		XCTAssertEqual(frame.minX, 8)
 		XCTAssertEqual(frame.minY, 8)
+		XCTAssertEqual(frame.width, 784)
+		XCTAssertEqual(frame.height, 684)
+		XCTAssertEqual(frame.maxX, 792)
+		XCTAssertEqual(frame.maxY, 692)
+	}
+
+	func testOversizedFittedFrameConvergesOnTheSecondLayoutPass() {
+		let visibleFrame = NSRect(x: 0, y: 0, width: 800, height: 700)
+		let firstFrame = PanelWindowSizingLayout.frame(
+			forContentSize: NSSize(width: 900, height: 760),
+			currentFrame: NSRect(x: 100, y: 100, width: 340, height: 220)
+		) { $0 } visibleFrame: {
+			visibleFrame
+		}
+		let secondFrame = PanelWindowSizingLayout.frame(
+			forContentSize: NSSize(width: 900, height: 760),
+			currentFrame: firstFrame
+		) { $0 } visibleFrame: {
+			visibleFrame
+		}
+
+		XCTAssertEqual(secondFrame, firstFrame)
 	}
 }
