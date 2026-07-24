@@ -12,16 +12,19 @@ version        = 1
 # It verifies the negotiated V1.2 contract and stable server identity before accepting
 # status. `--root PATH` selects another typed Decodex root for isolated operation/tests.
 
-# Local means the client and decodexd share one host. The address must be loopback.
+# Local means the client and decodexd share one owner effective UID on one host.
+# The fixed endpoint is ~/.decodex/server/decodex.sock. Replace 501 with the
+# exact output of `id -u` for the account that owns this Decodex root.
 [profiles.local]
-address = "127.0.0.1:49152"
-kind    = "local"
+kind              = "local"
+policy            = "same_uid"
+service_owner_uid = 501
 # Optional pin after this host has created ~/.decodex/server/identity.
 # expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"
 
 # Remote is an explicit data model for a different server host. It contains no
 # repository path and always requires a stable server-identity pin. This profile
-# does not enable a non-loopback listener, authentication, or TLS; those remain
+# does not enable a remote listener, authentication, or TLS; those remain
 # gated future work.
 [profiles.remote]
 expected_server_identity = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162"

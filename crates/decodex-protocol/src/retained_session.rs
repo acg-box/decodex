@@ -2,7 +2,6 @@
 
 use std::{
 	fmt::{Debug, Display, Formatter},
-	net::{IpAddr, SocketAddr},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -12,47 +11,47 @@ use std::{
 
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use serde::{Deserialize, Serialize};
-use tokio::{net::TcpStream, sync::Notify, time};
+use tokio::{sync::Notify, time};
 use tokio_tungstenite::{
-	MaybeTlsStream, WebSocketStream,
-	tungstenite::{Message, http::Uri, protocol::WebSocketConfig},
+	WebSocketStream,
+	tungstenite::{Message, protocol::WebSocketConfig},
 };
 
 use crate::{
 	CURRENT_VERSION, ClientHello, ClientMessage, CommandEnvelope, CommandReceipt,
-	CommandResultEnvelope, Cursor, EventEnvelope, LoopbackEndpoint, ProtocolVersion, QueryEnvelope,
-	QueryResultEnvelope, ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId,
-	ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope, VersionRefusal,
+	CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority, LocalTransportRefusal,
+	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReconnectMode,
+	Refusal, RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
+	ServerWelcome, SnapshotEnvelope, VersionRefusal,
 };
 
-type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type Socket = WebSocketStream<LocalTransportStream>;
 
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(5);
-const MAX_ENDPOINT_BYTES: usize = 2_048;
 const MAX_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_SNAPSHOT_ITEMS: usize = 1_024;
-const WS_PATH: &str = "/v1/ws";
+// This URI is WebSocket handshake metadata only. The client passes an already
+// admitted Unix stream, so this value cannot resolve or dial a TCP endpoint.
+const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Explicit network and authority inputs for one retained session.
+/// Explicit local transport and authority inputs for one retained session.
 ///
 /// This value contains no filesystem, profile-selection, retry, or cache policy.
 #[derive(Clone, Eq, PartialEq)]
 pub struct RetainedSessionConfig {
-	endpoint: LoopbackEndpoint,
+	local_transport: LocalTransportAuthority,
 	expected_server_id: ServerId,
 	operation_timeout: Duration,
 }
 impl RetainedSessionConfig {
-	/// Validate the canonical loopback WebSocket route and stable server identity pin.
-	pub fn new(
-		endpoint: impl AsRef<str>,
+	/// Bind one already validated local authority to a stable server identity pin.
+	pub const fn new(
+		local_transport: LocalTransportAuthority,
 		expected_server_id: ServerId,
-	) -> Result<Self, RetainedSessionFailure> {
-		let endpoint = parse_loopback_endpoint(endpoint.as_ref())?;
-
-		Ok(Self { endpoint, expected_server_id, operation_timeout: OPERATION_TIMEOUT })
+	) -> Self {
+		Self { local_transport, expected_server_id, operation_timeout: OPERATION_TIMEOUT }
 	}
 
 	/// Stable server identity selected by the same typed profile as the endpoint.
@@ -60,15 +59,12 @@ impl RetainedSessionConfig {
 		&self.expected_server_id
 	}
 
-	fn url(&self) -> String {
-		format!("ws://{}{WS_PATH}", self.endpoint.address())
-	}
 }
 impl Debug for RetainedSessionConfig {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
 			.debug_struct("RetainedSessionConfig")
-			.field("endpoint", &"<redacted>")
+			.field("local_transport", &"<redacted>")
 			.field("identity_pinned", &true)
 			.field("operation_timeout", &self.operation_timeout)
 			.finish()
@@ -197,9 +193,18 @@ impl RetainedSession {
 			.max_write_buffer_size(MAX_MESSAGE_BYTES)
 			.max_message_size(Some(MAX_MESSAGE_BYTES))
 			.max_frame_size(Some(MAX_MESSAGE_BYTES));
-		let endpoint = config.url();
-		let connect =
-			tokio_tungstenite::connect_async_with_config(&endpoint, Some(websocket_config), false);
+		let stream = bounded(
+			&cancellation,
+			config.operation_timeout,
+			config.local_transport.connect(),
+		)
+			.await?
+			.map_err(map_local_transport_failure)?;
+		let connect = tokio_tungstenite::client_async_with_config(
+			LOCAL_WEBSOCKET_URI,
+			stream,
+			Some(websocket_config),
+		);
 		let (mut socket, _) = bounded(&cancellation, config.operation_timeout, connect)
 			.await?
 			.map_err(map_connect_error)?;
@@ -544,8 +549,18 @@ pub enum SessionDelivery {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RetainedSessionFailure {
-	/// The explicit endpoint was absent, oversized, or not a WebSocket endpoint.
-	InvalidEndpoint,
+	/// Durable local policy disables the endpoint.
+	LocalTransportDisabled,
+	/// Remote transport remains outside this implementation.
+	RemoteTransportDisabled,
+	/// The platform has no accepted local kernel peer-identity implementation.
+	LocalTransportUnsupported,
+	/// The local directory, lock, socket, or captured identity is unsafe.
+	UnsafeLocalEndpoint,
+	/// The kernel did not provide an unambiguous local peer identity.
+	LocalPeerIdentityUnavailable,
+	/// The process or connected peer does not match the configured service UID.
+	LocalPeerUidMismatch,
 	/// A bounded connect, handshake, send, or close deadline elapsed.
 	OperationTimeout,
 	/// Cooperative cancellation terminated the owned socket operation.
@@ -580,7 +595,14 @@ pub enum RetainedSessionFailure {
 impl Display for RetainedSessionFailure {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
-			Self::InvalidEndpoint => "retained session endpoint is invalid",
+			Self::LocalTransportDisabled => "retained session local transport is disabled",
+			Self::RemoteTransportDisabled => "retained session remote transport is disabled",
+			Self::LocalTransportUnsupported =>
+				"retained session local transport is unsupported",
+			Self::UnsafeLocalEndpoint => "retained session local endpoint is unsafe",
+			Self::LocalPeerIdentityUnavailable =>
+				"retained session local peer identity is unavailable",
+			Self::LocalPeerUidMismatch => "retained session local peer UID does not match",
 			Self::OperationTimeout => "retained session operation timed out",
 			Self::Cancelled => "retained session was cancelled",
 			Self::Closed => "retained session is closed",
@@ -680,6 +702,28 @@ fn map_connect_error(error: tokio_tungstenite::tungstenite::Error) -> RetainedSe
 	}
 }
 
+fn map_local_transport_failure(
+	failure: LocalTransportRefusal,
+) -> RetainedSessionFailure {
+	match failure {
+		LocalTransportRefusal::Disabled => RetainedSessionFailure::LocalTransportDisabled,
+		LocalTransportRefusal::InvalidPolicy
+		| LocalTransportRefusal::ConfigurationUnavailable =>
+			RetainedSessionFailure::UnsafeLocalEndpoint,
+		LocalTransportRefusal::UnsupportedPlatform =>
+			RetainedSessionFailure::LocalTransportUnsupported,
+		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch =>
+			RetainedSessionFailure::LocalPeerUidMismatch,
+		LocalTransportRefusal::UnsafeDirectory
+		| LocalTransportRefusal::UnsafeEndpoint
+		| LocalTransportRefusal::EndpointReplaced => RetainedSessionFailure::UnsafeLocalEndpoint,
+		LocalTransportRefusal::PeerCredentialsUnavailable =>
+			RetainedSessionFailure::LocalPeerIdentityUnavailable,
+		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse =>
+			RetainedSessionFailure::Disconnected,
+	}
+}
+
 fn map_transport_error(error: tokio_tungstenite::tungstenite::Error) -> RetainedSessionFailure {
 	match error {
 		tokio_tungstenite::tungstenite::Error::Capacity(_) => RetainedSessionFailure::Backpressure,
@@ -691,33 +735,6 @@ fn map_transport_error(error: tokio_tungstenite::tungstenite::Error) -> Retained
 
 fn next(cursor: Cursor) -> Option<Cursor> {
 	cursor.0.checked_add(1).map(Cursor)
-}
-
-fn parse_loopback_endpoint(endpoint: &str) -> Result<LoopbackEndpoint, RetainedSessionFailure> {
-	if endpoint.len() > MAX_ENDPOINT_BYTES || endpoint.contains('#') {
-		return Err(RetainedSessionFailure::InvalidEndpoint);
-	}
-
-	let uri = endpoint.parse::<Uri>().map_err(|_| RetainedSessionFailure::InvalidEndpoint)?;
-	let authority = uri.authority().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
-	let path = uri.path_and_query().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
-
-	if uri.scheme_str() != Some("ws")
-		|| authority.as_str().contains('@')
-		|| path.path() != WS_PATH
-		|| path.query().is_some()
-	{
-		return Err(RetainedSessionFailure::InvalidEndpoint);
-	}
-
-	let port = authority.port_u16().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
-	let host = authority.host().trim_start_matches('[').trim_end_matches(']');
-	let address = host
-		.parse::<IpAddr>()
-		.map(|ip| SocketAddr::new(ip, port))
-		.map_err(|_| RetainedSessionFailure::InvalidEndpoint)?;
-
-	LoopbackEndpoint::new(address).map_err(|_| RetainedSessionFailure::InvalidEndpoint)
 }
 
 async fn bounded<F, T>(

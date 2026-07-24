@@ -1,8 +1,9 @@
-//! Typed vNext wire contracts and loopback endpoint policy shared by clients and
+//! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodexd`.
 
 mod client;
 mod doctor;
+mod local_transport;
 mod retained_session;
 mod wire;
 
@@ -11,6 +12,10 @@ pub use self::{
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,
+	},
+	local_transport::{
+		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
+		LocalTransportStream,
 	},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
@@ -32,12 +37,6 @@ pub use self::{
 		ServerId, ServerInstanceId, ServerMessage, ServerWelcome, Sha256Digest, SnapshotEnvelope,
 		SnapshotItem, WireScalarTooLong, WireText, decode_client_message, encode_server_message,
 	},
-};
-
-use std::{
-	error::Error,
-	fmt::{Display, Formatter},
-	net::SocketAddr,
 };
 
 use serde::{Deserialize, Serialize};
@@ -95,38 +94,6 @@ impl SupportedVersions {
 			minimum_minor: PREVIOUS_MINOR_VERSION.minor,
 			maximum_minor: CURRENT_VERSION.minor,
 		}
-	}
-}
-
-/// A local endpoint that has passed the loopback-only policy.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LoopbackEndpoint(SocketAddr);
-impl LoopbackEndpoint {
-	/// Validate an address before any socket is opened.
-	pub fn new(address: SocketAddr) -> Result<Self, EndpointPolicyError> {
-		if address.ip().is_loopback() {
-			Ok(Self(address))
-		} else {
-			Err(EndpointPolicyError { address })
-		}
-	}
-
-	/// Return the validated socket address.
-	pub const fn address(self) -> SocketAddr {
-		self.0
-	}
-}
-
-/// Error returned when a composition root selects a non-loopback address.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct EndpointPolicyError {
-	address: SocketAddr,
-}
-impl Error for EndpointPolicyError {}
-
-impl Display for EndpointPolicyError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "non-loopback endpoint is disabled: {}", self.address)
 	}
 }
 

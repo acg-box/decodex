@@ -3,7 +3,6 @@
 use std::{
 	env, fs,
 	io::ErrorKind,
-	net::{IpAddr, Ipv4Addr, SocketAddr},
 	path::{Path, PathBuf},
 	sync::Arc,
 };
@@ -18,15 +17,14 @@ use crate::{
 use decodex_codex::CodexAdapter;
 use decodex_core::{
 	Availability, BlobStore, ConfigError, DecodexConfig, DecodexRoot, PathError,
-	PostgresIdentityConfig, ProductState as _, ServerIdentity,
+	PostgresIdentityConfig, ProductState as _, ServerIdentity, ServerProfile,
 };
 use decodex_postgres::{BootstrapFailure, PostgresStore};
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, ServerId,
+	DoctorStatus, LocalTransportAuthority, LocalTransportRefusal, ServerId,
 };
 
-const DEFAULT_ADDRESS: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 49_152);
 const CONFIG_UNAVAILABLE: &str = "typed PostgreSQL configuration is unavailable";
 const AUTHENTICATION_UNAVAILABLE: &str = "PostgreSQL authentication is unavailable";
 const DATABASE_UNREACHABLE: &str = "configured PostgreSQL is unreachable";
@@ -37,7 +35,7 @@ const MANAGED_REPOSITORY_UNAVAILABLE: &str = "managed repository runtime is unav
 /// Complete daemon bootstrap result, including its stable identity and typed report.
 pub struct ServiceBootstrap {
 	server_id: ServerId,
-	address: SocketAddr,
+	local_transport: Result<LocalTransportAuthority, LocalTransportRefusal>,
 	store: ProductStore,
 	managed_repositories: Option<ManagedRepositoryRuntime>,
 	managed_repository_readiness: ManagedRepositoryReadiness,
@@ -46,11 +44,6 @@ pub struct ServiceBootstrap {
 	doctor: DoctorReport,
 }
 impl ServiceBootstrap {
-	/// Loopback listener retained by the current security gate.
-	pub const fn address(&self) -> SocketAddr {
-		self.address
-	}
-
 	/// Stable server-host identity used by welcome, pinning, and doctor readback.
 	pub fn server_id(&self) -> &ServerId {
 		&self.server_id
@@ -87,20 +80,12 @@ impl ServiceBootstrap {
 		)
 	}
 
-	/// Bind the bootstrapped daemon on an explicitly selected loopback address.
-	pub async fn bind(
-		self,
-		address: SocketAddr,
-		config: ServerConfig,
-	) -> Result<BoundServer, ServerError> {
-		self.protocol_server(config).bind(address).await
-	}
+	/// Bind through the configured same-UID local transport authority.
+	pub async fn bind(self, config: ServerConfig) -> Result<BoundServer, ServerError> {
+		let local_transport =
+			self.local_transport.clone().map_err(ServerError::LocalTransport)?;
 
-	/// Run the bootstrapped daemon on its configured current local endpoint.
-	pub async fn run(self, config: ServerConfig) -> Result<(), ServerError> {
-		let address = self.address;
-
-		self.protocol_server(config).run(address).await
+		self.protocol_server(config).bind(local_transport).await
 	}
 }
 
@@ -132,6 +117,17 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	let identity = ServerIdentity::load_or_create(&paths);
 	let (server_id, identity_status) = server_identity(identity);
 	let loaded = DecodexConfig::load(&paths);
+	let local_transport = loaded.as_ref().map_or(
+		Err(LocalTransportRefusal::ConfigurationUnavailable),
+		|config| match config.active_profile() {
+			ServerProfile::Local(profile) => LocalTransportAuthority::new(
+				paths.clone(),
+				profile.policy(),
+				profile.service_owner_uid(),
+			),
+			ServerProfile::Remote(_) => Err(LocalTransportRefusal::Disabled),
+		},
+	);
 	let config_status = match &loaded {
 		Ok(_) => DoctorStatus::Ready,
 		Err(error) => DoctorStatus::Unavailable(config_issue(*error)),
@@ -190,7 +186,7 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		address: DEFAULT_ADDRESS,
+		local_transport,
 		store,
 		managed_repositories,
 		managed_repository_readiness,
@@ -217,7 +213,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		address: DEFAULT_ADDRESS,
+		local_transport: Err(LocalTransportRefusal::ConfigurationUnavailable),
 		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
 		managed_repositories: None,
 		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,

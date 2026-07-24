@@ -1,4 +1,4 @@
-//! `decodexd` lifecycle assembly and the loopback V1 connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V1 local connection owner.
 //!
 //! Default account-process composition remains crate-private and cannot be called by a product
 //! root. The V22 manual runner requires an explicit non-production feature and binary:
@@ -49,7 +49,10 @@ pub use supervised_validation::{
 	ValidationAcceptance, ValidationCancellation, ValidationCommandAuthority, ValidationRejection,
 	ValidationSupervisionError, ValidationTermination, supervise_validation,
 };
-pub use websocket::{BoundServer, ProtocolServer, ServerConfig, ServerError};
+pub use websocket::{
+	BoundServer, OwnedTaskIdentity, OwnedTaskKind, ProtocolServer, ServerConfig, ServerError,
+	SpawnId, TerminationPrimary, TerminationReceipt,
+};
 
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 
