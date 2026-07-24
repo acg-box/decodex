@@ -100,7 +100,10 @@ BEGIN
 					ON member.snapshot_id=blocker.snapshot_id
 					AND member.account_id=blocker.account_id
 				WHERE blocker.decision_id=decision.decision_id
-					AND member.disposition='included'
+					AND (
+						decision.kind::text='no_route'
+						OR member.disposition='included'
+					)
 			) END,
 		'quota_exclusions',(
 			SELECT COALESCE(
@@ -2785,6 +2788,69 @@ BEGIN
 			FROM decodex.routing_snapshot_members
 			WHERE snapshot_id=NEW.snapshot_id
 		)
+		OR EXISTS (
+			SELECT 1
+			FROM decodex.routing_decision_member_refs AS reference
+			JOIN decodex.routing_snapshot_members AS member
+				ON member.snapshot_id=reference.snapshot_id
+				AND member.account_id=reference.account_id
+			WHERE reference.decision_id=NEW.decision_id
+				AND (
+					(
+						member.disposition='excluded'
+						AND NOT EXISTS (
+							SELECT 1
+							FROM decodex.routing_decision_blocker_refs AS blocker
+							WHERE blocker.decision_id=reference.decision_id
+								AND blocker.account_id=reference.account_id
+								AND blocker.blocker='excluded_by_policy'
+						)
+					) OR (
+						member.disposition='included'
+						AND EXISTS (
+							SELECT 1
+							FROM decodex.routing_decision_blocker_refs AS blocker
+							WHERE blocker.decision_id=reference.decision_id
+								AND blocker.account_id=reference.account_id
+								AND blocker.blocker='excluded_by_policy'
+						)
+					)
+				)
+		)
+		OR EXISTS (
+			SELECT blocker.account_id,blocker.position,blocker.blocker
+			FROM decodex.routing_snapshot_blockers AS blocker
+			JOIN decodex.routing_snapshot_members AS member
+				ON member.snapshot_id=blocker.snapshot_id
+				AND member.account_id=blocker.account_id
+			WHERE blocker.snapshot_id=NEW.snapshot_id
+				AND member.disposition='excluded'
+			EXCEPT
+			SELECT blocker.account_id,blocker.position,blocker.blocker
+			FROM decodex.routing_decision_blocker_refs AS blocker
+			JOIN decodex.routing_snapshot_members AS member
+				ON member.snapshot_id=blocker.snapshot_id
+				AND member.account_id=blocker.account_id
+			WHERE blocker.decision_id=NEW.decision_id
+				AND member.disposition='excluded'
+		)
+		OR EXISTS (
+			SELECT blocker.account_id,blocker.position,blocker.blocker
+			FROM decodex.routing_decision_blocker_refs AS blocker
+			JOIN decodex.routing_snapshot_members AS member
+				ON member.snapshot_id=blocker.snapshot_id
+				AND member.account_id=blocker.account_id
+			WHERE blocker.decision_id=NEW.decision_id
+				AND member.disposition='excluded'
+			EXCEPT
+			SELECT blocker.account_id,blocker.position,blocker.blocker
+			FROM decodex.routing_snapshot_blockers AS blocker
+			JOIN decodex.routing_snapshot_members AS member
+				ON member.snapshot_id=blocker.snapshot_id
+				AND member.account_id=blocker.account_id
+			WHERE blocker.snapshot_id=NEW.snapshot_id
+				AND member.disposition='excluded'
+		)
 	THEN
 		RAISE EXCEPTION 'routing decision evidence is incomplete or cross-linked'
 			USING ERRCODE='23514',CONSTRAINT='routing_decision_complete';
@@ -2857,7 +2923,7 @@ BEGIN
 				USING ERRCODE='23514',CONSTRAINT='routing_decision_complete';
 		END IF;
 	ELSIF NEW.kind::text='no_route' THEN
-		IF included_count>0 AND blocker_count=0 THEN
+		IF blocker_count=0 THEN
 			RAISE EXCEPTION 'NoRoute has no exact blocker cause'
 				USING ERRCODE='23514',CONSTRAINT='routing_decision_complete';
 		END IF;
@@ -3880,7 +3946,10 @@ BEGIN
 				ON member.snapshot_id=blocker.snapshot_id
 				AND member.account_id=blocker.account_id
 			WHERE blocker.decision_id=decision_uuid
-				AND member.disposition='included'
+				AND (
+					decision_kind='no_route'
+					OR member.disposition='included'
+				)
 		) END
 	);
 	effect:=core||pg_catalog.jsonb_build_object(

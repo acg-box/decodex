@@ -643,7 +643,7 @@ pub struct RoutingDecision {
 	pub no_route_reason: Option<RoutingNoRouteReason>,
 	/// Complete normalized depletion lineage required by the selected or waiting shape.
 	pub exclusions: Vec<RoutingDecisionExclusion>,
-	/// Complete exact causes for waiting or no-route outcomes, in member and blocker order.
+	/// Complete included-member causes for waits, or complete-universe causes for `NoRoute`.
 	pub causes: Vec<RoutingDecisionCause>,
 }
 
@@ -666,6 +666,10 @@ pub fn decide_routing(
 		|| members.iter().enumerate().any(|(index, member)| {
 			members[..index].iter().any(|prior| prior.account_id == member.account_id)
 		}) || members.iter().filter(|member| member.sticky).count() > 1
+		|| members.iter().any(|member| {
+			(member.disposition == RoutingMemberDisposition::Excluded)
+				!= member.blockers.contains(&RoutingBlocker::ExcludedByPolicy)
+		})
 	{
 		return Err(RoutingKernelError::MalformedSnapshot);
 	}
@@ -702,8 +706,10 @@ pub fn decide_routing(
 		.enumerate()
 		.filter(|(_, member)| member.disposition == RoutingMemberDisposition::Included)
 		.collect::<Vec<_>>();
+	let complete_universe = members.iter().enumerate().collect::<Vec<_>>();
+	let no_route_causes = routing_causes(&complete_universe);
 	if included.is_empty() {
-		return Ok(no_route(&snapshot.snapshot_id, Vec::new()));
+		return no_route(&snapshot.snapshot_id, no_route_causes);
 	}
 
 	let sticky = included.iter().copied().find(|(_, member)| member.sticky);
@@ -729,7 +735,7 @@ pub fn decide_routing(
 			let required =
 				member.blockers.iter().filter(|blocker| is_depletion_blocker(**blocker)).count();
 			if account_exclusions.len() != required {
-				return Ok(no_route(&snapshot.snapshot_id, routing_causes(&included)));
+				return no_route(&snapshot.snapshot_id, no_route_causes);
 			}
 			exclusions.extend(account_exclusions);
 		}
@@ -745,6 +751,9 @@ pub fn decide_routing(
 	}
 
 	let causes = routing_causes(&included);
+	if causes.is_empty() {
+		return Err(RoutingKernelError::IncompleteEvidence);
+	}
 	let only_depletion = included.iter().all(|(_, member)| {
 		!member.blockers.is_empty() && member.blockers.iter().all(|blocker| {
 			is_depletion_blocker(*blocker)
@@ -765,7 +774,7 @@ pub fn decide_routing(
 				causes,
 			});
 		}
-		return Ok(no_route(&snapshot.snapshot_id, causes));
+		return no_route(&snapshot.snapshot_id, no_route_causes);
 	}
 	let mut exclusions = Vec::new();
 	let mut earliest_ready = None;
@@ -774,12 +783,12 @@ pub fn decide_routing(
 			.iter()
 			.all(|fact| quota_fact_current(fact, snapshot.decided_at_micros))
 		{
-			return Ok(no_route(&snapshot.snapshot_id, causes.clone()));
+			return no_route(&snapshot.snapshot_id, no_route_causes.clone());
 		}
 		let account_exclusions =
 			depletion_exclusions(member, &facts_by_member[index], snapshot.decided_at_micros)?;
 		if account_exclusions.is_empty() {
-			return Ok(no_route(&snapshot.snapshot_id, causes.clone()));
+			return no_route(&snapshot.snapshot_id, no_route_causes.clone());
 		}
 		let ready = account_exclusions
 			.iter()
@@ -800,8 +809,14 @@ pub fn decide_routing(
 	})
 }
 
-fn no_route(snapshot_id: &str, causes: Vec<RoutingDecisionCause>) -> RoutingDecision {
-	RoutingDecision {
+fn no_route(
+	snapshot_id: &str,
+	causes: Vec<RoutingDecisionCause>,
+) -> Result<RoutingDecision, RoutingKernelError> {
+	if causes.is_empty() {
+		return Err(RoutingKernelError::IncompleteEvidence);
+	}
+	Ok(RoutingDecision {
 		snapshot_id: snapshot_id.to_owned(),
 		kind: RoutingDecisionKind::NoRoute,
 		selected_account_id: None,
@@ -809,7 +824,7 @@ fn no_route(snapshot_id: &str, causes: Vec<RoutingDecisionCause>) -> RoutingDeci
 		no_route_reason: Some(RoutingNoRouteReason::BlockedEvidence),
 		exclusions: Vec::new(),
 		causes,
-	}
+	})
 }
 
 fn routing_causes(

@@ -174,6 +174,7 @@ fn parse_readback(value: Value) -> Result<ExecutionDecisionReadback, StoreError>
 			selected_account_id.is_none()
 				&& waiting_ready_at_micros.is_none()
 				&& no_route_reason == Some("blocked_evidence")
+				&& !causes.is_empty()
 				&& quota_exclusions.is_empty(),
 	};
 	if !shape_valid {
