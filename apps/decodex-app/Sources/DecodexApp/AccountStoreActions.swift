@@ -119,52 +119,10 @@ extension AccountStore {
 		}
 	}
 
-	func prepareResetCredit(
-		_ preparation: ResetCreditUsePreparation,
-		for account: CodexAccount
-	) async -> String? {
-		guard preparation.target.accountID == account.accountFingerprint else {
-			presentError(
-				"Couldn’t prepare reset card",
-				error: ResetCreditUseError.accountChanged,
-				source: .resetCredit
-			)
-			return nil
-		}
-		guard await refreshAccountsForResetCredit() else {
-			return nil
-		}
-
-		do {
-			let codexHomeURL = try makeResetCreditCodexHome()
-			defer {
-				try? FileManager.default.removeItem(at: codexHomeURL)
-			}
-
-			let credentials = try await resetCreditCredentials(
-				for: account,
-				in: codexHomeURL
-			)
-			let codexExecutableURL = URL(fileURLWithPath: try bridge.codexExecutablePath())
-			let creditID = try await CodexResetCreditBridge().prepare(
-				codexExecutableURL: codexExecutableURL,
-				codexHomeURL: codexHomeURL,
-				credentials: credentials,
-				preparation: preparation
-			)
-
-			clearNotice(source: .resetCredit)
-			return creditID
-		} catch {
-			presentError("Couldn’t prepare reset card", error: error, source: .resetCredit)
-			return nil
-		}
-	}
-
 	func consumeResetCredit(
 		_ attempt: ResetCreditUseAttempt,
 		for account: CodexAccount
-	) async -> Bool {
+	) async -> ResetCreditUseCompletion {
 		cancelUsageRefillAnimation(for: account.accountFingerprint)
 		guard attempt.target.accountID == account.accountFingerprint else {
 			presentError(
@@ -172,15 +130,12 @@ extension AccountStore {
 				error: ResetCreditUseError.accountChanged,
 				source: .resetCredit
 			)
-			return false
-		}
-		guard await refreshAccountsForResetCredit() else {
-			return false
+			return ResetCreditUseCompletion(resolved: false, creditID: attempt.creditID)
 		}
 
 		do {
-			let freshAccount = try uniqueFreshResetCreditAccount(matching: account)
-			let refillAnimation = AccountUsageRefillAnimation.make(from: freshAccount)
+			let currentAccount = try uniqueResetCreditAccount(matching: account)
+			let refillAnimation = AccountUsageRefillAnimation.make(from: currentAccount)
 			let codexHomeURL = try makeResetCreditCodexHome()
 			defer {
 				try? FileManager.default.removeItem(at: codexHomeURL)
@@ -191,37 +146,39 @@ extension AccountStore {
 				in: codexHomeURL
 			)
 			let codexExecutableURL = URL(fileURLWithPath: try bridge.codexExecutablePath())
-			let outcome = try await CodexResetCreditBridge().consume(
+			let result = try await CodexResetCreditBridge().consume(
 				codexExecutableURL: codexExecutableURL,
 				codexHomeURL: codexHomeURL,
 				credentials: credentials,
 				attempt: attempt
 			)
 
-			if outcome == .reset {
+			if result.outcome == .reset {
 				beginUsageRefillAnimation(refillAnimation)
 			}
-			let refreshSucceeded = await refreshAccountsForResetCredit()
+			let refreshSucceeded = await refreshAccountsAfterResetCredit()
 			finishUsageRefillAnimation(
 				refillAnimation,
-				refreshSucceeded: outcome == .reset && refreshSucceeded
+				refreshSucceeded: result.outcome == .reset && refreshSucceeded
 			)
 			if refreshSucceeded {
-				presentNotice(.resetCreditOutcome(outcome))
+				presentNotice(.resetCreditOutcome(result.outcome))
 			} else {
 				let refreshError = notice?.copyText ?? "Account refresh failed."
-				presentNotice(.resetCreditOutcome(outcome, refreshError: refreshError))
+				presentNotice(.resetCreditOutcome(result.outcome, refreshError: refreshError))
 			}
-			return true
+			return ResetCreditUseCompletion(resolved: true, creditID: result.creditID)
 		} catch {
 			cancelUsageRefillAnimation(for: account.accountFingerprint)
-			_ = await refreshAccountsForResetCredit()
 			presentError("Couldn’t use reset card", error: error, source: .resetCredit)
-			return false
+			return ResetCreditUseCompletion(
+				resolved: false,
+				creditID: (error as? CodexResetCreditUseFailure)?.creditID ?? attempt.creditID
+			)
 		}
 	}
 
-	private func refreshAccountsForResetCredit() async -> Bool {
+	private func refreshAccountsAfterResetCredit() async -> Bool {
 		while isRefreshing {
 			guard Task.isCancelled == false else {
 				return false
@@ -237,7 +194,7 @@ extension AccountStore {
 		for account: CodexAccount,
 		in codexHomeURL: URL
 	) async throws -> CodexResetCreditCredentials {
-		let account = try uniqueFreshResetCreditAccount(matching: account)
+		let account = try uniqueResetCreditAccount(matching: account)
 		let expectedEmail = normalizedEmail(account.email)
 
 		let exportedAuthURL = codexHomeURL.appendingPathComponent("selected-account.json")
@@ -295,7 +252,7 @@ extension AccountStore {
 		return CodexResetCreditCredentials(expectedEmail: expectedEmail)
 	}
 
-	func uniqueFreshResetCreditAccount(matching account: CodexAccount) throws -> CodexAccount {
+	func uniqueResetCreditAccount(matching account: CodexAccount) throws -> CodexAccount {
 		let expectedEmail = normalizedEmail(account.email)
 		let matches = accounts.filter { candidate in
 			guard candidate.accountFingerprint == account.accountFingerprint else {
