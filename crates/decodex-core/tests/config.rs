@@ -15,7 +15,7 @@ use toml as _;
 
 use decodex_core::{
 	ConfigError, DecodexClientConfig, DecodexConfig, MAX_CONFIG_BYTES, PathError, ServerIdentity,
-	ServerProfile,
+	LocalTrustPolicy, ServerProfile,
 };
 use support::{SERVER_ID, TestRoot};
 
@@ -36,7 +36,15 @@ fn valid_configuration_keeps_profiles_and_server_host_paths_explicit() {
 
 	assert_eq!(config.version(), 1);
 	assert_eq!(config.active_profile_name().as_str(), "local");
-	assert!(matches!(config.active_profile(), ServerProfile::Local(_)));
+	let ServerProfile::Local(local) = config.active_profile() else {
+		panic!("active profile is local")
+	};
+
+	assert_eq!(local.policy(), LocalTrustPolicy::SameUid);
+	#[cfg(unix)]
+	// SAFETY: `geteuid` has no arguments or failure return.
+	assert_eq!(local.service_owner_uid(), Some(unsafe { libc::geteuid() }));
+	assert_eq!(local.expected_server_identity(), None);
 
 	let remote = config
 		.profiles()
@@ -150,10 +158,22 @@ fn client_profile_selection_supports_active_and_explicit_names() {
 
 #[test]
 fn local_and_remote_profile_boundaries_fail_closed() {
-	let non_loopback = support::valid_config().replace("127.0.0.1:49152", "192.0.2.8:49152");
+	let missing_owner = support::valid_config()
+		.lines()
+		.filter(|line| !line.starts_with("service_owner_uid = "))
+		.collect::<Vec<_>>()
+		.join("\n");
 
 	assert_eq!(
-		DecodexConfig::parse(non_loopback.as_bytes()).unwrap_err(),
+		DecodexConfig::parse(missing_owner.as_bytes()).unwrap_err(),
+		ConfigError::InvalidProfile,
+	);
+
+	let disabled_with_owner =
+		support::valid_config().replace("policy = \"same_uid\"", "policy = \"disabled\"");
+
+	assert_eq!(
+		DecodexConfig::parse(disabled_with_owner.as_bytes()).unwrap_err(),
 		ConfigError::InvalidProfile,
 	);
 
