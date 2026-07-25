@@ -117,6 +117,7 @@ pub struct ManualRetainedTitleExperimentReport {
 }
 
 /// Run one manual, feature-gated V22 experiment from a bounded JSON request file.
+#[allow(clippy::too_many_lines)] // Keep one closed, auditable experiment authority sequence.
 pub async fn run_manual_retained_title_experiment(
 	root: DecodexRoot,
 	request_path: &Path,
