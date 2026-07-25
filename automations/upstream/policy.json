@@ -5,7 +5,7 @@
   "target_repository": "hack-ink/decodex",
   "target_branch": "main",
   "branch_prefix": "xv/codex-upstream-",
-  "decodex_executable_sha256": "6b19015b15158477f1d7918e2ac5aa5fc27ac55a27212fd830219ac231c6488f",
+  "decodex_executable_sha256": "d27de503fcdf23d9747cd5aa59dc5c17e5f045fc41e6cd0c8dcac5222fcfc632",
   "accepted_schema_marker_path": "crates/decodex-codex/schema/xy-1262-markers.json",
   "max_batch_commits": 32,
   "max_attempts": 3,
