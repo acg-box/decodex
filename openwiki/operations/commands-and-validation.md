@@ -298,10 +298,11 @@ only the exact lowercase 40-hex `head` and `tree`. The checkpoint is `source`, `
 only the fingerprint-bound `predicate` and its fixed Rust-defined `failure_policy`. Canonical JSON
 uses sorted keys, compact separators, and ASCII escaping. The diagnostic does not contain passed
 observations, a concrete runtime-derived failure class, SQL, catalog or role data, counts, paths,
-raw evidence or errors, manifest or digest values, or candidate mismatches. This branch stops
-before semantic summary hashing, digest derivation, mismatch construction, and receipt
-publication. Malformed evidence remains `artifact_malformed` and does not echo attempted predicate
-text. The shared retained-title loader keeps its immediate all-pass requirement.
+raw evidence or errors, candidate mismatches, or schema, configured-authority, manifest, or
+mismatch digest values. The supported `definition_fingerprint` is its only digest. This branch
+stops before semantic summary hashing, digest derivation, mismatch construction, and receipt
+publication. Malformed evidence remains `artifact_malformed` and does not echo attempted
+predicate text. The shared retained-title loader keeps its immediate all-pass requirement.
 
 The current [XY-1368 retained-title validation](xy-1368-retained-title-validation.md) documents the
 two historical V22-era partial-boundary command surfaces that still exist in source. Neither
@@ -358,8 +359,10 @@ database failures contain SQLSTATE and primary message; non-database failures us
 Malformed artifacts report only classification, expected binding, byte length/hash when readable,
 and a bounded parser error. Diagnostic text and identities are length-bounded and secret-marker
 redacted; full manifests and raw contracts are never emitted.
-Semantic diagnostics contain only the checkpoint and the complete bounded set of false canonical
-predicate names; they never contain SQL, ACL bodies, object identities, connection data, or paths.
+Semantic `/2` diagnostics contain only the schema, exact source binding, canonical checkpoint,
+supported definition fingerprint, and complete definition-ordered failure objects. Each failure
+contains only its false canonical predicate name and fixed failure policy. These diagnostics never
+contain SQL, ACL bodies, object identities, connection data, paths, or other digest values.
 
 The PostgreSQL integration command uses an isolated PostgreSQL 18 cluster and fixture-only roles.
 Its authority matrix contains 28 unsafe roots and six incompatible roots. The new unsafe root adds
