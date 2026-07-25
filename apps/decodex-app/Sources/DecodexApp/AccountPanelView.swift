@@ -143,9 +143,6 @@ struct AccountPanelView: View {
 							await store.useInCodex(account)
 						}
 					},
-					prepareResetCredit: { preparation in
-						await store.prepareResetCredit(preparation, for: account)
-					},
 					consumeResetCredit: { attempt in
 						await store.consumeResetCredit(attempt, for: account)
 					},

@@ -33,7 +33,7 @@ final class ResetCreditAuthStagingTests: XCTestCase {
 	}
 
 	@MainActor
-	func testFreshAccountBindingRejectsAnAmbiguousEmailLessFingerprint() throws {
+	func testCurrentAccountBindingRejectsAnAmbiguousEmailLessFingerprint() throws {
 		let target = try makeAccount(
 			fingerprint: "...123456",
 			email: nil,
@@ -49,7 +49,7 @@ final class ResetCreditAuthStagingTests: XCTestCase {
 			),
 		])
 
-		XCTAssertThrowsError(try store.uniqueFreshResetCreditAccount(matching: target)) { error in
+		XCTAssertThrowsError(try store.uniqueResetCreditAccount(matching: target)) { error in
 			XCTAssertEqual(
 				error.localizedDescription,
 				"More than one stored account matches this reset card. Remove the duplicate account and try again."
@@ -58,7 +58,7 @@ final class ResetCreditAuthStagingTests: XCTestCase {
 	}
 
 	@MainActor
-	func testFreshAccountBindingAllowsAUniqueEmailLessFingerprint() throws {
+	func testCurrentAccountBindingAllowsAUniqueEmailLessFingerprint() throws {
 		let target = try makeAccount(
 			fingerprint: "...123456",
 			email: nil,
@@ -68,13 +68,13 @@ final class ResetCreditAuthStagingTests: XCTestCase {
 		store.accountList = makeAccountList([target])
 
 		XCTAssertEqual(
-			try store.uniqueFreshResetCreditAccount(matching: target),
+			try store.uniqueResetCreditAccount(matching: target),
 			target
 		)
 	}
 
 	@MainActor
-	func testFreshAccountBindingUsesNormalizedEmailWithTheFingerprint() throws {
+	func testCurrentAccountBindingUsesNormalizedEmailWithTheFingerprint() throws {
 		let target = try makeAccount(
 			fingerprint: "...123456",
 			email: " COPY@example.com ",
@@ -96,13 +96,13 @@ final class ResetCreditAuthStagingTests: XCTestCase {
 		])
 
 		XCTAssertEqual(
-			try store.uniqueFreshResetCreditAccount(matching: target),
+			try store.uniqueResetCreditAccount(matching: target),
 			expected
 		)
 	}
 
 	@MainActor
-	func testFreshAccountBindingRejectsAMissingAccount() throws {
+	func testCurrentAccountBindingRejectsAMissingAccount() throws {
 		let target = try makeAccount(
 			fingerprint: "...123456",
 			email: nil,
@@ -111,7 +111,7 @@ final class ResetCreditAuthStagingTests: XCTestCase {
 		let store = AccountStore()
 		store.accountList = makeAccountList([])
 
-		XCTAssertThrowsError(try store.uniqueFreshResetCreditAccount(matching: target)) { error in
+		XCTAssertThrowsError(try store.uniqueResetCreditAccount(matching: target)) { error in
 			XCTAssertEqual(
 				error.localizedDescription,
 				"The account changed. Refresh and try again."
