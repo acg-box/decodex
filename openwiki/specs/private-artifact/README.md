@@ -1,10 +1,13 @@
 # Retired private-artifact design archive
 
-Status: XY-1403 Option 1 implementation candidate. Exact-candidate review is
-pending. The
-[retirement decision](decision.md) defines the exact repository effective point. A
-candidate commit does not become product authority before exact-candidate review,
-authoritative landing, and landed commit, tree, and path readback.
+Status: XY-1403 Option 1 exact-candidate review is approved for commit
+`6f03833a33d82f3d1fff00d45b518e8701fbd582`, tree
+`50d531b59bc818bf94f358398d3e8d1b33d26eed`, in Linear comment
+`669ea305-3709-4aa3-ae59-df3e68e41cee`. PR landing and Linear closure remain
+pending. The [retirement decision](decision.md) defines the exact repository
+effective point. Review approval alone does not make the candidate product
+authority. That requires authoritative landing and landed commit, tree, and path
+readback.
 
 At and after that effective point, Decodex vNext has no private-artifact subsystem,
 delivery lane, or future-work promise. The semantic modules and their rule markers are
