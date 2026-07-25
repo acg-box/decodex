@@ -525,3 +525,28 @@ fn parse_u32(value: &str) -> Result<u32, ProcessPlatformError> {
 fn invalid_identity() -> io::Error {
 	io::Error::new(io::ErrorKind::InvalidData, "operating-system identity is invalid")
 }
+
+#[cfg(test)]
+mod tests {
+	use std::os::fd::AsRawFd as _;
+
+	use super::mark_descriptor_close_on_exec;
+
+	#[test]
+	fn owned_descriptor_without_close_on_exec_gains_close_on_exec() {
+		let file = tempfile::tempfile().unwrap();
+		let descriptor = file.as_raw_fd();
+
+		// SAFETY: the owned test descriptor remains open for the complete assertion.
+		unsafe {
+			assert_ne!(libc::fcntl(descriptor, libc::F_SETFD, 0), -1);
+			assert_eq!(libc::fcntl(descriptor, libc::F_GETFD) & libc::FD_CLOEXEC, 0);
+
+			mark_descriptor_close_on_exec(descriptor).unwrap();
+
+			let flags = libc::fcntl(descriptor, libc::F_GETFD);
+			assert_ne!(flags, -1);
+			assert_ne!(flags & libc::FD_CLOEXEC, 0);
+		}
+	}
+}

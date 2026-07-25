@@ -3750,7 +3750,7 @@ mod tests {
 		fs,
 		io::{self, Cursor, ErrorKind, Write},
 		mem,
-		os::{fd::AsRawFd as _, unix::fs::PermissionsExt as _},
+		os::unix::fs::PermissionsExt as _,
 		path::{Path, PathBuf},
 		process::{Command, Stdio},
 		sync::{
@@ -4046,22 +4046,6 @@ mod tests {
 			[*b"#!/b", *b"{\"x\"", [0xfe, 0xed, 0xfa, 0xcf], [0xca, 0xfe, 0xba, 0xbe], [0; 4]]
 		{
 			assert!(!process::is_supported_native_executable_magic(magic));
-		}
-	}
-
-	#[test]
-	fn inherited_handle_audit_marks_missing_close_on_exec() {
-		let file = tempfile::tempfile().unwrap();
-		let descriptor = file.as_raw_fd();
-
-		// SAFETY: the owned test descriptor remains open for the complete assertion.
-		unsafe {
-			assert_ne!(libc::fcntl(descriptor, libc::F_SETFD, 0), -1);
-			assert_eq!(libc::fcntl(descriptor, libc::F_GETFD) & libc::FD_CLOEXEC, 0);
-
-			process::mark_descriptor_close_on_exec(descriptor).unwrap();
-
-			assert_ne!(libc::fcntl(descriptor, libc::F_GETFD) & libc::FD_CLOEXEC, 0);
 		}
 	}
 
