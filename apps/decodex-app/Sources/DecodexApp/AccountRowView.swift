@@ -10,8 +10,7 @@ struct AccountRowView: View {
 	let logoutErrorMessage: String?
 	let usageRefillAnimation: AccountUsageRefillAnimation?
 	let useInCodex: () -> Void
-	let prepareResetCredit: (ResetCreditUsePreparation) async -> String?
-	let consumeResetCredit: (ResetCreditUseAttempt) async -> Bool
+	let consumeResetCredit: (ResetCreditUseAttempt) async -> ResetCreditUseCompletion
 	let routeRunsHere: () -> Void
 	let login: () -> Void
 	let logout: () -> Void
@@ -71,7 +70,6 @@ struct AccountRowView: View {
 				AccountUsageSummaryView(
 					account: account,
 					usageRefillAnimation: usageRefillAnimation,
-					prepareResetCredit: prepareResetCredit,
 					consumeResetCredit: consumeResetCredit
 				)
 					.transition(.panelInline)
