@@ -103,8 +103,7 @@ run once on required macOS and Linux hosts. It must validate:
   authentication, routing, `ProcessGeneration`, `RuntimeSession`, `ProviderAttempt`, UI,
   packaging, release, and production dispatch.
 
-The same gate owns one batch conversion of the exact twelve stale TCP-era caller and
-fixture surfaces:
+The exact twelve-path TCP-era caller and fixture source conversion is complete:
 
 1. `crates/decodex-protocol/src/lib.rs`
 2. `crates/decodex-protocol/src/client.rs`
@@ -119,13 +118,20 @@ fixture surfaces:
 11. `scripts/vnext/postgres_store_test.py`
 12. `scripts/vnext/cli_diagnostics_test.py`
 
-That batch removes the retired `LoopbackEndpoint`, local `address`, URL-based retained
-session construction, `InvalidEndpoint`, TCP socket/address fixtures, `BoundServer::address`,
-TCP V1 URIs, the fixed `127.0.0.1:49152` replacement fixture, the isolated-loopback-port
-gate text, and dependency-only `use axum as _`. It then removes the runtime Axum
-dev-dependency, workspace edge, and lock packages only if the exact reverse scan finds no
-other accepted active owner. This source candidate must not add a production facade to
-make those stale surfaces pass early.
+The completed batch removes the retired `LoopbackEndpoint`, local `address`, URL-based
+retained-session construction, the protocol `RetainedSessionFailure::InvalidEndpoint`,
+TCP socket/address fixtures, `BoundServer::address`, TCP V1 URIs, the fixed
+`127.0.0.1:49152` replacement fixture, the isolated-loopback-port gate text, and
+dependency-only `use axum as _`. It also removes the runtime Axum dev-dependency,
+workspace edge, and lock packages after the exact reverse scan found no other accepted
+active owner. The distinct GPUI presentation reason
+`CompatibilityReason::InvalidEndpoint` remains and is not retained-session protocol
+authority.
+
+This is source-completion status only. Compilation, fixture execution, platform behavior,
+and aggregate acceptance for the twelve paths remain deferred to the later integrated
+frozen-core gate on its exact tree. The completed source work authorizes no production
+facade.
 
 ## XY-1402 source-only validation boundary
 
@@ -187,11 +193,10 @@ repository maintainers. It must be reevaluated by 2026-08-15, whenever executabl
 identity changes, whenever the accepted baseline changes, and before any scope is promoted
 to blocking.
 
-The current CLI matrix is one of the deferred XY-1399 stale surfaces. Its historical
-fixture builds the real `decodex` binary and selects an isolated OS loopback port. It
-must not be treated as acceptance for the same-UID Unix transport. The frozen-core batch
-must replace that fixture with the fixed owner-only namespace and then prove status/doctor,
-stable identity mismatch,
+The CLI matrix source conversion is complete. Its fixture builds the real `decodex`
+binary and now uses the fixed owner-only namespace. This unexecuted source state is not
+acceptance for the same-UID Unix transport. The later frozen-core gate must prove
+status/doctor, stable identity mismatch,
 disconnection, malformed/missing profile configuration, unsafe server-host paths,
 database unavailability, plugin/vault/blob unknown states, and redaction. Protocol unit
 fixtures separately force wrong major/minor, malformed/oversized response, timeout, and

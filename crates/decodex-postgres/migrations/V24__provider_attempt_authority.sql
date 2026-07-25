@@ -478,7 +478,7 @@ BEGIN
 					AND session.state = 'starting'
 				)
 			)
-			AND account.source_account_id = NEW.selected_account_id::text
+			AND account.source_account_id = NEW.selected_account_id
 			AND generation.account_id = NEW.selected_account_id
 			AND generation.execution_epoch_id = NEW.process_execution_epoch_id
 			AND generation.revision = NEW.process_generation_revision
@@ -903,7 +903,7 @@ BEGIN
 		WHERE decision.decision_id = plan.routing_decision_id
 			AND decision.kind = 'selected'
 			AND decision.selected_account_id = plan.selected_account_id
-			AND account.source_account_id = plan.selected_account_id::text
+			AND account.source_account_id = plan.selected_account_id
 			AND (
 				(plan.kind = 'same_thread' AND session.state = 'active')
 				OR (
@@ -1182,7 +1182,7 @@ BEGIN
 					AND session.state = 'starting'
 				)
 			)
-			AND account.source_account_id = attempt.selected_account_id::text
+			AND account.source_account_id = attempt.selected_account_id
 		FOR SHARE OF plan, decision, session, account
 	) THEN
 		RETURN QUERY SELECT 'authority_unavailable', attempt.revision, attempt.state,
