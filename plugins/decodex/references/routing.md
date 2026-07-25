@@ -33,6 +33,10 @@ Use when Decodex work crosses runtime planning, ops, commit, or landing.
   diagnose missing review handoff before rebind/adopt recovery. Issue-authority
   manual landing enters lifecycle authority; non-issue `--manual-authority --pr` is
   the local receipt exception.
+- The current `apps/decodex-cli` implements local manual-authority `commit` and
+  exact-base/head `land` without Decodex server, planner, runtime, MCP, Linear, or
+  tracker state. `status` and `doctor` remain server diagnostic commands. The
+  standalone upstream automation can use only the local commit and land commands.
 - MCP is a typed facade, not a bypass. Non-loopback Streamable HTTP requires origin
   plus bearer auth; profiles above `observe` require bearer auth.
 - CORS is not authentication; typed plan tools and inspect-first operate/admin

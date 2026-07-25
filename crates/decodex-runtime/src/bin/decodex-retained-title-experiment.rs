@@ -1,3 +1,6 @@
+//! Manual retained-title experiment runner.
+#![allow(unused_crate_dependencies)] // This binary shares the runtime package dependency set.
+
 use std::{env, path::PathBuf, process::ExitCode};
 
 use decodex_core::DecodexRoot;

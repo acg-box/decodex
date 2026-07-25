@@ -48,13 +48,22 @@ class GateContractTests(unittest.TestCase):
     def test_blocking_aggregates_retain_every_non_vstyle_gate(self) -> None:
         self.assertEqual(
             self.tasks["check"]["dependencies"],
-            ["build", "check-node", "check-rust", "fmt-check", "lint", "test"],
+            [
+                "audit-node",
+                "build",
+                "check-node",
+                "check-rust",
+                "fmt-check",
+                "lint",
+                "test",
+            ],
         )
         self.assertEqual(self.tasks["lint"]["dependencies"], ["lint-rust"])
         self.assertEqual(self.tasks["lint-fix"]["dependencies"], ["lint-rust-fix"])
         self.assertEqual(
             self.tasks["test"]["dependencies"],
             [
+                "test-automations",
                 "test-gate-contract",
                 "test-rust",
                 "test-vnext-architecture",
