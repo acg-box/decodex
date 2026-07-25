@@ -46,26 +46,27 @@ struct ResetCreditUseTarget: Hashable, Sendable {
 	}
 }
 
-struct ResetCreditUsePreparation: Equatable, Sendable {
-	let target: ResetCreditUseTarget
-	let idempotencyKey: String
-}
-
 struct ResetCreditUseAttempt: Equatable, Sendable {
 	let target: ResetCreditUseTarget
-	let creditID: String
 	let idempotencyKey: String
+	let creditID: String?
+
+	func resolvingCreditID(_ creditID: String) -> ResetCreditUseAttempt {
+		ResetCreditUseAttempt(
+			target: target,
+			idempotencyKey: idempotencyKey,
+			creditID: creditID
+		)
+	}
 }
 
-enum ResetCreditUseAction: Equatable, Sendable {
-	case prepare(ResetCreditUsePreparation)
-	case consume(ResetCreditUseAttempt)
+struct ResetCreditUseCompletion: Equatable, Sendable {
+	let resolved: Bool
+	let creditID: String?
 }
 
 struct ResetCreditUseConfirmation: Equatable {
-	private(set) var pendingPreparation: ResetCreditUsePreparation?
 	private(set) var armedAttempt: ResetCreditUseAttempt?
-	private(set) var isPreparing = false
 	private(set) var isSubmitting = false
 
 	func isArmed(_ target: ResetCreditUseTarget) -> Bool {
@@ -76,78 +77,51 @@ struct ResetCreditUseConfirmation: Equatable {
 		armedAttempt == attempt
 	}
 
-	func isPreparing(_ target: ResetCreditUseTarget) -> Bool {
-		isPreparing && pendingPreparation?.target == target
-	}
-
 	func isSubmitting(_ target: ResetCreditUseTarget) -> Bool {
 		isSubmitting && isArmed(target)
-	}
-
-	var isBusy: Bool {
-		isPreparing || isSubmitting
 	}
 
 	mutating func tap(
 		_ target: ResetCreditUseTarget,
 		makeIdempotencyKey: () -> String = { UUID().uuidString }
-	) -> ResetCreditUseAction? {
-		guard isBusy == false else {
+	) -> ResetCreditUseAttempt? {
+		guard isSubmitting == false else {
 			return nil
 		}
 
 		if let armedAttempt, armedAttempt.target == target {
 			isSubmitting = true
-			return .consume(armedAttempt)
+			return armedAttempt
 		}
 
-		let preparation = ResetCreditUsePreparation(
+		armedAttempt = ResetCreditUseAttempt(
 			target: target,
-			idempotencyKey: makeIdempotencyKey()
+			idempotencyKey: makeIdempotencyKey(),
+			creditID: nil
 		)
-		pendingPreparation = preparation
-		armedAttempt = nil
-		isPreparing = true
 
-		return .prepare(preparation)
+		return nil
 	}
 
-	@discardableResult
-	mutating func finishPreparation(
-		_ preparation: ResetCreditUsePreparation,
-		creditID: String?
-	) -> ResetCreditUseAttempt? {
-		guard pendingPreparation == preparation else {
-			return nil
-		}
-
-		pendingPreparation = nil
-		isPreparing = false
-
-		guard let creditID = creditID?
-			.trimmingCharacters(in: .whitespacesAndNewlines),
-			creditID.isEmpty == false
-		else {
-			return nil
-		}
-
-		let attempt = ResetCreditUseAttempt(
-			target: preparation.target,
-			creditID: creditID,
-			idempotencyKey: preparation.idempotencyKey
-		)
-		armedAttempt = attempt
-		return attempt
-	}
-
-	mutating func finish(_ attempt: ResetCreditUseAttempt, resolved: Bool) {
+	mutating func finish(
+		_ attempt: ResetCreditUseAttempt,
+		completion: ResetCreditUseCompletion
+	) {
 		guard armedAttempt == attempt else {
 			return
 		}
 
 		isSubmitting = false
-		if resolved {
+		if completion.resolved {
 			armedAttempt = nil
+			return
+		}
+
+		if let creditID = completion.creditID?
+			.trimmingCharacters(in: .whitespacesAndNewlines),
+			creditID.isEmpty == false
+		{
+			armedAttempt = attempt.resolvingCreditID(creditID)
 		}
 	}
 
@@ -166,22 +140,16 @@ struct ResetCreditUseConfirmation: Equatable {
 			return
 		}
 
-		pendingPreparation = nil
 		armedAttempt = nil
-		isPreparing = false
 	}
 
 	mutating func retainOnly(_ targets: Set<ResetCreditUseTarget>) {
-		if let armedAttempt, targets.contains(armedAttempt.target) == false {
-			self.armedAttempt = nil
-			isSubmitting = false
+		guard isSubmitting == false else {
+			return
 		}
 
-		if let pendingPreparation,
-			targets.contains(pendingPreparation.target) == false
-		{
-			self.pendingPreparation = nil
-			isPreparing = false
+		if let armedAttempt, targets.contains(armedAttempt.target) == false {
+			self.armedAttempt = nil
 		}
 	}
 }
