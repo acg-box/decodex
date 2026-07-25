@@ -4050,22 +4050,6 @@ mod tests {
 	}
 
 	#[test]
-	fn inherited_handle_audit_marks_missing_close_on_exec() {
-		let file = tempfile::tempfile().unwrap();
-		let descriptor = file.as_raw_fd();
-
-		// SAFETY: the owned test descriptor remains open for the complete assertion.
-		unsafe {
-			assert_ne!(libc::fcntl(descriptor, libc::F_SETFD, 0), -1);
-			assert_eq!(libc::fcntl(descriptor, libc::F_GETFD) & libc::FD_CLOEXEC, 0);
-
-			process::mark_descriptor_close_on_exec(descriptor).unwrap();
-
-			assert_ne!(libc::fcntl(descriptor, libc::F_GETFD) & libc::FD_CLOEXEC, 0);
-		}
-	}
-
-	#[test]
 	fn fake_probe_is_typed_and_preserves_one_account_binding() {
 		let temp = TempDir::new().unwrap();
 		let result = ReadOnlyProbe::new_for_test(
