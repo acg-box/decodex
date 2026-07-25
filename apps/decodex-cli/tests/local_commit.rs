@@ -75,7 +75,7 @@ fn local_commit_binary_signs_an_exact_record_through_the_commit_message_hook() {
 
 	assert_eq!(
 		subject,
-		r#"{"authority":"manual","change":"Exact local candidate","impact":"compatible","schema":"decodex/commit/2"}"#
+		r#"{"schema":"decodex/commit/2","change":"Exact local candidate","authority":"manual","impact":"compatible"}"#
 	);
 	run_checked(Command::new("git").arg("-C").arg(&checkout).args([
 		"verify-commit",

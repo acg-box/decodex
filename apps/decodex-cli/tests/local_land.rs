@@ -50,7 +50,7 @@ fn local_land_binary_merges_syncs_and_cleans_the_exact_lane() {
 fn local_land_recovers_when_remote_main_advanced_after_the_exact_merge() {
 	let fixture = Fixture::new();
 	let tree = git(&fixture.checkout, &["rev-parse", &format!("{}^{{tree}}", fixture.head)]);
-	let record = r#"{"authority":"manual","change":"Land Exact integration candidate","impact":"compatible","schema":"decodex/commit/2"}"#;
+	let record = r#"{"schema":"decodex/commit/2","change":"Land Exact integration candidate","authority":"manual","impact":"compatible"}"#;
 	let merge = git(
 		&fixture.checkout,
 		&["commit-tree", &tree, "-p", &fixture.base, "-p", &fixture.head, "-S", "-m", record],

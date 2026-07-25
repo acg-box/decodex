@@ -7,8 +7,7 @@ use std::{
 };
 
 use clap::Args;
-use serde::Deserialize;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 
 const DEFAULT_BRANCH: &str = "main";
 const MERGE_VISIBILITY_ATTEMPTS: usize = 20;
@@ -60,6 +59,14 @@ struct PullRequest {
 #[derive(Debug, Deserialize)]
 struct MergeCommit {
 	oid: String,
+}
+
+#[derive(Serialize)]
+struct CommitRecord<'a> {
+	schema: &'static str,
+	change: &'a str,
+	authority: &'static str,
+	impact: &'static str,
 }
 
 struct RepositoryLayout {
@@ -191,12 +198,12 @@ fn commit_record(summary: &str, landed: bool) -> Result<String, String> {
 		summary.to_owned()
 	};
 
-	serde_json::to_string(&json!({
-		"schema": "decodex/commit/2",
-		"change": change,
-		"authority": "manual",
-		"impact": "compatible",
-	}))
+	serde_json::to_string(&CommitRecord {
+		schema: "decodex/commit/2",
+		change: &change,
+		authority: "manual",
+		impact: "compatible",
+	})
 	.map_err(|error| format!("commit record serialization failed: {error}"))
 }
 
