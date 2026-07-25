@@ -24,12 +24,12 @@ mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
 
-pub use application::{Application, ApplicationPublication};
 #[cfg(feature = "retained-title-experiment")]
 pub use account_launch::retained_title_experiment::{
 	ManualRetainedTitleExperimentError, ManualRetainedTitleExperimentReport,
 	run_manual_retained_title_experiment,
 };
+pub use application::{Application, ApplicationPublication};
 pub use bootstrap::ServiceBootstrap;
 pub use decodex_protocol::ServerId;
 pub use managed_repository_runtime::ManagedRepositoryReadiness;

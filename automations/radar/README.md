@@ -1,15 +1,14 @@
 # Radar Automation Operations
 
-This directory owns repo-local source for the Radar auxiliary tool and recurring
-upstream evidence automation.
+This directory owns reusable repo-local source for the Radar auxiliary evidence tool.
 
-- `automations.toml`: checked-in recurring automation source for upstream review,
-  release checkpoint curation, and Radar artifact retention.
 - `radar.toml`: canonical Radar cache and handoff path contract.
-- `prompts/`: Codex app automation prompts for Radar-owned jobs.
 - `scripts/github/`: bounded GitHub and Codex analysis helper contracts.
 - `skills/`: repo-local Radar skills for upstream triage, code analysis, release
   analysis, and signal drafting.
+
+The obsolete Radar schedule and prompts were removed. The current upstream adaptation
+loop does not depend on them.
 
 Generated Radar state belongs under `.agent/automations/radar/cache`.
 
@@ -22,8 +21,5 @@ Decodex Publisher consumes Radar handoff evidence and owns
 `social_candidate/v1`, `social_publish_reservation/v1`, and `social_post/v1` under
 `.agent/automations/decodex/cache/social`.
 
-Live Codex app automation configs for these Radar jobs are generated from this
-directory's `automations.toml` by
-`automations/decodex/scripts/config/sync_automations.py`. Keep repo source portable:
-use relative paths and `{repo_root}` placeholders here, and let the installer resolve
-machine-local checkout paths under `$CODEX_HOME/automations` on each host.
+The current upstream adaptation tasks live under `automations/upstream/`. The default
+sync path does not generate live Radar jobs from this directory.

@@ -15,18 +15,43 @@ status or future delivery projection.
 cargo make check
 ```
 
-It depends on build, node checks, Rust checks, formatting, lint, and tests (`Makefile.toml`). Use it before claiming broad readiness. For documentation-only or narrow source changes, run the smallest relevant checks and state the narrowed scope.
+It depends on the Node supply-chain audit, build, Node checks, Rust checks,
+formatting, lint, and tests (`Makefile.toml`). Use it before claiming broad readiness.
+For documentation-only or narrow source changes, run the smallest relevant checks
+and state the narrowed scope.
+
+The autonomous Codex upstream loop has a headless gate for hosts without full Xcode:
+
+```sh
+cargo make check-upstream-automation
+```
+
+It excludes `decodex-gpui` from Rust check, lint, and test work but preserves the
+other repository gates. It installs the exact lock with lifecycle scripts disabled,
+checks npm advisories at high severity, verifies registry signatures for the resolved
+site graph, and audits every lockfile source and integrity value. The audit requires
+npm 11.17.0, Node 22.12.0 or newer, registry.npmjs.org package sources, SHA-512
+integrity, the exact reviewed lifecycle-script allowlist, and the pinned native and
+platform package identity set. It is valid only when the
+pull-request diff does not touch `decodex-gpui`, its dependencies, or Apple GPU/build
+integration. Changes on those surfaces require `cargo make check` on a host with full
+Xcode and Metal tools. The upstream validator discovers a usable full Xcode and
+scopes `DEVELOPER_DIR` to that subprocess. Both aggregates include the Node audit.
+Run either aggregate on a clean committed tree because PostgreSQL authority tests
+bind their evidence to the exact commit and tree.
 
 ## Main gates
 
 | Purpose | Command |
 | --- | --- |
 | Broad repo check | `cargo make check` |
+| Autonomous upstream check outside GPUI/Apple build surfaces | `cargo make check-upstream-automation` |
+| Site advisory, provenance, and registry-signature audit | `cargo make audit-node` |
 | Rust type check | `cargo make check-rust` or `cargo check --all-features --all-targets --workspace` |
 | Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
 | XY-1306 path/config/blob/cache foundation | `cargo test -p decodex-core --all-targets --all-features` |
 | XY-1307 daemon bootstrap and doctor protocol | `cargo test -p decodex-core -p decodex-protocol -p decodex-postgres -p decodex-runtime -p decodexd --all-targets --all-features` |
-| XY-1308 API-only CLI and diagnostic matrix | `cargo make test-vnext-cli-diagnostics` |
+| XY-1308 CLI diagnostic and local Git command matrix | `cargo make test-vnext-cli-diagnostics` |
 | vNext dependency architecture | `cargo make test-vnext-architecture` |
 | vNext PostgreSQL store, Conversation history, blobs, and Context Packs | `cargo make test-vnext-postgres-store` |
 | XY-1345 isolated exact-command authority proof | `python3 scripts/vnext/exact_command_prototype.py` |
@@ -41,7 +66,10 @@ It depends on build, node checks, Rust checks, formatting, lint, and tests (`Mak
 
 `cargo make test` runs `cargo nextest run --workspace --all-targets --all-features`, the
 canonical gate contract tests, the vNext architecture test, and the XY-1308 CLI
-diagnostic process matrix (`Makefile.toml`). Rust compilation remains pinned by
+process matrix (`Makefile.toml`). The active `apps/decodex-cli` uses the server only
+for `status` and `doctor`. Its manual-authority `commit` and exact-base/head `land`
+commands are local Git authority and do not use Decodex server, planner, runtime,
+MCP, Linear, or tracker state. Rust compilation remains pinned by
 `rust-toolchain.toml` to `1.97.0`. The formatting tasks separately invoke
 `rustup run nightly-2026-07-16 cargo fmt`, which preserves the nightly-only options in
 `.rustfmt.toml` without depending on the mutable `nightly` alias. Supported hosts install
@@ -584,11 +612,15 @@ Codex App automation sync and evaluation:
 ```sh
 python3 automations/decodex/scripts/config/sync_automations.py
 python3 automations/decodex/scripts/config/sync_automations.py --apply
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/radar/automations.toml
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
+python3 -m unittest automations.upstream.tests.test_upstream_autopilot
 ```
 
-Automation source should stay portable: `{repo_root}` placeholders and relative paths in manifests, with machine-local absolute paths generated only under `$CODEX_HOME/automations` (`automations/decodex/README.md`, `automations/radar/README.md`).
+Automation source should stay portable: `{repo_root}` placeholders and relative paths
+in manifests, with machine-local absolute paths generated only under
+`$CODEX_HOME/automations` (`automations/upstream/README.md`). The current default
+installer renders only the three upstream-loop tasks. Frozen v0.2 Decodex and Radar
+automation definitions were deleted and are not install inputs.
 
 ## Static site checks
 

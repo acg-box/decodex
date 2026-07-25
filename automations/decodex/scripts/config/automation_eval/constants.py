@@ -6,8 +6,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
-MANIFEST_PATH = REPO_ROOT / "automations/decodex/automations.toml"
-VALID_SOURCE_ROOTS = {"automations/decodex", "automations/radar"}
+MANIFEST_PATH = REPO_ROOT / "automations/upstream/automations.toml"
+VALID_SOURCE_ROOTS = {
+    "automations/upstream",
+}
 REQUIRED_FORBIDDEN_PROMPT_FRAGMENTS = [
     "/Users/",
     "/home/",

@@ -1,4 +1,4 @@
-//! Multi-command rendering over the shared bounded Decodex protocol client.
+//! Bounded Decodex diagnostics plus local commit and landing authority.
 
 use std::{
 	fmt::{Debug, Formatter},
@@ -14,9 +14,13 @@ use decodex_protocol::{
 	DoctorReport, DoctorStatus, ProfileKind,
 };
 
-const OUTPUT_SCHEMA: &str = "decodex/cli-diagnostics/1";
+mod git_hook;
+mod local_git;
 
-/// API-only Decodex diagnostics client.
+const OUTPUT_SCHEMA: &str = "decodex/cli-diagnostics/1";
+const LOCAL_OUTPUT_SCHEMA: &str = "decodex/local-git/1";
+
+/// Decodex diagnostics and local Git authority client.
 #[derive(Parser)]
 #[command(name = "decodex", version, about)]
 pub struct Cli {
@@ -76,7 +80,7 @@ struct ProfileDocument {
 #[derive(Serialize)]
 struct ReportDocument<'a> {
 	schema: &'static str,
-	command: Command,
+	command: DiagnosticCommand,
 	outcome: &'static str,
 	profile: ProfileDocument,
 	status: OverallStatus,
@@ -89,18 +93,30 @@ struct ReportDocument<'a> {
 #[derive(Serialize)]
 struct FailureDocument {
 	schema: &'static str,
-	command: Command,
+	command: DiagnosticCommand,
 	outcome: &'static str,
 	failure: ClientFailure,
 }
 
 /// Supported read-only daemon operations.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Subcommand)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum Command {
 	/// Summarize daemon readiness while retaining every typed check.
 	Status,
 	/// Render the complete authoritative diagnostic report.
+	Doctor,
+	/// Enforce the local Git commit and push policy without contacting the Decodex server.
+	GitHook(git_hook::GitHookCommand),
+	/// Create one signed local commit without contacting the Decodex server.
+	Commit(local_git::CommitCommand),
+	/// Land one reviewed pull request without contacting the Decodex server.
+	Land(local_git::LandCommand),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum DiagnosticCommand {
+	Status,
 	Doctor,
 }
 
@@ -121,27 +137,45 @@ enum OverallStatus {
 	Unknown,
 }
 
-/// Execute one API-only command.
+/// Execute one diagnostics or local Git command.
 pub async fn execute(cli: Cli) -> CommandOutput {
-	let profile = match cli.root.as_deref() {
-		Some(root) => ClientProfile::load(root, cli.profile.as_deref()),
-		None => ClientProfile::load_default(cli.profile.as_deref()),
+	let Cli { profile, root, output, command } = cli;
+
+	match &command {
+		Command::GitHook(command) =>
+			return render_git_hook_result(output, git_hook::execute(command)),
+		Command::Commit(command) =>
+			return render_local_result("commit", output, local_git::execute_commit(command)),
+		Command::Land(command) =>
+			return render_local_result("land", output, local_git::execute_land(command)),
+		Command::Status | Command::Doctor => {},
+	}
+
+	let command = match command {
+		Command::Status => DiagnosticCommand::Status,
+		Command::Doctor => DiagnosticCommand::Doctor,
+		Command::GitHook(_) | Command::Commit(_) | Command::Land(_) =>
+			unreachable!("local commands returned above"),
+	};
+	let profile = match root.as_deref() {
+		Some(root) => ClientProfile::load(root, profile.as_deref()),
+		None => ClientProfile::load_default(profile.as_deref()),
 	};
 	let profile = match profile {
 		Ok(profile) => profile,
-		Err(failure) => return render_failure(cli.command, cli.output, failure),
+		Err(failure) => return render_failure(command, output, failure),
 	};
 	let client = DoctorClient::new(profile);
 	let report = match client.query().await {
 		Ok(report) => report,
-		Err(failure) => return render_failure(cli.command, cli.output, failure),
+		Err(failure) => return render_failure(command, output, failure),
 	};
 
-	render_report(cli.command, cli.output, client.profile().kind(), &report)
+	render_report(command, output, client.profile().kind(), &report)
 }
 
 fn render_report(
-	command: Command,
+	command: DiagnosticCommand,
 	format: OutputFormat,
 	profile_kind: ProfileKind,
 	report: &DoctorReport,
@@ -175,7 +209,82 @@ fn render_report(
 	}
 }
 
-fn render_failure(command: Command, format: OutputFormat, failure: ClientFailure) -> CommandOutput {
+fn render_git_hook_result(format: OutputFormat, result: Result<(), String>) -> CommandOutput {
+	match (format, result) {
+		(OutputFormat::Human, Ok(())) =>
+			CommandOutput { text: String::new(), exit_code: 0, error_stream: false },
+		(OutputFormat::Human, Err(error)) => CommandOutput {
+			text: format!("decodex git-hook failed: {error}"),
+			exit_code: 2,
+			error_stream: true,
+		},
+		(OutputFormat::Json, Ok(())) => CommandOutput {
+			text: serde_json::to_string(&serde_json::json!({
+				"schema": LOCAL_OUTPUT_SCHEMA,
+				"command": "git_hook",
+				"outcome": "success",
+			}))
+			.expect("bounded local hook result serialization cannot fail"),
+			exit_code: 0,
+			error_stream: false,
+		},
+		(OutputFormat::Json, Err(error)) => CommandOutput {
+			text: serde_json::to_string(&serde_json::json!({
+				"schema": LOCAL_OUTPUT_SCHEMA,
+				"command": "git_hook",
+				"outcome": "failure",
+				"error": error,
+			}))
+			.expect("bounded local hook failure serialization cannot fail"),
+			exit_code: 2,
+			error_stream: false,
+		},
+	}
+}
+
+fn render_local_result(
+	command: &'static str,
+	format: OutputFormat,
+	result: Result<String, String>,
+) -> CommandOutput {
+	match (format, result) {
+		(OutputFormat::Human, Ok(text)) =>
+			CommandOutput { text, exit_code: 0, error_stream: false },
+		(OutputFormat::Human, Err(error)) => CommandOutput {
+			text: format!("decodex {command} failed: {error}"),
+			exit_code: 2,
+			error_stream: true,
+		},
+		(OutputFormat::Json, Ok(result)) => CommandOutput {
+			text: serde_json::to_string(&serde_json::json!({
+				"schema": LOCAL_OUTPUT_SCHEMA,
+				"command": command,
+				"outcome": "success",
+				"result": result,
+			}))
+			.expect("bounded local result serialization cannot fail"),
+			exit_code: 0,
+			error_stream: false,
+		},
+		(OutputFormat::Json, Err(error)) => CommandOutput {
+			text: serde_json::to_string(&serde_json::json!({
+				"schema": LOCAL_OUTPUT_SCHEMA,
+				"command": command,
+				"outcome": "failure",
+				"error": error,
+			}))
+			.expect("bounded local failure serialization cannot fail"),
+			exit_code: 2,
+			error_stream: false,
+		},
+	}
+}
+
+fn render_failure(
+	command: DiagnosticCommand,
+	format: OutputFormat,
+	failure: ClientFailure,
+) -> CommandOutput {
 	let (text, error_stream) = match format {
 		OutputFormat::Json => (
 			serde_json::to_string(&FailureDocument {
@@ -195,7 +304,7 @@ fn render_failure(command: Command, format: OutputFormat, failure: ClientFailure
 }
 
 fn render_human(
-	command: Command,
+	command: DiagnosticCommand,
 	profile_kind: ProfileKind,
 	report: &DoctorReport,
 	overall: OverallStatus,
@@ -215,7 +324,7 @@ fn render_human(
 	);
 
 	match command {
-		Command::Doctor =>
+		DiagnosticCommand::Doctor =>
 			for check in report.checks() {
 				output.push_str(&format!(
 					"\n{}: {}",
@@ -223,7 +332,7 @@ fn render_human(
 					status_name(check.status),
 				));
 			},
-		Command::Status => {
+		DiagnosticCommand::Status => {
 			output.push_str("\nstates:");
 
 			for check in report.checks() {
@@ -261,10 +370,10 @@ fn counts(report: &DoctorReport) -> (usize, usize, usize) {
 	})
 }
 
-const fn command_name(command: Command) -> &'static str {
+const fn command_name(command: DiagnosticCommand) -> &'static str {
 	match command {
-		Command::Status => "status",
-		Command::Doctor => "doctor",
+		DiagnosticCommand::Status => "status",
+		DiagnosticCommand::Doctor => "doctor",
 	}
 }
 
@@ -349,7 +458,7 @@ mod tests {
 
 	use clap::{CommandFactory as _, Parser as _};
 
-	use crate::{Cli, Command, OutputFormat};
+	use crate::{Cli, Command, DiagnosticCommand, OutputFormat};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientFailure, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
 		DoctorStatus, ProfileKind, ServerId,
@@ -376,11 +485,46 @@ mod tests {
 
 		let doctor = Cli::try_parse_from(["decodex", "--profile", "remote", "doctor"]).unwrap();
 		let status = Cli::try_parse_from(["decodex", "status", "--output", "json"]).unwrap();
+		let commit =
+			Cli::try_parse_from(["decodex", "commit", "Exact candidate", "--manual-authority"])
+				.unwrap();
+		let land = Cli::try_parse_from([
+			"decodex",
+			"land",
+			"Exact candidate",
+			"--manual-authority",
+			"--pr",
+			"https://github.com/hack-ink/decodex/pull/123",
+			"--expected-base-oid",
+			"1111111111111111111111111111111111111111",
+			"--expected-head-oid",
+			"2222222222222222222222222222222222222222",
+		])
+		.unwrap();
+		let git_hook =
+			Cli::try_parse_from(["decodex", "git-hook", "commit-msg", ".git/COMMIT_EDITMSG"])
+				.unwrap();
 
 		assert_eq!(doctor.command, Command::Doctor);
 		assert_eq!(doctor.profile.as_deref(), Some("remote"));
 		assert_eq!(status.command, Command::Status);
 		assert_eq!(status.output, OutputFormat::Json);
+		assert!(matches!(
+			commit.command,
+			Command::Commit(command)
+				if command.manual_authority && command.summary == "Exact candidate"
+		));
+		assert!(matches!(
+			land.command,
+			Command::Land(command)
+				if command.manual_authority
+					&& command.pr == "https://github.com/hack-ink/decodex/pull/123"
+					&& command.expected_base_oid
+						== "1111111111111111111111111111111111111111"
+					&& command.expected_head_oid
+						== "2222222222222222222222222222222222222222"
+		));
+		assert!(matches!(git_hook.command, Command::GitHook(_)));
 		assert!(Cli::try_parse_from(["decodex", "diagnose"]).is_err());
 	}
 
@@ -419,13 +563,17 @@ mod tests {
 		let statuses = DoctorIssue::ALL.map(DoctorStatus::Unavailable);
 		let report = report(statuses);
 		let human = crate::render_report(
-			Command::Doctor,
+			DiagnosticCommand::Doctor,
 			OutputFormat::Human,
 			ProfileKind::Remote,
 			&report,
 		);
-		let json =
-			crate::render_report(Command::Doctor, OutputFormat::Json, ProfileKind::Remote, &report);
+		let json = crate::render_report(
+			DiagnosticCommand::Doctor,
+			OutputFormat::Json,
+			ProfileKind::Remote,
+			&report,
+		);
 
 		for component in DoctorComponent::ALL {
 			assert!(human.text().contains(crate::component_name(component)));
@@ -450,8 +598,12 @@ mod tests {
 		statuses[2] = DoctorStatus::Unknown(DoctorIssue::NotProbed);
 
 		let report = report(statuses);
-		let output =
-			crate::render_report(Command::Status, OutputFormat::Human, ProfileKind::Local, &report);
+		let output = crate::render_report(
+			DiagnosticCommand::Status,
+			OutputFormat::Human,
+			ProfileKind::Local,
+			&report,
+		);
 
 		assert!(output.text().contains("16 ready, 1 unavailable, 1 unknown"));
 		assert!(output.text().contains("database=unavailable(database_unreachable)"));
@@ -478,8 +630,10 @@ mod tests {
 		];
 
 		for failure in failures {
-			let human = crate::render_failure(Command::Doctor, OutputFormat::Human, failure);
-			let json = crate::render_failure(Command::Doctor, OutputFormat::Json, failure);
+			let human =
+				crate::render_failure(DiagnosticCommand::Doctor, OutputFormat::Human, failure);
+			let json =
+				crate::render_failure(DiagnosticCommand::Doctor, OutputFormat::Json, failure);
 			let value: serde_json::Value = serde_json::from_str(json.text()).unwrap();
 
 			assert_eq!(human.exit_code(), 2);
@@ -497,8 +651,12 @@ mod tests {
 	#[test]
 	fn all_ready_report_has_success_exit() {
 		let report = report(vec![DoctorStatus::Ready; DoctorComponent::ALL.len()]);
-		let output =
-			crate::render_report(Command::Status, OutputFormat::Json, ProfileKind::Local, &report);
+		let output = crate::render_report(
+			DiagnosticCommand::Status,
+			OutputFormat::Json,
+			ProfileKind::Local,
+			&report,
+		);
 
 		assert_eq!(output.exit_code(), 0);
 	}
@@ -525,8 +683,12 @@ mod tests {
 
 		for report in cases {
 			for format in [OutputFormat::Human, OutputFormat::Json] {
-				let output =
-					crate::render_report(Command::Status, format, ProfileKind::Local, &report);
+				let output = crate::render_report(
+					DiagnosticCommand::Status,
+					format,
+					ProfileKind::Local,
+					&report,
+				);
 
 				assert_eq!(output.exit_code(), 2);
 
@@ -548,8 +710,12 @@ mod tests {
 
 		let report =
 			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, checks).unwrap();
-		let output =
-			crate::render_report(Command::Status, OutputFormat::Json, ProfileKind::Local, &report);
+		let output = crate::render_report(
+			DiagnosticCommand::Status,
+			OutputFormat::Json,
+			ProfileKind::Local,
+			&report,
+		);
 
 		assert_eq!(output.exit_code(), 0);
 	}
