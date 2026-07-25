@@ -1,16 +1,18 @@
 //! Direct owned WebSocket lifecycle over the same-UID local transport.
 //!
-//! One top-level lifecycle owns the published listener. One `JoinSet` owns every
-//! session and command task. Shutdown creates one absolute deadline, harvests
-//! completed tasks explicitly, aborts once at the deadline, and continues
-//! `join_next_with_id` until the set is empty. Endpoint cleanup starts only after
-//! that empty-set observation. The listener closes before its namespace lock is
-//! released.
+//! One top-level lifecycle owns the published listener and directly polls every
+//! daemon-local service future. One `JoinSet` owns every session and command task.
+//! Shutdown creates one absolute deadline, harvests completed tasks explicitly,
+//! aborts once at the deadline, and continues `join_next_with_id` until the set is
+//! empty. The lifecycle then stops and drains every service future. Endpoint cleanup
+//! starts only after all of those owners are gone. The listener closes before its
+//! namespace lock is released.
 
 use std::{
 	collections::{HashMap, VecDeque},
 	fmt::{Display, Formatter},
 	future::Future,
+	panic::AssertUnwindSafe,
 	pin::Pin,
 	sync::{
 		Arc,
@@ -20,8 +22,8 @@ use std::{
 };
 
 use futures_util::{
-	SinkExt as _, StreamExt as _,
-	stream::{SplitSink, SplitStream},
+	FutureExt as _, SinkExt as _, StreamExt as _,
+	stream::{FuturesUnordered, SplitSink, SplitStream},
 };
 use tokio::{
 	sync::{Mutex, mpsc, mpsc::Receiver, oneshot, watch},
@@ -268,10 +270,15 @@ where
 		transport: LocalTransportAuthority,
 	) -> Result<BoundServer, ServerError> {
 		let listener = transport.bind().await.map_err(ServerError::LocalTransport)?;
+
+		Ok(self.bind_listener(listener))
+	}
+
+	pub(crate) fn bind_listener(self, listener: LocalTransportListener) -> BoundServer {
 		let (shutdown_sender, shutdown_receiver) = oneshot::channel();
 		let task = tokio::spawn(self.serve_owned(listener, shutdown_receiver));
 
-		Ok(BoundServer { shutdown_sender: Some(shutdown_sender), task: Some(task) })
+		BoundServer { shutdown_sender: Some(shutdown_sender), task: Some(task) }
 	}
 
 	async fn serve_owned(
@@ -284,6 +291,14 @@ where
 		let (command_sender, mut command_receiver) =
 			mpsc::channel::<OwnedFuture>(self.inner.config.outbound_queue_capacity);
 		let (stop_sender, _) = watch::channel(false);
+		let (service_stop_sender, service_stop_receiver) = watch::channel(false);
+		let mut service_tasks: FuturesUnordered<_> = self
+			.inner
+			.application
+			.daemon_service_tasks(service_stop_receiver)
+			.into_iter()
+			.map(|task| AssertUnwindSafe(task).catch_unwind())
+			.collect();
 
 		loop {
 			tokio::select! {
@@ -319,6 +334,10 @@ where
 							break;
 						},
 					}
+				},
+				_ = service_tasks.next(), if !service_tasks.is_empty() => {
+					receipt.record_owner_integrity();
+					break;
 				},
 				accepted = listener.accept() => {
 					match accepted {
@@ -440,7 +459,17 @@ where
 		}
 
 		receipt.finish_task_accounting(&tasks);
+		let _ = service_stop_sender.send(true);
+		while let Some(completion) = service_tasks.next().await {
+			if completion.is_err() {
+				receipt.record_owner_integrity();
+			}
+		}
 		self.inner.state.lock().await.subscribers.clear();
+
+		// No session, command, service task, or application owner remains when
+		// the listener removes its publication and releases the namespace lock.
+		drop(self);
 
 		if let Err(refusal) = listener.cleanup() {
 			receipt.record_cleanup_refusal(refusal);

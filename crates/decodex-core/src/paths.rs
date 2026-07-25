@@ -160,6 +160,11 @@ impl DecodexPaths {
 		}
 	}
 
+	/// Create and verify only the private server authority directory.
+	pub fn ensure_server_directory(&self) -> Result<(), PathError> {
+		self.ensure_owned_directory(Path::new("server")).map(|_| ())
+	}
+
 	pub(crate) fn join(&self, relative: impl AsRef<Path>) -> PathBuf {
 		self.root.as_path().join(relative)
 	}

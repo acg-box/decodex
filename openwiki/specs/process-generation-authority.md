@@ -164,8 +164,9 @@ They cannot transition a generation to `dead`.
 
 On startup, PostgreSQL projects every present nonterminal generation to
 `death_unknown` before replacement authority is available. Runtime performs one
-positive-only reconciliation pass and then continues bounded background
-reconciliation. One item error does not stop later items or unrelated work.
+positive-only reconciliation pass. The server lifecycle then owns and polls bounded
+background reconciliation until shutdown. One item error does not stop later items or
+unrelated work.
 
 For a same-boot restored process, runtime first checks every persisted identity field.
 On macOS, it then registers a one-shot kqueue process filter and performs a final exact
@@ -227,10 +228,11 @@ this slice does not claim cancellation, credential revocation, or effect contain
 
 ## Diagnostics and production isolation
 
-`ServiceBootstrap` exposes independent ProcessGeneration readiness and a cloneable
-runtime control port. The port provides one exact or bounded diagnostic read, one exact
-positive-only reconciliation request, and one exact owned-child termination request
-with an expected revision.
+`ServiceBootstrap` exposes independent ProcessGeneration readiness and an
+authority-bound borrowed runtime control port. The port is not cloneable and cannot
+escape its bootstrap owner. It provides one exact or bounded diagnostic read, one exact
+positive-only reconciliation request, and one exact owned-child termination request with
+an expected revision.
 
 Diagnostics distinguish prior-boot proof, owned or in-flight supervision, pending
 positive spawn non-creation, an attached positive-exit observer, an observed positive
