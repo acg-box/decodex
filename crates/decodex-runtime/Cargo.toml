@@ -9,7 +9,7 @@ repository.workspace = true
 version.workspace    = true
 
 [features]
-account-binding-fixtures = ["decodex-postgres/test-support"]
+account-binding-fixtures  = ["decodex-postgres/test-support"]
 retained-title-experiment = []
 
 [[bin]]

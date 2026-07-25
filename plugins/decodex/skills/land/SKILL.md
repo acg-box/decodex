@@ -11,6 +11,13 @@ full landing and recovery boundaries.
 1. Confirm PR, base, head, mergeability, and checks.
 2. Run `decodex land --authority <ISSUE> --pr <URL> "<summary>"`, or
    `decodex land --manual-authority --pr <URL> "<summary>"` for non-issue work.
+   For the standalone upstream automation, run:
+   `decodex land --manual-authority --pr <URL> --expected-base-oid <OID>
+   --expected-head-oid <OID> "<summary>"`.
+   This local manual-authority form does not contact Decodex server or runtime. It
+   requires an exact clean task worktree for an open PR. Decodex owns the signed
+   merge, server-enforced base compare-and-swap, readback, primary sync, and exact
+   lane cleanup.
    Issue-authority landing writes final landing/closeout state only through the
    lifecycle kernel and runtime state adapter; tracker comments and local receipts
    are projections.

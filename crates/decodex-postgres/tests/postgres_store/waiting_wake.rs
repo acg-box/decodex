@@ -638,10 +638,7 @@ async fn assert_v19_catalog_authority(
 		"V18 and V19 ledger entries are exact",
 	];
 	for (index, invariant) in invariants.iter().enumerate() {
-		assert!(
-			row.get::<_, bool>(index),
-			"V19 catalog authority invariant failed: {invariant}",
-		);
+		assert!(row.get::<_, bool>(index), "V19 catalog authority invariant failed: {invariant}",);
 	}
 	Ok(())
 }

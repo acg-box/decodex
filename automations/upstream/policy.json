@@ -1,0 +1,81 @@
+{
+  "schema": "decodex/codex-upstream-policy/2",
+  "upstream_repository": "https://github.com/openai/codex.git",
+  "upstream_branch": "main",
+  "target_repository": "hack-ink/decodex",
+  "target_branch": "main",
+  "branch_prefix": "xv/codex-upstream-",
+  "decodex_executable_sha256": "6b19015b15158477f1d7918e2ac5aa5fc27ac55a27212fd830219ac231c6488f",
+  "accepted_schema_marker_path": "crates/decodex-codex/schema/xy-1262-markers.json",
+  "max_batch_commits": 32,
+  "max_attempts": 3,
+  "lease_seconds": 21600,
+  "lease_write_guard_seconds": 9000,
+  "max_lease_renewals": 5,
+  "retry_backoff_seconds": [
+    300,
+    1800,
+    7200
+  ],
+  "validation_profiles": {
+    "focused_tests": [
+      "cargo",
+      "make",
+      "test-automations"
+    ],
+    "cargo_make_check_upstream_automation": [
+      "cargo",
+      "make",
+      "check-upstream-automation"
+    ],
+    "cargo_make_check": [
+      "cargo",
+      "make",
+      "check"
+    ]
+  },
+  "required_validation_profiles": [
+    "focused_tests",
+    "cargo_make_check_upstream_automation"
+  ],
+  "required_experimental_request_methods": [
+    "initialize",
+    "account/read",
+    "account/rateLimits/read",
+    "collaborationMode/list",
+    "thread/list",
+    "thread/name/set",
+    "thread/read",
+    "thread/resume",
+    "thread/search",
+    "thread/start",
+    "turn/start"
+  ],
+  "required_stable_request_methods": [
+    "initialize",
+    "account/read",
+    "account/rateLimits/read",
+    "thread/list",
+    "thread/name/set",
+    "thread/read",
+    "thread/resume",
+    "thread/start",
+    "turn/start"
+  ],
+  "required_notification_methods": [
+    "item/completed",
+    "item/started",
+    "thread/started",
+    "turn/completed",
+    "turn/started"
+  ],
+  "relevant_path_prefixes": [
+    "codex-rs/app-server/",
+    "codex-rs/app-server-protocol/",
+    "codex-rs/core/src/config/",
+    "codex-rs/protocol/",
+    "codex-rs/exec-server/",
+    "codex-rs/mcp-server/",
+    "codex-rs/docs/"
+  ]
+}
