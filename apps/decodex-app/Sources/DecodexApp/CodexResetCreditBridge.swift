@@ -41,6 +41,20 @@ struct CodexResetCreditCredentials: Sendable {
 	let expectedEmail: String?
 }
 
+struct CodexResetCreditConsumeResult: Sendable {
+	let outcome: ResetCreditConsumeOutcome
+	let creditID: String
+}
+
+struct CodexResetCreditUseFailure: LocalizedError, Sendable {
+	let creditID: String
+	let message: String
+
+	var errorDescription: String? {
+		message
+	}
+}
+
 struct CodexResetCreditBridge: Sendable {
 	private let environment: [String: String]
 	private let responseTimeout: TimeInterval
@@ -53,29 +67,12 @@ struct CodexResetCreditBridge: Sendable {
 		self.responseTimeout = responseTimeout
 	}
 
-	func prepare(
-		codexExecutableURL: URL,
-		codexHomeURL: URL,
-		credentials: CodexResetCreditCredentials,
-		preparation: ResetCreditUsePreparation
-	) async throws -> String {
-		try await Task.detached(priority: .userInitiated) {
-			try prepareSynchronously(
-				codexExecutableURL: codexExecutableURL,
-				codexHomeURL: codexHomeURL,
-				credentials: credentials,
-				preparation: preparation
-			)
-		}
-		.value
-	}
-
 	func consume(
 		codexExecutableURL: URL,
 		codexHomeURL: URL,
 		credentials: CodexResetCreditCredentials,
 		attempt: ResetCreditUseAttempt
-	) async throws -> ResetCreditConsumeOutcome {
+	) async throws -> CodexResetCreditConsumeResult {
 		try await Task.detached(priority: .userInitiated) {
 			try consumeSynchronously(
 				codexExecutableURL: codexExecutableURL,
@@ -122,48 +119,12 @@ struct CodexResetCreditBridge: Sendable {
 		return creditID
 	}
 
-	private func prepareSynchronously(
-		codexExecutableURL: URL,
-		codexHomeURL: URL,
-		credentials: CodexResetCreditCredentials,
-		preparation: ResetCreditUsePreparation
-	) throws -> String {
-		let session = try makeSession(
-			codexExecutableURL: codexExecutableURL,
-			codexHomeURL: codexHomeURL,
-			credentials: credentials
-		)
-		defer {
-			session.stop()
-		}
-
-		try bootstrap(
-			session: session,
-			codexHomeURL: codexHomeURL,
-			credentials: credentials
-		)
-		let rateLimits = try readRateLimits(session: session, requestID: 3)
-		guard let resetCredits = rateLimits.rateLimitResetCredits,
-			let credits = resetCredits.credits
-		else {
-			throw CodexResetCreditBridgeError.invalidResponse(
-				"reset-card details are unavailable"
-			)
-		}
-
-		return try resolveCreditID(
-			for: preparation.target,
-			availableCount: resetCredits.availableCount,
-			in: credits
-		)
-	}
-
 	private func consumeSynchronously(
 		codexExecutableURL: URL,
 		codexHomeURL: URL,
 		credentials: CodexResetCreditCredentials,
 		attempt: ResetCreditUseAttempt
-	) throws -> ResetCreditConsumeOutcome {
+	) throws -> CodexResetCreditConsumeResult {
 		let session = try makeSession(
 			codexExecutableURL: codexExecutableURL,
 			codexHomeURL: codexHomeURL,
@@ -178,31 +139,60 @@ struct CodexResetCreditBridge: Sendable {
 			codexHomeURL: codexHomeURL,
 			credentials: credentials
 		)
-		let creditID = attempt.creditID.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard creditID.isEmpty == false else {
-			throw CodexResetCreditBridgeError.invalidResponse(
-				"the selected reset card has no identifier"
+		let creditID: String
+		if let existingCreditID = normalizedCreditID(attempt.creditID) {
+			creditID = existingCreditID
+		} else {
+			let rateLimits = try readRateLimits(session: session, requestID: 3)
+			guard let resetCredits = rateLimits.rateLimitResetCredits,
+				let credits = resetCredits.credits
+			else {
+				throw CodexResetCreditBridgeError.invalidResponse(
+					"reset-card details are unavailable"
+				)
+			}
+
+			creditID = try resolveCreditID(
+				for: attempt.target,
+				availableCount: resetCredits.availableCount,
+				in: credits
 			)
 		}
 
-		try session.sendRequest(
-			id: 3,
-			method: "account/rateLimitResetCredit/consume",
-			params: [
-				"creditId": creditID,
-				"idempotencyKey": attempt.idempotencyKey,
-			]
-		)
-		let response = try session.readResponse(
-			id: 3,
-			as: CodexConsumeResetCreditResponse.self
-		)
+		do {
+			try session.sendRequest(
+				id: 4,
+				method: "account/rateLimitResetCredit/consume",
+				params: [
+					"creditId": creditID,
+					"idempotencyKey": attempt.idempotencyKey,
+				]
+			)
+			let response = try session.readResponse(
+				id: 4,
+				as: CodexConsumeResetCreditResponse.self
+			)
 
-		if response.outcome == .reset || response.outcome == .alreadyRedeemed {
-			_ = try readRateLimits(session: session, requestID: 4)
+			return CodexResetCreditConsumeResult(
+				outcome: response.outcome,
+				creditID: creditID
+			)
+		} catch {
+			throw CodexResetCreditUseFailure(
+				creditID: creditID,
+				message: error.localizedDescription
+			)
+		}
+	}
+
+	private func normalizedCreditID(_ value: String?) -> String? {
+		guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+			value.isEmpty == false
+		else {
+			return nil
 		}
 
-		return response.outcome
+		return value
 	}
 
 	private func makeSession(

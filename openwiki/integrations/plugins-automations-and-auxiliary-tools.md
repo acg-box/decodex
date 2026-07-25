@@ -147,12 +147,13 @@ decodex-publisher validate-social .agent/automations/decodex/cache/social/x
 - Lists stored accounts without token material.
 - Pins future Decodex runs to one account or returns to balanced selection.
 - Forces Codex to use a stored account by writing `auth.json`.
-- Uses a selected reset card after a second-click confirmation. The App resolves
-  the exact opaque credit ID before confirmation and reuses the same ID and
-  idempotency key for retries in an isolated file-auth app-server session. The
-  confirmation expires after five seconds and also clears when the menu-bar panel
-  closes. The isolated copy excludes the managed refresh token. Ambiguous or
-  incomplete card-detail lists fail closed.
+- Uses a selected reset card after a second-click confirmation. The first click is
+  a local-only state change that immediately starts a five-second confirmation. The
+  second click opens one isolated file-auth app-server session, validates the
+  account, resolves the exact current opaque credit ID, and consumes it. Retries
+  keep the resolved ID and idempotency key. The confirmation also clears when the
+  menu-bar panel closes. The isolated copy excludes the managed refresh token.
+  Ambiguous or incomplete card-detail lists fail closed.
 - Runs isolated Codex device login and imports the resulting auth file. The App
   honors an explicit `CODEX_CLI_PATH` override; otherwise it resolves the login
   executable from the Codex macOS application registered with Launch Services,
