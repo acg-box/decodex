@@ -120,9 +120,13 @@ runtime.
 - `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns Decodex runtime/operator lifecycle skills.
 - `openwiki/` owns the repo-local project knowledge surface.
-- `automations/decodex/automations.toml` and `automations/radar/automations.toml`
-  are the portable Codex app automation source; install live local configs from a
-  clone with `python3 automations/decodex/scripts/config/sync_automations.py --apply`.
+- `automations/upstream/automations.toml` is the current portable Codex App
+  automation source for standalone upstream adaptation. It can update Decodex code,
+  open a pull request, independently review it, and merge it through the narrow
+  `decodex commit` and `decodex land` commands. It does not use Decodex server.
+- `automations/decodex/` retains shared configuration and social-contract tools.
+  `automations/radar/` retains reusable evidence tools. Their obsolete schedules and
+  prompts were removed rather than retained as compatibility inputs.
 
 No product-specific command service is active yet. The protocol uses bounded in-memory
 replay/idempotency state while the PostgreSQL adapter owns durable product-state

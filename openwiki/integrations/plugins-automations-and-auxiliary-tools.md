@@ -56,8 +56,11 @@ python3 scripts/config/sync_installable_plugins.py --apply --clean-repo-local-sk
 
 Automation source is checked in under:
 
-- `automations/decodex/`: Publisher automation, public-publishing jobs, automation health audit jobs, social schemas, skills, and shared config tooling.
-- `automations/radar/`: Radar upstream review, release checkpoint curation, artifact retention, GitHub/Codex analysis helpers, and Radar skills.
+- `automations/upstream/`: current standalone upstream maintenance, independent
+  review/landing, health supervision, deterministic cursor/lease state, and policy.
+- `automations/decodex/`: shared config tooling plus reusable Publisher schemas and
+  skills.
+- `automations/radar/`: reusable Radar evidence tooling and skills.
 
 These are portable sources. Live Codex App configs under `$CODEX_HOME/automations/*/automation.toml` are generated and machine-local. Source manifests use relative paths and `{repo_root}` placeholders. Runtime cwd is always the primary checkout owning `main`: the installer rejects linked-worktree runtime roots and the evaluator treats any managed `.worktrees` cwd as a P0 failure. The installer also refuses configured private fragments such as absolute user-home paths, auth files, account files, or runtime databases (`automations/decodex/README.md`).
 
@@ -66,37 +69,38 @@ Commands:
 ```sh
 python3 automations/decodex/scripts/config/sync_automations.py
 python3 automations/decodex/scripts/config/sync_automations.py --apply
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/radar/automations.toml
-python3 automations/decodex/scripts/operations/summarize_automation_effectiveness.py
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
+python3 -m unittest automations.upstream.tests.test_upstream_autopilot
 ```
 
-The operating loop has explicit owners:
+The current operating loop has three explicit owners:
 
-- Health Audit repairs live-config-only drift from validated canonical source and
-  re-evaluates every managed automation. It never edits repo source.
-- Daily Effectiveness Review independently measures the previous 24 hours and writes
-  `automation_effectiveness_scorecard/v1` evidence.
-- Automation Manager consumes that evidence, ranks fresh Radar opportunities, creates
-  at most one qualified social candidate, closes operational incidents, and executes
-  the active content experiment. Daily records measurements and recommends strategy
-  changes; Weekly alone selects, modifies, continues, or stops experiments. Publisher
-  remains the sole X writer. Manager also reconciles automation handoffs: resolution
-  requires acceptance evidence, while supersession requires a landed cutover plus a
-  deterministic replacement gate; implementation handoffs remain authority-gated.
-- Weekly Growth Review compares consecutive seven-day windows and persists the next
-  experiment. The deterministic scorecard treats missing, invalid, or expired active
-  strategy and post-cutover Daily Manager coverage gaps as operational P1 evidence;
-  unresolved `decodex_automation_handoff/v1` items are also P1 evidence, while
-  authority-gated implementation proposals remain separate. A publishable candidate
-  without a terminal Publisher outcome after 24 hours is another P1. An ACTIVE live
-  config alone is not successful execution. Paid X MCP reads are bounded and used
-  only when fresh outcome or benchmark evidence can change the decision.
+- Upstream Maintainer polls hourly, preserves a complete first-parent cursor, observes
+  stable and prerelease tags, generates stable and experimental schemas from the exact
+  installed Codex executable, and claims one change. It can edit and stage source.
+  The checked-in state wrapper alone can run sandboxed tests, invoke
+  `decodex commit --manual-authority`, push, and open a pull request.
+- Upstream Reviewer runs in a separate task and context. It verifies the exact
+  pull-request head, performs an independent code review, repeats sandboxed tests
+  through the wrapper, requests bounded repairs, or lets the wrapper invoke
+  `decodex land --manual-authority --pr` with the exact validated base and head
+  object IDs. Decodex alone creates and pushes the signed merge, synchronizes
+  `main`, and cleans the exact lane.
+- Upstream Health verifies live config, two-hour observation freshness, cursor
+  continuity, six-hour review SLA, lease expiry, retry budgets, and current schema
+  evidence.
 
-Operational autonomy does not bypass repository authority. Prompt/live-config repair,
-candidate selection, publishing, outcome learning, and strategy updates can close
-automatically. Code, schema, runtime, PR, and landing changes still require normal
-Decodex authority and are emitted as structured implementation handoffs.
+None of these tasks uses Decodex server, MCP, Program Intake, Linear, or tracker state.
+The installed Decodex CLI is used only for commit and landing. Scheduled cwds remain
+the primary `main` checkout; temporary implementation and review worktrees are
+per-run resources, not automation bindings. Upstream text is untrusted data and is
+never executed. Candidate code runs only in the wrapper's credential-free,
+external-network-denied macOS sandbox. Generated state is bounded, local-only, and
+excludes prompt text, logs, credentials, account identifiers, and personal data.
+
+The obsolete Publisher, Radar review, release curator, retention, health evaluator,
+daily review, Manager, and weekly growth manifests and prompts were deleted. They
+cannot be installed or reactivated by the default sync path.
 
 Do not copy full automation prompts into OpenWiki. Summarize boundaries and link to source files when a task needs details.
 
