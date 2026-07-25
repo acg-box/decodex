@@ -640,15 +640,10 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		},
 		"sequence_state": sequence_state,
 	});
-	if let Some(predicates) = semantic_authority {
+	if let Some(semantic_authority) = semantic_authority {
 		manifest.as_object_mut().ok_or("manifest envelope is not an object")?.insert(
 			"semantic_authority".into(),
-			serde_json::json!({
-				"predicates": predicates.into_iter().map(|(name, passed)| {
-					serde_json::json!({"name": name, "passed": passed})
-				}).collect::<Vec<_>>(),
-				"schema": "decodex/postgres-semantic-authority/1",
-			}),
+			semantic_authority,
 		);
 	}
 	let manifest = serde_json::to_string(&manifest)?;
@@ -1300,9 +1295,9 @@ async fn postgres_authority_classification_matrix() {
 	let identities =
 		scenarios.iter().map(|scenario| scenario.case_id.as_str()).collect::<HashSet<_>>();
 
-	assert_eq!(unsafe_count, 27, "unsafe authority scenario count");
+	assert_eq!(unsafe_count, 28, "unsafe authority scenario count");
 	assert_eq!(incompatible_count, 6, "incompatible authority scenario count");
-	assert_eq!(unsafe_store_count, 27, "StoreError::UnsafeAuthority scenario count");
+	assert_eq!(unsafe_store_count, 28, "StoreError::UnsafeAuthority scenario count");
 	assert_eq!(incompatible_store_count, 5, "StoreError::Incompatible scenario count");
 	assert_eq!(migration_store_count, 1, "StoreError::Migration scenario count");
 	assert_eq!(identities.len(), scenarios.len(), "authority scenario identities are unique");

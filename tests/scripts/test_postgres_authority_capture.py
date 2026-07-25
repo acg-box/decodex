@@ -20,6 +20,18 @@ SPEC.loader.exec_module(POSTGRES_STORE_TEST)
 
 SOURCE_BINDING = {"head": "a" * 40, "tree": "b" * 40}
 DATABASE = "decodex_xy1300_authority_capture"
+FIXTURE_SEMANTIC_AUTHORITY_DEFINITION = {
+    "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DEFINITION_SCHEMA,
+    "predicates": [
+        {"name": "fixture_unsafe", "classification": "unsafe"},
+        {"name": "fixture_incompatible", "classification": "incompatible"},
+    ],
+}
+FIXTURE_SEMANTIC_AUTHORITY_FINGERPRINT = (
+    POSTGRES_STORE_TEST.semantic_authority_definition_fingerprint(
+        FIXTURE_SEMANTIC_AUTHORITY_DEFINITION
+    )
+)
 
 
 def component(*, available, complete, error=None, manifest=None):
@@ -47,9 +59,13 @@ def envelope(schema, authority=None, binding=None):
         ),
         "binding": binding,
         "semantic_authority": {
-            "predicates": [
-                {"name": name, "passed": True}
-                for name in POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_PREDICATES
+            "definition": json.loads(json.dumps(
+                FIXTURE_SEMANTIC_AUTHORITY_DEFINITION
+            )),
+            "fingerprint": FIXTURE_SEMANTIC_AUTHORITY_FINGERPRINT,
+            "observations": [
+                {"name": predicate["name"], "passed": True}
+                for predicate in FIXTURE_SEMANTIC_AUTHORITY_DEFINITION["predicates"]
             ],
             "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_SCHEMA,
         },
@@ -101,6 +117,15 @@ def runtime_authority(database):
 
 
 class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.supported_fingerprint = mock.patch.object(
+            POSTGRES_STORE_TEST,
+            "SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT",
+            FIXTURE_SEMANTIC_AUTHORITY_FINGERPRINT,
+        )
+        self.supported_fingerprint.start()
+        self.addCleanup(self.supported_fingerprint.stop)
+
     def test_secret_logging_reader_consumes_coalesced_pipe_frames(self):
         read_descriptor, write_descriptor = os.pipe()
         try:
@@ -456,9 +481,8 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
 
     def test_semantic_authority_failure_reports_only_bounded_predicate_names(self):
         document = envelope(component(available=True, complete=True, manifest="[]"))
-        for predicate in document["semantic_authority"]["predicates"]:
-            if predicate["name"] in {"schema_usage", "exact_table_authority"}:
-                predicate["passed"] = False
+        for observation in document["semantic_authority"]["observations"]:
+            observation["passed"] = False
 
         with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
             POSTGRES_STORE_TEST.require_capture_semantic_authority(
@@ -469,22 +493,123 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         diagnostic = json.loads(message[message.index("{") :])
         self.assertEqual(diagnostic, {
             "checkpoint": "source",
-            "failed_predicates": ["exact_table_authority", "schema_usage"],
-            "predicate_count": len(POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_PREDICATES),
+            "failed_predicates": ["fixture_incompatible", "fixture_unsafe"],
+            "predicate_count": 2,
             "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
         })
         self.assertNotIn(DATABASE, message)
 
-    def test_semantic_authority_evidence_requires_the_canonical_predicate_order(self):
+    def test_semantic_authority_definition_fingerprint_is_independently_recomputed(self):
         document = envelope(component(available=True, complete=True, manifest="[]"))
-        predicates = document["semantic_authority"]["predicates"]
-        predicates[0], predicates[1] = predicates[1], predicates[0]
+        observations = POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+            document["semantic_authority"]
+        )
+        self.assertEqual(
+            [observation["name"] for observation in observations],
+            ["fixture_unsafe", "fixture_incompatible"],
+        )
 
+        document["semantic_authority"]["fingerprint"] = "0" * 64
         with self.assertRaisesRegex(
-            POSTGRES_STORE_TEST.TestFailure, "predicate contract differs"
+            POSTGRES_STORE_TEST.TestFailure, "emitted fingerprint differs"
         ):
             POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
                 document["semantic_authority"]
+            )
+
+    def test_semantic_authority_definition_must_match_the_supported_fingerprint(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        with mock.patch.object(
+            POSTGRES_STORE_TEST,
+            "SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT",
+            "f" * 64,
+        ):
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure, "definition is not supported"
+            ):
+                POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                    document["semantic_authority"]
+                )
+
+    def test_semantic_authority_evidence_rejects_reordered_observations(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        observations = document["semantic_authority"]["observations"]
+        observations[0], observations[1] = observations[1], observations[0]
+
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "observation order differs"
+        ):
+            POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                document["semantic_authority"]
+            )
+
+    def test_semantic_authority_evidence_rejects_missing_duplicate_and_extra_observations(self):
+        mutations = {
+            "missing": lambda observations: observations.pop(),
+            "duplicate": lambda observations: observations.__setitem__(
+                1, {"name": observations[0]["name"], "passed": True}
+            ),
+            "extra": lambda observations: observations.append(
+                {"name": "fixture_extra", "passed": True}
+            ),
+        }
+        for case, mutate in mutations.items():
+            with self.subTest(case=case):
+                document = envelope(
+                    component(available=True, complete=True, manifest="[]")
+                )
+                mutate(document["semantic_authority"]["observations"])
+                with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+                    POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                        document["semantic_authority"]
+                    )
+
+    def test_semantic_authority_evidence_rejects_non_boolean_and_false_observations(self):
+        for case, value, pattern in (
+            ("non_boolean", 1, "invalid semantic authority observation"),
+            ("false", False, "failed observation"),
+        ):
+            with self.subTest(case=case):
+                document = envelope(
+                    component(available=True, complete=True, manifest="[]")
+                )
+                document["semantic_authority"]["observations"][0]["passed"] = value
+                with self.assertRaisesRegex(
+                    POSTGRES_STORE_TEST.TestFailure, pattern
+                ):
+                    POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                        document["semantic_authority"]
+                    )
+
+    def test_semantic_authority_evidence_rejects_malformed_definition(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        document["semantic_authority"]["definition"]["predicates"][0]["extra"] = True
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "definition predicate"
+        ):
+            POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                document["semantic_authority"]
+            )
+
+    def test_semantic_authority_checkpoint_evidence_must_not_diverge(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        summary = POSTGRES_STORE_TEST.require_capture_semantic_authority(
+            document, "source", secret_markers=("xy1300-secret",)
+        )
+        checkpoints = {
+            "source": summary,
+            "restored_once": dict(summary),
+            "restored_twice": dict(summary),
+        }
+        POSTGRES_STORE_TEST.require_semantic_authority_checkpoint_parity(
+            checkpoints
+        )
+        checkpoints["restored_twice"]["evidence_sha256"] = "f" * 64
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "differs across checkpoints"
+        ):
+            POSTGRES_STORE_TEST.require_semantic_authority_checkpoint_parity(
+                checkpoints
             )
 
     def test_private_receipt_read_is_descriptor_pinned_and_bounded(self):
