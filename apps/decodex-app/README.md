@@ -111,15 +111,17 @@ The "Use in Codex" action overwrites Codex's `auth.json` from one stored
 `~/.codex/decodex/accounts.jsonl` entry. The destination is `$CODEX_HOME/auth.json`
 when `CODEX_HOME` is set, otherwise `~/.codex/auth.json`.
 
-The reset-card action requires two clicks on the same card. The first click reads the
-current opaque credit ID and then shows `Confirm Use` with a five-second countdown.
-The confirmation cancels when the countdown expires or the panel closes. A second
-click during the countdown consumes that exact ID and reuses one idempotency key for
-retries. Each request uses an isolated Codex app-server session with a short-lived
-file-auth copy for the selected account. The copy contains the current access token
-and a disabled refresh placeholder, not the managed refresh token. The action does
-not overwrite the user's normal Codex `auth.json`. Ambiguous duplicate cards and
-incomplete card-detail lists fail closed.
+The reset-card action requires two clicks on the same card. The first click is a
+local-only state change that immediately shows `Confirm Use` with a five-second
+countdown. The confirmation cancels when the countdown expires or the panel closes.
+A second click during the countdown starts one isolated Codex app-server session. In
+that session, the App validates the selected account, reads the current opaque credit
+ID, and consumes that exact ID. A retry keeps the resolved ID and the same
+idempotency key. The session uses a short-lived file-auth copy for the selected
+account. The copy contains the current access token and a disabled refresh
+placeholder, not the managed refresh token. The action does not overwrite the user's
+normal Codex `auth.json`. Ambiguous duplicate cards and incomplete card-detail lists
+fail closed.
 
 App icon assets live under `assets/app-icon/` with `source/`, `composer/`, and
 `generated/` lanes. Menu bar icon assets live under `assets/tray-icon/` with matching

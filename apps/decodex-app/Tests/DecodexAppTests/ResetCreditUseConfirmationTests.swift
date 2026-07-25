@@ -2,64 +2,74 @@
 import XCTest
 
 final class ResetCreditUseConfirmationTests: XCTestCase {
-	func testFirstTapPreparesAndSecondTapConsumesTheExactArmedCredit() throws {
+	func testFirstTapArmsImmediatelyAndSecondTapSubmitsTheSameAttempt() throws {
 		let target = makeTarget(accountID: "account-a", expiresAt: 200)
 		var confirmation = ResetCreditUseConfirmation()
 
-		let preparation = try unwrapPreparation(
+		XCTAssertNil(
 			confirmation.tap(target, makeIdempotencyKey: { "attempt-1" })
 		)
-		XCTAssertTrue(confirmation.isPreparing(target))
-		XCTAssertFalse(confirmation.isArmed(target))
-
-		confirmation.finishPreparation(preparation, creditID: "credit-1")
-		XCTAssertFalse(confirmation.isPreparing(target))
 		XCTAssertTrue(confirmation.isArmed(target))
+		XCTAssertFalse(confirmation.isSubmitting)
+		XCTAssertEqual(confirmation.armedAttempt?.idempotencyKey, "attempt-1")
+		XCTAssertNil(confirmation.armedAttempt?.creditID)
 
-		let attempt = try unwrapAttempt(
+		let attempt = try XCTUnwrap(
 			confirmation.tap(target, makeIdempotencyKey: { "unexpected-key" })
 		)
-		XCTAssertEqual(attempt.creditID, "credit-1")
+
+		XCTAssertEqual(attempt.target, target)
 		XCTAssertEqual(attempt.idempotencyKey, "attempt-1")
+		XCTAssertNil(attempt.creditID)
 		XCTAssertTrue(confirmation.isSubmitting(target))
 	}
 
-	func testFailedPreparationDisarmsTheCard() throws {
+	func testUnresolvedAttemptRetainsResolvedCreditAndIdempotencyKey() throws {
 		let target = makeTarget(accountID: "account-a", expiresAt: 200)
 		var confirmation = ResetCreditUseConfirmation()
-
-		let preparation = try unwrapPreparation(confirmation.tap(target))
-		confirmation.finishPreparation(preparation, creditID: nil)
-
-		XCTAssertFalse(confirmation.isPreparing(target))
-		XCTAssertFalse(confirmation.isArmed(target))
-		XCTAssertFalse(confirmation.isBusy)
-	}
-
-	func testUnresolvedConsumeRetainsExactCreditAndIdempotencyKey() throws {
-		let target = makeTarget(accountID: "account-a", expiresAt: 200)
-		var confirmation = ResetCreditUseConfirmation()
-		let preparation = try unwrapPreparation(
+		XCTAssertNil(
 			confirmation.tap(target, makeIdempotencyKey: { "attempt-1" })
 		)
-		confirmation.finishPreparation(preparation, creditID: "credit-1")
+		let firstAttempt = try XCTUnwrap(confirmation.tap(target))
 
-		let firstAttempt = try unwrapAttempt(confirmation.tap(target))
-		confirmation.finish(firstAttempt, resolved: false)
-		let retry = try unwrapAttempt(confirmation.tap(target))
+		confirmation.finish(
+			firstAttempt,
+			completion: ResetCreditUseCompletion(resolved: false, creditID: "credit-1")
+		)
+		let retry = try XCTUnwrap(confirmation.tap(target))
 
 		XCTAssertEqual(retry.creditID, "credit-1")
+		XCTAssertEqual(retry.idempotencyKey, "attempt-1")
+	}
+
+	func testFailureBeforeResolutionRetainsTheOriginalAttempt() throws {
+		let target = makeTarget(accountID: "account-a", expiresAt: 200)
+		var confirmation = ResetCreditUseConfirmation()
+		XCTAssertNil(
+			confirmation.tap(target, makeIdempotencyKey: { "attempt-1" })
+		)
+		let firstAttempt = try XCTUnwrap(confirmation.tap(target))
+
+		confirmation.finish(
+			firstAttempt,
+			completion: ResetCreditUseCompletion(resolved: false, creditID: nil)
+		)
+		let retry = try XCTUnwrap(confirmation.tap(target))
+
+		XCTAssertNil(retry.creditID)
 		XCTAssertEqual(retry.idempotencyKey, "attempt-1")
 	}
 
 	func testResolvedAttemptDisarmsTheCard() throws {
 		let target = makeTarget(accountID: "account-a", expiresAt: 200)
 		var confirmation = ResetCreditUseConfirmation()
-		let preparation = try unwrapPreparation(confirmation.tap(target))
-		confirmation.finishPreparation(preparation, creditID: "credit-1")
+		XCTAssertNil(confirmation.tap(target))
+		let attempt = try XCTUnwrap(confirmation.tap(target))
 
-		let attempt = try unwrapAttempt(confirmation.tap(target))
-		confirmation.finish(attempt, resolved: true)
+		confirmation.finish(
+			attempt,
+			completion: ResetCreditUseCompletion(resolved: true, creditID: "credit-1")
+		)
 
 		XCTAssertFalse(confirmation.isArmed(target))
 		XCTAssertFalse(confirmation.isSubmitting(target))
@@ -68,10 +78,8 @@ final class ResetCreditUseConfirmationTests: XCTestCase {
 	func testConfirmationWindowCanDisarmTheExactAttempt() throws {
 		let target = makeTarget(accountID: "account-a", expiresAt: 200)
 		var confirmation = ResetCreditUseConfirmation()
-		let preparation = try unwrapPreparation(confirmation.tap(target))
-		let attempt = try XCTUnwrap(
-			confirmation.finishPreparation(preparation, creditID: "credit-1")
-		)
+		XCTAssertNil(confirmation.tap(target))
+		let attempt = try XCTUnwrap(confirmation.armedAttempt)
 
 		XCTAssertTrue(confirmation.disarm(attempt))
 		XCTAssertFalse(confirmation.isArmed(target))
@@ -81,62 +89,89 @@ final class ResetCreditUseConfirmationTests: XCTestCase {
 		let first = makeTarget(accountID: "account-a", expiresAt: 200)
 		let second = makeTarget(accountID: "account-a", expiresAt: 300)
 		var confirmation = ResetCreditUseConfirmation()
-		let firstPreparation = try unwrapPreparation(confirmation.tap(first))
-		let staleAttempt = try XCTUnwrap(
-			confirmation.finishPreparation(firstPreparation, creditID: "credit-1")
+		XCTAssertNil(
+			confirmation.tap(first, makeIdempotencyKey: { "attempt-1" })
 		)
-		let secondPreparation = try unwrapPreparation(confirmation.tap(second))
-		let currentAttempt = try XCTUnwrap(
-			confirmation.finishPreparation(secondPreparation, creditID: "credit-2")
+		let staleAttempt = try XCTUnwrap(confirmation.armedAttempt)
+		XCTAssertNil(
+			confirmation.tap(second, makeIdempotencyKey: { "attempt-2" })
 		)
+		let currentAttempt = try XCTUnwrap(confirmation.armedAttempt)
 
 		XCTAssertFalse(confirmation.disarm(staleAttempt))
 		XCTAssertTrue(confirmation.isArmed(currentAttempt))
 	}
 
-	func testClosingThePanelCancelsPreparationAndPreventsLateArming() throws {
+	func testClosingThePanelCancelsConfirmation() {
 		let target = makeTarget(accountID: "account-a", expiresAt: 200)
 		var confirmation = ResetCreditUseConfirmation()
-		let preparation = try unwrapPreparation(confirmation.tap(target))
+		XCTAssertNil(confirmation.tap(target))
 
 		confirmation.cancelPendingConfirmation()
-		let attempt = confirmation.finishPreparation(preparation, creditID: "credit-1")
 
-		XCTAssertNil(attempt)
-		XCTAssertFalse(confirmation.isPreparing(target))
 		XCTAssertFalse(confirmation.isArmed(target))
+		XCTAssertFalse(confirmation.isSubmitting)
 	}
 
-	func testTappingAnotherCardStartsASeparatePreparation() throws {
+	func testTappingAnotherCardImmediatelyMovesConfirmation() throws {
 		let first = makeTarget(accountID: "account-a", expiresAt: 200)
 		let second = makeTarget(accountID: "account-a", expiresAt: 300)
 		var confirmation = ResetCreditUseConfirmation()
-		let firstPreparation = try unwrapPreparation(
+		XCTAssertNil(
 			confirmation.tap(first, makeIdempotencyKey: { "attempt-1" })
 		)
-		confirmation.finishPreparation(firstPreparation, creditID: "credit-1")
 
-		let secondPreparation = try unwrapPreparation(
+		XCTAssertNil(
 			confirmation.tap(second, makeIdempotencyKey: { "attempt-2" })
 		)
 
 		XCTAssertFalse(confirmation.isArmed(first))
-		XCTAssertTrue(confirmation.isPreparing(second))
-		XCTAssertEqual(secondPreparation.idempotencyKey, "attempt-2")
+		XCTAssertTrue(confirmation.isArmed(second))
+		XCTAssertEqual(confirmation.armedAttempt?.idempotencyKey, "attempt-2")
 	}
 
-	func testRemovedCardClearsPreparationAndConfirmation() throws {
-		let target = makeTarget(accountID: "account-a", expiresAt: 200)
-		var preparing = ResetCreditUseConfirmation()
-		_ = try unwrapPreparation(preparing.tap(target))
-		preparing.retainOnly([])
-		XCTAssertFalse(preparing.isBusy)
+	func testSubmittingAttemptIgnoresOtherCardTaps() throws {
+		let first = makeTarget(accountID: "account-a", expiresAt: 200)
+		let second = makeTarget(accountID: "account-a", expiresAt: 300)
+		var confirmation = ResetCreditUseConfirmation()
+		XCTAssertNil(confirmation.tap(first))
+		let attempt = try XCTUnwrap(confirmation.tap(first))
 
-		var armed = ResetCreditUseConfirmation()
-		let preparation = try unwrapPreparation(armed.tap(target))
-		armed.finishPreparation(preparation, creditID: "credit-1")
-		armed.retainOnly([])
-		XCTAssertFalse(armed.isArmed(target))
+		XCTAssertNil(confirmation.tap(second))
+		XCTAssertTrue(confirmation.isSubmitting(first))
+		XCTAssertTrue(confirmation.isArmed(attempt))
+		XCTAssertFalse(confirmation.isArmed(second))
+	}
+
+	func testRemovedCardClearsConfirmation() {
+		let target = makeTarget(accountID: "account-a", expiresAt: 200)
+		var confirmation = ResetCreditUseConfirmation()
+		XCTAssertNil(confirmation.tap(target))
+
+		confirmation.retainOnly([])
+
+		XCTAssertFalse(confirmation.isArmed(target))
+		XCTAssertFalse(confirmation.isSubmitting)
+	}
+
+	func testSubmittingAttemptSurvivesTargetRemovalUntilItFinishes() throws {
+		let target = makeTarget(accountID: "account-a", expiresAt: 200)
+		var confirmation = ResetCreditUseConfirmation()
+		XCTAssertNil(confirmation.tap(target))
+		let attempt = try XCTUnwrap(confirmation.tap(target))
+
+		confirmation.retainOnly([])
+
+		XCTAssertTrue(confirmation.isArmed(attempt))
+		XCTAssertTrue(confirmation.isSubmitting(target))
+
+		confirmation.finish(
+			attempt,
+			completion: ResetCreditUseCompletion(resolved: true, creditID: "credit-1")
+		)
+
+		XCTAssertFalse(confirmation.isArmed(target))
+		XCTAssertFalse(confirmation.isSubmitting)
 	}
 
 	func testTargetsDistinguishDuplicateCardsByOccurrence() {
@@ -157,32 +192,6 @@ final class ResetCreditUseConfirmationTests: XCTestCase {
 		XCTAssertEqual(Set(targets).count, 2)
 	}
 
-	private func unwrapPreparation(
-		_ action: ResetCreditUseAction?,
-		file: StaticString = #filePath,
-		line: UInt = #line
-	) throws -> ResetCreditUsePreparation {
-		guard case .prepare(let preparation) = try XCTUnwrap(action, file: file, line: line) else {
-			XCTFail("Expected a prepare action.", file: file, line: line)
-			throw TestFailure.unexpectedAction
-		}
-
-		return preparation
-	}
-
-	private func unwrapAttempt(
-		_ action: ResetCreditUseAction?,
-		file: StaticString = #filePath,
-		line: UInt = #line
-	) throws -> ResetCreditUseAttempt {
-		guard case .consume(let attempt) = try XCTUnwrap(action, file: file, line: line) else {
-			XCTFail("Expected a consume action.", file: file, line: line)
-			throw TestFailure.unexpectedAction
-		}
-
-		return attempt
-	}
-
 	private func makeTarget(
 		accountID: String,
 		expiresAt: Int
@@ -200,9 +209,5 @@ final class ResetCreditUseConfirmationTests: XCTestCase {
 			descriptorMultiplicity: 1,
 			detailsComplete: true
 		)
-	}
-
-	private enum TestFailure: Error {
-		case unexpectedAction
 	}
 }

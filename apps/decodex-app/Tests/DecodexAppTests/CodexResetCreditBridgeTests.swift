@@ -95,7 +95,7 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 		)
 	}
 
-	func testPreparationArmsTheExactCurrentCreditThroughExternalAuth() async throws {
+	func testConsumeReadsFreshCardsThenUsesTheExactCurrentIDInOneSession() async throws {
 		let fixture = try makeFixture(
 			scriptBody: """
 			IFS= read -r line || exit 10
@@ -109,30 +109,39 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 			IFS= read -r line || exit 13
 			printf '%s\\n' "$line" >> '__LOG_PATH__'
 			printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"rateLimits":{},"rateLimitResetCredits":{"availableCount":2,"credits":[{"id":"credit-a","grantedAt":100,"expiresAt":300,"resetType":"codexRateLimits","status":"available"},{"id":"credit-b","grantedAt":100,"expiresAt":200,"resetType":"codexRateLimits","status":"available"}]}}}'
+			IFS= read -r line || exit 14
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '%s\\n' '{"jsonrpc":"2.0","id":4,"result":{"outcome":"reset"}}'
 			"""
 		)
 		defer { fixture.remove() }
 
-		let preparation = ResetCreditUsePreparation(
-			target: makeTarget(),
-			idempotencyKey: "attempt-1"
-		)
-		let creditID = try await CodexResetCreditBridge(responseTimeout: 2).prepare(
+		let result = try await CodexResetCreditBridge(responseTimeout: 2).consume(
 			codexExecutableURL: fixture.executableURL,
 			codexHomeURL: fixture.codexHomeURL,
 			credentials: credentials,
-			preparation: preparation
+			attempt: makeAttempt()
 		)
 
-		XCTAssertEqual(creditID, "credit-b")
+		XCTAssertEqual(result.outcome, .reset)
+		XCTAssertEqual(result.creditID, "credit-b")
 		let messages = try readMessages(from: fixture.logURL)
-		XCTAssertEqual(messages.count, 4)
+		XCTAssertEqual(messages.count, 5)
 		try assertBootstrap(messages)
 		XCTAssertEqual(messages[3]["method"] as? String, "account/rateLimits/read")
 		XCTAssertNil(messages[3]["params"])
+		let consume = messages[4]
+		XCTAssertEqual(
+			consume["method"] as? String,
+			"account/rateLimitResetCredit/consume"
+		)
+		let params = try XCTUnwrap(consume["params"] as? [String: Any])
+		XCTAssertEqual(params["creditId"] as? String, "credit-b")
+		XCTAssertEqual(params["idempotencyKey"] as? String, "attempt-1")
+		XCTAssertEqual(try fixture.launchCount(), 1)
 	}
 
-	func testPreparationAcceptsAnEmailLessBoundAccount() async throws {
+	func testConsumeAcceptsAnEmailLessBoundAccount() async throws {
 		let fixture = try makeFixture(
 			scriptBody: """
 			IFS= read -r line || exit 10
@@ -146,24 +155,25 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 			IFS= read -r line || exit 13
 			printf '%s\\n' "$line" >> '__LOG_PATH__'
 			printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"rateLimits":{},"rateLimitResetCredits":{"availableCount":1,"credits":[{"id":"credit-b","grantedAt":100,"expiresAt":200,"resetType":"codexRateLimits","status":"available"}]}}}'
+			IFS= read -r line || exit 14
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '%s\\n' '{"jsonrpc":"2.0","id":4,"result":{"outcome":"nothingToReset"}}'
 			"""
 		)
 		defer { fixture.remove() }
 
-		let creditID = try await CodexResetCreditBridge(responseTimeout: 2).prepare(
+		let result = try await CodexResetCreditBridge(responseTimeout: 2).consume(
 			codexExecutableURL: fixture.executableURL,
 			codexHomeURL: fixture.codexHomeURL,
 			credentials: CodexResetCreditCredentials(expectedEmail: nil),
-			preparation: ResetCreditUsePreparation(
-				target: makeTarget(),
-				idempotencyKey: "attempt-1"
-			)
+			attempt: makeAttempt()
 		)
 
-		XCTAssertEqual(creditID, "credit-b")
+		XCTAssertEqual(result.outcome, .nothingToReset)
+		XCTAssertEqual(result.creditID, "credit-b")
 	}
 
-	func testConsumeReusesTheArmedCreditIDWithoutOrdinalRemapping() async throws {
+	func testConsumeRejectsChangedCardsBeforeMutation() async throws {
 		let fixture = try makeFixture(
 			scriptBody: """
 			IFS= read -r line || exit 10
@@ -176,31 +186,67 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 			printf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"chatgpt","email":"copy@example.com","planType":"pro"},"requiresOpenaiAuth":true}}'
 			IFS= read -r line || exit 13
 			printf '%s\\n' "$line" >> '__LOG_PATH__'
-			printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"outcome":"reset"}}'
-			IFS= read -r line || exit 14
-			printf '%s\\n' "$line" >> '__LOG_PATH__'
-			printf '%s\\n' '{"jsonrpc":"2.0","id":4,"result":{"rateLimits":{},"rateLimitResetCredits":{"availableCount":1,"credits":[]}}}'
+			printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"rateLimits":{},"rateLimitResetCredits":{"availableCount":1,"credits":[{"id":"credit-a","grantedAt":100,"expiresAt":300,"resetType":"codexRateLimits","status":"available"}]}}}'
 			"""
 		)
 		defer { fixture.remove() }
 
-		let attempt = ResetCreditUseAttempt(
-			target: makeTarget(),
-			creditID: "credit-b",
-			idempotencyKey: "attempt-1"
+		do {
+			_ = try await CodexResetCreditBridge(responseTimeout: 2).consume(
+				codexExecutableURL: fixture.executableURL,
+				codexHomeURL: fixture.codexHomeURL,
+				credentials: credentials,
+				attempt: makeAttempt()
+			)
+			XCTFail("Changed reset cards should fail before consume.")
+		} catch {
+			XCTAssertEqual(
+				error.localizedDescription,
+				"The reset cards changed. Refresh and try again."
+			)
+		}
+
+		let messages = try readMessages(from: fixture.logURL)
+		XCTAssertEqual(messages.count, 4)
+		try assertBootstrap(messages)
+		XCTAssertEqual(messages[3]["method"] as? String, "account/rateLimits/read")
+		XCTAssertFalse(
+			messages.contains {
+				$0["method"] as? String == "account/rateLimitResetCredit/consume"
+			}
 		)
-		let outcome = try await CodexResetCreditBridge(responseTimeout: 2).consume(
+	}
+
+	func testRetryUsesTheResolvedCreditWithoutRemapping() async throws {
+		let fixture = try makeFixture(
+			scriptBody: """
+			IFS= read -r line || exit 10
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '{"jsonrpc":"2.0","id":1,"result":{"codexHome":"%s","platformFamily":"unix","platformOs":"macos","userAgent":"fake"}}\\n' "$CODEX_HOME"
+			IFS= read -r line || exit 11
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			IFS= read -r line || exit 12
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"chatgpt","email":"copy@example.com","planType":"pro"},"requiresOpenaiAuth":true}}'
+			IFS= read -r line || exit 13
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '%s\\n' '{"jsonrpc":"2.0","id":4,"result":{"outcome":"alreadyRedeemed"}}'
+			"""
+		)
+		defer { fixture.remove() }
+
+		let result = try await CodexResetCreditBridge(responseTimeout: 2).consume(
 			codexExecutableURL: fixture.executableURL,
 			codexHomeURL: fixture.codexHomeURL,
 			credentials: credentials,
-			attempt: attempt
+			attempt: makeAttempt(creditID: "credit-b")
 		)
 
-		XCTAssertEqual(outcome, .reset)
+		XCTAssertEqual(result.outcome, .alreadyRedeemed)
+		XCTAssertEqual(result.creditID, "credit-b")
 		let messages = try readMessages(from: fixture.logURL)
-		XCTAssertEqual(messages.count, 5)
+		XCTAssertEqual(messages.count, 4)
 		try assertBootstrap(messages)
-
 		let consume = messages[3]
 		XCTAssertEqual(
 			consume["method"] as? String,
@@ -209,7 +255,43 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 		let params = try XCTUnwrap(consume["params"] as? [String: Any])
 		XCTAssertEqual(params["creditId"] as? String, "credit-b")
 		XCTAssertEqual(params["idempotencyKey"] as? String, "attempt-1")
-		XCTAssertEqual(messages[4]["method"] as? String, "account/rateLimits/read")
+		XCTAssertFalse(
+			messages.contains { $0["method"] as? String == "account/rateLimits/read" }
+		)
+	}
+
+	func testConsumeFailureRetainsTheResolvedCreditForRetry() async throws {
+		let fixture = try makeFixture(
+			scriptBody: """
+			IFS= read -r line || exit 10
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '{"jsonrpc":"2.0","id":1,"result":{"codexHome":"%s","platformFamily":"unix","platformOs":"macos","userAgent":"fake"}}\\n' "$CODEX_HOME"
+			IFS= read -r line || exit 11
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			IFS= read -r line || exit 12
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"account":{"type":"chatgpt","email":"copy@example.com","planType":"pro"},"requiresOpenaiAuth":true}}'
+			IFS= read -r line || exit 13
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			printf '%s\\n' '{"jsonrpc":"2.0","id":3,"result":{"rateLimits":{},"rateLimitResetCredits":{"availableCount":1,"credits":[{"id":"credit-b","grantedAt":100,"expiresAt":200,"resetType":"codexRateLimits","status":"available"}]}}}'
+			IFS= read -r line || exit 14
+			printf '%s\\n' "$line" >> '__LOG_PATH__'
+			exit 15
+			"""
+		)
+		defer { fixture.remove() }
+
+		do {
+			_ = try await CodexResetCreditBridge(responseTimeout: 2).consume(
+				codexExecutableURL: fixture.executableURL,
+				codexHomeURL: fixture.codexHomeURL,
+				credentials: credentials,
+				attempt: makeAttempt()
+			)
+			XCTFail("A missing consume response should fail.")
+		} catch let error as CodexResetCreditUseFailure {
+			XCTAssertEqual(error.creditID, "credit-b")
+		}
 	}
 
 	private var credentials: CodexResetCreditCredentials {
@@ -264,6 +346,14 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 		)
 	}
 
+	private func makeAttempt(creditID: String? = nil) -> ResetCreditUseAttempt {
+		ResetCreditUseAttempt(
+			target: makeTarget(),
+			idempotencyKey: "attempt-1",
+			creditID: creditID
+		)
+	}
+
 	private func makeCredit(
 		id: String,
 		grantedAt: Int,
@@ -285,6 +375,7 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 		let codexHomeURL = directoryURL.appendingPathComponent("codex-home", isDirectory: true)
 		let executableURL = directoryURL.appendingPathComponent("fake-codex")
 		let logURL = directoryURL.appendingPathComponent("requests.jsonl")
+		let launchLogURL = directoryURL.appendingPathComponent("launches.log")
 		try FileManager.default.createDirectory(
 			at: codexHomeURL,
 			withIntermediateDirectories: true
@@ -292,6 +383,7 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 
 		let script = """
 		#!/bin/sh
+		printf '%s\\n' "$$" >> '\(launchLogURL.path)'
 		[ -z "$CODEX_ACCESS_TOKEN" ] || exit 9
 		[ -z "$OPENAI_API_KEY" ] || exit 8
 		[ "$1" = "app-server" ] || exit 7
@@ -310,7 +402,8 @@ final class CodexResetCreditBridgeTests: XCTestCase {
 			directoryURL: directoryURL,
 			codexHomeURL: codexHomeURL,
 			executableURL: executableURL,
-			logURL: logURL
+			logURL: logURL,
+			launchLogURL: launchLogURL
 		)
 	}
 
@@ -331,6 +424,13 @@ private struct AppServerFixture {
 	let codexHomeURL: URL
 	let executableURL: URL
 	let logURL: URL
+	let launchLogURL: URL
+
+	func launchCount() throws -> Int {
+		try String(contentsOf: launchLogURL, encoding: .utf8)
+			.split(separator: "\n")
+			.count
+	}
 
 	func remove() {
 		try? FileManager.default.removeItem(at: directoryURL)
