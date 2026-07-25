@@ -8,7 +8,6 @@ use std::{
 	env,
 	fs::{self, OpenOptions, Permissions},
 	io::Write as _,
-	net::{Ipv4Addr, SocketAddr},
 	path::{Path, PathBuf},
 	process::{self, Command},
 	time::Duration,
@@ -18,20 +17,23 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use tempfile::TempDir;
 use tokio::{
 	io::{AsyncRead, AsyncWrite},
-	net::TcpListener,
 	time,
 };
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
-use decodex_core::{Availability, BlobHash, BlobStore, DecodexRoot};
+use decodex_core::{Availability, BlobHash, BlobStore, DecodexRoot, LocalTrustPolicy};
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, ClientHello, ClientMessage, ConversationHistoryPage,
 	ConversationHistoryResult, DoctorComponent, DoctorIssue, DoctorStatus, EntityId,
 	HistoryCursorToken, HistoryItemKindDto, HistoryMetadataValue, HistoryPayloadDto,
-	HistoryQueryError, MAX_HISTORY_PAGE_SIZE, PREVIOUS_MINOR_VERSION, ProtocolVersion,
-	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, Refusal, ServerId, ServerMessage,
+	HistoryQueryError, LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream,
+	MAX_HISTORY_PAGE_SIZE, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultPayload, Refusal, ServerId, ServerMessage,
 };
 use decodex_runtime::{ServerConfig, ServiceBootstrap, ServiceComposition};
+
+// Handshake metadata only. The stream is already admitted by the local authority.
+const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 #[cfg(unix)]
 struct SocketDirectoryReplacement {
@@ -102,6 +104,34 @@ fn write_config(root: &DecodexRoot, body: &str) {
 	);
 }
 
+fn local_transport(root: &DecodexRoot) -> LocalTransportAuthority {
+	let paths = root.paths();
+
+	paths.ensure_layout().expect("create owner-only local transport layout");
+
+	// SAFETY: `geteuid` has no arguments or failure return.
+	let service_owner_uid = unsafe { libc::geteuid() };
+
+	LocalTransportAuthority::new(
+		paths,
+		LocalTrustPolicy::SameUid,
+		Some(service_owner_uid),
+	)
+	.expect("same-UID local transport authority")
+}
+
+async fn connect_local(
+	transport: &LocalTransportAuthority,
+) -> WebSocketStream<LocalTransportStream> {
+	let stream = transport.connect().await.expect("connect admitted local stream");
+	let (socket, _) =
+		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
+			.await
+			.expect("complete local WebSocket handshake");
+
+	socket
+}
+
 fn config(repository: &Path, socket: &Path, database: &str, credential: Option<&str>) -> String {
 	let migration_credential = credential
 		.map(|name| format!("credential_env_var = \"{name}_MIGRATION\"\n"))
@@ -117,7 +147,8 @@ active_profile = "local"
 
 [profiles.local]
 kind = "local"
-address = "127.0.0.1:49152"
+policy = "same_uid"
+service_owner_uid = {}
 
 [server_host.repositories.fixture]
 host_path = "{}"
@@ -139,6 +170,8 @@ max_entries = 16
 max_bytes = 65536
 max_entry_bytes = 4096
 "#,
+		// SAFETY: `geteuid` has no arguments or failure return.
+		unsafe { libc::geteuid() },
 		repository.display(),
 		socket.display(),
 		env::current_dir()
@@ -532,14 +565,26 @@ async fn unreachable_authentication_and_unprobed_states_are_typed() {
 #[tokio::test]
 async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 	let temp = TempDir::new().expect("protocol temp");
-	let bootstrap = ServiceComposition::bootstrap(root(&temp)).await;
+	let decodex_root = root(&temp);
+
+	write_config(
+		&decodex_root,
+		&config(
+			temp.path(),
+			&temp.path().join("missing-postgres-socket"),
+			"decodex",
+			None,
+		),
+	);
+
+	let transport = local_transport(&decodex_root);
+	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 	let server_id = bootstrap.server_id().clone();
-	let bound = bootstrap
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
+	let mut bound = bootstrap
+		.bind(ServerConfig::default())
 		.await
 		.expect("bind daemon fixture");
-	let url = format!("ws://{}/v1/ws", bound.address());
-	let (mut wrong, _) = tokio_tungstenite::connect_async(&url).await.expect("connect wrong pin");
+	let mut wrong = connect_local(&transport).await;
 
 	send(
 		&mut wrong,
@@ -562,8 +607,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 				&& actual == server_id
 	));
 
-	let (mut client, _) =
-		tokio_tungstenite::connect_async(&url).await.expect("connect matching pin");
+	let mut client = connect_local(&transport).await;
 
 	send(
 		&mut client,
@@ -609,15 +653,17 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 		QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable { error: HistoryQueryError::ProductStateUnavailable })))
 	);
 
-	assert_cross_version_doctor_queries(&url, &server_id).await;
+	assert_cross_version_doctor_queries(&transport, &server_id).await;
 	drop((wrong, client));
 
 	bound.shutdown().await.expect("shutdown daemon fixture");
 }
 
-async fn assert_cross_version_doctor_queries(url: &str, server_id: &ServerId) {
-	let (mut previous, _) =
-		tokio_tungstenite::connect_async(url).await.expect("connect previous-minor client");
+async fn assert_cross_version_doctor_queries(
+	transport: &LocalTransportAuthority,
+	server_id: &ServerId,
+) {
+	let mut previous = connect_local(transport).await;
 
 	send(
 		&mut previous,
@@ -656,8 +702,7 @@ async fn assert_cross_version_doctor_queries(url: &str, server_id: &ServerId) {
 
 	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
 
-	let (mut current, _) =
-		tokio_tungstenite::connect_async(url).await.expect("connect inverse current client");
+	let mut current = connect_local(transport).await;
 
 	send(
 		&mut current,
@@ -688,14 +733,14 @@ async fn assert_cross_version_doctor_queries(url: &str, server_id: &ServerId) {
 
 #[tokio::test]
 async fn disconnected_fixture_is_deterministic() {
-	let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
-		.await
-		.expect("bind disconnected fixture");
-	let address = listener.local_addr().expect("disconnected fixture address");
+	let temp = TempDir::new().expect("disconnected temp");
+	let decodex_root = root(&temp);
+	let transport = local_transport(&decodex_root);
 
-	drop(listener);
-
-	assert!(tokio_tungstenite::connect_async(format!("ws://{address}/v1/ws")).await.is_err());
+	assert!(matches!(
+		transport.connect().await,
+		Err(LocalTransportRefusal::EndpointUnavailable),
+	));
 }
 
 #[tokio::test]
@@ -705,6 +750,7 @@ async fn isolated_postgres_bootstrap_is_available_through_the_daemon() {
 		env::var("DECODEX_TEST_BOOTSTRAP_ROOT").expect("isolated bootstrap root environment"),
 	);
 	let decodex_root = DecodexRoot::new(root_path).expect("isolated bootstrap root is safe");
+	let transport = local_transport(&decodex_root);
 	let blob_store = BlobStore::open(decodex_root.paths()).expect("open daemon blob store");
 	let large_text = "large-history-payload-".repeat(900);
 	let large_hash = blob_store.put(large_text.as_bytes()).expect("publish fixture blob");
@@ -724,14 +770,11 @@ async fn isolated_postgres_bootstrap_is_available_through_the_daemon() {
 	assert_eq!(bootstrap.product_state_availability(), Availability::Available);
 
 	let server_id = bootstrap.server_id().clone();
-	let bound = bootstrap
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
+	let mut bound = bootstrap
+		.bind(ServerConfig::default())
 		.await
 		.expect("bind PostgreSQL history daemon");
-	let (mut client, _) =
-		tokio_tungstenite::connect_async(format!("ws://{}/v1/ws", bound.address()))
-			.await
-			.expect("connect history client");
+	let mut client = connect_local(&transport).await;
 
 	send(
 		&mut client,
@@ -917,21 +960,19 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 		.expect("isolated socket port environment")
 		.parse::<u16>()
 		.expect("isolated socket port is valid");
-	let bootstrap = ServiceComposition::bootstrap(
-		DecodexRoot::new(root_path).expect("isolated bootstrap root is safe"),
-	)
-	.await;
+	let decodex_root =
+		DecodexRoot::new(root_path).expect("isolated bootstrap root is safe");
+	let transport = local_transport(&decodex_root);
+	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 
 	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
 
 	let server_id = bootstrap.server_id().clone();
-	let bound = bootstrap
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
+	let mut bound = bootstrap
+		.bind(ServerConfig::default())
 		.await
 		.expect("bind live-doctor daemon fixture");
-	let url = format!("ws://{}/v1/ws", bound.address());
-	let (mut client, _) =
-		tokio_tungstenite::connect_async(&url).await.expect("connect live-doctor client");
+	let mut client = connect_local(&transport).await;
 
 	send(
 		&mut client,
@@ -996,21 +1037,19 @@ async fn isolated_postgres_live_doctor_detects_database_drift() {
 		env::var("DECODEX_TEST_LIVE_INCOMPATIBLE_SYNC")
 			.expect("live-incompatible synchronization environment"),
 	);
-	let bootstrap = ServiceComposition::bootstrap(
-		DecodexRoot::new(root_path).expect("live-incompatible root is safe"),
-	)
-	.await;
+	let decodex_root =
+		DecodexRoot::new(root_path).expect("live-incompatible root is safe");
+	let transport = local_transport(&decodex_root);
+	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 
 	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
 
 	let server_id = bootstrap.server_id().clone();
-	let bound = bootstrap
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
+	let mut bound = bootstrap
+		.bind(ServerConfig::default())
 		.await
 		.expect("bind live-incompatible daemon fixture");
-	let url = format!("ws://{}/v1/ws", bound.address());
-	let (mut client, _) =
-		tokio_tungstenite::connect_async(&url).await.expect("connect live-incompatible client");
+	let mut client = connect_local(&transport).await;
 
 	send(
 		&mut client,
