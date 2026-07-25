@@ -7,6 +7,7 @@
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt::{Display, Formatter},
+	future::Future,
 	sync::{Arc, Mutex},
 	time::{Duration, Instant},
 };
@@ -33,8 +34,7 @@ const RECONCILIATION_INTERVAL: Duration = Duration::from_secs(5);
 const FAILED_SPAWN_CLEANUP: Duration = Duration::from_secs(1);
 const MAX_TERMINATION_WAIT: Duration = Duration::from_secs(30);
 
-/// Cloneable operator/runtime port for exact diagnostics, reconciliation, and owned termination.
-#[derive(Clone)]
+/// Authority-bound operator/runtime port for diagnostics, reconciliation, and termination.
 pub struct ProcessGenerationControl {
 	inner: Arc<ProcessSupervisor>,
 }
@@ -240,8 +240,10 @@ impl FencedProcess {
 }
 
 impl ProcessGenerationControl {
-	/// Restore fail-closed state, perform one positive reconciliation pass, and continue in
-	/// background. One uncertain account does not change product-state availability.
+	/// Restore fail-closed state and perform one positive reconciliation pass.
+	///
+	/// The server lifecycle separately owns continued background reconciliation. One uncertain
+	/// account does not change product-state availability.
 	pub(crate) async fn start(store: PostgresStore) -> Result<Self, ProcessSupervisorError> {
 		let boot_id =
 			process_platform::current_boot_identity().map_err(|_| ProcessSupervisorError::Platform)?;
@@ -261,19 +263,41 @@ impl ProcessGenerationControl {
 		};
 		control.reconcile_all().await?;
 
-		let weak = Arc::downgrade(&control.inner);
-		tokio::spawn(async move {
+		Ok(control)
+	}
+
+	/// Build the periodic reconciler for direct ownership by the server lifecycle.
+	pub(crate) fn reconciliation_task(
+		&self,
+		mut stop: tokio::sync::watch::Receiver<bool>,
+	) -> impl Future<Output = ()> + Send + 'static {
+		let weak = Arc::downgrade(&self.inner);
+
+		async move {
 			loop {
-				tokio::time::sleep(RECONCILIATION_INTERVAL).await;
+				tokio::select! {
+					biased;
+
+					changed = stop.changed() => {
+						let stopping = changed.is_err() || *stop.borrow_and_update();
+						if stopping {
+							break;
+						}
+						continue;
+					},
+					_ = tokio::time::sleep(RECONCILIATION_INTERVAL) => {},
+				}
+
+				if *stop.borrow_and_update() {
+					break;
+				}
 				let Some(inner) = weak.upgrade() else {
 					break;
 				};
 				let control = ProcessGenerationControl { inner };
 				let _ = control.reconcile_all().await;
 			}
-		});
-
-		Ok(control)
+		}
 	}
 
 	/// Read exact bounded diagnostics without treating absence, reuse, or timeout as proof.

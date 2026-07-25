@@ -116,11 +116,11 @@ dead. A replacement service reads and reconciles the original row. It cannot rec
 prepared capability or the one-time dispatch fence, so it cannot replay the request.
 
 The runtime performs the restore projection and one bounded reconciliation pass during startup.
-It then continues bounded background passes. Each pass reads at most one page for each
-reconcilable state and advances a persistent state-specific cursor, so a large unresolved prefix
-cannot exclude later attempts. One evidence-source error affects only that item. The current
-composition installs an inconclusive source and also exposes an exact positive receipt operation.
-It installs no provider gateway.
+The server lifecycle then owns and polls bounded background passes until shutdown. Each pass reads
+at most one page for each reconcilable state and advances a persistent state-specific cursor, so
+a large unresolved prefix cannot exclude later attempts. One evidence-source error affects only
+that item. The current composition installs an inconclusive source and also exposes an exact
+positive receipt operation. It installs no provider gateway.
 
 ## Authority and observability
 

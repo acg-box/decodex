@@ -26,7 +26,7 @@ use decodex_core::{
 use decodex_postgres::{BootstrapFailure, PostgresStore};
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, LocalTransportAuthority, LocalTransportRefusal, ServerId,
+	DoctorStatus, LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal, ServerId,
 };
 
 const CONFIG_UNAVAILABLE: &str = "typed PostgreSQL configuration is unavailable";
@@ -36,10 +36,9 @@ const DATABASE_INCOMPATIBLE: &str = "configured PostgreSQL is incompatible";
 const DATABASE_AUTHORITY_UNSAFE: &str = "configured PostgreSQL runtime authority is unsafe";
 const MANAGED_REPOSITORY_UNAVAILABLE: &str = "managed repository runtime is unavailable";
 
-/// Complete daemon bootstrap result, including its stable identity and typed report.
+/// Complete daemon bootstrap under one already-acquired singleton capability.
 pub struct ServiceBootstrap {
 	server_id: ServerId,
-	local_transport: Result<LocalTransportAuthority, LocalTransportRefusal>,
 	store: ProductStore,
 	managed_repositories: Option<ManagedRepositoryRuntime>,
 	managed_repository_readiness: ManagedRepositoryReadiness,
@@ -50,6 +49,9 @@ pub struct ServiceBootstrap {
 	provider_attempt_readiness: ProviderAttemptReadiness,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
+	// Keep the one acquired daemon capability last so an unbound bootstrap
+	// releases it after every mutation service and application dependency.
+	daemon_authority: Result<LocalTransportListener, LocalTransportRefusal>,
 }
 impl ServiceBootstrap {
 	/// Stable server-host identity used by welcome, pinning, and doctor readback.
@@ -77,9 +79,9 @@ impl ServiceBootstrap {
 		self.process_generation_readiness
 	}
 
-	/// Clone the exact diagnostic/reconciliation port when startup completed.
-	pub fn process_generation_control(&self) -> Option<ProcessGenerationControl> {
-		self.process_generations.clone()
+	/// Borrow the exact diagnostic/reconciliation port while this owner retains authority.
+	pub const fn process_generation_control(&self) -> Option<&ProcessGenerationControl> {
+		self.process_generations.as_ref()
 	}
 
 	/// Return the independent ProviderAttempt restore and reconciliation readiness.
@@ -87,35 +89,45 @@ impl ServiceBootstrap {
 		self.provider_attempt_readiness
 	}
 
-	/// Clone the bounded diagnostic and positive-reconciliation port when startup completed.
-	pub fn provider_attempt_control(&self) -> Option<ProviderAttemptControl> {
-		self.provider_attempts.clone()
+	/// Borrow the bounded positive-reconciliation port while this owner retains authority.
+	pub const fn provider_attempt_control(&self) -> Option<&ProviderAttemptControl> {
+		self.provider_attempts.as_ref()
 	}
 
-	fn protocol_server(self, config: ServerConfig) -> ProtocolServer<ServiceApplication> {
-		ProtocolServer::new(
-			self.server_id,
+	/// Move the already-owned same-UID listener into the server lifecycle.
+	pub async fn bind(self, config: ServerConfig) -> Result<BoundServer, ServerError> {
+		let Self {
+			server_id,
+			store,
+			managed_repositories,
+			managed_repository_readiness,
+			managed_repository_startup_error,
+			process_generations,
+			process_generation_readiness: _,
+			provider_attempts,
+			provider_attempt_readiness: _,
+			blob_store,
+			doctor,
+			daemon_authority,
+		} = self;
+		let listener = daemon_authority.map_err(ServerError::LocalTransport)?;
+		let server = ProtocolServer::new(
+			server_id,
 			ServiceApplication::new(
-				self.store,
-				self.managed_repositories,
-				self.managed_repository_readiness,
-				self.managed_repository_startup_error,
-				self.process_generations,
-				self.provider_attempts,
+				store,
+				managed_repositories,
+				managed_repository_readiness,
+				managed_repository_startup_error,
+				process_generations,
+				provider_attempts,
 				CodexAdapter::unavailable(),
-				self.blob_store,
-				self.doctor,
+				blob_store,
+				doctor,
 			),
 			config,
-		)
-	}
+		);
 
-	/// Bind through the configured same-UID local transport authority.
-	pub async fn bind(self, config: ServerConfig) -> Result<BoundServer, ServerError> {
-		let local_transport =
-			self.local_transport.clone().map_err(ServerError::LocalTransport)?;
-
-		self.protocol_server(config).bind(local_transport).await
+		Ok(server.bind_listener(listener))
 	}
 }
 
@@ -144,10 +156,8 @@ pub(crate) async fn bootstrap_default() -> ServiceBootstrap {
 
 pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	let paths = root.paths();
-	let identity = ServerIdentity::load_or_create(&paths);
-	let (server_id, identity_status) = server_identity(identity);
 	let loaded = DecodexConfig::load(&paths);
-	let local_transport = loaded.as_ref().map_or(
+	let configured_transport = loaded.as_ref().map_or(
 		Err(LocalTransportRefusal::ConfigurationUnavailable),
 		|config| match config.active_profile() {
 			ServerProfile::Local(profile) => LocalTransportAuthority::new(
@@ -162,6 +172,28 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		Ok(_) => DoctorStatus::Ready,
 		Err(error) => DoctorStatus::Unavailable(config_issue(*error)),
 	};
+	let daemon_authority = match configured_transport {
+		Ok(authority) => match authority.bind().await {
+			Ok(listener) => Ok(listener),
+			Err(refusal) =>
+				return bootstrap_without_authority(
+					refusal,
+					config_status,
+					DoctorStatus::Unknown(DoctorIssue::NotProbed),
+				),
+		},
+		Err(refusal) =>
+			return bootstrap_without_authority(
+				refusal,
+				config_status,
+				loaded.as_ref().map_or_else(
+					|error| DoctorStatus::Unavailable(database_config_issue(*error)),
+					|_| DoctorStatus::Unknown(DoctorIssue::NotProbed),
+				),
+			),
+	};
+	let identity = ServerIdentity::load_or_create(&paths);
+	let (server_id, identity_status) = server_identity(identity);
 	let mut repositories = loaded
 		.as_ref()
 		.map_or_else(|error| DoctorStatus::Unavailable(config_issue(*error)), server_repositories);
@@ -232,7 +264,6 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		local_transport,
 		store,
 		managed_repositories,
 		managed_repository_readiness,
@@ -243,6 +274,42 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		provider_attempt_readiness,
 		blob_store: blob_store.ok(),
 		doctor,
+		daemon_authority,
+	}
+}
+
+fn bootstrap_without_authority(
+	refusal: LocalTransportRefusal,
+	configuration: DoctorStatus,
+	database: DoctorStatus,
+) -> ServiceBootstrap {
+	let server_id = unavailable_server_id();
+	let doctor = doctor_report(
+		server_id.clone(),
+		DoctorInputs {
+			configuration,
+			database,
+			server_identity: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			shared_home: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			repositories: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			blob_integrity: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			vault: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+		},
+	);
+
+	ServiceBootstrap {
+		server_id,
+		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
+		managed_repositories: None,
+		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
+		managed_repository_startup_error: None,
+		process_generations: None,
+		process_generation_readiness: ProcessGenerationReadiness::ProductStateUnavailable,
+		provider_attempts: None,
+		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
+		blob_store: None,
+		doctor,
+		daemon_authority: Err(refusal),
 	}
 }
 
@@ -263,7 +330,6 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		local_transport: Err(LocalTransportRefusal::ConfigurationUnavailable),
 		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
 		managed_repositories: None,
 		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
@@ -274,6 +340,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
 		doctor,
+		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),
 	}
 }
 

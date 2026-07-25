@@ -66,7 +66,15 @@ typed check. JSON uses `decodex/cli-diagnostics/1`. Exit code 0 means every chec
 client/configuration/protocol failure. The CLI has no mutation command or infrastructure
 dependency.
 
-`decodexd` is the only V1 server composition root. It derives
+`decodexd` is the only V1 server composition root. It reads the bounded active-profile
+configuration, acquires and publishes the non-cloneable local listener, and retains its
+one namespace lock before it creates the stable server identity, opens product storage,
+connects to PostgreSQL, projects supervisor loss, or starts any daemon-local mutation
+service. A process that cannot acquire the listener returns the typed transport refusal
+without a PostgreSQL connection or product-state mutation. The bootstrap owner moves that
+same listener into the lifecycle task without another bind or lock acquisition.
+
+The daemon derives
 `~/.decodex/server/decodex.sock` from the typed root. The server directory must have the
 configured owner and exact mode 0700. A persistent regular `decodex.lock` must have that
 owner, exact mode 0600, and one link. The daemon takes one nonblocking exclusive `flock`
@@ -109,27 +117,33 @@ An established stream retains the kernel peer fact that admission proved. A late
 change does not revoke that stream. A new connection or reconnect performs fresh endpoint
 and peer checks and fails closed.
 
-One top-level runtime task owns the listener and namespace lock. One `JoinSet` owns every
+One top-level runtime task owns the listener and namespace lock. It also directly polls
+the ProcessGeneration and ProviderAttempt background reconciliation futures. Those
+futures are not detached tasks and cannot outlive the lifecycle. One `JoinSet` owns every
 session and command task. The owner assigns a monotonic stable spawn ID and a closed
 session/command kind before each spawn and maps it to the Tokio task ID. Requested
-shutdown, listener-invalidating refusal, child panic, or unexpected child failure starts
-one stopping phase and creates one absolute, non-extendable deadline. Sessions receive a
-cooperative stop signal. The owner closes command ingress and receives through `None`, so
-a buffered submission or outstanding pre-close permit cannot escape task accounting.
-Commands received before the deadline enter the same task set. A submission that crosses
-an outstanding permit after the deadline receives a stable task identity but its command
-future is never polled. The owner harvests `join_next_with_id`; it calls `abort_all` once
-only if the deadline expires, and it continues harvesting through `None`.
+shutdown, listener-invalidating refusal, child panic, unexpected child failure, or early
+service-future completion starts one stopping phase and creates one absolute,
+non-extendable deadline. Sessions receive a cooperative stop signal. The owner closes
+command ingress and receives through `None`, so a buffered submission or outstanding
+pre-close permit cannot escape task accounting. Commands received before the deadline
+enter the same task set. A submission that crosses an outstanding permit after the
+deadline receives a stable task identity but its command future is never polled. The
+owner harvests `join_next_with_id`; it calls `abort_all` once only if the deadline
+expires, and it continues harvesting through `None`.
 
 The bounded `TerminationReceipt` records session and command spawn counts, harvested and
 expected counts, panic, failure, forced-cancellation, and owner-integrity counts, the
 lowest stable identity in each abnormal task class, and endpoint and cleanup refusals.
 Its deterministic rank is cleanup refusal, endpoint refusal, owner integrity, child
 panic, unexpected child failure, forced deadline, then requested shutdown. Stable task
-ties use the lowest spawn ID. Cleanup starts only after the task set is empty. It removes
-only the retained canonical socket identity, closes the listener, and releases the
-namespace lock last. A mismatch preserves the observed entry and returns a cleanup
-refusal.
+ties use the lowest spawn ID. After all owned command and session tasks are harvested,
+the lifecycle signals each daemon-local service future and polls it to completion. An
+in-flight reconciliation pass completes while the namespace lock remains held. The
+lifecycle then drops the application and its services. It removes only the retained
+canonical socket identity, closes the listener, and releases the namespace lock as the
+final authority operation. A mismatch preserves the observed entry and returns a
+cleanup refusal.
 
 Runtime receipt lookup is keyed by the negotiated protocol version and command idempotency key;
 the stored request fingerprint additionally covers that version, typed payload, and optional
@@ -455,11 +469,12 @@ unreaped child can authorize a group signal. A restored same-boot process can re
 read-only exact witness; it is not adopted, reacquired, proxied, terminated, or signaled.
 
 Daemon startup projects present `starting`, `ready`, and `stopping` rows to
-`death_unknown`, runs one positive-only pass, and starts bounded background reconciliation. An
-old boot is positive prior-boot death proof. Same-boot absence, mismatch, an unbound identity,
-timeout, and group absence alone remain uncertain. The partial unique account index derives
-account-local quarantine without another writer. One item failure does not disable the store,
-managed repositories, or reconciliation for other accounts.
+`death_unknown` and runs one positive-only pass. The server lifecycle then owns and polls
+bounded background reconciliation until shutdown. An old boot is positive prior-boot death proof.
+Same-boot absence, mismatch, an unbound identity, timeout, and group absence alone remain
+uncertain. The partial unique account index derives account-local quarantine without another
+writer. One item failure does not disable the store, managed repositories, or reconciliation for
+other accounts.
 
 On macOS, a restored generation becomes `dead` only after the attached exact kqueue witness returns
 `EVFILT_PROC/NOTE_EXIT` and the process group is quiescent, or after boot change. If the process
@@ -489,17 +504,19 @@ execution restore gate. A late positive result stays bound to the original attem
 death. A replacement reconciles but cannot recreate a fresh dispatch fence.
 
 Daemon bootstrap completes restore projection and one bounded positive-only reconciliation pass
-before it reports ProviderAttempt readiness. It then runs bounded background passes. Diagnostics
-omit provider keys and request digests. The current composition has no provider evidence adapter
-that can dispatch, no public consumer for the fresh fence, and an unavailable `CodexAdapter`.
+before it reports ProviderAttempt readiness. The server lifecycle then owns and polls bounded
+background passes until shutdown. Diagnostics omit provider keys and request digests. The current
+composition has no provider evidence adapter that can dispatch, no public consumer for the fresh
+fence, and an unavailable `CodexAdapter`.
 V26 removes the drained V12 ManagedRun submitted-turn, effect, safety-input, and effect-barrier
 authority. No compatibility or fallback V12 writer remains.
 
 `ServiceBootstrap` exposes independent ProcessGeneration and ProviderAttempt readiness and
-cloneable runtime ports. The ProcessGeneration port provides bounded or exact diagnostics,
-exact positive-only reconciliation, and exact owned-child termination. The ProviderAttempt port
-provides bounded redacted diagnostics, exact positive-only reconciliation, and an exact positive
-receipt operation. ProcessGeneration spawn and ready remain crate-private and have no caller.
+authority-bound borrowed runtime ports. Neither port is cloneable or can escape its bootstrap
+owner. The ProcessGeneration port provides bounded or exact diagnostics, exact positive-only
+reconciliation, and exact owned-child termination. The ProviderAttempt port provides bounded
+redacted diagnostics, exact positive-only reconciliation, and an exact positive receipt
+operation. ProcessGeneration spawn and ready remain crate-private and have no caller.
 `CodexAdapter::unavailable()` remains in the daemon composition.
 No protocol, CLI, scheduler, routing, RuntimeSession, ProviderAttempt, credential, remote-auth, or
 UI path reaches ProcessGeneration spawn. Production dispatch remains structurally disabled.
