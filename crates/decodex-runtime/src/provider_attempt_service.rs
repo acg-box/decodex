@@ -30,8 +30,7 @@ const RECONCILIATION_PAGE_SIZE: u16 = 256;
 const RECONCILIATION_INTERVAL: Duration = Duration::from_secs(5);
 const EVIDENCE_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Cloneable diagnostic and positive-reconciliation port.
-#[derive(Clone)]
+/// Authority-bound diagnostic and positive-reconciliation port.
 pub struct ProviderAttemptControl {
 	inner: Arc<ProviderAttemptService>,
 }
@@ -191,8 +190,10 @@ impl ProviderPositiveEvidenceSource for NoPositiveProviderEvidence {
 }
 
 impl ProviderAttemptControl {
-	/// Restore fail closed, perform one positive-only reconciliation pass, and continue in
-	/// background. No provider dispatch source is constructed by this composition.
+	/// Restore fail closed and perform one positive-only reconciliation pass.
+	///
+	/// The server lifecycle separately owns continued background reconciliation. No provider
+	/// dispatch source is constructed by this composition.
 	pub(crate) async fn start(store: PostgresStore) -> Result<Self, ProviderAttemptServiceError> {
 		Self::start_with_source(store, Arc::new(NoPositiveProviderEvidence)).await
 	}
@@ -216,19 +217,41 @@ impl ProviderAttemptControl {
 		};
 		control.reconcile_all().await?;
 
-		let weak = Arc::downgrade(&control.inner);
-		tokio::spawn(async move {
+		Ok(control)
+	}
+
+	/// Build the periodic reconciler for direct ownership by the server lifecycle.
+	pub(crate) fn reconciliation_task(
+		&self,
+		mut stop: tokio::sync::watch::Receiver<bool>,
+	) -> impl Future<Output = ()> + Send + 'static {
+		let weak = Arc::downgrade(&self.inner);
+
+		async move {
 			loop {
-				tokio::time::sleep(RECONCILIATION_INTERVAL).await;
+				tokio::select! {
+					biased;
+
+					changed = stop.changed() => {
+						let stopping = changed.is_err() || *stop.borrow_and_update();
+						if stopping {
+							break;
+						}
+						continue;
+					},
+					_ = tokio::time::sleep(RECONCILIATION_INTERVAL) => {},
+				}
+
+				if *stop.borrow_and_update() {
+					break;
+				}
 				let Some(inner) = weak.upgrade() else {
 					break;
 				};
 				let control = ProviderAttemptControl { inner };
 				let _ = control.reconcile_all().await;
 			}
-		});
-
-		Ok(control)
+		}
 	}
 
 	/// Read bounded diagnostics. Exact provider keys and request digests are not representable.

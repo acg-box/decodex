@@ -2,6 +2,7 @@
 
 use std::{
 	future::{self, Future},
+	pin::Pin,
 	sync::Arc,
 };
 
@@ -28,6 +29,7 @@ use decodex_protocol::{
 	MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryPayload, QueryResultPayload, ResultPayload,
 	Sha256Digest, SnapshotItem, WireText,
 };
+use tokio::sync::watch;
 
 use crate::managed_repository_runtime::{
 	ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
@@ -40,6 +42,17 @@ use crate::ProviderAttemptControl;
 /// PostgreSQL-backed services can implement this async owner in XY-1267 without moving
 /// command execution into the transport.
 pub trait Application: Send + Sync + 'static {
+	/// Return daemon-local background services for direct ownership by the server lifecycle.
+	///
+	/// Each future must finish after `stop` changes to `true`. The lifecycle drains all returned
+	/// futures before it drops the application or releases local transport authority.
+	fn daemon_service_tasks(
+		&self,
+		_stop: watch::Receiver<bool>,
+	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+		Vec::new()
+	}
+
 	/// Return a bounded small-state snapshot. Artifact bytes are not representable.
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send;
 
@@ -104,14 +117,13 @@ impl ProductState for ProductStore {
 }
 
 /// Runtime-owned application service retaining the selected adapter and doctor report.
-#[derive(Clone)]
 pub(crate) struct ServiceApplication {
 	store: ProductStore,
 	_managed_repositories: Option<ManagedRepositoryRuntime>,
 	_managed_repository_readiness: ManagedRepositoryReadiness,
 	_managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
-	_process_generations: Option<ProcessGenerationControl>,
-	_provider_attempts: Option<ProviderAttemptControl>,
+	process_generations: Option<ProcessGenerationControl>,
+	provider_attempts: Option<ProviderAttemptControl>,
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	doctor: DoctorReport,
@@ -133,8 +145,8 @@ impl ServiceApplication {
 			_managed_repositories: managed_repositories,
 			_managed_repository_readiness: managed_repository_readiness,
 			_managed_repository_startup_error: managed_repository_startup_error,
-			_process_generations: process_generations,
-			_provider_attempts: provider_attempts,
+			process_generations,
+			provider_attempts,
 			_codex: codex,
 			blob_store,
 			doctor,
@@ -265,6 +277,20 @@ impl ServiceApplication {
 }
 
 impl Application for ServiceApplication {
+	fn daemon_service_tasks(
+		&self,
+		stop: watch::Receiver<bool>,
+	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+		let mut tasks: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = Vec::new();
+		if let Some(control) = &self.process_generations {
+			tasks.push(Box::pin(control.reconciliation_task(stop.clone())));
+		}
+		if let Some(control) = &self.provider_attempts {
+			tasks.push(Box::pin(control.reconciliation_task(stop)));
+		}
+		tasks
+	}
+
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send {
 		future::ready(vec![SnapshotItem::SystemState {
 			entity_id: EntityId::new("decodexd").expect("service entity ID is bounded"),

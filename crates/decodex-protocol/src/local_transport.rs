@@ -77,6 +77,7 @@ impl tokio::io::AsyncWrite for LocalTransportStream {
 /// The complete V1 local endpoint authority.
 #[derive(Clone, Eq, PartialEq)]
 pub struct LocalTransportAuthority {
+	paths: DecodexPaths,
 	endpoint_path: PathBuf,
 	policy: LocalTrustPolicy,
 	service_owner_uid: u32,
@@ -99,8 +100,12 @@ impl LocalTransportAuthority {
 			return Err(LocalTransportRefusal::UnsupportedPlatform);
 		}
 
-		let authority =
-			Self { endpoint_path: paths.local_transport_socket(), policy, service_owner_uid };
+		let authority = Self {
+			endpoint_path: paths.local_transport_socket(),
+			paths,
+			policy,
+			service_owner_uid,
+		};
 
 		#[cfg(any(target_os = "linux", target_os = "macos"))]
 		authority.verify_process_owner()?;
@@ -112,6 +117,10 @@ impl LocalTransportAuthority {
 	pub async fn bind(&self) -> Result<LocalTransportListener, LocalTransportRefusal> {
 		#[cfg(any(target_os = "linux", target_os = "macos"))]
 		{
+			self.verify_process_owner()?;
+			self.paths
+				.ensure_server_directory()
+				.map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
 			platform::bind(self).await
 		}
 
@@ -162,7 +171,10 @@ impl Debug for LocalTransportAuthority {
 	}
 }
 
-/// A published endpoint with its listener, directory identity, and lifetime lock.
+/// The non-cloneable singleton daemon capability.
+///
+/// It owns the published listener, retained directory identity, and one lifetime
+/// namespace lock from acquisition through release-last cleanup.
 pub struct LocalTransportListener {
 	authority: LocalTransportAuthority,
 	#[cfg(any(target_os = "linux", target_os = "macos"))]

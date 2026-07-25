@@ -75,12 +75,15 @@ use decodex_core::DecodexRoot;
 #[derive(Clone, Copy, Debug)]
 pub struct ServiceComposition;
 impl ServiceComposition {
-	/// Bootstrap the platform-default typed root and fail closed into doctor/status.
+	/// Acquire singleton authority, then bootstrap the platform-default typed root.
 	pub async fn bootstrap_default() -> ServiceBootstrap {
 		bootstrap::bootstrap_default().await
 	}
 
-	/// Bootstrap an explicit validated root. This is the deterministic test/embedding seam.
+	/// Acquire singleton authority, then bootstrap an explicit validated root.
+	///
+	/// The returned owner retains the one published listener and namespace lock.
+	/// Dropping it without binding releases that capability after its services.
 	pub async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		bootstrap::bootstrap(root).await
 	}
