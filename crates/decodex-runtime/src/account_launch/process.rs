@@ -3750,7 +3750,7 @@ mod tests {
 		fs,
 		io::{self, Cursor, ErrorKind, Write},
 		mem,
-		os::{fd::AsRawFd as _, unix::fs::PermissionsExt as _},
+		os::unix::fs::PermissionsExt as _,
 		path::{Path, PathBuf},
 		process::{Command, Stdio},
 		sync::{
