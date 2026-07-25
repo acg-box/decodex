@@ -377,10 +377,7 @@ fn lifecycle_for(root: &Path, server_id: &str, schema_generation: u64) -> Client
 }
 
 fn retained_config(root: &Path, server_id: &str) -> RetainedSessionConfig {
-	let transport_root = root
-		.parent()
-		.expect("cache root has a parent")
-		.join("client-transport");
+	let transport_root = root.parent().expect("cache root has a parent").join("client-transport");
 	let server_root = transport_root.join("server");
 
 	fs::create_dir_all(&server_root).expect("fixed local transport namespace is available");

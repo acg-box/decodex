@@ -4719,8 +4719,7 @@ async fn semantic_authority_evidence(
 	evidence.record_incompatible("sequence_usage", sequence.get(1));
 	evidence.record_unsafe("no_unsafe_sequence_authority", !sequence.get::<_, bool>(2));
 
-	let generation_types =
-		client.query_one(PROCESS_GENERATION_TYPE_AUTHORITY_SQL, &[]).await?;
+	let generation_types = client.query_one(PROCESS_GENERATION_TYPE_AUTHORITY_SQL, &[]).await?;
 	evidence.record_incompatible("process_generation_type_usage", generation_types.get(0));
 	evidence.record_unsafe(
 		"no_public_process_generation_type_usage",
@@ -4733,14 +4732,10 @@ async fn semantic_authority_evidence(
 
 	let attempt_types = client.query_one(PROVIDER_ATTEMPT_TYPE_AUTHORITY_SQL, &[]).await?;
 	evidence.record_incompatible("provider_attempt_type_usage", attempt_types.get(0));
-	evidence.record_unsafe(
-		"no_public_provider_attempt_type_usage",
-		!attempt_types.get::<_, bool>(1),
-	);
-	evidence.record_unsafe(
-		"no_provider_attempt_type_grant_option",
-		!attempt_types.get::<_, bool>(2),
-	);
+	evidence
+		.record_unsafe("no_public_provider_attempt_type_usage", !attempt_types.get::<_, bool>(1));
+	evidence
+		.record_unsafe("no_provider_attempt_type_grant_option", !attempt_types.get::<_, bool>(2));
 
 	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
 	evidence.record_unsafe("no_extension_control", !extension_control);

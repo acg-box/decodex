@@ -2,8 +2,8 @@
 
 use decodex_core::{
 	AccountId, ConversationId, ExecutionConsumer, ManagedExecutionId, ManagedRunId,
-	QuotaWindowClass, RoutingBlocker, RoutingDecisionCause, RoutingDecisionKind,
-	RuntimeSessionId, TurnId,
+	QuotaWindowClass, RoutingBlocker, RoutingDecisionCause, RoutingDecisionKind, RuntimeSessionId,
+	TurnId,
 };
 use serde_json::Value;
 
@@ -81,10 +81,7 @@ fn parse_readback(value: Value) -> Result<ExecutionDecisionReadback, StoreError>
 				"source_runtime_session_id",
 			)?)
 			.map_err(|_| incompatible_error("source RuntimeSession identity is malformed"))?,
-			source_runtime_session_revision: positive(
-				&value,
-				"source_runtime_session_revision",
-			)?,
+			source_runtime_session_revision: positive(&value, "source_runtime_session_revision")?,
 			turn_id: TurnId::new(uuid(&value, "turn_id")?)
 				.map_err(|_| incompatible_error("execution Turn identity is malformed"))?,
 		},
@@ -192,10 +189,7 @@ fn parse_readback(value: Value) -> Result<ExecutionDecisionReadback, StoreError>
 }
 
 const fn is_depletion(blocker: RoutingBlocker) -> bool {
-	matches!(
-		blocker,
-		RoutingBlocker::QuotaFiveHourDepleted | RoutingBlocker::QuotaSevenDayDepleted
-	)
+	matches!(blocker, RoutingBlocker::QuotaFiveHourDepleted | RoutingBlocker::QuotaSevenDayDepleted)
 }
 
 const fn is_reconciliation(blocker: RoutingBlocker) -> bool {

@@ -32,8 +32,8 @@ pub use self::{
 		HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
 		HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType, HistoryMetadata,
 		HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
-		HistoryText, HistoryTurnRole, IdempotencyKey,
-		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		HistoryText, HistoryTurnRole, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
+		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_WIRE_TEXT_BYTES,
 		QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload,
 		ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope, ResultPayload, ResumeCursor,
@@ -165,8 +165,7 @@ mod tests {
 		use decodex_core::{DecodexRoot, LocalTrustPolicy};
 
 		let temp = tempfile::tempdir().unwrap();
-		let root =
-			DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
 		let paths = root.paths();
 
 		paths.ensure_layout().unwrap();
@@ -175,20 +174,12 @@ mod tests {
 		let uid = unsafe { libc::geteuid() };
 
 		assert!(
-			LocalTransportAuthority::new(
-				paths.clone(),
-				LocalTrustPolicy::SameUid,
-				Some(uid),
-			)
-			.is_ok()
+			LocalTransportAuthority::new(paths.clone(), LocalTrustPolicy::SameUid, Some(uid),)
+				.is_ok()
 		);
 		assert_eq!(
-			LocalTransportAuthority::new(
-				paths.clone(),
-				LocalTrustPolicy::Disabled,
-				None,
-			)
-			.unwrap_err(),
+			LocalTransportAuthority::new(paths.clone(), LocalTrustPolicy::Disabled, None,)
+				.unwrap_err(),
 			LocalTransportRefusal::Disabled,
 		);
 		assert_eq!(

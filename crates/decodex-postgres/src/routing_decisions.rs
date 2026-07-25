@@ -3,11 +3,10 @@ use std::collections::BTreeSet;
 use decodex_core::{
 	AccountId, CodexCapability, ExecutionConsumer, ObservationConfidence, QuotaWindowClass,
 	RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome, RoutingDecision,
-	RoutingDecisionCandidate, RoutingDecisionCause, RoutingDecisionExclusion,
-	RoutingDecisionKind, RoutingDecisionQuotaFact, RoutingDecisionSnapshot,
-	RoutingMemberDisposition, RoutingNoRouteReason, RoutingRejection,
-	RoutingSnapshotCapabilityFact, RoutingTimestampPrecision, RoutingTimestampProvenance,
-	decide_routing,
+	RoutingDecisionCandidate, RoutingDecisionCause, RoutingDecisionExclusion, RoutingDecisionKind,
+	RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingMemberDisposition,
+	RoutingNoRouteReason, RoutingRejection, RoutingSnapshotCapabilityFact,
+	RoutingTimestampPrecision, RoutingTimestampProvenance, decide_routing,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -62,12 +61,15 @@ impl PostgresStore {
 		validate_exact_key(idempotency_key)?;
 		validate_uuid(&request.operation_id, "routing operation identity")?;
 		validate_uuid(&request.routing_policy_id, "routing policy identity")?;
-		if request.expected_routing_policy_revision <= 0 || request.consumer.domain_revision() <= 0 {
+		if request.expected_routing_policy_revision <= 0 || request.consumer.domain_revision() <= 0
+		{
 			return Err(StoreError::InvalidInput("routing decision revisions must be positive"));
 		}
 		let parts = ExecutionConsumerParts::from(&request.consumer);
 		if parts.source_runtime_session_revision.is_some_and(|revision| revision <= 0) {
-			return Err(StoreError::InvalidInput("source RuntimeSession revision must be positive"));
+			return Err(StoreError::InvalidInput(
+				"source RuntimeSession revision must be positive",
+			));
 		}
 		let response = self
 			.execute_exact_with_retry(
@@ -257,35 +259,30 @@ fn effect_matches_consumer(
 			source_runtime_session_id,
 			source_runtime_session_revision,
 			turn_id,
-		} => Ok(
-			optional_text(effect, "conversation_id")? == Some(conversation_id.as_str())
-				&& optional_positive_i64(effect, "conversation_revision")?
-					== Some(*conversation_revision)
-				&& optional_text(effect, "source_runtime_session_id")?
-					== Some(source_runtime_session_id.as_str())
-				&& optional_positive_i64(effect, "source_runtime_session_revision")?
-					== Some(*source_runtime_session_revision)
-				&& optional_text(effect, "turn_id")? == Some(turn_id.as_str())
-				&& optional_text(effect, "managed_run_id")?.is_none()
-				&& optional_positive_i64(effect, "managed_run_revision")?.is_none()
-				&& optional_text(effect, "managed_execution_id")?.is_none(),
-		),
+		} => Ok(optional_text(effect, "conversation_id")? == Some(conversation_id.as_str())
+			&& optional_positive_i64(effect, "conversation_revision")?
+				== Some(*conversation_revision)
+			&& optional_text(effect, "source_runtime_session_id")?
+				== Some(source_runtime_session_id.as_str())
+			&& optional_positive_i64(effect, "source_runtime_session_revision")?
+				== Some(*source_runtime_session_revision)
+			&& optional_text(effect, "turn_id")? == Some(turn_id.as_str())
+			&& optional_text(effect, "managed_run_id")?.is_none()
+			&& optional_positive_i64(effect, "managed_run_revision")?.is_none()
+			&& optional_text(effect, "managed_execution_id")?.is_none()),
 		ExecutionConsumer::ManagedRunExecution {
 			managed_run_id,
 			managed_run_revision,
 			execution_id,
-		} => Ok(
-			optional_text(effect, "conversation_id")?.is_none()
-				&& optional_positive_i64(effect, "conversation_revision")?.is_none()
-				&& optional_text(effect, "source_runtime_session_id")?.is_none()
-				&& optional_positive_i64(effect, "source_runtime_session_revision")?.is_none()
-				&& optional_text(effect, "turn_id")?.is_none()
-				&& optional_text(effect, "managed_run_id")? == Some(managed_run_id.as_str())
-				&& optional_positive_i64(effect, "managed_run_revision")?
-					== Some(*managed_run_revision)
-				&& optional_text(effect, "managed_execution_id")?
-					== Some(execution_id.as_str()),
-		),
+		} => Ok(optional_text(effect, "conversation_id")?.is_none()
+			&& optional_positive_i64(effect, "conversation_revision")?.is_none()
+			&& optional_text(effect, "source_runtime_session_id")?.is_none()
+			&& optional_positive_i64(effect, "source_runtime_session_revision")?.is_none()
+			&& optional_text(effect, "turn_id")?.is_none()
+			&& optional_text(effect, "managed_run_id")? == Some(managed_run_id.as_str())
+			&& optional_positive_i64(effect, "managed_run_revision")?
+				== Some(*managed_run_revision)
+			&& optional_text(effect, "managed_execution_id")? == Some(execution_id.as_str())),
 	}
 }
 
@@ -324,10 +321,9 @@ fn parse_causes(values: &[Value]) -> Result<Vec<RoutingDecisionCause>, StoreErro
 		.map(|value| {
 			require_keys(value, &["account_id", "blocker"])?;
 			Ok(RoutingDecisionCause {
-				account_id: AccountId::new(text(value, "account_id")?.to_owned())
-					.map_err(|_| {
-						StoreError::Incompatible("stored route-cause account is malformed".into())
-					})?,
+				account_id: AccountId::new(text(value, "account_id")?.to_owned()).map_err(
+					|_| StoreError::Incompatible("stored route-cause account is malformed".into()),
+				)?,
 				blocker: parse_blocker(value.get("blocker").ok_or_else(|| {
 					StoreError::Incompatible("stored route cause is incomplete".into())
 				})?)?,
@@ -349,10 +345,8 @@ fn parse_members(values: &[Value]) -> Result<Vec<RoutingDecisionCandidate>, Stor
 			"excluded" => RoutingMemberDisposition::Excluded,
 			_ => return incompatible("stored candidate disposition is unknown"),
 		};
-		let blockers = array(value, "blockers")?
-			.iter()
-			.map(parse_blocker)
-			.collect::<Result<Vec<_>, _>>()?;
+		let blockers =
+			array(value, "blockers")?.iter().map(parse_blocker).collect::<Result<Vec<_>, _>>()?;
 		if (disposition == RoutingMemberDisposition::Excluded)
 			!= blockers.contains(&RoutingBlocker::ExcludedByPolicy)
 		{
@@ -597,9 +591,8 @@ fn parse_blocker(value: &Value) -> Result<RoutingBlocker, StoreError> {
 	let value = value
 		.as_str()
 		.ok_or_else(|| StoreError::Incompatible("stored blocker is malformed".into()))?;
-	RoutingBlocker::from_sql(value).ok_or_else(|| {
-		StoreError::Incompatible("stored blocker is unknown".into())
-	})
+	RoutingBlocker::from_sql(value)
+		.ok_or_else(|| StoreError::Incompatible("stored blocker is unknown".into()))
 }
 
 fn validate_digest(effect: &Value) -> Result<(), StoreError> {

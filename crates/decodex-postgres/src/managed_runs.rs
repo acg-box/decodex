@@ -106,9 +106,8 @@ fn parse_readback(document: Value) -> Result<StoredManagedRun, StoreError> {
 		.map_err(|_| incompatible("stored Project identity is invalid"))?;
 	let work_item_id = WorkItemId::new(required_str(&document, "work_item_id")?)
 		.map_err(|_| incompatible("stored WorkItem identity is invalid"))?;
-	let runtime_session_id =
-		RuntimeSessionId::new(required_str(&document, "runtime_session_id")?)
-			.map_err(|_| incompatible("stored RuntimeSession identity is invalid"))?;
+	let runtime_session_id = RuntimeSessionId::new(required_str(&document, "runtime_session_id")?)
+		.map_err(|_| incompatible("stored RuntimeSession identity is invalid"))?;
 	let state = ManagedRunState::from_parts(
 		lifecycle(required_str(&document, "lifecycle")?)?,
 		phase(required_str(&document, "phase")?)?,
@@ -147,7 +146,8 @@ fn parse_readback(document: Value) -> Result<StoredManagedRun, StoreError> {
 			let has_positive_result = matches!(
 				state,
 				ProviderAttemptState::Succeeded
-					| ProviderAttemptState::FailedDefinitive | ProviderAttemptState::NotSubmitted
+					| ProviderAttemptState::FailedDefinitive
+					| ProviderAttemptState::NotSubmitted
 			);
 			if has_positive_result != terminal_evidence_id.is_some()
 				|| (state == ProviderAttemptState::Unknown) != unknown_reason.is_some()
@@ -178,10 +178,7 @@ fn parse_readback(document: Value) -> Result<StoredManagedRun, StoreError> {
 		work_item_id,
 		runtime_session_id,
 		runtime_session_revision: positive_i64(&document, "runtime_session_revision")?,
-		runtime_session_state: session_state(required_str(
-			&document,
-			"runtime_session_state",
-		)?)?,
+		runtime_session_state: session_state(required_str(&document, "runtime_session_state")?)?,
 		state,
 		revision: positive_i64(&document, "revision")?,
 		diverged: required_bool(&document, "diverged")?,

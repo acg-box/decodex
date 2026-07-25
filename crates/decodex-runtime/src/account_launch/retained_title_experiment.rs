@@ -296,11 +296,7 @@ pub async fn run_manual_retained_title_experiment(
 	};
 
 	let read = process
-		.read_retained_title_thread(
-			READ_REQUEST_ID,
-			&start_receipt.thread_id,
-			timeout,
-		)
+		.read_retained_title_thread(READ_REQUEST_ID, &start_receipt.thread_id, timeout)
 		.map_err(|_| ManualRetainedTitleExperimentError::RetainedTitleAmbiguous)?;
 	let typed_read = typed_read(read)?;
 	if typed_read.thread_id.as_str() != start_receipt.thread_id {
@@ -347,9 +343,7 @@ pub async fn run_manual_retained_title_experiment(
 			.await,
 	)?;
 
-	process
-		.shutdown(timeout)
-		.map_err(|_| ManualRetainedTitleExperimentError::CleanupFailed)?;
+	process.shutdown(timeout).map_err(|_| ManualRetainedTitleExperimentError::CleanupFailed)?;
 	if !store
 		.account_is_ready_at_revision(&identity.account_id, identity.account_revision)
 		.await
@@ -433,12 +427,9 @@ async fn read_start_receipt(
 	request: &ManualRequest,
 ) -> Result<CodexExperimentStartReceipt, ManualRetainedTitleExperimentError> {
 	let marker = identity.retained_marker();
-	let request_digest = retained_title_start_request_digest(
-		START_REQUEST_ID,
-		&identity.repository_cwd,
-		&marker,
-	)
-	.map_err(|_| ManualRetainedTitleExperimentError::StartOutcomeAmbiguous)?;
+	let request_digest =
+		retained_title_start_request_digest(START_REQUEST_ID, &identity.repository_cwd, &marker)
+			.map_err(|_| ManualRetainedTitleExperimentError::StartOutcomeAmbiguous)?;
 	store
 		.read_codex_experiment_start_exact(&identity.experiment_id, &request.creation_attempt_id)
 		.await
@@ -463,10 +454,7 @@ fn typed_start(
 ) -> Result<TypedThreadStartResponse, ManualRetainedTitleExperimentError> {
 	let thread = fact.thread;
 	Ok(TypedThreadStartResponse {
-		request: ExactRpcRequestFact {
-			id: fact.wire.request_id,
-			digest: fact.wire.request_digest,
-		},
+		request: ExactRpcRequestFact { id: fact.wire.request_id, digest: fact.wire.request_digest },
 		response: ExactRpcResponseFact {
 			id: fact.wire.response_id,
 			digest: fact.wire.response_digest,
@@ -506,10 +494,7 @@ fn typed_read(
 ) -> Result<TypedRetainedTitleReadResponse, ManualRetainedTitleExperimentError> {
 	let thread = fact.thread;
 	Ok(TypedRetainedTitleReadResponse {
-		request: ExactRpcRequestFact {
-			id: fact.wire.request_id,
-			digest: fact.wire.request_digest,
-		},
+		request: ExactRpcRequestFact { id: fact.wire.request_id, digest: fact.wire.request_digest },
 		response: ExactRpcResponseFact {
 			id: fact.wire.response_id,
 			digest: fact.wire.response_digest,

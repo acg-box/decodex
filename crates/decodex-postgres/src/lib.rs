@@ -22,8 +22,8 @@ mod authority;
 mod continuations;
 mod conversations;
 mod error;
-mod execution_decisions;
 mod exact_commands;
+mod execution_decisions;
 mod experiments;
 mod leases;
 mod managed_repositories;
@@ -32,16 +32,15 @@ mod migrations;
 mod outbox;
 mod policies;
 mod process_generations;
-mod provider_attempts;
 mod programs;
 mod project_agents;
+mod provider_attempts;
 mod quota;
 mod role_profiles;
 mod routing;
 mod routing_decisions;
 mod runtime_sessions;
-#[cfg(unix)]
-mod socket;
+#[cfg(unix)] mod socket;
 mod types;
 mod wakes;
 mod work_items;
@@ -69,16 +68,15 @@ pub use self::{
 	},
 	managed_runs::{ManagedRunProviderAttempt, StoredManagedRun},
 	process_generations::{
-		FreshProcessGenerationFence, PrepareProcessGenerationOutcome,
-		ProcessGenerationMutation, ProcessGenerationMutationOutcome,
-		ProcessGenerationRejection,
-	},
-	provider_attempts::{
-		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt,
-		FreshProviderDispatchFence, PrepareProviderAttemptOutcome, ProviderAttemptMutation,
-		ProviderAttemptMutationOutcome, ProviderAttemptRejection,
+		FreshProcessGenerationFence, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
+		ProcessGenerationMutationOutcome, ProcessGenerationRejection,
 	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
+	provider_attempts::{
+		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,
+		PrepareProviderAttemptOutcome, ProviderAttemptMutation, ProviderAttemptMutationOutcome,
+		ProviderAttemptRejection,
+	},
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
 		RoleProfileRejection, RoleProfileRevision, RoleProfileRole,
@@ -114,39 +112,37 @@ pub use decodex_core::{
 	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, ContinuationCommandOutcome,
 	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ExactCommitEvidence,
 	ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
-	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedRepositoryError,
-	ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError,
-	ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunState,
-	ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
+	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedExecutionId,
+	ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase,
+	ManagedRunError, ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase,
+	ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
 	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
 	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
 	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
-	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence, Program,
-	ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
-	ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId,
-	ProcessDeathEvidenceKind, ProcessExecutionAuthorization, ProcessExecutionEpochId,
-	ProcessGeneration, ProcessGenerationError, ProcessGenerationId, ProcessGenerationIntent,
-	ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
-	ProcessStartIdentity,
-	ManagedExecutionId, ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError,
-	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
-	ProviderAttemptUnknownReason, ProviderDuplicateRisk, ProviderEvidenceId,
-	ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey,
-	ProviderRequestKeys, ProviderTerminalOutcome,
+	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
+	ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind,
+	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGeneration,
+	ProcessGenerationError, ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState,
+	ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity, ProcessStartIdentity, Program,
 	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
-	ProjectRepositoryBinding, ProjectStatus, RegistrationEvidence, RegistrationReadbackRequest,
-	RegistrationTarget, RepositoryAdmissionDescriptor, RepositoryAdmissionDescriptorVersion,
-	RepositoryAdmissionFacts, RepositoryAdmittedGitLayout, RepositoryAllocationId,
-	RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor, RepositoryCommitActorEmail,
-	RepositoryCommitActorName, RepositoryCommitMessage, RepositoryContentRevision,
-	RepositoryEvidenceId, RepositoryGitRegistrationRole, RepositoryIdentity,
-	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
-	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
-	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
-	RepositoryRegistrationId, ReviewCadence, SameThreadContinuationEvidence,
-	WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
+	ProjectRepositoryBinding, ProjectStatus, ProviderAttempt, ProviderAttemptConsumer,
+	ProviderAttemptError, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
+	ProviderAttemptUnknownReason, ProviderDuplicateRisk, ProviderEvidenceId,
+	ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey,
+	ProviderRequestKeys, ProviderTerminalOutcome, RegistrationEvidence,
+	RegistrationReadbackRequest, RegistrationTarget, RepositoryAdmissionDescriptor,
+	RepositoryAdmissionDescriptorVersion, RepositoryAdmissionFacts, RepositoryAdmittedGitLayout,
+	RepositoryAllocationId, RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor,
+	RepositoryCommitActorEmail, RepositoryCommitActorName, RepositoryCommitMessage,
+	RepositoryContentRevision, RepositoryEvidenceId, RepositoryGitRegistrationRole,
+	RepositoryIdentity, RepositoryObservationPath, RepositoryObservedObjectType,
+	RepositoryOperationId, RepositoryOperationKind, RepositoryOperationResult,
+	RepositoryOperationState, RepositoryPathObservation, RepositoryPathRegistrationRole,
+	RepositoryReferenceName, RepositoryRegistrationId, ReviewCadence,
+	SameThreadContinuationEvidence, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
 	WaitingUsageWakeRejection, WaitingUsageWakeState, WaitingUsageWakeTerminalReason,
 	WaitingUsageWakeTransition, WaitingUsageWakeTransitionKind, WorkItem, WorkItemCorrelationId,
 	WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode, WorkItemObjectiveRef,
@@ -159,14 +155,11 @@ use std::{sync::Arc, time::Duration};
 
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use serde_json::Value;
-#[cfg(test)]
-use tokio as _;
-#[cfg(feature = "test-support")]
-use tokio_postgres::Client as TokioClient;
+#[cfg(test)] use tokio as _;
+#[cfg(feature = "test-support")] use tokio_postgres::Client as TokioClient;
 use tokio_postgres::{Config, config::Host};
 
-#[cfg(unix)]
-use self::socket::VerifiedSocketConnect;
+#[cfg(unix)] use self::socket::VerifiedSocketConnect;
 use decodex_core::{Availability, PostgresConnectionConfig, PostgresIdentityConfig, ProductState};
 
 /// PostgreSQL major accepted by the vNext storage authority.
@@ -648,20 +641,18 @@ pub(crate) fn ensure_credential_negative_text(value: &str) -> Result<(), StoreEr
 
 pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), StoreError> {
 	match value {
-		Value::Object(entries) => {
+		Value::Object(entries) =>
 			for (key, value) in entries {
 				if decodex_core::is_credential_metadata_key(key) {
 					return Err(StoreError::CredentialRejected);
 				}
 
 				ensure_credential_negative_json(value)?;
-			}
-		},
-		Value::Array(entries) => {
+			},
+		Value::Array(entries) =>
 			for value in entries {
 				ensure_credential_negative_json(value)?;
-			}
-		},
+			},
 		Value::String(value) => ensure_credential_negative_text(value)?,
 		_ => {},
 	}

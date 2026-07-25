@@ -172,13 +172,8 @@ impl PostgresStore {
 				"ProviderAttempt ProcessGeneration revision must be positive",
 			));
 		}
-		let (
-			conversation_id,
-			turn_id,
-			managed_run_id,
-			managed_run_revision,
-			managed_execution_id,
-		) = consumer_parameters(&preparation.consumer);
+		let (conversation_id, turn_id, managed_run_id, managed_run_revision, managed_execution_id) =
+			consumer_parameters(&preparation.consumer);
 		let provider_idempotency_key =
 			preparation.provider_keys.idempotency().map(ProviderRequestKey::as_str);
 		let provider_correlation_key =
@@ -219,13 +214,11 @@ impl PostgresStore {
 		let result_code: &str = row.get(0);
 		let mutation = parse_mutation(&row, 1, 2, 4)?;
 		match result_code {
-			"prepared" => Ok(PrepareProviderAttemptOutcome::Fresh(
-				FreshPreparedProviderAttempt {
-					attempt_id: preparation.attempt_id.clone(),
-					revision: mutation.revision,
-					prepared_at_micros: row.get(3),
-				},
-			)),
+			"prepared" => Ok(PrepareProviderAttemptOutcome::Fresh(FreshPreparedProviderAttempt {
+				attempt_id: preparation.attempt_id.clone(),
+				revision: mutation.revision,
+				prepared_at_micros: row.get(3),
+			})),
 			"replayed" => Ok(PrepareProviderAttemptOutcome::Replayed(mutation)),
 			code => Ok(PrepareProviderAttemptOutcome::Rejected {
 				rejection: parse_rejection(code)?,
@@ -265,15 +258,14 @@ impl PostgresStore {
 		let result_code: &str = row.get(0);
 		let mutation = parse_mutation(&row, 1, 2, 3)?;
 		match result_code {
-			"dispatch_authorized" => Ok(AuthorizeProviderDispatchOutcome::Fresh(
-				FreshProviderDispatchFence {
+			"dispatch_authorized" =>
+				Ok(AuthorizeProviderDispatchOutcome::Fresh(FreshProviderDispatchFence {
 					attempt_id: prepared.attempt_id,
 					attempt_revision: mutation.revision,
 					process_generation_id: process_generation_id.clone(),
 					process_generation_revision,
 					authorized_at_micros: mutation.recorded_at_micros,
-				},
-			)),
+				})),
 			"replayed" => Ok(AuthorizeProviderDispatchOutcome::Replayed(mutation)),
 			code => Ok(AuthorizeProviderDispatchOutcome::Rejected {
 				rejection: parse_rejection(code)?,
@@ -330,9 +322,7 @@ impl PostgresStore {
 		evidence: &ProviderPositiveEvidence,
 	) -> Result<ProviderAttemptMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
-			return Err(StoreError::InvalidInput(
-				"ProviderAttempt revision must be positive",
-			));
+			return Err(StoreError::InvalidInput("ProviderAttempt revision must be positive"));
 		}
 		let row = self
 			.pool()
@@ -375,9 +365,7 @@ impl PostgresStore {
 	}
 
 	/// Project every present prepared or authorized row to unknown under the restore gate.
-	pub async fn project_provider_attempts_after_supervisor_loss(
-		&self,
-	) -> Result<u64, StoreError> {
+	pub async fn project_provider_attempts_after_supervisor_loss(&self) -> Result<u64, StoreError> {
 		let changed: i64 = self
 			.pool()
 			.get()
@@ -402,14 +390,7 @@ impl PostgresStore {
 		after_attempt_id: Option<&ProviderAttemptId>,
 		limit: u16,
 	) -> Result<Vec<ProviderAttempt>, StoreError> {
-		self.read_provider_attempts(
-			None,
-			account_id,
-			state,
-			after_attempt_id,
-			limit,
-		)
-		.await
+		self.read_provider_attempts(None, account_id, state, after_attempt_id, limit).await
 	}
 
 	/// Read one exact attempt for positive reconciliation.
@@ -474,22 +455,16 @@ impl PostgresStore {
 		applied_codes: &[&str],
 	) -> Result<ProviderAttemptMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
-			return Err(StoreError::InvalidInput(
-				"ProviderAttempt revision must be positive",
-			));
+			return Err(StoreError::InvalidInput("ProviderAttempt revision must be positive"));
 		}
 		let client = self.pool().get().await?;
 		let row = match reason {
-			Some(reason) => {
+			Some(reason) =>
 				client
 					.query_one(statement, &[&attempt_id.as_str(), &expected_revision, &reason])
-					.await?
-			},
-			None => {
-				client
-					.query_one(statement, &[&attempt_id.as_str(), &expected_revision])
-					.await?
-			},
+					.await?,
+			None =>
+				client.query_one(statement, &[&attempt_id.as_str(), &expected_revision]).await?,
 		};
 		let result_code: &str = row.get(0);
 		let mutation = parse_mutation(&row, 1, 2, 3)?;
@@ -511,13 +486,8 @@ type ConsumerParameters<'a> =
 
 fn consumer_parameters(consumer: &ProviderAttemptConsumer) -> ConsumerParameters<'_> {
 	match consumer {
-		ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } => (
-			Some(conversation_id.as_str()),
-			Some(turn_id.as_str()),
-			None,
-			None,
-			None,
-		),
+		ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } =>
+			(Some(conversation_id.as_str()), Some(turn_id.as_str()), None, None, None),
 		ProviderAttemptConsumer::ManagedRunExecution {
 			managed_run_id,
 			managed_run_revision,
@@ -565,9 +535,11 @@ fn parse_attempt(row: tokio_postgres::Row) -> Result<ProviderAttempt, StoreError
 		.map_err(|_| incompatible_value("ProviderAttempt identity"))?;
 	let consumer = match row.get::<_, &str>(1) {
 		"conversation_turn" => ProviderAttemptConsumer::ConversationTurn {
-			conversation_id: ConversationId::new(
-				required_optional_text(&row, 2, "Conversation identity")?,
-			)
+			conversation_id: ConversationId::new(required_optional_text(
+				&row,
+				2,
+				"Conversation identity",
+			)?)
 			.map_err(|_| incompatible_value("Conversation identity"))?,
 			turn_id: TurnId::new(required_optional_text(&row, 3, "Turn identity")?)
 				.map_err(|_| incompatible_value("Turn identity"))?,
@@ -639,10 +611,7 @@ fn parse_attempt(row: tokio_postgres::Row) -> Result<ProviderAttempt, StoreError
 		_ => return Err(incompatible_value("duplicate-risk acknowledgement")),
 	};
 	let state = parse_state(row.get(21))?;
-	let unknown_reason = row
-		.get::<_, Option<&str>>(22)
-		.map(parse_unknown_reason)
-		.transpose()?;
+	let unknown_reason = row.get::<_, Option<&str>>(22).map(parse_unknown_reason).transpose()?;
 	let terminal_evidence_id = row
 		.get::<_, Option<String>>(23)
 		.map(ProviderEvidenceId::new)
@@ -697,8 +666,7 @@ fn required_optional_text(
 	index: usize,
 	name: &'static str,
 ) -> Result<String, StoreError> {
-	row.get::<_, Option<String>>(index)
-		.ok_or_else(|| incompatible_value(name))
+	row.get::<_, Option<String>>(index).ok_or_else(|| incompatible_value(name))
 }
 
 fn parse_state(value: &str) -> Result<ProviderAttemptState, StoreError> {

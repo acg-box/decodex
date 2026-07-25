@@ -112,12 +112,8 @@ fn local_transport(root: &DecodexRoot) -> LocalTransportAuthority {
 	// SAFETY: `geteuid` has no arguments or failure return.
 	let service_owner_uid = unsafe { libc::geteuid() };
 
-	LocalTransportAuthority::new(
-		paths,
-		LocalTrustPolicy::SameUid,
-		Some(service_owner_uid),
-	)
-	.expect("same-UID local transport authority")
+	LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
+		.expect("same-UID local transport authority")
 }
 
 async fn connect_local(
@@ -569,21 +565,13 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 
 	write_config(
 		&decodex_root,
-		&config(
-			temp.path(),
-			&temp.path().join("missing-postgres-socket"),
-			"decodex",
-			None,
-		),
+		&config(temp.path(), &temp.path().join("missing-postgres-socket"), "decodex", None),
 	);
 
 	let transport = local_transport(&decodex_root);
 	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 	let server_id = bootstrap.server_id().clone();
-	let mut bound = bootstrap
-		.bind(ServerConfig::default())
-		.await
-		.expect("bind daemon fixture");
+	let mut bound = bootstrap.bind(ServerConfig::default()).await.expect("bind daemon fixture");
 	let mut wrong = connect_local(&transport).await;
 
 	send(
@@ -737,10 +725,7 @@ async fn disconnected_fixture_is_deterministic() {
 	let decodex_root = root(&temp);
 	let transport = local_transport(&decodex_root);
 
-	assert!(matches!(
-		transport.connect().await,
-		Err(LocalTransportRefusal::EndpointUnavailable),
-	));
+	assert!(matches!(transport.connect().await, Err(LocalTransportRefusal::EndpointUnavailable),));
 }
 
 #[tokio::test]
@@ -770,10 +755,8 @@ async fn isolated_postgres_bootstrap_is_available_through_the_daemon() {
 	assert_eq!(bootstrap.product_state_availability(), Availability::Available);
 
 	let server_id = bootstrap.server_id().clone();
-	let mut bound = bootstrap
-		.bind(ServerConfig::default())
-		.await
-		.expect("bind PostgreSQL history daemon");
+	let mut bound =
+		bootstrap.bind(ServerConfig::default()).await.expect("bind PostgreSQL history daemon");
 	let mut client = connect_local(&transport).await;
 
 	send(
@@ -960,18 +943,15 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 		.expect("isolated socket port environment")
 		.parse::<u16>()
 		.expect("isolated socket port is valid");
-	let decodex_root =
-		DecodexRoot::new(root_path).expect("isolated bootstrap root is safe");
+	let decodex_root = DecodexRoot::new(root_path).expect("isolated bootstrap root is safe");
 	let transport = local_transport(&decodex_root);
 	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 
 	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
 
 	let server_id = bootstrap.server_id().clone();
-	let mut bound = bootstrap
-		.bind(ServerConfig::default())
-		.await
-		.expect("bind live-doctor daemon fixture");
+	let mut bound =
+		bootstrap.bind(ServerConfig::default()).await.expect("bind live-doctor daemon fixture");
 	let mut client = connect_local(&transport).await;
 
 	send(
@@ -1037,8 +1017,7 @@ async fn isolated_postgres_live_doctor_detects_database_drift() {
 		env::var("DECODEX_TEST_LIVE_INCOMPATIBLE_SYNC")
 			.expect("live-incompatible synchronization environment"),
 	);
-	let decodex_root =
-		DecodexRoot::new(root_path).expect("live-incompatible root is safe");
+	let decodex_root = DecodexRoot::new(root_path).expect("live-incompatible root is safe");
 	let transport = local_transport(&decodex_root);
 	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 

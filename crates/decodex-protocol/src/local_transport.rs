@@ -227,12 +227,7 @@ impl LocalTransportListener {
 			let namespace_lock =
 				self.namespace_lock.as_ref().ok_or(LocalTransportRefusal::EndpointUnavailable)?;
 
-			platform::revalidate_listener(
-				&self.authority,
-				listener,
-				binding,
-				namespace_lock,
-			)
+			platform::revalidate_listener(&self.authority, listener, binding, namespace_lock)
 		}
 
 		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -251,20 +246,12 @@ impl LocalTransportListener {
 
 	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	fn release(&mut self, report: bool) -> Result<(), LocalTransportRefusal> {
-		let result = match (
-			self.listener.as_ref(),
-			self.binding.as_ref(),
-			self.namespace_lock.as_ref(),
-		) {
-			(Some(listener), Some(binding), Some(namespace_lock)) =>
-				platform::remove_publication(
-					&self.authority,
-					listener,
-					binding,
-					namespace_lock,
-				),
-			_ => Err(LocalTransportRefusal::EndpointUnavailable),
-		};
+		let result =
+			match (self.listener.as_ref(), self.binding.as_ref(), self.namespace_lock.as_ref()) {
+				(Some(listener), Some(binding), Some(namespace_lock)) =>
+					platform::remove_publication(&self.authority, listener, binding, namespace_lock),
+				_ => Err(LocalTransportRefusal::EndpointUnavailable),
+			};
 
 		drop(self.listener.take());
 		drop(self.binding.take());
@@ -369,9 +356,8 @@ mod platform {
 	};
 
 	use libc::{
-		AT_FDCWD, AT_SYMLINK_NOFOLLOW, LOCK_EX, LOCK_NB, O_CLOEXEC, O_CREAT, O_DIRECTORY,
-		O_EXCL, O_NOFOLLOW, O_RDONLY, O_RDWR, S_IFMT, S_IFREG, S_IFSOCK, mode_t, sockaddr_un,
-		stat,
+		AT_FDCWD, AT_SYMLINK_NOFOLLOW, LOCK_EX, LOCK_NB, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL,
+		O_NOFOLLOW, O_RDONLY, O_RDWR, S_IFMT, S_IFREG, S_IFSOCK, mode_t, sockaddr_un, stat,
 	};
 	use tokio::{
 		net::{UnixListener, UnixStream},
@@ -405,14 +391,7 @@ mod platform {
 			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
 		let namespace_lock = NamespaceLock::acquire(&directory)?;
 
-		recover_name(
-			authority,
-			&directory,
-			&namespace_lock,
-			STAGE_NAME,
-			&stage_path,
-		)
-		.await?;
+		recover_name(authority, &directory, &namespace_lock, STAGE_NAME, &stage_path).await?;
 		recover_name(
 			authority,
 			&directory,
@@ -427,8 +406,8 @@ mod platform {
 		directory.verify_absent(STAGE_NAME)?;
 		directory.verify_absent(CANONICAL_NAME)?;
 
-		let listener =
-			UnixListener::bind(&stage_path).map_err(|_| LocalTransportRefusal::EndpointUnavailable)?;
+		let listener = UnixListener::bind(&stage_path)
+			.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?;
 		let initial = directory
 			.socket_identity(STAGE_NAME)
 			.map_err(|_| LocalTransportRefusal::EndpointReplaced)?;
@@ -565,11 +544,7 @@ mod platform {
 			)?;
 			directory.verify_namespace_lock(namespace_lock)?;
 			directory.verify_absent(STAGE_NAME)?;
-			directory.verify_socket_while_locked(
-				namespace_lock,
-				CANONICAL_NAME,
-				self.identity,
-			)?;
+			directory.verify_socket_while_locked(namespace_lock, CANONICAL_NAME, self.identity)?;
 			self.authority.verify_process_owner()?;
 
 			let binding = EndpointBinding {
@@ -617,9 +592,7 @@ mod platform {
 
 		let directory =
 			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
-		let identity = directory
-			.socket_identity(CANONICAL_NAME)
-			.map_err(map_initial_endpoint)?;
+		let identity = directory.socket_identity(CANONICAL_NAME).map_err(map_initial_endpoint)?;
 
 		if !secure_socket(identity, authority.service_owner_uid) {
 			return Err(LocalTransportRefusal::UnsafeEndpoint);
@@ -633,9 +606,8 @@ mod platform {
 				return Err(LocalTransportRefusal::EndpointReplaced),
 			Err(_) => return Err(LocalTransportRefusal::EndpointUnavailable),
 		};
-		let peer = stream
-			.peer_cred()
-			.map_err(|_| LocalTransportRefusal::PeerCredentialsUnavailable)?;
+		let peer =
+			stream.peer_cred().map_err(|_| LocalTransportRefusal::PeerCredentialsUnavailable)?;
 
 		if peer.uid() != authority.service_owner_uid {
 			return Err(LocalTransportRefusal::PeerUidMismatch);
@@ -654,9 +626,11 @@ mod platform {
 		namespace_lock: &NamespaceLock,
 	) -> Result<(), LocalTransportRefusal> {
 		authority.verify_process_owner()?;
-		binding
-			.directory
-			.verify_socket_while_locked(namespace_lock, CANONICAL_NAME, binding.identity)?;
+		binding.directory.verify_socket_while_locked(
+			namespace_lock,
+			CANONICAL_NAME,
+			binding.identity,
+		)?;
 
 		let local_path = listener
 			.local_addr()
@@ -667,10 +641,7 @@ mod platform {
 		if local_path.as_deref() != Some(binding.stage_path.as_path()) {
 			return Err(LocalTransportRefusal::EndpointReplaced);
 		}
-		if listener
-			.take_error()
-			.map_err(|_| LocalTransportRefusal::EndpointUnavailable)?
-			.is_some()
+		if listener.take_error().map_err(|_| LocalTransportRefusal::EndpointUnavailable)?.is_some()
 		{
 			return Err(LocalTransportRefusal::EndpointUnavailable);
 		}
@@ -717,8 +688,7 @@ mod platform {
 				}
 			}
 
-			let metadata =
-				file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
+			let metadata = file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
 
 			if !secure_namespace_lock_metadata(&metadata, directory.expected_uid) {
 				return Err(LocalTransportRefusal::UnsafeEndpoint);
@@ -735,8 +705,7 @@ mod platform {
 				};
 			}
 
-			let namespace_lock =
-				Self { identity: LockIdentity::from_metadata(&metadata), file };
+			let namespace_lock = Self { identity: LockIdentity::from_metadata(&metadata), file };
 
 			directory.verify_namespace_lock(&namespace_lock)?;
 
@@ -753,11 +722,9 @@ mod platform {
 
 	impl DirectoryBinding {
 		fn open(endpoint_path: &Path, expected_uid: u32) -> Result<Self, LocalTransportRefusal> {
-			let path =
-				endpoint_path.parent().ok_or(LocalTransportRefusal::UnsafeDirectory)?;
-			let directory = open_absolute_directory(path).map_err(|_| {
-				LocalTransportRefusal::UnsafeDirectory
-			})?;
+			let path = endpoint_path.parent().ok_or(LocalTransportRefusal::UnsafeDirectory)?;
+			let directory = open_absolute_directory(path)
+				.map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
 			let metadata =
 				directory.metadata().map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
 
@@ -801,11 +768,7 @@ mod platform {
 			let pinned = socket_entry_absent(&self.directory, name);
 			let reopened = socket_entry_absent(&current, name);
 
-			if pinned && reopened {
-				Ok(())
-			} else {
-				Err(LocalTransportRefusal::EndpointReplaced)
-			}
+			if pinned && reopened { Ok(()) } else { Err(LocalTransportRefusal::EndpointReplaced) }
 		}
 
 		fn verify_socket(
@@ -924,9 +887,7 @@ mod platform {
 		) {
 			if self.verify_socket_while_locked(namespace_lock, name, expected).is_ok() {
 				// SAFETY: the retained descriptor and fixed name stay valid for this call.
-				let _ = unsafe {
-					libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0)
-				};
+				let _ = unsafe { libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0) };
 			}
 		}
 
@@ -938,16 +899,11 @@ mod platform {
 		) {
 			if self.verify_namespace_lock(namespace_lock).is_ok()
 				&& expected.links == 1
-				&& self
-					.socket_identity(name)
-					.is_ok_and(|identity| {
-						identity.file == expected.file && identity.links == expected.links
-					})
-			{
+				&& self.socket_identity(name).is_ok_and(|identity| {
+					identity.file == expected.file && identity.links == expected.links
+				}) {
 				// SAFETY: the retained descriptor and fixed name stay valid for this call.
-				let _ = unsafe {
-					libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0)
-				};
+				let _ = unsafe { libc::unlinkat(self.directory.as_raw_fd(), name.as_ptr(), 0) };
 			}
 		}
 	}
@@ -1053,10 +1009,7 @@ mod platform {
 		}
 
 		Ok(SocketIdentity {
-			file: FileIdentity {
-				device: metadata.st_dev as u64,
-				inode: metadata.st_ino as u64,
-			},
+			file: FileIdentity { device: metadata.st_dev as u64, inode: metadata.st_ino as u64 },
 			uid: metadata.st_uid,
 			mode: metadata.st_mode as u32,
 			links: metadata.st_nlink as u64,
@@ -1071,10 +1024,7 @@ mod platform {
 		}
 
 		Ok(LockIdentity {
-			file: FileIdentity {
-				device: metadata.st_dev as u64,
-				inode: metadata.st_ino as u64,
-			},
+			file: FileIdentity { device: metadata.st_dev as u64, inode: metadata.st_ino as u64 },
 			uid: metadata.st_uid,
 			mode: metadata.st_mode as u32,
 			links: metadata.st_nlink as u64,
@@ -1111,12 +1061,7 @@ mod platform {
 		// SAFETY: the retained directory descriptor and NUL-terminated name
 		// remain valid for this descriptor-relative call.
 		let result = unsafe {
-			libc::fchmodat(
-				directory.directory.as_raw_fd(),
-				name.as_ptr(),
-				mode as mode_t,
-				0,
-			)
+			libc::fchmodat(directory.directory.as_raw_fd(), name.as_ptr(), mode as mode_t, 0)
 		};
 
 		if result == -1 { Err(io::Error::last_os_error()) } else { Ok(()) }
@@ -1179,10 +1124,7 @@ mod platform {
 					directory = open_directory(directory.as_raw_fd(), &name)?;
 				},
 				_ => {
-					return Err(io::Error::new(
-						ErrorKind::InvalidInput,
-						"path is not normalized",
-					));
+					return Err(io::Error::new(ErrorKind::InvalidInput, "path is not normalized"));
 				},
 			}
 		}

@@ -157,17 +157,17 @@ pub(crate) async fn bootstrap_default() -> ServiceBootstrap {
 pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	let paths = root.paths();
 	let loaded = DecodexConfig::load(&paths);
-	let configured_transport = loaded.as_ref().map_or(
-		Err(LocalTransportRefusal::ConfigurationUnavailable),
-		|config| match config.active_profile() {
-			ServerProfile::Local(profile) => LocalTransportAuthority::new(
-				paths.clone(),
-				profile.policy(),
-				profile.service_owner_uid(),
-			),
-			ServerProfile::Remote(_) => Err(LocalTransportRefusal::Disabled),
-		},
-	);
+	let configured_transport =
+		loaded.as_ref().map_or(Err(LocalTransportRefusal::ConfigurationUnavailable), |config| {
+			match config.active_profile() {
+				ServerProfile::Local(profile) => LocalTransportAuthority::new(
+					paths.clone(),
+					profile.policy(),
+					profile.service_owner_uid(),
+				),
+				ServerProfile::Remote(_) => Err(LocalTransportRefusal::Disabled),
+			}
+		});
 	let config_status = match &loaded {
 		Ok(_) => DoctorStatus::Ready,
 		Err(error) => DoctorStatus::Unavailable(config_issue(*error)),
