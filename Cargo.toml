@@ -35,7 +35,6 @@ decodex-postgres = { path = "crates/decodex-postgres" }
 decodex-protocol = { path = "crates/decodex-protocol" }
 decodex-runtime  = { path = "crates/decodex-runtime" }
 
-axum               = { version = "0.8.9", features = ["ws"] }
 base64             = { version = "0.22" }
 clap               = { version = "4.6", features = ["derive"] }
 color-eyre         = { version = "0.6" }

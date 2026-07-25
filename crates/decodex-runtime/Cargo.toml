@@ -33,6 +33,5 @@ tokio-tungstenite = { workspace = true }
 zeroize          = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-axum              = { workspace = true }
 tempfile          = { workspace = true }
 tokio-postgres    = { workspace = true }
