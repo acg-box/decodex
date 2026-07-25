@@ -323,9 +323,7 @@ impl ProviderAttemptControl {
 		attempt: ProviderAttempt,
 	) -> Result<ProviderAttemptReconciliation, ProviderAttemptServiceError> {
 		if attempt.state.is_terminal() {
-			return Ok(ProviderAttemptReconciliation::AlreadyTerminal {
-				state: attempt.state,
-			});
+			return Ok(ProviderAttemptReconciliation::AlreadyTerminal { state: attempt.state });
 		}
 		if !matches!(
 			attempt.state,
@@ -373,9 +371,7 @@ impl ProviderAttemptControl {
 					state: mutation.state,
 				}),
 			ProviderAttemptMutationOutcome::Replayed(mutation) =>
-				Ok(ProviderAttemptReconciliation::AlreadyTerminal {
-					state: mutation.state,
-				}),
+				Ok(ProviderAttemptReconciliation::AlreadyTerminal { state: mutation.state }),
 			ProviderAttemptMutationOutcome::Rejected { .. } =>
 				Ok(ProviderAttemptReconciliation::EvidenceRejected),
 		}
@@ -429,7 +425,6 @@ impl ProviderAttemptReconciliationCursor {
 
 impl ProviderAttemptService {
 	/// Prepare one attempt from an accepted V17 effect and exact live process fence.
-	///
 	async fn prepare(
 		&self,
 		plan: &ContinuationPlanEffect,
@@ -440,11 +435,7 @@ impl ProviderAttemptService {
 			return Err(ProviderAttemptServiceError::AuthorityConflict);
 		}
 		self.store
-			.prepare_provider_attempt(
-				preparation,
-				process.generation_id(),
-				process.revision(),
-			)
+			.prepare_provider_attempt(preparation, process.generation_id(), process.revision())
 			.await
 			.map_err(|_| ProviderAttemptServiceError::ProductState)
 	}

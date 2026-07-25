@@ -14,10 +14,8 @@ use std::{
 	sync::atomic::{AtomicBool, Ordering},
 };
 
-#[cfg(target_os = "linux")]
-use std::fs;
-#[cfg(target_os = "macos")]
-use std::mem::{self, MaybeUninit};
+#[cfg(target_os = "linux")] use std::fs;
+#[cfg(target_os = "macos")] use std::mem::{self, MaybeUninit};
 
 use decodex_core::{
 	ProcessBootIdentity, ProcessDeathEvidenceKind, ProcessIdentity, ProcessStartIdentity,
@@ -67,20 +65,15 @@ impl KernelExitWitness {
 		}
 		#[cfg(target_os = "linux")]
 		{
-			let mut descriptor = libc::pollfd {
-				fd: self.descriptor.as_raw_fd(),
-				events: libc::POLLIN,
-				revents: 0,
-			};
+			let mut descriptor =
+				libc::pollfd { fd: self.descriptor.as_raw_fd(), events: libc::POLLIN, revents: 0 };
 			// SAFETY: `descriptor` is valid for one element and timeout zero does not block.
 			let result = unsafe { libc::poll(&mut descriptor, 1, 0) };
 			if result == -1 {
 				return Err(ProcessPlatformError::Observation(io::Error::last_os_error()));
 			}
 			if result == 1
-				&& descriptor.revents
-					& (libc::POLLIN | libc::POLLHUP | libc::POLLERR)
-					!= 0
+				&& descriptor.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0
 			{
 				self.positive_exit.store(true, Ordering::Release);
 				return Ok(Some(self.kind));
@@ -154,7 +147,8 @@ impl Display for ProcessPlatformError {
 				formatter.write_str("the host has no accepted ProcessGeneration adapter"),
 			Self::BootIdentity(error) => write!(formatter, "boot identity failed: {error}"),
 			Self::ProcessIdentity(error) => write!(formatter, "process identity failed: {error}"),
-			Self::Observation(error) => write!(formatter, "process exit observation failed: {error}"),
+			Self::Observation(error) =>
+				write!(formatter, "process exit observation failed: {error}"),
 			Self::Signal(error) => write!(formatter, "exact owned-process signal failed: {error}"),
 		}
 	}
@@ -262,13 +256,7 @@ pub(crate) fn inspect_process_identity(
 			.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))?;
 		// SAFETY: the flavor and fixed output size match `proc_bsdinfo`.
 		let result = unsafe {
-			libc::proc_pidinfo(
-				pid,
-				libc::PROC_PIDTBSDINFO,
-				0,
-				info.as_mut_ptr().cast(),
-				size,
-			)
+			libc::proc_pidinfo(pid, libc::PROC_PIDTBSDINFO, 0, info.as_mut_ptr().cast(), size)
 		};
 		if result == 0 {
 			return Ok(None);
@@ -377,10 +365,7 @@ pub(crate) fn attach_exit_witness(
 			}
 			return Err(ProcessPlatformError::Observation(error));
 		}
-		(
-			descriptor,
-			ProcessDeathEvidenceKind::MacosKqueueExitAndGroupQuiescence,
-		)
+		(descriptor, ProcessDeathEvidenceKind::MacosKqueueExitAndGroupQuiescence)
 	};
 
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -404,10 +389,7 @@ pub(crate) fn attach_exit_witness(
 /// This function grants no ProcessGeneration lifetime capability. In particular, it does not
 /// install Linux `PR_SET_PDEATHSIG`. That primitive requires a future accepted exact Linux
 /// lifetime profile before source can add a capability-gated call.
-pub(crate) fn configure_session_command(
-	command: &mut Command,
-	max_file_bytes: Option<u64>,
-) {
+pub(crate) fn configure_session_command(command: &mut Command, max_file_bytes: Option<u64>) {
 	let descriptor_limit = unsafe { libc::getdtablesize() }.max(3);
 
 	// SAFETY: this pre-exec closure uses only async-signal-safe syscalls and stack-owned values.
@@ -438,17 +420,13 @@ pub(crate) fn signal_owned_process_group(
 	signal: i32,
 ) -> Result<(), ProcessPlatformError> {
 	let boot_id = current_boot_identity().map_err(|error| match error {
-		ProcessPlatformError::BootIdentity(error) =>
-			ProcessPlatformError::Signal(error),
+		ProcessPlatformError::BootIdentity(error) => ProcessPlatformError::Signal(error),
 		_ => ProcessPlatformError::Signal(invalid_identity()),
 	})?;
-	match inspect_process_identity(identity.process_id, &boot_id)
-		.map_err(|error| match error {
-			ProcessPlatformError::ProcessIdentity(error) =>
-				ProcessPlatformError::Signal(error),
-			_ => ProcessPlatformError::Signal(invalid_identity()),
-		})?
-	{
+	match inspect_process_identity(identity.process_id, &boot_id).map_err(|error| match error {
+		ProcessPlatformError::ProcessIdentity(error) => ProcessPlatformError::Signal(error),
+		_ => ProcessPlatformError::Signal(invalid_identity()),
+	})? {
 		Some(observed) if observed == *identity => {},
 		Some(_) | None => return Err(ProcessPlatformError::Signal(invalid_identity())),
 	}
@@ -464,11 +442,7 @@ pub(crate) fn signal_owned_process_group_id(
 		.map_err(|_| ProcessPlatformError::Signal(invalid_identity()))?;
 	// SAFETY: ProcessSupervisor calls this only while it retains the exact unreaped `Child`.
 	let result = unsafe { libc::kill(-process_group_id, signal) };
-	if result == 0 {
-		Ok(())
-	} else {
-		Err(ProcessPlatformError::Signal(io::Error::last_os_error()))
-	}
+	if result == 0 { Ok(()) } else { Err(ProcessPlatformError::Signal(io::Error::last_os_error())) }
 }
 
 /// Check group quiescence only as corroboration after positive exact-leader death.

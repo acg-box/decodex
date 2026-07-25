@@ -376,7 +376,9 @@ fn parse_same_thread_evidence(
 				Ok(Some(SameThreadContinuationEvidence::CausalExperiment {
 					routing_evidence_id: optional_text(effect, "routing_evidence_id")?
 						.ok_or_else(|| {
-							StoreError::Incompatible("same-thread routing evidence is absent".into())
+							StoreError::Incompatible(
+								"same-thread routing evidence is absent".into(),
+							)
 						})?
 						.to_owned(),
 					routing_evidence_revision: optional_positive_i64(
@@ -403,9 +405,7 @@ fn parse_same_thread_evidence(
 						"codex_experiment_revision",
 					)?
 					.ok_or_else(|| {
-						StoreError::Incompatible(
-							"same-thread experiment revision is absent".into(),
-						)
+						StoreError::Incompatible("same-thread experiment revision is absent".into())
 					})?,
 					observation_id: optional_text(effect, "codex_observation_id")?
 						.ok_or_else(|| {
@@ -469,8 +469,7 @@ fn parse_same_thread_evidence(
 			}
 			if optional_positive_i64(effect, "routing_evidence_revision")?.is_some()
 				|| optional_positive_i64(effect, "codex_experiment_revision")?.is_some()
-				|| optional_positive_i64(effect, "same_thread_provider_attempt_revision")?
-					.is_some()
+				|| optional_positive_i64(effect, "same_thread_provider_attempt_revision")?.is_some()
 			{
 				return incompatible("fallback plan carries same-thread evidence revision");
 			}
@@ -498,8 +497,9 @@ fn parse_consumer(effect: &Value) -> Result<ExecutionConsumer, StoreError> {
 				effect,
 				"source_runtime_session_revision",
 			)?,
-			turn_id: TurnId::new(uuid_text(effect, "turn_id")?)
-				.map_err(|_| StoreError::Incompatible("consumer Turn identity is invalid".into()))?,
+			turn_id: TurnId::new(uuid_text(effect, "turn_id")?).map_err(|_| {
+				StoreError::Incompatible("consumer Turn identity is invalid".into())
+			})?,
 		}),
 		"managed_run_execution" => Ok(ExecutionConsumer::ManagedRunExecution {
 			managed_run_id: ManagedRunId::new(uuid_text(effect, "managed_run_id")?)
@@ -521,22 +521,22 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 			"activity_effects",
 			"codex_experiment_id",
 			"codex_experiment_revision",
-				"codex_observation_id",
-				"codex_thread_id",
-				"conversation_id",
-				"consumer_conversation_id",
-				"consumer_kind",
-				"conversation_revision",
-				"dispatch_enabled",
-				"effect_digest",
+			"codex_observation_id",
+			"codex_thread_id",
+			"conversation_id",
+			"consumer_conversation_id",
+			"consumer_kind",
+			"conversation_revision",
+			"dispatch_enabled",
+			"effect_digest",
 			"effect_digest_source",
 			"fallback_context_pack_id",
 			"fallback_context_pack_revision",
 			"fallback_runtime_session_id",
 			"kind",
-				"managed_run_id",
-				"managed_run_revision",
-				"managed_execution_id",
+			"managed_run_id",
+			"managed_run_revision",
+			"managed_execution_id",
 			"operation",
 			"operation_id",
 			"outbox_effects",
@@ -546,14 +546,14 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 			"routing_decision_id",
 			"routing_evidence_id",
 			"routing_evidence_revision",
-				"schema_fingerprint",
-				"same_thread_provider_attempt_id",
-				"same_thread_provider_attempt_revision",
-				"same_thread_provider_evidence_id",
-				"selected_account_id",
+			"schema_fingerprint",
+			"same_thread_provider_attempt_id",
+			"same_thread_provider_attempt_revision",
+			"same_thread_provider_evidence_id",
+			"selected_account_id",
 			"source_runtime_session_id",
 			"source_runtime_session_revision",
-				"turn_id",
+			"turn_id",
 		],
 	)?;
 	let kind = match text(effect, "kind")? {

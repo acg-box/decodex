@@ -24,18 +24,18 @@ use decodex_protocol::{
 	ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto, ExecutionRouteBlockerDto,
 	ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference,
 	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
-	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto,
-	HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryPayload, QueryResultPayload, ResultPayload,
-	Sha256Digest, SnapshotItem, WireText,
+	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
+	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
+	QueryPayload, QueryResultPayload, ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
 use tokio::sync::watch;
 
-use crate::managed_repository_runtime::{
-	ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
+use crate::{
+	ProcessGenerationControl, ProviderAttemptControl,
+	managed_repository_runtime::{
+		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
+	},
 };
-use crate::ProcessGenerationControl;
-use crate::ProviderAttemptControl;
 
 /// The only mutation/observation seam reachable from the WebSocket server.
 ///
@@ -192,10 +192,9 @@ impl ServiceApplication {
 					error: ExecutionDecisionQueryError::IntegrityUnavailable,
 				},
 			},
-			Ok(None) | Err(StoreError::InvalidInput(_)) =>
-				ExecutionDecisionResult::Unavailable {
-					error: ExecutionDecisionQueryError::InvalidRequest,
-				},
+			Ok(None) | Err(StoreError::InvalidInput(_)) => ExecutionDecisionResult::Unavailable {
+				error: ExecutionDecisionQueryError::InvalidRequest,
+			},
 			Err(StoreError::Incompatible(_)) => ExecutionDecisionResult::Unavailable {
 				error: ExecutionDecisionQueryError::IntegrityUnavailable,
 			},
@@ -320,9 +319,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetDoctorStatus =>
 				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
 			QueryPayload::GetExecutionDecision { decision_id } =>
-				QueryResultPayload::ExecutionDecision(
-					self.execution_decision(decision_id).await,
-				),
+				QueryResultPayload::ExecutionDecision(self.execution_decision(decision_id).await),
 			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
 				QueryResultPayload::ConversationHistory(
 					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
@@ -331,9 +328,7 @@ impl Application for ServiceApplication {
 	}
 }
 
-fn execution_decision_dto(
-	readback: ExecutionDecisionReadback,
-) -> Result<ExecutionDecisionDto, ()> {
+fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<ExecutionDecisionDto, ()> {
 	let consumer = match readback.consumer {
 		ExecutionConsumer::ConversationTurn {
 			conversation_id,
@@ -385,15 +380,10 @@ fn execution_decision_dto(
 		},
 		RoutingDecisionKind::WaitingReconciliation =>
 			ExecutionRouteDto::WaitingReconciliation { causes },
-		RoutingDecisionKind::NoRoute if !causes.is_empty() =>
-			ExecutionRouteDto::NoRoute { causes },
+		RoutingDecisionKind::NoRoute if !causes.is_empty() => ExecutionRouteDto::NoRoute { causes },
 		RoutingDecisionKind::NoRoute => return Err(()),
 	};
-	Ok(ExecutionDecisionDto {
-		decision_id: entity(&readback.decision_id)?,
-		consumer,
-		route,
-	})
+	Ok(ExecutionDecisionDto { decision_id: entity(&readback.decision_id)?, consumer, route })
 }
 
 fn quota_exclusion_dto(

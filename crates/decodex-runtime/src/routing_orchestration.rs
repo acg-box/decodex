@@ -7,10 +7,9 @@
 
 use decodex_core::{
 	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlanKind,
-	ContinuationRejection, ExecutionConsumer, ProviderAttemptConsumer,
-	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, RoutingBlocker,
-	RoutingCommandOutcome, RoutingDecisionCause, RoutingDecisionExclusion, RoutingDecisionKind,
-	RoutingNoRouteReason,
+	ContinuationRejection, ExecutionConsumer, ProviderAttemptConsumer, ProviderAttemptId,
+	ProviderAttemptPreparation, ProviderAttemptState, RoutingBlocker, RoutingCommandOutcome,
+	RoutingDecisionCause, RoutingDecisionExclusion, RoutingDecisionKind, RoutingNoRouteReason,
 };
 use decodex_postgres::{
 	ContinuationPlanEffect, PersistedRoutingDecision, PlanContinuation, PostgresStore,
@@ -203,40 +202,30 @@ impl ExecutionCoordinator {
 			return failed(consumer, None, ExecutionFailureKind::ConsumerCrossLink);
 		}
 
-		let persisted = match store
-			.route_account(&command.routing_idempotency_key, &command.routing)
-			.await
-		{
-			Ok(RoutingCommandOutcome::Success(persisted)) => persisted,
-			Ok(RoutingCommandOutcome::Rejected(rejection)) => {
-				let kind = match rejection.code.as_str() {
-					"malformed_input" => RoutingAuthorityRejection::MalformedInput,
-					"stale_routing_policy" => RoutingAuthorityRejection::StaleRoutingPolicy,
-					"stale_consumer" => RoutingAuthorityRejection::StaleConsumer,
-					"snapshot_missing" => RoutingAuthorityRejection::SnapshotMissing,
-					"concurrent_authority_change" =>
-						RoutingAuthorityRejection::ConcurrentAuthorityChange,
-					_ =>
-						return failed(
-							consumer,
-							None,
-							ExecutionFailureKind::PersistedAuthorityIncompatible,
-						),
-				};
-				return failed(
-					consumer,
-					None,
-					ExecutionFailureKind::RoutingRejected(kind),
-				);
-			},
-			Err(error) => return failed(consumer, None, classify_store_error(&error)),
-		};
+		let persisted =
+			match store.route_account(&command.routing_idempotency_key, &command.routing).await {
+				Ok(RoutingCommandOutcome::Success(persisted)) => persisted,
+				Ok(RoutingCommandOutcome::Rejected(rejection)) => {
+					let kind = match rejection.code.as_str() {
+						"malformed_input" => RoutingAuthorityRejection::MalformedInput,
+						"stale_routing_policy" => RoutingAuthorityRejection::StaleRoutingPolicy,
+						"stale_consumer" => RoutingAuthorityRejection::StaleConsumer,
+						"snapshot_missing" => RoutingAuthorityRejection::SnapshotMissing,
+						"concurrent_authority_change" =>
+							RoutingAuthorityRejection::ConcurrentAuthorityChange,
+						_ =>
+							return failed(
+								consumer,
+								None,
+								ExecutionFailureKind::PersistedAuthorityIncompatible,
+							),
+					};
+					return failed(consumer, None, ExecutionFailureKind::RoutingRejected(kind));
+				},
+				Err(error) => return failed(consumer, None, classify_store_error(&error)),
+			};
 		if persisted.consumer != consumer {
-			return failed(
-				consumer,
-				None,
-				ExecutionFailureKind::InvalidPersistedDecision,
-			);
+			return failed(consumer, None, ExecutionFailureKind::InvalidPersistedDecision);
 		}
 		let decision = PersistedDecisionProvenance {
 			decision_id: persisted.decision_id.clone(),
@@ -246,14 +235,7 @@ impl ExecutionCoordinator {
 		match persisted.decision.kind {
 			RoutingDecisionKind::Selected =>
 				self.plan_and_prepare(
-					store,
-					blob_store,
-					attempts,
-					process,
-					command,
-					consumer,
-					decision,
-					&persisted,
+					store, blob_store, attempts, process, command, consumer, decision, &persisted,
 				)
 				.await,
 			RoutingDecisionKind::WaitingUsage => {
@@ -270,18 +252,13 @@ impl ExecutionCoordinator {
 					|| persisted.decision.causes.is_empty()
 					|| persisted.decision.exclusions.is_empty()
 					|| persisted.decision.causes.len() != persisted.decision.exclusions.len()
-					|| persisted
-						.decision
-						.causes
-						.iter()
-						.any(|cause| {
-							!matches!(
-								cause.blocker,
-								RoutingBlocker::QuotaFiveHourDepleted
-									| RoutingBlocker::QuotaSevenDayDepleted
-							)
-						})
-				{
+					|| persisted.decision.causes.iter().any(|cause| {
+						!matches!(
+							cause.blocker,
+							RoutingBlocker::QuotaFiveHourDepleted
+								| RoutingBlocker::QuotaSevenDayDepleted
+						)
+					}) {
 					return failed(
 						consumer,
 						Some(decision),
@@ -308,8 +285,7 @@ impl ExecutionCoordinator {
 							RoutingBlocker::ProcessGenerationUnresolved
 								| RoutingBlocker::ProviderAttemptUnresolved
 						)
-					})
-				{
+					}) {
 					return failed(
 						consumer,
 						Some(decision),
@@ -341,11 +317,7 @@ impl ExecutionCoordinator {
 						ExecutionFailureKind::InvalidPersistedDecision,
 					);
 				}
-				ExecutionOutcome::NoRoute {
-					decision,
-					reason,
-					causes: persisted.decision.causes,
-				}
+				ExecutionOutcome::NoRoute { decision, reason, causes: persisted.decision.causes }
 			},
 		}
 	}
@@ -404,8 +376,7 @@ impl ExecutionCoordinator {
 					Some(decision),
 					ExecutionFailureKind::ContinuationRejected(rejection),
 				),
-			Err(error) =>
-				return failed(consumer, Some(decision), classify_store_error(&error)),
+			Err(error) => return failed(consumer, Some(decision), classify_store_error(&error)),
 		};
 		if plan.plan.routing_decision_id != persisted.decision_id
 			|| plan.plan.consumer != consumer
@@ -414,34 +385,25 @@ impl ExecutionCoordinator {
 			|| plan.plan.dispatch_enabled
 			|| !valid_plan_shape(&plan)
 		{
-			return failed(
-				consumer,
-				Some(decision),
-				ExecutionFailureKind::InvalidPersistedPlan,
-			);
+			return failed(consumer, Some(decision), ExecutionFailureKind::InvalidPersistedPlan);
 		}
 
 		let attempt = match attempts.prepare(&plan, process, &command.provider_attempt).await {
 			Ok(attempt) => attempt,
 			Err(error) =>
-				return failed(
-					consumer,
-					Some(decision),
-					classify_attempt_service_error(error),
-				),
+				return failed(consumer, Some(decision), classify_attempt_service_error(error)),
 		};
 		match attempt {
-			PrepareProviderAttemptOutcome::Fresh(fresh) =>
-				ExecutionOutcome::Prepared {
-					decision,
-					plan,
-					attempt: PreparedAttemptHandoff {
-						attempt_id: fresh.attempt_id().clone(),
-						revision: fresh.revision(),
-						recorded_at_micros: fresh.prepared_at_micros(),
-						newly_prepared: true,
-					},
+			PrepareProviderAttemptOutcome::Fresh(fresh) => ExecutionOutcome::Prepared {
+				decision,
+				plan,
+				attempt: PreparedAttemptHandoff {
+					attempt_id: fresh.attempt_id().clone(),
+					revision: fresh.revision(),
+					recorded_at_micros: fresh.prepared_at_micros(),
+					newly_prepared: true,
 				},
+			},
 			PrepareProviderAttemptOutcome::Replayed(actual)
 				if actual.state == ProviderAttemptState::Prepared =>
 				ExecutionOutcome::Prepared {
@@ -476,12 +438,11 @@ impl ExecutionCoordinator {
 						blocker: RoutingBlocker::ProviderAttemptCompleted,
 					}],
 				},
-			PrepareProviderAttemptOutcome::Replayed(_) =>
-				failed(
-					consumer,
-					Some(decision),
-					ExecutionFailureKind::PersistedAuthorityIncompatible,
-				),
+			PrepareProviderAttemptOutcome::Replayed(_) => failed(
+				consumer,
+				Some(decision),
+				ExecutionFailureKind::PersistedAuthorityIncompatible,
+			),
 			PrepareProviderAttemptOutcome::Rejected { rejection, .. } => {
 				// A generation race after V16 selected one account does not prove that every
 				// otherwise eligible route is blocked only by reconciliation. A rejected
@@ -498,10 +459,7 @@ impl ExecutionCoordinator {
 	}
 }
 
-fn same_consumer(
-	execution: &ExecutionConsumer,
-	attempt: &ProviderAttemptConsumer,
-) -> bool {
+fn same_consumer(execution: &ExecutionConsumer, attempt: &ProviderAttemptConsumer) -> bool {
 	match (execution, attempt) {
 		(
 			ExecutionConsumer::ConversationTurn { conversation_id, turn_id, .. },

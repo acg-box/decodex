@@ -58,7 +58,6 @@ impl RetainedSessionConfig {
 	pub const fn expected_server_id(&self) -> &ServerId {
 		&self.expected_server_id
 	}
-
 }
 impl Debug for RetainedSessionConfig {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -193,13 +192,10 @@ impl RetainedSession {
 			.max_write_buffer_size(MAX_MESSAGE_BYTES)
 			.max_message_size(Some(MAX_MESSAGE_BYTES))
 			.max_frame_size(Some(MAX_MESSAGE_BYTES));
-		let stream = bounded(
-			&cancellation,
-			config.operation_timeout,
-			config.local_transport.connect(),
-		)
-			.await?
-			.map_err(map_local_transport_failure)?;
+		let stream =
+			bounded(&cancellation, config.operation_timeout, config.local_transport.connect())
+				.await?
+				.map_err(map_local_transport_failure)?;
 		let connect = tokio_tungstenite::client_async_with_config(
 			LOCAL_WEBSOCKET_URI,
 			stream,
@@ -597,8 +593,7 @@ impl Display for RetainedSessionFailure {
 		formatter.write_str(match self {
 			Self::LocalTransportDisabled => "retained session local transport is disabled",
 			Self::RemoteTransportDisabled => "retained session remote transport is disabled",
-			Self::LocalTransportUnsupported =>
-				"retained session local transport is unsupported",
+			Self::LocalTransportUnsupported => "retained session local transport is unsupported",
 			Self::UnsafeLocalEndpoint => "retained session local endpoint is unsafe",
 			Self::LocalPeerIdentityUnavailable =>
 				"retained session local peer identity is unavailable",
@@ -702,13 +697,10 @@ fn map_connect_error(error: tokio_tungstenite::tungstenite::Error) -> RetainedSe
 	}
 }
 
-fn map_local_transport_failure(
-	failure: LocalTransportRefusal,
-) -> RetainedSessionFailure {
+fn map_local_transport_failure(failure: LocalTransportRefusal) -> RetainedSessionFailure {
 	match failure {
 		LocalTransportRefusal::Disabled => RetainedSessionFailure::LocalTransportDisabled,
-		LocalTransportRefusal::InvalidPolicy
-		| LocalTransportRefusal::ConfigurationUnavailable =>
+		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable =>
 			RetainedSessionFailure::UnsafeLocalEndpoint,
 		LocalTransportRefusal::UnsupportedPlatform =>
 			RetainedSessionFailure::LocalTransportUnsupported,
@@ -883,9 +875,9 @@ mod tests {
 		CURRENT_VERSION, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
 		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId,
 		Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
-		LocalTransportAuthority, LocalTransportStream, PREVIOUS_MINOR_VERSION,
-		ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope, ServerId, ServerInstanceId,
-		ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
+		LocalTransportAuthority, LocalTransportStream, PREVIOUS_MINOR_VERSION, ReceiptDisposition,
+		ReconnectMode, Refusal, RefusalEnvelope, ServerId, ServerInstanceId, ServerMessage,
+		ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
 		retained_session::{
 			ApplicationConfirmation, MAX_MESSAGE_BYTES, RetainedSession, RetainedSessionConfig,
 			RetainedSessionFailure, SessionCancellation, SessionCheckpoint, SessionDelivery,
@@ -1049,20 +1041,16 @@ mod tests {
 
 	fn local_transport() -> (TempDir, LocalTransportAuthority) {
 		let temp = TempDir::new().unwrap();
-		let root =
-			DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
 		let paths = root.paths();
 
 		paths.ensure_layout().unwrap();
 
 		// SAFETY: `geteuid` has no arguments or failure return.
 		let service_owner_uid = unsafe { libc::geteuid() };
-		let authority = LocalTransportAuthority::new(
-			paths,
-			LocalTrustPolicy::SameUid,
-			Some(service_owner_uid),
-		)
-		.unwrap();
+		let authority =
+			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
+				.unwrap();
 
 		(temp, authority)
 	}

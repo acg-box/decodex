@@ -103,22 +103,14 @@ impl ClientProfile {
 	///
 	/// Remote profiles remain fail-closed while retained sessions are same-UID local only.
 	pub fn retained_session_config(&self) -> Result<RetainedSessionConfig, RetainedSessionFailure> {
-		let local_transport = self
-			.local_transport
-			.clone()
-			.ok_or(RetainedSessionFailure::RemoteTransportDisabled)?;
+		let local_transport =
+			self.local_transport.clone().ok_or(RetainedSessionFailure::RemoteTransportDisabled)?;
 
-		Ok(RetainedSessionConfig::new(
-			local_transport,
-			self.expected_server_id.clone(),
-		))
+		Ok(RetainedSessionConfig::new(local_transport, self.expected_server_id.clone()))
 	}
 
 	#[cfg(test)]
-	fn fixture(
-		local_transport: LocalTransportAuthority,
-		expected_server_id: ServerId,
-	) -> Self {
+	fn fixture(local_transport: LocalTransportAuthority, expected_server_id: ServerId) -> Self {
 		Self {
 			kind: ProfileKind::Local,
 			local_transport: Some(local_transport),
@@ -163,11 +155,8 @@ impl DoctorClient {
 	}
 
 	async fn query_inner(&self) -> Result<DoctorReport, ClientFailure> {
-		let local_transport = self
-			.profile
-			.local_transport
-			.as_ref()
-			.ok_or(ClientFailure::RemoteTransportDisabled)?;
+		let local_transport =
+			self.profile.local_transport.as_ref().ok_or(ClientFailure::RemoteTransportDisabled)?;
 		let config = WebSocketConfig::default()
 			.read_buffer_size(16 * 1_024)
 			.write_buffer_size(16 * 1_024)
@@ -180,11 +169,7 @@ impl DoctorClient {
 			.map_err(map_local_transport_failure)?;
 		let (mut socket, _) = time::timeout(
 			self.timeout,
-			tokio_tungstenite::client_async_with_config(
-				LOCAL_WEBSOCKET_URI,
-				stream,
-				Some(config),
-			),
+			tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, Some(config)),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)?
@@ -442,8 +427,7 @@ fn map_identity_error(error: ConfigError) -> ClientFailure {
 fn map_local_transport_failure(failure: LocalTransportRefusal) -> ClientFailure {
 	match failure {
 		LocalTransportRefusal::Disabled => ClientFailure::LocalTransportDisabled,
-		LocalTransportRefusal::InvalidPolicy
-		| LocalTransportRefusal::ConfigurationUnavailable =>
+		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable =>
 			ClientFailure::ConfigurationMalformed,
 		LocalTransportRefusal::UnsupportedPlatform => ClientFailure::LocalTransportUnsupported,
 		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch =>
@@ -678,20 +662,16 @@ max_entry_bytes = 0
 
 	fn local_transport() -> (TempDir, LocalTransportAuthority) {
 		let temp = TempDir::new().unwrap();
-		let root =
-			DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
 		let paths = root.paths();
 
 		paths.ensure_layout().unwrap();
 
 		// SAFETY: `geteuid` has no arguments or failure return.
 		let service_owner_uid = unsafe { libc::geteuid() };
-		let authority = LocalTransportAuthority::new(
-			paths,
-			LocalTrustPolicy::SameUid,
-			Some(service_owner_uid),
-		)
-		.unwrap();
+		let authority =
+			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
+				.unwrap();
 
 		(temp, authority)
 	}
@@ -735,10 +715,7 @@ max_entry_bytes = 0
 			drop(socket);
 			listener.cleanup().unwrap();
 		});
-		let profile = ClientProfile::fixture(
-			authority,
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 
 		(profile, task, temp)
 	}
@@ -776,8 +753,7 @@ max_entry_bytes = 0
 		];
 
 		for report in incomplete {
-			let (profile, task, _temp) =
-				fixture(initial(SERVER_ID), vec![result(report)]).await;
+			let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![result(report)]).await;
 
 			assert_eq!(
 				DoctorClient::new(profile).query().await.unwrap_err(),
@@ -877,8 +853,7 @@ max_entry_bytes = 0
 
 		let wrong_backpressure =
 			refusal("wrong-server", Refusal::Backpressure { queue_capacity: 1 });
-		let (profile, task, _temp) =
-			fixture(initial(SERVER_ID), vec![wrong_backpressure]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_backpressure]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -911,8 +886,7 @@ max_entry_bytes = 0
 			cursor: Cursor(0),
 			reconnect: ReconnectMode::Snapshot,
 		}));
-		let (profile, task, _temp) =
-			fixture(vec![wrong_welcome_version], Vec::new()).await;
+		let (profile, task, _temp) = fixture(vec![wrong_welcome_version], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -945,8 +919,7 @@ max_entry_bytes = 0
 			query_id: QueryId::new("decodex-cli-doctor").unwrap(),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task, _temp) =
-			fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -979,8 +952,7 @@ max_entry_bytes = 0
 
 		wrong_report = serde_json::from_value(encoded.into()).unwrap();
 
-		let (profile, task, _temp) =
-			fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1016,8 +988,7 @@ max_entry_bytes = 0
 			query_id: QueryId::new("decodex-cli-doctor").unwrap(),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task, _temp) =
-			fixture(initial(SERVER_ID), vec![wrong_result_version]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_result_version]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1032,8 +1003,7 @@ max_entry_bytes = 0
 			query_id: QueryId::new("wrong-query").unwrap(),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task, _temp) =
-			fixture(initial(SERVER_ID), vec![wrong_query_id]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_query_id]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1082,10 +1052,7 @@ max_entry_bytes = 0
 	async fn disconnected_malformed_oversized_and_timeout_fail_closed() {
 		let (_temp, authority) = local_transport();
 
-		let profile = ClientProfile::fixture(
-			authority,
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1120,10 +1087,7 @@ max_entry_bytes = 0
 
 			time::sleep(Duration::from_secs(1)).await;
 		});
-		let profile = ClientProfile::fixture(
-			authority,
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let client = DoctorClient { profile, timeout: Duration::from_millis(20) };
 
 		assert_eq!(client.query().await.unwrap_err(), ClientFailure::ProtocolTimeout);

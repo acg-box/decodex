@@ -2,10 +2,9 @@ use std::collections::BTreeSet;
 
 use decodex_core::{
 	AccountId, AccountState, CodexCapability, ExecutionConsumer, RoutingBlocker,
-	RoutingCapabilityState, RoutingCommandOutcome, RoutingEvidenceEffect,
-	RoutingMemberDisposition, RoutingPolicyEffect, RoutingPolicyMember, RoutingRejection,
-	RoutingSnapshot, RoutingSnapshotCapabilityFact, RoutingSnapshotMember,
-	RoutingSnapshotQuotaFact,
+	RoutingCapabilityState, RoutingCommandOutcome, RoutingEvidenceEffect, RoutingMemberDisposition,
+	RoutingPolicyEffect, RoutingPolicyMember, RoutingRejection, RoutingSnapshot,
+	RoutingSnapshotCapabilityFact, RoutingSnapshotMember, RoutingSnapshotQuotaFact,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -205,7 +204,9 @@ impl PostgresStore {
 		}
 		let parts = ExecutionConsumerParts::from(consumer);
 		if parts.source_runtime_session_revision.is_some_and(|revision| revision <= 0) {
-			return Err(StoreError::InvalidInput("source RuntimeSession revision must be positive"));
+			return Err(StoreError::InvalidInput(
+				"source RuntimeSession revision must be positive",
+			));
 		}
 		let response = self
 			.execute_exact_with_retry(
@@ -656,35 +657,30 @@ fn effect_matches_consumer(
 			source_runtime_session_id,
 			source_runtime_session_revision,
 			turn_id,
-		} => Ok(
-			optional_uuid(effect, "conversation_id")?.as_deref()
-				== Some(conversation_id.as_str())
-				&& optional_positive_i64(effect, "conversation_revision")?
-					== Some(*conversation_revision)
-				&& required_str(effect, "runtime_session_id")?
-					== source_runtime_session_id.as_str()
-				&& positive_i64(effect, "runtime_session_revision")?
-					== *source_runtime_session_revision
-				&& optional_uuid(effect, "turn_id")?.as_deref() == Some(turn_id.as_str())
-				&& optional_uuid(effect, "managed_run_id")?.is_none()
-				&& optional_positive_i64(effect, "managed_run_revision")?.is_none()
-				&& optional_uuid(effect, "managed_execution_id")?.is_none(),
-		),
+		} => Ok(optional_uuid(effect, "conversation_id")?.as_deref()
+			== Some(conversation_id.as_str())
+			&& optional_positive_i64(effect, "conversation_revision")?
+				== Some(*conversation_revision)
+			&& required_str(effect, "runtime_session_id")? == source_runtime_session_id.as_str()
+			&& positive_i64(effect, "runtime_session_revision")?
+				== *source_runtime_session_revision
+			&& optional_uuid(effect, "turn_id")?.as_deref() == Some(turn_id.as_str())
+			&& optional_uuid(effect, "managed_run_id")?.is_none()
+			&& optional_positive_i64(effect, "managed_run_revision")?.is_none()
+			&& optional_uuid(effect, "managed_execution_id")?.is_none()),
 		ExecutionConsumer::ManagedRunExecution {
 			managed_run_id,
 			managed_run_revision,
 			execution_id,
-		} => Ok(
-			optional_uuid(effect, "conversation_id")?.is_none()
-				&& optional_positive_i64(effect, "conversation_revision")?.is_none()
-				&& optional_uuid(effect, "turn_id")?.is_none()
-				&& optional_uuid(effect, "managed_run_id")?.as_deref()
-					== Some(managed_run_id.as_str())
-				&& optional_positive_i64(effect, "managed_run_revision")?
-					== Some(*managed_run_revision)
-				&& optional_uuid(effect, "managed_execution_id")?.as_deref()
-					== Some(execution_id.as_str()),
-		),
+		} => Ok(optional_uuid(effect, "conversation_id")?.is_none()
+			&& optional_positive_i64(effect, "conversation_revision")?.is_none()
+			&& optional_uuid(effect, "turn_id")?.is_none()
+			&& optional_uuid(effect, "managed_run_id")?.as_deref()
+				== Some(managed_run_id.as_str())
+			&& optional_positive_i64(effect, "managed_run_revision")?
+				== Some(*managed_run_revision)
+			&& optional_uuid(effect, "managed_execution_id")?.as_deref()
+				== Some(execution_id.as_str())),
 	}
 }
 
