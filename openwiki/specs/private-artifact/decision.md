@@ -1,6 +1,9 @@
 # Private-artifact authority retirement decision
 
-Status: XY-1403 Option 1 implementation candidate. Exact-candidate review is
+Status: XY-1403 Option 1 exact-candidate review is approved for commit
+`6f03833a33d82f3d1fff00d45b518e8701fbd582`, tree
+`50d531b59bc818bf94f358398d3e8d1b33d26eed`, in Linear comment
+`669ea305-3709-4aa3-ae59-df3e68e41cee`. PR landing and Linear closure remain
 pending.
 
 ## Approved disposition
