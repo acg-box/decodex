@@ -66,6 +66,309 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 22] = [
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
+const SEMANTIC_AUTHORITY_SCHEMA: &str = "decodex/postgres-semantic-authority/2";
+const SEMANTIC_AUTHORITY_DEFINITION_SCHEMA: &str =
+	"decodex/postgres-semantic-authority-definition/1";
+const SEMANTIC_AUTHORITY_FINGERPRINT_DOMAIN: &[u8] =
+	b"decodex/postgres-semantic-authority-fingerprint/1\0";
+const SEMANTIC_AUTHORITY_PREDICATE_COUNT: usize = 40;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[repr(usize)]
+enum SemanticAuthorityPredicate {
+	ConfiguredRuntimeSession,
+	NoForbiddenRoleAttributes,
+	NoDatabaseCreate,
+	NoSchemaCreate,
+	NoEffectiveObjectOwnership,
+	NoFunctionGrantOption,
+	NoTriggerBypass,
+	NoAlterSystemBypass,
+	SessionReplicationRoleOrigin,
+	NoMembershipAdmin,
+	ExactTableAuthority,
+	NoUnsafeTableAuthority,
+	MigrationHistoryExists,
+	MigrationHistorySelect,
+	NoUnsafeMigrationHistoryAuthority,
+	ExactSequenceContract,
+	SequenceUsage,
+	NoUnsafeSequenceAuthority,
+	ProcessGenerationTypeUsage,
+	NoPublicProcessGenerationTypeUsage,
+	NoProcessGenerationTypeGrantOption,
+	ProviderAttemptTypeUsage,
+	NoPublicProviderAttemptTypeUsage,
+	NoProviderAttemptTypeGrantOption,
+	NoExtensionControl,
+	SchemaUsage,
+	IdentityCastClosed,
+	ExactTriggerInventory,
+	NoRelationRules,
+	NoRelationPolicies,
+	ClosedFunctionDependencies,
+	ExactFunctionInventory,
+	FunctionMetadata,
+	FunctionSemantics,
+	FunctionExecuteAuthority,
+	RetentionInventory,
+	RetentionTriggerBindings,
+	RetentionFunctionMetadata,
+	RetentionFunctionSemantics,
+	NoUnexpectedRuntimeSecurityDefinerAuthority,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SemanticAuthorityFailureClass {
+	Unsafe,
+	Incompatible,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SemanticAuthorityFailurePolicy {
+	Unsafe,
+	Incompatible,
+	UnsafeIfExcessOtherwiseIncompatible,
+}
+
+impl SemanticAuthorityFailurePolicy {
+	const fn name(self) -> &'static str {
+		match self {
+			Self::Unsafe => "unsafe",
+			Self::Incompatible => "incompatible",
+			Self::UnsafeIfExcessOtherwiseIncompatible =>
+				"unsafe_if_excess_otherwise_incompatible",
+		}
+	}
+
+	const fn permits(self, class: SemanticAuthorityFailureClass) -> bool {
+		match self {
+			Self::Unsafe => matches!(class, SemanticAuthorityFailureClass::Unsafe),
+			Self::Incompatible =>
+				matches!(class, SemanticAuthorityFailureClass::Incompatible),
+			Self::UnsafeIfExcessOtherwiseIncompatible => true,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SemanticAuthorityDescriptor {
+	identity: SemanticAuthorityPredicate,
+	name: &'static str,
+	failure_policy: SemanticAuthorityFailurePolicy,
+}
+
+const fn semantic_authority_descriptor(
+	identity: SemanticAuthorityPredicate,
+	name: &'static str,
+	failure_policy: SemanticAuthorityFailurePolicy,
+) -> SemanticAuthorityDescriptor {
+	SemanticAuthorityDescriptor { identity, name, failure_policy }
+}
+
+const SEMANTIC_AUTHORITY_DEFINITION:
+	[SemanticAuthorityDescriptor; SEMANTIC_AUTHORITY_PREDICATE_COUNT] = [
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ConfiguredRuntimeSession,
+		"configured_runtime_session",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoForbiddenRoleAttributes,
+		"no_forbidden_role_attributes",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoDatabaseCreate,
+		"no_database_create",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoSchemaCreate,
+		"no_schema_create",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoEffectiveObjectOwnership,
+		"no_effective_object_ownership",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoFunctionGrantOption,
+		"no_function_grant_option",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoTriggerBypass,
+		"no_trigger_bypass",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoAlterSystemBypass,
+		"no_alter_system_bypass",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::SessionReplicationRoleOrigin,
+		"session_replication_role_origin",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoMembershipAdmin,
+		"no_membership_admin",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ExactTableAuthority,
+		"exact_table_authority",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoUnsafeTableAuthority,
+		"no_unsafe_table_authority",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::MigrationHistoryExists,
+		"migration_history_exists",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::MigrationHistorySelect,
+		"migration_history_select",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoUnsafeMigrationHistoryAuthority,
+		"no_unsafe_migration_history_authority",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ExactSequenceContract,
+		"exact_sequence_contract",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::SequenceUsage,
+		"sequence_usage",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoUnsafeSequenceAuthority,
+		"no_unsafe_sequence_authority",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ProcessGenerationTypeUsage,
+		"process_generation_type_usage",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoPublicProcessGenerationTypeUsage,
+		"no_public_process_generation_type_usage",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoProcessGenerationTypeGrantOption,
+		"no_process_generation_type_grant_option",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ProviderAttemptTypeUsage,
+		"provider_attempt_type_usage",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoPublicProviderAttemptTypeUsage,
+		"no_public_provider_attempt_type_usage",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoProviderAttemptTypeGrantOption,
+		"no_provider_attempt_type_grant_option",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoExtensionControl,
+		"no_extension_control",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::SchemaUsage,
+		"schema_usage",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::IdentityCastClosed,
+		"identity_cast_closed",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ExactTriggerInventory,
+		"exact_trigger_inventory",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoRelationRules,
+		"no_relation_rules",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoRelationPolicies,
+		"no_relation_policies",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ClosedFunctionDependencies,
+		"closed_function_dependencies",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::ExactFunctionInventory,
+		"exact_function_inventory",
+		SemanticAuthorityFailurePolicy::UnsafeIfExcessOtherwiseIncompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::FunctionMetadata,
+		"function_metadata",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::FunctionSemantics,
+		"function_semantics",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::FunctionExecuteAuthority,
+		"function_execute_authority",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::RetentionInventory,
+		"retention_inventory",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::RetentionTriggerBindings,
+		"retention_trigger_bindings",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::RetentionFunctionMetadata,
+		"retention_function_metadata",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::RetentionFunctionSemantics,
+		"retention_function_semantics",
+		SemanticAuthorityFailurePolicy::Incompatible,
+	),
+	semantic_authority_descriptor(
+		SemanticAuthorityPredicate::NoUnexpectedRuntimeSecurityDefinerAuthority,
+		"no_unexpected_runtime_security_definer_authority",
+		SemanticAuthorityFailurePolicy::Unsafe,
+	),
+];
 static FUNCTION_CONTRACTS: [FunctionContract; 182] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
@@ -1875,12 +2178,42 @@ WITH set_roles AS (
 	,('provider_attempts', false, false, false, false)
 	,('provider_attempt_positive_evidence', false, false, false, false)
 	,('provider_attempt_transitions', false, false, false, false)
+), allowed_relations(
+  schema_name, table_name, can_select, can_insert, can_update, can_delete
+) AS (
+  SELECT 'decodex'::pg_catalog.name, expected.* FROM expected
+  UNION ALL
+  SELECT
+    'public'::pg_catalog.name,
+    'refinery_schema_history'::pg_catalog.name,
+    true,
+    false,
+    false,
+    false
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
   JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
   LEFT JOIN expected ON expected.table_name = class.relname
   WHERE namespace.nspname = 'decodex' AND class.relkind IN ('r', 'p')
+), relation_like_entries AS (
+  SELECT
+    class.oid,
+    namespace.nspname,
+    class.relname,
+    allowed.table_name AS allowed_table_name,
+    allowed.can_select,
+    allowed.can_insert,
+    allowed.can_update,
+    allowed.can_delete
+  FROM pg_catalog.pg_class AS class
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
+  LEFT JOIN allowed_relations AS allowed
+    ON allowed.schema_name = namespace.nspname
+   AND allowed.table_name = class.relname
+  WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND namespace.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
+    AND class.relkind IN ('r', 'p', 'v', 'm', 'f')
 )
 SELECT
   NOT EXISTS (
@@ -1905,38 +2238,46 @@ SELECT
   EXISTS (
     SELECT 1
     FROM set_roles AS role
-    CROSS JOIN tables
+    CROSS JOIN relation_like_entries AS entry
     WHERE
-      pg_catalog.has_table_privilege(role.oid, tables.oid, 'TRUNCATE')
-      OR pg_catalog.has_table_privilege(role.oid, tables.oid, 'TRIGGER')
-      OR pg_catalog.has_table_privilege(role.oid, tables.oid, 'REFERENCES')
-      OR pg_catalog.has_table_privilege(role.oid, tables.oid, 'MAINTAIN')
-      OR pg_catalog.has_table_privilege(role.oid, tables.oid, 'SELECT WITH GRANT OPTION')
-      OR pg_catalog.has_table_privilege(role.oid, tables.oid, 'INSERT WITH GRANT OPTION')
-      OR pg_catalog.has_table_privilege(role.oid, tables.oid, 'UPDATE WITH GRANT OPTION')
-      OR pg_catalog.has_table_privilege(role.oid, tables.oid, 'DELETE WITH GRANT OPTION')
+      pg_catalog.has_table_privilege(role.oid, entry.oid, 'TRUNCATE')
+      OR pg_catalog.has_table_privilege(role.oid, entry.oid, 'TRIGGER')
+      OR pg_catalog.has_table_privilege(role.oid, entry.oid, 'REFERENCES')
+      OR pg_catalog.has_table_privilege(role.oid, entry.oid, 'MAINTAIN')
+      OR pg_catalog.has_table_privilege(role.oid, entry.oid, 'SELECT WITH GRANT OPTION')
+      OR pg_catalog.has_table_privilege(role.oid, entry.oid, 'INSERT WITH GRANT OPTION')
+      OR pg_catalog.has_table_privilege(role.oid, entry.oid, 'UPDATE WITH GRANT OPTION')
+      OR pg_catalog.has_table_privilege(role.oid, entry.oid, 'DELETE WITH GRANT OPTION')
+      OR pg_catalog.has_any_column_privilege(role.oid, entry.oid, 'REFERENCES')
       OR pg_catalog.has_any_column_privilege(
         role.oid,
-        tables.oid,
+        entry.oid,
         'SELECT WITH GRANT OPTION, INSERT WITH GRANT OPTION, UPDATE WITH GRANT OPTION, REFERENCES WITH GRANT OPTION'
       )
-      OR (tables.table_name IS NULL AND (
-        pg_catalog.has_table_privilege(role.oid, tables.oid, 'SELECT, INSERT, UPDATE, DELETE')
-        OR pg_catalog.has_any_column_privilege(role.oid, tables.oid, 'SELECT, INSERT, UPDATE, REFERENCES')
+      OR (entry.allowed_table_name IS NULL AND (
+        pg_catalog.has_table_privilege(role.oid, entry.oid, 'SELECT, INSERT, UPDATE, DELETE')
+        OR pg_catalog.has_any_column_privilege(
+          role.oid,
+          entry.oid,
+          'SELECT, INSERT, UPDATE, REFERENCES'
+        )
       ))
-      OR (NOT tables.can_select AND (
-        pg_catalog.has_table_privilege(role.oid, tables.oid, 'SELECT')
-        OR pg_catalog.has_any_column_privilege(role.oid, tables.oid, 'SELECT')
+      OR (NOT entry.can_select AND (
+        pg_catalog.has_table_privilege(role.oid, entry.oid, 'SELECT')
+        OR pg_catalog.has_any_column_privilege(role.oid, entry.oid, 'SELECT')
       ))
-      OR (NOT tables.can_insert AND (
-        pg_catalog.has_table_privilege(role.oid, tables.oid, 'INSERT')
-        OR pg_catalog.has_any_column_privilege(role.oid, tables.oid, 'INSERT')
+      OR (NOT entry.can_insert AND (
+        pg_catalog.has_table_privilege(role.oid, entry.oid, 'INSERT')
+        OR pg_catalog.has_any_column_privilege(role.oid, entry.oid, 'INSERT')
       ))
-      OR (NOT tables.can_update AND (
-        pg_catalog.has_table_privilege(role.oid, tables.oid, 'UPDATE')
-        OR pg_catalog.has_any_column_privilege(role.oid, tables.oid, 'UPDATE')
+      OR (NOT entry.can_update AND (
+        pg_catalog.has_table_privilege(role.oid, entry.oid, 'UPDATE')
+        OR pg_catalog.has_any_column_privilege(role.oid, entry.oid, 'UPDATE')
       ))
-      OR (NOT tables.can_delete AND pg_catalog.has_table_privilege(role.oid, tables.oid, 'DELETE'))
+      OR (
+        NOT entry.can_delete
+        AND pg_catalog.has_table_privilege(role.oid, entry.oid, 'DELETE')
+      )
   )
 "#;
 const MIGRATION_HISTORY_AUTHORITY_SQL: &str = r#"
@@ -2376,6 +2717,147 @@ JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
 JOIN pg_catalog.pg_language AS language ON language.oid = proc.prolang
 WHERE namespace.nspname = 'decodex'
   AND proc.oid = pg_catalog.to_regprocedure($1)
+"#;
+const RUNTIME_ROUTINE_AUTHORITY_SQL: &str = r#"
+WITH set_roles AS (
+  SELECT role.oid
+  FROM pg_catalog.pg_roles AS role
+  WHERE role.rolname = session_user
+     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+), expected_runtime_routines(oid) AS (
+  SELECT pg_catalog.to_regprocedure(identity)
+  FROM pg_catalog.unnest($1::pg_catalog.text[]) AS identity
+), required_digest AS (
+  SELECT
+    proc.*,
+    extension.oid AS extension_oid,
+    extension.extowner,
+    extension.extnamespace,
+    extension.extrelocatable,
+    extension.extversion,
+    extension.extconfig,
+    extension.extcondition,
+    namespace.nspname,
+    language.lanname
+  FROM pg_catalog.pg_proc AS proc
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
+  JOIN pg_catalog.pg_language AS language ON language.oid = proc.prolang
+  JOIN pg_catalog.pg_extension AS extension ON extension.extname = 'pgcrypto'
+  WHERE proc.oid = pg_catalog.to_regprocedure(
+    'public.digest(pg_catalog.bytea,pg_catalog.text)'
+  )
+), digest_contract AS (
+  SELECT
+    EXISTS (SELECT 1 FROM required_digest) AS exists,
+    COALESCE(pg_catalog.bool_and(
+      required_digest.extversion = '1.4'
+      AND required_digest.extrelocatable
+      AND required_digest.extconfig IS NULL
+      AND required_digest.extcondition IS NULL
+      AND required_digest.nspname = 'public'
+      AND required_digest.pronamespace = required_digest.extnamespace
+      AND required_digest.extowner = (
+        SELECT namespace.nspowner
+        FROM pg_catalog.pg_namespace AS namespace
+        WHERE namespace.nspname = 'decodex'
+      )
+      AND required_digest.proowner <> required_digest.extowner
+      AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_roles AS owner
+        WHERE owner.oid = required_digest.proowner
+          AND owner.rolsuper
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM set_roles AS role
+        WHERE role.oid = required_digest.extowner
+           OR pg_catalog.pg_has_role(role.oid, required_digest.extowner, 'USAGE')
+           OR role.oid = required_digest.proowner
+           OR pg_catalog.pg_has_role(role.oid, required_digest.proowner, 'USAGE')
+      )
+      AND required_digest.proname = 'digest'
+      AND required_digest.pronargs = 2
+      AND required_digest.proargtypes::pg_catalog.oid[] = ARRAY[
+        'pg_catalog.bytea'::pg_catalog.regtype::pg_catalog.oid,
+        'pg_catalog.text'::pg_catalog.regtype::pg_catalog.oid
+      ]
+      AND required_digest.proallargtypes IS NULL
+      AND required_digest.proargmodes IS NULL
+      AND required_digest.proargnames IS NULL
+      AND required_digest.prorettype = 'pg_catalog.bytea'::pg_catalog.regtype
+      AND required_digest.prokind = 'f'
+      AND required_digest.lanname = 'c'
+      AND required_digest.provolatile = 'i'
+      AND required_digest.proparallel = 's'
+      AND required_digest.proisstrict
+      AND NOT required_digest.proretset
+      AND NOT required_digest.prosecdef
+      AND NOT required_digest.proleakproof
+      AND required_digest.procost = 1
+      AND required_digest.prorows = 0
+      AND required_digest.proconfig IS NULL
+      AND required_digest.probin = '$libdir/pgcrypto'
+      AND required_digest.prosrc = 'pg_digest'
+      AND required_digest.prosqlbody IS NULL
+      AND required_digest.prosupport = 0
+      AND required_digest.provariadic = 0
+      AND required_digest.protrftypes IS NULL
+      AND required_digest.pronargdefaults = 0
+      AND required_digest.proargdefaults IS NULL
+      AND required_digest.proacl IS NULL
+      AND (
+        SELECT pg_catalog.count(*) = 1
+        FROM pg_catalog.pg_depend AS dependency
+        WHERE dependency.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass
+          AND dependency.objid = required_digest.oid
+          AND dependency.objsubid = 0
+          AND dependency.refclassid =
+            'pg_catalog.pg_extension'::pg_catalog.regclass
+          AND dependency.refobjid = required_digest.extension_oid
+          AND dependency.refobjsubid = 0
+          AND dependency.deptype = 'e'
+      )
+      AND (
+        SELECT pg_catalog.bool_and(
+          pg_catalog.has_function_privilege(role.oid, required_digest.oid, 'EXECUTE')
+        )
+        FROM set_roles AS role
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM set_roles AS role
+        WHERE pg_catalog.has_function_privilege(
+          role.oid,
+          required_digest.oid,
+          'EXECUTE WITH GRANT OPTION'
+        )
+      )
+    ), false) AS exact
+  FROM required_digest
+)
+SELECT
+  EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_proc AS proc
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = proc.pronamespace
+    WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+      AND namespace.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
+      -- CREATE FUNCTION permits WINDOW with SECURITY DEFINER; CREATE AGGREGATE does not.
+      AND proc.prokind IN ('f', 'p', 'w')
+      AND proc.prosecdef
+      AND proc.oid NOT IN (
+        SELECT oid FROM expected_runtime_routines WHERE oid IS NOT NULL
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM set_roles AS role
+        WHERE pg_catalog.has_function_privilege(role.oid, proc.oid, 'EXECUTE')
+      )
+  ),
+  digest_contract.exists,
+  digest_contract.exact
+FROM digest_contract
 "#;
 const IDENTITY_CAST_AUTHORITY_SQL: &str = r#"
 SELECT NOT EXISTS (
@@ -4242,26 +4724,160 @@ pub(crate) fn execution_path_contract_fixture() -> (&'static str, Vec<&'static s
 	)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SemanticAuthorityObservation {
+	predicate: SemanticAuthorityPredicate,
+	passed: bool,
+	failure_class: SemanticAuthorityFailureClass,
+}
+
 #[derive(Debug)]
 struct SemanticAuthorityEvidence {
-	predicates: Vec<(&'static str, bool)>,
-	unsafe_failure: bool,
-	incompatible_failure: bool,
+	observations: Vec<SemanticAuthorityObservation>,
+}
+
+#[derive(Debug)]
+struct FinalizedSemanticAuthority {
+	observations: Vec<SemanticAuthorityObservation>,
+	fingerprint: String,
+}
+
+fn semantic_authority_encoding_field(
+	canonical: &mut Vec<u8>,
+	value: &str,
+) -> Result<(), StoreError> {
+	let length = u32::try_from(value.len()).map_err(|_| {
+		StoreError::Incompatible("PostgreSQL semantic authority definition field is too large".into())
+	})?;
+	canonical.extend_from_slice(&length.to_be_bytes());
+	canonical.extend_from_slice(value.as_bytes());
+	Ok(())
+}
+
+fn semantic_authority_fingerprint() -> Result<String, StoreError> {
+	let mut canonical = Vec::new();
+	canonical.extend_from_slice(SEMANTIC_AUTHORITY_FINGERPRINT_DOMAIN);
+	semantic_authority_encoding_field(&mut canonical, SEMANTIC_AUTHORITY_SCHEMA)?;
+	semantic_authority_encoding_field(&mut canonical, SEMANTIC_AUTHORITY_DEFINITION_SCHEMA)?;
+	let count = u32::try_from(SEMANTIC_AUTHORITY_DEFINITION.len()).map_err(|_| {
+		StoreError::Incompatible("PostgreSQL semantic authority definition is too large".into())
+	})?;
+	canonical.extend_from_slice(&count.to_be_bytes());
+	for descriptor in SEMANTIC_AUTHORITY_DEFINITION {
+		semantic_authority_encoding_field(&mut canonical, descriptor.name)?;
+		semantic_authority_encoding_field(&mut canonical, descriptor.failure_policy.name())?;
+	}
+	let digest = Sha256::digest(canonical);
+	Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 impl SemanticAuthorityEvidence {
 	fn new() -> Self {
-		Self { predicates: Vec::new(), unsafe_failure: false, incompatible_failure: false }
+		Self { observations: Vec::with_capacity(SEMANTIC_AUTHORITY_PREDICATE_COUNT) }
 	}
 
-	fn record_unsafe(&mut self, name: &'static str, passed: bool) {
-		self.predicates.push((name, passed));
-		self.unsafe_failure |= !passed;
+	fn record_unsafe(&mut self, predicate: SemanticAuthorityPredicate, passed: bool) {
+		self.observations.push(SemanticAuthorityObservation {
+			predicate,
+			passed,
+			failure_class: SemanticAuthorityFailureClass::Unsafe,
+		});
 	}
 
-	fn record_incompatible(&mut self, name: &'static str, passed: bool) {
-		self.predicates.push((name, passed));
-		self.incompatible_failure |= !passed;
+	fn record_incompatible(&mut self, predicate: SemanticAuthorityPredicate, passed: bool) {
+		self.observations.push(SemanticAuthorityObservation {
+			predicate,
+			passed,
+			failure_class: SemanticAuthorityFailureClass::Incompatible,
+		});
+	}
+
+	fn finalize(self) -> Result<FinalizedSemanticAuthority, StoreError> {
+		if self.observations.len() != SEMANTIC_AUTHORITY_PREDICATE_COUNT {
+			return Err(StoreError::Incompatible(format!(
+				"PostgreSQL semantic authority evidence has {} observations, expected {}",
+				self.observations.len(),
+				SEMANTIC_AUTHORITY_PREDICATE_COUNT
+			)));
+		}
+		let mut seen = [false; SEMANTIC_AUTHORITY_PREDICATE_COUNT];
+		for (position, observation) in self.observations.iter().enumerate() {
+			let identity = observation.predicate as usize;
+			let Some(seen_identity) = seen.get_mut(identity) else {
+				return Err(StoreError::Incompatible(
+					"PostgreSQL semantic authority evidence contains an unknown identity".into(),
+				));
+			};
+			if *seen_identity {
+				return Err(StoreError::Incompatible(format!(
+					"PostgreSQL semantic authority evidence duplicates {}",
+					SEMANTIC_AUTHORITY_DEFINITION[identity].name
+				)));
+			}
+			*seen_identity = true;
+			let descriptor = &SEMANTIC_AUTHORITY_DEFINITION[position];
+			if descriptor.identity != observation.predicate {
+				return Err(StoreError::Incompatible(format!(
+					"PostgreSQL semantic authority evidence reorders {}",
+					descriptor.name
+				)));
+			}
+			if !descriptor.failure_policy.permits(observation.failure_class) {
+				return Err(StoreError::Incompatible(format!(
+					"PostgreSQL semantic authority evidence misclassifies {}",
+					descriptor.name
+				)));
+			}
+		}
+		if seen.iter().any(|observed| !observed) {
+			return Err(StoreError::Incompatible(
+				"PostgreSQL semantic authority evidence omits a required identity".into(),
+			));
+		}
+
+		Ok(FinalizedSemanticAuthority {
+			observations: self.observations,
+			fingerprint: semantic_authority_fingerprint()?,
+		})
+	}
+}
+
+impl FinalizedSemanticAuthority {
+	fn has_unsafe_failure(&self) -> bool {
+		self.observations.iter().any(|observation| {
+			!observation.passed
+				&& observation.failure_class == SemanticAuthorityFailureClass::Unsafe
+		})
+	}
+
+	fn has_incompatible_failure(&self) -> bool {
+		self.observations.iter().any(|observation| {
+			!observation.passed
+				&& observation.failure_class == SemanticAuthorityFailureClass::Incompatible
+		})
+	}
+
+	fn to_json(&self) -> serde_json::Value {
+		serde_json::json!({
+			"schema": SEMANTIC_AUTHORITY_SCHEMA,
+			"definition": {
+				"schema": SEMANTIC_AUTHORITY_DEFINITION_SCHEMA,
+				"predicates": SEMANTIC_AUTHORITY_DEFINITION.iter().map(|descriptor| {
+					serde_json::json!({
+						"name": descriptor.name,
+						"classification": descriptor.failure_policy.name(),
+					})
+				}).collect::<Vec<_>>(),
+			},
+			"fingerprint": self.fingerprint.as_str(),
+			"observations": self.observations.iter().map(|observation| {
+				let descriptor = &SEMANTIC_AUTHORITY_DEFINITION[observation.predicate as usize];
+				serde_json::json!({
+					"name": descriptor.name,
+					"passed": observation.passed,
+				})
+			}).collect::<Vec<_>>(),
+		})
 	}
 }
 
@@ -4269,8 +4885,8 @@ impl SemanticAuthorityEvidence {
 pub(crate) async fn semantic_authority_fixture(
 	client: &TokioClient,
 	runtime_role: &str,
-) -> Result<Vec<(&'static str, bool)>, StoreError> {
-	Ok(semantic_authority_evidence(client, runtime_role).await?.predicates)
+) -> Result<serde_json::Value, StoreError> {
+	Ok(semantic_authority_evidence(client, runtime_role).await?.to_json())
 }
 
 pub(crate) async fn verify_runtime(
@@ -4568,7 +5184,7 @@ fn function_is_security_definer(function_name: &str) -> bool {
 async fn inspect_function_contract(
 	client: &TokioClient,
 	evidence: &mut SemanticAuthorityEvidence,
-) -> Result<(), StoreError> {
+) -> Result<bool, StoreError> {
 	let actual_count: i64 = client
 		.query_one(
 			r#"SELECT count(*)
@@ -4638,15 +5254,36 @@ async fn inspect_function_contract(
 	}
 
 	if !exact_inventory && actual_count >= expected_count {
-		evidence.record_unsafe("exact_function_inventory", exact_inventory);
+		evidence.record_unsafe(
+			SemanticAuthorityPredicate::ExactFunctionInventory,
+			exact_inventory,
+		);
 	} else {
-		evidence.record_incompatible("exact_function_inventory", exact_inventory);
+		evidence.record_incompatible(
+			SemanticAuthorityPredicate::ExactFunctionInventory,
+			exact_inventory,
+		);
 	}
-	evidence.record_unsafe("function_metadata", metadata_matches);
-	evidence.record_incompatible("function_semantics", semantics_match);
-	evidence.record_incompatible("function_execute_authority", execute_authority_matches);
+	evidence.record_unsafe(SemanticAuthorityPredicate::FunctionMetadata, metadata_matches);
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::FunctionSemantics,
+		semantics_match,
+	);
 
-	Ok(())
+	let runtime_routines = RUNTIME_EXECUTE_FUNCTIONS.to_vec();
+	let runtime_entry =
+		client.query_one(RUNTIME_ROUTINE_AUTHORITY_SQL, &[&runtime_routines]).await?;
+	let unexpected_runtime_security_definer: bool = runtime_entry.get(0);
+	let required_digest_exists: bool = runtime_entry.get(1);
+	let required_digest_exact: bool = runtime_entry.get(2);
+	let execute_contract_matches =
+		execute_authority_matches && required_digest_exists && required_digest_exact;
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::FunctionExecuteAuthority,
+		execute_contract_matches,
+	);
+
+	Ok(!unexpected_runtime_security_definer)
 }
 
 async fn inspect_retention_contract(
@@ -4668,10 +5305,22 @@ async fn inspect_retention_contract(
 			.is_some_and(|expected| installed_source.as_deref() == Some(expected));
 	}
 
-	evidence.record_incompatible("retention_inventory", inventory_matches);
-	evidence.record_unsafe("retention_trigger_bindings", trigger_bindings_match);
-	evidence.record_incompatible("retention_function_metadata", function_metadata_matches);
-	evidence.record_incompatible("retention_function_semantics", function_semantics_match);
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::RetentionInventory,
+		inventory_matches,
+	);
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::RetentionTriggerBindings,
+		trigger_bindings_match,
+	);
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::RetentionFunctionMetadata,
+		function_metadata_matches,
+	);
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::RetentionFunctionSemantics,
+		function_semantics_match,
+	);
 
 	Ok(())
 }
@@ -4679,7 +5328,7 @@ async fn inspect_retention_contract(
 async fn semantic_authority_evidence(
 	client: &TokioClient,
 	runtime_role: &str,
-) -> Result<SemanticAuthorityEvidence, StoreError> {
+) -> Result<FinalizedSemanticAuthority, StoreError> {
 	let mut evidence = SemanticAuthorityEvidence::new();
 	let session_is_runtime: bool = client
 		.query_one(
@@ -4688,57 +5337,91 @@ async fn semantic_authority_evidence(
 		)
 		.await?
 		.get(0);
-	evidence.record_unsafe("configured_runtime_session", session_is_runtime);
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::ConfiguredRuntimeSession,
+		session_is_runtime,
+	);
 
 	let role = client.query_one(ROLE_AUTHORITY_SQL, &[]).await?;
-	for (name, index) in [
-		("no_forbidden_role_attributes", 0),
-		("no_database_create", 1),
-		("no_schema_create", 2),
-		("no_effective_object_ownership", 3),
-		("no_function_grant_option", 4),
-		("no_trigger_bypass", 5),
-		("no_alter_system_bypass", 6),
-		("session_replication_role_origin", 7),
-		("no_membership_admin", 8),
+	for (predicate, index) in [
+		(SemanticAuthorityPredicate::NoForbiddenRoleAttributes, 0),
+		(SemanticAuthorityPredicate::NoDatabaseCreate, 1),
+		(SemanticAuthorityPredicate::NoSchemaCreate, 2),
+		(SemanticAuthorityPredicate::NoEffectiveObjectOwnership, 3),
+		(SemanticAuthorityPredicate::NoFunctionGrantOption, 4),
+		(SemanticAuthorityPredicate::NoTriggerBypass, 5),
+		(SemanticAuthorityPredicate::NoAlterSystemBypass, 6),
+		(SemanticAuthorityPredicate::SessionReplicationRoleOrigin, 7),
+		(SemanticAuthorityPredicate::NoMembershipAdmin, 8),
 	] {
-		evidence.record_unsafe(name, !role.get::<_, bool>(index));
+		evidence.record_unsafe(predicate, !role.get::<_, bool>(index));
 	}
 
 	let table = client.query_one(TABLE_AUTHORITY_SQL, &[]).await?;
-	evidence.record_incompatible("exact_table_authority", table.get(0));
-	evidence.record_unsafe("no_unsafe_table_authority", !table.get::<_, bool>(1));
+	evidence.record_incompatible(SemanticAuthorityPredicate::ExactTableAuthority, table.get(0));
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::NoUnsafeTableAuthority,
+		!table.get::<_, bool>(1),
+	);
 
 	let history = client.query_one(MIGRATION_HISTORY_AUTHORITY_SQL, &[]).await?;
-	evidence.record_incompatible("migration_history_exists", history.get(0));
-	evidence.record_incompatible("migration_history_select", history.get(1));
-	evidence.record_unsafe("no_unsafe_migration_history_authority", !history.get::<_, bool>(2));
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::MigrationHistoryExists,
+		history.get(0),
+	);
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::MigrationHistorySelect,
+		history.get(1),
+	);
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::NoUnsafeMigrationHistoryAuthority,
+		!history.get::<_, bool>(2),
+	);
 
 	let sequence = client.query_one(SEQUENCE_AUTHORITY_SQL, &[]).await?;
-	evidence.record_incompatible("exact_sequence_contract", sequence.get(0));
-	evidence.record_incompatible("sequence_usage", sequence.get(1));
-	evidence.record_unsafe("no_unsafe_sequence_authority", !sequence.get::<_, bool>(2));
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::ExactSequenceContract,
+		sequence.get(0),
+	);
+	evidence.record_incompatible(SemanticAuthorityPredicate::SequenceUsage, sequence.get(1));
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::NoUnsafeSequenceAuthority,
+		!sequence.get::<_, bool>(2),
+	);
 
 	let generation_types = client.query_one(PROCESS_GENERATION_TYPE_AUTHORITY_SQL, &[]).await?;
-	evidence.record_incompatible("process_generation_type_usage", generation_types.get(0));
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::ProcessGenerationTypeUsage,
+		generation_types.get(0),
+	);
 	evidence.record_unsafe(
-		"no_public_process_generation_type_usage",
+		SemanticAuthorityPredicate::NoPublicProcessGenerationTypeUsage,
 		!generation_types.get::<_, bool>(1),
 	);
 	evidence.record_unsafe(
-		"no_process_generation_type_grant_option",
+		SemanticAuthorityPredicate::NoProcessGenerationTypeGrantOption,
 		!generation_types.get::<_, bool>(2),
 	);
 
 	let attempt_types = client.query_one(PROVIDER_ATTEMPT_TYPE_AUTHORITY_SQL, &[]).await?;
-	evidence.record_incompatible("provider_attempt_type_usage", attempt_types.get(0));
-	evidence
-		.record_unsafe("no_public_provider_attempt_type_usage", !attempt_types.get::<_, bool>(1));
-	evidence
-		.record_unsafe("no_provider_attempt_type_grant_option", !attempt_types.get::<_, bool>(2));
+	evidence.record_incompatible(
+		SemanticAuthorityPredicate::ProviderAttemptTypeUsage,
+		attempt_types.get(0),
+	);
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::NoPublicProviderAttemptTypeUsage,
+		!attempt_types.get::<_, bool>(1),
+	);
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::NoProviderAttemptTypeGrantOption,
+		!attempt_types.get::<_, bool>(2),
+	);
 
 	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
-	evidence.record_unsafe("no_extension_control", !extension_control);
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::NoExtensionControl,
+		!extension_control,
+	);
 
 	let schema_usage: bool = client
 		.query_one(
@@ -4749,11 +5432,14 @@ async fn semantic_authority_evidence(
 		)
 		.await?
 		.get(0);
-	evidence.record_incompatible("schema_usage", schema_usage);
+	evidence.record_incompatible(SemanticAuthorityPredicate::SchemaUsage, schema_usage);
 
 	let identity_cast_closed: bool =
 		client.query_one(IDENTITY_CAST_AUTHORITY_SQL, &[]).await?.get(0);
-	evidence.record_unsafe("identity_cast_closed", identity_cast_closed);
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::IdentityCastClosed,
+		identity_cast_closed,
+	);
 
 	let allowed_functions = FUNCTION_CONTRACTS
 		.iter()
@@ -4761,19 +5447,24 @@ async fn semantic_authority_evidence(
 		.chain(ALLOWED_EXECUTION_DEPENDENCIES)
 		.collect::<Vec<_>>();
 	let execution = client.query_one(EXECUTION_PATH_CONTRACT_SQL, &[&allowed_functions]).await?;
-	for (name, index) in [
-		("exact_trigger_inventory", 0),
-		("no_relation_rules", 1),
-		("no_relation_policies", 2),
-		("closed_function_dependencies", 3),
+	for (predicate, index) in [
+		(SemanticAuthorityPredicate::ExactTriggerInventory, 0),
+		(SemanticAuthorityPredicate::NoRelationRules, 1),
+		(SemanticAuthorityPredicate::NoRelationPolicies, 2),
+		(SemanticAuthorityPredicate::ClosedFunctionDependencies, 3),
 	] {
-		evidence.record_unsafe(name, execution.get(index));
+		evidence.record_unsafe(predicate, execution.get(index));
 	}
 
-	inspect_function_contract(client, &mut evidence).await?;
+	let no_unexpected_runtime_security_definer =
+		inspect_function_contract(client, &mut evidence).await?;
 	inspect_retention_contract(client, &mut evidence).await?;
+	evidence.record_unsafe(
+		SemanticAuthorityPredicate::NoUnexpectedRuntimeSecurityDefinerAuthority,
+		no_unexpected_runtime_security_definer,
+	);
 
-	Ok(evidence)
+	evidence.finalize()
 }
 
 async fn verify_semantic_authority(
@@ -4781,12 +5472,12 @@ async fn verify_semantic_authority(
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
 	let evidence = semantic_authority_evidence(client, runtime_role).await?;
-	if evidence.unsafe_failure {
+	if evidence.has_unsafe_failure() {
 		return Err(StoreError::UnsafeAuthority(
 			"PostgreSQL semantic runtime authority differs from the shipped contract",
 		));
 	}
-	if evidence.incompatible_failure {
+	if evidence.has_incompatible_failure() {
 		return Err(StoreError::Incompatible(
 			"PostgreSQL semantic runtime contract differs from the shipped contract".into(),
 		));
@@ -4801,9 +5492,100 @@ mod tests {
 	use crate::authority::{
 		CANONICAL_FUNCTION_MIGRATIONS, CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL,
 		FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, ROLE_AUTHORITY_SQL,
-		RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION, SAFETY_FUNCTIONS,
-		SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL, TABLE_AUTHORITY_SQL,
+		RUNTIME_ROUTINE_AUTHORITY_SQL, RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
+		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
+		SEMANTIC_AUTHORITY_DEFINITION, SEMANTIC_AUTHORITY_PREDICATE_COUNT,
+		SemanticAuthorityEvidence, SemanticAuthorityFailureClass,
+		SemanticAuthorityFailurePolicy, TABLE_AUTHORITY_SQL,
 	};
+
+	fn complete_semantic_authority_evidence() -> SemanticAuthorityEvidence {
+		let mut evidence = SemanticAuthorityEvidence::new();
+		for descriptor in SEMANTIC_AUTHORITY_DEFINITION {
+			match descriptor.failure_policy {
+				SemanticAuthorityFailurePolicy::Unsafe =>
+					evidence.record_unsafe(descriptor.identity, true),
+				SemanticAuthorityFailurePolicy::Incompatible
+				| SemanticAuthorityFailurePolicy::UnsafeIfExcessOtherwiseIncompatible =>
+					evidence.record_incompatible(descriptor.identity, true),
+			}
+		}
+		evidence
+	}
+
+	#[test]
+	fn semantic_authority_finalization_is_closed_typed_and_ordered() {
+		for (index, descriptor) in SEMANTIC_AUTHORITY_DEFINITION.iter().enumerate() {
+			assert_eq!(descriptor.identity as usize, index);
+		}
+		let finalized =
+			complete_semantic_authority_evidence().finalize().expect("closed evidence finalizes");
+		assert!(!finalized.has_unsafe_failure());
+		assert!(!finalized.has_incompatible_failure());
+		let artifact = finalized.to_json();
+		assert_eq!(
+			artifact["definition"]["predicates"].as_array().unwrap().len(),
+			SEMANTIC_AUTHORITY_PREDICATE_COUNT
+		);
+		assert_eq!(
+			artifact["observations"].as_array().unwrap().len(),
+			SEMANTIC_AUTHORITY_PREDICATE_COUNT
+		);
+		assert_eq!(artifact["fingerprint"].as_str().unwrap().len(), 64);
+	}
+
+	#[test]
+	fn semantic_authority_finalization_rejects_missing_duplicate_and_reordered_identities() {
+		let mut missing = complete_semantic_authority_evidence();
+		missing.observations.pop();
+		assert!(missing.finalize().is_err());
+
+		let mut duplicate = complete_semantic_authority_evidence();
+		let first = duplicate.observations[0].predicate;
+		duplicate.observations[1].predicate = first;
+		assert!(duplicate.finalize().is_err());
+
+		let mut reordered = complete_semantic_authority_evidence();
+		reordered.observations.swap(0, 1);
+		assert!(reordered.finalize().is_err());
+	}
+
+	#[test]
+	fn semantic_authority_finalization_rejects_invalid_failure_classification() {
+		let mut evidence = complete_semantic_authority_evidence();
+		evidence.observations[0].failure_class = SemanticAuthorityFailureClass::Incompatible;
+		assert!(evidence.finalize().is_err());
+	}
+
+	#[test]
+	fn semantic_authority_closes_relation_and_security_definer_entry_surfaces() {
+		for required in [
+			"namespace.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')",
+			"namespace.nspname !~ '^pg_(toast_)?temp_[0-9]+$'",
+			"class.relkind IN ('r', 'p', 'v', 'm', 'f')",
+			"'refinery_schema_history'::pg_catalog.name",
+			"pg_catalog.has_any_column_privilege",
+			"entry.allowed_table_name IS NULL",
+		] {
+			assert!(TABLE_AUTHORITY_SQL.contains(required), "{required}");
+		}
+		for required in [
+			"pg_catalog.pg_has_role(session_user, role.oid, 'SET')",
+			"proc.prokind IN ('f', 'p', 'w')",
+			"proc.prosecdef",
+			"expected_runtime_routines",
+			"extension.extname = 'pgcrypto'",
+			"required_digest.extversion = '1.4'",
+			"required_digest.proowner <> required_digest.extowner",
+			"owner.rolsuper",
+			"required_digest.proacl IS NULL",
+			"dependency.deptype = 'e'",
+			"'EXECUTE WITH GRANT OPTION'",
+		] {
+			assert!(RUNTIME_ROUTINE_AUTHORITY_SQL.contains(required), "{required}");
+		}
+		assert_eq!(SEMANTIC_AUTHORITY_DEFINITION.len(), SEMANTIC_AUTHORITY_PREDICATE_COUNT);
+	}
 
 	#[test]
 	fn table_authority_uses_exact_relation_set_equality_without_cardinality_literals() {

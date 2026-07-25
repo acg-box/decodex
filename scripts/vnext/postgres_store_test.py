@@ -132,8 +132,8 @@ RUNTIME_SESSION_RESTORE_SOURCE_DATABASE = "decodex_xy1337_restore_source"
 RUNTIME_SESSION_RESTORE_DATABASE = "decodex_xy1337_restore"
 WORK_ITEM_DATABASE = "decodex_xy1343_work_items"
 WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
-MANAGED_RUN_DATABASE = "decodex_xy1416_managed_runs"
-MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1416_managed_runs_restore"
+MANAGED_RUN_DATABASE = "decodex_xy1417_managed_run_v26"
+MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1417_managed_run_v26_restore"
 MANAGED_REPOSITORY_DATABASE = "decodex_xy1364_managed_repositories"
 RETAINED_TITLE_PREPARATION_DATABASE = "decodex_xy1368_preparation"
 MIGRATION_ROLE = "decodex_migration"
@@ -415,43 +415,23 @@ MANIFEST_DIAGNOSTIC_EVIDENCE_LIMIT = 8
 MANIFEST_DIAGNOSTIC_SCHEMA = "decodex/postgres-manifest-component-diagnostic/1"
 MANIFEST_QUERY_ERROR_SCHEMA = "decodex/postgres-manifest-query-error/1"
 RESTORE_PARITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-restore-parity-diagnostic/1"
-SEMANTIC_AUTHORITY_SCHEMA = "decodex/postgres-semantic-authority/1"
-SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-semantic-authority-diagnostic/1"
-SEMANTIC_AUTHORITY_PREDICATES = (
-	"configured_runtime_session",
-	"no_forbidden_role_attributes",
-	"no_database_create",
-	"no_schema_create",
-	"no_effective_object_ownership",
-	"no_function_grant_option",
-	"no_trigger_bypass",
-	"no_alter_system_bypass",
-	"session_replication_role_origin",
-	"no_membership_admin",
-	"exact_table_authority",
-	"no_unsafe_table_authority",
-	"migration_history_exists",
-	"migration_history_select",
-	"no_unsafe_migration_history_authority",
-	"exact_sequence_contract",
-	"sequence_usage",
-	"no_unsafe_sequence_authority",
-	"no_extension_control",
-	"schema_usage",
-	"identity_cast_closed",
-	"exact_trigger_inventory",
-	"no_relation_rules",
-	"no_relation_policies",
-	"closed_function_dependencies",
-	"exact_function_inventory",
-	"function_metadata",
-	"function_semantics",
-	"function_execute_authority",
-	"retention_inventory",
-	"retention_trigger_bindings",
-	"retention_function_metadata",
-	"retention_function_semantics",
+SEMANTIC_AUTHORITY_SCHEMA = "decodex/postgres-semantic-authority/2"
+SEMANTIC_AUTHORITY_DEFINITION_SCHEMA = (
+	"decodex/postgres-semantic-authority-definition/1"
 )
+SEMANTIC_AUTHORITY_FINGERPRINT_DOMAIN = (
+	b"decodex/postgres-semantic-authority-fingerprint/1\0"
+)
+SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT = (
+	"e78835be102ead879faa4f54569bb8c747ef03d014f899f68f75feaaf5f1a77f"
+)
+SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-semantic-authority-diagnostic/1"
+SEMANTIC_AUTHORITY_MAX_PREDICATES = 128
+SEMANTIC_AUTHORITY_FAILURE_POLICIES = frozenset((
+	"unsafe",
+	"incompatible",
+	"unsafe_if_excess_otherwise_incompatible",
+))
 CONSTRAINT_CONTRACT_FIELDS = (
 	"constraint_type",
 	"definition",
@@ -894,6 +874,159 @@ def register_authority_scenarios(add: object) -> None:
 			"tgrelid='decodex.outbox'::regclass AND tgname='outbox_terminal_retention' "
 			"AND tgenabled='O')"
 		),
+	)
+	decodex_inventory = (
+		"SELECT pg_catalog.jsonb_build_object("
+		"'relations',COALESCE((SELECT pg_catalog.jsonb_agg("
+		"pg_catalog.jsonb_build_array(class.relkind,namespace.nspname,class.relname,"
+		"class.relowner::pg_catalog.regrole::pg_catalog.text,class.relacl) "
+		"ORDER BY class.relkind,namespace.nspname,class.relname) "
+		"FROM pg_catalog.pg_class class JOIN pg_catalog.pg_namespace namespace "
+		"ON namespace.oid=class.relnamespace WHERE namespace.nspname='decodex'),"
+		"'[]'::pg_catalog.jsonb),"
+		"'column_acls',COALESCE((SELECT pg_catalog.jsonb_agg("
+		"pg_catalog.jsonb_build_array(class.relname,attribute.attname,"
+		"attribute.attacl) ORDER BY class.relname,attribute.attnum) "
+		"FROM pg_catalog.pg_attribute attribute JOIN pg_catalog.pg_class class "
+		"ON class.oid=attribute.attrelid JOIN pg_catalog.pg_namespace namespace "
+		"ON namespace.oid=class.relnamespace WHERE namespace.nspname='decodex' "
+		"AND attribute.attnum>0 AND NOT attribute.attisdropped "
+		"AND attribute.attacl IS NOT NULL),'[]'::pg_catalog.jsonb),"
+		"'routines',COALESCE((SELECT pg_catalog.jsonb_agg("
+		"pg_catalog.jsonb_build_array(proc.prokind,namespace.nspname,proc.proname,"
+		"pg_catalog.pg_get_function_identity_arguments(proc.oid),"
+		"proc.proowner::pg_catalog.regrole::pg_catalog.text,proc.prosecdef,"
+		"proc.proconfig,proc.proacl,proc.prosrc) "
+		"ORDER BY proc.prokind,namespace.nspname,proc.proname,"
+		"pg_catalog.pg_get_function_identity_arguments(proc.oid)) "
+		"FROM pg_catalog.pg_proc proc JOIN pg_catalog.pg_namespace namespace "
+		"ON namespace.oid=proc.pronamespace WHERE namespace.nspname='decodex'),"
+		"'[]'::pg_catalog.jsonb),"
+		"'triggers',COALESCE((SELECT pg_catalog.jsonb_agg("
+		"pg_catalog.jsonb_build_array(class.relname,trigger.tgname,"
+		"trigger.tgfoid::pg_catalog.regprocedure::pg_catalog.text,"
+		"trigger.tgenabled,trigger.tgtype) "
+		"ORDER BY class.relname,trigger.tgname) FROM pg_catalog.pg_trigger trigger "
+		"JOIN pg_catalog.pg_class class ON class.oid=trigger.tgrelid "
+		"JOIN pg_catalog.pg_namespace namespace ON namespace.oid=class.relnamespace "
+		"WHERE namespace.nspname='decodex' AND NOT trigger.tgisinternal),"
+		"'[]'::pg_catalog.jsonb),"
+		"'rules',COALESCE((SELECT pg_catalog.jsonb_agg("
+		"pg_catalog.jsonb_build_array(class.relname,rewrite.rulename,"
+		"rewrite.ev_enabled,rewrite.is_instead,"
+		"rewrite.ev_action::pg_catalog.text,rewrite.ev_qual::pg_catalog.text) "
+		"ORDER BY class.relname,rewrite.rulename) FROM pg_catalog.pg_rewrite rewrite "
+		"JOIN pg_catalog.pg_class class ON class.oid=rewrite.ev_class "
+		"JOIN pg_catalog.pg_namespace namespace ON namespace.oid=class.relnamespace "
+		"WHERE namespace.nspname='decodex' AND rewrite.rulename<>'_RETURN'),"
+		"'[]'::pg_catalog.jsonb),"
+		"'policies',COALESCE((SELECT pg_catalog.jsonb_agg("
+		"pg_catalog.jsonb_build_array(class.relname,policy.polname,"
+		"policy.polcmd,policy.polpermissive,policy.polroles,"
+		"policy.polqual::pg_catalog.text,policy.polwithcheck::pg_catalog.text) "
+		"ORDER BY class.relname,policy.polname) FROM pg_catalog.pg_policy policy "
+		"JOIN pg_catalog.pg_class class ON class.oid=policy.polrelid "
+		"JOIN pg_catalog.pg_namespace namespace ON namespace.oid=class.relnamespace "
+		"WHERE namespace.nspname='decodex'),'[]'::pg_catalog.jsonb),"
+		"'schema',(SELECT pg_catalog.jsonb_build_array("
+		"namespace.nspowner::pg_catalog.regrole::pg_catalog.text,namespace.nspacl) "
+		"FROM pg_catalog.pg_namespace namespace "
+		"WHERE namespace.nspname='decodex'))::pg_catalog.text"
+	)
+	add(
+		"public-managed-run-security-definer", unsafe_store, unsafe, RUNTIME_ROLE,
+		mutation_sql=(
+			f"SET ROLE {MIGRATION_ROLE}; "
+			"SELECT decodex.bootstrap_role_profiles_exact("
+			"'xy1417.v1','xy1417-role-profiles',"
+			"'gpt-5.6-advisor','medium','priority','Bounded XY-1417 advisor fixture.',"
+			"'XY-1417 fixture',"
+			"'gpt-5.6-lead','medium','priority','Bounded XY-1417 lead fixture.',"
+			"'XY-1417 fixture',"
+			"'gpt-5.6-task','medium','priority','Bounded XY-1417 task fixture.',"
+			"'XY-1417 fixture',"
+			"'gpt-5.6-reviewer','medium','priority','Bounded XY-1417 reviewer fixture.',"
+			"'XY-1417 fixture'); "
+			"SELECT * FROM decodex.create_project("
+			"'e1000000-0000-4000-8000-000000001417','xy1417/authority-fixture',"
+			"'/tmp/xy1417-authority-fixture','/tmp/xy1417-authority-fixture','{}',"
+			"'e2000000-0000-4000-8000-000000001417'); "
+			"INSERT INTO decodex.conversations(conversation_id,title) VALUES "
+			"('e3000000-0000-4000-8000-000000001417','XY-1417 authority fixture'); "
+			"SELECT decodex.create_runtime_session_exact("
+			"'xy1417.v1','xy1417-runtime-session',"
+			"'e6000000-0000-4000-8000-000000001417',"
+			"'e3000000-0000-4000-8000-000000001417','task',"
+			"'e4000000-0000-4000-8000-000000001417',"
+			"'e5000000-0000-4000-8000-000000001417',"
+			"'XY-1417 runtime account','available',1,"
+			"'e7000000-0000-4000-8000-000000001417','active'); "
+			"SELECT decodex.create_work_item_exact("
+			"'xy1417.v1','xy1417-work-item',"
+			"'e8000000-0000-4000-8000-000000001417',"
+			"'e1000000-0000-4000-8000-000000001417',"
+			"'e2000000-0000-4000-8000-000000001417',NULL,"
+			"ARRAY[]::pg_catalog.uuid[],ARRAY[]::pg_catalog.uuid[],"
+			"ARRAY[]::pg_catalog.uuid[],'XY-1417 authority fixture',"
+			"'Bounded ManagedRun authority fixture.','medium',"
+			"ARRAY['Authority remains closed.'],ARRAY['Verifier rejects the path.'],"
+			"'e2000000-0000-4000-8000-000000001417',"
+			"'e9000000-0000-4000-8000-000000001417','XY-1417 authority fixture'); "
+			"WITH operation_time AS MATERIALIZED ("
+			"SELECT pg_catalog.clock_timestamp() AS value) "
+			"INSERT INTO decodex.managed_runs("
+			"managed_run_id,project_id,work_item_id,runtime_session_id,"
+			"runtime_session_revision,lifecycle,phase,wait_reason,revision,"
+			"diverged,blocked,created_at,updated_at) SELECT "
+			"'ea000000-0000-4000-8000-000000001417',"
+			"'e1000000-0000-4000-8000-000000001417',"
+			"'e8000000-0000-4000-8000-000000001417',"
+			"'e6000000-0000-4000-8000-000000001417',1,"
+			"'waiting','execute','usage',1,false,true,value,value FROM operation_time; "
+			"RESET ROLE; "
+			"CREATE FUNCTION public.xy1417_managed_run_escape() RETURNS bigint "
+			"LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex "
+			"AS $xy1417$ DECLARE next_revision bigint; BEGIN "
+			"UPDATE decodex.managed_runs SET revision=revision+1,diverged=true,"
+			"updated_at=pg_catalog.clock_timestamp() WHERE managed_run_id="
+			"'ea000000-0000-4000-8000-000000001417' RETURNING revision "
+			"INTO next_revision; IF next_revision IS NULL THEN RAISE EXCEPTION "
+			"'managed run fixture is absent'; END IF; RETURN next_revision; END $xy1417$; "
+			f"ALTER FUNCTION public.xy1417_managed_run_escape() OWNER TO {MIGRATION_ROLE}; "
+			"GRANT EXECUTE ON FUNCTION public.xy1417_managed_run_escape() TO PUBLIC"
+		),
+		precondition_sql=(
+			"SELECT pg_catalog.to_regprocedure("
+			"'public.xy1417_managed_run_escape()') IS NULL AND NOT EXISTS ("
+			"SELECT 1 FROM decodex.managed_runs WHERE managed_run_id="
+			"'ea000000-0000-4000-8000-000000001417') AND NOT EXISTS ("
+			"SELECT 1 FROM decodex.role_profiles)"
+		),
+		post_runtime_rejected_sql=(
+			"UPDATE decodex.managed_runs SET revision=revision+1,diverged=true,"
+			"updated_at=pg_catalog.clock_timestamp() WHERE managed_run_id="
+			"'ea000000-0000-4000-8000-000000001417'"
+		),
+		post_runtime_rejected_sqlstate="42501",
+		runtime_effect_sql="SELECT public.xy1417_managed_run_escape()",
+		postcondition_sql=(
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_proc proc "
+			"JOIN pg_catalog.pg_namespace namespace ON namespace.oid=proc.pronamespace "
+			"WHERE proc.oid='public.xy1417_managed_run_escape()'::pg_catalog.regprocedure "
+			"AND namespace.nspname='public' AND proc.proowner="
+			f"'{MIGRATION_ROLE}'::pg_catalog.regrole AND proc.prosecdef "
+			"AND proc.proconfig=ARRAY['search_path=pg_catalog, decodex'] "
+			"AND EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE("
+			"proc.proacl,pg_catalog.acldefault('f',proc.proowner))) privilege "
+			"WHERE privilege.grantee=0 AND privilege.privilege_type='EXECUTE') "
+			"AND pg_catalog.has_function_privilege("
+			"'$RUNTIME_ROLE',proc.oid,'EXECUTE')) AND EXISTS (SELECT 1 "
+			"FROM decodex.managed_runs WHERE managed_run_id="
+			"'ea000000-0000-4000-8000-000000001417' AND lifecycle='waiting' "
+			"AND phase='execute' AND wait_reason='usage' AND revision=2 "
+			"AND diverged AND blocked)"
+		),
+		invariant_sql=decodex_inventory,
 	)
 	add(
 		"indirect-trigger-owner-effect", unsafe_store, unsafe, RUNTIME_ROLE,
@@ -2083,7 +2216,8 @@ def run_managed_run_test(test: str, env: dict[str, str]) -> str:
 	return run(
 		[
 			"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
-			"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
+			"test-support", "--test", "postgres_store", "--run-ignored", "all",
+			"--no-tests=fail", "--",
 			f"managed_runs::{test}", "--exact",
 		],
 		env,
@@ -2398,59 +2532,154 @@ def validate_semantic_manifest(
 	return document
 
 
-def validate_semantic_authority_evidence(evidence: object) -> list[dict[str, object]]:
+def _append_semantic_authority_field(canonical: bytearray, value: str) -> None:
+	encoded = value.encode("utf-8")
+	if len(encoded) > 0xffffffff:
+		raise TestFailure("semantic authority definition field is too large")
+	canonical.extend(len(encoded).to_bytes(4, "big"))
+	canonical.extend(encoded)
+
+
+def semantic_authority_definition_fingerprint(
+	definition: dict[str, object],
+) -> str:
+	predicates = definition["predicates"]
+	assert isinstance(predicates, list)
+	canonical = bytearray(SEMANTIC_AUTHORITY_FINGERPRINT_DOMAIN)
+	_append_semantic_authority_field(canonical, SEMANTIC_AUTHORITY_SCHEMA)
+	_append_semantic_authority_field(
+		canonical, SEMANTIC_AUTHORITY_DEFINITION_SCHEMA
+	)
+	canonical.extend(len(predicates).to_bytes(4, "big"))
+	for predicate in predicates:
+		assert isinstance(predicate, dict)
+		name = predicate["name"]
+		classification = predicate["classification"]
+		assert isinstance(name, str) and isinstance(classification, str)
+		_append_semantic_authority_field(canonical, name)
+		_append_semantic_authority_field(canonical, classification)
+	return hashlib.sha256(canonical).hexdigest()
+
+
+def _parse_semantic_authority_evidence(
+	evidence: object,
+) -> tuple[dict[str, object], list[dict[str, object]]]:
 	if (
 		not isinstance(evidence, dict)
-		or set(evidence) != {"predicates", "schema"}
+		or set(evidence) != {
+			"definition", "fingerprint", "observations", "schema"
+		}
 		or evidence["schema"] != SEMANTIC_AUTHORITY_SCHEMA
-		or not isinstance(evidence["predicates"], list)
-		or len(evidence["predicates"]) != len(SEMANTIC_AUTHORITY_PREDICATES)
+		or not isinstance(evidence["definition"], dict)
+		or not isinstance(evidence["fingerprint"], str)
+		or re.fullmatch(r"[0-9a-f]{64}", evidence["fingerprint"]) is None
+		or not isinstance(evidence["observations"], list)
 	):
 		raise TestFailure("invalid semantic authority evidence")
-	predicates = evidence["predicates"]
+	definition = evidence["definition"]
+	assert isinstance(definition, dict)
+	if (
+		set(definition) != {"predicates", "schema"}
+		or definition["schema"] != SEMANTIC_AUTHORITY_DEFINITION_SCHEMA
+		or not isinstance(definition["predicates"], list)
+		or not 0 < len(definition["predicates"]) <= SEMANTIC_AUTHORITY_MAX_PREDICATES
+	):
+		raise TestFailure("invalid semantic authority definition")
+	predicates = definition["predicates"]
 	assert isinstance(predicates, list)
 	names: set[str] = set()
 	for predicate in predicates:
 		if (
 			not isinstance(predicate, dict)
-			or set(predicate) != {"name", "passed"}
+			or set(predicate) != {"classification", "name"}
 			or not isinstance(predicate["name"], str)
 			or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", predicate["name"]) is None
-			or not isinstance(predicate["passed"], bool)
+			or not isinstance(predicate["classification"], str)
+			or predicate["classification"] not in SEMANTIC_AUTHORITY_FAILURE_POLICIES
 			or predicate["name"] in names
 		):
-			raise TestFailure("invalid semantic authority predicate")
+			raise TestFailure("invalid semantic authority definition predicate")
 		names.add(predicate["name"])
-	if tuple(predicate["name"] for predicate in predicates) != SEMANTIC_AUTHORITY_PREDICATES:
-		raise TestFailure("semantic authority predicate contract differs")
-	return predicates
+	recomputed_fingerprint = semantic_authority_definition_fingerprint(definition)
+	if evidence["fingerprint"] != recomputed_fingerprint:
+		raise TestFailure("semantic authority emitted fingerprint differs")
+	if recomputed_fingerprint != SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT:
+		raise TestFailure("semantic authority definition is not supported")
+
+	observations = evidence["observations"]
+	assert isinstance(observations, list)
+	if len(observations) != len(predicates):
+		raise TestFailure("semantic authority observation set differs")
+	observation_names: set[str] = set()
+	for index, observation in enumerate(observations):
+		if (
+			not isinstance(observation, dict)
+			or set(observation) != {"name", "passed"}
+			or not isinstance(observation["name"], str)
+			or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", observation["name"]) is None
+			or type(observation["passed"]) is not bool
+			or observation["name"] in observation_names
+		):
+			raise TestFailure("invalid semantic authority observation")
+		observation_names.add(observation["name"])
+		if observation["name"] != predicates[index]["name"]:
+			raise TestFailure("semantic authority observation order differs")
+	return definition, observations
+
+
+def validate_semantic_authority_evidence(evidence: object) -> list[dict[str, object]]:
+	_, observations = _parse_semantic_authority_evidence(evidence)
+	if any(observation["passed"] is False for observation in observations):
+		raise TestFailure("semantic authority contains a failed observation")
+	return observations
 
 
 def require_capture_semantic_authority(
 	document: dict[str, object], checkpoint: str, *, secret_markers: tuple[str, ...]
 ) -> dict[str, object]:
-	predicates = validate_semantic_authority_evidence(document.get("semantic_authority"))
+	evidence = document.get("semantic_authority")
+	definition, observations = _parse_semantic_authority_evidence(evidence)
 	failed = sorted(
-		predicate["name"] for predicate in predicates if predicate["passed"] is False
+		observation["name"]
+		for observation in observations
+		if observation["passed"] is False
 	)
 	if failed:
 		diagnostic = {
 			"checkpoint": checkpoint,
 			"failed_predicates": failed,
-			"predicate_count": len(predicates),
+			"predicate_count": len(observations),
 			"schema": SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
 		}
 		serialized = json.dumps(diagnostic, sort_keys=True, separators=(",", ":"))
 		if any(marker and marker in serialized for marker in secret_markers):
 			raise TestFailure("semantic authority diagnostic redaction failed")
 		raise TestFailure("authority candidate semantic diagnostic: " + serialized)
-	passed = sorted(predicate["name"] for predicate in predicates)
+	assert isinstance(evidence, dict)
+	evidence_sha256 = hashlib.sha256(json.dumps(
+		evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+	).encode("utf-8")).hexdigest()
 	return {
 		"all_passed": True,
-		"passed_predicates": passed,
-		"predicate_count": len(passed),
+		"definition_schema": definition["schema"],
+		"evidence_sha256": evidence_sha256,
+		"fingerprint": evidence["fingerprint"],
+		"observation_count": len(observations),
 		"schema": SEMANTIC_AUTHORITY_SCHEMA,
 	}
+
+
+def require_semantic_authority_checkpoint_parity(
+	checkpoints: dict[str, dict[str, object]],
+) -> None:
+	if set(checkpoints) != {"source", "restored_once", "restored_twice"}:
+		raise TestFailure("semantic authority checkpoint set differs")
+	summaries = [
+		checkpoints[checkpoint]
+		for checkpoint in ("source", "restored_once", "restored_twice")
+	]
+	if summaries[0] != summaries[1] or summaries[0] != summaries[2]:
+		raise TestFailure("semantic authority evidence differs across checkpoints")
 
 
 def load_semantic_manifest(path: Path) -> dict[str, object]:
@@ -3693,40 +3922,36 @@ def run_work_item_focused_contracts(
 	return "\n".join((migration_output, command_output, restore_output))
 
 
-def run_managed_run_focused_contracts(
+def run_managed_run_v26_suite(
 	socket_dir: Path, port: int, work: Path, env: dict[str, str]
 ) -> str:
-	static_output = run(
-		[
-			"python3", "-m", "unittest",
-			"tests/scripts/test_managed_run_authority.py",
-		],
-		env,
+	stage_env = env.copy()
+	create_database(MANAGED_RUN_DATABASE, stage_env)
+	set_contract_urls(
+		stage_env, socket_dir, port, MANAGED_RUN_DATABASE, RUNTIME_ROLE
 	)
-	create_database(MANAGED_RUN_DATABASE, env)
-	set_contract_urls(env, socket_dir, port, MANAGED_RUN_DATABASE, RUNTIME_ROLE)
-	migration_output = run_migration(env)
-	provision_runtime(MANAGED_RUN_DATABASE, RUNTIME_ROLE, env)
+	migration_output = run_migration(stage_env)
+	provision_runtime(MANAGED_RUN_DATABASE, RUNTIME_ROLE, stage_env)
 	paths = {
-		"baseline": work / "xy1416-baseline-manifest.json",
-		"post_attempt": work / "xy1416-post-attempt-manifest.json",
-		"restored": work / "xy1416-restored-manifest.json",
+		"baseline": work / "xy1417-managed-run-v26-baseline-manifest.json",
+		"post_attempt": work / "xy1417-managed-run-v26-post-attempt-manifest.json",
+		"restored": work / "xy1417-managed-run-v26-restored-manifest.json",
 	}
-	checkpoints: dict[str, dict[str, str] | None] = dict.fromkeys(paths)
+	checkpoints: dict[str, dict[str, object] | None] = dict.fromkeys(paths)
 	stage_failures: list[str] = []
 	command_output = ""
 	restore_output = ""
 	source_behavior_error: Exception | None = None
 
 	try:
-		dump_schema_manifest(paths["baseline"], MANAGED_RUN_DATABASE, env)
+		dump_schema_manifest(paths["baseline"], MANAGED_RUN_DATABASE, stage_env)
 		checkpoints["baseline"] = load_semantic_manifest(paths["baseline"])
 	except Exception as error:
 		stage_failures.append(f"baseline manifest capture failed:\n{error}")
 	if checkpoints["baseline"] is not None:
 		try:
 			command_output = run_managed_run_test(
-				"postgres_managed_run_v26_contract", env
+				"postgres_managed_run_v26_contract", stage_env
 			)
 		except Exception as error:
 			source_behavior_error = error
@@ -3735,22 +3960,25 @@ def run_managed_run_focused_contracts(
 			"source behavior was not run because the baseline manifest is unavailable"
 		)
 	try:
-		dump_schema_manifest(paths["post_attempt"], MANAGED_RUN_DATABASE, env)
+		dump_schema_manifest(paths["post_attempt"], MANAGED_RUN_DATABASE, stage_env)
 		checkpoints["post_attempt"] = load_semantic_manifest(paths["post_attempt"])
 	except Exception as error:
 		stage_failures.append(f"post-attempt manifest capture failed:\n{error}")
 
-	dump_path = work / "xy1416-managed-runs.dump"
+	dump_path = work / "xy1417-managed-run-v26.dump"
 	dump_succeeded = False
 	restore_database_created = False
 	try:
-		run(["pg_dump", "-Fc", "-f", str(dump_path), MANAGED_RUN_DATABASE], env)
+		run(
+			["pg_dump", "-Fc", "-f", str(dump_path), MANAGED_RUN_DATABASE],
+			stage_env,
+		)
 		dump_succeeded = True
 	except Exception as error:
 		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
 	if dump_succeeded:
 		try:
-			create_database(MANAGED_RUN_RESTORE_DATABASE, env)
+			create_database(MANAGED_RUN_RESTORE_DATABASE, stage_env)
 			restore_database_created = True
 		except Exception as error:
 			stage_failures.append(f"restore database creation failed:\n{error}")
@@ -3759,20 +3987,24 @@ def run_managed_run_focused_contracts(
 			run(
 				["pg_restore", "--exit-on-error", "-d", MANAGED_RUN_RESTORE_DATABASE,
 				 str(dump_path)],
-				env,
+				stage_env,
 			)
 		except Exception as error:
 			stage_failures.append(f"post-attempt pg_restore failed:\n{error}")
-		set_contract_urls(env, socket_dir, port, MANAGED_RUN_RESTORE_DATABASE, RUNTIME_ROLE)
+		set_contract_urls(
+			stage_env, socket_dir, port, MANAGED_RUN_RESTORE_DATABASE, RUNTIME_ROLE
+		)
 		try:
-			dump_schema_manifest(paths["restored"], MANAGED_RUN_RESTORE_DATABASE, env)
+			dump_schema_manifest(
+				paths["restored"], MANAGED_RUN_RESTORE_DATABASE, stage_env
+			)
 			checkpoints["restored"] = load_semantic_manifest(paths["restored"])
 		except Exception as error:
 			stage_failures.append(f"restored manifest capture failed:\n{error}")
 
 	diagnostics, manifest_failures = manifest_diagnostics(checkpoints)
 	print(
-		"XY-1416 V26 semantic manifest diagnostics:\n"
+		"XY-1417 ManagedRun V26 semantic manifest diagnostics:\n"
 		+ json.dumps(diagnostics, indent=2, sort_keys=True),
 		file=sys.stderr,
 		flush=True,
@@ -3784,16 +4016,16 @@ def run_managed_run_focused_contracts(
 	if not failures:
 		try:
 			restore_output = run_managed_run_test(
-				"postgres_managed_run_v26_restore", env
+				"postgres_managed_run_v26_restore", stage_env
 			)
 		except Exception as error:
 			failures.append(f"restored verifier/behavior failed:\n{error}")
 	if failures:
 		raise TestFailure(
-			"XY-1416 focused evidence finalized with failures:\n\n"
+			"XY-1417 ManagedRun V26 stage finalized with failures:\n\n"
 			+ "\n\n".join(failures)
 		)
-	return "\n".join((static_output, migration_output, command_output, restore_output))
+	return "\n".join((migration_output, command_output, restore_output))
 
 
 def run_runtime_session_crash_recovery(
@@ -4979,23 +5211,32 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		receipt["semantic_authority"], checkpoints,
 		"Phase A semantic authority checkpoints are malformed",
 	)
-	semantic_values = []
 	for value in semantic.values():
 		summary = require_exact_keys(
-			value, {"all_passed", "passed_predicates", "predicate_count", "schema"},
+			value,
+			{
+				"all_passed",
+				"definition_schema",
+				"evidence_sha256",
+				"fingerprint",
+				"observation_count",
+				"schema",
+			},
 			"Phase A semantic authority summary is malformed",
 		)
-		passed = summary["passed_predicates"]
 		if (
 			summary["schema"] != SEMANTIC_AUTHORITY_SCHEMA
+			or summary["definition_schema"] != SEMANTIC_AUTHORITY_DEFINITION_SCHEMA
 			or summary["all_passed"] is not True
-			or passed != sorted(SEMANTIC_AUTHORITY_PREDICATES)
-			or summary["predicate_count"] != len(SEMANTIC_AUTHORITY_PREDICATES)
+			or summary["fingerprint"] != SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT
+			or not isinstance(summary["observation_count"], int)
+			or isinstance(summary["observation_count"], bool)
+			or not 0 < summary["observation_count"] <= SEMANTIC_AUTHORITY_MAX_PREDICATES
+			or not isinstance(summary["evidence_sha256"], str)
+			or re.fullmatch(r"[0-9a-f]{64}", summary["evidence_sha256"]) is None
 		):
 			raise TestFailure("Phase A semantic authority did not pass exactly")
-		semantic_values.append(summary)
-	if semantic_values[0] != semantic_values[1] or semantic_values[0] != semantic_values[2]:
-		raise TestFailure("Phase A semantic authority evidence differs across checkpoints")
+	require_semantic_authority_checkpoint_parity(semantic)
 
 	restore_edges = require_exact_keys(
 		receipt["restore_edges"],
@@ -5734,6 +5975,7 @@ def run_authority_candidate_capture(
 		"restored_once": restored_semantic_authority,
 		"restored_twice": second_restored_semantic_authority,
 	}
+	require_semantic_authority_checkpoint_parity(checkpoint_semantic_authority)
 	checkpoint_population = {
 		"source": source_population,
 		"restored_once": restored_population,
@@ -5975,7 +6217,12 @@ def main() -> int | AuthorityCandidatePublication:
 		or focused_continuation or focused_authority or focused_retained_title
 		or preparation_mode or authority_mode
 	)
-	reported_run = normal_aggregate or preparation_mode or focused_retained_title
+	reported_run = (
+		normal_aggregate
+		or preparation_mode
+		or focused_retained_title
+		or focused_managed_runs
+	)
 	orchestrator = StageOrchestrator({}, []) if reported_run or focused_authority else None
 	def configuration_preflight() -> dict[str, object]:
 		if sys.argv[1:] and not (
@@ -6080,7 +6327,7 @@ def main() -> int | AuthorityCandidatePublication:
 			nonlocal role_setting_canary_guc, role_setting_secret_canary
 			work = Path(tempfile.mkdtemp(
 				prefix=("decodex-xy1343-" if focused_work_items else
-					"decodex-xy1416-" if focused_managed_runs else
+					"decodex-xy1417-" if focused_managed_runs else
 					"decodex-xy1364-" if focused_managed_repositories else
 					"decodex-xy1364-continuation-" if focused_continuation else
 					"decodex-xy1364-authority-" if focused_authority else
@@ -6219,7 +6466,14 @@ def main() -> int | AuthorityCandidatePublication:
 			print(run_work_item_focused_contracts(socket_dir, port, work, env))
 			return 0
 		if focused_managed_runs:
-			print(run_managed_run_focused_contracts(socket_dir, port, work, env))
+			run_stage(
+				orchestrator,
+				"managed_run_v26_suite",
+				lambda: run_managed_run_v26_suite(socket_dir, port, work, env),
+				depends_on=("cluster_preflight",),
+			)
+			if orchestrator.primary_failure is not None:
+				raise orchestrator.primary_failure
 			return 0
 		if focused_managed_repositories:
 			print(run_managed_repository_focused_contracts(socket_dir, port, env))
@@ -6355,6 +6609,12 @@ def main() -> int | AuthorityCandidatePublication:
 			orchestrator,
 			"runtime_session_suite",
 			runtime_session_suite,
+			depends_on=("cluster_preflight",),
+		)
+		run_stage(
+			orchestrator,
+			"managed_run_v26_suite",
+			lambda: run_managed_run_v26_suite(socket_dir, port, work, env),
 			depends_on=("cluster_preflight",),
 		)
 		run_stage(
@@ -6621,17 +6881,17 @@ def main() -> int | AuthorityCandidatePublication:
 				scenario.expected_store_error is AuthorityStoreError.MIGRATION
 				for scenario in scenarios
 			)
-			if unsafe_count != 27 or incompatible_count != 6:
+			if unsafe_count != 28 or incompatible_count != 6:
 				raise HarnessCorruption(
-					"authority scenario inventory must contain exactly 27 unsafe and 6 incompatible cases"
+					"authority scenario inventory must contain exactly 28 unsafe and 6 incompatible cases"
 				)
 			if (
-				unsafe_store_count != 27
+				unsafe_store_count != 28
 				or incompatible_store_count != 5
 				or migration_store_count != 1
 			):
 				raise HarnessCorruption(
-					"authority scenario inventory must contain exact 27 unsafe, "
+					"authority scenario inventory must contain exact 28 unsafe, "
 					"5 incompatible, and 1 migration StoreError expectations"
 				)
 			missing_select = [
@@ -7510,7 +7770,7 @@ def main() -> int | AuthorityCandidatePublication:
 					"checkpoint_state": restore_report,
 				}
 				raise TestFailure(
-					"aggregate V14-V22 PostgreSQL acceptance failure:\n"
+					"aggregate V14-V26 PostgreSQL acceptance failure:\n"
 					+ json.dumps(diagnostics, sort_keys=True)
 				)
 			return json.dumps(artifact_evidence, sort_keys=True)
@@ -7518,6 +7778,7 @@ def main() -> int | AuthorityCandidatePublication:
 			"primary_foundation",
 			"role_profile_suite",
 			"runtime_session_suite",
+			"managed_run_v26_suite",
 			"v8_migration_boundary",
 			"blob_session_restart",
 			"postgres_store_contract",
@@ -7717,6 +7978,8 @@ def main() -> int | AuthorityCandidatePublication:
 					if preparation_mode
 					else "decodex/postgres-retained-title-stage-report/1"
 					if focused_retained_title
+					else "decodex/postgres-managed-run-v26-stage-report/1"
+					if focused_managed_runs
 					else "decodex/postgres-aggregate-stage-report/1"
 				),
 				"mode": (
@@ -7724,6 +7987,8 @@ def main() -> int | AuthorityCandidatePublication:
 					if preparation_mode
 					else "retained_title_boundary"
 					if focused_retained_title
+					else "managed_run_v26"
+					if focused_managed_runs
 					else "aggregate"
 				),
 				"primary_failure": (

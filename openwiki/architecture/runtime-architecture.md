@@ -239,8 +239,27 @@ provisioned database; ambiguous owners, grantors, overloads, or grantees fail cl
 remain generic. Authority digest changes use two explicit phases. Phase A's capture-only PostgreSQL
 18 mode migrates and provisions a non-default runtime principal, captures normalized manifests at
 source S0, first restore R1, and second restore R2 without constructing `PostgresStore`, and
-uses the same canonical non-digest semantic authority verifier as production readiness at every
-checkpoint. It atomically publishes a versioned summary receipt only when the mismatch array is the
+uses the same finalized semantic-authority contract as production readiness at every checkpoint.
+Rust is the sole owner of this closed, ordered, typed contract. It preserves the prior 39
+predicate descriptors and appends one unsafe identity for unexpected runtime-executable
+security-definer authority. Finalization rejects a missing, duplicate, unknown, reordered, or
+misclassified observation before production verification or fixture serialization can consume it.
+The immutable artifact contains the versioned ordered definition, its observations, and a SHA-256
+fingerprint. The fingerprint input starts with a domain string and then uses big-endian
+32-bit byte lengths for both schema strings and every UTF-8 descriptor field.
+Python independently applies this encoding. It requires the emitted fingerprint and the one
+supported fingerprint to match, binds each Boolean observation to the definition in order, and
+requires identical complete artifacts at S0, R1, and R2. Python does not contain a predicate list
+and does not inspect Rust source for semantic authority.
+The runtime verifier examines the login identity and each inherited or `SET ROLE`-reachable
+identity. Effective privileges include `PUBLIC` and column grants. Non-system relation-like entry
+objects are closed to the exact Decodex and migration-ledger allowlist. Every runtime-executable
+non-system `SECURITY DEFINER` normal function, procedure, or window function must be an expected
+runtime entry. Aggregate rows are excluded because PostgreSQL `CREATE AGGREGATE` has no
+`SECURITY DEFINER` capability. The required `public.digest(bytea,text)` dependency is bound to the
+exact `pgcrypto` 1.4 extension membership, namespace, owner relationship, function metadata, and
+default ACL.
+Phase A atomically publishes a versioned summary receipt only when the mismatch array is the
 exact ordered subset of the post-V21 schema-contract digest followed by the configured-authority digest:
 zero, either singleton, or both in canonical order. Unrelated, duplicate, or reordered mismatches
 fail closed. Semantic predicates, ledger, binding, identity, and both S0=R1 and R1=R2 restore edges
@@ -288,6 +307,11 @@ validation remains on those direct entrypoints rather than entering the aggregat
 preflight, meaningful semantic suites form explicit prerequisite edges and produce only `passed`,
 `failed`, or `blocked`: an ordinary expected failure blocks its consumers while independent
 branches continue.
+One `managed_run_v26_suite` stage owns the ManagedRun V26 database, migration, runtime
+provisioning, baseline capture, source behavior, post-behavior capture, dump, restore, restored
+capture, and restored behavior. The focused ManagedRun mode and the normal aggregate call this same
+stage owner. Its exact test selectors use nextest's zero-selection failure mode. Final aggregate
+evidence depends on this stage.
 Required nested restore results are promoted to their owning suite, so a capture, restore, parity,
 or production-check failure cannot be reported as owner success. One private live-doctor mutation
 SQL executor owns every ordinary, role-as, and secret-bearing mutation child, SQL delivery state,
@@ -308,10 +332,11 @@ assertion/key/type failures, corrupt report state, source-binding or redaction f
 unexpected exceptions stop new scheduling as harness corruption. Before cluster start the same
 outer owner attempts direct removal of a created private work directory without reporting cluster
 teardown. Once the cluster has started, teardown and final report emission always remain eligible.
-The process-visible primary is selected before aggregate output/report emission; cleanup or emission corruption remains
-secondary when an earlier semantic failure exists. Only the normal aggregate emits
-`decodex/postgres-aggregate-stage-report/1`; focused suites and Phase A/B receipt modes retain their
-direct output/capture behavior and never enter that report path.
+The process-visible primary is selected before aggregate output/report emission; cleanup or
+emission corruption remains secondary when an earlier semantic failure exists. The normal
+aggregate emits `decodex/postgres-aggregate-stage-report/1`. The focused ManagedRun mode emits
+`decodex/postgres-managed-run-v26-stage-report/1` from the same stage owner. Other focused suites
+and Phase A/B receipt modes retain their direct output or capture behavior.
 
 The three bound identity sequences must be exact. Runtime receives USAGE only on the activity and
 outbox sequences; the migration-owned history-version sequence remains inaccessible. SELECT,
