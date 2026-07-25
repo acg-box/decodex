@@ -287,6 +287,22 @@ the Phase A receipt; existing receipts remain provenance only and cannot attest 
 their recorded binding. For one or two mismatches, any unreported array change or other source
 delta invalidates the candidate.
 
+Phase A candidate capture uses a dedicated semantic parser path. It first validates the complete
+artifact shape, component structure, database binding, Rust-emitted definition, ordered Boolean
+observations, emitted fingerprint, independently recomputed fingerprint, and supported fingerprint.
+If one or more observations are false, it raises the exception-only
+`decodex/postgres-semantic-authority-diagnostic/2` diagnostic. The diagnostic has only `schema`,
+`source_binding`, `checkpoint`, `definition_fingerprint`, and `failures`. The source binding has
+only the exact lowercase 40-hex `head` and `tree`. The checkpoint is `source`, `restored_once`, or
+`restored_twice`. The nonempty failure array is complete and uses definition order. Each item has
+only the fingerprint-bound `predicate` and its fixed Rust-defined `failure_policy`. Canonical JSON
+uses sorted keys, compact separators, and ASCII escaping. The diagnostic does not contain passed
+observations, a concrete runtime-derived failure class, SQL, catalog or role data, counts, paths,
+raw evidence or errors, manifest or digest values, or candidate mismatches. This branch stops
+before semantic summary hashing, digest derivation, mismatch construction, and receipt
+publication. Malformed evidence remains `artifact_malformed` and does not echo attempted predicate
+text. The shared retained-title loader keeps its immediate all-pass requirement.
+
 The current [XY-1368 retained-title validation](xy-1368-retained-title-validation.md) documents the
 two historical V22-era partial-boundary command surfaces that still exist in source. Neither
 command authorizes full-check publication or production enablement, and neither implements the

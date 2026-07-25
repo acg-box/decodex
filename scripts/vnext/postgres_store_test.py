@@ -425,7 +425,12 @@ SEMANTIC_AUTHORITY_FINGERPRINT_DOMAIN = (
 SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT = (
 	"e78835be102ead879faa4f54569bb8c747ef03d014f899f68f75feaaf5f1a77f"
 )
-SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-semantic-authority-diagnostic/1"
+SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA = "decodex/postgres-semantic-authority-diagnostic/2"
+SEMANTIC_AUTHORITY_DIAGNOSTIC_CHECKPOINTS = frozenset((
+	"source",
+	"restored_once",
+	"restored_twice",
+))
 SEMANTIC_AUTHORITY_MAX_PREDICATES = 128
 SEMANTIC_AUTHORITY_FAILURE_POLICIES = frozenset((
 	"unsafe",
@@ -2491,9 +2496,9 @@ def unavailable_checkpoint(reason: str) -> dict[str, object]:
 	}
 
 
-def validate_semantic_manifest(
+def _validate_semantic_manifest_shape(
 	document: object, location: str, *, require_semantic_authority: bool = False
-) -> dict[str, object]:
+) -> None:
 	if not isinstance(document, dict):
 		raise TestFailure(f"invalid semantic manifest envelope at {location}")
 	expected_fields = {"schema", "authority", "binding", "sequence_state"}
@@ -2527,6 +2532,15 @@ def validate_semantic_manifest(
 				raise TestFailure(
 					f"invalid {component_name} row manifest at {location}"
 				)
+
+
+def validate_semantic_manifest(
+	document: object, location: str, *, require_semantic_authority: bool = False
+) -> dict[str, object]:
+	_validate_semantic_manifest_shape(
+		document, location, require_semantic_authority=require_semantic_authority
+	)
+	assert isinstance(document, dict)
 	if require_semantic_authority:
 		validate_semantic_authority_evidence(document["semantic_authority"])
 	return document
@@ -2634,27 +2648,11 @@ def validate_semantic_authority_evidence(evidence: object) -> list[dict[str, obj
 	return observations
 
 
-def require_capture_semantic_authority(
-	document: dict[str, object], checkpoint: str, *, secret_markers: tuple[str, ...]
+def _semantic_authority_success_summary(
+	evidence: dict[str, object],
+	definition: dict[str, object],
+	observations: list[dict[str, object]],
 ) -> dict[str, object]:
-	evidence = document.get("semantic_authority")
-	definition, observations = _parse_semantic_authority_evidence(evidence)
-	failed = sorted(
-		observation["name"]
-		for observation in observations
-		if observation["passed"] is False
-	)
-	if failed:
-		diagnostic = {
-			"checkpoint": checkpoint,
-			"failed_predicates": failed,
-			"predicate_count": len(observations),
-			"schema": SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
-		}
-		serialized = json.dumps(diagnostic, sort_keys=True, separators=(",", ":"))
-		if any(marker and marker in serialized for marker in secret_markers):
-			raise TestFailure("semantic authority diagnostic redaction failed")
-		raise TestFailure("authority candidate semantic diagnostic: " + serialized)
 	assert isinstance(evidence, dict)
 	evidence_sha256 = hashlib.sha256(json.dumps(
 		evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=True
@@ -2667,6 +2665,34 @@ def require_capture_semantic_authority(
 		"observation_count": len(observations),
 		"schema": SEMANTIC_AUTHORITY_SCHEMA,
 	}
+
+
+def require_capture_semantic_authority(
+	document: dict[str, object],
+) -> dict[str, object]:
+	evidence = document.get("semantic_authority")
+	definition, observations = _parse_semantic_authority_evidence(evidence)
+	if any(observation["passed"] is False for observation in observations):
+		raise TestFailure("semantic authority contains a failed observation")
+	assert isinstance(evidence, dict)
+	return _semantic_authority_success_summary(evidence, definition, observations)
+
+
+def _serialize_semantic_authority_diagnostic(
+	diagnostic: dict[str, object],
+) -> str:
+	return json.dumps(
+		diagnostic, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+	)
+
+
+def _candidate_artifact_malformed_failure() -> TestFailure:
+	serialized = json.dumps({
+		"artifact": {"classification": "artifact_malformed"},
+		"capture_only": True,
+		"schema": MANIFEST_DIAGNOSTIC_SCHEMA,
+	}, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+	return TestFailure("authority candidate capture diagnostic: " + serialized)
 
 
 def require_semantic_authority_checkpoint_parity(
@@ -3098,6 +3124,73 @@ def parse_capture_manifest(
 		) from None
 
 
+def parse_candidate_capture_manifest(
+	artifact_bytes: bytes,
+	checkpoint: str,
+	expected_database: str,
+	*,
+	source_binding: dict[str, str],
+	secret_markers: tuple[str, ...],
+) -> tuple[dict[str, object], dict[str, object]]:
+	semantic_diagnostic: str | None = None
+	semantic_summary: dict[str, object] | None = None
+	try:
+		document = json.loads(artifact_bytes.decode("utf-8"))
+		_validate_semantic_manifest_shape(
+			document, checkpoint, require_semantic_authority=True
+		)
+		assert isinstance(document, dict)
+		validate_capture_manifest_rows(document)
+		require_manifest_binding(document, expected_database)
+		validate_capture_component_errors(document)
+
+		evidence = document["semantic_authority"]
+		definition, observations = _parse_semantic_authority_evidence(evidence)
+		validated_source_binding = require_source_binding(
+			source_binding, "semantic authority source binding is invalid"
+		)
+		if checkpoint not in SEMANTIC_AUTHORITY_DIAGNOSTIC_CHECKPOINTS:
+			raise TestFailure("semantic authority checkpoint is invalid")
+
+		predicates = definition["predicates"]
+		assert isinstance(predicates, list)
+		failures = [
+			{
+				"failure_policy": predicate["classification"],
+				"predicate": predicate["name"],
+			}
+			for predicate, observation in zip(predicates, observations, strict=True)
+			if observation["passed"] is False
+		]
+		if failures:
+			assert isinstance(evidence, dict)
+			semantic_diagnostic = _serialize_semantic_authority_diagnostic({
+				"checkpoint": checkpoint,
+				"definition_fingerprint": evidence["fingerprint"],
+				"failures": failures,
+				"schema": SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+				"source_binding": validated_source_binding,
+			})
+			if not isinstance(semantic_diagnostic, str) or any(
+				marker and marker in semantic_diagnostic for marker in secret_markers
+			):
+				raise TestFailure("semantic authority diagnostic redaction failed")
+		else:
+			assert isinstance(evidence, dict)
+			semantic_summary = _semantic_authority_success_summary(
+				evidence, definition, observations
+			)
+	except Exception:
+		raise _candidate_artifact_malformed_failure() from None
+
+	if semantic_diagnostic is not None:
+		raise TestFailure(
+			"authority candidate semantic diagnostic: " + semantic_diagnostic
+		)
+	assert semantic_summary is not None
+	return document, semantic_summary
+
+
 def load_capture_manifest(
 	path: Path,
 	checkpoint: str,
@@ -3121,6 +3214,37 @@ def load_capture_manifest(
 			)
 		) from None
 	return parse_capture_manifest(
+		artifact_bytes,
+		checkpoint,
+		expected_database,
+		source_binding=source_binding,
+		secret_markers=secret_markers,
+	)
+
+
+def load_candidate_capture_manifest(
+	path: Path,
+	checkpoint: str,
+	expected_database: str,
+	*,
+	source_binding: dict[str, str],
+	secret_markers: tuple[str, ...],
+) -> tuple[dict[str, object], dict[str, object]]:
+	try:
+		artifact_bytes = path.read_bytes()
+	except Exception as error:
+		raise TestFailure(
+			"authority candidate capture diagnostic: "
+			+ capture_manifest_diagnostic(
+				checkpoint,
+				expected_database,
+				source_binding=source_binding,
+				secret_markers=secret_markers,
+				artifact_classification="artifact_unreadable",
+				artifact_error=str(error),
+			)
+		) from None
+	return parse_candidate_capture_manifest(
 		artifact_bytes,
 		checkpoint,
 		expected_database,
@@ -5823,22 +5947,29 @@ def run_authority_candidate_capture(
 	dump_schema_manifest(
 		source_path, AUTHORITY_CAPTURE_DATABASE, env, structured_errors=True
 	)
-	source = load_capture_manifest(
-		source_path,
-		"source",
-		AUTHORITY_CAPTURE_DATABASE,
-		source_binding=start_binding,
-		secret_markers=secret_markers,
-	)
+	if phase_a is None:
+		source, source_semantic_authority = load_candidate_capture_manifest(
+			source_path,
+			"source",
+			AUTHORITY_CAPTURE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
+	else:
+		source = load_capture_manifest(
+			source_path,
+			"source",
+			AUTHORITY_CAPTURE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
+		source_semantic_authority = require_capture_semantic_authority(source)
 	source_manifests = require_capture_components(
 		source,
 		"source",
 		AUTHORITY_CAPTURE_DATABASE,
 		source_binding=start_binding,
 		secret_markers=secret_markers,
-	)
-	source_semantic_authority = require_capture_semantic_authority(
-		source, "source", secret_markers=secret_markers
 	)
 	source_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_DATABASE, env)
 	source_runtime_authority = capture_runtime_authority(AUTHORITY_CAPTURE_DATABASE, env)
@@ -5865,22 +5996,31 @@ def run_authority_candidate_capture(
 	dump_schema_manifest(
 		restored_path, AUTHORITY_CAPTURE_RESTORE_DATABASE, env, structured_errors=True
 	)
-	restored = load_capture_manifest(
-		restored_path,
-		"restored",
-		AUTHORITY_CAPTURE_RESTORE_DATABASE,
-		source_binding=start_binding,
-		secret_markers=secret_markers,
-	)
+	if phase_a is None:
+		restored, restored_semantic_authority = load_candidate_capture_manifest(
+			restored_path,
+			"restored_once",
+			AUTHORITY_CAPTURE_RESTORE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
+		restored_capture_checkpoint = "restored_once"
+	else:
+		restored = load_capture_manifest(
+			restored_path,
+			"restored",
+			AUTHORITY_CAPTURE_RESTORE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
+		restored_semantic_authority = require_capture_semantic_authority(restored)
+		restored_capture_checkpoint = "restored"
 	restored_manifests = require_capture_components(
 		restored,
-		"restored",
+		restored_capture_checkpoint,
 		AUTHORITY_CAPTURE_RESTORE_DATABASE,
 		source_binding=start_binding,
 		secret_markers=secret_markers,
-	)
-	restored_semantic_authority = require_capture_semantic_authority(
-		restored, "restored_once", secret_markers=secret_markers
 	)
 	restored_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
 	restored_runtime_authority = capture_runtime_authority(
@@ -5917,22 +6057,31 @@ def run_authority_candidate_capture(
 		env,
 		structured_errors=True,
 	)
-	second_restored = load_capture_manifest(
-		second_restored_path,
-		"restored_twice",
-		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
-		source_binding=start_binding,
-		secret_markers=secret_markers,
-	)
+	if phase_a is None:
+		second_restored, second_restored_semantic_authority = load_candidate_capture_manifest(
+			second_restored_path,
+			"restored_twice",
+			AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
+	else:
+		second_restored = load_capture_manifest(
+			second_restored_path,
+			"restored_twice",
+			AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
+		second_restored_semantic_authority = require_capture_semantic_authority(
+			second_restored
+		)
 	second_restored_manifests = require_capture_components(
 		second_restored,
 		"restored_twice",
 		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
 		source_binding=start_binding,
 		secret_markers=secret_markers,
-	)
-	second_restored_semantic_authority = require_capture_semantic_authority(
-		second_restored, "restored_twice", secret_markers=secret_markers
 	)
 	second_restored_ledger = capture_migration_ledger(
 		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, env
