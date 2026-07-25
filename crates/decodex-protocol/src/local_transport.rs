@@ -1117,7 +1117,7 @@ mod platform {
 				directory.as_raw_fd(),
 				NAMESPACE_LOCK_NAME.as_ptr(),
 				O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-				PRIVATE_FILE_MODE as mode_t,
+				PRIVATE_FILE_MODE as libc::c_uint,
 			)
 		};
 
