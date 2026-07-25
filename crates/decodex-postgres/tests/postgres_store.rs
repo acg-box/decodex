@@ -2,11 +2,11 @@
 
 #[path = "postgres_store/continuation.rs"] mod continuation;
 #[cfg(feature = "test-support")]
-#[path = "postgres_store/managed_runs.rs"]
-mod managed_runs;
-#[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_repositories.rs"]
 mod managed_repositories;
+#[cfg(feature = "test-support")]
+#[path = "postgres_store/managed_runs.rs"]
+mod managed_runs;
 #[path = "postgres_store/quota.rs"] mod quota;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
@@ -641,10 +641,10 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		"sequence_state": sequence_state,
 	});
 	if let Some(semantic_authority) = semantic_authority {
-		manifest.as_object_mut().ok_or("manifest envelope is not an object")?.insert(
-			"semantic_authority".into(),
-			semantic_authority,
-		);
+		manifest
+			.as_object_mut()
+			.ok_or("manifest envelope is not an object")?
+			.insert("semantic_authority".into(), semantic_authority);
 	}
 	let manifest = serde_json::to_string(&manifest)?;
 
