@@ -189,10 +189,12 @@ fn malformed_config_and_missing_profile_process_failures_are_redacted() {
 
 	assert_redacted(&fixture, &malformed);
 
-	fixture.write_config(&fixture.config(
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(SERVER_ID),
-	));
+	fixture.write_config(
+		&fixture.config(
+			fixture.repository.to_str().expect("UTF-8 fixture repository"),
+			Some(SERVER_ID),
+		),
+	);
 
 	let missing = fixture.run("doctor", &["--profile", "missing"]);
 
@@ -207,18 +209,17 @@ fn malformed_config_and_missing_profile_process_failures_are_redacted() {
 async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_states() {
 	let fixture = Fixture::new();
 
-	fixture.write_config(&fixture.config(
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(SERVER_ID),
-	));
+	fixture.write_config(
+		&fixture.config(
+			fixture.repository.to_str().expect("UTF-8 fixture repository"),
+			Some(SERVER_ID),
+		),
+	);
 
 	let bootstrap =
 		ServiceComposition::bootstrap(DecodexRoot::new(&fixture.root).expect("safe fixture root"))
 			.await;
-	let mut bound = bootstrap
-		.bind(ServerConfig::default())
-		.await
-		.expect("bind isolated runtime");
+	let mut bound = bootstrap.bind(ServerConfig::default()).await.expect("bind isolated runtime");
 
 	for command in ["status", "doctor"] {
 		let output = fixture.run(command, &[]);
@@ -264,10 +265,12 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 
 	bound.shutdown().await.expect("shutdown isolated runtime");
 
-	fixture.write_config(&fixture.config(
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(SERVER_ID),
-	));
+	fixture.write_config(
+		&fixture.config(
+			fixture.repository.to_str().expect("UTF-8 fixture repository"),
+			Some(SERVER_ID),
+		),
+	);
 
 	let disconnected = fixture.run("status", &[]);
 
@@ -281,24 +284,22 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 #[ignore = "run through cargo make test-vnext-cli-diagnostics with the real CLI binary"]
 async fn server_paths_are_not_reinterpreted_or_disclosed_by_the_client() {
 	let fixture = Fixture::new();
-	let unsafe_path = fixture.root.parent().expect("fixture root has a parent").join(format!(
-		"{SERVER_PATH_MARKER}-link"
-	));
+	let unsafe_path = fixture
+		.root
+		.parent()
+		.expect("fixture root has a parent")
+		.join(format!("{SERVER_PATH_MARKER}-link"));
 
 	std::os::unix::fs::symlink(&fixture.repository, &unsafe_path)
 		.expect("unsafe server-host path fixture");
-	fixture.write_config(&fixture.config(
-		unsafe_path.to_str().expect("UTF-8 unsafe fixture path"),
-		Some(SERVER_ID),
-	));
+	fixture.write_config(
+		&fixture.config(unsafe_path.to_str().expect("UTF-8 unsafe fixture path"), Some(SERVER_ID)),
+	);
 
 	let bootstrap =
 		ServiceComposition::bootstrap(DecodexRoot::new(&fixture.root).expect("safe fixture root"))
 			.await;
-	let mut bound = bootstrap
-		.bind(ServerConfig::default())
-		.await
-		.expect("bind isolated runtime");
+	let mut bound = bootstrap.bind(ServerConfig::default()).await.expect("bind isolated runtime");
 
 	let output = fixture.run("doctor", &[]);
 	let document = document(&output);

@@ -14,8 +14,8 @@ use tempfile::NamedTempFile;
 use toml as _;
 
 use decodex_core::{
-	ConfigError, DecodexClientConfig, DecodexConfig, MAX_CONFIG_BYTES, PathError, ServerIdentity,
-	LocalTrustPolicy, ServerProfile,
+	ConfigError, DecodexClientConfig, DecodexConfig, LocalTrustPolicy, MAX_CONFIG_BYTES, PathError,
+	ServerIdentity, ServerProfile,
 };
 use support::{SERVER_ID, TestRoot};
 

@@ -181,8 +181,7 @@ impl TerminationReceipt {
 			&& self.owner_integrity_failures == 0
 			&& self.endpoint_refusal.is_none()
 			&& self.cleanup_refusal.is_none()
-			&& self.harvested_tasks
-				== self.spawned_sessions.saturating_add(self.spawned_commands)
+			&& self.harvested_tasks == self.spawned_sessions.saturating_add(self.spawned_commands)
 			&& self.expected_tasks == self.harvested_tasks
 	}
 }
@@ -215,11 +214,7 @@ impl BoundServer {
 		self.task.take();
 		let receipt = joined.map_err(ServerError::LifecycleJoin)?;
 
-		if receipt.is_success() {
-			Ok(receipt)
-		} else {
-			Err(ServerError::Terminated(receipt))
-		}
+		if receipt.is_success() { Ok(receipt) } else { Err(ServerError::Terminated(receipt)) }
 	}
 }
 
@@ -372,13 +367,11 @@ where
 		// This is the only deadline construction. All later waits use this exact instant.
 		let stopping_started = time::Instant::now();
 		let deadline =
-			stopping_started
-				.checked_add(self.inner.config.shutdown_timeout)
-				.unwrap_or_else(|| {
-					receipt.record_owner_integrity();
+			stopping_started.checked_add(self.inner.config.shutdown_timeout).unwrap_or_else(|| {
+				receipt.record_owner_integrity();
 
-					stopping_started
-				});
+				stopping_started
+			});
 		let deadline_sleep = time::sleep_until(deadline);
 
 		tokio::pin!(deadline_sleep);
@@ -495,8 +488,7 @@ where
 				return Ok(response);
 			}
 
-			let mut refusal =
-				ErrorResponse::new(Some("WebSocket route is unavailable".to_owned()));
+			let mut refusal = ErrorResponse::new(Some("WebSocket route is unavailable".to_owned()));
 
 			*refusal.status_mut() = StatusCode::NOT_FOUND;
 
@@ -901,8 +893,7 @@ where
 		let server = self.clone();
 		let (result_sender, result_receiver) = oneshot::channel();
 		let command_task: OwnedFuture = Box::pin(async move {
-			let delivered =
-				server.execute_command_owned(connection_id, command, version).await;
+			let delivered = server.execute_command_owned(connection_id, command, version).await;
 			let _ = result_sender.send(delivered);
 		});
 		let submitted = tokio::select! {
@@ -1385,8 +1376,7 @@ impl TerminationReceiptBuilder {
 
 					true
 				} else if error.is_cancelled() && after_forced_abort {
-					self.forced_cancelled_tasks =
-						self.forced_cancelled_tasks.saturating_add(1);
+					self.forced_cancelled_tasks = self.forced_cancelled_tasks.saturating_add(1);
 					record_lowest(&mut self.lowest_forced, identity);
 
 					false
@@ -1405,13 +1395,11 @@ impl TerminationReceiptBuilder {
 	}
 
 	fn record_endpoint_refusal(&mut self, refusal: LocalTransportRefusal) {
-		self.endpoint_refusal =
-			select_refusal(self.endpoint_refusal, refusal);
+		self.endpoint_refusal = select_refusal(self.endpoint_refusal, refusal);
 	}
 
 	fn record_cleanup_refusal(&mut self, refusal: LocalTransportRefusal) {
-		self.cleanup_refusal =
-			select_refusal(self.cleanup_refusal, refusal);
+		self.cleanup_refusal = select_refusal(self.cleanup_refusal, refusal);
 	}
 
 	fn finish_task_accounting(&mut self, tasks: &OwnedTasks) {
@@ -1570,10 +1558,7 @@ fn bounded_text(message: &str) -> WireText {
 	WireText::new(message).expect("internal protocol message is bounded")
 }
 
-fn record_lowest(
-	current: &mut Option<OwnedTaskIdentity>,
-	candidate: OwnedTaskIdentity,
-) {
+fn record_lowest(current: &mut Option<OwnedTaskIdentity>, candidate: OwnedTaskIdentity) {
 	if current.is_none_or(|identity| candidate < identity) {
 		*current = Some(candidate);
 	}

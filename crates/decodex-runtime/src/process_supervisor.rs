@@ -24,9 +24,9 @@ use decodex_postgres::{
 };
 use sha2::{Digest as _, Sha256};
 
-use crate::account_launch::{AttestedAppServerLaunch, AttestedProcessChild};
-use crate::process_platform::{
-	self, ExactProcessObservation, KernelExitWitness, ProcessPlatformError,
+use crate::{
+	account_launch::{AttestedAppServerLaunch, AttestedProcessChild},
+	process_platform::{self, ExactProcessObservation, KernelExitWitness, ProcessPlatformError},
 };
 
 const RECONCILIATION_PAGE_SIZE: u16 = 256;
@@ -245,14 +245,14 @@ impl ProcessGenerationControl {
 	/// The server lifecycle separately owns continued background reconciliation. One uncertain
 	/// account does not change product-state availability.
 	pub(crate) async fn start(store: PostgresStore) -> Result<Self, ProcessSupervisorError> {
-		let boot_id =
-			process_platform::current_boot_identity().map_err(|_| ProcessSupervisorError::Platform)?;
+		let boot_id = process_platform::current_boot_identity()
+			.map_err(|_| ProcessSupervisorError::Platform)?;
 		store
 			.project_process_generations_after_supervisor_loss()
 			.await
 			.map_err(|_| ProcessSupervisorError::ProductState)?;
 		let control = Self {
-				inner: Arc::new(ProcessSupervisor {
+			inner: Arc::new(ProcessSupervisor {
 				store,
 				boot_id,
 				owned: Mutex::new(BTreeMap::new()),
@@ -474,9 +474,7 @@ impl ProcessGenerationControl {
 				}
 				return Ok(ProcessGenerationTermination::PositiveDeathRecorded);
 			}
-			if !hard_signal_sent
-				&& !owned_process.leader_exited
-				&& Instant::now() >= hard_signal_at
+			if !hard_signal_sent && !owned_process.leader_exited && Instant::now() >= hard_signal_at
 			{
 				if process_platform::signal_owned_process_group(&identity, libc::SIGKILL).is_err() {
 					if let Err(error) = refresh_owned_exit(&mut owned_process) {
@@ -523,7 +521,10 @@ impl ProcessGenerationControl {
 	/// arguments and environment, and the exact-build private-stdio startup capability. Replay and
 	/// restored database state cannot enter this path. The returned receipt contains no protocol
 	/// writer.
-	#[expect(dead_code, reason = "sealed until an accepted product composition supplies launch input")]
+	#[expect(
+		dead_code,
+		reason = "sealed until an accepted product composition supplies launch input"
+	)]
 	pub(crate) async fn spawn_fenced(
 		&self,
 		generation_id: ProcessGenerationId,
@@ -554,12 +555,13 @@ impl ProcessGenerationControl {
 			Err(_) => {
 				let generation =
 					generation_from_intent(&intent, fence.revision(), fence.fenced_at_micros());
-				if let Err(error) = self.record_positive_death(
-					&generation,
-					ProcessDeathEvidenceKind::SpawnNotCreated,
-					None,
-				)
-				.await
+				if let Err(error) = self
+					.record_positive_death(
+						&generation,
+						ProcessDeathEvidenceKind::SpawnNotCreated,
+						None,
+					)
+					.await
 				{
 					self.remember_pending_non_creation(&generation.generation_id)?;
 					supervision.retain();
@@ -570,31 +572,20 @@ impl ProcessGenerationControl {
 		};
 
 		let process_id = child.process_id();
-		let identity = match process_platform::inspect_process_identity(
-			process_id,
-			&self.inner.boot_id,
-		) {
-			Ok(Some(identity)) => identity,
-			Ok(None) | Err(_) => {
-				supervision.retain();
-				self.quarantine_failed_identity(
-					&intent,
-					fence.revision(),
-					child,
-					process_id,
-				)
-				.await?;
-				return Err(ProcessSupervisorError::IdentityBindingFailed);
-			},
-		};
+		let identity =
+			match process_platform::inspect_process_identity(process_id, &self.inner.boot_id) {
+				Ok(Some(identity)) => identity,
+				Ok(None) | Err(_) => {
+					supervision.retain();
+					self.quarantine_failed_identity(&intent, fence.revision(), child, process_id)
+						.await?;
+					return Err(ProcessSupervisorError::IdentityBindingFailed);
+				},
+			};
 		let bound = self
 			.inner
 			.store
-			.bind_process_generation_identity(
-				fence.generation_id(),
-				fence.revision(),
-				&identity,
-			)
+			.bind_process_generation_identity(fence.generation_id(), fence.revision(), &identity)
 			.await
 			.map_err(|_| ProcessSupervisorError::ProductState)
 			.and_then(accepted_mutation);
@@ -602,21 +593,15 @@ impl ProcessGenerationControl {
 			Ok(bound) => bound,
 			Err(error) => {
 				supervision.retain();
-				self.quarantine_failed_bound_identity(
-					&intent,
-					fence.revision(),
-					child,
-					identity,
-				)
-				.await?;
+				self.quarantine_failed_bound_identity(&intent, fence.revision(), child, identity)
+					.await?;
 				return Err(error);
 			},
 		};
 
 		if !child.has_private_lifetime_channels() {
 			supervision.retain();
-			self.quarantine_failed_bound_identity(&intent, bound.revision, child, identity)
-				.await?;
+			self.quarantine_failed_bound_identity(&intent, bound.revision, child, identity).await?;
 			return Err(ProcessSupervisorError::ControlChannelUnavailable);
 		}
 		let key = intent.generation_id.as_str().to_owned();
@@ -639,7 +624,10 @@ impl ProcessGenerationControl {
 	}
 
 	/// Persist application readiness for one still-owned fenced child.
-	#[expect(dead_code, reason = "sealed until an accepted product composition supplies launch input")]
+	#[expect(
+		dead_code,
+		reason = "sealed until an accepted product composition supplies launch input"
+	)]
 	pub(crate) async fn mark_spawned_ready(
 		&self,
 		process: &mut FencedProcess,
@@ -652,11 +640,8 @@ impl ProcessGenerationControl {
 			.map_err(|_| ProcessSupervisorError::ProductState)
 			.and_then(accepted_mutation)?;
 		process.revision = mutation.revision;
-		let mut owned = self
-			.inner
-			.owned
-			.lock()
-			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+		let mut owned =
+			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
 		let current = owned
 			.get_mut(process.generation_id.as_str())
 			.ok_or(ProcessSupervisorError::AuthorityConflict)?;
@@ -740,12 +725,8 @@ impl ProcessGenerationControl {
 		}
 
 		if generation.intended_boot_id != self.inner.boot_id {
-			self.record_positive_death(
-				&generation,
-				ProcessDeathEvidenceKind::PriorBootEnded,
-				None,
-			)
-			.await?;
+			self.record_positive_death(&generation, ProcessDeathEvidenceKind::PriorBootEnded, None)
+				.await?;
 			return Ok(ProcessGenerationReconciliation::PositiveDeathRecorded);
 		}
 
@@ -817,15 +798,11 @@ impl ProcessGenerationControl {
 				.observers
 				.lock()
 				.map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
-			let witness = observers
-				.get(&key)
-				.ok_or(ProcessSupervisorError::AuthorityConflict)?;
+			let witness = observers.get(&key).ok_or(ProcessSupervisorError::AuthorityConflict)?;
 			if witness.identity() != identity {
 				return Err(ProcessSupervisorError::AuthorityConflict);
 			}
-			witness
-				.try_positive_exit()
-				.map_err(|_| ProcessSupervisorError::Platform)?
+			witness.try_positive_exit().map_err(|_| ProcessSupervisorError::Platform)?
 		};
 		if let Some(kind) = positive {
 			let process_group_quiescent = process_platform::process_group_is_quiescent(identity)
@@ -854,11 +831,8 @@ impl ProcessGenerationControl {
 		generation: &ProcessGeneration,
 	) -> Result<Option<Option<ProcessIdentity>>, ProcessSupervisorError> {
 		let key = generation.generation_id.as_str();
-		let mut owned = self
-			.inner
-			.owned
-			.lock()
-			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+		let mut owned =
+			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
 		let Some(process) = owned.get_mut(key) else {
 			return Ok(None);
 		};
@@ -989,10 +963,7 @@ impl ProcessGenerationControl {
 		}
 	}
 
-	fn owns(
-		&self,
-		generation_id: &ProcessGenerationId,
-	) -> Result<bool, ProcessSupervisorError> {
+	fn owns(&self, generation_id: &ProcessGenerationId) -> Result<bool, ProcessSupervisorError> {
 		Ok(self
 			.inner
 			.owned
@@ -1031,9 +1002,7 @@ impl ProcessGenerationControl {
 				.cloned(),
 		);
 		keys.into_iter()
-			.map(|key| {
-				ProcessGenerationId::new(key).map_err(|_| ProcessSupervisorError::Identity)
-			})
+			.map(|key| ProcessGenerationId::new(key).map_err(|_| ProcessSupervisorError::Identity))
 			.collect()
 	}
 
@@ -1051,11 +1020,7 @@ impl ProcessGenerationControl {
 		{
 			return Err(ProcessSupervisorError::AuthorityConflict);
 		}
-		Ok(SupervisionReservation {
-			inner: Arc::clone(&self.inner),
-			key,
-			retained: false,
-		})
+		Ok(SupervisionReservation { inner: Arc::clone(&self.inner), key, retained: false })
 	}
 
 	async fn reconcile_pending_non_creation_exact(
@@ -1073,12 +1038,8 @@ impl ProcessGenerationControl {
 			self.remove_supervision(generation_id)?;
 			return Ok(Some(ProcessGenerationReconciliation::AlreadyDead));
 		}
-		self.record_positive_death(
-			&generation,
-			ProcessDeathEvidenceKind::SpawnNotCreated,
-			None,
-		)
-		.await?;
+		self.record_positive_death(&generation, ProcessDeathEvidenceKind::SpawnNotCreated, None)
+			.await?;
 		self.forget_pending_non_creation(generation_id)?;
 		self.remove_supervision(generation_id)?;
 		Ok(Some(ProcessGenerationReconciliation::PositiveDeathRecorded))
@@ -1159,11 +1120,8 @@ impl ProcessGenerationControl {
 		{
 			return Err(ProcessSupervisorError::AuthorityConflict);
 		}
-		let mut owned = self
-			.inner
-			.owned
-			.lock()
-			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+		let mut owned =
+			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
 		if owned.contains_key(&key) {
 			return Err(ProcessSupervisorError::AuthorityConflict);
 		}
@@ -1338,11 +1296,8 @@ fn exit_witness_kind(
 
 fn refresh_owned_exit(process: &mut OwnedGeneration) -> Result<(), ProcessSupervisorError> {
 	if !process.leader_exited {
-		process.leader_exited = process
-			.child
-			.try_wait()
-			.map_err(|_| ProcessSupervisorError::Platform)?
-			.is_some();
+		process.leader_exited =
+			process.child.try_wait().map_err(|_| ProcessSupervisorError::Platform)?.is_some();
 	}
 	Ok(())
 }

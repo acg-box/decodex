@@ -132,9 +132,7 @@ impl ProcessRunnerIdentity {
 		let value = value.into();
 		let digest = value.strip_prefix("sha256:");
 
-		if value.len() > MAX_PROCESS_RUNNER_IDENTITY_BYTES
-			|| !digest.is_some_and(is_sha256)
-		{
+		if value.len() > MAX_PROCESS_RUNNER_IDENTITY_BYTES || !digest.is_some_and(is_sha256) {
 			return Err(ProcessGenerationError::InvalidRunnerIdentity);
 		}
 
@@ -304,8 +302,7 @@ impl ProcessDeathEvidenceKind {
 			Self::SpawnNotCreated => "spawn_not_created",
 			Self::OwnedChildExit => "owned_child_exit",
 			Self::LinuxPidfdExit => "linux_pidfd_exit",
-			Self::MacosKqueueExitAndGroupQuiescence =>
-				"macos_kqueue_exit_and_group_quiescence",
+			Self::MacosKqueueExitAndGroupQuiescence => "macos_kqueue_exit_and_group_quiescence",
 			Self::ExactTerminationExit => "exact_termination_exit",
 			Self::PriorBootEnded => "prior_boot_ended",
 		}
@@ -335,20 +332,11 @@ impl ProcessIdentity {
 		process_group_id: u32,
 		session_id: u32,
 	) -> Result<Self, ProcessGenerationError> {
-		if process_id == 0
-			|| process_group_id != process_id
-			|| session_id != process_id
-		{
+		if process_id == 0 || process_group_id != process_id || session_id != process_id {
 			return Err(ProcessGenerationError::InvalidProcessIdentity);
 		}
 
-		Ok(Self {
-			boot_id,
-			process_id,
-			process_start_id,
-			process_group_id,
-			session_id,
-		})
+		Ok(Self { boot_id, process_id, process_start_id, process_group_id, session_id })
 	}
 }
 

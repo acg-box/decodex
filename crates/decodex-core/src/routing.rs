@@ -669,8 +669,7 @@ pub fn decide_routing(
 		|| members.iter().any(|member| {
 			(member.disposition == RoutingMemberDisposition::Excluded)
 				!= member.blockers.contains(&RoutingBlocker::ExcludedByPolicy)
-		})
-	{
+		}) {
 		return Err(RoutingKernelError::MalformedSnapshot);
 	}
 	let mut facts_by_member = Vec::with_capacity(members.len());
@@ -755,9 +754,8 @@ pub fn decide_routing(
 		return Err(RoutingKernelError::IncompleteEvidence);
 	}
 	let only_depletion = included.iter().all(|(_, member)| {
-		!member.blockers.is_empty() && member.blockers.iter().all(|blocker| {
-			is_depletion_blocker(*blocker)
-		})
+		!member.blockers.is_empty()
+			&& member.blockers.iter().all(|blocker| is_depletion_blocker(*blocker))
 	});
 	if !only_depletion {
 		if included.iter().all(|(_, member)| {
@@ -827,9 +825,7 @@ fn no_route(
 	})
 }
 
-fn routing_causes(
-	members: &[(usize, &RoutingDecisionCandidate)],
-) -> Vec<RoutingDecisionCause> {
+fn routing_causes(members: &[(usize, &RoutingDecisionCandidate)]) -> Vec<RoutingDecisionCause> {
 	members
 		.iter()
 		.flat_map(|(_, member)| {
@@ -870,8 +866,7 @@ fn is_depletion_blocker(blocker: RoutingBlocker) -> bool {
 fn is_reconciliation_blocker(blocker: RoutingBlocker) -> bool {
 	matches!(
 		blocker,
-		RoutingBlocker::ProcessGenerationUnresolved
-			| RoutingBlocker::ProviderAttemptUnresolved
+		RoutingBlocker::ProcessGenerationUnresolved | RoutingBlocker::ProviderAttemptUnresolved
 	)
 }
 

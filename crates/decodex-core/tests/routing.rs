@@ -11,8 +11,8 @@ use toml as _;
 
 use decodex_core::{
 	AccountId, CodexCapability, ObservationConfidence, QuotaWindowClass, RoutingBlocker,
-	RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind,
-	RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingKernelError,
+	RoutingDecision, RoutingDecisionCandidate, RoutingDecisionCause, RoutingDecisionExclusion,
+	RoutingDecisionKind, RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingKernelError,
 	RoutingMemberDisposition, RoutingNoRouteReason, RoutingSnapshotCapabilityFact,
 	RoutingTimestampPrecision, RoutingTimestampProvenance, decide_routing,
 };
@@ -122,10 +122,11 @@ fn expected_selected(
 		ready_at_micros: None,
 		no_route_reason: None,
 		exclusions,
+		causes: Vec::new(),
 	}
 }
 
-fn expected_no_route() -> RoutingDecision {
+fn expected_no_route(account_id: &AccountId, blockers: &[RoutingBlocker]) -> RoutingDecision {
 	RoutingDecision {
 		snapshot_id: SNAPSHOT_ID.to_owned(),
 		kind: RoutingDecisionKind::NoRoute,
@@ -133,6 +134,11 @@ fn expected_no_route() -> RoutingDecision {
 		ready_at_micros: None,
 		no_route_reason: Some(RoutingNoRouteReason::BlockedEvidence),
 		exclusions: Vec::new(),
+		causes: blockers
+			.iter()
+			.copied()
+			.map(|blocker| RoutingDecisionCause { account_id: account_id.clone(), blocker })
+			.collect(),
 	}
 }
 
@@ -284,7 +290,7 @@ fn waiting_usage_uses_minimum_account_maximum_and_retains_each_window() {
 				"1000000500",
 			),
 			expected_exclusion(
-				first,
+				first.clone(),
 				1,
 				QuotaWindowClass::SevenDay,
 				10_080,
@@ -302,7 +308,7 @@ fn waiting_usage_uses_minimum_account_maximum_and_retains_each_window() {
 				"1000001700",
 			),
 			expected_exclusion(
-				second,
+				second.clone(),
 				2,
 				QuotaWindowClass::SevenDay,
 				10_080,
@@ -310,6 +316,24 @@ fn waiting_usage_uses_minimum_account_maximum_and_retains_each_window() {
 				DECIDED_AT + 1_800,
 				"1000001800",
 			),
+		],
+		causes: vec![
+			RoutingDecisionCause {
+				account_id: first.clone(),
+				blocker: RoutingBlocker::QuotaFiveHourDepleted,
+			},
+			RoutingDecisionCause {
+				account_id: first,
+				blocker: RoutingBlocker::QuotaSevenDayDepleted,
+			},
+			RoutingDecisionCause {
+				account_id: second.clone(),
+				blocker: RoutingBlocker::QuotaFiveHourDepleted,
+			},
+			RoutingDecisionCause {
+				account_id: second,
+				blocker: RoutingBlocker::QuotaSevenDayDepleted,
+			},
 		],
 	};
 	assert_eq!(decide_routing(&input), Ok(expected.clone()));
@@ -372,7 +396,17 @@ fn non_authoritative_depletion_evidence_never_selects_or_waits() {
 	cases.push(("non-depletion", non_depletion));
 
 	for (case, input) in cases {
-		assert_eq!(decide_routing(&input), Ok(expected_no_route()), "{case}");
+		assert_eq!(
+			decide_routing(&input),
+			Ok(expected_no_route(
+				&depleted,
+				&[
+					RoutingBlocker::QuotaFiveHourDepleted,
+					RoutingBlocker::QuotaSevenDayDepleted,
+				],
+			)),
+			"{case}",
+		);
 	}
 }
 

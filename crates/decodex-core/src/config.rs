@@ -712,7 +712,11 @@ enum RawProfile {
 		service_owner_uid: Option<u32>,
 		expected_server_identity: Option<ServerIdentity>,
 	},
-	Remote { host: String, port: u16, expected_server_identity: ServerIdentity },
+	Remote {
+		host: String,
+		port: u16,
+		expected_server_identity: ServerIdentity,
+	},
 }
 impl RawProfile {
 	fn validate(self) -> Result<ServerProfile, ConfigError> {

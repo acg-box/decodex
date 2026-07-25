@@ -4,9 +4,7 @@
 //! no account list, credential, process, RuntimeSession creation, dispatch, retry, or lifecycle
 //! authority.
 
-use crate::{
-	ConversationId, ManagedExecutionId, ManagedRunId, RuntimeSessionId, TurnId,
-};
+use crate::{ConversationId, ManagedExecutionId, ManagedRunId, RuntimeSessionId, TurnId};
 
 /// One exact consumer intent that V16 and V17 preserve without changing its domain owner.
 #[derive(Clone, Debug, Eq, PartialEq)]

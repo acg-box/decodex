@@ -399,15 +399,13 @@ impl ProviderPositiveEvidence {
 				.flatten()
 				.any(|value| {
 					!is_bounded_provider_identity(value, MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES)
-				})
-		{
+				}) {
 			return Err(ProviderAttemptError::InvalidPositiveEvidence);
 		}
 
 		let valid_shape = match source {
 			ProviderEvidenceSource::ProviderReceipt =>
-				outcome != ProviderTerminalOutcome::NotSubmitted
-					&& provider_receipt_id.is_some(),
+				outcome != ProviderTerminalOutcome::NotSubmitted && provider_receipt_id.is_some(),
 			ProviderEvidenceSource::PositiveIdempotencyLookup => true,
 			ProviderEvidenceSource::ExactTurnReadback =>
 				outcome != ProviderTerminalOutcome::NotSubmitted
@@ -531,9 +529,7 @@ fn is_canonical_uuid(value: &str) -> bool {
 
 fn is_canonical_uuid_v4(value: &str) -> bool {
 	let bytes = value.as_bytes();
-	is_canonical_uuid(value)
-		&& bytes[14] == b'4'
-		&& matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
+	is_canonical_uuid(value) && bytes[14] == b'4' && matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
 }
 
 fn is_sha256(value: &str) -> bool {

@@ -28,9 +28,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use libc::{
-	EPERM, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL, SIGTERM,
-};
+use libc::{EPERM, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL, SIGTERM};
 #[cfg(target_os = "linux")]
 use libc::{
 	F_ADD_SEALS, F_GET_SEALS, F_SEAL_EXEC, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE,
@@ -58,10 +56,11 @@ use crate::account_launch::{
 	protocol::{
 		AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
 		InitializeCapabilities, InitializeParams, InitializeResponse, JsonRpcResponse,
-		MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse, ThreadListParams,
-		ProtocolThread, ThreadListResponse, ThreadReadParams, ThreadReadResponse, ThreadSearchParams,
-		ThreadSearchResponse, RetainedTitleNameSetParams, RetainedTitleNameSetResponse,
-		RetainedTitleThreadStartParams, RetainedTitleThreadStartResponse,
+		MAX_APP_SERVER_FRAME_BYTES, ProtocolThread, RetainedTitleNameSetParams,
+		RetainedTitleNameSetResponse, RetainedTitleThreadStartParams,
+		RetainedTitleThreadStartResponse, ThreadArchiveParams, ThreadArchiveResponse,
+		ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
+		ThreadSearchParams, ThreadSearchResponse,
 	},
 };
 use decodex_codex::{
@@ -450,8 +449,7 @@ enum ExactProcessGenerationLifetimeCapability {
 impl ExactProcessGenerationLifetimeCapability {
 	const fn control_kind(self) -> ProcessControlKind {
 		match self {
-			Self::MacosPrivateStdioBestEffortEofV1 =>
-				ProcessControlKind::StdioOnlyBestEffortEof,
+			Self::MacosPrivateStdioBestEffortEofV1 => ProcessControlKind::StdioOnlyBestEffortEof,
 		}
 	}
 
@@ -486,16 +484,17 @@ impl AttestedAppServerLaunch {
 	/// The current accepted exact profile is the source-attested 0.145.0-alpha.18 macOS image.
 	/// Every other version or image, including an unrecorded Linux image, remains disabled until
 	/// an accepted exact profile is added.
-	#[expect(dead_code, reason = "sealed until an accepted product composition supplies launch input")]
+	#[expect(
+		dead_code,
+		reason = "sealed until an accepted product composition supplies launch input"
+	)]
 	pub(super) fn attest(
 		command: AppServerCommand,
 		binding: AccountBinding,
 		timeout: Duration,
 		guard: RunnerPermit,
 	) -> Result<Self, ProbeError> {
-		if guard.account_id.as_str() != binding.account_id.as_str()
-			|| guard.account_revision < 1
-		{
+		if guard.account_id.as_str() != binding.account_id.as_str() || guard.account_revision < 1 {
 			return Err(SupervisionError::InvalidBinding.into());
 		}
 
@@ -511,8 +510,7 @@ impl AttestedAppServerLaunch {
 			Some(guard),
 		)?;
 		capability.attest_build(&command, &build)?;
-		let runner_identity =
-			attested_launch_identity(&command, &binding, &build, capability)?;
+		let runner_identity = attested_launch_identity(&command, &binding, &build, capability)?;
 		let guard = guard.ok_or(SupervisionError::CleanupUnavailable)?;
 
 		Ok(Self { command, binding, build, runner_identity, capability, guard })
@@ -546,9 +544,7 @@ impl AttestedAppServerLaunch {
 			configured_attested_app_server_process(&self.command, &self.binding, self.capability)?;
 		let child = command.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
 
-		Ok(AttestedProcessChild {
-			owner: ProcessGroupOwner::new(child, Some(self.guard)),
-		})
+		Ok(AttestedProcessChild { owner: ProcessGroupOwner::new(child, Some(self.guard)) })
 	}
 }
 
@@ -893,9 +889,7 @@ impl SupervisedProcess {
 		let request_digest = frame.sha256();
 
 		frame.write_to(&mut self.stdin).map_err(rpc_supervision)?;
-		self.stdin
-			.flush()
-			.map_err(|_| RpcError::Supervision(SupervisionError::WriteFailed))?;
+		self.stdin.flush().map_err(|_| RpcError::Supervision(SupervisionError::WriteFailed))?;
 
 		let deadline = Instant::now() + timeout;
 
@@ -3035,16 +3029,8 @@ fn attested_launch_identity(
 	hash_launch_field(&mut digest, b"environment-value", home.as_os_str().as_bytes());
 	hash_launch_field(&mut digest, b"environment-name", b"PATH");
 	hash_launch_field(&mut digest, b"environment-value", CHILD_PATH.as_bytes());
-	hash_launch_field(
-		&mut digest,
-		b"environment-name",
-		PRIVATE_STDIO_STARTUP_ENV.as_bytes(),
-	);
-	hash_launch_field(
-		&mut digest,
-		b"environment-value",
-		PRIVATE_STDIO_STARTUP_VALUE.as_bytes(),
-	);
+	hash_launch_field(&mut digest, b"environment-name", PRIVATE_STDIO_STARTUP_ENV.as_bytes());
+	hash_launch_field(&mut digest, b"environment-value", PRIVATE_STDIO_STARTUP_VALUE.as_bytes());
 	hash_launch_field(&mut digest, b"account", binding.account_id.as_str().as_bytes());
 	hash_launch_field(&mut digest, b"capability", capability.identity().as_bytes());
 
@@ -3594,10 +3580,7 @@ fn configure_child_environment(
 ) -> Result<(), SupervisionError> {
 	let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
 
-	command
-		.env_clear()
-		.env("HOME", home)
-		.env("PATH", CHILD_PATH);
+	command.env_clear().env("HOME", home).env("PATH", CHILD_PATH);
 
 	Ok(())
 }
@@ -3689,18 +3672,12 @@ fn observe_owned_child_exit(
 }
 
 #[cfg(unix)]
-fn configure_process_session(
-	command: &mut Command,
-	max_file_bytes: Option<u64>,
-) {
+fn configure_process_session(command: &mut Command, max_file_bytes: Option<u64>) {
 	crate::process_platform::configure_session_command(command, max_file_bytes);
 }
 
 #[cfg(not(unix))]
-fn configure_process_session(
-	_command: &mut Command,
-	_max_file_bytes: Option<u64>,
-) {}
+fn configure_process_session(_command: &mut Command, _max_file_bytes: Option<u64>) {}
 
 #[cfg(unix)]
 fn signal_process_group(pid: u32, signal: i32) -> Result<(), SupervisionError> {

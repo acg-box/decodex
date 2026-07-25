@@ -135,13 +135,11 @@ impl PostgresStore {
 		let result_code: &str = row.get(0);
 		let mutation = parse_mutation(&row, 1, 2, 4)?;
 		match result_code {
-			"prepared" => Ok(PrepareProcessGenerationOutcome::Fresh(
-				FreshProcessGenerationFence {
-					generation_id: intent.generation_id.clone(),
-					revision: mutation.revision,
-					fenced_at_micros: row.get(3),
-				},
-			)),
+			"prepared" => Ok(PrepareProcessGenerationOutcome::Fresh(FreshProcessGenerationFence {
+				generation_id: intent.generation_id.clone(),
+				revision: mutation.revision,
+				fenced_at_micros: row.get(3),
+			})),
 			"replayed" => Ok(PrepareProcessGenerationOutcome::Replayed(mutation)),
 			code => Ok(PrepareProcessGenerationOutcome::Rejected {
 				rejection: parse_rejection(code)?,
@@ -158,9 +156,7 @@ impl PostgresStore {
 		identity: &ProcessIdentity,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
-			return Err(StoreError::InvalidInput(
-				"ProcessGeneration revision must be positive",
-			));
+			return Err(StoreError::InvalidInput("ProcessGeneration revision must be positive"));
 		}
 		let process_id = i64::from(identity.process_id);
 		let process_group_id = i64::from(identity.process_group_id);
@@ -223,9 +219,7 @@ impl PostgresStore {
 		reason: ProcessAuthorityLossReason,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
-			return Err(StoreError::InvalidInput(
-				"ProcessGeneration revision must be positive",
-			));
+			return Err(StoreError::InvalidInput("ProcessGeneration revision must be positive"));
 		}
 		self.process_generation_transition(
 			"SELECT result_code,revision,state::text,updated_at_micros \
@@ -244,9 +238,7 @@ impl PostgresStore {
 		evidence: &ProcessDeathEvidence,
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
-			return Err(StoreError::InvalidInput(
-				"ProcessGeneration revision must be positive",
-			));
+			return Err(StoreError::InvalidInput("ProcessGeneration revision must be positive"));
 		}
 		let (process_id, process_start_id, process_group_id, session_id) =
 			optional_identity_parameters(evidence.process_identity.as_ref());
@@ -315,8 +307,7 @@ impl PostgresStore {
 			));
 		}
 		let account_id = account_id.map(|account_id| account_id.as_str());
-		let after_generation_id =
-			after_generation_id.map(|generation_id| generation_id.as_str());
+		let after_generation_id = after_generation_id.map(|generation_id| generation_id.as_str());
 		let limit = i64::from(limit);
 		let rows = self
 			.pool()
@@ -344,9 +335,7 @@ impl PostgresStore {
 		applied_codes: &[&str],
 	) -> Result<ProcessGenerationMutationOutcome, StoreError> {
 		if expected_revision <= 0 {
-			return Err(StoreError::InvalidInput(
-				"ProcessGeneration revision must be positive",
-			));
+			return Err(StoreError::InvalidInput("ProcessGeneration revision must be positive"));
 		}
 		self.process_generation_transition(
 			statement,
@@ -402,9 +391,7 @@ fn parse_mutation(
 	let revision: i64 = row.get(revision_index);
 	let recorded_at_micros: i64 = row.get(time_index);
 	if revision < 0 || recorded_at_micros < 0 {
-		return Err(incompatible_value(
-			"ProcessGeneration mutation coordinate",
-		));
+		return Err(incompatible_value("ProcessGeneration mutation coordinate"));
 	}
 	Ok(ProcessGenerationMutation {
 		revision,
@@ -462,10 +449,8 @@ fn parse_generation(row: tokio_postgres::Row) -> Result<ProcessGeneration, Store
 	};
 	let state = parse_state(row.get(12))?;
 	let revision: i64 = row.get(13);
-	let authority_loss_reason = row
-		.get::<_, Option<&str>>(14)
-		.map(parse_loss_reason)
-		.transpose()?;
+	let authority_loss_reason =
+		row.get::<_, Option<&str>>(14).map(parse_loss_reason).transpose()?;
 	let death_evidence_id = row
 		.get::<_, Option<String>>(15)
 		.map(ProcessDeathEvidenceId::new)
@@ -479,10 +464,8 @@ fn parse_generation(row: tokio_postgres::Row) -> Result<ProcessGeneration, Store
 		|| process_identity
 			.as_ref()
 			.is_some_and(|identity| identity.boot_id.as_str() != intended_boot_id.as_str())
-		|| (matches!(
-			state,
-			ProcessGenerationState::Ready | ProcessGenerationState::Stopping
-		) && process_identity.is_none())
+		|| (matches!(state, ProcessGenerationState::Ready | ProcessGenerationState::Stopping)
+			&& process_identity.is_none())
 		|| (state == ProcessGenerationState::DeathUnknown) != authority_loss_reason.is_some()
 		|| (state == ProcessGenerationState::Dead) != death_evidence_id.is_some()
 	{
@@ -520,8 +503,7 @@ fn parse_state(value: &str) -> Result<ProcessGenerationState, StoreError> {
 fn parse_control_kind(value: &str) -> Result<ProcessControlKind, StoreError> {
 	match value {
 		"stdio_only_best_effort_eof" => Ok(ProcessControlKind::StdioOnlyBestEffortEof),
-		"parent_death_signal_and_stdio_eof" =>
-			Ok(ProcessControlKind::ParentDeathSignalAndStdioEof),
+		"parent_death_signal_and_stdio_eof" => Ok(ProcessControlKind::ParentDeathSignalAndStdioEof),
 		_ => Err(incompatible_value("generation control kind")),
 	}
 }
@@ -536,8 +518,7 @@ fn parse_isolation_kind(value: &str) -> Result<ProcessIsolationKind, StoreError>
 fn parse_loss_reason(value: &str) -> Result<ProcessAuthorityLossReason, StoreError> {
 	match value {
 		"supervisor_restarted" => Ok(ProcessAuthorityLossReason::SupervisorRestarted),
-		"identity_persistence_failed" =>
-			Ok(ProcessAuthorityLossReason::IdentityPersistenceFailed),
+		"identity_persistence_failed" => Ok(ProcessAuthorityLossReason::IdentityPersistenceFailed),
 		"readiness_persistence_failed" =>
 			Ok(ProcessAuthorityLossReason::ReadinessPersistenceFailed),
 		"termination_unproved" => Ok(ProcessAuthorityLossReason::TerminationUnproved),
@@ -555,8 +536,7 @@ fn parse_rejection(value: &str) -> Result<ProcessGenerationRejection, StoreError
 		"account_quarantined" => Ok(ProcessGenerationRejection::AccountQuarantined),
 		"generation_missing" => Ok(ProcessGenerationRejection::GenerationMissing),
 		"stale_generation" => Ok(ProcessGenerationRejection::StaleGeneration),
-		"process_identity_conflict" =>
-			Ok(ProcessGenerationRejection::ProcessIdentityConflict),
+		"process_identity_conflict" => Ok(ProcessGenerationRejection::ProcessIdentityConflict),
 		"invalid_process_identity" => Ok(ProcessGenerationRejection::InvalidProcessIdentity),
 		"evidence_conflict" => Ok(ProcessGenerationRejection::EvidenceConflict),
 		"invalid_evidence" => Ok(ProcessGenerationRejection::InvalidEvidence),
@@ -566,10 +546,7 @@ fn parse_rejection(value: &str) -> Result<ProcessGenerationRejection, StoreError
 }
 
 fn optional_u32(value: Option<i64>, name: &'static str) -> Result<Option<u32>, StoreError> {
-	value
-		.map(u32::try_from)
-		.transpose()
-		.map_err(|_| incompatible_value(name))
+	value.map(u32::try_from).transpose().map_err(|_| incompatible_value(name))
 }
 
 fn incompatible_value(reason: &'static str) -> StoreError {

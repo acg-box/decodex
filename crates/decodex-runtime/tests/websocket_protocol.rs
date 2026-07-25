@@ -23,7 +23,8 @@ use decodex_protocol::{
 	EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
 	LocalTransportStream, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
 	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResultPayload,
-	ResumeCursor, ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal, WireText,
+	ResumeCursor, ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal,
+	WireText,
 };
 use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
 
@@ -169,12 +170,9 @@ fn local_transport() -> (TempDir, LocalTransportAuthority) {
 
 	// SAFETY: `geteuid` has no arguments or failure return.
 	let service_owner_uid = unsafe { libc::geteuid() };
-	let authority = LocalTransportAuthority::new(
-		paths,
-		LocalTrustPolicy::SameUid,
-		Some(service_owner_uid),
-	)
-	.expect("same-UID local transport authority");
+	let authority =
+		LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
+			.expect("same-UID local transport authority");
 
 	(temp, authority)
 }
@@ -205,15 +203,12 @@ fn doctor_query(number: u64) -> ClientMessage {
 	})
 }
 
-async fn connect(
-	transport: &LocalTransportAuthority,
-	version: ProtocolVersion,
-) -> Client {
+async fn connect(transport: &LocalTransportAuthority, version: ProtocolVersion) -> Client {
 	let stream = transport.connect().await.expect("connect admitted local stream");
 	let (mut client, _) =
 		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
-		.await
-		.expect("connect real WebSocket client");
+			.await
+			.expect("connect real WebSocket client");
 
 	send(
 		&mut client,
@@ -232,8 +227,8 @@ async fn reconnect(
 	let stream = transport.connect().await.expect("reconnect admitted local stream");
 	let (mut client, _) =
 		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
-		.await
-		.expect("connect real slow WebSocket client");
+			.await
+			.expect("connect real slow WebSocket client");
 
 	send(
 		&mut client,
@@ -341,10 +336,11 @@ async fn execute_key_and_receive_event(
 #[tokio::test]
 async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 	let (_temp, transport) = local_transport();
-	let mut bound = server("version-server", FixtureApplication::default(), ServerConfig::default())
-		.bind(transport.clone())
-		.await
-		.unwrap();
+	let mut bound =
+		server("version-server", FixtureApplication::default(), ServerConfig::default())
+			.bind(transport.clone())
+			.await
+			.unwrap();
 
 	for (index, version) in [PREVIOUS_MINOR_VERSION, CURRENT_VERSION].into_iter().enumerate() {
 		let mut client = connect(&transport, version).await;
@@ -420,12 +416,9 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 
 	drop(client);
 
-	let mut client = reconnect(
-		&transport,
-		CURRENT_VERSION,
-		ResumeCursor { server_id, instance_id, cursor },
-	)
-	.await;
+	let mut client =
+		reconnect(&transport, CURRENT_VERSION, ResumeCursor { server_id, instance_id, cursor })
+			.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
 		panic!("expected reconnect welcome");
 	};
@@ -628,12 +621,9 @@ async fn assert_initiator_overflow(run: u64) {
 
 	drop(client);
 
-	let mut resumed = reconnect(
-		&transport,
-		CURRENT_VERSION,
-		ResumeCursor { server_id, instance_id, cursor },
-	)
-	.await;
+	let mut resumed =
+		reconnect(&transport, CURRENT_VERSION, ResumeCursor { server_id, instance_id, cursor })
+			.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut resumed).await else {
 		panic!("expected resume welcome after initiator overflow");
 	};
@@ -678,12 +668,9 @@ async fn assert_event_overflow(run: u64) {
 
 	drop(client);
 
-	let mut resumed = reconnect(
-		&transport,
-		CURRENT_VERSION,
-		ResumeCursor { server_id, instance_id, cursor },
-	)
-	.await;
+	let mut resumed =
+		reconnect(&transport, CURRENT_VERSION, ResumeCursor { server_id, instance_id, cursor })
+			.await;
 
 	assert!(matches!(receive(&mut resumed).await, ServerMessage::Welcome(_)));
 
@@ -1111,12 +1098,9 @@ async fn cross_uid_authority_is_refused_before_opening_a_socket() {
 
 	// SAFETY: `geteuid` has no arguments or failure return.
 	let service_owner_uid = unsafe { libc::geteuid() };
-	let error = LocalTransportAuthority::new(
-		paths,
-		LocalTrustPolicy::SameUid,
-		Some(service_owner_uid ^ 1),
-	)
-	.unwrap_err();
+	let error =
+		LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid ^ 1))
+			.unwrap_err();
 
 	assert_eq!(error, LocalTransportRefusal::EffectiveUidMismatch);
 }
