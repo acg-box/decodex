@@ -8,8 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 DEFAULT_MANIFESTS = [
-    REPO_ROOT / "automations/decodex/automations.toml",
-    REPO_ROOT / "automations/radar/automations.toml",
+    REPO_ROOT / "automations/upstream/automations.toml",
 ]
 
 
