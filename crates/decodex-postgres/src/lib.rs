@@ -218,13 +218,13 @@ impl PostgresStore {
 		authority::execution_path_contract_fixture()
 	}
 
-	/// Evaluate the production non-digest authority predicates for capture-only evidence.
+	/// Evaluate and serialize the finalized production semantic-authority contract.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
 	pub async fn semantic_authority_fixture(
 		client: &TokioClient,
 		runtime_role: &str,
-	) -> Result<Vec<(&'static str, bool)>, StoreError> {
+	) -> Result<serde_json::Value, StoreError> {
 		authority::semantic_authority_fixture(client, runtime_role).await
 	}
 
