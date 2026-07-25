@@ -3,6 +3,7 @@
 use std::{
 	collections::VecDeque,
 	fs,
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
 	sync::{Arc, Mutex},
 	time::Duration,
@@ -11,9 +12,9 @@ use std::{
 use tempfile::TempDir;
 
 use decodex_protocol::{
-	CURRENT_VERSION, Channel, CorrelationId, Cursor, EntityId, EntityRevision, EventEnvelope,
-	EventPayload, RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint,
-	SnapshotEnvelope, SnapshotItem, WireText,
+	CURRENT_VERSION, Channel, ClientProfile, CorrelationId, Cursor, EntityId, EntityRevision,
+	EventEnvelope, EventPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId,
+	ServerInstanceId, SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
 };
 
 use crate::client_lifecycle::{
@@ -21,7 +22,8 @@ use crate::client_lifecycle::{
 	Delivery, LifecycleCancellation, LifecycleIo, QuarantineReason, QuarantineRecovery, RunResult,
 };
 
-const SERVER: &str = "server-a";
+const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+const OTHER_SERVER: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const INSTANCE: &str = "publication-a";
 
 #[derive(Clone, Debug)]
@@ -363,11 +365,7 @@ fn lifecycle(root: &Path) -> ClientLifecycle {
 }
 
 fn lifecycle_for(root: &Path, server_id: &str, schema_generation: u64) -> ClientLifecycle {
-	let config = decodex_protocol::RetainedSessionConfig::new(
-		"ws://127.0.0.1:49152/v1/ws",
-		server(server_id),
-	)
-	.expect("fixture retained session config is valid");
+	let config = retained_config(root, server_id);
 
 	ClientLifecycle::new(
 		config,
@@ -376,6 +374,47 @@ fn lifecycle_for(root: &Path, server_id: &str, schema_generation: u64) -> Client
 		schema_generation,
 	)
 	.expect("lifecycle constructs")
+}
+
+fn retained_config(root: &Path, server_id: &str) -> RetainedSessionConfig {
+	let transport_root = root
+		.parent()
+		.expect("cache root has a parent")
+		.join("client-transport");
+	let server_root = transport_root.join("server");
+
+	fs::create_dir_all(&server_root).expect("fixed local transport namespace is available");
+	fs::set_permissions(&transport_root, fs::Permissions::from_mode(0o700))
+		.expect("transport root is owner-only");
+	fs::set_permissions(&server_root, fs::Permissions::from_mode(0o700))
+		.expect("transport server directory is owner-only");
+
+	let service_owner_uid =
+		fs::metadata(&transport_root).expect("transport root metadata is available").uid();
+	let config = format!(
+		r#"version = 1
+active_profile = "local"
+server_host = {{}}
+postgres = {{}}
+cache = {{}}
+
+[profiles.local]
+kind = "local"
+policy = "same_uid"
+service_owner_uid = {service_owner_uid}
+expected_server_identity = "{server_id}"
+"#,
+	);
+	let config_path = transport_root.join("config.toml");
+
+	fs::write(&config_path, config).expect("fixture client configuration is written");
+	fs::set_permissions(&config_path, fs::Permissions::from_mode(0o600))
+		.expect("fixture client configuration is owner-only");
+
+	ClientProfile::load(&transport_root, None)
+		.expect("fixture local profile is valid")
+		.retained_session_config()
+		.expect("fixture retained session config is local")
 }
 
 #[tokio::test]
@@ -755,7 +794,7 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 		.expect("original checkpoint binds");
 	drop(original);
 
-	let mut server_switched = lifecycle_for(&root, "server-b", 1);
+	let mut server_switched = lifecycle_for(&root, OTHER_SERVER, 1);
 	assert_eq!(
 		server_switched.view(),
 		ConnectionView::Quarantined {
@@ -767,12 +806,12 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 		root.clone(),
 		vec![ConnectAction::Session {
 			actions: vec![
-				SessionAction::Snapshot(snapshot_for("server-b", 2, "new", 1)),
+				SessionAction::Snapshot(snapshot_for(OTHER_SERVER, 2, "new", 1)),
 				SessionAction::Cancel,
 			]
 			.into(),
 			checkpoint: None,
-			server_id: "server-b",
+			server_id: OTHER_SERVER,
 			instance_id: "publication-b",
 		}],
 	);
@@ -792,7 +831,7 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 	);
 	drop(server_switched);
 
-	let schema_switched = lifecycle_for(&root, "server-b", 2);
+	let schema_switched = lifecycle_for(&root, OTHER_SERVER, 2);
 	assert_eq!(
 		schema_switched.view(),
 		ConnectionView::Quarantined {

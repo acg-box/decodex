@@ -131,11 +131,8 @@ pub enum VersionRefusal {
 
 #[cfg(test)]
 mod tests {
-	use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
 	use crate::{
-		CURRENT_VERSION, LoopbackEndpoint, PREVIOUS_MINOR_VERSION, ProtocolVersion,
-		SupportedVersions, VersionRefusal,
+		CURRENT_VERSION, PREVIOUS_MINOR_VERSION, ProtocolVersion, SupportedVersions, VersionRefusal,
 	};
 
 	#[test]
@@ -161,20 +158,43 @@ mod tests {
 		);
 	}
 
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	#[test]
-	fn loopback_endpoint_accepts_local_composition() {
-		let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 49_152);
+	fn local_transport_authority_accepts_only_the_process_effective_uid() {
+		use crate::{LocalTransportAuthority, LocalTransportRefusal};
+		use decodex_core::{DecodexRoot, LocalTrustPolicy};
 
-		assert_eq!(LoopbackEndpoint::new(address).unwrap().address(), address);
-	}
+		let temp = tempfile::tempdir().unwrap();
+		let root =
+			DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let paths = root.paths();
 
-	#[test]
-	fn loopback_endpoint_refuses_remote_binding() {
-		let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 49_152);
+		paths.ensure_layout().unwrap();
 
+		// SAFETY: `geteuid` has no arguments or failure return.
+		let uid = unsafe { libc::geteuid() };
+
+		assert!(
+			LocalTransportAuthority::new(
+				paths.clone(),
+				LocalTrustPolicy::SameUid,
+				Some(uid),
+			)
+			.is_ok()
+		);
 		assert_eq!(
-			LoopbackEndpoint::new(address).unwrap_err().to_string(),
-			"non-loopback endpoint is disabled: 0.0.0.0:49152"
+			LocalTransportAuthority::new(
+				paths.clone(),
+				LocalTrustPolicy::Disabled,
+				None,
+			)
+			.unwrap_err(),
+			LocalTransportRefusal::Disabled,
+		);
+		assert_eq!(
+			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(uid ^ 1))
+				.unwrap_err(),
+			LocalTransportRefusal::EffectiveUidMismatch,
 		);
 	}
 }

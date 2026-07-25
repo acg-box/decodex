@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the real CLI against the real runtime on an isolated loopback port."""
+"""Run the real CLI against the fixed owner-only same-UID Unix endpoint."""
 
 from __future__ import annotations
 

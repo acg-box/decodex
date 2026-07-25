@@ -29,13 +29,20 @@ impl TestRoot {
 }
 
 pub fn valid_config() -> String {
+	#[cfg(unix)]
+	// SAFETY: `geteuid` has no arguments or failure return.
+	let service_owner_uid = unsafe { libc::geteuid() };
+	#[cfg(not(unix))]
+	let service_owner_uid = 501;
+
 	format!(
 		r#"version = 1
 active_profile = "local"
 
 [profiles.local]
 kind = "local"
-address = "127.0.0.1:49152"
+policy = "same_uid"
+service_owner_uid = {service_owner_uid}
 
 [profiles.remote]
 kind = "remote"

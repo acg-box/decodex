@@ -115,8 +115,15 @@ impl ClientProfile {
 	}
 
 	#[cfg(test)]
-	fn fixture(url: String, expected_server_id: ServerId) -> Self {
-		Self { kind: ProfileKind::Local, url, expected_server_id }
+	fn fixture(
+		local_transport: LocalTransportAuthority,
+		expected_server_id: ServerId,
+	) -> Self {
+		Self {
+			kind: ProfileKind::Local,
+			local_transport: Some(local_transport),
+			expected_server_id,
+		}
 	}
 }
 
@@ -490,26 +497,26 @@ fn version_failure(version: ProtocolVersion) -> ClientFailure {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
 	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
-	use std::{fs, net::Ipv4Addr, time::Duration};
+	use std::{fs, time::Duration};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
 	use tempfile::TempDir;
-	use tokio::{net::TcpListener, task::JoinHandle, time};
+	use tokio::{task::JoinHandle, time};
 	use tokio_tungstenite::{self, tungstenite::Message};
 
 	use crate::{
 		CURRENT_VERSION, Channel, ClientFailure, ClientMessage, ClientProfile, CorrelationId,
 		Cursor, DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue, DoctorReport,
 		DoctorStatus, EntityId, EntityRevision, EventEnvelope, EventPayload,
-		PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId, QueryResultEnvelope,
-		QueryResultPayload, ReconnectMode, Refusal, RefusalEnvelope, RetainedSessionFailure,
-		ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope, SupportedVersions,
-		VersionRefusal, WireText,
+		LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId,
+		QueryResultEnvelope, QueryResultPayload, ReconnectMode, Refusal, RefusalEnvelope,
+		RetainedSessionFailure, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
+		SupportedVersions, VersionRefusal, WireText,
 	};
-	use decodex_core::{DecodexRoot, ServerIdentity};
+	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
@@ -594,13 +601,16 @@ mod tests {
 		paths.ensure_layout().unwrap();
 
 		let identity = ServerIdentity::load_or_create(&paths).unwrap();
+		// SAFETY: `geteuid` has no arguments or failure return.
+		let service_owner_uid = unsafe { libc::geteuid() };
 		let config = format!(
 			r#"version = 1
 active_profile = "local"
 
 [profiles.local]
 kind = "local"
-address = "127.0.0.1:49152"
+policy = "same_uid"
+service_owner_uid = {service_owner_uid}
 
 [profiles.remote]
 kind = "remote"
@@ -652,8 +662,10 @@ max_entry_bytes = 0
 		);
 		assert_eq!(remote.kind(), ProfileKind::Remote);
 		assert_eq!(remote.expected_server_id.as_str(), SERVER_ID);
-		assert_eq!(remote.retained_session_config(), Err(RetainedSessionFailure::InvalidEndpoint));
-		assert!(!remote.url.contains("must-not-be-client-validated"));
+		assert_eq!(
+			remote.retained_session_config(),
+			Err(RetainedSessionFailure::RemoteTransportDisabled),
+		);
 		assert!(!format!("{remote:?}").contains("server.example.test"));
 	}
 
@@ -664,14 +676,34 @@ max_entry_bytes = 0
 		assert!(WireText::new("bounded").is_ok());
 	}
 
+	fn local_transport() -> (TempDir, LocalTransportAuthority) {
+		let temp = TempDir::new().unwrap();
+		let root =
+			DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let paths = root.paths();
+
+		paths.ensure_layout().unwrap();
+
+		// SAFETY: `geteuid` has no arguments or failure return.
+		let service_owner_uid = unsafe { libc::geteuid() };
+		let authority = LocalTransportAuthority::new(
+			paths,
+			LocalTrustPolicy::SameUid,
+			Some(service_owner_uid),
+		)
+		.unwrap();
+
+		(temp, authority)
+	}
+
 	async fn fixture(
 		initial: Vec<Message>,
 		query: Vec<Message>,
-	) -> (ClientProfile, JoinHandle<()>) {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+	) -> (ClientProfile, JoinHandle<()>, TempDir) {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let hello = socket.next().await.unwrap().unwrap();
 			let Message::Text(hello) = hello else { panic!("expected text hello") };
@@ -699,19 +731,23 @@ max_entry_bytes = 0
 					socket.send(response).await.unwrap();
 				}
 			}
+
+			drop(socket);
+			listener.cleanup().unwrap();
 		});
 		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
+			authority,
 			ServerId::new(SERVER_ID).unwrap(),
 		);
 
-		(profile, task)
+		(profile, task, temp)
 	}
 
 	#[tokio::test]
 	async fn client_accepts_only_a_fully_verified_typed_report() {
 		let expected = report();
-		let (profile, task) = fixture(initial(SERVER_ID), vec![result(expected.clone())]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![result(expected.clone())]).await;
 		let actual = DoctorClient::new(profile).query().await.unwrap();
 
 		assert_eq!(actual, expected);
@@ -740,7 +776,8 @@ max_entry_bytes = 0
 		];
 
 		for report in incomplete {
-			let (profile, task) = fixture(initial(SERVER_ID), vec![result(report)]).await;
+			let (profile, task, _temp) =
+				fixture(initial(SERVER_ID), vec![result(report)]).await;
 
 			assert_eq!(
 				DoctorClient::new(profile).query().await.unwrap_err(),
@@ -757,7 +794,8 @@ max_entry_bytes = 0
 		let reversed =
 			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, reversed)
 				.unwrap();
-		let (profile, task) = fixture(initial(SERVER_ID), vec![result(reversed.clone())]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![result(reversed.clone())]).await;
 
 		assert_eq!(DoctorClient::new(profile).query().await.unwrap(), reversed);
 
@@ -795,7 +833,7 @@ max_entry_bytes = 0
 				server_id: ServerId::new(SERVER_ID).unwrap(),
 				refusal,
 			}));
-			let (profile, task) = fixture(vec![response], Vec::new()).await;
+			let (profile, task, _temp) = fixture(vec![response], Vec::new()).await;
 
 			assert_eq!(DoctorClient::new(profile).query().await.unwrap_err(), expected);
 
@@ -812,7 +850,7 @@ max_entry_bytes = 0
 				supported: SupportedVersions::current(),
 			}),
 		);
-		let (profile, task) = fixture(vec![wrong_version], Vec::new()).await;
+		let (profile, task, _temp) = fixture(vec![wrong_version], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -828,7 +866,7 @@ max_entry_bytes = 0
 			Refusal::ProtocolViolation { message: WireText::new("untrusted-order").unwrap() },
 		);
 
-		let (profile, task) = fixture(wrong_protocol, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_protocol, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -839,7 +877,8 @@ max_entry_bytes = 0
 
 		let wrong_backpressure =
 			refusal("wrong-server", Refusal::Backpressure { queue_capacity: 1 });
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_backpressure]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![wrong_backpressure]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -855,7 +894,7 @@ max_entry_bytes = 0
 
 		wrong_welcome.truncate(1);
 
-		let (profile, task) = fixture(wrong_welcome, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_welcome, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -872,7 +911,8 @@ max_entry_bytes = 0
 			cursor: Cursor(0),
 			reconnect: ReconnectMode::Snapshot,
 		}));
-		let (profile, task) = fixture(vec![wrong_welcome_version], Vec::new()).await;
+		let (profile, task, _temp) =
+			fixture(vec![wrong_welcome_version], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -890,7 +930,7 @@ max_entry_bytes = 0
 			items: Vec::new(),
 		}));
 
-		let (profile, task) = fixture(wrong_snapshot, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_snapshot, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -905,7 +945,8 @@ max_entry_bytes = 0
 			query_id: QueryId::new("decodex-cli-doctor").unwrap(),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -920,7 +961,7 @@ max_entry_bytes = 0
 			report().checks().to_vec(),
 		)
 		.unwrap();
-		let (profile, task) =
+		let (profile, task, _temp) =
 			fixture(initial(SERVER_ID), vec![result(wrong_report_identity)]).await;
 
 		assert_eq!(
@@ -938,7 +979,8 @@ max_entry_bytes = 0
 
 		wrong_report = serde_json::from_value(encoded.into()).unwrap();
 
-		let (profile, task) = fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -959,7 +1001,7 @@ max_entry_bytes = 0
 			items: Vec::new(),
 		}));
 
-		let (profile, task) = fixture(wrong_snapshot_version, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_snapshot_version, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -974,7 +1016,8 @@ max_entry_bytes = 0
 			query_id: QueryId::new("decodex-cli-doctor").unwrap(),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_result_version]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![wrong_result_version]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -989,7 +1032,8 @@ max_entry_bytes = 0
 			query_id: QueryId::new("wrong-query").unwrap(),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_query_id]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![wrong_query_id]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1002,7 +1046,7 @@ max_entry_bytes = 0
 
 		wrong_order[1] = result(report());
 
-		let (profile, task) = fixture(wrong_order, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_order, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1018,7 +1062,7 @@ max_entry_bytes = 0
 			(event(PREVIOUS_MINOR_VERSION, SERVER_ID), ClientFailure::ProtocolMinorMismatch),
 			(event(CURRENT_VERSION, "wrong-server"), ClientFailure::ServerIdentityMismatch),
 		] {
-			let (profile, task) = fixture(initial(SERVER_ID), vec![event]).await;
+			let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![event]).await;
 
 			assert_eq!(DoctorClient::new(profile).query().await.unwrap_err(), expected);
 
@@ -1027,7 +1071,7 @@ max_entry_bytes = 0
 
 		let expected = report();
 		let responses = vec![event(CURRENT_VERSION, SERVER_ID), result(expected.clone())];
-		let (profile, task) = fixture(initial(SERVER_ID), responses).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), responses).await;
 
 		assert_eq!(DoctorClient::new(profile).query().await.unwrap(), expected);
 
@@ -1036,13 +1080,10 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn disconnected_malformed_oversized_and_timeout_fail_closed() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
-
-		drop(listener);
+		let (_temp, authority) = local_transport();
 
 		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
+			authority,
 			ServerId::new(SERVER_ID).unwrap(),
 		);
 
@@ -1051,7 +1092,7 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolDisconnected,
 		);
 
-		let (profile, task) =
+		let (profile, task, _temp) =
 			fixture(vec![Message::Text("untrusted-parser-marker".into())], Vec::new()).await;
 		let error = DoctorClient::new(profile).query().await.unwrap_err();
 
@@ -1061,7 +1102,7 @@ max_entry_bytes = 0
 		task.await.unwrap();
 
 		let oversized = Message::Text("x".repeat(super::MAX_CLIENT_MESSAGE_BYTES + 1).into());
-		let (profile, task) = fixture(vec![oversized], Vec::new()).await;
+		let (profile, task, _temp) = fixture(vec![oversized], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1070,17 +1111,17 @@ max_entry_bytes = 0
 
 		task.await.unwrap();
 
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let _ = socket.next().await;
 
 			time::sleep(Duration::from_secs(1)).await;
 		});
 		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
+			authority,
 			ServerId::new(SERVER_ID).unwrap(),
 		);
 		let client = DoctorClient { profile, timeout: Duration::from_millis(20) };
@@ -1088,5 +1129,7 @@ max_entry_bytes = 0
 		assert_eq!(client.query().await.unwrap_err(), ClientFailure::ProtocolTimeout);
 
 		task.abort();
+		let _ = task.await;
+		drop(temp);
 	}
 }

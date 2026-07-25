@@ -1,34 +1,37 @@
-//! End-to-end loopback WebSocket protocol acceptance tests.
+//! End-to-end same-UID Unix WebSocket protocol acceptance tests.
 #![allow(unused_crate_dependencies)]
 
 use std::{
 	future::{self, Future},
-	net::{Ipv4Addr, SocketAddr},
 	sync::{Arc, Mutex},
 	time::Duration,
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use tokio::{net::TcpStream, time};
+use tempfile::TempDir;
+use tokio::time;
 use tokio_tungstenite::{
-	self, MaybeTlsStream, WebSocketStream,
+	self, WebSocketStream,
 	tungstenite::{Message, protocol::frame::coding::CloseCode},
 };
 
+use decodex_core::{DecodexRoot, LocalTrustPolicy};
 use decodex_protocol::{
 	CURRENT_VERSION, CausationId, Channel, ClientCommandId, ClientHello, ClientMessage,
 	CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor, DoctorCheck,
 	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
-	EventPayload, IdempotencyKey, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
+	EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
+	LocalTransportStream, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
 	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResultPayload,
-	ResumeCursor, ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal,
-	WireText,
+	ResumeCursor, ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal, WireText,
 };
 use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
 
-type Client = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type Client = WebSocketStream<LocalTransportStream>;
 
 const OVERFLOW_STRESS_RUNS: u64 = 16;
+// Handshake metadata only. The stream is already admitted by the local authority.
+const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 #[derive(Clone, Default)]
 struct FixtureApplication {
@@ -154,6 +157,28 @@ fn server(
 	ProtocolServer::new(ServerId::new(id).expect("bounded fixture server ID"), application, config)
 }
 
+fn local_transport() -> (TempDir, LocalTransportAuthority) {
+	let temp = TempDir::new().expect("local transport temp");
+	let root = DecodexRoot::new(
+		temp.path().canonicalize().expect("canonical local transport temp").join(".decodex"),
+	)
+	.expect("local transport root is safe");
+	let paths = root.paths();
+
+	paths.ensure_layout().expect("owner-only local transport layout");
+
+	// SAFETY: `geteuid` has no arguments or failure return.
+	let service_owner_uid = unsafe { libc::geteuid() };
+	let authority = LocalTransportAuthority::new(
+		paths,
+		LocalTrustPolicy::SameUid,
+		Some(service_owner_uid),
+	)
+	.expect("same-UID local transport authority");
+
+	(temp, authority)
+}
+
 fn command(version: ProtocolVersion, number: u64, key: &str) -> ClientMessage {
 	ClientMessage::Command(CommandEnvelope {
 		version,
@@ -180,8 +205,13 @@ fn doctor_query(number: u64) -> ClientMessage {
 	})
 }
 
-async fn connect(address: SocketAddr, version: ProtocolVersion) -> Client {
-	let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{address}/v1/ws"))
+async fn connect(
+	transport: &LocalTransportAuthority,
+	version: ProtocolVersion,
+) -> Client {
+	let stream = transport.connect().await.expect("connect admitted local stream");
+	let (mut client, _) =
+		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
 		.await
 		.expect("connect real WebSocket client");
 
@@ -194,8 +224,14 @@ async fn connect(address: SocketAddr, version: ProtocolVersion) -> Client {
 	client
 }
 
-async fn reconnect(address: SocketAddr, version: ProtocolVersion, cursor: ResumeCursor) -> Client {
-	let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{address}/v1/ws"))
+async fn reconnect(
+	transport: &LocalTransportAuthority,
+	version: ProtocolVersion,
+	cursor: ResumeCursor,
+) -> Client {
+	let stream = transport.connect().await.expect("reconnect admitted local stream");
+	let (mut client, _) =
+		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
 		.await
 		.expect("connect real slow WebSocket client");
 
@@ -304,13 +340,14 @@ async fn execute_key_and_receive_event(
 
 #[tokio::test]
 async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
-	let bound = server("version-server", FixtureApplication::default(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("version-server", FixtureApplication::default(), ServerConfig::default())
+		.bind(transport.clone())
 		.await
 		.unwrap();
 
 	for (index, version) in [PREVIOUS_MINOR_VERSION, CURRENT_VERSION].into_iter().enumerate() {
-		let mut client = connect(bound.address(), version).await;
+		let mut client = connect(&transport, version).await;
 		let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
 			panic!("expected welcome");
 		};
@@ -324,7 +361,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 		client.close(None).await.unwrap();
 	}
 
-	let mut client = connect(bound.address(), ProtocolVersion { major: 2, minor: 0 }).await;
+	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 0 }).await;
 	let ServerMessage::Refusal(refusal) = receive(&mut client).await else {
 		panic!("expected version refusal");
 	};
@@ -336,7 +373,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 
 	drop(client);
 
-	let mut client = connect(bound.address(), ProtocolVersion { major: 1, minor: 9 }).await;
+	let mut client = connect(&transport, ProtocolVersion { major: 1, minor: 9 }).await;
 	let ServerMessage::Refusal(refusal) = receive(&mut client).await else {
 		panic!("expected minor-version refusal");
 	};
@@ -354,11 +391,12 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 #[tokio::test]
 async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 	let application = FixtureApplication::default();
-	let bound = server("idempotency-server", application.clone(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("idempotency-server", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
 		.await
 		.unwrap();
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (_, instance_id, _, _) = receive_initial(&mut client).await;
 
 	send(&mut client, command(CURRENT_VERSION, 1, "same-key")).await;
@@ -383,7 +421,7 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 	drop(client);
 
 	let mut client = reconnect(
-		bound.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor { server_id, instance_id, cursor },
 	)
@@ -425,11 +463,12 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 #[tokio::test]
 async fn expected_revision_mismatch_is_rejected_without_publication() {
 	let application = FixtureApplication::default();
-	let bound = server("revision-server", application.clone(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("revision-server", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
 		.await
 		.unwrap();
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
 
@@ -465,11 +504,12 @@ async fn expected_revision_mismatch_is_rejected_without_publication() {
 #[tokio::test]
 async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	let config = ServerConfig { replay_capacity: 2, ..ServerConfig::default() };
-	let bound = server("resume-server", FixtureApplication::default(), config)
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("resume-server", FixtureApplication::default(), config)
+		.bind(transport.clone())
 		.await
 		.unwrap();
-	let mut first = connect(bound.address(), CURRENT_VERSION).await;
+	let mut first = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, instance_id, _, _) = receive_initial(&mut first).await;
 	let persisted = execute_and_receive_event(&mut first, CURRENT_VERSION, 1).await;
 
@@ -478,7 +518,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	drop(first);
 
 	let mut resumed = reconnect(
-		bound.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor {
 			server_id: server_id.clone(),
@@ -497,7 +537,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	drop(resumed);
 
 	let mut resumed = reconnect(
-		bound.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor {
 			server_id: server_id.clone(),
@@ -524,7 +564,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	drop(resumed);
 
 	let mut stale = reconnect(
-		bound.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor { server_id: server_id.clone(), instance_id, cursor: Cursor(0) },
 	)
@@ -544,7 +584,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	drop(stale);
 
 	let mut previous = reconnect(
-		bound.address(),
+		&transport,
 		PREVIOUS_MINOR_VERSION,
 		ResumeCursor { server_id, instance_id: None, cursor: persisted },
 	)
@@ -573,11 +613,12 @@ async fn assert_initiator_overflow(run: u64) {
 	let config = ServerConfig { outbound_queue_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
 	let server_id = format!("backpressure-server-{run}");
-	let bound = server(&server_id, application.clone(), config)
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server(&server_id, application.clone(), config)
+		.bind(transport.clone())
 		.await
 		.expect("bind initiator-overflow server");
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, instance_id, cursor, _) = receive_initial(&mut client).await;
 
 	send(&mut client, command(CURRENT_VERSION, 1, "slow-1")).await;
@@ -588,7 +629,7 @@ async fn assert_initiator_overflow(run: u64) {
 	drop(client);
 
 	let mut resumed = reconnect(
-		bound.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor { server_id, instance_id, cursor },
 	)
@@ -621,11 +662,12 @@ async fn assert_event_overflow(run: u64) {
 	let config = ServerConfig { outbound_queue_capacity: 2, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
 	let server_id = format!("event-overflow-{run}");
-	let bound = server(&server_id, application.clone(), config)
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server(&server_id, application.clone(), config)
+		.bind(transport.clone())
 		.await
 		.expect("bind event-overflow server");
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, instance_id, cursor, _) = receive_initial(&mut client).await;
 
 	send(&mut client, command(CURRENT_VERSION, 1, "overflow-first")).await;
@@ -637,7 +679,7 @@ async fn assert_event_overflow(run: u64) {
 	drop(client);
 
 	let mut resumed = reconnect(
-		bound.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor { server_id, instance_id, cursor },
 	)
@@ -660,11 +702,12 @@ async fn assert_event_overflow(run: u64) {
 #[tokio::test]
 async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
 	let application = FixtureApplication::with_delay(Duration::from_millis(200));
-	let bound = server("disconnect-shield", application.clone(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("disconnect-shield", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
 		.await
 		.expect("bind disconnect-shield server");
-	let mut first = connect(bound.address(), CURRENT_VERSION).await;
+	let mut first = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut first).await;
 	send(&mut first, command(CURRENT_VERSION, 1, "disconnect-key")).await;
@@ -677,7 +720,7 @@ async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
 
 	assert_eq!(application.executions(), 1);
 
-	let mut reconnected = connect(bound.address(), CURRENT_VERSION).await;
+	let mut reconnected = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut reconnected).await;
 	send(&mut reconnected, command(CURRENT_VERSION, 2, "disconnect-key")).await;
@@ -699,11 +742,12 @@ async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
 async fn full_idempotency_ledger_keeps_duplicates_and_refuses_new_keys() {
 	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let bound = server("receipt-capacity", application.clone(), config)
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("receipt-capacity", application.clone(), config)
+		.bind(transport.clone())
 		.await
 		.expect("bind receipt-capacity server");
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
@@ -742,11 +786,12 @@ async fn full_idempotency_ledger_keeps_duplicates_and_refuses_new_keys() {
 async fn repeated_live_queries_are_fresh_ordered_and_do_not_consume_receipts() {
 	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let bound = server("live-query", application.clone(), config)
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("live-query", application.clone(), config)
+		.bind(transport.clone())
 		.await
 		.expect("bind live-query server");
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
 	send(&mut client, doctor_query(1)).await;
@@ -802,12 +847,13 @@ async fn repeated_live_queries_are_fresh_ordered_and_do_not_consume_receipts() {
 #[tokio::test]
 async fn independent_connections_can_observe_live_doctor_concurrently() {
 	let application = FixtureApplication::default();
-	let bound = server("concurrent-query", application.clone(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("concurrent-query", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
 		.await
 		.expect("bind concurrent-query server");
-	let mut first = connect(bound.address(), CURRENT_VERSION).await;
-	let mut second = connect(bound.address(), CURRENT_VERSION).await;
+	let mut first = connect(&transport, CURRENT_VERSION).await;
+	let mut second = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut first).await;
 	receive_initial(&mut second).await;
@@ -842,11 +888,12 @@ async fn assert_cross_version_receipt_capacity(
 ) {
 	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let bound = server(case, application.clone(), config)
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server(case, application.clone(), config)
+		.bind(transport.clone())
 		.await
 		.expect("bind cross-version receipt-capacity server");
-	let mut first = connect(bound.address(), first_version).await;
+	let mut first = connect(&transport, first_version).await;
 
 	receive_initial(&mut first).await;
 	execute_and_receive_event(&mut first, first_version, 1).await;
@@ -879,7 +926,7 @@ async fn assert_cross_version_receipt_capacity(
 
 	drop(first);
 
-	let mut second = connect(bound.address(), second_version).await;
+	let mut second = connect(&transport, second_version).await;
 
 	receive_initial(&mut second).await;
 	execute_key_and_receive_event(&mut second, second_version, 2, "key-1").await;
@@ -910,11 +957,12 @@ async fn oversized_outbound_snapshot_is_closed_before_transmission() {
 	let application = FixtureApplication::with_status(
 		WireText::new("x".repeat(1_024)).expect("fixture remains below scalar limit"),
 	);
-	let bound = server("snapshot-size", application, config)
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("snapshot-size", application, config)
+		.bind(transport.clone())
 		.await
 		.expect("bind snapshot-size server");
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	assert!(matches!(receive(&mut client).await, ServerMessage::Welcome(_)));
 
@@ -940,11 +988,12 @@ async fn oversized_outbound_snapshot_is_closed_before_transmission() {
 #[tokio::test]
 async fn oversized_wire_identifier_is_refused_without_execution() {
 	let application = FixtureApplication::default();
-	let bound = server("bounded-identifiers", application.clone(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut bound = server("bounded-identifiers", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
 		.await
 		.expect("bind bounded-identifiers server");
-	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
 
@@ -982,12 +1031,12 @@ async fn oversized_wire_identifier_is_refused_without_execution() {
 #[tokio::test]
 async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_epoch_cursors() {
 	let application = FixtureApplication::default();
-	let first = server("stable-restart", application.clone(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+	let (_temp, transport) = local_transport();
+	let mut first = server("stable-restart", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
 		.await
 		.unwrap();
-	let address = first.address();
-	let mut client = connect(address, CURRENT_VERSION).await;
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, old_instance_id, initial_cursor, _) = receive_initial(&mut client).await;
 	let overlapping_cursor = execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
 
@@ -995,10 +1044,12 @@ async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_e
 
 	first.shutdown().await.unwrap();
 
-	let restarted =
-		server("stable-restart", application, ServerConfig::default()).bind(address).await.unwrap();
+	let mut restarted = server("stable-restart", application, ServerConfig::default())
+		.bind(transport.clone())
+		.await
+		.unwrap();
 	let mut client = reconnect(
-		restarted.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor {
 			server_id: server_id.clone(),
@@ -1018,7 +1069,7 @@ async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_e
 
 	drop(client);
 
-	let mut current = connect(restarted.address(), CURRENT_VERSION).await;
+	let mut current = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut current).await;
 
@@ -1030,7 +1081,7 @@ async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_e
 	drop(current);
 
 	let mut client = reconnect(
-		restarted.address(),
+		&transport,
 		CURRENT_VERSION,
 		ResumeCursor { server_id, instance_id: old_instance_id, cursor: overlapping_cursor },
 	)
@@ -1048,14 +1099,24 @@ async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_e
 }
 
 #[tokio::test]
-async fn non_loopback_binding_is_refused_before_opening_a_socket() {
-	let result = server("remote-refusal", FixtureApplication::default(), ServerConfig::default())
-		.bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 49_152)))
-		.await;
-	let error = match result {
-		Ok(_) => panic!("non-loopback bind unexpectedly succeeded"),
-		Err(error) => error,
-	};
+async fn cross_uid_authority_is_refused_before_opening_a_socket() {
+	let temp = TempDir::new().expect("remote-refusal temp");
+	let root = DecodexRoot::new(
+		temp.path().canonicalize().expect("canonical remote-refusal temp").join(".decodex"),
+	)
+	.expect("remote-refusal root is safe");
+	let paths = root.paths();
 
-	assert_eq!(error.to_string(), "non-loopback endpoint is disabled: 0.0.0.0:49152");
+	paths.ensure_layout().expect("owner-only refusal layout");
+
+	// SAFETY: `geteuid` has no arguments or failure return.
+	let service_owner_uid = unsafe { libc::geteuid() };
+	let error = LocalTransportAuthority::new(
+		paths,
+		LocalTrustPolicy::SameUid,
+		Some(service_owner_uid ^ 1),
+	)
+	.unwrap_err();
+
+	assert_eq!(error, LocalTransportRefusal::EffectiveUidMismatch);
 }
