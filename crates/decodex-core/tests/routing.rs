@@ -400,10 +400,7 @@ fn non_authoritative_depletion_evidence_never_selects_or_waits() {
 			decide_routing(&input),
 			Ok(expected_no_route(
 				&depleted,
-				&[
-					RoutingBlocker::QuotaFiveHourDepleted,
-					RoutingBlocker::QuotaSevenDayDepleted,
-				],
+				&[RoutingBlocker::QuotaFiveHourDepleted, RoutingBlocker::QuotaSevenDayDepleted,],
 			)),
 			"{case}",
 		);

@@ -17,9 +17,9 @@ use decodex_postgres::{
 	AccountId, AccountState, AuthorizeProviderDispatchOutcome, BootstrapRoleProfiles,
 	CommandIdentity, CreateConversation, CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot,
 	OutboxReconciliation, PostgresStore, PrepareProcessGenerationOutcome,
-	PrepareProviderAttemptOutcome, ProcessGenerationMutationOutcome, ProviderAttemptMutationOutcome,
-	ReconciliationOutcome, RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
-	RuntimeSessionCommandOutcome, StoreError,
+	PrepareProviderAttemptOutcome, ProcessGenerationMutationOutcome,
+	ProviderAttemptMutationOutcome, ReconciliationOutcome, RoleProfileCommandOutcome,
+	RoleProfileConfiguration, RoleProfileRole, RuntimeSessionCommandOutcome, StoreError,
 };
 
 const PROJECT_ID: &str = "a1000000-0000-4000-8000-000000000016";
@@ -34,10 +34,8 @@ const PROVIDER_EVIDENCE_ID: &str = "d5000000-0000-4000-8000-000000001416";
 const OUTBOX_WORKER_ID: &str = "d6000000-0000-4000-8000-000000001416";
 const AUTHORIZATION_DIGEST: &str =
 	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const REQUEST_DIGEST: &str =
-	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const WITNESS_DIGEST: &str =
-	"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const REQUEST_DIGEST: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const WITNESS_DIGEST: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn profile(role: &str) -> RoleProfileConfiguration {
 	RoleProfileConfiguration {
@@ -62,8 +60,7 @@ async fn create_lead_session(
 	store: &PostgresStore,
 	account_id: &AccountId,
 ) -> Result<RuntimeSessionId, Box<dyn std::error::Error>> {
-	let conversation_id =
-		ConversationId::new("d7000000-0000-4000-8000-000000001416")?;
+	let conversation_id = ConversationId::new("d7000000-0000-4000-8000-000000001416")?;
 	store
 		.create_conversation(
 			&CommandIdentity::new("xy-1416-lead-conversation", b"xy-1416")?,
@@ -73,8 +70,7 @@ async fn create_lead_session(
 			},
 		)
 		.await?;
-	let runtime_session_id =
-		RuntimeSessionId::new("d8000000-0000-4000-8000-000000001416")?;
+	let runtime_session_id = RuntimeSessionId::new("d8000000-0000-4000-8000-000000001416")?;
 	let outcome = store
 		.create_runtime_session(
 			"xy-1416-lead-session",
@@ -367,9 +363,7 @@ async fn create_provider_projection(
 	let generation = ProcessGenerationIntent {
 		generation_id: generation_id.clone(),
 		account_id: account_id.clone(),
-		runner_identity: ProcessRunnerIdentity::new(format!(
-			"sha256:{AUTHORIZATION_DIGEST}"
-		))?,
+		runner_identity: ProcessRunnerIdentity::new(format!("sha256:{AUTHORIZATION_DIGEST}"))?,
 		intended_boot_id: boot_id.clone(),
 		control_kind: ProcessControlKind::StdioOnlyBestEffortEof,
 		isolation_kind: ProcessIsolationKind::Session,
@@ -390,13 +384,11 @@ async fn create_provider_projection(
 		1416,
 		1416,
 	)?;
-	let bound_revision = match store
-		.bind_process_generation_identity(&generation_id, 1, &identity)
-		.await?
-	{
-		ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
-		other => return Err(format!("generation identity was not applied: {other:?}").into()),
-	};
+	let bound_revision =
+		match store.bind_process_generation_identity(&generation_id, 1, &identity).await? {
+			ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
+			other => return Err(format!("generation identity was not applied: {other:?}").into()),
+		};
 	assert_eq!(bound_revision, 2);
 	let ready_revision = match store.mark_process_generation_ready(&generation_id, 2).await? {
 		ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
@@ -420,13 +412,12 @@ async fn create_provider_projection(
 		ProviderRequestKeys::new(Some(provider_key.clone()), None)?,
 		ProviderDuplicateRisk::OriginalIntent,
 	)?;
-	let prepared = match store
-		.prepare_provider_attempt(&preparation, &generation_id, ready_revision)
-		.await?
-	{
-		PrepareProviderAttemptOutcome::Fresh(prepared) => prepared,
-		other => return Err(format!("ProviderAttempt preparation was not fresh: {other:?}").into()),
-	};
+	let prepared =
+		match store.prepare_provider_attempt(&preparation, &generation_id, ready_revision).await? {
+			PrepareProviderAttemptOutcome::Fresh(prepared) => prepared,
+			other =>
+				return Err(format!("ProviderAttempt preparation was not fresh: {other:?}").into()),
+		};
 	assert!(matches!(
 		store
 			.prepare_provider_attempt(&preparation, &generation_id, ready_revision)
@@ -489,10 +480,7 @@ async fn assert_readback(
 	assert_eq!(readback.runtime_session_state, RuntimeSessionState::Active);
 	assert_eq!(readback.assignments.len(), 1);
 	assert_eq!(readback.assignments[0].role, ExecutionAssignmentRole::Task);
-	assert_eq!(
-		&readback.assignments[0].runtime_session_id,
-		expected_runtime_session_id,
-	);
+	assert_eq!(&readback.assignments[0].runtime_session_id, expected_runtime_session_id,);
 	assert_eq!(readback.provider_attempts.len(), 1);
 	let attempt = &readback.provider_attempts[0];
 	assert_eq!(&attempt.execution_id, execution_id);
@@ -609,27 +597,15 @@ async fn postgres_managed_run_v26_restore() -> Result<(), Box<dyn std::error::Er
 	assert_eq!(readback.runtime_session_state, RuntimeSessionState::Active);
 	assert_eq!(readback.assignments.len(), 1);
 	assert_eq!(readback.assignments[0].role, ExecutionAssignmentRole::Task);
-	assert_eq!(
-		readback.assignments[0].runtime_session_id.as_str(),
-		SELECTED_RUNTIME_SESSION_ID,
-	);
+	assert_eq!(readback.assignments[0].runtime_session_id.as_str(), SELECTED_RUNTIME_SESSION_ID,);
 	assert_eq!(readback.provider_attempts.len(), 1);
-	assert_eq!(
-		readback.provider_attempts[0].execution_id.as_str(),
-		SELECTED_EXECUTION_ID,
-	);
+	assert_eq!(readback.provider_attempts[0].execution_id.as_str(), SELECTED_EXECUTION_ID,);
 	assert_eq!(readback.provider_attempts[0].attempt_id.as_str(), PROVIDER_ATTEMPT_ID);
-	assert_eq!(
-		readback.provider_attempts[0].process_generation_id.as_str(),
-		PROCESS_GENERATION_ID,
-	);
+	assert_eq!(readback.provider_attempts[0].process_generation_id.as_str(), PROCESS_GENERATION_ID,);
 	assert_eq!(readback.provider_attempts[0].state, ProviderAttemptState::Succeeded);
 	assert_eq!(readback.provider_attempts[0].revision, 3);
 	assert_eq!(
-		readback.provider_attempts[0]
-			.terminal_evidence_id
-			.as_ref()
-			.map(ProviderEvidenceId::as_str),
+		readback.provider_attempts[0].terminal_evidence_id.as_ref().map(ProviderEvidenceId::as_str),
 		Some(PROVIDER_EVIDENCE_ID),
 	);
 	Ok(())

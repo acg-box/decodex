@@ -136,16 +136,14 @@ impl SemanticAuthorityFailurePolicy {
 		match self {
 			Self::Unsafe => "unsafe",
 			Self::Incompatible => "incompatible",
-			Self::UnsafeIfExcessOtherwiseIncompatible =>
-				"unsafe_if_excess_otherwise_incompatible",
+			Self::UnsafeIfExcessOtherwiseIncompatible => "unsafe_if_excess_otherwise_incompatible",
 		}
 	}
 
 	const fn permits(self, class: SemanticAuthorityFailureClass) -> bool {
 		match self {
 			Self::Unsafe => matches!(class, SemanticAuthorityFailureClass::Unsafe),
-			Self::Incompatible =>
-				matches!(class, SemanticAuthorityFailureClass::Incompatible),
+			Self::Incompatible => matches!(class, SemanticAuthorityFailureClass::Incompatible),
 			Self::UnsafeIfExcessOtherwiseIncompatible => true,
 		}
 	}
@@ -166,8 +164,8 @@ const fn semantic_authority_descriptor(
 	SemanticAuthorityDescriptor { identity, name, failure_policy }
 }
 
-const SEMANTIC_AUTHORITY_DEFINITION:
-	[SemanticAuthorityDescriptor; SEMANTIC_AUTHORITY_PREDICATE_COUNT] = [
+const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
+	SEMANTIC_AUTHORITY_PREDICATE_COUNT] = [
 	semantic_authority_descriptor(
 		SemanticAuthorityPredicate::ConfiguredRuntimeSession,
 		"configured_runtime_session",
@@ -4747,7 +4745,9 @@ fn semantic_authority_encoding_field(
 	value: &str,
 ) -> Result<(), StoreError> {
 	let length = u32::try_from(value.len()).map_err(|_| {
-		StoreError::Incompatible("PostgreSQL semantic authority definition field is too large".into())
+		StoreError::Incompatible(
+			"PostgreSQL semantic authority definition field is too large".into(),
+		)
 	})?;
 	canonical.extend_from_slice(&length.to_be_bytes());
 	canonical.extend_from_slice(value.as_bytes());
@@ -5254,10 +5254,7 @@ async fn inspect_function_contract(
 	}
 
 	if !exact_inventory && actual_count >= expected_count {
-		evidence.record_unsafe(
-			SemanticAuthorityPredicate::ExactFunctionInventory,
-			exact_inventory,
-		);
+		evidence.record_unsafe(SemanticAuthorityPredicate::ExactFunctionInventory, exact_inventory);
 	} else {
 		evidence.record_incompatible(
 			SemanticAuthorityPredicate::ExactFunctionInventory,
@@ -5265,10 +5262,7 @@ async fn inspect_function_contract(
 		);
 	}
 	evidence.record_unsafe(SemanticAuthorityPredicate::FunctionMetadata, metadata_matches);
-	evidence.record_incompatible(
-		SemanticAuthorityPredicate::FunctionSemantics,
-		semantics_match,
-	);
+	evidence.record_incompatible(SemanticAuthorityPredicate::FunctionSemantics, semantics_match);
 
 	let runtime_routines = RUNTIME_EXECUTE_FUNCTIONS.to_vec();
 	let runtime_entry =
@@ -5305,10 +5299,7 @@ async fn inspect_retention_contract(
 			.is_some_and(|expected| installed_source.as_deref() == Some(expected));
 	}
 
-	evidence.record_incompatible(
-		SemanticAuthorityPredicate::RetentionInventory,
-		inventory_matches,
-	);
+	evidence.record_incompatible(SemanticAuthorityPredicate::RetentionInventory, inventory_matches);
 	evidence.record_unsafe(
 		SemanticAuthorityPredicate::RetentionTriggerBindings,
 		trigger_bindings_match,
@@ -5337,10 +5328,8 @@ async fn semantic_authority_evidence(
 		)
 		.await?
 		.get(0);
-	evidence.record_unsafe(
-		SemanticAuthorityPredicate::ConfiguredRuntimeSession,
-		session_is_runtime,
-	);
+	evidence
+		.record_unsafe(SemanticAuthorityPredicate::ConfiguredRuntimeSession, session_is_runtime);
 
 	let role = client.query_one(ROLE_AUTHORITY_SQL, &[]).await?;
 	for (predicate, index) in [
@@ -5365,24 +5354,18 @@ async fn semantic_authority_evidence(
 	);
 
 	let history = client.query_one(MIGRATION_HISTORY_AUTHORITY_SQL, &[]).await?;
-	evidence.record_incompatible(
-		SemanticAuthorityPredicate::MigrationHistoryExists,
-		history.get(0),
-	);
-	evidence.record_incompatible(
-		SemanticAuthorityPredicate::MigrationHistorySelect,
-		history.get(1),
-	);
+	evidence
+		.record_incompatible(SemanticAuthorityPredicate::MigrationHistoryExists, history.get(0));
+	evidence
+		.record_incompatible(SemanticAuthorityPredicate::MigrationHistorySelect, history.get(1));
 	evidence.record_unsafe(
 		SemanticAuthorityPredicate::NoUnsafeMigrationHistoryAuthority,
 		!history.get::<_, bool>(2),
 	);
 
 	let sequence = client.query_one(SEQUENCE_AUTHORITY_SQL, &[]).await?;
-	evidence.record_incompatible(
-		SemanticAuthorityPredicate::ExactSequenceContract,
-		sequence.get(0),
-	);
+	evidence
+		.record_incompatible(SemanticAuthorityPredicate::ExactSequenceContract, sequence.get(0));
 	evidence.record_incompatible(SemanticAuthorityPredicate::SequenceUsage, sequence.get(1));
 	evidence.record_unsafe(
 		SemanticAuthorityPredicate::NoUnsafeSequenceAuthority,
@@ -5418,10 +5401,7 @@ async fn semantic_authority_evidence(
 	);
 
 	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
-	evidence.record_unsafe(
-		SemanticAuthorityPredicate::NoExtensionControl,
-		!extension_control,
-	);
+	evidence.record_unsafe(SemanticAuthorityPredicate::NoExtensionControl, !extension_control);
 
 	let schema_usage: bool = client
 		.query_one(
@@ -5436,10 +5416,7 @@ async fn semantic_authority_evidence(
 
 	let identity_cast_closed: bool =
 		client.query_one(IDENTITY_CAST_AUTHORITY_SQL, &[]).await?.get(0);
-	evidence.record_unsafe(
-		SemanticAuthorityPredicate::IdentityCastClosed,
-		identity_cast_closed,
-	);
+	evidence.record_unsafe(SemanticAuthorityPredicate::IdentityCastClosed, identity_cast_closed);
 
 	let allowed_functions = FUNCTION_CONTRACTS
 		.iter()
@@ -5495,8 +5472,8 @@ mod tests {
 		RUNTIME_ROUTINE_AUTHORITY_SQL, RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
 		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
 		SEMANTIC_AUTHORITY_DEFINITION, SEMANTIC_AUTHORITY_PREDICATE_COUNT,
-		SemanticAuthorityEvidence, SemanticAuthorityFailureClass,
-		SemanticAuthorityFailurePolicy, TABLE_AUTHORITY_SQL,
+		SemanticAuthorityEvidence, SemanticAuthorityFailureClass, SemanticAuthorityFailurePolicy,
+		TABLE_AUTHORITY_SQL,
 	};
 
 	fn complete_semantic_authority_evidence() -> SemanticAuthorityEvidence {
