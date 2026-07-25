@@ -2,8 +2,7 @@
 
 mod process;
 mod protocol;
-#[cfg(feature = "retained-title-experiment")]
-pub mod retained_title_experiment;
+#[cfg(feature = "retained-title-experiment")] pub mod retained_title_experiment;
 
 use std::{
 	error::Error,

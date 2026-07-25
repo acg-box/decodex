@@ -619,6 +619,7 @@ async fn route_selected(
 	}
 }
 
+#[allow(clippy::too_many_lines)] // One complete positive continuation fixture.
 async fn create_positive_experiment(
 	store: &PostgresStore,
 	routing: &RoutingFixture,
