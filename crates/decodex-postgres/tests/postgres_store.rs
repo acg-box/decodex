@@ -2,6 +2,9 @@
 
 #[path = "postgres_store/continuation.rs"] mod continuation;
 #[cfg(feature = "test-support")]
+#[path = "postgres_store/managed_runs.rs"]
+mod managed_runs;
+#[cfg(feature = "test-support")]
 #[path = "postgres_store/managed_repositories.rs"]
 mod managed_repositories;
 #[path = "postgres_store/quota.rs"] mod quota;
@@ -16,6 +19,11 @@ mod runtime_sessions;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/work_items.rs"]
 mod work_items;
+
+#[cfg(feature = "test-support")]
+mod v24_migrations {
+	refinery::embed_migrations!("migrations");
+}
 
 use std::{
 	collections::{BTreeMap, HashSet},
@@ -473,6 +481,26 @@ async fn postgres_migration_through_v13_fixture() -> Result<(), Box<dyn std::err
 	let (migration, _) = separated_configs("DECODEX_TEST")?;
 
 	PostgresStore::migrate_fixture_through_v13(migration, expected_peer_uid()).await?;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 V24 migration harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_migration_through_v24_fixture() -> Result<(), Box<dyn std::error::Error>> {
+	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
+	let (mut client, connection) = migration.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+
+	v24_migrations::migrations::runner()
+		.set_target(refinery::Target::Version(24))
+		.run_async(&mut client)
+		.await?;
+
+	drop(client);
+	connection_task.await??;
 
 	Ok(())
 }
