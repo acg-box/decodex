@@ -604,7 +604,7 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
                     "predicate": "alpha_conditional",
                 },
             ],
-            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+            "schema": "decodex/postgres-semantic-authority-diagnostic/2",
             "source_binding": SOURCE_BINDING,
         }
         serialized = json.dumps(
