@@ -120,6 +120,7 @@ EXPECTED_CLI_EXTERNAL_DEPENDENCIES = {
     "clap",
     "serde",
     "serde_json",
+    "tempfile",
     "tokio",
 }
 
@@ -206,13 +207,22 @@ class VnextArchitectureTests(unittest.TestCase):
 
     def test_cli_external_dependencies_are_exact(self):
         owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        dependencies = self.packages["decodex-cli"]["dependencies"]
         actual = {
             dependency["name"]
-            for dependency in self.packages["decodex-cli"]["dependencies"]
+            for dependency in dependencies
             if dependency["name"] not in owned_packages
         }
 
         self.assertEqual(actual, EXPECTED_CLI_EXTERNAL_DEPENDENCIES)
+        self.assertEqual(
+            {
+                dependency["name"]
+                for dependency in dependencies
+                if dependency["kind"] == "dev"
+            },
+            {"tempfile"},
+        )
 
     def test_workspace_owner_set_is_exact(self):
         actual = {

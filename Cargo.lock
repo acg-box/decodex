@@ -1560,6 +1560,7 @@ dependencies = [
  "decodex-protocol",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

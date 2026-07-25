@@ -1,0 +1,102 @@
+version = 1
+
+[defaults]
+cache_root = ".agent/automations/upstream/cache"
+cwd = "{repo_root}"
+execution_environment = "local"
+forbidden_prompt_fragments = [
+	".agent/decodex",
+	".codex/decodex",
+	".github/workflows",
+	"/Users/",
+	"/home/",
+	"DECODEX_AGENT_HOME",
+	"Documents/automations",
+	"accounts.jsonl",
+	"auth.json",
+	"migrate-agent-home",
+	"runtime.sqlite3",
+	"site/src/content",
+	"~/.codex/decodex",
+]
+kind = "cron"
+model = "gpt-5.6-sol"
+reasoning_effort = "high"
+source_root = "automations/upstream"
+status = "ACTIVE"
+
+[[automations]]
+id = "codex-upstream-maintainer"
+name = "Codex Upstream Maintainer"
+prompt_file = "automations/upstream/prompts/maintainer.md"
+required_cache_prefixes = [
+	".agent/automations/upstream/cache",
+]
+required_paths = [
+	"AGENTS.md",
+	"automations/upstream/policy.json",
+	"automations/upstream/scripts/upstream_autopilot.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/observation.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/state.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/validation.py",
+	"openwiki/operations/codex-upstream-autopilot.md",
+	"openwiki/operations/commands-and-validation.md",
+	"openwiki/quickstart.md",
+	"plugins/decodex/references/routing.md",
+	"scripts/audit_node_lock.py",
+]
+rrule = "FREQ=HOURLY;BYMINUTE=5;BYSECOND=0"
+
+[[automations]]
+id = "codex-upstream-reviewer"
+name = "Codex Upstream Reviewer And Lander"
+prompt_file = "automations/upstream/prompts/reviewer.md"
+required_cache_prefixes = [
+	".agent/automations/upstream/cache",
+]
+required_paths = [
+	"AGENTS.md",
+	"automations/upstream/policy.json",
+	"automations/upstream/scripts/upstream_autopilot.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/observation.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/state.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/validation.py",
+	"openwiki/operations/codex-upstream-autopilot.md",
+	"openwiki/operations/commands-and-validation.md",
+	"openwiki/quickstart.md",
+	"plugins/decodex/references/routing.md",
+	"scripts/audit_node_lock.py",
+]
+rrule = "FREQ=HOURLY;BYMINUTE=35;BYSECOND=0"
+
+[[automations]]
+id = "codex-upstream-health"
+name = "Codex Upstream Automation Health"
+prompt_file = "automations/upstream/prompts/health.md"
+required_cache_prefixes = [
+	".agent/automations/upstream/cache",
+]
+required_paths = [
+	"AGENTS.md",
+	"automations/decodex/scripts/config/evaluate_automations.py",
+	"automations/upstream/automations.toml",
+	"automations/upstream/policy.json",
+	"automations/upstream/retired_automation_ids.json",
+	"automations/upstream/scripts/upstream_autopilot.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/observation.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/state.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/validation.py",
+	"openwiki/operations/codex-upstream-autopilot.md",
+	"openwiki/quickstart.md",
+	"scripts/audit_node_lock.py",
+]
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=20;BYSECOND=0"
