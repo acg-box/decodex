@@ -544,7 +544,9 @@ mod tests {
 
 			mark_descriptor_close_on_exec(descriptor).unwrap();
 
-			assert_ne!(libc::fcntl(descriptor, libc::F_GETFD) & libc::FD_CLOEXEC, 0);
+			let flags = libc::fcntl(descriptor, libc::F_GETFD);
+			assert_ne!(flags, -1);
+			assert_ne!(flags & libc::FD_CLOEXEC, 0);
 		}
 	}
 }
