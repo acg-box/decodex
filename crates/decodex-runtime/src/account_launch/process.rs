@@ -59,10 +59,11 @@ use crate::account_launch::{
 	protocol::{
 		AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
 		InitializeCapabilities, InitializeParams, InitializeResponse, JsonRpcResponse,
-		MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse, ThreadListParams,
-		ProtocolThread, ThreadListResponse, ThreadReadParams, ThreadReadResponse, ThreadSearchParams,
-		ThreadSearchResponse, RetainedTitleNameSetParams, RetainedTitleNameSetResponse,
-		RetainedTitleThreadStartParams, RetainedTitleThreadStartResponse,
+		MAX_APP_SERVER_FRAME_BYTES, ProtocolThread, RetainedTitleNameSetParams,
+		RetainedTitleNameSetResponse, RetainedTitleThreadStartParams,
+		RetainedTitleThreadStartResponse, ThreadArchiveParams, ThreadArchiveResponse,
+		ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
+		ThreadSearchParams, ThreadSearchResponse,
 	},
 };
 use decodex_codex::{
@@ -692,9 +693,7 @@ impl SupervisedProcess {
 		let request_digest = frame.sha256();
 
 		frame.write_to(&mut self.stdin).map_err(rpc_supervision)?;
-		self.stdin
-			.flush()
-			.map_err(|_| RpcError::Supervision(SupervisionError::WriteFailed))?;
+		self.stdin.flush().map_err(|_| RpcError::Supervision(SupervisionError::WriteFailed))?;
 
 		let deadline = Instant::now() + timeout;
 
