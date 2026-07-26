@@ -7066,9 +7066,13 @@ def main() -> int | AuthorityCandidatePublication:
 			env["DECODEX_TEST_POSTGRES_AUTHORITY_SCENARIOS"] = authority_scenario_payload(
 				scenarios
 			)
+			authority_matrix_features = (
+				["--features", "test-support"] if focused_authority else []
+			)
 			outputs = [run(
 				[
-					"cargo", "nextest", "run", "-p", "decodex-postgres", "--test",
+					"cargo", "nextest", "run", "-p", "decodex-postgres",
+					*authority_matrix_features, "--test",
 					"postgres_store", "--run-ignored", "all", "--",
 					"postgres_authority_classification_matrix", "--exact",
 				],

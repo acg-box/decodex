@@ -1080,6 +1080,363 @@ async fn authority_store_result(migration_url: &str, runtime_url: &str) -> Resul
 	Ok(())
 }
 
+#[cfg(feature = "test-support")]
+#[derive(Clone, Copy)]
+enum FocusedAuthorityCheckpoint {
+	RuntimeRoutineAuthority,
+	SemanticAuthority,
+	ConfiguredAuthority,
+	SchemaAuthority,
+	StoreConnect,
+}
+
+#[cfg(feature = "test-support")]
+impl FocusedAuthorityCheckpoint {
+	const fn name(self) -> &'static str {
+		match self {
+			Self::RuntimeRoutineAuthority => "runtime_routine_authority",
+			Self::SemanticAuthority => "semantic_authority",
+			Self::ConfiguredAuthority => "configured_authority",
+			Self::SchemaAuthority => "schema_authority",
+			Self::StoreConnect => "store_connect",
+		}
+	}
+}
+
+#[cfg(feature = "test-support")]
+#[derive(Clone, Copy)]
+enum FocusedAuthorityClassification {
+	Ready,
+	ContractRejected,
+	StoreError,
+	HarnessError,
+}
+
+#[cfg(feature = "test-support")]
+impl FocusedAuthorityClassification {
+	const fn name(self) -> &'static str {
+		match self {
+			Self::Ready => "ready",
+			Self::ContractRejected => "contract_rejected",
+			Self::StoreError => "store_error",
+			Self::HarnessError => "harness_error",
+		}
+	}
+}
+
+#[cfg(feature = "test-support")]
+impl AuthorityStoreError {
+	const fn checkpoint_name(self) -> &'static str {
+		match self {
+			Self::UnsafeAuthority => "UnsafeAuthority",
+			Self::Incompatible => "Incompatible",
+			Self::Migration => "Migration",
+			Self::Database => "Database",
+			Self::Pool => "Pool",
+			Self::UnsafeHostPath => "UnsafeHostPath",
+			Self::SocketUnavailable => "SocketUnavailable",
+			Self::Other => "Other",
+		}
+	}
+}
+
+#[cfg(feature = "test-support")]
+const fn focused_bootstrap_name(failure: BootstrapFailure) -> &'static str {
+	match failure {
+		BootstrapFailure::Authentication => "Authentication",
+		BootstrapFailure::Unreachable => "Unreachable",
+		BootstrapFailure::Incompatible => "Incompatible",
+		BootstrapFailure::UnsafeAuthority => "UnsafeAuthority",
+		BootstrapFailure::UnsafeHostPath => "UnsafeHostPath",
+	}
+}
+
+#[cfg(feature = "test-support")]
+fn focused_authority_record(
+	checkpoint: FocusedAuthorityCheckpoint,
+	classification: FocusedAuthorityClassification,
+) -> serde_json::Map<String, Value> {
+	let mut record = serde_json::Map::new();
+	record.insert(
+		"schema".into(),
+		Value::String("decodex/postgres-focused-authority-checkpoint/1".into()),
+	);
+	record.insert("checkpoint".into(), Value::String(checkpoint.name().into()));
+	record.insert("classification".into(), Value::String(classification.name().into()));
+	record
+}
+
+#[cfg(feature = "test-support")]
+fn emit_focused_authority_record(
+	checkpoint: FocusedAuthorityCheckpoint,
+	classification: FocusedAuthorityClassification,
+) {
+	println!("{}", Value::Object(focused_authority_record(checkpoint, classification)));
+}
+
+#[cfg(feature = "test-support")]
+fn focused_authority_database_error(error: &StoreError) -> Option<&tokio_postgres::Error> {
+	match error {
+		StoreError::Database(error)
+		| StoreError::Pool(deadpool_postgres::PoolError::Backend(error)) => Some(error),
+		_ => None,
+	}
+}
+
+#[cfg(feature = "test-support")]
+fn emit_focused_authority_store_error(
+	checkpoint: FocusedAuthorityCheckpoint,
+	error: &StoreError,
+	force_client_or_connection: bool,
+) {
+	let (store_error, bootstrap) = authority_store_error(error);
+	let mut record =
+		focused_authority_record(checkpoint, FocusedAuthorityClassification::StoreError);
+	record.insert("store_error".into(), Value::String(store_error.checkpoint_name().into()));
+	record.insert("bootstrap".into(), Value::String(focused_bootstrap_name(bootstrap).into()));
+	if let Some(database) = focused_authority_database_error(error) {
+		if force_client_or_connection {
+			record.insert("database_origin".into(), Value::String("client_or_connection".into()));
+		} else if let Some(sqlstate) = database.code() {
+			record.insert("database_origin".into(), Value::String("server".into()));
+			record.insert("sqlstate".into(), Value::String(sqlstate.code().into()));
+		} else {
+			record.insert("database_origin".into(), Value::String("client_or_connection".into()));
+		}
+	}
+	println!("{}", Value::Object(record));
+}
+
+#[cfg(feature = "test-support")]
+fn emit_focused_authority_client_task_error(checkpoint: FocusedAuthorityCheckpoint) {
+	let mut record =
+		focused_authority_record(checkpoint, FocusedAuthorityClassification::StoreError);
+	record.insert("store_error".into(), Value::String("Database".into()));
+	record.insert("bootstrap".into(), Value::String("Unreachable".into()));
+	record.insert("database_origin".into(), Value::String("client_or_connection".into()));
+	println!("{}", Value::Object(record));
+}
+
+#[cfg(feature = "test-support")]
+async fn close_focused_authority_client(
+	client: Client,
+	connection_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
+) -> Result<(), Option<tokio_postgres::Error>> {
+	drop(client);
+	match connection_task.await {
+		Ok(Ok(())) => Ok(()),
+		Ok(Err(error)) => Err(Some(error)),
+		Err(_) => Err(None),
+	}
+}
+
+#[cfg(feature = "test-support")]
+async fn stop_focused_authority_gate(
+	client: Client,
+	connection_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
+) -> bool {
+	let _ = close_focused_authority_client(client, connection_task).await;
+	false
+}
+
+#[cfg(feature = "test-support")]
+fn focused_semantic_authority_state(artifact: &Value) -> Option<bool> {
+	let observations = artifact.get("observations")?.as_array()?;
+	if observations.is_empty() {
+		return None;
+	}
+	let mut ready = true;
+	for observation in observations {
+		ready &= observation.get("passed")?.as_bool()?;
+	}
+	Some(ready)
+}
+
+#[cfg(feature = "test-support")]
+async fn focused_authority_checkpoint_gate(scenario: &AuthorityScenario) -> bool {
+	let runtime_checkpoint = FocusedAuthorityCheckpoint::RuntimeRoutineAuthority;
+	let migration = match Config::from_str(&scenario.baseline_migration_url) {
+		Ok(config) => config,
+		Err(_) => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	let mut runtime = match Config::from_str(&scenario.baseline_runtime_url) {
+		Ok(config) => config,
+		Err(_) => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	let migration_role = match migration.get_user() {
+		Some(role) => role.to_owned(),
+		None => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	let runtime_role = match runtime.get_user() {
+		Some(role) => role.to_owned(),
+		None => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	PostgresStore::pin_session_search_path_fixture(&mut runtime);
+	let (client, connection) = match runtime.connect(NoTls).await {
+		Ok(connection) => connection,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(runtime_checkpoint, &error, true);
+			return false;
+		},
+	};
+	let connection_task = tokio::spawn(connection);
+
+	match PostgresStore::runtime_routine_authority_fixture(&client).await {
+		Ok(()) =>
+			emit_focused_authority_record(runtime_checkpoint, FocusedAuthorityClassification::Ready),
+		Err(error) => {
+			emit_focused_authority_store_error(runtime_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	}
+
+	let semantic_checkpoint = FocusedAuthorityCheckpoint::SemanticAuthority;
+	match PostgresStore::semantic_authority_fixture(&client, &runtime_role).await {
+		Ok(artifact) => match focused_semantic_authority_state(&artifact) {
+			Some(true) => emit_focused_authority_record(
+				semantic_checkpoint,
+				FocusedAuthorityClassification::Ready,
+			),
+			Some(false) => {
+				emit_focused_authority_record(
+					semantic_checkpoint,
+					FocusedAuthorityClassification::ContractRejected,
+				);
+				return stop_focused_authority_gate(client, connection_task).await;
+			},
+			None => {
+				emit_focused_authority_record(
+					semantic_checkpoint,
+					FocusedAuthorityClassification::HarnessError,
+				);
+				return stop_focused_authority_gate(client, connection_task).await;
+			},
+		},
+		Err(error) => {
+			emit_focused_authority_store_error(semantic_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	}
+
+	let configured_checkpoint = FocusedAuthorityCheckpoint::ConfiguredAuthority;
+	let configured_row = match client
+		.query_one(
+			PostgresStore::configured_authority_sql_fixture(),
+			&[&migration_role, &runtime_role],
+		)
+		.await
+	{
+		Ok(row) => row,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(configured_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	let configured_manifest: Option<String> = match configured_row.try_get(0) {
+		Ok(manifest) => manifest,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(configured_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	if configured_manifest.is_none() {
+		emit_focused_authority_record(
+			configured_checkpoint,
+			FocusedAuthorityClassification::ContractRejected,
+		);
+		return stop_focused_authority_gate(client, connection_task).await;
+	}
+	emit_focused_authority_record(configured_checkpoint, FocusedAuthorityClassification::Ready);
+
+	let schema_checkpoint = FocusedAuthorityCheckpoint::SchemaAuthority;
+	let schema_row = match client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await
+	{
+		Ok(row) => row,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	let schema_manifest: Option<String> = match schema_row.try_get(0) {
+		Ok(manifest) => manifest,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	let schema_complete: bool = match schema_row.try_get(1) {
+		Ok(complete) => complete,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	if schema_manifest.is_none() || !schema_complete {
+		emit_focused_authority_record(
+			schema_checkpoint,
+			FocusedAuthorityClassification::ContractRejected,
+		);
+		return stop_focused_authority_gate(client, connection_task).await;
+	}
+	match close_focused_authority_client(client, connection_task).await {
+		Ok(()) =>
+			emit_focused_authority_record(schema_checkpoint, FocusedAuthorityClassification::Ready),
+		Err(Some(error)) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, true);
+			return false;
+		},
+		Err(None) => {
+			emit_focused_authority_client_task_error(schema_checkpoint);
+			return false;
+		},
+	}
+
+	let store_checkpoint = FocusedAuthorityCheckpoint::StoreConnect;
+	match authority_store_result(&scenario.baseline_migration_url, &scenario.baseline_runtime_url)
+		.await
+	{
+		Ok(()) => {
+			emit_focused_authority_record(store_checkpoint, FocusedAuthorityClassification::Ready);
+			true
+		},
+		Err(error) => {
+			emit_focused_authority_store_error(store_checkpoint, &error, false);
+			false
+		},
+	}
+}
+
 struct AuthorityCausalEvidence {
 	failures: Vec<String>,
 	complete: bool,
@@ -1270,7 +1627,7 @@ async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 authority classification harness"]
-async fn postgres_authority_classification_matrix() {
+async fn postgres_authority_classification_matrix() -> std::process::ExitCode {
 	let scenarios = authority_scenarios();
 	let unsafe_count = scenarios
 		.iter()
@@ -1318,6 +1675,15 @@ async fn postgres_authority_classification_matrix() {
 		"ledger-tamper is migration failure projected as incompatible"
 	);
 
+	#[cfg(feature = "test-support")]
+	if !focused_authority_checkpoint_gate(
+		scenarios.first().expect("authority scenario inventory is nonempty"),
+	)
+	.await
+	{
+		return std::process::ExitCode::FAILURE;
+	}
+
 	let mut failures = Vec::new();
 	for scenario in &scenarios {
 		for failure in evaluate_authority_scenario(scenario).await {
@@ -1330,6 +1696,7 @@ async fn postgres_authority_classification_matrix() {
 		"PostgreSQL authority classification matrix failures:\n{}",
 		failures.join("\n")
 	);
+	std::process::ExitCode::SUCCESS
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

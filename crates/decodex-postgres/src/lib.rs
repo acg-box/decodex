@@ -218,6 +218,13 @@ impl PostgresStore {
 		authority::execution_path_contract_fixture()
 	}
 
+	/// Evaluate the production runtime-routine authority query without exporting catalog values.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub async fn runtime_routine_authority_fixture(client: &TokioClient) -> Result<(), StoreError> {
+		authority::runtime_routine_authority_fixture(client).await
+	}
+
 	/// Evaluate and serialize the finalized production semantic-authority contract.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
