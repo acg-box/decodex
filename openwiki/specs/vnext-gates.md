@@ -30,7 +30,7 @@ records the exact source revision, evidence, contradictions, and outcome.
 | --- | --- |
 | [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the GPUI client foundation consumed by the delivery slices. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), [XY-1422](https://linear.app/hack-ink/issue/XY-1422), [XY-1423](https://linear.app/hack-ink/issue/XY-1423), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, immutable runner binding, quota calculation, and profile foundations. XY-1423 corrects account authority; XY-1422 owns MacDogfoodReady for Slice 1 and final AccountLifecycleReady later. The XY-1355-XY-1363 chain retains broader routing authority and evidence. XY-1403 retires the private-artifact lane. XY-1304 owns only later automatic fallback/wake acceptance and enablement. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), [XY-1422](https://linear.app/hack-ink/issue/XY-1422), [XY-1423](https://linear.app/hack-ink/issue/XY-1423), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, immutable runner binding, quota calculation, and profile foundations. XY-1423 corrects account authority; XY-1422 owns the Slice-1 subset of MacDogfoodReady and full MacDogfoodReady acceptance at Slice 3. Final AccountLifecycleReady is later. The XY-1355-XY-1363 chain retains broader routing authority and evidence. XY-1403 retires the private-artifact lane. XY-1304 owns only later automatic fallback/wake acceptance and enablement. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -869,14 +869,15 @@ added. No retained-title evidence gate enables production routing.
 ### Account lifecycle and Mac dogfood gate
 
 The [account lifecycle authority](account-lifecycle-authority.md) is the normative
-XY-1423 correction. XY-1422 must satisfy its MacDogfoodReady subset before Slice 1 can
-claim Accounts, Quick Task, or limited initial routing. Final AccountLifecycleReady is a
-later product gate and does not block the three Mac slices.
+XY-1423 correction. XY-1422 must satisfy the Slice-1 subset of MacDogfoodReady before
+Slice 1 can claim Accounts, Quick Task, or limited initial routing. Final
+AccountLifecycleReady is a later product gate and does not block the three Mac slices.
 
 ```text
 XY-1423 account authority
--> XY-1422 MacDogfoodReady implementation and acceptance
--> Slice 1 -> Slice 2 -> Slice 3
+-> XY-1422 acceptance of the Slice-1 subset of MacDogfoodReady
+-> Slice 1 -> Slice 2
+-> Slice 3 and full MacDogfoodReady acceptance
 
 V14-V21 accepted routing foundations -> XY-1304 later automatic fallback/wake acceptance
 ```
