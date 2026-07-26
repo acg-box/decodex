@@ -157,6 +157,46 @@ def repository_identity(worktree: Path) -> tuple[str, str]:
     return head, tree
 
 
+def repository_git_common_directory(
+    repo_root: Path,
+) -> Path:
+    checkout = repo_root.resolve()
+    top_level = run_command(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=checkout,
+        failure_code="validation_git_authority_unavailable",
+    )
+    common_text = run_command(
+        [
+            "git",
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ],
+        cwd=checkout,
+        failure_code="validation_git_authority_unavailable",
+    )
+    common_source = Path(common_text)
+    try:
+        common = common_source.resolve(strict=True)
+        metadata = common.stat()
+        top_level_path = Path(top_level).resolve(strict=True)
+    except OSError as error:
+        raise AutopilotError(
+            "validation_git_authority_unavailable"
+        ) from error
+    if (
+        top_level_path != checkout
+        or common.name != ".git"
+        or common_source.is_symlink()
+        or not common.is_dir()
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o022
+    ):
+        raise AutopilotError("validation_git_authority_unavailable")
+    return common
+
+
 def validation_authority_identity(repo_root: Path) -> dict[str, str]:
     head, tree = repository_identity(repo_root)
     closure = run_command(
@@ -1313,6 +1353,7 @@ def validation_sandbox_profile(
     candidate = worktree.resolve()
     home = real_home_directory()
     rustup_home = trusted_rustup_home()
+    git_common_directory = repository_git_common_directory(root)
     trusted_makefile = root / "Makefile.toml"
     if (
         not candidate.is_dir()
@@ -1329,7 +1370,7 @@ def validation_sandbox_profile(
 
     readable = (
         candidate,
-        root / ".git",
+        git_common_directory,
         rustup_home / "toolchains",
         rustup_home / "settings.toml",
         temporary_home,
