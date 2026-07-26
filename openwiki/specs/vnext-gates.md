@@ -363,26 +363,53 @@ capture and emitting a fresh acceptance receipt explicitly bound to Phase A. A d
 receipt remains provenance only; malformed, substituted, duplicate, or out-of-binding evidence
 cannot attest the Phase B source.
 
-The bounded restore prerequisite has one separate R1-only gate:
-`--capture-authority-restore-prerequisite ABSOLUTE_PRIVATE_RECEIPT_PATH`. The Manager authorizes
-one invocation on one exact clean HEAD and tree. This gate is not focused mode, Phase A, Phase B,
-or the aggregate. It creates S0 through the unchanged authority setup, migrates, provisions,
-populates, and runs the full Rust semantic owner once. It dumps once. A closed PostgreSQL 18 TOC
-parser then requires exactly one active `pgcrypto` extension declaration before R1 exists. The
-shared future R1/R2 restore helper creates fresh R1 from `template0`, proves that `pgcrypto` is
-absent, precreates version 1.4 in `public` as the migration role, and restores once as bootstrap
-with `--exit-on-error`. No migration or provisioning follows restore. The full semantic owner runs
-once at R1, and the gate stops.
+The bounded restore prerequisite has one separate R1-only replacement gate:
+`--capture-authority-restore-prerequisite-v2 ABSOLUTE_PRIVATE_RECEIPT_PATH`. The v1 spelling has no
+alias. The Manager authorizes one invocation on one exact clean HEAD and tree. This gate is not
+focused mode, Phase A, Phase B, or the aggregate. It creates S0 through the unchanged authority
+setup, migrates, provisions, populates, and runs the full Rust semantic owner once. It dumps once.
+A closed PostgreSQL 18 TOC parser then requires exactly one active `pgcrypto` extension declaration
+before R1 exists. The shared future R1/R2 restore helper creates fresh R1 from `template0`, proves
+that `pgcrypto` is absent, precreates version 1.4 in `public` as the migration role, and restores
+once as bootstrap with `--exit-on-error`. No migration or provisioning follows restore. The full
+semantic owner runs once at R1, and the gate stops.
 
-The pass receipt schema is `decodex/postgres-restore-prerequisite-r1-gate/1`. It binds the clean
-source, selected PostgreSQL 18 toolchain, fixed checkpoint and invocation-policy Booleans, and
-definition fingerprint
-`2fc0260f16424d155ccd54daf25a0c43445b26744ebbae0772487266b7db46b5`. It is create-only,
-mode-0600, fsynced, privacy-safe, and has `acceptance=false`. Failure emits only the closed
-`decodex/postgres-restore-prerequisite-r1-diagnostic/1` document or the existing closed semantic
-diagnostic. The receipt authorizes only a later decision about revised Phase A. It does not
-authorize R2, digest derivation, candidate publication, Phase B, the aggregate, or final
-acceptance. The source is unexecuted and no acceptance claim exists.
+One privacy-safe state owner covers the exact ordered execution inventory from `cli` through
+`stopped_after_restored_once`. It also owns the separate `cluster_stop`, `private_work_cleanup`,
+`receipt_validation`, `receipt_source_binding`, and `receipt_publication` lifecycle checkpoints.
+Completed execution checkpoints must be a successful prefix. The definition binds the complete
+checkpoint order, exact allowed checkpoint and reason matrix, prefix rules, first-primary and
+cleanup precedence, pass schema, PostgreSQL 18 toolchain boundary, restore identity and options,
+and semantic definition fingerprint. Expected operation failures use one fixed reason at their
+owner. Interruption uses `interrupted`. An unexpected assertion, type, key, or invariant failure
+uses `harness_corruption` at the active owner. The first primary failure is immutable. Cleanup has
+fixed status and a fixed optional secondary reason. Cleanup becomes primary only when no earlier
+primary exists. Receipt validation, final source binding, cleanup, and publication cannot replace
+an earlier primary.
+
+The pass receipt schema is `decodex/postgres-restore-prerequisite-r1-gate/2`. It binds the clean
+source, selected PostgreSQL 18 toolchain, complete validated checkpoint prefix, fixed
+invocation-policy Booleans, and definition fingerprint
+`f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401`. It is create-only,
+mode 0600, file-fsynced, directory-fsynced, privacy-safe, and has `acceptance=false`.
+The bound definition schema is `decodex/postgres-restore-prerequisite-r1-definition/2`.
+
+The failure schema is `decodex/postgres-restore-prerequisite-r1-diagnostic/2`. It contains only the
+validated source binding or null, immutable primary checkpoint and reason, validated completed
+prefix, fixed cleanup status, optional fixed secondary cleanup reason, and the existing closed
+semantic diagnostic when semantic authority owns the primary. It contains no raw operational or
+authority data. If the output contract is valid and publication remains possible, the gate
+publishes one create-only failure receipt after cleanup. It writes the same canonical diagnostic to
+standard error for publication-failure recovery. The raw-error `StageOrchestrator` is outside this
+privacy boundary.
+
+The v1 gate ran once and returned ownerless `gate/stage_failed` evidence after 0.312 seconds. It did
+not prove that candidate 3 reached the archive guard, prerequisite, restore, or R1 semantic owner.
+Candidate 3 restore behavior remains frozen and unadjudicated. The three-rejected-candidate
+threshold is not crossed unless a source-bound v2 result exercises and rejects candidate 3. A v2
+pass authorizes only a later decision about revised Phase A. It does not authorize R2, digest
+derivation, candidate publication, Phase B, the aggregate, or final acceptance. The v2 source is
+unexecuted and no acceptance claim exists.
 
 The unified PostgreSQL aggregate is scheduled by one explicit top-level stage graph. Fatal
 configuration/cluster preflight covers mode and arguments, clean source binding, private

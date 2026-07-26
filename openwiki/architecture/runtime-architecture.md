@@ -251,16 +251,35 @@ execute exactly
 keeps `--exit-on-error` under the bootstrap identity and adds no owner, ACL, role, or session
 authorization override. No migration or runtime provisioning follows a restore.
 
-The new `--capture-authority-restore-prerequisite` gate binds one clean HEAD and tree, the selected
-PostgreSQL 18 toolchain, a versioned gate schema, and one definition fingerprint. It creates,
-migrates, provisions, populates, and semantically verifies S0 once; dumps once; guards and restores
-fresh R1 once; and runs the same full semantic owner once at R1. Explicit in-process counters reject
-a duplicate prerequisite or restore. The gate stops before R2, digest derivation, candidate
-publication, Phase B, and the aggregate. Its immutable private receipt contains only fixed
-checkpoints, fixed invocation-policy Booleans, source and definition bindings, and
-`acceptance=false`. Failures use a closed gate diagnostic or the existing closed semantic
-diagnostic. The Manager owns cross-process one-shot authorization. A pass permits only a later
-decision about revised Phase A. This source is unexecuted and does not establish acceptance.
+The replacement `--capture-authority-restore-prerequisite-v2` gate binds one clean HEAD and tree,
+the selected PostgreSQL 18 toolchain, the v2 pass and diagnostic schemas, and definition fingerprint
+`f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401`. One sequential state owner
+covers CLI selection, preflight, private work, cluster initialization and start, role setup, S0,
+archive creation, the restore helper, semantic checks, cleanup, receipt validation, final source
+binding, and publication. Completed execution checkpoints can be only a validated prefix. The first
+fixed checkpoint and reason are immutable. `cluster_stop` and `private_work_cleanup` have separate
+owners. A cleanup failure is secondary when an earlier primary exists, and it is primary only when
+no earlier failure exists. Receipt validation, source binding, and publication also have separate
+owners. They cannot replace an earlier primary failure.
+
+The gate creates, migrates, provisions, populates, and semantically verifies S0 once. It dumps once,
+guards and restores fresh R1 once, and runs the same full semantic owner once at R1. Explicit
+in-process counters reject a duplicate prerequisite or restore. The gate stops before R2, digest
+derivation, candidate publication, Phase B, and the aggregate. Pass and failure receipts are
+canonical, create-only, mode 0600, file-fsynced, and directory-fsynced. A failure receipt contains
+only the fixed v2 projection. It contains no raw exception, command, child output, environment,
+path, selected tool name, database, role, owner, ACL, OID, SQL, connection, TOC content, catalog
+row, count, or discovered identity. The same canonical failure diagnostic goes to standard error
+for publication-failure recovery. The raw-error `StageOrchestrator` remains outside this privacy
+boundary.
+
+The v1 gate ran once and returned ownerless `gate/stage_failed` evidence. It did not prove that the
+archive guard, prerequisite, restore, or R1 semantic authority ran. The v1 spelling and schemas are
+retired and have no alias. Candidate 3 remains frozen and unadjudicated. A source-bound v2 result
+must exercise and reject candidate 3 before the three-rejected-candidate threshold is crossed. The
+Manager owns cross-process one-shot authorization. A v2 pass has `acceptance=false` and permits only
+a later decision about revised Phase A. This v2 source is unexecuted and does not establish
+acceptance.
 Rust is the sole owner of this closed, ordered, typed contract. It preserves the prior 39
 predicate descriptors and appends one unsafe identity for unexpected runtime-executable
 security-definer authority. Finalization rejects a missing, duplicate, unknown, reordered, or
