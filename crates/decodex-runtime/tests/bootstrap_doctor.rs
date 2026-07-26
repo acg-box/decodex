@@ -656,9 +656,10 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 		&mut client,
 		ClientMessage::Query(QueryEnvelope {
 			version: CURRENT_VERSION,
-			query_id: QueryId::new("history-unavailable").unwrap(),
+			query_id: QueryId::new("history-unavailable").expect("test operation must succeed"),
 			payload: QueryPayload::GetConversationHistory {
-				conversation_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				conversation_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
 				after: None,
 				page_size: 1,
 			},

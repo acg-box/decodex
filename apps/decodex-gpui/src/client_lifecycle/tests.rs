@@ -551,7 +551,17 @@ async fn event_publication_retains_the_complete_authoritative_state_before_confi
 	assert_eq!(lifecycle.state.len(), 2);
 	assert_eq!(lifecycle.state["first"].revision, EntityRevision(3));
 	assert_eq!(lifecycle.state["second"].revision, EntityRevision(2));
-	assert_eq!(lifecycle.cache.as_ref().unwrap().inspect_current().unwrap().unwrap().records, 2);
+	assert_eq!(
+		lifecycle
+			.cache
+			.as_ref()
+			.expect("test operation must succeed")
+			.inspect_current()
+			.expect("test operation must succeed")
+			.expect("test operation must succeed")
+			.records,
+		2
+	);
 	assert_eq!(
 		*io.confirmations.lock().expect("confirmation log is available"),
 		vec![Cursor(5), Cursor(6)]
@@ -637,8 +647,8 @@ async fn resume_reuses_only_the_attested_checkpoint_and_fallback_rebuilds_state(
 			.as_ref()
 			.expect("cache is available")
 			.inspect_current()
-			.unwrap()
-			.unwrap()
+			.expect("test operation must succeed")
+			.expect("test operation must succeed")
 			.records,
 		1
 	);
@@ -862,12 +872,18 @@ fn corrupt_cache_is_disposed_and_rebuilt_while_unsafe_root_requires_an_operator(
 		}
 	);
 	assert_eq!(
-		rebuilt.cache.as_ref().expect("rebuilt cache is available").inspect_current().unwrap(),
+		rebuilt
+			.cache
+			.as_ref()
+			.expect("rebuilt cache is available")
+			.inspect_current()
+			.expect("test operation must succeed"),
 		None
 	);
 
 	let unsafe_temporary = TempDir::new().expect("temporary directory is available");
-	let unsafe_root = unsafe_temporary.path().canonicalize().unwrap().join("cache");
+	let unsafe_root =
+		unsafe_temporary.path().canonicalize().expect("test operation must succeed").join("cache");
 	fs::write(&unsafe_root, b"not a directory").expect("unsafe cache root is created");
 	let unsafe_lifecycle = lifecycle(&unsafe_root);
 	assert_eq!(

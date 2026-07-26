@@ -168,11 +168,14 @@ mod tests {
 		use crate::{LocalTransportAuthority, LocalTransportRefusal};
 		use decodex_core::{DecodexRoot, LocalTrustPolicy};
 
-		let temp = tempfile::tempdir().unwrap();
-		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let temp = tempfile::tempdir().expect("test operation must succeed");
+		let root = DecodexRoot::new(
+			temp.path().canonicalize().expect("test operation must succeed").join(".decodex"),
+		)
+		.expect("test operation must succeed");
 		let paths = root.paths();
 
-		paths.ensure_layout().unwrap();
+		paths.ensure_layout().expect("test operation must succeed");
 
 		// SAFETY: `geteuid` has no arguments or failure return.
 		let uid = unsafe { libc::geteuid() };

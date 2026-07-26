@@ -654,7 +654,10 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 		for expected in Destination::ALL {
 			let focused = shell.read_with(visual, |shell, _| {
-				let index = Destination::ALL.iter().position(|value| *value == expected).unwrap();
+				let index = Destination::ALL
+					.iter()
+					.position(|value| *value == expected)
+					.expect("test operation must succeed");
 				shell.destination_focus[index].clone()
 			});
 			assert!(visual.update(|window, _| focused.is_focused(window)));
