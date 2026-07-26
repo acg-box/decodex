@@ -111,18 +111,28 @@ navigation and current-status projection.
 
 `apps/decodexd` composes the PostgreSQL and Codex adapter boundaries through
 `decodex-runtime` and serves the typed V1 protocol at loopback-only
-`ws://127.0.0.1:49152/v1/ws`. It opens no repository or Codex process. It attempts only
-the explicitly configured PostgreSQL Unix socket and otherwise retains a typed unavailable
-adapter. The protocol supports V1.2/V1.1 negotiation, typed command receipt/result and
+`ws://127.0.0.1:49152/v1/ws`. It opens a Codex app-server process only for an admitted
+manual reset-card request; conversation dispatch remains disabled. It attempts only the
+explicitly configured PostgreSQL Unix socket and otherwise retains a typed unavailable
+adapter. The protocol supports V1.3/V1.2 negotiation, typed command receipt/result and
 event envelopes, bounded snapshots/queues/wire text, fixed per-version-capacity in-lifetime
-idempotency whose lookup and capacity namespace are bound to the negotiated protocol version (so V1.2
-and V1.1 mutation keys cannot consume or poison one another),
+idempotency whose lookup and capacity namespace are bound to the negotiated protocol version,
 publication-epoch-bound cursor resume,
 snapshot fallback, stable
 server-identity pinning, bounded doctor/status results, and a bounded typed Conversation-history
 query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
-API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
+API-only V1.3 diagnostic clients. `decodex reset-card` is the active manual reset-card
+client. GPUI still reports its disabled state.
+
+The reset-card service uses only configured vNext account UUIDs. It admits accounts in
+`available` or `depleted` state. Clients select a card by its public grant and expiry
+timestamps and send the exact account revision. `decodexd` alone reads the credential
+vault, starts and attests the Codex process, resolves the opaque provider credit ID,
+persists that exact ID and the logical-command idempotency key before the effect, consumes
+the card, and reconciles fresh provider state. Restart recovery reuses the same exact ID
+and key; it never selects a replacement card. Both `account/rateLimits/read` and
+`account/rateLimitResetCredit/consume` must be present in the generated app-server schema.
 
 When PostgreSQL is ready, daemon bootstrap also opens the accepted pinned repository executor,
 retains the single PostgreSQL/executor/saga composition, and completes bounded readback-only
@@ -186,7 +196,7 @@ operator UID authority, and kernel peer credentials rather than trusting an obse
 `~/.decodex` layout for `config.toml`, logs, SHA-256 blobs, disposable cache, and atomic
 server identity.
 
-Doctor/status is a V1.2 read-only query served only by `decodexd`. Queries have client observation
+Doctor/status is a V1.3 read-only query served only by `decodexd`. Queries have client observation
 identities but no mutation receipt, deduplication, replay, event, or receipt-capacity effect. Its closed report
 covers configuration, database, protocol and version, stable server identity, shared
 Codex home, each typed app-server capability, aggregate server-host repository readiness,
@@ -238,7 +248,9 @@ writer lock and sealed by the immutable parent with an exact contiguous source c
 cannot append, alter, delete, or commit an incomplete source manifest after persistence.
 
 The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
-Unsupported or mutating product CLI operations remain unavailable and belong to later slices, as do
+The `decodex reset-card accounts`, `list`, `use`, and `status` operations are active
+clients of the common daemon service. Other unsupported or mutating product CLI operations
+remain unavailable and belong to later slices, as do
 scheduling, account routing, a PostgreSQL installation or administration plane, live Codex dispatch,
 an authenticated HTTP artifact path, remote binding, and GPUI product behavior. Authentication and
 TLS are disabled; loopback refusal is the enforced network boundary until the later remote-security gate.
@@ -251,6 +263,7 @@ Use these as discovery and validation entrypoints:
 cargo run -p decodexd
 cargo run -p decodex-cli -- status
 cargo run -p decodex-cli -- doctor --output json
+cargo run -p decodex-cli -- reset-card accounts
 cargo run -p decodex-gpui
 cargo test -p decodex-core --all-targets --all-features
 cargo make test-vnext-architecture
@@ -261,7 +274,8 @@ cargo make check
 `decodexd` starts the loopback protocol service and runs until stopped. The CLI selects
 the configured active profile by default; `--profile NAME` selects an explicit declared
 profile and `--root PATH` selects a typed Decodex root. Human output is the default and
-`--output json` emits `decodex/cli-diagnostics/1`. GPUI still reports its disabled state.
+diagnostic `--output json` emits `decodex/cli-diagnostics/1`; reset-card JSON emits
+`decodex/reset-card-cli/1`. GPUI still reports its disabled state.
 For a targeted Rust gate,
 prefer
 `cargo check --all-features --all-targets --workspace` or

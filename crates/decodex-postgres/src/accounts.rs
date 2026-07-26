@@ -9,6 +9,7 @@ use crate::{
 	AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
 	PostgresStore, StoreError,
 };
+use decodex_core::RESET_CARD_PROVIDER_BINDING_METADATA_FIELD;
 
 /// Immutable identity bound to one durable command receipt before side effects begin.
 pub(crate) struct CommandDescriptor {
@@ -35,7 +36,46 @@ pub(crate) enum CommandClaim {
 	Completed(Value),
 }
 
+/// Read-only state of one exact command receipt.
+pub(crate) enum CommandReplay {
+	Absent,
+	Pending { claim_expired: bool },
+	Completed(Value),
+}
+
 impl PostgresStore {
+	/// Observe whether one explicitly named account admits manual reset-card use at an exact
+	/// revision.
+	///
+	/// This check deliberately admits both `available` and `depleted`. It never selects an
+	/// account, and it releases its database checkout before caller-controlled process work.
+	pub async fn account_admits_reset_card_at_revision(
+		&self,
+		account_id: &AccountId,
+		expected_revision: i64,
+	) -> Result<bool, StoreError> {
+		if expected_revision < 1 {
+			return Err(StoreError::InvalidInput("expected revision must be positive"));
+		}
+
+		let client = self.pool().get().await?;
+		let row = client
+			.query_one(
+				"SELECT EXISTS (SELECT 1 FROM decodex.accounts \
+				 WHERE account_id=$1::text::uuid AND revision=$2 \
+				 AND state IN ('available'::decodex.account_state, \
+				               'depleted'::decodex.account_state))",
+				&[&account_id.as_str(), &expected_revision],
+			)
+			.await?;
+		let admitted = row.get(0);
+
+		drop(row);
+		drop(client);
+
+		Ok(admitted)
+	}
+
 	/// Observe whether one explicitly named account is available at an exact revision.
 	///
 	/// This operation never selects an account, returns no retainable authority, and invokes no
@@ -305,23 +345,35 @@ pub(crate) async fn replay_completed_command(
 	command: &CommandIdentity,
 	descriptor: &CommandDescriptor,
 ) -> Result<Option<Value>, StoreError> {
+	match inspect_command_receipt(client, command, descriptor).await? {
+		CommandReplay::Completed(response) => Ok(Some(response)),
+		CommandReplay::Absent | CommandReplay::Pending { .. } => Ok(None),
+	}
+}
+
+pub(crate) async fn inspect_command_receipt(
+	client: &Client,
+	command: &CommandIdentity,
+	descriptor: &CommandDescriptor,
+) -> Result<CommandReplay, StoreError> {
 	let Some(row) = client
 		.query_opt(
 			"SELECT request_hash, protocol_version, operation, project_scope, scope_id, entity_id, \
 			 expected_revision, payload_hash, payload_length, receipt_state::text, response_bytes, \
-			 response FROM decodex.command_receipts WHERE idempotency_key=$1",
+			 response, claim_expires_at <= clock_timestamp() \
+			 FROM decodex.command_receipts WHERE idempotency_key=$1",
 			&[&command.key],
 		)
 		.await?
 	else {
-		return Ok(None);
+		return Ok(CommandReplay::Absent);
 	};
 
 	if !receipt_descriptor_matches(&row, command, descriptor) {
 		return Err(StoreError::IdempotencyConflict);
 	}
 	if row.get::<_, &str>(9) != "completed" {
-		return Ok(None);
+		return Ok(CommandReplay::Pending { claim_expired: row.get(12) });
 	}
 
 	let bytes = row.get::<_, Option<Vec<u8>>>(10).ok_or_else(|| {
@@ -338,7 +390,7 @@ pub(crate) async fn replay_completed_command(
 		));
 	}
 
-	Ok(Some(response))
+	Ok(CommandReplay::Completed(response))
 }
 
 pub(crate) async fn finish_command(
@@ -551,6 +603,8 @@ async fn update_account(
 			"UPDATE decodex.accounts SET display_label = $2, state = $3::text::decodex.account_state, \
 			 metadata = $4, revision = revision + 1, observed_at = clock_timestamp(), \
 			 updated_at = clock_timestamp() WHERE account_id = $1::text::uuid AND revision = $5 \
+			 AND (NOT metadata ? ($6::text) \
+			   OR (metadata -> ($6::text)) = ($4::jsonb -> ($6::text))) \
 			 RETURNING revision",
 			&[
 				&mutation.account_id.as_str(),
@@ -558,6 +612,7 @@ async fn update_account(
 				&account_state_sql(mutation.state),
 				&mutation.metadata,
 				&expected,
+				&RESET_CARD_PROVIDER_BINDING_METADATA_FIELD,
 			],
 		)
 		.await?;

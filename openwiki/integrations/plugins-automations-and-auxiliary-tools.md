@@ -151,21 +151,34 @@ decodex-publisher validate-social .agent/automations/decodex/cache/social/x
 - Lists stored accounts without token material.
 - Pins future Decodex runs to one account or returns to balanced selection.
 - Forces Codex to use a stored account by writing `auth.json`.
-- Uses a selected reset card after a second-click confirmation. The first click is
-  a local-only state change that immediately starts a five-second confirmation. The
-  second click opens one isolated file-auth app-server session, validates the
-  account, resolves the exact current opaque credit ID, and consumes it. Retries
-  keep the resolved ID and idempotency key. The confirmation also clears when the
-  menu-bar panel closes. The isolated copy excludes the managed refresh token.
-  Ambiguous or incomplete card-detail lists fail closed.
+- Shows vNext reset cards from the common daemon service. The first click starts a
+  five-second local confirmation. The second click first persists a pending attempt,
+  then invokes the bundled `decodex-cli` with a vNext account UUID, exact revision,
+  public grant/expiry descriptor, and one idempotency key. `decodexd` owns credentials,
+  app-server, the opaque credit ID, the provider effect, and durable recovery.
 - Runs isolated Codex device login and imports the resulting auth file. The App
   honors an explicit `CODEX_CLI_PATH` override; otherwise it resolves the login
   executable from the Codex macOS application registered with Launch Services,
   then falls back to a `codex` executable in the inherited `PATH`.
 - Removes stored accounts from the local pool.
-- Connects to a default local `decodex serve` when available, otherwise starts bundled `decodex serve --listen-address 127.0.0.1:8192`.
+- Invokes the bundled `decodex-cli` for active vNext reset-card requests. The bundle
+  also distributes `decodexd`, but Swift does not start it or inject credentials.
+  Operators must run the independently configured daemon service. Separate bundled
+  legacy `decodex` and `decodex-app-helper` executables remain for unrelated existing
+  account UI; they have no vNext reset-card authority.
+- Shows a `Resume` action for retained attempts. Resume checks durable status first and,
+  only when the daemon reports `not_found`, may invoke `use` again with the same profile,
+  server UUID, selection, and idempotency key. It never substitutes a new key for that
+  pending card.
 
-The app is not the scheduler, project registry owner, or runtime authority. It is a native UI over Rust-owned account/control-plane state.
+The reset-card path is not the scheduler, project registry owner, credential owner,
+app-server process owner, or runtime authority. Its bounded private journal retains at
+most 64 credential-negative attempts and fails closed on malformed or unsafe storage:
+recoverable entries remain available for status-only inspection, while new use is blocked.
+The separate legacy account path may still manage its existing local `decodex serve`
+lifecycle. See [Runtime architecture](../architecture/runtime-architecture.md) for the
+shared service flow and [Commands and validation](../operations/commands-and-validation.md)
+for the direct Swift and staging checks.
 
 Build/stage commands:
 

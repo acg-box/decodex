@@ -17,6 +17,7 @@ mod policy;
 mod program;
 mod project;
 mod quota;
+mod reset_card;
 mod routing;
 mod storage;
 mod wake;
@@ -39,7 +40,8 @@ pub use self::{
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
 		MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig, ProfileName,
-		RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile, ServerRepositoryPath,
+		RemoteProfile, RepositoryName, ResetCardAccountConfig, ServerHostConfig, ServerProfile,
+		ServerRepositoryPath,
 	},
 	continuation::{
 		ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlan,
@@ -134,6 +136,11 @@ pub use self::{
 		QuotaWindowObservation, QuotaWindowState, QuotaWindowValueObservation, RemainingPercent,
 		TimeOverflow, UnknownObservation, UnknownWindowDuration, WindowDurationObservation,
 		classify_account_quota, classify_all_accounts,
+	},
+	reset_card::{
+		MAX_RESET_CARD_ITEMS, ManualResetCardAdmissionError,
+		RESET_CARD_PROVIDER_BINDING_METADATA_FIELD, ResetCardConsumeOutcome, ResetCardDescriptor,
+		ResetCardError, ResetCardTimestamp, admit_manual_reset_card_use,
 	},
 	routing::{
 		CodexCapability, RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome,

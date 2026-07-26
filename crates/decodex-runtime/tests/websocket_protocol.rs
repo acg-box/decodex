@@ -20,9 +20,9 @@ use decodex_protocol::{
 	CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor, DoctorCheck,
 	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
 	EventPayload, IdempotencyKey, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResultPayload,
-	ResumeCursor, ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal,
-	WireText,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
+	ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId,
+	ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal, WireText,
 };
 use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
 
@@ -44,6 +44,10 @@ impl FixtureApplication {
 		self.state.lock().expect("test state mutex poisoned").queries
 	}
 
+	fn attempts(&self) -> u64 {
+		self.state.lock().expect("test state mutex poisoned").attempts
+	}
+
 	fn with_status(status: WireText) -> Self {
 		Self {
 			state: Arc::new(Mutex::new(FixtureState { status, ..FixtureState::default() })),
@@ -53,6 +57,16 @@ impl FixtureApplication {
 
 	fn with_delay(execution_delay: Duration) -> Self {
 		Self { execution_delay, ..Self::default() }
+	}
+
+	fn with_acceptance_unknown_once() -> Self {
+		Self {
+			state: Arc::new(Mutex::new(FixtureState {
+				acceptance_unknown_remaining: 1,
+				..FixtureState::default()
+			})),
+			..Self::default()
+		}
 	}
 }
 
@@ -75,8 +89,13 @@ impl Application for FixtureApplication {
 			time::sleep(self.execution_delay).await;
 		}
 
-		let CommandPayload::RefreshSystemObservation { entity_id } = &command.payload;
 		let mut state = self.state.lock().expect("test state mutex poisoned");
+
+		state.attempts += 1;
+		if state.acceptance_unknown_remaining > 0 {
+			state.acceptance_unknown_remaining -= 1;
+			return Err(CommandError::AcceptanceUnknown);
+		}
 
 		if let Some(expected) = command.expected_revision
 			&& expected != EntityRevision(state.revision)
@@ -92,13 +111,34 @@ impl Application for FixtureApplication {
 		state.status = WireText::new(format!("observation-{}", state.executions))
 			.expect("fixture status is bounded");
 
-		Ok(ApplicationPublication {
-			channel: Channel::SystemHealth,
-			entity_id: entity_id.clone(),
-			entity_revision: EntityRevision(state.revision),
-			result: ResultPayload::SystemObservationRefreshed { status: state.status.clone() },
-			event: EventPayload::SystemObservationRefreshed { status: state.status.clone() },
-		})
+		match &command.payload {
+			CommandPayload::RefreshSystemObservation { entity_id } => Ok(ApplicationPublication {
+				channel: Channel::SystemHealth,
+				entity_id: entity_id.clone(),
+				entity_revision: EntityRevision(state.revision),
+				result: ResultPayload::SystemObservationRefreshed { status: state.status.clone() },
+				event: EventPayload::SystemObservationRefreshed { status: state.status.clone() },
+			}),
+			CommandPayload::ConsumeResetCard { account_id, descriptor } => {
+				let operation_state = ResetCardOperationResult::Prepared;
+
+				Ok(ApplicationPublication {
+					channel: Channel::AccountsHealth,
+					entity_id: account_id.clone(),
+					entity_revision: EntityRevision(state.revision),
+					result: ResultPayload::ResetCardOperationAccepted {
+						account_id: account_id.clone(),
+						descriptor: *descriptor,
+						state: operation_state,
+					},
+					event: EventPayload::ResetCardOperationAccepted {
+						account_id: account_id.clone(),
+						descriptor: *descriptor,
+						state: operation_state,
+					},
+				})
+			},
+		}
 	}
 
 	fn query<'a>(
@@ -132,7 +172,9 @@ impl Application for FixtureApplication {
 struct FixtureState {
 	revision: u64,
 	executions: u64,
+	attempts: u64,
 	queries: u64,
+	acceptance_unknown_remaining: u64,
 	status: WireText,
 }
 impl Default for FixtureState {
@@ -140,7 +182,9 @@ impl Default for FixtureState {
 		Self {
 			revision: 0,
 			executions: 0,
+			attempts: 0,
 			queries: 0,
+			acceptance_unknown_remaining: 0,
 			status: WireText::new("").expect("empty fixture status is bounded"),
 		}
 	}
@@ -173,10 +217,32 @@ fn command(version: ProtocolVersion, number: u64, key: &str) -> ClientMessage {
 }
 
 fn doctor_query(number: u64) -> ClientMessage {
+	doctor_query_for(CURRENT_VERSION, number)
+}
+
+fn doctor_query_for(version: ProtocolVersion, number: u64) -> ClientMessage {
 	ClientMessage::Query(QueryEnvelope {
-		version: CURRENT_VERSION,
+		version,
 		query_id: QueryId::new(format!("query-{number}")).expect("bounded fixture query ID"),
 		payload: QueryPayload::GetDoctorStatus,
+	})
+}
+
+fn reset_card_command(version: ProtocolVersion, number: u64, key: &str) -> ClientMessage {
+	ClientMessage::Command(CommandEnvelope {
+		version,
+		client_command_id: ClientCommandId::new(format!("reset-command-{number}"))
+			.expect("bounded fixture command ID"),
+		idempotency_key: IdempotencyKey::new(key).expect("bounded fixture key"),
+		expected_revision: None,
+		correlation_id: CorrelationId::new(format!("reset-correlation-{number}"))
+			.expect("bounded fixture correlation ID"),
+		causation_id: None,
+		payload: CommandPayload::ConsumeResetCard {
+			account_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef")
+				.expect("canonical fixture account ID"),
+			descriptor: ResetCardDescriptorDto::new(100, 200).expect("valid descriptor"),
+		},
 	})
 }
 
@@ -352,6 +418,83 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 }
 
 #[tokio::test]
+async fn previous_minor_keeps_v1_2_queries_but_refuses_reset_card_surfaces() {
+	let application = FixtureApplication::default();
+	let bound = server("previous-feature-gate", application.clone(), ServerConfig::default())
+		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+		.await
+		.expect("bind previous-minor feature-gate server");
+	let mut client = connect(bound.address(), PREVIOUS_MINOR_VERSION).await;
+
+	receive_initial(&mut client).await;
+	send(&mut client, doctor_query_for(PREVIOUS_MINOR_VERSION, 1)).await;
+
+	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
+		panic!("previous-minor doctor query must remain supported");
+	};
+
+	assert_eq!(result.version, PREVIOUS_MINOR_VERSION);
+	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
+	assert_eq!(application.queries(), 1);
+
+	send(
+		&mut client,
+		ClientMessage::Query(QueryEnvelope {
+			version: PREVIOUS_MINOR_VERSION,
+			query_id: QueryId::new("reset-query").expect("bounded query ID"),
+			payload: QueryPayload::ListResetCardAccounts,
+		}),
+	)
+	.await;
+	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
+	assert_eq!(application.queries(), 1);
+
+	send(&mut client, reset_card_command(PREVIOUS_MINOR_VERSION, 1, "previous-reset-key")).await;
+	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
+	assert_eq!(application.executions(), 0);
+
+	execute_and_receive_event(&mut client, PREVIOUS_MINOR_VERSION, 1).await;
+	assert_eq!(application.executions(), 1);
+
+	drop(client);
+	bound.shutdown().await.expect("shutdown previous-minor feature-gate server");
+}
+
+#[tokio::test]
+async fn v1_3_reset_card_events_never_cross_the_v1_2_subscriber_boundary() {
+	let application = FixtureApplication::default();
+	let bound = server("reset-event-feature-gate", application.clone(), ServerConfig::default())
+		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+		.await
+		.expect("bind reset-card event feature-gate server");
+	let mut previous = connect(bound.address(), PREVIOUS_MINOR_VERSION).await;
+	let mut current = connect(bound.address(), CURRENT_VERSION).await;
+
+	receive_initial(&mut previous).await;
+	receive_initial(&mut current).await;
+	send(&mut current, reset_card_command(CURRENT_VERSION, 1, "current-reset-key")).await;
+
+	assert!(matches!(receive(&mut current).await, ServerMessage::CommandReceipt(_)));
+	assert!(matches!(receive(&mut current).await, ServerMessage::CommandResult(_)));
+	let ServerMessage::Event(event) = receive(&mut current).await else {
+		panic!("current client must receive the reset-card event");
+	};
+
+	assert_eq!(event.version, CURRENT_VERSION);
+	assert!(matches!(event.payload, EventPayload::ResetCardOperationAccepted { .. }));
+	send(&mut previous, doctor_query_for(PREVIOUS_MINOR_VERSION, 2)).await;
+	let ServerMessage::QueryResult(result) = receive(&mut previous).await else {
+		panic!("previous-minor subscriber must remain usable after a filtered reset-card event");
+	};
+	assert_eq!(result.version, PREVIOUS_MINOR_VERSION);
+	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
+	assert_eq!(application.executions(), 1);
+
+	drop(current);
+	bound.shutdown().await.expect("shutdown reset-card event feature-gate server");
+}
+
+#[tokio::test]
 async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 	let application = FixtureApplication::default();
 	let bound = server("idempotency-server", application.clone(), ServerConfig::default())
@@ -459,6 +602,52 @@ async fn expected_revision_mismatch_is_rejected_without_publication() {
 
 	drop(client);
 
+	bound.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn acceptance_unknown_is_not_cached_and_same_key_can_recover() {
+	let application = FixtureApplication::with_acceptance_unknown_once();
+	let bound = server("acceptance-unknown-server", application.clone(), ServerConfig::default())
+		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+		.await
+		.unwrap();
+	let mut client = connect(bound.address(), CURRENT_VERSION).await;
+
+	receive_initial(&mut client).await;
+	send(&mut client, command(CURRENT_VERSION, 1, "recovery-key")).await;
+
+	let ServerMessage::CommandReceipt(first_receipt) = receive(&mut client).await else {
+		panic!("expected first receipt");
+	};
+	let ServerMessage::CommandResult(first_result) = receive(&mut client).await else {
+		panic!("expected first result");
+	};
+
+	assert_eq!(first_receipt.disposition, ReceiptDisposition::Executed);
+	assert_eq!(first_result.outcome, decodex_protocol::CommandOutcome::AcceptanceUnknown);
+	assert_eq!(first_result.error, Some(CommandError::AcceptanceUnknown));
+	assert!(time::timeout(Duration::from_millis(100), client.next()).await.is_err());
+
+	send(&mut client, command(CURRENT_VERSION, 2, "recovery-key")).await;
+
+	let ServerMessage::CommandReceipt(second_receipt) = receive(&mut client).await else {
+		panic!("expected recovery receipt");
+	};
+
+	assert_eq!(second_receipt.disposition, ReceiptDisposition::Executed);
+	assert!(matches!(
+		receive(&mut client).await,
+		ServerMessage::CommandResult(decodex_protocol::CommandResultEnvelope {
+			outcome: decodex_protocol::CommandOutcome::Succeeded,
+			..
+		})
+	));
+	assert!(matches!(receive(&mut client).await, ServerMessage::Event(_)));
+	assert_eq!(application.attempts(), 2);
+	assert_eq!(application.executions(), 1);
+
+	drop(client);
 	bound.shutdown().await.unwrap();
 }
 
