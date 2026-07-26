@@ -22,6 +22,11 @@ candidates, writing reservations, opening X, or taking a public action. Require 
 primary clean `main` checkout, no `.worktrees` component in cwd, the Publisher
 validator, and supported browser control. On any mismatch, fail closed before changing
 generated state or X.
+Set `CARGO_TARGET_DIR="$PWD/target"`, run
+`cargo build --locked -p decodex-publisher`, and require the resulting executable at
+`$PWD/target/debug/decodex-publisher`. Keep that exact absolute path in this run as
+`<publisher>` and use it for every Publisher command. Never rely on a bare
+`decodex-publisher` command from `PATH`.
 
 Required reads:
 - `openwiki/quickstart.md`
@@ -37,7 +42,7 @@ Required reads:
 - `automations/decodex/scripts/social/social_outcome.schema.json`
 
 Workflow:
-1. Run `decodex-publisher validate-social` with no path arguments to validate all five
+1. Run `<publisher> validate-social` with no path arguments to validate all five
    default contract directories. Expire only an exact stale reservation whose expiry
    and owner evidence are clear. Never infer publication success from a reservation.
 2. Select the highest-priority oldest unconsumed candidate with
@@ -45,11 +50,11 @@ Workflow:
    duplicate keys, daily cap, and prior terminal records. Process at most one candidate
    per run.
 3. Before opening X, acquire the single browser lease with
-   `decodex-publisher social acquire-browser-lease`. Keep its returned token only in
+   `<publisher> social acquire-browser-lease`. Keep its returned token only in
    this run context. If another unexpired lease exists, stop without opening X or
    writing a terminal post. Run
-   `decodex-publisher social renew-browser-lease --lease-token <token>` and
-   `decodex-publisher social verify-browser-lease --lease-token <token>` immediately
+   `<publisher> social renew-browser-lease --lease-token <token>` and
+   `<publisher> social verify-browser-lease --lease-token <token>` immediately
    before opening X. Run both commands again before every later browser read, account
    switch, compose, public click, publication readback, outcome readback, or account
    restoration. If a run resumes after any interruption, renew and verify before
@@ -66,7 +71,7 @@ Workflow:
    alone is not sufficient. Fail closed on loading-only, stale, or conflicting
    readback.
 7. Create an active `social_publish_reservation/v1` only with
-   `decodex-publisher social reserve-publish --browser-lease-token <token>`. The
+   `<publisher> social reserve-publish --browser-lease-token <token>`. The
    command uses one idempotency-derived create-only path. Repeat the live duplicate and
    account check, then renew and verify again immediately before clicking Post.
 8. Compose the checked candidate text exactly. Attach media only when the candidate
@@ -93,8 +98,8 @@ Workflow:
     readback must occur 167 to 192 hours after publication. Use the same account switch
     and restoration protocol, including renewal before readback and restoration. Write
     `social_outcome/v1`; do not use X API.
-13. Run `decodex-publisher validate-social` with no path arguments. Release only the
-    exact browser lease with `decodex-publisher social release-browser-lease` after
+13. Run `<publisher> validate-social` with no path arguments. Release only the
+    exact browser lease with `<publisher> social release-browser-lease` after
     account restoration and terminal validation. Close or release scoped X tabs unless
     an unresolved login, CAPTCHA, account approval, or account-restoration handoff
     requires one visible tab.
@@ -110,6 +115,8 @@ publication URL, restore result, reservation and terminal paths, outcome readbac
 performed, validation evidence, browser tab cleanup, and exact blockers.
 Apply `scheduled-run-thread-retention.md` only after terminal validation and browser
 lease release. Confirmed publication or outcome readback with account restoration,
-validated duplicate or quality skip, and proven no-op can use native
-`set_thread_archived`. Keep login, CAPTCHA, unknown public-write result, lease loss,
-account-restoration failure, retained handoff tab, and invalid terminal state visible.
+validated duplicate or quality skip, proven no-op, and a terminal failure before any
+public write with a durable automatic retry owner must use native
+`set_thread_archived`. Keep login, CAPTCHA, unknown public-write result, lease loss
+after a public write, account-restoration failure, retained handoff tab, and invalid
+terminal state visible.

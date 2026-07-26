@@ -86,6 +86,28 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertEqual(defaults["cwd"], "{repo_root}")
 		self.assertEqual(defaults["source_root"], "automations/decodex")
 
+	def test_managed_automation_start_minutes_do_not_collide(self) -> None:
+		starts = {}
+		for manifest in (self.manifest, self.content_manifest):
+			for automation in manifest["automations"]:
+				parts = dict(
+					part.split("=", 1)
+					for part in automation["rrule"].split(";")
+				)
+				starts[automation["id"]] = int(parts["BYMINUTE"])
+
+		self.assertEqual(
+			starts,
+			{
+				"codex-upstream-maintainer": 5,
+				"codex-upstream-reviewer": 35,
+				"codex-upstream-health": 0,
+				"decodex-content-manager": 50,
+				"decodex-x-browser-publisher": 20,
+			},
+		)
+		self.assertEqual(len(starts.values()), len(set(starts.values())))
+
 	def test_radar_has_no_scheduled_manifest(self) -> None:
 		self.assertFalse((REPO_ROOT / "automations/radar/automations.toml").exists())
 
@@ -211,6 +233,9 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		publisher = (
 			REPO_ROOT / "automations/decodex/prompts/x-browser-publisher.md"
 		).read_text(encoding="utf-8")
+		health = (
+			REPO_ROOT / "automations/upstream/prompts/health.md"
+		).read_text(encoding="utf-8")
 
 		self.assertIn("Publisher is the only X operator", manager)
 		self.assertIn("Do not open X, use X MCP or X API", manager)
@@ -233,6 +258,17 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("167 to 192 hours", publisher)
 		self.assertIn("with no path arguments", publisher)
 		self.assertIn("Never commit, upload, publish, or archive them to", publisher)
+		for name, prompt in (
+			("manager", manager),
+			("publisher", publisher),
+			("health", health),
+		):
+			with self.subTest(publisher_bootstrap=name):
+				normalized = " ".join(prompt.split())
+				self.assertIn("cargo build --locked -p decodex-publisher", normalized)
+				self.assertIn("$PWD/target/debug/decodex-publisher", normalized)
+				self.assertIn("as `<publisher>`", normalized)
+				self.assertNotIn("`decodex-publisher validate-social", prompt)
 
 	def test_content_manifest_tracks_all_social_contracts(self) -> None:
 		required = {
@@ -368,6 +404,62 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("automatically renews only when needed", prompt)
 		self.assertIn("Do not execute candidate code, tests", prompt)
 		self.assertIn("external-network-denied macOS sandbox", prompt)
+		self.assertIn("native worker subagent", prompt)
+		self.assertIn("parent automation must not edit or stage", prompt)
+		self.assertIn("Reuse the same\n   worker", prompt)
+
+	def test_upstream_prompts_pin_trusted_python_launcher_and_native_subagents(self) -> None:
+		prompts = {
+			name: (
+				REPO_ROOT / f"automations/upstream/prompts/{name}.md"
+			).read_text(encoding="utf-8")
+			for name in ("maintainer", "reviewer", "health")
+		}
+		for name, prompt in prompts.items():
+			with self.subTest(prompt=name):
+				self.assertIn("`automations/upstream/scripts/run_upstream_autopilot`", prompt)
+				self.assertIn("root-owned, read-only", prompt)
+				self.assertIn("Python 3.11 or later", prompt)
+				self.assertIn("state tool with bare\n   `python3`", prompt)
+				self.assertNotIn(
+					"`python3 automations/upstream/scripts/upstream_autopilot.py",
+					prompt,
+				)
+		self.assertIn("Spawn exactly one native worker subagent", prompts["maintainer"])
+		self.assertIn("must not edit or stage tracked candidate", prompts["maintainer"])
+		self.assertIn("Spawn exactly one native read-only review subagent", prompts["reviewer"])
+		self.assertIn("must not\n   edit or stage files", prompts["reviewer"])
+
+	def test_upstream_launcher_selects_a_trusted_modern_python(self) -> None:
+		launcher = REPO_ROOT / "automations/upstream/scripts/run_upstream_autopilot"
+		self.assertTrue(launcher.is_file())
+		self.assertTrue(launcher.stat().st_mode & 0o111)
+		content = launcher.read_text(encoding="utf-8")
+		self.assertIn("/nix/store/*-python3-3.<->*/bin/python3", content)
+		self.assertIn("metadata.st_uid != 0", content)
+		self.assertIn("metadata.st_mode & 0o022", content)
+		self.assertNotIn("codex-primary-runtime", content)
+		result = subprocess.run(
+			[str(launcher), "--help"],
+			cwd=REPO_ROOT,
+			check=False,
+			capture_output=True,
+			text=True,
+		)
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn("upstream_autopilot.py", result.stdout)
+
+	def test_terminal_runs_archive_after_automatic_ownership_readback(self) -> None:
+		retention = (
+			REPO_ROOT
+			/ "automations/decodex/skills/references/"
+			"scheduled-run-thread-retention.md"
+		).read_text(encoding="utf-8")
+		normalized = " ".join(retention.split())
+		self.assertIn("durable automatic repair owner", normalized)
+		self.assertIn("must use `auto_archive`", normalized)
+		self.assertIn("Archiving is UI retention, not evidence deletion", normalized)
+		self.assertNotIn("`needs_attention`", retention)
 
 	def test_state_wrapper_has_no_landing_write_implementation(self) -> None:
 		effects = (

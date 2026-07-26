@@ -67,6 +67,10 @@ or a consuming policy outcome.
 
 Scheduled tasks use the primary `main` checkout. They never use a worktree cwd.
 Development worktrees are not runtime bindings.
+Each content owner runs `cargo build --locked -p decodex-publisher` with the primary
+checkout's `target` directory. It then uses the exact
+`target/debug/decodex-publisher` path for the complete run. It does not depend on a
+global Publisher command in `PATH`.
 
 ## Cadence
 
@@ -96,10 +100,12 @@ Each scheduled execution creates a separate Codex thread. The role classifies it
 current thread only after terminal validation and external-effect readback:
 
 - Archive a successful terminal result, proven no-op, quality skip, duplicate block,
-  or other complete result that has no remaining lease, handoff, or human decision.
-- Keep a run visible for `needs_attention`, invalid or unpersisted state, login or
-  CAPTCHA, permission failure, unknown publication state, lost browser ownership,
-  account restoration failure, a retained handoff tab, or failed final readback.
+  persisted retry, or failed result with a durable automatic repair owner. The result
+  must have no remaining lease, handoff, or human decision.
+- Keep a run visible only for invalid or unpersisted state, login or CAPTCHA, missing
+  human-only authority, unknown publication state, lost browser ownership after a
+  public write, account restoration failure, a retained handoff tab, or failed final
+  readback without automatic ownership.
 
 The role uses native `set_thread_archived` with no explicit thread ID. It cannot
 archive another run. This action affects the run thread only. It does not pause or
@@ -113,5 +119,6 @@ Run:
 python3 automations/decodex/scripts/config/evaluate_automations.py \
   --manifest automations/decodex/automations.toml --repo-only
 cargo test -p decodex-publisher
-decodex-publisher validate-social
+CARGO_TARGET_DIR="$PWD/target" cargo build --locked -p decodex-publisher
+target/debug/decodex-publisher validate-social
 ```

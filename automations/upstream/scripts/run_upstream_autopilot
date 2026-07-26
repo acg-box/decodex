@@ -1,0 +1,47 @@
+#!/bin/zsh
+
+emulate -LR zsh
+set -euo pipefail
+setopt null_glob
+
+readonly script_dir=${0:A:h}
+readonly autopilot=${script_dir}/upstream_autopilot.py
+
+typeset -a candidates
+candidates=(
+	/nix/store/*-python3-3.<->*/bin/python3(N)
+	/usr/bin/python3(N)
+)
+
+for candidate in ${candidates}; do
+	if "${candidate}" - "${candidate}" <<'PY'
+import pathlib
+import sys
+
+candidate = pathlib.Path(sys.argv[1])
+resolved = candidate.resolve(strict=True)
+trusted_roots = (
+    pathlib.Path("/nix/store"),
+    pathlib.Path("/usr/bin"),
+)
+
+if not (3, 11) <= sys.version_info[:2] < (4, 0):
+    raise SystemExit(1)
+if candidate.name != "python3" or not resolved.is_file():
+    raise SystemExit(1)
+if not any(resolved.is_relative_to(root) for root in trusted_roots):
+    raise SystemExit(1)
+for path in (candidate, candidate.parent, resolved, resolved.parent):
+    metadata = path.stat()
+    if metadata.st_uid != 0 or metadata.st_mode & 0o022:
+        raise SystemExit(1)
+
+import tomllib  # noqa: F401, E402
+PY
+	then
+		exec "${candidate}" "${autopilot}" "$@"
+	fi
+done
+
+print -u2 -- "trusted Python 3.11+ runtime unavailable"
+exit 78

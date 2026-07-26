@@ -335,6 +335,7 @@ def validate_state(state: dict[str, Any]) -> None:
             "review_pending",
             "reviewing",
             "repair_requested",
+            "repair_pending",
             "retry_wait",
             "needs_attention",
             *TERMINAL_STATUSES,
@@ -434,7 +435,7 @@ def validate_state(state: dict[str, Any]) -> None:
         if status == "retry_wait":
             if next_retry_at is None or retry_role is None:
                 raise AutopilotError("candidate_retry_invalid")
-        elif status == "needs_attention":
+        elif status in {"needs_attention", "repair_pending"}:
             if next_retry_at is not None or retry_role is None:
                 raise AutopilotError("candidate_retry_invalid")
         elif next_retry_at is not None or retry_role is not None:
@@ -888,7 +889,7 @@ def validate_state(state: dict[str, Any]) -> None:
             or candidate["result"].get("outcome") != "repair_requested"
         ):
             raise AutopilotError("candidate_result_invalid")
-        if status in {"retry_wait", "needs_attention"} and (
+        if status in {"retry_wait", "needs_attention", "repair_pending"} and (
             not isinstance(candidate["result"], dict)
             or candidate["result"].get("outcome") != "blocked"
         ):
@@ -1262,6 +1263,8 @@ def queue_automation_repair(
         None,
     )
     if existing is not None:
+        blocked["status"] = "repair_pending"
+        blocked["updated_at"] = now
         return existing
     evidence_sha256 = sha256_value(
         {
@@ -1324,6 +1327,8 @@ def queue_automation_repair(
         candidate_id=identifier,
         reason_code=reason_code,
     )
+    blocked["status"] = "repair_pending"
+    blocked["updated_at"] = now
     return candidate
 
 
@@ -2943,7 +2948,7 @@ def resolve_candidate(
     )
     if outcome in {"landed", "no_change"} and candidate.get("repair_of") is not None:
         repaired = find_candidate(state, candidate["repair_of"])
-        if repaired["status"] == "needs_attention":
+        if repaired["status"] in {"needs_attention", "repair_pending"}:
             blocked_role = repaired["retry_role"]
             resumed_role = blocked_role
             if resumed_role == "reviewer":
