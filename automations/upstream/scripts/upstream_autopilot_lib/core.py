@@ -18,7 +18,7 @@ import time
 from typing import Any, Mapping, Sequence
 
 
-STATE_SCHEMA = "decodex/codex-upstream-state/2"
+STATE_SCHEMA = "decodex/codex-upstream-state/3"
 RESULT_SCHEMA = "decodex/codex-upstream-command-result/1"
 POLICY_SCHEMA = "decodex/codex-upstream-policy/2"
 POLICY_KEYS = {

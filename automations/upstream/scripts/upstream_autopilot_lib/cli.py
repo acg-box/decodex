@@ -330,12 +330,27 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         now = utc_now()
         with locked_state(cache_root) as (state, state_path):
             claimed = claim_candidate(state, policy, args.role, now)
+            queued_repairs = queue_needed_repairs(
+                state,
+                policy,
+                repository_head=preflight["head"],
+                now=now,
+            )
             persist(state, state_path, at=now)
         if claimed is None:
-            return result_payload("no_candidate", role=args.role)
+            return result_payload(
+                "repair_queued" if queued_repairs else "no_candidate",
+                role=args.role,
+                repair_candidate_ids=queued_repairs,
+            )
         if "busy" in claimed:
             return result_payload("role_busy", role=args.role, **claimed)
-        return result_payload("claimed", role=args.role, **claimed)
+        return result_payload(
+            "claimed",
+            role=args.role,
+            repair_candidate_ids=queued_repairs,
+            **claimed,
+        )
 
     if args.command == "renew":
         now = utc_now()
@@ -1315,9 +1330,19 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 error_digest=args.error_digest,
                 now=now,
             )
+            queued_repairs = queue_needed_repairs(
+                state,
+                policy,
+                repository_head=preflight["head"],
+                now=now,
+            )
             status = find_candidate(state, args.candidate_id)["status"]
             persist(state, state_path, at=now)
-        return result_payload(status, candidate_id=args.candidate_id)
+        return result_payload(
+            "auto_repair_pending" if status == "repair_pending" else status,
+            candidate_id=args.candidate_id,
+            repair_candidate_ids=queued_repairs,
+        )
 
     if args.command == "escalate-repair":
         now = utc_now()
