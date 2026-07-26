@@ -445,7 +445,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 		server("version-server", FixtureApplication::default(), ServerConfig::default())
 			.bind(transport.clone())
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 
 	for (index, version) in [PREVIOUS_MINOR_VERSION, CURRENT_VERSION].into_iter().enumerate() {
 		let mut client = connect(&transport, version).await;
@@ -459,7 +459,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 
 		execute_and_receive_event(&mut client, version, index as u64 + 1).await;
 
-		client.close(None).await.unwrap();
+		client.close(None).await.expect("test operation must succeed");
 	}
 
 	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 0 }).await;
@@ -486,7 +486,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 
 	drop(client);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
@@ -576,7 +576,7 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 	let mut bound = server("idempotency-server", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (_, instance_id, _, _) = receive_initial(&mut client).await;
 
@@ -635,7 +635,7 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 
 	drop(client);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
@@ -645,7 +645,7 @@ async fn expected_revision_mismatch_is_rejected_without_publication() {
 	let mut bound = server("revision-server", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
@@ -676,7 +676,7 @@ async fn expected_revision_mismatch_is_rejected_without_publication() {
 
 	drop(client);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
@@ -687,7 +687,7 @@ async fn acceptance_unknown_is_not_cached_and_same_key_can_recover() {
 		server("acceptance-unknown-server", application.clone(), ServerConfig::default())
 			.bind(transport.clone())
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
@@ -724,7 +724,7 @@ async fn acceptance_unknown_is_not_cached_and_same_key_can_recover() {
 	assert_eq!(application.executions(), 1);
 
 	drop(client);
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
@@ -734,7 +734,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	let mut bound = server("resume-server", FixtureApplication::default(), config)
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut first = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, instance_id, _, _) = receive_initial(&mut first).await;
 	let persisted = execute_and_receive_event(&mut first, CURRENT_VERSION, 1).await;
@@ -825,7 +825,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 
 	drop(previous);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
@@ -1305,19 +1305,19 @@ async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_e
 	let mut first = server("stable-restart", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, old_instance_id, initial_cursor, _) = receive_initial(&mut client).await;
 	let overlapping_cursor = execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
 
 	drop(client);
 
-	first.shutdown().await.unwrap();
+	first.shutdown().await.expect("test operation must succeed");
 
 	let mut restarted = server("stable-restart", application, ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = reconnect(
 		&transport,
 		CURRENT_VERSION,
@@ -1365,7 +1365,7 @@ async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_e
 
 	drop(client);
 
-	restarted.shutdown().await.unwrap();
+	restarted.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
