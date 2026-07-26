@@ -2132,6 +2132,37 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 self.autopilot.DARWIN_VALIDATION_TEMP_PARENT,
             )
 
+    @unittest.skipUnless(
+        sys.platform == "darwin",
+        "requires the macOS validation temp policy",
+    )
+    def test_nested_validation_home_stays_inside_candidate_sandbox(self):
+        with self.autopilot.validation_temporary_directory() as directory:
+            outer = Path(directory).resolve()
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "DECODEX_CANDIDATE_SANDBOX": "1",
+                    "HOME": str(outer),
+                    "TMPDIR": str(outer),
+                },
+                clear=False,
+            ):
+                with self.autopilot.validation_temporary_directory() as nested:
+                    self.assertEqual(Path(nested).resolve().parent, outer)
+
+                mismatched = outer / "mismatched"
+                mismatched.mkdir()
+                with (
+                    mock.patch.dict(
+                        os.environ,
+                        {"TMPDIR": str(mismatched)},
+                        clear=False,
+                    ),
+                    self.assertRaises(self.autopilot.AutopilotError),
+                ):
+                    self.autopilot.validation_temporary_directory()
+
     @unittest.skipIf(
         os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
         "the outer validation process owns tool discovery",
