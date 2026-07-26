@@ -15,6 +15,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use decodex_core::DecodexRoot;
+use decodex_protocol::CURRENT_VERSION;
 use decodex_runtime::{ServerConfig, ServiceComposition};
 
 const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -230,7 +231,13 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 		assert_eq!(document["command"], command);
 		assert_eq!(document["outcome"], "report");
 		assert_eq!(document["profile"], serde_json::json!({"kind": "local"}));
-		assert_eq!(document["report"]["version"], serde_json::json!({"major": 1, "minor": 3}));
+		assert_eq!(
+			document["report"]["version"],
+			serde_json::json!({
+				"major": CURRENT_VERSION.major,
+				"minor": CURRENT_VERSION.minor,
+			}),
+		);
 		assert_eq!(
 			status(&document, "database"),
 			&serde_json::json!({"state": "unavailable", "issue": "database_unreachable"}),

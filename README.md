@@ -151,8 +151,8 @@ runtime.
   `automations/radar/` retains reusable evidence tools. Their obsolete schedules and
   prompts were removed rather than retained as compatibility inputs.
 
-No other product-specific mutation service is active beyond Reset Card. The protocol uses bounded in-memory
-replay/idempotency state while the PostgreSQL adapter owns durable product-state
+No other product-specific mutation service is active beyond Reset Card. The protocol uses
+bounded in-memory replay/idempotency state while the PostgreSQL adapter owns durable product-state
 transactions when its explicit configuration verifies successfully. The stable
 server-host identity is persisted under `~/.decodex`; stale or impossible cursors still
 force snapshot fallback after restart. Shared `~/.codex` remains Codex-owned. OpenWiki explains

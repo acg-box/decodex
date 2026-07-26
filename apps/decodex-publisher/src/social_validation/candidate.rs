@@ -3,6 +3,30 @@
 use crate::social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_POST_PRIORITIES, Value};
 
 pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	social_validation::validate_exact_keys(
+		entry,
+		"social_candidate",
+		&[
+			"audience",
+			"candidate_text",
+			"caveats",
+			"channel",
+			"claims",
+			"decision",
+			"evidence_notes",
+			"media_refs",
+			"mode",
+			"next_steps",
+			"priority",
+			"repo",
+			"schema",
+			"slug",
+			"source_refs",
+			"target_account",
+		],
+		errors,
+	);
+
 	for field in ["slug", "repo", "audience"] {
 		if !social_validation::is_non_empty_string(entry.get(field)) {
 			errors.push(format!("{field} must be a non-empty string"));
@@ -53,6 +77,12 @@ fn validate_social_candidate_source_refs(refs: Option<&Value>, errors: &mut Vec<
 
 		return;
 	};
+	social_validation::validate_exact_keys(
+		refs,
+		"source_refs",
+		&["release_deltas", "signals", "upstream_impacts", "upstream_reviews", "urls"],
+		errors,
+	);
 	let has_refs = ["upstream_reviews", "upstream_impacts", "signals", "release_deltas", "urls"]
 		.iter()
 		.any(|field| {
@@ -98,6 +128,12 @@ fn validate_social_candidate_decision(decision: Option<&Value>, errors: &mut Vec
 
 		return;
 	};
+	social_validation::validate_exact_keys(
+		decision,
+		"decision",
+		&["idempotency_key", "reason", "worthiness"],
+		errors,
+	);
 
 	if !social_validation::matches_one_of(decision.get("worthiness"), &["defer", "publish", "skip"])
 	{

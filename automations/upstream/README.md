@@ -13,9 +13,9 @@ The active roles are:
   reproduces no-change decisions, requests bounded repairs, or lands it with
   `decodex land`.
 - `codex-upstream-health`: checks cursor continuity, stale work, leases, and current
-  Codex build evidence. It also reconciles the three exact live task definitions
-  through the native Codex App lifecycle tool, verifies the readback, and deletes
-  only the exact obsolete IDs in `retired_automation_ids.json`.
+  Codex build evidence. It also reconciles the five exact live task definitions in
+  the upstream and content manifests through the native Codex App lifecycle tool and
+  verifies each readback.
 
 All scheduled tasks run from the primary clean `main` checkout with local execution
 and high reasoning. They are never configured with a worktree cwd. Maintainer and
@@ -134,11 +134,31 @@ Validate live configuration:
 ```sh
 python3 automations/decodex/scripts/config/evaluate_automations.py \
   --manifest automations/upstream/automations.toml
+python3 automations/decodex/scripts/config/evaluate_automations.py \
+  --manifest automations/decodex/automations.toml
 ```
 
-The default sync command renders only this manifest. Live task creation and changes
-in Codex Desktop use the native automation lifecycle tool. Health can create or
-repair only the three fixed IDs in this manifest. It can delete only the exact
-retired IDs in the checked-in retirement file. It must read back each mutation. It
-never writes scheduler files directly. The renderer remains a portable recovery and
-audit path and preserves `created_at` metadata.
+The default sync command renders this manifest and the current two-task content
+manifest. Live task creation and changes in Codex Desktop use the native automation
+lifecycle tool. Health can create or repair only the five fixed IDs in those
+manifests. It must read back each mutation. It never lists, edits, or deletes unrelated
+tasks and never writes scheduler files directly. The renderer remains a portable
+recovery and audit path and preserves `created_at`
+metadata. The live evaluator rejects missing or invalid Codex App list timestamps.
+Health also queues a bounded `content_loop_degraded` repair when validated content
+evidence misses its freshness, publication, outcome, or account-restoration service
+level. The candidate stores only bounded degradation codes, so Maintainer can
+reproduce and repair the fault without reading social content.
+
+## Scheduled Run Threads
+
+Maintainer, Reviewer, Health, Content Manager, and Publisher apply the shared
+`scheduled-run-thread-retention.md` policy. A complete terminal run calls native
+`set_thread_archived` for its current thread after all durable and external-effect
+readbacks. A run stays visible when it needs human attention or has an uncertain
+write, failed validation, lost browser ownership, or failed account restoration.
+
+Run-thread archiving does not pause or delete the recurring automation and does not
+delete local evidence.
+reproduce the failed condition without persisting post text, metrics, account
+identifiers, or local paths.

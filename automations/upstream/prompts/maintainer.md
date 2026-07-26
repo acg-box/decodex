@@ -23,6 +23,7 @@ Preflight:
 1. Read `AGENTS.md`, `openwiki/quickstart.md`,
    `openwiki/operations/commands-and-validation.md`,
    `openwiki/operations/codex-upstream-autopilot.md`,
+   `automations/decodex/skills/references/scheduled-run-thread-retention.md`,
    `plugins/decodex/references/routing.md`, `automations/upstream/policy.json`,
    and all files in `automations/upstream/scripts/upstream_autopilot_lib`.
 2. Run `pwd`, `git status --short --branch`, and `git rev-parse HEAD`. Report
@@ -101,4 +102,7 @@ time-budget fencing. Do not renew mechanically before a wrapper command. Every
 state-tool call must run
 from freshly synchronized primary `main`. Report the candidate, source identity,
 decision or changed files, exact commit and PR, validation receipt digests, or the
-bounded failure state. Report X API calls and X spend as zero. Archive the task.
+bounded failure state. Report X API calls and X spend as zero.
+Apply `scheduled-run-thread-retention.md` after all state and effect readbacks. Use
+native `set_thread_archived` only for an `auto_archive` current run. Keep every
+human-attention or ambiguous run visible.

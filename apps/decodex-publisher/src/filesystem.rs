@@ -39,31 +39,6 @@ pub(crate) fn path_arg(root: &Path, path: &Path) -> String {
 	path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
 }
 
-pub(crate) fn slugify(value: &str) -> String {
-	let mut slug = String::new();
-	let mut previous_dash = false;
-
-	for byte in value.bytes() {
-		let ch = byte as char;
-
-		if ch.is_ascii_alphanumeric() {
-			slug.push(ch.to_ascii_lowercase());
-
-			previous_dash = false;
-		} else if !previous_dash && !slug.is_empty() {
-			slug.push('-');
-
-			previous_dash = true;
-		}
-	}
-
-	while slug.ends_with('-') {
-		slug.pop();
-	}
-
-	if slug.is_empty() { "social-post".into() } else { slug }
-}
-
 pub(crate) fn load_json(path: &Path) -> Result<Value> {
 	let payload = fs::read_to_string(path)
 		.map_err(|error| eyre::eyre!("failed to read {}: {error}", path.display()))?;

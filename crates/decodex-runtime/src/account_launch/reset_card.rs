@@ -651,16 +651,28 @@ async fn process_claim(inner: Arc<ResetCardRuntimeInner>, claim: ResetCardClaim)
 		},
 	};
 
-	let exact_credit_id = match claim.exact_credit_id() {
-		Some(value) => match ExactResetCreditId::new(value.to_owned()) {
-			Ok(value) => value,
-			Err(_) => return,
-		},
-		None if claim.requires_reconciliation => return,
+	let Some(exact_credit_id) = resolve_claim_credit_id(&inner, &claim).await else {
+		return;
+	};
+
+	if let Some(recorded_outcome) = claim.recorded_outcome {
+		reconcile_recorded_claim(&inner, &claim, &exact_credit_id, recorded_outcome).await;
+	} else {
+		process_new_claim(&inner, &claim, exact_credit_id, idempotency_key).await;
+	}
+}
+
+async fn resolve_claim_credit_id(
+	inner: &Arc<ResetCardRuntimeInner>,
+	claim: &ResetCardClaim,
+) -> Option<ExactResetCreditId> {
+	match claim.exact_credit_id() {
+		Some(value) => ExactResetCreditId::new(value.to_owned()).ok(),
+		None if claim.requires_reconciliation => None,
 		None => {
-			let inventory = match run_with_claim_heartbeat(&inner, &claim, |permit| {
+			let inventory = match run_with_claim_heartbeat(inner, claim, |permit| {
 				run_inventory(
-					Arc::clone(&inner),
+					Arc::clone(inner),
 					claim.account_id.clone(),
 					claim.account_revision,
 					Some(permit),
@@ -670,46 +682,39 @@ async fn process_claim(inner: Arc<ResetCardRuntimeInner>, claim: ResetCardClaim)
 			{
 				Ok(inventory) => inventory,
 				Err(error) => {
-					fail_before_effect(&inner, &claim, failure_code(error)).await;
+					fail_before_effect(inner, claim, failure_code(error)).await;
 
-					return;
+					return None;
 				},
 			};
 			let exact = match inventory.resolve_exact_credit_id(claim.descriptor) {
 				Ok(exact) => exact,
 				Err(ResetCardResolutionError::NotFound | ResetCardResolutionError::Ambiguous) => {
-					fail_before_effect(&inner, &claim, ResetCardFailureCode::InventoryChanged)
-						.await;
+					fail_before_effect(inner, claim, ResetCardFailureCode::InventoryChanged).await;
 
-					return;
+					return None;
 				},
 			};
-			if !account_revision_admitted(&inner, &claim).await {
-				fail_before_effect(&inner, &claim, ResetCardFailureCode::AccountChanged).await;
+			if !account_revision_admitted(inner, claim).await {
+				fail_before_effect(inner, claim, ResetCardFailureCode::AccountChanged).await;
 
-				return;
+				return None;
 			}
 			if inner
 				.store
-				.bind_reset_card_credit(&claim, &inner.worker_id, exact.as_str())
+				.bind_reset_card_credit(claim, &inner.worker_id, exact.as_str())
 				.await
 				.is_err()
 			{
-				return;
+				return None;
 			}
 
-			exact
+			Some(exact)
 		},
-	};
-
-	match claim.recorded_outcome {
-		None => process_unrecorded_claim(&inner, &claim, exact_credit_id, idempotency_key).await,
-		Some(recorded_outcome) =>
-			reconcile_recorded_claim(&inner, &claim, &exact_credit_id, recorded_outcome).await,
 	}
 }
 
-async fn process_unrecorded_claim(
+async fn process_new_claim(
 	inner: &Arc<ResetCardRuntimeInner>,
 	claim: &ResetCardClaim,
 	exact_credit_id: ExactResetCreditId,
@@ -731,7 +736,6 @@ async fn process_unrecorded_claim(
 			Err(_) => return,
 		}
 	}
-
 	let reconciliation_credit_id = exact_credit_id.clone();
 	let readback = match run_with_claim_heartbeat(inner, claim, |permit| {
 		run_consume(
@@ -750,7 +754,6 @@ async fn process_unrecorded_claim(
 	};
 	let outcome = readback.outcome;
 	let receipt = json!({"outcome": outcome_text(outcome)});
-
 	if inner
 		.store
 		.record_outbox_receipt(claim.id, &inner.worker_id, claim.claim_token(), &receipt)
@@ -759,7 +762,6 @@ async fn process_unrecorded_claim(
 	{
 		return;
 	}
-
 	complete_reconciliation(inner, claim, &reconciliation_credit_id, outcome, &readback.inventory)
 		.await;
 }
@@ -783,7 +785,6 @@ async fn reconcile_recorded_claim(
 		Ok(inventory) => inventory,
 		Err(_) => return,
 	};
-
 	complete_reconciliation(inner, claim, exact_credit_id, recorded_outcome, &inventory).await;
 }
 
