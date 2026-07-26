@@ -190,9 +190,15 @@ decodex-publisher validate-social
 - Removes stored accounts from the local pool.
 - Invokes the bundled `decodex-cli` for active vNext reset-card requests. The bundle
   also distributes `decodexd`, but Swift does not start it or inject credentials.
-  Operators must run the independently configured daemon service. Separate bundled
+  Operators must run the independently configured daemon service. The macOS
+  source-install path provisions this service with
+  `scripts/macos/install_decodex_local_service.py`; its Rust supervisor owns the
+  PostgreSQL and daemon process generations. Separate bundled
   legacy `decodex` and `decodex-app-helper` executables remain for unrelated existing
   account UI; they have no vNext reset-card authority.
+- Retries bounded startup-only Reset Card reads while the independently supervised
+  service becomes ready. It does not retry consume, replace an idempotency key, or
+  take service lifecycle ownership.
 - Shows a `Resume` action for retained attempts. Resume checks durable status first and,
   only when the daemon reports `not_found`, may invoke `use` again with the same profile,
   server UUID, selection, and idempotency key. It never substitutes a new key for that
@@ -213,6 +219,7 @@ Build/stage commands:
 swift build --package-path apps/decodex-app -c release
 apps/decodex-app/script/build_and_run.sh
 scripts/macos/test_decodex_app_stage.sh
+python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
 ## Static site

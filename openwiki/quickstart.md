@@ -270,10 +270,19 @@ The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are
 The `decodex reset-card accounts`, `list`, `use`, and `status` operations are active
 clients of the common daemon service. Other unsupported or mutating product CLI operations
 remain unavailable and belong to later slices, as do
-scheduling, account routing, a PostgreSQL installation or administration plane, live Codex dispatch,
+scheduling, account routing, a general PostgreSQL administration plane, live Codex dispatch,
 an authenticated HTTP artifact path, remote or cross-UID binding, and GPUI product behavior.
 Kernel same-UID credentials are the complete local V1 principal. Application PKI and remote
 TLS remain outside this boundary and belong to the later remote-security gate.
+
+The macOS source-install path is narrower than a general administration plane.
+`scripts/macos/install_decodex_local_service.py` initializes one same-UID PostgreSQL
+18 cluster, provisions the exact Decodex roles and grants, and installs one user
+LaunchAgent. `decodexd supervise-local` owns the PostgreSQL and daemon process
+generations. A PostgreSQL generation change stops the daemon and makes the
+supervisor exit; launchd then starts one new coherent generation. An atomic
+credential-file replacement restarts only the daemon when its injected credential
+projection changes. Swift remains a client and owns none of these effects.
 
 ## First commands
 
@@ -281,6 +290,7 @@ Use these as discovery and validation entrypoints:
 
 ```sh
 cargo run -p decodexd
+cargo run -p decodexd -- --version
 cargo run -p decodex-cli -- status
 cargo run -p decodex-cli -- doctor --output json
 cargo run -p decodex-cli -- reset-card accounts
@@ -291,7 +301,10 @@ cargo make test-vnext-postgres-store
 cargo make check
 ```
 
-`decodexd` starts the same-UID Unix WebSocket service and runs until stopped. The CLI selects
+`decodexd` with no arguments, or with `serve`, starts the same-UID Unix WebSocket
+service and runs until stopped. `decodexd --version` prints the version and does
+not start a service. `decodexd supervise-local --help` describes the bounded
+Unix service supervisor used by the macOS source installer. The CLI selects
 the configured active profile by default; `--profile NAME` selects an explicit declared
 profile and `--root PATH` selects a typed Decodex root. Human output is the default and
 diagnostic `--output json` emits `decodex/cli-diagnostics/1`; reset-card JSON emits
@@ -313,7 +326,11 @@ PostgreSQL, Swift, and signed app-staging checks described in
 - Do not read `.env` files or live secret-bearing config. `decodex.example.toml` is the
   bounded vNext setup model and stores only a PostgreSQL credential environment-variable
   name, never its value.
-- Do not route vNext through `apps/decodex`, legacy SQLite, Linear lanes, or the legacy operator transport.
+- Do not route vNext product state through `apps/decodex`, legacy SQLite, Linear
+  lanes, or the legacy operator transport. The macOS local source installer has
+  one explicit migration bridge for an exact configured legacy account set. The
+  bridge projects current credentials only to the supervised daemon environment;
+  it is not product-state authority or a fallback.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 - PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.
 - For project knowledge work, update OpenWiki directly and keep it aligned with source, tests, and manifests.

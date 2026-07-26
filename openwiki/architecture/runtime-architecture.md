@@ -173,6 +173,20 @@ live in `decodex-postgres`.
 `decodexd` loads only the typed `~/.decodex/config.toml` and passes its explicit Unix-socket
 directory, port, database, operator-pinned expected PostgreSQL peer UID, and distinct
 migration/runtime identities with independently resolved optional credentials to that adapter.
+For the macOS source-install path, a separate `decodexd supervise-local` process owns one
+foreground PostgreSQL child and one service child. It starts the service child only after
+PostgreSQL is ready. PostgreSQL exit or any pinned process, directory, or socket generation
+change stops the service child before the supervisor exits. Launchd then starts one new
+coherent generation. Swift does not participate in this lifecycle.
+
+The current source installer also has one bounded local migration bridge. It maps an exact
+set of legacy provider identities to independent vNext UUID slots through SHA-256 selectors.
+It reads the credential file under the existing lock and passes values only through the
+service child's environment. An atomic file replacement causes a graceful daemon restart
+only when the injected credential projection changes. Account-set, identity, permission,
+or mapping drift fails closed. This bridge does
+not make legacy account storage a product-state authority, and it does not add a runtime
+fallback when PostgreSQL is unavailable.
 The adapter opens each directory component relative to a retained descriptor, pins the directory
 and socket device/inode identities, requires the final directory and socket to be owned by the
 configured UID with no group/other directory write access, and verifies the connected kernel peer

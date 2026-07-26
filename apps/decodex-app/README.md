@@ -78,6 +78,38 @@ or use. The CLI and app cannot bypass daemon admission or recover an operation b
 calling Codex directly. The app bundle includes `decodexd` as a distribution artifact,
 but Swift does not start it or inject its database and vault credentials.
 
+For a source installation on macOS, install the local user service after the new
+CLI and daemon binaries are in `~/.local/bin`:
+
+```sh
+python3 scripts/macos/install_decodex_local_service.py --replace-config
+```
+
+The installer requires PostgreSQL 18. It creates one checksummed cluster below
+`~/.decodex/postgres`, disables TCP, uses a private Unix-socket directory, creates
+separate migration and runtime roles, applies the embedded migrations and exact
+runtime grants, and installs the `space.decodex.local-service` user LaunchAgent.
+The LaunchAgent runs `decodexd supervise-local`. The Rust supervisor starts the
+daemon only after PostgreSQL is ready. A PostgreSQL process or socket generation
+change stops the daemon and makes the supervisor exit; launchd starts the next
+coherent generation.
+
+The current local cutover uses an explicit, bounded bridge for accounts that are
+already in `~/.codex/decodex/accounts.jsonl`. The installer generates independent
+vNext account UUIDs and stores only fixed slot references and SHA-256 provider-ID
+selectors. The supervisor reads the account file under its existing lock and passes
+current values only in the child process environment. After an atomic account-file
+replacement, it restarts the daemon only when that credential projection changes.
+It does not copy credentials to the Decodex
+config, LaunchAgent, mapping file, logs, Infisical, or Keychain. A changed account
+set fails closed and requires an operator-managed enrollment migration before the
+installer can run again. This bridge is a local migration exception. It does not
+make the legacy pool a vNext product-state authority or fallback.
+
+The app retries startup-only Reset Card reads for a bounded period while the local
+service becomes ready. It never retries a consume request or changes a retained
+idempotency key.
+
 The staging script follows the local Rsnap-style signing path: it writes
 `target/decodex-app/Decodex.app`, signs the bundle with an Apple Development
 identity, enables hardened runtime, and verifies the signature before launch. Override
