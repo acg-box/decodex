@@ -21,7 +21,8 @@ use std::{
 
 use libc::{
 	AT_SYMLINK_NOFOLLOW, DIR, F_DUPFD_CLOEXEC, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW,
-	O_NONBLOCK, O_RDONLY, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG, c_uint, mode_t, stat, uid_t,
+	O_NONBLOCK, O_RDONLY, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG, c_int, c_uint, mode_t, stat,
+	uid_t,
 };
 
 use crate::{
@@ -30,6 +31,11 @@ use crate::{
 };
 
 const ROOT_PATH: &[u8] = b"/\0";
+
+#[cfg(target_vendor = "apple")]
+const TRAVERSAL_DIRECTORY_ACCESS: c_int = libc::O_SEARCH;
+#[cfg(not(target_vendor = "apple"))]
+const TRAVERSAL_DIRECTORY_ACCESS: c_int = O_RDONLY;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum ExpectedKind {
@@ -258,7 +264,7 @@ fn open_root(paths: &DecodexPaths, create: bool) -> Result<File, PathError> {
 	let mut directory = open_filesystem_root()?;
 
 	for name in ancestors {
-		directory = open_directory_at(&directory, name)?;
+		directory = open_traversal_directory_at(&directory, name)?;
 	}
 
 	let root = if create {
@@ -280,7 +286,8 @@ fn open_filesystem_root() -> Result<File, PathError> {
 	let path = CStr::from_bytes_with_nul(ROOT_PATH).map_err(|_| PathError::UnsafeRoot)?;
 	// SAFETY: `path` is a valid NUL-terminated C string and successful `open` returns
 	// a new descriptor owned by the caller.
-	let descriptor = unsafe { libc::open(path.as_ptr(), O_RDONLY | O_DIRECTORY | O_CLOEXEC) };
+	let descriptor =
+		unsafe { libc::open(path.as_ptr(), TRAVERSAL_DIRECTORY_ACCESS | O_DIRECTORY | O_CLOEXEC) };
 
 	file_from_descriptor(descriptor, IoOperation::Open)
 }
@@ -380,14 +387,26 @@ fn open_directory_at(parent: &File, name: &OsStr) -> Result<File, PathError> {
 	open_directory_at_c(parent, &c_name(name)?)
 }
 
+fn open_traversal_directory_at(parent: &File, name: &OsStr) -> Result<File, PathError> {
+	open_directory_at_c_with_access(parent, &c_name(name)?, TRAVERSAL_DIRECTORY_ACCESS)
+}
+
 fn open_directory_at_c(parent: &File, name: &CStr) -> Result<File, PathError> {
+	open_directory_at_c_with_access(parent, name, O_RDONLY)
+}
+
+fn open_directory_at_c_with_access(
+	parent: &File,
+	name: &CStr,
+	access: c_int,
+) -> Result<File, PathError> {
 	// SAFETY: `parent` is an open directory, `name` is NUL-terminated, and a
 	// successful `openat` returns a new descriptor owned by the caller.
 	let descriptor = unsafe {
 		libc::openat(
 			parent.as_raw_fd(),
 			name.as_ptr(),
-			O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+			access | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
 		)
 	};
 
