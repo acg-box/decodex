@@ -135,7 +135,9 @@ impl Fixture {
 			&["config", "core.hooksPath", hooks.to_str().expect("hooks path should be UTF-8")],
 		);
 		fs::write(primary.join("README.md"), "base\n").expect("base file should write");
-		git_checked(&primary, &["add", "README.md"]);
+		fs::write(primary.join(".gitignore"), ".worktrees/\n")
+			.expect("worktree ignore should write");
+		git_checked(&primary, &["add", "README.md", ".gitignore"]);
 		git_checked(&primary, &["commit", "-m", "base"]);
 		git_checked(&primary, &["push", "-u", "origin", "main"]);
 		let base = git(&primary, &["rev-parse", "HEAD"]);
