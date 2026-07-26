@@ -214,6 +214,10 @@ Maintainer and Reviewer validation receipts include the base HEAD, changed-path
 classification, current primary validation-authority digest, fixed command digest,
 explicit zero exit code, output digest, credential-scrubbed environment digest,
 hashed exact validation tools, repository HEAD, tree, role, and completion time.
+They also include the protected-path policy digest, the effective primary-owned
+task-graph digest, each effective sandbox task, and
+`live_postgres_gate = omitted_sandbox_incompatible`. A receipt does not represent
+the sandbox aggregate as ordinary `cargo make check`.
 Tool discovery ignores the caller's `PATH`, prefers fixed system locations, preserves
 named rustup proxy semantics, verifies the installed Codex application signature,
 requires the policy-approved Decodex executable digest, and rechecks each binary
@@ -246,7 +250,7 @@ and complete lock graph. Install scripts remain disabled. After installation, th
 audit checks each installed package path, name, version, OS, CPU, and install-script metadata against
 the lock and rejects package-path symlinks. The native and platform package name,
 registry URL, integrity, OS, and CPU set is pinned by digest. A change on an excluded
-surface automatically adds the full `cargo make check` gate on a host with full
+surface automatically adds the full sandboxed source gate on a host with full
 Xcode and Metal tools. The validator checks configured, selected, and bounded
 `Xcode*.app` locations, injects `DEVELOPER_DIR` only into the full-gate subprocess,
 uses absolute system Xcode tools, and binds `xcode-select`, `xcrun`, `xcodebuild`,
@@ -254,11 +258,28 @@ Xcode version, and Metal binary evidence to the receipt. A validation-authority 
 can change only in an
 `automation_repair`, and its candidate version cannot evaluate itself. The
 Maintainer creates the authorized commit without executing candidate code. The
-wrapper then runs focused and aggregate profiles on the clean exact commit because
-PostgreSQL authority tests bind their evidence to that commit and tree. A failed
-aggregate cannot produce or update a pull request. A later repair safely rewinds an
-exact recorded candidate commit to its original base before it creates one
-replacement commit.
+wrapper then runs focused and aggregate profiles on the clean exact commit.
+
+The sandbox-specific test aggregates equal `test` and `test-headless` minus exactly
+`test-vnext-postgres-store`. The ordinary `test`, `test-headless`, and
+`cargo make check` tasks still include that live PostgreSQL 18 gate. macOS Seatbelt
+cannot run PostgreSQL initialization without SysV shared memory. Granting that IPC
+permission to a PostgreSQL process is not safe because candidate-controlled loaded
+code would inherit the permission. The autonomous validator therefore does not
+grant SysV IPC.
+
+Before dependency preparation or candidate execution, the trusted primary wrapper
+parses NUL-delimited Git name-status and raw diffs. It checks both sides of renames
+and copies, rejects malformed paths and gitlinks, and rejects symlinks on protected
+paths. It fails closed for the policy-owned PostgreSQL impact envelope for every
+candidate kind, including `automation_repair`. That envelope covers the PostgreSQL
+crate, live harness, database authority tests, storage proof, affected runtime
+bootstrap and account-launch files, and GitHub workflows. Such a candidate requires
+a separate disposable isolation boundary with the complete live PostgreSQL gate; the
+current automation does not land it. A failed aggregate or protected-path decision
+cannot produce or update a pull request. A later repair safely rewinds an exact
+recorded candidate commit to its original base before it creates one replacement
+commit.
 
 ## Outcomes
 

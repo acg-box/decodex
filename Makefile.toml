@@ -131,7 +131,7 @@ dependencies = [
 	"check-rust-headless",
 	"fmt-check-sandboxed",
 	"lint-rust-headless",
-	"test-headless",
+	"test-headless-sandboxed",
 ]
 
 [tasks.check-sandboxed]
@@ -143,7 +143,7 @@ dependencies = [
 	"check-rust",
 	"fmt-check-sandboxed",
 	"lint",
-	"test",
+	"test-sandboxed",
 ]
 
 [tasks.check-node]
@@ -410,9 +410,11 @@ args = [
 # | test                               | composite |     |
 # | test-automations                   | command   |     |
 # | test-headless                      | composite |     |
+# | test-headless-sandboxed            | composite |     |
 # | test-gate-contract                 | command   |     |
 # | test-rust                          | command   |     |
 # | test-rust-headless                 | command   |     |
+# | test-sandboxed                     | composite |     |
 # | test-vnext-architecture            | command   |     |
 # | test-vnext-cli-diagnostics         | command   |     |
 # | test-vnext-postgres-managed-runs   | command   |     |
@@ -444,6 +446,17 @@ args = [
 	"automations.decodex.scripts.config.tests.test_upstream_automation_config",
 ]
 
+[tasks.test-sandboxed]
+clear = true
+workspace = false
+dependencies = [
+	"test-automations",
+	"test-gate-contract",
+	"test-rust",
+	"test-vnext-architecture",
+	"test-vnext-cli-diagnostics",
+]
+
 [tasks.test-headless]
 clear = true
 workspace = false
@@ -454,6 +467,17 @@ dependencies = [
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
 	"test-vnext-postgres-store",
+]
+
+[tasks.test-headless-sandboxed]
+clear = true
+workspace = false
+dependencies = [
+	"test-automations",
+	"test-gate-contract",
+	"test-rust-headless",
+	"test-vnext-architecture",
+	"test-vnext-cli-diagnostics",
 ]
 
 [tasks.test-gate-contract]
