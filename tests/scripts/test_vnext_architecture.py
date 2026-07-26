@@ -109,6 +109,7 @@ EXPECTED_CORE_EXTERNAL_DEPENDENCIES = {
 
 EXPECTED_PROTOCOL_EXTERNAL_DEPENDENCIES = {
     "futures-util",
+    "libc",
     "serde",
     "serde_json",
     "tempfile",

@@ -1,7 +1,7 @@
 use std::{
 	collections::BTreeMap,
 	fmt::{Debug, Display, Formatter},
-	net::{IpAddr, SocketAddr},
+	net::IpAddr,
 	path::{Component, Path, PathBuf},
 	str,
 };
@@ -246,16 +246,32 @@ impl TryFrom<String> for ProfileName {
 	}
 }
 
-/// Validated local profile. Only a loopback socket address is representable.
+/// Closed local transport policy.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalTrustPolicy {
+	/// Do not create or connect to a local product endpoint.
+	Disabled,
+	/// Admit only kernel-authenticated peers with the exact service-owner effective UID.
+	SameUid,
+}
+
+/// Validated local profile. The fixed endpoint is derived from the Decodex root.
 #[derive(Clone, Eq, PartialEq)]
 pub struct LocalProfile {
-	address: SocketAddr,
+	policy: LocalTrustPolicy,
+	service_owner_uid: Option<u32>,
 	expected_server_identity: Option<ServerIdentity>,
 }
 impl LocalProfile {
-	/// Loopback daemon address.
-	pub const fn address(&self) -> SocketAddr {
-		self.address
+	/// Closed local transport policy.
+	pub const fn policy(&self) -> LocalTrustPolicy {
+		self.policy
+	}
+
+	/// Effective UID that owns the local service namespace.
+	pub const fn service_owner_uid(&self) -> Option<u32> {
+		self.service_owner_uid
 	}
 
 	/// Optional identity pin for a known local server.
@@ -268,14 +284,15 @@ impl Debug for LocalProfile {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
 			.debug_struct("LocalProfile")
-			.field("address", &"<loopback>")
+			.field("policy", &self.policy)
+			.field("service_owner_uid", &self.service_owner_uid.map(|_| "<configured>"))
 			.field("identity_pinned", &self.expected_server_identity.is_some())
 			.finish()
 	}
 }
 
 /// Validated remote profile. Host and port are data only; this type does not enable
-/// non-loopback transport, authentication, or TLS.
+/// remote transport, authentication, or TLS.
 #[derive(Clone, Eq, PartialEq)]
 pub struct RemoteProfile {
 	host: String,
@@ -742,7 +759,7 @@ impl RawCacheConfig {
 /// path; repository paths are server-host-only data owned by `ServerHostConfig`.
 #[derive(Clone)]
 pub enum ServerProfile {
-	/// Loopback client and server live on the same host.
+	/// Owner-only client and server live under one effective UID on the same host.
 	Local(LocalProfile),
 	/// Client and server live on different hosts.
 	Remote(RemoteProfile),
@@ -825,18 +842,33 @@ impl From<PathError> for ConfigError {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum RawProfile {
-	Local { address: SocketAddr, expected_server_identity: Option<ServerIdentity> },
-	Remote { host: String, port: u16, expected_server_identity: ServerIdentity },
+	Local {
+		policy: LocalTrustPolicy,
+		service_owner_uid: Option<u32>,
+		expected_server_identity: Option<ServerIdentity>,
+	},
+	Remote {
+		host: String,
+		port: u16,
+		expected_server_identity: ServerIdentity,
+	},
 }
 impl RawProfile {
 	fn validate(self) -> Result<ServerProfile, ConfigError> {
 		match self {
-			Self::Local { address, expected_server_identity } => {
-				if !address.ip().is_loopback() || address.port() == 0 {
+			Self::Local { policy, service_owner_uid, expected_server_identity } => {
+				if !matches!(
+					(policy, service_owner_uid),
+					(LocalTrustPolicy::Disabled, None) | (LocalTrustPolicy::SameUid, Some(_))
+				) {
 					return Err(ConfigError::InvalidProfile);
 				}
 
-				Ok(ServerProfile::Local(LocalProfile { address, expected_server_identity }))
+				Ok(ServerProfile::Local(LocalProfile {
+					policy,
+					service_owner_uid,
+					expected_server_identity,
+				}))
 			},
 			Self::Remote { host, port, expected_server_identity } => {
 				if !valid_remote_host(&host) || port == 0 {

@@ -2,7 +2,6 @@
 
 use std::{
 	fmt::{Debug, Display, Formatter},
-	net::{IpAddr, SocketAddr},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -12,63 +11,59 @@ use std::{
 
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use serde::{Deserialize, Serialize};
-use tokio::{net::TcpStream, sync::Notify, time};
+use tokio::{sync::Notify, time};
 use tokio_tungstenite::{
-	MaybeTlsStream, WebSocketStream,
-	tungstenite::{Message, http::Uri, protocol::WebSocketConfig},
+	WebSocketStream,
+	tungstenite::{Message, protocol::WebSocketConfig},
 };
 
 use crate::{
 	CURRENT_VERSION, ClientHello, ClientMessage, CommandEnvelope, CommandReceipt,
-	CommandResultEnvelope, Cursor, EventEnvelope, LoopbackEndpoint, ProtocolVersion, QueryEnvelope,
-	QueryResultEnvelope, ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId,
-	ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope, VersionRefusal,
+	CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority, LocalTransportRefusal,
+	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReconnectMode,
+	Refusal, RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
+	ServerWelcome, SnapshotEnvelope, VersionRefusal,
 };
 
-type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type Socket = WebSocketStream<LocalTransportStream>;
 
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(5);
-const MAX_ENDPOINT_BYTES: usize = 2_048;
 const MAX_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_SNAPSHOT_ITEMS: usize = 1_024;
-const WS_PATH: &str = "/v1/ws";
+// This URI is WebSocket handshake metadata only. The client passes an already
+// admitted Unix stream, so this value cannot resolve or dial a TCP endpoint.
+const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Explicit network and authority inputs for one retained session.
+/// Explicit local transport and authority inputs for one retained session.
 ///
 /// This value contains no filesystem, profile-selection, retry, or cache policy.
 #[derive(Clone, Eq, PartialEq)]
 pub struct RetainedSessionConfig {
-	endpoint: LoopbackEndpoint,
+	local_transport: LocalTransportAuthority,
 	expected_server_id: ServerId,
 	operation_timeout: Duration,
 }
 impl RetainedSessionConfig {
-	/// Validate the canonical loopback WebSocket route and stable server identity pin.
-	pub fn new(
-		endpoint: impl AsRef<str>,
+	/// Bind one already validated local authority to a stable server identity pin.
+	pub const fn new(
+		local_transport: LocalTransportAuthority,
 		expected_server_id: ServerId,
-	) -> Result<Self, RetainedSessionFailure> {
-		let endpoint = parse_loopback_endpoint(endpoint.as_ref())?;
-
-		Ok(Self { endpoint, expected_server_id, operation_timeout: OPERATION_TIMEOUT })
+	) -> Self {
+		Self { local_transport, expected_server_id, operation_timeout: OPERATION_TIMEOUT }
 	}
 
 	/// Stable server identity selected by the same typed profile as the endpoint.
 	pub const fn expected_server_id(&self) -> &ServerId {
 		&self.expected_server_id
 	}
-
-	fn url(&self) -> String {
-		format!("ws://{}{WS_PATH}", self.endpoint.address())
-	}
 }
 impl Debug for RetainedSessionConfig {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
 			.debug_struct("RetainedSessionConfig")
-			.field("endpoint", &"<redacted>")
+			.field("local_transport", &"<redacted>")
 			.field("identity_pinned", &true)
 			.field("operation_timeout", &self.operation_timeout)
 			.finish()
@@ -197,9 +192,15 @@ impl RetainedSession {
 			.max_write_buffer_size(MAX_MESSAGE_BYTES)
 			.max_message_size(Some(MAX_MESSAGE_BYTES))
 			.max_frame_size(Some(MAX_MESSAGE_BYTES));
-		let endpoint = config.url();
-		let connect =
-			tokio_tungstenite::connect_async_with_config(&endpoint, Some(websocket_config), false);
+		let stream =
+			bounded(&cancellation, config.operation_timeout, config.local_transport.connect())
+				.await?
+				.map_err(map_local_transport_failure)?;
+		let connect = tokio_tungstenite::client_async_with_config(
+			LOCAL_WEBSOCKET_URI,
+			stream,
+			Some(websocket_config),
+		);
 		let (mut socket, _) = bounded(&cancellation, config.operation_timeout, connect)
 			.await?
 			.map_err(map_connect_error)?;
@@ -544,8 +545,18 @@ pub enum SessionDelivery {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RetainedSessionFailure {
-	/// The explicit endpoint was absent, oversized, or not a WebSocket endpoint.
-	InvalidEndpoint,
+	/// Durable local policy disables the endpoint.
+	LocalTransportDisabled,
+	/// Remote transport remains outside this implementation.
+	RemoteTransportDisabled,
+	/// The platform has no accepted local kernel peer-identity implementation.
+	LocalTransportUnsupported,
+	/// The local directory, lock, socket, or captured identity is unsafe.
+	UnsafeLocalEndpoint,
+	/// The kernel did not provide an unambiguous local peer identity.
+	LocalPeerIdentityUnavailable,
+	/// The process or connected peer does not match the configured service UID.
+	LocalPeerUidMismatch,
 	/// A bounded connect, handshake, send, or close deadline elapsed.
 	OperationTimeout,
 	/// Cooperative cancellation terminated the owned socket operation.
@@ -580,7 +591,13 @@ pub enum RetainedSessionFailure {
 impl Display for RetainedSessionFailure {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
-			Self::InvalidEndpoint => "retained session endpoint is invalid",
+			Self::LocalTransportDisabled => "retained session local transport is disabled",
+			Self::RemoteTransportDisabled => "retained session remote transport is disabled",
+			Self::LocalTransportUnsupported => "retained session local transport is unsupported",
+			Self::UnsafeLocalEndpoint => "retained session local endpoint is unsafe",
+			Self::LocalPeerIdentityUnavailable =>
+				"retained session local peer identity is unavailable",
+			Self::LocalPeerUidMismatch => "retained session local peer UID does not match",
 			Self::OperationTimeout => "retained session operation timed out",
 			Self::Cancelled => "retained session was cancelled",
 			Self::Closed => "retained session is closed",
@@ -680,6 +697,25 @@ fn map_connect_error(error: tokio_tungstenite::tungstenite::Error) -> RetainedSe
 	}
 }
 
+fn map_local_transport_failure(failure: LocalTransportRefusal) -> RetainedSessionFailure {
+	match failure {
+		LocalTransportRefusal::Disabled => RetainedSessionFailure::LocalTransportDisabled,
+		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable =>
+			RetainedSessionFailure::UnsafeLocalEndpoint,
+		LocalTransportRefusal::UnsupportedPlatform =>
+			RetainedSessionFailure::LocalTransportUnsupported,
+		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch =>
+			RetainedSessionFailure::LocalPeerUidMismatch,
+		LocalTransportRefusal::UnsafeDirectory
+		| LocalTransportRefusal::UnsafeEndpoint
+		| LocalTransportRefusal::EndpointReplaced => RetainedSessionFailure::UnsafeLocalEndpoint,
+		LocalTransportRefusal::PeerCredentialsUnavailable =>
+			RetainedSessionFailure::LocalPeerIdentityUnavailable,
+		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse =>
+			RetainedSessionFailure::Disconnected,
+	}
+}
+
 fn map_transport_error(error: tokio_tungstenite::tungstenite::Error) -> RetainedSessionFailure {
 	match error {
 		tokio_tungstenite::tungstenite::Error::Capacity(_) => RetainedSessionFailure::Backpressure,
@@ -691,33 +727,6 @@ fn map_transport_error(error: tokio_tungstenite::tungstenite::Error) -> Retained
 
 fn next(cursor: Cursor) -> Option<Cursor> {
 	cursor.0.checked_add(1).map(Cursor)
-}
-
-fn parse_loopback_endpoint(endpoint: &str) -> Result<LoopbackEndpoint, RetainedSessionFailure> {
-	if endpoint.len() > MAX_ENDPOINT_BYTES || endpoint.contains('#') {
-		return Err(RetainedSessionFailure::InvalidEndpoint);
-	}
-
-	let uri = endpoint.parse::<Uri>().map_err(|_| RetainedSessionFailure::InvalidEndpoint)?;
-	let authority = uri.authority().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
-	let path = uri.path_and_query().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
-
-	if uri.scheme_str() != Some("ws")
-		|| authority.as_str().contains('@')
-		|| path.path() != WS_PATH
-		|| path.query().is_some()
-	{
-		return Err(RetainedSessionFailure::InvalidEndpoint);
-	}
-
-	let port = authority.port_u16().ok_or(RetainedSessionFailure::InvalidEndpoint)?;
-	let host = authority.host().trim_start_matches('[').trim_end_matches(']');
-	let address = host
-		.parse::<IpAddr>()
-		.map(|ip| SocketAddr::new(ip, port))
-		.map_err(|_| RetainedSessionFailure::InvalidEndpoint)?;
-
-	LoopbackEndpoint::new(address).map_err(|_| RetainedSessionFailure::InvalidEndpoint)
 }
 
 async fn bounded<F, T>(
@@ -841,11 +850,10 @@ where
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
 	use std::{
 		future::Future,
-		net::{Ipv4Addr, SocketAddr},
 		pin::Pin,
 		sync::{
 			Arc,
@@ -856,8 +864,8 @@ mod tests {
 	};
 
 	use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
+	use tempfile::TempDir;
 	use tokio::{
-		net::{TcpListener, TcpStream},
 		sync::oneshot,
 		task::{self, JoinHandle},
 	};
@@ -867,14 +875,15 @@ mod tests {
 		CURRENT_VERSION, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
 		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId,
 		Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
-		PREVIOUS_MINOR_VERSION, ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope,
-		ServerId, ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem,
-		SupportedVersions, WireText,
+		LocalTransportAuthority, LocalTransportStream, PREVIOUS_MINOR_VERSION, ReceiptDisposition,
+		ReconnectMode, Refusal, RefusalEnvelope, ServerId, ServerInstanceId, ServerMessage,
+		ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
 		retained_session::{
 			ApplicationConfirmation, MAX_MESSAGE_BYTES, RetainedSession, RetainedSessionConfig,
 			RetainedSessionFailure, SessionCancellation, SessionCheckpoint, SessionDelivery,
 		},
 	};
+	use decodex_core::{DecodexRoot, LocalTrustPolicy};
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 	const OTHER_SERVER_ID: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -1030,44 +1039,39 @@ mod tests {
 		})
 	}
 
-	#[test]
-	fn retained_session_endpoint_accepts_only_the_canonical_loopback_route() {
-		for (url, expected_address) in [
-			("ws://127.0.0.1:49152/v1/ws", "127.0.0.1:49152"),
-			("ws://[::1]:49152/v1/ws", "[::1]:49152"),
-		] {
-			let config = RetainedSessionConfig::new(url, server_id(SERVER_ID)).unwrap();
+	fn local_transport() -> (TempDir, LocalTransportAuthority) {
+		let temp = TempDir::new().unwrap();
+		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let paths = root.paths();
 
-			assert_eq!(config.endpoint.address(), expected_address.parse::<SocketAddr>().unwrap());
-			assert_eq!(config.url(), url);
-		}
-		for invalid in [
-			"ws://192.0.2.10:49152/v1/ws",
-			"ws://example.com:49152/v1/ws",
-			"ws://user:password@127.0.0.1:49152/v1/ws",
-			"ws://127.0.0.1:49152/v1/ws?token=secret",
-			"ws://127.0.0.1:49152/v1/ws#fragment",
-			"ws://127.0.0.1:49152/wrong",
-			"wss://127.0.0.1:49152/v1/ws",
-			"ws://127.0.0.1/v1/ws",
-		] {
-			let Err(failure) = RetainedSessionConfig::new(invalid, server_id(SERVER_ID)) else {
-				panic!("accepted invalid retained-session endpoint: {invalid}")
-			};
+		paths.ensure_layout().unwrap();
 
-			assert_eq!(failure, RetainedSessionFailure::InvalidEndpoint);
-			assert_eq!(failure.to_string(), "retained session endpoint is invalid");
-			assert!(!format!("{failure:?}").contains(invalid));
-		}
+		// SAFETY: `geteuid` has no arguments or failure return.
+		let service_owner_uid = unsafe { libc::geteuid() };
+		let authority =
+			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
+				.unwrap();
+
+		(temp, authority)
 	}
 
-	async fn send(socket: &mut WebSocketStream<TcpStream>, message: ServerMessage) {
+	#[test]
+	fn retained_session_config_uses_only_local_authority_and_the_identity_pin() {
+		let (temp, authority) = local_transport();
+		let config = RetainedSessionConfig::new(authority, server_id(SERVER_ID));
+		let debug = format!("{config:?}");
+
+		assert_eq!(config.expected_server_id(), &server_id(SERVER_ID));
+		assert!(!debug.contains(temp.path().to_string_lossy().as_ref()));
+	}
+
+	async fn send(socket: &mut WebSocketStream<LocalTransportStream>, message: ServerMessage) {
 		let text = serde_json::to_string(&message).unwrap();
 
 		socket.send(Message::Text(text.into())).await.unwrap();
 	}
 
-	async fn hello(socket: &mut WebSocketStream<TcpStream>) -> ClientHello {
+	async fn hello(socket: &mut WebSocketStream<LocalTransportStream>) -> ClientHello {
 		let message = socket.next().await.unwrap().unwrap();
 		let Message::Text(text) = message else { panic!("expected text hello") };
 		let ClientMessage::Hello(hello) = serde_json::from_str(&text).unwrap() else {
@@ -1080,24 +1084,23 @@ mod tests {
 		hello
 	}
 
-	async fn fixture<F, Fut>(handler: F) -> (RetainedSessionConfig, JoinHandle<()>)
+	async fn fixture<F, Fut>(handler: F) -> (RetainedSessionConfig, JoinHandle<()>, TempDir)
 	where
-		F: FnOnce(WebSocketStream<TcpStream>) -> Fut + Send + 'static,
+		F: FnOnce(WebSocketStream<LocalTransportStream>) -> Fut + Send + 'static,
 		Fut: Future<Output = ()> + Send + 'static,
 	{
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let stream = listener.accept().await.unwrap();
 			let socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 
 			handler(socket).await;
+			listener.cleanup().unwrap();
 		});
-		let config =
-			RetainedSessionConfig::new(format!("ws://{address}/v1/ws"), server_id(SERVER_ID))
-				.unwrap();
+		let config = RetainedSessionConfig::new(authority, server_id(SERVER_ID));
 
-		(config, task)
+		(config, task, temp)
 	}
 
 	#[tokio::test]
@@ -1123,7 +1126,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn snapshot_high_water_advances_only_after_exact_application_confirmation() {
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			assert!(hello(&mut socket).await.resume.is_none());
 
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 7, ReconnectMode::Snapshot))
@@ -1175,7 +1178,7 @@ mod tests {
 	async fn resume_delivers_events_receipt_and_result_strictly_in_wire_order() {
 		let resume = checkpoint(INSTANCE_ID, 1);
 		let expected_resume = resume.clone();
-		let (config, task) = fixture(move |mut socket| async move {
+		let (config, task, _temp) = fixture(move |mut socket| async move {
 			let actual = hello(&mut socket).await.resume.unwrap();
 
 			assert_eq!(actual.server_id, expected_resume.server_id);
@@ -1239,7 +1242,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn cursor_gaps_terminate_delivery_before_out_of_order_application_data() {
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 2, ReconnectMode::Resume))
 				.await;
@@ -1263,7 +1266,7 @@ mod tests {
 	#[tokio::test]
 	async fn stale_publication_instance_falls_back_without_reusing_the_old_checkpoint() {
 		let old_checkpoint = checkpoint(INSTANCE_ID, 5);
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			assert_eq!(
 				hello(&mut socket).await.resume.unwrap().instance_id,
 				Some(instance_id(INSTANCE_ID))
@@ -1299,8 +1302,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn server_and_checkpoint_identity_changes_fail_closed_before_application_data() {
-		let invalid_config =
-			RetainedSessionConfig::new("ws://127.0.0.1:1/v1/ws", server_id(SERVER_ID)).unwrap();
+		let (_temp, authority) = local_transport();
+		let invalid_config = RetainedSessionConfig::new(authority, server_id(SERVER_ID));
 		let wrong_checkpoint =
 			SessionCheckpoint::new(server_id(OTHER_SERVER_ID), instance_id(INSTANCE_ID), Cursor(1));
 
@@ -1315,7 +1318,7 @@ mod tests {
 			RetainedSessionFailure::CheckpointIdentityMismatch
 		);
 
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(
 				&mut socket,
@@ -1332,7 +1335,7 @@ mod tests {
 
 		task.await.unwrap();
 
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(NEW_INSTANCE_ID), 1, ReconnectMode::Resume))
 				.await;
@@ -1355,7 +1358,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn malformed_and_refused_frames_collapse_to_closed_failures_without_server_text() {
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 
 			socket.send(Message::Binary(vec![1, 2, 3].into())).await.unwrap();
@@ -1369,7 +1372,7 @@ mod tests {
 
 		task.await.unwrap();
 
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(
 				&mut socket,
@@ -1391,7 +1394,7 @@ mod tests {
 
 		task.await.unwrap();
 
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 
 			let ServerMessage::Welcome(mut wrong_version) =
@@ -1418,7 +1421,7 @@ mod tests {
 	async fn idle_session_remains_owned_until_the_consumer_requests_more_data() {
 		let (release_sender, release_receiver) = oneshot::channel();
 		let (idle_sender, idle_receiver) = oneshot::channel();
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
@@ -1465,7 +1468,7 @@ mod tests {
 	async fn cancellation_terminates_an_inflight_receive_and_drops_the_owned_socket() {
 		let (ready_sender, ready_receiver) = oneshot::channel();
 		let (closed_sender, closed_receiver) = oneshot::channel();
-		let (config, server_task) = fixture(|mut socket| async move {
+		let (config, server_task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
@@ -1502,12 +1505,14 @@ mod tests {
 
 	#[tokio::test]
 	async fn oversized_input_and_server_backpressure_are_closed_and_bounded() {
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
 
-			socket.send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1).into())).await.unwrap();
+			// The client can close as soon as it detects the oversized frame.
+			let _send_result =
+				socket.send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1).into())).await;
 		})
 		.await;
 		let mut session = RetainedSession::connect(
@@ -1522,7 +1527,7 @@ mod tests {
 
 		task.await.unwrap();
 
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
@@ -1552,7 +1557,7 @@ mod tests {
 	#[tokio::test]
 	async fn close_completes_one_bounded_handshake_without_a_detached_socket() {
 		let (closed_sender, closed_receiver) = oneshot::channel();
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
@@ -1582,7 +1587,7 @@ mod tests {
 	async fn zero_deadline_bounds_close_and_still_drops_the_owned_socket() {
 		let (closed_sender, closed_receiver) = oneshot::channel();
 		let (release_sender, release_receiver) = oneshot::channel();
-		let (config, task) = fixture(|mut socket| async move {
+		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;

@@ -11,8 +11,8 @@ use std::{
 	future::Future,
 	path::PathBuf,
 	sync::{
-		Arc, Weak,
-		atomic::{AtomicBool, Ordering},
+		Arc,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -33,7 +33,7 @@ use decodex_postgres::{
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 use tokio::{
-	sync::{Mutex, Notify, oneshot},
+	sync::{Mutex, Notify, oneshot, watch},
 	task, time,
 };
 use zeroize::Zeroizing;
@@ -149,6 +149,7 @@ struct ResetCardRuntimeInner {
 	worker_id: String,
 	worker_lock: Mutex<()>,
 	worker_wakeup: Arc<Notify>,
+	provider_work: Arc<ProviderWorkLifecycle>,
 }
 
 #[derive(Clone)]
@@ -171,6 +172,21 @@ struct ClaimWorkPermit {
 struct ClaimWorkState {
 	open: AtomicBool,
 	start_deadline: Instant,
+}
+
+/// Daemon-lifecycle fence and exact accounting for blocking provider work.
+///
+/// Registration happens before `spawn_blocking`. Closing the lifecycle prevents a queued closure
+/// from starting provider work, while the retained permit keeps already-started or queued work in
+/// the service's settlement count even if its async caller is cancelled.
+struct ProviderWorkLifecycle {
+	open: AtomicBool,
+	active: AtomicUsize,
+	settled: Notify,
+}
+
+struct ProviderWorkPermit {
+	lifecycle: Arc<ProviderWorkLifecycle>,
 }
 
 impl ClaimWorkGate {
@@ -203,9 +219,77 @@ impl ClaimWorkPermit {
 	}
 }
 
+impl ProviderWorkLifecycle {
+	fn new() -> Self {
+		Self { open: AtomicBool::new(true), active: AtomicUsize::new(0), settled: Notify::new() }
+	}
+
+	fn register(self: &Arc<Self>) -> Option<ProviderWorkPermit> {
+		if !self.open.load(Ordering::Acquire) {
+			return None;
+		}
+		if self
+			.active
+			.fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| active.checked_add(1))
+			.is_err()
+		{
+			return None;
+		}
+
+		let permit = ProviderWorkPermit { lifecycle: Arc::clone(self) };
+		if !self.open.load(Ordering::Acquire) {
+			drop(permit);
+
+			return None;
+		}
+
+		Some(permit)
+	}
+
+	fn close(&self) {
+		self.open.store(false, Ordering::Release);
+		if self.active.load(Ordering::Acquire) == 0 {
+			self.settled.notify_waiters();
+		}
+	}
+
+	async fn wait_for_settlement(&self) {
+		loop {
+			let settled = self.settled.notified();
+
+			tokio::pin!(settled);
+			settled.as_mut().enable();
+			if self.active.load(Ordering::Acquire) == 0 {
+				return;
+			}
+
+			settled.await;
+		}
+	}
+}
+
+impl ProviderWorkPermit {
+	fn permits_start(&self) -> bool {
+		self.lifecycle.open.load(Ordering::Acquire)
+	}
+}
+
+impl Drop for ProviderWorkPermit {
+	fn drop(&mut self) {
+		let previous = self.lifecycle.active.fetch_sub(1, Ordering::AcqRel);
+
+		debug_assert!(previous > 0, "provider work lifecycle accounting underflow");
+		if previous == 1 {
+			self.lifecycle.settled.notify_waiters();
+		}
+	}
+}
+
 impl ResetCardRuntime {
-	/// Enroll configured vNext UUIDs, load process-scoped environment vault entries, and start the
-	/// durable worker. Missing credential values make only reset-card calls unavailable.
+	/// Enroll configured vNext UUIDs and load process-scoped environment vault entries.
+	///
+	/// The server lifecycle starts and directly owns the durable worker after it takes ownership of
+	/// this runtime. Missing credential values make only reset-card calls unavailable.
 	pub(crate) async fn start(
 		store: PostgresStore,
 		host: &ServerHostConfig,
@@ -240,13 +324,46 @@ impl ResetCardRuntime {
 				worker_id,
 				worker_lock: Mutex::new(()),
 				worker_wakeup: Arc::new(Notify::new()),
+				provider_work: Arc::new(ProviderWorkLifecycle::new()),
 			}),
 		};
 
-		spawn_worker(Arc::downgrade(&runtime.inner));
 		runtime.inner.worker_wakeup.notify_one();
 
 		Ok(runtime)
+	}
+
+	/// Run the one lifecycle-owned worker until shutdown and all provider work settle.
+	pub(crate) async fn daemon_service(self, mut stop: watch::Receiver<bool>) {
+		let worker_stop = stop.clone();
+		let worker_inner = Arc::clone(&self.inner);
+		let worker = run_worker(worker_inner, worker_stop);
+
+		tokio::pin!(worker);
+
+		tokio::select! {
+			biased;
+
+			() = shutdown_requested(&mut stop) => {
+				self.inner.provider_work.close();
+				worker.await;
+			},
+			() = &mut worker => {
+				self.inner.provider_work.close();
+			},
+		}
+
+		self.inner.provider_work.wait_for_settlement().await;
+	}
+
+	/// Close provider admission synchronously when the server enters its stopping phase.
+	pub(crate) fn begin_shutdown(&self) {
+		self.inner.provider_work.close();
+	}
+
+	/// Wait until every registered blocking provider closure exits.
+	pub(crate) async fn wait_for_shutdown(&self) {
+		self.inner.provider_work.wait_for_settlement().await;
 	}
 
 	pub(crate) fn vault_status(&self) -> ResetCardVaultStatus {
@@ -349,7 +466,7 @@ impl ResetCardRuntime {
 		}
 		let account = match self.admitted_account(account_id).await {
 			Ok(account) => account,
-			Err(error) =>
+			Err(error) => {
 				return self
 					.replay_preparation_or(
 						&command,
@@ -358,7 +475,8 @@ impl ResetCardRuntime {
 						descriptor,
 						error,
 					)
-					.await,
+					.await;
+			},
 		};
 		if account.revision != expected_revision {
 			return self
@@ -461,31 +579,37 @@ impl ResetCardRuntime {
 	}
 }
 
-fn spawn_worker(inner: Weak<ResetCardRuntimeInner>) {
-	tokio::spawn(async move {
-		loop {
-			let Some(runtime) = inner.upgrade() else {
-				break;
-			};
-
-			drain_worker(Arc::clone(&runtime)).await;
-			let wakeup = Arc::clone(&runtime.worker_wakeup);
-			drop(runtime);
-
-			tokio::select! {
-				() = wakeup.notified() => {},
-				() = time::sleep(WORKER_IDLE_POLL) => {},
-			}
+async fn run_worker(inner: Arc<ResetCardRuntimeInner>, mut stop: watch::Receiver<bool>) {
+	loop {
+		if *stop.borrow() {
+			return;
 		}
-	});
+
+		drain_worker(Arc::clone(&inner), &stop).await;
+		if *stop.borrow() {
+			return;
+		}
+
+		tokio::select! {
+			biased;
+
+			() = shutdown_requested(&mut stop) => return,
+			() = inner.worker_wakeup.notified() => {},
+			() = time::sleep(WORKER_IDLE_POLL) => {},
+		}
+	}
 }
 
-async fn drain_worker(inner: Arc<ResetCardRuntimeInner>) {
+async fn drain_worker(inner: Arc<ResetCardRuntimeInner>, stop: &watch::Receiver<bool>) {
 	let Ok(_worker) = inner.worker_lock.try_lock() else {
 		return;
 	};
 
 	loop {
+		if *stop.borrow() {
+			return;
+		}
+
 		let claim =
 			match inner.store.claim_reset_card_operation(&inner.worker_id, CLAIM_LEASE).await {
 				Ok(Some(claim)) => claim,
@@ -493,6 +617,17 @@ async fn drain_worker(inner: Arc<ResetCardRuntimeInner>) {
 			};
 
 		process_claim(Arc::clone(&inner), claim).await;
+	}
+}
+
+async fn shutdown_requested(receiver: &mut watch::Receiver<bool>) {
+	loop {
+		if *receiver.borrow_and_update() {
+			return;
+		}
+		if receiver.changed().await.is_err() {
+			return;
+		}
 	}
 }
 
@@ -675,7 +810,7 @@ where
 	let heartbeat_claim_id = claim.id;
 	let heartbeat_claim_token = Arc::<str>::from(claim.claim_token());
 	let heartbeat_worker = inner.worker_id.clone();
-	let heartbeat = tokio::spawn(maintain_claim_heartbeat(
+	let heartbeat = maintain_claim_heartbeat(
 		move || {
 			let store = heartbeat_store.clone();
 			let claim_token = Arc::clone(&heartbeat_claim_token);
@@ -689,7 +824,7 @@ where
 		},
 		stop_receiver,
 		CLAIM_HEARTBEAT_INTERVAL,
-	));
+	);
 
 	finish_guarded_work(make_work(gate.permit()), heartbeat, stop_sender, &gate).await
 }
@@ -711,16 +846,18 @@ where
 	}
 }
 
-async fn finish_guarded_work<T, Work>(
+async fn finish_guarded_work<T, Work, Heartbeat>(
 	work: Work,
-	mut heartbeat: task::JoinHandle<Result<(), StoreError>>,
+	heartbeat: Heartbeat,
 	stop_sender: oneshot::Sender<()>,
 	gate: &ClaimWorkGate,
 ) -> Result<T, ResetCardServiceError>
 where
 	Work: Future<Output = Result<T, ResetCardServiceError>>,
+	Heartbeat: Future<Output = Result<(), StoreError>>,
 {
 	tokio::pin!(work);
+	tokio::pin!(heartbeat);
 
 	tokio::select! {
 		result = &mut work => {
@@ -728,15 +865,17 @@ where
 			let _ = stop_sender.send(());
 
 			match heartbeat.await {
-				Ok(Ok(())) => result,
-				Ok(Err(_)) | Err(_) => Err(ResetCardServiceError::ProductStateUnavailable),
+				Ok(()) => result,
+				Err(_) => Err(ResetCardServiceError::ProductStateUnavailable),
 			}
 		},
-		_ = &mut heartbeat => {
+		result = &mut heartbeat => {
 			gate.close();
 			drop(stop_sender);
 
-			Err(ResetCardServiceError::ProductStateUnavailable)
+			match result {
+				Ok(()) | Err(_) => Err(ResetCardServiceError::ProductStateUnavailable),
+			}
 		},
 	}
 }
@@ -807,8 +946,11 @@ async fn run_inventory(
 	account_revision: i64,
 	claim_permit: Option<ClaimWorkPermit>,
 ) -> Result<ResetCardInventory, ResetCardServiceError> {
+	let provider_permit =
+		inner.provider_work.register().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
+
 	task::spawn_blocking(move || {
-		require_claim_work_start(claim_permit.as_ref())?;
+		require_provider_work_start(&provider_permit, claim_permit.as_ref())?;
 		let command = AppServerCommand::new(inner.working_directory.clone())
 			.map_err(|_| ResetCardServiceError::ProviderUnavailable)?;
 		let binding = AccountBinding::shared_home(account_id.clone())
@@ -819,7 +961,7 @@ async fn run_inventory(
 			.map_err(|_: CapacityExhausted| ResetCardServiceError::ResourceExhausted)?;
 		let runner = ResetCardProcessRunner::new(command, binding, PROCESS_TIMEOUT);
 
-		require_claim_work_start(claim_permit.as_ref())?;
+		require_provider_work_start(&provider_permit, claim_permit.as_ref())?;
 		runner.read_inventory(inner.vault.as_ref(), permit).map_err(map_process_error)
 	})
 	.await
@@ -834,8 +976,11 @@ async fn run_consume(
 	idempotency_key: ResetCardIdempotencyKey,
 	claim_permit: ClaimWorkPermit,
 ) -> Result<ResetCardConsumeReadback, ResetCardServiceError> {
+	let provider_permit =
+		inner.provider_work.register().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
+
 	task::spawn_blocking(move || {
-		require_claim_work_start(Some(&claim_permit))?;
+		require_provider_work_start(&provider_permit, Some(&claim_permit))?;
 		let command = AppServerCommand::new(inner.working_directory.clone())
 			.map_err(|_| ResetCardServiceError::ProviderUnavailable)?;
 		let binding = AccountBinding::shared_home(account_id.clone())
@@ -846,13 +991,24 @@ async fn run_consume(
 			.map_err(|_: CapacityExhausted| ResetCardServiceError::ResourceExhausted)?;
 		let runner = ResetCardProcessRunner::new(command, binding, PROCESS_TIMEOUT);
 
-		require_claim_work_start(Some(&claim_permit))?;
+		require_provider_work_start(&provider_permit, Some(&claim_permit))?;
 		runner
 			.consume_and_readback(inner.vault.as_ref(), permit, exact_credit_id, idempotency_key)
 			.map_err(map_process_error)
 	})
 	.await
 	.map_err(|_| ResetCardServiceError::ResourceExhausted)?
+}
+
+fn require_provider_work_start(
+	provider_permit: &ProviderWorkPermit,
+	claim_permit: Option<&ClaimWorkPermit>,
+) -> Result<(), ResetCardServiceError> {
+	if provider_permit.permits_start() {
+		require_claim_work_start(claim_permit)
+	} else {
+		Err(ResetCardServiceError::ProductStateUnavailable)
+	}
 }
 
 fn require_claim_work_start(
@@ -1266,10 +1422,11 @@ mod tests {
 	use super::{
 		CLAIM_HEARTBEAT_INTERVAL, CLAIM_LEASE, ClaimWorkGate, EnvironmentCredentialVault,
 		ExistingEnrollmentDecision, MAX_BLOCKING_PROCESS_DEADLINE, MAX_CLAIM_WORK_START_DELAY,
-		ProviderBindingFingerprint, ResetCardConsumeOutcome, ResetCardFailureCode,
-		ResetCardServiceError, ResetCardStartupError, VaultEntry, existing_enrollment_decision,
-		finish_guarded_work, maintain_claim_heartbeat, map_prepare_store_error,
-		provider_idempotency_key, readback_confirms_outcome, require_claim_work_start,
+		ProviderBindingFingerprint, ProviderWorkLifecycle, ResetCardConsumeOutcome,
+		ResetCardFailureCode, ResetCardServiceError, ResetCardStartupError, VaultEntry,
+		existing_enrollment_decision, finish_guarded_work, maintain_claim_heartbeat,
+		map_prepare_store_error, provider_idempotency_key, readback_confirms_outcome,
+		require_claim_work_start,
 	};
 	use zeroize::Zeroizing;
 
@@ -1348,11 +1505,11 @@ mod tests {
 		let gate =
 			ClaimWorkGate::with_deadline(std::time::Instant::now() + Duration::from_secs(60));
 		let permit = gate.permit();
-		let heartbeat: task::JoinHandle<Result<(), StoreError>> = tokio::spawn(async move {
+		let heartbeat = async move {
 			let _stop_receiver = stop_receiver;
 
 			Err(StoreError::OwnershipLost("reset-card claim"))
-		});
+		};
 		let result = finish_guarded_work(
 			pending::<Result<(), ResetCardServiceError>>(),
 			heartbeat,
@@ -1368,11 +1525,8 @@ mod tests {
 	#[tokio::test]
 	async fn guarded_completion_stops_the_heartbeat_before_returning() {
 		let (stop_sender, stop_receiver) = oneshot::channel();
-		let heartbeat = tokio::spawn(maintain_claim_heartbeat(
-			|| ready(Ok(())),
-			stop_receiver,
-			Duration::from_secs(60),
-		));
+		let heartbeat =
+			maintain_claim_heartbeat(|| ready(Ok(())), stop_receiver, Duration::from_secs(60));
 		let gate =
 			ClaimWorkGate::with_deadline(std::time::Instant::now() + Duration::from_secs(60));
 		let permit = gate.permit();
@@ -1428,11 +1582,11 @@ mod tests {
 				let _ = start_observed_sender.send(require_claim_work_start(Some(&permit)).is_ok());
 			});
 			let (stop_sender, stop_receiver) = oneshot::channel();
-			let heartbeat: task::JoinHandle<Result<(), StoreError>> = tokio::spawn(async move {
+			let heartbeat = async move {
 				let _stop_receiver = stop_receiver;
 
 				Err(StoreError::OwnershipLost("reset-card claim"))
-			});
+			};
 			let result = finish_guarded_work(
 				async move {
 					queued.await.map_err(|_| ResetCardServiceError::ProductStateUnavailable)?;
@@ -1454,6 +1608,28 @@ mod tests {
 			);
 			blocker.await.expect("the saturated blocking worker must not panic");
 		});
+	}
+
+	#[tokio::test]
+	async fn closing_provider_lifecycle_rejects_new_work_and_waits_for_registered_work() {
+		let lifecycle = Arc::new(ProviderWorkLifecycle::new());
+		let permit = lifecycle.register().expect("open lifecycle must register provider work");
+
+		assert!(permit.permits_start());
+		lifecycle.close();
+		assert!(!permit.permits_start());
+		assert!(lifecycle.register().is_none());
+		assert!(
+			time::timeout(Duration::from_millis(10), lifecycle.wait_for_settlement())
+				.await
+				.is_err(),
+			"registered provider work must hold lifecycle settlement",
+		);
+
+		drop(permit);
+		time::timeout(Duration::from_secs(1), lifecycle.wait_for_settlement())
+			.await
+			.expect("provider lifecycle must settle after its last registered work exits");
 	}
 
 	#[test]
