@@ -236,7 +236,7 @@ phase:
 ```sh
 # Run the one-shot R1 prerequisite gate only when the Manager authorizes this exact clean tree.
 python3 scripts/vnext/postgres_store_test.py \
-  --capture-authority-restore-prerequisite \
+  --capture-authority-restore-prerequisite-v2 \
   /absolute/private/directory/postgres-restore-prerequisite-r1.json
 
 # Run Phase A from one clean committed repaired pre-digest tree.
@@ -250,11 +250,55 @@ python3 scripts/vnext/postgres_store_test.py \
   /absolute/private/directory/postgres-authority-acceptance.json
 ```
 
-`--capture-authority-restore-prerequisite` is the only spelling for the new gate. It is not a
-focused mode, Phase A, Phase B, or the aggregate. Its output path must be absolute, outside the
-source tree, in an exact operator-owned private directory, and absent before the command starts.
-The Manager authorizes one invocation on one exact clean HEAD and tree. The gate does not provide
-cross-process once-only state.
+`--capture-authority-restore-prerequisite-v2` is the only spelling for the replacement gate. The v1
+spelling has no alias. This gate is not a focused mode, Phase A, Phase B, or the aggregate. Its
+output path must be absolute, outside the source tree, in an exact operator-owned private directory,
+and absent before the command starts. The Manager authorizes one invocation on one exact clean HEAD
+and tree. The gate does not provide cross-process once-only state.
+
+One state owner records this ordered execution prefix: `cli`, `output_contract`,
+`source_binding_preflight`, `temporary_root`, `tool_discovery`, `toolchain_preflight`,
+`private_work`, `cluster_init`, `cluster_start`, `role_setup`, `source_binding_gate_start`,
+`toolchain_gate_start`, `server_version`, `definition_binding`, `source_database_created`,
+`source_migrated`, `source_provisioned`, `source_populated`, `source_semantic_authority`,
+`source_archive_created`, `archive_declaration_guarded`, `restore_database_fresh_template0`,
+`restore_pgcrypto_absent`, `restore_prerequisite_created`, `restored_once`,
+`restored_once_semantic_authority`, `semantic_authority_equal`, `invocation_policy`,
+`source_binding_gate_end`, `toolchain_gate_end`, `privacy_validation`, and
+`stopped_after_restored_once`. A receipt cannot claim a checkpoint until its action succeeds.
+
+The separate lifecycle owners are `cluster_stop`, `private_work_cleanup`, `receipt_validation`,
+`receipt_source_binding`, and `receipt_publication`. The exact reason set is `contract_invalid`,
+`authority_unavailable`, `changed`, `operation_failed`, `archive_declaration_invalid`,
+`target_not_fresh`, `duplicate_invocation`, `invocation_policy_failed`,
+`semantic_authority_changed`, `cleanup_failed`, `receipt_invalid`, `publication_failed`,
+`interrupted`, and `harness_corruption`. The definition binds the exact allowed checkpoint and
+reason pairs. The expected pairs are:
+
+- `cli`, `output_contract`, `temporary_root`, `definition_binding`, `privacy_validation`, and
+  `stopped_after_restored_once` use `contract_invalid`.
+- `source_binding_preflight`, `tool_discovery`, `toolchain_preflight`, and `server_version` use
+  `authority_unavailable`.
+- `source_binding_gate_start`, `source_binding_gate_end`, `toolchain_gate_start`, and
+  `toolchain_gate_end` use `authority_unavailable` or `changed`.
+- `private_work`, `cluster_init`, `cluster_start`, `role_setup`,
+  `restore_database_fresh_template0`, `restore_prerequisite_created`, and `restored_once` use
+  `operation_failed`.
+- `source_database_created`, `source_migrated`, `source_provisioned`, `source_populated`,
+  `source_semantic_authority`, `source_archive_created`, and `restored_once_semantic_authority` use
+  `operation_failed` or `duplicate_invocation`.
+- `archive_declaration_guarded` uses `archive_declaration_invalid` or `duplicate_invocation`.
+- `restore_pgcrypto_absent` uses `operation_failed` or `target_not_fresh`.
+- `semantic_authority_equal` uses `semantic_authority_changed`.
+- `invocation_policy` uses `duplicate_invocation` or `invocation_policy_failed`.
+- `cluster_stop` and `private_work_cleanup` use `cleanup_failed`.
+- `receipt_validation` uses `receipt_invalid`; `receipt_source_binding` uses
+  `authority_unavailable` or `changed`; and `receipt_publication` uses `publication_failed`.
+
+Every owner also permits `interrupted` and `harness_corruption`. An unexpected assertion, type,
+key, or invariant failure is `harness_corruption` at the active owner. The first primary failure is
+immutable. Cleanup has fixed status and can become primary only when no earlier primary exists.
+Publication cannot relabel an earlier primary.
 
 The gate creates S0 once with the unchanged authority-mode setup. It migrates, provisions,
 populates, and runs the complete Rust semantic-authority owner once. It creates one custom dump.
@@ -271,16 +315,31 @@ canonical migration role and proves that `pgcrypto` is absent. It then executes 
 or runtime provisioning after restore. The full Rust semantic-authority owner runs once at R1.
 The same guard and helper own each future Phase A R1 and R2 target.
 
-The gate stops after R1 for every outcome. It does not create R2, derive a manifest digest,
-publish an authority candidate, run Phase B, or run the aggregate. A pass publishes one immutable,
-create-only, mode-0600, fsynced
-`decodex/postgres-restore-prerequisite-r1-gate/1` receipt. The receipt has `acceptance=false`. It
+The gate stops after R1 for every outcome. It does not create R2, derive a manifest digest, publish
+an authority candidate, run Phase B, or run the aggregate. A pass publishes one immutable,
+create-only, mode-0600, file-fsynced and directory-fsynced
+`decodex/postgres-restore-prerequisite-r1-gate/2` receipt. The receipt has `acceptance=false`. It
 contains the exact source binding, PostgreSQL toolchain fingerprint, definition fingerprint
-`2fc0260f16424d155ccd54daf25a0c43445b26744ebbae0772487266b7db46b5`, fixed successful
-checkpoints, and fixed invocation-policy Booleans. It contains no raw database or command data.
-Failure emits only `decodex/postgres-restore-prerequisite-r1-diagnostic/1` or the existing closed
-semantic-authority diagnostic. A pass authorizes only a later decision about revised Phase A.
-This source is unexecuted, and it makes no acceptance claim.
+`f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401`, the complete validated
+checkpoint prefix, and fixed invocation-policy Booleans. The definition schema is
+`decodex/postgres-restore-prerequisite-r1-definition/2`.
+
+A failure uses `decodex/postgres-restore-prerequisite-r1-diagnostic/2`. It contains the validated
+source binding, or null before source validation, the immutable primary checkpoint and reason, the
+validated completed prefix, fixed cleanup status, and the optional fixed secondary cleanup reason.
+It includes the existing closed semantic-authority diagnostic only when a semantic owner has the
+primary failure. It cannot contain raw exception text, a command, child output, environment, path,
+selected tool name, database, role, owner, ACL, OID, SQL, connection, TOC content, catalog row,
+count, or discovered identity. When the output contract is valid, the owner tries to publish one
+create-only failure receipt after cleanup. It also writes the same canonical diagnostic to standard
+error for publication-failure recovery. The raw-error `StageOrchestrator` remains separate.
+
+The v1 gate ran once and returned ownerless `gate/stage_failed` evidence. That result did not prove
+that candidate 3 reached the archive guard, prerequisite, restore, or R1 semantic owner. Candidate 3
+remains frozen and unadjudicated. The three-rejected-candidate threshold is not crossed unless one
+source-bound replacement result exercises and rejects candidate 3. A v2 pass authorizes only a
+later decision about revised Phase A. This v2 source is unexecuted, and it makes no acceptance
+claim.
 
 Phase A must start from one clean committed repaired tree. Its mismatch array is the exact ordered
 subset of `schema`, then `configured_authority`: it may be empty, contain either one component, or

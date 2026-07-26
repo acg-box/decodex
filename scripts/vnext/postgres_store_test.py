@@ -42,31 +42,46 @@ POSTGRES_TOOL_NAMES = ("initdb", "pg_ctl", "psql", "pg_dump", "pg_restore")
 POSTGRES_TOOL_VERSION_MAX_BYTES = 512
 POSTGRES_ARCHIVE_TOC_MAX_BYTES = 8 * 1024 * 1024
 POSTGRES_PRIVATE_COMMAND_TIMEOUT_SECONDS = 30.0
-RESTORE_PREREQUISITE_CLI = "--capture-authority-restore-prerequisite"
+RESTORE_PREREQUISITE_CLI = "--capture-authority-restore-prerequisite-v2"
 RESTORE_PREREQUISITE_GATE_SCHEMA = (
-	"decodex/postgres-restore-prerequisite-r1-gate/1"
+	"decodex/postgres-restore-prerequisite-r1-gate/2"
 )
 RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA = (
-	"decodex/postgres-restore-prerequisite-r1-diagnostic/1"
+	"decodex/postgres-restore-prerequisite-r1-diagnostic/2"
 )
 RESTORE_PREREQUISITE_DEFINITION_SCHEMA = (
-	"decodex/postgres-restore-prerequisite-r1-definition/1"
+	"decodex/postgres-restore-prerequisite-r1-definition/2"
 )
 RESTORE_PREREQUISITE_ARCHIVE_GRAMMAR = (
 	"decodex/postgresql-18-pg-restore-list/1"
 )
 RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT = (
-	"2fc0260f16424d155ccd54daf25a0c43445b26744ebbae0772487266b7db46b5"
+	"f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401"
 )
 RESTORE_PREREQUISITE_SQL = (
 	"CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public VERSION '1.4';"
 )
-RESTORE_PREREQUISITE_CHECKPOINTS = (
+RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS = (
+	"cli",
+	"output_contract",
+	"source_binding_preflight",
+	"temporary_root",
+	"tool_discovery",
+	"toolchain_preflight",
+	"private_work",
+	"cluster_init",
+	"cluster_start",
+	"role_setup",
+	"source_binding_gate_start",
+	"toolchain_gate_start",
+	"server_version",
+	"definition_binding",
 	"source_database_created",
 	"source_migrated",
 	"source_provisioned",
 	"source_populated",
 	"source_semantic_authority",
+	"source_archive_created",
 	"archive_declaration_guarded",
 	"restore_database_fresh_template0",
 	"restore_pgcrypto_absent",
@@ -74,7 +89,18 @@ RESTORE_PREREQUISITE_CHECKPOINTS = (
 	"restored_once",
 	"restored_once_semantic_authority",
 	"semantic_authority_equal",
+	"invocation_policy",
+	"source_binding_gate_end",
+	"toolchain_gate_end",
+	"privacy_validation",
 	"stopped_after_restored_once",
+)
+RESTORE_PREREQUISITE_LIFECYCLE_CHECKPOINTS = (
+	"cluster_stop",
+	"private_work_cleanup",
+	"receipt_validation",
+	"receipt_source_binding",
+	"receipt_publication",
 )
 RESTORE_PREREQUISITE_INVOCATION_POLICIES = (
 	"source_database_once",
@@ -90,24 +116,94 @@ RESTORE_PREREQUISITE_INVOCATION_POLICIES = (
 	"restore_once",
 	"restored_semantic_once",
 )
-RESTORE_PREREQUISITE_DIAGNOSTIC_CHECKPOINTS = frozenset((
-	*RESTORE_PREREQUISITE_CHECKPOINTS,
-	"gate",
-	"receipt_publication",
-	"source_binding",
-	"toolchain_authority",
-))
-RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS = frozenset((
+RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS = (
+	"contract_invalid",
+	"authority_unavailable",
+	"changed",
+	"operation_failed",
 	"archive_declaration_invalid",
+	"target_not_fresh",
 	"duplicate_invocation",
 	"invocation_policy_failed",
-	"receipt_invalid",
 	"semantic_authority_changed",
-	"source_binding_changed",
-	"stage_failed",
-	"target_not_fresh",
-	"toolchain_changed",
-))
+	"cleanup_failed",
+	"receipt_invalid",
+	"publication_failed",
+	"interrupted",
+	"harness_corruption",
+)
+RESTORE_PREREQUISITE_EXPECTED_REASONS = {
+	"cli": ("contract_invalid",),
+	"output_contract": ("contract_invalid",),
+	"source_binding_preflight": ("authority_unavailable",),
+	"temporary_root": ("contract_invalid",),
+	"tool_discovery": ("authority_unavailable",),
+	"toolchain_preflight": ("authority_unavailable",),
+	"private_work": ("operation_failed",),
+	"cluster_init": ("operation_failed",),
+	"cluster_start": ("operation_failed",),
+	"role_setup": ("operation_failed",),
+	"source_binding_gate_start": ("authority_unavailable", "changed"),
+	"toolchain_gate_start": ("authority_unavailable", "changed"),
+	"server_version": ("authority_unavailable",),
+	"definition_binding": ("contract_invalid",),
+	"source_database_created": ("operation_failed", "duplicate_invocation"),
+	"source_migrated": ("operation_failed", "duplicate_invocation"),
+	"source_provisioned": ("operation_failed", "duplicate_invocation"),
+	"source_populated": ("operation_failed", "duplicate_invocation"),
+	"source_semantic_authority": ("operation_failed", "duplicate_invocation"),
+	"source_archive_created": ("operation_failed", "duplicate_invocation"),
+	"archive_declaration_guarded": (
+		"archive_declaration_invalid", "duplicate_invocation",
+	),
+	"restore_database_fresh_template0": ("operation_failed",),
+	"restore_pgcrypto_absent": ("operation_failed", "target_not_fresh"),
+	"restore_prerequisite_created": ("operation_failed",),
+	"restored_once": ("operation_failed",),
+	"restored_once_semantic_authority": (
+		"operation_failed", "duplicate_invocation",
+	),
+	"semantic_authority_equal": ("semantic_authority_changed",),
+	"invocation_policy": ("duplicate_invocation", "invocation_policy_failed"),
+	"source_binding_gate_end": ("authority_unavailable", "changed"),
+	"toolchain_gate_end": ("authority_unavailable", "changed"),
+	"privacy_validation": ("contract_invalid",),
+	"stopped_after_restored_once": ("contract_invalid",),
+	"cluster_stop": ("cleanup_failed",),
+	"private_work_cleanup": ("cleanup_failed",),
+	"receipt_validation": ("receipt_invalid",),
+	"receipt_source_binding": ("authority_unavailable", "changed"),
+	"receipt_publication": ("publication_failed",),
+}
+RESTORE_PREREQUISITE_REASON_MATRIX = tuple(
+	(
+		checkpoint,
+		(*RESTORE_PREREQUISITE_EXPECTED_REASONS[checkpoint],
+			"interrupted", "harness_corruption"),
+	)
+	for checkpoint in (
+		*RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS,
+		*RESTORE_PREREQUISITE_LIFECYCLE_CHECKPOINTS,
+	)
+)
+RESTORE_PREREQUISITE_ALLOWED_REASONS = dict(
+	RESTORE_PREREQUISITE_REASON_MATRIX
+)
+RESTORE_PREREQUISITE_CLEANUP_STATUSES = (
+	"not_required", "passed", "failed",
+)
+AUTHORITY_RESTORE_TARGET_ALLOWED_REASONS = {
+	"archive_declaration_guarded": (
+		"archive_declaration_invalid", "stage_failed",
+	),
+	"restore_database_fresh_template0": (
+		"duplicate_invocation", "stage_failed",
+	),
+	"restore_pgcrypto_absent": ("stage_failed", "target_not_fresh"),
+	"restore_prerequisite_created": ("stage_failed",),
+	"restored_once": ("stage_failed",),
+	"gate": ("invocation_policy_failed",),
+}
 PG18_TOC_ENTRY_RE = re.compile(
 	r"(?P<dump_id>[1-9][0-9]*); "
 	r"(?P<table_oid>0|[1-9][0-9]*) "
@@ -558,26 +654,392 @@ class SemanticAuthorityDiagnostic(TestFailure):
 		super().__init__("authority candidate semantic diagnostic: " + serialized)
 
 
+class RestorePrerequisiteGateAbort(TestFailure):
+	"""Stop the v2 gate after its fixed state owner records a failure."""
+
+	def __init__(self) -> None:
+		super().__init__("restore prerequisite gate stopped")
+
+
+class RestorePrerequisiteExpectedFailure(TestFailure):
+	"""Select one fixed reason at the active v2 gate owner."""
+
+	def __init__(self, reason: str) -> None:
+		self.reason = reason
+		super().__init__("restore prerequisite operation failed")
+
+
 class AuthorityRestoreTargetFailure(TestFailure):
 	"""Carry one fixed restore-target checkpoint and classification."""
 
 	def __init__(self, checkpoint: str, reason: str) -> None:
-		if (
-			checkpoint not in RESTORE_PREREQUISITE_DIAGNOSTIC_CHECKPOINTS
-			or reason not in RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS
-		):
+		if reason not in AUTHORITY_RESTORE_TARGET_ALLOWED_REASONS.get(checkpoint, ()):
 			raise HarnessCorruption("restore-target failure classification is invalid")
 		self.checkpoint = checkpoint
 		self.reason = reason
 		super().__init__(f"authority restore target failed: {checkpoint}:{reason}")
 
 
-class RestorePrerequisiteGateDiagnostic(TestFailure):
-	"""Carry one closed public diagnostic for the one-shot R1 gate."""
+@dataclass
+class RestorePrerequisiteGateState:
+	"""Own v2 gate progress, fixed failure projection, cleanup, and publication."""
 
-	def __init__(self, serialized: str) -> None:
-		self.serialized = serialized
-		super().__init__("restore prerequisite gate diagnostic: " + serialized)
+	_output_path: Path | None = None
+	_source_binding: dict[str, str] | None = None
+	_toolchain_fingerprint: str | None = None
+	_invocation_policy: dict[str, bool] | None = None
+	_secret_markers: tuple[str, ...] = ()
+	_completed_checkpoints: list[str] = field(default_factory=list)
+	_primary_checkpoint: str | None = None
+	_primary_reason: str | None = None
+	_semantic_authority_diagnostic: dict[str, object] | None = None
+	_current_checkpoint: str | None = None
+	_output_contract_validated: bool = False
+	_cleanup_started: bool = False
+	_cleanup_finalized: bool = False
+	_cleanup_required: bool = False
+	_cleanup_failed: bool = False
+	_cleanup_status: str = "not_required"
+	_secondary_cleanup_reason: str | None = None
+	_lifecycle_status: dict[str, str] = field(default_factory=dict)
+
+	@property
+	def output_path(self) -> Path | None:
+		return self._output_path
+
+	@property
+	def output_contract_validated(self) -> bool:
+		return self._output_contract_validated
+
+	@property
+	def source_binding(self) -> dict[str, str] | None:
+		return None if self._source_binding is None else dict(self._source_binding)
+
+	@property
+	def toolchain_fingerprint(self) -> str | None:
+		return self._toolchain_fingerprint
+
+	@property
+	def invocation_policy(self) -> dict[str, bool] | None:
+		return (
+			None if self._invocation_policy is None
+			else dict(self._invocation_policy)
+		)
+
+	@property
+	def completed_checkpoints(self) -> tuple[str, ...]:
+		return tuple(self._completed_checkpoints)
+
+	@property
+	def primary_checkpoint(self) -> str | None:
+		return self._primary_checkpoint
+
+	@property
+	def primary_reason(self) -> str | None:
+		return self._primary_reason
+
+	@property
+	def cleanup_finalized(self) -> bool:
+		return self._cleanup_finalized
+
+	@property
+	def cleanup_status(self) -> str:
+		if not self._cleanup_finalized:
+			raise HarnessCorruption("restore prerequisite cleanup is not final")
+		return self._cleanup_status
+
+	def bind_output_path(self, path: Path) -> None:
+		if self._current_checkpoint != "output_contract" or self._output_path is not None:
+			raise HarnessCorruption("restore prerequisite output binding is invalid")
+		self._output_path = path
+		self._output_contract_validated = True
+
+	def bind_source(self, binding: object) -> dict[str, str]:
+		if (
+			self._current_checkpoint != "source_binding_preflight"
+			or self._source_binding is not None
+		):
+			raise HarnessCorruption("restore prerequisite source binding is invalid")
+		validated = require_source_binding(
+			binding, "restore prerequisite source binding is invalid"
+		)
+		self._source_binding = validated
+		return dict(validated)
+
+	def bind_toolchain(self, fingerprint: object) -> str:
+		if (
+			self._current_checkpoint != "toolchain_preflight"
+			or self._toolchain_fingerprint is not None
+			or not isinstance(fingerprint, str)
+			or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None
+		):
+			raise HarnessCorruption("restore prerequisite toolchain binding is invalid")
+		self._toolchain_fingerprint = fingerprint
+		return fingerprint
+
+	def bind_invocation_policy(self, policy: object) -> dict[str, bool]:
+		if (
+			self._current_checkpoint != "invocation_policy"
+			or self._invocation_policy is not None
+			or not isinstance(policy, dict)
+			or set(policy) != set(RESTORE_PREREQUISITE_INVOCATION_POLICIES)
+			or any(value is not True for value in policy.values())
+		):
+			raise RestorePrerequisiteExpectedFailure("invocation_policy_failed")
+		validated = {name: True for name in RESTORE_PREREQUISITE_INVOCATION_POLICIES}
+		self._invocation_policy = validated
+		return dict(validated)
+
+	def bind_secret_markers(self, markers: tuple[str, ...]) -> None:
+		if (
+			self._current_checkpoint != "private_work"
+			or self._secret_markers
+			or not markers
+			or any(not isinstance(marker, str) or not marker for marker in markers)
+		):
+			raise HarnessCorruption("restore prerequisite privacy state is invalid")
+		self._secret_markers = markers
+
+	def _next_execution_checkpoint(self) -> str | None:
+		index = len(self._completed_checkpoints)
+		if index == len(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS):
+			return None
+		return RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS[index]
+
+	def _record_primary(
+		self,
+		checkpoint: str,
+		reason: str,
+		semantic_diagnostic: dict[str, object] | None = None,
+	) -> None:
+		if reason not in RESTORE_PREREQUISITE_ALLOWED_REASONS.get(checkpoint, ()):
+			checkpoint = self._current_checkpoint or self._next_execution_checkpoint() or (
+				"receipt_validation"
+			)
+			reason = "harness_corruption"
+			semantic_diagnostic = None
+		if self._primary_checkpoint is None:
+			self._primary_checkpoint = checkpoint
+			self._primary_reason = reason
+			self._semantic_authority_diagnostic = semantic_diagnostic
+
+	def _classify_failure(
+		self, checkpoint: str, error: BaseException
+	) -> tuple[str, dict[str, object] | None]:
+		if isinstance(error, KeyboardInterrupt):
+			return "interrupted", None
+		if isinstance(error, SemanticAuthorityDiagnostic):
+			if any(marker in error.serialized for marker in self._secret_markers):
+				return "harness_corruption", None
+			try:
+				diagnostic = parse_restore_prerequisite_semantic_diagnostic(
+					error.serialized, checkpoint, self._source_binding
+				)
+			except (TestFailure, TypeError, ValueError):
+				return "harness_corruption", None
+			return "operation_failed", diagnostic
+		if isinstance(error, AuthorityRestoreTargetFailure):
+			if (
+				error.checkpoint == checkpoint
+				and error.reason in RESTORE_PREREQUISITE_ALLOWED_REASONS.get(
+					checkpoint, ()
+				)
+			):
+				return error.reason, None
+			return "harness_corruption", None
+		if isinstance(error, RestorePrerequisiteExpectedFailure):
+			if error.reason in RESTORE_PREREQUISITE_ALLOWED_REASONS.get(checkpoint, ()):
+				return error.reason, None
+			return "harness_corruption", None
+		if isinstance(error, (
+			HarnessCorruption, AssertionError, AttributeError, IndexError, KeyError,
+			TypeError, ValueError,
+		)):
+			return "harness_corruption", None
+		if isinstance(error, (TestFailure, OSError, subprocess.SubprocessError)):
+			return RESTORE_PREREQUISITE_EXPECTED_REASONS[checkpoint][0], None
+		return "harness_corruption", None
+
+	def _invoke(
+		self,
+		checkpoint: str,
+		action: Callable[[], object],
+		*,
+		execution: bool,
+		allow_after_primary: bool,
+	) -> object:
+		if self._current_checkpoint is not None:
+			self._record_primary(self._current_checkpoint, "harness_corruption")
+			raise RestorePrerequisiteGateAbort() from None
+		if self._primary_checkpoint is not None and not allow_after_primary:
+			raise RestorePrerequisiteGateAbort() from None
+		if execution:
+			expected = self._next_execution_checkpoint()
+			if checkpoint != expected:
+				if expected is not None:
+					self._record_primary(expected, "harness_corruption")
+				raise RestorePrerequisiteGateAbort() from None
+		elif checkpoint not in RESTORE_PREREQUISITE_LIFECYCLE_CHECKPOINTS:
+			self._record_primary(
+				self._next_execution_checkpoint() or "receipt_validation",
+				"harness_corruption",
+			)
+			raise RestorePrerequisiteGateAbort() from None
+		self._current_checkpoint = checkpoint
+		try:
+			result = action()
+		except RestorePrerequisiteGateAbort:
+			raise
+		except BaseException as error:
+			reason, semantic_diagnostic = self._classify_failure(checkpoint, error)
+			self._record_primary(checkpoint, reason, semantic_diagnostic)
+			raise RestorePrerequisiteGateAbort() from None
+		finally:
+			self._current_checkpoint = None
+		if execution:
+			self._completed_checkpoints.append(checkpoint)
+		return result
+
+	def run(self, checkpoint: str, action: Callable[[], object]) -> object:
+		return self._invoke(
+			checkpoint, action, execution=True, allow_after_primary=False
+		)
+
+	def begin_cleanup(self, required: bool) -> None:
+		if self._cleanup_started or self._cleanup_finalized or type(required) is not bool:
+			self._record_primary(
+				self._next_execution_checkpoint() or "private_work_cleanup",
+				"harness_corruption",
+			)
+			raise RestorePrerequisiteGateAbort() from None
+		self._cleanup_started = True
+		self._cleanup_required = required
+		if not required:
+			self._cleanup_status = "not_required"
+			self._cleanup_finalized = True
+
+	def run_cleanup(
+		self, checkpoint: str, action: Callable[[], object]
+	) -> object:
+		if (
+			checkpoint not in {"cluster_stop", "private_work_cleanup"}
+			or not self._cleanup_started
+			or self._cleanup_finalized
+			or not self._cleanup_required
+		):
+			self._record_primary(checkpoint, "harness_corruption")
+			raise RestorePrerequisiteGateAbort() from None
+		try:
+			return self._invoke(
+				checkpoint, action, execution=False, allow_after_primary=True
+			)
+		except RestorePrerequisiteGateAbort:
+			self._cleanup_failed = True
+			self._secondary_cleanup_reason = "cleanup_failed"
+			raise
+
+	def finish_cleanup(self) -> None:
+		if not self._cleanup_started or self._cleanup_finalized:
+			self._record_primary(
+				self._next_execution_checkpoint() or "private_work_cleanup",
+				"harness_corruption",
+			)
+			raise RestorePrerequisiteGateAbort() from None
+		self._cleanup_status = "failed" if self._cleanup_failed else "passed"
+		self._cleanup_finalized = True
+
+	def ensure_cleanup_finalized_without_work(self) -> None:
+		if not self._cleanup_started:
+			self.begin_cleanup(False)
+
+	def run_receipt_lifecycle(
+		self,
+		checkpoint: str,
+		action: Callable[[], object],
+		*,
+		recovery: bool = False,
+	) -> object:
+		if checkpoint not in {
+			"receipt_validation", "receipt_source_binding", "receipt_publication",
+		}:
+			self._record_primary("receipt_validation", "harness_corruption")
+			raise RestorePrerequisiteGateAbort() from None
+		def owned_action() -> object:
+			if not self._cleanup_finalized:
+				raise HarnessCorruption("restore prerequisite cleanup is not final")
+			if (
+				self._primary_checkpoint is None
+				and tuple(self._completed_checkpoints)
+				!= RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS
+			):
+				raise HarnessCorruption("restore prerequisite execution is incomplete")
+			previous = {
+				"receipt_validation": None,
+				"receipt_source_binding": "receipt_validation",
+				"receipt_publication": "receipt_source_binding",
+			}[checkpoint]
+			if previous is not None and self._lifecycle_status.get(previous) != "passed":
+				raise HarnessCorruption("restore prerequisite receipt order is invalid")
+			status = self._lifecycle_status.get(checkpoint)
+			if status == "passed" or status == "failed" and not recovery:
+				raise HarnessCorruption("restore prerequisite receipt owner repeated")
+			return action()
+		try:
+			result = self._invoke(
+				checkpoint, owned_action, execution=False, allow_after_primary=True
+			)
+		except RestorePrerequisiteGateAbort:
+			self._lifecycle_status[checkpoint] = "failed"
+			raise
+		self._lifecycle_status[checkpoint] = "passed"
+		return result
+
+	def lifecycle_passed(self, checkpoint: str) -> bool:
+		return self._lifecycle_status.get(checkpoint) == "passed"
+
+	def capture_unhandled(self, error: BaseException) -> None:
+		if isinstance(error, RestorePrerequisiteGateAbort):
+			return
+		if self._primary_checkpoint is not None:
+			return
+		checkpoint = self._current_checkpoint or self._next_execution_checkpoint()
+		if checkpoint is None:
+			checkpoint = next(
+				(
+					owner for owner in (
+						"receipt_validation", "receipt_source_binding",
+						"receipt_publication",
+					)
+					if self._lifecycle_status.get(owner) != "passed"
+				),
+				"receipt_publication",
+			)
+		reason, semantic_diagnostic = self._classify_failure(checkpoint, error)
+		self._record_primary(checkpoint, reason, semantic_diagnostic)
+
+	def failure_document(self) -> dict[str, object]:
+		if (
+			self._primary_checkpoint is None
+			or self._primary_reason is None
+			or not self._cleanup_finalized
+		):
+			raise HarnessCorruption("restore prerequisite failure state is incomplete")
+		document = {
+			"acceptance": False,
+			"cleanup_status": self._cleanup_status,
+			"completed_checkpoints": list(self._completed_checkpoints),
+			"definition_fingerprint": RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
+			"passed": False,
+			"primary_checkpoint": self._primary_checkpoint,
+			"primary_reason": self._primary_reason,
+			"schema": RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA,
+			"secondary_cleanup_reason": self._secondary_cleanup_reason,
+			"semantic_authority_diagnostic": self._semantic_authority_diagnostic,
+			"source_binding": (
+				None if self._source_binding is None else dict(self._source_binding)
+			),
+		}
+		return validate_restore_prerequisite_gate_diagnostic(document)
 
 
 class StageActionFailure(RuntimeError):
@@ -724,7 +1186,7 @@ class RestorePrerequisiteGatePublication:
 	"""An exception-free gate result awaiting post-cleanup atomic publication."""
 
 	output_path: Path
-	receipt: dict[str, object]
+	state: RestorePrerequisiteGateState
 
 
 @dataclass
@@ -774,22 +1236,19 @@ class RestorePrerequisiteGateInvocations:
 	restored_semantic: int = 0
 
 	def record(self, name: str) -> None:
-		if name not in {
-			"source_database",
-			"source_migration",
-			"source_provisioning",
-			"source_population",
-			"source_semantic",
-			"source_dump",
-			"restored_semantic",
-		}:
+		checkpoints = {
+			"source_database": "source_database_created",
+			"source_migration": "source_migrated",
+			"source_provisioning": "source_provisioned",
+			"source_population": "source_populated",
+			"source_semantic": "source_semantic_authority",
+			"source_dump": "source_archive_created",
+			"restored_semantic": "restored_once_semantic_authority",
+		}
+		if name not in checkpoints:
 			raise HarnessCorruption("restore prerequisite invocation name is invalid")
 		if getattr(self, name) != 0:
-			raise RestorePrerequisiteGateDiagnostic(
-				restore_prerequisite_gate_diagnostic(
-					"gate", "duplicate_invocation"
-				)
-			)
+			raise RestorePrerequisiteExpectedFailure("duplicate_invocation")
 		setattr(self, name, 1)
 
 	def policy_results(self) -> dict[str, bool]:
@@ -2149,6 +2608,59 @@ def postgres_status(data_dir: Path, env: dict[str, str]) -> ClusterStatus:
 	return ClusterStatus.UNKNOWN
 
 
+def cleanup_restore_prerequisite_gate(
+	state: RestorePrerequisiteGateState,
+	work: Path | None,
+	data_dir: Path | None,
+	env: dict[str, str] | None,
+	cluster_start_attempted: bool,
+) -> None:
+	"""Run the v2 gate cleanup owners without exposing operational details."""
+	state.begin_cleanup(work is not None)
+	if work is None:
+		return
+	try:
+		if cluster_start_attempted:
+			def stop_cluster() -> None:
+				if data_dir is None or env is None:
+					raise HarnessCorruption("restore prerequisite teardown state is invalid")
+				status = (
+					postgres_status(data_dir, env)
+					if data_dir.exists() else ClusterStatus.STOPPED
+				)
+				if status is ClusterStatus.RUNNING:
+					try:
+						run(
+							["pg_ctl", "-D", str(data_dir), "-m", "fast", "-w", "stop"],
+							env,
+						)
+					except Exception:
+						pass
+					status = postgres_status(data_dir, env)
+				if status is ClusterStatus.RUNNING:
+					try:
+						run(
+							[
+								"pg_ctl", "-D", str(data_dir), "-m", "immediate",
+								"-w", "stop",
+							],
+							env,
+						)
+					except Exception:
+						pass
+					status = postgres_status(data_dir, env)
+				if status is not ClusterStatus.STOPPED:
+					raise TestFailure("restore prerequisite cluster cleanup failed")
+
+			state.run_cleanup("cluster_stop", stop_cluster)
+		state.run_cleanup("private_work_cleanup", lambda: shutil.rmtree(work))
+	except RestorePrerequisiteGateAbort:
+		pass
+	finally:
+		if not state.cleanup_finalized:
+			state.finish_cleanup()
+
+
 def database_url(socket_dir: Path, port: int, database: str, role: str) -> str:
 	return f"postgresql://{role}@/{database}?host={socket_dir.as_posix()}&port={port}"
 
@@ -2403,23 +2915,77 @@ def restore_authority_capture_target(
 	env: dict[str, str],
 	pg_restore_tool: Path,
 	invocations: AuthorityRestoreInvocations,
+	*,
+	stage_runner: Callable[[str, Callable[[], object]], object] | None = None,
 ) -> dict[str, bool]:
 	"""Guard, create, precreate, and restore one fresh authority target."""
-	invocations.begin_target(target_database)
-	invocations.archive_guard += 1
-	_run_authority_restore_stage(
+	def run_stage_owner(
+		checkpoint: str,
+		action: Callable[[], object],
+		*,
+		before: Callable[[], None] | None = None,
+		validate: Callable[[object], None] | None = None,
+	) -> object:
+		if stage_runner is not None:
+			def gate_action() -> object:
+				try:
+					if before is not None:
+						before()
+					result = action()
+					if validate is not None:
+						validate(result)
+					return result
+				except AuthorityRestoreTargetFailure as error:
+					if error.checkpoint == checkpoint:
+						raise
+					if (
+						checkpoint == "archive_declaration_guarded"
+						and error.checkpoint == "restore_database_fresh_template0"
+						and error.reason == "duplicate_invocation"
+					):
+						raise RestorePrerequisiteExpectedFailure(
+							"duplicate_invocation"
+						) from None
+					raise HarnessCorruption(
+						"restore prerequisite helper classification is invalid"
+					) from None
+			return stage_runner(checkpoint, gate_action)
+		if before is not None:
+			before()
+		result = _run_authority_restore_stage(checkpoint, action)
+		if validate is not None:
+			validate(result)
+		return result
+
+	def record_guard_target() -> None:
+		invocations.begin_target(target_database)
+		invocations.archive_guard += 1
+
+	run_stage_owner(
 		"archive_declaration_guarded",
 		lambda: guard_pgcrypto_archive_declaration(dump_path, pg_restore_tool, env),
+		before=record_guard_target,
 	)
 
-	invocations.database_create += 1
-	_run_authority_restore_stage(
+	def record_database_create() -> None:
+		invocations.database_create += 1
+
+	run_stage_owner(
 		"restore_database_fresh_template0",
 		lambda: create_database(target_database, env),
+		before=record_database_create,
 	)
 
-	invocations.pgcrypto_absence_check += 1
-	absence = _run_authority_restore_stage(
+	def record_pgcrypto_absence_check() -> None:
+		invocations.pgcrypto_absence_check += 1
+
+	def require_pgcrypto_absent(absence: object) -> None:
+		if absence != "0":
+			raise AuthorityRestoreTargetFailure(
+				"restore_pgcrypto_absent", "target_not_fresh"
+			)
+
+	run_stage_owner(
 		"restore_pgcrypto_absent",
 		lambda: psql_as(
 			MIGRATION_ROLE,
@@ -2428,22 +2994,25 @@ def restore_authority_capture_target(
 			"WHERE extname='pgcrypto'",
 			env,
 		),
+		before=record_pgcrypto_absence_check,
+		validate=require_pgcrypto_absent,
 	)
-	if absence != "0":
-		raise AuthorityRestoreTargetFailure(
-			"restore_pgcrypto_absent", "target_not_fresh"
-		)
 
-	invocations.prerequisite_create += 1
-	_run_authority_restore_stage(
+	def record_prerequisite_create() -> None:
+		invocations.prerequisite_create += 1
+
+	run_stage_owner(
 		"restore_prerequisite_created",
 		lambda: psql_as(
 			MIGRATION_ROLE, target_database, RESTORE_PREREQUISITE_SQL, env
 		),
+		before=record_prerequisite_create,
 	)
 
-	invocations.restore += 1
-	_run_authority_restore_stage(
+	def record_restore() -> None:
+		invocations.restore += 1
+
+	run_stage_owner(
 		"restored_once",
 		lambda: run(
 			[
@@ -2455,6 +3024,7 @@ def restore_authority_capture_target(
 			],
 			env,
 		),
+		before=record_restore,
 	)
 	return {
 		"archive_declaration_guarded": True,
@@ -2477,7 +3047,9 @@ def require_authority_restore_invocation_policy(
 		"restore_prerequisite_once",
 		"restore_once",
 	} or not all(results.values()):
-		raise AuthorityRestoreTargetFailure("gate", "invocation_policy_failed")
+		raise AuthorityRestoreTargetFailure(
+			"gate", "invocation_policy_failed"
+		)
 	return results
 
 
@@ -6408,7 +6980,12 @@ def publish_authority_candidate(path: Path, receipt: dict[str, object]) -> None:
 def publish_restore_prerequisite_receipt(
 	path: Path, receipt: dict[str, object]
 ) -> None:
-	validate_restore_prerequisite_gate_receipt(receipt)
+	if receipt.get("passed") is True:
+		validate_restore_prerequisite_gate_receipt(receipt)
+	elif receipt.get("passed") is False:
+		validate_restore_prerequisite_gate_diagnostic(receipt)
+	else:
+		raise TestFailure("restore prerequisite receipt is invalid")
 	publish_private_receipt(path, receipt, validate_restore_prerequisite_output_path)
 
 
@@ -6436,9 +7013,58 @@ def authority_candidate_phase_fields(
 def restore_prerequisite_definition() -> dict[str, object]:
 	return {
 		"archive_grammar": RESTORE_PREREQUISITE_ARCHIVE_GRAMMAR,
-		"checkpoints": list(RESTORE_PREREQUISITE_CHECKPOINTS),
 		"cli": RESTORE_PREREQUISITE_CLI,
+		"diagnostic": {
+			"checkpoint_reason_matrix": [
+				{"checkpoint": checkpoint, "reasons": list(reasons)}
+				for checkpoint, reasons in RESTORE_PREREQUISITE_REASON_MATRIX
+			],
+			"fields": [
+				"acceptance", "cleanup_status", "completed_checkpoints",
+				"definition_fingerprint", "passed", "primary_checkpoint",
+				"primary_reason", "schema", "secondary_cleanup_reason",
+				"semantic_authority_diagnostic", "source_binding",
+			],
+			"reason_set": list(RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS),
+			"schema": RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA,
+			"semantic_diagnostic": {
+				"allowed_primary_checkpoints": [
+					"source_semantic_authority",
+					"restored_once_semantic_authority",
+				],
+				"schema": SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+			},
+			"source_binding": (
+				"validated_or_null_before_source_binding_preflight"
+			),
+		},
+		"execution_progress": {
+			"checkpoints": list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS),
+			"completed_checkpoints": "validated_successful_prefix_only",
+			"failure_owner": "first_uncompleted_execution_checkpoint",
+		},
 		"invocation_policy": list(RESTORE_PREREQUISITE_INVOCATION_POLICIES),
+		"lifecycle": {
+			"cleanup_secondary_reason": "cleanup_failed",
+			"cleanup_statuses": list(RESTORE_PREREQUISITE_CLEANUP_STATUSES),
+			"owners": list(RESTORE_PREREQUISITE_LIFECYCLE_CHECKPOINTS),
+			"precedence": {
+				"cleanup": "secondary_unless_no_primary",
+				"first_primary": "immutable",
+				"publication": "never_relabels_primary",
+			},
+		},
+		"pass": {
+			"acceptance": False,
+			"fields": [
+				"acceptance", "cleanup_status", "completed_checkpoints",
+				"definition_fingerprint", "gate_only", "invocation_policy",
+				"later_phase_a_decision_only", "passed", "postgres_toolchain",
+				"schema", "source_binding",
+			],
+			"meaning": "later_revised_phase_a_decision_only",
+			"schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
+		},
 		"postgres": {
 			"major": 18,
 			"tools": list(POSTGRES_TOOL_NAMES),
@@ -6447,7 +7073,13 @@ def restore_prerequisite_definition() -> dict[str, object]:
 			"role": MIGRATION_ROLE,
 			"sql": RESTORE_PREREQUISITE_SQL,
 		},
-		"receipt_schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
+		"publication": {
+			"create_only": True,
+			"directory_fsync": True,
+			"failure_stderr": "same_canonical_diagnostic",
+			"file_fsync": True,
+			"file_mode": "0600",
+		},
 		"restore": {
 			"identity": "bootstrap",
 			"options": ["--exit-on-error"],
@@ -6471,38 +7103,159 @@ def restore_prerequisite_definition_fingerprint() -> str:
 	return fingerprint
 
 
-def restore_prerequisite_gate_diagnostic(checkpoint: str, reason: str) -> str:
+def parse_restore_prerequisite_semantic_diagnostic(
+	serialized: str,
+	gate_checkpoint: str,
+	source_binding: dict[str, str] | None,
+) -> dict[str, object]:
+	checkpoint_map = {
+		"source_semantic_authority": "source",
+		"restored_once_semantic_authority": "restored_once",
+	}
 	if (
-		checkpoint not in RESTORE_PREREQUISITE_DIAGNOSTIC_CHECKPOINTS
-		or reason not in RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS
+		gate_checkpoint not in checkpoint_map
+		or source_binding is None
+		or not isinstance(serialized, str)
+		or not serialized
+		or len(serialized.encode("utf-8")) > AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES
 	):
-		raise HarnessCorruption("restore prerequisite diagnostic is invalid")
-	return json.dumps({
-		"acceptance": False,
-		"checkpoint": checkpoint,
-		"passed": False,
-		"reason": reason,
-		"schema": RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA,
-	}, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-
-
-def _run_restore_prerequisite_gate_stage(
-	checkpoint: str, action: Callable[[], object]
-) -> object:
+		raise TestFailure("restore prerequisite semantic diagnostic is invalid")
+	def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+		result: dict[str, object] = {}
+		for key, value in pairs:
+			if key in result:
+				raise ValueError("duplicate JSON key")
+			result[key] = value
+		return result
 	try:
-		return action()
-	except SemanticAuthorityDiagnostic:
-		raise
-	except RestorePrerequisiteGateDiagnostic:
-		raise
-	except AuthorityRestoreTargetFailure as error:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(error.checkpoint, error.reason)
-		) from None
-	except Exception:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(checkpoint, "stage_failed")
-		) from None
+		document = json.loads(serialized, object_pairs_hook=unique_object)
+	except (json.JSONDecodeError, ValueError):
+		raise TestFailure("restore prerequisite semantic diagnostic is invalid") from None
+	if (
+		json.dumps(
+			document, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+		) != serialized
+		or not isinstance(document, dict)
+		or set(document) != {
+			"checkpoint", "definition_fingerprint", "failures", "schema",
+			"source_binding",
+		}
+		or document["schema"] != SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA
+		or document["checkpoint"] != checkpoint_map[gate_checkpoint]
+		or document["definition_fingerprint"]
+		!= SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT
+		or require_source_binding(
+			document["source_binding"],
+			"restore prerequisite semantic diagnostic is invalid",
+		) != source_binding
+		or not isinstance(document["failures"], list)
+		or not 0 < len(document["failures"]) <= SEMANTIC_AUTHORITY_MAX_PREDICATES
+	):
+		raise TestFailure("restore prerequisite semantic diagnostic is invalid")
+	seen: set[tuple[str, str]] = set()
+	for failure in document["failures"]:
+		if (
+			not isinstance(failure, dict)
+			or set(failure) != {"failure_policy", "predicate"}
+			or not isinstance(failure["failure_policy"], str)
+			or failure["failure_policy"] not in SEMANTIC_AUTHORITY_FAILURE_POLICIES
+			or not isinstance(failure["predicate"], str)
+			or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", failure["predicate"]) is None
+			or (failure["failure_policy"], failure["predicate"]) in seen
+		):
+			raise TestFailure("restore prerequisite semantic diagnostic is invalid")
+		seen.add((failure["failure_policy"], failure["predicate"]))
+	return document
+
+
+def validate_restore_prerequisite_gate_diagnostic(
+	diagnostic: object,
+) -> dict[str, object]:
+	fields = {
+		"acceptance", "cleanup_status", "completed_checkpoints",
+		"definition_fingerprint", "passed", "primary_checkpoint",
+		"primary_reason", "schema", "secondary_cleanup_reason",
+		"semantic_authority_diagnostic", "source_binding",
+	}
+	if not isinstance(diagnostic, dict) or set(diagnostic) != fields:
+		raise TestFailure("restore prerequisite diagnostic is invalid")
+	completed = diagnostic["completed_checkpoints"]
+	primary_checkpoint = diagnostic["primary_checkpoint"]
+	primary_reason = diagnostic["primary_reason"]
+	cleanup_status = diagnostic["cleanup_status"]
+	secondary_cleanup_reason = diagnostic["secondary_cleanup_reason"]
+	if (
+		diagnostic["schema"] != RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA
+		or diagnostic["acceptance"] is not False
+		or diagnostic["passed"] is not False
+		or diagnostic["definition_fingerprint"]
+		!= RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT
+		or not isinstance(completed, list)
+		or completed
+		!= list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS[:len(completed)])
+		or not isinstance(primary_checkpoint, str)
+		or not isinstance(primary_reason, str)
+		or primary_reason
+		not in RESTORE_PREREQUISITE_ALLOWED_REASONS.get(primary_checkpoint, ())
+		or cleanup_status not in RESTORE_PREREQUISITE_CLEANUP_STATUSES
+		or (
+			cleanup_status == "failed"
+			and secondary_cleanup_reason != "cleanup_failed"
+		)
+		or (cleanup_status != "failed" and secondary_cleanup_reason is not None)
+	):
+		raise TestFailure("restore prerequisite diagnostic is invalid")
+	if primary_checkpoint in RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS:
+		if RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS.index(
+			primary_checkpoint
+		) != len(completed):
+			raise TestFailure("restore prerequisite diagnostic is invalid")
+	elif primary_checkpoint in {"receipt_validation", "receipt_source_binding", "receipt_publication"}:
+		if completed != list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS):
+			raise TestFailure("restore prerequisite diagnostic is invalid")
+	elif primary_checkpoint not in {"cluster_stop", "private_work_cleanup"}:
+		raise TestFailure("restore prerequisite diagnostic is invalid")
+	if (
+		primary_checkpoint in {"cluster_stop", "private_work_cleanup"}
+		and cleanup_status != "failed"
+	):
+		raise TestFailure("restore prerequisite diagnostic is invalid")
+	source_binding = diagnostic["source_binding"]
+	source_checkpoint_index = RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS.index(
+		"source_binding_preflight"
+	)
+	if len(completed) > source_checkpoint_index:
+		validated_source_binding = require_source_binding(
+			source_binding, "restore prerequisite diagnostic is invalid"
+		)
+	else:
+		if source_binding is not None:
+			raise TestFailure("restore prerequisite diagnostic is invalid")
+		validated_source_binding = None
+	semantic = diagnostic["semantic_authority_diagnostic"]
+	if semantic is not None:
+		if (
+			primary_checkpoint not in {
+				"source_semantic_authority", "restored_once_semantic_authority",
+			}
+			or primary_reason != "operation_failed"
+			or validated_source_binding is None
+		):
+			raise TestFailure("restore prerequisite diagnostic is invalid")
+		serialized = json.dumps(
+			semantic, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+		)
+		parse_restore_prerequisite_semantic_diagnostic(
+			serialized, primary_checkpoint, validated_source_binding
+		)
+	return diagnostic
+
+
+def canonical_restore_prerequisite_gate_diagnostic(diagnostic: object) -> str:
+	validated = validate_restore_prerequisite_gate_diagnostic(diagnostic)
+	return json.dumps(
+		validated, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+	)
 
 
 def populate_authority_capture_database(
@@ -6545,19 +7298,30 @@ def capture_candidate_semantic_checkpoint(
 
 
 def restore_prerequisite_gate_receipt(
-	source_binding: dict[str, str],
-	toolchain_fingerprint: str,
-	invocation_policy: dict[str, bool],
+	state: RestorePrerequisiteGateState,
 ) -> dict[str, object]:
+	source_binding = state.source_binding
+	toolchain_fingerprint = state.toolchain_fingerprint
+	invocation_policy = state.invocation_policy
+	if (
+		state.primary_checkpoint is not None
+		or state.completed_checkpoints
+		!= RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS
+		or state.cleanup_status != "passed"
+		or source_binding is None
+		or toolchain_fingerprint is None
+		or invocation_policy is None
+	):
+		raise TestFailure("restore prerequisite receipt is invalid")
 	return {
 		"acceptance": False,
-		"checkpoints": {
-			checkpoint: True for checkpoint in RESTORE_PREREQUISITE_CHECKPOINTS
-		},
+		"cleanup_status": "passed",
+		"completed_checkpoints": list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS),
 		"definition_fingerprint": restore_prerequisite_definition_fingerprint(),
 		"gate_only": True,
 		"invocation_policy": invocation_policy,
 		"later_phase_a_decision_only": True,
+		"passed": True,
 		"postgres_toolchain": {
 			"authority_fingerprint": toolchain_fingerprint,
 			"major_18": True,
@@ -6577,6 +7341,13 @@ def validate_restore_prerequisite_gate_receipt(
 	if not isinstance(receipt, dict):
 		raise TestFailure("restore prerequisite receipt is invalid")
 	try:
+		if set(receipt) != {
+			"acceptance", "cleanup_status", "completed_checkpoints",
+			"definition_fingerprint", "gate_only", "invocation_policy",
+			"later_phase_a_decision_only", "passed", "postgres_toolchain",
+			"schema", "source_binding",
+		}:
+			raise TestFailure("restore prerequisite receipt is invalid")
 		source_binding = receipt["source_binding"]
 		assert isinstance(source_binding, dict)
 		start = require_source_binding(
@@ -6595,109 +7366,132 @@ def validate_restore_prerequisite_gate_receipt(
 		raise TestFailure("restore prerequisite receipt is invalid") from None
 	if (
 		start != end
+		or receipt["schema"] != RESTORE_PREREQUISITE_GATE_SCHEMA
+		or receipt["acceptance"] is not False
+		or receipt["passed"] is not True
+		or receipt["cleanup_status"] != "passed"
+		or receipt["completed_checkpoints"]
+		!= list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS)
+		or receipt["definition_fingerprint"]
+		!= RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT
+		or receipt["gate_only"] is not True
+		or receipt["later_phase_a_decision_only"] is not True
 		or re.fullmatch(r"[0-9a-f]{64}", toolchain_fingerprint) is None
 		or set(invocation_policy) != set(RESTORE_PREREQUISITE_INVOCATION_POLICIES)
 		or any(value is not True for value in invocation_policy.values())
 	):
 		raise TestFailure("restore prerequisite receipt is invalid")
-	expected = restore_prerequisite_gate_receipt(
-		start, toolchain_fingerprint, invocation_policy
-	)
+	expected = {
+		"acceptance": False,
+		"cleanup_status": "passed",
+		"completed_checkpoints": list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS),
+		"definition_fingerprint": RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
+		"gate_only": True,
+		"invocation_policy": {
+			name: True for name in RESTORE_PREREQUISITE_INVOCATION_POLICIES
+		},
+		"later_phase_a_decision_only": True,
+		"passed": True,
+		"postgres_toolchain": {
+			"authority_fingerprint": toolchain_fingerprint,
+			"major_18": True,
+			"stable": True,
+		},
+		"schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
+		"source_binding": {"start": start, "end": start},
+	}
 	if receipt != expected:
 		raise TestFailure("restore prerequisite receipt is invalid")
 	return receipt
 
 
 def run_restore_prerequisite_gate(
+	state: RestorePrerequisiteGateState,
 	socket_dir: Path,
 	port: int,
 	work: Path,
 	log_path: Path,
 	env: dict[str, str],
 	secret_markers: tuple[str, ...],
-	expected_source_binding: dict[str, str],
 	tools: dict[str, Path],
-	expected_toolchain_fingerprint: str,
-) -> dict[str, object]:
-	start_binding = _run_restore_prerequisite_gate_stage(
-		"source_binding", frozen_source_binding
-	)
-	if start_binding != expected_source_binding:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"source_binding", "source_binding_changed"
-			)
-		)
-	toolchain_fingerprint = _run_restore_prerequisite_gate_stage(
-		"toolchain_authority",
-		lambda: postgres_toolchain_fingerprint(tools, env),
-	)
-	if toolchain_fingerprint != expected_toolchain_fingerprint:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"toolchain_authority", "toolchain_changed"
-			)
-		)
-	_run_restore_prerequisite_gate_stage(
-		"toolchain_authority", lambda: capture_postgres_version(env)
-	)
-	restore_prerequisite_definition_fingerprint()
+) -> None:
+	expected_source_binding = state.source_binding
+	expected_toolchain_fingerprint = state.toolchain_fingerprint
+	if expected_source_binding is None or expected_toolchain_fingerprint is None:
+		raise HarnessCorruption("restore prerequisite preflight state is invalid")
+	def require_source_binding_unchanged() -> dict[str, str]:
+		binding = frozen_source_binding()
+		if binding != expected_source_binding:
+			raise RestorePrerequisiteExpectedFailure("changed")
+		return binding
+	def require_toolchain_unchanged() -> str:
+		fingerprint = postgres_toolchain_fingerprint(tools, env)
+		if fingerprint != expected_toolchain_fingerprint:
+			raise RestorePrerequisiteExpectedFailure("changed")
+		return fingerprint
+	state.run("source_binding_gate_start", require_source_binding_unchanged)
+	state.run("toolchain_gate_start", require_toolchain_unchanged)
+	state.run("server_version", lambda: capture_postgres_version(env))
+	state.run("definition_binding", restore_prerequisite_definition_fingerprint)
 
 	gate_invocations = RestorePrerequisiteGateInvocations()
 	restore_invocations = AuthorityRestoreInvocations()
 
-	gate_invocations.record("source_database")
-	_run_restore_prerequisite_gate_stage(
-		"source_database_created",
-		lambda: create_database(RESTORE_PREREQUISITE_SOURCE_DATABASE, env),
-	)
-	set_contract_urls(
-		env,
-		socket_dir,
-		port,
-		RESTORE_PREREQUISITE_SOURCE_DATABASE,
-		RUNTIME_ROLE,
-	)
+	def create_source_database() -> None:
+		gate_invocations.record("source_database")
+		create_database(RESTORE_PREREQUISITE_SOURCE_DATABASE, env)
+		set_contract_urls(
+			env, socket_dir, port, RESTORE_PREREQUISITE_SOURCE_DATABASE, RUNTIME_ROLE
+		)
+	state.run("source_database_created", create_source_database)
 
-	gate_invocations.record("source_migration")
-	_run_restore_prerequisite_gate_stage("source_migrated", lambda: run_migration(env))
+	def migrate_source() -> object:
+		gate_invocations.record("source_migration")
+		return run_migration(env)
+	state.run("source_migrated", migrate_source)
 
-	gate_invocations.record("source_provisioning")
-	_run_restore_prerequisite_gate_stage(
+	def provision_source() -> None:
+		gate_invocations.record("source_provisioning")
+		provision_runtime(RESTORE_PREREQUISITE_SOURCE_DATABASE, RUNTIME_ROLE, env)
+	state.run(
 		"source_provisioned",
-		lambda: provision_runtime(
-			RESTORE_PREREQUISITE_SOURCE_DATABASE, RUNTIME_ROLE, env
-		),
+		provision_source,
 	)
 
-	gate_invocations.record("source_population")
-	_run_restore_prerequisite_gate_stage(
+	def populate_source() -> None:
+		gate_invocations.record("source_population")
+		populate_authority_capture_database(RESTORE_PREREQUISITE_SOURCE_DATABASE, env)
+	state.run(
 		"source_populated",
-		lambda: populate_authority_capture_database(
-			RESTORE_PREREQUISITE_SOURCE_DATABASE, env
-		),
+		populate_source,
 	)
 
-	gate_invocations.record("source_semantic")
-	source_semantic_result = _run_restore_prerequisite_gate_stage(
-		"source_semantic_authority",
-		lambda: capture_candidate_semantic_checkpoint(
+	def capture_source_semantic() -> dict[str, object]:
+		gate_invocations.record("source_semantic")
+		result = capture_candidate_semantic_checkpoint(
 			work / "restore-prerequisite-source.json",
 			"source",
 			RESTORE_PREREQUISITE_SOURCE_DATABASE,
 			env,
 			source_binding=expected_source_binding,
 			secret_markers=secret_markers,
-		),
+		)
+		if (
+			not isinstance(result, tuple)
+			or len(result) != 3
+			or not isinstance(result[1], dict)
+		):
+			raise HarnessCorruption("restore prerequisite source semantic state is invalid")
+		return result[1]
+	source_semantic_authority = state.run(
+		"source_semantic_authority",
+		capture_source_semantic,
 	)
-	assert isinstance(source_semantic_result, tuple)
-	source_semantic_authority = source_semantic_result[1]
 
-	gate_invocations.record("source_dump")
 	dump_path = work / "restore-prerequisite-source.dump"
-	_run_restore_prerequisite_gate_stage(
-		"gate",
-		lambda: run(
+	def create_source_archive() -> object:
+		gate_invocations.record("source_dump")
+		return run(
 			[
 				str(tools["pg_dump"]),
 				"-Fc",
@@ -6706,114 +7500,89 @@ def run_restore_prerequisite_gate(
 				RESTORE_PREREQUISITE_SOURCE_DATABASE,
 			],
 			env,
-		),
-	)
+		)
+	state.run("source_archive_created", create_source_archive)
 
-	restore_checkpoints = _run_restore_prerequisite_gate_stage(
-		"archive_declaration_guarded",
-		lambda: restore_authority_capture_target(
-			dump_path,
-			RESTORE_PREREQUISITE_R1_DATABASE,
-			env,
-			tools["pg_restore"],
-			restore_invocations,
-		),
-	)
-	assert isinstance(restore_checkpoints, dict)
-	set_contract_urls(
-		env,
-		socket_dir,
-		port,
+	restore_checkpoints = restore_authority_capture_target(
+		dump_path,
 		RESTORE_PREREQUISITE_R1_DATABASE,
-		RUNTIME_ROLE,
+		env,
+		tools["pg_restore"],
+		restore_invocations,
+		stage_runner=state.run,
 	)
 
-	gate_invocations.record("restored_semantic")
-	restored_semantic_result = _run_restore_prerequisite_gate_stage(
-		"restored_once_semantic_authority",
-		lambda: capture_candidate_semantic_checkpoint(
+	def capture_restored_semantic() -> dict[str, object]:
+		set_contract_urls(
+			env, socket_dir, port, RESTORE_PREREQUISITE_R1_DATABASE, RUNTIME_ROLE
+		)
+		gate_invocations.record("restored_semantic")
+		result = capture_candidate_semantic_checkpoint(
 			work / "restore-prerequisite-restored-once.json",
 			"restored_once",
 			RESTORE_PREREQUISITE_R1_DATABASE,
 			env,
 			source_binding=expected_source_binding,
 			secret_markers=secret_markers,
-		),
-	)
-	assert isinstance(restored_semantic_result, tuple)
-	restored_semantic_authority = restored_semantic_result[1]
-	if source_semantic_authority != restored_semantic_authority:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"semantic_authority_equal", "semantic_authority_changed"
-			)
 		)
-
-	restore_policy = _run_restore_prerequisite_gate_stage(
-		"gate",
-		lambda: require_authority_restore_invocation_policy(
-			restore_invocations, (RESTORE_PREREQUISITE_R1_DATABASE,)
-		),
+		if (
+			not isinstance(result, tuple)
+			or len(result) != 3
+			or not isinstance(result[1], dict)
+		):
+			raise HarnessCorruption("restore prerequisite restored semantic state is invalid")
+		return result[1]
+	restored_semantic_authority = state.run(
+		"restored_once_semantic_authority",
+		capture_restored_semantic,
 	)
-	assert isinstance(restore_policy, dict)
-	invocation_policy = {
-		**gate_invocations.policy_results(),
-		**restore_policy,
-	}
-	if (
-		set(invocation_policy) != set(RESTORE_PREREQUISITE_INVOCATION_POLICIES)
-		or not all(invocation_policy.values())
-		or set(restore_checkpoints) != {
-			"archive_declaration_guarded",
-			"restore_database_fresh_template0",
-			"restore_pgcrypto_absent",
-			"restore_prerequisite_created",
-			"restored_once",
+	def require_semantic_authority_equal() -> None:
+		if source_semantic_authority != restored_semantic_authority:
+			raise RestorePrerequisiteExpectedFailure("semantic_authority_changed")
+	state.run("semantic_authority_equal", require_semantic_authority_equal)
+
+	def require_invocation_policy() -> dict[str, bool]:
+		try:
+			restore_policy = require_authority_restore_invocation_policy(
+				restore_invocations, (RESTORE_PREREQUISITE_R1_DATABASE,)
+			)
+		except AuthorityRestoreTargetFailure as error:
+			if (
+				error.checkpoint == "gate"
+				and error.reason == "invocation_policy_failed"
+			):
+				raise RestorePrerequisiteExpectedFailure(
+					"invocation_policy_failed"
+				) from None
+			raise HarnessCorruption(
+				"restore prerequisite invocation classification is invalid"
+			) from None
+		if not isinstance(restore_policy, dict):
+			raise HarnessCorruption("restore prerequisite invocation state is invalid")
+		invocation_policy = {
+			**gate_invocations.policy_results(),
+			**restore_policy,
 		}
-		or not all(restore_checkpoints.values())
-	):
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"gate", "invocation_policy_failed"
-			)
-		)
-
-	end_binding = _run_restore_prerequisite_gate_stage(
-		"source_binding", frozen_source_binding
-	)
-	if end_binding != expected_source_binding:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"source_binding", "source_binding_changed"
-			)
-		)
-	end_toolchain_fingerprint = _run_restore_prerequisite_gate_stage(
-		"toolchain_authority",
-		lambda: postgres_toolchain_fingerprint(tools, env),
-	)
-	if end_toolchain_fingerprint != expected_toolchain_fingerprint:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"toolchain_authority", "toolchain_changed"
-			)
-		)
-	_run_restore_prerequisite_gate_stage(
-		"gate",
+		if (
+			set(restore_checkpoints) != {
+				"archive_declaration_guarded",
+				"restore_database_fresh_template0",
+				"restore_pgcrypto_absent",
+				"restore_prerequisite_created",
+				"restored_once",
+			}
+			or not all(restore_checkpoints.values())
+		):
+			raise RestorePrerequisiteExpectedFailure("invocation_policy_failed")
+		return state.bind_invocation_policy(invocation_policy)
+	state.run("invocation_policy", require_invocation_policy)
+	state.run("source_binding_gate_end", require_source_binding_unchanged)
+	state.run("toolchain_gate_end", require_toolchain_unchanged)
+	state.run(
+		"privacy_validation",
 		lambda: assert_postgres_logs_redact((log_path,), secret_markers),
 	)
-	receipt = restore_prerequisite_gate_receipt(
-		expected_source_binding,
-		expected_toolchain_fingerprint,
-		invocation_policy,
-	)
-	try:
-		return validate_restore_prerequisite_gate_receipt(receipt)
-	except TestFailure:
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"gate", "receipt_invalid"
-			)
-		) from None
+	state.run("stopped_after_restored_once", lambda: None)
 
 
 def run_authority_candidate_capture(
@@ -7303,7 +8072,9 @@ max_entry_bytes = 4096
 	config_path.chmod(0o600)
 
 
-def main() -> (
+def main(
+	restore_prerequisite_state: RestorePrerequisiteGateState | None = None,
+) -> (
 	int | AuthorityCandidatePublication | RestorePrerequisiteGatePublication
 ):
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
@@ -7315,16 +8086,19 @@ def main() -> (
 	preparation_mode = sys.argv[1:] == ["--prepare-retained-title-core"]
 	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
 	acceptance_mode = len(sys.argv) == 4 and sys.argv[1] == "--accept-authority-candidate"
-	restore_prerequisite_mode = (
-		len(sys.argv) == 3 and sys.argv[1] == RESTORE_PREREQUISITE_CLI
+	restore_prerequisite_mode = restore_prerequisite_state is not None
+	def parse_restore_prerequisite_cli() -> Path:
+		if len(sys.argv) != 3 or sys.argv[1] != RESTORE_PREREQUISITE_CLI:
+			raise TestFailure("restore prerequisite invocation is invalid")
+		return Path(sys.argv[2])
+	restore_prerequisite_output = (
+		restore_prerequisite_state.run("cli", parse_restore_prerequisite_cli)
+		if restore_prerequisite_state is not None else None
 	)
 	capture_output = (
 		Path(sys.argv[3]) if acceptance_mode
 		else Path(sys.argv[2]) if capture_only
 		else None
-	)
-	restore_prerequisite_output = (
-		Path(sys.argv[2]) if restore_prerequisite_mode else None
 	)
 	authority_mode = capture_only or acceptance_mode or restore_prerequisite_mode
 	normal_aggregate = not (
@@ -7339,35 +8113,7 @@ def main() -> (
 		or focused_managed_runs
 	)
 	orchestrator = StageOrchestrator({}, []) if reported_run or focused_authority else None
-	def configuration_preflight() -> dict[str, object]:
-		if sys.argv[1:] and not (
-			focused_work_items or focused_managed_runs or focused_managed_repositories
-			or focused_continuation or focused_authority or focused_retained_title
-			or preparation_mode or authority_mode
-		):
-			raise TestFailure(
-				"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
-				"--focus-managed-repositories|--focus-continuation|"
-				"--focus-authority-classification|--focus-retained-title-core|"
-				"--prepare-retained-title-core|"
-				"--capture-authority-restore-prerequisite ABSOLUTE_OUTPUT_PATH|"
-				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
-				"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
-			)
-		source_binding = (
-			frozen_source_binding() if normal_aggregate or restore_prerequisite_mode
-			else staged_source_binding() if focused_retained_title else None
-		)
-		phase_a = (
-			load_phase_a_authority_receipt(Path(sys.argv[2]))
-			if acceptance_mode else None
-		)
-		if phase_a is not None:
-			validate_phase_b_source_delta(phase_a, frozen_source_binding())
-		if capture_output is not None:
-			validate_authority_candidate_output_path(capture_output)
-		if restore_prerequisite_output is not None:
-			validate_restore_prerequisite_output_path(restore_prerequisite_output)
+	def temporary_root_preflight() -> Path | None:
 		temp_root: Path | None = None
 		temp_root_value = os.environ.get("DECODEX_TEST_TEMP_ROOT")
 		if temp_root_value:
@@ -7390,30 +8136,116 @@ def main() -> (
 					"DECODEX_TEST_TEMP_ROOT to a short existing absolute directory"
 				)
 			temp_root = default_root.resolve(strict=True)
+		return temp_root
+	def postgres_tool_discovery() -> dict[str, Path]:
 		tools: dict[str, Path] = {}
 		for name in POSTGRES_TOOL_NAMES:
 			location = shutil.which(name)
 			if location is None:
 				raise TestFailure(f"required PostgreSQL tool is unavailable: {name}")
 			tools[name] = Path(location).resolve(strict=True)
-		toolchain_fingerprint = (
-			postgres_toolchain_fingerprint(tools, os.environ.copy())
-			if restore_prerequisite_mode else None
+		return tools
+	def configuration_preflight() -> dict[str, object]:
+		if sys.argv[1:] and not (
+			focused_work_items or focused_managed_runs or focused_managed_repositories
+			or focused_continuation or focused_authority or focused_retained_title
+			or preparation_mode or authority_mode
+		):
+			raise TestFailure(
+				"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
+				"--focus-managed-repositories|--focus-continuation|"
+				"--focus-authority-classification|--focus-retained-title-core|"
+				"--prepare-retained-title-core|"
+				"--capture-authority-restore-prerequisite-v2 "
+				"ABSOLUTE_PRIVATE_RECEIPT_PATH|"
+				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
+				"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
+			)
+		source_binding = (
+			frozen_source_binding() if normal_aggregate
+			else staged_source_binding() if focused_retained_title else None
 		)
+		phase_a = (
+			load_phase_a_authority_receipt(Path(sys.argv[2]))
+			if acceptance_mode else None
+		)
+		if phase_a is not None:
+			validate_phase_b_source_delta(phase_a, frozen_source_binding())
+		if capture_output is not None:
+			validate_authority_candidate_output_path(capture_output)
+		temp_root = temporary_root_preflight()
+		tools = postgres_tool_discovery()
 		return {
 			"phase_a": phase_a,
+			"source_binding": source_binding,
+			"temp_root": temp_root,
+			"toolchain_fingerprint": None,
+			"tools": tools,
+		}
+	def restore_output_contract() -> Path:
+		if (
+			restore_prerequisite_state is None
+			or not isinstance(restore_prerequisite_output, Path)
+		):
+			raise HarnessCorruption("restore prerequisite CLI state is invalid")
+		validate_restore_prerequisite_output_path(restore_prerequisite_output)
+		restore_prerequisite_state.bind_output_path(restore_prerequisite_output)
+		return restore_prerequisite_output
+	def restore_source_binding_preflight() -> dict[str, str]:
+		if restore_prerequisite_state is None:
+			raise HarnessCorruption("restore prerequisite state is absent")
+		return restore_prerequisite_state.bind_source(frozen_source_binding())
+	def restore_temporary_root_preflight() -> Path | None:
+		result = temporary_root_preflight()
+		if result is not None and not isinstance(result, Path):
+			raise HarnessCorruption("restore prerequisite temporary root is invalid")
+		return result
+	def restore_postgres_tool_discovery() -> dict[str, Path]:
+		result = postgres_tool_discovery()
+		if (
+			set(result) != set(POSTGRES_TOOL_NAMES)
+			or any(not isinstance(path, Path) for path in result.values())
+		):
+			raise HarnessCorruption("restore prerequisite tool discovery is invalid")
+		return result
+	def restore_toolchain_preflight(tools: dict[str, Path]) -> str:
+		if restore_prerequisite_state is None:
+			raise HarnessCorruption("restore prerequisite state is absent")
+		return restore_prerequisite_state.bind_toolchain(
+			postgres_toolchain_fingerprint(tools, os.environ.copy())
+		)
+	if restore_prerequisite_state is not None:
+		restore_prerequisite_state.run("output_contract", restore_output_contract)
+		source_binding = restore_prerequisite_state.run(
+			"source_binding_preflight", restore_source_binding_preflight
+		)
+		temp_root = restore_prerequisite_state.run(
+			"temporary_root", restore_temporary_root_preflight
+		)
+		tools = restore_prerequisite_state.run(
+			"tool_discovery", restore_postgres_tool_discovery
+		)
+		toolchain_fingerprint = restore_prerequisite_state.run(
+			"toolchain_preflight", lambda: restore_toolchain_preflight(tools)
+		)
+		preflight: object = {
+			"phase_a": None,
 			"source_binding": source_binding,
 			"temp_root": temp_root,
 			"toolchain_fingerprint": toolchain_fingerprint,
 			"tools": tools,
 		}
-	preflight = (
-		run_stage(
-			orchestrator, "configuration_preflight", configuration_preflight, fatal=True
+	else:
+		preflight = (
+			run_stage(
+				orchestrator,
+				"configuration_preflight",
+				configuration_preflight,
+				fatal=True,
+			)
+			if orchestrator is not None
+			else configuration_preflight()
 		)
-		if orchestrator is not None
-		else configuration_preflight()
-	)
 	if not isinstance(preflight, dict):
 		if orchestrator is None or orchestrator.primary_failure is None:
 			raise HarnessCorruption("configuration preflight lost its primary failure")
@@ -7484,6 +8316,10 @@ def main() -> (
 				)
 			role_setting_canary_guc = f"xy1272.canary_{secrets.token_hex(16)}"
 			role_setting_secret_canary = secrets.token_hex(32)
+			if restore_prerequisite_state is not None:
+				restore_prerequisite_state.bind_secret_markers(
+					(role_setting_canary_guc, role_setting_secret_canary)
+				)
 			env = os.environ.copy()
 			initdb_path = tools["initdb"]
 			if not isinstance(initdb_path, Path):
@@ -7500,6 +8336,8 @@ def main() -> (
 			)
 			return work
 		created_work = (
+			restore_prerequisite_state.run("private_work", private_environment_setup)
+			if restore_prerequisite_state is not None else
 			run_stage(
 				orchestrator,
 				"private_environment_setup",
@@ -7514,8 +8352,7 @@ def main() -> (
 			if orchestrator is None or orchestrator.primary_failure is None:
 				raise HarnessCorruption("private environment setup lost its primary failure")
 			raise orchestrator.primary_failure
-		def fatal_postgres_preflight() -> None:
-			nonlocal cluster_start_attempted, cluster_started
+		def initialize_postgres_cluster() -> None:
 			socket_dir.mkdir()
 			run(
 				[
@@ -7531,7 +8368,8 @@ def main() -> (
 				],
 				env,
 			)
-			cluster_start_attempted = True
+		def start_postgres_cluster() -> None:
+			nonlocal cluster_started
 			try:
 				run(
 					[
@@ -7554,6 +8392,7 @@ def main() -> (
 					(role_setting_canary_guc, role_setting_secret_canary),
 				) from error
 			cluster_started = True
+		def create_base_roles() -> None:
 			roles = [MIGRATION_ROLE, RUNTIME_ROLE]
 			if not authority_mode and not preparation_mode:
 				roles.extend((
@@ -7580,7 +8419,22 @@ def main() -> (
 				psql("postgres", f"CREATE ROLE {role}{attributes}", env)
 
 			return None
-		if orchestrator is None:
+		def fatal_postgres_preflight() -> None:
+			nonlocal cluster_start_attempted
+			initialize_postgres_cluster()
+			cluster_start_attempted = True
+			start_postgres_cluster()
+			create_base_roles()
+		if restore_prerequisite_state is not None:
+			restore_prerequisite_state.run(
+				"cluster_init", initialize_postgres_cluster
+			)
+			cluster_start_attempted = True
+			restore_prerequisite_state.run(
+				"cluster_start", start_postgres_cluster
+			)
+			restore_prerequisite_state.run("role_setup", create_base_roles)
+		elif orchestrator is None:
 			fatal_postgres_preflight()
 		else:
 			run_stage(
@@ -7653,25 +8507,25 @@ def main() -> (
 			return 0
 		if restore_prerequisite_output is not None:
 			if (
-				not isinstance(source_binding, dict)
+				restore_prerequisite_state is None
+				or not isinstance(source_binding, dict)
 				or not isinstance(toolchain_fingerprint, str)
 			):
 				raise HarnessCorruption(
 					"restore prerequisite preflight binding is invalid"
 				)
-			restore_prerequisite_receipt = run_restore_prerequisite_gate(
+			run_restore_prerequisite_gate(
+				restore_prerequisite_state,
 				socket_dir,
 				port,
 				work,
 				log_path,
 				env,
 				(role_setting_canary_guc, role_setting_secret_canary),
-				source_binding,
 				tools,
-				toolchain_fingerprint,
 			)
 			return RestorePrerequisiteGatePublication(
-				restore_prerequisite_output, restore_prerequisite_receipt
+				restore_prerequisite_output, restore_prerequisite_state
 			)
 		if capture_output is not None:
 			capture_receipt = run_authority_candidate_capture(
@@ -8969,6 +9823,25 @@ def main() -> (
 		return 0
 	finally:
 		active_error = sys.exc_info()[1]
+		if restore_prerequisite_state is not None:
+			if active_error is not None:
+				restore_prerequisite_state.capture_unhandled(active_error)
+			cleanup_restore_prerequisite_gate(
+				restore_prerequisite_state,
+				work,
+				data_dir,
+				env,
+				cluster_start_attempted,
+			)
+			work = None
+			data_dir = None
+			cluster_start_attempted = False
+			cluster_started = False
+			if (
+				active_error is None
+				and restore_prerequisite_state.primary_checkpoint is not None
+			):
+				raise RestorePrerequisiteGateAbort() from None
 		selected_primary = (
 			orchestrator.primary_failure
 			if orchestrator is not None else
@@ -9196,20 +10069,69 @@ def publish_completed_authority_candidate(
 def publish_completed_restore_prerequisite_gate(
 	publication: RestorePrerequisiteGatePublication,
 ) -> None:
-	receipt = validate_restore_prerequisite_gate_receipt(publication.receipt)
-	source_binding = receipt["source_binding"]
-	assert isinstance(source_binding, dict)
-	final_binding = frozen_source_binding()
-	if (
-		source_binding.get("start") != final_binding
-		or source_binding.get("end") != final_binding
-	):
-		raise RestorePrerequisiteGateDiagnostic(
-			restore_prerequisite_gate_diagnostic(
-				"receipt_publication", "source_binding_changed"
-			)
-		)
-	publish_restore_prerequisite_receipt(publication.output_path, receipt)
+	state = publication.state
+	receipt = state.run_receipt_lifecycle(
+		"receipt_validation",
+		lambda: validate_restore_prerequisite_gate_receipt(
+			restore_prerequisite_gate_receipt(state)
+		),
+	)
+	if not isinstance(receipt, dict):
+		raise HarnessCorruption("restore prerequisite receipt state is invalid")
+	def require_final_source_binding() -> None:
+		expected = state.source_binding
+		if expected is None:
+			raise HarnessCorruption("restore prerequisite source binding is absent")
+		if frozen_source_binding() != expected:
+			raise RestorePrerequisiteExpectedFailure("changed")
+	state.run_receipt_lifecycle(
+		"receipt_source_binding", require_final_source_binding
+	)
+	state.run_receipt_lifecycle(
+		"receipt_publication",
+		lambda: publish_restore_prerequisite_receipt(publication.output_path, receipt),
+	)
+
+
+def publish_restore_prerequisite_failure(
+	state: RestorePrerequisiteGateState,
+) -> None:
+	diagnostic = state.failure_document()
+	serialized = canonical_restore_prerequisite_gate_diagnostic(diagnostic)
+	publication_possible = state.output_contract_validated and state.output_path is not None
+	if publication_possible:
+		try:
+			if not state.lifecycle_passed("receipt_validation"):
+				state.run_receipt_lifecycle(
+					"receipt_validation",
+					lambda: validate_restore_prerequisite_gate_diagnostic(diagnostic),
+					recovery=True,
+				)
+			if not state.lifecycle_passed("receipt_source_binding"):
+				def require_failure_source_binding() -> None:
+					expected = state.source_binding
+					if expected is not None and frozen_source_binding() != expected:
+						raise RestorePrerequisiteExpectedFailure("changed")
+				state.run_receipt_lifecycle(
+					"receipt_source_binding",
+					require_failure_source_binding,
+					recovery=True,
+				)
+			if not state.lifecycle_passed("receipt_publication"):
+				assert state.output_path is not None
+				state.run_receipt_lifecycle(
+					"receipt_publication",
+					lambda: publish_restore_prerequisite_receipt(
+						state.output_path, diagnostic
+					),
+					recovery=True,
+				)
+		except RestorePrerequisiteGateAbort:
+			pass
+	try:
+		print(serialized, file=sys.stderr, flush=True)
+	except BaseException:
+		pass
 
 
 def restore_prerequisite_gate_requested() -> bool:
@@ -9217,8 +10139,12 @@ def restore_prerequisite_gate_requested() -> bool:
 
 
 if __name__ == "__main__":
+	restore_prerequisite_state = (
+		RestorePrerequisiteGateState()
+		if restore_prerequisite_gate_requested() else None
+	)
 	try:
-		result = main()
+		result = main(restore_prerequisite_state)
 		if isinstance(result, AuthorityCandidatePublication):
 			publish_completed_authority_candidate(result)
 			exit_code = 0
@@ -9228,17 +10154,10 @@ if __name__ == "__main__":
 		else:
 			exit_code = result
 	except BaseException as error:
-		if not restore_prerequisite_gate_requested():
+		if restore_prerequisite_state is None:
 			raise
-		if isinstance(error, SemanticAuthorityDiagnostic):
-			diagnostic = error.serialized
-		elif isinstance(error, RestorePrerequisiteGateDiagnostic):
-			diagnostic = error.serialized
-		else:
-			diagnostic = restore_prerequisite_gate_diagnostic("gate", "stage_failed")
-		try:
-			print(diagnostic, file=sys.stderr, flush=True)
-		except BaseException:
-			pass
+		restore_prerequisite_state.capture_unhandled(error)
+		restore_prerequisite_state.ensure_cleanup_finalized_without_work()
+		publish_restore_prerequisite_failure(restore_prerequisite_state)
 		exit_code = 1
 	raise SystemExit(exit_code)

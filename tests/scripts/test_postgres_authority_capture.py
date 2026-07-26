@@ -1535,5 +1535,348 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         self.assertNotIn("restored", json.dumps(result, sort_keys=True))
 
 
+class RestorePrerequisiteGateStateTests(unittest.TestCase):
+    SECRET = "xy1421_private_secret_marker"
+
+    def complete_until(self, state, target=None):
+        for checkpoint in POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS:
+            if checkpoint == target:
+                return
+            def complete(checkpoint=checkpoint):
+                if checkpoint == "output_contract":
+                    state.bind_output_path(Path("/private/tmp/xy1421-receipt.json"))
+                elif checkpoint == "source_binding_preflight":
+                    state.bind_source(SOURCE_BINDING)
+                elif checkpoint == "toolchain_preflight":
+                    state.bind_toolchain("c" * 64)
+                elif checkpoint == "private_work":
+                    state.bind_secret_markers((self.SECRET,))
+                elif checkpoint == "invocation_policy":
+                    state.bind_invocation_policy({
+                        name: True
+                        for name in (
+                            POSTGRES_STORE_TEST
+                            .RESTORE_PREREQUISITE_INVOCATION_POLICIES
+                        )
+                    })
+            state.run(checkpoint, complete)
+        if target is not None:
+            raise AssertionError(f"unknown checkpoint: {target}")
+
+    def execution_failure(self, checkpoint, error):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state, checkpoint)
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            state.run(checkpoint, lambda: (_ for _ in ()).throw(error))
+        state.ensure_cleanup_finalized_without_work()
+        return state, state.failure_document()
+
+    def completed_state(self, *, cleanup_required=False):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state)
+        state.begin_cleanup(cleanup_required)
+        if cleanup_required:
+            state.run_cleanup("private_work_cleanup", lambda: None)
+            state.finish_cleanup()
+        return state
+
+    def semantic_failure(self, checkpoint):
+        semantic_checkpoint = {
+            "source_semantic_authority": "source",
+            "restored_once_semantic_authority": "restored_once",
+        }[checkpoint]
+        return POSTGRES_STORE_TEST.SemanticAuthorityDiagnostic(json.dumps({
+            "checkpoint": semantic_checkpoint,
+            "definition_fingerprint": (
+                POSTGRES_STORE_TEST.SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT
+            ),
+            "failures": [{
+                "failure_policy": "unsafe",
+                "predicate": "fixture_unsafe",
+            }],
+            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+            "source_binding": SOURCE_BINDING,
+        }, sort_keys=True, separators=(",", ":")))
+
+    def test_representative_execution_failures_have_distinct_fixed_owners(self):
+        cases = (
+            (
+                "outer",
+                "output_contract",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "contract_invalid",
+            ),
+            (
+                "cluster",
+                "cluster_start",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "operation_failed",
+            ),
+            (
+                "preflight",
+                "toolchain_preflight",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "authority_unavailable",
+            ),
+            (
+                "s0",
+                "source_migrated",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "operation_failed",
+            ),
+            (
+                "archive",
+                "archive_declaration_guarded",
+                POSTGRES_STORE_TEST.AuthorityRestoreTargetFailure(
+                    "archive_declaration_guarded", "archive_declaration_invalid"
+                ),
+                "archive_declaration_invalid",
+            ),
+            (
+                "helper",
+                "restore_pgcrypto_absent",
+                POSTGRES_STORE_TEST.AuthorityRestoreTargetFailure(
+                    "restore_pgcrypto_absent", "target_not_fresh"
+                ),
+                "target_not_fresh",
+            ),
+            (
+                "semantic",
+                "restored_once_semantic_authority",
+                self.semantic_failure("restored_once_semantic_authority"),
+                "operation_failed",
+            ),
+        )
+        owners = []
+        for case, checkpoint, error, reason in cases:
+            with self.subTest(case=case):
+                _, diagnostic = self.execution_failure(checkpoint, error)
+                self.assertEqual(diagnostic["primary_checkpoint"], checkpoint)
+                self.assertEqual(diagnostic["primary_reason"], reason)
+                owners.append(diagnostic["primary_checkpoint"])
+                if case == "semantic":
+                    self.assertIsNotNone(
+                        diagnostic["semantic_authority_diagnostic"]
+                    )
+                else:
+                    self.assertIsNone(
+                        diagnostic["semantic_authority_diagnostic"]
+                    )
+        self.assertEqual(len(owners), len(set(owners)))
+
+    def test_cleanup_is_secondary_and_owns_only_without_a_primary(self):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state, "source_migrated")
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            state.run(
+                "source_migrated",
+                lambda: (_ for _ in ()).throw(
+                    POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+                ),
+            )
+        state.begin_cleanup(True)
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            state.run_cleanup(
+                "private_work_cleanup",
+                lambda: (_ for _ in ()).throw(OSError(self.SECRET)),
+            )
+        state.finish_cleanup()
+        diagnostic = state.failure_document()
+        self.assertEqual(diagnostic["primary_checkpoint"], "source_migrated")
+        self.assertEqual(diagnostic["cleanup_status"], "failed")
+        self.assertEqual(
+            diagnostic["secondary_cleanup_reason"], "cleanup_failed"
+        )
+
+        cleanup_state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(cleanup_state, "cluster_start")
+        cleanup_state.begin_cleanup(True)
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            cleanup_state.run_cleanup(
+                "cluster_stop",
+                lambda: (_ for _ in ()).throw(
+                    POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+                ),
+            )
+        cleanup_state.finish_cleanup()
+        cleanup_diagnostic = cleanup_state.failure_document()
+        self.assertEqual(cleanup_diagnostic["primary_checkpoint"], "cluster_stop")
+        self.assertEqual(cleanup_diagnostic["primary_reason"], "cleanup_failed")
+
+    def test_receipt_validation_and_publication_have_fixed_owners(self):
+        validation_state = self.completed_state()
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            validation_state.run_receipt_lifecycle(
+                "receipt_validation",
+                lambda: (_ for _ in ()).throw(
+                    POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+                ),
+            )
+        validation_diagnostic = validation_state.failure_document()
+        self.assertEqual(
+            (
+                validation_diagnostic["primary_checkpoint"],
+                validation_diagnostic["primary_reason"],
+            ),
+            ("receipt_validation", "receipt_invalid"),
+        )
+
+        source_state = self.completed_state()
+        source_state.run_receipt_lifecycle("receipt_validation", lambda: None)
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            source_state.run_receipt_lifecycle(
+                "receipt_source_binding",
+                lambda: (_ for _ in ()).throw(
+                    POSTGRES_STORE_TEST.RestorePrerequisiteExpectedFailure("changed")
+                ),
+            )
+        source_diagnostic = source_state.failure_document()
+        self.assertEqual(
+            (
+                source_diagnostic["primary_checkpoint"],
+                source_diagnostic["primary_reason"],
+            ),
+            ("receipt_source_binding", "changed"),
+        )
+
+        publication_state = self.completed_state()
+        publication_state.run_receipt_lifecycle(
+            "receipt_validation", lambda: None
+        )
+        publication_state.run_receipt_lifecycle(
+            "receipt_source_binding", lambda: None
+        )
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            publication_state.run_receipt_lifecycle(
+                "receipt_publication",
+                lambda: (_ for _ in ()).throw(OSError(self.SECRET)),
+            )
+        publication_diagnostic = publication_state.failure_document()
+        self.assertEqual(
+            (
+                publication_diagnostic["primary_checkpoint"],
+                publication_diagnostic["primary_reason"],
+            ),
+            ("receipt_publication", "publication_failed"),
+        )
+
+    def test_progress_and_diagnostic_serialization_are_closed(self):
+        _, diagnostic = self.execution_failure(
+            "cluster_start", RuntimeError(self.SECRET + " raw payload")
+        )
+        serialized = (
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                diagnostic
+            )
+        )
+        self.assertEqual(diagnostic["primary_reason"], "harness_corruption")
+        self.assertNotIn(self.SECRET, serialized)
+        self.assertNotIn("raw payload", serialized)
+
+        malformed = dict(diagnostic)
+        malformed["extra"] = self.SECRET
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                malformed
+            )
+        malformed = dict(diagnostic)
+        malformed["primary_reason"] = "archive_declaration_invalid"
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                malformed
+            )
+        malformed = dict(diagnostic)
+        malformed["completed_checkpoints"] = [
+            *diagnostic["completed_checkpoints"],
+            "cluster_start",
+        ]
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                malformed
+            )
+
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state, "source_semantic_authority")
+        raw_semantic = POSTGRES_STORE_TEST.SemanticAuthorityDiagnostic(json.dumps({
+            "checkpoint": "source",
+            "definition_fingerprint": (
+                POSTGRES_STORE_TEST.SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT
+            ),
+            "failures": [{
+                "failure_policy": "unsafe",
+                "predicate": self.SECRET,
+            }],
+            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+            "source_binding": SOURCE_BINDING,
+        }, sort_keys=True, separators=(",", ":")))
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            state.run(
+                "source_semantic_authority",
+                lambda: (_ for _ in ()).throw(raw_semantic),
+            )
+        state.ensure_cleanup_finalized_without_work()
+        semantic_serialized = (
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                state.failure_document()
+            )
+        )
+        self.assertNotIn(self.SECRET, semantic_serialized)
+        self.assertEqual(state.primary_reason, "harness_corruption")
+
+    def test_v2_identity_and_mechanical_definition_fingerprint_are_exact(self):
+        self.assertEqual(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLI,
+            "--capture-authority-restore-prerequisite-v2",
+        )
+        self.assertTrue(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_GATE_SCHEMA.endswith("/2")
+        )
+        self.assertTrue(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA.endswith("/2")
+        )
+        self.assertTrue(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DEFINITION_SCHEMA.endswith("/2")
+        )
+        source = SCRIPT.read_text(encoding="utf-8")
+        for retired in (
+            '"--capture-authority-restore-prerequisite' + '"',
+            "decodex/postgres-restore-prerequisite-r1-gate/" + "1",
+            "decodex/postgres-restore-prerequisite-r1-diagnostic/" + "1",
+            "decodex/postgres-restore-prerequisite-r1-definition/" + "1",
+        ):
+            self.assertNotIn(retired, source)
+        self.assertNotIn(
+            "gate", POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_ALLOWED_REASONS
+        )
+        self.assertNotIn(
+            "stage_failed",
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS,
+        )
+        definition = POSTGRES_STORE_TEST.restore_prerequisite_definition()
+        fingerprint = hashlib.sha256(json.dumps(
+            definition,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")).hexdigest()
+        self.assertEqual(
+            fingerprint,
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
+        )
+        self.assertEqual(
+            fingerprint,
+            POSTGRES_STORE_TEST.restore_prerequisite_definition_fingerprint(),
+        )
+
+        pass_state = self.completed_state(cleanup_required=True)
+        receipt = POSTGRES_STORE_TEST.restore_prerequisite_gate_receipt(pass_state)
+        self.assertEqual(
+            POSTGRES_STORE_TEST.validate_restore_prerequisite_gate_receipt(receipt),
+            receipt,
+        )
+        self.assertFalse(receipt["acceptance"])
+        self.assertTrue(receipt["passed"])
+
+
 if __name__ == "__main__":
     unittest.main()
