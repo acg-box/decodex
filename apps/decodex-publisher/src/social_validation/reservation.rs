@@ -8,6 +8,32 @@ pub(super) fn validate_social_publish_reservation(
 	entry: &Map<String, Value>,
 	errors: &mut Vec<String>,
 ) {
+	social_validation::validate_exact_keys(
+		entry,
+		"social_publish_reservation",
+		&[
+			"candidate_refs",
+			"channel",
+			"consumed_by_social_post",
+			"controller_account",
+			"day",
+			"duplicate_keys",
+			"evidence_notes",
+			"expires_at",
+			"idempotency_key",
+			"mode",
+			"owner",
+			"release_reason",
+			"reserved_at",
+			"schema",
+			"slug",
+			"status",
+			"target_account",
+			"timezone",
+		],
+		errors,
+	);
+
 	for field in ["slug", "idempotency_key", "reserved_at", "expires_at", "day", "timezone"] {
 		if !social_validation::is_non_empty_string(entry.get(field)) {
 			errors.push(format!("{field} must be a non-empty string"));
@@ -68,6 +94,12 @@ fn validate_social_publish_reservation_refs(refs: Option<&Value>, errors: &mut V
 
 		return;
 	};
+	social_validation::validate_exact_keys(
+		refs,
+		"candidate_refs",
+		&["social_candidates", "urls"],
+		errors,
+	);
 	let has_refs = ["social_candidates", "urls"]
 		.iter()
 		.any(|field| social_validation::non_empty_array(refs.get(*field)).is_some());
@@ -95,6 +127,12 @@ fn validate_social_publish_reservation_owner(owner: Option<&Value>, errors: &mut
 
 		return;
 	};
+	social_validation::validate_exact_keys(
+		owner,
+		"owner",
+		&["automation_id", "branch", "pr_url", "run_id"],
+		errors,
+	);
 
 	for field in ["automation_id", "branch", "pr_url", "run_id"] {
 		if owner
@@ -115,12 +153,31 @@ fn validate_social_publish_reservation_status_payload(
 	errors: &mut Vec<String>,
 ) {
 	match social_validation::string_field(entry, "status") {
-		Some("consumed")
-			if !social_validation::is_non_empty_string(entry.get("consumed_by_social_post")) =>
-			errors.push("consumed_by_social_post is required when status is consumed".into()),
-		Some("canceled" | "expired")
-			if !social_validation::is_non_empty_string(entry.get("release_reason")) =>
-			errors.push("release_reason is required when status is canceled or expired".into()),
+		Some("active") =>
+			for field in ["consumed_by_social_post", "release_reason"] {
+				if entry.get(field).is_some() {
+					errors.push(format!("{field} must be absent when status is active"));
+				}
+			},
+		Some("consumed") => {
+			if !social_validation::is_non_empty_string(entry.get("consumed_by_social_post")) {
+				errors.push("consumed_by_social_post is required when status is consumed".into());
+			}
+			if entry.get("release_reason").is_some() {
+				errors.push("release_reason must be absent when status is consumed".into());
+			}
+		},
+		Some("canceled" | "expired") => {
+			if !social_validation::is_non_empty_string(entry.get("release_reason")) {
+				errors.push("release_reason is required when status is canceled or expired".into());
+			}
+			if entry.get("consumed_by_social_post").is_some() {
+				errors.push(
+					"consumed_by_social_post must be absent when status is canceled or expired"
+						.into(),
+				);
+			}
+		},
 		_ => {},
 	}
 }

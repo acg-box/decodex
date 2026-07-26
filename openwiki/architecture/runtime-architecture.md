@@ -33,8 +33,8 @@ vNext runtime boundary:
 - `decodex-runtime`: service lifecycle, connection/session execution, resumable event
   publication, idempotency receipts, private immutable-account process supervision, and the
   sole PostgreSQL/Codex adapter composition; depends on the other four owners plus the
-  maintained Tokio/Tungstenite transport stack. Production runtime source has no Axum or
-  TCP listener. Axum remains a test-only dependency until the deferred stale caller batch.
+  maintained Tokio/Tungstenite transport stack. Runtime source and tests have no Axum or
+  product TCP listener.
 
 `apps/decodexd` depends only on runtime. The `apps/decodex-cli` and
 `apps/decodex-gpui` client roots depend only on protocol, so they cannot reach stores,
@@ -51,7 +51,7 @@ closed `same_uid` or `disabled` policy and an optional service-owner UID whose p
 fixed by that policy. A remote profile requires its explicit pin and carries only inert
 host and port data. Each local connect captures the current fixed Unix endpoint, validates
 its directory and socket identities, connects that path, verifies the kernel server-peer
-UID, and validates the path again. The client then sends a pinned V1.2 hello,
+UID, and validates the path again. The client then sends a pinned V1.3 hello,
 verifies welcome and snapshot version/identity, issues `get_doctor_status`, and re-verifies
 the result, embedded report, and exact complete current component set before returning status.
 Report ordering is not authority. Reads, writes, frames, messages,
@@ -60,11 +60,12 @@ text collapse into closed redacted failure classes.
 
 `apps/decodex-cli` exposes the canonical `status` and `doctor` commands with active or
 `--profile NAME` selection and human or `--output json` rendering. Both commands cross the
-same V1.2 query; `status` is compact and `doctor` is line-oriented, while each retains every
+same V1.3 query; `status` is compact and `doctor` is line-oriented, while each retains every
 typed check. JSON uses `decodex/cli-diagnostics/1`. Exit code 0 means every check is ready,
 1 means a complete report contains unavailable or unknown checks, and 2 means a closed
-client/configuration/protocol failure. The CLI has no mutation command or infrastructure
-dependency.
+client/configuration/protocol failure. The `reset-card` command family is a thin protocol
+client for the shared daemon service and uses `decodex/reset-card-cli/1` JSON. The CLI has
+no credential, Codex-process, provider-ID, PostgreSQL, or effect authority.
 
 `decodexd` is the only V1 server composition root. It reads the bounded active-profile
 configuration, acquires and publishes the non-cloneable local listener, and retains its
@@ -98,7 +99,7 @@ The local stream uses WebSocket route `/v1/ws`. The literal `ws://localhost/v1/w
 each client is handshake metadata passed with an already admitted Unix stream. It cannot
 resolve or dial TCP. The WebSocket uses structured JSON and typed
 hello, command, receipt, result, snapshot, event, and refusal envelopes. Major versions
-must match exactly; this build accepts minors 2 and 1. Events carry server ID, monotonic
+must match exactly; this build accepts minors 3 and 2. Events carry server ID, monotonic
 cursor, entity revision, correlation, and causation. The stable server-host ID supports
 operator pinning, while each daemon process creates a distinct bounded publication-epoch
 ID. A reconnect resumes retained ordered deltas only when both IDs match; an absent or
@@ -132,6 +133,16 @@ deadline receives a stable task identity but its command future is never polled.
 owner harvests `join_next_with_id`; it calls `abort_all` once only if the deadline
 expires, and it continues harvesting through `None`.
 
+The same top-level task also owns daemon service futures. Reset Card has no detached worker
+or heartbeat task. At the start of stopping, the application synchronously closes provider
+work registration and receives a cooperative service-stop signal. Queued blocking closures
+cannot start after that gate closes. An already registered provider operation uses its
+existing bounded process deadline and remains included in service settlement even if its
+command task is cancelled. Service settlement is intentionally outside the shorter
+session/command shutdown deadline because cancelling a Tokio wrapper cannot stop an
+already-running blocking process. The namespace listener and lock remain held until every
+service future and registered provider operation has settled.
+
 The bounded `TerminationReceipt` records session and command spawn counts, harvested and
 expected counts, panic, failure, forced-cancellation, and owner-integrity counts, the
 lowest stable identity in each abnormal task class, and endpoint and cleanup refusals.
@@ -148,7 +159,7 @@ cleanup refusal.
 Runtime receipt lookup is keyed by the negotiated protocol version and command idempotency key;
 the stored request fingerprint additionally covers that version, typed payload, and optional
 expected revision. A same-version duplicate returns the original command identity and stored
-result without a second application execution. Reusing a mutation key across V1.1/V1.2 executes
+result without a second application execution. Reusing a mutation key across V1.2/V1.3 executes
 once in each version namespace and retains each version's native command outcome; neither outcome
 replays, conflicts with, or poisons the other namespace. Other same-version conflicting reuse is
 rejected.
@@ -173,6 +184,20 @@ live in `decodex-postgres`.
 `decodexd` loads only the typed `~/.decodex/config.toml` and passes its explicit Unix-socket
 directory, port, database, operator-pinned expected PostgreSQL peer UID, and distinct
 migration/runtime identities with independently resolved optional credentials to that adapter.
+For the macOS source-install path, a separate `decodexd supervise-local` process owns one
+foreground PostgreSQL child and one service child. It starts the service child only after
+PostgreSQL is ready. PostgreSQL exit or any pinned process, directory, or socket generation
+change stops the service child before the supervisor exits. Launchd then starts one new
+coherent generation. Swift does not participate in this lifecycle.
+
+The current source installer also has one bounded local migration bridge. It maps an exact
+set of legacy provider identities to independent vNext UUID slots through SHA-256 selectors.
+It reads the credential file under the existing lock and passes values only through the
+service child's environment. An atomic file replacement causes a graceful daemon restart
+only when the injected credential projection changes. Account-set, identity, permission,
+or mapping drift fails closed. This bridge does
+not make legacy account storage a product-state authority, and it does not add a runtime
+fallback when PostgreSQL is unavailable.
 The adapter opens each directory component relative to a retained descriptor, pins the directory
 and socket device/inode identities, requires the final directory and socket to be owned by the
 configured UID with no group/other directory write access, and verifies the connected kernel peer
@@ -422,11 +447,12 @@ PostgreSQL socket validation rejects a symbolic link or non-directory at every d
 component, a non-socket endpoint, untrusted directory permissions/ownership, an endpoint owner or
 kernel peer that differs from the operator UID pin, and any directory/socket identity replacement.
 
-Protocol V1.2 adds `get_doctor_status` as a read-only query/result with a client query identity and
+Protocol V1.2 added `get_doctor_status` as a read-only query/result with a client query identity and
 no mutation receipt, deduplication, replay, receipt-capacity use, event publication, or entity
-revision. Reusing a query identity performs a new ordered observation. V1.1 remains
-the rolling previous minor, receives only its existing wire shapes, and safely falls back
-to a snapshot because it cannot present an epoch ID. `ClientHello` may pin the stable
+revision. Reusing a query identity performs a new ordered observation. At that V1.2
+boundary, V1.1 was the rolling previous minor and safely fell back to a snapshot because
+it could not present an epoch ID. The current V1.3 window retains V1.2 as its previous
+minor. `ClientHello` may pin the stable
 server identity before snapshot, query, or command access. The doctor report is mechanically
 capped at 32 unique typed checks and has no free-form external text. Server repository
 paths are an aggregate typed check only, so
@@ -1128,6 +1154,145 @@ XY-1307 consumes that data at the runtime composition boundary; core itself stil
 no database. No CLI, remote listener/security, or credential-vault implementation is part
 of the core foundation.
 
+## Manual reset-card service
+
+Protocol V1.3 exposes bounded account discovery, complete reset-card inventory, manual
+consume, and durable operation-status reads. The public identity is one canonical vNext
+account UUID, its optimistic revision, and a card descriptor made only from grant and
+expiry timestamps. No protocol or client type carries the provider credit ID.
+
+The shared Rust service and CLI contain no macOS-only reset-card implementation. They
+run on the supported macOS and Linux runtime hosts. Only the native SwiftUI client is
+macOS-specific.
+Reset-card clients currently accept only a local profile. They reject a remote profile
+before connection because the repository has no authenticated remote reset-card
+transport. The stable JSON account and inventory projections include the selected
+profile name and verified server UUID. A caller can retain that authority on later
+calls with `--profile NAME --expected-server-id UUID`.
+
+`decodexd` is the sole credential, app-server process, exact-ID, mutation, and effect
+owner. Configuration enrolls at most 64 UUID-keyed accounts and stores only non-secret
+labels, an initial `available` or `depleted` state, a closed plan type, and three distinct
+environment-variable references. Only the daemon resolves those references. Both
+`available` and `depleted` admit the manual operation; other account states fail closed.
+
+Before any reset-card read or consume, the Codex adapter requires the generated schema to
+advertise both `account/rateLimits/read` and
+`account/rateLimitResetCredit/consume`. It attests the configured account in an isolated
+app-server process and accepts only a complete, unique inventory. A client selects a public
+descriptor. The daemon resolves its one current opaque provider credit ID.
+
+The consume path commits the logical command, account UUID and revision, public
+descriptor, provider idempotency key, and then the exact provider credit ID before it
+begins the external effect. The provider receipt stores the closed outcome separately
+from the fresh authoritative inventory reconciliation record. `reset`, `no_credit`, and
+`already_redeemed` become terminal only when that exact credit is absent; `nothing_to_reset`
+requires the credit to remain present or its public descriptor to have expired. If the
+process, provider, or daemon stops after the effect can have happened, the durable
+operation becomes `effect_ambiguous`. Restart recovery uses only the persisted exact
+credit ID and the same idempotency key. It never rematches the public descriptor or
+generates a new key. The CLI `status` operation observes this durable state without
+resending the consume command.
+
+Enrollment stores a credential-negative, domain-separated SHA-256 binding fingerprint
+over the account UUID, provider account ID, expected email, and plan type. Restart
+rejects binding drift. A preexisting account can initialize a missing fingerprint only
+when it has no unsettled reset-card operation. Generic account mutation cannot replace
+or remove an established binding.
+
+The reset-card ledger is not part of generic outbox pruning. Same-key replay is checked
+before current vault, account-state, and revision gates. The effect-start transaction
+checks the exact revision, admitted state, and oldest matching public descriptor before
+it releases the provider call. After terminal authoritative readback proves the effect
+present, PostgreSQL removes the private exact credit ID and provider-key projection
+atomically while it retains the public receipt, reconciliation result, status, and
+same-key replay. A terminal pre-effect rejection or exhausted `not_started` claim also
+removes that private projection.
+
+An active pending command receipt remains `AcceptanceUnknown`; a client must retain its
+key. After the finite claim expires, the same exact key and request can enter the
+receipt's row-locked reclaim path. That path waits for an older transaction to become
+visible, replays an exact committed result if one exists, or installs a new fenced claim
+after rollback. A deterministic pre-effect business rejection completes the claimed
+receipt with a closed rejection and replays that result for the same key. A mechanical
+preparation failure leaves the receipt pending; it remains `AcceptanceUnknown` until the
+same exact request can reclaim it after expiry.
+
+The macOS UI starts the bundled `decodex-cli` with fixed arguments and decodes the stable
+JSON projection. Its five-second second-click confirmation is presentation state only.
+Swift does not stage credentials, create a temporary Codex home, launch app-server, resolve
+an opaque credit ID, or call the provider method. It persists only a credential-negative
+pending operation handle so it can read durable daemon status after an app restart.
+Provider-effect retry and authoritative reconciliation remain daemon-only.
+
+After the caller creates and durably records an idempotency key for `use`, every CLI
+result repeats that key and one closed `dispatch_state`: `definitely_not_dispatched`,
+`potentially_dispatched`, `durably_accepted`, or `rejected_before_acceptance`. The CLI
+does not generate the key. The Swift client removes a pending handle only for a durable
+terminal result or a rejection before acceptance. It retains the same handle and key for
+the two nonterminal dispatch states. The Swift journal binds each handle to the profile
+name and server UUID. Its atomic write/readback, private modes, intent lock, and journal
+dispatch lock make journal classification and terminal removal one cross-process
+critical section. Corrupt journal data is preserved and blocks new use instead of being
+discarded.
+
+V1.2 remains available only for the previous-minor foundation and doctor/history
+surface. The server rejects V1.2 reset-card queries and commands and does not publish
+reset-card events to V1.2 subscribers.
+
+```mermaid
+sequenceDiagram
+    participant Swift as Optional macOS UI
+    participant CLI as Rust CLI client
+    participant Protocol as V1.3 same-UID Unix WebSocket
+    participant App as Runtime application
+    participant Store as PostgreSQL reset-card ledger
+    participant Worker as Reset-card worker
+    participant Codex as Account-bound Codex process
+
+    opt macOS UI path
+        Swift->>CLI: Start fixed-argument subprocess
+    end
+    CLI->>Protocol: Consume public descriptor with exact revision and key
+    Protocol->>App: Prepare command
+    App->>Store: Persist receipt and reset-card operation
+    Store-->>App: Prepared
+    App-->>Protocol: Durable prepared state
+    Protocol-->>CLI: Receipt and prepared result
+    opt macOS UI path
+        CLI-->>Swift: Decode stable JSON result
+    end
+    Worker->>Store: Claim operation
+    Worker->>Codex: Read complete inventory
+    Codex-->>Worker: Complete inventory
+    Worker->>Store: Persist exact provider credit ID
+    Worker->>Store: Begin fenced external effect
+    Worker->>Codex: Consume with persisted provider key
+    Codex-->>Worker: Closed outcome
+    Worker->>Codex: Read fresh authoritative inventory
+    Codex-->>Worker: Authoritative inventory
+    Worker->>Store: Persist receipt
+    Worker->>Store: Reconcile readback and terminal state
+    opt macOS UI status path
+        Swift->>CLI: Start fixed-argument status subprocess
+    end
+    CLI->>Protocol: Poll status with the same key
+    Protocol->>App: Query durable operation
+    App->>Store: Read durable operation state
+    Store-->>App: Current durable status
+    App-->>Protocol: Prepared ambiguous completed or failed before effect
+    Protocol-->>CLI: Verified status result
+    opt macOS UI status path
+        CLI-->>Swift: Decode stable JSON status
+    end
+```
+
+The current observable flow prepares work synchronously, performs the provider effect in
+the daemon worker, and exposes terminal progress through durable status polling.
+
+This service implements the reset-card portion of the [vNext authority contract](../specs/vnext-authority.md)
+and its operator commands and focused tests are listed in [Commands and validation](../operations/commands-and-validation.md).
+
 ## Active Codex adapter foundation
 
 `crates/decodex-codex/` structurally extracts request/notification methods from generated
@@ -1151,6 +1316,14 @@ digests rather than optional nickname/role fields. Build identity is an exact op
 fingerprint; statuses, activity kinds, tools, capability reasons, and read-only methods
 are closed enums, so protocol text is not exported through debug or serialization paths.
 
+The Codex app-server JSONL transport uses its native bare envelope. Outbound requests,
+notifications, and request-error replies omit a `jsonrpc` member. Inbound responses can
+omit the member or include the legacy string `"2.0"`; another value, an explicit null, or
+a non-string value fails closed. Credential projection also requires the exact typed
+`chatgptAuthTokens` success result. Exact request digests cover these native wire bytes,
+so a retained-title experiment prepared with the former envelope cannot be resumed as the
+same request and remains safely ambiguous.
+
 The production command opens the canonical `codex` executable and first rejects interpreter-driven
 files. On macOS, only current native 64-bit thin Mach-O images and native 32/64-bit universal Mach-O
 containers cross this boundary. On Linux, only native ELF images cross it, and account-bound launch
@@ -1166,14 +1339,26 @@ The runtime copies the accepted source descriptor into a bounded protected objec
 object for the opaque build identity. On macOS this is a private fsynced mode-0500 file protected by
 `UF_IMMUTABLE`. On Linux it is an fsynced mode-0500 memfd whose contents, size, executable mode, and
 seal set are irreversibly sealed; the runtime verifies every required seal and that
-`/proc/self/fd/<owned-fd>` resolves to the same object. Every version, schema, and app-server spawn
-executes that exact protected object. The Linux descriptor is close-on-exec: it remains open while
-the kernel resolves the native ELF image and is closed atomically on successful exec. Original-path
-identity and digest checks detect pre-launch drift, but are not the check-to-exec security
-primitive. A source replacement after the final verification cannot alter the protected object that
-executes or receives credentials. Failure to create, seal, resolve, or execute the object fails
-closed. This protection assumes the daemon process and its uid are not already compromised. Only
-tests can inject a fake executable. Preflight output/files, generated-schema file count/per-file/aggregate
+`/proc/self/fd/<owned-fd>` resolves to the same object. Linux version, schema, and app-server spawns
+execute the sealed memfd. The descriptor is close-on-exec: it remains open while the kernel resolves
+the native ELF image and is closed atomically on successful exec.
+
+macOS version and schema preflights execute the immutable snapshot. The final macOS app-server must
+use the canonical executable path because process-aware network extensions assign traffic policy to
+the loaded canonical image. The runtime uses `posix_spawn` to create that image in a new session and
+keeps it suspended before user code starts. While it is suspended, the runtime repeats the canonical
+inode and full SHA-256 check. It then requires the kernel dynamic-code object to match the snapshot's
+exact CDHash, canonical path, session, and process group. Only a complete match receives `SIGCONT`.
+The parent protocol endpoints use private, validated FIFOs opened with atomic close-on-exec flags;
+the FIFO names are removed while the child is still suspended. The child restores the default
+`SIGPIPE` disposition and receives only the fixed `HOME` and system `PATH` projection.
+
+Original-path identity and digest checks detect pre-launch drift. On macOS, suspended dynamic-code
+attestation closes the final check-to-exec interval; on Linux, sealed memfd execution is that
+primitive. A source replacement cannot run or receive credentials after the final check. Failure to
+create, seal, resolve, attest, or execute the selected object fails closed. This protection assumes
+the daemon process and its uid are not already compromised. Only tests can inject a fake executable.
+Preflight output/files, generated-schema file count/per-file/aggregate
 bytes/depth, inbound and outbound app-server frames, the stdout queue, collaboration
 receiver count, and thread-list/search results are mechanically bounded; schema traversal
 rejects symlinks and special files. Both preflight commands use bounded process-group

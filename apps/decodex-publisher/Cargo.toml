@@ -15,8 +15,10 @@ version.workspace    = true
 # crates.io
 clap       = { workspace = true }
 color-eyre = { workspace = true }
+getrandom  = { workspace = true }
 serde      = { workspace = true }
 serde_json = { workspace = true }
+sha2       = { workspace = true }
 time       = { workspace = true, features = ["parsing"] }
 
 [dev-dependencies]

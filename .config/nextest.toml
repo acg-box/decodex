@@ -1,0 +1,8 @@
+# App-server process tests exercise shared host process limits and timing-sensitive
+# cleanup. Serialize this group so validation results do not depend on host load.
+[test-groups]
+app-server-process = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter     = 'test(account_launch::process::tests::)'
+test-group = 'app-server-process'

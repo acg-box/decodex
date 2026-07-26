@@ -945,11 +945,11 @@ mod tests {
 	}
 
 	fn server_id(value: &str) -> ServerId {
-		ServerId::new(value).unwrap()
+		ServerId::new(value).expect("test operation must succeed")
 	}
 
 	fn instance_id(value: &str) -> ServerInstanceId {
-		ServerInstanceId::new(value).unwrap()
+		ServerInstanceId::new(value).expect("test operation must succeed")
 	}
 
 	fn checkpoint(instance: &str, cursor: u64) -> SessionCheckpoint {
@@ -978,9 +978,9 @@ mod tests {
 			server_id: server_id(server),
 			cursor: Cursor(cursor),
 			items: vec![SnapshotItem::SystemState {
-				entity_id: EntityId::new("system").unwrap(),
+				entity_id: EntityId::new("system").expect("test operation must succeed"),
 				revision: EntityRevision(cursor),
-				status: WireText::new("ready").unwrap(),
+				status: WireText::new("ready").expect("test operation must succeed"),
 			}],
 		})
 	}
@@ -991,12 +991,14 @@ mod tests {
 			server_id: server_id(SERVER_ID),
 			cursor: Cursor(cursor),
 			channel: Channel::SystemHealth,
-			entity_id: EntityId::new("system").unwrap(),
+			entity_id: EntityId::new("system").expect("test operation must succeed"),
 			entity_revision: EntityRevision(cursor),
-			correlation_id: CorrelationId::new(format!("correlation-{cursor}")).unwrap(),
+			correlation_id: CorrelationId::new(format!("correlation-{cursor}"))
+				.expect("test operation must succeed"),
 			causation_id: None,
 			payload: EventPayload::SystemObservationRefreshed {
-				status: WireText::new(format!("event-{cursor}")).unwrap(),
+				status: WireText::new(format!("event-{cursor}"))
+					.expect("test operation must succeed"),
 			},
 		})
 	}
@@ -1005,23 +1007,27 @@ mod tests {
 		ServerMessage::CommandReceipt(CommandReceipt {
 			version: CURRENT_VERSION,
 			server_id: server_id(SERVER_ID),
-			client_command_id: ClientCommandId::new("command-1").unwrap(),
-			idempotency_key: IdempotencyKey::new("key-1").unwrap(),
+			client_command_id: ClientCommandId::new("command-1")
+				.expect("test operation must succeed"),
+			idempotency_key: IdempotencyKey::new("key-1").expect("test operation must succeed"),
 			disposition: ReceiptDisposition::Executed,
-			original_client_command_id: ClientCommandId::new("command-1").unwrap(),
+			original_client_command_id: ClientCommandId::new("command-1")
+				.expect("test operation must succeed"),
 		})
 	}
 
 	fn command() -> CommandEnvelope {
 		CommandEnvelope {
 			version: CURRENT_VERSION,
-			client_command_id: ClientCommandId::new("command-1").unwrap(),
-			idempotency_key: IdempotencyKey::new("key-1").unwrap(),
+			client_command_id: ClientCommandId::new("command-1")
+				.expect("test operation must succeed"),
+			idempotency_key: IdempotencyKey::new("key-1").expect("test operation must succeed"),
 			expected_revision: None,
-			correlation_id: CorrelationId::new("correlation-command").unwrap(),
+			correlation_id: CorrelationId::new("correlation-command")
+				.expect("test operation must succeed"),
 			causation_id: None,
 			payload: CommandPayload::RefreshSystemObservation {
-				entity_id: EntityId::new("system").unwrap(),
+				entity_id: EntityId::new("system").expect("test operation must succeed"),
 			},
 		}
 	}
@@ -1030,8 +1036,9 @@ mod tests {
 		ServerMessage::CommandResult(CommandResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: server_id(SERVER_ID),
-			client_command_id: ClientCommandId::new("command-1").unwrap(),
-			idempotency_key: IdempotencyKey::new("key-1").unwrap(),
+			client_command_id: ClientCommandId::new("command-1")
+				.expect("test operation must succeed"),
+			idempotency_key: IdempotencyKey::new("key-1").expect("test operation must succeed"),
 			outcome: CommandOutcome::Rejected,
 			entity_revision: None,
 			payload: None,
@@ -1040,17 +1047,20 @@ mod tests {
 	}
 
 	fn local_transport() -> (TempDir, LocalTransportAuthority) {
-		let temp = TempDir::new().unwrap();
-		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let temp = TempDir::new().expect("test operation must succeed");
+		let root = DecodexRoot::new(
+			temp.path().canonicalize().expect("test operation must succeed").join(".decodex"),
+		)
+		.expect("test operation must succeed");
 		let paths = root.paths();
 
-		paths.ensure_layout().unwrap();
+		paths.ensure_layout().expect("test operation must succeed");
 
 		// SAFETY: `geteuid` has no arguments or failure return.
 		let service_owner_uid = unsafe { libc::geteuid() };
 		let authority =
 			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
-				.unwrap();
+				.expect("test operation must succeed");
 
 		(temp, authority)
 	}
@@ -1066,15 +1076,21 @@ mod tests {
 	}
 
 	async fn send(socket: &mut WebSocketStream<LocalTransportStream>, message: ServerMessage) {
-		let text = serde_json::to_string(&message).unwrap();
+		let text = serde_json::to_string(&message).expect("test operation must succeed");
 
-		socket.send(Message::Text(text.into())).await.unwrap();
+		socket.send(Message::Text(text.into())).await.expect("test operation must succeed");
 	}
 
 	async fn hello(socket: &mut WebSocketStream<LocalTransportStream>) -> ClientHello {
-		let message = socket.next().await.unwrap().unwrap();
+		let message = socket
+			.next()
+			.await
+			.expect("test operation must succeed")
+			.expect("test operation must succeed");
 		let Message::Text(text) = message else { panic!("expected text hello") };
-		let ClientMessage::Hello(hello) = serde_json::from_str(&text).unwrap() else {
+		let ClientMessage::Hello(hello) =
+			serde_json::from_str(&text).expect("test operation must succeed")
+		else {
 			panic!("expected typed hello")
 		};
 
@@ -1090,13 +1106,14 @@ mod tests {
 		Fut: Future<Output = ()> + Send + 'static,
 	{
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let task = tokio::spawn(async move {
-			let stream = listener.accept().await.unwrap();
-			let socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 
 			handler(socket).await;
-			listener.cleanup().unwrap();
+			listener.cleanup().expect("test operation must succeed");
 		});
 		let config = RetainedSessionConfig::new(authority, server_id(SERVER_ID));
 
@@ -1134,13 +1151,15 @@ mod tests {
 			send(&mut socket, snapshot(SERVER_ID, 7)).await;
 		})
 		.await;
-		let mut session =
-			RetainedSession::connect(config, None, SessionCancellation::new()).await.unwrap();
+		let mut session = RetainedSession::connect(config, None, SessionCancellation::new())
+			.await
+			.expect("test operation must succeed");
 
 		assert_eq!(session.welcome_high_water(), Cursor(7));
 		assert_eq!(session.checkpoint(), None);
 
-		let SessionDelivery::Snapshot { snapshot, confirmation } = session.next().await.unwrap()
+		let SessionDelivery::Snapshot { snapshot, confirmation } =
+			session.next().await.expect("test operation must succeed")
 		else {
 			panic!("expected snapshot")
 		};
@@ -1163,7 +1182,7 @@ mod tests {
 		);
 		assert_eq!(session.checkpoint(), None);
 
-		let applied = session.confirm_applied(confirmation).unwrap();
+		let applied = session.confirm_applied(confirmation).expect("test operation must succeed");
 
 		assert_eq!(applied.server_id(), &server_id(SERVER_ID));
 		assert_eq!(applied.instance_id(), &instance_id(INSTANCE_ID));
@@ -1171,7 +1190,7 @@ mod tests {
 
 		drop(session);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1179,7 +1198,7 @@ mod tests {
 		let resume = checkpoint(INSTANCE_ID, 1);
 		let expected_resume = resume.clone();
 		let (config, task, _temp) = fixture(move |mut socket| async move {
-			let actual = hello(&mut socket).await.resume.unwrap();
+			let actual = hello(&mut socket).await.resume.expect("test operation must succeed");
 
 			assert_eq!(actual.server_id, expected_resume.server_id);
 			assert_eq!(actual.instance_id.as_ref(), Some(&expected_resume.instance_id));
@@ -1190,12 +1209,18 @@ mod tests {
 			send(&mut socket, event(2)).await;
 			send(&mut socket, event(3)).await;
 
-			let Message::Text(message) = socket.next().await.unwrap().unwrap() else {
+			let Message::Text(message) = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed")
+			else {
 				panic!("expected command")
 			};
 
 			assert_eq!(
-				serde_json::from_str::<ClientMessage>(&message).unwrap(),
+				serde_json::from_str::<ClientMessage>(&message)
+					.expect("test operation must succeed"),
 				ClientMessage::Command(command())
 			);
 
@@ -1206,38 +1231,48 @@ mod tests {
 		let mut session =
 			RetainedSession::connect(config, Some(resume), SessionCancellation::new())
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 
-		assert_eq!(session.checkpoint().unwrap().cursor(), Cursor(1));
+		assert_eq!(session.checkpoint().expect("test operation must succeed").cursor(), Cursor(1));
 
-		let SessionDelivery::Event { event, confirmation } = session.next().await.unwrap() else {
+		let SessionDelivery::Event { event, confirmation } =
+			session.next().await.expect("test operation must succeed")
+		else {
 			panic!("expected first event")
 		};
 
 		assert_eq!(event.cursor, Cursor(2));
 
-		session.confirm_applied(confirmation).unwrap();
+		session.confirm_applied(confirmation).expect("test operation must succeed");
 
-		let SessionDelivery::Event { event, confirmation } = session.next().await.unwrap() else {
+		let SessionDelivery::Event { event, confirmation } =
+			session.next().await.expect("test operation must succeed")
+		else {
 			panic!("expected second event")
 		};
 
 		assert_eq!(event.cursor, Cursor(3));
-		assert_eq!(session.checkpoint().unwrap().cursor(), Cursor(2));
+		assert_eq!(session.checkpoint().expect("test operation must succeed").cursor(), Cursor(2));
 		assert_eq!(
 			session.next().await.unwrap_err(),
 			RetainedSessionFailure::ApplicationConfirmationRequired
 		);
 
-		session.confirm_applied(confirmation).unwrap();
-		session.send_command(command()).await.unwrap();
+		session.confirm_applied(confirmation).expect("test operation must succeed");
+		session.send_command(command()).await.expect("test operation must succeed");
 
-		assert!(matches!(session.next().await.unwrap(), SessionDelivery::CommandReceipt(_)));
-		assert!(matches!(session.next().await.unwrap(), SessionDelivery::CommandResult(_)));
+		assert!(matches!(
+			session.next().await.expect("test operation must succeed"),
+			SessionDelivery::CommandReceipt(_)
+		));
+		assert!(matches!(
+			session.next().await.expect("test operation must succeed"),
+			SessionDelivery::CommandResult(_)
+		));
 
 		drop(session);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1255,12 +1290,12 @@ mod tests {
 			SessionCancellation::new(),
 		)
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 
 		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::PublicationOrder);
 		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Closed);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1268,7 +1303,7 @@ mod tests {
 		let old_checkpoint = checkpoint(INSTANCE_ID, 5);
 		let (config, task, _temp) = fixture(|mut socket| async move {
 			assert_eq!(
-				hello(&mut socket).await.resume.unwrap().instance_id,
+				hello(&mut socket).await.resume.expect("test operation must succeed").instance_id,
 				Some(instance_id(INSTANCE_ID))
 			);
 
@@ -1283,21 +1318,24 @@ mod tests {
 		let mut session =
 			RetainedSession::connect(config, Some(old_checkpoint), SessionCancellation::new())
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 
 		assert_eq!(session.checkpoint(), None);
 
-		let SessionDelivery::Snapshot { confirmation, .. } = session.next().await.unwrap() else {
+		let SessionDelivery::Snapshot { confirmation, .. } =
+			session.next().await.expect("test operation must succeed")
+		else {
 			panic!("expected fallback snapshot")
 		};
-		let checkpoint = session.confirm_applied(confirmation).unwrap();
+		let checkpoint =
+			session.confirm_applied(confirmation).expect("test operation must succeed");
 
 		assert_eq!(checkpoint.instance_id(), &instance_id(NEW_INSTANCE_ID));
 		assert_eq!(checkpoint.cursor(), Cursor(8));
 
 		drop(session);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1333,7 +1371,7 @@ mod tests {
 			RetainedSessionFailure::ServerIdentityMismatch
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
@@ -1353,7 +1391,7 @@ mod tests {
 			RetainedSessionFailure::CheckpointIdentityMismatch
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1361,7 +1399,10 @@ mod tests {
 		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
 
-			socket.send(Message::Binary(vec![1, 2, 3].into())).await.unwrap();
+			socket
+				.send(Message::Binary(vec![1, 2, 3].into()))
+				.await
+				.expect("test operation must succeed");
 		})
 		.await;
 
@@ -1370,7 +1411,7 @@ mod tests {
 			RetainedSessionFailure::Malformed
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
@@ -1379,7 +1420,8 @@ mod tests {
 				ServerMessage::Refusal(RefusalEnvelope {
 					server_id: server_id(SERVER_ID),
 					refusal: Refusal::ProtocolViolation {
-						message: WireText::new("untrusted server detail").unwrap(),
+						message: WireText::new("untrusted server detail")
+							.expect("test operation must succeed"),
 					},
 				}),
 			)
@@ -1392,7 +1434,7 @@ mod tests {
 		assert_eq!(failure, RetainedSessionFailure::ProtocolViolation);
 		assert!(!failure.to_string().contains("untrusted"));
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
@@ -1414,7 +1456,7 @@ mod tests {
 			RetainedSessionFailure::ProtocolMinorMismatch
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1426,12 +1468,12 @@ mod tests {
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
 
-			idle_sender.send(()).unwrap();
+			idle_sender.send(()).expect("test operation must succeed");
 
 			tokio::select! {
 				biased;
 
-				result = release_receiver => result.unwrap(),
+				result = release_receiver => result.expect("test operation must succeed"),
 				message = socket.next() => panic!("idle session emitted or closed: {message:?}"),
 			}
 
@@ -1444,16 +1486,18 @@ mod tests {
 			SessionCancellation::new(),
 		)
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 
 		session.set_operation_timeout(std::time::Duration::ZERO);
-		idle_receiver.await.unwrap();
+		idle_receiver.await.expect("test operation must succeed");
 
 		task::yield_now().await;
 
-		release_sender.send(()).unwrap();
+		release_sender.send(()).expect("test operation must succeed");
 
-		let SessionDelivery::Event { event, .. } = session.next().await.unwrap() else {
+		let SessionDelivery::Event { event, .. } =
+			session.next().await.expect("test operation must succeed")
+		else {
 			panic!("expected event after idle release")
 		};
 
@@ -1461,7 +1505,7 @@ mod tests {
 
 		drop(session);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1473,11 +1517,11 @@ mod tests {
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
 
-			ready_sender.send(()).unwrap();
+			ready_sender.send(()).expect("test operation must succeed");
 
 			while socket.next().await.is_some() {}
 
-			closed_sender.send(()).unwrap();
+			closed_sender.send(()).expect("test operation must succeed");
 		})
 		.await;
 		let cancellation = SessionCancellation::new();
@@ -1487,9 +1531,9 @@ mod tests {
 			cancellation.clone(),
 		)
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 
-		ready_receiver.await.unwrap();
+		ready_receiver.await.expect("test operation must succeed");
 
 		let client_task = tokio::spawn(async move { session.next().await });
 
@@ -1497,10 +1541,13 @@ mod tests {
 
 		cancellation.cancel();
 
-		assert_eq!(client_task.await.unwrap().unwrap_err(), RetainedSessionFailure::Cancelled);
+		assert_eq!(
+			client_task.await.expect("test operation must succeed").unwrap_err(),
+			RetainedSessionFailure::Cancelled
+		);
 
-		closed_receiver.await.unwrap();
-		server_task.await.unwrap();
+		closed_receiver.await.expect("test operation must succeed");
+		server_task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1510,7 +1557,9 @@ mod tests {
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
 
-			socket.send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1).into())).await.unwrap();
+			// The client can close as soon as it detects the oversized frame.
+			let _send_result =
+				socket.send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1).into())).await;
 		})
 		.await;
 		let mut session = RetainedSession::connect(
@@ -1519,11 +1568,11 @@ mod tests {
 			SessionCancellation::new(),
 		)
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 
 		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Backpressure);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let (config, task, _temp) = fixture(|mut socket| async move {
 			hello(&mut socket).await;
@@ -1545,11 +1594,11 @@ mod tests {
 			SessionCancellation::new(),
 		)
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 
 		assert_eq!(session.next().await.unwrap_err(), RetainedSessionFailure::Backpressure);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1560,12 +1609,16 @@ mod tests {
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
 
-			let message = socket.next().await.unwrap().unwrap();
+			let message = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed");
 
 			assert!(matches!(message, Message::Close(_)));
 
-			socket.flush().await.unwrap();
-			closed_sender.send(()).unwrap();
+			socket.flush().await.expect("test operation must succeed");
+			closed_sender.send(()).expect("test operation must succeed");
 		})
 		.await;
 		let session = RetainedSession::connect(
@@ -1574,11 +1627,11 @@ mod tests {
 			SessionCancellation::new(),
 		)
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 
-		session.close().await.unwrap();
-		closed_receiver.await.unwrap();
-		task.await.unwrap();
+		session.close().await.expect("test operation must succeed");
+		closed_receiver.await.expect("test operation must succeed");
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1590,11 +1643,11 @@ mod tests {
 			send(&mut socket, welcome(SERVER_ID, Some(INSTANCE_ID), 0, ReconnectMode::Resume))
 				.await;
 
-			release_receiver.await.unwrap();
+			release_receiver.await.expect("test operation must succeed");
 
 			while socket.next().await.is_some() {}
 
-			closed_sender.send(()).unwrap();
+			closed_sender.send(()).expect("test operation must succeed");
 		})
 		.await;
 		let mut session = RetainedSession::connect(
@@ -1603,14 +1656,14 @@ mod tests {
 			SessionCancellation::new(),
 		)
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 
 		session.set_operation_timeout(std::time::Duration::ZERO);
 
 		assert_eq!(session.close().await.unwrap_err(), RetainedSessionFailure::OperationTimeout);
 
-		release_sender.send(()).unwrap();
-		closed_receiver.await.unwrap();
-		task.await.unwrap();
+		release_sender.send(()).expect("test operation must succeed");
+		closed_receiver.await.expect("test operation must succeed");
+		task.await.expect("test operation must succeed");
 	}
 }

@@ -2,18 +2,23 @@
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
-	MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES,
+	MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_RESET_CARD_ITEMS,
 };
 
-use std::fmt::{Display, Formatter};
+use std::{
+	collections::HashSet,
+	fmt::{Display, Formatter},
+};
 
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as _};
 use serde_json::Error;
 
 use crate::{DoctorReport, ProtocolVersion, SupportedVersions, VersionRefusal};
 
 /// Maximum UTF-8 size of any human-readable text carried by V1.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
+/// Maximum UTF-8 size of one logical-command idempotency key.
+pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
 /// Maximum inline history bytes in one typed page item.
 pub const MAX_HISTORY_INLINE_BYTES: usize = 16 * 1_024;
 /// Maximum history items returned in one WebSocket query result. This keeps the worst-case
@@ -230,8 +235,28 @@ impl<'de> Deserialize<'de> for QueryId {
 pub struct IdempotencyKey(String);
 impl IdempotencyKey {
 	/// Validate and construct a bounded idempotency key.
-	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
-		WireText::new(value).map(|value| Self(value.0))
+	pub fn new(value: impl Into<String>) -> Result<Self, IdempotencyKeyError> {
+		let value = value.into();
+
+		if value.is_empty() {
+			return Err(IdempotencyKeyError::Empty);
+		}
+		if value.len() > MAX_IDEMPOTENCY_KEY_BYTES {
+			return Err(IdempotencyKeyError::TooLong);
+		}
+		if value.trim() != value {
+			return Err(IdempotencyKeyError::SurroundingWhitespace);
+		}
+		if value.chars().any(char::is_control) {
+			return Err(IdempotencyKeyError::ControlCharacter);
+		}
+
+		Ok(Self(value))
+	}
+
+	/// Borrow the validated logical-command key.
+	pub fn as_str(&self) -> &str {
+		&self.0
 	}
 }
 
@@ -240,7 +265,31 @@ impl<'de> Deserialize<'de> for IdempotencyKey {
 	where
 		D: Deserializer<'de>,
 	{
-		WireText::deserialize(deserializer).map(|value| Self(value.0))
+		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
+	}
+}
+
+/// Closed validation failures for an idempotency key.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IdempotencyKeyError {
+	/// The key was empty.
+	Empty,
+	/// The UTF-8 byte length exceeded [`MAX_IDEMPOTENCY_KEY_BYTES`].
+	TooLong,
+	/// The key had leading or trailing Unicode whitespace.
+	SurroundingWhitespace,
+	/// The key contained a control character.
+	ControlCharacter,
+}
+impl Display for IdempotencyKeyError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::Empty => "idempotency key is empty",
+			Self::TooLong => "idempotency key exceeds the 256-byte maximum",
+			Self::SurroundingWhitespace =>
+				"idempotency key contains leading or trailing whitespace",
+			Self::ControlCharacter => "idempotency key contains a control character",
+		})
 	}
 }
 
@@ -727,6 +776,372 @@ impl<'de> Deserialize<'de> for HistoryBlobLength {
 	}
 }
 
+/// Public, credential-negative identity of one reset card.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
+pub struct ResetCardDescriptorDto {
+	granted_at_unix_seconds: i64,
+	expires_at_unix_seconds: i64,
+}
+impl ResetCardDescriptorDto {
+	/// Validate one public reset-card descriptor.
+	pub fn new(
+		granted_at_unix_seconds: i64,
+		expires_at_unix_seconds: i64,
+	) -> Result<Self, ResetCardDescriptorError> {
+		if granted_at_unix_seconds < 0 {
+			return Err(ResetCardDescriptorError::NegativeGrantedAt);
+		}
+		if expires_at_unix_seconds < 0 {
+			return Err(ResetCardDescriptorError::NegativeExpiresAt);
+		}
+		if expires_at_unix_seconds <= granted_at_unix_seconds {
+			return Err(ResetCardDescriptorError::InvalidWindow);
+		}
+
+		Ok(Self { granted_at_unix_seconds, expires_at_unix_seconds })
+	}
+
+	/// Return the nonnegative grant timestamp.
+	pub const fn granted_at_unix_seconds(self) -> i64 {
+		self.granted_at_unix_seconds
+	}
+
+	/// Return the expiry timestamp, which is later than the grant timestamp.
+	pub const fn expires_at_unix_seconds(self) -> i64 {
+		self.expires_at_unix_seconds
+	}
+}
+impl<'de> Deserialize<'de> for ResetCardDescriptorDto {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(deny_unknown_fields)]
+		struct RawDescriptor {
+			granted_at_unix_seconds: i64,
+			expires_at_unix_seconds: i64,
+		}
+
+		let raw = RawDescriptor::deserialize(deserializer)?;
+
+		Self::new(raw.granted_at_unix_seconds, raw.expires_at_unix_seconds)
+			.map_err(D::Error::custom)
+	}
+}
+
+/// Closed validation failures for a public reset-card descriptor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResetCardDescriptorError {
+	/// The grant timestamp was before the Unix epoch.
+	NegativeGrantedAt,
+	/// The expiry timestamp was before the Unix epoch.
+	NegativeExpiresAt,
+	/// The expiry timestamp was not later than the grant timestamp.
+	InvalidWindow,
+}
+impl Display for ResetCardDescriptorError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::NegativeGrantedAt => "reset-card grant timestamp is negative",
+			Self::NegativeExpiresAt => "reset-card expiry timestamp is negative",
+			Self::InvalidWindow => "reset-card expiry must be later than its grant",
+		})
+	}
+}
+
+/// One public reset-card inventory observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResetCardObservationDto {
+	/// Public descriptor used for explicit operator selection.
+	pub descriptor: ResetCardDescriptorDto,
+}
+
+/// Manual reset-card account admission state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetCardAdmissionState {
+	/// The account can be observed and can consume a reset card.
+	Available,
+	/// The account has exhausted a quota but remains eligible for manual reset.
+	Depleted,
+}
+
+/// One bounded account projection available to reset-card clients.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ResetCardAccountDto {
+	/// Canonical vNext account UUID.
+	pub account_id: EntityId,
+	/// Non-secret operator label.
+	pub display_label: WireText,
+	/// Current optimistic account revision.
+	pub account_revision: EntityRevision,
+	/// Closed manual reset-card admission state.
+	pub admission_state: ResetCardAdmissionState,
+}
+impl<'de> Deserialize<'de> for ResetCardAccountDto {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(deny_unknown_fields)]
+		struct RawAccount {
+			account_id: EntityId,
+			display_label: WireText,
+			account_revision: EntityRevision,
+			admission_state: ResetCardAdmissionState,
+		}
+
+		let raw = RawAccount::deserialize(deserializer)?;
+
+		require_canonical_account_id::<D::Error>(&raw.account_id)?;
+
+		Ok(Self {
+			account_id: raw.account_id,
+			display_label: raw.display_label,
+			account_revision: raw.account_revision,
+			admission_state: raw.admission_state,
+		})
+	}
+}
+
+/// Bounded reset-card account discovery result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ResetCardAccountsResult {
+	/// Current manually admitted account projections.
+	Available {
+		/// At most [`MAX_RESET_CARD_ITEMS`] unique accounts.
+		accounts: Vec<ResetCardAccountDto>,
+	},
+	/// Account discovery was unavailable without exposing infrastructure detail.
+	Unavailable {
+		/// Stable reason class.
+		error: ResetCardError,
+	},
+}
+impl ResetCardAccountsResult {
+	/// Borrow account records when discovery succeeded.
+	pub fn accounts(&self) -> Option<&[ResetCardAccountDto]> {
+		match self {
+			Self::Available { accounts } => Some(accounts),
+			Self::Unavailable { .. } => None,
+		}
+	}
+}
+impl Serialize for ResetCardAccountsResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum RawResult<'a> {
+			Available { accounts: &'a [ResetCardAccountDto] },
+			Unavailable { error: ResetCardError },
+		}
+
+		let raw = match self {
+			Self::Available { accounts } => {
+				validate_reset_card_accounts(accounts).map_err(S::Error::custom)?;
+				RawResult::Available { accounts }
+			},
+			Self::Unavailable { error } => RawResult::Unavailable { error: *error },
+		};
+
+		raw.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for ResetCardAccountsResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum RawResult {
+			Available { accounts: Vec<ResetCardAccountDto> },
+			Unavailable { error: ResetCardError },
+		}
+
+		match RawResult::deserialize(deserializer)? {
+			RawResult::Available { accounts } => {
+				validate_reset_card_accounts(&accounts).map_err(D::Error::custom)?;
+
+				Ok(Self::Available { accounts })
+			},
+			RawResult::Unavailable { error } => Ok(Self::Unavailable { error }),
+		}
+	}
+}
+
+/// Bounded current reset-card inventory for one account.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ResetCardInventoryResult {
+	/// A complete inventory safe for explicit selection.
+	Available {
+		/// Canonical vNext account UUID.
+		account_id: EntityId,
+		/// Current optimistic account revision.
+		account_revision: EntityRevision,
+		/// Exact current number of available cards.
+		available_count: u16,
+		/// Complete unique public card observations.
+		cards: Vec<ResetCardObservationDto>,
+	},
+	/// Inventory could not be established safely.
+	Unavailable {
+		/// Stable reason class.
+		error: ResetCardError,
+	},
+}
+impl Serialize for ResetCardInventoryResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum RawResult<'a> {
+			Available {
+				account_id: &'a EntityId,
+				account_revision: EntityRevision,
+				available_count: u16,
+				cards: &'a [ResetCardObservationDto],
+			},
+			Unavailable {
+				error: ResetCardError,
+			},
+		}
+
+		let raw = match self {
+			Self::Available { account_id, account_revision, available_count, cards } => {
+				validate_reset_card_inventory(
+					account_id,
+					*account_revision,
+					*available_count,
+					cards,
+				)
+				.map_err(S::Error::custom)?;
+				RawResult::Available {
+					account_id,
+					account_revision: *account_revision,
+					available_count: *available_count,
+					cards,
+				}
+			},
+			Self::Unavailable { error } => RawResult::Unavailable { error: *error },
+		};
+
+		raw.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for ResetCardInventoryResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum RawResult {
+			Available {
+				account_id: EntityId,
+				account_revision: EntityRevision,
+				available_count: u16,
+				cards: Vec<ResetCardObservationDto>,
+			},
+			Unavailable {
+				error: ResetCardError,
+			},
+		}
+
+		match RawResult::deserialize(deserializer)? {
+			RawResult::Available { account_id, account_revision, available_count, cards } => {
+				validate_reset_card_inventory(
+					&account_id,
+					account_revision,
+					available_count,
+					&cards,
+				)
+				.map_err(D::Error::custom)?;
+
+				Ok(Self::Available { account_id, account_revision, available_count, cards })
+			},
+			RawResult::Unavailable { error } => Ok(Self::Unavailable { error }),
+		}
+	}
+}
+
+/// Credential-negative reset-card service failure classes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetCardError {
+	/// The account identity, descriptor, or command guard was invalid.
+	InvalidRequest,
+	/// The canonical account was not found.
+	AccountNotFound,
+	/// The current account state does not admit manual reset.
+	AccountStateRejected,
+	/// The daemon credential vault could not provide an account credential.
+	VaultUnavailable,
+	/// The selected Codex app-server schema does not advertise reset-card support.
+	SchemaUnsupported,
+	/// The upstream provider could not establish current state.
+	ProviderUnavailable,
+	/// The provider inventory was incomplete or ambiguous.
+	InventoryIncomplete,
+	/// The selected public descriptor no longer identifies the same available card.
+	InventoryChanged,
+	/// A bounded local resource limit was reached.
+	ResourceExhausted,
+	/// Authoritative product state was unavailable.
+	ProductStateUnavailable,
+	/// The external effect may have happened and requires authoritative reconciliation.
+	EffectAmbiguous,
+}
+
+/// Closed provider outcome after reset-card consumption.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetCardOutcome {
+	/// Rate limits were reset.
+	Reset,
+	/// The account had no active rate-limit exhaustion to reset.
+	NothingToReset,
+	/// The selected account no longer had an eligible credit.
+	NoCredit,
+	/// The exact credit was already redeemed.
+	AlreadyRedeemed,
+}
+
+/// Observation of one reset-card operation or typed authoritative-state unavailability.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "state", content = "data", rename_all = "snake_case")]
+pub enum ResetCardOperationResult {
+	/// No durable operation exists for the supplied logical-command key.
+	NotFound,
+	/// The exact public selection and provider operation identity are durable before the effect.
+	Prepared,
+	/// The provider effect may have happened and requires authoritative reconciliation.
+	EffectAmbiguous,
+	/// The operation reached one terminal provider outcome.
+	Completed {
+		/// Closed provider outcome.
+		outcome: ResetCardOutcome,
+	},
+	/// The operation failed before an external effect could happen.
+	FailedBeforeEffect {
+		/// Stable failure class.
+		error: ResetCardError,
+	},
+	/// Authoritative operation state could not be read. This is not a durable terminal result.
+	Unavailable {
+		/// Stable unavailable reason.
+		error: ResetCardError,
+	},
+}
+
 /// A refusal that leaves no ambiguous application mutation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct RefusalEnvelope {
@@ -748,7 +1163,11 @@ pub enum ClientMessage {
 	Query(QueryEnvelope),
 }
 
-/// Live queries available in V1.2.
+const fn version_supports(version: ProtocolVersion, minimum: ProtocolVersion) -> bool {
+	version.major == minimum.major && version.minor >= minimum.minor
+}
+
+/// Live queries available through the current V1 compatibility window.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case")]
 pub enum QueryPayload {
@@ -769,9 +1188,36 @@ pub enum QueryPayload {
 		/// Requested item count, bounded again by the daemon.
 		page_size: u16,
 	},
+	/// Discover vNext accounts admitted for manual reset-card use.
+	ListResetCardAccounts,
+	/// Read one complete reset-card inventory.
+	GetResetCards {
+		/// Canonical vNext account UUID.
+		account_id: EntityId,
+	},
+	/// Read one durable reset-card operation by its logical-command key.
+	GetResetCardOperation {
+		/// Stable key supplied to the original consume command.
+		idempotency_key: IdempotencyKey,
+	},
+}
+impl QueryPayload {
+	/// Whether this query existed in the negotiated minor protocol revision.
+	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
+		match self {
+			Self::GetDoctorStatus
+			| Self::GetExecutionDecision { .. }
+			| Self::GetConversationHistory { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 2 }),
+			Self::ListResetCardAccounts
+			| Self::GetResetCards { .. }
+			| Self::GetResetCardOperation { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
+		}
+	}
 }
 
-/// Commands available before product-specific application services land.
+/// Commands available through the current V1 compatibility window.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case")]
 pub enum CommandPayload {
@@ -780,6 +1226,24 @@ pub enum CommandPayload {
 		/// Foundation entity to observe.
 		entity_id: EntityId,
 	},
+	/// Accept one explicit public reset-card selection for durable execution.
+	ConsumeResetCard {
+		/// Canonical vNext account UUID.
+		account_id: EntityId,
+		/// Exact public descriptor selected from a fresh complete inventory.
+		descriptor: ResetCardDescriptorDto,
+	},
+}
+impl CommandPayload {
+	/// Whether this command existed in the negotiated minor protocol revision.
+	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
+		match self {
+			Self::RefreshSystemObservation { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 1 }),
+			Self::ConsumeResetCard { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
+		}
+	}
 }
 
 /// A server-to-client WebSocket message.
@@ -860,6 +1324,35 @@ pub enum EventPayload {
 		/// Small human-readable foundation status.
 		status: WireText,
 	},
+	/// A durable reset-card operation changed state.
+	ResetCardOperationAccepted {
+		/// Canonical vNext account UUID.
+		account_id: EntityId,
+		/// Public descriptor selected by the operator.
+		descriptor: ResetCardDescriptorDto,
+		/// Current durable operation state.
+		state: ResetCardOperationResult,
+	},
+	/// A reset-card operation reached a terminal provider outcome.
+	ResetCardConsumed {
+		/// Canonical vNext account UUID.
+		account_id: EntityId,
+		/// Public descriptor selected by the operator.
+		descriptor: ResetCardDescriptorDto,
+		/// Closed terminal provider outcome.
+		outcome: ResetCardOutcome,
+	},
+}
+impl EventPayload {
+	/// Whether this event can be decoded by the negotiated minor protocol revision.
+	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
+		match self {
+			Self::SystemObservationRefreshed { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 1 }),
+			Self::ResetCardOperationAccepted { .. } | Self::ResetCardConsumed { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
+		}
+	}
 }
 
 /// Publication-epoch receipt disposition for one command attempt.
@@ -882,6 +1375,8 @@ pub enum CommandOutcome {
 	Succeeded,
 	/// Protocol or application guards rejected execution.
 	Rejected,
+	/// Application execution could not establish whether durable acceptance committed.
+	AcceptanceUnknown,
 }
 
 /// Typed successful command results.
@@ -893,9 +1388,27 @@ pub enum ResultPayload {
 		/// Small human-readable foundation status.
 		status: WireText,
 	},
+	/// A reset-card operation was accepted into the durable daemon-owned worker.
+	ResetCardOperationAccepted {
+		/// Canonical vNext account UUID.
+		account_id: EntityId,
+		/// Public descriptor selected by the operator.
+		descriptor: ResetCardDescriptorDto,
+		/// Current durable state, normally prepared or a replayed terminal state.
+		state: ResetCardOperationResult,
+	},
+	/// A reset-card operation reached a terminal provider outcome.
+	ResetCardConsumed {
+		/// Canonical vNext account UUID.
+		account_id: EntityId,
+		/// Public descriptor selected by the operator.
+		descriptor: ResetCardDescriptorDto,
+		/// Closed terminal provider outcome.
+		outcome: ResetCardOutcome,
+	},
 }
 
-/// Typed live-query results available in V1.2.
+/// Typed live-query results available through the current V1 compatibility window.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case")]
 pub enum QueryResultPayload {
@@ -905,6 +1418,12 @@ pub enum QueryResultPayload {
 	ExecutionDecision(ExecutionDecisionResult),
 	/// Bounded daemon-owned logical-conversation history result.
 	ConversationHistory(ConversationHistoryResult),
+	/// Bounded vNext accounts admitted for manual reset-card use.
+	ResetCardAccounts(ResetCardAccountsResult),
+	/// Complete reset-card inventory or a closed unavailable reason.
+	ResetCards(ResetCardInventoryResult),
+	/// Durable reset-card operation state.
+	ResetCardOperation(ResetCardOperationResult),
 }
 
 /// Result of an immutable V16 route-decision observation.
@@ -1263,6 +1782,8 @@ pub enum CommandError {
 		/// Bounded operator-facing explanation.
 		message: WireText,
 	},
+	/// The application could not establish whether durable acceptance committed.
+	AcceptanceUnknown,
 }
 
 /// Protocol-level refusal that guarantees no application mutation.
@@ -1308,16 +1829,77 @@ fn is_canonical_uuid(value: &str) -> bool {
 		})
 }
 
+fn require_canonical_account_id<E>(account_id: &EntityId) -> Result<(), E>
+where
+	E: serde::de::Error,
+{
+	if is_canonical_uuid(account_id.as_str()) {
+		Ok(())
+	} else {
+		Err(E::custom("reset-card account identity is not canonical"))
+	}
+}
+
+fn validate_reset_card_accounts(accounts: &[ResetCardAccountDto]) -> Result<(), &'static str> {
+	if accounts.len() > MAX_RESET_CARD_ITEMS {
+		return Err("reset-card account result exceeds item bound");
+	}
+	if accounts.iter().any(|account| !is_canonical_uuid(account.account_id.as_str())) {
+		return Err("reset-card account identity is not canonical");
+	}
+	if accounts.iter().any(|account| account.account_revision.0 == 0) {
+		return Err("reset-card account revision is not positive");
+	}
+
+	let unique = accounts.iter().map(|account| account.account_id.as_str()).collect::<HashSet<_>>();
+
+	if unique.len() != accounts.len() {
+		return Err("reset-card account result contains duplicates");
+	}
+
+	Ok(())
+}
+
+fn validate_reset_card_inventory(
+	account_id: &EntityId,
+	account_revision: EntityRevision,
+	available_count: u16,
+	cards: &[ResetCardObservationDto],
+) -> Result<(), &'static str> {
+	if !is_canonical_uuid(account_id.as_str()) {
+		return Err("reset-card account identity is not canonical");
+	}
+	if account_revision.0 == 0 {
+		return Err("reset-card account revision is not positive");
+	}
+	if cards.len() > MAX_RESET_CARD_ITEMS {
+		return Err("reset-card inventory exceeds item bound");
+	}
+	if usize::from(available_count) != cards.len() {
+		return Err("reset-card inventory is incomplete");
+	}
+
+	let unique = cards.iter().map(|card| card.descriptor).collect::<HashSet<_>>();
+
+	if unique.len() != cards.len() {
+		return Err("reset-card inventory contains duplicates");
+	}
+
+	Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::{
-		CURRENT_VERSION, CausationId, ClientCommandId, CorrelationId, EntityId, HistoryCursorToken,
-		HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
-		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
-		MAX_WIRE_TEXT_BYTES, QueryId, ServerId, ServerInstanceId, WireText,
+		CURRENT_VERSION, CausationId, ClientCommandId, CorrelationId, EntityId, EventPayload,
+		HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
+		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, PREVIOUS_MINOR_VERSION, QueryId,
+		ResetCardDescriptorDto, ResetCardOutcome, ServerId, ServerInstanceId, WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
-			QueryEnvelope, QueryPayload, ResumeCursor,
+			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResumeCursor,
 		},
 	};
 
@@ -1509,7 +2091,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":1,"minor":2},"#,
+				r#"{"type":"hello","body":{"version":{"major":1,"minor":3},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -1518,7 +2100,7 @@ mod tests {
 	#[test]
 	fn previous_minor_hello_without_publication_epoch_decodes_compatibly() {
 		let encoded = concat!(
-			r#"{"type":"hello","body":{"version":{"major":1,"minor":1},"#,
+			r#"{"type":"hello","body":{"version":{"major":1,"minor":2},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let ClientMessage::Hello(hello) = serde_json::from_str(encoded).unwrap() else {
@@ -1533,5 +2115,324 @@ mod tests {
 	fn human_readable_wire_text_is_mechanically_bounded() {
 		assert!(WireText::new("x".repeat(MAX_WIRE_TEXT_BYTES)).is_ok());
 		assert!(WireText::new("x".repeat(MAX_WIRE_TEXT_BYTES + 1)).is_err());
+	}
+
+	#[test]
+	fn reset_card_command_has_a_credential_negative_json_golden() {
+		let descriptor = ResetCardDescriptorDto::new(1_700_000_000, 1_700_003_600).unwrap();
+		let message = ClientMessage::Command(CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: ClientCommandId::new("reset-card-use:key-1").unwrap(),
+			idempotency_key: IdempotencyKey::new("key-1").unwrap(),
+			expected_revision: Some(EntityRevision(9)),
+			correlation_id: CorrelationId::new("reset-card-use:key-1").unwrap(),
+			causation_id: None,
+			payload: CommandPayload::ConsumeResetCard {
+				account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				descriptor,
+			},
+		});
+
+		assert_eq!(
+			serde_json::to_string(&message).unwrap(),
+			concat!(
+				r#"{"type":"command","body":{"version":{"major":1,"minor":3},"#,
+				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
+				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
+				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
+				r#""account_id":"40000000-0000-4000-8000-000000000001","descriptor":{"#,
+				r#""granted_at_unix_seconds":1700000000,"expires_at_unix_seconds":1700003600}}}}}"#,
+			)
+		);
+		assert_eq!(
+			serde_json::from_str::<ClientMessage>(&serde_json::to_string(&message).unwrap())
+				.unwrap(),
+			message
+		);
+	}
+
+	#[test]
+	fn reset_card_descriptors_and_keys_are_strictly_bounded() {
+		assert!(ResetCardDescriptorDto::new(0, 1).is_ok());
+		assert!(ResetCardDescriptorDto::new(-1, 1).is_err());
+		assert!(ResetCardDescriptorDto::new(1, 1).is_err());
+		assert!(ResetCardDescriptorDto::new(2, 1).is_err());
+		for invalid in [
+			serde_json::json!({"granted_at_unix_seconds":-1,"expires_at_unix_seconds":1}),
+			serde_json::json!({"granted_at_unix_seconds":1,"expires_at_unix_seconds":1}),
+			serde_json::json!({"granted_at_unix_seconds":1,"expires_at_unix_seconds":2,"credit_id":"forbidden"}),
+		] {
+			assert!(serde_json::from_value::<ResetCardDescriptorDto>(invalid).is_err());
+		}
+
+		assert!(IdempotencyKey::new("x".repeat(MAX_IDEMPOTENCY_KEY_BYTES)).is_ok());
+		assert!(IdempotencyKey::new("").is_err());
+		assert!(IdempotencyKey::new("x".repeat(MAX_IDEMPOTENCY_KEY_BYTES + 1)).is_err());
+		assert_eq!(
+			IdempotencyKey::new(" operator-key"),
+			Err(super::IdempotencyKeyError::SurroundingWhitespace)
+		);
+		assert_eq!(
+			IdempotencyKey::new("operator-key "),
+			Err(super::IdempotencyKeyError::SurroundingWhitespace)
+		);
+		assert!(IdempotencyKey::new("line\nbreak").is_err());
+		assert!(IdempotencyKey::new("control\u{7f}").is_err());
+	}
+
+	#[test]
+	fn reset_card_inventories_are_strictly_bounded() {
+		let account_id = "40000000-0000-4000-8000-000000000001";
+		let card = serde_json::json!({
+			"descriptor":{"granted_at_unix_seconds":1,"expires_at_unix_seconds":2}
+		});
+		let duplicate = serde_json::json!({
+			"outcome":"available",
+			"data":{
+				"account_id":account_id,
+				"account_revision":1,
+				"available_count":2,
+				"cards":[card.clone(),card.clone()]
+			}
+		});
+		let incomplete = serde_json::json!({
+			"outcome":"available",
+			"data":{
+				"account_id":account_id,
+				"account_revision":1,
+				"available_count":2,
+				"cards":[card.clone()]
+			}
+		});
+		let zero_revision = serde_json::json!({
+			"outcome":"available",
+			"data":{
+				"account_id":account_id,
+				"account_revision":0,
+				"available_count":1,
+				"cards":[card.clone()]
+			}
+		});
+		let oversized = serde_json::json!({
+			"outcome":"available",
+			"data":{
+				"account_id":account_id,
+				"account_revision":1,
+				"available_count":u16::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
+				"cards":vec![card; MAX_RESET_CARD_ITEMS + 1]
+			}
+		});
+		let bounded_cards = (0..MAX_RESET_CARD_ITEMS)
+			.map(|index| {
+				serde_json::json!({
+					"descriptor":{
+						"granted_at_unix_seconds":index * 2,
+						"expires_at_unix_seconds":index * 2 + 1
+					}
+				})
+			})
+			.collect::<Vec<_>>();
+		let bounded = serde_json::json!({
+			"outcome":"available",
+			"data":{
+				"account_id":account_id,
+				"account_revision":1,
+				"available_count":u16::try_from(MAX_RESET_CARD_ITEMS).unwrap(),
+				"cards":bounded_cards
+			}
+		});
+
+		assert_eq!(MAX_RESET_CARD_ITEMS, 64);
+		assert!(serde_json::from_value::<ResetCardInventoryResult>(bounded).is_ok());
+		assert!(serde_json::from_value::<ResetCardInventoryResult>(duplicate).is_err());
+		assert!(serde_json::from_value::<ResetCardInventoryResult>(incomplete).is_err());
+		assert!(serde_json::from_value::<ResetCardInventoryResult>(zero_revision).is_err());
+		assert!(serde_json::from_value::<ResetCardInventoryResult>(oversized).is_err());
+
+		let outbound_cards = (0..MAX_RESET_CARD_ITEMS)
+			.map(|index| super::ResetCardObservationDto {
+				descriptor: ResetCardDescriptorDto::new(
+					i64::try_from(index * 2).unwrap(),
+					i64::try_from(index * 2 + 1).unwrap(),
+				)
+				.unwrap(),
+			})
+			.collect::<Vec<_>>();
+		let bounded_outbound = ResetCardInventoryResult::Available {
+			account_id: EntityId::new(account_id).unwrap(),
+			account_revision: EntityRevision(1),
+			available_count: u16::try_from(MAX_RESET_CARD_ITEMS).unwrap(),
+			cards: outbound_cards.clone(),
+		};
+		let oversized_outbound = ResetCardInventoryResult::Available {
+			account_id: EntityId::new(account_id).unwrap(),
+			account_revision: EntityRevision(1),
+			available_count: u16::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
+			cards: outbound_cards
+				.into_iter()
+				.chain([super::ResetCardObservationDto {
+					descriptor: ResetCardDescriptorDto::new(1_000, 1_001).unwrap(),
+				}])
+				.collect(),
+		};
+		let zero_revision_outbound = ResetCardInventoryResult::Available {
+			account_id: EntityId::new(account_id).unwrap(),
+			account_revision: EntityRevision(0),
+			available_count: 0,
+			cards: Vec::new(),
+		};
+
+		assert!(serde_json::to_value(bounded_outbound).is_ok());
+		assert!(serde_json::to_value(oversized_outbound).is_err());
+		assert!(serde_json::to_value(zero_revision_outbound).is_err());
+	}
+
+	#[test]
+	fn reset_card_account_inventories_are_strictly_bounded() {
+		let account_id = "40000000-0000-4000-8000-000000000001";
+		let account = serde_json::json!({
+			"account_id":account_id,
+			"display_label":"Primary",
+			"account_revision":1,
+			"admission_state":"depleted"
+		});
+		let duplicate_accounts = serde_json::json!({
+			"outcome":"available",
+			"data":{"accounts":[account.clone(),account.clone()]}
+		});
+		let oversized_accounts = serde_json::json!({
+			"outcome":"available",
+			"data":{"accounts":vec![account; MAX_RESET_CARD_ITEMS + 1]}
+		});
+		let zero_revision_accounts = serde_json::json!({
+			"outcome":"available",
+			"data":{"accounts":[{
+				"account_id":account_id,
+				"display_label":"Primary",
+				"account_revision":0,
+				"admission_state":"depleted"
+			}]}
+		});
+		let bounded_accounts = (0..MAX_RESET_CARD_ITEMS)
+			.map(|index| {
+				serde_json::json!({
+					"account_id":format!("40000000-0000-4000-8000-{index:012x}"),
+					"display_label":format!("Account {index}"),
+					"account_revision":1,
+					"admission_state":"available"
+				})
+			})
+			.collect::<Vec<_>>();
+		let bounded_accounts = serde_json::json!({
+			"outcome":"available",
+			"data":{"accounts":bounded_accounts}
+		});
+
+		assert!(serde_json::from_value::<super::ResetCardAccountsResult>(bounded_accounts).is_ok());
+		assert!(
+			serde_json::from_value::<super::ResetCardAccountsResult>(duplicate_accounts).is_err()
+		);
+		assert!(
+			serde_json::from_value::<super::ResetCardAccountsResult>(oversized_accounts).is_err()
+		);
+		assert!(
+			serde_json::from_value::<super::ResetCardAccountsResult>(zero_revision_accounts)
+				.is_err()
+		);
+
+		let outbound_accounts = (0..MAX_RESET_CARD_ITEMS)
+			.map(|index| super::ResetCardAccountDto {
+				account_id: EntityId::new(format!("40000000-0000-4000-8000-{index:012x}")).unwrap(),
+				display_label: WireText::new(format!("Account {index}")).unwrap(),
+				account_revision: EntityRevision(1),
+				admission_state: super::ResetCardAdmissionState::Available,
+			})
+			.collect::<Vec<_>>();
+		let bounded_outbound =
+			super::ResetCardAccountsResult::Available { accounts: outbound_accounts.clone() };
+		let oversized_outbound = super::ResetCardAccountsResult::Available {
+			accounts: outbound_accounts
+				.into_iter()
+				.chain([super::ResetCardAccountDto {
+					account_id: EntityId::new("40000000-0000-4000-8000-000000000100").unwrap(),
+					display_label: WireText::new("Account 64").unwrap(),
+					account_revision: EntityRevision(1),
+					admission_state: super::ResetCardAdmissionState::Available,
+				}])
+				.collect(),
+		};
+		let zero_revision_outbound = super::ResetCardAccountsResult::Available {
+			accounts: vec![super::ResetCardAccountDto {
+				account_id: EntityId::new(account_id).unwrap(),
+				display_label: WireText::new("Primary").unwrap(),
+				account_revision: EntityRevision(0),
+				admission_state: super::ResetCardAdmissionState::Depleted,
+			}],
+		};
+
+		assert!(serde_json::to_value(bounded_outbound).is_ok());
+		assert!(serde_json::to_value(oversized_outbound).is_err());
+		assert!(serde_json::to_value(zero_revision_outbound).is_err());
+	}
+
+	#[test]
+	fn v1_2_messages_keep_decoding_during_the_rolling_window() {
+		let encoded = concat!(
+			r#"{"type":"query","body":{"version":{"major":1,"minor":2},"query_id":"legacy","#,
+			r#""payload":{"name":"get_doctor_status"}}}"#,
+		);
+
+		assert_eq!(
+			serde_json::from_str::<ClientMessage>(encoded).unwrap(),
+			ClientMessage::Query(QueryEnvelope {
+				version: crate::PREVIOUS_MINOR_VERSION,
+				query_id: QueryId::new("legacy").unwrap(),
+				payload: QueryPayload::GetDoctorStatus,
+			})
+		);
+	}
+
+	#[test]
+	fn minor_feature_gates_keep_v1_2_free_of_reset_card_shapes() {
+		let account_id =
+			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
+
+		assert!(QueryPayload::GetDoctorStatus.is_supported_in(PREVIOUS_MINOR_VERSION));
+		assert!(
+			QueryPayload::GetExecutionDecision {
+				decision_id: EntityId::new("execution-decision").expect("bounded decision ID"),
+			}
+			.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
+		assert!(
+			QueryPayload::GetConversationHistory {
+				conversation_id: EntityId::new("conversation").unwrap(),
+				after: None,
+				page_size: 1,
+			}
+			.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
+		assert!(!QueryPayload::ListResetCardAccounts.is_supported_in(PREVIOUS_MINOR_VERSION));
+		assert!(
+			!CommandPayload::ConsumeResetCard { account_id: account_id.clone(), descriptor }
+				.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
+		assert!(
+			CommandPayload::RefreshSystemObservation { entity_id: account_id.clone() }
+				.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
+		assert!(
+			!EventPayload::ResetCardConsumed {
+				account_id,
+				descriptor,
+				outcome: ResetCardOutcome::Reset,
+			}
+			.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
+		assert!(
+			EventPayload::SystemObservationRefreshed { status: WireText::new("ready").unwrap() }
+				.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
 	}
 }

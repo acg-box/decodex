@@ -6,6 +6,22 @@ pub(super) fn validate_social_post_decision(entry: &Map<String, Value>, errors: 
 
 		return;
 	};
+	social_validation::validate_exact_keys(
+		decision,
+		"decision",
+		&[
+			"daily_count_after",
+			"daily_count_before",
+			"daily_limit",
+			"day",
+			"idempotency_key",
+			"priority",
+			"reason",
+			"timezone",
+			"worthiness",
+		],
+		errors,
+	);
 
 	if !social_validation::matches_one_of(decision.get("worthiness"), SOCIAL_POST_WORTHINESS) {
 		errors.push(format!(

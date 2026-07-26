@@ -9,6 +9,7 @@ use std::{
 
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
+	account_launch::{ResetCardRuntime, ResetCardVaultStatus},
 	application::{ProductStore, ServiceApplication},
 	managed_repository_runtime::{
 		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
@@ -20,7 +21,7 @@ use crate::{
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
-	Availability, BlobStore, ConfigError, DecodexConfig, DecodexRoot, PathError,
+	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
 	PostgresIdentityConfig, ProductState as _, ServerIdentity, ServerProfile,
 };
 use decodex_postgres::{BootstrapFailure, PostgresStore};
@@ -48,6 +49,7 @@ pub struct ServiceBootstrap {
 	provider_attempts: Option<ProviderAttemptControl>,
 	provider_attempt_readiness: ProviderAttemptReadiness,
 	blob_store: Option<BlobStore>,
+	reset_cards: Option<ResetCardRuntime>,
 	doctor: DoctorReport,
 	// Keep the one acquired daemon capability last so an unbound bootstrap
 	// releases it after every mutation service and application dependency.
@@ -107,6 +109,7 @@ impl ServiceBootstrap {
 			provider_attempts,
 			provider_attempt_readiness: _,
 			blob_store,
+			reset_cards,
 			doctor,
 			daemon_authority,
 		} = self;
@@ -123,10 +126,10 @@ impl ServiceBootstrap {
 				CodexAdapter::unavailable(),
 				blob_store,
 				doctor,
-			),
+			)
+			.with_reset_cards(reset_cards),
 			config,
 		);
-
 		Ok(server.bind_listener(listener))
 	}
 }
@@ -172,17 +175,18 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		Ok(_) => DoctorStatus::Ready,
 		Err(error) => DoctorStatus::Unavailable(config_issue(*error)),
 	};
-	let daemon_authority = match configured_transport {
+	let listener = match configured_transport {
 		Ok(authority) => match authority.bind().await {
-			Ok(listener) => Ok(listener),
-			Err(refusal) =>
+			Ok(listener) => listener,
+			Err(refusal) => {
 				return bootstrap_without_authority(
 					refusal,
 					config_status,
 					DoctorStatus::Unknown(DoctorIssue::NotProbed),
-				),
+				);
+			},
 		},
-		Err(refusal) =>
+		Err(refusal) => {
 			return bootstrap_without_authority(
 				refusal,
 				config_status,
@@ -190,8 +194,19 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 					|error| DoctorStatus::Unavailable(database_config_issue(*error)),
 					|_| DoctorStatus::Unknown(DoctorIssue::NotProbed),
 				),
-			),
+			);
+		},
 	};
+
+	bootstrap_with_authority(paths, loaded, config_status, listener).await
+}
+
+async fn bootstrap_with_authority(
+	paths: DecodexPaths,
+	loaded: Result<DecodexConfig, ConfigError>,
+	config_status: DoctorStatus,
+	listener: LocalTransportListener,
+) -> ServiceBootstrap {
 	let identity = ServerIdentity::load_or_create(&paths);
 	let (server_id, identity_status) = server_identity(identity);
 	let mut repositories = loaded
@@ -203,7 +218,7 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		Err(_) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	};
 	let shared_home = shared_codex_home();
-	let (mut store, database, vault) = match (loaded.as_ref(), repositories) {
+	let (mut store, database, mut vault) = match (loaded.as_ref(), repositories) {
 		(Ok(config), DoctorStatus::Ready) => connect_database(config).await,
 		(Ok(_), _) => (
 			ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
@@ -249,6 +264,35 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 			},
 			None => (None, ManagedRepositoryReadiness::ProductStateUnavailable, None),
 		};
+	let reset_cards = match (&store, loaded.as_ref()) {
+		(ProductStore::Available(postgres), Ok(config)) => {
+			match ResetCardRuntime::start(
+				postgres.clone(),
+				config.server_host(),
+				paths.root().as_path().to_owned(),
+			)
+			.await
+			{
+				Ok(runtime) => {
+					vault = match runtime.vault_status() {
+						ResetCardVaultStatus::NotConfigured =>
+							DoctorStatus::Unknown(DoctorIssue::NotProbed),
+						ResetCardVaultStatus::Ready => DoctorStatus::Ready,
+						ResetCardVaultStatus::Unavailable =>
+							DoctorStatus::Unavailable(DoctorIssue::Authentication),
+					};
+
+					Some(runtime)
+				},
+				Err(_) => {
+					vault = DoctorStatus::Unavailable(DoctorIssue::Integrity);
+
+					None
+				},
+			}
+		},
+		_ => None,
+	};
 	let doctor = doctor_report(
 		server_id.clone(),
 		DoctorInputs {
@@ -273,8 +317,9 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		provider_attempts,
 		provider_attempt_readiness,
 		blob_store: blob_store.ok(),
+		reset_cards,
 		doctor,
-		daemon_authority,
+		daemon_authority: Ok(listener),
 	}
 }
 
@@ -308,6 +353,7 @@ fn bootstrap_without_authority(
 		provider_attempts: None,
 		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
+		reset_cards: None,
 		doctor,
 		daemon_authority: Err(refusal),
 	}
@@ -339,6 +385,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		provider_attempts: None,
 		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
+		reset_cards: None,
 		doctor,
 		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),
 	}
@@ -427,8 +474,9 @@ fn host_directory(path: &Path) -> Result<(), HostDirectoryError> {
 		match fs::symlink_metadata(&current) {
 			Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {},
 			Ok(_) => return Err(HostDirectoryError::Unsafe),
-			Err(error) if error.kind() == ErrorKind::NotFound =>
-				return Err(HostDirectoryError::Missing),
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				return Err(HostDirectoryError::Missing);
+			},
 			Err(_) => return Err(HostDirectoryError::Unsafe),
 		}
 	}

@@ -335,6 +335,36 @@ async fn missing_malformed_and_redacted_bootstrap_are_typed() {
 }
 
 #[tokio::test]
+async fn singleton_authority_precedes_identity_and_product_bootstrap() {
+	let temp = TempDir::new().expect("singleton-order temp");
+	let decodex_root = root(&temp);
+
+	write_config(
+		&decodex_root,
+		&config(temp.path(), &temp.path().join("missing-postgres-socket"), "decodex", None),
+	);
+
+	let paths = decodex_root.paths();
+	let authority = local_transport(&decodex_root);
+	let listener = authority.bind().await.expect("hold singleton authority");
+
+	assert!(!paths.server_identity_file().exists());
+
+	let blocked = ServiceComposition::bootstrap(decodex_root).await;
+
+	assert!(
+		!paths.server_identity_file().exists(),
+		"a blocked daemon must not create stable identity before singleton authority",
+	);
+	assert!(matches!(
+		blocked.bind(ServerConfig::default()).await,
+		Err(decodex_runtime::ServerError::LocalTransport(LocalTransportRefusal::EndpointInUse))
+	));
+
+	listener.cleanup().expect("release singleton fixture authority");
+}
+
+#[tokio::test]
 async fn unsafe_and_malformed_host_configuration_fail_closed() {
 	let unsafe_temp = TempDir::new().expect("unsafe-path temp");
 	let unsafe_root = root(&unsafe_temp);
@@ -351,7 +381,7 @@ async fn unsafe_and_malformed_host_configuration_fail_closed() {
 
 	assert_eq!(
 		status(&unsafe_bootstrap, DoctorComponent::ServerRepositories),
-		DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
+		DoctorStatus::Unknown(DoctorIssue::NotProbed)
 	);
 	assert_eq!(
 		status(&unsafe_bootstrap, DoctorComponent::Database),
@@ -626,9 +656,10 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 		&mut client,
 		ClientMessage::Query(QueryEnvelope {
 			version: CURRENT_VERSION,
-			query_id: QueryId::new("history-unavailable").unwrap(),
+			query_id: QueryId::new("history-unavailable").expect("test operation must succeed"),
 			payload: QueryPayload::GetConversationHistory {
-				conversation_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				conversation_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
 				after: None,
 				page_size: 1,
 			},
@@ -672,20 +703,24 @@ async fn assert_cross_version_doctor_queries(
 	)
 	.await;
 
-	let ServerMessage::Refusal(result) = receive(&mut previous).await else {
-		panic!("expected previous-minor doctor rejection");
+	let ServerMessage::QueryResult(result) = receive(&mut previous).await else {
+		panic!("expected previous-minor doctor result");
+	};
+	let QueryResultPayload::DoctorStatus(report) = result.payload else {
+		panic!("expected previous-minor doctor result");
 	};
 
-	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
+	assert_eq!(report.server_id(), server_id);
+	assert_eq!(report.version(), CURRENT_VERSION);
 
 	send(
 		&mut previous,
-		ClientMessage::Query(doctor_query(PREVIOUS_MINOR_VERSION, "previous-doctor-query")),
+		ClientMessage::Query(doctor_query(CURRENT_VERSION, "current-query-on-previous-session")),
 	)
 	.await;
 
 	let ServerMessage::Refusal(result) = receive(&mut previous).await else {
-		panic!("expected inverse previous-minor doctor rejection");
+		panic!("expected mismatched current-version doctor rejection");
 	};
 
 	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
@@ -717,6 +752,21 @@ async fn assert_cross_version_doctor_queries(
 
 	assert_eq!(report.server_id(), server_id);
 	assert_eq!(report.version(), CURRENT_VERSION);
+
+	send(
+		&mut current,
+		ClientMessage::Query(doctor_query(
+			PREVIOUS_MINOR_VERSION,
+			"previous-query-on-current-session",
+		)),
+	)
+	.await;
+
+	let ServerMessage::Refusal(result) = receive(&mut current).await else {
+		panic!("expected mismatched previous-minor doctor rejection");
+	};
+
+	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
 }
 
 #[tokio::test]

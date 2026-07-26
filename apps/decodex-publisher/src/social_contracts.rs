@@ -2,6 +2,14 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+#[derive(Debug, Serialize)]
+pub(crate) struct SocialBrowserLeaseReport {
+	pub(crate) status: String,
+	pub(crate) path: String,
+	pub(crate) lease_token: Option<String>,
+	pub(crate) expires_at_epoch_seconds: Option<u64>,
+}
+
 #[derive(Debug)]
 pub(crate) struct SocialReservePublishRequest {
 	pub(crate) slug: String,
@@ -16,6 +24,8 @@ pub(crate) struct SocialReservePublishRequest {
 	pub(crate) duplicate_keys: Vec<String>,
 	pub(crate) out_dir: PathBuf,
 	pub(crate) posts_dir: PathBuf,
+	pub(crate) locks_dir: PathBuf,
+	pub(crate) browser_lease_token: String,
 	pub(crate) automation_id: Option<String>,
 	pub(crate) run_id: Option<String>,
 	pub(crate) branch: Option<String>,

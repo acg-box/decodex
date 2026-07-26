@@ -3,13 +3,17 @@
 
 use std::{
 	future::{self, Future},
+	pin::Pin,
 	sync::{Arc, Mutex},
 	time::Duration,
 };
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use tempfile::TempDir;
-use tokio::time;
+use tokio::{
+	sync::{Notify, watch},
+	time,
+};
 use tokio_tungstenite::{
 	self, WebSocketStream,
 	tungstenite::{Message, protocol::frame::coding::CloseCode},
@@ -22,9 +26,9 @@ use decodex_protocol::{
 	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
 	EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
 	LocalTransportStream, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResultPayload,
-	ResumeCursor, ServerId, ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal,
-	WireText,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
+	ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId,
+	ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal, WireText,
 };
 use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
 
@@ -38,6 +42,7 @@ const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 struct FixtureApplication {
 	state: Arc<Mutex<FixtureState>>,
 	execution_delay: Duration,
+	daemon_service: Option<Arc<FixtureDaemonService>>,
 }
 impl FixtureApplication {
 	fn executions(&self) -> u64 {
@@ -46,6 +51,10 @@ impl FixtureApplication {
 
 	fn queries(&self) -> u64 {
 		self.state.lock().expect("test state mutex poisoned").queries
+	}
+
+	fn attempts(&self) -> u64 {
+		self.state.lock().expect("test state mutex poisoned").attempts
 	}
 
 	fn with_status(status: WireText) -> Self {
@@ -58,9 +67,53 @@ impl FixtureApplication {
 	fn with_delay(execution_delay: Duration) -> Self {
 		Self { execution_delay, ..Self::default() }
 	}
+
+	fn with_acceptance_unknown_once() -> Self {
+		Self {
+			state: Arc::new(Mutex::new(FixtureState {
+				acceptance_unknown_remaining: 1,
+				..FixtureState::default()
+			})),
+			..Self::default()
+		}
+	}
+
+	fn with_daemon_service(service: Arc<FixtureDaemonService>) -> Self {
+		Self { daemon_service: Some(service), ..Self::default() }
+	}
+}
+
+#[derive(Default)]
+struct FixtureDaemonService {
+	started: Notify,
+	stop_observed: Notify,
+	release: Notify,
 }
 
 impl Application for FixtureApplication {
+	fn daemon_service_tasks(
+		&self,
+		mut stop: watch::Receiver<bool>,
+	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+		let Some(service) = self.daemon_service.clone() else {
+			return Vec::new();
+		};
+
+		vec![Box::pin(async move {
+			service.started.notify_one();
+			loop {
+				if *stop.borrow_and_update() {
+					break;
+				}
+				if stop.changed().await.is_err() {
+					break;
+				}
+			}
+			service.stop_observed.notify_one();
+			service.release.notified().await;
+		})]
+	}
+
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send {
 		let state = self.state.lock().expect("test state mutex poisoned");
 
@@ -79,8 +132,13 @@ impl Application for FixtureApplication {
 			time::sleep(self.execution_delay).await;
 		}
 
-		let CommandPayload::RefreshSystemObservation { entity_id } = &command.payload;
 		let mut state = self.state.lock().expect("test state mutex poisoned");
+
+		state.attempts += 1;
+		if state.acceptance_unknown_remaining > 0 {
+			state.acceptance_unknown_remaining -= 1;
+			return Err(CommandError::AcceptanceUnknown);
+		}
 
 		if let Some(expected) = command.expected_revision
 			&& expected != EntityRevision(state.revision)
@@ -96,13 +154,34 @@ impl Application for FixtureApplication {
 		state.status = WireText::new(format!("observation-{}", state.executions))
 			.expect("fixture status is bounded");
 
-		Ok(ApplicationPublication {
-			channel: Channel::SystemHealth,
-			entity_id: entity_id.clone(),
-			entity_revision: EntityRevision(state.revision),
-			result: ResultPayload::SystemObservationRefreshed { status: state.status.clone() },
-			event: EventPayload::SystemObservationRefreshed { status: state.status.clone() },
-		})
+		match &command.payload {
+			CommandPayload::RefreshSystemObservation { entity_id } => Ok(ApplicationPublication {
+				channel: Channel::SystemHealth,
+				entity_id: entity_id.clone(),
+				entity_revision: EntityRevision(state.revision),
+				result: ResultPayload::SystemObservationRefreshed { status: state.status.clone() },
+				event: EventPayload::SystemObservationRefreshed { status: state.status.clone() },
+			}),
+			CommandPayload::ConsumeResetCard { account_id, descriptor } => {
+				let operation_state = ResetCardOperationResult::Prepared;
+
+				Ok(ApplicationPublication {
+					channel: Channel::AccountsHealth,
+					entity_id: account_id.clone(),
+					entity_revision: EntityRevision(state.revision),
+					result: ResultPayload::ResetCardOperationAccepted {
+						account_id: account_id.clone(),
+						descriptor: *descriptor,
+						state: operation_state,
+					},
+					event: EventPayload::ResetCardOperationAccepted {
+						account_id: account_id.clone(),
+						descriptor: *descriptor,
+						state: operation_state,
+					},
+				})
+			},
+		}
 	}
 
 	fn query<'a>(
@@ -136,7 +215,9 @@ impl Application for FixtureApplication {
 struct FixtureState {
 	revision: u64,
 	executions: u64,
+	attempts: u64,
 	queries: u64,
+	acceptance_unknown_remaining: u64,
 	status: WireText,
 }
 impl Default for FixtureState {
@@ -144,7 +225,9 @@ impl Default for FixtureState {
 		Self {
 			revision: 0,
 			executions: 0,
+			attempts: 0,
 			queries: 0,
+			acceptance_unknown_remaining: 0,
 			status: WireText::new("").expect("empty fixture status is bounded"),
 		}
 	}
@@ -196,10 +279,32 @@ fn command(version: ProtocolVersion, number: u64, key: &str) -> ClientMessage {
 }
 
 fn doctor_query(number: u64) -> ClientMessage {
+	doctor_query_for(CURRENT_VERSION, number)
+}
+
+fn doctor_query_for(version: ProtocolVersion, number: u64) -> ClientMessage {
 	ClientMessage::Query(QueryEnvelope {
-		version: CURRENT_VERSION,
+		version,
 		query_id: QueryId::new(format!("query-{number}")).expect("bounded fixture query ID"),
 		payload: QueryPayload::GetDoctorStatus,
+	})
+}
+
+fn reset_card_command(version: ProtocolVersion, number: u64, key: &str) -> ClientMessage {
+	ClientMessage::Command(CommandEnvelope {
+		version,
+		client_command_id: ClientCommandId::new(format!("reset-command-{number}"))
+			.expect("bounded fixture command ID"),
+		idempotency_key: IdempotencyKey::new(key).expect("bounded fixture key"),
+		expected_revision: None,
+		correlation_id: CorrelationId::new(format!("reset-correlation-{number}"))
+			.expect("bounded fixture correlation ID"),
+		causation_id: None,
+		payload: CommandPayload::ConsumeResetCard {
+			account_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef")
+				.expect("canonical fixture account ID"),
+			descriptor: ResetCardDescriptorDto::new(100, 200).expect("valid descriptor"),
+		},
 	})
 }
 
@@ -340,7 +445,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 		server("version-server", FixtureApplication::default(), ServerConfig::default())
 			.bind(transport.clone())
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 
 	for (index, version) in [PREVIOUS_MINOR_VERSION, CURRENT_VERSION].into_iter().enumerate() {
 		let mut client = connect(&transport, version).await;
@@ -354,7 +459,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 
 		execute_and_receive_event(&mut client, version, index as u64 + 1).await;
 
-		client.close(None).await.unwrap();
+		client.close(None).await.expect("test operation must succeed");
 	}
 
 	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 0 }).await;
@@ -381,17 +486,97 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 
 	drop(client);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
+}
+
+#[tokio::test]
+async fn previous_minor_keeps_v1_2_queries_but_refuses_reset_card_surfaces() {
+	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
+	let mut bound = server("previous-feature-gate", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
+		.await
+		.expect("bind previous-minor feature-gate server");
+	let mut client = connect(&transport, PREVIOUS_MINOR_VERSION).await;
+
+	receive_initial(&mut client).await;
+	send(&mut client, doctor_query_for(PREVIOUS_MINOR_VERSION, 1)).await;
+
+	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
+		panic!("previous-minor doctor query must remain supported");
+	};
+
+	assert_eq!(result.version, PREVIOUS_MINOR_VERSION);
+	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
+	assert_eq!(application.queries(), 1);
+
+	send(
+		&mut client,
+		ClientMessage::Query(QueryEnvelope {
+			version: PREVIOUS_MINOR_VERSION,
+			query_id: QueryId::new("reset-query").expect("bounded query ID"),
+			payload: QueryPayload::ListResetCardAccounts,
+		}),
+	)
+	.await;
+	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
+	assert_eq!(application.queries(), 1);
+
+	send(&mut client, reset_card_command(PREVIOUS_MINOR_VERSION, 1, "previous-reset-key")).await;
+	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
+	assert_eq!(application.executions(), 0);
+
+	execute_and_receive_event(&mut client, PREVIOUS_MINOR_VERSION, 1).await;
+	assert_eq!(application.executions(), 1);
+
+	drop(client);
+	bound.shutdown().await.expect("shutdown previous-minor feature-gate server");
+}
+
+#[tokio::test]
+async fn v1_3_reset_card_events_never_cross_the_v1_2_subscriber_boundary() {
+	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
+	let mut bound =
+		server("reset-event-feature-gate", application.clone(), ServerConfig::default())
+			.bind(transport.clone())
+			.await
+			.expect("bind reset-card event feature-gate server");
+	let mut previous = connect(&transport, PREVIOUS_MINOR_VERSION).await;
+	let mut current = connect(&transport, CURRENT_VERSION).await;
+
+	receive_initial(&mut previous).await;
+	receive_initial(&mut current).await;
+	send(&mut current, reset_card_command(CURRENT_VERSION, 1, "current-reset-key")).await;
+
+	assert!(matches!(receive(&mut current).await, ServerMessage::CommandReceipt(_)));
+	assert!(matches!(receive(&mut current).await, ServerMessage::CommandResult(_)));
+	let ServerMessage::Event(event) = receive(&mut current).await else {
+		panic!("current client must receive the reset-card event");
+	};
+
+	assert_eq!(event.version, CURRENT_VERSION);
+	assert!(matches!(event.payload, EventPayload::ResetCardOperationAccepted { .. }));
+	send(&mut previous, doctor_query_for(PREVIOUS_MINOR_VERSION, 2)).await;
+	let ServerMessage::QueryResult(result) = receive(&mut previous).await else {
+		panic!("previous-minor subscriber must remain usable after a filtered reset-card event");
+	};
+	assert_eq!(result.version, PREVIOUS_MINOR_VERSION);
+	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
+	assert_eq!(application.executions(), 1);
+
+	drop(current);
+	bound.shutdown().await.expect("shutdown reset-card event feature-gate server");
 }
 
 #[tokio::test]
 async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
-	let application = FixtureApplication::default();
 	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
 	let mut bound = server("idempotency-server", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (_, instance_id, _, _) = receive_initial(&mut client).await;
 
@@ -450,17 +635,17 @@ async fn duplicate_command_returns_the_original_receipt_and_mutates_once() {
 
 	drop(client);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
 async fn expected_revision_mismatch_is_rejected_without_publication() {
-	let application = FixtureApplication::default();
 	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
 	let mut bound = server("revision-server", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
@@ -491,17 +676,65 @@ async fn expected_revision_mismatch_is_rejected_without_publication() {
 
 	drop(client);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
+}
+
+#[tokio::test]
+async fn acceptance_unknown_is_not_cached_and_same_key_can_recover() {
+	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::with_acceptance_unknown_once();
+	let mut bound =
+		server("acceptance-unknown-server", application.clone(), ServerConfig::default())
+			.bind(transport.clone())
+			.await
+			.expect("test operation must succeed");
+	let mut client = connect(&transport, CURRENT_VERSION).await;
+
+	receive_initial(&mut client).await;
+	send(&mut client, command(CURRENT_VERSION, 1, "recovery-key")).await;
+
+	let ServerMessage::CommandReceipt(first_receipt) = receive(&mut client).await else {
+		panic!("expected first receipt");
+	};
+	let ServerMessage::CommandResult(first_result) = receive(&mut client).await else {
+		panic!("expected first result");
+	};
+
+	assert_eq!(first_receipt.disposition, ReceiptDisposition::Executed);
+	assert_eq!(first_result.outcome, decodex_protocol::CommandOutcome::AcceptanceUnknown);
+	assert_eq!(first_result.error, Some(CommandError::AcceptanceUnknown));
+	assert!(time::timeout(Duration::from_millis(100), client.next()).await.is_err());
+
+	send(&mut client, command(CURRENT_VERSION, 2, "recovery-key")).await;
+
+	let ServerMessage::CommandReceipt(second_receipt) = receive(&mut client).await else {
+		panic!("expected recovery receipt");
+	};
+
+	assert_eq!(second_receipt.disposition, ReceiptDisposition::Executed);
+	assert!(matches!(
+		receive(&mut client).await,
+		ServerMessage::CommandResult(decodex_protocol::CommandResultEnvelope {
+			outcome: decodex_protocol::CommandOutcome::Succeeded,
+			..
+		})
+	));
+	assert!(matches!(receive(&mut client).await, ServerMessage::Event(_)));
+	assert_eq!(application.attempts(), 2);
+	assert_eq!(application.executions(), 1);
+
+	drop(client);
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
 async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
-	let config = ServerConfig { replay_capacity: 2, ..ServerConfig::default() };
 	let (_temp, transport) = local_transport();
+	let config = ServerConfig { replay_capacity: 2, ..ServerConfig::default() };
 	let mut bound = server("resume-server", FixtureApplication::default(), config)
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut first = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, instance_id, _, _) = receive_initial(&mut first).await;
 	let persisted = execute_and_receive_event(&mut first, CURRENT_VERSION, 1).await;
@@ -592,7 +825,7 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 
 	drop(previous);
 
-	bound.shutdown().await.unwrap();
+	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
@@ -603,10 +836,10 @@ async fn bounded_outbound_queue_disconnects_a_slow_real_client() {
 }
 
 async fn assert_initiator_overflow(run: u64) {
+	let (_temp, transport) = local_transport();
 	let config = ServerConfig { outbound_queue_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
 	let server_id = format!("backpressure-server-{run}");
-	let (_temp, transport) = local_transport();
 	let mut bound = server(&server_id, application.clone(), config)
 		.bind(transport.clone())
 		.await
@@ -649,10 +882,10 @@ async fn event_overflow_stops_pipelined_commands_and_retains_the_first_event() {
 }
 
 async fn assert_event_overflow(run: u64) {
+	let (_temp, transport) = local_transport();
 	let config = ServerConfig { outbound_queue_capacity: 2, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
 	let server_id = format!("event-overflow-{run}");
-	let (_temp, transport) = local_transport();
 	let mut bound = server(&server_id, application.clone(), config)
 		.bind(transport.clone())
 		.await
@@ -688,8 +921,8 @@ async fn assert_event_overflow(run: u64) {
 
 #[tokio::test]
 async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
-	let application = FixtureApplication::with_delay(Duration::from_millis(200));
 	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::with_delay(Duration::from_millis(200));
 	let mut bound = server("disconnect-shield", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
@@ -727,9 +960,9 @@ async fn disconnected_delayed_command_finishes_and_deduplicates_on_reconnect() {
 
 #[tokio::test]
 async fn full_idempotency_ledger_keeps_duplicates_and_refuses_new_keys() {
+	let (_temp, transport) = local_transport();
 	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let (_temp, transport) = local_transport();
 	let mut bound = server("receipt-capacity", application.clone(), config)
 		.bind(transport.clone())
 		.await
@@ -771,9 +1004,9 @@ async fn full_idempotency_ledger_keeps_duplicates_and_refuses_new_keys() {
 
 #[tokio::test]
 async fn repeated_live_queries_are_fresh_ordered_and_do_not_consume_receipts() {
+	let (_temp, transport) = local_transport();
 	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let (_temp, transport) = local_transport();
 	let mut bound = server("live-query", application.clone(), config)
 		.bind(transport.clone())
 		.await
@@ -833,8 +1066,8 @@ async fn repeated_live_queries_are_fresh_ordered_and_do_not_consume_receipts() {
 
 #[tokio::test]
 async fn independent_connections_can_observe_live_doctor_concurrently() {
-	let application = FixtureApplication::default();
 	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
 	let mut bound = server("concurrent-query", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
@@ -873,9 +1106,9 @@ async fn assert_cross_version_receipt_capacity(
 	first_version: ProtocolVersion,
 	second_version: ProtocolVersion,
 ) {
+	let (_temp, transport) = local_transport();
 	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let (_temp, transport) = local_transport();
 	let mut bound = server(case, application.clone(), config)
 		.bind(transport.clone())
 		.await
@@ -940,11 +1173,11 @@ async fn assert_cross_version_receipt_capacity(
 
 #[tokio::test]
 async fn oversized_outbound_snapshot_is_closed_before_transmission() {
+	let (_temp, transport) = local_transport();
 	let config = ServerConfig { maximum_message_bytes: 512, ..ServerConfig::default() };
 	let application = FixtureApplication::with_status(
 		WireText::new("x".repeat(1_024)).expect("fixture remains below scalar limit"),
 	);
-	let (_temp, transport) = local_transport();
 	let mut bound = server("snapshot-size", application, config)
 		.bind(transport.clone())
 		.await
@@ -974,8 +1207,8 @@ async fn oversized_outbound_snapshot_is_closed_before_transmission() {
 
 #[tokio::test]
 async fn oversized_wire_identifier_is_refused_without_execution() {
-	let application = FixtureApplication::default();
 	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
 	let mut bound = server("bounded-identifiers", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
@@ -1016,25 +1249,75 @@ async fn oversized_wire_identifier_is_refused_without_execution() {
 }
 
 #[tokio::test]
-async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_epoch_cursors() {
-	let application = FixtureApplication::default();
+async fn daemon_service_settlement_holds_namespace_authority_until_zero_survivor() {
 	let (_temp, transport) = local_transport();
+	let service = Arc::new(FixtureDaemonService::default());
+	let application = FixtureApplication::with_daemon_service(Arc::clone(&service));
+	let mut bound = server("service-settlement", application, ServerConfig::default())
+		.bind(transport.clone())
+		.await
+		.expect("bind service-settlement server");
+
+	time::timeout(Duration::from_secs(1), service.started.notified())
+		.await
+		.expect("daemon service must start under the server lifecycle");
+	let shutdown = tokio::spawn(async move { bound.shutdown().await });
+
+	time::timeout(Duration::from_secs(1), service.stop_observed.notified())
+		.await
+		.expect("daemon service must observe stopping");
+	let contender = server(
+		"service-settlement-contender",
+		FixtureApplication::default(),
+		ServerConfig::default(),
+	)
+	.bind(transport.clone())
+	.await;
+
+	assert!(matches!(
+		contender,
+		Err(decodex_runtime::ServerError::LocalTransport(LocalTransportRefusal::EndpointInUse))
+	));
+
+	service.release.notify_one();
+	time::timeout(Duration::from_secs(2), shutdown)
+		.await
+		.expect("server must finish after registered service work settles")
+		.expect("server lifecycle task must not panic")
+		.expect("service-settlement shutdown must succeed");
+
+	let mut restarted = server(
+		"service-settlement-restarted",
+		FixtureApplication::default(),
+		ServerConfig::default(),
+	)
+	.bind(transport)
+	.await
+	.expect("namespace authority must release after service settlement");
+
+	restarted.shutdown().await.expect("shutdown restarted service-settlement server");
+}
+
+#[tokio::test]
+async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_epoch_cursors() {
+	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
 	let mut first = server("stable-restart", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = connect(&transport, CURRENT_VERSION).await;
 	let (server_id, old_instance_id, initial_cursor, _) = receive_initial(&mut client).await;
 	let overlapping_cursor = execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
 
 	drop(client);
 
-	first.shutdown().await.unwrap();
+	first.shutdown().await.expect("test operation must succeed");
 
 	let mut restarted = server("stable-restart", application, ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.unwrap();
+		.expect("test operation must succeed");
 	let mut client = reconnect(
 		&transport,
 		CURRENT_VERSION,
@@ -1082,25 +1365,26 @@ async fn restart_with_stable_server_identity_rejects_equal_and_overlapping_old_e
 
 	drop(client);
 
-	restarted.shutdown().await.unwrap();
+	restarted.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
 async fn cross_uid_authority_is_refused_before_opening_a_socket() {
-	let temp = TempDir::new().expect("remote-refusal temp");
+	let temp = TempDir::new().expect("create cross-UID test root");
 	let root = DecodexRoot::new(
-		temp.path().canonicalize().expect("canonical remote-refusal temp").join(".decodex"),
+		temp.path().canonicalize().expect("canonical cross-UID temp").join(".decodex"),
 	)
-	.expect("remote-refusal root is safe");
-	let paths = root.paths();
+	.expect("create typed test root");
 
-	paths.ensure_layout().expect("owner-only refusal layout");
+	root.paths().ensure_layout().expect("create cross-UID test layout");
 
-	// SAFETY: `geteuid` has no arguments or failure return.
-	let service_owner_uid = unsafe { libc::geteuid() };
-	let error =
-		LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid ^ 1))
-			.unwrap_err();
+	let effective_uid = unsafe { libc::geteuid() };
+	let error = LocalTransportAuthority::new(
+		root.paths(),
+		LocalTrustPolicy::SameUid,
+		Some(effective_uid ^ 1),
+	)
+	.expect_err("mismatched service UID must fail before socket creation");
 
 	assert_eq!(error, LocalTransportRefusal::EffectiveUidMismatch);
 }

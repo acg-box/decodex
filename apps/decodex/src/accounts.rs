@@ -17,6 +17,7 @@ pub(crate) use self::{
 		hydrate_account_list_usage, run_account_clear, run_account_import, run_account_list,
 		run_account_logout, run_account_select, run_account_use,
 	},
+	file_security::secure_account_file,
 	login::{account_login, run_account_login},
 	types::{
 		AccountIdentitySummary, AccountImportRequest, AccountListResponse, AccountLoginRequest,

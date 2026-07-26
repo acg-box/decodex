@@ -8,7 +8,10 @@ mod retained_session;
 mod wire;
 
 pub use self::{
-	client::{ClientFailure, ClientProfile, DoctorClient, ProfileKind},
+	client::{
+		ClientFailure, ClientProfile, DoctorClient, ProfileKind, ResetCardClient,
+		ResetCardConsumeResponse,
+	},
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,
@@ -32,13 +35,18 @@ pub use self::{
 		HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
 		HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType, HistoryMetadata,
 		HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
-		HistoryText, HistoryTurnRole, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
+		HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError, MAX_HISTORY_INLINE_BYTES,
 		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
-		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_WIRE_TEXT_BYTES,
+		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
 		QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-		ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope, ResultPayload, ResumeCursor,
-		ServerId, ServerInstanceId, ServerMessage, ServerWelcome, Sha256Digest, SnapshotEnvelope,
-		SnapshotItem, WireScalarTooLong, WireText, decode_client_message, encode_server_message,
+		ReceiptDisposition, ReconnectMode, Refusal,
+		RefusalEnvelope, ResetCardAccountDto, ResetCardAccountsResult, ResetCardAdmissionState,
+		ResetCardDescriptorDto, ResetCardDescriptorError, ResetCardError, ResetCardInventoryResult,
+		ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome, ResultPayload,
+		ResumeCursor, ServerId, ServerInstanceId, ServerMessage, ServerWelcome, Sha256Digest,
+		SnapshotEnvelope, SnapshotItem, WireScalarTooLong, WireText, decode_client_message,
+		encode_server_message,
 	},
 };
 
@@ -47,9 +55,9 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// Current protocol generation and minor revision.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
 /// Oldest protocol revision accepted during a rolling client/server update.
-pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 1 };
+pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
@@ -140,7 +148,7 @@ mod tests {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
 		assert_eq!(PREVIOUS_MINOR_VERSION.negotiate(), Ok(PREVIOUS_MINOR_VERSION));
 		assert!(matches!(
-			ProtocolVersion { major: 1, minor: 3 }.negotiate(),
+			ProtocolVersion { major: 1, minor: 4 }.negotiate(),
 			Err(VersionRefusal::UnsupportedMinor { .. })
 		));
 	}
@@ -164,11 +172,14 @@ mod tests {
 		use crate::{LocalTransportAuthority, LocalTransportRefusal};
 		use decodex_core::{DecodexRoot, LocalTrustPolicy};
 
-		let temp = tempfile::tempdir().unwrap();
-		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let temp = tempfile::tempdir().expect("test operation must succeed");
+		let root = DecodexRoot::new(
+			temp.path().canonicalize().expect("test operation must succeed").join(".decodex"),
+		)
+		.expect("test operation must succeed");
 		let paths = root.paths();
 
-		paths.ensure_layout().unwrap();
+		paths.ensure_layout().expect("test operation must succeed");
 
 		// SAFETY: `geteuid` has no arguments or failure return.
 		let uid = unsafe { libc::geteuid() };

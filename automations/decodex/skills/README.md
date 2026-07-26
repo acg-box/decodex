@@ -22,5 +22,13 @@ Publisher is an artifact consumer. It starts from validated `signal_entry/v1`,
 handoff evidence. If upstream evidence is missing or too weak, Publisher must return
 `upstream_analysis_required` instead of reading upstream source directly.
 
-Publisher contracts are `social_candidate/v1`, `social_publish_reservation/v1`, and
-`social_post/v1`. Validate them with `decodex-publisher validate-social`.
+Publisher contracts are `social_candidate/v1`, `social_publish_reservation/v1`,
+`social_post/v1`, and `social_outcome/v1`. Content Manager also writes
+`social_strategy/v1`. Validate all five schemas with `decodex-publisher
+validate-social`. Generated records and browser leases are local-only under `.agent/`.
+Never commit or archive them to Git.
+
+All scheduled roles also consume
+`references/scheduled-run-thread-retention.md`. That policy controls only the current
+Codex run thread. It does not control generated evidence retention or recurring task
+activation.

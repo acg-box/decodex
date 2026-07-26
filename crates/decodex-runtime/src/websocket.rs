@@ -57,6 +57,23 @@ const WS_PATH: &str = "/v1/ws";
 type WebSocket = WebSocketStream<LocalTransportStream>;
 type OwnedFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
+// Tungstenite fixes this callback's error type to the full HTTP response.
+#[allow(clippy::result_large_err)]
+fn validate_websocket_route(
+	request: &Request,
+	response: Response,
+) -> Result<Response, ErrorResponse> {
+	if request.uri().path() == WS_PATH && request.uri().query().is_none() {
+		return Ok(response);
+	}
+
+	let mut refusal = ErrorResponse::new(Some("WebSocket route is unavailable".to_owned()));
+
+	*refusal.status_mut() = StatusCode::NOT_FOUND;
+
+	Err(refusal)
+}
+
 /// Bounded transport and lifecycle settings. None of these enable remote binding.
 #[derive(Clone, Debug)]
 pub struct ServerConfig {
@@ -372,13 +389,46 @@ where
 
 				stopping_started
 			});
-		let deadline_sleep = time::sleep_until(deadline);
-
-		tokio::pin!(deadline_sleep);
-
+		self.inner.application.begin_shutdown();
+		let _ = service_stop_sender.send(true);
 		command_receiver.close();
 		let _ = stop_sender.send(true);
 		drop(command_sender);
+
+		Self::drain_owned_tasks(&mut tasks, &mut receipt, &mut command_receiver, deadline).await;
+
+		receipt.finish_task_accounting(&tasks);
+		// Application effects use their own bounded process deadlines. They are intentionally
+		// drained outside the session/command deadline because aborting an async owner cannot stop
+		// already-started blocking work. The listener and namespace lock remain held throughout.
+		while let Some(completion) = service_tasks.next().await {
+			if completion.is_err() {
+				receipt.record_owner_integrity();
+			}
+		}
+		self.inner.application.wait_for_shutdown().await;
+		self.inner.state.lock().await.subscribers.clear();
+
+		// No session, command, service task, or application owner remains when
+		// the listener removes its publication and releases the namespace lock.
+		drop(self);
+
+		if let Err(refusal) = listener.cleanup() {
+			receipt.record_cleanup_refusal(refusal);
+		}
+
+		receipt.finish()
+	}
+
+	async fn drain_owned_tasks(
+		tasks: &mut OwnedTasks,
+		receipt: &mut TerminationReceiptBuilder,
+		command_receiver: &mut mpsc::Receiver<OwnedFuture>,
+		deadline: time::Instant,
+	) {
+		let deadline_sleep = time::sleep_until(deadline);
+
+		tokio::pin!(deadline_sleep);
 
 		let mut forced_abort = false;
 		// `recv` returns `None` only after the closed channel has no buffered
@@ -395,7 +445,7 @@ where
 					None => break,
 					Some(joined) => {
 						receipt.record_owner_integrity();
-						receipt.record_join(&mut tasks, joined, forced_abort);
+						receipt.record_join(tasks, joined, forced_abort);
 					},
 				}
 			}
@@ -407,7 +457,7 @@ where
 					command = command_receiver.recv(), if !ingress_drained => match command {
 						Some(command) => {
 							if tasks
-								.spawn_forced(OwnedTaskKind::Command, command, &mut receipt)
+								.spawn_forced(OwnedTaskKind::Command, command, receipt)
 								.is_err()
 							{
 								receipt.record_owner_integrity();
@@ -417,7 +467,7 @@ where
 					},
 					joined = tasks.join_next_with_id(), if !tasks.is_empty() => match joined {
 						Some(joined) => {
-							receipt.record_join(&mut tasks, joined, true);
+							receipt.record_join(tasks, joined, true);
 						},
 						None => receipt.record_owner_integrity(),
 					},
@@ -433,7 +483,7 @@ where
 					command = command_receiver.recv(), if !ingress_drained => match command {
 						Some(command) => {
 							if tasks
-								.spawn(OwnedTaskKind::Command, command, &mut receipt)
+								.spawn(OwnedTaskKind::Command, command, receipt)
 								.is_err()
 							{
 								receipt.record_owner_integrity();
@@ -443,32 +493,13 @@ where
 					},
 					joined = tasks.join_next_with_id(), if !tasks.is_empty() => match joined {
 						Some(joined) => {
-							receipt.record_join(&mut tasks, joined, false);
+							receipt.record_join(tasks, joined, false);
 						},
 						None => receipt.record_owner_integrity(),
 					},
 				}
 			}
 		}
-
-		receipt.finish_task_accounting(&tasks);
-		let _ = service_stop_sender.send(true);
-		while let Some(completion) = service_tasks.next().await {
-			if completion.is_err() {
-				receipt.record_owner_integrity();
-			}
-		}
-		self.inner.state.lock().await.subscribers.clear();
-
-		// No session, command, service task, or application owner remains when
-		// the listener removes its publication and releases the namespace lock.
-		drop(self);
-
-		if let Err(refusal) = listener.cleanup() {
-			receipt.record_cleanup_refusal(refusal);
-		}
-
-		receipt.finish()
 	}
 
 	async fn handle_stream(
@@ -483,20 +514,9 @@ where
 			.max_write_buffer_size(self.inner.config.maximum_message_bytes.saturating_add(1))
 			.max_message_size(Some(self.inner.config.maximum_message_bytes))
 			.max_frame_size(Some(self.inner.config.maximum_message_bytes));
-		let callback = |request: &Request, response: Response| {
-			if request.uri().path() == WS_PATH && request.uri().query().is_none() {
-				return Ok(response);
-			}
-
-			let mut refusal = ErrorResponse::new(Some("WebSocket route is unavailable".to_owned()));
-
-			*refusal.status_mut() = StatusCode::NOT_FOUND;
-
-			Err(refusal)
-		};
 		let handshake = time::timeout(
 			self.inner.config.hello_timeout,
-			accept_hdr_async_with_config(stream, callback, Some(config)),
+			accept_hdr_async_with_config(stream, validate_websocket_route, Some(config)),
 		);
 		let socket = tokio::select! {
 			biased;
@@ -811,13 +831,14 @@ where
 					}
 				},
 				ClientMessage::Command(command) => {
-					if command.version != negotiated {
+					if command.version != negotiated || !command.payload.is_supported_in(negotiated)
+					{
 						if !self
 							.enqueue(
 								connection_id,
 								protocol_refusal(
 									&self.inner.server_id,
-									"command version differs from negotiated version",
+									"command is unavailable in the negotiated protocol version",
 								),
 							)
 							.await
@@ -841,13 +862,13 @@ where
 					}
 				},
 				ClientMessage::Query(query) => {
-					if negotiated != CURRENT_VERSION || query.version != negotiated {
+					if query.version != negotiated || !query.payload.is_supported_in(negotiated) {
 						if !self
 							.enqueue(
 								connection_id,
 								protocol_refusal(
 									&self.inner.server_id,
-									"query requires negotiated protocol 1.2",
+									"query is unavailable in the negotiated protocol version",
 								),
 							)
 							.await
@@ -999,13 +1020,15 @@ where
 		let execution = self.inner.application.execute(&command).await;
 		let (result, publication) =
 			result_from_execution(&self.inner.server_id, &command, version, execution);
-		let stored = StoredCommand {
-			fingerprint,
-			original_client_command_id: command.client_command_id.clone(),
-			result: result.clone(),
-		};
+		if result.outcome != CommandOutcome::AcceptanceUnknown {
+			let stored = StoredCommand {
+				fingerprint,
+				original_client_command_id: command.client_command_id.clone(),
+				result: result.clone(),
+			};
 
-		state.receipts.insert(receipt_key, stored);
+			state.receipts.insert(receipt_key, stored);
+		}
 
 		let receipt = CommandReceipt {
 			version,
@@ -1054,6 +1077,9 @@ where
 		}
 
 		state.subscribers.retain(|_, subscriber| {
+			if !event.payload.is_supported_in(subscriber.version) {
+				return true;
+			}
 			let mut event = event.clone();
 
 			event.version = subscriber.version;
@@ -1487,8 +1513,9 @@ impl Display for ServerError {
 			Self::LocalTransport(refusal) => Display::fmt(refusal, formatter),
 			Self::LifecycleJoin(_) => formatter.write_str("server lifecycle task failed"),
 			Self::LifecycleUnavailable => formatter.write_str("server lifecycle is unavailable"),
-			Self::Terminated(receipt) =>
-				write!(formatter, "server lifecycle terminated: {:?}", receipt.primary),
+			Self::Terminated(receipt) => {
+				write!(formatter, "server lifecycle terminated: {:?}", receipt.primary)
+			},
 		}
 	}
 }
@@ -1513,19 +1540,27 @@ fn result_from_execution(
 			},
 			Some(publication),
 		),
-		Err(error) => (
-			CommandResultEnvelope {
-				version,
-				server_id: server_id.clone(),
-				client_command_id: command.client_command_id.clone(),
-				idempotency_key: command.idempotency_key.clone(),
-				outcome: CommandOutcome::Rejected,
-				entity_revision: None,
-				payload: None,
-				error: Some(error),
-			},
-			None,
-		),
+		Err(error) => {
+			let outcome = if matches!(&error, CommandError::AcceptanceUnknown) {
+				CommandOutcome::AcceptanceUnknown
+			} else {
+				CommandOutcome::Rejected
+			};
+
+			(
+				CommandResultEnvelope {
+					version,
+					server_id: server_id.clone(),
+					client_command_id: command.client_command_id.clone(),
+					idempotency_key: command.idempotency_key.clone(),
+					outcome,
+					entity_revision: None,
+					payload: None,
+					error: Some(error),
+				},
+				None,
+			)
+		},
 	}
 }
 

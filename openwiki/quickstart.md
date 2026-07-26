@@ -128,9 +128,10 @@ evidence only after that point. It is not a runtime or future-work input.
 - `site/` is the static Astro product site; it must not depend on live daemon state (`site/package.json`, `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`).
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
-  adaptation loop. `automations/decodex/` owns shared config tooling and Publisher
-  assets; `automations/radar/` owns Radar assets. Their obsolete schedules and prompts
-  were deleted (`automations/upstream/README.md`).
+  adaptation loop. `automations/decodex/` contains the current Content Manager and
+  browser Publisher tasks plus shared config and Publisher assets.
+  `automations/radar/` owns reusable Radar assets and has no separate schedule. The
+  old multi-task content schedules remain deleted (`automations/upstream/README.md`).
 - `scripts/` contains repo maintenance helpers including plugin sync and macOS app staging.
 - `tests/scripts/test_vnext_architecture.py` enforces the exact vNext dependency graph, client isolation, and exclusion-with-preservation of the legacy package.
 
@@ -144,27 +145,39 @@ has mode 0700. The persistent `decodex.lock`, fixed `decodex.sock.stage`, and pu
 `decodex.sock` entries have owner-only mode 0600 and exactly one link whenever present.
 Publication binds the staging name and uses same-directory descriptor-relative `renameat`
 while the one-link lock is held.
-It opens no repository or Codex process. It attempts only
+It opens a Codex app-server process only for an admitted manual reset-card request;
+conversation dispatch remains disabled. It attempts only
 the explicitly configured PostgreSQL Unix socket and otherwise retains a typed unavailable
-adapter. The protocol supports V1.2/V1.1 negotiation, typed command receipt/result and
+adapter. The protocol supports V1.3/V1.2 negotiation, typed command receipt/result and
 event envelopes, bounded snapshots/queues/wire text, fixed per-version-capacity in-lifetime
-idempotency whose lookup and capacity namespace are bound to the negotiated protocol version (so V1.2
-and V1.1 mutation keys cannot consume or poison one another),
+idempotency whose lookup and capacity namespace are bound to the negotiated protocol version,
 publication-epoch-bound cursor resume,
 snapshot fallback, stable
 server-identity pinning, bounded doctor/status results, and a bounded typed Conversation-history
 query, plus a read-only immutable execution-decision query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
-API-only V1.2 diagnostic clients; GPUI still reports its disabled state.
+API-only V1.3 diagnostic clients. `decodex reset-card` is the active manual reset-card
+client. GPUI still reports its disabled state.
+
+The reset-card service uses only configured vNext account UUIDs. It admits accounts in
+`available` or `depleted` state. Clients select a card by its public grant and expiry
+timestamps and send the exact account revision. `decodexd` alone reads the credential
+vault, starts and attests the Codex process, resolves the opaque provider credit ID,
+persists that exact ID and the logical-command idempotency key before the effect, consumes
+the card, and reconciles fresh provider state. Restart recovery reuses the same exact ID
+and key; it never selects a replacement card. Both `account/rateLimits/read` and
+`account/rateLimitResetCredit/consume` must be present in the generated app-server schema.
 
 Each client reconnect captures the current socket identity and verifies the daemon kernel
 peer UID. Each server admission verifies the client kernel peer UID and the current
 directory, lock, and socket identities. There is no startup self-connect challenge and no
 continuous endpoint watchdog. One lifecycle task owns the listener. One `JoinSet` owns all
-session and command tasks with stable spawn IDs and kinds. Shutdown creates one absolute
-deadline, harvests `join_next_with_id` until empty, performs exact cleanup, closes the
-listener, and releases the lock last. This boundary serializes legitimate daemons. It does
-not claim confinement against hostile code that already has the same UID.
+session and command tasks with stable spawn IDs and kinds. The same lifecycle directly
+owns daemon service futures. Shutdown first closes Reset Card provider-work admission,
+then creates one absolute session/command deadline and harvests `join_next_with_id` until
+empty. Already registered provider work keeps its own bounded process deadline and must
+settle before exact endpoint cleanup and lock release. This boundary serializes legitimate
+daemons. It does not claim confinement against hostile code that already has the same UID.
 
 When PostgreSQL is ready, daemon bootstrap projects restored nonterminal
 ProcessGenerations to `death_unknown`, performs one positive-only reconciliation pass, and
@@ -259,7 +272,7 @@ operator UID authority, and kernel peer credentials rather than trusting an obse
 `~/.decodex` layout for `config.toml`, logs, SHA-256 blobs, disposable cache, and atomic
 server identity.
 
-Doctor/status is a V1.2 read-only query served only by `decodexd`. Queries have client observation
+Doctor/status is a V1.3 read-only query served only by `decodexd`. Queries have client observation
 identities but no mutation receipt, deduplication, replay, event, or receipt-capacity effect. Its closed report
 covers configuration, database, protocol and version, stable server identity, shared
 Codex home, each typed app-server capability, aggregate server-host repository readiness,
@@ -311,11 +324,31 @@ writer lock and sealed by the immutable parent with an exact contiguous source c
 cannot append, alter, delete, or commit an incomplete source manifest after persistence.
 
 The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
-Unsupported or mutating product CLI operations remain unavailable and belong to later slices, as do
-scheduling, account routing, a PostgreSQL installation or administration plane, live Codex dispatch,
+The `decodex reset-card accounts`, `list`, `use`, and `status` operations are active
+clients of the common daemon service. Other unsupported or mutating product CLI operations
+remain unavailable and belong to later slices, as do
+scheduling, account routing, a general PostgreSQL administration plane, live Codex dispatch,
 an authenticated HTTP artifact path, remote or cross-UID binding, and GPUI product behavior.
 Kernel same-UID credentials are the complete local V1 principal. Application PKI and remote
 TLS remain outside this boundary and belong to the later remote-security gate.
+
+The macOS source-install path is narrower than a general administration plane.
+`scripts/macos/install_decodex_local_service.py` initializes one same-UID PostgreSQL
+18 cluster, provisions the exact Decodex roles and grants, and installs one user
+LaunchAgent. `decodexd supervise-local` owns the PostgreSQL and daemon process
+generations. A PostgreSQL generation change stops the daemon and makes the
+supervisor exit; launchd then starts one new coherent generation. An atomic
+credential-file replacement restarts only the daemon when its injected credential
+projection changes. The LaunchAgent restarts only unsuccessful exits and retains a
+60-second final stop timeout. When the installed job has that exact contract, the
+installer first signals the loaded supervisor, waits for its bounded daemon and
+PostgreSQL drain to leave the job inactive, and only then removes the job. The one-time
+legacy path removes the old job directly. Both paths bind observed processes by PID and
+full start time and wait at most 300 seconds before provisioning a replacement. Reset Card
+discovery, account binding, provider access, and typed results remain Rust runtime work.
+On macOS, the runtime starts the final canonical Codex image suspended and verifies it
+against its immutable snapshot before resume so process-aware network extensions can apply
+the correct route. Swift remains a client and owns none of these effects.
 
 ## First commands
 
@@ -323,8 +356,10 @@ Use these as discovery and validation entrypoints:
 
 ```sh
 cargo run -p decodexd
+cargo run -p decodexd -- --version
 cargo run -p decodex-cli -- status
 cargo run -p decodex-cli -- doctor --output json
+cargo run -p decodex-cli -- reset-card accounts
 cargo run -p decodex-gpui
 cargo test -p decodex-core --all-targets --all-features
 cargo make test-vnext-architecture
@@ -332,20 +367,24 @@ cargo make test-vnext-postgres-store
 cargo make check
 ```
 
-`decodexd` starts the same-UID Unix WebSocket service and runs until stopped. The CLI selects
+`decodexd` with no arguments, or with `serve`, starts the same-UID Unix WebSocket
+service and runs until stopped. `decodexd --version` prints the version and does
+not start a service. `decodexd supervise-local --help` describes the bounded
+Unix service supervisor used by the macOS source installer. The CLI selects
 the configured active profile by default; `--profile NAME` selects an explicit declared
 profile and `--root PATH` selects a typed Decodex root. Human output is the default and
-`--output json` emits `decodex/cli-diagnostics/1`. GPUI still reports its disabled state.
+diagnostic `--output json` emits `decodex/cli-diagnostics/1`; reset-card JSON emits
+`decodex/reset-card-cli/1`. GPUI still reports its disabled state.
 For a targeted Rust gate,
 prefer
 `cargo check --all-features --all-targets --workspace` or
 `cargo nextest run --workspace --all-targets --all-features` (`Makefile.toml`,
 `openwiki/operations/commands-and-validation.md`).
 
-XY-1399 A-prime is a pre-core-freeze source candidate. Do not run the commands in this
-section as acceptance for that candidate. Its formatter, build, static, parser, test,
-fixture, wrapper, generator, service, UI, and live-effect validation is deferred to the
-single integrated frozen-core gate. The exact stale caller inventory is in
+XY-1399 A-prime is the historical source-only ancestor of the integrated same-UID
+transport. The current tree must run the commands in this section. It also runs the
+focused namespace, WebSocket lifecycle, daemon signal, CLI process, Reset Card
+PostgreSQL, Swift, and signed app-staging checks described in
 [vNext gates](specs/vnext-gates.md).
 
 ## Authority and safety rules
@@ -353,7 +392,11 @@ single integrated frozen-core gate. The exact stale caller inventory is in
 - Do not read `.env` files or live secret-bearing config. `decodex.example.toml` is the
   bounded vNext setup model and stores only a PostgreSQL credential environment-variable
   name, never its value.
-- Do not route vNext through `apps/decodex`, legacy SQLite, Linear lanes, or the legacy operator transport.
+- Do not route vNext product state through `apps/decodex`, legacy SQLite, Linear
+  lanes, or the legacy operator transport. The macOS local source installer has
+  one explicit migration bridge for an exact configured legacy account set. The
+  bridge projects current credentials only to the supervised daemon environment;
+  it is not product-state authority or a fallback.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 - PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.
 - For project knowledge work, update OpenWiki directly and keep it aligned with source, tests, and manifests.

@@ -9,10 +9,12 @@ use std::{
 	time::{Duration, Instant},
 };
 
+#[cfg(target_os = "macos")] use core_foundation as _;
 use decodex_codex as _;
 use decodex_postgres as _;
 use decodex_protocol as _;
 use futures_util as _;
+#[cfg(target_os = "macos")] use security_framework as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
