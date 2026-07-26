@@ -14,8 +14,11 @@ Local-first agent workspace orchestration.
 ## vNext foundation status
 
 The active Rust workspace is the product-incomplete vNext foundation. `decodexd` now
-serves the versioned structured-JSON WebSocket protocol at loopback-only
-`ws://127.0.0.1:49152/v1/ws`. It negotiates protocol V1 current/previous minor,
+serves the versioned structured-JSON WebSocket protocol at
+`~/.decodex/server/decodex.sock`. The local profile permits only the exact configured
+effective UID. Both client and server verify kernel peer credentials for every connection.
+The WebSocket route remains `/v1/ws`, and the handshake URI does not dial TCP. The server
+negotiates protocol V1 current/previous minor,
 publishes bounded snapshots and resumable ordered events, deduplicates commands for one
 server lifetime in a fixed-capacity ledger, and disconnects clients whose bounded
 outbound queue fills. It loads the typed `~/.decodex/config.toml`, retains the stable
@@ -40,7 +43,6 @@ name, pin the stable server identity before accepting a snapshot or report, and 
 `--output json` under `decodex/cli-diagnostics/1`. Exit status is 0 only when all checks
 are ready, 1 for a complete report containing unavailable or unknown checks, and 2 for a
 closed client/configuration/protocol failure, including an incomplete current component set.
-
 `decodex reset-card accounts`, `list`, `use`, and `status` are thin clients of the
 common daemon service. The public contract uses a vNext account UUID, exact revision,
 and grant/expiry descriptor. Accounts in `available` or `depleted` state are admitted.
@@ -59,8 +61,14 @@ uses the same exact ID and idempotency key. It never rematches another card. The
 schema must advertise both `account/rateLimits/read` and
 `account/rateLimitResetCredit/consume`.
 
-Codex live dispatch, authenticated remote binding, and non-macOS native product UI
-behavior are still unavailable until their owning slices land.
+The local namespace uses a persistent single-link lock, fixed staging socket, and
+same-directory descriptor-relative publication. The runtime owns all session and command
+tasks in one set and directly owns daemon service futures. Shutdown closes new Reset Card
+provider work, settles already registered work, and empties the task set before
+identity-checked cleanup, listener close, and lock release. `decodexd` maps SIGINT and
+SIGTERM to this graceful path; a later start safely recovers a provably stale socket after
+SIGKILL. Codex conversation dispatch, remote or cross-UID transport, application PKI,
+and GPUI product behavior are still unavailable until their owning slices land.
 The frozen v0.2 source remains under
 `apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is not
 a compatibility runtime.
@@ -121,8 +129,9 @@ runtime.
   `crates/decodex-codex/`, and `crates/decodex-runtime/` are the five active vNext
   library owners.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are the active vNext
-  composition roots. `decodexd` owns the loopback server; the CLI is the bounded
-  diagnostic and reset-card service client, while GPUI still reports disabled capability.
+  composition roots. `decodexd` owns the same-UID Unix WebSocket server; the CLI is the
+  bounded diagnostic and reset-card service client, while GPUI still reports disabled
+  capability.
 - `apps/decodex/` preserves the frozen v0.2 package outside the active Cargo workspace.
 - `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
   release-delta, signal rendering, validation, and local ledger workflows.
@@ -142,7 +151,7 @@ runtime.
   `automations/radar/` retains reusable evidence tools. Their obsolete schedules and
   prompts were removed rather than retained as compatibility inputs.
 
-No product-specific command service is active yet. The protocol uses bounded in-memory
+No other product-specific mutation service is active beyond Reset Card. The protocol uses bounded in-memory
 replay/idempotency state while the PostgreSQL adapter owns durable product-state
 transactions when its explicit configuration verifies successfully. The stable
 server-host identity is persisted under `~/.decodex`; stale or impossible cursors still

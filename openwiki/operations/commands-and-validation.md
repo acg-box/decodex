@@ -101,6 +101,43 @@ wrapper source, and the current
 [XY-1368 validation runbook](xy-1368-retained-title-validation.md). Do not infer future
 package-defined behavior from those current surfaces.
 
+## Same-UID Unix transport validation
+
+XY-1399 A-prime was the source-only design ancestor. The current integrated implementation
+ports that transport onto protocol V1.3/V1.2 and the shared Reset Card service. Validation
+must bind all results to the exact candidate tree and cover macOS and Linux. It validates:
+
+- fixed staging-name and canonical-name stale recovery under the persistent single-link
+  namespace lock;
+- stage bind, exact mode, captured device/inode/owner/mode/link-count identity, exactly
+  one socket link, and same-directory descriptor-relative `renameat` publication;
+- directory, lock, and socket replacement at publication, server admission, client
+  reconnect, and cleanup;
+- client and server kernel peer credentials and exact effective-UID equality;
+- WebSocket `/v1/ws` with V1.3 and V1.2, without TCP, Axum, self-connect, watchdog, or
+  compatibility fallback;
+- concurrent legitimate daemons, active sessions, in-flight commands, child panic,
+  absolute-deadline cancellation, deterministic termination receipt readback, explicit
+  `join_next_with_id` harvesting through empty, and zero owned work before cleanup;
+- immediate Reset Card work-admission closure at shutdown and settlement of every already
+  registered blocking provider operation before namespace cleanup;
+- SIGINT and SIGTERM graceful cleanup and SIGKILL stale-socket recovery;
+- exact cleanup refusal, listener close, and namespace-lock release order; and
+- reverse dependency isolation for remote/cross-UID transport, PKI, PostgreSQL end-user
+  authentication, routing, UI, packaging, release, and unrelated production dispatch.
+
+The integrated caller conversion removes `LoopbackEndpoint`, local-profile `address`,
+URL-based retained-session construction, the transport-level `InvalidEndpoint`, active
+local-daemon TCP socket fixtures, `BoundServer::address`, TCP V1 URIs, the fixed local
+`127.0.0.1:49152` endpoint, dependency-only Axum use, and the Axum workspace edge. Inert
+remote-profile port data and the GPUI `CompatibilityReason::InvalidEndpoint` display
+classification remain outside the local transport implementation.
+`crates/decodex-protocol/tests/local_transport_authority.rs`
+owns namespace, stale recovery, replacement, permission, peer, and path-length coverage.
+`crates/decodex-runtime/tests/websocket_protocol.rs` owns WebSocket continuity and
+zero-survivor service settlement. `apps/decodexd/tests/signal_shutdown.rs` owns real
+process signal and crash-recovery behavior.
+
 ## Vstyle audit authority
 
 Vstyle is an explicit read-only audit and is not part of the blocking `lint` or `check`
@@ -136,8 +173,8 @@ repository maintainers. It must be reevaluated by 2026-08-15, whenever executabl
 identity changes, whenever the accepted baseline changes, and before any scope is promoted
 to blocking.
 
-The CLI matrix builds the real `decodex` binary, binds the real runtime to an isolated
-OS-selected loopback port, and proves status/doctor, stable identity mismatch,
+The current CLI matrix builds the real `decodex` binary and uses the fixed owner-only Unix
+namespace. It proves status/doctor, stable identity mismatch,
 disconnection, malformed/missing profile configuration, unsafe server-host paths,
 database unavailability, plugin/vault/blob unknown states, and redaction. Protocol unit
 fixtures separately force wrong major/minor, malformed/oversized response, timeout, and
@@ -452,8 +489,8 @@ Use the owner path to choose the first validation surface:
   integrity-verifying blobs, and disposable bounded cache. For managed repositories it
   owns only mechanism-neutral values, facts, descriptors, evidence, and pure deciders;
   these are not durable authority.
-- `crates/decodex-protocol/`: version and loopback server boundary plus the bounded typed
-  client transport shared by CLI and future UI clients.
+- `crates/decodex-protocol/`: version, same-UID Unix namespace authority, and bounded
+  typed WebSocket client transport shared by CLI and future UI clients.
 - `crates/decodex-postgres/`: explicit PostgreSQL product-state adapter and isolated
   real-PostgreSQL integration tests; XY-1307 runtime composition supplies only typed
   explicit configuration and retains unavailable on every bootstrap failure. XY-1349 is

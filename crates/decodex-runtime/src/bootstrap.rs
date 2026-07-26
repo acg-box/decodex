@@ -3,7 +3,6 @@
 use std::{
 	env, fs,
 	io::ErrorKind,
-	net::{IpAddr, Ipv4Addr, SocketAddr},
 	path::{Path, PathBuf},
 	sync::Arc,
 };
@@ -18,16 +17,15 @@ use crate::{
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
-	Availability, BlobStore, ConfigError, DecodexConfig, DecodexRoot, PathError,
-	PostgresIdentityConfig, ProductState as _, ServerIdentity,
+	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
+	PostgresIdentityConfig, ProductState as _, ServerIdentity, ServerProfile,
 };
 use decodex_postgres::{BootstrapFailure, PostgresStore};
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, ServerId,
+	DoctorStatus, LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal, ServerId,
 };
 
-const DEFAULT_ADDRESS: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 49_152);
 const CONFIG_UNAVAILABLE: &str = "typed PostgreSQL configuration is unavailable";
 const AUTHENTICATION_UNAVAILABLE: &str = "PostgreSQL authentication is unavailable";
 const DATABASE_UNREACHABLE: &str = "configured PostgreSQL is unreachable";
@@ -35,10 +33,9 @@ const DATABASE_INCOMPATIBLE: &str = "configured PostgreSQL is incompatible";
 const DATABASE_AUTHORITY_UNSAFE: &str = "configured PostgreSQL runtime authority is unsafe";
 const MANAGED_REPOSITORY_UNAVAILABLE: &str = "managed repository runtime is unavailable";
 
-/// Complete daemon bootstrap result, including its stable identity and typed report.
+/// Complete daemon bootstrap under one already-acquired singleton capability.
 pub struct ServiceBootstrap {
 	server_id: ServerId,
-	address: SocketAddr,
 	store: ProductStore,
 	managed_repositories: Option<ManagedRepositoryRuntime>,
 	managed_repository_readiness: ManagedRepositoryReadiness,
@@ -46,13 +43,11 @@ pub struct ServiceBootstrap {
 	blob_store: Option<BlobStore>,
 	reset_cards: Option<ResetCardRuntime>,
 	doctor: DoctorReport,
+	// Keep the one acquired daemon capability last so an unbound bootstrap
+	// releases it after every mutation service and application dependency.
+	daemon_authority: Result<LocalTransportListener, LocalTransportRefusal>,
 }
 impl ServiceBootstrap {
-	/// Loopback listener retained by the current security gate.
-	pub const fn address(&self) -> SocketAddr {
-		self.address
-	}
-
 	/// Stable server-host identity used by welcome, pinning, and doctor readback.
 	pub fn server_id(&self) -> &ServerId {
 		&self.server_id
@@ -73,37 +68,36 @@ impl ServiceBootstrap {
 		self.managed_repository_readiness
 	}
 
-	fn protocol_server(self, config: ServerConfig) -> ProtocolServer<ServiceApplication> {
-		ProtocolServer::new(
-			self.server_id,
+	/// Move the already-owned same-UID listener into the server lifecycle.
+	pub async fn bind(self, config: ServerConfig) -> Result<BoundServer, ServerError> {
+		let Self {
+			server_id,
+			store,
+			managed_repositories,
+			managed_repository_readiness,
+			managed_repository_startup_error,
+			blob_store,
+			reset_cards,
+			doctor,
+			daemon_authority,
+		} = self;
+		let listener = daemon_authority.map_err(ServerError::LocalTransport)?;
+		let server = ProtocolServer::new(
+			server_id,
 			ServiceApplication::new(
-				self.store,
-				self.managed_repositories,
-				self.managed_repository_readiness,
-				self.managed_repository_startup_error,
+				store,
+				managed_repositories,
+				managed_repository_readiness,
+				managed_repository_startup_error,
 				CodexAdapter::unavailable(),
-				self.blob_store,
-				self.doctor,
+				blob_store,
+				doctor,
 			)
-			.with_reset_cards(self.reset_cards),
+			.with_reset_cards(reset_cards),
 			config,
-		)
-	}
+		);
 
-	/// Bind the bootstrapped daemon on an explicitly selected loopback address.
-	pub async fn bind(
-		self,
-		address: SocketAddr,
-		config: ServerConfig,
-	) -> Result<BoundServer, ServerError> {
-		self.protocol_server(config).bind(address).await
-	}
-
-	/// Run the bootstrapped daemon on its configured current local endpoint.
-	pub async fn run(self, config: ServerConfig) -> Result<(), ServerError> {
-		let address = self.address;
-
-		self.protocol_server(config).run(address).await
+		Ok(server.bind_listener(listener))
 	}
 }
 
@@ -132,13 +126,56 @@ pub(crate) async fn bootstrap_default() -> ServiceBootstrap {
 
 pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	let paths = root.paths();
-	let identity = ServerIdentity::load_or_create(&paths);
-	let (server_id, identity_status) = server_identity(identity);
 	let loaded = DecodexConfig::load(&paths);
+	let configured_transport =
+		loaded.as_ref().map_or(Err(LocalTransportRefusal::ConfigurationUnavailable), |config| {
+			match config.active_profile() {
+				ServerProfile::Local(profile) => LocalTransportAuthority::new(
+					paths.clone(),
+					profile.policy(),
+					profile.service_owner_uid(),
+				),
+				ServerProfile::Remote(_) => Err(LocalTransportRefusal::Disabled),
+			}
+		});
 	let config_status = match &loaded {
 		Ok(_) => DoctorStatus::Ready,
 		Err(error) => DoctorStatus::Unavailable(config_issue(*error)),
 	};
+	let listener = match configured_transport {
+		Ok(authority) => match authority.bind().await {
+			Ok(listener) => listener,
+			Err(refusal) => {
+				return bootstrap_without_authority(
+					refusal,
+					config_status,
+					DoctorStatus::Unknown(DoctorIssue::NotProbed),
+				);
+			},
+		},
+		Err(refusal) => {
+			return bootstrap_without_authority(
+				refusal,
+				config_status,
+				loaded.as_ref().map_or_else(
+					|error| DoctorStatus::Unavailable(database_config_issue(*error)),
+					|_| DoctorStatus::Unknown(DoctorIssue::NotProbed),
+				),
+			);
+		},
+	};
+
+	bootstrap_with_authority(paths, loaded, config_status, listener).await
+}
+
+async fn bootstrap_with_authority(
+	paths: DecodexPaths,
+	loaded: Result<DecodexConfig, ConfigError>,
+	config_status: DoctorStatus,
+	listener: LocalTransportListener,
+) -> ServiceBootstrap {
+	let identity = ServerIdentity::load_or_create(&paths);
+	let (server_id, identity_status) = server_identity(identity);
 	let mut repositories = loaded
 		.as_ref()
 		.map_or_else(|error| DoctorStatus::Unavailable(config_issue(*error)), server_repositories);
@@ -222,7 +259,6 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		address: DEFAULT_ADDRESS,
 		store,
 		managed_repositories,
 		managed_repository_readiness,
@@ -230,6 +266,39 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		blob_store: blob_store.ok(),
 		reset_cards,
 		doctor,
+		daemon_authority: Ok(listener),
+	}
+}
+
+fn bootstrap_without_authority(
+	refusal: LocalTransportRefusal,
+	configuration: DoctorStatus,
+	database: DoctorStatus,
+) -> ServiceBootstrap {
+	let server_id = unavailable_server_id();
+	let doctor = doctor_report(
+		server_id.clone(),
+		DoctorInputs {
+			configuration,
+			database,
+			server_identity: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			shared_home: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			repositories: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			blob_integrity: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			vault: DoctorStatus::Unknown(DoctorIssue::NotProbed),
+		},
+	);
+
+	ServiceBootstrap {
+		server_id,
+		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
+		managed_repositories: None,
+		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
+		managed_repository_startup_error: None,
+		blob_store: None,
+		reset_cards: None,
+		doctor,
+		daemon_authority: Err(refusal),
 	}
 }
 
@@ -250,7 +319,6 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 
 	ServiceBootstrap {
 		server_id,
-		address: DEFAULT_ADDRESS,
 		store: ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
 		managed_repositories: None,
 		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
@@ -258,6 +326,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		blob_store: None,
 		reset_cards: None,
 		doctor,
+		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),
 	}
 }
 
