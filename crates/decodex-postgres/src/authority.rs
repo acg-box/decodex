@@ -2776,10 +2776,19 @@ WITH set_roles AS (
       )
       AND required_digest.proname = 'digest'
       AND required_digest.pronargs = 2
-      AND required_digest.proargtypes::pg_catalog.oid[] = ARRAY[
-        'pg_catalog.bytea'::pg_catalog.regtype::pg_catalog.oid,
+      AND pg_catalog.array_ndims(
+        required_digest.proargtypes::pg_catalog.oid[]
+      ) = 1
+      AND pg_catalog.array_lower(
+        required_digest.proargtypes::pg_catalog.oid[], 1
+      ) = 0
+      AND pg_catalog.array_upper(
+        required_digest.proargtypes::pg_catalog.oid[], 1
+      ) = 1
+      AND required_digest.proargtypes[0] =
+        'pg_catalog.bytea'::pg_catalog.regtype::pg_catalog.oid
+      AND required_digest.proargtypes[1] =
         'pg_catalog.text'::pg_catalog.regtype::pg_catalog.oid
-      ]
       AND required_digest.proallargtypes IS NULL
       AND required_digest.proargmodes IS NULL
       AND required_digest.proargnames IS NULL
@@ -4711,6 +4720,34 @@ pub(crate) const fn configured_authority_sql_fixture() -> &'static str {
 }
 
 #[cfg(feature = "test-support")]
+pub(crate) async fn runtime_routine_authority_fixture(
+	client: &TokioClient,
+) -> Result<(), StoreError> {
+	let runtime_routines = RUNTIME_EXECUTE_FUNCTIONS.to_vec();
+	let runtime_entry = client
+		.query_one(RUNTIME_ROUTINE_AUTHORITY_SQL, &[&runtime_routines])
+		.await
+		.map_err(StoreError::Database)?;
+	let unexpected_runtime_security_definer: bool =
+		runtime_entry.try_get(0).map_err(StoreError::Database)?;
+	let required_digest_exists: bool = runtime_entry.try_get(1).map_err(StoreError::Database)?;
+	let required_digest_exact: bool = runtime_entry.try_get(2).map_err(StoreError::Database)?;
+
+	if unexpected_runtime_security_definer {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL runtime routine authority contains an unexpected security-definer entry",
+		));
+	}
+	if !required_digest_exists || !required_digest_exact {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL runtime routine dependency differs from the shipped contract".into(),
+		));
+	}
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
 pub(crate) fn execution_path_contract_fixture() -> (&'static str, Vec<&'static str>) {
 	(
 		EXECUTION_PATH_CONTRACT_SQL,
@@ -5101,11 +5138,6 @@ async fn verify_configured_authority(
 	let digest = Sha256::digest(manifest.as_bytes());
 
 	if digest.as_slice() != CONFIGURED_AUTHORITY_SHA256 {
-		#[cfg(feature = "test-support")]
-		eprintln!(
-			"configured authority actual SHA-256: {}",
-			digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
-		);
 		return Err(StoreError::UnsafeAuthority(
 			"PostgreSQL configured principal or ACL authority differs from the shipped PG18 inventory",
 		));
@@ -5555,12 +5587,22 @@ mod tests {
 			"required_digest.extversion = '1.4'",
 			"required_digest.proowner <> required_digest.extowner",
 			"owner.rolsuper",
+			"required_digest.pronargs = 2",
+			"pg_catalog.array_ndims(\n        required_digest.proargtypes::pg_catalog.oid[]\n      ) = 1",
+			"pg_catalog.array_lower(\n        required_digest.proargtypes::pg_catalog.oid[], 1\n      ) = 0",
+			"pg_catalog.array_upper(\n        required_digest.proargtypes::pg_catalog.oid[], 1\n      ) = 1",
+			"required_digest.proargtypes[0] =\n        'pg_catalog.bytea'::pg_catalog.regtype::pg_catalog.oid",
+			"required_digest.proargtypes[1] =\n        'pg_catalog.text'::pg_catalog.regtype::pg_catalog.oid",
 			"required_digest.proacl IS NULL",
 			"dependency.deptype = 'e'",
 			"'EXECUTE WITH GRANT OPTION'",
 		] {
 			assert!(RUNTIME_ROUTINE_AUTHORITY_SQL.contains(required), "{required}");
 		}
+		assert!(
+			!RUNTIME_ROUTINE_AUTHORITY_SQL
+				.contains("required_digest.proargtypes::pg_catalog.oid[] = ARRAY[")
+		);
 		assert_eq!(SEMANTIC_AUTHORITY_DEFINITION.len(), SEMANTIC_AUTHORITY_PREDICATE_COUNT);
 	}
 
