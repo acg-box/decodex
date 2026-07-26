@@ -2256,6 +2256,48 @@ class UpstreamAutopilotTests(unittest.TestCase):
             finally:
                 server.close()
 
+    @unittest.skipUnless(
+        sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file(),
+        "requires the macOS sandbox",
+    )
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "the outer validation sandbox owns this probe",
+    )
+    def test_validation_sandbox_allows_descriptor_pinned_private_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_home = Path(directory).resolve() / "sandbox"
+            private_directory = temporary_home / "private"
+            private_directory.mkdir(parents=True, mode=0o700)
+            receipt = private_directory / "candidate.json"
+            receipt.write_bytes(b'{"schema":"candidate"}\n')
+            receipt.chmod(0o600)
+            profile = self.autopilot.validation_sandbox_profile(
+                ROOT,
+                ROOT,
+                temporary_home,
+            )
+            output = self.autopilot.run_command(
+                [
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                    profile,
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        "from scripts.vnext.postgres_store_test import "
+                        "read_private_authority_receipt; "
+                        f"payload, _ = read_private_authority_receipt(Path({str(receipt)!r})); "
+                        "print(payload.decode().strip())"
+                    ),
+                ],
+                cwd=ROOT,
+                failure_code="sandbox_probe_failed",
+                timeout_seconds=10,
+            )
+            self.assertEqual(output, '{"schema":"candidate"}')
+
     def test_cargo_lock_rejects_new_git_sources_and_bad_checksums(self):
         registry_package = (
             'version = 4\n\n'
