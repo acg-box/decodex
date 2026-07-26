@@ -1341,7 +1341,7 @@ fn spawn_protocol_process(
 		.stderr(Stdio::null());
 
 	configure_child_environment(&mut process, binding)?;
-	configure_process_group(&mut process, None);
+	configure_process_session(&mut process, None);
 
 	let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
 	let mut owner = ProcessGroupOwner::new(child, guard);
