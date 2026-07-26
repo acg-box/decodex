@@ -3,11 +3,12 @@
 //! This owner intentionally exposes no account selection, process start, Codex dispatch,
 //! rollover executor, fallback executor, or wake scheduler.
 
-use std::{env, fs, path::PathBuf, time::Duration};
+use std::time::Duration;
+#[cfg(debug_assertions)] use std::{env, fs, path::PathBuf};
 
 use deadpool_postgres::{Client, ClientWrapper};
 use serde_json::{self, Value};
-use tokio::time;
+#[cfg(debug_assertions)] use tokio::time;
 use tokio_postgres::{Row, Transaction, error::SqlState};
 
 use crate::{

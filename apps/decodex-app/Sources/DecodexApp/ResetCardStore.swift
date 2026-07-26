@@ -53,9 +53,24 @@ private enum ResetCardDispatchOutcome {
 	}
 }
 
+private enum ResetCardRefreshResult: Equatable {
+	case complete
+	case retryNeeded
+	case skipped
+}
+
 @MainActor
 @Observable
 final class ResetCardStore {
+	private static let defaultStartupRetryDelays: [Duration] = [
+		.seconds(1),
+		.seconds(2),
+		.seconds(4),
+		.seconds(8),
+		.seconds(15),
+		.seconds(30),
+	]
+
 	private(set) var accounts = [ResetCardAccountState]()
 	private(set) var isRefreshing = false
 	private(set) var hasLoaded = false
@@ -64,16 +79,19 @@ final class ResetCardStore {
 	private(set) var isPendingRecoveryBlocked: Bool
 	var message: ResetCardStoreMessage?
 
-	@ObservationIgnored private let client: ResetCardCLIClient
+	@ObservationIgnored private let client: any ResetCardClient
 	@ObservationIgnored private let pendingStore: ResetCardPendingAttemptStore
+	@ObservationIgnored private let startupRetryDelays: [Duration]
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 
 	init(
-		client: ResetCardCLIClient = ResetCardCLIClient(),
-		pendingStore: ResetCardPendingAttemptStore = ResetCardPendingAttemptStore()
+		client: any ResetCardClient = ResetCardCLIClient(),
+		pendingStore: ResetCardPendingAttemptStore = ResetCardPendingAttemptStore(),
+		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays
 	) {
 		self.client = client
 		self.pendingStore = pendingStore
+		self.startupRetryDelays = startupRetryDelays
 		let pendingLoad = pendingStore.load()
 		pendingAttempts = pendingLoad.attempts
 		isPendingRecoveryBlocked = pendingLoad.isRecoveryBlocked
@@ -105,14 +123,40 @@ final class ResetCardStore {
 			return
 		}
 
+		let retryDelays = startupRetryDelays
 		startupTask = Task { [weak self] in
-			await self?.refresh()
+			// Keep automatic retries on account, inventory, and pending-status reads.
+			// Only an explicit user action can reach the reset-card use command.
+			guard var result = await self?.refreshReadState() else {
+				return
+			}
+
+			for delay in retryDelays {
+				guard result == .retryNeeded, Task.isCancelled == false else {
+					return
+				}
+
+				do {
+					try await Task.sleep(for: delay)
+				} catch {
+					return
+				}
+
+				guard let refreshed = await self?.refreshReadState() else {
+					return
+				}
+				result = refreshed
+			}
 		}
 	}
 
 	func refresh() async {
+		_ = await refreshReadState()
+	}
+
+	private func refreshReadState() async -> ResetCardRefreshResult {
 		guard isRefreshing == false else {
-			return
+			return .skipped
 		}
 
 		isRefreshing = true
@@ -121,6 +165,7 @@ final class ResetCardStore {
 			hasLoaded = true
 		}
 
+		var shouldRetry = false
 		do {
 			let discovered = try await client.accounts()
 			var refreshed = [ResetCardAccountState]()
@@ -128,7 +173,7 @@ final class ResetCardStore {
 
 			for account in discovered {
 				guard Task.isCancelled == false else {
-					return
+					return .complete
 				}
 
 				do {
@@ -148,11 +193,13 @@ final class ResetCardStore {
 						)
 					)
 				} catch {
+					let clientError = Self.clientError(error)
+					shouldRetry = shouldRetry || clientError.isRetryableReadFailure
 					refreshed.append(
 						ResetCardAccountState(
 							account: account,
 							inventory: nil,
-							error: Self.clientError(error)
+							error: clientError
 						)
 					)
 				}
@@ -163,17 +210,21 @@ final class ResetCardStore {
 				message = nil
 			}
 		} catch {
+			let clientError = Self.clientError(error)
+			shouldRetry = clientError.isRetryableReadFailure
 			accounts = []
 			message = ResetCardStoreMessage(
 				tone: .error,
-				text: Self.clientError(error).localizedDescription
+				text: clientError.localizedDescription
 			)
 		}
 
-		await recoverPendingAttempts()
+		shouldRetry = await recoverPendingAttempts() || shouldRetry
 		if isPendingRecoveryBlocked {
 			message = Self.pendingRecoveryBlockedMessage
 		}
+
+		return shouldRetry ? .retryNeeded : .complete
 	}
 
 	func use(_ attempt: ResetCardUseAttempt) async -> ResetCardUseCompletion {
@@ -370,14 +421,15 @@ final class ResetCardStore {
 		}
 	}
 
-	private func recoverPendingAttempts() async {
+	private func recoverPendingAttempts() async -> Bool {
 		guard submittingKey == nil else {
-			return
+			return false
 		}
 
+		var shouldRetry = false
 		for attempt in pendingAttempts {
 			guard Task.isCancelled == false else {
-				return
+				return false
 			}
 
 			do {
@@ -385,7 +437,14 @@ final class ResetCardStore {
 				switch state {
 				case .completed, .failedBeforeEffect:
 					_ = await apply(state, to: attempt)
-				case .prepared, .effectAmbiguous, .unavailable:
+				case .prepared, .effectAmbiguous:
+					shouldRetry = true
+					message = ResetCardStoreMessage(
+						tone: Self.messageTone(for: state),
+						text: state.presentation
+					)
+				case .unavailable(let error):
+					shouldRetry = shouldRetry || error.isRetryableReadFailure
 					message = ResetCardStoreMessage(
 						tone: Self.messageTone(for: state),
 						text: state.presentation
@@ -397,15 +456,19 @@ final class ResetCardStore {
 					)
 				}
 			} catch {
+				let clientError = Self.clientError(error)
+				shouldRetry = shouldRetry || clientError.isRetryableReadFailure
 				message = ResetCardStoreMessage(
 					tone: .error,
-					text: Self.clientError(error).localizedDescription
+					text: clientError.localizedDescription
 				)
 			}
 		}
 		if isPendingRecoveryBlocked {
 			message = Self.pendingRecoveryBlockedMessage
 		}
+
+		return shouldRetry
 	}
 
 	@discardableResult
@@ -493,4 +556,31 @@ final class ResetCardStore {
 		tone: .error,
 		text: "The reset-card operation is terminal, but the recovery journal could not be updated. Preserve the journal and resume this request before starting another."
 	)
+}
+
+private extension ResetCardClientError {
+	var isRetryableReadFailure: Bool {
+		switch self {
+		case .timedOut, .commandFailed:
+			return true
+		case .service(let error):
+			return error.isRetryableReadFailure
+		case .executableMissing, .launchFailed, .outputTooLarge, .commandRejected,
+			.useDefinitelyNotDispatched, .usePotentiallyDispatched, .invalidResponse:
+			return false
+		}
+	}
+}
+
+private extension ResetCardServiceError {
+	var isRetryableReadFailure: Bool {
+		switch self {
+		case .accountNotFound, .accountStateRejected, .vaultUnavailable, .providerUnavailable,
+			.inventoryIncomplete, .inventoryChanged, .resourceExhausted,
+			.productStateUnavailable, .effectAmbiguous:
+			return true
+		case .invalidRequest, .schemaUnsupported:
+			return false
+		}
+	}
 }

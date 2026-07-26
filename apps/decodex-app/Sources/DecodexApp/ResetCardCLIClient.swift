@@ -185,7 +185,14 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 	}
 }
 
-struct ResetCardCLIClient: Sendable, CustomDebugStringConvertible {
+protocol ResetCardClient: Sendable {
+	func accounts() async throws -> [ResetCardAccountRecord]
+	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory
+	func use(_ attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState
+	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState
+}
+
+struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertible {
 	static let executableOverrideKey = "DECODEX_APP_CLI"
 
 	private let executableURL: URL?
