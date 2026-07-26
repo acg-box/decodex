@@ -2065,6 +2065,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
 
         for secret in ("GH_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK"):
             self.assertNotIn(secret, environment)
+        self.assertEqual(
+            environment["DECODEX_TEST_TEMP_ROOT"],
+            str(Path(directory)),
+        )
         self.assertNotIn("/tmp/hostile", environment["PATH"].split(os.pathsep))
         self.assertEqual(
             environment["PATH"].split(os.pathsep)[0],
@@ -2168,6 +2172,18 @@ class UpstreamAutopilotTests(unittest.TestCase):
         "the outer validation process owns tool discovery",
     )
     def test_validation_tool_discovery_ignores_a_hostile_process_path(self):
+        postgres_tools = {
+            "initdb",
+            "pg_ctl",
+            "pg_dump",
+            "pg_restore",
+            "postgres",
+            "psql",
+        }
+        self.assertLessEqual(
+            postgres_tools,
+            set(self.autopilot.VALIDATION_TOOL_NAMES),
+        )
         with tempfile.TemporaryDirectory() as directory:
             hostile = Path(directory)
             for name in self.autopilot.VALIDATION_TOOL_NAMES:
