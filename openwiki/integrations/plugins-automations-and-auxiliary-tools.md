@@ -179,7 +179,8 @@ not final vNext account authority. It:
 
 - Lists stored accounts without token material.
 - Pins future Decodex runs to one account or returns to balanced selection.
-- Forces Codex to use a stored account by writing `auth.json`. Final `Use in Codex`
+- Forces Codex to use a stored account by writing `auth.json`. This is current legacy
+  behavior, not Slice-1 authority. Final `Use in Codex`
   requires a supported, capability-probed ambient-auth adapter and fails closed when
   no adapter is available.
 - Shows vNext reset cards from the common daemon service. The first click starts a
@@ -200,7 +201,7 @@ not final vNext account authority. It:
   PostgreSQL and daemon process generations. Separate bundled
   legacy `decodex` and `decodex-app-helper` executables remain as pre-cutover
   account scaffolding; they have no vNext reset-card authority and are not part of
-  the final account lifecycle.
+  MacDogfoodReady or the final account lifecycle.
 - Retries bounded startup-only Reset Card reads while the independently supervised
   service becomes ready. It does not retry consume, replace an idempotency key, or
   take service lifecycle ownership.
@@ -218,8 +219,10 @@ app-server process owner, or runtime authority. Its bounded private journal reta
 most 64 credential-negative attempts and fails closed on malformed or unsafe storage:
 recoverable entries remain available for status-only inspection, while new use is blocked.
 Before clean cutover, the separate legacy account path can still manage its existing
-local `decodex serve` lifecycle. Final cutover removes this authority, its helper,
-and the `:8192` service under [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
+local `decodex serve` lifecycle. Slice-1 normal startup and Slice-3 packaged startup
+remove this authority, its watcher, credential environment projection, helper, mapping,
+and `:8192` service under
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
 See [Runtime architecture](../architecture/runtime-architecture.md) for the shared
 service flow and [Commands and validation](../operations/commands-and-validation.md)
 for the pre-cutover Swift and staging checks.

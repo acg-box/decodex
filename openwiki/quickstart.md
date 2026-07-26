@@ -24,9 +24,9 @@ evidence only after that point. It is not a runtime or future-work input.
 - [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
   protocol, account continuity, non-goals, migration contract, and retained-title
   Git evidence boundary.
-- [Account lifecycle authority](specs/account-lifecycle-authority.md): complete
-  PostgreSQL/HostCredentialStore/Account Service ownership, refresh and recovery,
-  shared-home behavior, one-shot account migration, and clean-cutover gates.
+- [Account lifecycle authority](specs/account-lifecycle-authority.md): the three-owner
+  PostgreSQL/HostCredentialStore/Account Service boundary, MacDogfoodReady, final
+  readiness, refresh/recovery, normalized one-shot migration, and clean startup.
 - [XY-1400 ProcessGeneration authority](specs/process-generation-authority.md): durable
   pre-spawn fencing, opaque exact-build launch attestation, macOS positive-death quarantine,
   exact process identity, ProviderAttempt ambiguity handoff, restore safety, and the deferred
@@ -121,9 +121,9 @@ evidence only after that point. It is not a runtime or future-work input.
   scalar RuntimeSession/profile/account snapshot identities are cross-domain provenance, while
   RuntimeSession aggregate/event/kind markers, complete session or snapshot objects, and outbox
   links to activity carrying those ownership shapes remain migration-owner-only.
-- `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
+- `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Current dispatch is disabled. Slice 1 can enable only the fenced initial-selection path; XY-1304 remains later automatic fallback/wake acceptance.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
-- `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while the authority-defined XY-1269 P/K/L/S slices are still unimplemented. Its checked-in diagnostic still says XY-1263 remains failed; that text is stale, and P must align it with the accepted foundation and disabled slice posture before P validation.
+- `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate. GPUI opens a real shell and window, but every destination is placeholder-only and not usable. Slice 1 owns Accounts/Conversation/Health; Slice 2 owns Project/Work/Run; Slice 3 owns the Mac package.
 - `apps/decodex/` is the frozen v0.2 package. It remains in Git for provenance but is excluded from Cargo workspace membership and must not be used by vNext.
 - `apps/radar/` is the Radar auxiliary tool for upstream review queues, release deltas, artifact validation, signal rendering, and bundle generation (`apps/radar/README.md`, `apps/radar/src/lib.rs`).
 - `apps/decodex-publisher/` validates and reserves Decodex-owned social artifacts (`apps/decodex-publisher/README.md`, `apps/decodex-publisher/src/lib.rs`).
@@ -160,11 +160,14 @@ server-identity pinning, bounded doctor/status results, and a bounded typed Conv
 query, plus a read-only immutable execution-decision query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
 API-only V1.3 diagnostic clients. `decodex reset-card` is the active manual reset-card
-client. GPUI still reports its disabled state.
+client. GPUI opens its real shell, but its destinations remain placeholders.
 
-The reset-card service uses only configured vNext account UUIDs. It admits accounts in
-`available` or `depleted` state. Clients select a card by its public grant and expiry
-timestamps and send the exact account revision. `decodexd` alone reads the credential
+The reset-card service uses only configured vNext account UUIDs. A durable terminal
+receipt replays before current account gates. New admission and the pre-effect fence both
+require enabled state, AccountLifecycle readiness, no unsettled account operation, and
+exact Registry/store revision, credential fingerprint/version, and provider agreement.
+Clients select a card by its public grant and expiry timestamps and send the exact account
+revision. `decodexd` alone reads the credential
 vault, starts and attests the Codex process, resolves the opaque provider credit ID,
 persists that exact ID and the logical-command idempotency key before the effect, consumes
 the card, and reconciles fresh provider state. Restart recovery reuses the same exact ID
@@ -329,9 +332,11 @@ cannot append, alter, delete, or commit an incomplete source manifest after pers
 The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
 The `decodex reset-card accounts`, `list`, `use`, and `status` operations are active
 clients of the common daemon service. Other unsupported or mutating product CLI operations
-remain unavailable and belong to later slices, as do
-scheduling, account routing, a general PostgreSQL administration plane, live Codex dispatch,
-an authenticated HTTP artifact path, remote or cross-UID binding, and GPUI product behavior.
+remain unavailable in current source. Delivery proceeds through exactly three slices:
+Accounts/Quick Task/minimal Accounts-Conversation-Health GPUI; then the bounded managed-work
+flow and Project-Work-Run GPUI; then the two-account restart E2E and Mac package. A general
+PostgreSQL administration plane, authenticated HTTP artifact path, and remote or cross-UID
+binding remain later work.
 Kernel same-UID credentials are the complete local V1 principal. Application PKI and remote
 TLS remain outside this boundary and belong to the later remote-security gate.
 
@@ -377,7 +382,7 @@ Unix service supervisor used by the macOS source installer. The CLI selects
 the configured active profile by default; `--profile NAME` selects an explicit declared
 profile and `--root PATH` selects a typed Decodex root. Human output is the default and
 diagnostic `--output json` emits `decodex/cli-diagnostics/1`; reset-card JSON emits
-`decodex/reset-card-cli/1`. GPUI still reports its disabled state.
+`decodex/reset-card-cli/1`. GPUI opens a real shell with placeholder-only destinations.
 For a targeted Rust gate,
 prefer
 `cargo check --all-features --all-targets --workspace` or
@@ -397,10 +402,11 @@ PostgreSQL, Swift, and signed app-staging checks described in
   name, never its value.
 - Do not route vNext product state through `apps/decodex`, legacy SQLite, Linear
   lanes, or the legacy operator transport. The current macOS account watcher and
-  daemon-environment projection are pre-cutover scaffolding, not final authority.
-  The final system can consume legacy account state only in the explicit offline
+  daemon-environment projection are pre-cutover scaffolding, not Mac dogfood authority.
+  The new system can consume legacy account state only in the explicit offline
   one-shot migration in [Account Lifecycle Authority](specs/account-lifecycle-authority.md).
-  It must then remove the watcher, environment bridge, helper service, and fallback.
+  Normal Slice-1 and Slice-3 startup must not use the watcher, environment bridge,
+  helper/`:8192` service, mapping, or fallback.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 - PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.
 - For project knowledge work, update OpenWiki directly and keep it aligned with source, tests, and manifests.
@@ -414,8 +420,9 @@ without live dispatch. XY-1267 established PostgreSQL-backed product state and d
 transactions. XY-1306 established the typed `~/.decodex` path/config/blob/cache child of
 XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only CLI and
 end-to-end diagnostic matrix.
-Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
-later owners and gates.
+Limited initial account routing and minimal GPUI are Slice-1 work. Automatic fallback and
+wake remain with XY-1304; remote security, HTTP artifacts, and broader GPUI remain with
+their later owners and gates.
 The private-artifact API and runtime composition are not implemented and are no
 longer vNext targets. At and after the XY-1403 repository effective point, the
 [private-artifact archive](specs/private-artifact/README.md) preserves the complete
