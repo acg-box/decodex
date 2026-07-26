@@ -1,0 +1,90 @@
+version = 1
+
+[defaults]
+allowed_external_cache_prefixes = [
+	".agent/automations/radar/cache",
+	".agent/automations/upstream/cache",
+]
+cache_root = ".agent/automations/decodex/cache"
+cwd = "{repo_root}"
+execution_environment = "local"
+forbidden_prompt_fragments = [
+	".agent/decodex",
+	".codex/decodex",
+	".github/workflows",
+	"/Users/",
+	"/home/",
+	"DECODEX_AGENT_HOME",
+	"Documents/automations",
+	"accounts.jsonl",
+	"auth.json",
+	"migrate-agent-home",
+	"runtime.sqlite3",
+	"site/src/content",
+	"~/.codex/decodex",
+]
+kind = "cron"
+model = "gpt-5.6-sol"
+reasoning_effort = "high"
+source_root = "automations/decodex"
+status = "ACTIVE"
+
+[[automations]]
+id = "decodex-content-manager"
+name = "Decodex Content Manager"
+prompt_file = "automations/decodex/prompts/content-manager.md"
+required_cache_prefixes = [
+	".agent/automations/decodex/cache/manager",
+	".agent/automations/decodex/cache/social/x/candidates",
+	".agent/automations/decodex/cache/social/x/outcomes",
+	".agent/automations/decodex/cache/social/x/posts",
+	".agent/automations/radar/cache",
+	".agent/automations/upstream/cache",
+]
+required_paths = [
+	"AGENTS.md",
+	"apps/decodex-publisher/src/lib.rs",
+	"apps/radar/src/lib.rs",
+	"automations/decodex/automations.toml",
+	"automations/decodex/scripts/social/social_candidate.schema.json",
+	"automations/decodex/scripts/social/social_outcome.schema.json",
+	"automations/decodex/scripts/social/social_strategy.schema.json",
+	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
+	"automations/decodex/skills/references/social-release-publisher-gates.md",
+	"automations/decodex/skills/x-post-quality-system/SKILL.md",
+	"automations/radar/radar.toml",
+	"automations/radar/skills/codex-release-analysis/SKILL.md",
+	"automations/radar/skills/codex-upstream-triage/SKILL.md",
+	"openwiki/operations/decodex-content-automation.md",
+	"openwiki/quickstart.md",
+]
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=50;BYSECOND=0"
+
+[[automations]]
+id = "decodex-x-browser-publisher"
+name = "Decodex X Browser Publisher"
+prompt_file = "automations/decodex/prompts/x-browser-publisher.md"
+required_cache_prefixes = [
+	".agent/automations/decodex/cache/manager",
+	".agent/automations/decodex/cache/social/x/candidates",
+	".agent/automations/decodex/cache/social/x/outcomes",
+	".agent/automations/decodex/cache/social/x/posts",
+	".agent/automations/decodex/cache/social/x/reservations",
+	".agent/automations/radar/cache",
+]
+required_paths = [
+	"AGENTS.md",
+	"apps/decodex-publisher/src/lib.rs",
+	"automations/decodex/automations.toml",
+	"automations/decodex/scripts/social/social_candidate.schema.json",
+	"automations/decodex/scripts/social/social_outcome.schema.json",
+	"automations/decodex/scripts/social/social_post.schema.json",
+	"automations/decodex/scripts/social/social_publish_reservation.schema.json",
+	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
+	"automations/decodex/skills/references/social-release-publisher-gates.md",
+	"automations/decodex/skills/x-post-publisher/SKILL.md",
+	"automations/decodex/skills/x-post-quality-system/SKILL.md",
+	"openwiki/operations/decodex-content-automation.md",
+	"openwiki/quickstart.md",
+]
+rrule = "FREQ=HOURLY;INTERVAL=2;BYMINUTE=20;BYSECOND=0"

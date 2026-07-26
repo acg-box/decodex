@@ -18,6 +18,7 @@ from .core import (
     ALLOWED_CANDIDATE_KINDS,
     CANDIDATE_KEYS,
     CODEX_VERSION_PATTERN,
+    CONTENT_DEGRADATION_CODES,
     LAND_EFFECT_LEASE_BUDGET_SECONDS,
     MAX_ACTIVE_SOURCE_CANDIDATES,
     MAX_EVENTS,
@@ -1333,8 +1334,10 @@ def queue_automation_improvement(
     reason_code: str,
     repository_head: str,
     now: int,
+    degradation_codes: Sequence[str] = (),
 ) -> dict[str, Any]:
     if reason_code not in {
+        "content_loop_degraded",
         "lead_time_sla_missed",
         "live_configuration_drift",
         "repeated_blocked_attempts",
@@ -1343,6 +1346,20 @@ def queue_automation_improvement(
         raise AutopilotError("improvement_reason_invalid")
     if not SHA_PATTERN.fullmatch(repository_head):
         raise AutopilotError("head_invalid")
+    normalized_degradation_codes = tuple(sorted(degradation_codes))
+    if (
+        len(normalized_degradation_codes) != len(set(normalized_degradation_codes))
+        or any(
+            code not in CONTENT_DEGRADATION_CODES
+            for code in normalized_degradation_codes
+        )
+    ):
+        raise AutopilotError("content_degradation_evidence_invalid")
+    if reason_code == "content_loop_degraded":
+        if not normalized_degradation_codes:
+            raise AutopilotError("content_degradation_evidence_missing")
+    elif normalized_degradation_codes:
+        raise AutopilotError("content_degradation_evidence_not_applicable")
     active = next(
         (
             candidate
@@ -1368,6 +1385,7 @@ def queue_automation_improvement(
     evidence_sha256 = sha256_value(
         {
             "reason_code": reason_code,
+            "degradation_codes": normalized_degradation_codes,
             "repository_head": repository_head,
             "codex_version": local_build["codex_version"],
             "codex_executable_sha256": local_build["codex_executable_sha256"],
@@ -1444,6 +1462,11 @@ def queue_automation_improvement(
             "repair_of": None,
             "reason_code": reason_code,
             "evidence_sha256": evidence_sha256,
+            **(
+                {"degradation_codes": list(normalized_degradation_codes)}
+                if reason_code == "content_loop_degraded"
+                else {}
+            ),
         },
         "repair_of": None,
         "branch_name": f"{policy['branch_prefix']}{identifier}",

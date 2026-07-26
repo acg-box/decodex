@@ -6,6 +6,19 @@ pub(super) fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mu
 
 		return;
 	};
+	social_validation::validate_exact_keys(
+		refs,
+		"source_refs",
+		&[
+			"reservations",
+			"signals",
+			"social_candidates",
+			"upstream_impacts",
+			"upstream_reviews",
+			"urls",
+		],
+		errors,
+	);
 	let has_refs = [
 		"reservations",
 		"signals",

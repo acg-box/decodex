@@ -34,6 +34,7 @@ required_cache_prefixes = [
 ]
 required_paths = [
 	"AGENTS.md",
+	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
 	"automations/upstream/scripts/upstream_autopilot.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
@@ -59,6 +60,7 @@ required_cache_prefixes = [
 ]
 required_paths = [
 	"AGENTS.md",
+	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
 	"automations/upstream/scripts/upstream_autopilot.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
@@ -84,10 +86,19 @@ required_cache_prefixes = [
 ]
 required_paths = [
 	"AGENTS.md",
+	"apps/decodex-publisher/src/lib.rs",
+	"automations/decodex/automations.toml",
+	"automations/decodex/prompts/content-manager.md",
+	"automations/decodex/prompts/x-browser-publisher.md",
 	"automations/decodex/scripts/config/evaluate_automations.py",
+	"automations/decodex/scripts/social/social_candidate.schema.json",
+	"automations/decodex/scripts/social/social_outcome.schema.json",
+	"automations/decodex/scripts/social/social_post.schema.json",
+	"automations/decodex/scripts/social/social_publish_reservation.schema.json",
+	"automations/decodex/scripts/social/social_strategy.schema.json",
+	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/automations.toml",
 	"automations/upstream/policy.json",
-	"automations/upstream/retired_automation_ids.json",
 	"automations/upstream/scripts/upstream_autopilot.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
@@ -96,6 +107,7 @@ required_paths = [
 	"automations/upstream/scripts/upstream_autopilot_lib/state.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/validation.py",
 	"openwiki/operations/codex-upstream-autopilot.md",
+	"openwiki/operations/decodex-content-automation.md",
 	"openwiki/quickstart.md",
 	"scripts/audit_node_lock.py",
 ]
