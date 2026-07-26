@@ -3,6 +3,7 @@
 use std::{
 	collections::VecDeque,
 	fs,
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
 	sync::{Arc, Mutex},
 	time::Duration,
@@ -21,7 +22,8 @@ use crate::client_lifecycle::{
 	Delivery, LifecycleCancellation, LifecycleIo, QuarantineReason, QuarantineRecovery, RunResult,
 };
 
-const SERVER: &str = "server-a";
+const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+const OTHER_SERVER: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const INSTANCE: &str = "publication-a";
 
 #[derive(Clone, Debug)]
@@ -363,11 +365,38 @@ fn lifecycle(root: &Path) -> ClientLifecycle {
 }
 
 fn lifecycle_for(root: &Path, server_id: &str, schema_generation: u64) -> ClientLifecycle {
-	let config = decodex_protocol::RetainedSessionConfig::new(
-		"ws://127.0.0.1:49152/v1/ws",
-		server(server_id),
-	)
-	.expect("fixture retained session config is valid");
+	let transport_root = root.parent().expect("cache fixture has a parent").join("transport");
+
+	fs::create_dir_all(&transport_root).expect("create local transport fixture root");
+	fs::set_permissions(&transport_root, fs::Permissions::from_mode(0o700))
+		.expect("scope transport fixture root");
+
+	let service_owner_uid =
+		fs::metadata(&transport_root).expect("read transport root metadata").uid();
+	let config_file = transport_root.join("config.toml");
+	let config = format!(
+		r#"version = 1
+active_profile = "selected"
+server_host = {{}}
+postgres = {{}}
+cache = {{}}
+
+[profiles.selected]
+kind = "local"
+policy = "same_uid"
+service_owner_uid = {service_owner_uid}
+expected_server_identity = "{server_id}"
+"#
+	);
+
+	fs::write(&config_file, config).expect("write transport fixture config");
+	fs::set_permissions(&config_file, fs::Permissions::from_mode(0o600))
+		.expect("scope transport fixture config");
+
+	let config = decodex_protocol::ClientProfile::load(&transport_root, None)
+		.expect("load local fixture profile")
+		.retained_session_config()
+		.expect("fixture retained session config is valid");
 
 	ClientLifecycle::new(
 		config,
@@ -755,7 +784,7 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 		.expect("original checkpoint binds");
 	drop(original);
 
-	let mut server_switched = lifecycle_for(&root, "server-b", 1);
+	let mut server_switched = lifecycle_for(&root, OTHER_SERVER, 1);
 	assert_eq!(
 		server_switched.view(),
 		ConnectionView::Quarantined {
@@ -767,12 +796,12 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 		root.clone(),
 		vec![ConnectAction::Session {
 			actions: vec![
-				SessionAction::Snapshot(snapshot_for("server-b", 2, "new", 1)),
+				SessionAction::Snapshot(snapshot_for(OTHER_SERVER, 2, "new", 1)),
 				SessionAction::Cancel,
 			]
 			.into(),
 			checkpoint: None,
-			server_id: "server-b",
+			server_id: OTHER_SERVER,
 			instance_id: "publication-b",
 		}],
 	);
@@ -792,7 +821,7 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 	);
 	drop(server_switched);
 
-	let schema_switched = lifecycle_for(&root, "server-b", 2);
+	let schema_switched = lifecycle_for(&root, OTHER_SERVER, 2);
 	assert_eq!(
 		schema_switched.view(),
 		ConnectionView::Quarantined {

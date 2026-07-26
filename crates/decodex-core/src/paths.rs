@@ -135,6 +135,29 @@ impl DecodexPaths {
 		self.join("server/identity")
 	}
 
+	/// Fixed owner-only local product endpoint.
+	pub fn local_transport_socket(&self) -> PathBuf {
+		self.join("server/decodex.sock")
+	}
+
+	/// Create and verify only the root and server directory required by local transport.
+	///
+	/// This does not create a server identity or any database, blob, cache, or log state.
+	pub fn ensure_local_transport_layout(&self) -> Result<(), PathError> {
+		#[cfg(unix)]
+		{
+			path_unix::ensure_owned_directory(self, Path::new("server"))?;
+
+			Ok(())
+		}
+
+		#[cfg(not(unix))]
+		{
+			ensure_private_directory(self.root.as_path())?;
+			ensure_private_directory(&self.server_dir())
+		}
+	}
+
 	/// Create and verify the private fixed directory layout.
 	pub fn ensure_layout(&self) -> Result<(), PathError> {
 		#[cfg(unix)]
