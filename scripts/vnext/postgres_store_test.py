@@ -38,7 +38,7 @@ AUTHORITY_CANDIDATE_SCHEMA = "decodex/postgres-authority-candidate/3"
 AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES = 128 * 1024
 POSTGRES_START_LOG_EXCERPT_MAX_BYTES = 4 * 1024
 # Darwin's sockaddr_un.sun_path is 104 bytes, including the terminating NUL.
-POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES = 104
+PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES = 104
 GIT_READ_TIMEOUT_SECONDS = 5.0
 GIT_METADATA_MAX_BYTES = 4 * 1024
 GIT_COMMIT_MAX_BYTES = 64 * 1024
@@ -5843,6 +5843,14 @@ def write_bootstrap_config(
 	runtime_role: str,
 ) -> None:
 	"""Write one private typed daemon-bootstrap root without credentials."""
+	local_transport_stage = root / "server" / "decodex.sock.stage"
+	local_transport_path_bytes = len(os.fsencode(local_transport_stage)) + 1
+	if local_transport_path_bytes > PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES:
+		raise TestFailure(
+			"Decodex local transport Unix socket path is too long: "
+			f"{local_transport_path_bytes} bytes including the terminating NUL exceeds "
+			f"the portable {PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES}-byte limit"
+		)
 	root.mkdir(mode=0o700)
 	config_path = root / "config.toml"
 	config_path.write_text(
@@ -6025,11 +6033,11 @@ def main() -> int | AuthorityCandidatePublication:
 			log_path = work / "postgres.log"
 			socket_path = socket_dir / f".s.PGSQL.{port}"
 			socket_path_bytes = len(os.fsencode(socket_path)) + 1
-			if socket_path_bytes > POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES:
+			if socket_path_bytes > PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES:
 				raise TestFailure(
 					"PostgreSQL Unix socket path is too long: "
 					f"{socket_path_bytes} bytes including the terminating NUL exceeds "
-					f"the portable {POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES}-byte limit; "
+					f"the portable {PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES}-byte limit; "
 					"set DECODEX_TEST_TEMP_ROOT to a shorter absolute directory"
 				)
 			role_setting_canary_guc = f"xy1272.canary_{secrets.token_hex(16)}"
@@ -6348,7 +6356,7 @@ def main() -> int | AuthorityCandidatePublication:
 			], env),
 			depends_on=("primary_foundation",),
 		)
-		bootstrap_root = work / "decodex-root"
+		bootstrap_root = work / "dx-main"
 		def bootstrap_configuration() -> None:
 			write_bootstrap_config(
 				bootstrap_root, socket_dir, port, DATABASE, MIGRATION_ROLE, RUNTIME_ROLE
@@ -6393,7 +6401,7 @@ def main() -> int | AuthorityCandidatePublication:
 			], env),
 			depends_on=("primary_foundation",),
 		)
-		auth_bootstrap_root = work / "decodex-auth-root"
+		auth_bootstrap_root = work / "dx-auth"
 		def authentication_rejection() -> str:
 			write_bootstrap_config(
 				auth_bootstrap_root,
@@ -6522,13 +6530,13 @@ def main() -> int | AuthorityCandidatePublication:
 					invariant_sql=expand(invariant_sql),
 				))
 				if case_id == "truncate":
-					root = work / "decodex-unsafe-truncate"
+					root = work / "dx-unsafe"
 					write_bootstrap_config(
 						root, socket_dir, port, case_database, MIGRATION_ROLE, role
 					)
 					env["DECODEX_TEST_UNSAFE_AUTHORITY_ROOT"] = str(root)
 				elif case_id == "missing-ledger-select":
-					root = work / "decodex-incompatible-missing-history-select"
+					root = work / "dx-incompat"
 					write_bootstrap_config(
 						root, socket_dir, port, case_database, MIGRATION_ROLE, role
 					)
@@ -6636,7 +6644,7 @@ def main() -> int | AuthorityCandidatePublication:
 					],
 					env,
 				))
-				for database, case_id, mutation in (
+				for live_index, (database, case_id, mutation) in enumerate((
 					(
 						LEDGER_TAMPER_DATABASE,
 						"ledger-tamper",
@@ -6647,10 +6655,10 @@ def main() -> int | AuthorityCandidatePublication:
 						"missing-pgcrypto",
 						"DROP EXTENSION pgcrypto CASCADE",
 					),
-				):
+				)):
 					clone_authority_database(AUTHORITY_DATABASE, database, env)
 					provision_runtime(database, RUNTIME_ROLE, env)
-					root = work / f"decodex-incompatible-live-{case_id}"
+					root = work / f"dx-live-{live_index}"
 					write_bootstrap_config(
 						root, socket_dir, port, database, MIGRATION_ROLE, RUNTIME_ROLE
 					)
@@ -6747,7 +6755,7 @@ def main() -> int | AuthorityCandidatePublication:
 				env,
 			) != "t":
 				raise TestFailure("hostile callable shadow reached Decodex runtime DML")
-			hostile_search_root = work / "decodex-hostile-search-path"
+			hostile_search_root = work / "dx-hostile"
 			write_bootstrap_config(
 				hostile_search_root,
 				socket_dir,
@@ -7005,7 +7013,7 @@ def main() -> int | AuthorityCandidatePublication:
 				],
 				env,
 			)
-			default_acl_tamper_root = work / "decodex-incompatible-schema-default-acl"
+			default_acl_tamper_root = work / "dx-acl"
 			write_bootstrap_config(
 				default_acl_tamper_root,
 				socket_dir,

@@ -101,6 +101,25 @@ def runtime_authority(database):
 
 
 class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
+    def test_bootstrap_config_rejects_overlong_local_transport_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / ("x" * 104)
+
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure,
+                "Decodex local transport Unix socket path is too long",
+            ):
+                POSTGRES_STORE_TEST.write_bootstrap_config(
+                    root,
+                    Path(temporary) / "socket",
+                    54_321,
+                    "decodex_test",
+                    "decodex_migration",
+                    "decodex_runtime",
+                )
+
+            self.assertFalse(root.exists())
+
     def test_secret_logging_reader_consumes_coalesced_pipe_frames(self):
         read_descriptor, write_descriptor = os.pipe()
         try:
