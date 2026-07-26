@@ -452,13 +452,14 @@ where
 					}
 				},
 				ClientMessage::Command(command) => {
-					if command.version != negotiated {
+					if command.version != negotiated || !command.payload.is_supported_in(negotiated)
+					{
 						if !self
 							.enqueue(
 								connection_id,
 								protocol_refusal(
 									&self.inner.server_id,
-									"command version differs from negotiated version",
+									"command is unavailable in the negotiated protocol version",
 								),
 							)
 							.await
@@ -473,13 +474,13 @@ where
 					}
 				},
 				ClientMessage::Query(query) => {
-					if negotiated != CURRENT_VERSION || query.version != negotiated {
+					if query.version != negotiated || !query.payload.is_supported_in(negotiated) {
 						if !self
 							.enqueue(
 								connection_id,
 								protocol_refusal(
 									&self.inner.server_id,
-									"query requires negotiated protocol 1.2",
+									"query is unavailable in the negotiated protocol version",
 								),
 							)
 							.await
@@ -614,13 +615,15 @@ where
 		let execution = self.inner.application.execute(&command).await;
 		let (result, publication) =
 			result_from_execution(&self.inner.server_id, &command, version, execution);
-		let stored = StoredCommand {
-			fingerprint,
-			original_client_command_id: command.client_command_id.clone(),
-			result: result.clone(),
-		};
+		if result.outcome != CommandOutcome::AcceptanceUnknown {
+			let stored = StoredCommand {
+				fingerprint,
+				original_client_command_id: command.client_command_id.clone(),
+				result: result.clone(),
+			};
 
-		state.receipts.insert(receipt_key, stored);
+			state.receipts.insert(receipt_key, stored);
+		}
 
 		let receipt = CommandReceipt {
 			version,
@@ -669,6 +672,9 @@ where
 		}
 
 		state.subscribers.retain(|_, subscriber| {
+			if !event.payload.is_supported_in(subscriber.version) {
+				return true;
+			}
 			let mut event = event.clone();
 
 			event.version = subscriber.version;
@@ -846,19 +852,27 @@ fn result_from_execution(
 			},
 			Some(publication),
 		),
-		Err(error) => (
-			CommandResultEnvelope {
-				version,
-				server_id: server_id.clone(),
-				client_command_id: command.client_command_id.clone(),
-				idempotency_key: command.idempotency_key.clone(),
-				outcome: CommandOutcome::Rejected,
-				entity_revision: None,
-				payload: None,
-				error: Some(error),
-			},
-			None,
-		),
+		Err(error) => {
+			let outcome = if matches!(&error, CommandError::AcceptanceUnknown) {
+				CommandOutcome::AcceptanceUnknown
+			} else {
+				CommandOutcome::Rejected
+			};
+
+			(
+				CommandResultEnvelope {
+					version,
+					server_id: server_id.clone(),
+					client_command_id: command.client_command_id.clone(),
+					idempotency_key: command.idempotency_key.clone(),
+					outcome,
+					entity_revision: None,
+					payload: None,
+					error: Some(error),
+				},
+				None,
+			)
+		},
 	}
 }
 

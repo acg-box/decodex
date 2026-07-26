@@ -67,7 +67,7 @@ bind their evidence to the exact commit and tree.
 `cargo make test` runs `cargo nextest run --workspace --all-targets --all-features`, the
 canonical gate contract tests, the vNext architecture test, and the XY-1308 CLI
 process matrix (`Makefile.toml`). The active `apps/decodex-cli` uses the server only
-for `status` and `doctor`. Its manual-authority `commit` and exact-base/head `land`
+for `status`, `doctor`, and `reset-card`. Its manual-authority `commit` and exact-base/head `land`
 commands are local Git authority and do not use Decodex server, planner, runtime,
 MCP, Linear, or tracker state. Rust compilation remains pinned by
 `rust-toolchain.toml` to `1.97.0`. The formatting tasks separately invoke
@@ -142,6 +142,16 @@ disconnection, malformed/missing profile configuration, unsafe server-host paths
 database unavailability, plugin/vault/blob unknown states, and redaction. Protocol unit
 fixtures separately force wrong major/minor, malformed/oversized response, timeout, and
 untrusted server-text cases.
+
+Run the focused reset-card PostgreSQL crash/reclaim contract in its own disposable
+PostgreSQL 18 cluster:
+
+```sh
+python3 scripts/vnext/postgres_store_test.py --focus-reset-cards
+```
+
+This contract proves generic-claim isolation, private exact-ID binding, effect fencing,
+lease expiry and reclaim, same-key receipt survival, reconciliation, and terminal status.
 
 PostgreSQL authority digest changes use an explicit derivation phase followed by one acceptance
 phase:
@@ -251,7 +261,7 @@ redacted; full manifests and raw contracts are never emitted.
 Semantic diagnostics contain only the checkpoint and the complete bounded set of false canonical
 predicate names; they never contain SQL, ACL bodies, object identities, connection data, or paths.
 
-The XY-1267/XY-1307 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. The PostgreSQL command provisions fixture-only migration/runtime roles, proves least-privilege daemon bootstrap, and rejects 27 unsafe roots covering direct, inherited, NOINHERIT/SET-only, and membership-admin paths to forbidden role attributes, PostgreSQL 18 namespace-object ownership (including distinct collation, conversion, operator, and text-search cases), DDL, table/ledger/sequence mutation, grant options, `session_replication_role` SET/ALTER SYSTEM, retention bypass, trigger drift, extension-member control, an indirect public-function trigger, and a genuinely additional function. It closes every runtime-callable Decodex function over exact signatures, overloads, metadata, settings, and canonical source. At the frozen V9 boundary, all 72 shipped functions have the exact secure `pg_catalog, decodex` function-local search path, and all 52 non-internal shipped trigger bindings—including deferred constraint triggers—have exact catalog attestations. The 16 shipped security definers comprise three V3 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two V9 RoleProfile command entrypoints; runtime cannot insert cursors or execute capture directly. The additional fixture-only seventy-third function is migration-owned, runtime-executable, `SECURITY DEFINER`, configured with an unsafe setting, and is invoked as runtime to perform owner-authority trigger DDL before fixture restoration and independent rejection. The separate substitution fixture replaces a shipped safety body without changing its signature. The indirect-trigger fixture proves runtime DML executes a public definer function despite direct `EXECUTE`, protected-table `UPDATE`, and `TRIGGER` all being denied. The extension fixture proves a public runtime-owned extension can transactionally drop it. Six incompatible roots cover missing ledger SELECT, canonical-function drift, a dropped credential constraint with demonstrated credential insertion, an external child cascade with demonstrated runtime-mediated deletion, a same-count tampered migration ledger, and absent `pgcrypto`. The canonical PostgreSQL 18 schema manifest closes defaults, constraints on both foreign-key sides, indexes, enums, and internal constraint-trigger semantics. Descriptor-pinned socket unit fixtures reject a same-UID pre-planted endpoint in a world-writable configured directory, a mismatched operator UID pin, replaced ancestors, replaced endpoints, and deterministic replacement between precheck and failed connect; an unchanged secure stale socket maps to unreachable. An isolated daemon fixture starts Ready, replaces the configured endpoint, and proves a fresh V1.2 doctor query becomes unsafe-host-path without migration or repinning. The runtime protocol tests keep mutation receipt lookup/capacity independent across V1.1/V1.2 and prove repeated, ordered, concurrent live queries neither replay nor consume receipts. The adapter contract tampers a ledger name at constant row count, proves read-only live revalidation reports it as incompatible, restores the ledger, and revalidates successfully; a terminal direct-adapter fixture removes `pgcrypto` in its own disposable database and proves the missing extension is incompatible without restoration. The harness also exercises an in-flight Rust BlobSession across an immediate PostgreSQL restart: the old session loses its hash lock and transaction-B connection, its stale claim cannot complete, and a reassigned exact retry verifies already-published bytes before committing metadata. It also proves `setval` denial, same-signature callable hostile-`search_path` safety, Turkish ICU credential behavior, and populated dump/restore. The XY-1264 proof additionally exercises rollback, blob, and cache behavior (`crates/decodex-postgres/src/socket.rs`, `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
+The XY-1267/XY-1307 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. The PostgreSQL command provisions fixture-only migration/runtime roles, proves least-privilege daemon bootstrap, and rejects 27 unsafe roots covering direct, inherited, NOINHERIT/SET-only, and membership-admin paths to forbidden role attributes, PostgreSQL 18 namespace-object ownership (including distinct collation, conversion, operator, and text-search cases), DDL, table/ledger/sequence mutation, grant options, `session_replication_role` SET/ALTER SYSTEM, retention bypass, trigger drift, extension-member control, an indirect public-function trigger, and a genuinely additional function. It closes every runtime-callable Decodex function over exact signatures, overloads, metadata, settings, and canonical source. At the frozen V9 boundary, all 72 shipped functions have the exact secure `pg_catalog, decodex` function-local search path, and all 52 non-internal shipped trigger bindings—including deferred constraint triggers—have exact catalog attestations. The 16 shipped security definers comprise three V3 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two V9 RoleProfile command entrypoints; runtime cannot insert cursors or execute capture directly. The additional fixture-only seventy-third function is migration-owned, runtime-executable, `SECURITY DEFINER`, configured with an unsafe setting, and is invoked as runtime to perform owner-authority trigger DDL before fixture restoration and independent rejection. The separate substitution fixture replaces a shipped safety body without changing its signature. The indirect-trigger fixture proves runtime DML executes a public definer function despite direct `EXECUTE`, protected-table `UPDATE`, and `TRIGGER` all being denied. The extension fixture proves a public runtime-owned extension can transactionally drop it. Six incompatible roots cover missing ledger SELECT, canonical-function drift, a dropped credential constraint with demonstrated credential insertion, an external child cascade with demonstrated runtime-mediated deletion, a same-count tampered migration ledger, and absent `pgcrypto`. The canonical PostgreSQL 18 schema manifest closes defaults, constraints on both foreign-key sides, indexes, enums, and internal constraint-trigger semantics. Descriptor-pinned socket unit fixtures reject a same-UID pre-planted endpoint in a world-writable configured directory, a mismatched operator UID pin, replaced ancestors, replaced endpoints, and deterministic replacement between precheck and failed connect; an unchanged secure stale socket maps to unreachable. An isolated daemon fixture starts Ready, replaces the configured endpoint, and proves a fresh V1.3 doctor query becomes unsafe-host-path without migration or repinning. The runtime protocol tests keep mutation receipt lookup/capacity independent across V1.2/V1.3 and prove repeated, ordered, concurrent live queries neither replay nor consume receipts. The adapter contract tampers a ledger name at constant row count, proves read-only live revalidation reports it as incompatible, restores the ledger, and revalidates successfully; a terminal direct-adapter fixture removes `pgcrypto` in its own disposable database and proves the missing extension is incompatible without restoration. The harness also exercises an in-flight Rust BlobSession across an immediate PostgreSQL restart: the old session loses its hash lock and transaction-B connection, its stale claim cannot complete, and a reassigned exact retry verifies already-published bytes before committing metadata. It also proves `setval` denial, same-signature callable hostile-`search_path` safety, Turkish ICU credential behavior, and populated dump/restore. The XY-1264 proof additionally exercises rollback, blob, and cache behavior (`crates/decodex-postgres/src/socket.rs`, `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
 
 The V10 extension raised the closed production inventory to 80 functions, 59 non-internal
 triggers, and 18 security definers. The two additional definers are the command-complete
@@ -505,7 +515,65 @@ Non-Rust validation matters when the touched surface is not in the Cargo workspa
 
 ## CLI and operator command discovery
 
-Runtime command surface starts in `apps/decodex/src/cli.rs`. For live command details, prefer:
+The active vNext CLI starts in `apps/decodex-cli/src/lib.rs`. Use these commands for
+the shared reset-card service:
+
+```sh
+decodex reset-card accounts
+decodex reset-card list --account UUID
+decodex reset-card use \
+  --account UUID \
+  --granted-at UNIX_SECONDS \
+  --expires-at UNIX_SECONDS \
+  --expected-revision REVISION \
+  --idempotency-key KEY \
+  --yes
+decodex reset-card status --idempotency-key KEY
+```
+
+Create and persist the key before `use`; the CLI does not generate it. `accounts` and
+`list` JSON include an `authority` object with `profile_name` and `server_id`. Retain
+that authority when a selection or pending operation crosses commands:
+
+```sh
+decodex \
+  --profile NAME \
+  --expected-server-id SERVER_UUID \
+  --output json \
+  reset-card list --account ACCOUNT_UUID
+```
+
+Use the same two global options for `use` and `status`. Reset-card commands reject a
+remote profile before connection. Current remote profile data is not an authenticated
+mutation transport.
+
+Each `use` invocation sends the consume command at most once and then polls durable
+status. If output remains `prepared`, use `status`; do not submit a new key for the same
+selected card. A recovery client may invoke `use` again only after `status` reports
+`not_found`, and it must reuse the exact persisted request and key. Add `--output json`
+for the stable `decodex/reset-card-cli/1` projection.
+After key creation, every `use` JSON result repeats `idempotency_key` and includes one
+closed `dispatch_state`:
+
+- `definitely_not_dispatched`: The CLI did not attempt the protocol send. Retain the key.
+- `potentially_dispatched`: The send may have reached the daemon. Query `status` with the
+  same key before a same-key resume.
+- `durably_accepted`: The daemon returned a durable accepted operation state.
+- `rejected_before_acceptance`: The daemon rejected the command before durable
+  acceptance.
+
+The Rust service and CLI run on supported macOS and Linux hosts. The native SwiftUI
+client is the only macOS-specific reset-card surface.
+
+Run the focused durable reset-card store proof after changes to preparation, effect
+fencing, reconciliation, retention, or recovery:
+
+```sh
+python3 scripts/vnext/postgres_store_test.py --focus-reset-cards
+```
+
+The excluded v0.2 runtime command surface starts in `apps/decodex/src/cli.rs`. For its
+preserved command details, prefer:
 
 ```sh
 decodex --help
@@ -641,11 +709,21 @@ The app is outside the Cargo workspace (`Cargo.toml`). Commands from `apps/decod
 
 ```sh
 swift build --package-path apps/decodex-app -c release
+swift test --package-path apps/decodex-app -c release
 apps/decodex-app/script/build_and_run.sh
 scripts/macos/test_decodex_app_stage.sh
 ```
 
-The staging script builds Swift and Rust release artifacts, copies `decodex` and `decodex-app-helper` into the app bundle, signs, and verifies the staged layout.
+The Swift suite covers reset-card architecture boundaries, stable CLI decoding,
+second-click confirmation, bounded pending-journal safety, and same-key restart recovery.
+Together with the focused PostgreSQL proof, it verifies the native client relationship to
+the shared [runtime service](../architecture/runtime-architecture.md); the native app's
+full boundary is documented with the other [auxiliary tools](../integrations/plugins-automations-and-auxiliary-tools.md).
+
+The staging script builds Swift and Rust release artifacts and copies four signed
+executables into the app bundle: legacy `decodex` and `decodex-app-helper` for
+unrelated existing account UI, plus active `decodexd` and `decodex-cli` for vNext.
+It verifies all four.
 
 ## Radar and Publisher checks
 

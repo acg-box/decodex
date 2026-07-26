@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AccountPanelView: View {
 	let store: AccountStore
+	let resetCardStore: ResetCardStore
 	let loginWindowState: LoginWindowState
 	@Environment(\.colorScheme) var colorScheme
 	@State var accountScrollOffset: CGFloat = 0
@@ -61,6 +62,9 @@ struct AccountPanelView: View {
 				)
 					.transition(.panelSection)
 			}
+
+			VNextResetCardsSectionView(store: resetCardStore)
+				.transition(.panelSection)
 
 			Group {
 				if store.isInitialLoading {
@@ -142,9 +146,6 @@ struct AccountPanelView: View {
 						Task {
 							await store.useInCodex(account)
 						}
-					},
-					consumeResetCredit: { attempt in
-						await store.consumeResetCredit(attempt, for: account)
 					},
 					routeRunsHere: {
 						Task {
