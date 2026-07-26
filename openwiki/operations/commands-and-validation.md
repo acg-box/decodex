@@ -511,7 +511,9 @@ Use the owner path to choose the first validation surface:
 - `site/`: Astro/TypeScript public static site and app download entry; validate with site type/build commands rather than runtime checks.
 - `apps/decodex-app/`: native SwiftPM macOS app for local account-pool management and bundled Decodex helper/server workflows.
 - `spikes/vnext-storage/`: isolated XY-1264 PostgreSQL, blob, and bounded-cache feasibility proof; validate it with `cargo make test-vnext-storage-proof` and use [the evidence record](../evidence/vnext-storage-feasibility.md) for accepted choices and boundaries.
-- `scripts/`: repository helpers; `scripts/assets/` owns checked-in asset generation and `scripts/macos/` owns macOS app packaging checks.
+- `scripts/`: repository helpers; `scripts/assets/` owns checked-in asset generation,
+  and `scripts/macos/` owns macOS app packaging checks and the source-install local
+  service installer.
 - `.github/`: repository automation such as CodeQL code scanning ruleset support.
 
 ## Targeted Rust checks
@@ -750,10 +752,12 @@ swift build --package-path apps/decodex-app -c release
 swift test --package-path apps/decodex-app -c release
 apps/decodex-app/script/build_and_run.sh
 scripts/macos/test_decodex_app_stage.sh
+python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
 The Swift suite covers reset-card architecture boundaries, stable CLI decoding,
-second-click confirmation, bounded pending-journal safety, and same-key restart recovery.
+second-click confirmation, bounded startup read recovery, bounded pending-journal
+safety, and same-key restart recovery.
 Together with the focused PostgreSQL proof, it verifies the native client relationship to
 the shared [runtime service](../architecture/runtime-architecture.md); the native app's
 full boundary is documented with the other [auxiliary tools](../integrations/plugins-automations-and-auxiliary-tools.md).
@@ -762,6 +766,17 @@ The staging script builds Swift and Rust release artifacts and copies four signe
 executables into the app bundle: legacy `decodex` and `decodex-app-helper` for
 unrelated existing account UI, plus active `decodexd` and `decodex-cli` for vNext.
 It verifies all four.
+
+The local-service installer test verifies credential-negative config, bridge mapping,
+and LaunchAgent output. The installed `decodexd supervise-local` process owns one
+foreground PostgreSQL generation and one daemon generation. PostgreSQL exit or
+endpoint replacement stops the old daemon before the supervisor exits. After an
+atomic legacy account-file replacement, only a changed credential projection stops
+and restarts the daemon so its process-scoped environment receives current values.
+The bridge requires the
+same UID, a private parent directory, private regular account and lock files, one
+link per file, bounded input, unique provider identities and email identities, and
+an exact slot-to-digest mapping.
 
 ## Radar and Publisher checks
 

@@ -58,7 +58,9 @@ host_path = "/absolute/path/on/server/to/decodex"
 # Explicit PostgreSQL endpoint data for the server host. decodexd uses the migration
 # identity only for forward migration and verification, then retains a separately
 # configured least-privilege runtime identity. It does not install, initialize, start,
-# or provision PostgreSQL. Store no password here: only named environment variables are
+# or provision a general PostgreSQL service. The macOS source-install helper provisions
+# one private same-UID PostgreSQL 18 cluster for its local LaunchAgent. Store no password
+# here: only named environment variables are
 # resolved at daemon bootstrap, and their values are never reported. Runtime readiness
 # also requires a closed exact-signature function inventory whose metadata and bodies match the
 # immutable migration, an exact trigger/rule/policy execution-path inventory, dependency-based
