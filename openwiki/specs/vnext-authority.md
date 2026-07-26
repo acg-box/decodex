@@ -115,7 +115,7 @@ replayed.
 | PR/check/merge readback | GitHub |
 | Large tool output and evidence bytes | content-addressed local blob store, with PostgreSQL metadata |
 | GPUI local state | bounded disposable cache only; SQLite is permitted only here |
-| Account product state | PostgreSQL Account Registry; it stores credential-negative identity, lifecycle, routing, quota, health, usage/profile/history, credential-version evidence, and operation receipts |
+| Account product state | PostgreSQL Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
 | Credentials | narrow versioned HostCredentialStore; PostgreSQL and clients never store or receive credential bytes |
 | v0.2 state | final vNext normal runtime reads none; one explicit offline account migration may consume the frozen account pool once, after which it remains untouched cold evidence |
 
@@ -127,11 +127,13 @@ never read PostgreSQL, rollout files, blobs, or repositories directly. V1 is sin
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
 
-The complete account ownership, refresh, recovery, platform-store, migration, and
-clean-cutover contract is [Account Lifecycle Authority](account-lifecycle-authority.md).
-The current environment-backed projection and legacy account watcher are pre-cutover
-scaffolding. They do not satisfy durable credential or account-lifecycle readiness and
-cannot remain in the final normal runtime.
+The account ownership, refresh, recovery, platform-store, migration, and readiness
+contract is [Account Lifecycle Authority](account-lifecycle-authority.md). An account's
+versioned `enabled` value is independent from observed health and quota. Enable, disable,
+fixed selection, balanced selection, and account-order changes are deterministic
+versioned CAS commands. The current environment-backed projection and legacy account
+watcher are pre-cutover scaffolding. They do not satisfy MacDogfoodReady and cannot be a
+normal Slice-1 or Slice-3 runtime dependency.
 
 `decodexd`, its daemon-private PostgreSQL runtime identity, and its BlobStore access form one
 trusted service boundary. PostgreSQL owns committed metadata, domain state, command receipts,
@@ -154,9 +156,11 @@ own effect retry.
 
 The public selection contract contains one canonical vNext Account UUID, its exact
 optimistic revision, and one credential-negative card descriptor made from grant and
-expiry timestamps. Accounts in `available` or `depleted` state admit the manual service.
-All other states reject it. Manual reset-card admission does not enable account routing,
-conversation dispatch, or quota-driven fallback.
+expiry timestamps. New admission requires `enabled=true`, AccountLifecycle readiness,
+no unsettled account operation, and exact agreement among the account revision,
+HostCredentialStore version and fingerprint, and provider binding. Observed quota or
+health does not replace these gates. Manual Reset Card use does not enable conversation
+dispatch or automatic fallback.
 
 The Codex adapter must prove that one generated schema advertises both
 `account/rateLimits/read` and `account/rateLimitResetCredit/consume`. It must establish a
@@ -174,10 +178,12 @@ must fail before transport until authenticated remote reset-card transport exist
 
 The daemon persists a credential-negative account-binding fingerprint over the account
 UUID and configured provider identity fields. Restart must reject drift, and generic
-account mutation cannot replace or remove the binding. Same-key replay precedes current
-vault, account-state, and revision gates. The effect fence atomically checks the exact
-revision, admitted state, and selected oldest public descriptor. A terminal
-effect-present readback erases the private exact-ID and provider-key projection while it
+account mutation cannot replace or remove the binding. A terminal same-key receipt
+replays unconditionally before any current account, store, provider, readiness, or
+enabled-state check. New work and the pre-effect fence both require `enabled=true`,
+AccountLifecycle readiness, no unsettled operation, and exact account revision,
+credential version/fingerprint, provider binding, and selected oldest public descriptor.
+A terminal effect-present readback erases the private exact-ID and provider-key projection while it
 retains the public receipt, reconciliation status, and replay result. Generic retention
 must not prune this reset-card ledger. A terminal pre-effect rejection or exhausted
 `not_started` claim also erases the private projection.
@@ -217,9 +223,12 @@ not enter Git, Linear, Artifact, logs, or receipts.
 
 XY-1373's former moving-core integration and landing condition is historical and
 non-executable. Its later cancellation preserves its complete history, parent, and
-`relatedTo` relations and does not claim that integration completed. Production
-dispatch stays disabled until integrated acceptance and the separate reviewed
-XY-1304 enablement amendment.
+`relatedTo` relations and does not claim that integration completed. The later automatic
+fallback and wake paths stay disabled until the separate reviewed XY-1304 amendment.
+
+XY-1371 and the XY-1378-XY-1391 private-artifact execution graph are also inactive
+historical planning provenance. Repository authority already retired that program.
+They cannot gate the delivery slices or restore a private-artifact authority.
 
 ### Managed repository authority
 
@@ -462,10 +471,11 @@ bound to one Account UUID. Shared `~/.codex` supplies configuration, plugins, ro
 files, and Codex thread visibility. A refresh callback can supply a newer access token
 for the same account, but the account and provider identity never switch under a live
 runner. Account
-state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`,
-`plugin_unready`, or `disabled`. Each quota window stores its class/duration, remaining amount, reset time,
-observation time, and confidence; 5-hour and 7-day windows are never inferred from
-positional primary/secondary ordering.
+observed state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`, or
+`plugin_unready`. Administrative `enabled` is a separate versioned boolean; no observed
+state sets or clears it. Each quota window stores its class/duration, remaining amount,
+reset time, observation time, and confidence; 5-hour and 7-day windows are never inferred
+from positional primary/secondary ordering.
 
 `plugin_unready` is inert reserved state; no first-release passive probe sets it.
 Codex 0.144.2 and 0.144.4 expose no stable passive complete account-owned plugin,
@@ -554,12 +564,14 @@ XY-1400 implements the accepted XY-1398 V3 contract in
 `ProcessSupervisor` is the sole product writer. A private opaque launch authority retains one
 protected executable snapshot and derives the durable launch-manifest identity and exact command.
 The manifest binds the image and BuildId, fixed `app-server --stdio` arguments, working directory,
-sanitized environment, account, and exact-build startup/lifetime capability. No caller can pair
-an independent digest with a raw command. The supervisor commits this intent before a fresh fence
-can authorize one spawn. It then binds the exact PID, process-start identity, process group, and
-session.
+sanitized environment, account, initial account revision, canonical credential version and
+fingerprint, provider identity, and exact-build startup/lifetime/account-callback capability. No
+caller can pair an independent digest with a raw command. The supervisor commits this intent in
+V23 before a fresh fence can authorize one spawn. Intent, launch manifest, prepare fence, ready
+transition, and readback carry the same non-secret binding. No new process or effect ledger is
+added. The supervisor then binds the exact PID, process-start identity, process group, and session.
 
-The current exact profile accepts only the recorded macOS `codex-cli 0.145.0-alpha.18` image. It
+The current lifetime profile accepts only the recorded macOS `codex-cli 0.145.0-alpha.18` image. It
 sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
 argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
 raw channels privately for lifetime ownership, and no returned ProcessGeneration capability
@@ -567,6 +579,12 @@ contains a protocol writer. Other builds, including an unrecorded Linux image, f
 profile-dependent preflights. Generic session/descriptor setup does not install
 `PR_SET_PDEATHSIG`; a future Linux parent-death primitive requires a separately accepted exact
 Linux lifetime capability. `decodexd` remains the only product daemon.
+
+This profile does not prove AccountLifecycle readiness. Current vNext rejects inbound app-server
+requests with method-not-found, so it cannot service `account/chatgptAuthTokens/refresh`.
+MacDogfoodReady requires a positive exact-build callback receipt and a typed daemon gateway.
+Generated types, version text, or upstream implementation presence alone are insufficient.
+Unsupported builds and callback shapes fail closed before account launch.
 
 The durable states are `starting`, `ready`, `stopping`, `dead`, and `death_unknown`.
 All present restored nonterminal rows become `death_unknown`. A generation becomes `dead` only
@@ -615,7 +633,8 @@ authorization authority.
 
 One snapshot binds, under the database locks that establish its revision boundary:
 
-- the exact accepted routing Policy revision and canonical user-owned account order;
+- the exact accepted routing Policy revision, versioned `fixed` or `balanced` mode,
+  optional fixed Account UUID, and canonical user-owned account order;
 - every current account-inventory member exactly once, with an explicit included or excluded
   disposition and an exact account revision;
 - sticky affinity, when present, plus the exact source RuntimeSession identity and revision;
@@ -644,7 +663,8 @@ One app-server process remains bound to one account, credentials never switch in
 and the separate 300-minute and 10080-minute quota facts for separate accounts are never merged.
 
 Sticky affinity wins only when the bound member is independently eligible under the same complete
-snapshot. Every known depleted window excludes its account until reset. Unknown, stale,
+snapshot. Eligibility requires the independent versioned `enabled=true` fact; observed health does
+not imply enablement. Every known depleted window excludes its account until reset. Unknown, stale,
 incompatible, disabled, authentication-failed, missing-duration, low-confidence, or precision-
 incompatible evidence blocks eligibility. When every otherwise eligible account is excluded only
 by usage, V16 persists `waiting_usage` and the exact earliest-ready time. XY-1362 owns one
@@ -663,32 +683,30 @@ authority without changing V15. After an exact V16 decision, V17 owns same-threa
 when exact positive account/profile/build evidence permits it. Otherwise, V17 owns one atomic
 Context Pack plus fallback RuntimeSession. V25/V26 preserve this authority for ordinary
 Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator sequences V16,
-V17, one live ProcessGeneration fence, and ProviderAttempt preparation. Production dispatch stays
-structurally disabled. Ambiguous-turn replay remains blocked by ProviderAttempt. ManagedRun
+V17, one live ProcessGeneration fence, and ProviderAttempt preparation. Current production
+dispatch stays structurally disabled until its applicable slice gate passes. Ambiguous-turn
+replay remains blocked by ProviderAttempt. ManagedRun
 consumes the attempt result and keeps only domain lifecycle authority.
 Repository/worktree/Git and artifact effects retain their own accepted authorities; routing never
 owns or weakens those boundaries.
 
-Those paragraphs define the target behavior, not current enablement. Until the separate
-[XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
-passes and repository authority explicitly enables it, all of the following are hard
-default-disabled in every production, dogfood, cutover, and release configuration:
+Those paragraphs define retained final routing authority, not current implementation.
+Slice 1 enables only initial selection after MacDogfoodReady: `fixed` considers its exact
+target, and `balanced` selects the first fully eligible account in canonical order.
+Selection evaluates both quota windows and returns a typed no-route or all-depleted
+result. Recovery is an explicit versioned enable/disable, mode, or order command followed
+by a new task. It does not rebind or replay a thread.
 
-- sticky-account assignment and policy-based account assignment;
-- a quota-driven exclusion causing selection or assignment of another account;
-- `waiting_usage` scheduling or wakeup;
-- automatic same-thread continuation on another account;
-- automatic creation or dispatch of a Context-Pack fallback RuntimeSession; and
-- replay of a turn after an ambiguous outcome or any possible side effect.
+[XY-1304](https://linear.app/hack-ink/issue/XY-1304) is the later acceptance owner for
+automatic cross-account same-thread fallback and all-depleted scheduler wake. Until its
+separate reviewed enablement amendment, those paths and automatic Context-Pack fallback
+remain hard disabled. It does not block Quick Task, Project/Lead, ManagedRun, GPUI, or
+first Mac dogfood. Replay after an ambiguous outcome remains prohibited independent of
+XY-1304 and is reconciled by ProviderAttempt.
 
-Foundation code may represent these states, persist inert metadata, calculate pure
-decisions, and test transactions with synthetic fixtures only where the gate manifest
-permits it. It must not submit a turn, assign a fallback runner, schedule a wake, or
-transition a live ManagedRun through these paths. Unknown, missing-duration, stale,
-low-confidence, auth-failed, plugin-unready, and disabled account/quota facts never imply
-availability. In particular, unknown or stale quota is fail-closed: no assignment and no
-automatic fallback is permitted; the unavailable/unknown condition must be surfaced for
-human resolution or bounded observation.
+Unknown, missing-duration, stale, low-confidence, auth-failed, capability-unready, or
+disabled facts never imply eligibility. An all-depleted Slice-1 result exposes reset
+evidence and waits for explicit retry; it does not schedule a wake.
 
 Readiness outside the accepted capability-applicability rule cannot authorize account eligibility,
 assignment, reassignment, fallback, scheduling, wakeup, continuation, or production routing. A
@@ -720,28 +738,33 @@ versions match exactly; server supports current and previous minor for UI/server
 Large artifacts use authenticated HTTP, never WebSocket snapshots. Non-loopback binding
 remains disabled until authentication, TLS, authorization, and redaction gates pass.
 
-GPUI is the primary workspace and exposes the Advisor inbox; Projects with persistent
-Lead Conversations; Quick Tasks; Program/Objective/WorkItem board; Run, review, repair,
-and landing state; agent/thread/automation graph and causal timeline; accounts, plugin
-readiness (typed `unknown` in the first release), global RoleProfiles, and system health.
-Users can always talk to Advisor or a
-Project Lead, start Quick Tasks, intervene in WorkItems/ManagedRuns, and inspect all
-agent/message/automation relationships. SwiftUI is a thin accounts/run-health menubar
-client over the restricted protocol. GPUI caches are bounded, disposable,
-cursor-paginated, and keyed by server/schema/content hash; project opening never eagerly
-loads all history.
+GPUI is the primary workspace. Current source opens a real shell and window, but all
+destinations are placeholders and the app is not usable. Slice 1 delivers minimal
+Accounts, Conversation, and Health destinations with Quick Task. Slice 2 delivers
+Project, Work, and Run destinations for the bounded managed-work flow. Graph/timeline,
+automation, broad history presentation, and polish are later obligations. SwiftUI stays
+a thin accounts/run-health menubar client over the restricted protocol. GPUI caches are
+bounded, disposable, cursor-paginated, and keyed by server/schema/content hash; project
+opening never eagerly loads all history.
 
 ## Migration and delivery
 
 Cutover has no availability requirement. Stop v0.2, tag the trusted `main`, and preserve
 cold copies of old SQLite/config/automation inventory plus incident scenarios. Start
 vNext with empty PostgreSQL execution and control-plane state. The only account-state
-exception is the explicit offline, idempotent, one-shot migration defined by the
-[account lifecycle authority](account-lifecycle-authority.md). It preserves established
-vNext Account UUID mappings, verifies every HostCredentialStore destination, leaves the
-legacy source untouched, and creates no watcher or fallback. Do not import old Codex sessions, SQLite
-execution state, Linear lanes, or Codex-created tasks. Recreate Projects and Automations
-explicitly from reviewed inventory.
+exception is the explicit offline, idempotent, one-shot normalized migration in the
+[account lifecycle authority](account-lifecycle-authority.md). Its manifest fingerprints
+every source for credentials, labels, enabled state, selection mode/order, and provider
+identity. It imports no quota, usage/profile projection, account history, Codex sessions,
+SQLite execution state, Linear lanes, or Codex-created tasks. It verifies each
+HostCredentialStore destination, leaves source bytes untouched, and creates no watcher
+or fallback. Recreate selected Projects explicitly from reviewed inventory.
+
+Delivery has exactly three dependencies: Accounts/Quick Task/Accounts-Conversation-Health
+GPUI, then the bounded Project/Lead/ManagedRun flow and Project-Work-Run GPUI, then the
+two-account self-hosting restart E2E and Mac package. The exact gates and the
+MacDogfoodReady-versus-final deferred table are in the
+[gate manifest](vnext-gates.md#delivery-slices).
 
 Freeze/close PR #1092 and do not cherry-pick its implementation wholesale. Every task
 uses a focused worktree branch and PR directly into `main`; there is no long-lived vNext

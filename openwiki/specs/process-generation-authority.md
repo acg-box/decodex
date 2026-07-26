@@ -17,9 +17,10 @@ XY-1396 and XY-1397 guardian and takeover designs supply no implementation autho
 
 This slice adds durable fenced ProcessGeneration intent, an opaque attested launch,
 exact process identity, positive-only death reconciliation, account-local quarantine,
-and a narrow runtime diagnostic and control port. It does not add routing, account
-selection, RuntimeSession creation, ProviderAttempt storage, remote authentication,
-UI, packaging, release, provider effects, or production dispatch.
+and a narrow runtime diagnostic and control port. XY-1423 extends that same intent and
+readback with non-secret account credential binding. It does not add a second ledger,
+routing, account selection, RuntimeSession creation, ProviderAttempt storage, remote
+authentication, UI, packaging, release, provider effects, or production dispatch.
 
 ## Owner and durable model
 
@@ -34,7 +35,7 @@ V23 adds these durable concepts:
 | Concept | Contract |
 | --- | --- |
 | Execution epoch | An external restore authority supplies an epoch UUID and matching SHA-256 authorization digest. Runtime cannot read the digest from PostgreSQL. |
-| ProcessGeneration | One immutable generation, account, epoch, attested launch-manifest identity, intended boot, control kind, isolation kind, optional exact process identity, state, revision, and timestamps. |
+| ProcessGeneration | One immutable generation, account, initial account revision, canonical credential version and fingerprint, provider binding, exact-build account-capability profile, epoch, attested launch-manifest identity, intended boot, control kind, isolation kind, optional exact process identity, state, revision, and timestamps. It stores no credential material. |
 | Death evidence | One append-only positive receipt for an exact generation and source revision. |
 | Transition history | One append-only row for each revision. |
 
@@ -55,9 +56,13 @@ facts agree:
 
 - the capacity permit names the same account as the immutable account binding and carries
   a positive account revision;
+- the canonical Account Service snapshot, HostCredentialStore version, credential
+  fingerprint, and provider identity agree at that exact account revision;
 - version and canonical generated schema come from the retained executable snapshot;
 - the executable digest, derived `BuildId`, fixed `app-server --stdio` arguments, and
   exact-build capability match one accepted profile;
+- the exact-build capability profile positively supports the typed
+  `account/chatgptAuthTokens/refresh` callback and its response shape;
 - the environment policy is clear-then-set with exact `HOME`, `PATH`, and
   `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` startup-state values;
 - the exact-build profile derives one macOS private-stdio lifetime capability; and
@@ -66,8 +71,9 @@ facts agree:
 The launch-manifest SHA-256 binds its schema, protected-snapshot execution policy,
 platform, control and session-isolation kinds, `BuildId`, exact image digest, command
 identity, ordered arguments, working directory, complete sanitized environment,
-account, and exact-build capability. `ProcessSupervisor` derives durable
-`runner_identity` from this object. Its spawn API accepts no
+account, initial account revision, canonical credential version and fingerprint,
+provider binding, and exact-build account capability. `ProcessSupervisor` derives
+durable `runner_identity` from this object. Its spawn API accepts no
 caller-supplied runner digest, raw `Command`, command arguments, environment, account,
 or control kind. After a fresh fence, the object re-attests the retained profile,
 constructs the command internally, and executes the same protected snapshot.
@@ -85,6 +91,7 @@ The current accepted profile is intentionally narrow:
 | Startup state | `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` selects `DisabledEphemeral`; no remote-control argument |
 | Protocol boundary | Child stdin and stdout remain private to `ProcessSupervisor`; `FencedProcess` returns no protocol handle |
 | Capability | `codex-app-server-private-stdio-disabled-ephemeral-startup-v1` |
+| Account callback readiness | Not accepted. Current vNext rejects every inbound app-server request with method-not-found, including `account/chatgptAuthTokens/refresh`. |
 
 The exact image receipt is
 [XY-1357 natural quota timestamp evidence](../evidence/xy-1357-natural-quota-timestamp.md).
@@ -108,16 +115,27 @@ profile-dependent preflights. Every other version, image, argument shape, enviro
 or capability also fails closed. A version string or protocol `CapabilityProfile`
 alone cannot mint launch authority.
 
+MacDogfoodReady requires a new exact-build account-capability receipt for the callback.
+Version text, generated request types, or upstream implementation presence alone is not
+proof. An unsupported build or callback shape fails closed before account launch. The
+current private-stdio lifetime profile remains valid only for its accepted pre-dispatch
+scope; it cannot be used to claim AccountLifecycle readiness.
+
 ## Fence and child control
 
 The launch sequence is:
 
-1. An account-launch owner rejects an unsupported platform, image, or argument profile,
-   then creates one opaque attested launch. Only an accepted profile can run the
-   read-only executable preflights. No provider app-server can start.
+1. An account-launch owner rejects an unsupported platform, image, argument, or account
+   callback profile. It reads one canonical account revision plus credential
+   version/fingerprint/provider binding and creates one opaque attested launch. Only an
+   accepted profile can run the read-only executable preflights. No provider app-server
+   can start.
 2. The caller supplies only a new generation ID and external execution authorization.
-3. `ProcessSupervisor` derives account, runner identity, current boot, accepted control
-   kind, and session isolation from trusted owners.
+3. `ProcessSupervisor` derives account, initial account revision, credential
+   version/fingerprint/provider binding, runner identity, current boot, accepted control
+   kind, and session isolation from trusted owners. It re-reads the Account Service and
+   HostCredentialStore before the fence; any version, fingerprint, provider, or enabled
+   mismatch rejects the launch.
 4. PostgreSQL serializes the account, locks the active external execution epoch
    through transaction commit, and commits revision 1 in `starting`.
 5. Only a fresh commit returns the non-clone `FreshProcessGenerationFence`. Replay is
@@ -129,7 +147,9 @@ The launch sequence is:
    macOS has no claimed parent-death primitive. This source has no accepted Linux
    lifetime capability and does not install `PR_SET_PDEATHSIG`.
 8. The supervisor reads and persists the exact boot, PID, process-start, process-group,
-   and session identity before it can mark the generation `ready`.
+   and session identity before it can mark the generation `ready`. Ready readback
+   includes the immutable initial account revision, credential version/fingerprint,
+   provider binding, and account-capability profile.
 
 The daemon-local in-flight reservation prevents background reconciliation from
 projecting an active fence, bind, or exact termination as restored authority. It is
@@ -241,11 +261,15 @@ same-boot presence, same-boot absence, identity mismatch, unbound identity, and
 observation failure. Identity-mismatch output includes the observed boot, PID,
 process-start, process-group, and session facts.
 
-The spawn and ready methods remain crate-private and have no caller.
-`decodexd` retains `CodexAdapter::unavailable()`. No protocol, CLI, scheduler, routing,
-RuntimeSession, ProviderAttempt, credential, remote-auth, or UI path reaches
-ProcessGeneration spawn. The V22 retained-title runner remains an explicit
-nonproduction feature and grants no ProcessGeneration or dispatch authority.
+The current spawn and ready methods remain crate-private and have no caller.
+`decodexd` retains `CodexAdapter::unavailable()`. Current source has no Account Service
+binding at ProcessGeneration spawn and rejects all inbound child requests. It is
+therefore not Slice-1 ready. The Mac dogfood implementation may add only the canonical
+non-secret account/credential metadata read and typed refresh-callback gateway defined
+above. No credential material enters V23 or the public protocol. Scheduler,
+RuntimeSession, ProviderAttempt, remote-auth, and UI do not gain ProcessGeneration
+write authority. The V22 retained-title runner remains an explicit nonproduction feature
+and grants no ProcessGeneration or dispatch authority.
 A future live-dispatch protocol gateway is a separate typed authority. Before dispatch
 can be enabled, that gateway must source-reject `remoteControl/enable` and every other
 alternate-control RPC. XY-1400 does not implement that gateway.
@@ -263,9 +287,10 @@ tree without enabling provider effects or production dispatch.
 | Manifest refreeze | Capture PostgreSQL 18 source S0, restore R1, and second restore R2. Require S0=R1 and R1=R2. Regenerate and accept complete V23 schema and configured-authority digests. Remove the temporary `process_generation` exclusion that keeps the accepted V22 digest base during this source-only slice. |
 | ACL and catalog hostility | Prove the expected 81 relations, 172 functions, 70 safety functions, 147 triggers, 62 runtime-callable functions, five new enums, exact ownership, no PUBLIC authority, no runtime relation DML, no grant option, closed dependencies, hostile `search_path`, overload/default-ACL rejection, and populated restore parity. |
 | State machine | Exercise every legal transition. Reject every illegal transition, combined bind/state transition, identity rewrite, partial identity, history rewrite, deletion, truncation, explicit-null or stale revision, cross-generation evidence, and malformed evidence shape. |
-| Opaque launch mismatch | Prove that callers cannot mismatch runner identity, executable image, command, argv0, fixed arguments, working directory, environment, account, BuildId, or exact-build capability. Prove that only the retained protected snapshot can reach exec. |
-| Exact-build private stdio | For each accepted profile, prove fixed `app-server --stdio`, environment clearing, the exact startup marker, absence of a remote-control argument, `DisabledEphemeral` startup selection, no raw stdin/stdout or generic protocol writer in any returned capability, and rejection of changed images, versions, arguments, environment, or capability. Prove unsupported profiles reject before version/schema preflight spawn. Prove that any future typed dispatch gateway source-rejects alternate-control RPCs before enablement. |
-| Fence concurrency | Exercise replay, changed-intent conflict, same-account competitors, different-account progress, epoch retirement, account deletion, transaction abort, deadlock, serialization failure, lost commit result, and restart. Only one fresh fence can authorize spawn. |
+| Opaque launch mismatch | Prove that callers cannot mismatch runner identity, executable image, command, argv0, fixed arguments, working directory, environment, account, initial account revision, credential version/fingerprint, provider binding, BuildId, or exact-build capability. Prove that only the retained protected snapshot can reach exec. |
+| Credential binding and readback | Rotate, remove, replace, disable, or change the provider between prepare, fence, spawn, callback, and ready. Every stale combination rejects or quarantines without a second launch. Intent, manifest, V23 row, transition readback, and diagnostics agree on the canonical non-secret binding. No credential material is stored. |
+| Exact-build private stdio | For each accepted profile, prove fixed `app-server --stdio`, environment clearing, the exact startup marker, absence of a remote-control argument, `DisabledEphemeral` startup selection, no raw stdin/stdout or generic protocol writer in any returned capability, and rejection of changed images, versions, arguments, environment, or capability. Prove the exact `account/chatgptAuthTokens/refresh` callback round trip and reject unknown callback methods or shapes. Unsupported profiles reject before version/schema preflight spawn. The gateway source-rejects alternate-control RPCs before enablement. |
+| Fence concurrency | Exercise replay, changed-intent conflict, same-account competitors, credential rotation, provider disagreement, different-account progress, epoch retirement, account deletion, transaction abort, deadlock, serialization failure, lost commit result, and restart. Only one fresh fence can authorize spawn. |
 | Crash cuts | Cut before fence, after fence before spawn, during spawn, after spawn before identity capture, after capture before bind, after bind before result, before ready, after ready before result, during stopping, after evidence insert, after generation update, and after commit with lost response. Require absence, recoverable owned authority, or account-local `death_unknown`; never permit replacement without positive death. |
 | Linux identity and liveness | Prove current generic retained-title and preflight children receive session/descriptor setup without ProcessGeneration lifetime authority. Prove unsupported Linux ProcessGeneration profiles reject before version/schema preflight spawn. After an exact Linux lifetime profile is separately accepted, prove its capability-gated `PR_SET_PDEATHSIG`, parent-race closure, boot ID and `/proc/<pid>/stat` start ticks, stdio close, pidfd attachment-before-recheck, positive pidfd events, child and descendant exit, group quiescence, PID/PGID reuse, and daemon death. |
 | macOS identity and liveness | Prove `KERN_BOOTTIME`, `proc_pidinfo` start time, session leadership, EOF as best effort only, a surviving orphan, credential/effect residual risk, exact match before kqueue registration, registration before final exact recheck, exact `NOTE_EXIT`, child and descendant exit, group quiescence, and boot change. |
@@ -278,7 +303,7 @@ tree without enabling provider effects or production dispatch.
 | Forbidden topology | Prove no guardian, wrapper authority, second daemon, adoption, proxy, takeover, reacquisition, restored-process signaling, lease-as-death, or negative-proof recovery path. |
 | Conversation continuity | Prove that generation death or replacement does not change persisted thread identity. Prove exact-thread resume when positively supported and accepted fallback only when resume is positively unsupported. ProcessGeneration must create neither path. |
 | ProviderAttempt handoff | Exercise late success, ambiguous submission, generation death, replacement reconciliation without replay, and a distinct acknowledged successor intent. Prove process evidence never changes an attempt to `not_submitted`. |
-| Production isolation | Prove no default or production caller of `spawn_fenced`, no raw ProcessGeneration protocol writer, no available Codex adapter, no protocol command, no routing or RuntimeSession creation, no ProviderAttempt storage, no credential or remote-auth path, no UI, packaging, release, provider effect, or enabled dispatch flag. |
+| Production isolation | Before Slice 1, prove no default or production caller of `spawn_fenced`, no raw ProcessGeneration protocol writer, no available Codex adapter, and no enabled dispatch flag. For Slice 1, prove the only new account paths are the canonical non-secret binding read and typed refresh callback; no credential material, alternate-control RPC, scheduler authority, RuntimeSession creation, ProviderAttempt storage, remote-auth, or UI write path enters V23. |
 
 No formatter, compiler, build, static check, migration or SQL parser, migration
 execution, test, fixture, validation wrapper, generator, service, VM, UI or
