@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, path::Path, thread};
 
 use serde_json::Value;
 
@@ -36,14 +36,155 @@ fn rejects_duplicate_active_social_publish_reservation_idempotency_keys() {
 }
 
 #[test]
+fn rejects_duplicate_social_outcome_windows() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let post = temp_dir.path().join("posts/post.json");
+	let first = temp_dir.path().join("outcomes/one.json");
+	let second = temp_dir.path().join("outcomes/two.json");
+
+	fs::create_dir_all(first.parent().expect("fixture should have parent"))
+		.expect("fixture directory should be created");
+	fs::create_dir_all(post.parent().expect("fixture should have parent"))
+		.expect("fixture directory should be created");
+	fs::write(&post, valid_social_post().to_string()).expect("fixture should be written");
+	let mut outcome = valid_social_outcome();
+	outcome["social_post_ref"] = serde_json::json!(post.to_string_lossy());
+	fs::write(&first, outcome.to_string()).expect("fixture should be written");
+	fs::write(&second, outcome.to_string()).expect("fixture should be written");
+
+	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect_err("duplicate outcome windows should fail")
+		.to_string();
+
+	assert!(error.contains("duplicate social_outcome cycle"));
+}
+
+#[test]
+fn validates_bounded_strategy_and_rejects_duplicate_cycles() {
+	let strategy = valid_social_strategy();
+
+	assert_social_errors(&strategy, []);
+
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let first = temp_dir.path().join("strategy/one.json");
+	let second = temp_dir.path().join("strategy/two.json");
+	fs::create_dir_all(first.parent().expect("fixture should have parent"))
+		.expect("fixture directory should be created");
+	fs::write(&first, strategy.to_string()).expect("fixture should be written");
+	fs::write(&second, strategy.to_string()).expect("fixture should be written");
+
+	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect_err("duplicate strategy cycle should fail")
+		.to_string();
+	assert!(error.contains("duplicate social_strategy cycle_key"));
+}
+
+#[test]
+fn numerical_strategy_change_requires_three_distinct_valid_24h_outcomes() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let mut outcome_paths = Vec::new();
+
+	for index in 1..=3 {
+		let post_path = temp_dir.path().join(format!("posts/post-{index}.json"));
+		let outcome_path = temp_dir.path().join(format!("outcomes/outcome-{index}.json"));
+		fs::create_dir_all(post_path.parent().expect("fixture should have parent"))
+			.expect("fixture directory should be created");
+		fs::create_dir_all(outcome_path.parent().expect("fixture should have parent"))
+			.expect("fixture directory should be created");
+
+		let mut post = valid_social_post();
+		post["slug"] = serde_json::json!(format!("post-{index}"));
+		post["decision"]["idempotency_key"] =
+			serde_json::json!(format!("x:decodexspace:operator_impact:post-{index}"));
+		post["publication"]["published_urls"] =
+			serde_json::json!([format!("https://x.com/decodexspace/status/{index}")]);
+		fs::write(&post_path, post.to_string()).expect("fixture should be written");
+
+		let mut outcome = valid_social_outcome();
+		outcome["slug"] = serde_json::json!(format!("post-{index}-24h"));
+		outcome["social_post_ref"] = serde_json::json!(post_path.to_string_lossy());
+		outcome["published_url"] =
+			serde_json::json!(format!("https://x.com/decodexspace/status/{index}"));
+		fs::write(&outcome_path, outcome.to_string()).expect("fixture should be written");
+		outcome_paths.push(outcome_path.to_string_lossy().into_owned());
+	}
+
+	let strategy_path = temp_dir.path().join("strategy/weekly.json");
+	fs::create_dir_all(strategy_path.parent().expect("fixture should have parent"))
+		.expect("fixture directory should be created");
+	let mut strategy = valid_social_strategy();
+	strategy["decisions"] = serde_json::json!([{
+		"dimension": "topic_weight",
+		"key": "operator_impact",
+		"previous_value": 1.0,
+		"next_value": 1.1,
+		"reason": "Three source-backed posts produced qualified replies."
+	}]);
+	strategy["evidence_refs"] = serde_json::json!(&outcome_paths[..2]);
+	fs::write(&strategy_path, strategy.to_string()).expect("fixture should be written");
+
+	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect_err("two outcomes must not authorize a numerical strategy change")
+		.to_string();
+	assert!(error.contains("at least three"));
+
+	strategy["evidence_refs"] = serde_json::json!(outcome_paths);
+	fs::write(&strategy_path, strategy.to_string()).expect("fixture should be written");
+	crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect("three distinct valid 24h outcomes should authorize the change");
+}
+
+#[test]
+fn social_outcome_requires_matching_published_post() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let post = temp_dir.path().join("posts/post.json");
+	let outcome_path = temp_dir.path().join("outcomes/outcome.json");
+
+	fs::create_dir_all(post.parent().expect("fixture should have parent"))
+		.expect("fixture directory should be created");
+	fs::create_dir_all(outcome_path.parent().expect("fixture should have parent"))
+		.expect("fixture directory should be created");
+	fs::write(&post, valid_social_post().to_string()).expect("fixture should be written");
+	let mut outcome = valid_social_outcome();
+	outcome["social_post_ref"] = serde_json::json!(post.to_string_lossy());
+	fs::write(&outcome_path, outcome.to_string()).expect("fixture should be written");
+
+	crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect("matching outcome and published post should pass");
+
+	let mut mismatched = outcome;
+	mismatched["published_url"] = serde_json::json!("https://x.com/decodexspace/status/2");
+	fs::write(&outcome_path, mismatched.to_string()).expect("fixture should be written");
+	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect_err("mismatched outcome URL should fail")
+		.to_string();
+
+	assert!(error.contains("published_url does not match referenced social_post"));
+
+	let mut early = valid_social_outcome();
+	early["social_post_ref"] = serde_json::json!(post.to_string_lossy());
+	early["observed_at"] = serde_json::json!("2026-06-02T03:01:00Z");
+	fs::write(&outcome_path, early.to_string()).expect("fixture should be written");
+	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect_err("early outcome window should fail")
+		.to_string();
+
+	assert!(error.contains("outside its allowed observation interval"));
+}
+
+#[test]
 fn social_reserve_publish_writes_active_reservation_once() {
 	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
-	let request = social_reserve_request(temp_dir.path(), false);
+	let lease = crate::acquire_social_browser_lease(&temp_dir.path().join("locks"), 3_600)
+		.expect("browser lease should be acquired");
+	let lease_token = lease.lease_token.expect("acquired lease should return token");
+	let request = social_reserve_request(temp_dir.path(), false, &lease_token);
 	let report = crate::reserve_social_publish(&request).expect("reservation should pass");
+	let digest = crate::social_publish::idempotency_digest(&request.idempotency_key);
 
 	assert_eq!(report.status, "reserved");
 	assert!(
-		temp_dir.path().join("reservations/2026-06-02/openai-codex-pr-22414.json").exists(),
+		temp_dir.path().join(format!("reservations/2026-06-02/{digest}.json")).exists(),
 		"reservation should be written"
 	);
 
@@ -52,6 +193,62 @@ fn social_reserve_publish_writes_active_reservation_once() {
 		.to_string();
 
 	assert!(duplicate.contains("idempotency_key already has an active reservation"));
+}
+
+#[test]
+fn browser_lease_serializes_publishers_and_releases_exact_owner() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let locks = temp_dir.path().join("locks");
+	let lease = crate::acquire_social_browser_lease(&locks, 3_600)
+		.expect("first browser lease should be acquired");
+	let lease_token = lease.lease_token.expect("acquired lease should return token");
+
+	let busy = crate::acquire_social_browser_lease(&locks, 3_600)
+		.expect_err("second browser lease should fail closed")
+		.to_string();
+	assert!(busy.contains("already active"));
+
+	let wrong_owner = crate::release_social_browser_lease(&locks, "wrong-token")
+		.expect_err("wrong owner must not release the browser lease")
+		.to_string();
+	assert!(wrong_owner.contains("does not match"));
+
+	crate::verify_social_browser_lease(&locks, &lease_token)
+		.expect("exact owner should verify the browser lease");
+	let renewed = crate::renew_social_browser_lease(&locks, &lease_token, 7_200)
+		.expect("exact owner should renew the browser lease");
+	assert_eq!(renewed.status, "renewed");
+	assert!(renewed.lease_token.is_none(), "renewal must not echo the lease token");
+	let _ = crate::renew_social_browser_lease(&locks, "wrong-token", 3_600)
+		.expect_err("wrong owner must not renew the browser lease");
+	crate::release_social_browser_lease(&locks, &lease_token)
+		.expect("exact owner should release the browser lease");
+	crate::acquire_social_browser_lease(&locks, 3_600)
+		.expect("browser lease should be reusable after release");
+}
+
+#[test]
+fn concurrent_reservations_share_one_atomic_idempotency_path() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let lease = crate::acquire_social_browser_lease(&temp_dir.path().join("locks"), 3_600)
+		.expect("browser lease should be acquired");
+	let lease_token = lease.lease_token.expect("acquired lease should return token");
+	let first = social_reserve_request(temp_dir.path(), false, &lease_token);
+	let mut second = social_reserve_request(temp_dir.path(), false, &lease_token);
+	second.slug = "different-slug-same-idempotency-key".into();
+
+	let outcomes = thread::scope(|scope| {
+		let first = scope.spawn(|| crate::reserve_social_publish(&first));
+		let second = scope.spawn(|| crate::reserve_social_publish(&second));
+
+		[
+			first.join().expect("first reservation thread should finish"),
+			second.join().expect("second reservation thread should finish"),
+		]
+	});
+	let success_count = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+
+	assert_eq!(success_count, 1, "only one concurrent reservation may succeed");
 }
 
 #[test]
@@ -86,6 +283,130 @@ fn accepts_valid_social_candidate_and_requires_shared_handoff_for_radar_inputs()
 	);
 }
 
+#[test]
+fn accepts_browser_outcome_and_rejects_non_browser_publication() {
+	let outcome = valid_social_outcome();
+
+	assert_social_errors(&outcome, []);
+
+	let mut post = valid_social_post();
+
+	post["publication"]["publisher"] = serde_json::json!("x_api");
+	assert_social_errors(&post, ["publication.publisher must be chrome"]);
+
+	post["publication"]["publisher"] = serde_json::json!("chrome");
+	post["publication"]["published_urls"] = serde_json::json!(["https://x.com/hackink/status/1"]);
+	assert_social_errors(
+		&post,
+		["publication.published_urls must contain only decodexspace X status URLs"],
+	);
+
+	post["publication"]["published_urls"] =
+		serde_json::json!(["https://x.com/decodexspace/status/1"]);
+	post["browser_session"]["restore_status"] = serde_json::json!("not_required");
+	assert_social_errors(
+		&post,
+		[
+			"browser_session.restore_status must be restored or failed when initial account is hackink",
+		],
+	);
+
+	let mut ambiguous = valid_social_post();
+	ambiguous["failure"] = serde_json::json!({
+		"reason": "ambiguous",
+		"details": "This payload must not mix terminal states."
+	});
+	assert_social_errors(&ambiguous, ["failure must be absent when status is published"]);
+}
+
+#[test]
+fn validates_schema_shaped_non_published_status_payloads() {
+	let mut blocked = valid_social_post();
+
+	blocked["status"] = serde_json::json!("blocked");
+	blocked.as_object_mut().expect("post should be an object").remove("publication");
+	blocked["block"] = serde_json::json!({
+		"reason": "duplicate",
+		"operator_notice": "The live profile already contains this source URL."
+	});
+	blocked["decision"]["daily_count_after"] = blocked["decision"]["daily_count_before"].clone();
+	assert_social_errors(&blocked, []);
+
+	let mut failed = blocked.clone();
+
+	failed["status"] = serde_json::json!("failed");
+	failed.as_object_mut().expect("post should be an object").remove("block");
+	failed["browser_touched"] = serde_json::json!(false);
+	failed.as_object_mut().expect("post should be an object").remove("browser_session");
+	failed["failure"] = serde_json::json!({
+		"reason": "browser_control_unavailable",
+		"details": "Chrome control could not be established before compose."
+	});
+	assert_social_errors(&failed, []);
+}
+
+#[test]
+fn rejects_schema_extensions_that_could_hide_private_or_api_data() {
+	let mut post = valid_social_post();
+
+	post["browser_session"]["cookie"] = serde_json::json!("private");
+	assert_social_errors(&post, ["browser_session.cookie is not allowed"]);
+
+	let mut private_evidence = valid_social_post();
+	private_evidence["evidence_notes"] =
+		serde_json::json!([{"raw_api_payload": {"authorization": "private"}}]);
+	assert_social_errors(&private_evidence, ["evidence_notes must be a non-empty list of strings"]);
+
+	let mut outcome = valid_social_outcome();
+	outcome["raw_api_payload"] = serde_json::json!({"views": 125});
+	assert_social_errors(&outcome, ["social_outcome.raw_api_payload is not allowed"]);
+
+	let mut candidate = valid_social_candidate();
+	candidate["source_refs"]["raw_page"] = serde_json::json!("private");
+	assert_social_errors(&candidate, ["source_refs.raw_page is not allowed"]);
+
+	let mut reservation = valid_social_publish_reservation();
+	reservation["owner"] = serde_json::json!({
+		"automation_id": "decodex-x-browser-publisher",
+		"cookie": "private"
+	});
+	assert_social_errors(&reservation, ["owner.cookie is not allowed"]);
+
+	let mut ambiguous_reservation = valid_social_publish_reservation();
+	ambiguous_reservation["release_reason"] = serde_json::json!("not active");
+	assert_social_errors(
+		&ambiguous_reservation,
+		["release_reason must be absent when status is active"],
+	);
+}
+
+#[test]
+fn rejects_duplicate_skipped_terminal_post_idempotency_keys() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let first = temp_dir.path().join("posts/one.json");
+	let second = temp_dir.path().join("posts/two.json");
+	fs::create_dir_all(first.parent().expect("fixture should have parent"))
+		.expect("fixture directory should be created");
+
+	let mut skipped = valid_social_post();
+	skipped["status"] = serde_json::json!("skipped");
+	skipped.as_object_mut().expect("post should be an object").remove("publication");
+	skipped["browser_touched"] = serde_json::json!(false);
+	skipped.as_object_mut().expect("post should be an object").remove("browser_session");
+	skipped["skip"] =
+		serde_json::json!({"reason": "The candidate no longer met the quality gate."});
+	skipped["decision"]["worthiness"] = serde_json::json!("skip");
+	skipped["decision"]["daily_count_after"] = skipped["decision"]["daily_count_before"].clone();
+
+	fs::write(&first, skipped.to_string()).expect("fixture should be written");
+	fs::write(&second, skipped.to_string()).expect("fixture should be written");
+
+	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
+		.expect_err("duplicate skipped terminal records should fail")
+		.to_string();
+	assert!(error.contains("duplicate terminal social_post idempotency_key"));
+}
+
 fn assert_social_errors<const N: usize>(payload: &Value, expected: [&str; N]) {
 	let errors = social_validation::validate_social_artifact(payload).errors;
 
@@ -101,7 +422,11 @@ fn assert_social_errors<const N: usize>(payload: &Value, expected: [&str; N]) {
 	}
 }
 
-fn social_reserve_request(root: &Path, dry_run: bool) -> SocialReservePublishRequest {
+fn social_reserve_request(
+	root: &Path,
+	dry_run: bool,
+	browser_lease_token: &str,
+) -> SocialReservePublishRequest {
 	SocialReservePublishRequest {
 		slug: "openai-codex-pr-22414".into(),
 		mode: "operator_impact".into(),
@@ -115,6 +440,8 @@ fn social_reserve_request(root: &Path, dry_run: bool) -> SocialReservePublishReq
 		duplicate_keys: vec!["openai-codex-pr-22414".into()],
 		out_dir: root.join("reservations"),
 		posts_dir: root.join("posts"),
+		locks_dir: root.join("locks"),
+		browser_lease_token: browser_lease_token.into(),
 		automation_id: None,
 		run_id: None,
 		branch: None,
@@ -189,6 +516,7 @@ fn valid_social_post() -> Value {
 		"controller_account": "hackink",
 		"mode": "operator_impact",
 		"status": "published",
+		"browser_touched": true,
 		"audience": "Codex operators",
 		"text": [
 			"Remote Codex can use Unix socket endpoints. Source: https://github.com/openai/codex/pull/22414"
@@ -222,6 +550,68 @@ fn valid_social_post() -> Value {
 			"account_verified": true,
 			"made_with_ai": true
 		},
+		"browser_session": {
+			"initial_account": "hackink",
+			"target_account": "decodexspace",
+			"target_account_verified": true,
+			"switch_status": "switched",
+			"restore_status": "restored"
+		},
 		"media_refs": ["https://x.com/decodexspace/status/1/photo/1"]
+	})
+}
+
+fn valid_social_outcome() -> Value {
+	serde_json::json!({
+		"schema": "social_outcome/v1",
+		"slug": "openai-codex-pr-22414-24h",
+		"target_account": "decodexspace",
+		"social_post_ref": ".agent/automations/decodex/cache/social/x/posts/2026-06-02/openai-codex-pr-22414.json",
+		"published_url": "https://x.com/decodexspace/status/1",
+		"observed_at": "2026-06-03T03:00:00Z",
+		"window": "24h",
+		"metrics": {
+			"views": 125,
+			"likes": 4,
+			"replies": 1,
+			"reposts": 2
+		},
+		"browser_session": {
+			"initial_account": "hackink",
+			"target_account": "decodexspace",
+			"target_account_verified": true,
+			"switch_status": "switched",
+			"restore_status": "restored"
+		},
+		"notes": ["Metrics were read from the visible X post page."]
+	})
+}
+
+fn valid_social_strategy() -> Value {
+	serde_json::json!({
+		"schema": "social_strategy/v1",
+		"cycle_key": "weekly:2026-06-01",
+		"cadence": "weekly",
+		"reviewed_at": "2026-06-08T03:00:00Z",
+		"evidence_refs": [
+			".agent/automations/decodex/cache/social/x/outcomes/openai-codex-pr-22414-7d.json"
+		],
+		"decisions": [
+			{
+				"dimension": "no_change",
+				"key": "insufficient_outcomes",
+				"previous_value": "unchanged",
+				"next_value": "unchanged",
+				"reason": "Fewer than three valid 24-hour outcomes are available."
+			}
+		],
+		"guardrails": {
+			"evidence_gate": "unchanged",
+			"privacy_gate": "unchanged",
+			"idempotency_gate": "unchanged",
+			"account_gate": "unchanged",
+			"publication_gate": "unchanged"
+		},
+		"next_review_at": "2026-06-15T03:00:00Z"
 	})
 }

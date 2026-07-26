@@ -149,3 +149,18 @@ def validate_active_config(
     active_prompt = active_config.get("prompt")
     if active_prompt != prompt.strip():
         result.fail("active prompt does not match prompt_file exactly")
+
+    created_at = active_config.get("created_at")
+    updated_at = active_config.get("updated_at")
+    if not isinstance(created_at, int) or isinstance(created_at, bool) or created_at <= 0:
+        result.fail("active created_at must be a positive integer")
+    if not isinstance(updated_at, int) or isinstance(updated_at, bool) or updated_at <= 0:
+        result.fail("active updated_at must be a positive integer")
+    if (
+        isinstance(created_at, int)
+        and not isinstance(created_at, bool)
+        and isinstance(updated_at, int)
+        and not isinstance(updated_at, bool)
+        and updated_at < created_at
+    ):
+        result.fail("active updated_at must not be earlier than created_at")

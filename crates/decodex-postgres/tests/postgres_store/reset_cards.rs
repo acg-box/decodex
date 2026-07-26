@@ -6,7 +6,8 @@ use decodex_core::{
 };
 use decodex_postgres::{
 	AccountId, AccountMutation, AccountState, CommandIdentity, OutboxReconciliation, PostgresStore,
-	ReconciliationOutcome, ResetCardFailureCode, ResetCardOperationStatus, StoreError,
+	ReconciliationOutcome, ResetCardClaim, ResetCardFailureCode, ResetCardOperationStatus,
+	ResetCardPreparation, StoreError,
 };
 use serde_json::{Value, json};
 use tokio::time;
@@ -29,6 +30,13 @@ const PENDING_OPERATION_KEY: &str = "reset-card-integration-pending-operation";
 const EXACT_PROVIDER_CREDIT_ID: &str = "sk-live-provider-id";
 const PROVIDER_BINDING_FINGERPRINT: &str =
 	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+struct InitialResetCardOperation {
+	command: CommandIdentity,
+	descriptor: ResetCardDescriptor,
+	preparation: ResetCardPreparation,
+	claim: ResetCardClaim,
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a fresh isolated PostgreSQL 18 reset-card database"]
@@ -54,6 +62,47 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		)
 		.await?;
 
+	assert_provider_binding_is_immutable(&store, &account_id).await?;
+	let initial = prepare_initial_reset_card_operation(&store, &owner, &account_id).await?;
+	assert_competing_and_exhausted_operations(
+		&store,
+		&owner,
+		&account_id,
+		initial.descriptor,
+		&initial.claim,
+	)
+	.await?;
+	disable_account_and_assert_stale_replay(&store, &owner, &account_id, &initial).await?;
+	reconcile_ambiguous_initial_operation(&store, &owner, &account_id, &initial.claim).await?;
+
+	let reusable_descriptor = ResetCardDescriptor::new(
+		ResetCardTimestamp::from_unix_seconds(2_100_000_000)?,
+		ResetCardTimestamp::from_unix_seconds(2_100_003_600)?,
+	)?;
+	let nothing_preparation =
+		complete_nothing_to_reset(&store, &owner, &account_id, reusable_descriptor).await?;
+	start_reusable_operation_and_assert_replays(
+		&store,
+		&account_id,
+		&initial,
+		reusable_descriptor,
+		&nothing_preparation,
+	)
+	.await?;
+	reject_pending_replay_after_account_change(&store, &owner, &account_id, reusable_descriptor)
+		.await?;
+
+	store.close();
+	drop(owner);
+	owner_connection_task.await??;
+
+	Ok(())
+}
+
+async fn assert_provider_binding_is_immutable(
+	store: &PostgresStore,
+	account_id: &AccountId,
+) -> Result<(), Box<dyn Error>> {
 	let drift_command =
 		CommandIdentity::new("reset-card-integration-binding-drift", b"binding-drift-v1")?;
 	let drift_result = store
@@ -80,16 +129,24 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		"unexpected immutable-binding mutation result: {drift_result:?}"
 	);
 
+	Ok(())
+}
+
+async fn prepare_initial_reset_card_operation(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+	account_id: &AccountId,
+) -> Result<InitialResetCardOperation, Box<dyn Error>> {
 	let descriptor = ResetCardDescriptor::new(
 		ResetCardTimestamp::from_unix_seconds(2_000_000_000)?,
 		ResetCardTimestamp::from_unix_seconds(2_000_003_600)?,
 	)?;
 	let operation_command = CommandIdentity::new(OPERATION_KEY, b"reset-card-operation-v1")?;
 	let preparation =
-		store.prepare_reset_card_operation(&operation_command, &account_id, 1, descriptor).await?;
-	assert!(store.reset_card_account_has_unsettled_operations(&account_id).await?);
+		store.prepare_reset_card_operation(&operation_command, account_id, 1, descriptor).await?;
+	assert!(store.reset_card_account_has_unsettled_operations(account_id).await?);
 
-	assert_eq!(preparation.account_id, account_id);
+	assert_eq!(&preparation.account_id, account_id);
 	assert_eq!(preparation.account_revision, 1);
 	assert_eq!(preparation.descriptor, descriptor);
 
@@ -113,7 +170,7 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		.expect("the private projection must retain the encoded provider retry key");
 	assert_ne!(encoded_provider_key, OPERATION_KEY);
 	assert!(!prepared_payload.to_string().contains(OPERATION_KEY));
-	assert_activity_remains_public(&store, &owner, &public_aggregate_id).await?;
+	assert_activity_remains_public(store, owner, &public_aggregate_id).await?;
 
 	let generic_claims = store.claim_outbox(GENERIC_WORKER, 100, Duration::from_secs(2)).await?;
 
@@ -148,7 +205,7 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 	assert!(!private_payload.to_string().contains(EXACT_PROVIDER_CREDIT_ID));
 	assert!(!private_payload.to_string().contains(OPERATION_KEY));
 	assert_public_payload_is_private_material_free(&private_payload);
-	assert_activity_remains_public(&store, &owner, &public_aggregate_id).await?;
+	assert_activity_remains_public(store, owner, &public_aggregate_id).await?;
 
 	store
 		.renew_reset_card_claim(
@@ -164,10 +221,25 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 	));
 	store.begin_reset_card_effect(&first, RESET_WORKER_A).await?;
 
+	Ok(InitialResetCardOperation {
+		command: operation_command,
+		descriptor,
+		preparation,
+		claim: first,
+	})
+}
+
+async fn assert_competing_and_exhausted_operations(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+	account_id: &AccountId,
+	descriptor: ResetCardDescriptor,
+	first: &ResetCardClaim,
+) -> Result<(), Box<dyn Error>> {
 	let competing_command =
 		CommandIdentity::new(COMPETING_OPERATION_KEY, b"reset-card-operation-v1")?;
 	let competing_preparation =
-		store.prepare_reset_card_operation(&competing_command, &account_id, 1, descriptor).await?;
+		store.prepare_reset_card_operation(&competing_command, account_id, 1, descriptor).await?;
 
 	assert_eq!(competing_preparation.account_revision, 1);
 	assert_eq!(competing_preparation.descriptor, descriptor);
@@ -196,11 +268,11 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		store.reset_card_operation_status(COMPETING_OPERATION_KEY).await?,
 		ResetCardOperationStatus::FailedBeforeEffect(ResetCardFailureCode::InventoryChanged),
 	);
-	assert_private_effect_scrubbed(&owner, competing.id).await?;
+	assert_private_effect_scrubbed(owner, competing.id).await?;
 
 	let exhausted_command =
 		CommandIdentity::new(EXHAUSTED_OPERATION_KEY, b"reset-card-exhausted-operation-v1")?;
-	store.prepare_reset_card_operation(&exhausted_command, &account_id, 1, descriptor).await?;
+	store.prepare_reset_card_operation(&exhausted_command, account_id, 1, descriptor).await?;
 	let exhausted = store
 		.claim_reset_card_operation(RESET_WORKER_C, Duration::from_secs(2))
 		.await?
@@ -223,8 +295,17 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		store.reset_card_operation_status(EXHAUSTED_OPERATION_KEY).await?,
 		ResetCardOperationStatus::FailedBeforeEffect(ResetCardFailureCode::ProviderUnavailable),
 	);
-	assert_private_effect_scrubbed(&owner, exhausted.id).await?;
+	assert_private_effect_scrubbed(owner, exhausted.id).await?;
 
+	Ok(())
+}
+
+async fn disable_account_and_assert_stale_replay(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+	account_id: &AccountId,
+	initial: &InitialResetCardOperation,
+) -> Result<(), Box<dyn Error>> {
 	let account_update =
 		CommandIdentity::new("reset-card-integration-account-update", b"account-disabled-v2")?;
 	let updated = store
@@ -243,14 +324,16 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 	assert_eq!(updated.revision, 2);
 	assert_eq!(updated.state, AccountState::Disabled);
 	assert_eq!(
-		store.prepare_reset_card_operation(&operation_command, &account_id, 1, descriptor).await?,
-		preparation,
+		store
+			.prepare_reset_card_operation(&initial.command, account_id, 1, initial.descriptor,)
+			.await?,
+		initial.preparation,
 		"an exact completed key must replay before current account admission",
 	);
 	let stale_command =
 		CommandIdentity::new("reset-card-integration-stale-operation", b"stale-operation-v1")?;
 	let stale_result =
-		store.prepare_reset_card_operation(&stale_command, &account_id, 1, descriptor).await;
+		store.prepare_reset_card_operation(&stale_command, account_id, 1, initial.descriptor).await;
 	assert!(
 		matches!(
 			&stale_result,
@@ -271,10 +354,19 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		"a proved pre-effect rejection must close its pending command reservation"
 	);
 	assert!(matches!(
-		store.prepare_reset_card_operation(&stale_command, &account_id, 1, descriptor).await,
+		store.prepare_reset_card_operation(&stale_command, account_id, 1, initial.descriptor).await,
 		Err(StoreError::RevisionConflict { expected: Some(1), actual: Some(2), .. })
 	));
 
+	Ok(())
+}
+
+async fn reconcile_ambiguous_initial_operation(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+	account_id: &AccountId,
+	first: &ResetCardClaim,
+) -> Result<(), Box<dyn Error>> {
 	store
 		.renew_reset_card_claim(
 			first.id,
@@ -359,13 +451,22 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		)
 		.await?;
 
-	assert_private_effect_scrubbed(&owner, final_claim.id).await?;
+	assert_private_effect_scrubbed(owner, final_claim.id).await?;
 	assert_eq!(
 		store.reset_card_operation_status(OPERATION_KEY).await?,
 		ResetCardOperationStatus::Completed(ResetCardConsumeOutcome::Reset)
 	);
-	assert!(!store.reset_card_account_has_unsettled_operations(&account_id).await?);
+	assert!(!store.reset_card_account_has_unsettled_operations(account_id).await?);
 
+	Ok(())
+}
+
+async fn complete_nothing_to_reset(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+	account_id: &AccountId,
+	reusable_descriptor: ResetCardDescriptor,
+) -> Result<ResetCardPreparation, Box<dyn Error>> {
 	let account_reenable =
 		CommandIdentity::new("reset-card-integration-account-reenable", b"account-available-v3")?;
 	let reenabled = store
@@ -382,14 +483,10 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		.await?;
 	assert_eq!(reenabled.revision, 3);
 
-	let reusable_descriptor = ResetCardDescriptor::new(
-		ResetCardTimestamp::from_unix_seconds(2_100_000_000)?,
-		ResetCardTimestamp::from_unix_seconds(2_100_003_600)?,
-	)?;
 	let nothing_command =
 		CommandIdentity::new(NOTHING_TO_RESET_KEY, b"reset-card-nothing-to-reset-v1")?;
 	let nothing_preparation = store
-		.prepare_reset_card_operation(&nothing_command, &account_id, 3, reusable_descriptor)
+		.prepare_reset_card_operation(&nothing_command, account_id, 3, reusable_descriptor)
 		.await?;
 	let nothing_claim = store
 		.claim_reset_card_operation(RESET_WORKER_A, Duration::from_secs(2))
@@ -428,16 +525,26 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 			Duration::from_secs(1),
 		)
 		.await?;
-	assert_private_effect_scrubbed(&owner, nothing_claim.id).await?;
+	assert_private_effect_scrubbed(owner, nothing_claim.id).await?;
 	assert_eq!(
 		store.reset_card_operation_status(NOTHING_TO_RESET_KEY).await?,
 		ResetCardOperationStatus::Completed(ResetCardConsumeOutcome::NothingToReset),
 	);
 
+	Ok(nothing_preparation)
+}
+
+async fn start_reusable_operation_and_assert_replays(
+	store: &PostgresStore,
+	account_id: &AccountId,
+	initial: &InitialResetCardOperation,
+	reusable_descriptor: ResetCardDescriptor,
+	nothing_preparation: &ResetCardPreparation,
+) -> Result<(), Box<dyn Error>> {
 	let reusable_command =
 		CommandIdentity::new(REUSABLE_OPERATION_KEY, b"reset-card-reusable-operation-v1")?;
 	store
-		.prepare_reset_card_operation(&reusable_command, &account_id, 3, reusable_descriptor)
+		.prepare_reset_card_operation(&reusable_command, account_id, 3, reusable_descriptor)
 		.await?;
 	let reusable_claim = store
 		.claim_reset_card_operation(RESET_WORKER_B, Duration::from_secs(2))
@@ -459,16 +566,29 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		ResetCardOperationStatus::Completed(ResetCardConsumeOutcome::NothingToReset),
 	);
 	assert_eq!(
-		store.prepare_reset_card_operation(&operation_command, &account_id, 1, descriptor).await?,
-		preparation,
+		store
+			.prepare_reset_card_operation(&initial.command, account_id, 1, initial.descriptor,)
+			.await?,
+		initial.preparation,
 	);
+	let nothing_command =
+		CommandIdentity::new(NOTHING_TO_RESET_KEY, b"reset-card-nothing-to-reset-v1")?;
 	assert_eq!(
 		store
-			.prepare_reset_card_operation(&nothing_command, &account_id, 3, reusable_descriptor)
+			.prepare_reset_card_operation(&nothing_command, account_id, 3, reusable_descriptor)
 			.await?,
-		nothing_preparation,
+		*nothing_preparation,
 	);
 
+	Ok(())
+}
+
+async fn reject_pending_replay_after_account_change(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+	account_id: &AccountId,
+	reusable_descriptor: ResetCardDescriptor,
+) -> Result<(), Box<dyn Error>> {
 	let final_account_update =
 		CommandIdentity::new("reset-card-integration-account-final", b"account-disabled-v4")?;
 	let final_account = store
@@ -513,14 +633,14 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 	let pending_command = CommandIdentity::new(PENDING_OPERATION_KEY, &pending_request)?;
 	assert!(matches!(
 		store
-			.replay_reset_card_preparation(&pending_command, &account_id, 3, reusable_descriptor,)
+			.replay_reset_card_preparation(&pending_command, account_id, 3, reusable_descriptor,)
 			.await,
 		Err(StoreError::ResetCardCommitOutcomeUnknown)
 	));
 	time::sleep(Duration::from_millis(550)).await;
 	assert!(matches!(
 		store
-			.replay_reset_card_preparation(&pending_command, &account_id, 3, reusable_descriptor,)
+			.replay_reset_card_preparation(&pending_command, account_id, 3, reusable_descriptor,)
 			.await,
 		Err(StoreError::RevisionConflict { expected: Some(3), actual: Some(4), .. })
 	));
@@ -536,10 +656,6 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		recovered_pending_state, "completed",
 		"an expired pending receipt must enter fenced recovery and close after proved rejection"
 	);
-
-	store.close();
-	drop(owner);
-	owner_connection_task.await??;
 
 	Ok(())
 }

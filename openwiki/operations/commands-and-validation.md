@@ -718,14 +718,15 @@ Codex App automation sync and evaluation:
 python3 automations/decodex/scripts/config/sync_automations.py
 python3 automations/decodex/scripts/config/sync_automations.py --apply
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
 python3 -m unittest automations.upstream.tests.test_upstream_autopilot
 ```
 
 Automation source should stay portable: `{repo_root}` placeholders and relative paths
 in manifests, with machine-local absolute paths generated only under
 `$CODEX_HOME/automations` (`automations/upstream/README.md`). The current default
-installer renders only the three upstream-loop tasks. Frozen v0.2 Decodex and Radar
-automation definitions were deleted and are not install inputs.
+installer renders three upstream tasks and two content tasks. Frozen v0.2 Decodex and
+Radar automation definitions were deleted and are not install inputs.
 
 ## Static site checks
 
@@ -775,7 +776,7 @@ cargo test -p radar
 Publisher:
 
 ```sh
-decodex-publisher validate-social .agent/automations/decodex/cache/social/x
+decodex-publisher validate-social
 cargo test -p decodex-publisher
 ```
 
