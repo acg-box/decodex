@@ -143,6 +143,12 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ServerIdentityUnavailable => "Stable server identity is unavailable",
 		ClientFailure::RemoteMutationUnsupported =>
 			"Reset-card operations require a local pinned profile",
+		ClientFailure::LocalTransportDisabled => "Local daemon transport is disabled",
+		ClientFailure::RemoteTransportDisabled => "Remote daemon transport is disabled",
+		ClientFailure::LocalTransportUnsupported => "Local daemon transport is unsupported",
+		ClientFailure::UnsafeLocalEndpoint => "Local daemon endpoint is unsafe",
+		ClientFailure::LocalPeerIdentityUnavailable => "Local daemon identity is unavailable",
+		ClientFailure::LocalPeerUidMismatch => "Local daemon peer UID does not match",
 		ClientFailure::ProtocolDisconnected => "Daemon protocol is disconnected",
 		ClientFailure::ProtocolTimeout => "Daemon protocol timed out",
 		ClientFailure::ProtocolMajorMismatch => "Protocol generation does not match",

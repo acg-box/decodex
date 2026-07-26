@@ -6,18 +6,13 @@ use std::{
 	env,
 	fs::{self, OpenOptions, Permissions},
 	io::Write as _,
-	net::{Ipv4Addr, SocketAddr},
 	os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
 	process::{Command, Output},
-	time::Duration,
 };
 
-use futures_util::StreamExt as _;
 use serde_json::Value;
 use tempfile::TempDir;
-use tokio::{task::JoinHandle, time};
-use tokio_tungstenite::{self, tungstenite::Message};
 
 use decodex_core::DecodexRoot;
 use decodex_protocol::CURRENT_VERSION;
@@ -27,7 +22,6 @@ const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const WRONG_SERVER_ID: &str = "128f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const SECRET_MARKER: &str = "xy1308-secret-must-never-appear";
 const SERVER_PATH_MARKER: &str = "xy1308-server-path-must-never-appear";
-const FIXTURE_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct Fixture {
 	_temp: TempDir,
@@ -55,7 +49,7 @@ impl Fixture {
 		Self { _temp: temp, root, repository }
 	}
 
-	fn config(&self, address: SocketAddr, repository: &str, pin: Option<&str>) -> String {
+	fn config(&self, repository: &str, pin: Option<&str>) -> String {
 		let pin =
 			pin.map(|pin| format!("expected_server_identity = \"{pin}\"\n")).unwrap_or_default();
 		let uid = fs::metadata(&self.root).expect("root metadata").uid();
@@ -66,12 +60,13 @@ active_profile = "local"
 
 [profiles.local]
 kind = "local"
-address = "{address}"
+policy = "same_uid"
+service_owner_uid = {uid}
 {pin}
 [profiles.remote]
 kind = "remote"
 host = "192.0.2.1"
-port = {}
+port = 49152
 expected_server_identity = "{SERVER_ID}"
 
 [server_host.repositories.fixture]
@@ -94,7 +89,6 @@ max_entries = 16
 max_bytes = 65536
 max_entry_bytes = 4096
 "#,
-			address.port(),
 			self.root.join("missing-postgres-socket").display(),
 		)
 	}
@@ -115,14 +109,6 @@ max_entry_bytes = 4096
 			.output()
 			.expect("run real CLI process")
 	}
-}
-
-fn loopback_reservation() -> (std::net::TcpListener, SocketAddr) {
-	let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-		.expect("bind OS-selected loopback port");
-	let address = listener.local_addr().expect("read OS-selected loopback port");
-
-	(listener, address)
 }
 
 fn write_private(path: &Path, bytes: &[u8]) {
@@ -175,7 +161,6 @@ fn assert_redacted(fixture: &Fixture, output: &Output) {
 #[ignore = "run through cargo make test-vnext-cli-diagnostics with the real CLI binary"]
 fn malformed_config_and_missing_profile_process_failures_are_redacted() {
 	let fixture = Fixture::new();
-	let (_reservation, placeholder) = loopback_reservation();
 	let missing = fixture.run("doctor", &[]);
 
 	assert_eq!(missing.status.code(), Some(2));
@@ -205,11 +190,12 @@ fn malformed_config_and_missing_profile_process_failures_are_redacted() {
 
 	assert_redacted(&fixture, &malformed);
 
-	fixture.write_config(&fixture.config(
-		placeholder,
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(SERVER_ID),
-	));
+	fixture.write_config(
+		&fixture.config(
+			fixture.repository.to_str().expect("UTF-8 fixture repository"),
+			Some(SERVER_ID),
+		),
+	);
 
 	let missing = fixture.run("doctor", &["--profile", "missing"]);
 
@@ -219,62 +205,22 @@ fn malformed_config_and_missing_profile_process_failures_are_redacted() {
 	assert_redacted(&fixture, &missing);
 }
 
-async fn closing_websocket_endpoint() -> (SocketAddr, JoinHandle<()>) {
-	let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-		.await
-		.expect("bind owned disconnect endpoint");
-	let address = listener.local_addr().expect("owned disconnect address");
-	let task = tokio::spawn(async move {
-		let (stream, _) = time::timeout(FIXTURE_TIMEOUT, listener.accept())
-			.await
-			.expect("disconnect fixture accept timed out")
-			.expect("accept disconnect fixture client");
-		let mut socket = time::timeout(FIXTURE_TIMEOUT, tokio_tungstenite::accept_async(stream))
-			.await
-			.expect("disconnect fixture handshake timed out")
-			.expect("complete disconnect fixture handshake");
-		let hello = time::timeout(FIXTURE_TIMEOUT, socket.next())
-			.await
-			.expect("disconnect fixture hello timed out")
-			.expect("client closed before hello")
-			.expect("read disconnect fixture hello");
-
-		assert!(matches!(hello, Message::Text(_)));
-
-		time::timeout(FIXTURE_TIMEOUT, socket.close(None))
-			.await
-			.expect("disconnect fixture close timed out")
-			.expect("close disconnect fixture session");
-	});
-
-	(address, task)
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run through cargo make test-vnext-cli-diagnostics with the real CLI binary"]
 async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_states() {
 	let fixture = Fixture::new();
-	let (_reservation, placeholder) = loopback_reservation();
 
-	fixture.write_config(&fixture.config(
-		placeholder,
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(SERVER_ID),
-	));
+	fixture.write_config(
+		&fixture.config(
+			fixture.repository.to_str().expect("UTF-8 fixture repository"),
+			Some(SERVER_ID),
+		),
+	);
 
 	let bootstrap =
 		ServiceComposition::bootstrap(DecodexRoot::new(&fixture.root).expect("safe fixture root"))
 			.await;
-	let bound = bootstrap
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
-		.await
-		.expect("bind isolated runtime");
-
-	fixture.write_config(&fixture.config(
-		bound.address(),
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(SERVER_ID),
-	));
+	let mut bound = bootstrap.bind(ServerConfig::default()).await.expect("bind isolated runtime");
 
 	for command in ["status", "doctor"] {
 		let output = fixture.run(command, &[]);
@@ -313,7 +259,6 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 	}
 
 	fixture.write_config(&fixture.config(
-		bound.address(),
 		fixture.repository.to_str().expect("UTF-8 fixture repository"),
 		Some(WRONG_SERVER_ID),
 	));
@@ -327,13 +272,12 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 
 	bound.shutdown().await.expect("shutdown isolated runtime");
 
-	let (disconnect_address, disconnect_task) = closing_websocket_endpoint().await;
-
-	fixture.write_config(&fixture.config(
-		disconnect_address,
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(SERVER_ID),
-	));
+	fixture.write_config(
+		&fixture.config(
+			fixture.repository.to_str().expect("UTF-8 fixture repository"),
+			Some(SERVER_ID),
+		),
+	);
 
 	let disconnected = fixture.run("status", &[]);
 
@@ -341,31 +285,28 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 	assert_eq!(document(&disconnected)["failure"], "protocol_disconnected");
 
 	assert_redacted(&fixture, &disconnected);
-
-	time::timeout(FIXTURE_TIMEOUT, disconnect_task)
-		.await
-		.expect("disconnect fixture task timed out")
-		.expect("disconnect fixture task failed");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run through cargo make test-vnext-cli-diagnostics with the real CLI binary"]
 async fn server_paths_are_not_reinterpreted_or_disclosed_by_the_client() {
 	let fixture = Fixture::new();
-	let (_reservation, placeholder) = loopback_reservation();
-	let unsafe_path = format!("../{SERVER_PATH_MARKER}");
+	let unsafe_path = fixture
+		.root
+		.parent()
+		.expect("fixture root has a parent")
+		.join(format!("{SERVER_PATH_MARKER}-link"));
 
-	fixture.write_config(&fixture.config(placeholder, &unsafe_path, Some(SERVER_ID)));
+	std::os::unix::fs::symlink(&fixture.repository, &unsafe_path)
+		.expect("unsafe server-host path fixture");
+	fixture.write_config(
+		&fixture.config(unsafe_path.to_str().expect("UTF-8 unsafe fixture path"), Some(SERVER_ID)),
+	);
 
 	let bootstrap =
 		ServiceComposition::bootstrap(DecodexRoot::new(&fixture.root).expect("safe fixture root"))
 			.await;
-	let bound = bootstrap
-		.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), ServerConfig::default())
-		.await
-		.expect("bind isolated runtime");
-
-	fixture.write_config(&fixture.config(bound.address(), &unsafe_path, Some(SERVER_ID)));
+	let mut bound = bootstrap.bind(ServerConfig::default()).await.expect("bind isolated runtime");
 
 	let output = fixture.run("doctor", &[]);
 	let document = document(&output);
