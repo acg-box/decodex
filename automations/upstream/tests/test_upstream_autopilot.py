@@ -2302,6 +2302,19 @@ class UpstreamAutopilotTests(unittest.TestCase):
             )
             self.assertEqual(
                 sandbox(
+                    "import os, signal, subprocess; "
+                    "child = subprocess.Popen("
+                    "['/bin/sh', '-c', 'sleep 5 & echo $!; wait'], "
+                    "stdout=subprocess.PIPE, text=True); "
+                    "descendant = int(child.stdout.readline()); "
+                    "os.kill(descendant, signal.SIGKILL); "
+                    "child.wait(timeout=2); "
+                    "print('descendant-terminated')"
+                ),
+                "descendant-terminated",
+            )
+            self.assertEqual(
+                sandbox(
                     "import os, signal; "
                     "\ntry:"
                     "\n os.kill(os.getppid(), signal.SIGCONT)"
