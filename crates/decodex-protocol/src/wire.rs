@@ -1906,7 +1906,7 @@ mod tests {
 	}
 
 	#[test]
-	fn reset_card_descriptors_keys_and_inventories_are_strictly_bounded() {
+	fn reset_card_descriptors_and_keys_are_strictly_bounded() {
 		assert!(ResetCardDescriptorDto::new(0, 1).is_ok());
 		assert!(ResetCardDescriptorDto::new(-1, 1).is_err());
 		assert!(ResetCardDescriptorDto::new(1, 1).is_err());
@@ -1932,7 +1932,10 @@ mod tests {
 		);
 		assert!(IdempotencyKey::new("line\nbreak").is_err());
 		assert!(IdempotencyKey::new("control\u{7f}").is_err());
+	}
 
+	#[test]
+	fn reset_card_inventories_are_strictly_bounded() {
 		let account_id = "40000000-0000-4000-8000-000000000001";
 		let card = serde_json::json!({
 			"descriptor":{"granted_at_unix_seconds":1,"expires_at_unix_seconds":2}
@@ -2036,7 +2039,11 @@ mod tests {
 		assert!(serde_json::to_value(bounded_outbound).is_ok());
 		assert!(serde_json::to_value(oversized_outbound).is_err());
 		assert!(serde_json::to_value(zero_revision_outbound).is_err());
+	}
 
+	#[test]
+	fn reset_card_account_inventories_are_strictly_bounded() {
+		let account_id = "40000000-0000-4000-8000-000000000001";
 		let account = serde_json::json!({
 			"account_id":account_id,
 			"display_label":"Primary",

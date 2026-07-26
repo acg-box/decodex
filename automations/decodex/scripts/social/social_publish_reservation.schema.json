@@ -152,12 +152,32 @@
       "if": {
         "properties": {
           "status": {
+            "const": "active"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["consumed_by_social_post"]},
+            {"required": ["release_reason"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
             "const": "consumed"
           }
         }
       },
       "then": {
-        "required": ["consumed_by_social_post"]
+        "required": ["consumed_by_social_post"],
+        "not": {
+          "required": ["release_reason"]
+        }
       }
     },
     {
@@ -169,7 +189,10 @@
         }
       },
       "then": {
-        "required": ["release_reason"]
+        "required": ["release_reason"],
+        "not": {
+          "required": ["consumed_by_social_post"]
+        }
       }
     }
   ]

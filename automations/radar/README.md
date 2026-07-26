@@ -18,8 +18,11 @@ Radar owns upstream evidence, `upstream_review/v1`, `upstream_impact/v1`,
 commands or Decodex social publication artifacts.
 
 Decodex Publisher consumes Radar handoff evidence and owns
-`social_candidate/v1`, `social_publish_reservation/v1`, and `social_post/v1` under
-`.agent/automations/decodex/cache/social`.
+`social_candidate/v1`, `social_publish_reservation/v1`, `social_post/v1`, and
+`social_outcome/v1` under `.agent/automations/decodex/cache/social`. Content Manager
+owns local `social_strategy/v1` records. Social and strategy records are not Radar
+archives and must never be committed or uploaded to GitHub.
 
-The current upstream adaptation tasks live under `automations/upstream/`. The default
-sync path does not generate live Radar jobs from this directory.
+The current upstream adaptation tasks live under `automations/upstream/`. Content
+Manager invokes Radar as an evidence tool. The default sync path does not generate a
+separate live Radar job from this directory.

@@ -64,12 +64,51 @@ branch refs/heads/xy/task
 			"execution_environment": "local",
 			"cwds": ["/repo/.worktrees/task"],
 			"prompt": "prompt",
+			"created_at": 123,
+			"updated_at": 456,
 		}
 		with patch("automation_eval.validators.expected_cwd", return_value="/repo"):
 			validate_active_config(automation, defaults, "prompt", active, result)
 		self.assertIn(
 			"active cwds must not bind automations to a worktree",
 			result.errors,
+		)
+
+	def test_active_config_requires_codex_app_list_metadata(self) -> None:
+		result = AutomationResult("manager")
+		defaults = {
+			"kind": "cron",
+			"status": "ACTIVE",
+			"model": "gpt-5.6-sol",
+			"reasoning_effort": "high",
+			"execution_environment": "local",
+			"cwd": "{repo_root}",
+		}
+		automation = {"name": "Manager", "rrule": "FREQ=DAILY"}
+		active = {
+			"kind": "cron",
+			"name": "Manager",
+			"status": "ACTIVE",
+			"rrule": "FREQ=DAILY",
+			"model": "gpt-5.6-sol",
+			"reasoning_effort": "high",
+			"execution_environment": "local",
+			"cwds": ["/repo"],
+			"prompt": "prompt",
+		}
+		with patch("automation_eval.validators.expected_cwd", return_value="/repo"):
+			validate_active_config(automation, defaults, "prompt", active, result)
+		self.assertIn("active created_at must be a positive integer", result.errors)
+		self.assertIn("active updated_at must be a positive integer", result.errors)
+
+		result = AutomationResult("manager")
+		active["created_at"] = 456
+		active["updated_at"] = 123
+		with patch("automation_eval.validators.expected_cwd", return_value="/repo"):
+			validate_active_config(automation, defaults, "prompt", active, result)
+		self.assertEqual(
+			result.errors,
+			["active updated_at must not be earlier than created_at"],
 		)
 
 

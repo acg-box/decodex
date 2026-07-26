@@ -11,6 +11,7 @@
     "controller_account",
     "mode",
     "status",
+    "browser_touched",
     "audience",
     "text",
     "source_refs",
@@ -49,6 +50,12 @@
     "status": {
       "type": "string",
       "enum": ["published", "blocked", "failed", "skipped"]
+    },
+    "browser_touched": {
+      "type": "boolean"
+    },
+    "browser_session": {
+      "$ref": "#/$defs/browserSession"
     },
     "audience": {
       "type": "string",
@@ -262,12 +269,11 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "pattern": "^https://"
+            "pattern": "^https://x\\.com/decodexspace/status/"
           }
         },
         "publisher": {
-          "type": "string",
-          "enum": ["chrome", "x_api"]
+          "const": "chrome"
         },
         "account_verified": {
           "const": true
@@ -411,7 +417,37 @@
         }
       },
       "then": {
-        "required": ["publication"]
+        "required": ["publication", "browser_session"],
+        "properties": {
+          "browser_touched": {
+            "const": true
+          }
+        },
+        "not": {
+          "anyOf": [
+            {"required": ["block"]},
+            {"required": ["failure"]},
+            {"required": ["skip"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "browser_touched": {
+            "const": true
+          }
+        },
+        "required": ["browser_touched"]
+      },
+      "then": {
+        "required": ["browser_session"]
+      },
+      "else": {
+        "not": {
+          "required": ["browser_session"]
+        }
       }
     },
     {
@@ -423,7 +459,14 @@
         }
       },
       "then": {
-        "required": ["block"]
+        "required": ["block"],
+        "not": {
+          "anyOf": [
+            {"required": ["publication"]},
+            {"required": ["failure"]},
+            {"required": ["skip"]}
+          ]
+        }
       }
     },
     {
@@ -435,7 +478,14 @@
         }
       },
       "then": {
-        "required": ["failure"]
+        "required": ["failure"],
+        "not": {
+          "anyOf": [
+            {"required": ["publication"]},
+            {"required": ["block"]},
+            {"required": ["skip"]}
+          ]
+        }
       }
     },
     {
@@ -447,7 +497,14 @@
         }
       },
       "then": {
-        "required": ["skip"]
+        "required": ["skip"],
+        "not": {
+          "anyOf": [
+            {"required": ["publication"]},
+            {"required": ["block"]},
+            {"required": ["failure"]}
+          ]
+        }
       }
     },
     {
@@ -472,5 +529,38 @@
         }
       }
     }
-  ]
+  ],
+  "$defs": {
+    "browserSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initial_account",
+        "target_account",
+        "target_account_verified",
+        "switch_status",
+        "restore_status"
+      ],
+      "properties": {
+        "initial_account": {
+          "type": "string",
+          "enum": ["unknown", "hackink", "decodexspace"]
+        },
+        "target_account": {
+          "const": "decodexspace"
+        },
+        "target_account_verified": {
+          "type": "boolean"
+        },
+        "switch_status": {
+          "type": "string",
+          "enum": ["not_attempted", "failed", "not_required", "switched"]
+        },
+        "restore_status": {
+          "type": "string",
+          "enum": ["not_attempted", "failed", "not_required", "restored"]
+        }
+      }
+    }
+  }
 }

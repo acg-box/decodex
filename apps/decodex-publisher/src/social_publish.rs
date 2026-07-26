@@ -3,6 +3,8 @@
 mod payload;
 mod scan;
 
+use sha2::{Digest as _, Sha256};
+
 use crate::{
 	SocialReservePublishReport, SocialReservePublishRequest,
 	prelude::{Result, eyre},
@@ -30,8 +32,10 @@ pub(crate) fn reserve_social_publish(
 	let root = crate::repo_root()?;
 	let out_dir = crate::resolve_against(&root, &request.out_dir);
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
-	let reservation_path =
-		out_dir.join(&request.day).join(format!("{}.json", crate::slugify(&request.slug)));
+	crate::verify_social_browser_lease(&request.locks_dir, &request.browser_lease_token)?;
+	let reservation_path = out_dir
+		.join(&request.day)
+		.join(format!("{}.json", idempotency_digest(&request.idempotency_key)));
 	let scan = scan::scan_social_publish_state(
 		&out_dir,
 		&posts_dir,
@@ -72,4 +76,8 @@ pub(crate) fn reserve_social_publish(
 		published_count: scan.published_count,
 		active_reservation_count: scan.active_reservation_count,
 	})
+}
+
+pub(crate) fn idempotency_digest(idempotency_key: &str) -> String {
+	Sha256::digest(idempotency_key.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 }
