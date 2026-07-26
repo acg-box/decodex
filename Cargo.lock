@@ -1638,8 +1638,10 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "color-eyre",
+ "getrandom 0.4.2",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "time",
 ]

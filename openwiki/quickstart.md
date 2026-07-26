@@ -101,9 +101,10 @@ navigation and current-status projection.
 - `site/` is the static Astro product site; it must not depend on live daemon state (`site/package.json`, `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`).
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
-  adaptation loop. `automations/decodex/` owns shared config tooling and Publisher
-  assets; `automations/radar/` owns Radar assets. Their obsolete schedules and prompts
-  were deleted (`automations/upstream/README.md`).
+  adaptation loop. `automations/decodex/` contains the current Content Manager and
+  browser Publisher tasks plus shared config and Publisher assets.
+  `automations/radar/` owns reusable Radar assets and has no separate schedule. The
+  old multi-task content schedules remain deleted (`automations/upstream/README.md`).
 - `scripts/` contains repo maintenance helpers including plugin sync and macOS app staging.
 - `tests/scripts/test_vnext_architecture.py` enforces the exact vNext dependency graph, client isolation, and exclusion-with-preservation of the legacy package.
 

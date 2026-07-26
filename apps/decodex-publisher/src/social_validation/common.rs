@@ -3,6 +3,19 @@
 use serde_json::{Map, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+pub(super) fn validate_exact_keys(
+	object: &Map<String, Value>,
+	label: &str,
+	allowed: &[&str],
+	errors: &mut Vec<String>,
+) {
+	for key in object.keys() {
+		if !allowed.contains(&key.as_str()) {
+			errors.push(format!("{label}.{key} is not allowed"));
+		}
+	}
+}
+
 pub(super) fn validate_non_empty_string_list(
 	value: Option<&Value>,
 	label: &str,

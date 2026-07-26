@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from . import (
+    CONTENT_DEGRADATION_CODES,
     DEFAULT_POLICY_PATH,
     LAND_EFFECT_LEASE_BUDGET_SECONDS,
     REPO_ROOT,
@@ -182,12 +183,23 @@ def parse_args() -> argparse.Namespace:
     improve.add_argument(
         "--reason-code",
         choices=(
+            "content_loop_degraded",
             "lead_time_sla_missed",
             "live_configuration_drift",
             "repeated_blocked_attempts",
             "repeated_review_repairs",
         ),
         required=True,
+    )
+    improve.add_argument(
+        "--degradation-code",
+        action="append",
+        choices=CONTENT_DEGRADATION_CODES,
+        default=[],
+        help=(
+            "Bounded content-loop degradation subtype. Repeat for every detected "
+            "condition; required with content_loop_degraded."
+        ),
     )
 
     health = subparsers.add_parser("health")
@@ -1335,6 +1347,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 reason_code=args.reason_code,
                 repository_head=preflight["head"],
                 now=now,
+                degradation_codes=args.degradation_code,
             )
             persist(state, state_path, at=now)
             created = len(state["candidates"]) > before
@@ -1342,6 +1355,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "improvement_queued" if created else "improvement_already_recorded",
             candidate_id=improvement["id"],
             reason_code=args.reason_code,
+            degradation_codes=improvement["path_summary"].get(
+                "degradation_codes", []
+            ),
         )
 
     if args.command == "health":

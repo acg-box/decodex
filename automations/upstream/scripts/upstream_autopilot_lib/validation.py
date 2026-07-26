@@ -575,6 +575,9 @@ def sanitized_validation_environment(
     overrides: dict[str, str] | None = None,
 ) -> dict[str, str]:
     rustup_home = trusted_rustup_home()
+    npm_global_config = temporary_home / "npm-globalrc"
+    npm_project_config = temporary_home / "npm-projectrc"
+    npm_user_config = temporary_home / "npm-userrc"
     environment = {
         "ASTRO_TELEMETRY_DISABLED": "1",
         "CARGO_HOME": str(cargo_home or temporary_home / "cargo-home"),
@@ -592,11 +595,11 @@ def sanitized_validation_environment(
         "HOME": str(temporary_home),
         "LANG": os.environ.get("LANG", "C.UTF-8"),
         "NPM_CONFIG_CACHE": str(temporary_home / "npm-cache"),
-        "NPM_CONFIG_GLOBALCONFIG": "/dev/null",
+        "NPM_CONFIG_GLOBALCONFIG": str(npm_global_config),
         "NPM_CONFIG_IGNORE_SCRIPTS": "true",
-        "NPM_CONFIG_PROJECTCONFIG": "/dev/null",
+        "NPM_CONFIG_PROJECTCONFIG": str(npm_project_config),
         "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org/",
-        "NPM_CONFIG_USERCONFIG": "/dev/null",
+        "NPM_CONFIG_USERCONFIG": str(npm_user_config),
         "PATH": os.pathsep.join(_validation_path_entries(tools)),
         "PYTHONDONTWRITEBYTECODE": "1",
         "RUSTUP_HOME": str(rustup_home),
@@ -617,6 +620,19 @@ def sanitized_validation_environment(
         environment["LC_ALL"] = locale
     environment.update(overrides or {})
     return environment
+
+
+def initialize_validation_home(temporary_home: Path) -> None:
+    for name in ("npm-globalrc", "npm-projectrc", "npm-userrc"):
+        path = temporary_home / name
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                handle.write("")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(path, 0o400)
+        except OSError as error:
+            raise AutopilotError("validation_home_initialization_failed") from error
 
 
 def validate_validation_receipt(
@@ -1146,6 +1162,7 @@ def run_validation_profiles(
         prefix="decodex-upstream-validation-"
     ) as temporary:
         temporary_home = Path(temporary).resolve()
+        initialize_validation_home(temporary_home)
         acquisition_environment = sanitized_validation_environment(
             temporary_home,
             tool_paths,

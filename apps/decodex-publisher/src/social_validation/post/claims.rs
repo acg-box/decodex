@@ -16,6 +16,12 @@ pub(in crate::social_validation) fn validate_social_post_claims(
 
 			continue;
 		};
+		social_validation::validate_exact_keys(
+			claim,
+			&format!("claims[{index}]"),
+			&["confidence", "evidence", "text"],
+			errors,
+		);
 
 		for field in ["text", "evidence"] {
 			if !social_validation::is_non_empty_string(claim.get(field)) {
