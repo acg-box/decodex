@@ -33,13 +33,26 @@ vNext critical path and neither closes nor blocks XY-1275.
 XY-1423 account-lifecycle authority correction accepted for the vNext replacement
 boundary: PostgreSQL owns credential-negative account product state, a narrow
 HostCredentialStore owns only versioned secret bundles, and the `decodexd` Account
-Service coordinates every account operation. The continuously watched legacy account
-file and environment-only access-token projection are pre-cutover scaffolding, not a
-complete account pool. Final normal runtime reads no legacy account file. One explicit
-offline migration may import the frozen account pool into the host store while it
-preserves established vNext Account UUID mappings and leaves the source untouched.
+Service coordinates every account operation. Versioned `enabled` state is independent
+from observed health and quota. Fixed selection, balanced selection, and complete account
+order are deterministic versioned CAS controls. The immediate boundary is
+MacDogfoodReady; final AccountLifecycleReady adds Linux, ambient Codex auth, full account
+presentation, and later automatic routing obligations.
+
+The continuously watched legacy account file and environment-only access-token projection
+are pre-cutover scaffolding, not a complete account pool. Normal Mac dogfood startup reads
+neither. One explicit offline migration fingerprints every source and normalizes
+credentials, labels, enabled state, routing mode/order, and provider identity. Quota,
+usage/profile projections, account history, and Codex history reset or remain unimported.
 Shared normal `~/.codex` remains Codex configuration, plugin, rollout, and thread
-visibility authority. The normative details are in
+visibility authority.
+
+The exact protected Codex build must positively prove the
+`account/chatgptAuthTokens/refresh` callback before readiness. Current generic rejection
+of inbound app-server requests fails that gate. The existing V23 ProcessGeneration
+intent, manifest, fence, and readback bind the initial account revision, canonical
+credential version/fingerprint, provider identity, and callback profile; no new ledger
+is added. The normative details are in
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
 
 XY-1274 quota-authority amendment accepted 2026-07-16: quota storage accepts only exact
@@ -174,13 +187,19 @@ Ingress retains the exact raw provider timestamp value. UTC Unix-microsecond con
 exact and rejects every rounding or truncation path. V14 through V16 remain precision-agnostic and
 fail closed, allowing XY-1357 natural provider evidence to remain in the unified post-freeze gate.
 
-After V16, XY-1360 owns same-thread continuation and one atomic Context-Pack fallback;
-XY-1361 owns runtime orchestration while production dispatch remains structurally disabled;
-XY-1362 owns `waiting_usage` wake lifecycle under scheduler authority; and XY-1363 owns
-retained-title Codex Desktop discovery evidence. Ambiguous-turn replay and repository,
-worktree, Git, and artifact reconciliation remain in the accepted ManagedRun and repository-
-effect authorities, not routing. XY-1304 is only the final aggregate live gate and the owner of
-a separate reviewed enablement amendment.
+Mac Slice 1 uses V14/V16 only for quota-aware initial selection. `fixed` considers one
+target. `balanced` selects the first fully eligible account in canonical order. Recovery
+is an explicit versioned enable/disable, mode, or order change followed by a new task.
+Unknown or stale quota is ineligible, and all-depleted waits for explicit retry.
+
+After V16, XY-1360 retains same-thread continuation and atomic Context-Pack fallback;
+XY-1362 retains the `waiting_usage` wake lifecycle; and XY-1363 retains title-discovery
+evidence. These are later obligations. XY-1304 owns only aggregate acceptance and a
+separate reviewed enablement amendment for automatic cross-account same-thread fallback
+and all-depleted wake. It does not block Quick Task, Project/Lead, ManagedRun, GPUI, or
+first Mac dogfood. Ambiguous-turn replay and repository, worktree, Git, and artifact
+reconciliation remain in ProviderAttempt and the accepted repository-effect authorities,
+not routing.
 
 The rejected dirty combined XY-1304/V14 candidate, its partial fourth repair, its caller-
 authoritative request shape, Rust authorization wrapper used as provenance, global
@@ -204,6 +223,10 @@ landing condition is historical and non-executable. Its later cancellation prese
 its history, comments, parent XY-1371, and `relatedTo` relations to XY-1374 and
 XY-1371. Cancellation does not claim that the integration completed.
 
+XY-1371 and the XY-1378-XY-1391 private-artifact execution graph are inactive
+historical planning provenance. Repository authority already retired that program.
+They cannot gate a delivery slice or restore a private-artifact authority layer.
+
 Only the retained-title evidence transport changes. XY-1369 and XY-1370 keep their
 bounded operator checks and commit reviewed public-safe attestations and digests as
 canonical Git evidence. Raw errors, paths, account or role text, credentials,
@@ -214,9 +237,8 @@ layer, issue, compatibility path, or product Artifact is created.
 
 The accepted Artifact/BlobStore boundary for ordinary content-addressed product
 evidence does not change. The external empty-state cutover and user-owned
-RoleProfile/RuntimeSession authority also remain intact. Production dispatch remains
-disabled until the normal integrated acceptance and a separate reviewed XY-1304
-enablement amendment.
+RoleProfile/RuntimeSession authority also remain intact. Later automatic fallback and
+wake remain disabled until the separate reviewed XY-1304 enablement amendment.
 
 Historical AR-CLOSE and pre-retirement package identities remain provenance. In
 particular, keep signed C2 commit
@@ -310,6 +332,20 @@ vNext owner and a focused gate/test make that behavior authoritative.
 - Work lands through focused task branches/PRs directly to `main`; there is no long-lived
   vNext branch.
 
+Delivery uses exactly three vertical slices:
+
+1. Accounts, Quick Task, and minimal Accounts/Conversation/Health GPUI, with no normal
+   legacy watcher, credential environment projection, helper, or `:8192` authority.
+2. Minimal Project/Lead/global Advisor entry, bounded Context Revision, WorkItem,
+   ManagedRun, the existing repository saga, Task-Reviewer result, explicit human
+   acceptance, and Project/Work/Run GPUI.
+3. One representative two-account self-hosting repository E2E across restart boundaries
+   and one Mac package, including clean-startup proof against legacy account authority.
+
+The dependency recommendation is `Slice 1 -> Slice 2 -> Slice 3`. Current GPUI opens a
+real shell and window, but its destinations are placeholder-only and not usable. The
+slices replace the former component-first/global-gate sequence.
+
 ## XY-1262 gate split
 
 The XY-1262 foundation gate is accepted only for the evidence scope enumerated in the
@@ -321,12 +357,13 @@ integrity evidence, and pure duration-typed quota policy. This acceptance does n
 claim global Codex title search, live quota-driven routing, automatic continuation, or
 release readiness.
 
-The separate [XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
-remains failed and fail-closed. The bounded foundation work named by the manifest may
-proceed after its own dependencies, but no live-routing, managed production execution,
-dogfood, cutover, or release path may use the disabled capabilities until that later gate
-passes through another explicit repository authority amendment. Unknown or stale quota
-facts never establish eligibility.
+The separate [XY-1262 automatic-routing gate](https://linear.app/hack-ink/issue/XY-1304)
+remains failed and fail-closed for automatic cross-account same-thread fallback and
+all-depleted wake. It is not a global gate for the three slices. Slice 1 can use eligible
+quota-aware fixed or balanced initial selection and manual recovery after its own account,
+callback, ProcessGeneration, and ProviderAttempt fences pass. Unknown or stale quota never
+establishes eligibility. Automatic fallback and wake still require a later explicit
+repository authority amendment.
 
 ## Rejected alternatives and falsifiers
 

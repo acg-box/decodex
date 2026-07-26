@@ -28,8 +28,9 @@ vNext runtime boundary:
   Context Pack revisions, and inert transition proposals.
 - `decodex-codex`: typed app-server contracts, schema/live capability negotiation, and
   redacted event normalization. It depends only on core, performs no SQL, owns no database
-  connection, and exposes no child-launch surface. Live turn dispatch remains unavailable
-  while XY-1304 is failed.
+  connection, and exposes no child-launch surface. Current live turn dispatch is
+  unavailable. Slice 1 can enable its fenced initial-selection path; XY-1304 governs only
+  later automatic fallback and wake.
 - `decodex-runtime`: service lifecycle, connection/session execution, resumable event
   publication, idempotency receipts, private immutable-account process supervision, and the
   sole PostgreSQL/Codex adapter composition; depends on the other four owners plus the
@@ -195,9 +196,10 @@ exact set of legacy provider identities to vNext UUID slots, reads `accounts.jso
 injects access tokens through the service-child environment, and restarts the daemon
 when that projection changes. This is incomplete implementation scaffolding, not final
 vNext runtime authority. It contradicts final clean-cutover readiness while it remains
-active. Production account routing and product-complete claims stay disabled until
-XY-1422 replaces it with the [account lifecycle authority](../specs/account-lifecycle-authority.md)
-and removes the watcher, mapping input, and environment projection.
+active. Slice 1 cannot pass until XY-1422 replaces it with the
+[account lifecycle authority](../specs/account-lifecycle-authority.md) and normal startup
+removes the watcher, mapping input, helper/`:8192` dependency, and credential environment
+projection. Slice 3 repeats that proof for the packaged two-account flow.
 The adapter opens each directory component relative to a retained descriptor, pins the directory
 and socket device/inode identities, requires the final directory and socket to be owned by the
 configured UID with no group/other directory write access, and verifies the connected kernel peer
@@ -535,11 +537,15 @@ wakeup. There is no queue-full or
 contended-admission leak: the 65th permit is rejected before spawn. The failed attempt cannot launch
 another group. PostgreSQL's
 exact revision/state predicate excludes stale, unavailable, unknown, depleted,
-authentication-failed, plugin-unready, and disabled observations. A fresh daemon starts with no
+authentication-failed, plugin-unready, and a current conflated disabled observation. That
+disabled shape is source evidence, not target authority; Slice 1 uses the independent
+versioned `enabled` boolean. A fresh daemon starts with no
 persisted capacity or assignment authority. This feature-gated manual path remains nonproduction
 and does not construct a V23 ProcessGeneration or create restart authority. There is no account
 inventory, automatic selector, weighting, stickiness, fallback, quota wake, or live routing API;
-XY-1304 remains the separate failed dispatch gate.
+it is current source evidence only. Slice 1 adds limited initial fixed/balanced selection
+through the owning V14/V16 and account authorities. XY-1304 remains the later automatic
+fallback/wake gate.
 
 ### Durable ProcessGeneration supervision
 
@@ -549,9 +555,12 @@ commits one account-exclusive `starting` intent before `ProcessSupervisor` can r
 spawn fence. Replay is readback only. One private `AttestedAppServerLaunch` retains the protected
 executable snapshot and derives the intent's account and launch-manifest hash. That hash binds the
 exact image and BuildId, command, fixed `app-server --stdio` arguments, working directory,
-clear-then-set environment, account, and exact-build startup/lifetime capability. The supervisor
-accepts no independent runner digest or raw `Command`. After spawn, it persists the exact boot,
-PID, process-start, process-group, and session identities.
+clear-then-set environment, account, initial account revision, canonical credential
+version/fingerprint, provider binding, and exact-build startup/lifetime/account-callback
+capability. The same non-secret facts are part of the existing V23 intent, prepare fence,
+ready transition, and strict readback. No new ledger is added. The supervisor accepts no
+independent runner digest or raw `Command`. After spawn, it persists the exact boot, PID,
+process-start, process-group, and session identities.
 
 The current launch profile accepts only the source-attested macOS
 `codex-cli 0.145.0-alpha.18` image and forces
@@ -561,6 +570,13 @@ policy. The supervisor retains child stdin and stdout privately for lifetime own
 `FencedProcess` and every returned ProcessGeneration capability expose no raw channel or generic
 protocol writer. Every other build, including the current unrecorded Linux image, fails closed
 before profile-dependent version or schema preflight spawn.
+
+That accepted lifetime profile is not an AccountLifecycle readiness receipt. Current vNext
+responds method-not-found to every inbound app-server request and therefore cannot service
+`account/chatgptAuthTokens/refresh`. Slice 1 requires positive exact-build callback proof
+and rechecks the account revision, credential version/fingerprint, provider binding, and
+enabled state immediately before the ProcessGeneration fence. Unsupported callback profiles
+fail closed before account launch.
 
 The supported-OS adapter owns boot and process identity, generic session/descriptor setup, exact
 owned signaling, group observation, and positive exit witnesses. Linux uses `/proc` start ticks
@@ -764,8 +780,10 @@ the parent seals their exact contiguous count, and database triggers reject subs
 insert/update/delete poisoning while the deferred parent reference prevents orphan commits. Persisted
 rollover/fallback rows are proposals only: their schema
 forces dispatch disabled. This slice exposes no account selection, live turn start/resume/steer,
-automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake; XY-1304 remains the
-separate failed enablement gate. XY-1358/V15 owns experiment creation and positive-only observation
+automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake in current source.
+Slice 1 later enables only eligible quota-aware fixed/balanced initial selection and manual
+recovery. XY-1304 remains the separate later automatic fallback/wake gate and does not block
+Quick Task, Project/Lead, ManagedRun, GPUI, or first Mac dogfood. XY-1358/V15 owns experiment creation and positive-only observation
 authority; XY-1360 owns continuation and atomic Context-Pack fallback; XY-1362 owns scheduler wake;
 XY-1276 owns production Quick Task creation. XY-1272 owns only PostgreSQL
 configured-principal and ACL authority closure against V8. XY-1345 owns accepted exact-command
@@ -1156,9 +1174,10 @@ of the core foundation.
 
 ## Account lifecycle and credential authority
 
-The final runtime follows the
+The Mac dogfood and final runtime follow the
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md). PostgreSQL owns
-credential-negative account state and operation receipts. One versioned
+credential-negative account state, independent versioned enablement, routing controls,
+and finite operation receipts. One versioned
 HostCredentialStore owns secret bundles. The `decodexd` Account Service owns enrollment,
 import, list, rename, enable/disable, logout, refresh/rotation, app-server refresh
 callbacks, runner projection, account observations, offline migration, and recovery.
@@ -1166,13 +1185,22 @@ callbacks, runner projection, account observations, offline migration, and recov
 The current `EnvironmentCredentialVault` loads startup access tokens only. It has no
 durable refresh token, compare-and-swap rotation, enrollment, or deletion operation.
 Its state is `projection_only`; it cannot make `CredentialVault` or `AccountLifecycle`
-Ready. Final readiness requires the configured host store, complete Account Service,
-provider adapter, PostgreSQL lifecycle state, and startup reconciliation.
+Ready. MacDogfoodReady requires the Keychain store, complete Account Service, exact-build
+refresh callback, provider adapter, PostgreSQL lifecycle state, startup reconciliation,
+and normalized one-shot migration. Final AccountLifecycleReady additionally requires the
+Linux store, ambient Codex auth, full bounded account presentation, and later automatic
+fallback/wake acceptance.
 
 Runner processes use the shared normal `~/.codex`. Initial credentials enter only the
 private app-server process protocol, not process arguments or a long-lived environment.
 The Account UUID and provider binding never change in a live process. Same-account token
 refresh does not create account rebinding.
+
+For new work, `fixed` considers one configured account and `balanced` selects the first
+fully eligible account in versioned canonical order. Both check separate 300-minute and
+10080-minute quota facts. Manual recovery uses versioned enable/disable, mode, or order
+commands and then submits a new task. Automatic cross-account same-thread fallback and
+all-depleted wake remain later XY-1304 obligations.
 
 ## Manual reset-card service
 
@@ -1191,12 +1219,14 @@ profile name and verified server UUID. A caller can retain that authority on lat
 calls with `--profile NAME --expected-server-id UUID`.
 
 `decodexd` is the sole account-operation, app-server process, exact-ID, mutation, and
-effect coordinator. In the final runtime, Reset Card obtains one exact versioned bundle
+effect coordinator. In Mac dogfood and the final runtime, Reset Card obtains one exact versioned bundle
 through the Account Service and HostCredentialStore. PostgreSQL stores only the UUID,
-revision, provider binding evidence, and non-secret account state. Both `available` and
-`depleted` admit the manual operation; other account states, unsettled account
-operations, unavailable store state, and credential-version mismatch fail closed. The
-current environment-variable references are pre-cutover projection only.
+revision, provider binding evidence, and non-secret account state. New admission requires
+`enabled=true`, AccountLifecycle readiness, no unsettled account operation, an admitted
+observed state, and exact Registry/HostCredentialStore agreement on account revision,
+credential version/fingerprint, and provider binding. The final pre-effect transaction
+repeats every check. The current environment-variable references are pre-cutover
+projection only.
 
 Before any reset-card read or consume, the Codex adapter requires the generated schema to
 advertise both `account/rateLimits/read` and
@@ -1222,10 +1252,11 @@ rejects binding drift. A preexisting account can initialize a missing fingerprin
 when it has no unsettled reset-card operation. Generic account mutation cannot replace
 or remove an established binding.
 
-The reset-card ledger is not part of generic outbox pruning. Same-key replay is checked
-before current vault, account-state, and revision gates. The effect-start transaction
-checks the exact revision, admitted state, and oldest matching public descriptor before
-it releases the provider call. After terminal authoritative readback proves the effect
+The reset-card ledger is not part of generic outbox pruning. A durable terminal same-key
+receipt replays unconditionally before current enabled, readiness, store, provider,
+account-state, operation, and revision gates. New work alone reaches the admission and
+effect-start checks above, including the oldest matching public descriptor. After
+terminal authoritative readback proves the effect
 present, PostgreSQL removes the private exact credit ID and provider-key projection
 atomically while it retains the public receipt, reconciliation result, status, and
 same-key replay. A terminal pre-effect rejection or exhausted `not_started` claim also
@@ -1399,10 +1430,12 @@ identity for re-attestation. Archive, paginated persisted history, and native co
 remain explicitly `not_probed` while their side-effect/event gates are closed. Paginated
 history schema evidence comes from the structural `ThreadStartParams.historyMode` /
 `ThreadHistoryMode` contract, never from a list cursor.
-`DispatchGate` has no enabled state and denies thread start/resume, turn start/steer/
-interrupt, and approval responses under XY-1304. The composition root therefore still
-reports conversation execution unavailable even though schema validation, read-only
-probing, normalization, and supervision are implemented.
+Current `DispatchGate` has no enabled state and denies thread start/resume, turn
+start/steer/interrupt, and approval responses. The composition root therefore reports
+conversation execution unavailable even though schema validation, read-only probing,
+normalization, and supervision are implemented. Slice 1 must replace that current-source
+posture only for its fenced initial-selection/Quick Task flow. XY-1304 is required later
+for automatic fallback and wake, not for this limited enablement.
 
 ## Frozen v0.2 runtime provenance
 

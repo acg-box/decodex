@@ -1,394 +1,297 @@
 # Account Lifecycle Authority
 
-Status: normative vNext account authority and clean-cutover contract for XY-1423.
-XY-1422 owns implementation. Production account routing, account UI acceptance,
-whole-product acceptance, and legacy removal remain blocked until XY-1422 passes.
+Status: normative vNext account authority for XY-1423. XY-1422 owns
+implementation. This document defines the first usable macOS dogfood boundary and
+the later complete account lifecycle. It does not claim that either boundary is
+implemented.
 
-This contract supersedes any text that treats the environment-backed credential
-projection or the continuously watched legacy `accounts.jsonl` bridge as a complete
-vNext account pool. Those paths are pre-cutover scaffolding only.
+The immediate target is `MacDogfoodReady`. Final `AccountLifecycleReady` has more
+requirements. A component-first global gate is not the delivery order.
 
-## Scope and invariants
+## Fixed boundaries
 
-The final account system has exactly three owners:
+The account system has exactly three owners:
 
 1. The PostgreSQL Account Registry owns credential-negative product state.
-2. A narrow HostCredentialStore owns versioned secret bundles.
-3. The `decodexd` Account Service coordinates every account operation.
+2. One HostCredentialStore owns versioned secret bundles.
+3. The `decodexd` Account Service coordinates account operations.
 
-GPUI, SwiftUI, CLI, MCP, PostgreSQL, and the long-lived daemon environment never own
-credential bytes. They receive only redacted account projections, operation states,
-and typed results. No client protocol payload carries an access token, refresh token,
-identity token, API key, or import file content.
+Keep one daemon, one shared normal `~/.codex`, the same-UID typed protocol, exact
+identifiers, PostgreSQL outbox and leases, and finite per-account compare-and-swap
+operations. Credentials do not enter PostgreSQL, the public protocol, process
+arguments, logs, or a long-lived daemon or child environment.
 
-The normal shared `~/.codex` remains Codex authority for configuration, plugins, and
-rollout files. It is also the storage that makes Decodex-created Codex threads visible
-to standalone Codex. Decodex does not scan or import Codex thread history.
+This boundary adds no event sourcing, generic distributed transaction coordinator,
+new process or provider-effect ledger, per-account daemon, or permanent per-account
+or per-run Codex home. V13 remains the repository-effect saga. V23 remains the
+ProcessGeneration owner. V24 remains the ProviderAttempt owner.
 
-One Codex process has one immutable Account UUID and provider identity for its complete
-lifetime. The Account Service can return a newer access token for that same account in
-response to an app-server refresh callback. It can never bind the process to another
-account.
+One Codex process has one immutable Account UUID and provider binding for its
+complete lifetime. A refresh callback can return a newer credential for that same
+binding. It cannot select another account.
 
-## Ownership model
-
-### PostgreSQL Account Registry
+## Account Registry
 
 The Account Registry owns:
 
-- the stable Account UUID;
-- label, enabled state, routing state, revision, and user-owned routing order;
-- provider kind and credential-negative provider identity;
-- separate 300-minute and 10080-minute quota observations and exclusions;
-- capability and account-health projections;
-- usage, profile, and bounded history projections;
-- the current non-secret credential version and fingerprint;
-- account-operation intents, states, idempotency receipts, and reconciliation results;
-- active ProcessGeneration and ProviderAttempt bindings through their existing owners;
-- one-shot migration identity and item results.
+- stable Account UUID, label, revision, tombstone, and provider identity;
+- an administrative `enabled` boolean that is independent from observed state;
+- observed account, authentication, capability, and health state;
+- one versioned routing control with mode, fixed target, and complete account order;
+- separate 300-minute and 10080-minute quota observations;
+- current non-secret credential version, fingerprint, and provider binding;
+- finite account-operation intents, phases, receipts, and reconciliation results;
+- existing ProcessGeneration and ProviderAttempt references; and
+- one-shot migration manifest identity and per-account results.
 
-PostgreSQL does not store a credential, an encrypted credential blob, a secret-store
-locator that grants retrieval, or an ambient Codex auth export. A credential fingerprint
-is equality and reconciliation evidence only. It must not contain enough information to
-retrieve a secret.
+Observed state never encodes administrative enablement. Disabling an account does not
+rewrite its last health or quota observation. Enabling an account does not make that
+observation healthy. Eligibility requires both `enabled=true` and current positive
+evidence for every applicable check.
 
-The routing account state remains separate from credential state. An account with an
-unsettled credential operation, unavailable secret backend, missing exact credential
-version, or failed provider binding is not eligible even if its last routing state was
-`available`.
+PostgreSQL stores no credential, encrypted credential blob, retrieval locator, or
+ambient Codex auth export. A fingerprint is equality evidence only.
 
-### HostCredentialStore
+## HostCredentialStore
 
-The HostCredentialStore owns one record per Account UUID. Its secret bundle contains:
+The store has one record per Account UUID:
 
 | Field | Contract |
 | --- | --- |
-| `schema_version` | Closed bundle-format version. |
-| `account_id` | Exact vNext Account UUID. |
+| `schema_version` | Closed bundle format. |
+| `account_id` | Exact Account UUID. |
 | `provider_kind` | Closed provider kind, initially ChatGPT. |
-| `provider_account_id` | Exact provider identity bound to the tokens. |
-| `credential_version` | Positive monotonic version for compare-and-swap. |
+| `provider_account_id` | Canonical provider identity. |
+| `credential_version` | Positive monotonic compare-and-swap version. |
 | `writer_operation_id` | Account-operation UUID that wrote this version. |
-| `access_token` | Current access token. |
-| `refresh_token` | Current refresh token. |
-| `id_token` | Current identity token when the provider supplies or requires it. |
-| `token_metadata` | Only provider-required token type and expiry data. |
+| tokens | Complete access, refresh, and optional identity token bundle plus required expiry/type metadata. |
 
-The store returns only non-secret metadata to reconciliation callers: Account UUID,
-provider binding, credential version, writer operation ID, and a domain-separated
-fingerprint of the complete canonical bundle. Debug output and errors redact all secret
-fields.
+Metadata readback returns only Account UUID, provider binding, credential version,
+writer operation, and a domain-separated fingerprint of the canonical complete bundle.
+Create-if-absent, exact-version compare-and-swap, and exact-version delete are atomic
+for one Account UUID. A stale version, wrong provider binding, duplicate provider
+identity, missing item, or unavailable backend is a typed result.
 
-The port has only these mutation primitives:
+For macOS, the adapter uses non-synchronizing Keychain generic-password items under
+application identity `box.acg.decodex` and service
+`box.acg.decodex.credentials.v1`. The Keychain account name is the canonical Account
+UUID. Accessibility is after first unlock, this device only. The daemon identity is
+the only reader and writer. Locked, denied, malformed, or unsupported Keychain state
+fails closed.
 
-- create when the Account UUID is absent;
-- read exact metadata or read the bundle for one daemon-owned operation;
-- compare-and-swap from one exact credential version to the next;
-- delete one exact credential version;
-- report a typed backend capability state.
+The Linux backend is a later `AccountLifecycleReady` obligation. It must be selected
+explicitly and must prove persistent private storage, atomic replace, exact-version
+compare-and-swap, delete, and restart readback. It has no environment or plaintext
+fallback.
 
-Create, compare-and-swap, and delete are atomic for one Account UUID. A stale version,
-wrong provider binding, duplicate provider identity, missing item, or backend failure is
-a typed result. There is no list-all-secrets operation in a client surface and no
-fallback to environment variables or a legacy file.
+## Versioned account controls
 
-### macOS adapter
+Every mutation uses the same versioned protocol and supplies a client command ID,
+idempotency key, and the applicable expected account or routing-control revision.
+PostgreSQL stores the complete credential-negative request and exact public result.
+Exact replay returns that result. Conflicting key reuse and stale revision fail before
+mutation.
 
-The macOS adapter uses Keychain generic-password items under the Decodex product
-identity:
+The commands are deterministic:
 
-- application identity: `box.acg.decodex`;
-- service namespace: `box.acg.decodex.credentials.v1`;
-- Keychain account name: canonical vNext Account UUID;
-- synchronizable: false;
-- accessibility: after first unlock, this device only.
+| Command | Compare-and-swap effect |
+| --- | --- |
+| `enable_account` | If the expected account revision is current, set `enabled=true`. Change only the account revision when the value changes. |
+| `disable_account` | If the expected account revision is current, set `enabled=false`. Block new admission immediately. Do not terminate or rebind existing work. |
+| `set_fixed_selection` | If the expected routing revision and target account revision are current, set mode `fixed` and the exact target Account UUID. Preserve account order. |
+| `set_balanced_selection` | If the expected routing revision is current, set mode `balanced` and clear the fixed target. Preserve account order. |
+| `set_account_order` | If the expected routing revision is current, replace the order with one complete duplicate-free permutation of all non-tombstoned Account UUIDs. Preserve mode and a valid fixed target. |
 
-Only the signed Decodex daemon identity can read or mutate these items. Installer,
-SwiftUI, GPUI, and CLI processes call the Account Service and do not receive direct
-Keychain access. The adapter must support unattended refresh after the first device
-unlock, so it must not require user presence for each token rotation. A locked Keychain,
-invalid signing requirement, denied access, or unsupported item format produces a typed
-backend-unavailable state. It never selects another storage path automatically.
+A fresh command whose desired value already matches returns a terminal no-change
+receipt at the same revision. Any real change increments exactly one owning revision.
+No command changes observed health, quota, credentials, ProcessGeneration, or
+ProviderAttempt state as a side effect.
 
-### Linux adapter
+For a new task, `fixed` considers only its target. An ineligible fixed target returns a
+typed no-route result. `balanced` selects the first fully eligible account in canonical
+order after independent capability, credential, process, attempt, and two-window quota
+checks. Manual recovery changes enablement, fixed/balanced mode, or order with these
+commands and then submits a new task. It does not rebind or replay an existing thread.
 
-Linux configuration must select one persistent host secret backend explicitly. Startup
-must probe that backend for private ownership, durable atomic replace, exact-version
-compare-and-swap, delete, and restart readback. Headless Linux must not assume that a
-Secret Service session or desktop D-Bus exists.
+Automatic cross-account same-thread fallback and all-depleted scheduler wake are not
+Slice 1 requirements. An all-depleted result exposes the exact reset evidence and waits
+for an explicit retry. V14 and V16 remain the policy/snapshot and decision authorities;
+their broader automatic-routing behavior is accepted later.
 
-The closed capability result is `ready` or `unavailable` with a stable reason such as
-`not_configured`, `unsupported`, `locked`, `access_denied`, `integrity`, or `io`.
-An unavailable backend disables enrollment, refresh, migration, and runner launch. It
-does not activate an environment, plaintext-file, or legacy-pool fallback. Selection of
-the first supported Linux backend is an implementation prerequisite for Linux product
-acceptance, not a license to weaken this contract.
+## Account operations
 
-## Account Service
-
-`decodexd` is the sole coordinator. It exposes versioned commands and bounded queries
-for:
-
-- device login and enrollment;
-- explicit import from a daemon-readable, owner-private source descriptor;
-- list and inspect;
-- rename;
-- enable and disable;
-- logout and metadata deletion;
-- proactive refresh and app-server callback refresh;
-- explicit `Use in Codex`;
-- usage, profile, history, quota, capability, and health refresh;
-- one offline one-shot legacy account migration.
-
-Every mutation carries a client command ID, idempotency key, and expected account
-revision when an account exists. PostgreSQL stores the complete credential-negative
-request identity, current operation phase, and exact public result. Exact replay returns
-the stored result. Conflicting reuse fails before an effect.
-
-List, inspect, usage, profile, history, and health responses contain no store locator,
-token fragment, credential hash input, local secret path, or provider response body.
-
-### Account-operation phases
-
-Cross-store operations use one finite saga. They do not use a generic distributed
-transaction coordinator. The durable phases are:
+Cross-store changes use one finite per-account operation journal:
 
 | Phase | Meaning |
 | --- | --- |
-| `prepared` | PostgreSQL committed the intent and fenced conflicting operations. No store effect is claimed. |
-| `provider_effect_pending` | A refresh request can have reached the provider. This phase is used only when provider rotation can be ambiguous. |
-| `store_applied` | Exact HostCredentialStore metadata proves the target version, fingerprint, provider binding, and writer operation. |
-| `committed` | PostgreSQL committed the new account projection and final public receipt. |
+| `prepared` | PostgreSQL committed the intent and fenced conflicting account operations. |
+| `provider_effect_pending` | A refresh request can have reached the provider. |
+| `store_applied` | Exact store metadata proves the target version, fingerprint, binding, and writer. |
+| `committed` | PostgreSQL committed the projection and public receipt. |
 | `cancelled` | No store change is accepted and the operation is terminal. |
-| `recovery_required` | The system cannot prove a safe automatic continuation. The reason is typed and the account is ineligible. |
+| `recovery_required` | Safe automatic continuation cannot be proved; the account is ineligible. |
 
-An unsettled operation fences another credential mutation for that account. Per-account
-serialization and HostCredentialStore compare-and-swap provide the concurrency boundary.
-The Account Service reconciles every nonterminal operation at startup before it admits
-that account for routing.
+An unsettled operation fences another credential mutation and new execution admission
+for that account. Startup reconciles every nonterminal operation before the account can
+be eligible.
 
-### Enrollment and import
+Enrollment and explicit import commit `prepared` before a store write. Device login can
+use one operation-scoped private temporary home. It is removed after verified import or
+recovery and never becomes a runner home. Import accepts a daemon-opened owner-private
+source descriptor, not credential bytes in the public protocol.
 
-Enrollment first commits an Account UUID and `prepared` operation in PostgreSQL. Device
-login may use one operation-scoped temporary Codex home. It must not become a runner home
-or a persistent per-account home. The path is derived from the operation UUID under a
-private Decodex temporary root and is removed after verified import or startup recovery.
+Refresh reads one exact credential version, records `provider_effect_pending` before
+the provider call, validates the returned provider identity, and writes the complete
+rotated bundle with one compare-and-swap. Concurrent callers serialize on that
+operation. After restart, an exact store write can be committed. A provider request with
+no proved store write is not replayed unless the provider has an accepted idempotent
+result-readback contract. Otherwise, the account becomes `reauth_required`.
 
-Current Codex device login returns login metadata and writes credentials to its selected
-auth backend. Before implementation relies on this flow, one narrow feasibility proof
-must show that the supported exact Codex build can write device-login output to a
-temporary, isolated, daemon-readable auth backend without changing ambient `~/.codex`.
-If no supported method exists, device enrollment is typed unavailable. The implementation
-must not assume that setting `CODEX_HOME` forces all current Codex auth storage into
-`auth.json`.
+Logout disables new launch admission and rejects with `account_in_use` while an active
+ProcessGeneration or unsettled ProviderAttempt is bound to the account. It then deletes
+one exact store version through the same journal. Metadata deletion is allowed only
+after logout and creates a tombstone. Historical UUIDs, receipts, and execution
+references remain.
 
-Explicit import accepts a source descriptor, not credential bytes in the public protocol.
-The daemon opens an owner-private local source without following links, validates one
-supported format, derives the provider identity, and rejects a mismatch or duplicate.
+## Exact-build account capability
 
-For either path, the daemon validates the complete bundle, computes its target
-fingerprint, creates the HostCredentialStore item only when absent, and then commits the
-store metadata and ready account projection in PostgreSQL. Reconciliation applies these
-rules:
+`AccountLifecycle` readiness for a build is positive evidence, not a schema assumption.
+Before account-backed runner launch or a new Reset Card effect, the exact protected
+Codex build must prove all of these facts:
 
-- missing store item after `prepared`: cancel and require the user to repeat enrollment;
-- exact item written by this operation: advance to `store_applied` and `committed`;
-- different item or provider binding: enter `recovery_required` and keep the account
-  ineligible;
-- backend unavailable: retain the operation without routing and report the typed state.
+- generated schema supports process-scoped `account/login/start` with
+  `chatgptAuthTokens`;
+- a live probe accepts that projection and reads back the same provider account;
+- generated schema and a live callback transcript support
+  `account/chatgptAuthTokens/refresh`;
+- the Account Service can bind that callback to the exact ProcessGeneration, serialize
+  refresh, complete credential compare-and-swap, and reply for the same provider binding;
+- the exact build, schema fingerprint, and callback capability profile are cached and
+  bound to launch authority.
 
-Secret input that existed only in process memory is never reconstructed from PostgreSQL.
+Unsupported, unprobed, contradictory, or changed builds fail closed. The current vNext
+adapter replies method-not-found to inbound app-server requests. That source behavior
+does not service the refresh callback and therefore cannot satisfy `AccountLifecycle`,
+`MacDogfoodReady`, or runner readiness. Initial token projection alone is insufficient.
 
-### Refresh and rotation
+The supported macOS build must also prove that device login can write to an isolated
+daemon-readable auth backend without changing ambient `~/.codex`. Ambient `Use in
+Codex` is a separate later capability and is not required for Mac dogfood.
 
-Proactive refresh and `account/chatgptAuthTokens/refresh` callbacks use one per-account
-serialization boundary. A callback is bound to the ProcessGeneration Account UUID. It
-cannot supply or select another account.
+## ProcessGeneration binding
 
-The Account Service reads one exact credential version, commits a `prepared` operation,
-and moves it to `provider_effect_pending` immediately before the provider request. On a
-successful response, it validates the provider identity and immediately performs one
-compare-and-swap that stores all returned access, refresh, and identity-token changes as
-one new bundle. It then records `store_applied` and commits the PostgreSQL projection.
+The owning [ProcessGeneration authority](process-generation-authority.md) must extend
+its existing V23 intent, launch-manifest identity, prepare command, and strict readback
+with the canonical initial account revision, credential version, credential fingerprint,
+provider binding, and exact-build account-capability profile. These fields are immutable
+launch facts. Same-account callback rotation does not rewrite them.
 
-A concurrent caller waits for the current operation. It then returns the new access token
-for the same account or starts a new operation from the new version. A stale
-compare-and-swap can never overwrite a newer refresh-token rotation.
+Immediately before spawn, the Account Service must read the exact HostCredentialStore
+metadata and compare every field with the ProcessGeneration intent and Account Registry.
+Any mismatch stops before spawn. The existing ProcessGeneration and ProviderAttempt
+state machines own crash and effect ambiguity. No account-specific process or effect
+ledger is added.
 
-After restart:
+## Reset Card fencing
 
-- an exact new store version written by the operation is committed to PostgreSQL;
-- the unchanged old version before any provider request can be retried under a new
-  operation;
-- an unchanged old version with `provider_effect_pending` is provider-outcome ambiguous
-  and is not replayed automatically unless the provider offers an accepted idempotent
-  result-readback contract;
-- provider ambiguity without such readback sets `reauth_required` and preserves one
-  recoverable, fail-closed authority state.
+Reset Card keeps its existing exact provider-credit ID, provider key, durable receipt,
+and authoritative readback. New admission and the final pre-effect fence both require:
 
-This last result is recoverable by explicit enrollment. It does not claim that a process
-crash can recover a rotated refresh token that the provider returned but no host store
-durably accepted.
+- the exact account revision and `enabled=true`;
+- `AccountLifecycle=ready` for the active platform and exact Codex build;
+- no unsettled account operation other than reconciliation of this exact receipt;
+- exact Account Registry and HostCredentialStore credential version, fingerprint, and
+  provider-binding agreement; and
+- the existing admissible observed state and exact public card descriptor.
 
-### Disable, logout, and delete
+The final fence repeats these checks in the effect-start transaction. A disable,
+operation start, revision change, or store drift between discovery and effect prevents
+the provider call.
 
-Disable is a PostgreSQL-only routing operation. It prevents new selection and launch but
-does not terminate or rebind an existing process.
+Receipt handling is ordered differently from new admission. After same-UID transport
+and exact request-fingerprint checks, a durable terminal receipt replays unconditionally
+before current enabled, readiness, health, operation, store, or revision gates. A
+terminal receipt never calls Codex or the provider again. Nonterminal status and required
+reconciliation also remain readable after a gate changes. They cannot start a new effect.
 
-Logout first fences new launches. It fails with a typed `account_in_use` result while an
-active ProcessGeneration or unsettled ProviderAttempt is bound to the account. The user
-must disable the account and let existing work settle before retrying. There is no hidden
-force-delete path.
+## One-shot migration manifest
 
-After that check, logout commits `prepared`, deletes the exact credential version, and
-commits the account as logged out and ineligible. Reconciliation treats a missing store
-item as a completed delete, the expected old item as a safe delete retry, and any newer or
-differently bound item as `recovery_required`.
+Legacy account migration is one explicit offline operation. Normal daemon startup never
+reads a legacy account file, mapping, helper, or environment projection.
 
-Metadata delete is allowed only after logout. It creates a PostgreSQL tombstone and hides
-the account from normal lists. Stable Account UUIDs, historical usage, operation receipts,
-and execution references remain intact for audit and referential integrity.
+The operation first creates canonical
+`decodex/account-migration-manifest/1`. The manifest lists every source that contributes
+one output field. Each source entry has a closed role, present-or-absent state, private
+path identity, exact byte count, and SHA-256 of the unchanged bytes. Required roles and
+default current paths are:
 
-### Runner launch and app-server projection
+- legacy credential/provider records, disabled flags, and physical order at
+  `~/.codex/decodex/accounts.jsonl`;
+- legacy label offsets and fixed selector at `~/.codex/decodex/config.toml`;
+- the established vNext UUID bridge at
+  `~/.decodex/reset-card-legacy-map.json`, when present; and
+- established vNext Account UUIDs and display labels at `~/.decodex/config.toml`, when
+  present.
 
-Routing selects an Account UUID only from PostgreSQL authority. Before spawn, the existing
-ProcessGeneration intent binds the exact account revision, credential version, credential
-fingerprint, provider binding, and Codex build. The Account Service reads that exact store
-version and gives the credential bundle to the private Codex adapter.
+No live `:8192` response is migration authority. An additional source is rejected unless
+its role and fingerprint are part of the same manifest. The canonical manifest digest
+covers the sorted source entries and all normalized output below.
 
-The adapter projects the initial access token through the supported process-scoped
-`account/login/start` `chatgptAuthTokens` request. Credentials do not enter process
-arguments, a long-lived environment, public protocol, or logs. A refresh callback may
-receive a newer access token only for the same bound account.
+Each normalized account entry contains the source ordinal, target Account UUID,
+provider kind and identity, label, enabled value, target credential version, and target
+provider binding. The routing entry contains exactly one mode (`fixed` or `balanced`),
+an optional fixed target UUID, and the complete ordered Account UUID list. A legacy
+selector must resolve exactly once. Legacy `disabled=true` becomes `enabled=false`; an
+absent or false flag becomes `enabled=true`. Physical account-record order is the default
+account order. A present selector makes the mode `fixed`; absence makes it `balanced`.
+An established vNext UUID or label must agree with the bridge and source identity. Label
+precedence is established vNext display label, then the v0.2 provider-identity/offset
+derivation, then deterministic `Account NN`. An absent destination starts at credential
+version 1. A verified exact existing destination retains its positive version; any other
+existing destination is a conflict.
 
-If the store is unavailable or its metadata differs from the ProcessGeneration intent,
-launch stops before spawn. A crash after spawn follows the existing ProcessGeneration and
-ProviderAttempt reconciliation contracts. The Account Service does not create a second
-process or provider-effect ledger.
+The import policies are explicit and fixed:
 
-### Use in Codex
-
-`Use in Codex` is an explicit user command. It projects one selected account into the
-ambient current Codex authentication store through a supported, capability-probed Codex
-adapter. It does not change Decodex routing order, sticky selection, or runner bindings.
-
-The implementation must not treat direct `~/.codex/auth.json` replacement as a complete
-current Codex contract because Codex can use Keychain or encrypted auth storage. A narrow
-feasibility proof must identify a supported current adapter. If none exists, the command
-returns `ambient_projection_unavailable` without changing ambient auth. Standalone Codex
-and Decodex can otherwise use the shared home concurrently.
-
-### Usage, profile, history, and quota
-
-The Account Service reuses sound v0.2 parsing, refresh, selection, usage, profile, and
-history domain logic after separating it from file storage. Provider responses are
-normalized into credential-negative PostgreSQL projections.
-
-Quota evidence preserves the exact window duration. The 300-minute and 10080-minute
-windows are independent observations. The system does not infer them from primary or
-secondary position and never pools, adds, averages, or transfers quota across accounts.
-Routing exclusion and all-accounts-depleted waiting use the exact accepted windows and
-their reset times.
-
-## Readiness
-
-Readiness has two separate checks:
-
-- `CredentialStore` reports whether the configured host backend can perform durable
-  read, compare-and-swap, and delete.
-- `AccountLifecycle` reports whether the Account Service, PostgreSQL schema, provider
-  adapter, startup reconciliation, and required store backend are complete.
-
-An environment-only access-token projection is `projection_only`. It can never produce
-`CredentialStore Ready` or `AccountLifecycle Ready`. The current
-`EnvironmentCredentialVault` and legacy watcher therefore do not satisfy production
-readiness. Any current `CredentialVault Ready` result from that implementation means
-only that startup projection is present. It is not durable credential-lifecycle
-readiness and must not satisfy a final gate. Production routing remains disabled while
-either final check is unknown or unavailable.
-
-## Offline one-shot migration
-
-Legacy account migration is the only permitted v0.2 account-state ingress. It is an
-explicit offline operation, not normal daemon startup.
-
-The migration procedure:
-
-1. Stops v0.2, `decodexd`, and every account helper.
-2. Takes an exclusive migration lock.
-3. Opens the exact owner-private legacy account file and mapping under their existing
-   locks without following links.
-4. Computes one exact source fingerprint and item count without logging content.
-5. Preserves every established vNext Account UUID mapping and validates the provider
-   identity bound to it.
-6. Commits one idempotent PostgreSQL migration intent.
-7. Creates or verifies each HostCredentialStore item with create/CAS semantics.
-8. Verifies every destination version, fingerprint, provider binding, and PostgreSQL
-   projection.
-9. Commits one complete migration receipt.
-10. Leaves the source bytes unchanged as cold backup.
-
-Repeating the operation with the same source fingerprint returns or resumes the same
-receipt. A changed source, changed mapping, conflicting destination, missing item, or
-unavailable backend fails closed. No watcher, runtime fallback, environment projection,
-compatibility API, or dual write remains after completion.
-
-This migration imports account credentials and required account metadata only. It does
-not scan or import Codex rollout history, Codex sessions, SQLite rows, Linear lanes,
-runtime history, Goals, Projects, or Automations.
-
-## Final clean cutover
-
-The final installation must work after all of these paths are absent:
-
-- the legacy `accounts.jsonl` watcher;
-- the legacy UUID mapping bridge as a runtime input;
-- access-token injection through the daemon environment;
-- the legacy account helper and `:8192` server;
-- direct SwiftUI or legacy CLI account-store access;
-- dual account-control UI and runtime ownership.
-
-The cold tag, untouched secret-bearing backup, redacted freeze inventory, and accepted
-historical receipts remain evidence only.
-
-## Implementation decomposition
-
-Implementation follows this dependency order:
-
-1. Prove the exact supported Codex enrollment and ambient-projection adapters. Implement
-   the HostCredentialStore port, macOS adapter, Linux capability contract, and redaction.
-2. Add PostgreSQL Account Registry lifecycle/operation authority and the daemon Account
-   Service for list, inspect, rename, enable, disable, enrollment, import, logout, and
-   startup reconciliation.
-3. Add serialized proactive refresh, app-server callback refresh, CAS rotation, and
-   exact runner credential projection.
-4. Add usage, profile, history, separate quota ingestion, and complete versioned client
-   protocol projections.
-5. Add the offline one-shot migration, remove the watcher/environment/helper paths, and
-   move GPUI, SwiftUI, and CLI to the common service.
-6. Freeze the integrated boundary and run the high-value acceptance matrix once before
-   routing enablement and whole-product cutover.
-
-These are module and authority boundaries. They do not create separate daemons, homes,
-event stores, transaction coordinators, or plugin frameworks.
-
-## Deferred acceptance and fault matrix
-
-| Boundary | Required evidence |
+| Data | Policy |
 | --- | --- |
-| Forced expiry and rotation | Expire one access token, refresh it, persist every returned token atomically, restart the daemon, and continue without legacy input. |
-| Concurrent refresh | Race proactive refresh and multiple app-server callbacks for one account; prove one monotonic store version and no lost newer rotation. |
-| Provider ambiguity | Crash or time out after refresh request but before a proven store write; prove no automatic unsafe replay and one typed `reauth_required` recovery path. |
-| Store/PG partial failure | Inject failure before store write, after store write, and before PostgreSQL finalization for enrollment, import, refresh, and logout; prove deterministic reconciliation. |
-| Backend unavailable | Lock or remove the configured backend; prove typed readiness, no fallback, no runner launch, and recovery after the same backend returns. |
-| Active-run logout | Disable an account with active work, reject logout, settle the exact ProcessGeneration/ProviderAttempt, then complete one exact delete. |
-| Runner launch | Bind one exact account and credential version, rotate the account during the run, and prove same-account callbacks cannot rebind the process. |
-| Shared home | Create a Decodex thread, kill the process, rotate accounts, restart the daemon, and read the same thread in standalone Codex. |
-| Ambient coexistence | Run standalone Codex and Decodex concurrently; prove routing does not mutate ambient auth and explicit `Use in Codex` is isolated and fail-closed. |
-| Quota | Persist independent 300-minute and 10080-minute windows for multiple accounts; prove exclusion, fallback, and all-depleted wake without merged quota. |
-| Credential absence | Inspect PostgreSQL, public protocol, logs, receipts, process arguments, crash output, and long-lived environment for credential material. |
-| One-shot migration | Resume after each item boundary, verify stable vNext UUIDs and exact source fingerprint, preserve the cold source, and prove no second runtime ingress. |
-| Final install | Start and use account operations and Reset Card with legacy account files, mapping watcher, helper, `:8192`, and dual UI removed. |
+| credentials and provider identity | Import to the HostCredentialStore and verify exact metadata. |
+| labels, enabled state, mode, and order | Import from the normalized manifest. |
+| 300-minute and 10080-minute quota | Reset each window to `unknown` with no imported observation. |
+| usage and profile projection | Start empty and obtain fresh provider observations later. |
+| account, Codex thread, and execution history | Do not import. |
 
-Any failure keeps production routing and final cutover disabled. It does not authorize a
-legacy watcher or environment fallback.
+The Account Service commits one idempotent migration intent for the manifest digest,
+creates or verifies each store item, verifies every PostgreSQL projection, and commits
+one credential-negative receipt. The same digest resumes or replays. Source, mapping,
+destination, provider, or policy drift fails closed. Source bytes remain untouched as
+cold evidence.
+
+## Readiness levels
+
+| Obligation | `MacDogfoodReady` | Final `AccountLifecycleReady` |
+| --- | --- | --- |
+| Host secret backend | macOS Keychain adapter accepted | macOS plus an explicitly selected persistent Linux backend |
+| Exact-build auth | Initial projection and refresh callback proved for each accepted macOS build | Proved for every supported platform/build |
+| Account lifecycle | Enrollment/import, list/rename, enable/disable, logout, refresh/CAS, startup reconciliation, and migration | Same contract across all supported hosts plus full fault acceptance |
+| Routing | Initial eligible quota-aware fixed/balanced selection and explicit manual recovery | Automatic same-thread fallback and all-depleted wake after their later gate |
+| Presentation | Minimal Accounts, Conversation, and Health data | Full bounded usage, profile, and history presentation |
+| Ambient Codex auth | Deferred; no `Use in Codex` requirement | Capability-probed `Use in Codex`, fail-closed when unsupported |
+| Legacy authority | No watcher, helper, or credential environment input on normal startup | Same, across every supported installation |
+| Evidence | Two-account Mac flow with restart boundaries and package proof | Broader platform and adversarial matrix |
+
+`CredentialStore` reports backend capability. `AccountLifecycle` reports the Account
+Service, PostgreSQL authority, provider adapter, exact-build account capability, startup
+reconciliation, and active host store. An environment-only projection is
+`projection_only` and cannot satisfy either readiness result.
+
+## Later obligations
+
+The later readiness table in the [vNext gate manifest](vnext-gates.md) retains Linux,
+ambient `Use in Codex`, full account presentation, automatic fallback and wake,
+retained-title Desktop discovery, broad matrices, graph, automation, remote access, and
+product polish. These obligations do not block the three Mac delivery slices unless a
+slice explicitly names them.
+
+Accepted historical receipts remain historical. A failure in this contract keeps the
+affected account or readiness boundary unavailable. It does not restore a watcher,
+environment projection, helper, dual write, or compatibility API.

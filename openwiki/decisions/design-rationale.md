@@ -42,17 +42,22 @@ recovery requirements. Decodex therefore uses one small three-owner design: Post
 holds credential-negative product state, the HostCredentialStore holds only secret
 bundles, and the `decodexd` Account Service coordinates operations across them.
 
-This design preserves the mature v0.2 login, import, refresh, rotation, usage, history,
-selection, logout, and explicit `Use in Codex` behavior without preserving its
-`accounts.jsonl` runtime authority. A finite operation saga and exact credential-version
-compare-and-swap close the required crash boundary. A generic transaction coordinator,
-event-sourced account domain, per-account daemon, and per-run or per-account Codex home
-would add lifecycle cost without an accepted obligation.
+The first Mac dogfood keeps the smallest usable set: enrollment/import, refresh and
+rotation, enable/disable, logout, quota-aware fixed/balanced initial selection, explicit
+order, and manual recovery. Full usage/profile/history presentation, ambient `Use in
+Codex`, Linux secrets, automatic fallback/wake, and broad matrices remain later final
+obligations. This does not preserve `accounts.jsonl` as runtime authority.
+
+A finite per-account operation journal and exact credential compare-and-swap close the
+required crash boundary. A generic transaction coordinator, event-sourced account domain,
+new process/effect ledger, per-account daemon, or per-run/per-account Codex home would add
+lifecycle cost without an accepted obligation.
 
 The shared normal `~/.codex` remains Codex authority for configuration, plugins, rollout
 files, and thread visibility. Decodex runner binding is one account per process. An
-explicit `Use in Codex` command is ambient-auth projection only and never routing
-authority. See [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
+explicit `Use in Codex` command is ambient-auth projection only, never routing authority,
+and is not a MacDogfoodReady prerequisite. See
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
 
 ## Natural-language loop runtime
 
