@@ -3,8 +3,10 @@
 mod candidate;
 mod common;
 mod cross_file;
+mod outcome;
 mod post;
 mod reservation;
+mod strategy;
 
 pub(crate) use cross_file::SocialValidationState;
 
@@ -12,7 +14,10 @@ use std::path::Path;
 
 use serde_json::{Map, Value};
 
-use crate::{SOCIAL_CANDIDATE_SCHEMA, SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA};
+use crate::{
+	SOCIAL_CANDIDATE_SCHEMA, SOCIAL_OUTCOME_SCHEMA, SOCIAL_POST_SCHEMA,
+	SOCIAL_PUBLISH_RESERVATION_SCHEMA, SOCIAL_STRATEGY_SCHEMA,
+};
 
 const SIGNAL_CONFIDENCE: &[&str] = &["confirmed", "likely", "weak"];
 const SOCIAL_BLOCK_REASONS: &[&str] =
@@ -56,15 +61,19 @@ pub(crate) fn validate_social_artifact(payload: &Value) -> SocialArtifactValidat
 
 	match string_field(entry, "schema") {
 		Some(SOCIAL_CANDIDATE_SCHEMA) => candidate::validate_social_candidate(entry, &mut errors),
+		Some(SOCIAL_OUTCOME_SCHEMA) => outcome::validate_social_outcome(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => post::validate_social_post(entry, &mut errors),
 		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
 			reservation::validate_social_publish_reservation(entry, &mut errors),
+		Some(SOCIAL_STRATEGY_SCHEMA) => strategy::validate_social_strategy(entry, &mut errors),
 		Some(_) | None => errors.push(format!(
 			"schema must be one of {}",
 			choices(&[
 				SOCIAL_CANDIDATE_SCHEMA,
+				SOCIAL_OUTCOME_SCHEMA,
 				SOCIAL_POST_SCHEMA,
-				SOCIAL_PUBLISH_RESERVATION_SCHEMA
+				SOCIAL_PUBLISH_RESERVATION_SCHEMA,
+				SOCIAL_STRATEGY_SCHEMA
 			])
 		)),
 	}
@@ -91,6 +100,15 @@ fn validate_social_post_claims(claims: Option<&Value>, errors: &mut Vec<String>)
 
 fn validate_non_empty_string_list(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
 	common::validate_non_empty_string_list(value, label, errors);
+}
+
+fn validate_exact_keys(
+	object: &Map<String, Value>,
+	label: &str,
+	allowed: &[&str],
+	errors: &mut Vec<String>,
+) {
+	common::validate_exact_keys(object, label, allowed, errors);
 }
 
 fn validate_optional_string_list(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {

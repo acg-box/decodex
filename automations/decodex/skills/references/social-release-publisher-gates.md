@@ -63,20 +63,29 @@ For publishable prerelease candidates, evidence must name:
 - Use `decodex_signal_card` as a visual system, not a reused fixed image.
 - Never reuse live-test images, generic cards, unrelated abstract art, or media that
   depends on AI-rendered readable text.
-- Generated images live in `$CODEX_HOME/decodex/social-media/` or temporary storage by
-  default, not Git.
+- Generated images and social records live under
+  `.agent/automations/decodex/cache/social/` or temporary storage. They are local-only
+  and never committed or archived to Git.
 - Before composing any release, app, or prerelease post, check durable publication
   records, active `social_publish_reservation/v1` records, and the live
   `@decodexspace` profile/timeline for the exact lead text, release tag, source URL,
   and prior status URLs. X search `No results` is not a duplicate-clear signal by
   itself.
-- Do not open X compose until an active `social_publish_reservation/v1` for the same
+- Acquire the single X browser lease before opening X. Do not open X compose until an
+  active `social_publish_reservation/v1` for the same
   idempotency key and duplicate keys is persisted in
-  `.agent/automations/decodex/cache/social/x/reservations`. Repeat live profile/timeline duplicate readback
-  immediately before clicking Post.
-- If account verification, duplicate detection, media upload, or final readback is
-  unreliable, fail closed. Do not downgrade to text-only unless the operator explicitly
-  approves that fallback for the current candidate.
+  `.agent/automations/decodex/cache/social/x/reservations`. Repeat live
+  profile/timeline duplicate readback, renew the browser lease, and verify it
+  immediately before clicking Post. Renew after the click and before final readback,
+  and renew before account restoration.
+- Capture the initial visible X account. Switch from `@hackink` to `@decodexspace`
+  through the visible account switcher when needed, verify the target before compose,
+  and restore `@hackink` after the terminal outcome. Release the exact browser lease
+  only after renewed ownership, restoration, and terminal validation.
+- If account switching or restoration, account verification, duplicate detection,
+  media upload, or final readback is unreliable, fail closed. Do not downgrade to
+  text-only unless the operator explicitly approves that fallback for the current
+  candidate.
 
 ## Post Shapes
 
