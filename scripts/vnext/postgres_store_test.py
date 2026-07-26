@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
 import json
@@ -30,12 +30,96 @@ AUTHORITY_CAPTURE_DATABASE = "decodex_xy1300_authority_capture"
 AUTHORITY_CAPTURE_RESTORE_DATABASE = "decodex_xy1300_authority_capture_restore"
 AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE = "decodex_xy1300_authority_capture_restore_2"
 AUTHORITY_CAPTURE_UPGRADE_DATABASE = "decodex_xy1300_authority_upgrade"
+RESTORE_PREREQUISITE_SOURCE_DATABASE = "decodex_xy1421_restore_prerequisite_source"
+RESTORE_PREREQUISITE_R1_DATABASE = "decodex_xy1421_restore_prerequisite_r1"
 AUTHORITY_CAPTURE_RESTORE_EDGES = (
 	("source_to_restored_once", "source", "restored_once"),
 	("restored_once_to_restored_twice", "restored_once", "restored_twice"),
 )
 AUTHORITY_CANDIDATE_SCHEMA = "decodex/postgres-authority-candidate/3"
 AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES = 128 * 1024
+POSTGRES_TOOL_NAMES = ("initdb", "pg_ctl", "psql", "pg_dump", "pg_restore")
+POSTGRES_TOOL_VERSION_MAX_BYTES = 512
+POSTGRES_ARCHIVE_TOC_MAX_BYTES = 8 * 1024 * 1024
+POSTGRES_PRIVATE_COMMAND_TIMEOUT_SECONDS = 30.0
+RESTORE_PREREQUISITE_CLI = "--capture-authority-restore-prerequisite"
+RESTORE_PREREQUISITE_GATE_SCHEMA = (
+	"decodex/postgres-restore-prerequisite-r1-gate/1"
+)
+RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA = (
+	"decodex/postgres-restore-prerequisite-r1-diagnostic/1"
+)
+RESTORE_PREREQUISITE_DEFINITION_SCHEMA = (
+	"decodex/postgres-restore-prerequisite-r1-definition/1"
+)
+RESTORE_PREREQUISITE_ARCHIVE_GRAMMAR = (
+	"decodex/postgresql-18-pg-restore-list/1"
+)
+RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT = (
+	"2fc0260f16424d155ccd54daf25a0c43445b26744ebbae0772487266b7db46b5"
+)
+RESTORE_PREREQUISITE_SQL = (
+	"CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public VERSION '1.4';"
+)
+RESTORE_PREREQUISITE_CHECKPOINTS = (
+	"source_database_created",
+	"source_migrated",
+	"source_provisioned",
+	"source_populated",
+	"source_semantic_authority",
+	"archive_declaration_guarded",
+	"restore_database_fresh_template0",
+	"restore_pgcrypto_absent",
+	"restore_prerequisite_created",
+	"restored_once",
+	"restored_once_semantic_authority",
+	"semantic_authority_equal",
+	"stopped_after_restored_once",
+)
+RESTORE_PREREQUISITE_INVOCATION_POLICIES = (
+	"source_database_once",
+	"source_migration_once",
+	"source_provisioning_once",
+	"source_population_once",
+	"source_semantic_once",
+	"source_dump_once",
+	"archive_guard_once",
+	"restore_database_once",
+	"pgcrypto_absence_check_once",
+	"restore_prerequisite_once",
+	"restore_once",
+	"restored_semantic_once",
+)
+RESTORE_PREREQUISITE_DIAGNOSTIC_CHECKPOINTS = frozenset((
+	*RESTORE_PREREQUISITE_CHECKPOINTS,
+	"gate",
+	"receipt_publication",
+	"source_binding",
+	"toolchain_authority",
+))
+RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS = frozenset((
+	"archive_declaration_invalid",
+	"duplicate_invocation",
+	"invocation_policy_failed",
+	"receipt_invalid",
+	"semantic_authority_changed",
+	"source_binding_changed",
+	"stage_failed",
+	"target_not_fresh",
+	"toolchain_changed",
+))
+PG18_TOC_ENTRY_RE = re.compile(
+	r"(?P<dump_id>[1-9][0-9]*); "
+	r"(?P<table_oid>0|[1-9][0-9]*) "
+	r"(?P<object_oid>0|[1-9][0-9]*) "
+	r"(?P<body>[ -~]+)"
+)
+PG18_TOC_EXTENSION_RE = re.compile(
+	r"EXTENSION (?P<namespace>[^ ]+) (?P<tag>[^ ]+) (?P<owner>[^ ]*)"
+)
+PG18_TOC_DUMP_VERSION_RE = re.compile(
+	r";     Dumped by pg_dump version: 18(?:\.[0-9]+)*(?: [ -~]+)?"
+)
 POSTGRES_START_LOG_EXCERPT_MAX_BYTES = 4 * 1024
 # Darwin's sockaddr_un.sun_path is 104 bytes, including the terminating NUL.
 POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES = 104
@@ -466,6 +550,36 @@ class HarnessCorruption(RuntimeError):
 	"""Raised when the harness cannot truthfully continue or report ordinary failure."""
 
 
+class SemanticAuthorityDiagnostic(TestFailure):
+	"""Carry the existing closed semantic-authority diagnostic without reparsing it."""
+
+	def __init__(self, serialized: str) -> None:
+		self.serialized = serialized
+		super().__init__("authority candidate semantic diagnostic: " + serialized)
+
+
+class AuthorityRestoreTargetFailure(TestFailure):
+	"""Carry one fixed restore-target checkpoint and classification."""
+
+	def __init__(self, checkpoint: str, reason: str) -> None:
+		if (
+			checkpoint not in RESTORE_PREREQUISITE_DIAGNOSTIC_CHECKPOINTS
+			or reason not in RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS
+		):
+			raise HarnessCorruption("restore-target failure classification is invalid")
+		self.checkpoint = checkpoint
+		self.reason = reason
+		super().__init__(f"authority restore target failed: {checkpoint}:{reason}")
+
+
+class RestorePrerequisiteGateDiagnostic(TestFailure):
+	"""Carry one closed public diagnostic for the one-shot R1 gate."""
+
+	def __init__(self, serialized: str) -> None:
+		self.serialized = serialized
+		super().__init__("restore prerequisite gate diagnostic: " + serialized)
+
+
 class StageActionFailure(RuntimeError):
 	"""Carry one authoritative stage failure plus subordinate cleanup failures."""
 
@@ -603,6 +717,91 @@ class AuthorityCandidatePublication:
 
 	output_path: Path
 	receipt: dict[str, object]
+
+
+@dataclass(frozen=True)
+class RestorePrerequisiteGatePublication:
+	"""An exception-free gate result awaiting post-cleanup atomic publication."""
+
+	output_path: Path
+	receipt: dict[str, object]
+
+
+@dataclass
+class AuthorityRestoreInvocations:
+	"""Prevent duplicate guard, prerequisite, and restore calls in one process."""
+
+	archive_guard: int = 0
+	database_create: int = 0
+	pgcrypto_absence_check: int = 0
+	prerequisite_create: int = 0
+	restore: int = 0
+	targets: list[str] = field(default_factory=list)
+
+	def begin_target(self, target: str) -> None:
+		if target in self.targets:
+			raise AuthorityRestoreTargetFailure(
+				"restore_database_fresh_template0", "duplicate_invocation"
+			)
+		self.targets.append(target)
+
+	def policy_results(self, expected_targets: tuple[str, ...]) -> dict[str, bool]:
+		expected_count = len(expected_targets)
+		return {
+			"archive_guard_once": (
+				self.archive_guard == expected_count
+				and self.targets == list(expected_targets)
+			),
+			"restore_database_once": self.database_create == expected_count,
+			"pgcrypto_absence_check_once": (
+				self.pgcrypto_absence_check == expected_count
+			),
+			"restore_prerequisite_once": self.prerequisite_create == expected_count,
+			"restore_once": self.restore == expected_count,
+		}
+
+
+@dataclass
+class RestorePrerequisiteGateInvocations:
+	"""Record each gate-owned source and semantic invocation exactly once."""
+
+	source_database: int = 0
+	source_migration: int = 0
+	source_provisioning: int = 0
+	source_population: int = 0
+	source_semantic: int = 0
+	source_dump: int = 0
+	restored_semantic: int = 0
+
+	def record(self, name: str) -> None:
+		if name not in {
+			"source_database",
+			"source_migration",
+			"source_provisioning",
+			"source_population",
+			"source_semantic",
+			"source_dump",
+			"restored_semantic",
+		}:
+			raise HarnessCorruption("restore prerequisite invocation name is invalid")
+		if getattr(self, name) != 0:
+			raise RestorePrerequisiteGateDiagnostic(
+				restore_prerequisite_gate_diagnostic(
+					"gate", "duplicate_invocation"
+				)
+			)
+		setattr(self, name, 1)
+
+	def policy_results(self) -> dict[str, bool]:
+		return {
+			"source_database_once": self.source_database == 1,
+			"source_migration_once": self.source_migration == 1,
+			"source_provisioning_once": self.source_provisioning == 1,
+			"source_population_once": self.source_population == 1,
+			"source_semantic_once": self.source_semantic == 1,
+			"source_dump_once": self.source_dump == 1,
+			"restored_semantic_once": self.restored_semantic == 1,
+		}
 
 
 @dataclass(frozen=True)
@@ -1317,6 +1516,137 @@ def run(command: list[str], env: dict[str, str]) -> str:
 	return completed.stdout.strip() or completed.stderr.strip()
 
 
+def private_command_output(
+	command: list[str],
+	env: dict[str, str],
+	*,
+	byte_limit: int,
+	failure_message: str,
+) -> bytes:
+	"""Read bounded private output and never copy command or output into an error."""
+	process: subprocess.Popen[bytes] | None = None
+	stdout = None
+	try:
+		if byte_limit <= 0:
+			raise TestFailure(failure_message)
+		process = subprocess.Popen(
+			command,
+			stdin=subprocess.DEVNULL,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.DEVNULL,
+			env=env,
+			cwd=REPO_ROOT,
+		)
+		stdout = process.stdout
+		if stdout is None:
+			raise TestFailure(failure_message)
+		descriptor = stdout.fileno()
+		os.set_blocking(descriptor, False)
+		deadline = time.monotonic() + POSTGRES_PRIVATE_COMMAND_TIMEOUT_SECONDS
+		payload = bytearray()
+		while True:
+			remaining = deadline - time.monotonic()
+			if remaining <= 0:
+				raise TestFailure(failure_message)
+			readable, _, _ = select.select([descriptor], [], [], remaining)
+			if not readable:
+				raise TestFailure(failure_message)
+			chunk = os.read(descriptor, min(64 * 1024, byte_limit + 1 - len(payload)))
+			if not chunk:
+				break
+			payload.extend(chunk)
+			if len(payload) > byte_limit:
+				raise TestFailure(failure_message)
+		remaining = deadline - time.monotonic()
+		if remaining <= 0 or process.wait(timeout=remaining) != 0:
+			raise TestFailure(failure_message)
+		return bytes(payload)
+	except TestFailure:
+		raise
+	except (OSError, ValueError, subprocess.SubprocessError):
+		raise TestFailure(failure_message) from None
+	finally:
+		if process is not None:
+			if process.poll() is None:
+				process.kill()
+			try:
+				process.wait()
+			except BaseException:
+				pass
+		if stdout is not None:
+			stdout.close()
+
+
+def postgres_tool_version(
+	path: Path, name: str, env: dict[str, str]
+) -> bytes:
+	failure_message = "PostgreSQL toolchain authority is unavailable"
+	version = private_command_output(
+		[str(path), "--version"],
+		env,
+		byte_limit=POSTGRES_TOOL_VERSION_MAX_BYTES,
+		failure_message=failure_message,
+	)
+	pattern = re.compile(
+		(
+			rf"{re.escape(name)} \(PostgreSQL\) "
+			r"18(?:\.[0-9]+)*(?: [ -~]+)?\n?"
+		).encode("ascii")
+	)
+	if pattern.fullmatch(version) is None:
+		raise TestFailure(failure_message)
+	return version
+
+
+def postgres_toolchain_fingerprint(
+	tools: dict[str, Path], env: dict[str, str]
+) -> str:
+	failure_message = "PostgreSQL toolchain authority is unavailable"
+	try:
+		if set(tools) != set(POSTGRES_TOOL_NAMES):
+			raise TestFailure(failure_message)
+		paths = [tools[name] for name in POSTGRES_TOOL_NAMES]
+		if (
+			any(not path.is_absolute() or path.resolve(strict=True) != path for path in paths)
+			or len({path.parent for path in paths}) != 1
+		):
+			raise TestFailure(failure_message)
+		fingerprint = hashlib.sha256(
+			b"decodex/postgres-toolchain-authority/1\0"
+		)
+		for name, path in zip(POSTGRES_TOOL_NAMES, paths, strict=True):
+			before = path.stat()
+			if not stat.S_ISREG(before.st_mode) or before.st_mode & 0o111 == 0:
+				raise TestFailure(failure_message)
+			binary_digest = hashlib.sha256()
+			with path.open("rb") as binary:
+				while chunk := binary.read(64 * 1024):
+					binary_digest.update(chunk)
+			after = path.stat()
+			stable_fields = (
+				"st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_size",
+				"st_mtime_ns", "st_ctime_ns",
+			)
+			if any(
+				getattr(before, field_name) != getattr(after, field_name)
+				for field_name in stable_fields
+			):
+				raise TestFailure(failure_message)
+			version = postgres_tool_version(path, name, env)
+			for value in (
+				name.encode("ascii"),
+				binary_digest.digest(),
+				hashlib.sha256(version).digest(),
+			):
+				fingerprint.update(len(value).to_bytes(4, "big"))
+				fingerprint.update(value)
+		return fingerprint.hexdigest()
+	except TestFailure:
+		raise
+	except (OSError, ValueError):
+		raise TestFailure(failure_message) from None
+
+
 def frozen_source_binding() -> dict[str, str]:
 	status = git_read_text(
 		"status", "--porcelain=v1", "--untracked-files=all",
@@ -1830,6 +2160,23 @@ def psql(database: str, sql: str, env: dict[str, str]) -> str:
 	)
 
 
+def capture_postgres_version(env: dict[str, str]) -> dict[str, object]:
+	try:
+		version = json.loads(psql(
+			"postgres",
+			"SELECT pg_catalog.json_build_object("
+			"'version',pg_catalog.current_setting('server_version'),"
+			"'version_num',pg_catalog.current_setting('server_version_num')::integer,"
+			"'major',pg_catalog.current_setting('server_version_num')::integer/10000)::text",
+			env,
+		))
+	except (TypeError, json.JSONDecodeError):
+		raise TestFailure("PostgreSQL major-version authority is unavailable") from None
+	if not isinstance(version, dict) or version.get("major") != 18:
+		raise TestFailure("authority candidate capture requires PostgreSQL major 18")
+	return version
+
+
 def psql_secret(
 	database: str, sql: str, env: dict[str, str], *, expect_failure: bool = False
 ) -> str:
@@ -1946,6 +2293,192 @@ def create_database(database: str, env: dict[str, str], *, locale: str | None = 
 		f"GRANT CONNECT ON DATABASE {database} TO {RUNTIME_ROLE}",
 		env,
 	)
+
+
+def pgcrypto_archive_declaration_is_exact(payload: bytes) -> bool:
+	"""Accept only the closed PostgreSQL 18 list grammar needed by this guard."""
+	if (
+		not payload
+		or len(payload) > POSTGRES_ARCHIVE_TOC_MAX_BYTES
+		or not payload.endswith(b"\n")
+		or b"\r" in payload
+		or b"\0" in payload
+	):
+		return False
+	try:
+		lines = payload[:-1].decode("ascii").split("\n")
+	except UnicodeDecodeError:
+		return False
+	if (
+		lines.count(";     Format: CUSTOM") != 1
+		or sum(
+			PG18_TOC_DUMP_VERSION_RE.fullmatch(line) is not None for line in lines
+		) != 1
+		or lines.count("; Selected TOC Entries:") != 1
+	):
+		return False
+	selected_index = lines.index("; Selected TOC Entries:")
+	if any(
+		not line.startswith(";") or re.fullmatch(r";[ -~]*", line) is None
+		for line in lines[:selected_index]
+	):
+		return False
+
+	active_entries = 0
+	active_dump_ids: set[str] = set()
+	pgcrypto_entries = 0
+	for line in lines[selected_index + 1:]:
+		if line == ";":
+			continue
+		if line.startswith(";"):
+			disabled = line[1:]
+			if disabled.startswith(" "):
+				disabled = disabled[1:]
+			if PG18_TOC_ENTRY_RE.fullmatch(disabled) is not None:
+				return False
+			return False
+		entry = PG18_TOC_ENTRY_RE.fullmatch(line)
+		if entry is None:
+			return False
+		active_entries += 1
+		dump_id = entry.group("dump_id")
+		if dump_id in active_dump_ids:
+			return False
+		active_dump_ids.add(dump_id)
+		body = entry.group("body")
+		if not body.startswith("EXTENSION"):
+			continue
+		extension = PG18_TOC_EXTENSION_RE.fullmatch(body)
+		if extension is None:
+			return False
+		if extension.group("tag") != "pgcrypto":
+			continue
+		if (
+			entry.group("table_oid") != "3079"
+			or entry.group("object_oid") == "0"
+			or extension.group("namespace") != "-"
+			or extension.group("owner") != ""
+		):
+			return False
+		pgcrypto_entries += 1
+	return active_entries > 0 and pgcrypto_entries == 1
+
+
+def guard_pgcrypto_archive_declaration(
+	dump_path: Path, pg_restore_tool: Path, env: dict[str, str]
+) -> bool:
+	try:
+		postgres_tool_version(pg_restore_tool, "pg_restore", env)
+		payload = private_command_output(
+			[str(pg_restore_tool), "--list", str(dump_path)],
+			env,
+			byte_limit=POSTGRES_ARCHIVE_TOC_MAX_BYTES,
+			failure_message="PostgreSQL archive declaration is unavailable",
+		)
+	except TestFailure:
+		raise AuthorityRestoreTargetFailure(
+			"archive_declaration_guarded", "archive_declaration_invalid"
+		) from None
+	if not pgcrypto_archive_declaration_is_exact(payload):
+		raise AuthorityRestoreTargetFailure(
+			"archive_declaration_guarded", "archive_declaration_invalid"
+		)
+	return True
+
+
+def _run_authority_restore_stage(
+	checkpoint: str, action: Callable[[], object]
+) -> object:
+	try:
+		return action()
+	except AuthorityRestoreTargetFailure:
+		raise
+	except Exception:
+		raise AuthorityRestoreTargetFailure(checkpoint, "stage_failed") from None
+
+
+def restore_authority_capture_target(
+	dump_path: Path,
+	target_database: str,
+	env: dict[str, str],
+	pg_restore_tool: Path,
+	invocations: AuthorityRestoreInvocations,
+) -> dict[str, bool]:
+	"""Guard, create, precreate, and restore one fresh authority target."""
+	invocations.begin_target(target_database)
+	invocations.archive_guard += 1
+	_run_authority_restore_stage(
+		"archive_declaration_guarded",
+		lambda: guard_pgcrypto_archive_declaration(dump_path, pg_restore_tool, env),
+	)
+
+	invocations.database_create += 1
+	_run_authority_restore_stage(
+		"restore_database_fresh_template0",
+		lambda: create_database(target_database, env),
+	)
+
+	invocations.pgcrypto_absence_check += 1
+	absence = _run_authority_restore_stage(
+		"restore_pgcrypto_absent",
+		lambda: psql_as(
+			MIGRATION_ROLE,
+			target_database,
+			"SELECT pg_catalog.count(*) FROM pg_catalog.pg_extension "
+			"WHERE extname='pgcrypto'",
+			env,
+		),
+	)
+	if absence != "0":
+		raise AuthorityRestoreTargetFailure(
+			"restore_pgcrypto_absent", "target_not_fresh"
+		)
+
+	invocations.prerequisite_create += 1
+	_run_authority_restore_stage(
+		"restore_prerequisite_created",
+		lambda: psql_as(
+			MIGRATION_ROLE, target_database, RESTORE_PREREQUISITE_SQL, env
+		),
+	)
+
+	invocations.restore += 1
+	_run_authority_restore_stage(
+		"restored_once",
+		lambda: run(
+			[
+				str(pg_restore_tool),
+				"--exit-on-error",
+				"-d",
+				target_database,
+				str(dump_path),
+			],
+			env,
+		),
+	)
+	return {
+		"archive_declaration_guarded": True,
+		"restore_database_fresh_template0": True,
+		"restore_pgcrypto_absent": True,
+		"restore_prerequisite_created": True,
+		"restored_once": True,
+	}
+
+
+def require_authority_restore_invocation_policy(
+	invocations: AuthorityRestoreInvocations,
+	expected_targets: tuple[str, ...],
+) -> dict[str, bool]:
+	results = invocations.policy_results(expected_targets)
+	if set(results) != {
+		"archive_guard_once",
+		"restore_database_once",
+		"pgcrypto_absence_check_once",
+		"restore_prerequisite_once",
+		"restore_once",
+	} or not all(results.values()):
+		raise AuthorityRestoreTargetFailure("gate", "invocation_policy_failed")
+	return results
 
 
 def clone_authority_database(source: str, target: str, env: dict[str, str]) -> None:
@@ -3184,9 +3717,7 @@ def parse_candidate_capture_manifest(
 		raise _candidate_artifact_malformed_failure() from None
 
 	if semantic_diagnostic is not None:
-		raise TestFailure(
-			"authority candidate semantic diagnostic: " + semantic_diagnostic
-		)
+		raise SemanticAuthorityDiagnostic(semantic_diagnostic)
 	assert semantic_summary is not None
 	return document, semantic_summary
 
@@ -5798,32 +6329,46 @@ def validate_phase_b_source_delta(
 	)
 
 
-def validate_authority_candidate_output_path(path: Path) -> None:
+def validate_private_receipt_output_path(path: Path, subject: str) -> None:
 	if not path.is_absolute():
-		raise TestFailure("authority candidate output path must be absolute")
+		raise TestFailure(f"{subject} output path must be absolute")
 	try:
 		path.relative_to(REPO_ROOT)
 	except ValueError:
 		pass
 	else:
-		raise TestFailure("authority candidate output path must be outside the source tree")
+		raise TestFailure(f"{subject} output path must be outside the source tree")
 	parent = path.parent
 	for component in (parent, *parent.parents):
 		if component.is_symlink():
-			raise TestFailure("authority candidate output path must not contain a symlink")
+			raise TestFailure(f"{subject} output path must not contain a symlink")
 	if not parent.is_dir() or parent.resolve(strict=True) != parent:
-		raise TestFailure("authority candidate output parent must be an exact existing directory")
+		raise TestFailure(f"{subject} output parent must be an exact existing directory")
 	parent_metadata = parent.stat()
 	if parent_metadata.st_uid != os.geteuid() or parent_metadata.st_mode & 0o077:
-		raise TestFailure("authority candidate output parent must be operator-owned and private")
+		raise TestFailure(f"{subject} output parent must be operator-owned and private")
 	if path.exists() or path.is_symlink():
-		raise TestFailure("authority candidate output already exists")
+		raise TestFailure(f"{subject} output already exists")
 
 
-def publish_authority_candidate(path: Path, receipt: dict[str, object]) -> None:
-	validate_authority_candidate_output_path(path)
+def validate_authority_candidate_output_path(path: Path) -> None:
+	validate_private_receipt_output_path(path, "authority candidate")
+
+
+def validate_restore_prerequisite_output_path(path: Path) -> None:
+	validate_private_receipt_output_path(path, "restore prerequisite receipt")
+
+
+def publish_private_receipt(
+	path: Path,
+	receipt: dict[str, object],
+	validator: Callable[[Path], None],
+) -> None:
+	validator(path)
 	parent = path.parent
 	payload = (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode()
+	if len(payload) > AUTHORITY_CANDIDATE_RECEIPT_MAX_BYTES:
+		raise TestFailure("private receipt exceeds its byte limit")
 	file_descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=parent)
 	temporary_path = Path(temporary_name)
 	try:
@@ -5856,6 +6401,17 @@ def publish_authority_candidate(path: Path, receipt: dict[str, object]) -> None:
 		os.close(directory_descriptor)
 
 
+def publish_authority_candidate(path: Path, receipt: dict[str, object]) -> None:
+	publish_private_receipt(path, receipt, validate_authority_candidate_output_path)
+
+
+def publish_restore_prerequisite_receipt(
+	path: Path, receipt: dict[str, object]
+) -> None:
+	validate_restore_prerequisite_gate_receipt(receipt)
+	publish_private_receipt(path, receipt, validate_restore_prerequisite_output_path)
+
+
 def authority_candidate_phase_fields(
 	phase_a: PhaseAAuthorityReceipt | None,
 	start_binding: dict[str, str],
@@ -5877,6 +6433,389 @@ def authority_candidate_phase_fields(
 	}
 
 
+def restore_prerequisite_definition() -> dict[str, object]:
+	return {
+		"archive_grammar": RESTORE_PREREQUISITE_ARCHIVE_GRAMMAR,
+		"checkpoints": list(RESTORE_PREREQUISITE_CHECKPOINTS),
+		"cli": RESTORE_PREREQUISITE_CLI,
+		"invocation_policy": list(RESTORE_PREREQUISITE_INVOCATION_POLICIES),
+		"postgres": {
+			"major": 18,
+			"tools": list(POSTGRES_TOOL_NAMES),
+		},
+		"prerequisite": {
+			"role": MIGRATION_ROLE,
+			"sql": RESTORE_PREREQUISITE_SQL,
+		},
+		"receipt_schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
+		"restore": {
+			"identity": "bootstrap",
+			"options": ["--exit-on-error"],
+		},
+		"schema": RESTORE_PREREQUISITE_DEFINITION_SCHEMA,
+		"semantic_authority_definition_fingerprint": (
+			SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT
+		),
+	}
+
+
+def restore_prerequisite_definition_fingerprint() -> str:
+	fingerprint = hashlib.sha256(json.dumps(
+		restore_prerequisite_definition(),
+		sort_keys=True,
+		separators=(",", ":"),
+		ensure_ascii=True,
+	).encode("utf-8")).hexdigest()
+	if fingerprint != RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT:
+		raise HarnessCorruption("restore prerequisite definition fingerprint differs")
+	return fingerprint
+
+
+def restore_prerequisite_gate_diagnostic(checkpoint: str, reason: str) -> str:
+	if (
+		checkpoint not in RESTORE_PREREQUISITE_DIAGNOSTIC_CHECKPOINTS
+		or reason not in RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS
+	):
+		raise HarnessCorruption("restore prerequisite diagnostic is invalid")
+	return json.dumps({
+		"acceptance": False,
+		"checkpoint": checkpoint,
+		"passed": False,
+		"reason": reason,
+		"schema": RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA,
+	}, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _run_restore_prerequisite_gate_stage(
+	checkpoint: str, action: Callable[[], object]
+) -> object:
+	try:
+		return action()
+	except SemanticAuthorityDiagnostic:
+		raise
+	except RestorePrerequisiteGateDiagnostic:
+		raise
+	except AuthorityRestoreTargetFailure as error:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(error.checkpoint, error.reason)
+		) from None
+	except Exception:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(checkpoint, "stage_failed")
+		) from None
+
+
+def populate_authority_capture_database(
+	database: str, env: dict[str, str]
+) -> None:
+	psql_as(
+		RUNTIME_ROLE,
+		database,
+		"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
+		"('10000000-0000-4000-8000-000000001300','XY-1300 capture fixture')",
+		env,
+	)
+
+
+def capture_candidate_semantic_checkpoint(
+	path: Path,
+	checkpoint: str,
+	database: str,
+	env: dict[str, str],
+	*,
+	source_binding: dict[str, str],
+	secret_markers: tuple[str, ...],
+) -> tuple[dict[str, object], dict[str, object], dict[str, str]]:
+	dump_schema_manifest(path, database, env, structured_errors=True)
+	document, semantic_authority = load_candidate_capture_manifest(
+		path,
+		checkpoint,
+		database,
+		source_binding=source_binding,
+		secret_markers=secret_markers,
+	)
+	manifests = require_capture_components(
+		document,
+		checkpoint,
+		database,
+		source_binding=source_binding,
+		secret_markers=secret_markers,
+	)
+	return document, semantic_authority, manifests
+
+
+def restore_prerequisite_gate_receipt(
+	source_binding: dict[str, str],
+	toolchain_fingerprint: str,
+	invocation_policy: dict[str, bool],
+) -> dict[str, object]:
+	return {
+		"acceptance": False,
+		"checkpoints": {
+			checkpoint: True for checkpoint in RESTORE_PREREQUISITE_CHECKPOINTS
+		},
+		"definition_fingerprint": restore_prerequisite_definition_fingerprint(),
+		"gate_only": True,
+		"invocation_policy": invocation_policy,
+		"later_phase_a_decision_only": True,
+		"postgres_toolchain": {
+			"authority_fingerprint": toolchain_fingerprint,
+			"major_18": True,
+			"stable": True,
+		},
+		"schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
+		"source_binding": {
+			"start": source_binding,
+			"end": source_binding,
+		},
+	}
+
+
+def validate_restore_prerequisite_gate_receipt(
+	receipt: object,
+) -> dict[str, object]:
+	if not isinstance(receipt, dict):
+		raise TestFailure("restore prerequisite receipt is invalid")
+	try:
+		source_binding = receipt["source_binding"]
+		assert isinstance(source_binding, dict)
+		start = require_source_binding(
+			source_binding["start"], "restore prerequisite source binding is invalid"
+		)
+		end = require_source_binding(
+			source_binding["end"], "restore prerequisite source binding is invalid"
+		)
+		toolchain = receipt["postgres_toolchain"]
+		assert isinstance(toolchain, dict)
+		toolchain_fingerprint = toolchain["authority_fingerprint"]
+		assert isinstance(toolchain_fingerprint, str)
+		invocation_policy = receipt["invocation_policy"]
+		assert isinstance(invocation_policy, dict)
+	except (AssertionError, KeyError, TestFailure):
+		raise TestFailure("restore prerequisite receipt is invalid") from None
+	if (
+		start != end
+		or re.fullmatch(r"[0-9a-f]{64}", toolchain_fingerprint) is None
+		or set(invocation_policy) != set(RESTORE_PREREQUISITE_INVOCATION_POLICIES)
+		or any(value is not True for value in invocation_policy.values())
+	):
+		raise TestFailure("restore prerequisite receipt is invalid")
+	expected = restore_prerequisite_gate_receipt(
+		start, toolchain_fingerprint, invocation_policy
+	)
+	if receipt != expected:
+		raise TestFailure("restore prerequisite receipt is invalid")
+	return receipt
+
+
+def run_restore_prerequisite_gate(
+	socket_dir: Path,
+	port: int,
+	work: Path,
+	log_path: Path,
+	env: dict[str, str],
+	secret_markers: tuple[str, ...],
+	expected_source_binding: dict[str, str],
+	tools: dict[str, Path],
+	expected_toolchain_fingerprint: str,
+) -> dict[str, object]:
+	start_binding = _run_restore_prerequisite_gate_stage(
+		"source_binding", frozen_source_binding
+	)
+	if start_binding != expected_source_binding:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"source_binding", "source_binding_changed"
+			)
+		)
+	toolchain_fingerprint = _run_restore_prerequisite_gate_stage(
+		"toolchain_authority",
+		lambda: postgres_toolchain_fingerprint(tools, env),
+	)
+	if toolchain_fingerprint != expected_toolchain_fingerprint:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"toolchain_authority", "toolchain_changed"
+			)
+		)
+	_run_restore_prerequisite_gate_stage(
+		"toolchain_authority", lambda: capture_postgres_version(env)
+	)
+	restore_prerequisite_definition_fingerprint()
+
+	gate_invocations = RestorePrerequisiteGateInvocations()
+	restore_invocations = AuthorityRestoreInvocations()
+
+	gate_invocations.record("source_database")
+	_run_restore_prerequisite_gate_stage(
+		"source_database_created",
+		lambda: create_database(RESTORE_PREREQUISITE_SOURCE_DATABASE, env),
+	)
+	set_contract_urls(
+		env,
+		socket_dir,
+		port,
+		RESTORE_PREREQUISITE_SOURCE_DATABASE,
+		RUNTIME_ROLE,
+	)
+
+	gate_invocations.record("source_migration")
+	_run_restore_prerequisite_gate_stage("source_migrated", lambda: run_migration(env))
+
+	gate_invocations.record("source_provisioning")
+	_run_restore_prerequisite_gate_stage(
+		"source_provisioned",
+		lambda: provision_runtime(
+			RESTORE_PREREQUISITE_SOURCE_DATABASE, RUNTIME_ROLE, env
+		),
+	)
+
+	gate_invocations.record("source_population")
+	_run_restore_prerequisite_gate_stage(
+		"source_populated",
+		lambda: populate_authority_capture_database(
+			RESTORE_PREREQUISITE_SOURCE_DATABASE, env
+		),
+	)
+
+	gate_invocations.record("source_semantic")
+	source_semantic_result = _run_restore_prerequisite_gate_stage(
+		"source_semantic_authority",
+		lambda: capture_candidate_semantic_checkpoint(
+			work / "restore-prerequisite-source.json",
+			"source",
+			RESTORE_PREREQUISITE_SOURCE_DATABASE,
+			env,
+			source_binding=expected_source_binding,
+			secret_markers=secret_markers,
+		),
+	)
+	assert isinstance(source_semantic_result, tuple)
+	source_semantic_authority = source_semantic_result[1]
+
+	gate_invocations.record("source_dump")
+	dump_path = work / "restore-prerequisite-source.dump"
+	_run_restore_prerequisite_gate_stage(
+		"gate",
+		lambda: run(
+			[
+				str(tools["pg_dump"]),
+				"-Fc",
+				"-f",
+				str(dump_path),
+				RESTORE_PREREQUISITE_SOURCE_DATABASE,
+			],
+			env,
+		),
+	)
+
+	restore_checkpoints = _run_restore_prerequisite_gate_stage(
+		"archive_declaration_guarded",
+		lambda: restore_authority_capture_target(
+			dump_path,
+			RESTORE_PREREQUISITE_R1_DATABASE,
+			env,
+			tools["pg_restore"],
+			restore_invocations,
+		),
+	)
+	assert isinstance(restore_checkpoints, dict)
+	set_contract_urls(
+		env,
+		socket_dir,
+		port,
+		RESTORE_PREREQUISITE_R1_DATABASE,
+		RUNTIME_ROLE,
+	)
+
+	gate_invocations.record("restored_semantic")
+	restored_semantic_result = _run_restore_prerequisite_gate_stage(
+		"restored_once_semantic_authority",
+		lambda: capture_candidate_semantic_checkpoint(
+			work / "restore-prerequisite-restored-once.json",
+			"restored_once",
+			RESTORE_PREREQUISITE_R1_DATABASE,
+			env,
+			source_binding=expected_source_binding,
+			secret_markers=secret_markers,
+		),
+	)
+	assert isinstance(restored_semantic_result, tuple)
+	restored_semantic_authority = restored_semantic_result[1]
+	if source_semantic_authority != restored_semantic_authority:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"semantic_authority_equal", "semantic_authority_changed"
+			)
+		)
+
+	restore_policy = _run_restore_prerequisite_gate_stage(
+		"gate",
+		lambda: require_authority_restore_invocation_policy(
+			restore_invocations, (RESTORE_PREREQUISITE_R1_DATABASE,)
+		),
+	)
+	assert isinstance(restore_policy, dict)
+	invocation_policy = {
+		**gate_invocations.policy_results(),
+		**restore_policy,
+	}
+	if (
+		set(invocation_policy) != set(RESTORE_PREREQUISITE_INVOCATION_POLICIES)
+		or not all(invocation_policy.values())
+		or set(restore_checkpoints) != {
+			"archive_declaration_guarded",
+			"restore_database_fresh_template0",
+			"restore_pgcrypto_absent",
+			"restore_prerequisite_created",
+			"restored_once",
+		}
+		or not all(restore_checkpoints.values())
+	):
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"gate", "invocation_policy_failed"
+			)
+		)
+
+	end_binding = _run_restore_prerequisite_gate_stage(
+		"source_binding", frozen_source_binding
+	)
+	if end_binding != expected_source_binding:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"source_binding", "source_binding_changed"
+			)
+		)
+	end_toolchain_fingerprint = _run_restore_prerequisite_gate_stage(
+		"toolchain_authority",
+		lambda: postgres_toolchain_fingerprint(tools, env),
+	)
+	if end_toolchain_fingerprint != expected_toolchain_fingerprint:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"toolchain_authority", "toolchain_changed"
+			)
+		)
+	_run_restore_prerequisite_gate_stage(
+		"gate",
+		lambda: assert_postgres_logs_redact((log_path,), secret_markers),
+	)
+	receipt = restore_prerequisite_gate_receipt(
+		expected_source_binding,
+		expected_toolchain_fingerprint,
+		invocation_policy,
+	)
+	try:
+		return validate_restore_prerequisite_gate_receipt(receipt)
+	except TestFailure:
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"gate", "receipt_invalid"
+			)
+		) from None
+
+
 def run_authority_candidate_capture(
 	socket_dir: Path,
 	port: int,
@@ -5885,20 +6824,14 @@ def run_authority_candidate_capture(
 	env: dict[str, str],
 	secret_markers: tuple[str, ...],
 	phase_a: PhaseAAuthorityReceipt | None = None,
+	*,
+	pg_dump_tool: Path = Path("pg_dump"),
+	pg_restore_tool: Path = Path("pg_restore"),
 ) -> dict[str, object]:
 	start_binding = frozen_source_binding()
 	if phase_a is not None:
 		validate_phase_b_source_delta(phase_a, start_binding)
-	pg_version = json.loads(psql(
-		"postgres",
-		"SELECT pg_catalog.json_build_object("
-		"'version',pg_catalog.current_setting('server_version'),"
-		"'version_num',pg_catalog.current_setting('server_version_num')::integer,"
-		"'major',pg_catalog.current_setting('server_version_num')::integer/10000)::text",
-		env,
-	))
-	if not isinstance(pg_version, dict) or pg_version.get("major") != 18:
-		raise TestFailure("authority candidate capture requires PostgreSQL major 18")
+	pg_version = capture_postgres_version(env)
 
 	create_database(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
 	set_contract_urls(
@@ -5935,27 +6868,24 @@ def run_authority_candidate_capture(
 		AUTHORITY_CAPTURE_DATABASE, env
 	)
 	provision_runtime(AUTHORITY_CAPTURE_DATABASE, RUNTIME_ROLE, env)
-	psql_as(
-		RUNTIME_ROLE,
-		AUTHORITY_CAPTURE_DATABASE,
-		"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
-		"('10000000-0000-4000-8000-000000001300','XY-1300 capture fixture')",
-		env,
-	)
+	populate_authority_capture_database(AUTHORITY_CAPTURE_DATABASE, env)
 
 	source_path = work / "authority-candidate-source.json"
-	dump_schema_manifest(
-		source_path, AUTHORITY_CAPTURE_DATABASE, env, structured_errors=True
-	)
 	if phase_a is None:
-		source, source_semantic_authority = load_candidate_capture_manifest(
-			source_path,
-			"source",
-			AUTHORITY_CAPTURE_DATABASE,
-			source_binding=start_binding,
-			secret_markers=secret_markers,
+		source, source_semantic_authority, source_manifests = (
+			capture_candidate_semantic_checkpoint(
+				source_path,
+				"source",
+				AUTHORITY_CAPTURE_DATABASE,
+				env,
+				source_binding=start_binding,
+				secret_markers=secret_markers,
+			)
 		)
 	else:
+		dump_schema_manifest(
+			source_path, AUTHORITY_CAPTURE_DATABASE, env, structured_errors=True
+		)
 		source = load_capture_manifest(
 			source_path,
 			"source",
@@ -5964,13 +6894,13 @@ def run_authority_candidate_capture(
 			secret_markers=secret_markers,
 		)
 		source_semantic_authority = require_capture_semantic_authority(source)
-	source_manifests = require_capture_components(
-		source,
-		"source",
-		AUTHORITY_CAPTURE_DATABASE,
-		source_binding=start_binding,
-		secret_markers=secret_markers,
-	)
+		source_manifests = require_capture_components(
+			source,
+			"source",
+			AUTHORITY_CAPTURE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
 	source_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_DATABASE, env)
 	source_runtime_authority = capture_runtime_authority(AUTHORITY_CAPTURE_DATABASE, env)
 	source_population = json.loads(psql(
@@ -5984,28 +6914,45 @@ def run_authority_candidate_capture(
 		raise TestFailure("authority candidate source database is not populated")
 
 	dump_path = work / "authority-candidate.dump"
-	run(["pg_dump", "-Fc", "-f", str(dump_path), AUTHORITY_CAPTURE_DATABASE], env)
-	create_database(AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
 	run(
-		["pg_restore", "--exit-on-error", "-d", AUTHORITY_CAPTURE_RESTORE_DATABASE,
-		 str(dump_path)],
+		[
+			str(pg_dump_tool),
+			"-Fc",
+			"-f",
+			str(dump_path),
+			AUTHORITY_CAPTURE_DATABASE,
+		],
 		env,
+	)
+	restore_invocations = AuthorityRestoreInvocations()
+	restore_authority_capture_target(
+		dump_path,
+		AUTHORITY_CAPTURE_RESTORE_DATABASE,
+		env,
+		pg_restore_tool,
+		restore_invocations,
 	)
 	set_contract_urls(env, socket_dir, port, AUTHORITY_CAPTURE_RESTORE_DATABASE, RUNTIME_ROLE)
 	restored_path = work / "authority-candidate-restored.json"
-	dump_schema_manifest(
-		restored_path, AUTHORITY_CAPTURE_RESTORE_DATABASE, env, structured_errors=True
-	)
 	if phase_a is None:
-		restored, restored_semantic_authority = load_candidate_capture_manifest(
-			restored_path,
-			"restored_once",
-			AUTHORITY_CAPTURE_RESTORE_DATABASE,
-			source_binding=start_binding,
-			secret_markers=secret_markers,
+		restored, restored_semantic_authority, restored_manifests = (
+			capture_candidate_semantic_checkpoint(
+				restored_path,
+				"restored_once",
+				AUTHORITY_CAPTURE_RESTORE_DATABASE,
+				env,
+				source_binding=start_binding,
+				secret_markers=secret_markers,
+			)
 		)
 		restored_capture_checkpoint = "restored_once"
 	else:
+		dump_schema_manifest(
+			restored_path,
+			AUTHORITY_CAPTURE_RESTORE_DATABASE,
+			env,
+			structured_errors=True,
+		)
 		restored = load_capture_manifest(
 			restored_path,
 			"restored",
@@ -6015,13 +6962,13 @@ def run_authority_candidate_capture(
 		)
 		restored_semantic_authority = require_capture_semantic_authority(restored)
 		restored_capture_checkpoint = "restored"
-	restored_manifests = require_capture_components(
-		restored,
-		restored_capture_checkpoint,
-		AUTHORITY_CAPTURE_RESTORE_DATABASE,
-		source_binding=start_binding,
-		secret_markers=secret_markers,
-	)
+		restored_manifests = require_capture_components(
+			restored,
+			restored_capture_checkpoint,
+			AUTHORITY_CAPTURE_RESTORE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
 	restored_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_RESTORE_DATABASE, env)
 	restored_runtime_authority = capture_runtime_authority(
 		AUTHORITY_CAPTURE_RESTORE_DATABASE, env
@@ -6038,34 +6985,38 @@ def run_authority_candidate_capture(
 
 	second_dump_path = work / "authority-candidate-restored-once.dump"
 	run([
-		"pg_dump", "-Fc", "-f", str(second_dump_path),
+		str(pg_dump_tool), "-Fc", "-f", str(second_dump_path),
 		AUTHORITY_CAPTURE_RESTORE_DATABASE,
 	], env)
-	create_database(AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, env)
-	run(
-		["pg_restore", "--exit-on-error", "-d", AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
-		 str(second_dump_path)],
+	restore_authority_capture_target(
+		second_dump_path,
+		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
 		env,
+		pg_restore_tool,
+		restore_invocations,
 	)
 	set_contract_urls(
 		env, socket_dir, port, AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, RUNTIME_ROLE
 	)
 	second_restored_path = work / "authority-candidate-restored-twice.json"
-	dump_schema_manifest(
-		second_restored_path,
-		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
-		env,
-		structured_errors=True,
-	)
 	if phase_a is None:
-		second_restored, second_restored_semantic_authority = load_candidate_capture_manifest(
+		second_restored, second_restored_semantic_authority, (
+			second_restored_manifests
+		) = capture_candidate_semantic_checkpoint(
 			second_restored_path,
 			"restored_twice",
 			AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+			env,
 			source_binding=start_binding,
 			secret_markers=secret_markers,
 		)
 	else:
+		dump_schema_manifest(
+			second_restored_path,
+			AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+			env,
+			structured_errors=True,
+		)
 		second_restored = load_capture_manifest(
 			second_restored_path,
 			"restored_twice",
@@ -6076,12 +7027,19 @@ def run_authority_candidate_capture(
 		second_restored_semantic_authority = require_capture_semantic_authority(
 			second_restored
 		)
-	second_restored_manifests = require_capture_components(
-		second_restored,
-		"restored_twice",
-		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
-		source_binding=start_binding,
-		secret_markers=secret_markers,
+		second_restored_manifests = require_capture_components(
+			second_restored,
+			"restored_twice",
+			AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+			source_binding=start_binding,
+			secret_markers=secret_markers,
+		)
+	require_authority_restore_invocation_policy(
+		restore_invocations,
+		(
+			AUTHORITY_CAPTURE_RESTORE_DATABASE,
+			AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE,
+		),
 	)
 	second_restored_ledger = capture_migration_ledger(
 		AUTHORITY_CAPTURE_SECOND_RESTORE_DATABASE, env
@@ -6345,7 +7303,9 @@ max_entry_bytes = 4096
 	config_path.chmod(0o600)
 
 
-def main() -> int | AuthorityCandidatePublication:
+def main() -> (
+	int | AuthorityCandidatePublication | RestorePrerequisiteGatePublication
+):
 	focused_work_items = sys.argv[1:] == ["--focus-work-items"]
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
 	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
@@ -6355,12 +7315,18 @@ def main() -> int | AuthorityCandidatePublication:
 	preparation_mode = sys.argv[1:] == ["--prepare-retained-title-core"]
 	capture_only = len(sys.argv) == 3 and sys.argv[1] == "--capture-authority-candidate"
 	acceptance_mode = len(sys.argv) == 4 and sys.argv[1] == "--accept-authority-candidate"
+	restore_prerequisite_mode = (
+		len(sys.argv) == 3 and sys.argv[1] == RESTORE_PREREQUISITE_CLI
+	)
 	capture_output = (
 		Path(sys.argv[3]) if acceptance_mode
 		else Path(sys.argv[2]) if capture_only
 		else None
 	)
-	authority_mode = capture_only or acceptance_mode
+	restore_prerequisite_output = (
+		Path(sys.argv[2]) if restore_prerequisite_mode else None
+	)
+	authority_mode = capture_only or acceptance_mode or restore_prerequisite_mode
 	normal_aggregate = not (
 		focused_work_items or focused_managed_runs or focused_managed_repositories
 		or focused_continuation or focused_authority or focused_retained_title
@@ -6384,11 +7350,12 @@ def main() -> int | AuthorityCandidatePublication:
 				"--focus-managed-repositories|--focus-continuation|"
 				"--focus-authority-classification|--focus-retained-title-core|"
 				"--prepare-retained-title-core|"
+				"--capture-authority-restore-prerequisite ABSOLUTE_OUTPUT_PATH|"
 				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
 				"--accept-authority-candidate PHASE_A_RECEIPT ABSOLUTE_OUTPUT_PATH]"
 			)
 		source_binding = (
-			frozen_source_binding() if normal_aggregate
+			frozen_source_binding() if normal_aggregate or restore_prerequisite_mode
 			else staged_source_binding() if focused_retained_title else None
 		)
 		phase_a = (
@@ -6399,6 +7366,8 @@ def main() -> int | AuthorityCandidatePublication:
 			validate_phase_b_source_delta(phase_a, frozen_source_binding())
 		if capture_output is not None:
 			validate_authority_candidate_output_path(capture_output)
+		if restore_prerequisite_output is not None:
+			validate_restore_prerequisite_output_path(restore_prerequisite_output)
 		temp_root: Path | None = None
 		temp_root_value = os.environ.get("DECODEX_TEST_TEMP_ROOT")
 		if temp_root_value:
@@ -6422,15 +7391,20 @@ def main() -> int | AuthorityCandidatePublication:
 				)
 			temp_root = default_root.resolve(strict=True)
 		tools: dict[str, Path] = {}
-		for name in ("initdb", "pg_ctl", "psql", "pg_dump", "pg_restore"):
+		for name in POSTGRES_TOOL_NAMES:
 			location = shutil.which(name)
 			if location is None:
 				raise TestFailure(f"required PostgreSQL tool is unavailable: {name}")
 			tools[name] = Path(location).resolve(strict=True)
+		toolchain_fingerprint = (
+			postgres_toolchain_fingerprint(tools, os.environ.copy())
+			if restore_prerequisite_mode else None
+		)
 		return {
 			"phase_a": phase_a,
 			"source_binding": source_binding,
 			"temp_root": temp_root,
+			"toolchain_fingerprint": toolchain_fingerprint,
 			"tools": tools,
 		}
 	preflight = (
@@ -6448,16 +7422,24 @@ def main() -> int | AuthorityCandidatePublication:
 	if phase_a is not None and not isinstance(phase_a, PhaseAAuthorityReceipt):
 		raise HarnessCorruption("configuration preflight Phase A state is invalid")
 	source_binding = preflight["source_binding"]
-	if (normal_aggregate or focused_retained_title) and not isinstance(
+	if (
+		normal_aggregate or focused_retained_title or restore_prerequisite_mode
+	) and not isinstance(
 		source_binding, dict
 	):
 		raise HarnessCorruption("configuration preflight source binding is invalid")
 	temp_root = preflight["temp_root"]
+	toolchain_fingerprint = preflight["toolchain_fingerprint"]
 	tools = preflight["tools"]
 	if temp_root is not None and not isinstance(temp_root, Path):
 		raise HarnessCorruption("configuration preflight temporary root is invalid")
 	if not isinstance(tools, dict):
 		raise HarnessCorruption("configuration preflight result is invalid")
+	if restore_prerequisite_mode and (
+		not isinstance(toolchain_fingerprint, str)
+		or re.fullmatch(r"[0-9a-f]{64}", toolchain_fingerprint) is None
+	):
+		raise HarnessCorruption("configuration preflight toolchain binding is invalid")
 	work: Path | None = None
 	data_dir: Path | None = None
 	socket_dir: Path | None = None
@@ -6482,6 +7464,8 @@ def main() -> int | AuthorityCandidatePublication:
 					"decodex-xy1364-authority-" if focused_authority else
 					"decodex-xy1368-boundary-" if focused_retained_title else
 					"decodex-xy1368-preparation-" if preparation_mode else
+					"decodex-xy1421-restore-prerequisite-"
+					if restore_prerequisite_mode else
 					"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
 				dir=temp_root,
 			))
@@ -6667,6 +7651,28 @@ def main() -> int | AuthorityCandidatePublication:
 			if orchestrator.primary_failure is not None:
 				raise orchestrator.primary_failure
 			return 0
+		if restore_prerequisite_output is not None:
+			if (
+				not isinstance(source_binding, dict)
+				or not isinstance(toolchain_fingerprint, str)
+			):
+				raise HarnessCorruption(
+					"restore prerequisite preflight binding is invalid"
+				)
+			restore_prerequisite_receipt = run_restore_prerequisite_gate(
+				socket_dir,
+				port,
+				work,
+				log_path,
+				env,
+				(role_setting_canary_guc, role_setting_secret_canary),
+				source_binding,
+				tools,
+				toolchain_fingerprint,
+			)
+			return RestorePrerequisiteGatePublication(
+				restore_prerequisite_output, restore_prerequisite_receipt
+			)
 		if capture_output is not None:
 			capture_receipt = run_authority_candidate_capture(
 				socket_dir,
@@ -6676,6 +7682,8 @@ def main() -> int | AuthorityCandidatePublication:
 				env,
 				(role_setting_canary_guc, role_setting_secret_canary),
 				phase_a,
+				pg_dump_tool=tools["pg_dump"],
+				pg_restore_tool=tools["pg_restore"],
 			)
 			return AuthorityCandidatePublication(capture_output, capture_receipt)
 		if orchestrator is None or (
@@ -8025,8 +9033,10 @@ def main() -> int | AuthorityCandidatePublication:
 					stop_failures.append(f"immediate shutdown failed:\n{error}")
 				status = teardown_status()
 		stop_diagnostics = "\n\n".join(stop_failures)
-		if stop_diagnostics:
+		if stop_diagnostics and not restore_prerequisite_mode:
 			stop_diagnostics = f"\n\nShutdown diagnostics:\n{stop_diagnostics}"
+		elif restore_prerequisite_mode:
+			stop_diagnostics = ""
 		if status is ClusterStatus.RUNNING:
 			stop_error = TestFailure(
 				f"PostgreSQL is still running; retained isolated cluster at {work}"
@@ -8183,9 +9193,52 @@ def publish_completed_authority_candidate(
 	publish_authority_candidate(publication.output_path, publication.receipt)
 
 
+def publish_completed_restore_prerequisite_gate(
+	publication: RestorePrerequisiteGatePublication,
+) -> None:
+	receipt = validate_restore_prerequisite_gate_receipt(publication.receipt)
+	source_binding = receipt["source_binding"]
+	assert isinstance(source_binding, dict)
+	final_binding = frozen_source_binding()
+	if (
+		source_binding.get("start") != final_binding
+		or source_binding.get("end") != final_binding
+	):
+		raise RestorePrerequisiteGateDiagnostic(
+			restore_prerequisite_gate_diagnostic(
+				"receipt_publication", "source_binding_changed"
+			)
+		)
+	publish_restore_prerequisite_receipt(publication.output_path, receipt)
+
+
+def restore_prerequisite_gate_requested() -> bool:
+	return len(sys.argv) > 1 and sys.argv[1] == RESTORE_PREREQUISITE_CLI
+
+
 if __name__ == "__main__":
-	result = main()
-	if isinstance(result, AuthorityCandidatePublication):
-		publish_completed_authority_candidate(result)
-		raise SystemExit(0)
-	raise SystemExit(result)
+	try:
+		result = main()
+		if isinstance(result, AuthorityCandidatePublication):
+			publish_completed_authority_candidate(result)
+			exit_code = 0
+		elif isinstance(result, RestorePrerequisiteGatePublication):
+			publish_completed_restore_prerequisite_gate(result)
+			exit_code = 0
+		else:
+			exit_code = result
+	except BaseException as error:
+		if not restore_prerequisite_gate_requested():
+			raise
+		if isinstance(error, SemanticAuthorityDiagnostic):
+			diagnostic = error.serialized
+		elif isinstance(error, RestorePrerequisiteGateDiagnostic):
+			diagnostic = error.serialized
+		else:
+			diagnostic = restore_prerequisite_gate_diagnostic("gate", "stage_failed")
+		try:
+			print(diagnostic, file=sys.stderr, flush=True)
+		except BaseException:
+			pass
+		exit_code = 1
+	raise SystemExit(exit_code)

@@ -240,6 +240,27 @@ remain generic. Authority digest changes use two explicit phases. Phase A's capt
 18 mode migrates and provisions a non-default runtime principal, captures normalized manifests at
 source S0, first restore R1, and second restore R2 without constructing `PostgresStore`, and
 uses the same finalized semantic-authority contract as production readiness at every checkpoint.
+One shared restore-target prerequisite now owns the future Phase A R1 and R2 boundary and the
+separate one-shot R1 prerequisite gate. Before target creation, a closed PostgreSQL 18
+`pg_restore` list parser privately proves that the custom archive has exactly one active
+`pgcrypto` extension declaration. It rejects absent, duplicate, disabled, malformed, or ambiguous
+declarations without retaining or publishing raw TOC data. After the guard, the helper creates a
+fresh `template0` target, proves that `pgcrypto` is absent, and connects as the migration role to
+execute exactly
+`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public VERSION '1.4';`. The ordinary restore
+keeps `--exit-on-error` under the bootstrap identity and adds no owner, ACL, role, or session
+authorization override. No migration or runtime provisioning follows a restore.
+
+The new `--capture-authority-restore-prerequisite` gate binds one clean HEAD and tree, the selected
+PostgreSQL 18 toolchain, a versioned gate schema, and one definition fingerprint. It creates,
+migrates, provisions, populates, and semantically verifies S0 once; dumps once; guards and restores
+fresh R1 once; and runs the same full semantic owner once at R1. Explicit in-process counters reject
+a duplicate prerequisite or restore. The gate stops before R2, digest derivation, candidate
+publication, Phase B, and the aggregate. Its immutable private receipt contains only fixed
+checkpoints, fixed invocation-policy Booleans, source and definition bindings, and
+`acceptance=false`. Failures use a closed gate diagnostic or the existing closed semantic
+diagnostic. The Manager owns cross-process one-shot authorization. A pass permits only a later
+decision about revised Phase A. This source is unexecuted and does not establish acceptance.
 Rust is the sole owner of this closed, ordered, typed contract. It preserves the prior 39
 predicate descriptors and appends one unsafe identity for unexpected runtime-executable
 security-definer authority. Finalization rejects a missing, duplicate, unknown, reordered, or

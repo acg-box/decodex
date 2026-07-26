@@ -234,6 +234,11 @@ PostgreSQL authority digest changes use an explicit derivation phase followed by
 phase:
 
 ```sh
+# Run the one-shot R1 prerequisite gate only when the Manager authorizes this exact clean tree.
+python3 scripts/vnext/postgres_store_test.py \
+  --capture-authority-restore-prerequisite \
+  /absolute/private/directory/postgres-restore-prerequisite-r1.json
+
 # Run Phase A from one clean committed repaired pre-digest tree.
 python3 scripts/vnext/postgres_store_test.py \
   --capture-authority-candidate /absolute/private/directory/postgres-authority-candidate.json
@@ -244,6 +249,38 @@ python3 scripts/vnext/postgres_store_test.py \
   /absolute/private/directory/postgres-authority-candidate.json \
   /absolute/private/directory/postgres-authority-acceptance.json
 ```
+
+`--capture-authority-restore-prerequisite` is the only spelling for the new gate. It is not a
+focused mode, Phase A, Phase B, or the aggregate. Its output path must be absolute, outside the
+source tree, in an exact operator-owned private directory, and absent before the command starts.
+The Manager authorizes one invocation on one exact clean HEAD and tree. The gate does not provide
+cross-process once-only state.
+
+The gate creates S0 once with the unchanged authority-mode setup. It migrates, provisions,
+populates, and runs the complete Rust semantic-authority owner once. It creates one custom dump.
+Before it creates R1, it uses the selected PostgreSQL 18 `pg_restore` to inspect the private TOC.
+The closed PostgreSQL 18 list parser requires one active `pgcrypto` `EXTENSION` declaration. It
+rejects an absent, duplicate, disabled, malformed, or ambiguous declaration. The guard does not
+retain or publish a TOC line, owner, ACL, OID, role, SQL, connection, path, or discovered object.
+
+After the guard passes, the shared restore helper creates R1 from `template0`. It connects as the
+canonical migration role and proves that `pgcrypto` is absent. It then executes exactly
+`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public VERSION '1.4';`. The ordinary
+`pg_restore --exit-on-error` command stays under the bootstrap identity. It does not use `--role`,
+`--use-set-session-authorization`, `--no-owner`, or `--no-acl`. The helper does not run a migration
+or runtime provisioning after restore. The full Rust semantic-authority owner runs once at R1.
+The same guard and helper own each future Phase A R1 and R2 target.
+
+The gate stops after R1 for every outcome. It does not create R2, derive a manifest digest,
+publish an authority candidate, run Phase B, or run the aggregate. A pass publishes one immutable,
+create-only, mode-0600, fsynced
+`decodex/postgres-restore-prerequisite-r1-gate/1` receipt. The receipt has `acceptance=false`. It
+contains the exact source binding, PostgreSQL toolchain fingerprint, definition fingerprint
+`2fc0260f16424d155ccd54daf25a0c43445b26744ebbae0772487266b7db46b5`, fixed successful
+checkpoints, and fixed invocation-policy Booleans. It contains no raw database or command data.
+Failure emits only `decodex/postgres-restore-prerequisite-r1-diagnostic/1` or the existing closed
+semantic-authority diagnostic. A pass authorizes only a later decision about revised Phase A.
+This source is unexecuted, and it makes no acceptance claim.
 
 Phase A must start from one clean committed repaired tree. Its mismatch array is the exact ordered
 subset of `schema`, then `configured_authority`: it may be empty, contain either one component, or
