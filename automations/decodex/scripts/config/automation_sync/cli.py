@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
         "--manifest",
         action="append",
         default=[],
-        help="Automation manifest path. Defaults to the current upstream manifest.",
+        help="Automation manifest path. Defaults to the current upstream and content manifests.",
     )
     parser.add_argument("--codex-home", default=default_codex_home(), help="Codex home path.")
     parser.add_argument(

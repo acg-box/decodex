@@ -58,8 +58,8 @@ Automation source is checked in under:
 
 - `automations/upstream/`: current standalone upstream maintenance, independent
   review/landing, health supervision, deterministic cursor/lease state, and policy.
-- `automations/decodex/`: shared config tooling plus reusable Publisher schemas and
-  skills.
+- `automations/decodex/`: the current Content Manager and browser Publisher
+  definitions, shared config tooling, Publisher schemas, and skills.
 - `automations/radar/`: reusable Radar evidence tooling and skills.
 
 These are portable sources. Live Codex App configs under `$CODEX_HOME/automations/*/automation.toml` are generated and machine-local. Source manifests use relative paths and `{repo_root}` placeholders. Runtime cwd is always the primary checkout owning `main`: the installer rejects linked-worktree runtime roots and the evaluator treats any managed `.worktrees` cwd as a P0 failure. The installer also refuses configured private fragments such as absolute user-home paths, auth files, account files, or runtime databases (`automations/decodex/README.md`).
@@ -70,10 +70,11 @@ Commands:
 python3 automations/decodex/scripts/config/sync_automations.py
 python3 automations/decodex/scripts/config/sync_automations.py --apply
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
+python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
 python3 -m unittest automations.upstream.tests.test_upstream_autopilot
 ```
 
-The current operating loop has three explicit owners:
+The upstream operating loop has three explicit owners:
 
 - Upstream Maintainer polls hourly, preserves a complete first-parent cursor, observes
   stable and prerelease tags, generates stable and experimental schemas from the exact
@@ -88,7 +89,21 @@ The current operating loop has three explicit owners:
   `main`, and cleans the exact lane.
 - Upstream Health verifies live config, two-hour observation freshness, cursor
   continuity, six-hour review SLA, lease expiry, retry budgets, and current schema
-  evidence.
+  evidence. It also reconciles the two content definitions and validates existing
+  social artifacts without opening X.
+
+The content loop has two explicit owners:
+
+- Content Manager runs every six hours. It uses official sources, internal Radar
+  evidence, landed Decodex evidence, and bounded outcome records to produce one
+  source-backed candidate or one justified quality skip.
+- X Browser Publisher runs every two hours. It validates and reserves one candidate,
+  publishes through browser control as `@decodexspace`, reads the final URL, restores
+  the initial X account, and records due 24-hour or seven-day outcomes.
+- Upstream Health supervises all five managed definitions and queues a bounded
+  `content_loop_degraded` code-improvement candidate when content validation, strategy,
+  candidate handling, outcome collection, or account restoration misses its service
+  level.
 
 None of these tasks uses Decodex server, MCP, Program Intake, Linear, or tracker state.
 The installed Decodex CLI is used only for commit and landing. Scheduled cwds remain
@@ -96,11 +111,15 @@ the primary `main` checkout; temporary implementation and review worktrees are
 per-run resources, not automation bindings. Upstream text is untrusted data and is
 never executed. Candidate code runs only in the wrapper's credential-free,
 external-network-denied macOS sandbox. Generated state is bounded, local-only, and
-excludes prompt text, logs, credentials, account identifiers, and personal data.
+excludes prompt text, logs, credentials, private account identifiers, and personal
+data. Local browser evidence may contain only the two schema-bound public X handles
+that prove account switching and restoration. Social and strategy records are never
+committed or archived to Git.
 
-The obsolete Publisher, Radar review, release curator, retention, health evaluator,
-daily review, Manager, and weekly growth manifests and prompts were deleted. They
-cannot be installed or reactivated by the default sync path.
+The old Publisher, Radar review, release curator, retention, health evaluator, daily
+review, Manager, and weekly growth task graph remains retired. The current
+`decodex-content-manager` and `decodex-x-browser-publisher` definitions are a new
+two-task contract and do not consume legacy task state.
 
 Do not copy full automation prompts into OpenWiki. Summarize boundaries and link to source files when a task needs details.
 
@@ -134,14 +153,22 @@ Source entrypoints:
 - `social_candidate/v1`
 - `social_publish_reservation/v1`
 - `social_post/v1`
+- `social_outcome/v1`
+- `social_strategy/v1`
+- one serialized X browser lease
 - social artifact validation and reservation workflows
 
-Generated Publisher state belongs under `.agent/automations/decodex/cache/social`. Publisher consumes Radar handoff evidence, but must not refresh upstream state or perform fresh upstream source analysis (`automations/decodex/README.md`). See [Radar Publisher contracts](radar-publisher-contracts.md) for reservation and social artifact boundaries.
+Generated Publisher state belongs under `.agent/automations/decodex/cache/social`.
+Publisher consumes Radar handoff evidence, but must not refresh upstream state or
+perform fresh upstream source analysis (`automations/decodex/README.md`). X reads and
+writes use browser control only. X MCP and X API are outside this workflow. See
+[Radar Publisher contracts](radar-publisher-contracts.md) for reservation and social
+artifact boundaries.
 
 Example command:
 
 ```sh
-decodex-publisher validate-social .agent/automations/decodex/cache/social/x
+decodex-publisher validate-social
 ```
 
 ## Native Decodex App
