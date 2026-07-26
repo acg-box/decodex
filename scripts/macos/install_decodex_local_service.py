@@ -40,8 +40,13 @@ MAX_ACCOUNT_FILE_BYTES = 4 * 1024 * 1024
 MAX_ACCOUNT_LINE_BYTES = 128 * 1024
 MAX_CONFIG_FILE_BYTES = 1024 * 1024
 MAX_MAPPING_FILE_BYTES = 64 * 1024
+MAX_LAUNCH_AGENT_FILE_BYTES = 64 * 1024
 MAX_POSTGRES_VERSION_BYTES = 16
 LEGACY_LOCK_TIMEOUT_SECONDS = 5
+LOCAL_SERVICE_SETTLEMENT_TIMEOUT_SECONDS = 300
+LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS = 0.25
+LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS = 5
+LAUNCHCTL_PRINT_NOT_FOUND_STATUS = 113
 MAX_ACCOUNTS = 64
 MAX_ACCESS_TOKEN_BYTES = 64 * 1024
 MAX_ACCOUNT_ID_BYTES = 1_024
@@ -72,6 +77,26 @@ HEX_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 class InstallError(RuntimeError):
     """A value-free local-service installation failure."""
+
+
+@dataclass(frozen=True)
+class ProcessIdentity:
+    process_id: int
+    started_at: str
+
+
+@dataclass(frozen=True)
+class ProcessRecord:
+    parent_id: int
+    identity: ProcessIdentity
+
+
+@dataclass(frozen=True)
+class ServiceObservation:
+    loaded: bool
+    active_process_id: int | None
+    root: ProcessIdentity | None
+    generation: frozenset[ProcessIdentity]
 
 
 @dataclass(frozen=True)
@@ -793,8 +818,10 @@ def render_launch_agent(paths: InstallPaths) -> bytes:
             "PATH": launch_agent_path(paths),
         },
         "RunAtLoad": True,
-        "KeepAlive": True,
-        "ExitTimeOut": 360,
+        # A successful supervised drain leaves the loaded job inactive until the installer
+        # removes it. Unexpected failures remain restartable.
+        "KeepAlive": {"SuccessfulExit": False},
+        "ExitTimeOut": 60,
         "ThrottleInterval": 5,
         "ProcessType": "Background",
         "WorkingDirectory": str(paths.repository),
@@ -1005,6 +1032,8 @@ def wait_for_postgres(paths: InstallPaths, process: subprocess.Popen[Any]) -> No
                 str(paths.socket_directory),
                 "-p",
                 str(POSTGRES_PORT),
+                "-d",
+                "postgres",
             ],
             capture=True,
             check=False,
@@ -1225,26 +1254,240 @@ def migrate_and_provision(paths: InstallPaths, env: dict[str, str]) -> None:
     harness.provision_runtime(POSTGRES_DATABASE, POSTGRES_RUNTIME_ROLE, env)
 
 
-def bootout_service(uid: int) -> None:
-    service = f"gui/{uid}/{LAUNCH_AGENT_LABEL}"
-    completed = run(
-        ["launchctl", "bootout", service],
-        capture=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        loaded = run(
-            ["launchctl", "print", service],
+def parse_launch_agent_pid(output: str) -> int | None:
+    match = re.search(r"^\s*pid = ([1-9][0-9]*)\s*$", output, re.MULTILINE)
+    return int(match.group(1)) if match is not None else None
+
+
+def settlement_command_timeout(
+    deadline: float,
+    maximum: float = LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS,
+) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise InstallError("existing local service did not settle")
+    return min(maximum, remaining)
+
+
+def run_settlement_command(
+    command: list[str],
+    deadline: float,
+    failure: str,
+    maximum_timeout: float = LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return run(
+            command,
             capture=True,
             check=False,
+            timeout=settlement_command_timeout(deadline, maximum_timeout),
         )
-        if loaded.returncode == 0:
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise InstallError(failure) from error
+
+
+def process_parent_map(deadline: float) -> dict[int, ProcessRecord]:
+    completed = run_settlement_command(
+        ["/bin/ps", "-axo", "pid=,ppid=,lstart="],
+        deadline,
+        "local service process inventory is unavailable",
+    )
+    if completed.returncode != 0:
+        raise InstallError("local service process inventory is unavailable")
+    processes: dict[int, ProcessRecord] = {}
+    for line in completed.stdout.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if (
+            len(fields) < 3
+            or not all(field.isascii() and field.isdecimal() for field in fields[:2])
+        ):
+            raise InstallError("local service process inventory is malformed")
+        process_id, parent_id = (int(field) for field in fields[:2])
+        started_at = " ".join(fields[2:])
+        if (
+            process_id <= 0
+            or parent_id < 0
+            or process_id in processes
+            or len(started_at) > 128
+            or contains_control(started_at)
+        ):
+            raise InstallError("local service process inventory is malformed")
+        processes[process_id] = ProcessRecord(
+            parent_id=parent_id,
+            identity=ProcessIdentity(process_id=process_id, started_at=started_at),
+        )
+    return processes
+
+
+def process_generation(
+    root_process_id: int, processes: dict[int, ProcessRecord]
+) -> frozenset[ProcessIdentity]:
+    if root_process_id not in processes:
+        return frozenset()
+    generation_process_ids = {root_process_id}
+    changed = True
+    while changed:
+        changed = False
+        for process_id, record in processes.items():
+            if (
+                record.parent_id in generation_process_ids
+                and process_id not in generation_process_ids
+            ):
+                generation_process_ids.add(process_id)
+                changed = True
+    return frozenset(
+        processes[process_id].identity for process_id in generation_process_ids
+    )
+
+
+def wait_for_process_generation_exit(
+    process_identities: set[ProcessIdentity], deadline: float
+) -> None:
+    if not process_identities:
+        return
+    while True:
+        current = process_parent_map(deadline)
+        live = {
+            identity
+            for identity in process_identities
+            if current.get(identity.process_id) is not None
+            and current[identity.process_id].identity == identity
+        }
+        if not live:
+            return
+        if time.monotonic() >= deadline:
+            raise InstallError("existing local service did not settle")
+        time.sleep(
+            min(
+                LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS,
+                max(0, deadline - time.monotonic()),
+            )
+        )
+
+
+def installed_launch_agent_supports_graceful_drain(path: Path, uid: int) -> bool:
+    try:
+        body = read_owned_file(
+            path,
+            uid,
+            MAX_LAUNCH_AGENT_FILE_BYTES,
+            "installed LaunchAgent is unavailable",
+        )
+        document = plistlib.loads(body)
+    except (InstallError, ValueError, plistlib.InvalidFileException):
+        return False
+    if not isinstance(document, dict) or document.get("Label") != LAUNCH_AGENT_LABEL:
+        return False
+    keep_alive = document.get("KeepAlive")
+    return (
+        isinstance(keep_alive, dict)
+        and set(keep_alive) == {"SuccessfulExit"}
+        and keep_alive["SuccessfulExit"] is False
+        and type(document.get("ExitTimeOut")) is int
+        and document["ExitTimeOut"] == 60
+    )
+
+
+def observe_service(service: str, deadline: float) -> ServiceObservation:
+    completed = run_settlement_command(
+        ["/bin/launchctl", "print", service],
+        deadline,
+        "local service state is unavailable",
+    )
+    if completed.returncode == LAUNCHCTL_PRINT_NOT_FOUND_STATUS:
+        return ServiceObservation(False, None, None, frozenset())
+    if completed.returncode != 0:
+        raise InstallError("local service state is unavailable")
+    root_process_id = parse_launch_agent_pid(completed.stdout)
+    if root_process_id is None:
+        return ServiceObservation(True, None, None, frozenset())
+    generation = process_generation(root_process_id, process_parent_map(deadline))
+    root = next(
+        (
+            identity
+            for identity in generation
+            if identity.process_id == root_process_id
+        ),
+        None,
+    )
+    return ServiceObservation(True, root_process_id, root, generation)
+
+
+def drain_service(
+    service: str,
+    observation: ServiceObservation,
+    captured: set[ProcessIdentity],
+    deadline: float,
+) -> ServiceObservation:
+    signaled: set[ProcessIdentity] = set()
+    current = observation
+    while current.loaded and current.active_process_id is not None:
+        captured.update(current.generation)
+        if current.root is not None and current.root not in signaled:
+            completed = run_settlement_command(
+                ["/bin/launchctl", "kill", "SIGTERM", service],
+                deadline,
+                "existing local service could not be signaled",
+            )
+            if completed.returncode == 0:
+                signaled.add(current.root)
+            else:
+                after_failure = observe_service(service, deadline)
+                captured.update(after_failure.generation)
+                if after_failure.root == current.root:
+                    raise InstallError("existing local service could not be signaled")
+                current = after_failure
+                continue
+        time.sleep(
+            min(
+                LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS,
+                max(0, deadline - time.monotonic()),
+            )
+        )
+        current = observe_service(service, deadline)
+    captured.update(current.generation)
+    return current
+
+
+def bootout_service(paths: InstallPaths, uid: int) -> None:
+    deadline = time.monotonic() + LOCAL_SERVICE_SETTLEMENT_TIMEOUT_SECONDS
+    service = f"gui/{uid}/{LAUNCH_AGENT_LABEL}"
+    observed = observe_service(service, deadline)
+    generation = set(observed.generation)
+    if installed_launch_agent_supports_graceful_drain(paths.launch_agent, uid):
+        observed = drain_service(service, observed, generation, deadline)
+
+    try:
+        completed = run_settlement_command(
+            ["/bin/launchctl", "bootout", service],
+            deadline,
+            "existing local service could not be stopped",
+            LOCAL_SERVICE_SETTLEMENT_TIMEOUT_SECONDS,
+        )
+    except InstallError:
+        wait_for_process_generation_exit(generation, deadline)
+        raise
+    if completed.returncode != 0:
+        loaded = observe_service(service, deadline)
+        generation.update(loaded.generation)
+        if loaded.loaded:
             raise InstallError("existing local service could not be stopped")
+    wait_for_process_generation_exit(generation, deadline)
 
 
 def bootstrap_service(paths: InstallPaths, uid: int) -> None:
-    run(["launchctl", "bootstrap", f"gui/{uid}", str(paths.launch_agent)])
-    run(["launchctl", "kickstart", "-k", f"gui/{uid}/{LAUNCH_AGENT_LABEL}"])
+    service = f"gui/{uid}/{LAUNCH_AGENT_LABEL}"
+    commands = (
+        ["/bin/launchctl", "bootstrap", f"gui/{uid}", str(paths.launch_agent)],
+        ["/bin/launchctl", "kickstart", service],
+    )
+    for command in commands:
+        try:
+            run(command, timeout=LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            raise InstallError("local service could not be started") from error
 
 
 def query_reset_card(
@@ -1472,7 +1715,7 @@ def main(argv: list[str] | None = None) -> int:
     mapping = render_mapping(enrollments)
     launch_agent = render_launch_agent(paths)
 
-    bootout_service(uid)
+    bootout_service(paths, uid)
     initialize_cluster(paths, uid)
     postgres = start_temporary_postgres(paths)
     try:

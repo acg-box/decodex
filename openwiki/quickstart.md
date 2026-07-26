@@ -282,7 +282,16 @@ LaunchAgent. `decodexd supervise-local` owns the PostgreSQL and daemon process
 generations. A PostgreSQL generation change stops the daemon and makes the
 supervisor exit; launchd then starts one new coherent generation. An atomic
 credential-file replacement restarts only the daemon when its injected credential
-projection changes. Swift remains a client and owns none of these effects.
+projection changes. The LaunchAgent restarts only unsuccessful exits and retains a
+60-second final stop timeout. When the installed job has that exact contract, the
+installer first signals the loaded supervisor, waits for its bounded daemon and
+PostgreSQL drain to leave the job inactive, and only then removes the job. The one-time
+legacy path removes the old job directly. Both paths bind observed processes by PID and
+full start time and wait at most 300 seconds before provisioning a replacement. Reset Card
+discovery, account binding, provider access, and typed results remain Rust runtime work.
+On macOS, the runtime starts the final canonical Codex image suspended and verifies it
+against its immutable snapshot before resume so process-aware network extensions can apply
+the correct route. Swift remains a client and owns none of these effects.
 
 ## First commands
 
