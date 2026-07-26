@@ -1,5 +1,6 @@
 //! Runtime-owned PostgreSQL authorization and bounded process-capacity composition.
 
+#[cfg(target_os = "macos")] mod macos_attested_spawn;
 mod process;
 mod protocol;
 mod reset_card;
