@@ -18,7 +18,7 @@ import time
 from typing import Any, Mapping, Sequence
 
 
-STATE_SCHEMA = "decodex/codex-upstream-state/2"
+STATE_SCHEMA = "decodex/codex-upstream-state/3"
 RESULT_SCHEMA = "decodex/codex-upstream-command-result/1"
 POLICY_SCHEMA = "decodex/codex-upstream-policy/2"
 POLICY_KEYS = {
@@ -41,6 +41,8 @@ POLICY_KEYS = {
     "required_experimental_request_methods",
     "required_stable_request_methods",
     "required_notification_methods",
+    "sandbox_incompatible_exact_paths",
+    "sandbox_incompatible_path_prefixes",
     "relevant_path_prefixes",
 }
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -100,6 +102,7 @@ VALIDATION_AUTHORITY_PATHS = {
     "Makefile.toml",
     "automations/upstream/policy.json",
     "scripts/audit_node_lock.py",
+    "tests/scripts/test_gate_contract.py",
 }
 VALIDATION_AUTHORITY_PREFIXES = (
     "automations/upstream/scripts/",
@@ -199,6 +202,7 @@ CANDIDATE_KEYS = {
     "next_retry_at",
     "retry_role",
     "lease",
+    "handoff",
     "effect",
     "commit_receipt",
     "pull_request",
@@ -732,6 +736,7 @@ def validate_candidate_result(candidate: dict[str, Any]) -> None:
                     "land_execution_receipt_sha256",
                     "decision_receipt_sha256",
                     "reviewer_receipt",
+                    "reviewer_handoff",
                     "resolved_at",
                 },
             )
@@ -781,7 +786,10 @@ def validate_candidate_result(candidate: dict[str, Any]) -> None:
         return
     if outcome == "repair_requested":
         if (
-            not has_exact_keys(result, {"outcome", "finding_codes", "at"})
+            not has_exact_keys(
+                result,
+                {"outcome", "finding_codes", "reviewer_handoff", "at"},
+            )
             or not bounded_string_list(
                 result["finding_codes"],
                 pattern=REASON_PATTERN,
@@ -922,6 +930,31 @@ def load_policy(path: Path = DEFAULT_POLICY_PATH) -> dict[str, Any]:
     ):
         if not bounded_string_list(policy.get(key), pattern=METHOD_PATTERN):
             raise AutopilotError("policy_required_methods_invalid")
+    exact_paths = policy.get("sandbox_incompatible_exact_paths")
+    protected_prefixes = policy.get("sandbox_incompatible_path_prefixes")
+    if (
+        not bounded_string_list(exact_paths)
+        or not bounded_string_list(protected_prefixes)
+        or exact_paths != sorted(set(exact_paths))
+        or protected_prefixes != sorted(set(protected_prefixes))
+        or any(
+            Path(path).is_absolute()
+            or ".." in Path(path).parts
+            or path.endswith("/")
+            or "\\" in path
+            or any(ord(character) < 32 for character in path)
+            for path in exact_paths
+        )
+        or any(
+            Path(prefix).is_absolute()
+            or ".." in Path(prefix).parts
+            or not prefix.endswith("/")
+            or "\\" in prefix
+            or any(ord(character) < 32 for character in prefix)
+            for prefix in protected_prefixes
+        )
+    ):
+        raise AutopilotError("policy_sandbox_paths_invalid")
     prefixes = policy.get("relevant_path_prefixes")
     if not bounded_string_list(prefixes):
         raise AutopilotError("policy_relevant_paths_invalid")

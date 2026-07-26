@@ -69,6 +69,26 @@
     "turn/completed",
     "turn/started"
   ],
+  "sandbox_incompatible_exact_paths": [
+    "crates/decodex-runtime/src/account_launch.rs",
+    "crates/decodex-runtime/src/bootstrap.rs",
+    "crates/decodex-runtime/src/lib.rs",
+    "crates/decodex-runtime/tests/bootstrap_doctor.rs",
+    "scripts/vnext/exact_command_prototype.py",
+    "scripts/vnext/postgres_store_test.py",
+    "tests/scripts/test_exact_command_authority.py",
+    "tests/scripts/test_exact_role_profile_authority.py",
+    "tests/scripts/test_managed_run_authority.py",
+    "tests/scripts/test_postgres_authority_capture.py",
+    "tests/scripts/test_runtime_session_authority.py",
+    "tests/scripts/test_work_item_authority.py"
+  ],
+  "sandbox_incompatible_path_prefixes": [
+    ".github/workflows/",
+    "crates/decodex-postgres/",
+    "crates/decodex-runtime/src/account_launch/",
+    "spikes/vnext-storage/"
+  ],
   "relevant_path_prefixes": [
     "codex-rs/app-server/",
     "codex-rs/app-server-protocol/",

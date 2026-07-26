@@ -36,6 +36,7 @@ required_paths = [
 	"AGENTS.md",
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
+	"automations/upstream/scripts/run_upstream_autopilot",
 	"automations/upstream/scripts/upstream_autopilot.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
@@ -62,6 +63,7 @@ required_paths = [
 	"AGENTS.md",
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
+	"automations/upstream/scripts/run_upstream_autopilot",
 	"automations/upstream/scripts/upstream_autopilot.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
@@ -99,6 +101,7 @@ required_paths = [
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/automations.toml",
 	"automations/upstream/policy.json",
+	"automations/upstream/scripts/run_upstream_autopilot",
 	"automations/upstream/scripts/upstream_autopilot.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
@@ -111,4 +114,4 @@ required_paths = [
 	"openwiki/quickstart.md",
 	"scripts/audit_node_lock.py",
 ]
-rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=20;BYSECOND=0"
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=0;BYSECOND=0"
