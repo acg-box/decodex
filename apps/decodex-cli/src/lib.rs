@@ -510,7 +510,7 @@ mod tests {
 
 	fn report(statuses: impl IntoIterator<Item = DoctorStatus>) -> DoctorReport {
 		DoctorReport::new(
-			ServerId::new(SERVER_ID).unwrap(),
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			CURRENT_VERSION,
 			DoctorComponent::ALL
 				.into_iter()
@@ -518,18 +518,20 @@ mod tests {
 				.map(|(component, status)| DoctorCheck::new(component, status))
 				.collect(),
 		)
-		.unwrap()
+		.expect("test operation must succeed")
 	}
 
 	#[test]
 	fn command_surface_is_multi_command_without_aliases() {
 		Cli::command().debug_assert();
 
-		let doctor = Cli::try_parse_from(["decodex", "--profile", "remote", "doctor"]).unwrap();
-		let status = Cli::try_parse_from(["decodex", "status", "--output", "json"]).unwrap();
+		let doctor = Cli::try_parse_from(["decodex", "--profile", "remote", "doctor"])
+			.expect("test operation must succeed");
+		let status = Cli::try_parse_from(["decodex", "status", "--output", "json"])
+			.expect("test operation must succeed");
 		let commit =
 			Cli::try_parse_from(["decodex", "commit", "Exact candidate", "--manual-authority"])
-				.unwrap();
+				.expect("test operation must succeed");
 		let land = Cli::try_parse_from([
 			"decodex",
 			"land",
@@ -542,10 +544,10 @@ mod tests {
 			"--expected-head-oid",
 			"2222222222222222222222222222222222222222",
 		])
-		.unwrap();
+		.expect("test operation must succeed");
 		let git_hook =
 			Cli::try_parse_from(["decodex", "git-hook", "commit-msg", ".git/COMMIT_EDITMSG"])
-				.unwrap();
+				.expect("test operation must succeed");
 
 		assert_eq!(doctor.command, Command::Doctor);
 		assert_eq!(doctor.profile.as_deref(), Some("remote"));
@@ -584,7 +586,7 @@ mod tests {
 			"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162",
 			"doctor",
 		])
-		.unwrap();
+		.expect("test operation must succeed");
 		let debug = format!("{cli:?}");
 
 		assert!(!debug.contains(profile_marker));
@@ -627,8 +629,10 @@ mod tests {
 			assert!(human.text().contains(crate::issue_name(issue)));
 		}
 
-		let value: serde_json::Value = serde_json::from_str(json.text()).unwrap();
-		let decoded: DoctorReport = serde_json::from_value(value["report"].clone()).unwrap();
+		let value: serde_json::Value =
+			serde_json::from_str(json.text()).expect("test operation must succeed");
+		let decoded: DoctorReport =
+			serde_json::from_value(value["report"].clone()).expect("test operation must succeed");
 
 		assert_eq!(decoded, report);
 		assert_eq!(human.exit_code(), 1);
@@ -687,7 +691,8 @@ mod tests {
 				crate::render_failure(DiagnosticCommand::Doctor, OutputFormat::Human, failure);
 			let json =
 				crate::render_failure(DiagnosticCommand::Doctor, OutputFormat::Json, failure);
-			let value: serde_json::Value = serde_json::from_str(json.text()).unwrap();
+			let value: serde_json::Value =
+				serde_json::from_str(json.text()).expect("test operation must succeed");
 
 			assert_eq!(human.exit_code(), 2);
 			assert!(human.is_error_stream());
@@ -718,20 +723,24 @@ mod tests {
 	fn incomplete_ready_reports_render_as_closed_protocol_failures() {
 		let complete = report(vec![DoctorStatus::Ready; DoctorComponent::ALL.len()]);
 		let cases = [
-			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, Vec::new())
-				.unwrap(),
 			DoctorReport::new(
-				ServerId::new(SERVER_ID).unwrap(),
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
+				CURRENT_VERSION,
+				Vec::new(),
+			)
+			.expect("test operation must succeed"),
+			DoctorReport::new(
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				CURRENT_VERSION,
 				vec![DoctorCheck::new(DoctorComponent::Configuration, DoctorStatus::Ready)],
 			)
-			.unwrap(),
+			.expect("test operation must succeed"),
 			DoctorReport::new(
-				ServerId::new(SERVER_ID).unwrap(),
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				CURRENT_VERSION,
 				complete.checks()[1..].to_vec(),
 			)
-			.unwrap(),
+			.expect("test operation must succeed"),
 		];
 
 		for report in cases {
@@ -746,7 +755,8 @@ mod tests {
 				assert_eq!(output.exit_code(), 2);
 
 				if format == OutputFormat::Json {
-					let value: serde_json::Value = serde_json::from_str(output.text()).unwrap();
+					let value: serde_json::Value =
+						serde_json::from_str(output.text()).expect("test operation must succeed");
 
 					assert_eq!(value["failure"], "protocol_malformed");
 				}
@@ -761,8 +771,12 @@ mod tests {
 
 		checks.reverse();
 
-		let report =
-			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, checks).unwrap();
+		let report = DoctorReport::new(
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			CURRENT_VERSION,
+			checks,
+		)
+		.expect("test operation must succeed");
 		let output = crate::render_report(
 			DiagnosticCommand::Status,
 			OutputFormat::Json,

@@ -3,6 +3,7 @@
 use std::error::Error;
 
 use decodex_runtime::{ServerConfig, ServiceComposition};
+#[cfg(test)] use {libc as _, tempfile as _};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
