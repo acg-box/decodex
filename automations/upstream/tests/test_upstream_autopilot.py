@@ -2197,6 +2197,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
             self.assertEqual(
                 sandbox(
                     "from pathlib import Path; "
+                    f"Path({str(ROOT / 'Makefile.toml')!r}).read_bytes(); "
+                    "print('readable')"
+                ),
+                "readable",
+            )
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
                     f"print(Path({str(host_secret)!r}).read_text())"
                 ),
                 "",

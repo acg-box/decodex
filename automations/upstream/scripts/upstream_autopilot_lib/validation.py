@@ -1048,11 +1048,14 @@ def validation_sandbox_profile(
     candidate = worktree.resolve()
     home = real_home_directory()
     rustup_home = trusted_rustup_home()
+    trusted_makefile = root / "Makefile.toml"
     if (
         not candidate.is_dir()
         or not root.is_dir()
         or not temporary_home.is_dir()
         or not rustup_home.is_dir()
+        or trusted_makefile.is_symlink()
+        or not trusted_makefile.is_file()
     ):
         raise AutopilotError("validation_sandbox_path_invalid")
 
@@ -1119,6 +1122,9 @@ def validation_sandbox_profile(
         f"(allow file-read* (subpath {literal(path)}))"
         for path in readable
         if path.exists()
+    )
+    lines.append(
+        f"(allow file-read* (literal {literal(trusted_makefile)}))"
     )
     lines.extend(
         f"(allow file-write* (subpath {literal(path)}))" for path in writable
