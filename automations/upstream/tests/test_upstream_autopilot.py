@@ -2291,6 +2291,27 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 ),
                 "",
             )
+            self.assertEqual(
+                sandbox(
+                    "import subprocess; "
+                    "child = subprocess.Popen(['/bin/sleep', '1']); "
+                    "child.kill(); child.wait(timeout=2); "
+                    "print('terminated')"
+                ),
+                "terminated",
+            )
+            self.assertEqual(
+                sandbox(
+                    "import os, signal; "
+                    "\ntry:"
+                    "\n os.kill(os.getppid(), signal.SIGCONT)"
+                    "\nexcept PermissionError:"
+                    "\n print('denied')"
+                    "\nelse:"
+                    "\n print('allowed')"
+                ),
+                "denied",
+            )
 
             socket_path = temporary_home / "validation.sock"
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
