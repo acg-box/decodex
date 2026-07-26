@@ -1013,11 +1013,11 @@ mod tests {
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
 	fn typed(message: ServerMessage) -> Message {
-		Message::Text(serde_json::to_string(&message).unwrap().into())
+		Message::Text(serde_json::to_string(&message).expect("test operation must succeed").into())
 	}
 
 	fn initial(server_id: &str) -> Vec<Message> {
-		let server_id = ServerId::new(server_id).unwrap();
+		let server_id = ServerId::new(server_id).expect("test operation must succeed");
 
 		vec![
 			typed(ServerMessage::Welcome(ServerWelcome {
@@ -1039,7 +1039,7 @@ mod tests {
 
 	fn report() -> DoctorReport {
 		DoctorReport::new(
-			ServerId::new(SERVER_ID).unwrap(),
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			CURRENT_VERSION,
 			DoctorComponent::ALL
 				.into_iter()
@@ -1049,14 +1049,15 @@ mod tests {
 				})
 				.collect(),
 		)
-		.unwrap()
+		.expect("test operation must succeed")
 	}
 
 	fn result(report: DoctorReport) -> Message {
 		typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
-			server_id: ServerId::new(SERVER_ID).unwrap(),
-			query_id: crate::QueryId::new("decodex-cli-doctor").unwrap(),
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			query_id: crate::QueryId::new("decodex-cli-doctor")
+				.expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report),
 		}))
 	}
@@ -1064,51 +1065,58 @@ mod tests {
 	fn event(version: ProtocolVersion, server_id: &str) -> Message {
 		typed(ServerMessage::Event(EventEnvelope {
 			version,
-			server_id: ServerId::new(server_id).unwrap(),
+			server_id: ServerId::new(server_id).expect("test operation must succeed"),
 			cursor: Cursor(1),
 			channel: Channel::SystemHealth,
-			entity_id: EntityId::new("system").unwrap(),
+			entity_id: EntityId::new("system").expect("test operation must succeed"),
 			entity_revision: EntityRevision(1),
-			correlation_id: CorrelationId::new("doctor-correlation").unwrap(),
+			correlation_id: CorrelationId::new("doctor-correlation")
+				.expect("test operation must succeed"),
 			causation_id: None,
 			payload: EventPayload::SystemObservationRefreshed {
-				status: WireText::new("bounded").unwrap(),
+				status: WireText::new("bounded").expect("test operation must succeed"),
 			},
 		}))
 	}
 
 	fn refusal(server_id: &str, refusal: Refusal) -> Message {
 		typed(ServerMessage::Refusal(RefusalEnvelope {
-			server_id: ServerId::new(server_id).unwrap(),
+			server_id: ServerId::new(server_id).expect("test operation must succeed"),
 			refusal,
 		}))
 	}
 
 	fn local_transport() -> (TempDir, LocalTransportAuthority) {
-		let temp = TempDir::new().unwrap();
-		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let temp = TempDir::new().expect("test operation must succeed");
+		let root = DecodexRoot::new(
+			temp.path().canonicalize().expect("test operation must succeed").join(".decodex"),
+		)
+		.expect("test operation must succeed");
 		let paths = root.paths();
 
-		paths.ensure_layout().unwrap();
+		paths.ensure_layout().expect("test operation must succeed");
 
 		// SAFETY: `geteuid` has no arguments or failure return.
 		let service_owner_uid = unsafe { libc::geteuid() };
 		let authority =
 			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
-				.unwrap();
+				.expect("test operation must succeed");
 
 		(temp, authority)
 	}
 
 	#[test]
 	fn active_local_profile_uses_stable_identity_and_remote_uses_only_profile_data() {
-		let temp = TempDir::new().unwrap();
-		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let temp = TempDir::new().expect("test operation must succeed");
+		let root = DecodexRoot::new(
+			temp.path().canonicalize().expect("test operation must succeed").join(".decodex"),
+		)
+		.expect("test operation must succeed");
 		let paths = root.paths();
 
-		paths.ensure_layout().unwrap();
+		paths.ensure_layout().expect("test operation must succeed");
 
-		let identity = ServerIdentity::load_or_create(&paths).unwrap();
+		let identity = ServerIdentity::load_or_create(&paths).expect("test operation must succeed");
 		// SAFETY: `geteuid` has no arguments or failure return.
 		let service_owner_uid = unsafe { libc::geteuid() };
 		let config = format!(
@@ -1147,16 +1155,17 @@ max_entry_bytes = 0
 "#,
 		);
 
-		fs::write(paths.config_file(), config).unwrap();
+		fs::write(paths.config_file(), config).expect("test operation must succeed");
 
 		#[cfg(unix)]
 		{
 			fs::set_permissions(paths.config_file(), std::fs::Permissions::from_mode(0o600))
-				.unwrap();
+				.expect("test operation must succeed");
 		}
 
-		let local = ClientProfile::load(root.as_path(), None).unwrap();
-		let remote = ClientProfile::load(root.as_path(), Some("remote")).unwrap();
+		let local = ClientProfile::load(root.as_path(), None).expect("test operation must succeed");
+		let remote = ClientProfile::load(root.as_path(), Some("remote"))
+			.expect("test operation must succeed");
 
 		assert_eq!(local.name(), "local");
 		assert_eq!(local.kind(), ProfileKind::Local);
@@ -1172,8 +1181,9 @@ max_entry_bytes = 0
 		assert_eq!(remote.name(), "remote");
 		assert_eq!(remote.kind(), ProfileKind::Remote);
 		assert_eq!(remote.expected_server_id().as_str(), SERVER_ID);
-		let stricter =
-			remote.clone().with_expected_server_id(ServerId::new("retained-authority").unwrap());
+		let stricter = remote.clone().with_expected_server_id(
+			ServerId::new("retained-authority").expect("test operation must succeed"),
+		);
 		assert_eq!(stricter.name(), "remote");
 		assert_eq!(stricter.expected_server_id().as_str(), "retained-authority");
 		assert_eq!(
@@ -1196,12 +1206,13 @@ max_entry_bytes = 0
 			profile_name: "remote".into(),
 			kind: ProfileKind::Remote,
 			local_transport: None,
-			expected_server_id: ServerId::new(SERVER_ID).unwrap(),
+			expected_server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 		};
 		let client = ResetCardClient::new(profile);
-		let account = EntityId::new("40000000-0000-4000-8000-000000000001").unwrap();
-		let key = IdempotencyKey::new("remote-reset-key").unwrap();
-		let descriptor = ResetCardDescriptorDto::new(1, 2).unwrap();
+		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
+			.expect("test operation must succeed");
+		let key = IdempotencyKey::new("remote-reset-key").expect("test operation must succeed");
+		let descriptor = ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed");
 
 		assert_eq!(client.accounts().await.unwrap_err(), ClientFailure::RemoteMutationUnsupported);
 		assert_eq!(
@@ -1223,19 +1234,29 @@ max_entry_bytes = 0
 		query: Vec<Message>,
 	) -> (ClientProfile, JoinHandle<()>) {
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-			let hello = socket.next().await.unwrap().unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
+			let hello = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed");
 			let Message::Text(hello) = hello else { panic!("expected text hello") };
-			let ClientMessage::Hello(hello) = serde_json::from_str(&hello).unwrap() else {
+			let ClientMessage::Hello(hello) =
+				serde_json::from_str(&hello).expect("test operation must succeed")
+			else {
 				panic!("expected typed hello")
 			};
 
 			assert_eq!(hello.version, CURRENT_VERSION);
-			assert_eq!(hello.expected_server_id.unwrap().as_str(), SERVER_ID);
+			assert_eq!(
+				hello.expected_server_id.expect("test operation must succeed").as_str(),
+				SERVER_ID
+			);
 
 			for response in initial {
 				// A fail-closed client can drop the stream while the server flushes
@@ -1246,23 +1267,31 @@ max_entry_bytes = 0
 			}
 
 			if !query.is_empty() {
-				let request = socket.next().await.unwrap().unwrap();
+				let request = socket
+					.next()
+					.await
+					.expect("test operation must succeed")
+					.expect("test operation must succeed");
 				let Message::Text(request) = request else { panic!("expected text query") };
 
 				assert!(matches!(
-					serde_json::from_str::<ClientMessage>(&request).unwrap(),
+					serde_json::from_str::<ClientMessage>(&request)
+						.expect("test operation must succeed"),
 					ClientMessage::Query(_)
 				));
 
 				for response in query {
-					socket.send(response).await.unwrap();
+					socket.send(response).await.expect("test operation must succeed");
 				}
 			}
 
 			drop(socket);
-			listener.cleanup().unwrap();
+			listener.cleanup().expect("test operation must succeed");
 		});
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 
 		(profile, task)
 	}
@@ -1271,31 +1300,35 @@ max_entry_bytes = 0
 	async fn client_accepts_only_a_fully_verified_typed_report() {
 		let expected = report();
 		let (profile, task) = fixture(initial(SERVER_ID), vec![result(expected.clone())]).await;
-		let actual = DoctorClient::new(profile).query().await.unwrap();
+		let actual = DoctorClient::new(profile).query().await.expect("test operation must succeed");
 
 		assert_eq!(actual, expected);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn client_rejects_every_incomplete_current_report_but_accepts_arbitrary_order() {
 		let complete = report();
 		let incomplete = [
-			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, Vec::new())
-				.unwrap(),
 			DoctorReport::new(
-				ServerId::new(SERVER_ID).unwrap(),
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
+				CURRENT_VERSION,
+				Vec::new(),
+			)
+			.expect("test operation must succeed"),
+			DoctorReport::new(
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				CURRENT_VERSION,
 				vec![DoctorCheck::new(DoctorComponent::Configuration, DoctorStatus::Ready)],
 			)
-			.unwrap(),
+			.expect("test operation must succeed"),
 			DoctorReport::new(
-				ServerId::new(SERVER_ID).unwrap(),
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				CURRENT_VERSION,
 				complete.checks()[..complete.checks().len() - 1].to_vec(),
 			)
-			.unwrap(),
+			.expect("test operation must succeed"),
 		];
 
 		for report in incomplete {
@@ -1306,21 +1339,27 @@ max_entry_bytes = 0
 				ClientFailure::ProtocolMalformed,
 			);
 
-			task.await.unwrap();
+			task.await.expect("test operation must succeed");
 		}
 
 		let mut reversed = complete.checks().to_vec();
 
 		reversed.reverse();
 
-		let reversed =
-			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, reversed)
-				.unwrap();
+		let reversed = DoctorReport::new(
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			CURRENT_VERSION,
+			reversed,
+		)
+		.expect("test operation must succeed");
 		let (profile, task) = fixture(initial(SERVER_ID), vec![result(reversed.clone())]).await;
 
-		assert_eq!(DoctorClient::new(profile).query().await.unwrap(), reversed);
+		assert_eq!(
+			DoctorClient::new(profile).query().await.expect("test operation must succeed"),
+			reversed
+		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1342,8 +1381,8 @@ max_entry_bytes = 0
 			),
 			(
 				Refusal::ServerIdentityMismatch {
-					expected: ServerId::new(SERVER_ID).unwrap(),
-					actual: ServerId::new("wrong-server").unwrap(),
+					expected: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+					actual: ServerId::new("wrong-server").expect("test operation must succeed"),
 				},
 				ClientFailure::ServerIdentityMismatch,
 			),
@@ -1351,14 +1390,14 @@ max_entry_bytes = 0
 
 		for (refusal, expected) in cases {
 			let response = typed(ServerMessage::Refusal(RefusalEnvelope {
-				server_id: ServerId::new(SERVER_ID).unwrap(),
+				server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				refusal,
 			}));
 			let (profile, task) = fixture(vec![response], Vec::new()).await;
 
 			assert_eq!(DoctorClient::new(profile).query().await.unwrap_err(), expected);
 
-			task.await.unwrap();
+			task.await.expect("test operation must succeed");
 		}
 	}
 
@@ -1378,13 +1417,15 @@ max_entry_bytes = 0
 			ClientFailure::ServerIdentityMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let mut wrong_protocol = initial(SERVER_ID);
 
 		wrong_protocol[1] = refusal(
 			"wrong-server",
-			Refusal::ProtocolViolation { message: WireText::new("untrusted-order").unwrap() },
+			Refusal::ProtocolViolation {
+				message: WireText::new("untrusted-order").expect("test operation must succeed"),
+			},
 		);
 
 		let (profile, task) = fixture(wrong_protocol, Vec::new()).await;
@@ -1394,7 +1435,7 @@ max_entry_bytes = 0
 			ClientFailure::ServerIdentityMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let wrong_backpressure =
 			refusal("wrong-server", Refusal::Backpressure { queue_capacity: 1 });
@@ -1405,7 +1446,7 @@ max_entry_bytes = 0
 			ClientFailure::ServerIdentityMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1421,12 +1462,12 @@ max_entry_bytes = 0
 			ClientFailure::ServerIdentityMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let wrong_welcome_version = typed(ServerMessage::Welcome(ServerWelcome {
 			version: PREVIOUS_MINOR_VERSION,
 			supported: SupportedVersions::current(),
-			server_id: ServerId::new(SERVER_ID).unwrap(),
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			instance_id: None,
 			cursor: Cursor(0),
 			reconnect: ReconnectMode::Snapshot,
@@ -1438,13 +1479,13 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolMinorMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let mut wrong_snapshot = initial(SERVER_ID);
 
 		wrong_snapshot[1] = typed(ServerMessage::Snapshot(SnapshotEnvelope {
 			version: CURRENT_VERSION,
-			server_id: ServerId::new("wrong-server").unwrap(),
+			server_id: ServerId::new("wrong-server").expect("test operation must succeed"),
 			cursor: Cursor(0),
 			items: Vec::new(),
 		}));
@@ -1456,12 +1497,12 @@ max_entry_bytes = 0
 			ClientFailure::ServerIdentityMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let wrong_result_identity = typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
-			server_id: ServerId::new("wrong-server").unwrap(),
-			query_id: QueryId::new("decodex-cli-doctor").unwrap(),
+			server_id: ServerId::new("wrong-server").expect("test operation must succeed"),
+			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
 		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
@@ -1471,14 +1512,14 @@ max_entry_bytes = 0
 			ClientFailure::ServerIdentityMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let wrong_report_identity = DoctorReport::new(
-			ServerId::new("wrong-server").unwrap(),
+			ServerId::new("wrong-server").expect("test operation must succeed"),
 			CURRENT_VERSION,
 			report().checks().to_vec(),
 		)
-		.unwrap();
+		.expect("test operation must succeed");
 		let (profile, task) =
 			fixture(initial(SERVER_ID), vec![result(wrong_report_identity)]).await;
 
@@ -1487,15 +1528,15 @@ max_entry_bytes = 0
 			ClientFailure::ServerIdentityMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let mut wrong_report = report();
-		let encoded = serde_json::to_value(&wrong_report).unwrap();
-		let mut encoded = encoded.as_object().unwrap().clone();
+		let encoded = serde_json::to_value(&wrong_report).expect("test operation must succeed");
+		let mut encoded = encoded.as_object().expect("test operation must succeed").clone();
 
 		encoded.insert("version".into(), serde_json::json!({"major": 1, "minor": 1}));
 
-		wrong_report = serde_json::from_value(encoded.into()).unwrap();
+		wrong_report = serde_json::from_value(encoded.into()).expect("test operation must succeed");
 
 		let (profile, task) = fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
 
@@ -1504,7 +1545,7 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolMinorMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1513,7 +1554,7 @@ max_entry_bytes = 0
 
 		wrong_snapshot_version[1] = typed(ServerMessage::Snapshot(SnapshotEnvelope {
 			version: PREVIOUS_MINOR_VERSION,
-			server_id: ServerId::new(SERVER_ID).unwrap(),
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			cursor: Cursor(0),
 			items: Vec::new(),
 		}));
@@ -1525,12 +1566,12 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolMinorMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let wrong_result_version = typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: PREVIOUS_MINOR_VERSION,
-			server_id: ServerId::new(SERVER_ID).unwrap(),
-			query_id: QueryId::new("decodex-cli-doctor").unwrap(),
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
 		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_result_version]).await;
@@ -1540,12 +1581,12 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolMinorMismatch,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let wrong_query_id = typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
-			server_id: ServerId::new(SERVER_ID).unwrap(),
-			query_id: QueryId::new("wrong-query").unwrap(),
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			query_id: QueryId::new("wrong-query").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
 		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_query_id]).await;
@@ -1555,7 +1596,7 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolMalformed,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let mut wrong_order = initial(SERVER_ID);
 
@@ -1568,7 +1609,7 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolMalformed,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
@@ -1581,73 +1622,93 @@ max_entry_bytes = 0
 
 			assert_eq!(DoctorClient::new(profile).query().await.unwrap_err(), expected);
 
-			task.await.unwrap();
+			task.await.expect("test operation must succeed");
 		}
 
 		let expected = report();
 		let responses = vec![event(CURRENT_VERSION, SERVER_ID), result(expected.clone())];
 		let (profile, task) = fixture(initial(SERVER_ID), responses).await;
 
-		assert_eq!(DoctorClient::new(profile).query().await.unwrap(), expected);
+		assert_eq!(
+			DoctorClient::new(profile).query().await.expect("test operation must succeed"),
+			expected
+		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn reset_card_account_query_accepts_interleaved_verified_events() {
 		let accounts = ResetCardAccountsResult::Available {
 			accounts: vec![ResetCardAccountDto {
-				account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
-				display_label: WireText::new("Primary").unwrap(),
+				account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
+				display_label: WireText::new("Primary").expect("test operation must succeed"),
 				account_revision: EntityRevision(7),
 				admission_state: ResetCardAdmissionState::Depleted,
 			}],
 		};
 		let result = typed(ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
-			server_id: ServerId::new(SERVER_ID).unwrap(),
-			query_id: QueryId::new("decodex-reset-card-accounts").unwrap(),
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			query_id: QueryId::new("decodex-reset-card-accounts")
+				.expect("test operation must succeed"),
 			payload: QueryResultPayload::ResetCardAccounts(accounts.clone()),
 		}));
 		let (profile, task) =
 			fixture(initial(SERVER_ID), vec![event(CURRENT_VERSION, SERVER_ID), result]).await;
 
-		assert_eq!(ResetCardClient::new(profile).accounts().await.unwrap(), accounts);
+		assert_eq!(
+			ResetCardClient::new(profile).accounts().await.expect("test operation must succeed"),
+			accounts
+		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn reset_card_consume_sends_once_and_verifies_receipt_and_result() {
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let descriptor = ResetCardDescriptorDto::new(1_700_000_000, 1_700_003_600).unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
+		let descriptor = ResetCardDescriptorDto::new(1_700_000_000, 1_700_003_600)
+			.expect("test operation must succeed");
 		let expected_descriptor = descriptor;
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-			let hello = socket.next().await.unwrap().unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
+			let hello = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed");
 			let Message::Text(hello) = hello else { panic!("expected text hello") };
 
 			assert!(matches!(
-				serde_json::from_str::<ClientMessage>(&hello).unwrap(),
+				serde_json::from_str::<ClientMessage>(&hello).expect("test operation must succeed"),
 				ClientMessage::Hello(_)
 			));
 
 			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
+				socket.send(response).await.expect("test operation must succeed");
 			}
 
-			let request = socket.next().await.unwrap().unwrap();
+			let request = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed");
 			let Message::Text(request) = request else { panic!("expected text command") };
-			let ClientMessage::Command(command) =
-				serde_json::from_str::<ClientMessage>(&request).unwrap()
+			let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&request)
+				.expect("test operation must succeed")
 			else {
 				panic!("expected typed command")
 			};
-			let client_command_id = ClientCommandId::new("reset-card-use:operator-key").unwrap();
-			let idempotency_key = IdempotencyKey::new("operator-key").unwrap();
+			let client_command_id = ClientCommandId::new("reset-card-use:operator-key")
+				.expect("test operation must succeed");
+			let idempotency_key =
+				IdempotencyKey::new("operator-key").expect("test operation must succeed");
 
 			assert_eq!(command.client_command_id, client_command_id);
 			assert_eq!(command.idempotency_key, idempotency_key);
@@ -1656,32 +1717,36 @@ max_entry_bytes = 0
 			socket
 				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: client_command_id.clone(),
 					idempotency_key: idempotency_key.clone(),
 					disposition: ReceiptDisposition::Executed,
 					original_client_command_id: client_command_id.clone(),
 				})))
 				.await
-				.unwrap();
-			socket.send(event(CURRENT_VERSION, SERVER_ID)).await.unwrap();
+				.expect("test operation must succeed");
+			socket
+				.send(event(CURRENT_VERSION, SERVER_ID))
+				.await
+				.expect("test operation must succeed");
 			socket
 				.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id,
 					idempotency_key,
 					outcome: CommandOutcome::Succeeded,
 					entity_revision: Some(EntityRevision(7)),
 					payload: Some(ResultPayload::ResetCardOperationAccepted {
-						account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+						account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+							.expect("test operation must succeed"),
 						descriptor: expected_descriptor,
 						state: ResetCardOperationResult::Prepared,
 					}),
 					error: None,
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 
 			if let Ok(Some(Ok(Message::Text(message)))) =
 				time::timeout(Duration::from_millis(50), socket.next()).await
@@ -1696,49 +1761,59 @@ max_entry_bytes = 0
 			}
 
 			drop(socket);
-			listener.cleanup().unwrap();
+			listener.cleanup().expect("test operation must succeed");
 		});
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 		let response = ResetCardClient::new(profile)
 			.consume(
-				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
 				descriptor,
 				EntityRevision(7),
-				IdempotencyKey::new("operator-key").unwrap(),
+				IdempotencyKey::new("operator-key").expect("test operation must succeed"),
 			)
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 
 		assert_eq!(
 			response,
 			ResetCardConsumeResponse::Accepted {
-				account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
 				descriptor,
 				state: ResetCardOperationResult::Prepared,
 				entity_revision: EntityRevision(7),
 			}
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn reset_card_consume_preserves_key_when_application_acceptance_is_unknown() {
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 
 			let _ = socket.next().await;
 			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
+				socket.send(response).await.expect("test operation must succeed");
 			}
-			let request = socket.next().await.unwrap().unwrap();
+			let request = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed");
 			let Message::Text(request) = request else { panic!("expected text command") };
-			let ClientMessage::Command(command) =
-				serde_json::from_str::<ClientMessage>(&request).unwrap()
+			let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&request)
+				.expect("test operation must succeed")
 			else {
 				panic!("expected typed command")
 			};
@@ -1746,18 +1821,18 @@ max_entry_bytes = 0
 			socket
 				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: command.client_command_id.clone(),
 					idempotency_key: command.idempotency_key.clone(),
 					disposition: ReceiptDisposition::Executed,
 					original_client_command_id: command.client_command_id.clone(),
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 			socket
 				.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: command.client_command_id,
 					idempotency_key: command.idempotency_key,
 					outcome: CommandOutcome::AcceptanceUnknown,
@@ -1766,21 +1841,25 @@ max_entry_bytes = 0
 					error: Some(CommandError::AcceptanceUnknown),
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 
 			drop(socket);
-			listener.cleanup().unwrap();
+			listener.cleanup().expect("test operation must succeed");
 		});
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 		let response = ResetCardClient::new(profile)
 			.consume(
-				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
-				ResetCardDescriptorDto::new(1, 2).unwrap(),
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
+				ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed"),
 				EntityRevision(7),
-				IdempotencyKey::new("operator-key").unwrap(),
+				IdempotencyKey::new("operator-key").expect("test operation must succeed"),
 			)
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 
 		assert_eq!(
 			response,
@@ -1789,51 +1868,58 @@ max_entry_bytes = 0
 			},
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn reset_card_consume_rejects_a_mismatched_receipt_key() {
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 
 			let _ = socket.next().await;
 			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
+				socket.send(response).await.expect("test operation must succeed");
 			}
 			let _ = socket.next().await;
 
-			let client_command_id = ClientCommandId::new("reset-card-use:operator-key").unwrap();
+			let client_command_id = ClientCommandId::new("reset-card-use:operator-key")
+				.expect("test operation must succeed");
 
 			socket
 				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: client_command_id.clone(),
-					idempotency_key: IdempotencyKey::new("wrong-key").unwrap(),
+					idempotency_key: IdempotencyKey::new("wrong-key")
+						.expect("test operation must succeed"),
 					disposition: ReceiptDisposition::Executed,
 					original_client_command_id: client_command_id,
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 
 			drop(socket);
-			listener.cleanup().unwrap();
+			listener.cleanup().expect("test operation must succeed");
 		});
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 		let response = ResetCardClient::new(profile)
 			.consume(
-				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
-				ResetCardDescriptorDto::new(1, 2).unwrap(),
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
+				ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed"),
 				EntityRevision(7),
-				IdempotencyKey::new("operator-key").unwrap(),
+				IdempotencyKey::new("operator-key").expect("test operation must succeed"),
 			)
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 
 		assert_eq!(
 			response,
@@ -1842,28 +1928,33 @@ max_entry_bytes = 0
 			}
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn reset_card_consume_rejects_success_after_a_refused_receipt() {
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let descriptor = ResetCardDescriptorDto::new(1, 2).unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
+		let descriptor = ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed");
 		let result_descriptor = descriptor;
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 
 			let _ = socket.next().await;
 			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
+				socket.send(response).await.expect("test operation must succeed");
 			}
-			let request = socket.next().await.unwrap().unwrap();
+			let request = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed");
 			let Message::Text(request) = request else { panic!("expected text command") };
-			let ClientMessage::Command(command) =
-				serde_json::from_str::<ClientMessage>(&request).unwrap()
+			let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&request)
+				.expect("test operation must succeed")
 			else {
 				panic!("expected typed command")
 			};
@@ -1871,45 +1962,50 @@ max_entry_bytes = 0
 			socket
 				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: command.client_command_id.clone(),
 					idempotency_key: command.idempotency_key.clone(),
 					disposition: ReceiptDisposition::Refused,
 					original_client_command_id: command.client_command_id.clone(),
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 			socket
 				.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: command.client_command_id,
 					idempotency_key: command.idempotency_key,
 					outcome: CommandOutcome::Succeeded,
 					entity_revision: Some(EntityRevision(7)),
 					payload: Some(ResultPayload::ResetCardOperationAccepted {
-						account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+						account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+							.expect("test operation must succeed"),
 						descriptor: result_descriptor,
 						state: ResetCardOperationResult::Prepared,
 					}),
 					error: None,
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 
 			drop(socket);
-			listener.cleanup().unwrap();
+			listener.cleanup().expect("test operation must succeed");
 		});
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 		let response = ResetCardClient::new(profile)
 			.consume(
-				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
 				descriptor,
 				EntityRevision(7),
-				IdempotencyKey::new("operator-key").unwrap(),
+				IdempotencyKey::new("operator-key").expect("test operation must succeed"),
 			)
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 
 		assert_eq!(
 			response,
@@ -1918,28 +2014,33 @@ max_entry_bytes = 0
 			}
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn reset_card_consume_rejects_a_mismatched_returned_revision() {
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
-		let descriptor = ResetCardDescriptorDto::new(1, 2).unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
+		let descriptor = ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed");
 		let result_descriptor = descriptor;
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 
 			let _ = socket.next().await;
 			for response in initial(SERVER_ID) {
-				socket.send(response).await.unwrap();
+				socket.send(response).await.expect("test operation must succeed");
 			}
-			let request = socket.next().await.unwrap().unwrap();
+			let request = socket
+				.next()
+				.await
+				.expect("test operation must succeed")
+				.expect("test operation must succeed");
 			let Message::Text(request) = request else { panic!("expected text command") };
-			let ClientMessage::Command(command) =
-				serde_json::from_str::<ClientMessage>(&request).unwrap()
+			let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&request)
+				.expect("test operation must succeed")
 			else {
 				panic!("expected typed command")
 			};
@@ -1947,45 +2048,50 @@ max_entry_bytes = 0
 			socket
 				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: command.client_command_id.clone(),
 					idempotency_key: command.idempotency_key.clone(),
 					disposition: ReceiptDisposition::Executed,
 					original_client_command_id: command.client_command_id.clone(),
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 			socket
 				.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
 					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER_ID).unwrap(),
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					client_command_id: command.client_command_id,
 					idempotency_key: command.idempotency_key,
 					outcome: CommandOutcome::Succeeded,
 					entity_revision: Some(EntityRevision(8)),
 					payload: Some(ResultPayload::ResetCardOperationAccepted {
-						account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+						account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+							.expect("test operation must succeed"),
 						descriptor: result_descriptor,
 						state: ResetCardOperationResult::Prepared,
 					}),
 					error: None,
 				})))
 				.await
-				.unwrap();
+				.expect("test operation must succeed");
 
 			drop(socket);
-			listener.cleanup().unwrap();
+			listener.cleanup().expect("test operation must succeed");
 		});
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 		let response = ResetCardClient::new(profile)
 			.consume(
-				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
 				descriptor,
 				EntityRevision(7),
-				IdempotencyKey::new("operator-key").unwrap(),
+				IdempotencyKey::new("operator-key").expect("test operation must succeed"),
 			)
 			.await
-			.unwrap();
+			.expect("test operation must succeed");
 
 		assert_eq!(
 			response,
@@ -1994,19 +2100,23 @@ max_entry_bytes = 0
 			}
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 	}
 
 	#[tokio::test]
 	async fn reset_card_consume_error_before_send_guarantees_no_dispatch() {
 		let (_temp, authority) = local_transport();
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 		let failure = ResetCardClient::new(profile)
 			.consume(
-				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
-				ResetCardDescriptorDto::new(1, 2).unwrap(),
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("test operation must succeed"),
+				ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed"),
 				EntityRevision(7),
-				IdempotencyKey::new("operator-key").unwrap(),
+				IdempotencyKey::new("operator-key").expect("test operation must succeed"),
 			)
 			.await
 			.unwrap_err();
@@ -2017,7 +2127,10 @@ max_entry_bytes = 0
 	#[tokio::test]
 	async fn disconnected_malformed_oversized_and_timeout_fail_closed() {
 		let (_temp, authority) = local_transport();
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -2031,7 +2144,7 @@ max_entry_bytes = 0
 		assert_eq!(error, ClientFailure::ProtocolMalformed);
 		assert!(!format!("{error:?} {error}").contains("untrusted-parser-marker"));
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let oversized = Message::Text("x".repeat(super::MAX_CLIENT_MESSAGE_BYTES + 1).into());
 		let (profile, task) = fixture(vec![oversized], Vec::new()).await;
@@ -2041,19 +2154,23 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolBackpressure,
 		);
 
-		task.await.unwrap();
+		task.await.expect("test operation must succeed");
 
 		let (temp, authority) = local_transport();
-		let mut listener = authority.bind().await.unwrap();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let task = tokio::spawn(async move {
 			let _temp = temp;
-			let stream = listener.accept().await.unwrap();
-			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
 			let _ = socket.next().await;
 
 			time::sleep(Duration::from_secs(1)).await;
 		});
-		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
 		let client = DoctorClient { profile, timeout: Duration::from_millis(20) };
 
 		assert_eq!(client.query().await.unwrap_err(), ClientFailure::ProtocolTimeout);

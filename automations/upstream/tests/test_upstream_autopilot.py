@@ -2126,6 +2126,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
 
         self.assertEqual(set(tools), set(self.autopilot.VALIDATION_TOOL_NAMES))
         self.assertEqual(
+            tools["python3"].resolve(),
+            Path(sys.executable).resolve(),
+        )
+        self.assertGreaterEqual(
+            sys.version_info[:2],
+            self.autopilot.MINIMUM_VALIDATION_PYTHON,
+        )
+        self.assertEqual(
             set(evidence),
             set(self.autopilot.VALIDATION_TOOL_NAMES),
         )

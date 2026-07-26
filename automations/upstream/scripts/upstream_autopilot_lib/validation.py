@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sys
 import tempfile
 import tomllib
 from typing import Any
@@ -18,6 +19,7 @@ from .core import (
     REQUIRED_VALIDATION_PROFILES,
     REASON_PATTERN,
     SHA_PATTERN,
+    TRUSTED_SYSTEM_EXECUTABLE_ROOTS,
     TRUSTED_SYSTEM_TOOL_DIRECTORIES,
     VALIDATION_AUTHORITY_PATHS,
     VALIDATION_AUTHORITY_PREFIXES,
@@ -114,6 +116,7 @@ GIT_SOURCE_PATTERN = re.compile(
     r"^git\+(https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?)"
     r"\?rev=([0-9a-f]{40})#([0-9a-f]{40})$"
 )
+MINIMUM_VALIDATION_PYTHON = (3, 11)
 
 
 def repository_identity(worktree: Path) -> tuple[str, str]:
@@ -363,6 +366,9 @@ def validation_tools(
     paths: dict[str, Path] = {}
     discovery_path = os.pathsep.join(TRUSTED_TOOL_DISCOVERY_PATHS)
     for name in VALIDATION_TOOL_NAMES:
+        if name == "python3":
+            paths[name] = trusted_validation_python(repo_root)
+            continue
         located = shutil.which(name, path=discovery_path)
         if located is None:
             raise AutopilotError("validation_tool_unavailable")
@@ -404,6 +410,44 @@ def validation_tools(
         if selected is None or Path(selected).absolute() != expected:
             raise AutopilotError("validation_tool_path_conflict")
     return paths, validation_tool_evidence(paths)
+
+
+def trusted_validation_python(repo_root: Path) -> Path:
+    if not MINIMUM_VALIDATION_PYTHON <= sys.version_info[:2] < (4, 0):
+        raise AutopilotError("validation_python_runtime_unsupported")
+    runtime = Path(sys.executable).absolute()
+    candidate = runtime.parent / "python3"
+    try:
+        candidate_metadata = candidate.lstat()
+        parent_metadata = candidate.parent.stat()
+        resolved = candidate.resolve(strict=True)
+        resolved_metadata = resolved.stat()
+        runtime_resolved = runtime.resolve(strict=True)
+    except OSError as error:
+        raise AutopilotError("validation_python_runtime_unavailable") from error
+    if (
+        candidate.name != "python3"
+        or resolved != runtime_resolved
+        or not resolved.is_file()
+        or candidate_metadata.st_uid != 0
+        or parent_metadata.st_uid != 0
+        or resolved_metadata.st_uid != 0
+        or candidate_metadata.st_mode & 0o022
+        or parent_metadata.st_mode & 0o022
+        or resolved_metadata.st_mode & 0o022
+        or not any(
+            _path_is_within(candidate, root)
+            and _path_is_within(resolved, root)
+            for root in TRUSTED_SYSTEM_EXECUTABLE_ROOTS
+        )
+        or _path_is_within(candidate, repo_root)
+        or _path_is_within(resolved, repo_root)
+        or ".worktrees" in candidate.parts
+        or ".worktrees" in resolved.parts
+    ):
+        raise AutopilotError("validation_python_runtime_untrusted")
+    hash_file_bounded(resolved)
+    return candidate
 
 
 def _path_is_within(path: Path, root: Path) -> bool:
