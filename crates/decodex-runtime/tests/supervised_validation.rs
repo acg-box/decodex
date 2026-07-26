@@ -9,7 +9,6 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use axum as _;
 use decodex_codex as _;
 use decodex_postgres as _;
 use decodex_protocol as _;

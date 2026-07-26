@@ -11,3 +11,9 @@ version.workspace    = true
 [dependencies]
 decodex-runtime = { workspace = true }
 tokio           = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dev-dependencies]
+libc = { workspace = true }

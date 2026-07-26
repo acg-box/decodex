@@ -2,6 +2,7 @@
 
 use std::{
 	future::{self, Future},
+	pin::Pin,
 	sync::Arc,
 };
 
@@ -27,6 +28,7 @@ use decodex_protocol::{
 	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
 	ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
+use tokio::sync::watch;
 
 use crate::{
 	account_launch::{ResetCardRuntime, ResetCardServiceError},
@@ -40,6 +42,25 @@ use crate::{
 /// PostgreSQL-backed services can implement this async owner in XY-1267 without moving
 /// command execution into the transport.
 pub trait Application: Send + Sync + 'static {
+	/// Synchronously close application work admission at the start of server shutdown.
+	fn begin_shutdown(&self) {}
+
+	/// Wait until cancellable wrappers and non-cancellable application work have both settled.
+	fn wait_for_shutdown(&self) -> impl Future<Output = ()> + Send {
+		future::ready(())
+	}
+
+	/// Return daemon-local background services for direct ownership by the server lifecycle.
+	///
+	/// Each future must finish after `stop` changes to `true`. The lifecycle drains all returned
+	/// futures before it drops the application or releases local transport authority.
+	fn daemon_service_tasks(
+		&self,
+		_stop: watch::Receiver<bool>,
+	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+		Vec::new()
+	}
+
 	/// Return a bounded small-state snapshot. Artifact bytes are not representable.
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send;
 
@@ -339,6 +360,31 @@ impl ServiceApplication {
 }
 
 impl Application for ServiceApplication {
+	fn begin_shutdown(&self) {
+		if let Some(runtime) = &self.reset_cards {
+			runtime.begin_shutdown();
+		}
+	}
+
+	async fn wait_for_shutdown(&self) {
+		if let Some(runtime) = &self.reset_cards {
+			runtime.wait_for_shutdown().await;
+		}
+	}
+
+	fn daemon_service_tasks(
+		&self,
+		stop: watch::Receiver<bool>,
+	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+		let mut tasks: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = Vec::new();
+
+		if let Some(runtime) = &self.reset_cards {
+			tasks.push(Box::pin(runtime.clone().daemon_service(stop)));
+		}
+
+		tasks
+	}
+
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send {
 		future::ready(vec![SnapshotItem::SystemState {
 			entity_id: EntityId::new("decodexd").expect("service entity ID is bounded"),

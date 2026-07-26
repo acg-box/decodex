@@ -1,8 +1,9 @@
-//! Typed vNext wire contracts and loopback endpoint policy shared by clients and
+//! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodexd`.
 
 mod client;
 mod doctor;
+mod local_transport;
 mod retained_session;
 mod wire;
 
@@ -14,6 +15,10 @@ pub use self::{
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,
+	},
+	local_transport::{
+		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
+		LocalTransportStream,
 	},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
@@ -39,12 +44,6 @@ pub use self::{
 		SnapshotEnvelope, SnapshotItem, WireScalarTooLong, WireText, decode_client_message,
 		encode_server_message,
 	},
-};
-
-use std::{
-	error::Error,
-	fmt::{Display, Formatter},
-	net::SocketAddr,
 };
 
 use serde::{Deserialize, Serialize};
@@ -105,38 +104,6 @@ impl SupportedVersions {
 	}
 }
 
-/// A local endpoint that has passed the loopback-only policy.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LoopbackEndpoint(SocketAddr);
-impl LoopbackEndpoint {
-	/// Validate an address before any socket is opened.
-	pub fn new(address: SocketAddr) -> Result<Self, EndpointPolicyError> {
-		if address.ip().is_loopback() {
-			Ok(Self(address))
-		} else {
-			Err(EndpointPolicyError { address })
-		}
-	}
-
-	/// Return the validated socket address.
-	pub const fn address(self) -> SocketAddr {
-		self.0
-	}
-}
-
-/// Error returned when a composition root selects a non-loopback address.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct EndpointPolicyError {
-	address: SocketAddr,
-}
-impl Error for EndpointPolicyError {}
-
-impl Display for EndpointPolicyError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(formatter, "non-loopback endpoint is disabled: {}", self.address)
-	}
-}
-
 /// The compile-time service announcement used before a socket is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ServiceAnnouncement {
@@ -168,11 +135,8 @@ pub enum VersionRefusal {
 
 #[cfg(test)]
 mod tests {
-	use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
 	use crate::{
-		CURRENT_VERSION, LoopbackEndpoint, PREVIOUS_MINOR_VERSION, ProtocolVersion,
-		SupportedVersions, VersionRefusal,
+		CURRENT_VERSION, PREVIOUS_MINOR_VERSION, ProtocolVersion, SupportedVersions, VersionRefusal,
 	};
 
 	#[test]
@@ -198,20 +162,34 @@ mod tests {
 		);
 	}
 
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	#[test]
-	fn loopback_endpoint_accepts_local_composition() {
-		let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 49_152);
+	fn local_transport_authority_accepts_only_the_process_effective_uid() {
+		use crate::{LocalTransportAuthority, LocalTransportRefusal};
+		use decodex_core::{DecodexRoot, LocalTrustPolicy};
 
-		assert_eq!(LoopbackEndpoint::new(address).unwrap().address(), address);
-	}
+		let temp = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let paths = root.paths();
 
-	#[test]
-	fn loopback_endpoint_refuses_remote_binding() {
-		let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 49_152);
+		paths.ensure_layout().unwrap();
 
+		// SAFETY: `geteuid` has no arguments or failure return.
+		let uid = unsafe { libc::geteuid() };
+
+		assert!(
+			LocalTransportAuthority::new(paths.clone(), LocalTrustPolicy::SameUid, Some(uid),)
+				.is_ok()
+		);
 		assert_eq!(
-			LoopbackEndpoint::new(address).unwrap_err().to_string(),
-			"non-loopback endpoint is disabled: 0.0.0.0:49152"
+			LocalTransportAuthority::new(paths.clone(), LocalTrustPolicy::Disabled, None,)
+				.unwrap_err(),
+			LocalTransportRefusal::Disabled,
+		);
+		assert_eq!(
+			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(uid ^ 1))
+				.unwrap_err(),
+			LocalTransportRefusal::EffectiveUidMismatch,
 		);
 	}
 }
