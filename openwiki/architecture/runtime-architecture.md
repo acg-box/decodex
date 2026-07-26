@@ -190,14 +190,14 @@ PostgreSQL is ready. PostgreSQL exit or any pinned process, directory, or socket
 change stops the service child before the supervisor exits. Launchd then starts one new
 coherent generation. Swift does not participate in this lifecycle.
 
-The current source installer also has one bounded local migration bridge. It maps an exact
-set of legacy provider identities to independent vNext UUID slots through SHA-256 selectors.
-It reads the credential file under the existing lock and passes values only through the
-service child's environment. An atomic file replacement causes a graceful daemon restart
-only when the injected credential projection changes. Account-set, identity, permission,
-or mapping drift fails closed. This bridge does
-not make legacy account storage a product-state authority, and it does not add a runtime
-fallback when PostgreSQL is unavailable.
+The current source installer contains a pre-cutover legacy account bridge. It maps an
+exact set of legacy provider identities to vNext UUID slots, reads `accounts.jsonl`,
+injects access tokens through the service-child environment, and restarts the daemon
+when that projection changes. This is incomplete implementation scaffolding, not final
+vNext runtime authority. It contradicts final clean-cutover readiness while it remains
+active. Production account routing and product-complete claims stay disabled until
+XY-1422 replaces it with the [account lifecycle authority](../specs/account-lifecycle-authority.md)
+and removes the watcher, mapping input, and environment projection.
 The adapter opens each directory component relative to a retained descriptor, pins the directory
 and socket device/inode identities, requires the final directory and socket to be owned by the
 configured UID with no group/other directory write access, and verifies the connected kernel peer
@@ -1154,6 +1154,26 @@ XY-1307 consumes that data at the runtime composition boundary; core itself stil
 no database. No CLI, remote listener/security, or credential-vault implementation is part
 of the core foundation.
 
+## Account lifecycle and credential authority
+
+The final runtime follows the
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md). PostgreSQL owns
+credential-negative account state and operation receipts. One versioned
+HostCredentialStore owns secret bundles. The `decodexd` Account Service owns enrollment,
+import, list, rename, enable/disable, logout, refresh/rotation, app-server refresh
+callbacks, runner projection, account observations, offline migration, and recovery.
+
+The current `EnvironmentCredentialVault` loads startup access tokens only. It has no
+durable refresh token, compare-and-swap rotation, enrollment, or deletion operation.
+Its state is `projection_only`; it cannot make `CredentialVault` or `AccountLifecycle`
+Ready. Final readiness requires the configured host store, complete Account Service,
+provider adapter, PostgreSQL lifecycle state, and startup reconciliation.
+
+Runner processes use the shared normal `~/.codex`. Initial credentials enter only the
+private app-server process protocol, not process arguments or a long-lived environment.
+The Account UUID and provider binding never change in a live process. Same-account token
+refresh does not create account rebinding.
+
 ## Manual reset-card service
 
 Protocol V1.3 exposes bounded account discovery, complete reset-card inventory, manual
@@ -1170,11 +1190,13 @@ transport. The stable JSON account and inventory projections include the selecte
 profile name and verified server UUID. A caller can retain that authority on later
 calls with `--profile NAME --expected-server-id UUID`.
 
-`decodexd` is the sole credential, app-server process, exact-ID, mutation, and effect
-owner. Configuration enrolls at most 64 UUID-keyed accounts and stores only non-secret
-labels, an initial `available` or `depleted` state, a closed plan type, and three distinct
-environment-variable references. Only the daemon resolves those references. Both
-`available` and `depleted` admit the manual operation; other account states fail closed.
+`decodexd` is the sole account-operation, app-server process, exact-ID, mutation, and
+effect coordinator. In the final runtime, Reset Card obtains one exact versioned bundle
+through the Account Service and HostCredentialStore. PostgreSQL stores only the UUID,
+revision, provider binding evidence, and non-secret account state. Both `available` and
+`depleted` admit the manual operation; other account states, unsettled account
+operations, unavailable store state, and credential-version mismatch fail closed. The
+current environment-variable references are pre-cutover projection only.
 
 Before any reset-card read or consume, the Codex adapter requires the generated schema to
 advertise both `account/rateLimits/read` and

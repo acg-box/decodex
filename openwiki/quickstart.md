@@ -24,6 +24,9 @@ evidence only after that point. It is not a runtime or future-work input.
 - [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
   protocol, account continuity, non-goals, migration contract, and retained-title
   Git evidence boundary.
+- [Account lifecycle authority](specs/account-lifecycle-authority.md): complete
+  PostgreSQL/HostCredentialStore/Account Service ownership, refresh and recovery,
+  shared-home behavior, one-shot account migration, and clean-cutover gates.
 - [XY-1400 ProcessGeneration authority](specs/process-generation-authority.md): durable
   pre-spawn fencing, opaque exact-build launch attestation, macOS positive-death quarantine,
   exact process identity, ProviderAttempt ambiguity handoff, restore safety, and the deferred
@@ -124,7 +127,7 @@ evidence only after that point. It is not a runtime or future-work input.
 - `apps/decodex/` is the frozen v0.2 package. It remains in Git for provenance but is excluded from Cargo workspace membership and must not be used by vNext.
 - `apps/radar/` is the Radar auxiliary tool for upstream review queues, release deltas, artifact validation, signal rendering, and bundle generation (`apps/radar/README.md`, `apps/radar/src/lib.rs`).
 - `apps/decodex-publisher/` validates and reserves Decodex-owned social artifacts (`apps/decodex-publisher/README.md`, `apps/decodex-publisher/src/lib.rs`).
-- `apps/decodex-app/` is a native macOS UI over local Decodex account-pool state and may launch `decodex serve` when no default local server is available (`apps/decodex-app/README.md`).
+- `apps/decodex-app/` is the current native macOS account UI. Its local account pool and helper launch are pre-cutover legacy surfaces. The final app is a protocol client of the daemon-owned [Account Lifecycle Authority](specs/account-lifecycle-authority.md) and does not own credentials or service lifecycle (`apps/decodex-app/README.md`).
 - `site/` is the static Astro product site; it must not depend on live daemon state (`site/package.json`, `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`).
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
@@ -393,10 +396,11 @@ PostgreSQL, Swift, and signed app-staging checks described in
   bounded vNext setup model and stores only a PostgreSQL credential environment-variable
   name, never its value.
 - Do not route vNext product state through `apps/decodex`, legacy SQLite, Linear
-  lanes, or the legacy operator transport. The macOS local source installer has
-  one explicit migration bridge for an exact configured legacy account set. The
-  bridge projects current credentials only to the supervised daemon environment;
-  it is not product-state authority or a fallback.
+  lanes, or the legacy operator transport. The current macOS account watcher and
+  daemon-environment projection are pre-cutover scaffolding, not final authority.
+  The final system can consume legacy account state only in the explicit offline
+  one-shot migration in [Account Lifecycle Authority](specs/account-lifecycle-authority.md).
+  It must then remove the watcher, environment bridge, helper service, and fallback.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 - PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.
 - For project knowledge work, update OpenWiki directly and keep it aligned with source, tests, and manifests.

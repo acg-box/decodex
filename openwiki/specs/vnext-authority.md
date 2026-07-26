@@ -115,8 +115,9 @@ replayed.
 | PR/check/merge readback | GitHub |
 | Large tool output and evidence bytes | content-addressed local blob store, with PostgreSQL metadata |
 | GPUI local state | bounded disposable cache only; SQLite is permitted only here |
-| Credentials | host credential-vault boundary; PostgreSQL stores account metadata/health, never ordinary credential rows |
-| v0.2 state | cold backup/tag and historical evidence only; vNext never reads it as runtime input |
+| Account product state | PostgreSQL Account Registry; it stores credential-negative identity, lifecycle, routing, quota, health, usage/profile/history, credential-version evidence, and operation receipts |
+| Credentials | narrow versioned HostCredentialStore; PostgreSQL and clients never store or receive credential bytes |
+| v0.2 state | final vNext normal runtime reads none; one explicit offline account migration may consume the frozen account pool once, after which it remains untouched cold evidence |
 
 PostgreSQL is not event sourced and no graph database is used. Stable IDs plus correlated
 activity derive graph/timeline projections. `decodexd` is the sole product scheduler,
@@ -125,6 +126,12 @@ SwiftUI menubar, CLI, and MCP are clients/adapters over common application servi
 never read PostgreSQL, rollout files, blobs, or repositories directly. V1 is single-host
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
+
+The complete account ownership, refresh, recovery, platform-store, migration, and
+clean-cutover contract is [Account Lifecycle Authority](account-lifecycle-authority.md).
+The current environment-backed projection and legacy account watcher are pre-cutover
+scaffolding. They do not satisfy durable credential or account-lifecycle readiness and
+cannot remain in the final normal runtime.
 
 `decodexd`, its daemon-private PostgreSQL runtime identity, and its BlobStore access form one
 trusted service boundary. PostgreSQL owns committed metadata, domain state, command receipts,
@@ -448,8 +455,13 @@ cross-run communication is delivered by Decodex as turns to recipient Conversati
 
 ## Account continuity and profiles
 
-Each app-server process is bound to one account. Shared `~/.codex` supplies configuration
-and plugins; per-process credentials are never switched under a live runner. Account
+The [account lifecycle authority](account-lifecycle-authority.md) assigns
+credential-negative state to PostgreSQL, secret bundles to one HostCredentialStore, and
+all account operations to the `decodexd` Account Service. Each app-server process is
+bound to one Account UUID. Shared `~/.codex` supplies configuration, plugins, rollout
+files, and Codex thread visibility. A refresh callback can supply a newer access token
+for the same account, but the account and provider identity never switch under a live
+runner. Account
 state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`,
 `plugin_unready`, or `disabled`. Each quota window stores its class/duration, remaining amount, reset time,
 observation time, and confidence; 5-hour and 7-day windows are never inferred from
@@ -723,7 +735,11 @@ loads all history.
 
 Cutover has no availability requirement. Stop v0.2, tag the trusted `main`, and preserve
 cold copies of old SQLite/config/automation inventory plus incident scenarios. Start
-vNext with empty PostgreSQL product state. Do not import old Codex sessions, SQLite
+vNext with empty PostgreSQL execution and control-plane state. The only account-state
+exception is the explicit offline, idempotent, one-shot migration defined by the
+[account lifecycle authority](account-lifecycle-authority.md). It preserves established
+vNext Account UUID mappings, verifies every HostCredentialStore destination, leaves the
+legacy source untouched, and creates no watcher or fallback. Do not import old Codex sessions, SQLite
 execution state, Linear lanes, or Codex-created tasks. Recreate Projects and Automations
 explicitly from reviewed inventory.
 

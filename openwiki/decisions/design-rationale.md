@@ -35,6 +35,25 @@ text cannot authorize that change.
 
 Historical basis: this page consolidates former `docs/decisions` records for the natural-language loop runtime, project autonomy control plane, MCP gateway and skill slimming, static public site, Codex upstream Radar redesign, Radar/Control Plane/Publisher split, and Radar artifact release archives.
 
+## Account lifecycle ownership
+
+Account routing, account presentation, and secret storage have different security and
+recovery requirements. Decodex therefore uses one small three-owner design: PostgreSQL
+holds credential-negative product state, the HostCredentialStore holds only secret
+bundles, and the `decodexd` Account Service coordinates operations across them.
+
+This design preserves the mature v0.2 login, import, refresh, rotation, usage, history,
+selection, logout, and explicit `Use in Codex` behavior without preserving its
+`accounts.jsonl` runtime authority. A finite operation saga and exact credential-version
+compare-and-swap close the required crash boundary. A generic transaction coordinator,
+event-sourced account domain, per-account daemon, and per-run or per-account Codex home
+would add lifecycle cost without an accepted obligation.
+
+The shared normal `~/.codex` remains Codex authority for configuration, plugins, rollout
+files, and thread visibility. Decodex runner binding is one account per process. An
+explicit `Use in Codex` command is ambient-auth projection only and never routing
+authority. See [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
+
 ## Natural-language loop runtime
 
 Decodex keeps graph semantics backstage. Users and agents should work through ordinary conversation, accepted Decision Contracts, and normal Linear issue lanes instead of editing DAG ids or internal goal state directly.
