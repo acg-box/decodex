@@ -4057,10 +4057,10 @@ SELECT
     -- PostgreSQL gate can capture and accept the complete V26 manifest. Exact V23-V26
     -- functions, triggers, execution dependencies, and runtime privileges still use semantic
     -- inventories. The deferred gate must refresh this digest before executable acceptance.
-    WHERE pg_catalog.position('process_generation' IN identity::pg_catalog.text) = 0
-      AND pg_catalog.position('process_generation' IN contract) = 0
-      AND pg_catalog.position('provider_attempt' IN identity::pg_catalog.text) = 0
-      AND pg_catalog.position('provider_attempt' IN contract) = 0
+    WHERE pg_catalog.strpos(identity::pg_catalog.text, 'process_generation') = 0
+      AND pg_catalog.strpos(contract, 'process_generation') = 0
+      AND pg_catalog.strpos(identity::pg_catalog.text, 'provider_attempt') = 0
+      AND pg_catalog.strpos(contract, 'provider_attempt') = 0
   ),
   NOT EXISTS (
     SELECT 1 FROM dependency_rows AS dependency WHERE NOT dependency.resolved
@@ -4565,10 +4565,10 @@ SELECT pg_catalog.jsonb_agg(
     pg_catalog.convert_to(contract, 'UTF8')
 )::pg_catalog.text
 FROM contract_rows
-WHERE pg_catalog.position('process_generation' IN identity) = 0
-  AND pg_catalog.position('process_generation' IN contract) = 0
-  AND pg_catalog.position('provider_attempt' IN identity) = 0
-  AND pg_catalog.position('provider_attempt' IN contract) = 0
+WHERE pg_catalog.strpos(identity, 'process_generation') = 0
+  AND pg_catalog.strpos(contract, 'process_generation') = 0
+  AND pg_catalog.strpos(identity, 'provider_attempt') = 0
+  AND pg_catalog.strpos(contract, 'provider_attempt') = 0
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
 	0x3c, 0xd9, 0xf2, 0x9d, 0x8a, 0x47, 0x2f, 0xcf, 0x46, 0xad, 0x57, 0xae, 0x56, 0x16, 0x92, 0x06,
