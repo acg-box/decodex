@@ -253,14 +253,23 @@ authorization override. No migration or runtime provisioning follows a restore.
 
 The replacement `--capture-authority-restore-prerequisite-v2` gate binds one clean HEAD and tree,
 the selected PostgreSQL 18 toolchain, the v2 pass and diagnostic schemas, and definition fingerprint
-`f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401`. One sequential state owner
+`53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a`. One sequential state owner
 covers CLI selection, preflight, private work, cluster initialization and start, role setup, S0,
 archive creation, the restore helper, semantic checks, cleanup, receipt validation, final source
 binding, and publication. Completed execution checkpoints can be only a validated prefix. The first
-fixed checkpoint and reason are immutable. `cluster_stop` and `private_work_cleanup` have separate
-owners. A cleanup failure is secondary when an earlier primary exists, and it is primary only when
-no earlier failure exists. Receipt validation, source binding, and publication also have separate
-owners. They cannot replace an earlier primary failure.
+fixed checkpoint and reason are immutable. Actual lifecycle state derives one exact cleanup-owner
+sequence: empty before private work exists, `private_work_cleanup` after private work exists, or
+`cluster_stop` followed by `private_work_cleanup` after cluster stop becomes applicable. Each
+required owner moves from pending to active to completed. `cleanup_finalization` is a separate
+fail-closed owner. Cleanup can be `passed` only when the required sequence is complete and
+finalization is complete. The receipt carries both sequences and the finalization proof.
+
+An interruption before an action, after an action but before its transition, between actions, or
+during finalization belongs to the active or pending cleanup owner. Expected cleanup operation
+failure is `cleanup_failed`; an interruption is `interrupted`; and unexpected cleanup state is
+`harness_corruption`. A cleanup failure is secondary when an execution primary exists. Otherwise,
+the exact cleanup owner becomes primary. Receipt validation, source binding, and publication also
+have separate owners and cannot replace an earlier primary failure.
 
 The gate creates, migrates, provisions, populates, and semantically verifies S0 once. It dumps once,
 guards and restores fresh R1 once, and runs the same full semantic owner once at R1. Explicit
@@ -271,7 +280,11 @@ only the fixed v2 projection. It contains no raw exception, command, child outpu
 path, selected tool name, database, role, owner, ACL, OID, SQL, connection, TOC content, catalog
 row, count, or discovered identity. The same canonical failure diagnostic goes to standard error
 for publication-failure recovery. The raw-error `StageOrchestrator` remains outside this privacy
-boundary.
+boundary. Failure-document construction and repair stay under `receipt_validation`. Incomplete or
+corrupt cleanup proof produces one fixed `failure_document_repaired=true` diagnostic. It preserves
+a valid earlier primary, uses only fixed lifecycle values, and never emits exception text. The
+fixed `receipt_validation/harness_corruption` diagnostic remains available on standard error if
+normal construction or durable publication cannot complete.
 
 The v1 gate ran once and returned ownerless `gate/stage_failed` evidence. It did not prove that the
 archive guard, prerequisite, restore, or R1 semantic authority ran. The v1 spelling and schemas are

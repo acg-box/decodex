@@ -1574,10 +1574,13 @@ class RestorePrerequisiteGateStateTests(unittest.TestCase):
     def completed_state(self, *, cleanup_required=False):
         state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
         self.complete_until(state)
-        state.begin_cleanup(cleanup_required)
+        state.begin_cleanup(cleanup_required, cleanup_required)
         if cleanup_required:
-            state.run_cleanup("private_work_cleanup", lambda: None)
-            state.finish_cleanup()
+            for owner in POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS:
+                state.run_cleanup(owner, lambda: None)
+                state.complete_cleanup_owner(owner)
+        state.begin_cleanup_finalization()
+        state.finish_cleanup()
         return state
 
     def semantic_failure(self, checkpoint):
@@ -1664,44 +1667,156 @@ class RestorePrerequisiteGateStateTests(unittest.TestCase):
                     )
         self.assertEqual(len(owners), len(set(owners)))
 
-    def test_cleanup_is_secondary_and_owns_only_without_a_primary(self):
+    def cleanup_fault_state(self, point, *, prior_primary=False, system_exit=False):
         state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
-        self.complete_until(state, "source_migrated")
-        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
-            state.run(
-                "source_migrated",
-                lambda: (_ for _ in ()).throw(
-                    POSTGRES_STORE_TEST.TestFailure(self.SECRET)
-                ),
+        if prior_primary:
+            self.complete_until(state, "source_migrated")
+            with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+                state.run(
+                    "source_migrated",
+                    lambda: (_ for _ in ()).throw(
+                        POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+                    ),
+                )
+        else:
+            self.complete_until(state)
+
+        def inject(current):
+            if current == point:
+                error = (
+                    SystemExit(self.SECRET)
+                    if system_exit else KeyboardInterrupt(self.SECRET)
+                )
+                raise error
+
+        with mock.patch.object(POSTGRES_STORE_TEST.shutil, "rmtree"):
+            POSTGRES_STORE_TEST.cleanup_restore_prerequisite_gate(
+                state,
+                Path("/private/tmp/xy1421-private-work"),
+                Path("/private/tmp/xy1421-private-work/postgres"),
+                {},
+                True,
+                fault_injector=inject,
             )
-        state.begin_cleanup(True)
-        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
-            state.run_cleanup(
+        return state, state.failure_document()
+
+    def test_cleanup_faults_keep_the_exact_pending_owner_and_never_pass(self):
+        cases = (
+            ("before_first_cleanup_owner", "cluster_stop", ()),
+            (
+                "after_cluster_stop_action_before_transition",
+                "cluster_stop",
+                (),
+            ),
+            (
+                "between_cluster_stop_and_private_work_cleanup",
                 "private_work_cleanup",
-                lambda: (_ for _ in ()).throw(OSError(self.SECRET)),
+                ("cluster_stop",),
+            ),
+            (
+                "after_private_work_cleanup_action_before_transition",
+                "private_work_cleanup",
+                ("cluster_stop",),
+            ),
+            (
+                "during_cleanup_finalization",
+                "cleanup_finalization",
+                ("cluster_stop", "private_work_cleanup"),
+            ),
+        )
+        for point, owner, completed in cases:
+            with self.subTest(point=point):
+                state, diagnostic = self.cleanup_fault_state(
+                    point,
+                    system_exit=point == "during_cleanup_finalization",
+                )
+                self.assertEqual(diagnostic["primary_checkpoint"], owner)
+                self.assertEqual(diagnostic["primary_reason"], "interrupted")
+                self.assertNotEqual(
+                    diagnostic["primary_checkpoint"], "receipt_validation"
+                )
+                self.assertEqual(diagnostic["cleanup_status"], "failed")
+                self.assertTrue(diagnostic["cleanup_finalized"])
+                self.assertEqual(
+                    diagnostic["required_cleanup_owners"],
+                    ["cluster_stop", "private_work_cleanup"],
+                )
+                self.assertEqual(
+                    diagnostic["completed_cleanup_owners"], list(completed)
+                )
+                self.assertIsNone(diagnostic["secondary_cleanup_reason"])
+                self.assertNotEqual(state.cleanup_status, "passed")
+
+        for point in (
+            "between_cluster_stop_and_private_work_cleanup",
+            "during_cleanup_finalization",
+        ):
+            with self.subTest(point=point, prior_primary=True):
+                _, diagnostic = self.cleanup_fault_state(
+                    point, prior_primary=True
+                )
+                self.assertEqual(
+                    (diagnostic["primary_checkpoint"], diagnostic["primary_reason"]),
+                    ("source_migrated", "operation_failed"),
+                )
+                self.assertEqual(diagnostic["cleanup_status"], "failed")
+                self.assertEqual(
+                    diagnostic["secondary_cleanup_reason"], "cleanup_failed"
+                )
+
+        operation_state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(operation_state)
+        with mock.patch.object(
+            POSTGRES_STORE_TEST.shutil,
+            "rmtree",
+            side_effect=OSError(self.SECRET),
+        ):
+            POSTGRES_STORE_TEST.cleanup_restore_prerequisite_gate(
+                operation_state,
+                Path("/private/tmp/xy1421-private-work"),
+                Path("/private/tmp/xy1421-private-work/postgres"),
+                {},
+                True,
             )
-        state.finish_cleanup()
-        diagnostic = state.failure_document()
-        self.assertEqual(diagnostic["primary_checkpoint"], "source_migrated")
-        self.assertEqual(diagnostic["cleanup_status"], "failed")
+        operation_diagnostic = operation_state.failure_document()
         self.assertEqual(
-            diagnostic["secondary_cleanup_reason"], "cleanup_failed"
+            (
+                operation_diagnostic["primary_checkpoint"],
+                operation_diagnostic["primary_reason"],
+            ),
+            ("private_work_cleanup", "cleanup_failed"),
+        )
+        self.assertNotIn(
+            self.SECRET,
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                operation_diagnostic
+            ),
         )
 
-        cleanup_state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
-        self.complete_until(cleanup_state, "cluster_start")
-        cleanup_state.begin_cleanup(True)
-        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
-            cleanup_state.run_cleanup(
-                "cluster_stop",
-                lambda: (_ for _ in ()).throw(
-                    POSTGRES_STORE_TEST.TestFailure(self.SECRET)
-                ),
-            )
-        cleanup_state.finish_cleanup()
-        cleanup_diagnostic = cleanup_state.failure_document()
-        self.assertEqual(cleanup_diagnostic["primary_checkpoint"], "cluster_stop")
-        self.assertEqual(cleanup_diagnostic["primary_reason"], "cleanup_failed")
+    def test_cleanup_pass_requires_owner_completion_and_finalization(self):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        state.begin_cleanup(True, True)
+        with self.assertRaises(POSTGRES_STORE_TEST.HarnessCorruption):
+            _ = state.cleanup_status
+        for owner in POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS:
+            state.run_cleanup(owner, lambda: None)
+            with self.assertRaises(POSTGRES_STORE_TEST.HarnessCorruption):
+                _ = state.cleanup_status
+            state.complete_cleanup_owner(owner)
+        state.begin_cleanup_finalization()
+        with self.assertRaises(POSTGRES_STORE_TEST.HarnessCorruption):
+            _ = state.cleanup_status
+        state.finish_cleanup()
+        self.assertEqual(state.cleanup_status, "passed")
+        self.assertEqual(
+            state.required_cleanup_owners,
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+        )
+        self.assertEqual(
+            state.completed_cleanup_owners,
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+        )
+        self.assertTrue(state.cleanup_finalization_completed)
 
     def test_receipt_validation_and_publication_have_fixed_owners(self):
         validation_state = self.completed_state()
@@ -1822,6 +1937,55 @@ class RestorePrerequisiteGateStateTests(unittest.TestCase):
         )
         self.assertNotIn(self.SECRET, semantic_serialized)
         self.assertEqual(state.primary_reason, "harness_corruption")
+
+    def test_failure_document_cleanup_corruption_uses_the_fixed_owned_fallback(self):
+        prior_state, _ = self.execution_failure(
+            "source_migrated", POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+        )
+        prior_state._cleanup_status = self.SECRET
+        repaired = prior_state.run_receipt_lifecycle(
+            "receipt_validation",
+            prior_state.failure_document_with_fixed_fallback,
+            recovery=True,
+        )
+        serialized = (
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                repaired
+            )
+        )
+        self.assertEqual(
+            (repaired["primary_checkpoint"], repaired["primary_reason"]),
+            ("source_migrated", "operation_failed"),
+        )
+        self.assertEqual(repaired["cleanup_status"], "failed")
+        self.assertEqual(
+            repaired["secondary_cleanup_reason"], "cleanup_failed"
+        )
+        self.assertTrue(repaired["failure_document_repaired"])
+        self.assertNotIn(self.SECRET, serialized)
+
+        no_primary = self.completed_state(cleanup_required=True)
+        no_primary._cleanup_finalization_status = self.SECRET
+        repaired_no_primary = no_primary.run_receipt_lifecycle(
+            "receipt_validation",
+            no_primary.failure_document_with_fixed_fallback,
+            recovery=True,
+        )
+        self.assertEqual(
+            (
+                repaired_no_primary["primary_checkpoint"],
+                repaired_no_primary["primary_reason"],
+            ),
+            ("cleanup_finalization", "harness_corruption"),
+        )
+        self.assertEqual(repaired_no_primary["cleanup_status"], "failed")
+        self.assertIsNone(repaired_no_primary["secondary_cleanup_reason"])
+        self.assertNotIn(
+            self.SECRET,
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                repaired_no_primary
+            ),
+        )
 
     def test_v2_identity_and_mechanical_definition_fingerprint_are_exact(self):
         self.assertEqual(

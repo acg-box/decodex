@@ -56,7 +56,7 @@ RESTORE_PREREQUISITE_ARCHIVE_GRAMMAR = (
 	"decodex/postgresql-18-pg-restore-list/1"
 )
 RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT = (
-	"f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401"
+	"53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a"
 )
 RESTORE_PREREQUISITE_SQL = (
 	"CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public VERSION '1.4';"
@@ -95,12 +95,35 @@ RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS = (
 	"privacy_validation",
 	"stopped_after_restored_once",
 )
-RESTORE_PREREQUISITE_LIFECYCLE_CHECKPOINTS = (
+RESTORE_PREREQUISITE_CLEANUP_OWNERS = (
 	"cluster_stop",
 	"private_work_cleanup",
+)
+RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER = "cleanup_finalization"
+RESTORE_PREREQUISITE_CLEANUP_OWNER_SEQUENCES = (
+	(),
+	("private_work_cleanup",),
+	("cluster_stop", "private_work_cleanup"),
+)
+RESTORE_PREREQUISITE_CLEANUP_OWNER_STATES = (
+	"pending", "active", "completed",
+)
+RESTORE_PREREQUISITE_CLEANUP_FAULT_POINTS = (
+	"before_first_cleanup_owner",
+	"after_cluster_stop_action_before_transition",
+	"between_cluster_stop_and_private_work_cleanup",
+	"after_private_work_cleanup_action_before_transition",
+	"during_cleanup_finalization",
+)
+RESTORE_PREREQUISITE_RECEIPT_LIFECYCLE_CHECKPOINTS = (
 	"receipt_validation",
 	"receipt_source_binding",
 	"receipt_publication",
+)
+RESTORE_PREREQUISITE_LIFECYCLE_CHECKPOINTS = (
+	*RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+	RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
+	*RESTORE_PREREQUISITE_RECEIPT_LIFECYCLE_CHECKPOINTS,
 )
 RESTORE_PREREQUISITE_INVOCATION_POLICIES = (
 	"source_database_once",
@@ -171,6 +194,7 @@ RESTORE_PREREQUISITE_EXPECTED_REASONS = {
 	"stopped_after_restored_once": ("contract_invalid",),
 	"cluster_stop": ("cleanup_failed",),
 	"private_work_cleanup": ("cleanup_failed",),
+	"cleanup_finalization": (),
 	"receipt_validation": ("receipt_invalid",),
 	"receipt_source_binding": ("authority_unavailable", "changed"),
 	"receipt_publication": ("publication_failed",),
@@ -697,10 +721,15 @@ class RestorePrerequisiteGateState:
 	_output_contract_validated: bool = False
 	_cleanup_started: bool = False
 	_cleanup_finalized: bool = False
-	_cleanup_required: bool = False
+	_cleanup_required_owners: tuple[str, ...] = ()
+	_cleanup_completed_owners: list[str] = field(default_factory=list)
+	_cleanup_owner_status: dict[str, str] = field(default_factory=dict)
+	_cleanup_pending_owner: str | None = None
+	_cleanup_finalization_status: str = "not_started"
 	_cleanup_failed: bool = False
 	_cleanup_status: str = "not_required"
 	_secondary_cleanup_reason: str | None = None
+	_failure_document_repaired: bool = False
 	_lifecycle_status: dict[str, str] = field(default_factory=dict)
 
 	@property
@@ -744,9 +773,23 @@ class RestorePrerequisiteGateState:
 
 	@property
 	def cleanup_status(self) -> str:
-		if not self._cleanup_finalized:
-			raise HarnessCorruption("restore prerequisite cleanup is not final")
+		self._require_cleanup_proof()
 		return self._cleanup_status
+
+	@property
+	def required_cleanup_owners(self) -> tuple[str, ...]:
+		return self._cleanup_required_owners
+
+	@property
+	def completed_cleanup_owners(self) -> tuple[str, ...]:
+		return tuple(self._cleanup_completed_owners)
+
+	@property
+	def cleanup_finalization_completed(self) -> bool:
+		return (
+			self._cleanup_finalized
+			and self._cleanup_finalization_status == "completed"
+		)
 
 	def bind_output_path(self, path: Path) -> None:
 		if self._current_checkpoint != "output_contract" or self._output_path is not None:
@@ -826,7 +869,7 @@ class RestorePrerequisiteGateState:
 	def _classify_failure(
 		self, checkpoint: str, error: BaseException
 	) -> tuple[str, dict[str, object] | None]:
-		if isinstance(error, KeyboardInterrupt):
+		if isinstance(error, (KeyboardInterrupt, SystemExit)):
 			return "interrupted", None
 		if isinstance(error, SemanticAuthorityDiagnostic):
 			if any(marker in error.serialized for marker in self._secret_markers):
@@ -857,7 +900,11 @@ class RestorePrerequisiteGateState:
 		)):
 			return "harness_corruption", None
 		if isinstance(error, (TestFailure, OSError, subprocess.SubprocessError)):
-			return RESTORE_PREREQUISITE_EXPECTED_REASONS[checkpoint][0], None
+			expected_reasons = RESTORE_PREREQUISITE_EXPECTED_REASONS[checkpoint]
+			return (
+				expected_reasons[0] if expected_reasons else "harness_corruption",
+				None,
+			)
 		return "harness_corruption", None
 
 	def _invoke(
@@ -905,52 +952,260 @@ class RestorePrerequisiteGateState:
 			checkpoint, action, execution=True, allow_after_primary=False
 		)
 
-	def begin_cleanup(self, required: bool) -> None:
-		if self._cleanup_started or self._cleanup_finalized or type(required) is not bool:
+	def _require_cleanup_proof(self) -> None:
+		required = self._cleanup_required_owners
+		completed = tuple(self._cleanup_completed_owners)
+		if (
+			not self._cleanup_started
+			or not self._cleanup_finalized
+			or self._cleanup_finalization_status != "completed"
+			or self._cleanup_pending_owner is not None
+			or self._current_checkpoint in (
+				*RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+				RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
+			)
+			or required not in RESTORE_PREREQUISITE_CLEANUP_OWNER_SEQUENCES
+			or completed != required[:len(completed)]
+			or set(self._cleanup_owner_status) != set(required)
+			or any(
+				self._cleanup_owner_status.get(owner)
+				not in RESTORE_PREREQUISITE_CLEANUP_OWNER_STATES
+				for owner in required
+			)
+			or any(
+				self._cleanup_owner_status.get(owner) != "completed"
+				for owner in completed
+			)
+			or any(
+				(self._cleanup_owner_status.get(owner) == "completed")
+				!= (owner in completed)
+				for owner in required
+			)
+			or sum(
+				self._cleanup_owner_status.get(owner) == "active"
+				for owner in required
+			) > 1
+		):
+			raise HarnessCorruption("restore prerequisite cleanup proof is invalid")
+		if self._cleanup_status == "not_required":
+			valid = not required and not completed and not self._cleanup_failed
+		elif self._cleanup_status == "passed":
+			valid = bool(required) and completed == required and not self._cleanup_failed
+		elif self._cleanup_status == "failed":
+			valid = self._cleanup_failed
+		else:
+			valid = False
+		if not valid:
+			raise HarnessCorruption("restore prerequisite cleanup result is invalid")
+
+	def begin_cleanup(
+		self,
+		cluster_stop_applicable: bool,
+		private_work_exists: bool,
+	) -> None:
+		if (
+			self._cleanup_started
+			or self._cleanup_finalized
+			or type(cluster_stop_applicable) is not bool
+			or type(private_work_exists) is not bool
+			or cluster_stop_applicable and not private_work_exists
+		):
 			self._record_primary(
-				self._next_execution_checkpoint() or "private_work_cleanup",
+				RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
 				"harness_corruption",
 			)
 			raise RestorePrerequisiteGateAbort() from None
+		required = (
+			RESTORE_PREREQUISITE_CLEANUP_OWNERS
+			if cluster_stop_applicable else
+			("private_work_cleanup",) if private_work_exists else
+			()
+		)
 		self._cleanup_started = True
-		self._cleanup_required = required
+		self._cleanup_required_owners = required
+		self._cleanup_owner_status = {owner: "pending" for owner in required}
+		self._cleanup_pending_owner = (
+			required[0] if required
+			else RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
+		)
 		if not required:
-			self._cleanup_status = "not_required"
-			self._cleanup_finalized = True
+			self._cleanup_finalization_status = "pending"
 
 	def run_cleanup(
 		self, checkpoint: str, action: Callable[[], object]
 	) -> object:
 		if (
-			checkpoint not in {"cluster_stop", "private_work_cleanup"}
+			checkpoint not in RESTORE_PREREQUISITE_CLEANUP_OWNERS
 			or not self._cleanup_started
 			or self._cleanup_finalized
-			or not self._cleanup_required
+			or self._cleanup_pending_owner != checkpoint
+			or self._cleanup_owner_status.get(checkpoint) != "pending"
+			or self._current_checkpoint is not None
 		):
-			self._record_primary(checkpoint, "harness_corruption")
-			raise RestorePrerequisiteGateAbort() from None
-		try:
-			return self._invoke(
-				checkpoint, action, execution=False, allow_after_primary=True
+			raise HarnessCorruption("restore prerequisite cleanup owner is invalid")
+		self._cleanup_owner_status[checkpoint] = "active"
+		self._current_checkpoint = checkpoint
+		return action()
+
+	def complete_cleanup_owner(self, checkpoint: str) -> None:
+		if (
+			self._current_checkpoint != checkpoint
+			or self._cleanup_pending_owner != checkpoint
+			or self._cleanup_owner_status.get(checkpoint) != "active"
+			or tuple(self._cleanup_completed_owners)
+			!= self._cleanup_required_owners[:len(self._cleanup_completed_owners)]
+			or len(self._cleanup_completed_owners) >= len(self._cleanup_required_owners)
+			or self._cleanup_required_owners[len(self._cleanup_completed_owners)]
+			!= checkpoint
+		):
+			raise HarnessCorruption("restore prerequisite cleanup transition is invalid")
+		self._cleanup_owner_status[checkpoint] = "completed"
+		self._cleanup_completed_owners.append(checkpoint)
+		self._current_checkpoint = None
+		next_index = len(self._cleanup_completed_owners)
+		if next_index < len(self._cleanup_required_owners):
+			self._cleanup_pending_owner = self._cleanup_required_owners[next_index]
+		else:
+			self._cleanup_pending_owner = (
+				RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
 			)
-		except RestorePrerequisiteGateAbort:
-			self._cleanup_failed = True
-			self._secondary_cleanup_reason = "cleanup_failed"
-			raise
+			self._cleanup_finalization_status = "pending"
+
+	def begin_cleanup_finalization(self) -> None:
+		if (
+			not self._cleanup_started
+			or self._cleanup_finalized
+			or self._cleanup_failed
+			or self._current_checkpoint is not None
+			or self._cleanup_pending_owner
+			!= RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
+			or self._cleanup_finalization_status != "pending"
+			or tuple(self._cleanup_completed_owners)
+			!= self._cleanup_required_owners
+		):
+			raise HarnessCorruption("restore prerequisite cleanup finalization is invalid")
+		self._cleanup_finalization_status = "active"
+		self._current_checkpoint = RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
 
 	def finish_cleanup(self) -> None:
-		if not self._cleanup_started or self._cleanup_finalized:
-			self._record_primary(
-				self._next_execution_checkpoint() or "private_work_cleanup",
-				"harness_corruption",
+		if (
+			not self._cleanup_started
+			or self._cleanup_finalized
+			or self._cleanup_failed
+			or self._current_checkpoint
+			!= RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
+			or self._cleanup_pending_owner
+			!= RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
+			or self._cleanup_finalization_status != "active"
+			or tuple(self._cleanup_completed_owners)
+			!= self._cleanup_required_owners
+		):
+			raise HarnessCorruption("restore prerequisite cleanup finalization is invalid")
+		self._cleanup_status = (
+			"passed" if self._cleanup_required_owners else "not_required"
+		)
+		self._cleanup_finalization_status = "completed"
+		self._cleanup_pending_owner = None
+		self._current_checkpoint = None
+		self._cleanup_finalized = True
+		self._require_cleanup_proof()
+
+	def _cleanup_failure_owner(self) -> str:
+		if self._current_checkpoint in (
+			*RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+			RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
+		):
+			return self._current_checkpoint
+		if self._cleanup_pending_owner in (
+			*RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+			RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
+		):
+			return self._cleanup_pending_owner
+		completed = tuple(self._cleanup_completed_owners)
+		if (
+			self._cleanup_required_owners
+			in RESTORE_PREREQUISITE_CLEANUP_OWNER_SEQUENCES
+			and completed
+			== self._cleanup_required_owners[:len(completed)]
+			and len(completed) < len(self._cleanup_required_owners)
+		):
+			return self._cleanup_required_owners[len(completed)]
+		return RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
+
+	def capture_cleanup_failure(self, error: BaseException) -> None:
+		owner = self._cleanup_failure_owner()
+		had_execution_primary = (
+			self._primary_checkpoint in RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS
+		)
+		reason, _ = self._classify_failure(owner, error)
+		self._record_primary(owner, reason)
+		self._cleanup_failed = True
+		if had_execution_primary:
+			self._secondary_cleanup_reason = "cleanup_failed"
+		self._cleanup_status = "failed"
+		self._cleanup_finalization_status = "completed"
+		self._cleanup_pending_owner = None
+		self._current_checkpoint = None
+		self._cleanup_started = True
+		self._cleanup_finalized = True
+
+	def _repair_cleanup_for_failure_document(self) -> None:
+		required = self._cleanup_required_owners
+		if required not in RESTORE_PREREQUISITE_CLEANUP_OWNER_SEQUENCES:
+			required = ()
+		completed: list[str] = []
+		for expected, actual in zip(required, self._cleanup_completed_owners):
+			if actual != expected:
+				break
+			completed.append(actual)
+		owner = (
+			required[len(completed)]
+			if len(completed) < len(required) else
+			RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER
+		)
+		had_non_cleanup_primary = (
+			self._primary_checkpoint is not None
+			and self._primary_checkpoint not in (
+				*RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+				RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
 			)
-			raise RestorePrerequisiteGateAbort() from None
-		self._cleanup_status = "failed" if self._cleanup_failed else "passed"
+		)
+		self._record_primary(owner, "harness_corruption")
+		self._cleanup_started = True
+		self._cleanup_required_owners = required
+		self._cleanup_completed_owners = completed
+		self._cleanup_owner_status = {
+			cleanup_owner: (
+				"completed" if cleanup_owner in completed else "pending"
+			)
+			for cleanup_owner in required
+		}
+		self._cleanup_pending_owner = None
+		self._cleanup_finalization_status = "completed"
+		self._cleanup_failed = True
+		self._cleanup_status = "failed"
+		if had_non_cleanup_primary:
+			self._secondary_cleanup_reason = "cleanup_failed"
 		self._cleanup_finalized = True
 
 	def ensure_cleanup_finalized_without_work(self) -> None:
 		if not self._cleanup_started:
-			self.begin_cleanup(False)
+			try:
+				self.begin_cleanup(False, False)
+				self.begin_cleanup_finalization()
+				self.finish_cleanup()
+			except BaseException as error:
+				self.capture_cleanup_failure(error)
+		elif not self._cleanup_finalized:
+			self.capture_cleanup_failure(HarnessCorruption(
+				"restore prerequisite cleanup did not finalize"
+			))
+		else:
+			try:
+				self._require_cleanup_proof()
+			except BaseException:
+				self._failure_document_repaired = True
+				self._repair_cleanup_for_failure_document()
 
 	def run_receipt_lifecycle(
 		self,
@@ -965,12 +1220,13 @@ class RestorePrerequisiteGateState:
 			self._record_primary("receipt_validation", "harness_corruption")
 			raise RestorePrerequisiteGateAbort() from None
 		def owned_action() -> object:
-			if not self._cleanup_finalized:
-				raise HarnessCorruption("restore prerequisite cleanup is not final")
+			if not recovery:
+				self._require_cleanup_proof()
 			if (
 				self._primary_checkpoint is None
 				and tuple(self._completed_checkpoints)
 				!= RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS
+				and not recovery
 			):
 				raise HarnessCorruption("restore prerequisite execution is incomplete")
 			previous = {
@@ -981,7 +1237,11 @@ class RestorePrerequisiteGateState:
 			if previous is not None and self._lifecycle_status.get(previous) != "passed":
 				raise HarnessCorruption("restore prerequisite receipt order is invalid")
 			status = self._lifecycle_status.get(checkpoint)
-			if status == "passed" or status == "failed" and not recovery:
+			if (
+				status == "passed"
+				and not (recovery and checkpoint == "receipt_validation")
+				or status == "failed" and not recovery
+			):
 				raise HarnessCorruption("restore prerequisite receipt owner repeated")
 			return action()
 		try:
@@ -998,6 +1258,9 @@ class RestorePrerequisiteGateState:
 		return self._lifecycle_status.get(checkpoint) == "passed"
 
 	def capture_unhandled(self, error: BaseException) -> None:
+		if self._cleanup_started and not self._cleanup_finalized:
+			self.capture_cleanup_failure(error)
+			return
 		if isinstance(error, RestorePrerequisiteGateAbort):
 			return
 		if self._primary_checkpoint is not None:
@@ -1017,21 +1280,25 @@ class RestorePrerequisiteGateState:
 		reason, semantic_diagnostic = self._classify_failure(checkpoint, error)
 		self._record_primary(checkpoint, reason, semantic_diagnostic)
 
-	def failure_document(self) -> dict[str, object]:
+	def _failure_document(self) -> dict[str, object]:
 		if (
 			self._primary_checkpoint is None
 			or self._primary_reason is None
-			or not self._cleanup_finalized
 		):
 			raise HarnessCorruption("restore prerequisite failure state is incomplete")
+		cleanup_status = self.cleanup_status
 		document = {
 			"acceptance": False,
-			"cleanup_status": self._cleanup_status,
+			"cleanup_finalized": self.cleanup_finalization_completed,
+			"cleanup_status": cleanup_status,
+			"completed_cleanup_owners": list(self._cleanup_completed_owners),
 			"completed_checkpoints": list(self._completed_checkpoints),
 			"definition_fingerprint": RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
+			"failure_document_repaired": self._failure_document_repaired,
 			"passed": False,
 			"primary_checkpoint": self._primary_checkpoint,
 			"primary_reason": self._primary_reason,
+			"required_cleanup_owners": list(self._cleanup_required_owners),
 			"schema": RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA,
 			"secondary_cleanup_reason": self._secondary_cleanup_reason,
 			"semantic_authority_diagnostic": self._semantic_authority_diagnostic,
@@ -1040,6 +1307,27 @@ class RestorePrerequisiteGateState:
 			),
 		}
 		return validate_restore_prerequisite_gate_diagnostic(document)
+
+	def failure_document(self) -> dict[str, object]:
+		return self._failure_document()
+
+	def failure_document_with_fixed_fallback(self) -> dict[str, object]:
+		if self._current_checkpoint != "receipt_validation":
+			raise HarnessCorruption(
+				"restore prerequisite failure document has no lifecycle owner"
+			)
+		try:
+			return self._failure_document()
+		except BaseException:
+			self._failure_document_repaired = True
+			try:
+				self._require_cleanup_proof()
+			except BaseException:
+				self._repair_cleanup_for_failure_document()
+			if self._primary_checkpoint is None or self._primary_reason is None:
+				checkpoint = self._next_execution_checkpoint() or "receipt_validation"
+				self._record_primary(checkpoint, "harness_corruption")
+			return self._failure_document()
 
 
 class StageActionFailure(RuntimeError):
@@ -2614,51 +2902,75 @@ def cleanup_restore_prerequisite_gate(
 	data_dir: Path | None,
 	env: dict[str, str] | None,
 	cluster_start_attempted: bool,
+	*,
+	fault_injector: Callable[[str], None] | None = None,
 ) -> None:
 	"""Run the v2 gate cleanup owners without exposing operational details."""
-	state.begin_cleanup(work is not None)
-	if work is None:
-		return
 	try:
-		if cluster_start_attempted:
-			def stop_cluster() -> None:
-				if data_dir is None or env is None:
-					raise HarnessCorruption("restore prerequisite teardown state is invalid")
-				status = (
-					postgres_status(data_dir, env)
-					if data_dir.exists() else ClusterStatus.STOPPED
+		state.begin_cleanup(cluster_start_attempted, work is not None)
+		def inject(point: str) -> None:
+			if fault_injector is not None:
+				if point not in RESTORE_PREREQUISITE_CLEANUP_FAULT_POINTS:
+					raise HarnessCorruption(
+						"restore prerequisite cleanup fault point is invalid"
+					)
+				fault_injector(point)
+		def stop_cluster() -> None:
+			if data_dir is None or env is None:
+				raise HarnessCorruption("restore prerequisite teardown state is invalid")
+			status = (
+				postgres_status(data_dir, env)
+				if data_dir.exists() else ClusterStatus.STOPPED
+			)
+			if status is ClusterStatus.RUNNING:
+				try:
+					run(
+						["pg_ctl", "-D", str(data_dir), "-m", "fast", "-w", "stop"],
+						env,
+					)
+				except Exception:
+					pass
+				status = postgres_status(data_dir, env)
+			if status is ClusterStatus.RUNNING:
+				try:
+					run(
+						[
+							"pg_ctl", "-D", str(data_dir), "-m", "immediate",
+							"-w", "stop",
+						],
+						env,
+					)
+				except Exception:
+					pass
+				status = postgres_status(data_dir, env)
+			if status is not ClusterStatus.STOPPED:
+				raise TestFailure("restore prerequisite cluster cleanup failed")
+		def remove_private_work() -> None:
+			if work is None:
+				raise HarnessCorruption(
+					"restore prerequisite private work is absent"
 				)
-				if status is ClusterStatus.RUNNING:
-					try:
-						run(
-							["pg_ctl", "-D", str(data_dir), "-m", "fast", "-w", "stop"],
-							env,
-						)
-					except Exception:
-						pass
-					status = postgres_status(data_dir, env)
-				if status is ClusterStatus.RUNNING:
-					try:
-						run(
-							[
-								"pg_ctl", "-D", str(data_dir), "-m", "immediate",
-								"-w", "stop",
-							],
-							env,
-						)
-					except Exception:
-						pass
-					status = postgres_status(data_dir, env)
-				if status is not ClusterStatus.STOPPED:
-					raise TestFailure("restore prerequisite cluster cleanup failed")
-
-			state.run_cleanup("cluster_stop", stop_cluster)
-		state.run_cleanup("private_work_cleanup", lambda: shutil.rmtree(work))
-	except RestorePrerequisiteGateAbort:
-		pass
-	finally:
-		if not state.cleanup_finalized:
-			state.finish_cleanup()
+			shutil.rmtree(work)
+		actions: dict[str, Callable[[], object]] = {
+			"cluster_stop": stop_cluster,
+			"private_work_cleanup": remove_private_work,
+		}
+		if state.required_cleanup_owners:
+			inject("before_first_cleanup_owner")
+		for owner in state.required_cleanup_owners:
+			state.run_cleanup(owner, actions[owner])
+			inject(f"after_{owner}_action_before_transition")
+			state.complete_cleanup_owner(owner)
+			if owner == "cluster_stop":
+				inject("between_cluster_stop_and_private_work_cleanup")
+		state.begin_cleanup_finalization()
+		inject("during_cleanup_finalization")
+		state.finish_cleanup()
+	except BaseException as error:
+		try:
+			state.capture_cleanup_failure(error)
+		except BaseException:
+			state._repair_cleanup_for_failure_document()
 
 
 def database_url(socket_dir: Path, port: int, database: str, role: str) -> str:
@@ -7020,11 +7332,18 @@ def restore_prerequisite_definition() -> dict[str, object]:
 				for checkpoint, reasons in RESTORE_PREREQUISITE_REASON_MATRIX
 			],
 			"fields": [
-				"acceptance", "cleanup_status", "completed_checkpoints",
-				"definition_fingerprint", "passed", "primary_checkpoint",
-				"primary_reason", "schema", "secondary_cleanup_reason",
+				"acceptance", "cleanup_finalized", "cleanup_status",
+				"completed_cleanup_owners", "completed_checkpoints",
+				"definition_fingerprint", "failure_document_repaired", "passed",
+				"primary_checkpoint", "primary_reason", "required_cleanup_owners",
+				"schema", "secondary_cleanup_reason",
 				"semantic_authority_diagnostic", "source_binding",
 			],
+			"failure_document": {
+				"fallback": "fixed_receipt_validation_harness_corruption",
+				"normal_and_repair_owner": "receipt_validation",
+				"preserve_first_primary": True,
+			},
 			"reason_set": list(RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS),
 			"schema": RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA,
 			"semantic_diagnostic": {
@@ -7045,11 +7364,35 @@ def restore_prerequisite_definition() -> dict[str, object]:
 		},
 		"invocation_policy": list(RESTORE_PREREQUISITE_INVOCATION_POLICIES),
 		"lifecycle": {
-			"cleanup_secondary_reason": "cleanup_failed",
-			"cleanup_statuses": list(RESTORE_PREREQUISITE_CLEANUP_STATUSES),
+			"cleanup": {
+				"completed_owners": "successful_prefix_only",
+				"fault_injection_points": list(
+					RESTORE_PREREQUISITE_CLEANUP_FAULT_POINTS
+				),
+				"finalization": {
+					"fail_closed": True,
+					"owner": RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
+					"required_for_every_status": True,
+				},
+				"owner_states": list(RESTORE_PREREQUISITE_CLEANUP_OWNER_STATES),
+				"required_owner_derivation": {
+					"cluster_stop": "cluster_start_attempted",
+					"private_work_cleanup": "private_work_exists",
+				},
+				"required_owner_sequences": [
+					list(sequence)
+					for sequence in RESTORE_PREREQUISITE_CLEANUP_OWNER_SEQUENCES
+				],
+				"secondary_reason": "cleanup_failed",
+				"status_proof": (
+					"required_sequence_and_completed_sequence_and_finalization"
+				),
+				"statuses": list(RESTORE_PREREQUISITE_CLEANUP_STATUSES),
+			},
 			"owners": list(RESTORE_PREREQUISITE_LIFECYCLE_CHECKPOINTS),
 			"precedence": {
 				"cleanup": "secondary_unless_no_primary",
+				"failure_document_repair": "never_relabels_valid_first_primary",
 				"first_primary": "immutable",
 				"publication": "never_relabels_primary",
 			},
@@ -7057,10 +7400,11 @@ def restore_prerequisite_definition() -> dict[str, object]:
 		"pass": {
 			"acceptance": False,
 			"fields": [
-				"acceptance", "cleanup_status", "completed_checkpoints",
+				"acceptance", "cleanup_finalized", "cleanup_status",
+				"completed_cleanup_owners", "completed_checkpoints",
 				"definition_fingerprint", "gate_only", "invocation_policy",
 				"later_phase_a_decision_only", "passed", "postgres_toolchain",
-				"schema", "source_binding",
+				"required_cleanup_owners", "schema", "source_binding",
 			],
 			"meaning": "later_revised_phase_a_decision_only",
 			"schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
@@ -7077,6 +7421,7 @@ def restore_prerequisite_definition() -> dict[str, object]:
 			"create_only": True,
 			"directory_fsync": True,
 			"failure_stderr": "same_canonical_diagnostic",
+			"fixed_fallback": "receipt_validation_harness_corruption",
 			"file_fsync": True,
 			"file_mode": "0600",
 		},
@@ -7172,10 +7517,12 @@ def validate_restore_prerequisite_gate_diagnostic(
 	diagnostic: object,
 ) -> dict[str, object]:
 	fields = {
-		"acceptance", "cleanup_status", "completed_checkpoints",
-		"definition_fingerprint", "passed", "primary_checkpoint",
-		"primary_reason", "schema", "secondary_cleanup_reason",
-		"semantic_authority_diagnostic", "source_binding",
+		"acceptance", "cleanup_finalized", "cleanup_status",
+		"completed_cleanup_owners", "completed_checkpoints",
+		"definition_fingerprint", "failure_document_repaired", "passed",
+		"primary_checkpoint", "primary_reason", "required_cleanup_owners",
+		"schema", "secondary_cleanup_reason", "semantic_authority_diagnostic",
+		"source_binding",
 	}
 	if not isinstance(diagnostic, dict) or set(diagnostic) != fields:
 		raise TestFailure("restore prerequisite diagnostic is invalid")
@@ -7184,6 +7531,12 @@ def validate_restore_prerequisite_gate_diagnostic(
 	primary_reason = diagnostic["primary_reason"]
 	cleanup_status = diagnostic["cleanup_status"]
 	secondary_cleanup_reason = diagnostic["secondary_cleanup_reason"]
+	required_cleanup_owners = diagnostic["required_cleanup_owners"]
+	completed_cleanup_owners = diagnostic["completed_cleanup_owners"]
+	cleanup_primary = primary_checkpoint in {
+		*RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+		RESTORE_PREREQUISITE_CLEANUP_FINALIZATION_OWNER,
+	}
 	if (
 		diagnostic["schema"] != RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA
 		or diagnostic["acceptance"] is not False
@@ -7197,10 +7550,32 @@ def validate_restore_prerequisite_gate_diagnostic(
 		or not isinstance(primary_reason, str)
 		or primary_reason
 		not in RESTORE_PREREQUISITE_ALLOWED_REASONS.get(primary_checkpoint, ())
+		or diagnostic["cleanup_finalized"] is not True
+		or type(diagnostic["failure_document_repaired"]) is not bool
 		or cleanup_status not in RESTORE_PREREQUISITE_CLEANUP_STATUSES
+		or not isinstance(required_cleanup_owners, list)
+		or tuple(required_cleanup_owners)
+		not in RESTORE_PREREQUISITE_CLEANUP_OWNER_SEQUENCES
+		or not isinstance(completed_cleanup_owners, list)
+		or completed_cleanup_owners
+		!= required_cleanup_owners[:len(completed_cleanup_owners)]
 		or (
-			cleanup_status == "failed"
-			and secondary_cleanup_reason != "cleanup_failed"
+			cleanup_status == "not_required"
+			and (required_cleanup_owners or completed_cleanup_owners)
+		)
+		or (
+			cleanup_status == "passed"
+			and (
+				not required_cleanup_owners
+				or completed_cleanup_owners != required_cleanup_owners
+			)
+		)
+		or (
+			cleanup_status == "failed" and (
+				secondary_cleanup_reason is not None
+				if cleanup_primary else
+				secondary_cleanup_reason != "cleanup_failed"
+			)
 		)
 		or (cleanup_status != "failed" and secondary_cleanup_reason is not None)
 	):
@@ -7210,13 +7585,21 @@ def validate_restore_prerequisite_gate_diagnostic(
 			primary_checkpoint
 		) != len(completed):
 			raise TestFailure("restore prerequisite diagnostic is invalid")
-	elif primary_checkpoint in {"receipt_validation", "receipt_source_binding", "receipt_publication"}:
-		if completed != list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS):
+	elif primary_checkpoint in RESTORE_PREREQUISITE_RECEIPT_LIFECYCLE_CHECKPOINTS:
+		fixed_fallback = (
+			diagnostic["failure_document_repaired"] is True
+			and primary_checkpoint == "receipt_validation"
+			and primary_reason == "harness_corruption"
+		)
+		if (
+			not fixed_fallback
+			and completed != list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS)
+		):
 			raise TestFailure("restore prerequisite diagnostic is invalid")
-	elif primary_checkpoint not in {"cluster_stop", "private_work_cleanup"}:
+	elif not cleanup_primary:
 		raise TestFailure("restore prerequisite diagnostic is invalid")
 	if (
-		primary_checkpoint in {"cluster_stop", "private_work_cleanup"}
+		cleanup_primary
 		and cleanup_status != "failed"
 	):
 		raise TestFailure("restore prerequisite diagnostic is invalid")
@@ -7256,6 +7639,27 @@ def canonical_restore_prerequisite_gate_diagnostic(diagnostic: object) -> str:
 	return json.dumps(
 		validated, sort_keys=True, separators=(",", ":"), ensure_ascii=True
 	)
+
+
+def fixed_restore_prerequisite_failure_diagnostic() -> dict[str, object]:
+	"""Return the closed last-resort receipt-validation diagnostic."""
+	return validate_restore_prerequisite_gate_diagnostic({
+		"acceptance": False,
+		"cleanup_finalized": True,
+		"cleanup_status": "failed",
+		"completed_cleanup_owners": [],
+		"completed_checkpoints": [],
+		"definition_fingerprint": RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
+		"failure_document_repaired": True,
+		"passed": False,
+		"primary_checkpoint": "receipt_validation",
+		"primary_reason": "harness_corruption",
+		"required_cleanup_owners": [],
+		"schema": RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA,
+		"secondary_cleanup_reason": "cleanup_failed",
+		"semantic_authority_diagnostic": None,
+		"source_binding": None,
+	})
 
 
 def populate_authority_capture_database(
@@ -7315,7 +7719,9 @@ def restore_prerequisite_gate_receipt(
 		raise TestFailure("restore prerequisite receipt is invalid")
 	return {
 		"acceptance": False,
+		"cleanup_finalized": state.cleanup_finalization_completed,
 		"cleanup_status": "passed",
+		"completed_cleanup_owners": list(state.completed_cleanup_owners),
 		"completed_checkpoints": list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS),
 		"definition_fingerprint": restore_prerequisite_definition_fingerprint(),
 		"gate_only": True,
@@ -7327,6 +7733,7 @@ def restore_prerequisite_gate_receipt(
 			"major_18": True,
 			"stable": True,
 		},
+		"required_cleanup_owners": list(state.required_cleanup_owners),
 		"schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
 		"source_binding": {
 			"start": source_binding,
@@ -7342,10 +7749,11 @@ def validate_restore_prerequisite_gate_receipt(
 		raise TestFailure("restore prerequisite receipt is invalid")
 	try:
 		if set(receipt) != {
-			"acceptance", "cleanup_status", "completed_checkpoints",
+			"acceptance", "cleanup_finalized", "cleanup_status",
+			"completed_cleanup_owners", "completed_checkpoints",
 			"definition_fingerprint", "gate_only", "invocation_policy",
 			"later_phase_a_decision_only", "passed", "postgres_toolchain",
-			"schema", "source_binding",
+			"required_cleanup_owners", "schema", "source_binding",
 		}:
 			raise TestFailure("restore prerequisite receipt is invalid")
 		source_binding = receipt["source_binding"]
@@ -7369,7 +7777,12 @@ def validate_restore_prerequisite_gate_receipt(
 		or receipt["schema"] != RESTORE_PREREQUISITE_GATE_SCHEMA
 		or receipt["acceptance"] is not False
 		or receipt["passed"] is not True
+		or receipt["cleanup_finalized"] is not True
 		or receipt["cleanup_status"] != "passed"
+		or receipt["required_cleanup_owners"]
+		!= list(RESTORE_PREREQUISITE_CLEANUP_OWNERS)
+		or receipt["completed_cleanup_owners"]
+		!= list(RESTORE_PREREQUISITE_CLEANUP_OWNERS)
 		or receipt["completed_checkpoints"]
 		!= list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS)
 		or receipt["definition_fingerprint"]
@@ -7383,7 +7796,9 @@ def validate_restore_prerequisite_gate_receipt(
 		raise TestFailure("restore prerequisite receipt is invalid")
 	expected = {
 		"acceptance": False,
+		"cleanup_finalized": True,
 		"cleanup_status": "passed",
+		"completed_cleanup_owners": list(RESTORE_PREREQUISITE_CLEANUP_OWNERS),
 		"completed_checkpoints": list(RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS),
 		"definition_fingerprint": RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
 		"gate_only": True,
@@ -7397,6 +7812,7 @@ def validate_restore_prerequisite_gate_receipt(
 			"major_18": True,
 			"stable": True,
 		},
+		"required_cleanup_owners": list(RESTORE_PREREQUISITE_CLEANUP_OWNERS),
 		"schema": RESTORE_PREREQUISITE_GATE_SCHEMA,
 		"source_binding": {"start": start, "end": start},
 	}
@@ -10096,17 +10512,30 @@ def publish_completed_restore_prerequisite_gate(
 def publish_restore_prerequisite_failure(
 	state: RestorePrerequisiteGateState,
 ) -> None:
-	diagnostic = state.failure_document()
+	diagnostic = fixed_restore_prerequisite_failure_diagnostic()
 	serialized = canonical_restore_prerequisite_gate_diagnostic(diagnostic)
-	publication_possible = state.output_contract_validated and state.output_path is not None
-	if publication_possible:
-		try:
-			if not state.lifecycle_passed("receipt_validation"):
-				state.run_receipt_lifecycle(
-					"receipt_validation",
-					lambda: validate_restore_prerequisite_gate_diagnostic(diagnostic),
-					recovery=True,
-				)
+	try:
+		state.ensure_cleanup_finalized_without_work()
+		def construct_failure_document() -> tuple[dict[str, object], str]:
+			result = state.failure_document_with_fixed_fallback()
+			return result, canonical_restore_prerequisite_gate_diagnostic(result)
+		constructed = state.run_receipt_lifecycle(
+			"receipt_validation", construct_failure_document, recovery=True
+		)
+		if (
+			not isinstance(constructed, tuple)
+			or len(constructed) != 2
+			or not isinstance(constructed[0], dict)
+			or not isinstance(constructed[1], str)
+		):
+			raise HarnessCorruption(
+				"restore prerequisite failure publication state is invalid"
+			)
+		diagnostic, serialized = constructed
+		publication_possible = (
+			state.output_contract_validated and state.output_path is not None
+		)
+		if publication_possible:
 			if not state.lifecycle_passed("receipt_source_binding"):
 				def require_failure_source_binding() -> None:
 					expected = state.source_binding
@@ -10117,21 +10546,29 @@ def publish_restore_prerequisite_failure(
 					require_failure_source_binding,
 					recovery=True,
 				)
-			if not state.lifecycle_passed("receipt_publication"):
-				assert state.output_path is not None
+			if (
+				state.lifecycle_passed("receipt_source_binding")
+				and not state.lifecycle_passed("receipt_publication")
+			):
+				output_path = state.output_path
+				if output_path is None:
+					raise HarnessCorruption(
+						"restore prerequisite output path is absent"
+					)
 				state.run_receipt_lifecycle(
 					"receipt_publication",
 					lambda: publish_restore_prerequisite_receipt(
-						state.output_path, diagnostic
+						output_path, diagnostic
 					),
 					recovery=True,
 				)
-		except RestorePrerequisiteGateAbort:
-			pass
-	try:
-		print(serialized, file=sys.stderr, flush=True)
 	except BaseException:
 		pass
+	finally:
+		try:
+			print(serialized, file=sys.stderr, flush=True)
+		except BaseException:
+			pass
 
 
 def restore_prerequisite_gate_requested() -> bool:
@@ -10156,8 +10593,19 @@ if __name__ == "__main__":
 	except BaseException as error:
 		if restore_prerequisite_state is None:
 			raise
-		restore_prerequisite_state.capture_unhandled(error)
-		restore_prerequisite_state.ensure_cleanup_finalized_without_work()
-		publish_restore_prerequisite_failure(restore_prerequisite_state)
+		try:
+			restore_prerequisite_state.capture_unhandled(error)
+			restore_prerequisite_state.ensure_cleanup_finalized_without_work()
+		except BaseException:
+			pass
+		try:
+			publish_restore_prerequisite_failure(restore_prerequisite_state)
+		except BaseException:
+			try:
+				print(canonical_restore_prerequisite_gate_diagnostic(
+					fixed_restore_prerequisite_failure_diagnostic()
+				), file=sys.stderr, flush=True)
+			except BaseException:
+				pass
 		exit_code = 1
 	raise SystemExit(exit_code)
