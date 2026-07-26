@@ -18,9 +18,11 @@ use std::{
 
 use decodex_core::{DecodexPaths, LocalTrustPolicy};
 
+/// One kernel-authenticated local byte stream on a supported Unix host.
 #[cfg(unix)]
 pub type LocalTransportStream = tokio::net::UnixStream;
 
+/// Uninhabited local stream facade for unsupported build targets.
 #[cfg(not(unix))]
 pub struct LocalTransportStream {
 	_private: (),
@@ -117,10 +119,6 @@ impl LocalTransportAuthority {
 	pub async fn bind(&self) -> Result<LocalTransportListener, LocalTransportRefusal> {
 		#[cfg(any(target_os = "linux", target_os = "macos"))]
 		{
-			self.verify_process_owner()?;
-			self.paths
-				.ensure_server_directory()
-				.map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
 			platform::bind(self).await
 		}
 
@@ -387,6 +385,10 @@ mod platform {
 			return Err(LocalTransportRefusal::UnsafeEndpoint);
 		}
 
+		authority
+			.paths
+			.ensure_local_transport_layout()
+			.map_err(|_| LocalTransportRefusal::UnsafeDirectory)?;
 		let directory =
 			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
 		let namespace_lock = NamespaceLock::acquire(&directory)?;
@@ -602,8 +604,9 @@ mod platform {
 
 		let stream = match UnixStream::connect(authority.endpoint_path()).await {
 			Ok(stream) => stream,
-			Err(_) if directory.verify_socket(CANONICAL_NAME, identity).is_err() =>
-				return Err(LocalTransportRefusal::EndpointReplaced),
+			Err(_) if directory.verify_socket(CANONICAL_NAME, identity).is_err() => {
+				return Err(LocalTransportRefusal::EndpointReplaced);
+			},
 			Err(_) => return Err(LocalTransportRefusal::EndpointUnavailable),
 		};
 		let peer =

@@ -1,4 +1,4 @@
-//! Bounded Decodex diagnostics plus local commit and landing authority.
+//! Bounded Decodex daemon clients plus local commit and landing authority.
 
 use std::{
 	fmt::{Debug, Formatter},
@@ -11,16 +11,17 @@ use tokio as _;
 
 use decodex_protocol::{
 	AppServerCapability, ClientFailure, ClientProfile, DoctorClient, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, ProfileKind,
+	DoctorReport, DoctorStatus, ProfileKind, ServerId,
 };
 
 mod git_hook;
 mod local_git;
+mod reset_card;
 
 const OUTPUT_SCHEMA: &str = "decodex/cli-diagnostics/1";
 const LOCAL_OUTPUT_SCHEMA: &str = "decodex/local-git/1";
 
-/// Decodex diagnostics and local Git authority client.
+/// Decodex daemon and local Git command client.
 #[derive(Parser)]
 #[command(name = "decodex", version, about)]
 pub struct Cli {
@@ -30,10 +31,13 @@ pub struct Cli {
 	/// Read the typed configuration from this Decodex-owned root.
 	#[arg(long, global = true, value_name = "PATH")]
 	root: Option<PathBuf>,
+	/// Require this stable server identity for the selected daemon profile.
+	#[arg(long, global = true, value_name = "UUID")]
+	expected_server_id: Option<String>,
 	/// Select human-readable or stable structured output.
 	#[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
 	output: OutputFormat,
-	/// Read-only daemon operation.
+	/// Selected daemon or local Git operation.
 	#[command(subcommand)]
 	command: Command,
 }
@@ -43,6 +47,7 @@ impl Debug for Cli {
 			.debug_struct("Cli")
 			.field("profile_selected", &self.profile.is_some())
 			.field("root_selected", &self.root.is_some())
+			.field("server_identity_selected", &self.expected_server_id.is_some())
 			.field("output", &self.output)
 			.field("command", &self.command)
 			.finish()
@@ -61,7 +66,7 @@ impl CommandOutput {
 		&self.text
 	}
 
-	/// Stable process exit code: 0 ready, 1 report has non-ready checks, 2 client failure.
+	/// Stable process exit code defined by the selected command contract.
 	pub const fn exit_code(&self) -> u8 {
 		self.exit_code
 	}
@@ -98,13 +103,16 @@ struct FailureDocument {
 	failure: ClientFailure,
 }
 
-/// Supported read-only daemon operations.
+/// Supported daemon and local Git operations.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum Command {
 	/// Summarize daemon readiness while retaining every typed check.
 	Status,
 	/// Render the complete authoritative diagnostic report.
 	Doctor,
+	/// Observe and consume reset cards through the common daemon authority.
+	#[command(subcommand)]
+	ResetCard(reset_card::ResetCardCommand),
 	/// Enforce the local Git commit and push policy without contacting the Decodex server.
 	GitHook(git_hook::GitHookCommand),
 	/// Create one signed local commit without contacting the Decodex server.
@@ -137,30 +145,35 @@ enum OverallStatus {
 	Unknown,
 }
 
-/// Execute one diagnostics or local Git command.
+/// Execute one daemon-client or local Git command.
 pub async fn execute(cli: Cli) -> CommandOutput {
-	let Cli { profile, root, output, command } = cli;
-
-	match &command {
-		Command::GitHook(command) =>
-			return render_git_hook_result(output, git_hook::execute(command)),
-		Command::Commit(command) =>
-			return render_local_result("commit", output, local_git::execute_commit(command)),
-		Command::Land(command) =>
-			return render_local_result("land", output, local_git::execute_land(command)),
-		Command::Status | Command::Doctor => {},
-	}
+	let Cli { profile, root, expected_server_id, output, command } = cli;
 
 	let command = match command {
+		Command::ResetCard(command) => {
+			return reset_card::execute(
+				command,
+				output,
+				root.as_deref(),
+				profile.as_deref(),
+				expected_server_id.as_deref(),
+			)
+			.await;
+		},
+		Command::GitHook(command) => {
+			return render_git_hook_result(output, git_hook::execute(&command));
+		},
+		Command::Commit(command) => {
+			return render_local_result("commit", output, local_git::execute_commit(&command));
+		},
+		Command::Land(command) => {
+			return render_local_result("land", output, local_git::execute_land(&command));
+		},
 		Command::Status => DiagnosticCommand::Status,
 		Command::Doctor => DiagnosticCommand::Doctor,
-		Command::GitHook(_) | Command::Commit(_) | Command::Land(_) =>
-			unreachable!("local commands returned above"),
 	};
-	let profile = match root.as_deref() {
-		Some(root) => ClientProfile::load(root, profile.as_deref()),
-		None => ClientProfile::load_default(profile.as_deref()),
-	};
+	let profile =
+		load_client_profile(root.as_deref(), profile.as_deref(), expected_server_id.as_deref());
 	let profile = match profile {
 		Ok(profile) => profile,
 		Err(failure) => return render_failure(command, output, failure),
@@ -172,6 +185,35 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 	};
 
 	render_report(command, output, client.profile().kind(), &report)
+}
+
+fn load_client_profile(
+	root: Option<&std::path::Path>,
+	selected_profile: Option<&str>,
+	expected_server_id: Option<&str>,
+) -> Result<ClientProfile, ClientFailure> {
+	let profile = match root {
+		Some(root) => ClientProfile::load(root, selected_profile),
+		None => ClientProfile::load_default(selected_profile),
+	}?;
+	let Some(expected_server_id) = expected_server_id else {
+		return Ok(profile);
+	};
+	if !is_canonical_uuid(expected_server_id) {
+		return Err(ClientFailure::ConfigurationMalformed);
+	}
+	let expected_server_id =
+		ServerId::new(expected_server_id).map_err(|_| ClientFailure::ConfigurationMalformed)?;
+
+	Ok(profile.with_expected_server_id(expected_server_id))
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+	value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'),
+		})
 }
 
 fn render_report(
@@ -468,7 +510,7 @@ mod tests {
 
 	fn report(statuses: impl IntoIterator<Item = DoctorStatus>) -> DoctorReport {
 		DoctorReport::new(
-			ServerId::new(SERVER_ID).unwrap(),
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			CURRENT_VERSION,
 			DoctorComponent::ALL
 				.into_iter()
@@ -476,18 +518,20 @@ mod tests {
 				.map(|(component, status)| DoctorCheck::new(component, status))
 				.collect(),
 		)
-		.unwrap()
+		.expect("test operation must succeed")
 	}
 
 	#[test]
 	fn command_surface_is_multi_command_without_aliases() {
 		Cli::command().debug_assert();
 
-		let doctor = Cli::try_parse_from(["decodex", "--profile", "remote", "doctor"]).unwrap();
-		let status = Cli::try_parse_from(["decodex", "status", "--output", "json"]).unwrap();
+		let doctor = Cli::try_parse_from(["decodex", "--profile", "remote", "doctor"])
+			.expect("test operation must succeed");
+		let status = Cli::try_parse_from(["decodex", "status", "--output", "json"])
+			.expect("test operation must succeed");
 		let commit =
 			Cli::try_parse_from(["decodex", "commit", "Exact candidate", "--manual-authority"])
-				.unwrap();
+				.expect("test operation must succeed");
 		let land = Cli::try_parse_from([
 			"decodex",
 			"land",
@@ -500,10 +544,10 @@ mod tests {
 			"--expected-head-oid",
 			"2222222222222222222222222222222222222222",
 		])
-		.unwrap();
+		.expect("test operation must succeed");
 		let git_hook =
 			Cli::try_parse_from(["decodex", "git-hook", "commit-msg", ".git/COMMIT_EDITMSG"])
-				.unwrap();
+				.expect("test operation must succeed");
 
 		assert_eq!(doctor.command, Command::Doctor);
 		assert_eq!(doctor.profile.as_deref(), Some("remote"));
@@ -538,15 +582,18 @@ mod tests {
 			profile_marker,
 			"--root",
 			root_marker,
+			"--expected-server-id",
+			"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162",
 			"doctor",
 		])
-		.unwrap();
+		.expect("test operation must succeed");
 		let debug = format!("{cli:?}");
 
 		assert!(!debug.contains(profile_marker));
 		assert!(!debug.contains(root_marker));
 		assert!(debug.contains("profile_selected: true"));
 		assert!(debug.contains("root_selected: true"));
+		assert!(debug.contains("server_identity_selected: true"));
 	}
 
 	#[test]
@@ -582,8 +629,10 @@ mod tests {
 			assert!(human.text().contains(crate::issue_name(issue)));
 		}
 
-		let value: serde_json::Value = serde_json::from_str(json.text()).unwrap();
-		let decoded: DoctorReport = serde_json::from_value(value["report"].clone()).unwrap();
+		let value: serde_json::Value =
+			serde_json::from_str(json.text()).expect("test operation must succeed");
+		let decoded: DoctorReport =
+			serde_json::from_value(value["report"].clone()).expect("test operation must succeed");
 
 		assert_eq!(decoded, report);
 		assert_eq!(human.exit_code(), 1);
@@ -619,6 +668,13 @@ mod tests {
 			ClientFailure::ProfileMissing,
 			ClientFailure::UnsafeHostPath,
 			ClientFailure::ServerIdentityUnavailable,
+			ClientFailure::RemoteMutationUnsupported,
+			ClientFailure::LocalTransportDisabled,
+			ClientFailure::RemoteTransportDisabled,
+			ClientFailure::LocalTransportUnsupported,
+			ClientFailure::UnsafeLocalEndpoint,
+			ClientFailure::LocalPeerIdentityUnavailable,
+			ClientFailure::LocalPeerUidMismatch,
 			ClientFailure::ProtocolDisconnected,
 			ClientFailure::ProtocolTimeout,
 			ClientFailure::ProtocolMajorMismatch,
@@ -627,6 +683,7 @@ mod tests {
 			ClientFailure::ProtocolMalformed,
 			ClientFailure::ProtocolViolation,
 			ClientFailure::ProtocolBackpressure,
+			ClientFailure::ApplicationAcceptanceUnknown,
 		];
 
 		for failure in failures {
@@ -634,7 +691,8 @@ mod tests {
 				crate::render_failure(DiagnosticCommand::Doctor, OutputFormat::Human, failure);
 			let json =
 				crate::render_failure(DiagnosticCommand::Doctor, OutputFormat::Json, failure);
-			let value: serde_json::Value = serde_json::from_str(json.text()).unwrap();
+			let value: serde_json::Value =
+				serde_json::from_str(json.text()).expect("test operation must succeed");
 
 			assert_eq!(human.exit_code(), 2);
 			assert!(human.is_error_stream());
@@ -665,20 +723,24 @@ mod tests {
 	fn incomplete_ready_reports_render_as_closed_protocol_failures() {
 		let complete = report(vec![DoctorStatus::Ready; DoctorComponent::ALL.len()]);
 		let cases = [
-			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, Vec::new())
-				.unwrap(),
 			DoctorReport::new(
-				ServerId::new(SERVER_ID).unwrap(),
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
+				CURRENT_VERSION,
+				Vec::new(),
+			)
+			.expect("test operation must succeed"),
+			DoctorReport::new(
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				CURRENT_VERSION,
 				vec![DoctorCheck::new(DoctorComponent::Configuration, DoctorStatus::Ready)],
 			)
-			.unwrap(),
+			.expect("test operation must succeed"),
 			DoctorReport::new(
-				ServerId::new(SERVER_ID).unwrap(),
+				ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				CURRENT_VERSION,
 				complete.checks()[1..].to_vec(),
 			)
-			.unwrap(),
+			.expect("test operation must succeed"),
 		];
 
 		for report in cases {
@@ -693,7 +755,8 @@ mod tests {
 				assert_eq!(output.exit_code(), 2);
 
 				if format == OutputFormat::Json {
-					let value: serde_json::Value = serde_json::from_str(output.text()).unwrap();
+					let value: serde_json::Value =
+						serde_json::from_str(output.text()).expect("test operation must succeed");
 
 					assert_eq!(value["failure"], "protocol_malformed");
 				}
@@ -708,8 +771,12 @@ mod tests {
 
 		checks.reverse();
 
-		let report =
-			DoctorReport::new(ServerId::new(SERVER_ID).unwrap(), CURRENT_VERSION, checks).unwrap();
+		let report = DoctorReport::new(
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			CURRENT_VERSION,
+			checks,
+		)
+		.expect("test operation must succeed");
 		let output = crate::render_report(
 			DiagnosticCommand::Status,
 			OutputFormat::Json,

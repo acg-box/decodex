@@ -36,6 +36,7 @@ mod programs;
 mod project_agents;
 mod provider_attempts;
 mod quota;
+mod reset_cards;
 mod role_profiles;
 mod routing;
 mod routing_decisions;
@@ -76,6 +77,9 @@ pub use self::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,
 		PrepareProviderAttemptOutcome, ProviderAttemptMutation, ProviderAttemptMutationOutcome,
 		ProviderAttemptRejection,
+	},
+	reset_cards::{
+		ResetCardClaim, ResetCardFailureCode, ResetCardOperationStatus, ResetCardPreparation,
 	},
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,

@@ -33,21 +33,43 @@ extension control closure, read-only migration history, and USAGE-only identity 
 login role and every SET-reachable role. The operator must also pin the expected PostgreSQL
 Unix-peer UID; descriptor-pinned socket metadata and kernel peer credentials are verified before
 either identity authenticates. Missing, malformed, unsafe, unreachable, authentication-failed,
-or incompatible configuration remains typed unavailable with no fallback. Protocol V1.2
-adds bounded read-only doctor/status, Conversation-history, and immutable execution-decision
-queries outside mutation receipts. The doctor query live-revalidates the retained PostgreSQL
-endpoint and authority without migration or repinning; V1.1 remains the previous-minor window.
+or incompatible configuration remains typed unavailable with no fallback. Protocol V1.3
+retains bounded read-only doctor/status, Conversation-history, and immutable execution-decision
+queries outside mutation receipts and adds the shared Reset Card service. V1.2 remains the
+previous-minor window. Doctor reads live-revalidate the retained PostgreSQL endpoint and authority
+without migration or repinning.
 The active `decodex status` and `decodex doctor` commands are API-only clients of that
-V1.2 query. They select the active or `--profile NAME` typed profile without echoing its
+V1.3 query. They select the active or `--profile NAME` typed profile without echoing its
 name, pin the stable server identity before accepting a snapshot or report, and emit human text or
 `--output json` under `decodex/cli-diagnostics/1`. Exit status is 0 only when all checks
 are ready, 1 for a complete report containing unavailable or unknown checks, and 2 for a
 closed client/configuration/protocol failure, including an incomplete current component set.
+`decodex reset-card accounts`, `list`, `use`, and `status` are thin clients of the
+common daemon service. The public contract uses a vNext account UUID, exact revision,
+and grant/expiry descriptor. Accounts in `available` or `depleted` state are admitted.
+The Rust service and CLI support the repository's macOS and Linux runtime hosts. Only
+the native SwiftUI client is macOS-specific.
+Reset-card operations currently accept only a local profile. The client rejects a
+remote profile before it opens a connection because the repository has no
+authenticated remote reset-card transport. Account and inventory JSON bind results to
+the selected profile name and stable server UUID. Later list, use, and status calls can
+retain that authority with global `--profile NAME --expected-server-id UUID` options.
+The caller creates and persists the `use` idempotency key before it invokes the CLI;
+the CLI never substitutes or generates that key.
+`decodexd` alone reads credentials, starts the Codex app-server, resolves and persists
+the opaque credit ID, performs the effect, and reconciles fresh state. Restart recovery
+uses the same exact ID and idempotency key. It never rematches another card. The Codex
+schema must advertise both `account/rateLimits/read` and
+`account/rateLimitResetCredit/consume`.
+
 The local namespace uses a persistent single-link lock, fixed staging socket, and
 same-directory descriptor-relative publication. The runtime owns all session and command
-tasks in one set and empties that set before identity-checked cleanup, listener close, and
-lock release. Codex live dispatch, remote or cross-UID transport, application PKI,
-and product UI behavior are still unavailable until their owning slices land.
+tasks in one set and directly owns daemon service futures. Shutdown closes new Reset Card
+provider work, settles already registered work, and empties the task set before
+identity-checked cleanup, listener close, and lock release. `decodexd` maps SIGINT and
+SIGTERM to this graceful path; a later start safely recovers a provably stale socket after
+SIGKILL. Codex conversation dispatch, remote or cross-UID transport, application PKI,
+and GPUI product behavior are still unavailable until their owning slices land.
 The frozen v0.2 source remains under
 `apps/decodex/` as provenance and is excluded from the active Cargo workspace; it is not
 a compatibility runtime.
@@ -109,14 +131,16 @@ runtime.
   library owners.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are the active vNext
   composition roots. `decodexd` owns the same-UID Unix WebSocket server; the CLI is the
-  bounded API-only diagnostic client, while GPUI still reports disabled capability.
+  bounded diagnostic and reset-card service client, while GPUI still reports disabled
+  capability.
 - `apps/decodex/` preserves the frozen v0.2 package outside the active Cargo workspace.
 - `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
   release-delta, signal rendering, validation, and local ledger workflows.
 - `apps/decodex-publisher/` owns the standalone Publisher auxiliary tool for social
   candidate, reservation, and post validation/workflows.
-- `apps/decodex-app/` owns the native macOS app that manages Decodex
-  Codex accounts through the bundled Rust app helper.
+- `apps/decodex-app/` owns the native macOS app. Its legacy account controls use the
+  bundled Rust app helper. Its vNext reset-card panel uses the bundled active CLI as a
+  client of `decodexd`.
 - `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns Decodex runtime/operator lifecycle skills.
 - `openwiki/` owns the repo-local project knowledge surface.
@@ -128,8 +152,8 @@ runtime.
   `automations/radar/` retains reusable evidence tools. Their obsolete schedules and
   prompts were removed rather than retained as compatibility inputs.
 
-No product-specific command service is active yet. The protocol uses bounded in-memory
-replay/idempotency state while the PostgreSQL adapter owns durable product-state
+No other product-specific mutation service is active beyond Reset Card. The protocol uses
+bounded in-memory replay/idempotency state while the PostgreSQL adapter owns durable product-state
 transactions when its explicit configuration verifies successfully. The stable
 server-host identity is persisted under `~/.decodex`; stale or impossible cursors still
 force snapshot fallback after restart. Shared `~/.codex` remains Codex-owned. OpenWiki explains

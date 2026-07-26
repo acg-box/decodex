@@ -143,7 +143,11 @@ Current shape:
 
 - Radar owns upstream review queues, release deltas, artifact validation, signals, ledgers, bundles, and control-plane upgrade candidates (`apps/radar/src/lib.rs`).
 - Control Plane owns registered projects, app-server integration, tracker writes, local runtime state, operator status, review handoff, landing, closeout, cleanup, and recovery (`apps/decodex/src/cli.rs`, `apps/decodex/src/orchestrator/`).
-- Publisher owns social candidates, reservations, posts, validation, and idempotency/daily-cap checks (`apps/decodex-publisher/src/lib.rs`, `apps/decodex-publisher/src/social_publish.rs`, `apps/decodex-publisher/src/social_validation.rs`).
+- Publisher owns social candidates, reservations, posts, outcomes, strategy validation,
+  browser lease serialization, and idempotency or daily-cap checks
+  (`apps/decodex-publisher/src/lib.rs`,
+  `apps/decodex-publisher/src/social_publish.rs`,
+  `apps/decodex-publisher/src/social_validation.rs`).
 - The static site consumes reviewed product content and build assets, not live runtime state (`site/README.md`).
 
 Do not describe Radar artifacts as execution authority, Publisher content as shipped runtime proof, or the static site as a live control-plane surface.
@@ -155,7 +159,10 @@ Radar keeps raw upstream bundles and analysis drafts in Git only for a short hot
 Why:
 
 - Continuous Radar may inspect every upstream commit, but the repository should not become a permanent raw-data warehouse.
-- Curated impacts, signal entries, social records, and archive manifests are small enough to remain in Git; raw bundles and drafts are heavier recovery material.
+- Curated public impacts, signal entries, and archive manifests are small enough to
+  remain in Git. Raw bundles and drafts are heavier recovery material. Social,
+  strategy, browser-session, browser-lease, and generated-media records are local-only
+  and are never part of a Radar archive.
 - GitHub Release assets preserve a durable download location without filling the Git tree with compressed archives.
 
 Current shape:
@@ -164,7 +171,10 @@ Current shape:
 - Radar validation treats `.agent/automations/radar/cache/archive/index/` as the checked-in manifest area and permits historical retention-policy exceptions only for recognized archive-manifest paths (`apps/radar/src/artifact_validation/core/paths.rs`).
 - Radar constants and ledger schemas include archive artifact kinds and archived statuses (`apps/radar/src/constants.rs`, `apps/radar/src/ledger/schema/`).
 
-Do not commit compressed raw archives to Git as normal source, prune raw artifacts without updating the archive manifest, or confuse `radar-archive-*` release tags with Decodex product releases.
+Do not include social or account-session records in a Radar archive. Do not commit
+compressed raw archives to Git as normal source, prune raw artifacts without updating
+the archive manifest, or confuse `radar-archive-*` release tags with Decodex product
+releases.
 
 ## Stop conditions for future changes
 

@@ -8,6 +8,7 @@ mod managed_repositories;
 #[path = "postgres_store/managed_runs.rs"]
 mod managed_runs;
 #[path = "postgres_store/quota.rs"] mod quota;
+#[path = "postgres_store/reset_cards.rs"] mod reset_cards;
 #[cfg(feature = "test-support")]
 #[path = "postgres_store/role_profiles.rs"]
 mod role_profiles;
