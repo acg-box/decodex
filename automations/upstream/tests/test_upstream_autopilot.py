@@ -116,7 +116,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "changed_paths_sha256": self.autopilot.sha256_value(
                 [] if base == head else ["example"]
             ),
+            "candidate_path_classification": "sandbox_eligible",
+            "candidate_path_policy_sha256": (
+                self.autopilot.candidate_path_policy_sha256(self.policy)
+            ),
             "requires_full_gate": requires_full_gate,
+            "sandbox_task_graph_sha256": "6" * 64,
+            "live_postgres_gate": (
+                self.autopilot.LIVE_POSTGRES_GATE_STATUS
+            ),
             "validation_authority": {
                 "repository_head": base,
                 "repository_tree": "8" * 40,
@@ -125,8 +133,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "profiles": [
                 {
                     "name": name,
-                    "command_sha256": self.autopilot.sha256_value(
-                        self.policy["validation_profiles"][name]
+                    "effective_task": self.autopilot.SANDBOX_PROFILE_TASKS[name],
+                    "command_sha256": (
+                        self.autopilot.profile_command_sha256(name)
                     ),
                     "environment_sha256": self.autopilot.sha256_value(
                         {"profile": name, "environment": "sanitized"}
@@ -1794,6 +1803,38 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 role="maintainer",
             )
 
+    def test_validation_receipt_rejects_a_forged_effective_task(self):
+        receipt = self.validation_receipt("maintainer")
+        receipt["profiles"][0]["effective_task"] = "test"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "validation_receipt_command_mismatch",
+        ):
+            self.autopilot.validate_validation_receipt(
+                receipt,
+                role="maintainer",
+            )
+
+    def test_validation_receipt_binds_the_candidate_path_policy(self):
+        receipt = self.validation_receipt("maintainer")
+        changed_policy = deepcopy(self.policy)
+        changed_policy["sandbox_incompatible_exact_paths"] = [
+            *changed_policy["sandbox_incompatible_exact_paths"],
+            "tests/example.rs",
+        ]
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "validation_receipt_path_policy_mismatch",
+        ):
+            self.autopilot.validate_receipt_against_policy(
+                receipt,
+                changed_policy,
+                role="maintainer",
+                expected_base_head=receipt["base_head"],
+                expected_head=receipt["repository_head"],
+                expected_tree=receipt["repository_tree"],
+            )
+
     def test_validation_authority_changes_are_repair_only(self):
         with self.assertRaisesRegex(
             self.autopilot.AutopilotError,
@@ -1802,10 +1843,12 @@ class UpstreamAutopilotTests(unittest.TestCase):
             self.autopilot.classify_validation_scope(
                 ("Makefile.toml",),
                 candidate_kind="upstream_range",
+                policy=self.policy,
             )
         scope = self.autopilot.classify_validation_scope(
             ("Makefile.toml",),
             candidate_kind="automation_repair",
+            policy=self.policy,
         )
         self.assertTrue(scope["requires_full_gate"])
 
@@ -1822,11 +1865,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 scope = self.autopilot.classify_validation_scope(
                     (path,),
                     candidate_kind="upstream_range",
+                    policy=self.policy,
                 )
                 self.assertTrue(scope["requires_full_gate"])
         focused = self.autopilot.classify_validation_scope(
             ("crates/decodex-codex/src/protocol.rs",),
             candidate_kind="upstream_range",
+            policy=self.policy,
         )
         self.assertFalse(focused["requires_full_gate"])
         self.assertEqual(
@@ -1836,6 +1881,173 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 self.autopilot.FULL_VALIDATION_PROFILE,
             ),
         )
+
+    def test_sandbox_incompatible_paths_fail_closed_for_every_candidate_kind(self):
+        paths = [
+            *self.policy["sandbox_incompatible_exact_paths"],
+            *(
+                f"{prefix}example.rs"
+                for prefix in self.policy[
+                    "sandbox_incompatible_path_prefixes"
+                ]
+            ),
+        ]
+        for candidate_kind in ("upstream_range", "automation_repair"):
+            for path in paths:
+                with (
+                    self.subTest(
+                        candidate_kind=candidate_kind,
+                        path=path,
+                    ),
+                    self.assertRaisesRegex(
+                        self.autopilot.AutopilotError,
+                        "candidate_path_sandbox_incompatible",
+                    ),
+                ):
+                    self.autopilot.classify_validation_scope(
+                        (path,),
+                        candidate_kind=candidate_kind,
+                        policy=self.policy,
+                    )
+
+        scope = self.autopilot.classify_validation_scope(
+            ("crates/decodex-codex/src/protocol.rs",),
+            candidate_kind="automation_repair",
+            policy=self.policy,
+        )
+        self.assertEqual(
+            scope["candidate_path_classification"],
+            "sandbox_eligible",
+        )
+        self.assertEqual(
+            scope["candidate_path_policy_sha256"],
+            self.autopilot.candidate_path_policy_sha256(self.policy),
+        )
+
+    def test_name_status_parser_covers_both_sides_of_renames_and_copies(self):
+        self.assertEqual(
+            self.autopilot.parse_name_status_paths(
+                "M\0one.rs\0R100\0old.rs\0new.rs\0"
+                "C75\0source.rs\0copy.rs\0"
+            ),
+            (
+                "one.rs",
+                "old.rs",
+                "new.rs",
+                "source.rs",
+                "copy.rs",
+            ),
+        )
+        for malformed in (
+            "M\0missing-terminator",
+            "R100\0only-old.rs\0",
+            "U\0conflict.rs\0",
+            "R101\0old.rs\0new.rs\0",
+        ):
+            with (
+                self.subTest(malformed=malformed),
+                self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "validation_diff_invalid",
+                ),
+            ):
+                self.autopilot.parse_name_status_paths(malformed)
+
+    def test_changed_path_reader_rejects_gitlinks_and_authority_symlinks(self):
+        base = "1" * 40
+        head = "2" * 40
+        zero = "0" * 40
+        blob = "3" * 40
+        cases = (
+            (
+                "A\0vendor\0",
+                f":000000 160000 {zero} {blob} A\0vendor\0",
+            ),
+            (
+                "T\0Makefile.toml\0",
+                f":100644 120000 {blob} {blob} T\0Makefile.toml\0",
+            ),
+        )
+        for name_status, raw in cases:
+            with (
+                self.subTest(name_status=name_status),
+                mock.patch.object(
+                    self.autopilot.validation_module,
+                    "command_succeeds",
+                    return_value=True,
+                ),
+                mock.patch.object(
+                    self.autopilot.validation_module,
+                    "run_command",
+                    side_effect=(name_status, raw),
+                ),
+                self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "validation_diff_invalid",
+                ),
+            ):
+                self.autopilot.changed_paths_between(
+                    ROOT,
+                    base_head=base,
+                    head=head,
+                    policy=self.policy,
+                )
+
+    def test_sandbox_path_guard_runs_before_tool_or_dependency_preparation(self):
+        head = "2" * 40
+        tree = "3" * 40
+        authority = {
+            "repository_head": "1" * 40,
+            "repository_tree": "4" * 40,
+            "closure_sha256": "5" * 64,
+        }
+        with (
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "repository_identity",
+                return_value=(head, tree),
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "validation_authority_identity",
+                return_value=authority,
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "changed_paths_between",
+                return_value=("crates/decodex-postgres/src/lib.rs",),
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "validation_tools",
+            ) as validation_tools,
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "prepare_dependency_cache",
+            ) as prepare_dependency_cache,
+            self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "candidate_path_sandbox_incompatible",
+            ),
+        ):
+            self.autopilot.run_validation_profiles(
+                ROOT,
+                ROOT,
+                self.policy,
+                role="maintainer",
+                candidate_kind="automation_repair",
+                base_head="1" * 40,
+                expected_head=head,
+            )
+
+        validation_tools.assert_not_called()
+        prepare_dependency_cache.assert_not_called()
+
+    def test_sandbox_task_graph_binds_the_primary_aggregate_closure(self):
+        first = self.autopilot.sandbox_task_graph_sha256(ROOT)
+        second = self.autopilot.sandbox_task_graph_sha256(ROOT)
+        self.assertTrue(self.autopilot.is_sha256(first))
+        self.assertEqual(first, second)
 
     def test_validation_profiles_use_the_primary_makefile(self):
         command = self.autopilot.trusted_profile_command(
@@ -2065,10 +2277,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
 
         for secret in ("GH_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK"):
             self.assertNotIn(secret, environment)
-        self.assertEqual(
-            environment["DECODEX_TEST_TEMP_ROOT"],
-            str(Path(directory)),
-        )
+        self.assertNotIn("DECODEX_TEST_TEMP_ROOT", environment)
         self.assertNotIn("/tmp/hostile", environment["PATH"].split(os.pathsep))
         self.assertEqual(
             environment["PATH"].split(os.pathsep)[0],
@@ -2172,17 +2381,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
         "the outer validation process owns tool discovery",
     )
     def test_validation_tool_discovery_ignores_a_hostile_process_path(self):
-        postgres_tools = {
-            "initdb",
-            "pg_ctl",
-            "pg_dump",
-            "pg_restore",
-            "postgres",
-            "psql",
-        }
-        self.assertLessEqual(
-            postgres_tools,
-            set(self.autopilot.VALIDATION_TOOL_NAMES),
+        self.assertTrue(
+            {
+                "initdb",
+                "pg_ctl",
+                "pg_dump",
+                "pg_restore",
+                "postgres",
+                "psql",
+            }.isdisjoint(self.autopilot.VALIDATION_TOOL_NAMES)
         )
         with tempfile.TemporaryDirectory() as directory:
             hostile = Path(directory)

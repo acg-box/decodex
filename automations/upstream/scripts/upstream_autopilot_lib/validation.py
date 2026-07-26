@@ -40,6 +40,7 @@ from .core import (
 
 PROFILE_RESULT_KEYS = {
     "name",
+    "effective_task",
     "command_sha256",
     "environment_sha256",
     "exit_code",
@@ -53,7 +54,11 @@ VALIDATION_RECEIPT_KEYS = {
     "repository_tree",
     "changed_path_count",
     "changed_paths_sha256",
+    "candidate_path_classification",
+    "candidate_path_policy_sha256",
     "requires_full_gate",
+    "sandbox_task_graph_sha256",
+    "live_postgres_gate",
     "validation_authority",
     "profiles",
     "completed_at",
@@ -69,14 +74,8 @@ VALIDATION_TOOL_NAMES = (
     "cargo-nextest",
     "cp",
     "git",
-    "initdb",
     "node",
     "npm",
-    "pg_ctl",
-    "pg_dump",
-    "pg_restore",
-    "postgres",
-    "psql",
     "python3",
     "rustup",
     "sandbox-exec",
@@ -117,6 +116,12 @@ SANDBOX_PROFILE_TASKS = {
     ),
     FULL_VALIDATION_PROFILE: "check-sandboxed",
 }
+SANDBOX_TEST_AGGREGATES = {
+    "test-sandboxed": "test",
+    "test-headless-sandboxed": "test-headless",
+}
+SANDBOX_OMITTED_TASK = "test-vnext-postgres-store"
+LIVE_POSTGRES_GATE_STATUS = "omitted_sandbox_incompatible"
 MAX_CARGO_LOCK_BYTES = 16 * 1024 * 1024
 MAX_CARGO_PACKAGES = 4096
 CRATES_IO_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
@@ -190,6 +195,7 @@ def changed_paths_between(
     *,
     base_head: str,
     head: str,
+    policy: dict[str, Any],
 ) -> tuple[str, ...]:
     if (
         SHA_PATTERN.fullmatch(base_head) is None
@@ -201,33 +207,146 @@ def changed_paths_between(
         )
     ):
         raise AutopilotError("validation_base_invalid")
+    arguments = [
+        "git",
+        "diff",
+        "--find-renames",
+        "--find-copies",
+        "--diff-filter=ACDMRT",
+        "-z",
+        f"{base_head}..{head}",
+        "--",
+    ]
     output = run_command(
         [
-            "git",
-            "diff",
-            "--name-only",
-            "--diff-filter=ACDMRTUXB",
-            f"{base_head}..{head}",
-            "--",
+            *arguments[:2],
+            "--name-status",
+            *arguments[2:],
         ],
         cwd=worktree,
         failure_code="validation_diff_unavailable",
         max_output_bytes=8 * 1024 * 1024,
     )
-    paths = tuple(line for line in output.splitlines() if line)
+    paths = parse_name_status_paths(output)
+    raw_output = run_command(
+        [
+            *arguments[:2],
+            "--raw",
+            "--no-abbrev",
+            *arguments[2:],
+        ],
+        cwd=worktree,
+        failure_code="validation_diff_unavailable",
+        max_output_bytes=8 * 1024 * 1024,
+    )
+    raw_paths, modes = parse_raw_diff_paths(raw_output)
     if (
         len(paths) > 4096
+        or raw_paths != paths
         or len(set(paths)) != len(paths)
         or any(
             Path(path).is_absolute()
             or ".." in Path(path).parts
+            or path in {"", "."}
             or len(path) > 512
-            or "\r" in path
+            or "\\" in path
+            or any(ord(character) < 32 for character in path)
             for path in paths
+        )
+        or any("160000" in (old_mode, new_mode) for old_mode, new_mode in modes)
+        or any(
+            (
+                path_matches_sandbox_policy(path, policy)
+                or path in VALIDATION_AUTHORITY_PATHS
+                or any(
+                    path.startswith(prefix)
+                    for prefix in VALIDATION_AUTHORITY_PREFIXES
+                )
+            )
+            and "120000" in (old_mode, new_mode)
+            for path, (old_mode, new_mode) in zip(paths, modes, strict=True)
         )
     ):
         raise AutopilotError("validation_diff_invalid")
     return paths
+
+
+def parse_name_status_paths(output: str) -> tuple[str, ...]:
+    if not output:
+        return ()
+    tokens = output.split("\0")
+    if tokens[-1] != "":
+        raise AutopilotError("validation_diff_invalid")
+    tokens.pop()
+    paths: list[str] = []
+    index = 0
+    while index < len(tokens):
+        status = tokens[index]
+        index += 1
+        if re.fullmatch(r"[ACDMT]", status):
+            path_count = 1
+        elif re.fullmatch(r"[RC](?:100|[0-9]{1,2})", status):
+            path_count = 2
+        else:
+            raise AutopilotError("validation_diff_invalid")
+        if index + path_count > len(tokens):
+            raise AutopilotError("validation_diff_invalid")
+        paths.extend(tokens[index:index + path_count])
+        index += path_count
+    return tuple(paths)
+
+
+def parse_raw_diff_paths(
+    output: str,
+) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+    if not output:
+        return (), ()
+    tokens = output.split("\0")
+    if tokens[-1] != "":
+        raise AutopilotError("validation_diff_invalid")
+    tokens.pop()
+    paths: list[str] = []
+    modes: list[tuple[str, str]] = []
+    index = 0
+    header_pattern = re.compile(
+        r"^:([0-7]{6}) ([0-7]{6}) "
+        r"([0-9a-f]{40}) ([0-9a-f]{40}) "
+        r"([ACDMT]|[RC](?:100|[0-9]{1,2}))$"
+    )
+    while index < len(tokens):
+        match = header_pattern.fullmatch(tokens[index])
+        index += 1
+        if match is None:
+            raise AutopilotError("validation_diff_invalid")
+        path_count = 2 if match.group(5).startswith(("R", "C")) else 1
+        if index + path_count > len(tokens):
+            raise AutopilotError("validation_diff_invalid")
+        for path in tokens[index:index + path_count]:
+            paths.append(path)
+            modes.append((match.group(1), match.group(2)))
+        index += path_count
+    return tuple(paths), tuple(modes)
+
+
+def path_matches_sandbox_policy(path: str, policy: dict[str, Any]) -> bool:
+    return (
+        path in policy["sandbox_incompatible_exact_paths"]
+        or any(
+            path.startswith(prefix)
+            for prefix in policy["sandbox_incompatible_path_prefixes"]
+        )
+    )
+
+
+def candidate_path_policy_sha256(policy: dict[str, Any]) -> str:
+    return sha256_value(
+        {
+            "schema": policy["schema"],
+            "exact_paths": policy["sandbox_incompatible_exact_paths"],
+            "path_prefixes": policy["sandbox_incompatible_path_prefixes"],
+            "live_postgres_gate": LIVE_POSTGRES_GATE_STATUS,
+        }
+    )
 
 
 def path_requires_full_gate(path: str) -> bool:
@@ -245,7 +364,10 @@ def classify_validation_scope(
     changed_paths: tuple[str, ...],
     *,
     candidate_kind: str,
+    policy: dict[str, Any],
 ) -> dict[str, Any]:
+    if any(path_matches_sandbox_policy(path, policy) for path in changed_paths):
+        raise AutopilotError("candidate_path_sandbox_incompatible")
     authority_paths = tuple(
         path
         for path in changed_paths
@@ -260,6 +382,8 @@ def classify_validation_scope(
     return {
         "changed_path_count": len(changed_paths),
         "changed_paths_sha256": sha256_value(list(changed_paths)),
+        "candidate_path_classification": "sandbox_eligible",
+        "candidate_path_policy_sha256": candidate_path_policy_sha256(policy),
         "requires_full_gate": requires_full_gate,
     }
 
@@ -289,6 +413,101 @@ def trusted_profile_command(
         str((repo_root / "Makefile.toml").resolve()),
         sandbox_task,
     ]
+
+
+def profile_command_sha256(name: str) -> str:
+    command = VALIDATION_PROFILE_COMMANDS.get(name)
+    effective_task = SANDBOX_PROFILE_TASKS.get(name)
+    if command is None or effective_task is None:
+        raise AutopilotError("validation_profile_command_invalid")
+    return sha256_value(
+        {
+            "declared_command": command,
+            "effective_task": effective_task,
+            "makefile_authority": "primary",
+        }
+    )
+
+
+def sandbox_task_graph_sha256(repo_root: Path) -> str:
+    source = repo_root / "Makefile.toml"
+    try:
+        resolved = source.resolve(strict=True)
+        if (
+            source.is_symlink()
+            or resolved != source.absolute()
+            or not source.is_file()
+            or source.stat().st_size > 1024 * 1024
+        ):
+            raise AutopilotError("validation_task_graph_invalid")
+        with source.open("rb") as handle:
+            document = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise AutopilotError("validation_task_graph_invalid") from error
+    tasks = document.get("tasks")
+    if not isinstance(tasks, dict) or not 1 <= len(tasks) <= 512:
+        raise AutopilotError("validation_task_graph_invalid")
+    for sandboxed, ordinary in SANDBOX_TEST_AGGREGATES.items():
+        sandboxed_task = tasks.get(sandboxed)
+        ordinary_task = tasks.get(ordinary)
+        if not isinstance(sandboxed_task, dict) or not isinstance(
+            ordinary_task,
+            dict,
+        ):
+            raise AutopilotError("validation_task_graph_invalid")
+        sandboxed_dependencies = sandboxed_task.get("dependencies")
+        ordinary_dependencies = ordinary_task.get("dependencies")
+        if (
+            not isinstance(sandboxed_dependencies, list)
+            or not isinstance(ordinary_dependencies, list)
+            or ordinary_dependencies.count(SANDBOX_OMITTED_TASK) != 1
+            or sandboxed_dependencies
+            != [
+                dependency
+                for dependency in ordinary_dependencies
+                if dependency != SANDBOX_OMITTED_TASK
+            ]
+        ):
+            raise AutopilotError("validation_task_graph_invalid")
+
+    roots = tuple(SANDBOX_PROFILE_TASKS.values())
+    closure: dict[str, Any] = {}
+    visiting: set[str] = set()
+
+    def visit(name: str) -> None:
+        if name in closure:
+            return
+        if name in visiting:
+            raise AutopilotError("validation_task_graph_invalid")
+        task = tasks.get(name)
+        if not isinstance(task, dict):
+            raise AutopilotError("validation_task_graph_invalid")
+        dependencies = task.get("dependencies", [])
+        if (
+            not isinstance(dependencies, list)
+            or any(
+                not isinstance(dependency, str) or not dependency
+                for dependency in dependencies
+            )
+        ):
+            raise AutopilotError("validation_task_graph_invalid")
+        visiting.add(name)
+        for dependency in dependencies:
+            visit(dependency)
+        visiting.remove(name)
+        closure[name] = task
+
+    for root in roots:
+        visit(root)
+    if SANDBOX_OMITTED_TASK in closure:
+        raise AutopilotError("validation_task_graph_invalid")
+    return sha256_value(
+        {
+            "roots": roots,
+            "tasks": {name: closure[name] for name in sorted(closure)},
+            "live_postgres_gate": LIVE_POSTGRES_GATE_STATUS,
+        }
+    )
 
 
 def full_xcode_environment() -> tuple[dict[str, str], dict[str, str]]:
@@ -639,7 +858,6 @@ def sanitized_validation_environment(
         "CARGO_TERM_COLOR": "never",
         "CI": "1",
         "DECODEX_CANDIDATE_SANDBOX": "1",
-        "DECODEX_TEST_TEMP_ROOT": str(temporary_home),
         "GCM_INTERACTIVE": "never",
         "GH_PROMPT_DISABLED": "1",
         "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -734,7 +952,11 @@ def validate_validation_receipt(
         or not isinstance(receipt.get("changed_path_count"), int)
         or not 0 <= receipt["changed_path_count"] <= 4096
         or not is_sha256(receipt.get("changed_paths_sha256"))
+        or receipt.get("candidate_path_classification") != "sandbox_eligible"
+        or not is_sha256(receipt.get("candidate_path_policy_sha256"))
         or not isinstance(receipt.get("requires_full_gate"), bool)
+        or not is_sha256(receipt.get("sandbox_task_graph_sha256"))
+        or receipt.get("live_postgres_gate") != LIVE_POSTGRES_GATE_STATUS
         or not isinstance(receipt.get("completed_at"), int)
     ):
         raise AutopilotError("validation_receipt_invalid")
@@ -777,9 +999,13 @@ def validate_validation_receipt(
             raise AutopilotError("validation_receipt_invalid")
         names.append(profile["name"])
         expected_command = VALIDATION_PROFILE_COMMANDS.get(profile["name"])
+        expected_task = SANDBOX_PROFILE_TASKS.get(profile["name"])
         if (
             expected_command is None
-            or profile["command_sha256"] != sha256_value(expected_command)
+            or expected_task is None
+            or profile["effective_task"] != expected_task
+            or profile["command_sha256"]
+            != profile_command_sha256(profile["name"])
         ):
             raise AutopilotError("validation_receipt_command_mismatch")
         toolchain = profile.get("toolchain_evidence")
@@ -835,11 +1061,17 @@ def validate_receipt_against_policy(
         expected_head=expected_head,
         expected_tree=expected_tree,
     )
+    if (
+        receipt["candidate_path_policy_sha256"]
+        != candidate_path_policy_sha256(policy)
+    ):
+        raise AutopilotError("validation_receipt_path_policy_mismatch")
     for profile in receipt["profiles"]:
         command = policy["validation_profiles"][profile["name"]]
         if (
             command != VALIDATION_PROFILE_COMMANDS[profile["name"]]
-            or profile["command_sha256"] != sha256_value(command)
+            or profile["command_sha256"]
+            != profile_command_sha256(profile["name"])
         ):
             raise AutopilotError("validation_receipt_command_mismatch")
 
@@ -1222,11 +1454,14 @@ def run_validation_profiles(
         worktree,
         base_head=base_head,
         head=head,
+        policy=policy,
     )
     scope = classify_validation_scope(
         changed_paths,
         candidate_kind=candidate_kind,
+        policy=policy,
     )
+    task_graph_sha256 = sandbox_task_graph_sha256(repo_root)
     results: list[dict[str, Any]] = []
     profile_names = required_profile_names(scope["requires_full_gate"])
     trusted_audit = (repo_root / "scripts/audit_node_lock.py").resolve()
@@ -1347,6 +1582,8 @@ def run_validation_profiles(
                 raise AutopilotError("validation_repository_changed")
             if validation_authority_identity(repo_root) != authority:
                 raise AutopilotError("validation_authority_changed")
+            if sandbox_task_graph_sha256(repo_root) != task_graph_sha256:
+                raise AutopilotError("validation_task_graph_changed")
             if validation_tool_evidence(tool_paths) != tool_evidence:
                 raise AutopilotError("validation_tool_changed")
             trusted_node_provenance = run_command(
@@ -1383,7 +1620,8 @@ def run_validation_profiles(
             results.append(
                 {
                     "name": name,
-                    "command_sha256": sha256_value(command),
+                    "effective_task": SANDBOX_PROFILE_TASKS[name],
+                    "command_sha256": profile_command_sha256(name),
                     "environment_sha256": sha256_value(
                         current_environment
                     ),
@@ -1391,6 +1629,8 @@ def run_validation_profiles(
                     "output_sha256": sha256_value(
                         {
                             "command": command,
+                            "effective_task": SANDBOX_PROFILE_TASKS[name],
+                            "live_postgres_gate": LIVE_POSTGRES_GATE_STATUS,
                             "head": head,
                             "tree": tree,
                             "base_head": base_head,
@@ -1421,6 +1661,8 @@ def run_validation_profiles(
         "repository_head": head,
         "repository_tree": tree,
         **scope,
+        "sandbox_task_graph_sha256": task_graph_sha256,
+        "live_postgres_gate": LIVE_POSTGRES_GATE_STATUS,
         "validation_authority": authority,
         "profiles": results,
         "completed_at": utc_now(),

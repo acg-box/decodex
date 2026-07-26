@@ -55,8 +55,11 @@ Workflow:
    integrity or signatures, advisories, transitives, lifecycle scripts, native
    code, binaries, and runtime downloads.
 6. Do not modify the worktree. The
-   wrapper adds full `cargo make check` for GPUI, dependency, Apple build, or
-   validation-authority changes. Do not execute candidate code or tests directly.
+   wrapper adds the full sandboxed source gate for GPUI, dependency, Apple build,
+   or validation-authority changes. It omits only the live PostgreSQL harness that
+   macOS cannot isolate safely. The wrapper rejects the protected PostgreSQL impact
+   envelope before dependency preparation or candidate execution for every
+   candidate kind. Do not execute candidate code or tests directly.
    Only the wrapper can run candidate code, in a credential-free,
    external-network-denied macOS sandbox.
    Any material issue uses `request-repair` with at most 16 bounded finding codes.

@@ -87,8 +87,13 @@ Workflow:
     on the exact recorded head; `commit-candidate` verifies and rewinds that
     recorded candidate commit to its original base before it creates one
     replacement commit.
-    It also requires full `cargo make check` for GPUI, dependency, Apple build, or
-    validation-authority changes. It persists the
+    It also requires the full sandboxed source gate for GPUI, dependency, Apple
+    build, or validation-authority changes. This gate keeps every ordinary
+    `cargo make check` test except the live PostgreSQL harness that macOS cannot
+    isolate safely. The wrapper rejects every candidate that changes the protected
+    PostgreSQL impact envelope, including an `automation_repair`, before dependency
+    preparation or candidate execution. Do not bypass or relabel that result. It
+    persists the
     push intent and prior remote head, uses an exact force-with-lease condition,
     reads back the remote branch, creates or recovers one non-draft same-repository
     PR, and reads back its exact head. Do not perform any part manually.
