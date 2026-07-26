@@ -17,6 +17,7 @@ enum AccountPanelLayout {
 	static let telemetryPoolHeight: CGFloat = 16
 	static let telemetryPoolMeasuredHeight: CGFloat = 29
 	static let noticeHeight: CGFloat = 30
+	static let vNextResetCardsHeight: CGFloat = 118
 	static let minimumScrollableListHeight: CGFloat = 312
 
 	static func resolvedAccountListContentHeight(

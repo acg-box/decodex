@@ -9,6 +9,12 @@ pub(super) fn validate_social_post_lifecycle(entry: &Map<String, Value>, errors:
 
 		return;
 	};
+	social_validation::validate_exact_keys(
+		lifecycle,
+		"post_lifecycle",
+		&["current_state", "quote_eligible", "reason", "superseded_by_candidate"],
+		errors,
+	);
 
 	if !social_validation::matches_one_of(
 		lifecycle.get("current_state"),

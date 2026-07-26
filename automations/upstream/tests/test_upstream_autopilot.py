@@ -2014,7 +2014,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             environment = call.kwargs["environment"]
             self.assertEqual(environment["HOME"], environment["TMPDIR"])
             self.assertEqual(environment["GIT_CONFIG_GLOBAL"], "/dev/null")
-            self.assertEqual(environment["NPM_CONFIG_USERCONFIG"], "/dev/null")
+            npm_config_paths = {
+                environment["NPM_CONFIG_GLOBALCONFIG"],
+                environment["NPM_CONFIG_PROJECTCONFIG"],
+                environment["NPM_CONFIG_USERCONFIG"],
+            }
+            self.assertEqual(len(npm_config_paths), 3)
+            self.assertNotIn("/dev/null", npm_config_paths)
             self.assertEqual(environment["CARGO"], "/trusted/bin/cargo")
             self.assertEqual(
                 environment["DECODEX_TRUSTED_NIGHTLY_CARGO_FMT"],
@@ -2068,6 +2074,37 @@ class UpstreamAutopilotTests(unittest.TestCase):
             environment["PATH"].split(os.pathsep)[-4:],
             ["/usr/bin", "/bin", "/usr/sbin", "/sbin"],
         )
+        npm_config_paths = {
+            Path(environment["NPM_CONFIG_GLOBALCONFIG"]),
+            Path(environment["NPM_CONFIG_PROJECTCONFIG"]),
+            Path(environment["NPM_CONFIG_USERCONFIG"]),
+        }
+        self.assertEqual(len(npm_config_paths), 3)
+        self.assertTrue(all(path.parent == Path(directory) for path in npm_config_paths))
+
+    def test_validation_home_creates_distinct_read_only_npm_configs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_home = Path(directory)
+
+            self.autopilot.initialize_validation_home(temporary_home)
+            environment = self.autopilot.sanitized_validation_environment(
+                temporary_home,
+                {
+                    name: Path(f"/trusted/bin/{name}")
+                    for name in self.autopilot.VALIDATION_TOOL_NAMES
+                },
+            )
+
+            paths = {
+                Path(environment["NPM_CONFIG_GLOBALCONFIG"]),
+                Path(environment["NPM_CONFIG_PROJECTCONFIG"]),
+                Path(environment["NPM_CONFIG_USERCONFIG"]),
+            }
+            self.assertEqual(len(paths), 3)
+            for path in paths:
+                self.assertTrue(path.is_file())
+                self.assertEqual(path.read_text(encoding="utf-8"), "")
+                self.assertEqual(path.stat().st_mode & 0o777, 0o400)
 
     @unittest.skipIf(
         os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
@@ -2088,6 +2125,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 tools, evidence = self.autopilot.validation_tools(ROOT)
 
         self.assertEqual(set(tools), set(self.autopilot.VALIDATION_TOOL_NAMES))
+        self.assertEqual(
+            tools["python3"].resolve(),
+            Path(sys.executable).resolve(),
+        )
+        self.assertGreaterEqual(
+            sys.version_info[:2],
+            self.autopilot.MINIMUM_VALIDATION_PYTHON,
+        )
         self.assertEqual(
             set(evidence),
             set(self.autopilot.VALIDATION_TOOL_NAMES),
@@ -4956,6 +5001,133 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertNotEqual(first["id"], second["id"])
         self.assertEqual(second["priority"], "critical")
         self.autopilot.validate_state(state)
+
+    def test_content_degradation_queues_one_autonomous_improvement(self):
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+
+        first = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="content_loop_degraded",
+            repository_head="9" * 40,
+            now=200,
+            degradation_codes=(
+                "account_restore_failed",
+                "social_validation_failed",
+            ),
+        )
+        second = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="content_loop_degraded",
+            repository_head="9" * 40,
+            now=201,
+            degradation_codes=("candidate_unresolved",),
+        )
+
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(first["priority"], "normal")
+        self.assertEqual(
+            first["path_summary"]["reason_code"],
+            "content_loop_degraded",
+        )
+        self.assertEqual(
+            first["path_summary"]["degradation_codes"],
+            ["account_restore_failed", "social_validation_failed"],
+        )
+        self.autopilot.validate_state(state)
+
+    def test_content_degradation_requires_bounded_actionable_evidence(self):
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "content_degradation_evidence_missing",
+        ):
+            self.autopilot.queue_automation_improvement(
+                state,
+                self.policy,
+                reason_code="content_loop_degraded",
+                repository_head="9" * 40,
+                now=200,
+            )
+
+    def test_queue_improvement_cli_forwards_content_degradation_codes(self):
+        state = {"candidates": []}
+        locked = mock.MagicMock()
+        locked.return_value.__enter__.return_value = (
+            state,
+            Path("/tmp/upstream-state.json"),
+        )
+
+        def queue_side_effect(*_args, **kwargs):
+            self.assertEqual(
+                kwargs["degradation_codes"],
+                ["account_restore_failed", "social_validation_failed"],
+            )
+            candidate = {
+                "id": "repair-1",
+                "path_summary": {
+                    "degradation_codes": kwargs["degradation_codes"],
+                },
+            }
+            state["candidates"].append(candidate)
+            return candidate
+
+        args = mock.Mock(
+            command="queue-improvement",
+            reason_code="content_loop_degraded",
+            degradation_code=[
+                "account_restore_failed",
+                "social_validation_failed",
+            ],
+        )
+        with (
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "resolve_primary_checkout",
+                return_value=ROOT,
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "load_policy",
+                return_value=self.policy,
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "assert_primary_clean_main",
+                return_value={"head": "9" * 40},
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "locked_state",
+                locked,
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "save_state_guarded",
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "utc_now",
+                return_value=200,
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "queue_automation_improvement",
+                side_effect=queue_side_effect,
+            ) as queued,
+        ):
+            result = self.autopilot.cli_module.execute(args)
+
+        self.assertEqual(result["status"], "improvement_queued")
+        self.assertEqual(
+            result["degradation_codes"],
+            ["account_restore_failed", "social_validation_failed"],
+        )
+        queued.assert_called_once()
 
     def test_closed_improvement_can_recur_with_new_evidence(self):
         state, candidate_id = self.bootstrap(now=100)

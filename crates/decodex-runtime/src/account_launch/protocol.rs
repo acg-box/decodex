@@ -3,7 +3,7 @@ use std::{
 	ops::Deref,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use zeroize::{Zeroize as _, Zeroizing};
 
 use decodex_codex::{
@@ -230,14 +230,34 @@ pub struct ProtocolThread {
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcError {
 	pub code: i64,
+	#[serde(rename = "message")]
+	_message: SensitiveString,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcResponse<T> {
-	pub jsonrpc: SensitiveString,
+	/// Legacy JSON-RPC version marker. Codex app-server JSONL responses omit this field, while
+	/// older compatible peers can still send the standard marker.
+	#[serde(default, deserialize_with = "deserialize_present_jsonrpc_version")]
+	pub jsonrpc: Option<SensitiveString>,
 	pub id: u64,
 	pub result: Option<T>,
 	pub error: Option<JsonRpcError>,
+}
+impl<T> JsonRpcResponse<T> {
+	/// Accept the native Codex JSONL envelope and the legacy standard JSON-RPC marker only.
+	pub fn has_compatible_version(&self) -> bool {
+		self.jsonrpc.as_ref().is_none_or(|version| version.as_str() == "2.0")
+	}
+}
+
+fn deserialize_present_jsonrpc_version<'de, D>(
+	deserializer: D,
+) -> Result<Option<SensitiveString>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	SensitiveString::deserialize(deserializer).map(Some)
 }
 
 #[cfg(test)]
@@ -388,6 +408,78 @@ mod tests {
 
 		assert!(serde_json::from_slice::<JsonRpcResponse<ThreadReadResponse>>(json).is_err());
 		assert_eq!(super::sensitive_string_drops(), 3);
+	}
+
+	#[test]
+	fn app_server_response_accepts_bare_or_legacy_v2_envelopes_and_rejects_other_markers() {
+		for json in [
+			br#"{"id":7,"result":{}}"#.as_slice(),
+			br#"{"jsonrpc":"2.0","id":7,"result":{}}"#.as_slice(),
+		] {
+			let response =
+				serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(json).unwrap();
+
+			assert!(response.has_compatible_version());
+		}
+
+		let wrong = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
+			br#"{"jsonrpc":"1.0","id":7,"result":{}}"#,
+		)
+		.unwrap();
+
+		assert!(!wrong.has_compatible_version());
+
+		for json in [
+			br#"{"jsonrpc":null,"id":7,"result":{}}"#.as_slice(),
+			br#"{"jsonrpc":2,"id":7,"result":{}}"#.as_slice(),
+			br#"{"jsonrpc":{},"id":7,"result":{}}"#.as_slice(),
+		] {
+			assert!(serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(json).is_err());
+		}
+	}
+
+	#[test]
+	fn legacy_json_rpc_marker_is_zeroized_without_changing_bare_envelope_counts() {
+		super::reset_sensitive_string_drops();
+
+		let bare = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
+			br#"{"id":7,"result":{}}"#,
+		)
+		.unwrap();
+
+		drop(bare);
+		assert_eq!(super::sensitive_string_drops(), 0);
+
+		let legacy = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
+			br#"{"jsonrpc":"2.0","id":7,"result":{}}"#,
+		)
+		.unwrap();
+
+		drop(legacy);
+		assert_eq!(super::sensitive_string_drops(), 1);
+	}
+
+	#[test]
+	fn app_server_errors_require_and_zeroize_the_native_message() {
+		super::reset_sensitive_string_drops();
+
+		let response = serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(
+			br#"{"id":7,"error":{"code":-32601,"message":"private provider detail"}}"#,
+		)
+		.unwrap();
+		let debug = format!("{:?}", response.error.as_ref().unwrap());
+
+		assert!(!debug.contains("private provider detail"));
+		drop(response);
+		assert_eq!(super::sensitive_string_drops(), 1);
+
+		for json in [
+			br#"{"id":7,"error":{"code":-32601}}"#.as_slice(),
+			br#"{"id":7,"error":{"code":-32601,"message":null}}"#.as_slice(),
+			br#"{"id":7,"error":{"code":-32601,"message":7}}"#.as_slice(),
+		] {
+			assert!(serde_json::from_slice::<JsonRpcResponse<serde_json::Value>>(json).is_err());
+		}
 	}
 
 	#[test]

@@ -1,4 +1,4 @@
-#[cfg(target_os = "linux")] use std::os::fd::FromRawFd as _;
+#[cfg(target_os = "linux")] use std::os::fd::{AsRawFd as _, FromRawFd as _};
 #[cfg(test)] use std::sync::atomic::AtomicU32;
 use std::{
 	cell::UnsafeCell,
@@ -12,12 +12,11 @@ use std::{
 	os::unix::{
 		ffi::OsStrExt as _,
 		fs::{FileExt as _, MetadataExt as _, PermissionsExt as _},
-		io::AsRawFd as _,
 		process::CommandExt as _,
 	},
 	panic::{self, AssertUnwindSafe},
 	path::{Path, PathBuf},
-	process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
+	process::{Child, Command, ExitStatus, Stdio},
 	str,
 	sync::{
 		Arc, Condvar, Mutex, PoisonError,
@@ -51,6 +50,10 @@ use {
 };
 
 #[cfg(test)] use crate::account_launch::RunnerCapacity;
+#[cfg(target_os = "macos")]
+use crate::account_launch::macos_attested_spawn::{
+	AttestedChild, AttestedCodeIdentity, spawn_suspended,
+};
 use crate::account_launch::{
 	RunnerPermit,
 	protocol::{
@@ -65,14 +68,18 @@ use crate::account_launch::{
 };
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
-	CapabilityProfile, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
+	CapabilityProfile, ExactResetCreditId, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
 	ExactThreadListResult, ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory,
-	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, ThreadSummary, UnavailableReason,
+	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, RESET_CARD_CONSUME_METHOD,
+	RESET_CARD_READ_METHOD, ResetCardCapabilityProfile, ResetCardCapabilityState,
+	ResetCardConsumeParams, ResetCardConsumeResult, ResetCardIdempotencyKey, ResetCardInventory,
+	ThreadSummary, UnavailableReason,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
 };
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
 	ProcessGenerationId, ProcessGenerationIntent, ProcessIsolationKind, ProcessRunnerIdentity,
+	ResetCardConsumeOutcome,
 };
 
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
@@ -103,6 +110,7 @@ const QUARANTINE_SLOT_RESERVED: u8 = 1;
 const QUARANTINE_SLOT_READY: u8 = 2;
 const QUARANTINE_SLOT_WORKING: u8 = 3;
 const QUARANTINE_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
+const RESET_CARD_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
 #[cfg(test)]
 static ZEROIZED_INBOUND_BLOCKS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
@@ -179,6 +187,8 @@ pub(super) struct AppServerCommand {
 	program: PathBuf,
 	executable: Arc<ExecutableSnapshot>,
 	executable_digest: [u8; 32],
+	#[cfg(target_os = "macos")]
+	attested_code_identity: Option<AttestedCodeIdentity>,
 	app_server_args: Vec<OsString>,
 	version_args: Vec<OsString>,
 	schema_args: Vec<OsString>,
@@ -189,6 +199,8 @@ pub(super) struct AppServerCommand {
 	before_spawn_test: Option<BeforeSpawnTest>,
 	#[cfg(test)]
 	after_verification_test: Option<BeforeSpawnTest>,
+	#[cfg(all(test, target_os = "macos"))]
+	test_spawn_path: Option<PathBuf>,
 }
 impl AppServerCommand {
 	/// Construct the only production command shape: Codex app-server plus read-only attestation.
@@ -202,13 +214,25 @@ impl AppServerCommand {
 	/// ```
 	pub fn new(working_directory: impl Into<PathBuf>) -> Result<Self, SupervisionError> {
 		let (program, executable, executable_digest) = resolve_executable(OsStr::new("codex"))?;
-
-		Ok(Self::production_from_resolved(
+		let mut command = Self::production_from_resolved(
 			program,
 			executable,
 			executable_digest,
 			working_directory.into(),
-		))
+		);
+
+		#[cfg(target_os = "macos")]
+		{
+			command.attested_code_identity = Some(
+				AttestedCodeIdentity::capture(
+					&command.executable.execution_path(),
+					&command.program,
+				)
+				.map_err(|_| SupervisionError::ExecutableUnavailable)?,
+			);
+		}
+
+		Ok(command)
 	}
 
 	fn production_from_resolved(
@@ -221,6 +245,8 @@ impl AppServerCommand {
 			program,
 			executable,
 			executable_digest,
+			#[cfg(target_os = "macos")]
+			attested_code_identity: None,
 			app_server_args: vec!["app-server".into(), "--stdio".into()],
 			version_args: vec!["--version".into()],
 			schema_args: vec![
@@ -236,6 +262,8 @@ impl AppServerCommand {
 			before_spawn_test: None,
 			#[cfg(test)]
 			after_verification_test: None,
+			#[cfg(all(test, target_os = "macos"))]
+			test_spawn_path: None,
 		}
 	}
 
@@ -255,6 +283,8 @@ impl AppServerCommand {
 			program,
 			executable,
 			executable_digest,
+			#[cfg(target_os = "macos")]
+			attested_code_identity: None,
 			app_server_args: app_server_args.into_iter().map(Into::into).collect(),
 			version_args: version_args.into_iter().map(Into::into).collect(),
 			schema_args: schema_args.into_iter().map(Into::into).collect(),
@@ -262,6 +292,8 @@ impl AppServerCommand {
 			preflight_cleanup_test: None,
 			before_spawn_test: None,
 			after_verification_test: None,
+			#[cfg(target_os = "macos")]
+			test_spawn_path: None,
 		}
 	}
 
@@ -276,7 +308,7 @@ impl AppServerCommand {
 		let fixture =
 			Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_app_server.py");
 		let mut app_server_args =
-			vec![fixture.clone().into_os_string(), "serve".into(), mode.into()];
+			vec!["-B".into(), fixture.clone().into_os_string(), "serve".into(), mode.into()];
 
 		if let Some(extra) = extra {
 			app_server_args.push(extra.as_os_str().to_owned());
@@ -289,9 +321,12 @@ impl AppServerCommand {
 			program,
 			executable,
 			executable_digest,
+			#[cfg(target_os = "macos")]
+			attested_code_identity: None,
 			app_server_args,
-			version_args: vec![fixture.clone().into_os_string(), "--version".into()],
+			version_args: vec!["-B".into(), fixture.clone().into_os_string(), "--version".into()],
 			schema_args: vec![
+				"-B".into(),
 				fixture.into_os_string(),
 				"generate-json-schema".into(),
 				"--out".into(),
@@ -303,7 +338,16 @@ impl AppServerCommand {
 			before_spawn_test: None,
 			#[cfg(test)]
 			after_verification_test: None,
+			#[cfg(all(test, target_os = "macos"))]
+			test_spawn_path: None,
 		}
+	}
+
+	#[cfg(all(test, target_os = "macos"))]
+	fn with_spawn_path_for_test(mut self, path: PathBuf) -> Self {
+		self.test_spawn_path = Some(path);
+
+		self
 	}
 
 	#[cfg(test)]
@@ -365,6 +409,16 @@ impl AppServerCommand {
 		action: Arc<dyn Fn() + Send + Sync>,
 	) -> Self {
 		self.after_verification_test = Some(BeforeSpawnTest { trigger_spawn, spawn_count, action });
+
+		self
+	}
+
+	#[cfg(all(test, target_os = "macos"))]
+	fn with_attested_spawn_for_test(mut self) -> Self {
+		self.attested_code_identity = Some(
+			AttestedCodeIdentity::capture(&self.executable.execution_path(), &self.program)
+				.expect("the synthetic executable has a valid static code identity"),
+		);
 
 		self
 	}
@@ -669,30 +723,39 @@ pub(super) struct StdoutPump {
 	thread: Option<JoinHandle<()>>,
 }
 impl StdoutPump {
-	fn start(
-		reader: ChildStdout,
+	fn start<R>(
+		reader: R,
 		sender: SyncSender<InboundFrame>,
 		protocol_limit_exceeded: Arc<AtomicBool>,
-	) -> Result<Self, SupervisionError> {
+	) -> Result<Self, SupervisionError>
+	where
+		R: Read + std::os::fd::AsRawFd + Send + 'static,
+	{
 		Self::start_inner(reader, sender, protocol_limit_exceeded, None)
 	}
 
 	#[cfg(test)]
-	fn start_with_buffer_barrier(
-		reader: ChildStdout,
+	fn start_with_buffer_barrier<R>(
+		reader: R,
 		sender: SyncSender<InboundFrame>,
 		protocol_limit_exceeded: Arc<AtomicBool>,
 		buffered: Arc<AtomicBool>,
-	) -> Result<Self, SupervisionError> {
+	) -> Result<Self, SupervisionError>
+	where
+		R: Read + std::os::fd::AsRawFd + Send + 'static,
+	{
 		Self::start_inner(reader, sender, protocol_limit_exceeded, Some(buffered))
 	}
 
-	fn start_inner(
-		reader: ChildStdout,
+	fn start_inner<R>(
+		reader: R,
 		sender: SyncSender<InboundFrame>,
 		protocol_limit_exceeded: Arc<AtomicBool>,
 		buffered: Option<Arc<AtomicBool>>,
-	) -> Result<Self, SupervisionError> {
+	) -> Result<Self, SupervisionError>
+	where
+		R: Read + std::os::fd::AsRawFd + Send + 'static,
+	{
 		set_nonblocking(reader.as_raw_fd())?;
 
 		let cancelled = Arc::new(AtomicBool::new(false));
@@ -754,7 +817,7 @@ impl StdoutPump {
 /// Owned app-server child and its immutable account authority.
 pub(super) struct SupervisedProcess {
 	owner: ProcessGroupOwner,
-	stdin: ChildStdin,
+	stdin: Box<dyn Write + Send>,
 	stdout: Receiver<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 	binding: AccountBinding,
@@ -788,17 +851,15 @@ impl SupervisedProcess {
 		binding: AccountBinding,
 		guard: Option<RunnerPermit>,
 	) -> Result<Self, SupervisionError> {
-		let mut process = configured_app_server_process(&command, &binding)?;
-		let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
-		let mut owner = ProcessGroupOwner::new(child, guard);
-		let stdin = owner.child_mut().stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
-		let stdout = owner.child_mut().stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
+		verify_executable(&command)?;
+		run_before_spawn_test(&command);
+		verify_executable(&command)?;
+		run_after_verification_test(&command);
 		let (sender, receiver) = mpsc::sync_channel(PROTOCOL_QUEUE_CAPACITY);
 		let protocol_limit_exceeded = Arc::new(AtomicBool::new(false));
 		let reader_limit_exceeded = Arc::clone(&protocol_limit_exceeded);
-		let pump = StdoutPump::start(stdout, sender, reader_limit_exceeded)?;
-
-		owner.attach_pump(pump);
+		let (owner, stdin) =
+			spawn_protocol_process(&command, &binding, guard, sender, reader_limit_exceeded)?;
 
 		Ok(Self {
 			owner,
@@ -936,7 +997,7 @@ impl SupervisedProcess {
 				if response.id != request_id {
 					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 				}
-				if response.jsonrpc.as_str() != "2.0" {
+				if !response.has_compatible_version() {
 					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 				}
 
@@ -972,7 +1033,6 @@ impl SupervisedProcess {
 				&& let Some(id) = header.id
 			{
 				self.write_json(&serde_json::json!({
-					"jsonrpc": "2.0",
 					"id": id,
 					"error": {"code": -32_601, "message": "account-bound adapter does not service requests"}
 				}))
@@ -1052,7 +1112,7 @@ impl SupervisedProcess {
 	where
 		P: Serialize,
 	{
-		self.write_json(&OutboundNotification { jsonrpc: "2.0", method, params })
+		self.write_json(&OutboundNotification { method, params })
 	}
 
 	fn read_account_identity(&mut self, timeout: Duration) -> Result<AccountIdentity, ProbeError> {
@@ -1241,6 +1301,67 @@ impl Drop for SupervisedProcess {
 	}
 }
 
+fn spawn_protocol_process(
+	command: &AppServerCommand,
+	binding: &AccountBinding,
+	guard: Option<RunnerPermit>,
+	sender: SyncSender<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
+	#[cfg(target_os = "macos")]
+	if let Some(identity) = &command.attested_code_identity {
+		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
+		let suspended =
+			spawn_suspended(identity, &command.app_server_args, &command.working_directory, home)
+				.map_err(|_| SupervisionError::SpawnFailed)?;
+
+		// The canonical filesystem object must still match the immutable full-digest snapshot after
+		// posix_spawn has bound the stopped child to its executable image. The dynamic code check
+		// below then binds that image to the snapshot's exact code identity before SIGCONT.
+		verify_executable(command)?;
+
+		let spawned =
+			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
+		let mut owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), guard);
+		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
+
+		owner.attach_pump(pump);
+
+		return Ok((owner, Box::new(spawned.stdin)));
+	}
+
+	let mut process = Command::new(protected_spawn_path(command));
+
+	process
+		.arg0(&command.program)
+		.args(&command.app_server_args)
+		.current_dir(&command.working_directory)
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::null());
+
+	configure_child_environment(&mut process, binding)?;
+	configure_process_group(&mut process, None);
+
+	let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
+	let mut owner = ProcessGroupOwner::new(child, guard);
+	let (stdin, stdout) = match owner.child_mut() {
+		ManagedChild::Standard(child) => {
+			let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
+			let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
+
+			(stdin, stdout)
+		},
+		#[cfg(target_os = "macos")]
+		ManagedChild::Attested(_) => unreachable!("snapshot spawn created an attested child"),
+	};
+	let pump = StdoutPump::start(stdout, sender, protocol_limit_exceeded)?;
+
+	owner.attach_pump(pump);
+
+	Ok((owner, Box::new(stdin)))
+}
+
 /// Typed result from `initialize` plus a bounded `thread/list`; no raw JSON escapes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ReadOnlyProbeResult {
@@ -1379,6 +1500,235 @@ impl ReadOnlyProbe {
 			process_id,
 		})
 	}
+}
+
+/// One exact account-bound reset-card app-server run.
+///
+/// This mechanical owner does not select an account, resolve a public card descriptor, persist an
+/// effect, or retry a consume request. Its consume entrypoint accepts only the exact provider
+/// identifier and idempotency key that the runtime persisted before the external effect began.
+#[derive(Clone)]
+pub(super) struct ResetCardProcessRunner {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	timeout: Duration,
+}
+impl ResetCardProcessRunner {
+	/// Configure one exact account-bound run. Schema attestation and process creation are deferred
+	/// until an operation starts.
+	pub(super) const fn new(
+		command: AppServerCommand,
+		binding: AccountBinding,
+		timeout: Duration,
+	) -> Self {
+		Self { command, binding, timeout }
+	}
+
+	/// Exact non-secret account selected before process creation.
+	pub(super) fn account_id(&self) -> &AccountId {
+		self.binding.account_id()
+	}
+
+	/// Read one complete strict inventory under an already-reserved runner permit.
+	pub(super) fn read_inventory(
+		self,
+		vault: &dyn CredentialVault,
+		guard: RunnerPermit,
+	) -> Result<ResetCardInventory, ResetCardProcessError> {
+		let timeout = self.timeout;
+		let mut process = self.launch(vault, guard)?;
+		let result = read_reset_card_inventory(&mut process, timeout).and_then(|inventory| {
+			re_attest_reset_card_account(&mut process, timeout)?;
+
+			Ok(inventory)
+		});
+
+		finish_reset_card_process(process, result)
+	}
+
+	/// Consume one already-persisted exact credit with its already-persisted key, then read a fresh
+	/// complete inventory before re-attesting the immutable account binding.
+	pub(super) fn consume_and_readback(
+		self,
+		vault: &dyn CredentialVault,
+		guard: RunnerPermit,
+		credit_id: ExactResetCreditId,
+		idempotency_key: ResetCardIdempotencyKey,
+	) -> Result<ResetCardConsumeReadback, ResetCardProcessError> {
+		let timeout = self.timeout;
+		let mut process = self.launch(vault, guard)?;
+		let result = consume_reset_card(&mut process, timeout, credit_id, idempotency_key)
+			.and_then(|outcome| {
+				let inventory = read_reset_card_inventory(&mut process, timeout)?;
+
+				re_attest_reset_card_account(&mut process, timeout)?;
+
+				Ok(ResetCardConsumeReadback { outcome, inventory })
+			});
+
+		finish_reset_card_process(process, result)
+	}
+
+	fn launch(
+		self,
+		vault: &dyn CredentialVault,
+		guard: RunnerPermit,
+	) -> Result<SupervisedProcess, ResetCardProcessError> {
+		if &guard.account_id != self.binding.account_id() {
+			return Err(ResetCardProcessError::AccountBindingChanged);
+		}
+
+		let (build, generated, guard) =
+			attest_executable(&self.command, &self.binding, None, self.timeout, Some(guard))
+				.map_err(ResetCardProcessError::from_probe)?;
+		let reset_profile = ResetCardCapabilityProfile::from_schema(generated.contract());
+
+		if !reset_profile.is_supported() {
+			return Err(ResetCardProcessError::SchemaUnsupported(reset_profile.state()));
+		}
+
+		let guard = guard.ok_or(ResetCardProcessError::ProcessUnavailable)?;
+		let mut process = SupervisedProcess::spawn_bound(self.command, self.binding, guard)
+			.map_err(ResetCardProcessError::from_supervision)?;
+		let mut cache = CapabilityCache::default();
+		let mut negotiation = ProbeNegotiation::new(&mut cache, &build, &generated);
+
+		if let Err(error) =
+			initialize_probe(&mut process, Some(vault), self.timeout, &mut negotiation)
+		{
+			let mapped = ResetCardProcessError::from_probe(error);
+
+			return finish_reset_card_process(process, Err(mapped));
+		}
+
+		Ok(process)
+	}
+}
+
+impl Debug for ResetCardProcessRunner {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.debug_struct("ResetCardProcessRunner").finish_non_exhaustive()
+	}
+}
+
+/// Terminal provider outcome plus the immediate strict inventory readback.
+pub(super) struct ResetCardConsumeReadback {
+	pub(super) outcome: ResetCardConsumeOutcome,
+	pub(super) inventory: ResetCardInventory,
+}
+impl Debug for ResetCardConsumeReadback {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ResetCardConsumeReadback")
+			.field("outcome", &self.outcome)
+			.field("inventory", &self.inventory)
+			.finish()
+	}
+}
+
+/// Closed reset-card app-server method classification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ResetCardProcessMethod {
+	InventoryRead,
+	Consume,
+}
+
+/// Sanitized reset-card process failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ResetCardProcessError {
+	/// The generated schema was malformed or lacked the shared app-server baseline.
+	SchemaInvalid,
+	/// The exact generated schema did not advertise both reset-card methods.
+	SchemaUnsupported(ResetCardCapabilityState),
+	/// The selected account credential could not be projected into the child.
+	CredentialVault(CredentialVaultError),
+	/// Account identity changed before the operation readback completed.
+	AccountBindingChanged,
+	/// The exact generated method was advertised but rejected at runtime.
+	MethodUnavailable(ResetCardProcessMethod),
+	/// An app-server response did not satisfy the strict typed provider contract.
+	InvalidProviderResponse,
+	/// Executable, process, or bounded transport mechanics were unavailable.
+	ProcessUnavailable,
+	/// Bounded process-group shutdown could not be confirmed.
+	ShutdownFailed,
+}
+impl ResetCardProcessError {
+	fn from_probe(error: ProbeError) -> Self {
+		match error {
+			ProbeError::SchemaMissing { .. } => Self::SchemaInvalid,
+			ProbeError::CredentialVault(error) => Self::CredentialVault(error),
+			ProbeError::Supervision(SupervisionError::AccountChanged) =>
+				Self::AccountBindingChanged,
+			ProbeError::Supervision(SupervisionError::InvalidProtocol)
+			| ProbeError::Supervision(SupervisionError::ProtocolLimitExceeded) =>
+				Self::InvalidProviderResponse,
+			ProbeError::Supervision(SupervisionError::ShutdownFailed) => Self::ShutdownFailed,
+			ProbeError::MethodRejected { .. } => Self::ProcessUnavailable,
+			ProbeError::CapabilityConflict | ProbeError::Supervision(_) => Self::ProcessUnavailable,
+		}
+	}
+
+	fn from_supervision(error: SupervisionError) -> Self {
+		match error {
+			SupervisionError::AccountChanged => Self::AccountBindingChanged,
+			SupervisionError::InvalidProtocol | SupervisionError::ProtocolLimitExceeded =>
+				Self::InvalidProviderResponse,
+			SupervisionError::ShutdownFailed => Self::ShutdownFailed,
+			_ => Self::ProcessUnavailable,
+		}
+	}
+
+	fn from_rpc(error: RpcError, method: ResetCardProcessMethod) -> Self {
+		match error {
+			RpcError::MethodRejected(-32_601) => Self::MethodUnavailable(method),
+			RpcError::MethodRejected(_) => Self::ProcessUnavailable,
+			RpcError::Supervision(error) => Self::from_supervision(error),
+		}
+	}
+}
+
+fn read_reset_card_inventory(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+) -> Result<ResetCardInventory, ResetCardProcessError> {
+	process.request_rpc(RESET_CARD_READ_METHOD, &(), timeout).map_err(|error| {
+		ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::InventoryRead)
+	})
+}
+
+fn consume_reset_card(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+	credit_id: ExactResetCreditId,
+	idempotency_key: ResetCardIdempotencyKey,
+) -> Result<ResetCardConsumeOutcome, ResetCardProcessError> {
+	process
+		.request_rpc::<_, ResetCardConsumeResult>(
+			RESET_CARD_CONSUME_METHOD,
+			&ResetCardConsumeParams::new(credit_id, idempotency_key),
+			timeout,
+		)
+		.map(ResetCardConsumeResult::outcome)
+		.map_err(|error| ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::Consume))
+}
+
+fn re_attest_reset_card_account(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+) -> Result<(), ResetCardProcessError> {
+	process.read_account_identity(timeout).map(|_| ()).map_err(ResetCardProcessError::from_probe)
+}
+
+fn finish_reset_card_process<T>(
+	process: SupervisedProcess,
+	result: Result<T, ResetCardProcessError>,
+) -> Result<T, ResetCardProcessError> {
+	process
+		.shutdown(RESET_CARD_SHUTDOWN_WAIT)
+		.map_err(|_| ResetCardProcessError::ShutdownFailed)?;
+
+	result
 }
 
 /// Private account-bound exact reconciliation configuration.
@@ -1687,7 +2037,6 @@ pub(super) struct OutboundRequest<'a, P>
 where
 	P: ?Sized,
 {
-	jsonrpc: &'static str,
 	id: u64,
 	method: &'static str,
 	params: &'a P,
@@ -1708,12 +2057,7 @@ fn exact_request_frame<P>(
 where
 	P: Serialize,
 {
-	ZeroizingOutboundFrame::serialize(&OutboundRequest {
-		jsonrpc: "2.0",
-		id: request_id,
-		method,
-		params,
-	})
+	ZeroizingOutboundFrame::serialize(&OutboundRequest { id: request_id, method, params })
 }
 
 pub(super) fn retained_title_name_set_request_digest(
@@ -1773,7 +2117,6 @@ pub(super) struct OutboundNotification<'a, P>
 where
 	P: ?Sized,
 {
-	jsonrpc: &'static str,
 	method: &'a str,
 	params: &'a P,
 }
@@ -1790,7 +2133,16 @@ pub(super) struct ChatgptAuthParams<'a> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct CredentialProjectionResponse {}
+pub(super) struct CredentialProjectionResponse {
+	#[serde(rename = "type")]
+	_kind: CredentialProjectionResponseKind,
+}
+
+#[derive(Deserialize)]
+enum CredentialProjectionResponseKind {
+	#[serde(rename = "chatgptAuthTokens")]
+	ChatgptAuthTokens,
+}
 
 #[derive(Deserialize)]
 pub(super) struct InboundHeader {
@@ -1851,8 +2203,36 @@ impl<'a> ProbeNegotiation<'a> {
 	}
 }
 
+enum ManagedChild {
+	Standard(Child),
+	#[cfg(target_os = "macos")]
+	Attested(AttestedChild),
+}
+impl ManagedChild {
+	fn id(&self) -> u32 {
+		match self {
+			Self::Standard(child) => child.id(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.id(),
+		}
+	}
+
+	fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+		match self {
+			Self::Standard(child) => child.try_wait(),
+			#[cfg(target_os = "macos")]
+			Self::Attested(child) => child.try_wait(),
+		}
+	}
+}
+impl From<Child> for ManagedChild {
+	fn from(child: Child) -> Self {
+		Self::Standard(child)
+	}
+}
+
 pub(super) struct ReapJob {
-	child: Child,
+	child: ManagedChild,
 	process_group: u32,
 	// PID/PGID reuse makes signaling invalid after positive reap or an uncertain wait error.
 	may_signal_process_group: bool,
@@ -1863,7 +2243,7 @@ pub(super) struct ReapJob {
 }
 
 pub(super) struct ProcessGroupOwner {
-	child: Option<Child>,
+	child: Option<ManagedChild>,
 	process_group: u32,
 	// This authority is monotonic: no observation can restore it after reap or wait failure.
 	may_signal_process_group: bool,
@@ -1873,7 +2253,8 @@ pub(super) struct ProcessGroupOwner {
 	reap_not_before: Option<Instant>,
 }
 impl ProcessGroupOwner {
-	fn new(child: Child, guard: Option<RunnerPermit>) -> Self {
+	fn new(child: impl Into<ManagedChild>, guard: Option<RunnerPermit>) -> Self {
+		let child = child.into();
 		let process_group = child.id();
 
 		Self {
@@ -1893,7 +2274,7 @@ impl ProcessGroupOwner {
 		self.pump = Some(pump);
 	}
 
-	fn child_mut(&mut self) -> &mut Child {
+	fn child_mut(&mut self) -> &mut ManagedChild {
 		self.child.as_mut().expect("live owner must retain its child")
 	}
 
@@ -2720,7 +3101,6 @@ fn capture_platform_executable_snapshot(
 
 	Ok((snapshot, digest))
 }
-
 #[cfg(target_os = "linux")]
 fn capture_platform_executable_snapshot(
 	source: &File,
@@ -3475,6 +3855,19 @@ fn attest_executable(
 	Ok((build, generated, guard))
 }
 
+fn protected_spawn_path(command: &AppServerCommand) -> PathBuf {
+	// macOS 27 terminates relocated Apple platform binaries such as /usr/bin/python3 before their
+	// test fixture can start. Production Codex images remain relocatable and always use the
+	// protected snapshot here. Unit fixtures execute their already-verified canonical interpreter
+	// while still exercising snapshot capture, digest verification, immutability, and cleanup
+	// mechanics.
+	#[cfg(all(test, target_os = "macos"))]
+	return command.test_spawn_path.clone().unwrap_or_else(|| command.program.clone());
+
+	#[cfg(not(all(test, target_os = "macos")))]
+	command.executable.execution_path()
+}
+
 fn preflight_remaining(deadline: Instant) -> Result<Duration, SupervisionError> {
 	let remaining = deadline.saturating_duration_since(Instant::now());
 
@@ -3495,7 +3888,7 @@ fn run_preflight_command(
 	verify_executable(command)?;
 	run_after_verification_test(command);
 
-	let mut process = Command::new(command.executable.execution_path());
+	let mut process = Command::new(protected_spawn_path(command));
 
 	process
 		.arg0(&command.program)
@@ -3604,7 +3997,7 @@ fn validate_initialize(
 }
 
 fn terminate_process_group(
-	child: &mut Child,
+	child: &mut ManagedChild,
 	pid: u32,
 	timeout: Duration,
 	may_signal_process_group: &mut bool,
@@ -3723,7 +4116,7 @@ fn process_group_exists(_pid: u32) -> Result<bool, SupervisionError> {
 mod tests {
 	use std::{
 		env,
-		ffi::OsStr,
+		ffi::{OsStr, OsString},
 		fs,
 		io::{self, Cursor, ErrorKind, Write},
 		mem,
@@ -3749,10 +4142,11 @@ mod tests {
 		RunnerCapacity, RunnerPermit,
 		process::{
 			self, AccountBinding, AccountIdentity, AppServerCommand, CredentialProjection,
-			CredentialVault, CredentialVaultError, ExactThreadReconciler,
-			ExactThreadReconciliation, ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY,
-			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome,
-			SupervisedProcess, SupervisionError, UnavailableCredentialVault,
+			CredentialProjectionResponse, CredentialVault, CredentialVaultError,
+			ExactThreadReconciler, ExactThreadReconciliation, ExactThreadReconciliationResult,
+			PROTOCOL_QUEUE_CAPACITY, ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe,
+			ResetCardProcessError, ResetCardProcessMethod, ResetCardProcessRunner, RpcError,
+			ShutdownOutcome, SupervisedProcess, SupervisionError, UnavailableCredentialVault,
 		},
 		protocol::{
 			self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
@@ -3761,10 +4155,11 @@ mod tests {
 	};
 	use decodex_codex::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, Capability, CapabilityCache,
-		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter,
-		SchemaMarker, ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
+		CapabilityState, DecodexThreadSearchTerm, ExactResetCreditId, ExactThreadId,
+		ExactThreadListFilter, ResetCardCapabilityState, ResetCardIdempotencyKey, SchemaMarker,
+		ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
-	use decodex_core::AccountId;
+	use decodex_core::{AccountId, ResetCardConsumeOutcome};
 
 	struct TestCapacity {
 		inner: RunnerCapacity,
@@ -3860,14 +4255,19 @@ mod tests {
 	fn fake_command(mode: &str, directory: &Path, extra: Option<&Path>) -> AppServerCommand {
 		let fixture =
 			Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_app_server.py");
-		let mut app_args = vec![fixture.clone().into_os_string(), "serve".into(), mode.into()];
+		let mut app_args =
+			vec!["-B".into(), fixture.clone().into_os_string(), "serve".into(), mode.into()];
 
 		if let Some(extra) = extra {
 			app_args.push(extra.as_os_str().to_owned());
 		}
 
-		let mut schema_args =
-			vec![fixture.clone().into_os_string(), "generate-json-schema".into(), "--out".into()];
+		let mut schema_args = vec![
+			"-B".into(),
+			fixture.clone().into_os_string(),
+			"generate-json-schema".into(),
+			"--out".into(),
+		];
 
 		if mode == "schema-missing" {
 			schema_args.push("--missing-required".into());
@@ -3904,6 +4304,9 @@ mod tests {
 		if mode == "preflight-uncertain-schema" {
 			schema_args.push("--preflight-hang".into());
 		}
+		if mode == "reset-card" {
+			schema_args.push("--reset-card".into());
+		}
 
 		let version_flag = match mode {
 			"preflight-hang" | "preflight-uncertain-version" => "--version-hang",
@@ -3914,7 +4317,7 @@ mod tests {
 		AppServerCommand::new_for_test(
 			"python3",
 			app_args,
-			[fixture.clone().into_os_string(), version_flag.into()],
+			["-B".into(), fixture.clone().into_os_string(), version_flag.into()],
 			schema_args,
 			directory,
 		)
@@ -3922,17 +4325,24 @@ mod tests {
 
 	fn replaceable_fake_command(mode: &str, directory: &Path, source: &Path) -> AppServerCommand {
 		let command = fake_command(mode, directory, None);
+		#[cfg(target_os = "macos")]
+		let spawn_path = command.program.clone();
 
 		fs::copy(&command.program, source).unwrap();
 		fs::set_permissions(source, fs::Permissions::from_mode(0o755)).unwrap();
 
-		AppServerCommand::new_for_test(
+		let command = AppServerCommand::new_for_test(
 			source,
 			command.app_server_args,
 			command.version_args,
 			command.schema_args,
 			command.working_directory,
-		)
+		);
+
+		#[cfg(target_os = "macos")]
+		let command = command.with_spawn_path_for_test(spawn_path);
+
+		command
 	}
 
 	fn binding() -> AccountBinding {
@@ -4054,6 +4464,154 @@ mod tests {
 		assert_eq!(
 			result.profile.state(Capability::NativeCollaboration),
 			&CapabilityState::Unavailable { reason: UnavailableReason::NotProbed }
+		);
+	}
+
+	#[test]
+	fn app_server_envelope_accepts_legacy_v2_and_rejects_wrong_or_null_versions() {
+		let temp = TempDir::new().unwrap();
+		let result = ReadOnlyProbe::new_for_test(
+			fake_command("legacy-jsonrpc", temp.path(), None),
+			binding(),
+			SchemaMarker::accepted(),
+			Duration::from_secs(2),
+		)
+		.run(&mut CapabilityCache::default());
+
+		assert!(result.is_ok(), "legacy JSON-RPC response failed: {result:?}");
+
+		for mode in ["wrong-jsonrpc", "null-jsonrpc"] {
+			let temp = TempDir::new().unwrap();
+			let error = ReadOnlyProbe::new_for_test(
+				fake_command(mode, temp.path(), None),
+				binding(),
+				SchemaMarker::accepted(),
+				Duration::from_secs(2),
+			)
+			.run(&mut CapabilityCache::default())
+			.unwrap_err();
+
+			assert_eq!(error, ProbeError::Supervision(SupervisionError::InvalidProtocol));
+		}
+	}
+
+	#[test]
+	fn outbound_request_uses_the_native_bare_app_server_envelope() {
+		let frame = process::exact_request_frame(
+			7,
+			"fixture/method",
+			&serde_json::json!({"fixture": true}),
+		)
+		.unwrap();
+		let mut bytes = Vec::new();
+
+		frame.write_to(&mut bytes).unwrap();
+
+		assert_eq!(
+			bytes,
+			br#"{"id":7,"method":"fixture/method","params":{"fixture":true}}
+"#
+		);
+	}
+
+	#[test]
+	fn app_server_request_receives_bare_error_reply_before_probe_continues() {
+		let temp = TempDir::new().unwrap();
+		let result = ReadOnlyProbe::new_for_test(
+			fake_command("server-request", temp.path(), None),
+			binding(),
+			SchemaMarker::accepted(),
+			Duration::from_secs(2),
+		)
+		.run(&mut CapabilityCache::default())
+		.unwrap();
+
+		assert_eq!(result.profile.state(Capability::Initialize), &CapabilityState::Supported);
+	}
+
+	#[test]
+	fn reset_card_runner_requires_both_exact_schema_methods_before_spawn() {
+		let temp = TempDir::new().unwrap();
+		let spawn_marker = temp.path().join("reset-card-spawned");
+		let capacity = TestCapacity::new(1);
+		let runner = ResetCardProcessRunner::new(
+			fake_command("mark-spawn", temp.path(), Some(&spawn_marker)),
+			binding(),
+			Duration::from_secs(2),
+		);
+
+		let error = runner
+			.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap())
+			.unwrap_err();
+
+		assert_eq!(
+			error,
+			ResetCardProcessError::SchemaUnsupported(
+				ResetCardCapabilityState::ConsumeMethodMissing
+			)
+		);
+		assert!(!spawn_marker.exists());
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn reset_card_runner_uses_null_read_params_and_completes_consume_readback() {
+		let temp = TempDir::new().unwrap();
+		let capacity = TestCapacity::new(1);
+		let runner = ResetCardProcessRunner::new(
+			fake_command("reset-card", temp.path(), None),
+			binding(),
+			Duration::from_secs(2),
+		);
+		let inventory = runner
+			.clone()
+			.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap())
+			.unwrap();
+
+		assert_eq!(inventory.available_count(), 1);
+		assert_eq!(
+			inventory
+				.resolve_exact_credit_id(
+					decodex_core::ResetCardDescriptor::new(
+						decodex_core::ResetCardTimestamp::from_unix_seconds(1_700_000_000).unwrap(),
+						decodex_core::ResetCardTimestamp::from_unix_seconds(1_700_003_600).unwrap(),
+					)
+					.unwrap(),
+				)
+				.unwrap()
+				.as_str(),
+			"fixture-reset-credit",
+		);
+
+		let readback = runner
+			.consume_and_readback(
+				&FixtureVault::matching(),
+				capacity.reserve().unwrap(),
+				ExactResetCreditId::new("fixture-reset-credit").unwrap(),
+				ResetCardIdempotencyKey::new("fixture-reset-operation").unwrap(),
+			)
+			.unwrap();
+
+		assert_eq!(readback.outcome, ResetCardConsumeOutcome::Reset);
+		assert_eq!(readback.inventory.available_count(), 0);
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn reset_card_rpc_errors_distinguish_missing_methods_from_provider_failures() {
+		assert_eq!(
+			ResetCardProcessError::from_rpc(
+				RpcError::MethodRejected(-32_601),
+				ResetCardProcessMethod::InventoryRead,
+			),
+			ResetCardProcessError::MethodUnavailable(ResetCardProcessMethod::InventoryRead)
+		);
+		assert_eq!(
+			ResetCardProcessError::from_rpc(
+				RpcError::MethodRejected(-32_603),
+				ResetCardProcessMethod::InventoryRead,
+			),
+			ResetCardProcessError::ProcessUnavailable
 		);
 	}
 
@@ -4196,18 +4754,41 @@ mod tests {
 
 	#[test]
 	fn credential_projection_rejects_and_redacts_unexpected_response_payload() {
-		let temp = TempDir::new().unwrap();
-		let error = ReadOnlyProbe::new_for_test(
-			fake_command("login-extra", temp.path(), None),
-			binding(),
-			SchemaMarker::accepted(),
-			Duration::from_secs(2),
-		)
-		.run_bound_for_test(&FixtureVault::matching(), &mut CapabilityCache::default())
-		.unwrap_err();
+		for mode in ["login-extra", "login-wrong-type", "login-missing-type"] {
+			let temp = TempDir::new().unwrap();
+			let error = ReadOnlyProbe::new_for_test(
+				fake_command(mode, temp.path(), None),
+				binding(),
+				SchemaMarker::accepted(),
+				Duration::from_secs(2),
+			)
+			.run_bound_for_test(&FixtureVault::matching(), &mut CapabilityCache::default())
+			.unwrap_err();
 
-		assert_eq!(error, ProbeError::CredentialVault(CredentialVaultError::ProjectionRejected));
-		assert!(!format!("{error:?}").contains("synthetic-nonsecret-sentinel"));
+			assert_eq!(
+				error,
+				ProbeError::CredentialVault(CredentialVaultError::ProjectionRejected)
+			);
+			assert!(!format!("{error:?}").contains("synthetic-nonsecret-sentinel"));
+		}
+	}
+
+	#[test]
+	fn credential_projection_response_requires_the_exact_chatgpt_token_variant() {
+		assert!(
+			serde_json::from_slice::<CredentialProjectionResponse>(
+				br#"{"type":"chatgptAuthTokens"}"#
+			)
+			.is_ok()
+		);
+
+		for json in [
+			br#"{}"#.as_slice(),
+			br#"{"type":"chatgpt"}"#.as_slice(),
+			br#"{"type":"chatgptAuthTokens","extra":true}"#.as_slice(),
+		] {
+			assert!(serde_json::from_slice::<CredentialProjectionResponse>(json).is_err());
+		}
 	}
 
 	#[test]
@@ -4227,7 +4808,7 @@ mod tests {
 		.unwrap_err();
 
 		assert_eq!(error, ProbeError::Supervision(SupervisionError::InvalidProtocol));
-		assert_eq!(protocol::sensitive_string_drops(), 4);
+		assert_eq!(protocol::sensitive_string_drops(), 3);
 		assert!(process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire) > before);
 	}
 
@@ -4935,6 +5516,46 @@ mod tests {
 		.unwrap();
 
 		assert!(result.process_id > 0);
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn canonical_image_replacement_after_verification_never_reaches_user_code() {
+		let temp = TempDir::new().unwrap();
+		let source = temp.path().join("verified-image");
+		let marker = temp.path().join("replacement-ran");
+		let source_for_action = source.clone();
+		let spawn_count = Arc::new(AtomicU32::new(0));
+
+		fs::copy("/bin/cat", &source).unwrap();
+		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+
+		let command = AppServerCommand::new_for_test(
+			&source,
+			[
+				OsString::from("-c"),
+				OsString::from("printf ran > \"$1\""),
+				OsString::from("decodex-attested-spawn"),
+				marker.as_os_str().to_owned(),
+			],
+			std::iter::empty::<OsString>(),
+			std::iter::empty::<OsString>(),
+			temp.path(),
+		)
+		.with_attested_spawn_for_test()
+		.with_after_verification_for_test(
+			1,
+			Arc::clone(&spawn_count),
+			Arc::new(move || {
+				fs::copy("/bin/sh", &source_for_action).unwrap();
+				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+			}),
+		);
+		let error = SupervisedProcess::spawn(command, binding()).unwrap_err();
+
+		assert_eq!(error, SupervisionError::ExecutableChanged);
+		assert_eq!(spawn_count.load(Ordering::Acquire), 1);
+		assert!(!marker.exists());
 	}
 
 	#[cfg(target_os = "linux")]

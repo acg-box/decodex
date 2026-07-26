@@ -8,8 +8,41 @@ mod status;
 mod text;
 
 use crate::social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_POST_STATUSES, Value};
+pub(in crate::social_validation) use status::{
+	BrowserSessionRequirement, validate_browser_session,
+};
 
 pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	social_validation::validate_exact_keys(
+		entry,
+		"social_post",
+		&[
+			"audience",
+			"block",
+			"browser_session",
+			"browser_touched",
+			"caveats",
+			"channel",
+			"claims",
+			"controller_account",
+			"decision",
+			"evidence_notes",
+			"failure",
+			"media_refs",
+			"mode",
+			"post_lifecycle",
+			"publication",
+			"schema",
+			"skip",
+			"slug",
+			"source_refs",
+			"status",
+			"target_account",
+			"text",
+		],
+		errors,
+	);
+
 	for field in ["slug", "audience"] {
 		if !social_validation::is_non_empty_string(entry.get(field)) {
 			errors.push(format!("{field} must be a non-empty string"));
@@ -20,19 +53,49 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 	validate_social_post_text(entry.get("text"), errors);
 	validate_social_post_source_refs(entry.get("source_refs"), errors);
 
-	for field in ["evidence_notes", "claims"] {
-		if social_validation::non_empty_array(entry.get(field)).is_none() {
-			errors.push(format!("{field} must be a non-empty list"));
-		}
-	}
-
+	social_validation::validate_non_empty_string_list(
+		entry.get("evidence_notes"),
+		"evidence_notes",
+		errors,
+	);
 	validate_social_post_claims(entry.get("claims"), errors);
 	validate_social_post_decision(entry, errors);
 	validate_social_post_status_payload(entry, errors);
+	validate_social_post_browser_evidence(entry, errors);
 	validate_social_post_lifecycle(entry, errors);
 
 	for field in ["caveats", "media_refs"] {
 		social_validation::validate_optional_string_list(entry.get(field), field, errors);
+	}
+}
+
+fn validate_social_post_browser_evidence(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	let browser_touched = entry.get("browser_touched").and_then(Value::as_bool);
+
+	if browser_touched.is_none() {
+		errors.push("browser_touched must be a boolean".into());
+
+		return;
+	}
+	if social_validation::string_field(entry, "status") == Some("published")
+		&& browser_touched != Some(true)
+	{
+		errors.push("browser_touched must be true when status is published".into());
+	}
+
+	match browser_touched {
+		Some(true) => status::validate_browser_session(
+			entry.get("browser_session"),
+			if social_validation::string_field(entry, "status") == Some("published") {
+				BrowserSessionRequirement::Complete
+			} else {
+				BrowserSessionRequirement::Terminal
+			},
+			errors,
+		),
+		Some(false) if entry.get("browser_session").is_some() =>
+			errors.push("browser_session must be absent when browser_touched is false".into()),
+		_ => {},
 	}
 }
 

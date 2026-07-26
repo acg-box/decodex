@@ -4,9 +4,42 @@ use serde_json::Value;
 
 use crate::{OutboxClaim, OutboxReconciliation, PostgresStore, ReconciliationOutcome, StoreError};
 
+const PRIVATE_RESET_CARD_AGGREGATE_KIND: &str = "reset_card_operation";
+const CLAIM_OUTBOX_SQL: &str = "WITH write_time AS MATERIALIZED (SELECT clock_timestamp() AS value), \
+	 exhausted AS ( \
+	   UPDATE decodex.outbox SET state = 'dead_letter', lease_holder = NULL, \
+	     claim_token = NULL, lease_acquired_at = NULL, lease_expires_at = NULL, \
+	     dead_lettered_at = write_time.value \
+	   FROM write_time \
+	   WHERE aggregate_kind <> $4 AND state = 'in_flight' \
+	     AND lease_expires_at <= write_time.value \
+	     AND attempt_count >= max_attempts AND effect_state = 'not_started' \
+	   RETURNING id \
+	 ), candidates AS ( \
+	   SELECT id, effect_state <> 'not_started' AS requires_reconciliation \
+	   FROM decodex.outbox CROSS JOIN write_time \
+	   WHERE aggregate_kind <> $4 AND available_at <= write_time.value \
+	     AND (attempt_count < max_attempts OR effect_state <> 'not_started') \
+	     AND (state = 'pending' OR (state = 'in_flight' AND lease_expires_at <= write_time.value)) \
+	   ORDER BY available_at, id FOR UPDATE SKIP LOCKED LIMIT $2 \
+	 ) \
+	 UPDATE decodex.outbox AS work SET state = 'in_flight', \
+	   attempt_count = CASE WHEN work.attempt_count < work.max_attempts \
+	     THEN work.attempt_count + 1 ELSE work.attempt_count END, \
+	   lease_holder = $1::text::uuid, \
+	   claim_token = gen_random_uuid(), \
+	   lease_acquired_at = write_time.value, \
+	   lease_expires_at = write_time.value + $3::bigint * interval '1 millisecond' \
+	 FROM candidates CROSS JOIN write_time WHERE work.id = candidates.id \
+	 RETURNING work.id, work.claim_token::text, work.effect_key, work.payload, work.attempt_count, \
+	   candidates.requires_reconciliation, work.receipt";
+
 impl PostgresStore {
 	/// Claim at most `limit` available rows through `FOR UPDATE SKIP LOCKED`. Expired claims
 	/// are reclaimable; a row whose prior effect began is returned as reconciliation-required.
+	///
+	/// Private reset-card operations have a dedicated typed claimant and are never returned
+	/// through this generic payload-bearing boundary.
 	pub async fn claim_outbox(
 		&self,
 		worker_id: &str,
@@ -23,34 +56,8 @@ impl PostgresStore {
 		let transaction = client.transaction().await?;
 		let rows = transaction
 			.query(
-				"WITH write_time AS MATERIALIZED (SELECT clock_timestamp() AS value), \
-				 exhausted AS ( \
-				   UPDATE decodex.outbox SET state = 'dead_letter', lease_holder = NULL, \
-				     claim_token = NULL, lease_acquired_at = NULL, lease_expires_at = NULL, \
-				     dead_lettered_at = write_time.value \
-				   FROM write_time \
-				   WHERE state = 'in_flight' AND lease_expires_at <= write_time.value \
-				     AND attempt_count >= max_attempts AND effect_state = 'not_started' \
-				   RETURNING id \
-				 ), candidates AS ( \
-				   SELECT id, effect_state <> 'not_started' AS requires_reconciliation \
-				   FROM decodex.outbox CROSS JOIN write_time \
-				   WHERE available_at <= write_time.value \
-				     AND (attempt_count < max_attempts OR effect_state <> 'not_started') \
-				     AND (state = 'pending' OR (state = 'in_flight' AND lease_expires_at <= write_time.value)) \
-				   ORDER BY available_at, id FOR UPDATE SKIP LOCKED LIMIT $2 \
-				 ) \
-				 UPDATE decodex.outbox AS work SET state = 'in_flight', \
-				   attempt_count = CASE WHEN work.attempt_count < work.max_attempts \
-				     THEN work.attempt_count + 1 ELSE work.attempt_count END, \
-				   lease_holder = $1::text::uuid, \
-				   claim_token = gen_random_uuid(), \
-				   lease_acquired_at = write_time.value, \
-				   lease_expires_at = write_time.value + $3::bigint * interval '1 millisecond' \
-				 FROM candidates CROSS JOIN write_time WHERE work.id = candidates.id \
-				 RETURNING work.id, work.claim_token::text, work.effect_key, work.payload, work.attempt_count, \
-				   candidates.requires_reconciliation, work.receipt",
-				&[&worker_id, &limit, &lease_millis],
+				CLAIM_OUTBOX_SQL,
+				&[&worker_id, &limit, &lease_millis, &PRIVATE_RESET_CARD_AGGREGATE_KIND],
 			)
 			.await?;
 
@@ -100,6 +107,9 @@ impl PostgresStore {
 
 	/// Durably mark that a worker is about to attempt the external effect. A crash after
 	/// this commit makes every future claimant reconcile instead of blindly replaying.
+	///
+	/// Reset-card rows require their typed selection and account-revision fence and cannot use
+	/// this generic transition.
 	pub async fn begin_outbox_effect(
 		&self,
 		id: i64,
@@ -110,7 +120,8 @@ impl PostgresStore {
 			"UPDATE decodex.outbox SET effect_state = 'ambiguous' \
 			 WHERE id = $1 AND state = 'in_flight' AND lease_holder = $2::text::uuid \
 			   AND claim_token = $3::text::uuid \
-			   AND lease_expires_at > clock_timestamp() AND effect_state = 'not_started'",
+			   AND lease_expires_at > clock_timestamp() AND effect_state = 'not_started' \
+			   AND aggregate_kind <> 'reset_card_operation'",
 			id,
 			worker_id,
 			claim_token,
@@ -212,6 +223,10 @@ impl PostgresStore {
 				   ELSE 'pending'::decodex.outbox_state END, \
 				 effect_state = CASE WHEN $5 = 'absent' THEN 'not_started'::decodex.effect_state ELSE effect_state END, \
 				 receipt = CASE WHEN $5 = 'absent' THEN NULL ELSE receipt END, \
+				 payload = CASE \
+				   WHEN $5 = 'present' AND aggregate_kind = 'reset_card_operation' \
+				     THEN payload - 'reset_card_effect' \
+				   ELSE payload END, \
 				 reconciliation = $4, lease_holder = NULL, claim_token = NULL, \
 				 lease_acquired_at = NULL, lease_expires_at = NULL, \
 				 available_at = CASE WHEN $5 = 'absent' THEN write_time.value + $6::bigint * interval '1 millisecond' ELSE available_at END, \
@@ -240,6 +255,9 @@ impl PostgresStore {
 	}
 
 	/// Delete delivered transport rows only after retention is due. Activity remains append-only.
+	///
+	/// Reset-card rows are also the durable operation-result ledger. Generic pruning must retain
+	/// them until a separate persistent result or tombstone policy exists.
 	pub async fn prune_delivered_outbox(&self, limit: u32) -> Result<u64, StoreError> {
 		if limit == 0 || limit > 1_000 {
 			return Err(StoreError::InvalidInput("outbox prune limit must be within 1..=1000"));
@@ -253,6 +271,7 @@ impl PostgresStore {
 			.execute(
 				"DELETE FROM decodex.outbox WHERE id IN ( \
 				 SELECT id FROM decodex.outbox WHERE state = 'delivered' \
+				 AND aggregate_kind <> 'reset_card_operation' \
 				 AND retain_until <= clock_timestamp() ORDER BY id LIMIT $1 )",
 				&[&limit],
 			)
@@ -291,5 +310,21 @@ fn validate_failure_code(failure_code: &str) -> Result<(), StoreError> {
 		crate::ensure_credential_negative_text(failure_code)
 	} else {
 		Err(StoreError::InvalidInput("outbox failure code must be lower snake case"))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{CLAIM_OUTBOX_SQL, PRIVATE_RESET_CARD_AGGREGATE_KIND};
+
+	#[test]
+	fn generic_claim_excludes_private_reset_card_rows_from_expiry_and_selection() {
+		assert_eq!(PRIVATE_RESET_CARD_AGGREGATE_KIND, "reset_card_operation");
+		assert_eq!(
+			CLAIM_OUTBOX_SQL.matches("aggregate_kind <> $4").count(),
+			2,
+			"both generic expiry handling and candidate selection must exclude private rows"
+		);
+		assert!(!CLAIM_OUTBOX_SQL.contains("aggregate_kind = $4"));
 	}
 }

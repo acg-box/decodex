@@ -46,6 +46,16 @@ POLICY_KEYS = {
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_POLICY_PATH = REPO_ROOT / "automations/upstream/policy.json"
 TERMINAL_STATUSES = {"landed", "no_change", "rejected"}
+CONTENT_DEGRADATION_CODES = (
+    "account_restore_failed",
+    "candidate_unresolved",
+    "daily_strategy_overdue",
+    "outcome_24h_overdue",
+    "outcome_7d_overdue",
+    "reservation_expired",
+    "social_validation_failed",
+    "weekly_strategy_overdue",
+)
 SHA_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 REASON_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
 PR_PATTERN = re.compile(r"^https://github\.com/hack-ink/decodex/pull/[1-9][0-9]*$")
@@ -673,14 +683,28 @@ def validate_path_summary(candidate: dict[str, Any]) -> None:
             raise AutopilotError("candidate_path_summary_invalid")
         return
     if kind == "automation_repair":
+        reason_code = summary.get("reason_code") if isinstance(summary, dict) else None
+        expected_keys = {"repair_of", "reason_code", "evidence_sha256"}
+        if reason_code == "content_loop_degraded":
+            expected_keys.add("degradation_codes")
         if (
-            not has_exact_keys(
-                summary,
-                {"repair_of", "reason_code", "evidence_sha256"},
-            )
+            not has_exact_keys(summary, expected_keys)
             or summary["repair_of"] != candidate.get("repair_of")
             or REASON_PATTERN.fullmatch(str(summary["reason_code"])) is None
             or not is_sha256(summary["evidence_sha256"])
+        ):
+            raise AutopilotError("candidate_path_summary_invalid")
+        if reason_code == "content_loop_degraded" and (
+            not bounded_string_list(
+                summary["degradation_codes"],
+                pattern=REASON_PATTERN,
+                maximum=len(CONTENT_DEGRADATION_CODES),
+            )
+            or not summary["degradation_codes"]
+            or any(
+                code not in CONTENT_DEGRADATION_CODES
+                for code in summary["degradation_codes"]
+            )
         ):
             raise AutopilotError("candidate_path_summary_invalid")
         return

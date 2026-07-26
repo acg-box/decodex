@@ -242,7 +242,7 @@ PG18_TOC_DUMP_VERSION_RE = re.compile(
 )
 POSTGRES_START_LOG_EXCERPT_MAX_BYTES = 4 * 1024
 # Darwin's sockaddr_un.sun_path is 104 bytes, including the terminating NUL.
-POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES = 104
+PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES = 104
 GIT_READ_TIMEOUT_SECONDS = 5.0
 GIT_METADATA_MAX_BYTES = 4 * 1024
 GIT_COMMIT_MAX_BYTES = 64 * 1024
@@ -3732,6 +3732,20 @@ def run_continuation_focused_contracts(
 		migration_output,
 		run_postgres_store_contracts(socket_dir, port, env),
 	))
+
+
+def run_reset_card_focused_contracts(
+	socket_dir: Path, port: int, env: dict[str, str]
+) -> str:
+	create_database(DATABASE, env)
+	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(DATABASE, RUNTIME_ROLE, env)
+	contract_output = run_postgres_store_test(
+		"reset_cards::reset_card_private_claim_and_reclaim_contract",
+		env,
+	)
+	return "\n".join((migration_output, contract_output))
 
 
 def retained_title_authority_inventory(
@@ -8453,6 +8467,14 @@ def write_bootstrap_config(
 	runtime_role: str,
 ) -> None:
 	"""Write one private typed daemon-bootstrap root without credentials."""
+	local_transport_stage = root / "server" / "decodex.sock.stage"
+	local_transport_path_bytes = len(os.fsencode(local_transport_stage)) + 1
+	if local_transport_path_bytes > PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES:
+		raise TestFailure(
+			"Decodex local transport Unix socket path is too long: "
+			f"{local_transport_path_bytes} bytes including the terminating NUL exceeds "
+			f"the portable {PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES}-byte limit"
+		)
 	root.mkdir(mode=0o700)
 	config_path = root / "config.toml"
 	config_path.write_text(
@@ -8498,6 +8520,7 @@ def main(
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
 	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
 	focused_continuation = sys.argv[1:] == ["--focus-continuation"]
+	focused_reset_cards = sys.argv[1:] == ["--focus-reset-cards"]
 	focused_authority = sys.argv[1:] == ["--focus-authority-classification"]
 	focused_retained_title = sys.argv[1:] == ["--focus-retained-title-core"]
 	preparation_mode = sys.argv[1:] == ["--prepare-retained-title-core"]
@@ -8520,7 +8543,8 @@ def main(
 	authority_mode = capture_only or acceptance_mode or restore_prerequisite_mode
 	normal_aggregate = not (
 		focused_work_items or focused_managed_runs or focused_managed_repositories
-		or focused_continuation or focused_authority or focused_retained_title
+		or focused_continuation or focused_reset_cards or focused_authority
+		or focused_retained_title
 		or preparation_mode or authority_mode
 	)
 	reported_run = (
@@ -8565,12 +8589,14 @@ def main(
 	def configuration_preflight() -> dict[str, object]:
 		if sys.argv[1:] and not (
 			focused_work_items or focused_managed_runs or focused_managed_repositories
-			or focused_continuation or focused_authority or focused_retained_title
+			or focused_continuation or focused_reset_cards or focused_authority
+			or focused_retained_title
 			or preparation_mode or authority_mode
 		):
 			raise TestFailure(
 				"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
 				"--focus-managed-repositories|--focus-continuation|"
+				"--focus-reset-cards|"
 				"--focus-authority-classification|--focus-retained-title-core|"
 				"--prepare-retained-title-core|"
 				"--capture-authority-restore-prerequisite-v2 "
@@ -8710,6 +8736,7 @@ def main(
 					"decodex-xy1417-" if focused_managed_runs else
 					"decodex-xy1364-" if focused_managed_repositories else
 					"decodex-xy1364-continuation-" if focused_continuation else
+					"decodex-reset-card-" if focused_reset_cards else
 					"decodex-xy1364-authority-" if focused_authority else
 					"decodex-xy1368-boundary-" if focused_retained_title else
 					"decodex-xy1368-preparation-" if preparation_mode else
@@ -8724,11 +8751,11 @@ def main(
 			log_path = work / "postgres.log"
 			socket_path = socket_dir / f".s.PGSQL.{port}"
 			socket_path_bytes = len(os.fsencode(socket_path)) + 1
-			if socket_path_bytes > POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES:
+			if socket_path_bytes > PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES:
 				raise TestFailure(
 					"PostgreSQL Unix socket path is too long: "
 					f"{socket_path_bytes} bytes including the terminating NUL exceeds "
-					f"the portable {POSTGRES_UNIX_SOCKET_PATH_MAX_BYTES}-byte limit; "
+					f"the portable {PORTABLE_UNIX_SOCKET_PATH_MAX_BYTES}-byte limit; "
 					"set DECODEX_TEST_TEMP_ROOT to a shorter absolute directory"
 				)
 			role_setting_canary_guc = f"xy1272.canary_{secrets.token_hex(16)}"
@@ -8884,6 +8911,9 @@ def main(
 			return 0
 		if focused_continuation:
 			print(run_continuation_focused_contracts(socket_dir, port, env))
+			return 0
+		if focused_reset_cards:
+			print(run_reset_card_focused_contracts(socket_dir, port, env))
 			return 0
 		if focused_retained_title:
 			if not isinstance(source_binding, dict):
@@ -9103,7 +9133,7 @@ def main(
 			], env),
 			depends_on=("primary_foundation",),
 		)
-		bootstrap_root = work / "decodex-root"
+		bootstrap_root = work / "dx-main"
 		def bootstrap_configuration() -> None:
 			write_bootstrap_config(
 				bootstrap_root, socket_dir, port, DATABASE, MIGRATION_ROLE, RUNTIME_ROLE
@@ -9148,7 +9178,7 @@ def main(
 			], env),
 			depends_on=("primary_foundation",),
 		)
-		auth_bootstrap_root = work / "decodex-auth-root"
+		auth_bootstrap_root = work / "dx-auth"
 		def authentication_rejection() -> str:
 			write_bootstrap_config(
 				auth_bootstrap_root,
@@ -9277,13 +9307,13 @@ def main(
 					invariant_sql=expand(invariant_sql),
 				))
 				if case_id == "truncate":
-					root = work / "decodex-unsafe-truncate"
+					root = work / "dx-unsafe"
 					write_bootstrap_config(
 						root, socket_dir, port, case_database, MIGRATION_ROLE, role
 					)
 					env["DECODEX_TEST_UNSAFE_AUTHORITY_ROOT"] = str(root)
 				elif case_id == "missing-ledger-select":
-					root = work / "decodex-incompatible-missing-history-select"
+					root = work / "dx-incompat"
 					write_bootstrap_config(
 						root, socket_dir, port, case_database, MIGRATION_ROLE, role
 					)
@@ -9395,7 +9425,7 @@ def main(
 					],
 					env,
 				))
-				for database, case_id, mutation in (
+				for live_index, (database, case_id, mutation) in enumerate((
 					(
 						LEDGER_TAMPER_DATABASE,
 						"ledger-tamper",
@@ -9406,10 +9436,10 @@ def main(
 						"missing-pgcrypto",
 						"DROP EXTENSION pgcrypto CASCADE",
 					),
-				):
+				)):
 					clone_authority_database(AUTHORITY_DATABASE, database, env)
 					provision_runtime(database, RUNTIME_ROLE, env)
-					root = work / f"decodex-incompatible-live-{case_id}"
+					root = work / f"dx-live-{live_index}"
 					write_bootstrap_config(
 						root, socket_dir, port, database, MIGRATION_ROLE, RUNTIME_ROLE
 					)
@@ -9506,7 +9536,7 @@ def main(
 				env,
 			) != "t":
 				raise TestFailure("hostile callable shadow reached Decodex runtime DML")
-			hostile_search_root = work / "decodex-hostile-search-path"
+			hostile_search_root = work / "dx-hostile"
 			write_bootstrap_config(
 				hostile_search_root,
 				socket_dir,
@@ -9764,7 +9794,7 @@ def main(
 				],
 				env,
 			)
-			default_acl_tamper_root = work / "decodex-incompatible-schema-default-acl"
+			default_acl_tamper_root = work / "dx-acl"
 			write_bootstrap_config(
 				default_acl_tamper_root,
 				socket_dir,

@@ -1,10 +1,13 @@
 //! Runtime-owned PostgreSQL authorization and bounded process-capacity composition.
 
+#[cfg(target_os = "macos")] mod macos_attested_spawn;
 mod process;
 mod protocol;
+mod reset_card;
 #[cfg(feature = "retained-title-experiment")] pub mod retained_title_experiment;
 
 pub(crate) use process::{AttestedAppServerLaunch, AttestedProcessChild};
+pub(crate) use reset_card::{ResetCardRuntime, ResetCardServiceError, ResetCardVaultStatus};
 
 use std::{
 	error::Error,

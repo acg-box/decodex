@@ -141,6 +141,8 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProfileMissing => "Selected server profile is missing",
 		ClientFailure::UnsafeHostPath => "Client configuration path is unsafe",
 		ClientFailure::ServerIdentityUnavailable => "Stable server identity is unavailable",
+		ClientFailure::RemoteMutationUnsupported =>
+			"Reset-card operations require a local pinned profile",
 		ClientFailure::LocalTransportDisabled => "Local daemon transport is disabled",
 		ClientFailure::RemoteTransportDisabled => "Remote daemon transport is disabled",
 		ClientFailure::LocalTransportUnsupported => "Local daemon transport is unsupported",
@@ -155,6 +157,7 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
 		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
 		ClientFailure::ProtocolBackpressure => "Daemon message allowance was exhausted",
+		ClientFailure::ApplicationAcceptanceUnknown => "Application command acceptance is unknown",
 	}
 }
 
@@ -651,7 +654,10 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 		for expected in Destination::ALL {
 			let focused = shell.read_with(visual, |shell, _| {
-				let index = Destination::ALL.iter().position(|value| *value == expected).unwrap();
+				let index = Destination::ALL
+					.iter()
+					.position(|value| *value == expected)
+					.expect("test operation must succeed");
 				shell.destination_focus[index].clone()
 			});
 			assert!(visual.update(|window, _| focused.is_focused(window)));

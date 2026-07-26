@@ -5,7 +5,12 @@ This page is the compact contract guide for Radar-generated upstream evidence, D
 ## Contract owners
 
 - Radar owns upstream evidence and validation for `github_change_bundle/v1`, `upstream_review_queue/v1`, `upstream_review/v1`, `upstream_impact/v1`, `analysis_draft`, `signal_entry/v1`, `release_delta/v1`, `control_plane_upgrade_candidate/v1`, archive manifests, the local Radar ledger, and bundle/signal/release operations (`apps/radar/src/constants.rs`, `apps/radar/src/cli/commands.rs`, `apps/radar/src/artifact_validation/core/dispatch.rs`).
-- Decodex Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`, `social_post/v1`, social validation, and publication reservation workflows (`apps/decodex-publisher/src/lib.rs`, `apps/decodex-publisher/src/social_validation.rs`, `apps/decodex-publisher/src/social_publish.rs`).
+- Decodex Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`,
+  `social_post/v1`, `social_outcome/v1`, `social_strategy/v1`, social validation,
+  browser lease serialization, and publication reservation workflows
+  (`apps/decodex-publisher/src/lib.rs`,
+  `apps/decodex-publisher/src/social_validation.rs`,
+  `apps/decodex-publisher/src/social_publish.rs`).
 - `automations/radar/radar.toml` is the path handoff contract from Radar cache to Publisher cache. Generated Radar state belongs under `.agent/automations/radar/cache`; generated Publisher state belongs under `.agent/automations/decodex/cache/social` (`automations/radar/README.md`, `automations/decodex/README.md`).
 - The public site under `site/` is static Astro output and must not depend on live Decodex daemon state, runtime SQLite, tracker credentials, account-pool state, or local evidence (`site/README.md`, `site/package.json`).
 
@@ -37,11 +42,40 @@ A candidate is not executable work by itself. Promote implementation only throug
 
 `social_candidate/v1` is a pre-publication handoff artifact. It may cite upstream reviews, upstream impacts, signals, release deltas, or URLs; current validation rejects Radar-derived candidates that cite upstream reviews or release deltas without the shared `upstream_impact/v1` handoff (`apps/decodex-publisher/src/social_validation/candidate.rs`). Candidate producers must not publish to X or write terminal post records.
 
-`social_publish_reservation/v1` is a pre-compose lease. Publisher automation must create active reservations through `decodex-publisher social reserve-publish`, not by hand-writing JSON. The command checks slug, idempotency key, daily limit, candidate/URL refs, duplicate keys, existing active reservations, terminal posts, schema validity, and create-new write semantics before persisting under `.agent/automations/decodex/cache/social/x/reservations` (`apps/decodex-publisher/src/cli/social.rs`, `apps/decodex-publisher/src/social_publish.rs`).
+`social_publish_reservation/v1` is a pre-compose claim. Publisher automation must
+first acquire the single X browser lease and then create an active reservation through
+`decodex-publisher social reserve-publish`. It must not hand-write JSON. The command
+verifies the browser lease, checks the idempotency key, daily limit, candidate or URL
+refs, duplicate keys, active reservations, terminal posts, and schema. It uses one
+create-only path derived from the idempotency key, so concurrent writers cannot reserve
+the same publication under different slugs
+(`apps/decodex-publisher/src/social_browser_lease.rs`,
+`apps/decodex-publisher/src/social_publish.rs`).
+Publisher renews the exact lease before every browser action, including the public
+write, final readback, and account restoration. An operating-system file lock
+serializes lease mutation. The kernel releases that lock after a CLI process exits or
+crashes, so expiry recovery cannot race a paused renewal or overwrite a successor
+lease.
 
 `social_post/v1` is the durable terminal record for published, blocked, failed, or skipped social output. Validation enforces channel/account constants, modes, status-specific payloads, evidence notes, claims, source refs, and cross-file idempotency conflicts between active reservations and terminal posts (`apps/decodex-publisher/src/social_validation/post.rs`, `apps/decodex-publisher/src/social_validation/reservation.rs`, `apps/decodex-publisher/src/social_validation/cross_file.rs`).
 
-Publisher is an artifact consumer. It must not refresh upstream state, perform fresh upstream source analysis, bypass reservations, exceed the social cap, publish unsupported claims, expose private/local details, or treat X search/social engagement as technical evidence (`automations/decodex/README.md`).
+`social_outcome/v1` stores one browser-read 24-hour or seven-day metric snapshot for a
+confirmed `@decodexspace` post. It includes the source post, status URL, visible
+metrics, and the same structured account switch and restoration evidence used by
+published terminal records. The validator requires a matching published record and
+URL. A 24-hour read must occur 23 to 48 hours after publication. A seven-day read must
+occur 167 to 192 hours after publication.
+
+`social_strategy/v1` stores one bounded daily or weekly Content Manager review. It
+requires exact evidence refs, a unique cycle key, no more than 16 decisions, and
+unchanged evidence, privacy, idempotency, account, and publication guardrails.
+
+Publisher is an artifact consumer. It must not refresh upstream state, perform fresh
+upstream source analysis, bypass reservations, exceed the social cap, publish
+unsupported claims, expose private/local details, or treat X search/social engagement
+as technical evidence (`automations/decodex/README.md`). It uses browser control only
+for X. X MCP, X API, direct HTTP, cookies, local storage, and private browser profile
+files are outside the publication contract.
 
 ## Static site boundary
 
@@ -51,9 +85,18 @@ Radar and Publisher artifacts can inform static content only after accepted hand
 
 ## Retention and evidence boundaries
 
-Use the local Radar ledger for high-frequency trace, skipped/low-value subjects, commit-to-PR mappings, and artifact links. Use Git only for curated warm artifacts such as public signals, current release deltas, upstream impacts, control-plane candidates, social publication records when intentionally retained, and archive manifests (`apps/radar/src/ledger.rs`, `apps/radar/src/paths.rs`).
+Use the local Radar ledger for high-frequency trace, skipped or low-value subjects,
+commit-to-PR mappings, and artifact links. Git may retain curated public Radar
+artifacts such as public signals, current release deltas, upstream impacts,
+control-plane candidates, and archive manifests. Social candidates, reservations,
+posts, outcomes, strategy records, browser-session evidence, browser leases, and
+generated social media are local-only under `.agent/`. Never commit, upload, or archive
+them to GitHub (`apps/radar/src/ledger.rs`, `apps/radar/src/paths.rs`).
 
-Raw bundles and analysis drafts are hot working artifacts. Archive manifests preserve cold release-asset pointers, checksums, source commit, release URL, and file metadata; compressed archives themselves are not committed (`apps/radar/src/artifact_validation/archive.rs`). Generated media is local by default; source control should keep small JSON records and public URLs rather than raw generated images unless an operator explicitly requests a sample.
+Raw bundles and analysis drafts are hot working artifacts. Archive manifests preserve
+cold release-asset pointers, checksums, source commit, release URL, and file metadata;
+compressed archives themselves are not committed
+(`apps/radar/src/artifact_validation/archive.rs`).
 
 Do not read or document secret values. Configuration may reference token environment variable names, but OpenWiki and public artifacts must not include credentials, private issue details, hidden reasoning, local runtime paths, or account material.
 

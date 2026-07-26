@@ -72,13 +72,12 @@ improvement candidate. A live scheduler mismatch that remains after native
 reconciliation can create the same bounded candidate type. Maintainer must reproduce
 the evidence and add a regression test; Reviewer owns the terminal decision.
 
-Health also reconciles the three fixed live Codex App automation IDs from the current
-checked-in manifest and prompt files. It uses only the native automation lifecycle
-tool, reads each definition before a change, submits a complete definition, and reads
-it back. It can also delete only the exact IDs in
-`automations/upstream/retired_automation_ids.json`, after schema validation and an
-absence readback. It cannot edit or delete any other task and cannot write scheduler
-files or databases directly. This closes source-to-scheduler drift after an autonomous landing.
+Health also reconciles the five fixed live Codex App automation IDs from the current
+upstream and content manifests and prompt files. It uses only the native automation
+lifecycle tool, reads each definition before a change, submits a complete definition,
+and reads it back. It cannot list, edit, or delete any other task and cannot write
+scheduler files or databases directly. This closes source-to-scheduler drift after an
+autonomous landing.
 Each Health run first recovers expired work and reconciles live definitions. It then
 collects a new upstream observation and finishes with another health pass. A failed
 observation does not prevent scheduler or lease recovery.
@@ -178,8 +177,10 @@ and no external network. It can read the exact candidate, trusted primary Git da
 Rust toolchains, system runtime files, and its private temporary directory. Personal
 roots and unrelated temporary data remain unreadable. It can write only private build
 outputs and approved site caches. Cargo registry and Git source caches are read-only
-during candidate execution. The receipt binds the dependency-preparation digest,
-sandbox profile digest, and exact sandbox executable digest.
+during candidate execution. The validator binds the root-owned, read-only Python
+3.11-or-later runtime that loaded the automation. It places that exact runtime before
+macOS system shims in the sandbox path. The receipt binds the dependency-preparation
+digest, sandbox profile digest, and exact sandbox executable digest.
 
 A source change cannot become terminal until a separate Reviewer repeats all required
 validation profiles on the same pull-request HEAD and tree. The commit and landing
