@@ -14,6 +14,7 @@ from upstream_autopilot_lib import *  # noqa: F403
 from upstream_autopilot_lib import cli as cli_module
 from upstream_autopilot_lib import core as core_module
 from upstream_autopilot_lib import effects as effects_module
+from upstream_autopilot_lib import handoff as handoff_module
 from upstream_autopilot_lib import observation as observation_module
 from upstream_autopilot_lib import state as state_module
 from upstream_autopilot_lib import validation as validation_module
