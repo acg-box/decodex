@@ -1107,6 +1107,7 @@ def validation_sandbox_profile(
         "(version 1)",
         "(deny default)",
         "(allow process*)",
+        "(allow signal (target children))",
         "(allow sysctl-read)",
         "(allow mach-lookup)",
         f"(allow network* (subpath {literal(temporary_home)}))",
