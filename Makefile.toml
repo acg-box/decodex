@@ -462,6 +462,7 @@ command = "python3"
 args = [
 	"-m",
 	"unittest",
+	"tests/scripts/test_cli_diagnostics_runner.py",
 	"tests/scripts/test_gate_contract.py",
 	"tests/scripts/test_postgres_authority_capture.py",
 	"tests/scripts/test_vstyle_audit.py",
