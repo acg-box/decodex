@@ -167,12 +167,31 @@ exact_thread_reads = 0
 reset_card_consumed = False
 for line in sys.stdin:
     message = json.loads(line)
+    assert "jsonrpc" not in message
     if mode == "hang":
         time.sleep(60)
     method = message.get("method")
     if method == "initialize":
+        if mode == "server-request":
+            server_request_id = 90_001
+            print(json.dumps({
+                "id": server_request_id,
+                "method": "fixture/server/request",
+                "params": {},
+            }), flush=True)
+            reply_line = sys.stdin.readline()
+            assert reply_line
+            reply = json.loads(reply_line)
+            assert "jsonrpc" not in reply
+            assert reply == {
+                "id": server_request_id,
+                "error": {
+                    "code": -32601,
+                    "message": "account-bound adapter does not service requests",
+                },
+            }
         if mode == "escaped-error":
-            print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32000, "message": "secret\\quoted"}}), flush=True)
+            print(json.dumps({"id": message["id"], "error": {"code": -32000, "message": "secret\\quoted"}}), flush=True)
             continue
         if mode == "oversized-frame":
             sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
@@ -180,7 +199,7 @@ for line in sys.stdin:
             time.sleep(60)
         if mode == "queue-overflow":
             for index in range(100):
-                print(json.dumps({"jsonrpc": "2.0", "method": "unrelated", "params": {"index": index}}), flush=True)
+                print(json.dumps({"method": "unrelated", "params": {"index": index}}), flush=True)
         # Apple's /usr/bin/python3 launcher adds only these toolchain/runtime
         # variables after exec; the parent projection itself is HOME/PATH-only.
         assert set(os.environ).issubset({
@@ -212,9 +231,13 @@ for line in sys.stdin:
         assert message["params"]["accessToken"] == "synthetic-nonsecret-sentinel"
         assert message["params"]["chatgptAccountId"] == "synthetic-provider-sentinel"
         result = (
-            {"unexpected": "synthetic-nonsecret-sentinel"}
+            {"type": "chatgptAuthTokens", "unexpected": "synthetic-nonsecret-sentinel"}
             if mode == "login-extra"
+            else {"type": "chatgpt"}
+            if mode == "login-wrong-type"
             else {}
+            if mode == "login-missing-type"
+            else {"type": "chatgptAuthTokens"}
         )
     elif method == "account/rateLimits/read" and mode == "reset-card":
         assert "params" in message
@@ -263,7 +286,7 @@ for line in sys.stdin:
         if message["params"]["includeTurns"]:
             exact_thread_reads += 1
             if mode == "exact-missing-post-archive-read" and exact_thread_reads > 1:
-                print(json.dumps({"jsonrpc": "2.0", "id": message["id"]}), flush=True)
+                print(json.dumps({"id": message["id"]}), flush=True)
                 continue
             if mode == "exact-oversized-read":
                 sys.stdout.write("{" + ("x" * (1024 * 1024 + 1)))
@@ -286,7 +309,7 @@ for line in sys.stdin:
     elif method == "thread/archive":
         assert message["params"] == {"threadId": exact_thread_id}
         if mode == "exact-unsupported-archive":
-            print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
+            print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
             continue
         if mode not in ("exact-ambiguous-unapplied", "exact-contradictory-readback"):
             exact_thread["archived"] = True
@@ -300,11 +323,18 @@ for line in sys.stdin:
     elif method == "initialized":
         continue
     else:
-        print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
+        print(json.dumps({"id": message["id"], "error": {"code": -32601, "message": "unsupported"}}), flush=True)
         continue
     if mode == "exact-wrong-correlation" and method == "thread/list" and "searchTerm" in message["params"]:
-        print(json.dumps({"jsonrpc": "2.0", "id": message["id"] + 1, "result": result}), flush=True)
+        print(json.dumps({"id": message["id"] + 1, "result": result}), flush=True)
     elif mode == "exact-missing-result" and method == "thread/list" and "searchTerm" in message["params"]:
-        print(json.dumps({"jsonrpc": "2.0", "id": message["id"]}), flush=True)
+        print(json.dumps({"id": message["id"]}), flush=True)
     else:
-        print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)
+        response = {"id": message["id"], "result": result}
+        if mode == "legacy-jsonrpc":
+            response["jsonrpc"] = "2.0"
+        elif mode == "wrong-jsonrpc":
+            response["jsonrpc"] = "1.0"
+        elif mode == "null-jsonrpc":
+            response["jsonrpc"] = None
+        print(json.dumps(response), flush=True)

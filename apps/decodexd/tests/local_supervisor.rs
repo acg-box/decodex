@@ -26,6 +26,7 @@ use tempfile::TempDir;
 const PORT: u16 = 55_431;
 const ACCOUNT_ID: &str = "provider-account-one";
 const EMAIL: &str = "first@example.test";
+const POSTGRES_READINESS_BLOCK: &str = ".fixture-postgres-unready";
 
 #[test]
 fn account_pool_replacement_restarts_the_daemon_only_for_changed_credentials() {
@@ -46,6 +47,28 @@ fn account_pool_replacement_restarts_the_daemon_only_for_changed_credentials() {
 	assert!(!fixture.postgres_socket().exists());
 	assert!(UnixStream::connect(fixture.daemon_socket()).is_err());
 	for secret in ["access-one", "access-two", ACCOUNT_ID, EMAIL] {
+		assert!(!output.stdout.windows(secret.len()).any(|window| window == secret.as_bytes()));
+		assert!(!output.stderr.windows(secret.len()).any(|window| window == secret.as_bytes()));
+	}
+}
+
+#[test]
+fn signal_during_postgres_startup_stops_the_generation_and_exits_successfully() {
+	let fixture = SupervisorFixture::new();
+	fixture.write_accounts("access-one");
+	fixture.block_postgres_readiness();
+	let mut supervisor = fixture.start();
+	let postgres_process_id = fixture.wait_for_postgres_start(&mut supervisor);
+
+	let status = signal_and_wait(&mut supervisor, libc::SIGTERM);
+	let output = supervisor.wait_with_output().expect("collect supervisor output");
+
+	assert!(status.success(), "startup shutdown must be successful: {status}");
+	assert_process_absent(postgres_process_id);
+	assert!(!fixture.postgres_socket().exists());
+	assert!(!fixture.data_directory.join("postmaster.pid").exists());
+	assert!(UnixStream::connect(fixture.daemon_socket()).is_err());
+	for secret in ["access-one", ACCOUNT_ID, EMAIL] {
 		assert!(!output.stdout.windows(secret.len()).any(|window| window == secret.as_bytes()));
 		assert!(!output.stderr.windows(secret.len()).any(|window| window == secret.as_bytes()));
 	}
@@ -211,13 +234,17 @@ for path in (socket_path, pid_path):
 set -eu
 host=
 port=
+database=
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		-h) host=$2; shift 2 ;;
 		-p) port=$2; shift 2 ;;
+		-d) database=$2; shift 2 ;;
 		*) shift ;;
 	esac
 done
+[ "$database" = postgres ]
+[ ! -e "$host/.fixture-postgres-unready" ]
 [ -S "$host/.s.PGSQL.$port" ]
 "#,
 		);
@@ -237,6 +264,10 @@ done
 
 	fn write_accounts(&self, access_token: &str) {
 		secure_write(&self.accounts, &account_record(access_token, 1));
+	}
+
+	fn block_postgres_readiness(&self) {
+		secure_write(&self.socket_directory.join(POSTGRES_READINESS_BLOCK), "");
 	}
 
 	fn replace_accounts(&self, access_token: &str, generation: u64) {
@@ -338,6 +369,32 @@ done
 		self.socket_directory.join(format!(".s.PGSQL.{PORT}"))
 	}
 
+	fn wait_for_postgres_start(&self, supervisor: &mut Child) -> libc::pid_t {
+		let deadline = Instant::now() + Duration::from_secs(20);
+		loop {
+			if let Some(status) = supervisor.try_wait().expect("poll supervisor") {
+				let mut stderr = String::new();
+				supervisor
+					.stderr
+					.as_mut()
+					.expect("supervisor stderr")
+					.read_to_string(&mut stderr)
+					.expect("read supervisor stderr");
+				panic!("supervisor exited before PostgreSQL started: {status}: {stderr}");
+			}
+			if let Ok(body) = fs::read_to_string(self.data_directory.join("postmaster.pid"))
+				&& let Ok(process_id) = body.trim().parse::<libc::pid_t>()
+				&& self.postgres_socket().exists()
+			{
+				return process_id;
+			}
+			if Instant::now() >= deadline {
+				panic!("PostgreSQL did not start before timeout");
+			}
+			thread::sleep(Duration::from_millis(20));
+		}
+	}
+
 	fn stop_postgres(&self) {
 		let process_id = fs::read_to_string(self.data_directory.join("postmaster.pid"))
 			.expect("read fake PostgreSQL generation")
@@ -382,6 +439,12 @@ fn wait_for_exit(child: &mut Child) -> ExitStatus {
 		}
 		thread::sleep(Duration::from_millis(20));
 	}
+}
+
+fn assert_process_absent(process_id: libc::pid_t) {
+	// SAFETY: signal zero only checks whether the captured child PID still exists.
+	assert_eq!(unsafe { libc::kill(process_id, 0) }, -1);
+	assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(libc::ESRCH));
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
