@@ -3,7 +3,6 @@
 use std::{
 	fmt::{Debug, Display, Formatter},
 	io::ErrorKind,
-	net::IpAddr,
 	path::Path,
 	sync::atomic::{AtomicBool, Ordering},
 	time::Duration,
@@ -24,6 +23,7 @@ use crate::{
 	Refusal, RefusalEnvelope, ResetCardAccountsResult, ResetCardDescriptorDto,
 	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
 	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
+	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
 	ConfigError, DecodexClientConfig, DecodexRoot, PathError, ServerIdentity, ServerProfile,
@@ -33,13 +33,15 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 const RESET_CARD_CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CLIENT_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_INTERLEAVED_MESSAGES: usize = 64;
-const WS_PATH: &str = "/v1/ws";
+// This URI is WebSocket handshake metadata only. The client passes an already
+// admitted Unix stream, so this value cannot resolve or dial a TCP endpoint.
+const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
 
 /// Whether one selected client profile targets the same host or a different host.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileKind {
-	/// Loopback service on the client host.
+	/// Same-UID service on the client host.
 	Local,
 	/// Explicit different-host service with a mandatory identity pin.
 	Remote,
@@ -53,7 +55,7 @@ pub enum ProfileKind {
 pub struct ClientProfile {
 	profile_name: String,
 	kind: ProfileKind,
-	url: String,
+	local_transport: Option<LocalTransportAuthority>,
 	expected_server_id: ServerId,
 }
 impl ClientProfile {
@@ -75,6 +77,12 @@ impl ClientProfile {
 
 		match profile {
 			ServerProfile::Local(profile) => {
+				let local_transport = LocalTransportAuthority::new(
+					paths.clone(),
+					profile.policy(),
+					profile.service_owner_uid(),
+				)
+				.map_err(map_local_transport_failure)?;
 				let expected = match profile.expected_server_identity() {
 					Some(identity) => identity.clone(),
 					None => ServerIdentity::load(&paths).map_err(map_identity_error)?,
@@ -83,25 +91,16 @@ impl ClientProfile {
 				Ok(Self {
 					profile_name,
 					kind: ProfileKind::Local,
-					url: format!("ws://{}{WS_PATH}", profile.address()),
+					local_transport: Some(local_transport),
 					expected_server_id: server_id(&expected)?,
 				})
 			},
-			ServerProfile::Remote(profile) => {
-				let host =
-					if profile.host().parse::<IpAddr>().is_ok_and(|address| address.is_ipv6()) {
-						format!("[{}]", profile.host())
-					} else {
-						profile.host().into()
-					};
-
-				Ok(Self {
-					profile_name,
-					kind: ProfileKind::Remote,
-					url: format!("ws://{host}:{}{WS_PATH}", profile.port()),
-					expected_server_id: server_id(profile.expected_server_identity())?,
-				})
-			},
+			ServerProfile::Remote(profile) => Ok(Self {
+				profile_name,
+				kind: ProfileKind::Remote,
+				local_transport: None,
+				expected_server_id: server_id(profile.expected_server_identity())?,
+			}),
 		}
 	}
 
@@ -129,14 +128,22 @@ impl ClientProfile {
 
 	/// Project this selected typed profile into the retained-session boundary.
 	///
-	/// Remote profiles remain fail-closed while retained sessions are loopback-only.
+	/// Remote profiles remain fail-closed while retained sessions are same-UID local only.
 	pub fn retained_session_config(&self) -> Result<RetainedSessionConfig, RetainedSessionFailure> {
-		RetainedSessionConfig::new(&self.url, self.expected_server_id.clone())
+		let local_transport =
+			self.local_transport.clone().ok_or(RetainedSessionFailure::RemoteTransportDisabled)?;
+
+		Ok(RetainedSessionConfig::new(local_transport, self.expected_server_id.clone()))
 	}
 
 	#[cfg(test)]
-	fn fixture(url: String, expected_server_id: ServerId) -> Self {
-		Self { profile_name: "fixture".into(), kind: ProfileKind::Local, url, expected_server_id }
+	fn fixture(local_transport: LocalTransportAuthority, expected_server_id: ServerId) -> Self {
+		Self {
+			profile_name: "fixture".into(),
+			kind: ProfileKind::Local,
+			local_transport: Some(local_transport),
+			expected_server_id,
+		}
 	}
 }
 
@@ -177,15 +184,21 @@ impl DoctorClient {
 	}
 
 	async fn query_inner(&self) -> Result<DoctorReport, ClientFailure> {
+		let local_transport =
+			self.profile.local_transport.as_ref().ok_or(ClientFailure::RemoteTransportDisabled)?;
 		let config = WebSocketConfig::default()
 			.read_buffer_size(16 * 1_024)
 			.write_buffer_size(16 * 1_024)
 			.max_write_buffer_size(MAX_CLIENT_MESSAGE_BYTES)
 			.max_message_size(Some(MAX_CLIENT_MESSAGE_BYTES))
 			.max_frame_size(Some(MAX_CLIENT_MESSAGE_BYTES));
+		let stream = time::timeout(self.timeout, local_transport.connect())
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)?
+			.map_err(map_local_transport_failure)?;
 		let (mut socket, _) = time::timeout(
 			self.timeout,
-			tokio_tungstenite::connect_async_with_config(&self.profile.url, Some(config), false),
+			tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, Some(config)),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)?
@@ -669,21 +682,22 @@ impl ResetCardClient {
 
 	async fn connect(
 		&self,
-	) -> Result<
-		tokio_tungstenite::WebSocketStream<
-			tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-		>,
-		ClientFailure,
-	> {
+	) -> Result<tokio_tungstenite::WebSocketStream<LocalTransportStream>, ClientFailure> {
+		let local_transport =
+			self.profile.local_transport.as_ref().ok_or(ClientFailure::RemoteTransportDisabled)?;
 		let config = WebSocketConfig::default()
 			.read_buffer_size(16 * 1_024)
 			.write_buffer_size(16 * 1_024)
 			.max_write_buffer_size(MAX_CLIENT_MESSAGE_BYTES)
 			.max_message_size(Some(MAX_CLIENT_MESSAGE_BYTES))
 			.max_frame_size(Some(MAX_CLIENT_MESSAGE_BYTES));
+		let stream = time::timeout(self.timeout, local_transport.connect())
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)?
+			.map_err(map_local_transport_failure)?;
 		let (mut socket, _) = time::timeout(
 			self.timeout,
-			tokio_tungstenite::connect_async_with_config(&self.profile.url, Some(config), false),
+			tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, Some(config)),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)?
@@ -820,6 +834,18 @@ pub enum ClientFailure {
 	ServerIdentityUnavailable,
 	/// Reset-card operations are unavailable for remote profiles.
 	RemoteMutationUnsupported,
+	/// Durable local policy disables the local endpoint.
+	LocalTransportDisabled,
+	/// The selected remote transport remains outside this implementation.
+	RemoteTransportDisabled,
+	/// The platform has no accepted kernel peer-identity implementation.
+	LocalTransportUnsupported,
+	/// The local directory, lock, socket, or captured identity is unsafe.
+	UnsafeLocalEndpoint,
+	/// The kernel did not provide an unambiguous local peer identity.
+	LocalPeerIdentityUnavailable,
+	/// The process or connected peer does not match the configured service UID.
+	LocalPeerUidMismatch,
 	/// No usable daemon WebSocket connection was established or retained.
 	ProtocolDisconnected,
 	/// A bounded connection or response deadline elapsed.
@@ -850,6 +876,13 @@ impl Display for ClientFailure {
 			Self::ServerIdentityUnavailable => "stable server identity is unavailable",
 			Self::RemoteMutationUnsupported =>
 				"reset-card operations require a local pinned profile",
+			Self::LocalTransportDisabled => "local daemon transport is disabled",
+			Self::RemoteTransportDisabled => "remote daemon transport is disabled",
+			Self::LocalTransportUnsupported =>
+				"local daemon transport is unsupported on this platform",
+			Self::UnsafeLocalEndpoint => "local daemon endpoint is unsafe",
+			Self::LocalPeerIdentityUnavailable => "local daemon peer identity is unavailable",
+			Self::LocalPeerUidMismatch => "local daemon peer UID does not match",
 			Self::ProtocolDisconnected => "daemon protocol is disconnected",
 			Self::ProtocolTimeout => "daemon protocol timed out",
 			Self::ProtocolMajorMismatch => "daemon protocol major version does not match",
@@ -896,6 +929,24 @@ fn map_identity_error(error: ConfigError) -> ClientFailure {
 	}
 }
 
+fn map_local_transport_failure(failure: LocalTransportRefusal) -> ClientFailure {
+	match failure {
+		LocalTransportRefusal::Disabled => ClientFailure::LocalTransportDisabled,
+		LocalTransportRefusal::InvalidPolicy | LocalTransportRefusal::ConfigurationUnavailable =>
+			ClientFailure::ConfigurationMalformed,
+		LocalTransportRefusal::UnsupportedPlatform => ClientFailure::LocalTransportUnsupported,
+		LocalTransportRefusal::EffectiveUidMismatch | LocalTransportRefusal::PeerUidMismatch =>
+			ClientFailure::LocalPeerUidMismatch,
+		LocalTransportRefusal::UnsafeDirectory
+		| LocalTransportRefusal::UnsafeEndpoint
+		| LocalTransportRefusal::EndpointReplaced => ClientFailure::UnsafeLocalEndpoint,
+		LocalTransportRefusal::PeerCredentialsUnavailable =>
+			ClientFailure::LocalPeerIdentityUnavailable,
+		LocalTransportRefusal::EndpointUnavailable | LocalTransportRefusal::EndpointInUse =>
+			ClientFailure::ProtocolDisconnected,
+	}
+}
+
 fn map_connect_error(error: tokio_tungstenite::tungstenite::Error) -> ClientFailure {
 	match error {
 		tokio_tungstenite::tungstenite::Error::Capacity(_) => ClientFailure::ProtocolBackpressure,
@@ -935,14 +986,14 @@ fn version_failure(version: ProtocolVersion) -> ClientFailure {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
 	#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
-	use std::{fs, net::Ipv4Addr, time::Duration};
+	use std::{fs, time::Duration};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
 	use tempfile::TempDir;
-	use tokio::{net::TcpListener, task::JoinHandle, time};
+	use tokio::{task::JoinHandle, time};
 	use tokio_tungstenite::{self, tungstenite::Message};
 
 	use crate::{
@@ -950,14 +1001,14 @@ mod tests {
 		CommandError, CommandOutcome, CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor,
 		DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus,
 		EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
-		PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId, QueryResultEnvelope,
-		QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, RefusalEnvelope,
-		ResetCardAccountDto, ResetCardAccountsResult, ResetCardAdmissionState, ResetCardClient,
-		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload,
-		RetainedSessionFailure, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
-		SupportedVersions, VersionRefusal, WireText,
+		LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId,
+		QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
+		RefusalEnvelope, ResetCardAccountDto, ResetCardAccountsResult, ResetCardAdmissionState,
+		ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
+		ResetCardOperationResult, ResultPayload, RetainedSessionFailure, ServerId, ServerMessage,
+		ServerWelcome, SnapshotEnvelope, SupportedVersions, VersionRefusal, WireText,
 	};
-	use decodex_core::{DecodexRoot, ServerIdentity};
+	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
@@ -1033,6 +1084,22 @@ mod tests {
 		}))
 	}
 
+	fn local_transport() -> (TempDir, LocalTransportAuthority) {
+		let temp = TempDir::new().unwrap();
+		let root = DecodexRoot::new(temp.path().canonicalize().unwrap().join(".decodex")).unwrap();
+		let paths = root.paths();
+
+		paths.ensure_layout().unwrap();
+
+		// SAFETY: `geteuid` has no arguments or failure return.
+		let service_owner_uid = unsafe { libc::geteuid() };
+		let authority =
+			LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(service_owner_uid))
+				.unwrap();
+
+		(temp, authority)
+	}
+
 	#[test]
 	fn active_local_profile_uses_stable_identity_and_remote_uses_only_profile_data() {
 		let temp = TempDir::new().unwrap();
@@ -1042,13 +1109,16 @@ mod tests {
 		paths.ensure_layout().unwrap();
 
 		let identity = ServerIdentity::load_or_create(&paths).unwrap();
+		// SAFETY: `geteuid` has no arguments or failure return.
+		let service_owner_uid = unsafe { libc::geteuid() };
 		let config = format!(
 			r#"version = 1
 active_profile = "local"
 
 [profiles.local]
 kind = "local"
-address = "127.0.0.1:49152"
+policy = "same_uid"
+service_owner_uid = {service_owner_uid}
 
 [profiles.remote]
 kind = "remote"
@@ -1106,8 +1176,10 @@ max_entry_bytes = 0
 			remote.clone().with_expected_server_id(ServerId::new("retained-authority").unwrap());
 		assert_eq!(stricter.name(), "remote");
 		assert_eq!(stricter.expected_server_id().as_str(), "retained-authority");
-		assert_eq!(remote.retained_session_config(), Err(RetainedSessionFailure::InvalidEndpoint));
-		assert!(!remote.url.contains("must-not-be-client-validated"));
+		assert_eq!(
+			remote.retained_session_config(),
+			Err(RetainedSessionFailure::RemoteTransportDisabled),
+		);
 		assert!(!format!("{remote:?}").contains("server.example.test"));
 	}
 
@@ -1120,11 +1192,12 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn reset_card_client_rejects_every_remote_profile_before_connect_or_send() {
-		let mut profile = ClientProfile::fixture(
-			"ws://127.0.0.1:9/v1/ws".into(),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
-		profile.kind = ProfileKind::Remote;
+		let profile = ClientProfile {
+			profile_name: "remote".into(),
+			kind: ProfileKind::Remote,
+			local_transport: None,
+			expected_server_id: ServerId::new(SERVER_ID).unwrap(),
+		};
 		let client = ResetCardClient::new(profile);
 		let account = EntityId::new("40000000-0000-4000-8000-000000000001").unwrap();
 		let key = IdempotencyKey::new("remote-reset-key").unwrap();
@@ -1149,10 +1222,11 @@ max_entry_bytes = 0
 		initial: Vec<Message>,
 		query: Vec<Message>,
 	) -> (ClientProfile, JoinHandle<()>) {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let hello = socket.next().await.unwrap().unwrap();
 			let Message::Text(hello) = hello else { panic!("expected text hello") };
@@ -1164,7 +1238,11 @@ max_entry_bytes = 0
 			assert_eq!(hello.expected_server_id.unwrap().as_str(), SERVER_ID);
 
 			for response in initial {
-				socket.send(response).await.unwrap();
+				// A fail-closed client can drop the stream while the server flushes
+				// the response that caused the protocol failure.
+				if socket.send(response).await.is_err() {
+					break;
+				}
 			}
 
 			if !query.is_empty() {
@@ -1180,11 +1258,11 @@ max_entry_bytes = 0
 					socket.send(response).await.unwrap();
 				}
 			}
+
+			drop(socket);
+			listener.cleanup().unwrap();
 		});
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 
 		(profile, task)
 	}
@@ -1541,12 +1619,13 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn reset_card_consume_sends_once_and_verifies_receipt_and_result() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let descriptor = ResetCardDescriptorDto::new(1_700_000_000, 1_700_003_600).unwrap();
 		let expected_descriptor = descriptor;
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let hello = socket.next().await.unwrap().unwrap();
 			let Message::Text(hello) = hello else { panic!("expected text hello") };
@@ -1615,11 +1694,11 @@ max_entry_bytes = 0
 					"consume was retried automatically",
 				);
 			}
+
+			drop(socket);
+			listener.cleanup().unwrap();
 		});
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let response = ResetCardClient::new(profile)
 			.consume(
 				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
@@ -1645,10 +1724,11 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn reset_card_consume_preserves_key_when_application_acceptance_is_unknown() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 
 			let _ = socket.next().await;
@@ -1687,11 +1767,11 @@ max_entry_bytes = 0
 				})))
 				.await
 				.unwrap();
+
+			drop(socket);
+			listener.cleanup().unwrap();
 		});
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let response = ResetCardClient::new(profile)
 			.consume(
 				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
@@ -1714,10 +1794,11 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn reset_card_consume_rejects_a_mismatched_receipt_key() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 
 			let _ = socket.next().await;
@@ -1739,11 +1820,11 @@ max_entry_bytes = 0
 				})))
 				.await
 				.unwrap();
+
+			drop(socket);
+			listener.cleanup().unwrap();
 		});
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let response = ResetCardClient::new(profile)
 			.consume(
 				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
@@ -1766,12 +1847,13 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn reset_card_consume_rejects_success_after_a_refused_receipt() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let descriptor = ResetCardDescriptorDto::new(1, 2).unwrap();
 		let result_descriptor = descriptor;
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 
 			let _ = socket.next().await;
@@ -1814,11 +1896,11 @@ max_entry_bytes = 0
 				})))
 				.await
 				.unwrap();
+
+			drop(socket);
+			listener.cleanup().unwrap();
 		});
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let response = ResetCardClient::new(profile)
 			.consume(
 				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
@@ -1841,12 +1923,13 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn reset_card_consume_rejects_a_mismatched_returned_revision() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let descriptor = ResetCardDescriptorDto::new(1, 2).unwrap();
 		let result_descriptor = descriptor;
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 
 			let _ = socket.next().await;
@@ -1889,11 +1972,11 @@ max_entry_bytes = 0
 				})))
 				.await
 				.unwrap();
+
+			drop(socket);
+			listener.cleanup().unwrap();
 		});
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let response = ResetCardClient::new(profile)
 			.consume(
 				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
@@ -1916,15 +1999,8 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn reset_card_consume_error_before_send_guarantees_no_dispatch() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
-
-		drop(listener);
-
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let (_temp, authority) = local_transport();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let failure = ResetCardClient::new(profile)
 			.consume(
 				EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
@@ -1940,15 +2016,8 @@ max_entry_bytes = 0
 
 	#[tokio::test]
 	async fn disconnected_malformed_oversized_and_timeout_fail_closed() {
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
-
-		drop(listener);
-
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let (_temp, authority) = local_transport();
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1974,23 +2043,22 @@ max_entry_bytes = 0
 
 		task.await.unwrap();
 
-		let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-		let address = listener.local_addr().unwrap();
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.unwrap();
 		let task = tokio::spawn(async move {
-			let (stream, _) = listener.accept().await.unwrap();
+			let _temp = temp;
+			let stream = listener.accept().await.unwrap();
 			let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
 			let _ = socket.next().await;
 
 			time::sleep(Duration::from_secs(1)).await;
 		});
-		let profile = ClientProfile::fixture(
-			format!("ws://{address}/v1/ws"),
-			ServerId::new(SERVER_ID).unwrap(),
-		);
+		let profile = ClientProfile::fixture(authority, ServerId::new(SERVER_ID).unwrap());
 		let client = DoctorClient { profile, timeout: Duration::from_millis(20) };
 
 		assert_eq!(client.query().await.unwrap_err(), ClientFailure::ProtocolTimeout);
 
 		task.abort();
+		let _ = task.await;
 	}
 }

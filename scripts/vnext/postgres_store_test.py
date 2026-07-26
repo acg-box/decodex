@@ -5851,7 +5851,8 @@ active_profile = "local"
 
 [profiles.local]
 kind = "local"
-address = "127.0.0.1:49152"
+policy = "same_uid"
+service_owner_uid = {os.geteuid()}
 
 [server_host.repositories.decodex]
 host_path = "{REPO_ROOT.as_posix()}"

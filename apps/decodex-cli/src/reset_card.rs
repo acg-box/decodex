@@ -232,8 +232,9 @@ pub(crate) async fn execute(
 				Err(failure) => render_client_failure(command_name, format, failure),
 			}
 		},
-		ResetCardCommand::Use { .. } =>
-			unreachable!("reset-card use is handled before profile loading"),
+		ResetCardCommand::Use { .. } => {
+			unreachable!("reset-card use is handled before profile loading")
+		},
 	}
 }
 
@@ -272,23 +273,25 @@ async fn execute_use(
 	};
 	let descriptor = match ResetCardDescriptorDto::new(granted_at, expires_at) {
 		Ok(descriptor) => descriptor,
-		Err(_) =>
+		Err(_) => {
 			return render_use_input_failure(
 				format,
 				&idempotency_key,
 				InputFailure::InvalidDescriptor,
-			),
+			);
+		},
 	};
 	let profile = load_client_profile(root, selected_profile, expected_server_id);
 	let profile = match profile {
 		Ok(profile) => profile,
-		Err(failure) =>
+		Err(failure) => {
 			return render_use_client_failure(
 				format,
 				&idempotency_key,
 				UseDispatchState::DefinitelyNotDispatched,
 				failure,
-			),
+			);
+		},
 	};
 	let client = ResetCardClient::new(profile);
 
@@ -801,6 +804,12 @@ const fn client_failure_code(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProfileMissing => "profile_missing",
 		ClientFailure::UnsafeHostPath => "unsafe_host_path",
 		ClientFailure::ServerIdentityUnavailable => "server_identity_unavailable",
+		ClientFailure::LocalTransportDisabled => "local_transport_disabled",
+		ClientFailure::RemoteTransportDisabled => "remote_transport_disabled",
+		ClientFailure::LocalTransportUnsupported => "local_transport_unsupported",
+		ClientFailure::UnsafeLocalEndpoint => "unsafe_local_endpoint",
+		ClientFailure::LocalPeerIdentityUnavailable => "local_peer_identity_unavailable",
+		ClientFailure::LocalPeerUidMismatch => "local_peer_uid_mismatch",
 		ClientFailure::ProtocolDisconnected => "protocol_disconnected",
 		ClientFailure::ProtocolTimeout => "protocol_timeout",
 		ClientFailure::ProtocolMajorMismatch => "protocol_major_mismatch",
@@ -838,10 +847,19 @@ mod tests {
 	const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 
 	fn write_client_config(root: &std::path::Path, kind: &str) {
+		#[cfg(unix)]
+		let service_owner_uid = {
+			use std::os::unix::fs::MetadataExt as _;
+
+			standard::fs::metadata(root).unwrap().uid()
+		};
+		#[cfg(not(unix))]
+		let service_owner_uid = 0_u32;
 		let profile = match kind {
 			"local" => format!(
 				r#"kind = "local"
-address = "127.0.0.1:49152"
+policy = "same_uid"
+service_owner_uid = {service_owner_uid}
 expected_server_identity = "{SERVER_ID}""#
 			),
 			"remote" => format!(
