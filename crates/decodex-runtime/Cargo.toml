@@ -32,6 +32,10 @@ tokio             = { workspace = true }
 tokio-tungstenite = { workspace = true }
 zeroize           = { workspace = true, features = ["serde"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation    = { workspace = true }
+security-framework = { workspace = true }
+
 [dev-dependencies]
 tempfile       = { workspace = true }
 tokio-postgres = { workspace = true }
