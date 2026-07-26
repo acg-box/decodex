@@ -202,6 +202,7 @@ CANDIDATE_KEYS = {
     "next_retry_at",
     "retry_role",
     "lease",
+    "handoff",
     "effect",
     "commit_receipt",
     "pull_request",
@@ -735,6 +736,7 @@ def validate_candidate_result(candidate: dict[str, Any]) -> None:
                     "land_execution_receipt_sha256",
                     "decision_receipt_sha256",
                     "reviewer_receipt",
+                    "reviewer_handoff",
                     "resolved_at",
                 },
             )
@@ -784,7 +786,10 @@ def validate_candidate_result(candidate: dict[str, Any]) -> None:
         return
     if outcome == "repair_requested":
         if (
-            not has_exact_keys(result, {"outcome", "finding_codes", "at"})
+            not has_exact_keys(
+                result,
+                {"outcome", "finding_codes", "reviewer_handoff", "at"},
+            )
             or not bounded_string_list(
                 result["finding_codes"],
                 pattern=REASON_PATTERN,

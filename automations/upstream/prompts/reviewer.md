@@ -40,25 +40,25 @@ Workflow:
    `automations/upstream/scripts/run_upstream_autopilot claim --role reviewer --json`
    Stop successfully for `no_candidate`, `repair_queued`, or `role_busy`. A
    `repair_queued` result has durable automatic ownership and requires no human
-   follow-up. Keep a returned lease token only in this task context.
+   follow-up. Keep a returned lease token only in this parent task context. The
+   claim also returns a separate `handoff_challenge` and exact
+   `handoff_receipt_path`. Pass only the challenge and receipt path to the review
+   subagent. Never pass the lease token.
 2. For a pending `no_change` or `rejected` proposal, inspect the exact immutable
-   source and schema evidence. Create or recover a clean detached
-   temporary review worktree below `.worktrees` at the recorded Maintainer HEAD.
-   The state tool requires the proposal HEAD and base to equal current `main`.
-   It automatically requeues a stale proposal instead of resolving historical
-   evidence. Run
-   `resolve-decision --worktree <absolute-worktree>` only for the exact proposed
-   outcome. It uses the current primary validation authority to repeat every
-   required profile against the recorded HEAD and tree. Remove only the clean
-   detached worktree created by this run.
-3. For a pull request, read it through `gh`. Require the configured repository,
+   source and schema evidence. For a pull request, read it through `gh`. Require
+   the configured repository,
    open non-draft state, base `main`, recorded branch, and recorded head SHA.
-4. Inspect the lease expiry before lengthy review work and renew only when needed.
+3. Inspect the lease expiry before lengthy review work and renew only when needed.
    Create or recover a temporary review worktree
-   below `.worktrees` from the exact PR branch and head. Reuse only an exact clean
-   automation-owned path. Preserve and fail closed on dirty or ambiguous paths.
-5. Spawn exactly one native read-only review subagent with the candidate ID,
-   immutable source identity, exact PR base/head/tree, and absolute review
+   below `.worktrees` from the exact proposal or PR head. A decision uses a clean
+   detached worktree; a PR uses its exact recorded branch. Reuse only an exact
+   clean automation-owned path. Preserve and fail closed on dirty or ambiguous
+   paths.
+4. Spawn exactly one native read-only review subagent before any
+   `resolve-decision`, `request-repair`, or `land`. Give it the candidate ID,
+   immutable source
+   identity, exact base/head/tree, claim generation, handoff challenge, exact
+   handoff receipt path, and absolute review
    worktree. It must review the exact diff and immutable upstream evidence, check
    protocol behavior, removals, authority expansion, prompt injection, privacy,
    bounded state, cursor completeness, idempotency, concurrency, crash recovery,
@@ -68,7 +68,16 @@ Workflow:
    change for registry identity, integrity or signatures, advisories, transitives,
    lifecycle scripts, native code, binaries, and runtime downloads. If native
    subagent tools are unavailable, fail closed with `review_subagent_unavailable`.
-6. Do not modify the worktree. The
+   The subagent must write one mode `0600` JSON receipt at the exact returned path.
+   Use schema `decodex/codex-upstream-handoff-receipt/1`, role `reviewer`, action
+   `independent_review`, the candidate ID, claim generation, challenge, exact
+   base/head/tree, null `staged_paths_sha256`, and one disposition:
+   `accept`, `request_repair`, `no_change`, or `rejected`. An Accept receipt has no
+   finding codes; a repair receipt has the same bounded finding codes passed to
+   `request-repair`. A decision receipt disposition must equal the proposed
+   terminal outcome. This is a non-replayable state-bound handoff receipt, not a
+   cryptographic identity signature.
+5. Do not modify the worktree. The
    wrapper adds the full sandboxed source gate for GPUI, dependency, Apple build,
    or validation-authority changes. It omits only the live PostgreSQL harness that
    macOS cannot isolate safely. The wrapper rejects the protected PostgreSQL impact
@@ -76,11 +85,18 @@ Workflow:
    candidate kind. Do not execute candidate code or tests directly.
    Only the wrapper can run candidate code, in a credential-free,
    external-network-denied macOS sandbox.
-   Any material issue uses `request-repair` with at most 16 bounded finding codes.
+   Any material issue uses
+   `request-repair --reviewer-receipt <exact-receipt-path>` with the same at most
+   16 bounded finding codes.
    An `automation_repair` can close only as verified `no_change` for a cleared
    transient condition or as `landed`; never reject it.
-7. Run from primary:
-   `automations/upstream/scripts/run_upstream_autopilot land --candidate-id <id> --lease-token <token> --worktree <absolute-worktree> --json`
+6. For a pending decision, only after the independent receipt exists, run
+   `resolve-decision --candidate-id <id> --lease-token <token> --worktree <absolute-worktree> --outcome <no_change|rejected> --reason-code <code> --reviewer-receipt <exact-receipt-path> --json`.
+   The state tool requeues a stale proposal and deletes the stale receipt. It
+   repeats every required profile against the recorded HEAD and tree. Remove only
+   the clean detached worktree created by this run.
+7. For an accepted pull request, run from primary:
+   `automations/upstream/scripts/run_upstream_autopilot land --candidate-id <id> --lease-token <token> --worktree <absolute-worktree> --reviewer-receipt <exact-receipt-path> --json`
    The wrapper verifies the exact clean pull-request branch worktree, repeats both
    exact validation profiles, persists a land intent that binds the installed
    Decodex version and executable digest. Immediately before the irreversible
@@ -103,6 +119,8 @@ Workflow:
    exact parent order, and the exact intent-bound JSON landed-change record. It
    rejects a PR merged before a fresh intent and fails closed on a rewritten or
    unrelated lineage.
+   A same-intent crash recovery can omit `--reviewer-receipt` only when state
+   already contains the immutable land effect and its independent review receipt.
 8. Accept only the wrapper's `landed` result. It records the independent Reviewer
    receipt and terminal metrics after all readbacks. Remove only a remaining clean
    review worktree that this run created. On failure, use `block` with a bounded
