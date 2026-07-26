@@ -376,32 +376,44 @@ semantic owner runs once at R1, and the gate stops.
 
 One privacy-safe state owner covers the exact ordered execution inventory from `cli` through
 `stopped_after_restored_once`. It also owns the separate `cluster_stop`, `private_work_cleanup`,
-`receipt_validation`, `receipt_source_binding`, and `receipt_publication` lifecycle checkpoints.
-Completed execution checkpoints must be a successful prefix. The definition binds the complete
-checkpoint order, exact allowed checkpoint and reason matrix, prefix rules, first-primary and
-cleanup precedence, pass schema, PostgreSQL 18 toolchain boundary, restore identity and options,
-and semantic definition fingerprint. Expected operation failures use one fixed reason at their
-owner. Interruption uses `interrupted`. An unexpected assertion, type, key, or invariant failure
-uses `harness_corruption` at the active owner. The first primary failure is immutable. Cleanup has
-fixed status and a fixed optional secondary reason. Cleanup becomes primary only when no earlier
-primary exists. Receipt validation, final source binding, cleanup, and publication cannot replace
-an earlier primary.
+`cleanup_finalization`, `receipt_validation`, `receipt_source_binding`, and `receipt_publication`
+lifecycle checkpoints. Completed execution checkpoints must be a successful prefix. Actual
+lifecycle state derives the exact required cleanup-owner sequence. `cluster_stop` is required only
+when cluster stop is applicable. `private_work_cleanup` is required only when private work exists.
+Each required owner is pending, active, or completed, and `cleanup_finalization` is an explicit
+fail-closed transition.
+
+The definition binds the complete checkpoint order, exact allowed checkpoint and reason matrix,
+cleanup-owner sequences, owner-state transitions, finalization proof, prefix rules, first-primary
+and cleanup precedence, pass schema, fixed failure-document fallback, PostgreSQL 18 toolchain
+boundary, restore identity and options, and semantic definition fingerprint. Expected cleanup
+operation failure uses `cleanup_failed`. Interruption uses `interrupted`. An unexpected assertion,
+type, key, or invariant failure uses `harness_corruption` at the active or pending owner. The first
+primary failure is immutable. Cleanup becomes primary only when no execution primary exists. An
+execution primary retains only the fixed secondary `cleanup_failed` reason. Cleanup can pass only
+when every required owner and finalization completed. Receipt validation, final source binding,
+cleanup, and publication cannot replace an earlier primary.
 
 The pass receipt schema is `decodex/postgres-restore-prerequisite-r1-gate/2`. It binds the clean
 source, selected PostgreSQL 18 toolchain, complete validated checkpoint prefix, fixed
 invocation-policy Booleans, and definition fingerprint
-`f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401`. It is create-only,
+`53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a`. It also proves the exact
+required and completed cleanup-owner sequences and completed cleanup finalization. It is create-only,
 mode 0600, file-fsynced, directory-fsynced, privacy-safe, and has `acceptance=false`.
 The bound definition schema is `decodex/postgres-restore-prerequisite-r1-definition/2`.
 
 The failure schema is `decodex/postgres-restore-prerequisite-r1-diagnostic/2`. It contains only the
 validated source binding or null, immutable primary checkpoint and reason, validated completed
-prefix, fixed cleanup status, optional fixed secondary cleanup reason, and the existing closed
-semantic diagnostic when semantic authority owns the primary. It contains no raw operational or
-authority data. If the output contract is valid and publication remains possible, the gate
-publishes one create-only failure receipt after cleanup. It writes the same canonical diagnostic to
-standard error for publication-failure recovery. The raw-error `StageOrchestrator` is outside this
-privacy boundary.
+prefix, exact required and completed cleanup-owner sequences, completed finalization, fixed cleanup
+status, optional fixed secondary cleanup reason, fixed failure-document repair state, and the
+existing closed semantic diagnostic when semantic authority owns the primary. It contains no raw
+operational or authority data. Failure-document construction and repair belong to
+`receipt_validation`. Incomplete or corrupt cleanup state becomes one fixed privacy-safe repaired
+diagnostic without replacing a valid earlier primary. If the output contract is valid and
+publication remains possible, the gate publishes one create-only failure receipt after cleanup. It
+writes the same canonical diagnostic to standard error for publication-failure recovery. A fixed
+`receipt_validation/harness_corruption` fallback remains available if normal construction or
+durable publication fails. The raw-error `StageOrchestrator` is outside this privacy boundary.
 
 The v1 gate ran once and returned ownerless `gate/stage_failed` evidence after 0.312 seconds. It did
 not prove that candidate 3 reached the archive guard, prerequisite, restore, or R1 semantic owner.

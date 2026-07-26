@@ -267,13 +267,19 @@ One state owner records this ordered execution prefix: `cli`, `output_contract`,
 `source_binding_gate_end`, `toolchain_gate_end`, `privacy_validation`, and
 `stopped_after_restored_once`. A receipt cannot claim a checkpoint until its action succeeds.
 
-The separate lifecycle owners are `cluster_stop`, `private_work_cleanup`, `receipt_validation`,
-`receipt_source_binding`, and `receipt_publication`. The exact reason set is `contract_invalid`,
-`authority_unavailable`, `changed`, `operation_failed`, `archive_declaration_invalid`,
-`target_not_fresh`, `duplicate_invocation`, `invocation_policy_failed`,
-`semantic_authority_changed`, `cleanup_failed`, `receipt_invalid`, `publication_failed`,
-`interrupted`, and `harness_corruption`. The definition binds the exact allowed checkpoint and
-reason pairs. The expected pairs are:
+The separate lifecycle owners are `cluster_stop`, `private_work_cleanup`, `cleanup_finalization`,
+`receipt_validation`, `receipt_source_binding`, and `receipt_publication`. Actual lifecycle state
+derives the ordered required cleanup sequence. `cluster_stop` is present only after cluster stop
+becomes applicable. `private_work_cleanup` is present only after private work exists. The only valid
+sequences are empty, `private_work_cleanup`, or `cluster_stop` then `private_work_cleanup`. Each
+required owner has pending, active, or completed state. `cleanup_finalization` is always an explicit
+fail-closed transition after that sequence.
+
+The exact reason set is `contract_invalid`, `authority_unavailable`, `changed`, `operation_failed`,
+`archive_declaration_invalid`, `target_not_fresh`, `duplicate_invocation`,
+`invocation_policy_failed`, `semantic_authority_changed`, `cleanup_failed`, `receipt_invalid`,
+`publication_failed`, `interrupted`, and `harness_corruption`. The definition binds the exact
+allowed checkpoint and reason pairs. The expected pairs are:
 
 - `cli`, `output_contract`, `temporary_root`, `definition_binding`, `privacy_validation`, and
   `stopped_after_restored_once` use `contract_invalid`.
@@ -292,13 +298,18 @@ reason pairs. The expected pairs are:
 - `semantic_authority_equal` uses `semantic_authority_changed`.
 - `invocation_policy` uses `duplicate_invocation` or `invocation_policy_failed`.
 - `cluster_stop` and `private_work_cleanup` use `cleanup_failed`.
+- `cleanup_finalization` has no expected operation failure.
 - `receipt_validation` uses `receipt_invalid`; `receipt_source_binding` uses
   `authority_unavailable` or `changed`; and `receipt_publication` uses `publication_failed`.
 
 Every owner also permits `interrupted` and `harness_corruption`. An unexpected assertion, type,
 key, or invariant failure is `harness_corruption` at the active owner. The first primary failure is
-immutable. Cleanup has fixed status and can become primary only when no earlier primary exists.
-Publication cannot relabel an earlier primary.
+immutable. Before the first action, after an action before transition, between actions, and during
+finalization, one active or pending cleanup owner remains authoritative. Cleanup has fixed status and
+can become primary only when no execution primary exists. An execution primary keeps only the fixed
+secondary `cleanup_failed` reason. `cleanup_status=passed` proves that the completed cleanup sequence
+equals the required sequence and that finalization completed. Publication cannot relabel an earlier
+primary.
 
 The gate creates S0 once with the unchanged authority-mode setup. It migrates, provisions,
 populates, and runs the complete Rust semantic-authority owner once. It creates one custom dump.
@@ -320,19 +331,25 @@ an authority candidate, run Phase B, or run the aggregate. A pass publishes one 
 create-only, mode-0600, file-fsynced and directory-fsynced
 `decodex/postgres-restore-prerequisite-r1-gate/2` receipt. The receipt has `acceptance=false`. It
 contains the exact source binding, PostgreSQL toolchain fingerprint, definition fingerprint
-`f335afc30d28cdbcc1418d3a1dae9741df59cfd4fd05a593f91827b8e7b2c401`, the complete validated
-checkpoint prefix, and fixed invocation-policy Booleans. The definition schema is
+`53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a`, the complete validated
+checkpoint prefix, the exact required and completed cleanup-owner sequences, completed cleanup
+finalization, and fixed invocation-policy Booleans. The definition schema is
 `decodex/postgres-restore-prerequisite-r1-definition/2`.
 
 A failure uses `decodex/postgres-restore-prerequisite-r1-diagnostic/2`. It contains the validated
 source binding, or null before source validation, the immutable primary checkpoint and reason, the
 validated completed prefix, fixed cleanup status, and the optional fixed secondary cleanup reason.
-It includes the existing closed semantic-authority diagnostic only when a semantic owner has the
-primary failure. It cannot contain raw exception text, a command, child output, environment, path,
-selected tool name, database, role, owner, ACL, OID, SQL, connection, TOC content, catalog row,
-count, or discovered identity. When the output contract is valid, the owner tries to publish one
-create-only failure receipt after cleanup. It also writes the same canonical diagnostic to standard
-error for publication-failure recovery. The raw-error `StageOrchestrator` remains separate.
+It also carries the exact required and completed cleanup-owner sequences, completed finalization,
+and the fixed `failure_document_repaired` Boolean. It includes the existing closed
+semantic-authority diagnostic only when a semantic owner has the primary failure. It cannot contain
+raw exception text, a command, child output, environment, path, selected tool name, database, role,
+owner, ACL, OID, SQL, connection, TOC content, catalog row, count, or discovered identity. Failure
+document construction and repair belong to `receipt_validation`. Incomplete or corrupt cleanup
+state produces one fixed privacy-safe repaired diagnostic and preserves a valid earlier primary.
+When the output contract is valid, the owner tries to publish one create-only failure receipt after
+cleanup. It also writes the same canonical diagnostic to standard error for publication-failure
+recovery. A fixed `receipt_validation/harness_corruption` fallback remains available if normal
+construction or durable publication fails. The raw-error `StageOrchestrator` remains separate.
 
 The v1 gate ran once and returned ownerless `gate/stage_failed` evidence. That result did not prove
 that candidate 3 reached the archive guard, prerequisite, restore, or R1 semantic owner. Candidate 3
