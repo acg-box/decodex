@@ -170,7 +170,8 @@ class LocalServiceInstallerTests(unittest.TestCase):
             plist_document["EnvironmentVariables"]["PATH"].split(os.pathsep)[0],
         )
         self.assertNotIn("--secret-run", plist_document["ProgramArguments"])
-        self.assertEqual(360, plist_document["ExitTimeOut"])
+        self.assertEqual({"SuccessfulExit": False}, plist_document["KeepAlive"])
+        self.assertEqual(60, plist_document["ExitTimeOut"])
 
     def test_parser_discovers_codex_without_copying_the_process_environment(self):
         discovered = Path("/Applications/ChatGPT.app/Contents/Resources/codex")
@@ -558,23 +559,404 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertEqual(str(paths.root), command[command.index("--root") + 1])
         self.assertNotIn("private-marker", str(run.call_args))
 
-    def test_bootout_distinguishes_absent_service_from_stop_failure(self):
-        absent = subprocess.CompletedProcess(["launchctl"], 3, "", "not found")
-        with mock.patch.object(
-            self.module,
-            "run",
-            side_effect=[absent, absent],
-        ):
-            self.module.bootout_service(os.geteuid())
+    def test_installed_launch_agent_contract_requires_exact_drain_settings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            paths.launch_agent.write_bytes(self.module.render_launch_agent(paths))
+            paths.launch_agent.chmod(0o600)
+            self.assertTrue(
+                self.module.installed_launch_agent_supports_graceful_drain(
+                    paths.launch_agent, os.geteuid()
+                )
+            )
 
-        loaded = subprocess.CompletedProcess(["launchctl"], 0, "loaded", "")
-        with mock.patch.object(
-            self.module,
-            "run",
-            side_effect=[absent, loaded],
-        ):
-            with self.assertRaisesRegex(self.module.InstallError, "could not be stopped"):
-                self.module.bootout_service(os.geteuid())
+            legacy = plistlib.loads(self.module.render_launch_agent(paths))
+            legacy["KeepAlive"] = True
+            legacy["ExitTimeOut"] = 360
+            paths.launch_agent.write_bytes(plistlib.dumps(legacy))
+            paths.launch_agent.chmod(0o600)
+            self.assertFalse(
+                self.module.installed_launch_agent_supports_graceful_drain(
+                    paths.launch_agent, os.geteuid()
+                )
+            )
+
+    def test_graceful_contract_drains_loaded_service_before_bootout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            active = subprocess.CompletedProcess(
+                ["launchctl"], 0, "service = {\n\tpid = 100\n}\n", ""
+            )
+            initial_processes = subprocess.CompletedProcess(
+                ["/bin/ps"],
+                0,
+                "100 1 Sat Jul 25 20:00:00 2026\n"
+                "101 100 Sat Jul 25 20:00:01 2026\n"
+                "200 1 Sat Jul 25 19:00:00 2026\n",
+                "",
+            )
+            signaled = subprocess.CompletedProcess(["launchctl"], 0, "", "")
+            inactive = subprocess.CompletedProcess(
+                ["launchctl"], 0, "service = {\n\tstate = exited\n}\n", ""
+            )
+            stopped = subprocess.CompletedProcess(["launchctl"], 0, "", "")
+            settled = subprocess.CompletedProcess(
+                ["/bin/ps"], 0, "200 1 Sat Jul 25 19:00:00 2026\n", ""
+            )
+
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=True,
+            ):
+                with mock.patch.object(
+                    self.module,
+                    "run",
+                    side_effect=[
+                        active,
+                        initial_processes,
+                        signaled,
+                        inactive,
+                        stopped,
+                        settled,
+                    ],
+                ) as run:
+                    with mock.patch.object(self.module.time, "sleep") as sleep:
+                        self.module.bootout_service(paths, os.geteuid())
+
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(
+            [
+                "/bin/launchctl",
+                "kill",
+                "SIGTERM",
+                f"gui/{os.geteuid()}/{self.module.LAUNCH_AGENT_LABEL}",
+            ],
+            commands[2],
+        )
+        self.assertEqual("bootout", commands[4][1])
+        sleep.assert_called_once_with(
+            self.module.LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS
+        )
+
+    def test_legacy_contract_boots_out_then_waits_for_captured_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            active = subprocess.CompletedProcess(
+                ["launchctl"], 0, "service = {\n\tpid = 100\n}\n", ""
+            )
+            initial_processes = subprocess.CompletedProcess(
+                ["/bin/ps"],
+                0,
+                "100 1 Sat Jul 25 20:00:00 2026\n"
+                "101 100 Sat Jul 25 20:00:01 2026\n",
+                "",
+            )
+            stopped = subprocess.CompletedProcess(["launchctl"], 0, "", "")
+            child_still_exiting = subprocess.CompletedProcess(
+                ["/bin/ps"],
+                0,
+                "101 1 Sat Jul 25 20:00:01 2026\n",
+                "",
+            )
+            settled = subprocess.CompletedProcess(["/bin/ps"], 0, "", "")
+
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=False,
+            ):
+                with mock.patch.object(
+                    self.module,
+                    "run",
+                    side_effect=[
+                        active,
+                        initial_processes,
+                        stopped,
+                        child_still_exiting,
+                        settled,
+                    ],
+                ) as run:
+                    with mock.patch.object(self.module.time, "sleep") as sleep:
+                        self.module.bootout_service(paths, os.geteuid())
+
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual("bootout", commands[2][1])
+        self.assertGreater(
+            run.call_args_list[2].kwargs["timeout"],
+            self.module.LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS,
+        )
+        self.assertNotIn(
+            "kill", [argument for command in commands for argument in command]
+        )
+        sleep.assert_called_once_with(
+            self.module.LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS
+        )
+
+    def test_nonzero_bootout_with_final_absence_still_waits_for_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            active = subprocess.CompletedProcess(
+                ["launchctl"], 0, "service = {\n\tpid = 100\n}\n", ""
+            )
+            initial_processes = subprocess.CompletedProcess(
+                ["/bin/ps"], 0, "100 1 Sat Jul 25 20:00:00 2026\n", ""
+            )
+            bootout_absent = subprocess.CompletedProcess(
+                ["launchctl"], 3, "", "not found"
+            )
+            print_absent = subprocess.CompletedProcess(
+                ["launchctl"],
+                self.module.LAUNCHCTL_PRINT_NOT_FOUND_STATUS,
+                "",
+                "not found",
+            )
+            still_exiting = subprocess.CompletedProcess(
+                ["/bin/ps"], 0, "100 1 Sat Jul 25 20:00:00 2026\n", ""
+            )
+            settled = subprocess.CompletedProcess(["/bin/ps"], 0, "", "")
+
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=False,
+            ):
+                with mock.patch.object(
+                    self.module,
+                    "run",
+                    side_effect=[
+                        active,
+                        initial_processes,
+                        bootout_absent,
+                        print_absent,
+                        still_exiting,
+                        settled,
+                    ],
+                ):
+                    with mock.patch.object(self.module.time, "sleep") as sleep:
+                        self.module.bootout_service(paths, os.geteuid())
+
+        sleep.assert_called_once_with(
+            self.module.LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS
+        )
+
+    def test_concurrent_bootout_during_graceful_drain_waits_for_initial_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            active = subprocess.CompletedProcess(
+                ["launchctl"], 0, "service = {\n\tpid = 100\n}\n", ""
+            )
+            initial_processes = subprocess.CompletedProcess(
+                ["/bin/ps"], 0, "100 1 Sat Jul 25 20:00:00 2026\n", ""
+            )
+            kill_absent = subprocess.CompletedProcess(
+                ["launchctl"], 3, "", "not found"
+            )
+            bootout_absent = subprocess.CompletedProcess(
+                ["launchctl"], 3, "", "not found"
+            )
+            print_absent = subprocess.CompletedProcess(
+                ["launchctl"],
+                self.module.LAUNCHCTL_PRINT_NOT_FOUND_STATUS,
+                "",
+                "not found",
+            )
+            still_exiting = subprocess.CompletedProcess(
+                ["/bin/ps"], 0, "100 1 Sat Jul 25 20:00:00 2026\n", ""
+            )
+            settled = subprocess.CompletedProcess(["/bin/ps"], 0, "", "")
+
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=True,
+            ):
+                with mock.patch.object(
+                    self.module,
+                    "run",
+                    side_effect=[
+                        active,
+                        initial_processes,
+                        kill_absent,
+                        print_absent,
+                        bootout_absent,
+                        print_absent,
+                        still_exiting,
+                        settled,
+                    ],
+                ):
+                    with mock.patch.object(self.module.time, "sleep") as sleep:
+                        self.module.bootout_service(paths, os.geteuid())
+
+        sleep.assert_called_once_with(
+            self.module.LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS
+        )
+
+    def test_pid_reuse_with_a_different_lstart_is_not_the_captured_process(self):
+        captured = {
+            self.module.ProcessIdentity(
+                process_id=100, started_at="Sat Jul 25 20:00:00 2026"
+            )
+        }
+        reused = subprocess.CompletedProcess(
+            ["/bin/ps"], 0, "100 1 Sat Jul 25 20:01:00 2026\n", ""
+        )
+        with mock.patch.object(self.module, "run", return_value=reused) as run:
+            with mock.patch.object(self.module.time, "sleep") as sleep:
+                self.module.wait_for_process_generation_exit(
+                    captured, self.module.time.monotonic() + 300
+                )
+
+        self.assertLessEqual(
+            run.call_args.kwargs["timeout"],
+            self.module.LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS,
+        )
+        sleep.assert_not_called()
+
+    def test_process_inventory_timeout_is_value_free_and_prevents_bootout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            active = subprocess.CompletedProcess(
+                ["launchctl"], 0, "service = {\n\tpid = 100\n}\n", ""
+            )
+            timeout = subprocess.TimeoutExpired(["/bin/ps"], 5, "private-output")
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=False,
+            ):
+                with mock.patch.object(
+                    self.module, "run", side_effect=[active, timeout]
+                ) as run:
+                    with self.assertRaisesRegex(
+                        self.module.InstallError,
+                        "process inventory is unavailable",
+                    ):
+                        self.module.bootout_service(paths, os.geteuid())
+
+        self.assertEqual(2, run.call_count)
+        self.assertEqual("print", run.call_args_list[0].args[0][1])
+
+    def test_launchctl_state_error_is_not_misclassified_as_absence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            unavailable = subprocess.CompletedProcess(
+                ["launchctl"], 5, "", "private-error"
+            )
+            with mock.patch.object(
+                self.module, "run", return_value=unavailable
+            ) as run:
+                with self.assertRaisesRegex(
+                    self.module.InstallError, "service state is unavailable"
+                ):
+                    self.module.bootout_service(paths, os.geteuid())
+
+        self.assertEqual(1, run.call_count)
+
+    def test_ambiguous_bootout_timeout_waits_for_captured_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            active = subprocess.CompletedProcess(
+                ["launchctl"], 0, "service = {\n\tpid = 100\n}\n", ""
+            )
+            initial_processes = subprocess.CompletedProcess(
+                ["/bin/ps"], 0, "100 1 Sat Jul 25 20:00:00 2026\n", ""
+            )
+            timeout = subprocess.TimeoutExpired(
+                ["/bin/launchctl", "bootout"], 5, "private-output"
+            )
+            settled = subprocess.CompletedProcess(["/bin/ps"], 0, "", "")
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=False,
+            ):
+                with mock.patch.object(
+                    self.module,
+                    "run",
+                    side_effect=[active, initial_processes, timeout, settled],
+                ) as run:
+                    with self.assertRaisesRegex(
+                        self.module.InstallError, "could not be stopped"
+                    ):
+                        self.module.bootout_service(paths, os.geteuid())
+
+        self.assertEqual(4, run.call_count)
+        self.assertGreater(
+            run.call_args_list[2].kwargs["timeout"],
+            self.module.LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS,
+        )
+        self.assertEqual("/bin/ps", run.call_args_list[-1].args[0][0])
+
+    def test_bootout_distinguishes_absent_service_from_stop_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            bootout_absent = subprocess.CompletedProcess(
+                ["launchctl"], 3, "", "not found"
+            )
+            print_absent = subprocess.CompletedProcess(
+                ["launchctl"],
+                self.module.LAUNCHCTL_PRINT_NOT_FOUND_STATUS,
+                "",
+                "not found",
+            )
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=False,
+            ):
+                with mock.patch.object(
+                    self.module,
+                    "run",
+                    side_effect=[print_absent, bootout_absent, print_absent],
+                ):
+                    self.module.bootout_service(paths, os.geteuid())
+
+            loaded = subprocess.CompletedProcess(["launchctl"], 0, "loaded", "")
+            with mock.patch.object(
+                self.module,
+                "installed_launch_agent_supports_graceful_drain",
+                return_value=False,
+            ):
+                with mock.patch.object(
+                    self.module,
+                    "run",
+                    side_effect=[loaded, bootout_absent, loaded],
+                ):
+                    with self.assertRaisesRegex(
+                        self.module.InstallError, "could not be stopped"
+                    ):
+                        self.module.bootout_service(paths, os.geteuid())
+
+    def test_bootstrap_does_not_kill_the_freshly_started_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            with mock.patch.object(self.module, "run") as run:
+                self.module.bootstrap_service(paths, os.geteuid())
+
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual("bootstrap", commands[0][1])
+        self.assertEqual("kickstart", commands[1][1])
+        self.assertNotIn("-k", commands[1])
+        self.assertTrue(
+            all(
+                call.kwargs["timeout"]
+                == self.module.LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS
+                for call in run.call_args_list
+            )
+        )
+
+    def test_postgres_readiness_uses_the_existing_postgres_database(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            process = mock.Mock()
+            process.poll.return_value = None
+            ready = subprocess.CompletedProcess([str(paths.pg_isready)], 0, "", "")
+            with mock.patch.object(self.module, "run", return_value=ready) as run:
+                self.module.wait_for_postgres(paths, process)
+
+        command = run.call_args.args[0]
+        self.assertEqual("postgres", command[command.index("-d") + 1])
 
 
 if __name__ == "__main__":
