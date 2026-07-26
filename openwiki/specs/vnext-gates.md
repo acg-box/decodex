@@ -363,6 +363,27 @@ capture and emitting a fresh acceptance receipt explicitly bound to Phase A. A d
 receipt remains provenance only; malformed, substituted, duplicate, or out-of-binding evidence
 cannot attest the Phase B source.
 
+The bounded restore prerequisite has one separate R1-only gate:
+`--capture-authority-restore-prerequisite ABSOLUTE_PRIVATE_RECEIPT_PATH`. The Manager authorizes
+one invocation on one exact clean HEAD and tree. This gate is not focused mode, Phase A, Phase B,
+or the aggregate. It creates S0 through the unchanged authority setup, migrates, provisions,
+populates, and runs the full Rust semantic owner once. It dumps once. A closed PostgreSQL 18 TOC
+parser then requires exactly one active `pgcrypto` extension declaration before R1 exists. The
+shared future R1/R2 restore helper creates fresh R1 from `template0`, proves that `pgcrypto` is
+absent, precreates version 1.4 in `public` as the migration role, and restores once as bootstrap
+with `--exit-on-error`. No migration or provisioning follows restore. The full semantic owner runs
+once at R1, and the gate stops.
+
+The pass receipt schema is `decodex/postgres-restore-prerequisite-r1-gate/1`. It binds the clean
+source, selected PostgreSQL 18 toolchain, fixed checkpoint and invocation-policy Booleans, and
+definition fingerprint
+`2fc0260f16424d155ccd54daf25a0c43445b26744ebbae0772487266b7db46b5`. It is create-only,
+mode-0600, fsynced, privacy-safe, and has `acceptance=false`. Failure emits only the closed
+`decodex/postgres-restore-prerequisite-r1-diagnostic/1` document or the existing closed semantic
+diagnostic. The receipt authorizes only a later decision about revised Phase A. It does not
+authorize R2, digest derivation, candidate publication, Phase B, the aggregate, or final
+acceptance. The source is unexecuted and no acceptance claim exists.
+
 The unified PostgreSQL aggregate is scheduled by one explicit top-level stage graph. Fatal
 configuration/cluster preflight covers mode and arguments, clean source binding, private
 temporary-root setup, PostgreSQL tool discovery, cluster init/start, and base-role creation. Phase
