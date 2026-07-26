@@ -691,8 +691,9 @@ Repository/worktree/Git and artifact effects retain their own accepted authoriti
 owns or weakens those boundaries.
 
 Those paragraphs define retained final routing authority, not current implementation.
-Slice 1 enables only initial selection after MacDogfoodReady: `fixed` considers its exact
-target, and `balanced` selects the first fully eligible account in canonical order.
+Slice 1 enables only initial selection after the Slice-1 subset of MacDogfoodReady
+passes: `fixed` considers its exact target, and `balanced` selects the first fully eligible
+account in canonical order.
 Selection evaluates both quota windows and returns a typed no-route or all-depleted
 result. Recovery is an explicit versioned enable/disable, mode, or order command followed
 by a new task. It does not rebind or replay a thread.
