@@ -692,7 +692,7 @@ Use the owner path to choose the first validation surface:
 - `plugins/decodex/`: installable Decodex runtime/operator plugin source, including planning, runtime ops, commit, and landing skills/hooks.
 - `automations/radar/` and `automations/decodex/`: repo-local Codex App automation sources; generated Radar and Publisher artifacts stay under `.agent/automations/**/cache`.
 - `site/`: Astro/TypeScript public static site and app download entry; validate with site type/build commands rather than runtime checks.
-- `apps/decodex-app/`: native SwiftPM macOS app for local account-pool management and bundled Decodex helper/server workflows.
+- `apps/decodex-app/`: current native SwiftPM macOS account UI. Its local account pool and helper/server workflows are pre-cutover legacy surfaces. The final app uses only the daemon protocol under [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
 - `spikes/vnext-storage/`: isolated XY-1264 PostgreSQL, blob, and bounded-cache feasibility proof; validate it with `cargo make test-vnext-storage-proof` and use [the evidence record](../evidence/vnext-storage-feasibility.md) for accepted choices and boundaries.
 - `scripts/`: repository helpers; `scripts/assets/` owns checked-in asset generation,
   and `scripts/macos/` owns macOS app packaging checks and the source-install local
@@ -951,10 +951,11 @@ Together with the focused PostgreSQL proof, it verifies the native client relati
 the shared [runtime service](../architecture/runtime-architecture.md); the native app's
 full boundary is documented with the other [auxiliary tools](../integrations/plugins-automations-and-auxiliary-tools.md).
 
-The staging script builds Swift and Rust release artifacts and copies four signed
+The current pre-cutover staging script builds Swift and Rust release artifacts and copies four signed
 executables into the app bundle: legacy `decodex` and `decodex-app-helper` for
 unrelated existing account UI, plus active `decodexd` and `decodex-cli` for vNext.
-It verifies all four.
+It verifies all four. This describes current scaffolding only. It is not final account
+lifecycle or clean-cutover acceptance.
 
 The local-service installer test verifies credential-negative config, bridge mapping,
 and LaunchAgent output. The installed `decodexd supervise-local` process owns one
@@ -975,6 +976,12 @@ The bridge requires the
 same UID, a private parent directory, private regular account and lock files, one
 link per file, bounded input, unique provider identities and email identities, and
 an exact slot-to-digest mapping.
+
+These checks prove only the bounded behavior of the current bridge. They do not prove a
+persistent credential store, token refresh/rotation, enrollment, logout, account-service
+recovery, or final readiness. The bridge must be absent when the deferred
+[account lifecycle fault matrix](../specs/account-lifecycle-authority.md#deferred-acceptance-and-fault-matrix)
+and final cutover gate run.
 
 ## Radar and Publisher checks
 

@@ -21,7 +21,7 @@ its dependent implementation uses the result.
 | --- | --- |
 | [XY-1261](https://linear.app/hack-ink/issue/XY-1261)-[XY-1264](https://linear.app/hack-ink/issue/XY-1264), with the failed live gate aggregated by [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | v0.2 freeze and PostgreSQL/blob/cache proof are accepted; the XY-1262 foundation is accepted, XY-1360 owns the still-disabled live-continuation and atomic Context-Pack fallback implementation after V16, XY-1304 owns only its later live-routing aggregate gate and enablement amendment, and XY-1263 accepts only the isolated pinned GPUI foundation. |
 | [XY-1265](https://linear.app/hack-ink/issue/XY-1265)-[XY-1269](https://linear.app/hack-ink/issue/XY-1269) | Workspace ownership boundaries, `decodexd` protocol, PostgreSQL persistence, `~/.decodex`/API-only CLI, and the serial P/K/L/S GPUI client decomposition defined below. |
-| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, vault/runner-binding, quota-calculation, and profile foundations; the XY-1355-XY-1363 reset chain supplies the missing routing authorities and evidence. XY-1403 retires the private-artifact lane. XY-1369 and XY-1370 instead produce bounded canonical privacy-safe Git evidence for XY-1363. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment and continues to block the Quick Task slice. XY-1336 is upstream-blocked tracking outside this critical path. |
+| [XY-1270](https://linear.app/hack-ink/issue/XY-1270)-[XY-1276](https://linear.app/hack-ink/issue/XY-1276), [XY-1422](https://linear.app/hack-ink/issue/XY-1422), [XY-1423](https://linear.app/hack-ink/issue/XY-1423), plus [XY-1304](https://linear.app/hack-ink/issue/XY-1304) | Typed app-server, Conversation/RuntimeSession/history, shared-home, immutable runner binding, quota-calculation, and profile foundations. XY-1423 corrects the incomplete account authority; XY-1422 must implement the persistent HostCredentialStore and complete daemon Account Service before routing, Accounts UI, whole-product acceptance, or cutover. The XY-1355-XY-1363 reset chain supplies routing authorities and evidence. XY-1403 retires the private-artifact lane. XY-1304 owns only the later live-routing aggregate gate and separate enablement amendment. |
 | [XY-1277](https://linear.app/hack-ink/issue/XY-1277)-[XY-1286](https://linear.app/hack-ink/issue/XY-1286) | Projects/Advisor/Lead, context, messages/collaboration, decision queues, Programs/Objectives, WorkItems, ManagedRuns, repository services, Task-owned independent review/repair/landing, and Project/Program authority policy. |
 | [XY-1287](https://linear.app/hack-ink/issue/XY-1287)-[XY-1290](https://linear.app/hack-ink/issue/XY-1290) | Automation definitions/firings, materiality/loop safety, removal of manager agents, and PubFi/SEO/GEO/Radar/Publisher dogfood. |
 | [XY-1291](https://linear.app/hack-ink/issue/XY-1291)-[XY-1297](https://linear.app/hack-ink/issue/XY-1297) | GPUI conversations, project/run workspace, graph/timeline, operational surfaces, multi-GB pagination/cache/search, thin menubar, and accessibility/interaction gates. |
@@ -919,12 +919,45 @@ consumes their exact accepted receipt identities. The accepted Artifact/BlobStor
 boundary remains unchanged, and no new product Artifact or compatibility path is
 added. No retained-title evidence gate enables production routing.
 
+### Account lifecycle and clean-cutover gate
+
+The [account lifecycle authority](account-lifecycle-authority.md) is the normative
+XY-1423 correction. XY-1422 must implement it before XY-1304 can enable routing and
+before XY-1294, XY-1300, or XY-1302 can claim Accounts UI, whole-product, or cutover
+acceptance.
+
+The implementation must prove durable host-secret storage, complete daemon-owned login,
+import, list, rename, enable/disable, logout, refresh/rotation, app-server callbacks,
+usage/profile/history and separate quota ingestion, immutable runner binding, startup
+reconciliation, and one offline idempotent account migration. The environment-only vault,
+legacy watcher, mapping bridge, daemon environment injection, helper/`:8192` service,
+and dual account-control UI are forbidden final dependencies.
+
+The dependency order is:
+
+```text
+XY-1423 account authority
+-> XY-1422 complete account lifecycle implementation and acceptance
+-> XY-1304 live-routing aggregate and enablement amendment
+
+XY-1422 -> XY-1294 Accounts surface
+XY-1422 -> XY-1300 whole-product E2E and fault acceptance
+XY-1422 -> XY-1302 clean cutover and legacy removal
+```
+
+The deferred fault matrix in the account lifecycle authority must run once on the
+integrated account boundary. It must cover forced expiry, concurrent rotation,
+provider ambiguity, store/PostgreSQL partial failure, backend loss, active-run logout,
+runner launch, all-depleted waiting, shared-home thread visibility, ambient Codex
+coexistence, credential absence, one-shot migration, and final install without legacy
+artifacts.
+
 ### Failed live account-routing enablement gate
 
 The [live gate issue](https://linear.app/hack-ink/issue/XY-1304) remains failed and
 fail-closed. It follows XY-1364 frozen-core acceptance and owns only the live-routing aggregate
 evidence gate plus a later separate repository-authority enablement amendment. Production routing
-remains structurally default-disabled until XY-1355, V14-V21, disabled orchestration, scheduler
+remains structurally default-disabled until XY-1422, XY-1355, V14-V21, disabled orchestration, scheduler
 wake, natural timestamp evidence, and Desktop discovery have all landed and the XY-1304 aggregate
 gate passes.
 
@@ -945,7 +978,7 @@ XY-1355 -> XY-1357 natural timestamp precision evidence
 V14-V21 implementation children -> XY-1364 accepted frozen-core base
 XY-1364 + XY-1367 -> XY-1368 frozen mechanical and semantic acceptance
 
-XY-1368 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
+XY-1422 + XY-1368 + XY-1357 + XY-1363 -> XY-1304 live-routing aggregate gate
 -> separate reviewed repository amendment to enable production routing
 -> XY-1300 later whole-product E2E/fault/UI/packaging/cutover acceptance
 ```
@@ -1187,14 +1220,22 @@ core-freeze gate before any acceptance or enablement claim.
 
 ## Cutover gate
 
-Cutover may occur only after replacement behavior has accepted tests, XY-1304 has passed
+Cutover may occur only after XY-1422 has accepted the complete account lifecycle,
+replacement behavior has accepted tests, XY-1304 has passed
 through explicit repository authority, XY-1300 has accepted the later whole-product E2E, fault,
 UI, packaging, and cutover boundary, and the v0.2 inventory is frozen. The accepted procedure
 stops v0.2, verifies the trusted tag/cold
-backup, initializes empty PostgreSQL state, explicitly recreates selected Projects and
+backup, initializes empty PostgreSQL execution/control-plane state, performs at most the
+offline one-shot account migration, explicitly recreates selected Projects and
 Automations, and starts only vNext. It imports no legacy execution history and enables no
 dual authority. Removal of old Linear/SQLite/Goal/operator transport follows replacement
 proof, not speculative deletion.
+
+The account migration must preserve established vNext Account UUID mappings, bind each
+secret to its provider identity, verify every destination, write an idempotent receipt,
+and leave the legacy source untouched. Final startup must not read the source, mapping,
+watcher, daemon environment projection, legacy helper/`:8192` service, or dual account
+UI. Codex thread history is not imported.
 
 The repository-owned XY-1261 receipt is
 [the v0.2 freeze receipt](../evidence/v0.2-freeze.md). A destructive-removal task must
