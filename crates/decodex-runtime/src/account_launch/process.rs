@@ -68,12 +68,15 @@ use crate::account_launch::{
 };
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
-	CapabilityProfile, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
+	CapabilityProfile, ExactResetCreditId, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
 	ExactThreadListResult, ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory,
-	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, ThreadSummary, UnavailableReason,
+	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, RESET_CARD_CONSUME_METHOD,
+	RESET_CARD_READ_METHOD, ResetCardCapabilityProfile, ResetCardCapabilityState,
+	ResetCardConsumeParams, ResetCardConsumeResult, ResetCardIdempotencyKey, ResetCardInventory,
+	ThreadSummary, UnavailableReason,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
 };
-use decodex_core::AccountId;
+use decodex_core::{AccountId, ResetCardConsumeOutcome};
 
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
@@ -95,6 +98,7 @@ const QUARANTINE_SLOT_RESERVED: u8 = 1;
 const QUARANTINE_SLOT_READY: u8 = 2;
 const QUARANTINE_SLOT_WORKING: u8 = 3;
 const QUARANTINE_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
+const RESET_CARD_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
 #[cfg(test)]
 static ZEROIZED_INBOUND_BLOCKS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
@@ -1183,6 +1187,234 @@ impl ReadOnlyProbe {
 			process_id,
 		})
 	}
+}
+
+/// One exact account-bound reset-card app-server run.
+///
+/// This mechanical owner does not select an account, resolve a public card descriptor, persist an
+/// effect, or retry a consume request. Its consume entrypoint accepts only the exact provider
+/// identifier and idempotency key that the runtime persisted before the external effect began.
+#[derive(Clone)]
+pub(super) struct ResetCardProcessRunner {
+	command: AppServerCommand,
+	binding: AccountBinding,
+	timeout: Duration,
+}
+impl ResetCardProcessRunner {
+	/// Configure one exact account-bound run. Schema attestation and process creation are deferred
+	/// until an operation starts.
+	pub(super) const fn new(
+		command: AppServerCommand,
+		binding: AccountBinding,
+		timeout: Duration,
+	) -> Self {
+		Self { command, binding, timeout }
+	}
+
+	/// Exact non-secret account selected before process creation.
+	pub(super) fn account_id(&self) -> &AccountId {
+		self.binding.account_id()
+	}
+
+	/// Read one complete strict inventory under an already-reserved runner permit.
+	pub(super) fn read_inventory(
+		self,
+		vault: &dyn CredentialVault,
+		guard: RunnerPermit,
+	) -> Result<ResetCardInventory, ResetCardProcessError> {
+		let timeout = self.timeout;
+		let mut process = self.launch(vault, guard)?;
+		let result = read_reset_card_inventory(&mut process, timeout).and_then(|inventory| {
+			re_attest_reset_card_account(&mut process, timeout)?;
+
+			Ok(inventory)
+		});
+
+		finish_reset_card_process(process, result)
+	}
+
+	/// Consume one already-persisted exact credit with its already-persisted key, then read a fresh
+	/// complete inventory before re-attesting the immutable account binding.
+	pub(super) fn consume_and_readback(
+		self,
+		vault: &dyn CredentialVault,
+		guard: RunnerPermit,
+		credit_id: ExactResetCreditId,
+		idempotency_key: ResetCardIdempotencyKey,
+	) -> Result<ResetCardConsumeReadback, ResetCardProcessError> {
+		let timeout = self.timeout;
+		let mut process = self.launch(vault, guard)?;
+		let result = consume_reset_card(&mut process, timeout, credit_id, idempotency_key)
+			.and_then(|outcome| {
+				let inventory = read_reset_card_inventory(&mut process, timeout)?;
+
+				re_attest_reset_card_account(&mut process, timeout)?;
+
+				Ok(ResetCardConsumeReadback { outcome, inventory })
+			});
+
+		finish_reset_card_process(process, result)
+	}
+
+	fn launch(
+		self,
+		vault: &dyn CredentialVault,
+		guard: RunnerPermit,
+	) -> Result<SupervisedProcess, ResetCardProcessError> {
+		if &guard.account_id != self.binding.account_id() {
+			return Err(ResetCardProcessError::AccountBindingChanged);
+		}
+
+		let (build, generated, guard) =
+			attest_executable(&self.command, &self.binding, None, self.timeout, Some(guard))
+				.map_err(ResetCardProcessError::from_probe)?;
+		let reset_profile = ResetCardCapabilityProfile::from_schema(generated.contract());
+
+		if !reset_profile.is_supported() {
+			return Err(ResetCardProcessError::SchemaUnsupported(reset_profile.state()));
+		}
+
+		let guard = guard.ok_or(ResetCardProcessError::ProcessUnavailable)?;
+		let mut process = SupervisedProcess::spawn_bound(self.command, self.binding, guard)
+			.map_err(ResetCardProcessError::from_supervision)?;
+		let mut cache = CapabilityCache::default();
+		let mut negotiation = ProbeNegotiation::new(&mut cache, &build, &generated);
+
+		if let Err(error) =
+			initialize_probe(&mut process, Some(vault), self.timeout, &mut negotiation)
+		{
+			let mapped = ResetCardProcessError::from_probe(error);
+
+			return finish_reset_card_process(process, Err(mapped));
+		}
+
+		Ok(process)
+	}
+}
+
+impl Debug for ResetCardProcessRunner {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.debug_struct("ResetCardProcessRunner").finish_non_exhaustive()
+	}
+}
+
+/// Terminal provider outcome plus the immediate strict inventory readback.
+pub(super) struct ResetCardConsumeReadback {
+	pub(super) outcome: ResetCardConsumeOutcome,
+	pub(super) inventory: ResetCardInventory,
+}
+impl Debug for ResetCardConsumeReadback {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ResetCardConsumeReadback")
+			.field("outcome", &self.outcome)
+			.field("inventory", &self.inventory)
+			.finish()
+	}
+}
+
+/// Closed reset-card app-server method classification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ResetCardProcessMethod {
+	InventoryRead,
+	Consume,
+}
+
+/// Sanitized reset-card process failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ResetCardProcessError {
+	/// The generated schema was malformed or lacked the shared app-server baseline.
+	SchemaInvalid,
+	/// The exact generated schema did not advertise both reset-card methods.
+	SchemaUnsupported(ResetCardCapabilityState),
+	/// The selected account credential could not be projected into the child.
+	CredentialVault(CredentialVaultError),
+	/// Account identity changed before the operation readback completed.
+	AccountBindingChanged,
+	/// The exact generated method was advertised but rejected at runtime.
+	MethodUnavailable(ResetCardProcessMethod),
+	/// An app-server response did not satisfy the strict typed provider contract.
+	InvalidProviderResponse,
+	/// Executable, process, or bounded transport mechanics were unavailable.
+	ProcessUnavailable,
+	/// Bounded process-group shutdown could not be confirmed.
+	ShutdownFailed,
+}
+impl ResetCardProcessError {
+	fn from_probe(error: ProbeError) -> Self {
+		match error {
+			ProbeError::SchemaMissing { .. } => Self::SchemaInvalid,
+			ProbeError::CredentialVault(error) => Self::CredentialVault(error),
+			ProbeError::Supervision(SupervisionError::AccountChanged) =>
+				Self::AccountBindingChanged,
+			ProbeError::Supervision(SupervisionError::InvalidProtocol)
+			| ProbeError::Supervision(SupervisionError::ProtocolLimitExceeded) =>
+				Self::InvalidProviderResponse,
+			ProbeError::Supervision(SupervisionError::ShutdownFailed) => Self::ShutdownFailed,
+			ProbeError::MethodRejected { .. } => Self::ProcessUnavailable,
+			ProbeError::CapabilityConflict | ProbeError::Supervision(_) => Self::ProcessUnavailable,
+		}
+	}
+
+	fn from_supervision(error: SupervisionError) -> Self {
+		match error {
+			SupervisionError::AccountChanged => Self::AccountBindingChanged,
+			SupervisionError::InvalidProtocol | SupervisionError::ProtocolLimitExceeded =>
+				Self::InvalidProviderResponse,
+			SupervisionError::ShutdownFailed => Self::ShutdownFailed,
+			_ => Self::ProcessUnavailable,
+		}
+	}
+
+	fn from_rpc(error: RpcError, method: ResetCardProcessMethod) -> Self {
+		match error {
+			RpcError::MethodRejected(_) => Self::MethodUnavailable(method),
+			RpcError::Supervision(error) => Self::from_supervision(error),
+		}
+	}
+}
+
+fn read_reset_card_inventory(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+) -> Result<ResetCardInventory, ResetCardProcessError> {
+	process.request_rpc(RESET_CARD_READ_METHOD, &(), timeout).map_err(|error| {
+		ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::InventoryRead)
+	})
+}
+
+fn consume_reset_card(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+	credit_id: ExactResetCreditId,
+	idempotency_key: ResetCardIdempotencyKey,
+) -> Result<ResetCardConsumeOutcome, ResetCardProcessError> {
+	process
+		.request_rpc::<_, ResetCardConsumeResult>(
+			RESET_CARD_CONSUME_METHOD,
+			&ResetCardConsumeParams::new(credit_id, idempotency_key),
+			timeout,
+		)
+		.map(ResetCardConsumeResult::outcome)
+		.map_err(|error| ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::Consume))
+}
+
+fn re_attest_reset_card_account(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+) -> Result<(), ResetCardProcessError> {
+	process.read_account_identity(timeout).map(|_| ()).map_err(ResetCardProcessError::from_probe)
+}
+
+fn finish_reset_card_process<T>(
+	process: SupervisedProcess,
+	result: Result<T, ResetCardProcessError>,
+) -> Result<T, ResetCardProcessError> {
+	process
+		.shutdown(RESET_CARD_SHUTDOWN_WAIT)
+		.map_err(|_| ResetCardProcessError::ShutdownFailed)?;
+
+	result
 }
 
 /// Private account-bound exact reconciliation configuration.
@@ -3445,8 +3677,9 @@ mod tests {
 			self, AccountBinding, AccountIdentity, AppServerCommand, CredentialProjection,
 			CredentialVault, CredentialVaultError, ExactThreadReconciler,
 			ExactThreadReconciliation, ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY,
-			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome,
-			SupervisedProcess, SupervisionError, UnavailableCredentialVault,
+			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ResetCardProcessError,
+			ResetCardProcessRunner, ShutdownOutcome, SupervisedProcess, SupervisionError,
+			UnavailableCredentialVault,
 		},
 		protocol::{
 			self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
@@ -3455,10 +3688,11 @@ mod tests {
 	};
 	use decodex_codex::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, Capability, CapabilityCache,
-		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter,
-		SchemaMarker, ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
+		CapabilityState, DecodexThreadSearchTerm, ExactResetCreditId, ExactThreadId,
+		ExactThreadListFilter, ResetCardCapabilityState, ResetCardIdempotencyKey, SchemaMarker,
+		ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
-	use decodex_core::AccountId;
+	use decodex_core::{AccountId, ResetCardConsumeOutcome};
 
 	struct TestCapacity {
 		inner: RunnerCapacity,
@@ -3597,6 +3831,9 @@ mod tests {
 		}
 		if mode == "preflight-uncertain-schema" {
 			schema_args.push("--preflight-hang".into());
+		}
+		if mode == "reset-card" {
+			schema_args.push("--reset-card".into());
 		}
 
 		let version_flag = match mode {
@@ -3765,6 +4002,74 @@ mod tests {
 			result.profile.state(Capability::NativeCollaboration),
 			&CapabilityState::Unavailable { reason: UnavailableReason::NotProbed }
 		);
+	}
+
+	#[test]
+	fn reset_card_runner_requires_both_exact_schema_methods_before_spawn() {
+		let temp = TempDir::new().unwrap();
+		let spawn_marker = temp.path().join("reset-card-spawned");
+		let capacity = TestCapacity::new(1);
+		let runner = ResetCardProcessRunner::new(
+			fake_command("mark-spawn", temp.path(), Some(&spawn_marker)),
+			binding(),
+			Duration::from_secs(2),
+		);
+
+		let error = runner
+			.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap())
+			.unwrap_err();
+
+		assert_eq!(
+			error,
+			ResetCardProcessError::SchemaUnsupported(
+				ResetCardCapabilityState::ConsumeMethodMissing
+			)
+		);
+		assert!(!spawn_marker.exists());
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn reset_card_runner_uses_null_read_params_and_completes_consume_readback() {
+		let temp = TempDir::new().unwrap();
+		let capacity = TestCapacity::new(1);
+		let runner = ResetCardProcessRunner::new(
+			fake_command("reset-card", temp.path(), None),
+			binding(),
+			Duration::from_secs(2),
+		);
+		let inventory = runner
+			.clone()
+			.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap())
+			.unwrap();
+
+		assert_eq!(inventory.available_count(), 1);
+		assert_eq!(
+			inventory
+				.resolve_exact_credit_id(
+					decodex_core::ResetCardDescriptor::new(
+						decodex_core::ResetCardTimestamp::from_unix_seconds(1_700_000_000).unwrap(),
+						decodex_core::ResetCardTimestamp::from_unix_seconds(1_700_003_600).unwrap(),
+					)
+					.unwrap(),
+				)
+				.unwrap()
+				.as_str(),
+			"fixture-reset-credit",
+		);
+
+		let readback = runner
+			.consume_and_readback(
+				&FixtureVault::matching(),
+				capacity.reserve().unwrap(),
+				ExactResetCreditId::new("fixture-reset-credit").unwrap(),
+				ResetCardIdempotencyKey::new("fixture-reset-operation").unwrap(),
+			)
+			.unwrap();
+
+		assert_eq!(readback.outcome, ResetCardConsumeOutcome::Reset);
+		assert_eq!(readback.inventory.available_count(), 0);
+		assert_eq!(capacity.active(), 0);
 	}
 
 	#[cfg(test)]

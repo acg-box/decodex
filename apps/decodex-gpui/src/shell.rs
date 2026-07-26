@@ -141,6 +141,8 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProfileMissing => "Selected server profile is missing",
 		ClientFailure::UnsafeHostPath => "Client configuration path is unsafe",
 		ClientFailure::ServerIdentityUnavailable => "Stable server identity is unavailable",
+		ClientFailure::RemoteMutationUnsupported =>
+			"Reset-card operations require a local pinned profile",
 		ClientFailure::ProtocolDisconnected => "Daemon protocol is disconnected",
 		ClientFailure::ProtocolTimeout => "Daemon protocol timed out",
 		ClientFailure::ProtocolMajorMismatch => "Protocol generation does not match",
@@ -149,6 +151,7 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
 		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",
 		ClientFailure::ProtocolBackpressure => "Daemon message allowance was exhausted",
+		ClientFailure::ApplicationAcceptanceUnknown => "Application command acceptance is unknown",
 	}
 }
 

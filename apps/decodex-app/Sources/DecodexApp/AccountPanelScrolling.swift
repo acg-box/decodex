@@ -94,6 +94,7 @@ extension AccountPanelView {
 			+ AccountPanelLayout.panelVerticalPadding
 			+ AccountPanelLayout.headerHeight
 			+ AccountPanelLayout.accountSummaryHeight
+			+ AccountPanelLayout.vNextResetCardsHeight
 			+ AccountPanelLayout.sectionSpacing
 
 		if telemetryMatrixIsVisible {

@@ -2,37 +2,6 @@
 import XCTest
 
 final class AccountNoticePresentationTests: XCTestCase {
-	func testResetCreditOutcomesUseConciseSemanticNotices() {
-		let reset = AccountNotice.resetCreditOutcome(.reset)
-		XCTAssertEqual(reset.tone, .success)
-		XCTAssertEqual(reset.summary, "Usage restored")
-		XCTAssertNil(reset.details)
-
-		let alreadyUsed = AccountNotice.resetCreditOutcome(.alreadyRedeemed)
-		XCTAssertEqual(alreadyUsed.tone, .information)
-		XCTAssertEqual(alreadyUsed.summary, "Card already used")
-
-		let nothingToReset = AccountNotice.resetCreditOutcome(.nothingToReset)
-		XCTAssertEqual(nothingToReset.tone, .information)
-		XCTAssertEqual(nothingToReset.summary, "Nothing to reset")
-
-		let noCredit = AccountNotice.resetCreditOutcome(.noCredit)
-		XCTAssertEqual(noCredit.tone, .information)
-		XCTAssertEqual(noCredit.summary, "No reset card available")
-	}
-
-	func testResetSuccessWithRefreshFailurePreservesBothFacts() {
-		let notice = AccountNotice.resetCreditOutcome(
-			.reset,
-			refreshError: "The account service did not respond."
-		)
-
-		XCTAssertEqual(notice.tone, .error)
-		XCTAssertEqual(notice.summary, "Usage restored; refresh failed")
-		XCTAssertEqual(notice.details, "The account service did not respond.")
-		XCTAssertEqual(notice.copyText, "The account service did not respond.")
-	}
-
 	func testErrorSeparatesReadableSummaryFromCopyableDetails() {
 		let notice = AccountNotice.error(
 			"Couldn’t refresh accounts",
@@ -77,12 +46,12 @@ final class AccountNoticePresentationTests: XCTestCase {
 	@MainActor
 	func testSourceSpecificClearingPreservesUnrelatedNotice() {
 		let store = AccountStore()
-		store.presentNotice(.resetCreditOutcome(.reset))
+		store.presentNotice(.information("Fast mode changed", source: .fastMode))
 
 		store.clearNotice(source: .accountRefresh)
-		XCTAssertEqual(store.notice?.summary, "Usage restored")
+		XCTAssertEqual(store.notice?.summary, "Fast mode changed")
 
-		store.clearNotice(source: .resetCredit)
+		store.clearNotice(source: .fastMode)
 		XCTAssertNil(store.notice)
 	}
 

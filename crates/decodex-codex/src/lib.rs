@@ -20,6 +20,7 @@ mod capability;
 mod dispatch;
 mod event;
 mod experiment;
+mod reset_card;
 
 pub use self::{
 	capability::{
@@ -45,6 +46,14 @@ pub use self::{
 		MAX_EXACT_THREAD_LIST_RESULTS, MAX_THREAD_CWD_BYTES, MAX_THREAD_PROVENANCE_BYTES,
 		MAX_THREAD_SEARCH_TERM_BYTES, MAX_THREAD_TITLE_BYTES, ThreadArchivedFilter,
 		ThreadCreatedAt, ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
+	},
+	reset_card::{
+		AvailableResetCardObservation, ExactResetCreditId, MAX_EXACT_RESET_CREDIT_ID_BYTES,
+		MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARDS_PER_INVENTORY,
+		RESET_CARD_CONSUME_METHOD, RESET_CARD_READ_METHOD, ResetCardCapabilityProfile,
+		ResetCardCapabilityState, ResetCardConsumeParams, ResetCardConsumeResult,
+		ResetCardIdempotencyKey, ResetCardInventory, ResetCardProtocolError,
+		ResetCardResolutionError, decode_reset_card_consume_result, decode_reset_card_inventory,
 	},
 	schema::{
 		ACCEPTED_SCHEMA_RECEIPT, REQUIRED_NOTIFICATION_METHODS, REQUIRED_REQUEST_METHODS,
