@@ -179,7 +179,7 @@ plan_type = "pro"
 #[test]
 fn landed_portless_postgres_config_keeps_the_standard_typed_default() {
 	let input = support::valid_config().replace("port = 5432\n", "");
-	let config = DecodexConfig::parse(input.as_bytes()).unwrap();
+	let config = DecodexConfig::parse(input.as_bytes()).expect("test operation must succeed");
 
 	assert_eq!(config.postgres().port(), 5_432);
 }
@@ -235,9 +235,11 @@ fn remote_client_projection_never_validates_server_host_paths() {
 
 #[test]
 fn client_profile_selection_supports_active_and_explicit_names() {
-	let client = DecodexClientConfig::parse(support::valid_config().as_bytes()).unwrap();
-	let (active_name, active) = client.selected_profile(None).unwrap();
-	let (remote_name, remote) = client.selected_profile(Some("remote")).unwrap();
+	let client = DecodexClientConfig::parse(support::valid_config().as_bytes())
+		.expect("test operation must succeed");
+	let (active_name, active) = client.selected_profile(None).expect("test operation must succeed");
+	let (remote_name, remote) =
+		client.selected_profile(Some("remote")).expect("test operation must succeed");
 
 	assert_eq!(client.version(), 1);
 	assert_eq!(client.active_profile_name().as_str(), "local");

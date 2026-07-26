@@ -177,8 +177,10 @@ and no external network. It can read the exact candidate, trusted primary Git da
 Rust toolchains, system runtime files, and its private temporary directory. Personal
 roots and unrelated temporary data remain unreadable. It can write only private build
 outputs and approved site caches. Cargo registry and Git source caches are read-only
-during candidate execution. The receipt binds the dependency-preparation digest,
-sandbox profile digest, and exact sandbox executable digest.
+during candidate execution. The validator binds the root-owned, read-only Python
+3.11-or-later runtime that loaded the automation. It places that exact runtime before
+macOS system shims in the sandbox path. The receipt binds the dependency-preparation
+digest, sandbox profile digest, and exact sandbox executable digest.
 
 A source change cannot become terminal until a separate Reviewer repeats all required
 validation profiles on the same pull-request HEAD and tree. The commit and landing
