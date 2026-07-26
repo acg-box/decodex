@@ -47,7 +47,10 @@ Workflow:
    `automations/upstream/scripts/run_upstream_autopilot claim --role maintainer --json`
    Stop successfully for `no_candidate`, `repair_queued`, or `role_busy`. A
    `repair_queued` result has durable automatic ownership and requires no human
-   follow-up. Keep a returned lease token only in this task context.
+   follow-up. Keep a returned lease token only in this parent task context. The
+   claim also returns a separate `handoff_challenge` and exact
+   `handoff_receipt_path`. The challenge has no lease or state authority. Pass
+   only the challenge and receipt path to the worker. Never pass the lease token.
 3. Inspect only the claimed SHA range, release commit, local schema evidence, or
    bounded automation-repair evidence. Use the local cache mirror for read-only
    upstream inspection. Evaluate app-server protocol, configuration, permissions,
@@ -70,14 +73,24 @@ Workflow:
    fail closed on a dirty, ambiguous, or differently owned worktree.
 7. Spawn exactly one native worker subagent after the worktree exists. Give it the
    candidate ID, immutable source identity, bounded evidence, exact absolute
-   worktree, and allowed scope. The worker must read the repository instructions,
+   worktree, claim generation, handoff challenge, exact handoff receipt path, and
+   allowed scope. The worker must read the repository instructions,
    edit and stage the candidate files in that worktree, update source, current
    schema markers, tests, and documentation together, and report the exact staged
    paths and residual risks. It must not invoke Decodex, the state tool, commit,
    push, create or close a PR, merge, or edit scheduler state. Reuse the same
    worker for at most one bounded correction; never run parallel candidate
    writers. If native subagent tools are unavailable, fail closed with
-   `worker_subagent_unavailable`.
+   `worker_subagent_unavailable`. After staging, the worker must write one mode
+   `0600` JSON receipt at the exact returned path. Use schema
+   `decodex/codex-upstream-handoff-receipt/1`, role `maintainer`, action
+   `worker_staged`, disposition `staged`, an empty `finding_codes` list, the
+   candidate ID, claim generation, challenge, exact original base HEAD in both
+   `base_head` and `repository_head`, `git write-tree` as `repository_tree`, and
+   the SHA-256 of the exact raw output from
+   `git diff --cached --find-renames --find-copies --name-status -z` as
+   `staged_paths_sha256`. This is a non-replayable state-bound handoff receipt,
+   not a cryptographic identity signature.
 8. Require the worker to remove obsolete support without compatibility shims for
    old Codex builds and to add a regression test for every automation repair. The
    parent may inspect the staged diff and bounded source evidence but must not
@@ -93,11 +106,13 @@ Workflow:
     wrapper is the only authority that can execute candidate code, and it does so
     after commit in a credential-free, external-network-denied macOS sandbox.
 11. Run from primary:
-    `automations/upstream/scripts/run_upstream_autopilot commit-candidate --candidate-id <id> --lease-token <token> --worktree <absolute-worktree> --json`
+    `automations/upstream/scripts/run_upstream_autopilot commit-candidate --candidate-id <id> --lease-token <token> --worktree <absolute-worktree> --worker-receipt <exact-receipt-path> --json`
     This persists a lease-generation-bound intent with the installed Decodex
     version and executable digest, invokes only that absolute `decodex commit`
     binary, and verifies its execution receipt, the signed single-parent commit,
     exact message, clean tree, HEAD, and tree digest.
+    A same-intent crash recovery can omit `--worker-receipt` only when the state
+    already contains the immutable prepared commit effect and its worker receipt.
 12. Run from primary:
     `automations/upstream/scripts/run_upstream_autopilot publish --candidate-id <id> --lease-token <token> --worktree <absolute-worktree> --json`
     The wrapper automatically renews only when needed to fence the complete

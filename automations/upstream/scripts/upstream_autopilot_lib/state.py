@@ -57,6 +57,7 @@ from .core import (
 )
 from .observation import mirror_arguments
 from .validation import validate_validation_receipt
+from .handoff import validate_handoff_provenance, validate_handoff_receipt
 
 
 def valid_owned_worktrees(value: Any) -> bool:
@@ -78,6 +79,62 @@ def valid_owned_worktrees(value: Any) -> bool:
         ):
             return False
     return True
+
+
+def proposal_validation_receipt(candidate: dict[str, Any]) -> dict[str, Any]:
+    pull_request = candidate.get("pull_request")
+    decision = candidate.get("decision")
+    if isinstance(pull_request, dict) and decision is None:
+        receipt = pull_request.get("validation_receipt")
+        if (
+            not isinstance(receipt, dict)
+            or receipt.get("repository_head") != pull_request.get("head_sha")
+        ):
+            raise AutopilotError("candidate_proposal_evidence_invalid")
+        return receipt
+    if isinstance(decision, dict) and pull_request is None:
+        receipt = decision.get("maintainer_receipt")
+        if not isinstance(receipt, dict):
+            raise AutopilotError("candidate_proposal_evidence_invalid")
+        return receipt
+    raise AutopilotError("candidate_proposal_evidence_invalid")
+
+
+def handoff_matches_validation_receipt(
+    handoff: dict[str, Any],
+    receipt: dict[str, Any],
+) -> bool:
+    return all(
+        handoff.get(field) == receipt.get(field)
+        for field in ("base_head", "repository_head", "repository_tree")
+    )
+
+
+def validate_reviewer_handoff_semantics(
+    candidate: dict[str, Any],
+    handoff: dict[str, Any],
+    *,
+    disposition: str,
+    finding_codes: Sequence[str],
+    receipt: dict[str, Any] | None = None,
+) -> None:
+    validate_handoff_provenance(handoff)
+    proposal_receipt = proposal_validation_receipt(candidate)
+    review_receipt = proposal_receipt if receipt is None else receipt
+    if (
+        handoff.get("candidate_id") != candidate.get("id")
+        or handoff.get("role") != "reviewer"
+        or handoff.get("action") != "independent_review"
+        or handoff.get("disposition") != disposition
+        or handoff.get("finding_codes") != sorted(set(finding_codes))
+        or handoff.get("staged_paths_sha256") is not None
+        or not handoff_matches_validation_receipt(handoff, review_receipt)
+        or any(
+            review_receipt.get(field) != proposal_receipt.get(field)
+            for field in ("base_head", "repository_head", "repository_tree")
+        )
+    ):
+        raise AutopilotError("reviewer_handoff_receipt_invalid")
 
 
 def new_state(now: int) -> dict[str, Any]:
@@ -310,6 +367,8 @@ def validate_state(state: dict[str, Any]) -> None:
     seen_ids: set[str] = set()
     seen_sequences: set[int] = set()
     seen_discovery_sequences: set[int] = set()
+    seen_handoff_challenges: set[str] = set()
+    seen_handoff_receipts: set[str] = set()
     for candidate in candidates:
         if not has_exact_keys(candidate, CANDIDATE_KEYS):
             raise AutopilotError("candidate_shape_invalid")
@@ -521,6 +580,48 @@ def validate_state(state: dict[str, Any]) -> None:
             )
         ):
             raise AutopilotError("candidate_lease_invalid")
+        handoff = candidate.get("handoff")
+        if handoff is not None:
+            if (
+                not has_exact_keys(
+                    handoff,
+                    {
+                        "role",
+                        "generation",
+                        "challenge_sha256",
+                        "issued_at",
+                        "consumed",
+                    },
+                )
+                or handoff.get("role") not in {"maintainer", "reviewer"}
+                or not isinstance(handoff.get("generation"), int)
+                or handoff["generation"] < 1
+                or not is_sha256(handoff.get("challenge_sha256"))
+                or not isinstance(handoff.get("issued_at"), int)
+                or handoff["challenge_sha256"] in seen_handoff_challenges
+                or (
+                    lease is not None
+                    and (
+                        handoff["role"] != lease["role"]
+                        or handoff["generation"] != lease["generation"]
+                    )
+                )
+            ):
+                raise AutopilotError("candidate_handoff_invalid")
+            seen_handoff_challenges.add(handoff["challenge_sha256"])
+            consumed = handoff["consumed"]
+            if consumed is not None:
+                validate_handoff_provenance(consumed)
+                if (
+                    consumed["candidate_id"] != candidate["id"]
+                    or consumed["role"] != handoff["role"]
+                    or consumed["claim_generation"] != handoff["generation"]
+                    or consumed["challenge_sha256"]
+                    != handoff["challenge_sha256"]
+                    or consumed["receipt_sha256"] in seen_handoff_receipts
+                ):
+                    raise AutopilotError("candidate_handoff_invalid")
+                seen_handoff_receipts.add(consumed["receipt_sha256"])
         effect = candidate.get("effect")
         if effect is not None:
             if (
@@ -529,6 +630,7 @@ def validate_state(state: dict[str, Any]) -> None:
                     {
                         "kind",
                         "lease_generation",
+                        "active_lease_generation",
                         "intent_sha256",
                         "phase",
                         "branch",
@@ -537,6 +639,7 @@ def validate_state(state: dict[str, Any]) -> None:
                         "owned_worktrees",
                         "pr_url",
                         "validation_receipt",
+                        "handoff_receipt",
                         "decodex_identity",
                         "command_receipt",
                         "execution_receipt",
@@ -548,6 +651,15 @@ def validate_state(state: dict[str, Any]) -> None:
                 not in {"commit", "publish", "retire_pr", "land"}
                 or not isinstance(effect.get("lease_generation"), int)
                 or effect["lease_generation"] < 1
+                or not isinstance(effect.get("active_lease_generation"), int)
+                or effect["active_lease_generation"] < 1
+                or effect["active_lease_generation"]
+                >= source["next_lease_generation"]
+                or (
+                    lease is not None
+                    and effect["active_lease_generation"]
+                    != lease["generation"]
+                )
                 or not is_sha256(effect.get("intent_sha256"))
                 or effect.get("phase")
                 not in {
@@ -597,6 +709,43 @@ def validate_state(state: dict[str, Any]) -> None:
                     expected_head=effect["head_sha"],
                 )
             elif effect_receipt is not None:
+                raise AutopilotError("candidate_effect_invalid")
+            effect_handoff = effect["handoff_receipt"]
+            if effect["kind"] in {"commit", "land"}:
+                validate_handoff_provenance(effect_handoff)
+                expected_action = (
+                    "worker_staged"
+                    if effect["kind"] == "commit"
+                    else "independent_review"
+                )
+                if (
+                    effect_handoff["candidate_id"] != candidate["id"]
+                    or effect_handoff["action"] != expected_action
+                    or effect_handoff["claim_generation"]
+                    != effect["lease_generation"]
+                ):
+                    raise AutopilotError("candidate_effect_invalid")
+                if effect["kind"] == "commit" and (
+                    effect_handoff["role"] != "maintainer"
+                    or effect_handoff["disposition"] != "staged"
+                    or effect_handoff["finding_codes"]
+                    or effect_handoff["base_head"] != effect["head_sha"]
+                    or effect_handoff["repository_head"] != effect["head_sha"]
+                    or effect_handoff["staged_paths_sha256"] is None
+                ):
+                    raise AutopilotError("candidate_effect_invalid")
+                if effect["kind"] == "land":
+                    try:
+                        validate_reviewer_handoff_semantics(
+                            candidate,
+                            effect_handoff,
+                            disposition="accept",
+                            finding_codes=[],
+                            receipt=effect_receipt,
+                        )
+                    except AutopilotError as error:
+                        raise AutopilotError("candidate_effect_invalid") from error
+            elif effect_handoff is not None:
                 raise AutopilotError("candidate_effect_invalid")
             decodex_identity = effect["decodex_identity"]
             if effect["kind"] in {"commit", "land"}:
@@ -703,6 +852,7 @@ def validate_state(state: dict[str, Any]) -> None:
                         "intent_sha256",
                         "execution_receipt",
                         "execution_receipt_sha256",
+                        "worker_handoff",
                         "committed_at",
                     },
                 )
@@ -730,6 +880,25 @@ def validate_state(state: dict[str, Any]) -> None:
             if (
                 sha256_value(commit_receipt["execution_receipt"])
                 != commit_receipt["execution_receipt_sha256"]
+            ):
+                raise AutopilotError("candidate_commit_receipt_invalid")
+            validate_handoff_provenance(commit_receipt["worker_handoff"])
+            if (
+                commit_receipt["worker_handoff"]["candidate_id"]
+                != candidate["id"]
+                or commit_receipt["worker_handoff"]["role"] != "maintainer"
+                or commit_receipt["worker_handoff"]["action"]
+                != "worker_staged"
+                or commit_receipt["worker_handoff"]["disposition"] != "staged"
+                or commit_receipt["worker_handoff"]["finding_codes"]
+                or commit_receipt["worker_handoff"]["base_head"]
+                != commit_receipt["base_head"]
+                or commit_receipt["worker_handoff"]["repository_head"]
+                != commit_receipt["base_head"]
+                or commit_receipt["worker_handoff"]["repository_tree"]
+                != commit_receipt["tree_sha"]
+                or commit_receipt["worker_handoff"]["staged_paths_sha256"]
+                is None
             ):
                 raise AutopilotError("candidate_commit_receipt_invalid")
         pull_request = candidate.get("pull_request")
@@ -821,6 +990,25 @@ def validate_state(state: dict[str, Any]) -> None:
         ):
             raise AutopilotError("candidate_review_evidence_invalid")
         validate_candidate_result(candidate)
+        result = candidate.get("result")
+        if isinstance(result, dict) and result.get("outcome") == "repair_requested":
+            codes = result["finding_codes"]
+            disposition = result["reviewer_handoff"]["disposition"]
+            if not (
+                disposition == "request_repair"
+                or (disposition == "accept" and codes == ["base_stale"])
+            ):
+                raise AutopilotError("candidate_result_invalid")
+            expected_codes = [] if disposition == "accept" else codes
+            try:
+                validate_reviewer_handoff_semantics(
+                    candidate,
+                    result["reviewer_handoff"],
+                    disposition=disposition,
+                    finding_codes=expected_codes,
+                )
+            except AutopilotError as error:
+                raise AutopilotError("candidate_result_invalid") from error
         if status in TERMINAL_STATUSES:
             if not isinstance(candidate["result"], dict):
                 raise AutopilotError("candidate_result_invalid")
@@ -828,6 +1016,16 @@ def validate_state(state: dict[str, Any]) -> None:
                 candidate["result"]["reviewer_receipt"],
                 role="reviewer",
             )
+            try:
+                validate_reviewer_handoff_semantics(
+                    candidate,
+                    candidate["result"]["reviewer_handoff"],
+                    disposition=("accept" if status == "landed" else status),
+                    finding_codes=[],
+                    receipt=candidate["result"]["reviewer_receipt"],
+                )
+            except AutopilotError as error:
+                raise AutopilotError("candidate_result_invalid") from error
             if status == "landed":
                 if not isinstance(pull_request, dict):
                     raise AutopilotError("candidate_terminal_evidence_invalid")
@@ -894,6 +1092,31 @@ def validate_state(state: dict[str, Any]) -> None:
             or candidate["result"].get("outcome") != "blocked"
         ):
             raise AutopilotError("candidate_result_invalid")
+    candidates_by_id = {candidate["id"]: candidate for candidate in candidates}
+    active_repairs_by_target: dict[str, list[dict[str, Any]]] = {}
+    for candidate in candidates:
+        repair_of = candidate.get("repair_of")
+        if repair_of is None:
+            continue
+        if repair_of == candidate["id"] or repair_of not in candidates_by_id:
+            raise AutopilotError("candidate_repair_target_invalid")
+        if candidate["status"] not in TERMINAL_STATUSES:
+            active_repairs_by_target.setdefault(repair_of, []).append(candidate)
+    for candidate in candidates:
+        visited: set[str] = set()
+        current = candidate
+        while current.get("repair_of") is not None:
+            if current["id"] in visited:
+                raise AutopilotError("candidate_repair_cycle_invalid")
+            visited.add(current["id"])
+            current = candidates_by_id[current["repair_of"]]
+    for candidate in candidates:
+        active_owners = active_repairs_by_target.get(candidate["id"], [])
+        if candidate["status"] == "repair_pending":
+            if len(active_owners) != 1:
+                raise AutopilotError("candidate_repair_ownership_invalid")
+        elif active_owners:
+            raise AutopilotError("candidate_repair_ownership_invalid")
     source_candidates = {
         candidate["source_sequence"]: candidate
         for candidate in candidates
@@ -1073,17 +1296,54 @@ def prune_state(state: dict[str, Any]) -> None:
     state["metrics"]["buckets"] = state["metrics"]["buckets"][-MAX_METRIC_BUCKETS:]
     candidates = state["candidates"]
     if len(candidates) > MAX_STATE_CANDIDATES:
-        removable = [
-            candidate
-            for candidate in candidates
-            if candidate["status"] in TERMINAL_STATUSES
-            and (
-                candidate.get("source_sequence") is None
-                or candidate["source_sequence"] <= state["source"]["cursor_sequence"]
-            )
-        ]
+        candidates_by_id = {
+            candidate["id"]: candidate for candidate in candidates
+        }
+        adjacent: dict[str, set[str]] = {
+            candidate["id"]: set() for candidate in candidates
+        }
+        for candidate in candidates:
+            repair_of = candidate.get("repair_of")
+            if repair_of is None:
+                continue
+            if (
+                repair_of == candidate["id"]
+                or repair_of not in candidates_by_id
+            ):
+                raise AutopilotError("candidate_repair_target_invalid")
+            adjacent[candidate["id"]].add(repair_of)
+            adjacent[repair_of].add(candidate["id"])
+        removable_components: list[list[dict[str, Any]]] = []
+        visited: set[str] = set()
+        for candidate in candidates:
+            if candidate["id"] in visited:
+                continue
+            component_ids: list[str] = []
+            pending = [candidate["id"]]
+            while pending:
+                identifier = pending.pop()
+                if identifier in visited:
+                    continue
+                visited.add(identifier)
+                component_ids.append(identifier)
+                pending.extend(sorted(adjacent[identifier], reverse=True))
+            component = [candidates_by_id[value] for value in component_ids]
+            if all(
+                value["status"] in TERMINAL_STATUSES
+                and (
+                    value.get("source_sequence") is None
+                    or value["source_sequence"]
+                    <= state["source"]["cursor_sequence"]
+                )
+                for value in component
+            ):
+                removable_components.append(component)
         remove_count = len(candidates) - MAX_STATE_CANDIDATES
-        remove_ids = {candidate["id"] for candidate in removable[:remove_count]}
+        remove_ids: set[str] = set()
+        for component in removable_components:
+            remove_ids.update(candidate["id"] for candidate in component)
+            if len(remove_ids) >= remove_count:
+                break
         state["candidates"] = [
             candidate for candidate in candidates if candidate["id"] not in remove_ids
         ]
@@ -1225,6 +1485,7 @@ def queue_candidate(
         "next_retry_at": None,
         "retry_role": None,
         "lease": None,
+        "handoff": None,
         "effect": None,
         "commit_receipt": None,
         "pull_request": None,
@@ -1253,6 +1514,8 @@ def queue_automation_repair(
     blocked = find_candidate(state, blocked_candidate_id)
     if blocked["status"] != "needs_attention":
         raise AutopilotError("repair_target_not_needs_attention")
+    if has_unresolved_external_effect(blocked):
+        raise AutopilotError("repair_target_external_effect_unresolved")
     existing = next(
         (
             candidate
@@ -1312,6 +1575,7 @@ def queue_automation_repair(
         "next_retry_at": None,
         "retry_role": None,
         "lease": None,
+        "handoff": None,
         "effect": None,
         "commit_receipt": None,
         "pull_request": None,
@@ -1481,6 +1745,7 @@ def queue_automation_improvement(
         "next_retry_at": None,
         "retry_role": None,
         "lease": None,
+        "handoff": None,
         "effect": None,
         "commit_receipt": None,
         "pull_request": None,
@@ -1702,6 +1967,15 @@ def find_candidate(state: dict[str, Any], candidate_id: str) -> dict[str, Any]:
     return candidate
 
 
+def has_unresolved_external_effect(candidate: dict[str, Any]) -> bool:
+    effect = candidate.get("effect")
+    return isinstance(effect, dict) and effect.get("kind") in {
+        "publish",
+        "retire_pr",
+        "land",
+    }
+
+
 def lease_matches(candidate: dict[str, Any], role: str, token: str, now: int) -> None:
     lease = candidate.get("lease")
     if lease is None or lease.get("role") != role:
@@ -1711,6 +1985,79 @@ def lease_matches(candidate: dict[str, Any], role: str, token: str, now: int) ->
     actual = hashlib.sha256(token.encode("utf-8")).hexdigest()
     if not hmac.compare_digest(actual, lease["token_sha256"]):
         raise AutopilotError("lease_token_invalid")
+
+
+def consume_handoff_receipt(
+    state: dict[str, Any],
+    *,
+    candidate_id: str,
+    role: str,
+    token: str,
+    receipt: dict[str, Any],
+    action: str,
+    base_head: str,
+    repository_head: str,
+    repository_tree: str,
+    staged_paths_sha256: str | None,
+    disposition: str,
+    finding_codes: Sequence[str],
+    now: int,
+) -> dict[str, Any]:
+    candidate = find_candidate(state, candidate_id)
+    lease_matches(candidate, role, token, now)
+    handoff = candidate.get("handoff")
+    lease = candidate["lease"]
+    if (
+        not isinstance(handoff, dict)
+        or handoff.get("role") != role
+        or handoff.get("generation") != lease["generation"]
+    ):
+        raise AutopilotError("handoff_challenge_missing")
+    consumed_at = (
+        handoff["consumed"]["consumed_at"]
+        if isinstance(handoff.get("consumed"), dict)
+        else now
+    )
+    provenance = validate_handoff_receipt(
+        receipt,
+        candidate_id=candidate_id,
+        role=role,
+        action=action,
+        generation=lease["generation"],
+        challenge_sha256=handoff["challenge_sha256"],
+        base_head=base_head,
+        repository_head=repository_head,
+        repository_tree=repository_tree,
+        staged_paths_sha256=staged_paths_sha256,
+        disposition=disposition,
+        finding_codes=finding_codes,
+        consumed_at=consumed_at,
+    )
+    existing = handoff.get("consumed")
+    if existing is not None and existing != provenance:
+        raise AutopilotError("handoff_receipt_replayed")
+    if existing == provenance:
+        return deepcopy(provenance)
+    for other in state["candidates"]:
+        other_handoff = other.get("handoff")
+        other_consumed = (
+            other_handoff.get("consumed")
+            if isinstance(other_handoff, dict)
+            else None
+        )
+        if (
+            isinstance(other_consumed, dict)
+            and other_consumed["receipt_sha256"] == provenance["receipt_sha256"]
+            and (
+                other["id"] != candidate_id
+                or other_handoff["generation"] != lease["generation"]
+            )
+        ):
+            raise AutopilotError("handoff_receipt_replayed")
+    handoff["consumed"] = deepcopy(provenance)
+    candidate["updated_at"] = now
+    append_event(state, "handoff_receipt_consumed", now, candidate_id=candidate_id)
+    return provenance
 
 
 def retry_delay(policy: dict[str, Any], attempt: int) -> int:
@@ -1730,7 +2077,17 @@ def recover_expired_leases(
             continue
         role = lease["role"]
         attempts = candidate["attempts"][role]
+        effect = candidate.get("effect")
+        if (
+            isinstance(effect, dict)
+            and effect.get("kind") == "land"
+            and effect.get("phase") == "prepared"
+            and effect.get("command_receipt") is None
+            and effect.get("execution_receipt") is None
+        ):
+            candidate["effect"] = None
         candidate["lease"] = None
+        candidate["handoff"] = None
         candidate["updated_at"] = now
         if attempts >= int(policy["max_attempts"]):
             candidate["status"] = "needs_attention"
@@ -1835,10 +2192,30 @@ def claim_candidate(
         )
     )
     candidate = candidates[0]
+    effect = candidate.get("effect")
+    if isinstance(effect, dict):
+        effect_role = (
+            "reviewer" if effect.get("kind") == "land" else "maintainer"
+        )
+        if effect_role != role:
+            raise AutopilotError("candidate_effect_role_mismatch")
     attempts = candidate["attempts"][role]
     if attempts >= int(policy["max_attempts"]):
         candidate["status"] = "needs_attention"
+        candidate["next_retry_at"] = None
         candidate["retry_role"] = role
+        candidate["result"] = {
+            "outcome": "blocked",
+            "reason_code": "attempt_budget_exhausted",
+            "error_digest": sha256_value(
+                {
+                    "reason_code": "attempt_budget_exhausted",
+                    "role": role,
+                    "attempts": attempts,
+                }
+            ),
+            "at": now,
+        }
         candidate["updated_at"] = now
         append_event(
             state,
@@ -1848,6 +2225,22 @@ def claim_candidate(
         )
         return None
     raw_token = secrets.token_urlsafe(32)
+    used_challenges = {
+        value["handoff"]["challenge_sha256"]
+        for value in state["candidates"]
+        if isinstance(value.get("handoff"), dict)
+    }
+    raw_challenge = ""
+    challenge_sha256 = ""
+    for _attempt in range(8):
+        raw_challenge = secrets.token_urlsafe(32)
+        challenge_sha256 = hashlib.sha256(
+            raw_challenge.encode("utf-8")
+        ).hexdigest()
+        if challenge_sha256 not in used_challenges:
+            break
+    else:
+        raise AutopilotError("handoff_challenge_generation_failed")
     generation = state["source"]["next_lease_generation"]
     state["source"]["next_lease_generation"] += 1
     candidate["attempts"][role] += 1
@@ -1862,6 +2255,16 @@ def claim_candidate(
         "expires_at": now + int(policy["lease_seconds"]),
         "renewals": 0,
     }
+    candidate["handoff"] = {
+        "role": role,
+        "generation": generation,
+        "challenge_sha256": challenge_sha256,
+        "issued_at": now,
+        "consumed": None,
+    }
+    if isinstance(effect, dict):
+        effect["active_lease_generation"] = generation
+        effect["updated_at"] = now
     candidate["updated_at"] = now
     append_event(state, "candidate_claimed", now, candidate_id=candidate["id"])
     public_candidate = deepcopy(candidate)
@@ -1871,7 +2274,17 @@ def claim_candidate(
         "expires_at": candidate["lease"]["expires_at"],
         "renewals": 0,
     }
-    return {"candidate": public_candidate, "lease_token": raw_token}
+    public_candidate["handoff"] = {
+        "role": role,
+        "generation": generation,
+        "issued_at": now,
+        "consumed": False,
+    }
+    return {
+        "candidate": public_candidate,
+        "lease_token": raw_token,
+        "handoff_challenge": raw_challenge,
+    }
 
 
 def renew_lease(
@@ -1975,6 +2388,7 @@ def prepare_effect(
     remote_head_before: str | None = None,
     owned_worktrees: list[str] | None = None,
     validation_receipt: dict[str, Any] | None = None,
+    handoff_receipt: dict[str, Any] | None = None,
     decodex_identity: dict[str, Any] | None = None,
     now: int,
 ) -> dict[str, Any]:
@@ -2029,6 +2443,68 @@ def prepare_effect(
         )
     elif validation_receipt is not None:
         raise AutopilotError("effect_validation_receipt_invalid")
+    effect = candidate.get("effect")
+    recovering_handoff = (
+        effect.get("handoff_receipt")
+        if isinstance(effect, dict) and effect.get("kind") == kind
+        else None
+    )
+    if recovering_handoff is not None:
+        if handoff_receipt is not None and handoff_receipt != recovering_handoff:
+            raise AutopilotError("effect_recovery_conflict")
+        handoff_receipt = recovering_handoff
+    if kind in {"commit", "land"}:
+        validate_handoff_provenance(handoff_receipt)
+        expected_action = (
+            "worker_staged" if kind == "commit" else "independent_review"
+        )
+        active_handoff = candidate.get("handoff")
+        if (
+            handoff_receipt["candidate_id"] != candidate_id
+            or handoff_receipt["role"] != role
+            or handoff_receipt["action"] != expected_action
+            or (
+                kind == "commit"
+                and handoff_receipt["disposition"] != "staged"
+            )
+            or (
+                kind == "land"
+                and handoff_receipt["disposition"] != "accept"
+            )
+            or (
+                recovering_handoff is None
+                and handoff_receipt["claim_generation"]
+                != candidate["lease"]["generation"]
+            )
+            or (
+                recovering_handoff is None
+                and (
+                    not isinstance(active_handoff, dict)
+                    or active_handoff.get("consumed") != handoff_receipt
+                )
+            )
+        ):
+            raise AutopilotError("effect_handoff_receipt_invalid")
+        if kind == "commit" and (
+            handoff_receipt["base_head"] != head_sha
+            or handoff_receipt["repository_head"] != head_sha
+            or handoff_receipt["finding_codes"]
+            or handoff_receipt["staged_paths_sha256"] is None
+        ):
+            raise AutopilotError("effect_handoff_receipt_invalid")
+        if kind == "land":
+            try:
+                validate_reviewer_handoff_semantics(
+                    candidate,
+                    handoff_receipt,
+                    disposition="accept",
+                    finding_codes=[],
+                    receipt=validation_receipt,
+                )
+            except AutopilotError as error:
+                raise AutopilotError("effect_handoff_receipt_invalid") from error
+    elif handoff_receipt is not None:
+        raise AutopilotError("effect_handoff_receipt_invalid")
     if kind in {"commit", "land"}:
         if (
             not has_exact_keys(
@@ -2066,7 +2542,6 @@ def prepare_effect(
     ):
         raise AutopilotError("effect_pr_mismatch")
     lease_generation = candidate["lease"]["generation"]
-    effect = candidate.get("effect")
     if effect is not None:
         if (
             effect["kind"] != kind
@@ -2076,9 +2551,10 @@ def prepare_effect(
             or effect["owned_worktrees"] != owned_worktrees
             or effect["pr_url"] != pr_url
             or effect["decodex_identity"] != decodex_identity
+            or effect["handoff_receipt"] != handoff_receipt
         ):
             raise AutopilotError("effect_recovery_conflict")
-        effect["lease_generation"] = lease_generation
+        effect["active_lease_generation"] = lease_generation
         if validation_receipt is not None:
             if (
                 effect["validation_receipt"] is not None
@@ -2093,6 +2569,7 @@ def prepare_effect(
     effect = {
         "kind": kind,
         "lease_generation": lease_generation,
+        "active_lease_generation": lease_generation,
         "intent_sha256": secrets.token_hex(32),
         "phase": "prepared",
         "branch": branch,
@@ -2101,6 +2578,7 @@ def prepare_effect(
         "owned_worktrees": deepcopy(owned_worktrees),
         "pr_url": pr_url,
         "validation_receipt": deepcopy(validation_receipt),
+        "handoff_receipt": deepcopy(handoff_receipt),
         "decodex_identity": deepcopy(decodex_identity),
         "command_receipt": None,
         "execution_receipt": None,
@@ -2128,7 +2606,8 @@ def advance_effect_phase(
     effect = candidate.get("effect")
     if (
         not isinstance(effect, dict)
-        or effect["lease_generation"] != candidate["lease"]["generation"]
+        or effect["active_lease_generation"]
+        != candidate["lease"]["generation"]
     ):
         raise AutopilotError("effect_permit_stale")
     allowed = {
@@ -2298,7 +2777,8 @@ def record_land_command_execution(
         or not isinstance(effect, dict)
         or effect["kind"] != "land"
         or effect["phase"] != "land_started"
-        or effect["lease_generation"] != candidate["lease"]["generation"]
+        or effect["active_lease_generation"]
+        != candidate["lease"]["generation"]
     ):
         raise AutopilotError("landing_effect_evidence_missing")
     validate_land_command_receipt(
@@ -2336,7 +2816,8 @@ def record_land_execution(
         or not isinstance(effect, dict)
         or effect["kind"] != "land"
         or effect["phase"] != "land_command_completed"
-        or effect["lease_generation"] != candidate["lease"]["generation"]
+        or effect["active_lease_generation"]
+        != candidate["lease"]["generation"]
         or not isinstance(effect.get("command_receipt"), dict)
     ):
         raise AutopilotError("landing_effect_evidence_missing")
@@ -2510,7 +2991,8 @@ def submit_candidate(
         not isinstance(effect, dict)
         or effect["kind"] != "publish"
         or effect["phase"] != "pr_created"
-        or effect["lease_generation"] != candidate["lease"]["generation"]
+        or effect["active_lease_generation"]
+        != candidate["lease"]["generation"]
         or effect["branch"] != branch
         or effect["head_sha"] != head_sha
         or effect["pr_url"] != pr_url
@@ -2528,6 +3010,7 @@ def submit_candidate(
     candidate["result"] = None
     candidate["status"] = "review_pending"
     candidate["lease"] = None
+    candidate["handoff"] = None
     candidate["effect"] = None
     candidate["updated_at"] = now
     append_event(state, "candidate_submitted", now, candidate_id=candidate_id)
@@ -2599,7 +3082,8 @@ def record_candidate_commit(
         or not isinstance(effect, dict)
         or effect["kind"] != "commit"
         or effect["phase"] != "prepared"
-        or effect["lease_generation"] != candidate["lease"]["generation"]
+        or effect["active_lease_generation"]
+        != candidate["lease"]["generation"]
         or effect["head_sha"] != base_head
         or any(
             SHA_PATTERN.fullmatch(value) is None
@@ -2623,6 +3107,7 @@ def record_candidate_commit(
         "intent_sha256": effect["intent_sha256"],
         "execution_receipt": deepcopy(execution_receipt),
         "execution_receipt_sha256": sha256_value(execution_receipt),
+        "worker_handoff": deepcopy(effect["handoff_receipt"]),
         "committed_at": now,
     }
     candidate["effect"] = None
@@ -2655,7 +3140,8 @@ def retire_candidate_pull_request(
         or not isinstance(effect, dict)
         or effect["kind"] != "retire_pr"
         or effect["phase"] != "prepared"
-        or effect["lease_generation"] != candidate["lease"]["generation"]
+        or effect["active_lease_generation"]
+        != candidate["lease"]["generation"]
         or effect["pr_url"] != pull_request["url"]
         or effect["head_sha"] != pull_request["head_sha"]
     ):
@@ -2716,8 +3202,34 @@ def submit_decision(
     candidate["result"] = None
     candidate["status"] = "review_pending"
     candidate["lease"] = None
+    candidate["handoff"] = None
     candidate["updated_at"] = now
     append_event(state, "decision_submitted", now, candidate_id=candidate_id)
+
+
+def reviewer_handoff_has_state_authority(
+    candidate: dict[str, Any],
+    reviewer_handoff: dict[str, Any],
+) -> bool:
+    lease = candidate.get("lease")
+    if not isinstance(lease, dict):
+        return False
+    active_handoff = candidate.get("handoff")
+    if (
+        reviewer_handoff["claim_generation"] == lease["generation"]
+        and isinstance(active_handoff, dict)
+        and active_handoff.get("consumed") == reviewer_handoff
+    ):
+        return True
+    effect = candidate.get("effect")
+    return bool(
+        isinstance(effect, dict)
+        and effect.get("kind") == "land"
+        and effect.get("handoff_receipt") == reviewer_handoff
+        and reviewer_handoff["claim_generation"]
+        == effect.get("lease_generation")
+        and effect.get("active_lease_generation") == lease["generation"]
+    )
 
 
 def request_repair(
@@ -2727,6 +3239,7 @@ def request_repair(
     token: str,
     finding_codes: Sequence[str],
     now: int,
+    reviewer_handoff: dict[str, Any] | None = None,
 ) -> None:
     candidate = find_candidate(state, candidate_id)
     lease_matches(candidate, "reviewer", token, now)
@@ -2741,17 +3254,53 @@ def request_repair(
     if effect is not None:
         if not (
             effect["kind"] == "land"
-            and effect["phase"] in {"prepared", "land_started"}
+            and effect["phase"] == "prepared"
             and effect["command_receipt"] is None
             and effect["execution_receipt"] is None
         ):
             raise AutopilotError("repair_effect_not_reversible")
+    validate_handoff_provenance(reviewer_handoff)
+    allowed_disposition = reviewer_handoff["disposition"] == "request_repair" or (
+        reviewer_handoff["disposition"] == "accept" and codes == ["base_stale"]
+    )
+    if (
+        reviewer_handoff["candidate_id"] != candidate_id
+        or reviewer_handoff["role"] != "reviewer"
+        or reviewer_handoff["action"] != "independent_review"
+        or not allowed_disposition
+        or (
+            reviewer_handoff["disposition"] == "request_repair"
+            and reviewer_handoff["finding_codes"] != codes
+        )
+        or (
+            reviewer_handoff["disposition"] == "accept"
+            and reviewer_handoff["finding_codes"]
+        )
+        or not reviewer_handoff_has_state_authority(
+            candidate,
+            reviewer_handoff,
+        )
+    ):
+        raise AutopilotError("reviewer_handoff_receipt_invalid")
+    proposal_receipt = proposal_validation_receipt(candidate)
+    if not handoff_matches_validation_receipt(
+        reviewer_handoff,
+        proposal_receipt,
+    ):
+        raise AutopilotError("reviewer_handoff_receipt_invalid")
+    if effect is not None:
         candidate["effect"] = None
     candidate["status"] = "repair_requested"
     candidate["lease"] = None
+    candidate["handoff"] = None
     candidate["next_retry_at"] = None
     candidate["retry_role"] = None
-    candidate["result"] = {"outcome": "repair_requested", "finding_codes": codes, "at": now}
+    candidate["result"] = {
+        "outcome": "repair_requested",
+        "finding_codes": codes,
+        "reviewer_handoff": deepcopy(reviewer_handoff),
+        "at": now,
+    }
     candidate["updated_at"] = now
     append_event(state, "repair_requested", now, candidate_id=candidate_id)
 
@@ -2769,6 +3318,7 @@ def requeue_stale_decision(
     candidate = find_candidate(state, candidate_id)
     lease_matches(candidate, "reviewer", token, now)
     decision = candidate.get("decision")
+    active_handoff = candidate.get("handoff")
     if (
         candidate["status"] != "reviewing"
         or not isinstance(decision, dict)
@@ -2785,6 +3335,7 @@ def requeue_stale_decision(
     candidate["decision"] = None
     candidate["status"] = "queued"
     candidate["lease"] = None
+    candidate["handoff"] = None
     candidate["next_retry_at"] = None
     candidate["retry_role"] = None
     candidate["result"] = None
@@ -2828,6 +3379,7 @@ def resolve_candidate(
     land_execution_receipt_sha256: str | None,
     reviewer_receipt: dict[str, Any],
     now: int,
+    reviewer_handoff: dict[str, Any] | None = None,
 ) -> None:
     if REASON_PATTERN.fullmatch(reason_code) is None:
         raise AutopilotError("reason_code_invalid")
@@ -2849,6 +3401,19 @@ def resolve_candidate(
     if outcome in {"no_change", "rejected"} and candidate["contract_missing"]:
         raise AutopilotError("missing_contract_cannot_close")
     validate_validation_receipt(reviewer_receipt, role="reviewer")
+    expected_disposition = "accept" if outcome == "landed" else outcome
+    try:
+        validate_reviewer_handoff_semantics(
+            candidate,
+            reviewer_handoff,
+            disposition=expected_disposition,
+            finding_codes=[],
+            receipt=reviewer_receipt,
+        )
+    except AutopilotError as error:
+        raise AutopilotError("reviewer_handoff_receipt_invalid") from error
+    if not reviewer_handoff_has_state_authority(candidate, reviewer_handoff):
+        raise AutopilotError("reviewer_handoff_receipt_invalid")
     if outcome == "landed":
         if (
             candidate.get("pull_request") is None
@@ -2873,7 +3438,8 @@ def resolve_candidate(
             not isinstance(effect, dict)
             or effect["kind"] != "land"
             or effect["phase"] != "land_completed"
-            or effect["lease_generation"] != candidate["lease"]["generation"]
+            or effect["active_lease_generation"]
+            != candidate["lease"]["generation"]
             or effect["pr_url"] != pull_request["url"]
             or effect["head_sha"] != pull_request["head_sha"]
             or effect["validation_receipt"] != reviewer_receipt
@@ -2920,6 +3486,7 @@ def resolve_candidate(
         terminal_execution_receipt = None
     candidate["status"] = outcome
     candidate["lease"] = None
+    candidate["handoff"] = None
     candidate["effect"] = None
     candidate["result"] = {
         "outcome": outcome,
@@ -2930,6 +3497,7 @@ def resolve_candidate(
         "land_execution_receipt_sha256": land_execution_receipt_sha256,
         "decision_receipt_sha256": decision_receipt_sha256,
         "reviewer_receipt": deepcopy(reviewer_receipt),
+        "reviewer_handoff": deepcopy(reviewer_handoff),
         "resolved_at": now,
     }
     candidate["updated_at"] = now
@@ -2977,6 +3545,7 @@ def resolve_candidate(
             repaired["next_retry_at"] = None
             repaired["retry_role"] = None
             repaired["lease"] = None
+            repaired["handoff"] = None
             repaired["result"] = {
                 "outcome": "automation_repair_resolved",
                 "repair_candidate_id": candidate_id,
@@ -3014,7 +3583,15 @@ def block_candidate(
     candidate = find_candidate(state, candidate_id)
     lease_matches(candidate, role, token, now)
     attempt = candidate["attempts"][role]
+    effect = candidate.get("effect")
+    if (
+        isinstance(effect, dict)
+        and effect.get("kind") == "land"
+        and effect.get("phase") == "prepared"
+    ):
+        candidate["effect"] = None
     candidate["lease"] = None
+    candidate["handoff"] = None
     candidate["retry_role"] = role
     candidate["result"] = {
         "outcome": "blocked",
@@ -3048,6 +3625,8 @@ def queue_needed_repairs(
     queued: list[str] = []
     for blocked in list(state["candidates"]):
         if blocked["status"] != "needs_attention":
+            continue
+        if has_unresolved_external_effect(blocked):
             continue
         result = blocked.get("result")
         reason_code = result.get("reason_code") if isinstance(result, dict) else None
@@ -3193,6 +3772,18 @@ def state_health(
         if isinstance(candidate.get("pull_request"), dict)
         and now - int(candidate["pull_request"]["submitted_at"]) > 21600
     )
+    unresolved_external_effects = sorted(
+        (
+            {
+                "candidate_id": candidate["id"],
+                "kind": candidate["effect"]["kind"],
+                "phase": candidate["effect"]["phase"],
+            }
+            for candidate in active
+            if has_unresolved_external_effect(candidate)
+        ),
+        key=lambda value: value["candidate_id"],
+    )
     observation_age = (
         None
         if state["last_observed_at"] is None
@@ -3246,6 +3837,8 @@ def state_health(
         blockers.append("required_protocol_missing")
     if counts.get("needs_attention", 0):
         blockers.append("attempt_budget_exhausted")
+    if unresolved_external_effects:
+        blockers.append("external_effect_unresolved")
     if oldest_age > 21600:
         blockers.append("candidate_stale")
     if stale_pull_requests:
@@ -3287,6 +3880,7 @@ def state_health(
             if candidate.get("pull_request") is not None
         ),
         "stale_pull_requests": stale_pull_requests,
+        "unresolved_external_effects": unresolved_external_effects,
         "blockers": blockers,
         "effectiveness": {
             "rolling_24_hours": rolling_effectiveness(

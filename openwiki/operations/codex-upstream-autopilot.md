@@ -297,6 +297,18 @@ cannot produce or update a pull request. A later repair safely rewinds an exact
 recorded candidate commit to its original base before it creates one replacement
 commit.
 
+Every Maintainer and Reviewer claim returns a lease token and a separate one-time
+handoff challenge. The parent keeps the lease token and gives only the challenge to
+one subagent. The state tool requires a bounded mode `0600` receipt before the first
+commit, repair request, decision resolution, or land intent. Worker receipts bind the
+exact staged tree and staged-path digest. Reviewer receipts bind the exact reviewed
+base, head, tree, disposition, and finding codes. State stores no raw challenge. It
+stores only the challenge digest and sanitized provenance. This protocol prevents a
+receipt from another candidate or claim from being replayed. It is not a
+cryptographic identity signature. Exact commit and land crash recovery preserves the
+original receipt and side-effect intent while a new lease generation becomes the
+active recovery owner.
+
 ## Outcomes
 
 The fresh runtime state uses `decodex/codex-upstream-state/3`. It does not migrate

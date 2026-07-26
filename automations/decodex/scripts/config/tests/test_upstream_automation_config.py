@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -436,8 +438,14 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertTrue(launcher.stat().st_mode & 0o111)
 		content = launcher.read_text(encoding="utf-8")
 		self.assertIn("/nix/store/*-python3-3.<->*/bin/python3", content)
-		self.assertIn("metadata.st_uid != 0", content)
-		self.assertIn("metadata.st_mode & 0o022", content)
+		self.assertIn("zmodload -F zsh/stat b:zstat", content)
+		self.assertIn("zstat -H metadata -L", content)
+		self.assertIn("metadata[uid] == 0", content)
+		self.assertIn("metadata[mode] & 8#022", content)
+		self.assertLess(
+			content.index("trusted_python \"${candidate}\""),
+			content.index("\"${candidate}\" - <<'PY'"),
+		)
 		self.assertNotIn("codex-primary-runtime", content)
 		result = subprocess.run(
 			[str(launcher), "--help"],
@@ -449,6 +457,63 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertEqual(result.returncode, 0, result.stderr)
 		self.assertIn("upstream_autopilot.py", result.stdout)
 
+	def test_upstream_subagent_handoffs_are_state_bound(self) -> None:
+		maintainer = (
+			REPO_ROOT / "automations/upstream/prompts/maintainer.md"
+		).read_text(encoding="utf-8")
+		reviewer = (
+			REPO_ROOT / "automations/upstream/prompts/reviewer.md"
+		).read_text(encoding="utf-8")
+		for prompt in (maintainer, reviewer):
+			normalized = " ".join(prompt.split())
+			self.assertIn("`handoff_challenge`", normalized)
+			self.assertIn("`handoff_receipt_path`", normalized)
+			self.assertIn("Never pass the lease token", normalized)
+			self.assertIn("mode `0600` JSON receipt", normalized)
+			self.assertIn(
+				"non-replayable state-bound handoff receipt",
+				normalized,
+			)
+			self.assertIn("not a cryptographic identity signature", normalized)
+		self.assertIn("--worker-receipt <exact-receipt-path>", maintainer)
+		self.assertIn("--reviewer-receipt <exact-receipt-path>", reviewer)
+		self.assertLess(
+			reviewer.index("Spawn exactly one native read-only review subagent"),
+			reviewer.index("For a pending decision, only after"),
+		)
+
+	def test_upstream_launcher_never_executes_an_untrusted_candidate(self) -> None:
+		launcher = REPO_ROOT / "automations/upstream/scripts/run_upstream_autopilot"
+		with tempfile.TemporaryDirectory() as temporary_directory:
+			bin_directory = Path(temporary_directory) / "bin"
+			bin_directory.mkdir()
+			candidate = bin_directory / "python3"
+			marker = Path(temporary_directory) / "executed"
+			candidate.write_text(
+				"#!/bin/sh\n: > \"$DECODEX_UPSTREAM_TEST_MARKER\"\nexit 0\n",
+				encoding="utf-8",
+			)
+			candidate.chmod(0o755)
+			environment = os.environ.copy()
+			environment.update(
+				{
+					"DECODEX_UPSTREAM_PYTHON_CANDIDATE": str(candidate),
+					"DECODEX_UPSTREAM_TEST_MARKER": str(marker),
+				}
+			)
+			result = subprocess.run(
+				[str(launcher), "--help"],
+				cwd=REPO_ROOT,
+				check=False,
+				capture_output=True,
+				text=True,
+				env=environment,
+			)
+
+			self.assertEqual(result.returncode, 78, result.stderr)
+			self.assertIn("trusted Python 3.11+ runtime unavailable", result.stderr)
+			self.assertFalse(marker.exists())
+
 	def test_terminal_runs_archive_after_automatic_ownership_readback(self) -> None:
 		retention = (
 			REPO_ROOT
@@ -457,8 +522,14 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		).read_text(encoding="utf-8")
 		normalized = " ".join(retention.split())
 		self.assertIn("durable automatic repair owner", normalized)
+		self.assertIn("exact persisted upstream side-effect intent", normalized)
+		self.assertIn("bounded automatic retry owner", normalized)
+		self.assertIn("exhausted or unowned side-effect intent stays visible", normalized)
+		self.assertIn("unknown external result stays visible", normalized)
 		self.assertIn("must use `auto_archive`", normalized)
 		self.assertIn("Archiving is UI retention, not evidence deletion", normalized)
+		self.assertIn("do not prove that a live scheduled Codex task", normalized)
+		self.assertIn("Live scheduled readback is the acceptance evidence", normalized)
 		self.assertNotIn("`needs_attention`", retention)
 
 	def test_state_wrapper_has_no_landing_write_implementation(self) -> None:
