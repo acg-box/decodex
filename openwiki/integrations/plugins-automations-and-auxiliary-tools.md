@@ -173,11 +173,15 @@ decodex-publisher validate-social
 
 ## Native Decodex App
 
-`apps/decodex-app/` is a SwiftPM macOS app for the local account pool (`apps/decodex-app/README.md`). It:
+`apps/decodex-app/` is the current pre-cutover SwiftPM macOS app for the local account
+pool (`apps/decodex-app/README.md`). The following list describes current behavior,
+not final vNext account authority. It:
 
 - Lists stored accounts without token material.
 - Pins future Decodex runs to one account or returns to balanced selection.
-- Forces Codex to use a stored account by writing `auth.json`.
+- Forces Codex to use a stored account by writing `auth.json`. Final `Use in Codex`
+  requires a supported, capability-probed ambient-auth adapter and fails closed when
+  no adapter is available.
 - Shows vNext reset cards from the common daemon service. The first click starts a
   five-second local confirmation. The second click first persists a pending attempt,
   then invokes the bundled `decodex-cli` with a vNext account UUID, exact revision,
@@ -194,8 +198,9 @@ decodex-publisher validate-social
   source-install path provisions this service with
   `scripts/macos/install_decodex_local_service.py`; its Rust supervisor owns the
   PostgreSQL and daemon process generations. Separate bundled
-  legacy `decodex` and `decodex-app-helper` executables remain for unrelated existing
-  account UI; they have no vNext reset-card authority.
+  legacy `decodex` and `decodex-app-helper` executables remain as pre-cutover
+  account scaffolding; they have no vNext reset-card authority and are not part of
+  the final account lifecycle.
 - Retries bounded startup-only Reset Card reads while the independently supervised
   service becomes ready. It does not retry consume, replace an idempotency key, or
   take service lifecycle ownership.
@@ -204,14 +209,20 @@ decodex-publisher validate-social
   server UUID, selection, and idempotency key. It never substitutes a new key for that
   pending card.
 
+Final enrollment must first prove that the supported Codex build can isolate login
+output without changing ambient `~/.codex`. Current file behavior is evidence for that
+proof, not a stable Codex auth-backend contract.
+
 The reset-card path is not the scheduler, project registry owner, credential owner,
 app-server process owner, or runtime authority. Its bounded private journal retains at
 most 64 credential-negative attempts and fails closed on malformed or unsafe storage:
 recoverable entries remain available for status-only inspection, while new use is blocked.
-The separate legacy account path may still manage its existing local `decodex serve`
-lifecycle. See [Runtime architecture](../architecture/runtime-architecture.md) for the
-shared service flow and [Commands and validation](../operations/commands-and-validation.md)
-for the direct Swift and staging checks.
+Before clean cutover, the separate legacy account path can still manage its existing
+local `decodex serve` lifecycle. Final cutover removes this authority, its helper,
+and the `:8192` service under [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
+See [Runtime architecture](../architecture/runtime-architecture.md) for the shared
+service flow and [Commands and validation](../operations/commands-and-validation.md)
+for the pre-cutover Swift and staging checks.
 
 Build/stage commands:
 

@@ -30,6 +30,18 @@ observed account readiness. The first-release doctor result remains typed `unkno
 `plugin_unready` is inert reserved state. XY-1336 tracks the upstream receipt gap outside the
 vNext critical path and neither closes nor blocks XY-1275.
 
+XY-1423 account-lifecycle authority correction accepted for the vNext replacement
+boundary: PostgreSQL owns credential-negative account product state, a narrow
+HostCredentialStore owns only versioned secret bundles, and the `decodexd` Account
+Service coordinates every account operation. The continuously watched legacy account
+file and environment-only access-token projection are pre-cutover scaffolding, not a
+complete account pool. Final normal runtime reads no legacy account file. One explicit
+offline migration may import the frozen account pool into the host store while it
+preserves established vNext Account UUID mappings and leaves the source untouched.
+Shared normal `~/.codex` remains Codex configuration, plugin, rollout, and thread
+visibility authority. The normative details are in
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
+
 XY-1274 quota-authority amendment accepted 2026-07-16: quota storage accepts only exact
 product-valid Unix microseconds, and no layer may round or truncate an ingress timestamp.
 Canonical quota mutation identities move to their `/2` typed-integer documents. The V8
