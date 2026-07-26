@@ -2147,6 +2147,20 @@ def run_continuation_focused_contracts(
 	))
 
 
+def run_reset_card_focused_contracts(
+	socket_dir: Path, port: int, env: dict[str, str]
+) -> str:
+	create_database(DATABASE, env)
+	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
+	migration_output = run_migration(env)
+	provision_runtime(DATABASE, RUNTIME_ROLE, env)
+	contract_output = run_postgres_store_test(
+		"reset_cards::reset_card_private_claim_and_reclaim_contract",
+		env,
+	)
+	return "\n".join((migration_output, contract_output))
+
+
 def retained_title_authority_inventory(
 	work: Path,
 	database: str,
@@ -5869,6 +5883,7 @@ def main() -> int | AuthorityCandidatePublication:
 	focused_managed_runs = sys.argv[1:] == ["--focus-managed-runs"]
 	focused_managed_repositories = sys.argv[1:] == ["--focus-managed-repositories"]
 	focused_continuation = sys.argv[1:] == ["--focus-continuation"]
+	focused_reset_cards = sys.argv[1:] == ["--focus-reset-cards"]
 	focused_authority = sys.argv[1:] == ["--focus-authority-classification"]
 	focused_retained_title = sys.argv[1:] == ["--focus-retained-title-core"]
 	preparation_mode = sys.argv[1:] == ["--prepare-retained-title-core"]
@@ -5882,7 +5897,8 @@ def main() -> int | AuthorityCandidatePublication:
 	authority_mode = capture_only or acceptance_mode
 	normal_aggregate = not (
 		focused_work_items or focused_managed_runs or focused_managed_repositories
-		or focused_continuation or focused_authority or focused_retained_title
+		or focused_continuation or focused_reset_cards or focused_authority
+		or focused_retained_title
 		or preparation_mode or authority_mode
 	)
 	reported_run = normal_aggregate or preparation_mode or focused_retained_title
@@ -5890,12 +5906,14 @@ def main() -> int | AuthorityCandidatePublication:
 	def configuration_preflight() -> dict[str, object]:
 		if sys.argv[1:] and not (
 			focused_work_items or focused_managed_runs or focused_managed_repositories
-			or focused_continuation or focused_authority or focused_retained_title
+			or focused_continuation or focused_reset_cards or focused_authority
+			or focused_retained_title
 			or preparation_mode or authority_mode
 		):
 			raise TestFailure(
 				"usage: postgres_store_test.py [--focus-work-items|--focus-managed-runs|"
 				"--focus-managed-repositories|--focus-continuation|"
+				"--focus-reset-cards|"
 				"--focus-authority-classification|--focus-retained-title-core|"
 				"--prepare-retained-title-core|"
 				"--capture-authority-candidate ABSOLUTE_OUTPUT_PATH|"
@@ -5993,6 +6011,7 @@ def main() -> int | AuthorityCandidatePublication:
 					"decodex-xy1338-" if focused_managed_runs else
 					"decodex-xy1364-" if focused_managed_repositories else
 					"decodex-xy1364-continuation-" if focused_continuation else
+					"decodex-reset-card-" if focused_reset_cards else
 					"decodex-xy1364-authority-" if focused_authority else
 					"decodex-xy1368-boundary-" if focused_retained_title else
 					"decodex-xy1368-preparation-" if preparation_mode else
@@ -6136,6 +6155,9 @@ def main() -> int | AuthorityCandidatePublication:
 			return 0
 		if focused_continuation:
 			print(run_continuation_focused_contracts(socket_dir, port, env))
+			return 0
+		if focused_reset_cards:
+			print(run_reset_card_focused_contracts(socket_dir, port, env))
 			return 0
 		if focused_retained_title:
 			if not isinstance(source_binding, dict):

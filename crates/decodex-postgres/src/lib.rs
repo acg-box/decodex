@@ -31,6 +31,7 @@ mod policies;
 mod programs;
 mod project_agents;
 mod quota;
+mod reset_cards;
 mod role_profiles;
 mod routing;
 mod routing_decisions;
@@ -66,6 +67,9 @@ pub use self::{
 		ManagedRunSafetyRejection, StoredManagedRun,
 	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
+	reset_cards::{
+		ResetCardClaim, ResetCardFailureCode, ResetCardOperationStatus, ResetCardPreparation,
+	},
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
 		RoleProfileRejection, RoleProfileRevision, RoleProfileRole,
