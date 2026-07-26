@@ -682,9 +682,20 @@ def initialize_validation_home(temporary_home: Path) -> None:
 
 
 def validation_temporary_directory():
-    parent = (
-        DARWIN_VALIDATION_TEMP_PARENT if sys.platform == "darwin" else None
-    )
+    parent = None
+    if sys.platform == "darwin":
+        parent = DARWIN_VALIDATION_TEMP_PARENT
+        if os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1":
+            try:
+                home = Path(os.environ["HOME"]).resolve(strict=True)
+                temporary = Path(os.environ["TMPDIR"]).resolve(strict=True)
+            except (KeyError, OSError) as error:
+                raise AutopilotError(
+                    "validation_sandbox_path_invalid"
+                ) from error
+            if home != temporary or not temporary.is_dir():
+                raise AutopilotError("validation_sandbox_path_invalid")
+            parent = temporary
     try:
         return tempfile.TemporaryDirectory(
             prefix=VALIDATION_TEMP_PREFIX,
