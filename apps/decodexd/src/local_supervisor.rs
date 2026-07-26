@@ -39,7 +39,8 @@ const CREDENTIAL_PROJECTION_FINGERPRINT_PROTOCOL: &[u8] =
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 // Reset-card provider work has a runtime-owned 212-second upper bound. The daemon grace period
 // also covers its five-second transport drain and leaves margin for scheduler and cleanup work.
-// The macOS LaunchAgent ExitTimeOut must exceed this plus the PostgreSQL grace period.
+// The macOS installer signals a loaded non-restarting generation and lets these runtime bounds
+// settle it before bootout. Launchd retains a 60-second final stop fallback for other stop paths.
 const DAEMON_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(240);
 const POSTGRES_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -80,7 +81,11 @@ pub(super) async fn supervise(config: LocalSupervisorConfig) -> Result<(), Super
 	let ready =
 		wait_for_postgres(&config, &mut postgres, &mut signals, socket_directory_identity).await;
 	let postgres_identity = match ready {
-		Ok(identity) => identity,
+		Ok(PostgresStartup::Ready(identity)) => identity,
+		Ok(PostgresStartup::ShutdownRequested) => {
+			stop_child(&mut postgres, ChildKind::Postgres);
+			return Ok(());
+		},
 		Err(error) => {
 			stop_child(&mut postgres, ChildKind::Postgres);
 			return Err(error);
@@ -289,6 +294,11 @@ struct PostgresIdentity {
 	socket_directory: StableObjectIdentity,
 	socket: StableObjectIdentity,
 	generation: StableObjectIdentity,
+}
+
+enum PostgresStartup {
+	Ready(PostgresIdentity),
+	ShutdownRequested,
 }
 
 impl PostgresIdentity {
@@ -936,7 +946,7 @@ async fn wait_for_postgres(
 	postgres: &mut Child,
 	signals: &mut ShutdownSignals,
 	socket_directory_identity: StableObjectIdentity,
-) -> Result<PostgresIdentity, SupervisorError> {
+) -> Result<PostgresStartup, SupervisorError> {
 	let deadline = Instant::now() + STARTUP_TIMEOUT;
 
 	loop {
@@ -956,12 +966,12 @@ async fn wait_for_postgres(
 				return Err(SupervisorError::new("PostgreSQL generation is invalid"));
 			}
 
-			return Ok(PostgresIdentity {
+			return Ok(PostgresStartup::Ready(PostgresIdentity {
 				process_id,
 				socket_directory: socket_directory_identity,
 				socket,
 				generation,
-			});
+			}));
 		}
 		if Instant::now() >= deadline {
 			return Err(SupervisorError::new("PostgreSQL readiness timed out"));
@@ -970,7 +980,7 @@ async fn wait_for_postgres(
 		tokio::select! {
 			signal = signals.recv() => {
 				signal.map_err(|_| SupervisorError::new("supervisor signal handling failed"))?;
-				return Err(SupervisorError::new("supervisor stopped during PostgreSQL startup"));
+				return Ok(PostgresStartup::ShutdownRequested);
 			},
 			_ = tokio::time::sleep(POLL_INTERVAL) => {},
 		}
@@ -985,6 +995,8 @@ fn postgres_is_ready(config: &LocalSupervisorConfig) -> Result<bool, SupervisorE
 		.arg(&config.socket_directory)
 		.arg("-p")
 		.arg(config.port.to_string())
+		.arg("-d")
+		.arg("postgres")
 		.arg("-t")
 		.arg("1")
 		.current_dir(&config.working_directory)
@@ -1438,7 +1450,7 @@ mod tests {
 	}
 
 	#[test]
-	fn child_shutdown_grace_preserves_bounded_provider_work_and_launchd_margin() {
+	fn child_shutdown_grace_preserves_bounded_provider_work_and_installer_drain_margin() {
 		assert_eq!(child_shutdown_timeout(ChildKind::Daemon), DAEMON_SHUTDOWN_TIMEOUT);
 		assert_eq!(DAEMON_SHUTDOWN_TIMEOUT.as_secs(), 240);
 		assert!(DAEMON_SHUTDOWN_TIMEOUT > std::time::Duration::from_secs(212 + 5));

@@ -1108,6 +1108,14 @@ digests rather than optional nickname/role fields. Build identity is an exact op
 fingerprint; statuses, activity kinds, tools, capability reasons, and read-only methods
 are closed enums, so protocol text is not exported through debug or serialization paths.
 
+The Codex app-server JSONL transport uses its native bare envelope. Outbound requests,
+notifications, and request-error replies omit a `jsonrpc` member. Inbound responses can
+omit the member or include the legacy string `"2.0"`; another value, an explicit null, or
+a non-string value fails closed. Credential projection also requires the exact typed
+`chatgptAuthTokens` success result. Exact request digests cover these native wire bytes,
+so a retained-title experiment prepared with the former envelope cannot be resumed as the
+same request and remains safely ambiguous.
+
 The production command opens the canonical `codex` executable and first rejects interpreter-driven
 files. On macOS, only current native 64-bit thin Mach-O images and native 32/64-bit universal Mach-O
 containers cross this boundary. On Linux, only native ELF images cross it, and account-bound launch
@@ -1123,14 +1131,26 @@ The runtime copies the accepted source descriptor into a bounded protected objec
 object for the opaque build identity. On macOS this is a private fsynced mode-0500 file protected by
 `UF_IMMUTABLE`. On Linux it is an fsynced mode-0500 memfd whose contents, size, executable mode, and
 seal set are irreversibly sealed; the runtime verifies every required seal and that
-`/proc/self/fd/<owned-fd>` resolves to the same object. Every version, schema, and app-server spawn
-executes that exact protected object. The Linux descriptor is close-on-exec: it remains open while
-the kernel resolves the native ELF image and is closed atomically on successful exec. Original-path
-identity and digest checks detect pre-launch drift, but are not the check-to-exec security
-primitive. A source replacement after the final verification cannot alter the protected object that
-executes or receives credentials. Failure to create, seal, resolve, or execute the object fails
-closed. This protection assumes the daemon process and its uid are not already compromised. Only
-tests can inject a fake executable. Preflight output/files, generated-schema file count/per-file/aggregate
+`/proc/self/fd/<owned-fd>` resolves to the same object. Linux version, schema, and app-server spawns
+execute the sealed memfd. The descriptor is close-on-exec: it remains open while the kernel resolves
+the native ELF image and is closed atomically on successful exec.
+
+macOS version and schema preflights execute the immutable snapshot. The final macOS app-server must
+use the canonical executable path because process-aware network extensions assign traffic policy to
+the loaded canonical image. The runtime uses `posix_spawn` to create that image in a new session and
+keeps it suspended before user code starts. While it is suspended, the runtime repeats the canonical
+inode and full SHA-256 check. It then requires the kernel dynamic-code object to match the snapshot's
+exact CDHash, canonical path, session, and process group. Only a complete match receives `SIGCONT`.
+The parent protocol endpoints use private, validated FIFOs opened with atomic close-on-exec flags;
+the FIFO names are removed while the child is still suspended. The child restores the default
+`SIGPIPE` disposition and receives only the fixed `HOME` and system `PATH` projection.
+
+Original-path identity and digest checks detect pre-launch drift. On macOS, suspended dynamic-code
+attestation closes the final check-to-exec interval; on Linux, sealed memfd execution is that
+primitive. A source replacement cannot run or receive credentials after the final check. Failure to
+create, seal, resolve, attest, or execute the selected object fails closed. This protection assumes
+the daemon process and its uid are not already compromised. Only tests can inject a fake executable.
+Preflight output/files, generated-schema file count/per-file/aggregate
 bytes/depth, inbound and outbound app-server frames, the stdout queue, collaboration
 receiver count, and thread-list/search results are mechanically bounded; schema traversal
 rejects symlinks and special files. Both preflight commands use bounded process-group

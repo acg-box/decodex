@@ -680,12 +680,18 @@ For app-server integration work:
 ```sh
 codex app-server generate-json-schema --experimental --out target/decodex-app-server-schema-check
 cargo test -p decodex-codex --all-targets --all-features
+cargo test -p decodex-runtime macos_attested_spawn --lib
 cargo test -p decodex-runtime live_read_only_probe_negotiates_without_dispatch -- --ignored
 ```
 
 Runtime's private supervisor validates the accepted receipt, captures and protects the exact
 executable snapshot, then structurally validates canonical generated-schema digests before
-app-server spawn. The Codex adapter owns the typed schema/capability contracts but exposes no
+app-server spawn. Linux executes the sealed snapshot. macOS runs preflights from the immutable
+snapshot, then starts the canonical final image suspended and checks its full source digest,
+snapshot-rooted CDHash, dynamic path, session, and process group before resume. Private FIFO
+endpoints are atomic close-on-exec and have no live names before user code starts. This canonical
+macOS image preserves process-attributed network-extension routing without moving Reset Card
+ownership into Swift. The Codex adapter owns the typed schema/capability contracts but exposes no
 launch surface.
 Markers are not capability promises. Focused tests cover the golden, exact-build cache
 conflicts, scripted fake server, structural history/collaboration-schema rejection, fixed
@@ -773,6 +779,15 @@ foreground PostgreSQL generation and one daemon generation. PostgreSQL exit or
 endpoint replacement stops the old daemon before the supervisor exits. After an
 atomic legacy account-file replacement, only a changed credential projection stops
 and restarts the daemon so its process-scoped environment receives current values.
+The LaunchAgent uses `KeepAlive = { SuccessfulExit = false }` and `ExitTimeOut=60`.
+For an installed job with that exact contract, the installer sends SIGTERM while the
+job remains loaded, lets the supervisor use its 240-second daemon and 30-second
+PostgreSQL bounds, waits for the job to become inactive, and then removes it. A legacy
+job receives one direct removal fallback, and that removal can use the remaining
+300-second settlement bound instead of the five-second control-command bound. Both paths bind the captured process tree by
+PID and full start time and wait at most 300 seconds before replacement; a concurrent
+removal cannot bypass that wait. PostgreSQL readiness probes name the existing
+`postgres` database so they do not emit missing-default-database warnings.
 The bridge requires the
 same UID, a private parent directory, private regular account and lock files, one
 link per file, bounded input, unique provider identities and email identities, and
