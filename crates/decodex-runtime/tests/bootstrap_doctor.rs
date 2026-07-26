@@ -638,20 +638,24 @@ async fn assert_cross_version_doctor_queries(url: &str, server_id: &ServerId) {
 	)
 	.await;
 
-	let ServerMessage::Refusal(result) = receive(&mut previous).await else {
-		panic!("expected previous-minor doctor rejection");
+	let ServerMessage::QueryResult(result) = receive(&mut previous).await else {
+		panic!("expected previous-minor doctor result");
+	};
+	let QueryResultPayload::DoctorStatus(report) = result.payload else {
+		panic!("expected previous-minor doctor result");
 	};
 
-	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
+	assert_eq!(report.server_id(), server_id);
+	assert_eq!(report.version(), CURRENT_VERSION);
 
 	send(
 		&mut previous,
-		ClientMessage::Query(doctor_query(PREVIOUS_MINOR_VERSION, "previous-doctor-query")),
+		ClientMessage::Query(doctor_query(CURRENT_VERSION, "current-query-on-previous-session")),
 	)
 	.await;
 
 	let ServerMessage::Refusal(result) = receive(&mut previous).await else {
-		panic!("expected inverse previous-minor doctor rejection");
+		panic!("expected mismatched current-version doctor rejection");
 	};
 
 	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
@@ -684,6 +688,21 @@ async fn assert_cross_version_doctor_queries(url: &str, server_id: &ServerId) {
 
 	assert_eq!(report.server_id(), server_id);
 	assert_eq!(report.version(), CURRENT_VERSION);
+
+	send(
+		&mut current,
+		ClientMessage::Query(doctor_query(
+			PREVIOUS_MINOR_VERSION,
+			"previous-query-on-current-session",
+		)),
+	)
+	.await;
+
+	let ServerMessage::Refusal(result) = receive(&mut current).await else {
+		panic!("expected mismatched previous-minor doctor rejection");
+	};
+
+	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
 }
 
 #[tokio::test]

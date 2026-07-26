@@ -16,7 +16,6 @@ struct AccountNotice: Equatable, Identifiable, Sendable {
 		case accountAction
 		case accountRefresh
 		case fastMode
-		case resetCredit
 		case signIn
 	}
 
@@ -91,42 +90,5 @@ struct AccountNotice: Equatable, Identifiable, Sendable {
 		case .error:
 			return nil
 		}
-	}
-}
-
-extension AccountNotice {
-	static func resetCreditOutcome(
-		_ outcome: ResetCreditConsumeOutcome,
-		refreshError: String? = nil
-	) -> Self {
-		let result: Self
-		switch outcome {
-		case .reset:
-			result = .success("Usage restored", source: .resetCredit)
-		case .alreadyRedeemed:
-			result = .information("Card already used", source: .resetCredit)
-		case .nothingToReset:
-			result = .information("Nothing to reset", source: .resetCredit)
-		case .noCredit:
-			result = .information("No reset card available", source: .resetCredit)
-		}
-
-		guard let refreshError else {
-			return result
-		}
-
-		if outcome == .reset {
-			return .error(
-				"Usage restored; refresh failed",
-				details: refreshError,
-				source: .resetCredit
-			)
-		}
-
-		return .error(
-			"Couldn’t refresh account status",
-			details: "\(result.summary)\n\n\(refreshError)",
-			source: .resetCredit
-		)
 	}
 }

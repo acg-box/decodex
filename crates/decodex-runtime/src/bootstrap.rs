@@ -10,6 +10,7 @@ use std::{
 
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
+	account_launch::{ResetCardRuntime, ResetCardVaultStatus},
 	application::{ProductStore, ServiceApplication},
 	managed_repository_runtime::{
 		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
@@ -43,6 +44,7 @@ pub struct ServiceBootstrap {
 	managed_repository_readiness: ManagedRepositoryReadiness,
 	managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
 	blob_store: Option<BlobStore>,
+	reset_cards: Option<ResetCardRuntime>,
 	doctor: DoctorReport,
 }
 impl ServiceBootstrap {
@@ -82,7 +84,8 @@ impl ServiceBootstrap {
 				CodexAdapter::unavailable(),
 				self.blob_store,
 				self.doctor,
-			),
+			)
+			.with_reset_cards(self.reset_cards),
 			config,
 		)
 	}
@@ -145,7 +148,7 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		Err(_) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	};
 	let shared_home = shared_codex_home();
-	let (mut store, database, vault) = match (loaded.as_ref(), repositories) {
+	let (mut store, database, mut vault) = match (loaded.as_ref(), repositories) {
 		(Ok(config), DoctorStatus::Ready) => connect_database(config).await,
 		(Ok(_), _) => (
 			ProductStore::Unavailable { reason: CONFIG_UNAVAILABLE },
@@ -175,6 +178,35 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 			},
 			None => (None, ManagedRepositoryReadiness::ProductStateUnavailable, None),
 		};
+	let reset_cards = match (&store, loaded.as_ref()) {
+		(ProductStore::Available(postgres), Ok(config)) => {
+			match ResetCardRuntime::start(
+				postgres.clone(),
+				config.server_host(),
+				paths.root().as_path().to_owned(),
+			)
+			.await
+			{
+				Ok(runtime) => {
+					vault = match runtime.vault_status() {
+						ResetCardVaultStatus::NotConfigured =>
+							DoctorStatus::Unknown(DoctorIssue::NotProbed),
+						ResetCardVaultStatus::Ready => DoctorStatus::Ready,
+						ResetCardVaultStatus::Unavailable =>
+							DoctorStatus::Unavailable(DoctorIssue::Authentication),
+					};
+
+					Some(runtime)
+				},
+				Err(_) => {
+					vault = DoctorStatus::Unavailable(DoctorIssue::Integrity);
+
+					None
+				},
+			}
+		},
+		_ => None,
+	};
 	let doctor = doctor_report(
 		server_id.clone(),
 		DoctorInputs {
@@ -196,6 +228,7 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 		managed_repository_readiness,
 		managed_repository_startup_error,
 		blob_store: blob_store.ok(),
+		reset_cards,
 		doctor,
 	}
 }
@@ -223,6 +256,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
 		managed_repository_startup_error: None,
 		blob_store: None,
+		reset_cards: None,
 		doctor,
 	}
 }
@@ -310,8 +344,9 @@ fn host_directory(path: &Path) -> Result<(), HostDirectoryError> {
 		match fs::symlink_metadata(&current) {
 			Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {},
 			Ok(_) => return Err(HostDirectoryError::Unsafe),
-			Err(error) if error.kind() == ErrorKind::NotFound =>
-				return Err(HostDirectoryError::Missing),
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				return Err(HostDirectoryError::Missing);
+			},
 			Err(_) => return Err(HostDirectoryError::Unsafe),
 		}
 	}

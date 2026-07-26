@@ -29,6 +29,10 @@ pub enum StoreError {
 	ManagedRepositoryCompareAndSwapConflict,
 	/// Preparation COMMIT did not return a success acknowledgement; no receipt was minted.
 	RepositoryCommitOutcomeUnknown(tokio_postgres::Error),
+	/// Reset-card preparation COMMIT may have succeeded, but same-key readback was unavailable.
+	ResetCardCommitOutcomeUnknown,
+	/// An older operation already owns the selected public reset-card descriptor.
+	ResetCardSelectionConflict,
 	/// A pure managed-repository decision rejected the transaction.
 	ManagedRepository(decodex_core::ManagedRepositoryError),
 	/// The expected entity revision did not match authoritative state.
@@ -75,6 +79,8 @@ impl StoreError {
 			Self::RepositoryCommitOutcomeUnknown(error) if is_authentication_error(error) =>
 				BootstrapFailure::Authentication,
 			Self::RepositoryCommitOutcomeUnknown(_)
+			| Self::ResetCardCommitOutcomeUnknown
+			| Self::ResetCardSelectionConflict
 			| Self::OperationIdConflict
 			| Self::ManagedRepositoryAdmissionConflict
 			| Self::ManagedRepositoryAlreadyAllocated
@@ -118,6 +124,11 @@ impl std::fmt::Display for StoreError {
 				formatter,
 				"managed-repository preparation COMMIT outcome is unknown; no dispatch receipt was minted: {error}"
 			),
+			Self::ResetCardCommitOutcomeUnknown => formatter.write_str(
+				"reset-card preparation COMMIT outcome is unknown after same-key readback",
+			),
+			Self::ResetCardSelectionConflict =>
+				formatter.write_str("an older operation owns the selected reset card"),
 			Self::ManagedRepository(error) =>
 				write!(formatter, "managed-repository decision rejected: {error}"),
 			Self::RevisionConflict { entity, expected, actual } => write!(

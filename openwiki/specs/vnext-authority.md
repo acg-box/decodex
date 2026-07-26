@@ -136,6 +136,56 @@ admission serialize create-only verified publication; transaction B atomically r
 metadata/domain references/evidence, stores the exact response bytes, and completes the fenced
 receipt. Exact replay returns those bytes; conflicting reuse fails before effects.
 
+### Manual reset-card authority
+
+Manual reset-card use is a common vNext application service. `decodexd` is its sole
+credential-vault reader, Codex app-server child owner, opaque provider-credit resolver,
+mutation coordinator, and external-effect owner. CLI and SwiftUI are clients. They cannot
+read credentials, launch app-server for this operation, receive a provider credit ID, or
+own effect retry.
+
+The public selection contract contains one canonical vNext Account UUID, its exact
+optimistic revision, and one credential-negative card descriptor made from grant and
+expiry timestamps. Accounts in `available` or `depleted` state admit the manual service.
+All other states reject it. Manual reset-card admission does not enable account routing,
+conversation dispatch, or quota-driven fallback.
+
+The Codex adapter must prove that one generated schema advertises both
+`account/rateLimits/read` and `account/rateLimitResetCredit/consume`. It must establish a
+complete unique inventory before it maps the public descriptor to one exact opaque credit
+ID. The daemon persists that exact ID and the unchanged logical-command idempotency key
+before it starts the provider effect. A terminal result requires a closed provider receipt
+and a fresh authoritative inventory readback. After an ambiguous stop, restart recovery
+may retry or reconcile only the persisted exact ID with the same key. It must never
+rematch a new inventory item or create a new provider key.
+
+The caller creates and durably records the logical-command key before `use`. Account and
+inventory results bind the selected profile name and stable server UUID; all later
+client calls can require both values. A remote profile is not reset-card authority and
+must fail before transport until authenticated remote reset-card transport exists.
+
+The daemon persists a credential-negative account-binding fingerprint over the account
+UUID and configured provider identity fields. Restart must reject drift, and generic
+account mutation cannot replace or remove the binding. Same-key replay precedes current
+vault, account-state, and revision gates. The effect fence atomically checks the exact
+revision, admitted state, and selected oldest public descriptor. A terminal
+effect-present readback erases the private exact-ID and provider-key projection while it
+retains the public receipt, reconciliation status, and replay result. Generic retention
+must not prune this reset-card ledger. A terminal pre-effect rejection or exhausted
+`not_started` claim also erases the private projection.
+
+An unexpired pending receipt yields acceptance unknown. An expired pending receipt is
+not absence. The same exact request may reclaim it only through a row-locked claim fence
+that first observes any late commit. It must replay a committed result, reclaim after
+rollback, or remain unknown. A deterministic pre-effect business rejection must complete
+the claimed receipt with a closed replayable rejection. A mechanical failure leaves the
+receipt pending and cannot become a rejection.
+
+Swift may persist only a bounded credential-negative recovery handle that includes the
+profile and server authority. Journal corruption must be preserved and must block new
+use. One cross-process critical section must cover the last persisted-handle check,
+consume invocation, dispatch classification, and terminal handle removal.
+
 <a id="private-artifact-authority"></a>
 
 ### Private artifact projection (nonnormative)
