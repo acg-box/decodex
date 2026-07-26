@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decodex social post outcome record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slug",
+    "target_account",
+    "social_post_ref",
+    "published_url",
+    "observed_at",
+    "window",
+    "metrics",
+    "browser_session"
+  ],
+  "properties": {
+    "schema": {
+      "const": "social_outcome/v1"
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_account": {
+      "const": "decodexspace"
+    },
+    "social_post_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "published_url": {
+      "type": "string",
+      "pattern": "^https://x\\.com/decodexspace/status/"
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "window": {
+      "type": "string",
+      "enum": ["24h", "7d"]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "views": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "likes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replies": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reposts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bookmarks": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "browser_session": {
+      "$ref": "#/$defs/browserSession"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "browserSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initial_account",
+        "target_account",
+        "target_account_verified",
+        "switch_status",
+        "restore_status"
+      ],
+      "properties": {
+        "initial_account": {
+          "type": "string",
+          "enum": ["hackink", "decodexspace"]
+        },
+        "target_account": {
+          "const": "decodexspace"
+        },
+        "target_account_verified": {
+          "const": true
+        },
+        "switch_status": {
+          "type": "string",
+          "enum": ["not_required", "switched"]
+        },
+        "restore_status": {
+          "type": "string",
+          "enum": ["not_required", "restored", "failed"]
+        }
+      }
+    }
+  }
+}
