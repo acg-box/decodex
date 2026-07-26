@@ -2049,6 +2049,21 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertTrue(self.autopilot.is_sha256(first))
         self.assertEqual(first, second)
 
+    def test_validation_git_authority_resolves_the_shared_common_directory(self):
+        common = self.autopilot.repository_git_common_directory(ROOT)
+        expected = self.autopilot.run_command(
+            [
+                "git",
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            cwd=ROOT,
+            failure_code="test_git_common_directory_unavailable",
+        )
+        self.assertEqual(common, Path(expected).resolve())
+        self.assertEqual(common.name, ".git")
+
     def test_validation_profiles_use_the_primary_makefile(self):
         command = self.autopilot.trusted_profile_command(
             ROOT,
@@ -2145,6 +2160,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
             name: self.autopilot.sha256_value({"tool": name})
             for name in self.autopilot.VALIDATION_TOOL_NAMES
         }
+        git_common_directory = (
+            self.autopilot.repository_git_common_directory(ROOT)
+        )
         with (
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -2183,6 +2201,11 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 self.autopilot.validation_module,
                 "validation_tool_evidence",
                 return_value=trusted_evidence,
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "repository_git_common_directory",
+                return_value=git_common_directory,
             ),
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -2591,6 +2614,26 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 ROOT,
                 temporary_home,
             )
+            git_output = self.autopilot.run_command(
+                [
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                    profile,
+                    sys.executable,
+                    "-c",
+                    (
+                        "import subprocess; "
+                        "subprocess.run("
+                        "['/usr/bin/git', 'status', '--porcelain=v1'], "
+                        f"cwd={str(ROOT)!r}, check=True, "
+                        "stdout=subprocess.DEVNULL); "
+                        "print('git-readable')"
+                    ),
+                ],
+                cwd=ROOT,
+                failure_code="sandbox_git_probe_failed",
+                timeout_seconds=10,
+            )
             output = self.autopilot.run_command(
                 [
                     "/usr/bin/sandbox-exec",
@@ -2610,6 +2653,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 failure_code="sandbox_probe_failed",
                 timeout_seconds=10,
             )
+            self.assertEqual(git_output, "git-readable")
             self.assertEqual(output, '{"schema":"candidate"}')
 
     def test_cargo_lock_rejects_new_git_sources_and_bad_checksums(self):
