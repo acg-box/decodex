@@ -145,7 +145,7 @@ impl SchemaContract {
 		}
 	}
 
-	fn from_generated(
+	pub(crate) fn from_generated(
 		request_methods: BTreeSet<String>,
 		notification_methods: BTreeSet<String>,
 		paginated_history: bool,

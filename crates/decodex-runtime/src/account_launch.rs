@@ -2,7 +2,10 @@
 
 mod process;
 mod protocol;
+mod reset_card;
 #[cfg(feature = "retained-title-experiment")] pub mod retained_title_experiment;
+
+pub(crate) use reset_card::{ResetCardRuntime, ResetCardServiceError, ResetCardVaultStatus};
 
 use std::{
 	error::Error,

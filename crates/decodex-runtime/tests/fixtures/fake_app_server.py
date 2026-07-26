@@ -29,6 +29,8 @@ if sys.argv[1] == "generate-json-schema":
         child = subprocess.Popen([sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"])
         Path(sys.argv[index + 1]).write_text(str(child.pid))
     requests = ["initialize", "account/read", "thread/start", "thread/list", "thread/search", "thread/read", "thread/resume", "thread/name/set", "turn/start", "account/rateLimits/read", "collaborationMode/list", "thread/archive"]
+    if "--reset-card" in sys.argv:
+        requests.append("account/rateLimitResetCredit/consume")
     notifications = ["thread/started", "turn/started", "item/started", "item/completed", "turn/completed"]
     if "--missing-required" in sys.argv:
         requests.remove("thread/list")
@@ -162,6 +164,7 @@ exact_thread = {
     "threadSource": "decodex.xy1317.fixture",
 }
 exact_thread_reads = 0
+reset_card_consumed = False
 for line in sys.stdin:
     message = json.loads(line)
     if mode == "hang":
@@ -213,6 +216,32 @@ for line in sys.stdin:
             if mode == "login-extra"
             else {}
         )
+    elif method == "account/rateLimits/read" and mode == "reset-card":
+        assert "params" in message
+        assert message["params"] is None
+        credits = [] if reset_card_consumed else [{
+            "id": "fixture-reset-credit",
+            "grantedAt": 1700000000,
+            "expiresAt": 1700003600,
+            "resetType": "codexRateLimits",
+            "status": "available",
+            "title": "fixture reset card",
+            "description": None,
+        }]
+        result = {
+            "rateLimits": {},
+            "rateLimitResetCredits": {
+                "availableCount": len(credits),
+                "credits": credits,
+            },
+        }
+    elif method == "account/rateLimitResetCredit/consume" and mode == "reset-card":
+        assert message["params"] == {
+            "creditId": "fixture-reset-credit",
+            "idempotencyKey": "fixture-reset-operation",
+        }
+        reset_card_consumed = True
+        result = {"outcome": "reset"}
     elif method == "thread/list":
         if "searchTerm" in message["params"]:
             assert set(message["params"]) == {"archived", "limit", "searchTerm"}

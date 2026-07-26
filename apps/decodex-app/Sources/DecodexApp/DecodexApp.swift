@@ -83,14 +83,18 @@ struct DecodexApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 	@State private var appAppearance = AppAppearanceStore()
 	@State private var store: AccountStore
+	@State private var resetCardStore: ResetCardStore
 	@State private var loginWindowState = LoginWindowState()
 
 	@MainActor
 	init() {
 		let accountStore = AccountStore()
+		let resetStore = ResetCardStore()
 
 		_store = State(initialValue: accountStore)
+		_resetCardStore = State(initialValue: resetStore)
 		accountStore.start()
+		resetStore.start()
 	}
 
 	var body: some Scene {
@@ -109,7 +113,11 @@ struct DecodexApp: App {
 
 	@ViewBuilder
 	private var menuBarContent: some View {
-		AccountPanelView(store: store, loginWindowState: loginWindowState)
+		AccountPanelView(
+			store: store,
+			resetCardStore: resetCardStore,
+			loginWindowState: loginWindowState
+		)
 			.environment(\.colorScheme, appAppearance.colorScheme)
 			.preferredColorScheme(appAppearance.colorScheme)
 			.containerBackground(.clear, for: .window)
