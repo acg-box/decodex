@@ -113,9 +113,25 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 				"check-rust-headless",
 				"fmt-check-sandboxed",
 				"lint-rust-headless",
-				"test-headless",
+				"test-headless-sandboxed",
 			],
 		)
+		self.assertEqual(
+			tasks["check-sandboxed"]["dependencies"][-1],
+			"test-sandboxed",
+		)
+		for ordinary, sandboxed in (
+			("test", "test-sandboxed"),
+			("test-headless", "test-headless-sandboxed"),
+		):
+			self.assertEqual(
+				tasks[sandboxed]["dependencies"],
+				[
+					dependency
+					for dependency in tasks[ordinary]["dependencies"]
+					if dependency != "test-vnext-postgres-store"
+				],
+			)
 		self.assertEqual(
 			tasks["fmt-rust-check-sandboxed"],
 			{
