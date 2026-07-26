@@ -1,0 +1,116 @@
+#!/bin/zsh
+
+emulate -LR zsh
+set -euo pipefail
+setopt null_glob
+
+readonly script_dir=${0:A:h}
+readonly autopilot=${script_dir}/upstream_autopilot.py
+readonly file_type_mask=8#170000
+readonly regular_file_type=8#100000
+readonly directory_type=8#040000
+readonly symlink_type=8#120000
+
+if ! zmodload -F zsh/stat b:zstat; then
+	print -u2 -- "trusted filesystem metadata reader unavailable"
+	exit 78
+fi
+
+function trusted_path {
+	local path=${1:a}
+	local leaf=true
+	local file_type
+	typeset -A metadata
+
+	while true; do
+		metadata=()
+		zstat -H metadata -L -- "${path}" 2>/dev/null || return 1
+		file_type=$(( metadata[mode] & file_type_mask ))
+
+		(( metadata[uid] == 0 )) || return 1
+		if [[ ${leaf} == false ]]; then
+			(( file_type == directory_type )) || return 1
+		fi
+
+		# Symlink permission bits do not control replacement. The protected
+		# parent does. All regular files and directories must be immutable.
+		if (( file_type != symlink_type && metadata[mode] & 8#022 )); then
+			# The Nix daemon uses a root-owned, sticky, group-writable store.
+			# Root-owned entries below it remain protected from replacement.
+			if [[ ${path} != /nix/store ]] \
+				|| (( !(metadata[mode] & 8#1000) || metadata[mode] & 8#002 )); then
+				return 1
+			fi
+		fi
+
+		[[ ${path} == / ]] && break
+		path=${path:h}
+		leaf=false
+	done
+}
+
+function trusted_python {
+	[[ $1 == /* ]] || return 1
+	local candidate=${1:a}
+	local current=${candidate}
+	local link_target
+	local resolved
+	local file_type
+	local hop
+	typeset -A metadata
+
+	[[ ${candidate:t} == python3 ]] || return 1
+	trusted_path "${candidate}" || return 1
+
+	for hop in {1..40}; do
+		metadata=()
+		zstat -H metadata -L -- "${current}" 2>/dev/null || return 1
+		file_type=$(( metadata[mode] & file_type_mask ))
+		if (( file_type != symlink_type )); then
+			(( file_type == regular_file_type )) || return 1
+			(( metadata[mode] & 8#111 )) || return 1
+			resolved=${current}
+			break
+		fi
+
+		link_target=${metadata[link]}
+		[[ -n ${link_target} ]] || return 1
+		if [[ ${link_target} == /* ]]; then
+			current=${link_target:a}
+		else
+			current=${current:h}/${link_target}
+			current=${current:a}
+		fi
+		trusted_path "${current}" || return 1
+	done
+
+	[[ -n ${resolved:-} ]] || return 1
+	[[ ${resolved} == /usr/bin/* || ${resolved} == /nix/store/* ]] || return 1
+}
+
+typeset -a candidates
+if [[ -n ${DECODEX_UPSTREAM_PYTHON_CANDIDATE:-} ]]; then
+	candidates=("${DECODEX_UPSTREAM_PYTHON_CANDIDATE}")
+else
+	candidates=(
+		/nix/store/*-python3-3.<->*/bin/python3(N)
+		/usr/bin/python3(N)
+	)
+fi
+
+for candidate in "${candidates[@]}"; do
+	if trusted_python "${candidate}" && "${candidate}" - <<'PY'
+import sys
+
+if not (3, 11) <= sys.version_info[:2] < (4, 0):
+    raise SystemExit(1)
+
+import tomllib  # noqa: F401, E402
+PY
+	then
+		exec "${candidate}" "${autopilot}" "$@"
+	fi
+done
+
+print -u2 -- "trusted Python 3.11+ runtime unavailable"
+exit 78

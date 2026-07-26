@@ -72,6 +72,17 @@ the validated base and reviewed head. A push with an exact
 `--force-with-lease` expected old object ID is an atomic base compare-and-swap. A
 concurrent `main` advance rejects the push before a merge occurs.
 
+Each claim also creates a separate one-time subagent handoff challenge. The lease
+token stays with the parent automation. A worker receipt binds the challenge to the
+candidate, claim generation, original base, staged tree, and staged-path digest. An
+independent Reviewer receipt binds it to the candidate, exact base/head/tree,
+disposition, and bounded finding codes. Runtime state stores only the challenge
+digest and sanitized receipt provenance. These receipts are non-replayable,
+state-bound handoffs. They are not cryptographic identity signatures. A prepared
+commit or started land effect keeps its original handoff receipt and intent
+generation across lease recovery; a new owner generation can resume only that exact
+intent and cannot replace its receipt.
+
 The wrapper requires exact Decodex command output, the merged pull-request head and
 merge SHA, remote-main containment, and an exact JSON landed-change record that
 includes the unique land intent digest. A pull request that is already merged before

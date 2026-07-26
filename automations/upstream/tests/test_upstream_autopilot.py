@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import json
 import os
 from copy import deepcopy
@@ -31,6 +32,362 @@ class UpstreamAutopilotTests(unittest.TestCase):
         cls.policy = cls.autopilot.load_policy(
             ROOT / "automations/upstream/policy.json"
         )
+
+    def test_fresh_state_uses_the_nonlegacy_v3_contract(self):
+        state = self.autopilot.new_state(100)
+
+        self.assertEqual(state["schema"], "decodex/codex-upstream-state/3")
+        self.autopilot.validate_state(state)
+
+        legacy = deepcopy(state)
+        legacy["schema"] = "decodex/codex-upstream-state/2"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "state_schema_invalid",
+        ):
+            self.autopilot.validate_state(legacy)
+
+    def test_handoff_receipt_is_state_bound_and_idempotent(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        raw = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="2" * 40,
+            staged_paths_sha256="3" * 64,
+            disposition="staged",
+        )
+
+        provenance = self.autopilot.consume_handoff_receipt(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            receipt=raw,
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="2" * 40,
+            staged_paths_sha256="3" * 64,
+            disposition="staged",
+            finding_codes=[],
+            now=102,
+        )
+        repeated = self.autopilot.consume_handoff_receipt(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            receipt=raw,
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="2" * 40,
+            staged_paths_sha256="3" * 64,
+            disposition="staged",
+            finding_codes=[],
+            now=103,
+        )
+
+        self.assertEqual(provenance, repeated)
+        self.assertNotIn(claim["handoff_challenge"], str(state))
+        self.assertEqual(
+            state["candidates"][0]["handoff"]["challenge_sha256"],
+            hashlib.sha256(
+                claim["handoff_challenge"].encode("utf-8")
+            ).hexdigest(),
+        )
+        self.autopilot.validate_state(state)
+
+    def test_handoff_receipt_file_round_trip_is_private_and_contained(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = (
+                Path(directory) / ".agent/automations/upstream/cache"
+            )
+            expected = self.autopilot.ensure_handoff_receipt_path(
+                cache_root,
+                candidate_id="0" * 16,
+                role="maintainer",
+                generation=1,
+            )
+            receipt = {"schema": "test", "value": "bounded"}
+            descriptor = os.open(
+                expected,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(receipt, handle)
+
+            loaded = self.autopilot.read_handoff_receipt(
+                expected,
+                expected_path=expected,
+            )
+            self.assertEqual(loaded, receipt)
+            self.autopilot.remove_handoff_receipt(
+                expected,
+                expected_path=expected,
+            )
+            self.assertFalse(expected.exists())
+            self.assertEqual(
+                expected.parent.stat().st_mode & 0o777,
+                0o700,
+            )
+
+    def test_handoff_receipt_rejects_symlinked_parent_without_external_io(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache_root = root / ".agent/automations/upstream/cache"
+            expected = self.autopilot.ensure_handoff_receipt_path(
+                cache_root,
+                candidate_id="0" * 16,
+                role="maintainer",
+                generation=1,
+            )
+            expected.parent.rmdir()
+            external = root / "external"
+            external.mkdir(mode=0o700)
+            external_receipt = external / expected.name
+            external_receipt.write_text('{"external": true}', encoding="utf-8")
+            external_receipt.chmod(0o600)
+            expected.parent.symlink_to(external, target_is_directory=True)
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "handoff_directory_unavailable",
+            ):
+                self.autopilot.read_handoff_receipt(
+                    expected,
+                    expected_path=expected,
+                )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "handoff_directory_unavailable",
+            ):
+                self.autopilot.remove_handoff_receipt(
+                    expected,
+                    expected_path=expected,
+                )
+            self.assertTrue(external_receipt.exists())
+
+    def test_handoff_receipt_rejects_symlinked_leaf_without_external_io(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache_root = root / ".agent/automations/upstream/cache"
+            expected = self.autopilot.ensure_handoff_receipt_path(
+                cache_root,
+                candidate_id="0" * 16,
+                role="maintainer",
+                generation=1,
+            )
+            external = root / "external.json"
+            external.write_text('{"external": true}', encoding="utf-8")
+            external.chmod(0o600)
+            expected.symlink_to(external)
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "handoff_receipt_unavailable",
+            ):
+                self.autopilot.read_handoff_receipt(
+                    expected,
+                    expected_path=expected,
+                )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "handoff_receipt_cleanup_failed",
+            ):
+                self.autopilot.remove_handoff_receipt(
+                    expected,
+                    expected_path=expected,
+                )
+            self.assertTrue(external.exists())
+            self.assertTrue(expected.is_symlink())
+
+    def test_handoff_receipt_rejects_missing_mismatch_and_changed_tree(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        raw = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="2" * 40,
+            staged_paths_sha256="3" * 64,
+            disposition="staged",
+        )
+        common = {
+            "candidate_id": candidate_id,
+            "role": "maintainer",
+            "token": claim["lease_token"],
+            "action": "worker_staged",
+            "base_head": "1" * 40,
+            "repository_head": "1" * 40,
+            "repository_tree": "2" * 40,
+            "staged_paths_sha256": "3" * 64,
+            "disposition": "staged",
+            "finding_codes": [],
+            "now": 102,
+        }
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError, "handoff_receipt_invalid"
+        ):
+            self.autopilot.consume_handoff_receipt(state, receipt=None, **common)
+        mismatched = deepcopy(raw)
+        mismatched["candidate_id"] = "f" * 16
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError, "handoff_receipt_invalid"
+        ):
+            self.autopilot.consume_handoff_receipt(
+                state, receipt=mismatched, **common
+            )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError, "handoff_receipt_invalid"
+        ):
+            self.autopilot.consume_handoff_receipt(
+                state,
+                receipt=raw,
+                **{**common, "repository_tree": "4" * 40},
+            )
+
+    def test_handoff_receipt_cannot_cross_claim_generation(self):
+        state, candidate_id = self.bootstrap()
+        first = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        raw = self.handoff_receipt(
+            first,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="2" * 40,
+            staged_paths_sha256="3" * 64,
+            disposition="staged",
+        )
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=first["lease_token"],
+            reason_code="validation_failed",
+            error_digest="4" * 64,
+            now=102,
+        )
+        second = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 10_000
+        )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError, "handoff_receipt_invalid"
+        ):
+            self.autopilot.consume_handoff_receipt(
+                state,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=second["lease_token"],
+                receipt=raw,
+                action="worker_staged",
+                base_head="1" * 40,
+                repository_head="1" * 40,
+                repository_tree="2" * 40,
+                staged_paths_sha256="3" * 64,
+                disposition="staged",
+                finding_codes=[],
+                now=10_001,
+            )
+
+    def test_handoff_cli_parser_exposes_bounded_receipt_files(self):
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "upstream_autopilot",
+                "commit-candidate",
+                "--candidate-id",
+                "0" * 16,
+                "--lease-token",
+                "lease",
+                "--worktree",
+                "/tmp/worktree",
+                "--worker-receipt",
+                "/tmp/worker.json",
+            ],
+        ):
+            commit = self.autopilot.parse_args()
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "upstream_autopilot",
+                "request-repair",
+                "--candidate-id",
+                "0" * 16,
+                "--lease-token",
+                "lease",
+                "--finding-code",
+                "validation_failed",
+                "--reviewer-receipt",
+                "/tmp/reviewer.json",
+            ],
+        ):
+            repair = self.autopilot.parse_args()
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "upstream_autopilot",
+                "land",
+                "--candidate-id",
+                "0" * 16,
+                "--lease-token",
+                "lease",
+                "--worktree",
+                "/tmp/worktree",
+            ],
+        ):
+            recovery = self.autopilot.parse_args()
+
+        self.assertEqual(commit.worker_receipt, Path("/tmp/worker.json"))
+        self.assertEqual(repair.reviewer_receipt, Path("/tmp/reviewer.json"))
+        self.assertIsNone(recovery.reviewer_receipt)
+
+    def test_initial_commit_effect_rejects_missing_worker_handoff(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError, "handoff_provenance_invalid"
+        ):
+            self.autopilot.prepare_effect(
+                state,
+                self.policy,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=claim["lease_token"],
+                kind="commit",
+                branch=candidate["branch_name"],
+                head_sha="1" * 40,
+                pr_url=None,
+                decodex_identity={
+                    "version": "decodex 0.2.0-test",
+                    "executable_sha256": "9" * 64,
+                },
+                now=102,
+            )
 
     def observation(
         self,
@@ -116,7 +473,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "changed_paths_sha256": self.autopilot.sha256_value(
                 [] if base == head else ["example"]
             ),
+            "candidate_path_classification": "sandbox_eligible",
+            "candidate_path_policy_sha256": (
+                self.autopilot.candidate_path_policy_sha256(self.policy)
+            ),
             "requires_full_gate": requires_full_gate,
+            "sandbox_task_graph_sha256": "6" * 64,
+            "live_postgres_gate": (
+                self.autopilot.LIVE_POSTGRES_GATE_STATUS
+            ),
             "validation_authority": {
                 "repository_head": base,
                 "repository_tree": "8" * 40,
@@ -125,8 +490,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "profiles": [
                 {
                     "name": name,
-                    "command_sha256": self.autopilot.sha256_value(
-                        self.policy["validation_profiles"][name]
+                    "effective_task": self.autopilot.SANDBOX_PROFILE_TASKS[name],
+                    "command_sha256": (
+                        self.autopilot.profile_command_sha256(name)
                     ),
                     "environment_sha256": self.autopilot.sha256_value(
                         {"profile": name, "environment": "sanitized"}
@@ -294,7 +660,152 @@ class UpstreamAutopilotTests(unittest.TestCase):
             failure_code="test_git_failed",
         )
 
-    def land_started_state(self):
+    def handoff_receipt(
+        self,
+        claim,
+        *,
+        candidate_id,
+        role,
+        action,
+        base_head,
+        repository_head,
+        repository_tree,
+        staged_paths_sha256=None,
+        disposition,
+        finding_codes=(),
+    ):
+        return {
+            "schema": self.autopilot.HANDOFF_RECEIPT_SCHEMA,
+            "candidate_id": candidate_id,
+            "role": role,
+            "action": action,
+            "claim_generation": claim["candidate"]["handoff"]["generation"],
+            "challenge": claim["handoff_challenge"],
+            "base_head": base_head,
+            "repository_head": repository_head,
+            "repository_tree": repository_tree,
+            "staged_paths_sha256": staged_paths_sha256,
+            "disposition": disposition,
+            "finding_codes": sorted(set(finding_codes)),
+        }
+
+    def stored_review_handoff(
+        self,
+        candidate_id,
+        receipt,
+        *,
+        disposition,
+        finding_codes=(),
+        generation=1,
+        consumed_at=201,
+    ):
+        value = {
+            "schema": self.autopilot.HANDOFF_RECEIPT_SCHEMA,
+            "candidate_id": candidate_id,
+            "role": "reviewer",
+            "action": "independent_review",
+            "claim_generation": generation,
+            "base_head": receipt["base_head"],
+            "repository_head": receipt["repository_head"],
+            "repository_tree": receipt["repository_tree"],
+            "staged_paths_sha256": None,
+            "disposition": disposition,
+            "finding_codes": sorted(set(finding_codes)),
+            "challenge_sha256": "7" * 64,
+            "receipt_sha256": "8" * 64,
+            "consumed_at": consumed_at,
+        }
+        self.autopilot.validate_handoff_provenance(value)
+        return value
+
+    def consume_review_handoff(
+        self,
+        state,
+        candidate_id,
+        claim,
+        *,
+        disposition,
+        finding_codes=(),
+        now,
+    ):
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        pull_request = candidate.get("pull_request")
+        decision = candidate.get("decision")
+        if isinstance(pull_request, dict):
+            base_head = pull_request["validation_receipt"]["base_head"]
+            head = pull_request["head_sha"]
+            tree = pull_request["validation_receipt"]["repository_tree"]
+        else:
+            receipt = decision["maintainer_receipt"]
+            base_head = receipt["base_head"]
+            head = receipt["repository_head"]
+            tree = receipt["repository_tree"]
+        raw = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="reviewer",
+            action="independent_review",
+            base_head=base_head,
+            repository_head=head,
+            repository_tree=tree,
+            disposition=disposition,
+            finding_codes=finding_codes,
+        )
+        return self.autopilot.consume_handoff_receipt(
+            state,
+            candidate_id=candidate_id,
+            role="reviewer",
+            token=claim["lease_token"],
+            receipt=raw,
+            action="independent_review",
+            base_head=base_head,
+            repository_head=head,
+            repository_tree=tree,
+            staged_paths_sha256=None,
+            disposition=disposition,
+            finding_codes=finding_codes,
+            now=now,
+        )
+
+    def consume_worker_handoff(
+        self,
+        state,
+        candidate_id,
+        claim,
+        *,
+        base_head,
+        tree,
+        now,
+    ):
+        staged_paths_sha256 = "c" * 64
+        raw = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head=base_head,
+            repository_head=base_head,
+            repository_tree=tree,
+            staged_paths_sha256=staged_paths_sha256,
+            disposition="staged",
+        )
+        return self.autopilot.consume_handoff_receipt(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            receipt=raw,
+            action="worker_staged",
+            base_head=base_head,
+            repository_head=base_head,
+            repository_tree=tree,
+            staged_paths_sha256=staged_paths_sha256,
+            disposition="staged",
+            finding_codes=[],
+            now=now,
+        )
+
+    def land_started_state(self, *, include_token=False):
         state, candidate_id = self.bootstrap()
         maintainer = self.autopilot.claim_candidate(
             state,
@@ -311,6 +822,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         candidate = self.autopilot.find_candidate(state, candidate_id)
         pull_request = candidate["pull_request"]
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
         self.autopilot.prepare_effect(
             state,
             self.policy,
@@ -329,6 +847,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 base=pull_request["validation_receipt"]["base_head"],
                 completed_at=111,
             ),
+            handoff_receipt=reviewer_handoff,
             decodex_identity={
                 "version": "decodex 0.2.0-test",
                 "executable_sha256": "9" * 64,
@@ -343,6 +862,8 @@ class UpstreamAutopilotTests(unittest.TestCase):
             phase="land_started",
             now=112,
         )
+        if include_token:
+            return state, candidate_id, reviewer["lease_token"]
         return state, candidate_id
 
     def apply(
@@ -904,6 +1425,115 @@ class UpstreamAutopilotTests(unittest.TestCase):
         ]
         return state, queued[0]
 
+    def automatic_repair_state(self):
+        state, blocked_id = self.bootstrap()
+        blocked = self.autopilot.find_candidate(state, blocked_id)
+        blocked["status"] = "needs_attention"
+        blocked["attempts"] = {"maintainer": 3, "reviewer": 0}
+        blocked["retry_role"] = "maintainer"
+        blocked["result"] = {
+            "outcome": "blocked",
+            "reason_code": "validation_failed",
+            "error_digest": "a" * 64,
+            "at": 150,
+        }
+        repair = self.autopilot.queue_automation_repair(
+            state,
+            self.policy,
+            blocked_candidate_id=blocked_id,
+            reason_code="validation_failed",
+            repository_head="9" * 40,
+            now=200,
+        )
+        return state, blocked, repair
+
+    def external_effect_state(self, kind, phase):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        reviewer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            110,
+        )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="request_repair",
+            finding_codes=["validation_failed"],
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=["validation_failed"],
+            reviewer_handoff=reviewer_handoff,
+            now=111,
+        )
+        repair = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            112,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        pull_request = candidate["pull_request"]
+        if kind == "publish":
+            receipt = self.validation_receipt(
+                "maintainer",
+                head=pull_request["head_sha"],
+                tree=pull_request["validation_receipt"]["repository_tree"],
+                base=pull_request["validation_receipt"]["base_head"],
+                completed_at=113,
+            )
+            self.autopilot.prepare_effect(
+                state,
+                self.policy,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=repair["lease_token"],
+                kind="publish",
+                branch=pull_request["branch"],
+                head_sha=pull_request["head_sha"],
+                remote_head_before=pull_request["head_sha"],
+                pr_url=pull_request["url"],
+                validation_receipt=receipt,
+                now=113,
+            )
+            if phase == "pushed":
+                self.autopilot.advance_effect_phase(
+                    state,
+                    candidate_id=candidate_id,
+                    role="maintainer",
+                    token=repair["lease_token"],
+                    phase="pushed",
+                    now=114,
+                )
+        elif kind == "retire_pr" and phase == "prepared":
+            self.autopilot.prepare_effect(
+                state,
+                self.policy,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=repair["lease_token"],
+                kind="retire_pr",
+                branch=pull_request["branch"],
+                head_sha=pull_request["head_sha"],
+                pr_url=pull_request["url"],
+                now=113,
+            )
+        else:
+            self.fail(f"unsupported external effect: {kind}/{phase}")
+        return state, candidate_id, repair["lease_token"]
+
     def resolve_bootstrap(self, state, candidate_id, now=101):
         claim = self.autopilot.claim_candidate(
             state, self.policy, "maintainer", now
@@ -924,6 +1554,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
         review = self.autopilot.claim_candidate(
             state, self.policy, "reviewer", now + 2
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            review,
+            disposition="no_change",
+            now=now + 3,
+        )
         self.autopilot.resolve_candidate(
             state,
             candidate_id=candidate_id,
@@ -938,6 +1575,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "reviewer",
                 completed_at=now + 3,
             ),
+            reviewer_handoff=reviewer_handoff,
             now=now + 3,
         )
 
@@ -958,6 +1596,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "version": "decodex 0.2.0-test",
             "executable_sha256": "9" * 64,
         }
+        worker_handoff = self.consume_worker_handoff(
+            state,
+            candidate_id,
+            claim,
+            base_head=base_head,
+            tree=tree,
+            now=now,
+        )
         effect = self.autopilot.prepare_effect(
             state,
             self.policy,
@@ -968,6 +1614,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             branch=candidate["branch_name"],
             head_sha=base_head,
             pr_url=None,
+            handoff_receipt=worker_handoff,
             decodex_identity=identity,
             now=now,
         )
@@ -1076,6 +1723,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             base=pull_request["validation_receipt"]["base_head"],
             completed_at=now + 1,
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            review,
+            disposition="accept",
+            now=now + 1,
+        )
         identity = {
             "version": "decodex 0.2.0-test",
             "executable_sha256": "9" * 64,
@@ -1092,6 +1746,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             pr_url=pull_request["url"],
             owned_worktrees=[".worktrees/0123456789abcdef"],
             validation_receipt=reviewer_receipt,
+            handoff_receipt=reviewer_handoff,
             decodex_identity=identity,
             now=now + 1,
         )
@@ -1154,6 +1809,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 execution_receipt
             ),
             reviewer_receipt=reviewer_receipt,
+            reviewer_handoff=reviewer_handoff,
             now=now + 4,
         )
 
@@ -1185,6 +1841,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             now + 2,
         )
         self.assertEqual(reviewer["candidate"]["id"], repair_id)
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            repair_id,
+            reviewer,
+            disposition="no_change",
+            now=now + 3,
+        )
         self.autopilot.resolve_candidate(
             state,
             candidate_id=repair_id,
@@ -1199,6 +1862,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "reviewer",
                 completed_at=now + 3,
             ),
+            reviewer_handoff=reviewer_handoff,
             now=now + 3,
         )
 
@@ -1231,6 +1895,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
         review = self.autopilot.claim_candidate(
             state, self.policy, "reviewer", 103
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            review,
+            disposition="no_change",
+            now=104,
+        )
         self.autopilot.resolve_candidate(
             state,
             candidate_id=candidate_id,
@@ -1245,6 +1916,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "reviewer",
                 completed_at=104,
             ),
+            reviewer_handoff=reviewer_handoff,
             now=104,
         )
 
@@ -1475,6 +2147,11 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 completed["decision"]
             ),
             "reviewer_receipt": reviewer_receipt,
+            "reviewer_handoff": self.stored_review_handoff(
+                completed["id"],
+                reviewer_receipt,
+                disposition="no_change",
+            ),
             "resolved_at": 201,
         }
         self.autopilot.advance_source_cursor(state)
@@ -1794,6 +2471,38 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 role="maintainer",
             )
 
+    def test_validation_receipt_rejects_a_forged_effective_task(self):
+        receipt = self.validation_receipt("maintainer")
+        receipt["profiles"][0]["effective_task"] = "test"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "validation_receipt_command_mismatch",
+        ):
+            self.autopilot.validate_validation_receipt(
+                receipt,
+                role="maintainer",
+            )
+
+    def test_validation_receipt_binds_the_candidate_path_policy(self):
+        receipt = self.validation_receipt("maintainer")
+        changed_policy = deepcopy(self.policy)
+        changed_policy["sandbox_incompatible_exact_paths"] = [
+            *changed_policy["sandbox_incompatible_exact_paths"],
+            "tests/example.rs",
+        ]
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "validation_receipt_path_policy_mismatch",
+        ):
+            self.autopilot.validate_receipt_against_policy(
+                receipt,
+                changed_policy,
+                role="maintainer",
+                expected_base_head=receipt["base_head"],
+                expected_head=receipt["repository_head"],
+                expected_tree=receipt["repository_tree"],
+            )
+
     def test_validation_authority_changes_are_repair_only(self):
         with self.assertRaisesRegex(
             self.autopilot.AutopilotError,
@@ -1802,10 +2511,12 @@ class UpstreamAutopilotTests(unittest.TestCase):
             self.autopilot.classify_validation_scope(
                 ("Makefile.toml",),
                 candidate_kind="upstream_range",
+                policy=self.policy,
             )
         scope = self.autopilot.classify_validation_scope(
             ("Makefile.toml",),
             candidate_kind="automation_repair",
+            policy=self.policy,
         )
         self.assertTrue(scope["requires_full_gate"])
 
@@ -1822,11 +2533,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 scope = self.autopilot.classify_validation_scope(
                     (path,),
                     candidate_kind="upstream_range",
+                    policy=self.policy,
                 )
                 self.assertTrue(scope["requires_full_gate"])
         focused = self.autopilot.classify_validation_scope(
             ("crates/decodex-codex/src/protocol.rs",),
             candidate_kind="upstream_range",
+            policy=self.policy,
         )
         self.assertFalse(focused["requires_full_gate"])
         self.assertEqual(
@@ -1836,6 +2549,188 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 self.autopilot.FULL_VALIDATION_PROFILE,
             ),
         )
+
+    def test_sandbox_incompatible_paths_fail_closed_for_every_candidate_kind(self):
+        paths = [
+            *self.policy["sandbox_incompatible_exact_paths"],
+            *(
+                f"{prefix}example.rs"
+                for prefix in self.policy[
+                    "sandbox_incompatible_path_prefixes"
+                ]
+            ),
+        ]
+        for candidate_kind in ("upstream_range", "automation_repair"):
+            for path in paths:
+                with (
+                    self.subTest(
+                        candidate_kind=candidate_kind,
+                        path=path,
+                    ),
+                    self.assertRaisesRegex(
+                        self.autopilot.AutopilotError,
+                        "candidate_path_sandbox_incompatible",
+                    ),
+                ):
+                    self.autopilot.classify_validation_scope(
+                        (path,),
+                        candidate_kind=candidate_kind,
+                        policy=self.policy,
+                    )
+
+        scope = self.autopilot.classify_validation_scope(
+            ("crates/decodex-codex/src/protocol.rs",),
+            candidate_kind="automation_repair",
+            policy=self.policy,
+        )
+        self.assertEqual(
+            scope["candidate_path_classification"],
+            "sandbox_eligible",
+        )
+        self.assertEqual(
+            scope["candidate_path_policy_sha256"],
+            self.autopilot.candidate_path_policy_sha256(self.policy),
+        )
+
+    def test_name_status_parser_covers_both_sides_of_renames_and_copies(self):
+        self.assertEqual(
+            self.autopilot.parse_name_status_paths(
+                "M\0one.rs\0R100\0old.rs\0new.rs\0"
+                "C75\0source.rs\0copy.rs\0"
+            ),
+            (
+                "one.rs",
+                "old.rs",
+                "new.rs",
+                "source.rs",
+                "copy.rs",
+            ),
+        )
+        for malformed in (
+            "M\0missing-terminator",
+            "R100\0only-old.rs\0",
+            "U\0conflict.rs\0",
+            "R101\0old.rs\0new.rs\0",
+        ):
+            with (
+                self.subTest(malformed=malformed),
+                self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "validation_diff_invalid",
+                ),
+            ):
+                self.autopilot.parse_name_status_paths(malformed)
+
+    def test_changed_path_reader_rejects_gitlinks_and_authority_symlinks(self):
+        base = "1" * 40
+        head = "2" * 40
+        zero = "0" * 40
+        blob = "3" * 40
+        cases = (
+            (
+                "A\0vendor\0",
+                f":000000 160000 {zero} {blob} A\0vendor\0",
+            ),
+            (
+                "T\0Makefile.toml\0",
+                f":100644 120000 {blob} {blob} T\0Makefile.toml\0",
+            ),
+        )
+        for name_status, raw in cases:
+            with (
+                self.subTest(name_status=name_status),
+                mock.patch.object(
+                    self.autopilot.validation_module,
+                    "command_succeeds",
+                    return_value=True,
+                ),
+                mock.patch.object(
+                    self.autopilot.validation_module,
+                    "run_command",
+                    side_effect=(name_status, raw),
+                ),
+                self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "validation_diff_invalid",
+                ),
+            ):
+                self.autopilot.changed_paths_between(
+                    ROOT,
+                    base_head=base,
+                    head=head,
+                    policy=self.policy,
+                )
+
+    def test_sandbox_path_guard_runs_before_tool_or_dependency_preparation(self):
+        head = "2" * 40
+        tree = "3" * 40
+        authority = {
+            "repository_head": "1" * 40,
+            "repository_tree": "4" * 40,
+            "closure_sha256": "5" * 64,
+        }
+        with (
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "repository_identity",
+                return_value=(head, tree),
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "validation_authority_identity",
+                return_value=authority,
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "changed_paths_between",
+                return_value=("crates/decodex-postgres/src/lib.rs",),
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "validation_tools",
+            ) as validation_tools,
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "prepare_dependency_cache",
+            ) as prepare_dependency_cache,
+            self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "candidate_path_sandbox_incompatible",
+            ),
+        ):
+            self.autopilot.run_validation_profiles(
+                ROOT,
+                ROOT,
+                self.policy,
+                role="maintainer",
+                candidate_kind="automation_repair",
+                base_head="1" * 40,
+                expected_head=head,
+            )
+
+        validation_tools.assert_not_called()
+        prepare_dependency_cache.assert_not_called()
+
+    def test_sandbox_task_graph_binds_the_primary_aggregate_closure(self):
+        first = self.autopilot.sandbox_task_graph_sha256(ROOT)
+        second = self.autopilot.sandbox_task_graph_sha256(ROOT)
+        self.assertTrue(self.autopilot.is_sha256(first))
+        self.assertEqual(first, second)
+
+    def test_validation_git_authority_resolves_the_shared_common_directory(self):
+        common = self.autopilot.repository_git_common_directory(ROOT)
+        expected = self.autopilot.run_command(
+            [
+                "git",
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            cwd=ROOT,
+            failure_code="test_git_common_directory_unavailable",
+        )
+        self.assertEqual(common, Path(expected).resolve())
+        self.assertEqual(common.name, ".git")
 
     def test_validation_profiles_use_the_primary_makefile(self):
         command = self.autopilot.trusted_profile_command(
@@ -1933,6 +2828,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
             name: self.autopilot.sha256_value({"tool": name})
             for name in self.autopilot.VALIDATION_TOOL_NAMES
         }
+        git_common_directory = (
+            self.autopilot.repository_git_common_directory(ROOT)
+        )
         with (
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -1971,6 +2869,11 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 self.autopilot.validation_module,
                 "validation_tool_evidence",
                 return_value=trusted_evidence,
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "repository_git_common_directory",
+                return_value=git_common_directory,
             ),
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -2065,6 +2968,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
 
         for secret in ("GH_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK"):
             self.assertNotIn(secret, environment)
+        self.assertNotIn("DECODEX_TEST_TEMP_ROOT", environment)
         self.assertNotIn("/tmp/hostile", environment["PATH"].split(os.pathsep))
         self.assertEqual(
             environment["PATH"].split(os.pathsep)[0],
@@ -2106,11 +3010,78 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 self.assertEqual(path.read_text(encoding="utf-8"), "")
                 self.assertEqual(path.stat().st_mode & 0o777, 0o400)
 
+    @unittest.skipUnless(
+        sys.platform == "darwin",
+        "requires the macOS Unix socket path limit",
+    )
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "the outer validation process owns this probe",
+    )
+    def test_validation_temporary_home_preserves_unix_socket_path_budget(self):
+        with self.autopilot.validation_temporary_directory() as directory:
+            temporary_home = Path(directory).resolve()
+            nested = temporary_home / ".tmp12345678"
+            nested.mkdir()
+            socket_path = nested / "schema.sock"
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+            try:
+                listener.bind(str(socket_path))
+            finally:
+                listener.close()
+
+            self.assertEqual(
+                temporary_home.parent,
+                self.autopilot.DARWIN_VALIDATION_TEMP_PARENT,
+            )
+
+    @unittest.skipUnless(
+        sys.platform == "darwin",
+        "requires the macOS validation temp policy",
+    )
+    def test_nested_validation_home_stays_inside_candidate_sandbox(self):
+        with self.autopilot.validation_temporary_directory() as directory:
+            outer = Path(directory).resolve()
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "DECODEX_CANDIDATE_SANDBOX": "1",
+                    "HOME": str(outer),
+                    "TMPDIR": str(outer),
+                },
+                clear=False,
+            ):
+                with self.autopilot.validation_temporary_directory() as nested:
+                    self.assertEqual(Path(nested).resolve().parent, outer)
+
+                mismatched = outer / "mismatched"
+                mismatched.mkdir()
+                with (
+                    mock.patch.dict(
+                        os.environ,
+                        {"TMPDIR": str(mismatched)},
+                        clear=False,
+                    ),
+                    self.assertRaises(self.autopilot.AutopilotError),
+                ):
+                    self.autopilot.validation_temporary_directory()
+
     @unittest.skipIf(
         os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
         "the outer validation process owns tool discovery",
     )
     def test_validation_tool_discovery_ignores_a_hostile_process_path(self):
+        self.assertTrue(
+            {
+                "initdb",
+                "pg_ctl",
+                "pg_dump",
+                "pg_restore",
+                "postgres",
+                "psql",
+            }.isdisjoint(self.autopilot.VALIDATION_TOOL_NAMES)
+        )
         with tempfile.TemporaryDirectory() as directory:
             hostile = Path(directory)
             for name in self.autopilot.VALIDATION_TOOL_NAMES:
@@ -2197,6 +3168,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
             self.assertEqual(
                 sandbox(
                     "from pathlib import Path; "
+                    f"Path({str(ROOT / 'Makefile.toml')!r}).read_bytes(); "
+                    "print('readable')"
+                ),
+                "readable",
+            )
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
                     f"print(Path({str(host_secret)!r}).read_text())"
                 ),
                 "",
@@ -2226,6 +3205,40 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 ),
                 "",
             )
+            self.assertEqual(
+                sandbox(
+                    "import subprocess; "
+                    "child = subprocess.Popen(['/bin/sleep', '1']); "
+                    "child.kill(); child.wait(timeout=2); "
+                    "print('terminated')"
+                ),
+                "terminated",
+            )
+            self.assertEqual(
+                sandbox(
+                    "import os, signal, subprocess; "
+                    "child = subprocess.Popen("
+                    "['/bin/sh', '-c', 'sleep 5 & echo $!; wait'], "
+                    "stdout=subprocess.PIPE, text=True); "
+                    "descendant = int(child.stdout.readline()); "
+                    "os.kill(descendant, signal.SIGKILL); "
+                    "child.wait(timeout=2); "
+                    "print('descendant-terminated')"
+                ),
+                "descendant-terminated",
+            )
+            self.assertEqual(
+                sandbox(
+                    "import os, signal; "
+                    "\ntry:"
+                    "\n os.kill(os.getppid(), signal.SIGCONT)"
+                    "\nexcept PermissionError:"
+                    "\n print('denied')"
+                    "\nelse:"
+                    "\n print('allowed')"
+                ),
+                "denied",
+            )
 
             socket_path = temporary_home / "validation.sock"
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -2247,6 +3260,69 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     self.assertEqual(connection.recv(2), b"ok")
             finally:
                 server.close()
+
+    @unittest.skipUnless(
+        sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file(),
+        "requires the macOS sandbox",
+    )
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "the outer validation sandbox owns this probe",
+    )
+    def test_validation_sandbox_allows_descriptor_pinned_private_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_home = Path(directory).resolve() / "sandbox"
+            private_directory = temporary_home / "private"
+            private_directory.mkdir(parents=True, mode=0o700)
+            receipt = private_directory / "candidate.json"
+            receipt.write_bytes(b'{"schema":"candidate"}\n')
+            receipt.chmod(0o600)
+            profile = self.autopilot.validation_sandbox_profile(
+                ROOT,
+                ROOT,
+                temporary_home,
+            )
+            git_output = self.autopilot.run_command(
+                [
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                    profile,
+                    sys.executable,
+                    "-c",
+                    (
+                        "import subprocess; "
+                        "subprocess.run("
+                        "['/usr/bin/git', 'status', '--porcelain=v1'], "
+                        f"cwd={str(ROOT)!r}, check=True, "
+                        "stdout=subprocess.DEVNULL); "
+                        "print('git-readable')"
+                    ),
+                ],
+                cwd=ROOT,
+                failure_code="sandbox_git_probe_failed",
+                timeout_seconds=10,
+            )
+            output = self.autopilot.run_command(
+                [
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                    profile,
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        "from scripts.vnext.postgres_store_test import "
+                        "read_private_authority_receipt; "
+                        f"payload, _ = read_private_authority_receipt(Path({str(receipt)!r})); "
+                        "print(payload.decode().strip())"
+                    ),
+                ],
+                cwd=ROOT,
+                failure_code="sandbox_probe_failed",
+                timeout_seconds=10,
+            )
+            self.assertEqual(git_output, "git-readable")
+            self.assertEqual(output, '{"schema":"candidate"}')
 
     def test_cargo_lock_rejects_new_git_sources_and_bad_checksums(self):
         registry_package = (
@@ -3819,6 +4895,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             base=pull_request["validation_receipt"]["base_head"],
             completed_at=111,
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
         identity = {
             "version": "decodex 0.2.0-test",
             "executable_sha256": "9" * 64,
@@ -3835,6 +4918,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             pr_url=pull_request["url"],
             owned_worktrees=[".worktrees/0123456789abcdef"],
             validation_receipt=reviewer_receipt,
+            handoff_receipt=reviewer_handoff,
             decodex_identity=identity,
             now=111,
         )
@@ -3862,6 +4946,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 land_intent_sha256=effect["intent_sha256"],
                 land_execution_receipt_sha256="a" * 64,
                 reviewer_receipt=reviewer_receipt,
+                reviewer_handoff=reviewer_handoff,
                 now=113,
             )
 
@@ -3883,6 +4968,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             base=pull_request["validation_receipt"]["base_head"],
             completed_at=111,
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
         identity = {
             "version": "decodex 0.2.0-test",
             "executable_sha256": "9" * 64,
@@ -3899,6 +4991,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             pr_url=pull_request["url"],
             owned_worktrees=[".worktrees/0123456789abcdef"],
             validation_receipt=reviewer_receipt,
+            handoff_receipt=reviewer_handoff,
             decodex_identity=identity,
             now=111,
         )
@@ -4011,12 +5104,21 @@ class UpstreamAutopilotTests(unittest.TestCase):
         review = self.autopilot.claim_candidate(
             state, self.policy, "reviewer", 110
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            review,
+            disposition="request_repair",
+            finding_codes=["missing_protocol_test", "cursor_gap"],
+            now=111,
+        )
 
         self.autopilot.request_repair(
             state,
             candidate_id=candidate_id,
             token=review["lease_token"],
             finding_codes=["missing_protocol_test", "cursor_gap"],
+            reviewer_handoff=reviewer_handoff,
             now=111,
         )
 
@@ -4076,7 +5178,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(state["events"][-1]["reason_code"], "base_stale")
         self.autopilot.validate_state(state)
 
-    def test_stale_land_intent_is_cleared_before_repair(self):
+    def test_unstarted_land_intent_is_cleared_before_repair(self):
         state, candidate_id = self.bootstrap()
         maintainer = self.autopilot.claim_candidate(
             state,
@@ -4093,6 +5195,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         candidate = self.autopilot.find_candidate(state, candidate_id)
         pull_request = candidate["pull_request"]
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
         self.autopilot.prepare_effect(
             state,
             self.policy,
@@ -4111,31 +5220,214 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 base=pull_request["validation_receipt"]["base_head"],
                 completed_at=111,
             ),
+            handoff_receipt=reviewer_handoff,
             decodex_identity={
                 "version": "decodex 0.2.0-test",
                 "executable_sha256": "9" * 64,
             },
             now=111,
         )
-        self.autopilot.advance_effect_phase(
+        expiry = candidate["lease"]["expires_at"]
+        self.autopilot.recover_expired_leases(state, self.policy, expiry)
+        self.assertIsNone(candidate["effect"])
+        recovered = self.autopilot.claim_candidate(
             state,
-            candidate_id=candidate_id,
-            role="reviewer",
-            token=reviewer["lease_token"],
-            phase="land_started",
-            now=112,
+            self.policy,
+            "reviewer",
+            expiry,
         )
-
+        retry_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            recovered,
+            disposition="accept",
+            now=expiry + 1,
+        )
+        self.autopilot.validate_state(state)
         self.autopilot.request_repair(
             state,
             candidate_id=candidate_id,
-            token=reviewer["lease_token"],
+            token=recovered["lease_token"],
             finding_codes=["base_stale"],
-            now=113,
+            reviewer_handoff=retry_handoff,
+            now=expiry + 1,
         )
 
         self.assertEqual(candidate["status"], "repair_requested")
         self.assertIsNone(candidate["effect"])
+        self.assertIsNone(candidate["handoff"])
+        self.assertEqual(
+            candidate["result"]["reviewer_handoff"],
+            retry_handoff,
+        )
+        self.autopilot.validate_state(state)
+
+    def test_state_rejects_mutated_terminal_and_land_handoff_provenance(self):
+        terminal_state, terminal_id = self.bootstrap()
+        self.resolve_bootstrap(terminal_state, terminal_id, now=101)
+        mutated_terminal = deepcopy(terminal_state)
+        terminal = self.autopilot.find_candidate(
+            mutated_terminal,
+            terminal_id,
+        )
+        terminal["result"]["reviewer_handoff"]["disposition"] = "accept"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_result_invalid",
+        ):
+            self.autopilot.validate_state(mutated_terminal)
+
+        land_state, land_id = self.land_started_state()
+        for field, value in (
+            ("base_head", "7" * 40),
+            ("repository_head", "8" * 40),
+            ("repository_tree", "9" * 40),
+        ):
+            with self.subTest(field=field):
+                mutated_land = deepcopy(land_state)
+                land = self.autopilot.find_candidate(mutated_land, land_id)
+                land["effect"]["handoff_receipt"][field] = value
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "candidate_effect_invalid",
+                ):
+                    self.autopilot.validate_state(mutated_land)
+
+    def test_state_rejects_mutated_commit_and_repair_handoff_provenance(self):
+        commit_state, commit_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            commit_state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.submit_pull_request(
+            commit_state,
+            commit_id,
+            maintainer,
+            now=102,
+        )
+        mutated_commit = deepcopy(commit_state)
+        commit = self.autopilot.find_candidate(mutated_commit, commit_id)
+        commit["commit_receipt"]["worker_handoff"]["repository_head"] = (
+            "7" * 40
+        )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_commit_receipt_invalid",
+        ):
+            self.autopilot.validate_state(mutated_commit)
+
+        reviewer = self.autopilot.claim_candidate(
+            commit_state,
+            self.policy,
+            "reviewer",
+            110,
+        )
+        reviewer_handoff = self.consume_review_handoff(
+            commit_state,
+            commit_id,
+            reviewer,
+            disposition="request_repair",
+            finding_codes=["validation_failed"],
+            now=111,
+        )
+        self.autopilot.request_repair(
+            commit_state,
+            candidate_id=commit_id,
+            token=reviewer["lease_token"],
+            finding_codes=["validation_failed"],
+            reviewer_handoff=reviewer_handoff,
+            now=111,
+        )
+        mutated_repair = deepcopy(commit_state)
+        repair = self.autopilot.find_candidate(mutated_repair, commit_id)
+        repair["result"]["reviewer_handoff"]["finding_codes"] = [
+            "different_finding"
+        ]
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_result_invalid",
+        ):
+            self.autopilot.validate_state(mutated_repair)
+
+    def test_land_recovery_rejects_mutated_persisted_handoff_identity(self):
+        state, candidate_id = self.land_started_state()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["effect"]["handoff_receipt"]["repository_tree"] = "9" * 40
+        expiry = candidate["lease"]["expires_at"]
+        self.autopilot.recover_expired_leases(state, self.policy, expiry)
+        recovered = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            expiry,
+        )
+        effect = candidate["effect"]
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "effect_handoff_receipt_invalid",
+        ):
+            self.autopilot.prepare_effect(
+                state,
+                self.policy,
+                candidate_id=candidate_id,
+                role="reviewer",
+                token=recovered["lease_token"],
+                kind="land",
+                branch=effect["branch"],
+                head_sha=effect["head_sha"],
+                pr_url=effect["pr_url"],
+                owned_worktrees=effect["owned_worktrees"],
+                validation_receipt=effect["validation_receipt"],
+                decodex_identity=effect["decodex_identity"],
+                now=expiry + 1,
+            )
+
+    def test_expired_prepared_land_is_reversible_but_started_land_is_not(self):
+        prepared_state, prepared_id = self.land_started_state()
+        prepared = self.autopilot.find_candidate(prepared_state, prepared_id)
+        prepared["effect"]["phase"] = "prepared"
+        expiry = prepared["lease"]["expires_at"]
+
+        self.autopilot.recover_expired_leases(
+            prepared_state,
+            self.policy,
+            expiry,
+        )
+        self.assertIsNone(prepared["effect"])
+        self.autopilot.validate_state(prepared_state)
+
+        started_state, started_id = self.land_started_state()
+        started = self.autopilot.find_candidate(started_state, started_id)
+        started_expiry = started["lease"]["expires_at"]
+        self.autopilot.recover_expired_leases(
+            started_state,
+            self.policy,
+            started_expiry,
+        )
+        self.assertEqual(started["effect"]["phase"], "land_started")
+        self.autopilot.validate_state(started_state)
+
+    def test_exhausted_prepared_land_expiry_can_queue_automatic_repair(self):
+        state, candidate_id = self.land_started_state()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["effect"]["phase"] = "prepared"
+        candidate["attempts"]["reviewer"] = self.policy["max_attempts"]
+        expiry = candidate["lease"]["expires_at"]
+
+        self.autopilot.recover_expired_leases(state, self.policy, expiry)
+        repairs = self.autopilot.queue_needed_repairs(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=expiry,
+        )
+
+        self.assertIsNone(candidate["effect"])
+        self.assertEqual(candidate["status"], "repair_pending")
+        self.assertEqual(len(repairs), 1)
         self.autopilot.validate_state(state)
 
     def test_repaired_pull_request_can_retire_before_no_change(self):
@@ -4153,11 +5445,20 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "reviewer",
             110,
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            review,
+            disposition="request_repair",
+            finding_codes=["change_not_required"],
+            now=111,
+        )
         self.autopilot.request_repair(
             state,
             candidate_id=candidate_id,
             token=review["lease_token"],
             finding_codes=["change_not_required"],
+            reviewer_handoff=reviewer_handoff,
             now=111,
         )
         repair_claim = self.autopilot.claim_candidate(
@@ -4207,6 +5508,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "reviewer",
             116,
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            review,
+            disposition="no_change",
+            now=117,
+        )
         self.autopilot.resolve_candidate(
             state,
             candidate_id=candidate_id,
@@ -4221,6 +5529,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "reviewer",
                 completed_at=117,
             ),
+            reviewer_handoff=reviewer_handoff,
             now=117,
         )
 
@@ -4311,6 +5620,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "version": "decodex 0.2.0-test",
             "executable_sha256": "9" * 64,
         }
+        worker_handoff = self.consume_worker_handoff(
+            state,
+            candidate_id,
+            first,
+            base_head="1" * 40,
+            tree="3" * 40,
+            now=101,
+        )
         self.autopilot.prepare_effect(
             state,
             self.policy,
@@ -4321,6 +5638,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             branch=candidate["branch_name"],
             head_sha="1" * 40,
             pr_url=None,
+            handoff_receipt=worker_handoff,
             decodex_identity=identity,
             now=101,
         )
@@ -4337,6 +5655,16 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "maintainer",
             expiry,
         )
+        self.assertEqual(
+            candidate["effect"]["active_lease_generation"],
+            second["candidate"]["lease"]["generation"],
+        )
+        self.autopilot.validate_state(state)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            self.autopilot.save_state(state, state_path, expiry)
+            state = self.autopilot.load_state(state_path)
+        candidate = self.autopilot.find_candidate(state, candidate_id)
 
         with self.assertRaisesRegex(
             self.autopilot.AutopilotError,
@@ -4378,8 +5706,160 @@ class UpstreamAutopilotTests(unittest.TestCase):
             decodex_identity=identity,
             now=expiry + 1,
         )
-        self.assertGreater(adopted["lease_generation"], first_generation)
+        self.assertEqual(adopted["lease_generation"], first_generation)
+        self.assertGreater(
+            adopted["active_lease_generation"], first_generation
+        )
+        self.assertEqual(adopted["handoff_receipt"], worker_handoff)
         self.autopilot.validate_state(state)
+
+    def test_land_started_recovery_preserves_original_review_handoff(self):
+        state, candidate_id = self.land_started_state()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        original_effect = deepcopy(candidate["effect"])
+        expiry = candidate["lease"]["expires_at"]
+        self.autopilot.recover_expired_leases(state, self.policy, expiry)
+        second = self.autopilot.claim_candidate(
+            state, self.policy, "reviewer", expiry
+        )
+        self.assertEqual(
+            candidate["effect"]["active_lease_generation"],
+            second["candidate"]["lease"]["generation"],
+        )
+        self.autopilot.validate_state(state)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            self.autopilot.save_state(state, state_path, expiry)
+            state = self.autopilot.load_state(state_path)
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        pull_request = candidate["pull_request"]
+
+        adopted = self.autopilot.prepare_effect(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="reviewer",
+            token=second["lease_token"],
+            kind="land",
+            branch=pull_request["branch"],
+            head_sha=pull_request["head_sha"],
+            pr_url=pull_request["url"],
+            owned_worktrees=original_effect["owned_worktrees"],
+            validation_receipt=original_effect["validation_receipt"],
+            decodex_identity=original_effect["decodex_identity"],
+            now=expiry + 1,
+        )
+
+        self.assertEqual(
+            adopted["lease_generation"], original_effect["lease_generation"]
+        )
+        self.assertEqual(
+            adopted["handoff_receipt"], original_effect["handoff_receipt"]
+        )
+        self.assertEqual(
+            adopted["active_lease_generation"],
+            second["candidate"]["lease"]["generation"],
+        )
+        process_evidence = {
+            "execution_mode": "command_completed",
+            "decodex_version": adopted["decodex_identity"]["version"],
+            "decodex_executable_sha256": adopted["decodex_identity"][
+                "executable_sha256"
+            ],
+            "started_at": expiry + 1,
+            "completed_at": expiry + 2,
+            "stdout_sha256": "a" * 64,
+            "reported_merge_sha": "3" * 40,
+        }
+        command_receipt = self.autopilot.land_command_receipt(
+            intent_sha256=adopted["intent_sha256"],
+            process_evidence=process_evidence,
+        )
+        self.autopilot.record_land_command_execution(
+            state,
+            candidate_id=candidate_id,
+            token=second["lease_token"],
+            receipt=command_receipt,
+            now=expiry + 2,
+        )
+        execution_receipt = self.autopilot.land_execution_receipt(
+            intent_sha256=adopted["intent_sha256"],
+            decodex=adopted["decodex_identity"],
+            merge_sha="3" * 40,
+            landed_record_sha256="b" * 64,
+            process_evidence=command_receipt,
+            intent_started_at=adopted["started_at"],
+            completed_at=expiry + 2,
+        )
+        self.autopilot.record_land_execution(
+            state,
+            candidate_id=candidate_id,
+            token=second["lease_token"],
+            receipt=execution_receipt,
+            now=expiry + 2,
+        )
+        self.autopilot.resolve_candidate(
+            state,
+            candidate_id=candidate_id,
+            role="reviewer",
+            token=second["lease_token"],
+            outcome="landed",
+            reason_code="review_and_gates_passed",
+            merge_sha="3" * 40,
+            land_intent_sha256=adopted["intent_sha256"],
+            land_execution_receipt_sha256=self.autopilot.sha256_value(
+                execution_receipt
+            ),
+            reviewer_receipt=adopted["validation_receipt"],
+            reviewer_handoff=original_effect["handoff_receipt"],
+            now=expiry + 3,
+        )
+
+        terminal = self.autopilot.find_candidate(state, candidate_id)
+        self.assertEqual(terminal["status"], "landed")
+        self.assertIsNone(terminal["handoff"])
+        self.assertEqual(
+            terminal["result"]["reviewer_handoff"],
+            original_effect["handoff_receipt"],
+        )
+        self.autopilot.validate_state(state)
+
+    def test_blocked_land_effect_claim_is_immediately_persistable(self):
+        state, candidate_id, token = self.land_started_state(
+            include_token=True
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        original_handoff = deepcopy(candidate["effect"]["handoff_receipt"])
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="reviewer",
+            token=token,
+            reason_code="land_result_unconfirmed",
+            error_digest="a" * 64,
+            now=113,
+        )
+        retry_at = candidate["next_retry_at"]
+
+        recovered = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            retry_at,
+        )
+
+        self.assertEqual(
+            candidate["effect"]["active_lease_generation"],
+            recovered["candidate"]["lease"]["generation"],
+        )
+        self.assertEqual(candidate["effect"]["handoff_receipt"], original_handoff)
+        self.autopilot.validate_state(state)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            self.autopilot.save_state(state, state_path, retry_at)
+            persisted = self.autopilot.load_state(state_path)
+        self.autopilot.validate_state(persisted)
 
     def test_lease_renewal_budget_is_bounded(self):
         state, _candidate_id = self.bootstrap()
@@ -4505,6 +5985,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "version": "decodex 0.2.0-test",
             "executable_sha256": "9" * 64,
         }
+        worker_handoff = self.consume_worker_handoff(
+            state,
+            candidate_id,
+            claim,
+            base_head="1" * 40,
+            tree="3" * 40,
+            now=start,
+        )
         effect = self.autopilot.prepare_effect(
             state,
             self.policy,
@@ -4518,6 +6006,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             )["branch_name"],
             head_sha="1" * 40,
             pr_url=None,
+            handoff_receipt=worker_handoff,
             decodex_identity=identity,
             now=start,
         )
@@ -4580,6 +6069,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             base=pull_request["validation_receipt"]["base_head"],
             completed_at=111,
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
         expires_at = candidate["lease"]["expires_at"]
         after_slow_preflight = (
             expires_at
@@ -4596,6 +6092,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "pr_url": pull_request["url"],
             "owned_worktrees": [".worktrees/0123456789abcdef"],
             "validation_receipt": reviewer_receipt,
+            "handoff_receipt": reviewer_handoff,
             "decodex_identity": {
                 "version": "decodex 0.2.0-test",
                 "executable_sha256": "9" * 64,
@@ -4706,6 +6203,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
         blocked = self.autopilot.find_candidate(state, blocked_id)
         blocked["status"] = "needs_attention"
         blocked["attempts"] = {"maintainer": 3, "reviewer": 0}
+        blocked["retry_role"] = "maintainer"
         blocked["result"] = {
             "outcome": "blocked",
             "reason_code": "validation_failed",
@@ -4731,6 +6229,487 @@ class UpstreamAutopilotTests(unittest.TestCase):
         repair = self.autopilot.find_candidate(state, first[0])
         self.assertEqual(repair["kind"], "automation_repair")
         self.assertEqual(repair["repair_of"], blocked_id)
+        self.assertEqual(blocked["status"], "repair_pending")
+        self.autopilot.validate_state(state)
+
+    def test_blocked_land_started_stays_visible_without_automatic_repair(self):
+        state, candidate_id, token = self.land_started_state(
+            include_token=True
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["reviewer"] = self.policy["max_attempts"]
+
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="reviewer",
+            token=token,
+            reason_code="land_result_unconfirmed",
+            error_digest="a" * 64,
+            now=113,
+        )
+        repairs = self.autopilot.queue_needed_repairs(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=114,
+        )
+
+        self.assertEqual(repairs, [])
+        self.assertEqual(candidate["status"], "needs_attention")
+        self.assertEqual(candidate["effect"]["phase"], "land_started")
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "repair_target_external_effect_unresolved",
+        ):
+            self.autopilot.queue_automation_repair(
+                state,
+                self.policy,
+                blocked_candidate_id=candidate_id,
+                reason_code="land_result_unconfirmed",
+                repository_head="9" * 40,
+                now=115,
+            )
+        health = self.autopilot.state_health(state, None, 115, [])
+        self.assertIn("external_effect_unresolved", health["blockers"])
+        self.assertEqual(
+            health["unresolved_external_effects"],
+            [
+                {
+                    "candidate_id": candidate_id,
+                    "kind": "land",
+                    "phase": "land_started",
+                }
+            ],
+        )
+        self.autopilot.validate_state(state)
+
+    def test_expired_land_started_stays_visible_without_automatic_repair(self):
+        state, candidate_id = self.land_started_state()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["reviewer"] = self.policy["max_attempts"]
+        expires_at = candidate["lease"]["expires_at"]
+
+        recovered = self.autopilot.recover_expired_leases(
+            state,
+            self.policy,
+            expires_at,
+        )
+        repairs = self.autopilot.queue_needed_repairs(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=expires_at,
+        )
+
+        self.assertEqual(recovered, [candidate_id])
+        self.assertEqual(repairs, [])
+        self.assertEqual(candidate["status"], "needs_attention")
+        self.assertEqual(candidate["effect"]["phase"], "land_started")
+        health = self.autopilot.state_health(
+            state,
+            None,
+            expires_at,
+            recovered,
+        )
+        self.assertEqual(health["status"], "blocked")
+        self.assertIn("external_effect_unresolved", health["blockers"])
+        self.autopilot.validate_state(state)
+
+    def test_publish_and_retire_effects_stay_visible_without_generic_repair(self):
+        cases = (
+            ("publish", "prepared"),
+            ("publish", "pushed"),
+            ("retire_pr", "prepared"),
+        )
+        for kind, phase in cases:
+            with self.subTest(kind=kind, phase=phase):
+                state, candidate_id, token = self.external_effect_state(
+                    kind,
+                    phase,
+                )
+                candidate = self.autopilot.find_candidate(
+                    state,
+                    candidate_id,
+                )
+                candidate["attempts"]["maintainer"] = self.policy[
+                    "max_attempts"
+                ]
+
+                self.autopilot.block_candidate(
+                    state,
+                    self.policy,
+                    candidate_id=candidate_id,
+                    role="maintainer",
+                    token=token,
+                    reason_code="remote_result_unconfirmed",
+                    error_digest="c" * 64,
+                    now=115,
+                )
+                repairs = self.autopilot.queue_needed_repairs(
+                    state,
+                    self.policy,
+                    repository_head="9" * 40,
+                    now=116,
+                )
+
+                self.assertEqual(repairs, [])
+                self.assertEqual(candidate["status"], "needs_attention")
+                self.assertEqual(candidate["effect"]["kind"], kind)
+                self.assertEqual(candidate["effect"]["phase"], phase)
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "repair_target_external_effect_unresolved",
+                ):
+                    self.autopilot.queue_automation_repair(
+                        state,
+                        self.policy,
+                        blocked_candidate_id=candidate_id,
+                        reason_code="remote_result_unconfirmed",
+                        repository_head="9" * 40,
+                        now=117,
+                    )
+                health = self.autopilot.state_health(
+                    state,
+                    None,
+                    117,
+                    [],
+                )
+                self.assertIn(
+                    "external_effect_unresolved",
+                    health["blockers"],
+                )
+                self.assertEqual(
+                    health["unresolved_external_effects"],
+                    [
+                        {
+                            "candidate_id": candidate_id,
+                            "kind": kind,
+                            "phase": phase,
+                        }
+                    ],
+                )
+                self.autopilot.validate_state(state)
+
+    def test_reviewer_cannot_convert_land_started_into_repair_requested(self):
+        state, candidate_id, token = self.land_started_state(
+            include_token=True
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "repair_effect_not_reversible",
+        ):
+            self.autopilot.request_repair(
+                state,
+                candidate_id=candidate_id,
+                token=token,
+                finding_codes=["land_result_unconfirmed"],
+                now=113,
+            )
+
+        self.assertEqual(candidate["status"], "reviewing")
+        self.assertEqual(candidate["effect"]["phase"], "land_started")
+        self.autopilot.validate_state(state)
+
+    def test_exhausted_repair_request_persists_blocked_evidence(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        reviewer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            110,
+        )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="request_repair",
+            finding_codes=["validation_failed"],
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=["validation_failed"],
+            reviewer_handoff=reviewer_handoff,
+            now=111,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["maintainer"] = self.policy["max_attempts"]
+
+        claimed = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            112,
+        )
+        repairs = self.autopilot.queue_needed_repairs(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=112,
+        )
+
+        self.assertIsNone(claimed)
+        self.assertEqual(candidate["status"], "repair_pending")
+        self.assertEqual(candidate["result"]["outcome"], "blocked")
+        self.assertEqual(
+            candidate["result"]["reason_code"],
+            "attempt_budget_exhausted",
+        )
+        self.assertEqual(len(candidate["result"]["error_digest"]), 64)
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual(
+            self.autopilot.find_candidate(state, repairs[0])["repair_of"],
+            candidate_id,
+        )
+        self.autopilot.validate_state(state)
+
+    def test_state_rejects_orphaned_and_self_referential_repairs(self):
+        state, _blocked, repair = self.automatic_repair_state()
+        orphaned = deepcopy(state)
+        orphan = self.autopilot.find_candidate(orphaned, repair["id"])
+        orphan["repair_of"] = "f" * 16
+        orphan["path_summary"]["repair_of"] = "f" * 16
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_repair_target_invalid",
+        ):
+            self.autopilot.validate_state(orphaned)
+
+        self_referential = deepcopy(state)
+        cyclic = self.autopilot.find_candidate(
+            self_referential,
+            repair["id"],
+        )
+        cyclic["repair_of"] = cyclic["id"]
+        cyclic["path_summary"]["repair_of"] = cyclic["id"]
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_repair_target_invalid",
+        ):
+            self.autopilot.validate_state(self_referential)
+
+    def test_state_requires_exactly_one_status_aligned_active_repair_owner(self):
+        state, blocked, repair = self.automatic_repair_state()
+        self.autopilot.validate_state(state)
+
+        missing_owner = deepcopy(state)
+        missing_owner["candidates"] = [
+            candidate
+            for candidate in missing_owner["candidates"]
+            if candidate["id"] != repair["id"]
+        ]
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_repair_ownership_invalid",
+        ):
+            self.autopilot.validate_state(missing_owner)
+
+        wrong_status = deepcopy(state)
+        wrong_target = self.autopilot.find_candidate(
+            wrong_status,
+            blocked["id"],
+        )
+        wrong_target["status"] = "needs_attention"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_repair_ownership_invalid",
+        ):
+            self.autopilot.validate_state(wrong_status)
+
+        duplicate_owner = deepcopy(state)
+        duplicate = deepcopy(
+            self.autopilot.find_candidate(duplicate_owner, repair["id"])
+        )
+        duplicate["id"] = "0" * 16
+        duplicate["branch_name"] = "xv/codex-upstream-" + duplicate["id"]
+        duplicate["discovery_sequence"] = duplicate_owner["source"][
+            "next_discovery_sequence"
+        ]
+        duplicate_owner["source"]["next_discovery_sequence"] += 1
+        duplicate_owner["candidates"].append(duplicate)
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_repair_ownership_invalid",
+        ):
+            self.autopilot.validate_state(duplicate_owner)
+
+    def test_state_rejects_repair_cycles(self):
+        state, _blocked, repair = self.automatic_repair_state()
+        repair["status"] = "needs_attention"
+        repair["attempts"] = {"maintainer": 3, "reviewer": 0}
+        repair["retry_role"] = "maintainer"
+        repair["result"] = {
+            "outcome": "blocked",
+            "reason_code": "validation_failed",
+            "error_digest": "b" * 64,
+            "at": 201,
+        }
+        nested = self.autopilot.queue_automation_repair(
+            state,
+            self.policy,
+            blocked_candidate_id=repair["id"],
+            reason_code="validation_failed",
+            repository_head="8" * 40,
+            now=202,
+        )
+        self.autopilot.validate_state(state)
+
+        repair["repair_of"] = nested["id"]
+        repair["path_summary"]["repair_of"] = nested["id"]
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_repair_cycle_invalid",
+        ):
+            self.autopilot.validate_state(state)
+
+    def test_pruning_removes_closed_repair_components_without_orphans(self):
+        state, bootstrap_id = self.bootstrap()
+        self.resolve_bootstrap(state, bootstrap_id, now=101)
+        root = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="live_configuration_drift",
+            repository_head="9" * 40,
+            now=200,
+        )
+        root["status"] = "needs_attention"
+        root["attempts"] = {"maintainer": 3, "reviewer": 0}
+        root["retry_role"] = "maintainer"
+        root["result"] = {
+            "outcome": "blocked",
+            "reason_code": "validation_failed",
+            "error_digest": "d" * 64,
+            "at": 201,
+        }
+        repair = self.autopilot.queue_automation_repair(
+            state,
+            self.policy,
+            blocked_candidate_id=root["id"],
+            reason_code="validation_failed",
+            repository_head="8" * 40,
+            now=202,
+        )
+        self.resolve_repair_no_change(state, repair["id"], now=203)
+        self.resolve_bootstrap(state, root["id"], now=210)
+        self.autopilot.validate_state(state)
+
+        root_template = deepcopy(root)
+        repair_template = deepcopy(repair)
+        components = [(root["id"], repair["id"])]
+        used_ids = {candidate["id"] for candidate in state["candidates"]}
+        clone_index = 0
+        candidate_limit = 8
+        with mock.patch.object(
+            self.autopilot.state_module,
+            "MAX_STATE_CANDIDATES",
+            candidate_limit,
+        ):
+            while len(state["candidates"]) <= candidate_limit + 3:
+                root_clone = deepcopy(root_template)
+                repair_clone = deepcopy(repair_template)
+                root_id = self.autopilot.sha256_value(
+                    {"root_clone": clone_index}
+                )[:16]
+                repair_id = self.autopilot.sha256_value(
+                    {"repair_clone": clone_index}
+                )[:16]
+                clone_index += 1
+                if (
+                    root_id in used_ids
+                    or repair_id in used_ids
+                    or root_id == repair_id
+                ):
+                    continue
+                used_ids.update({root_id, repair_id})
+                root_clone["id"] = root_id
+                root_clone["branch_name"] = f"xv/codex-upstream-{root_id}"
+                root_clone["result"]["reviewer_handoff"][
+                    "candidate_id"
+                ] = root_id
+                root_clone["discovery_sequence"] = state["source"][
+                    "next_discovery_sequence"
+                ]
+                state["source"]["next_discovery_sequence"] += 1
+                repair_clone["id"] = repair_id
+                repair_clone["branch_name"] = (
+                    f"xv/codex-upstream-{repair_id}"
+                )
+                repair_clone["result"]["reviewer_handoff"][
+                    "candidate_id"
+                ] = repair_id
+                repair_clone["discovery_sequence"] = state["source"][
+                    "next_discovery_sequence"
+                ]
+                state["source"]["next_discovery_sequence"] += 1
+                repair_clone["repair_of"] = root_id
+                repair_clone["path_summary"]["repair_of"] = root_id
+                state["candidates"].extend([root_clone, repair_clone])
+                components.append((root_id, repair_id))
+
+            self.assertGreater(len(state["candidates"]), candidate_limit)
+            self.autopilot.prune_state(state)
+
+            remaining = {
+                candidate["id"] for candidate in state["candidates"]
+            }
+            self.assertLessEqual(len(remaining), candidate_limit)
+            self.assertTrue(
+                any(
+                    root_id not in remaining and repair_id not in remaining
+                    for root_id, repair_id in components
+                )
+            )
+            for root_id, repair_id in components:
+                self.assertEqual(root_id in remaining, repair_id in remaining)
+            self.autopilot.validate_state(state)
+
+    def test_exhausted_candidate_becomes_automatic_repair_pending(self):
+        state, candidate_id = self.bootstrap()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["maintainer"] = self.policy["max_attempts"] - 1
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            100,
+        )
+
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            reason_code="validation_failed",
+            error_digest="a" * 64,
+            now=101,
+        )
+        repairs = self.autopilot.queue_needed_repairs(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=101,
+        )
+
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual(candidate["status"], "repair_pending")
+        self.assertEqual(candidate["retry_role"], "maintainer")
+        repair = self.autopilot.find_candidate(state, repairs[0])
+        self.assertEqual(repair["repair_of"], candidate_id)
+        self.autopilot.validate_state(state)
 
     def test_automation_repair_preempts_other_critical_work(self):
         state, blocked_id = self.bootstrap()
@@ -5165,6 +7144,12 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 first["decision"]
             ),
             "reviewer_receipt": reviewer_receipt,
+            "reviewer_handoff": self.stored_review_handoff(
+                first["id"],
+                reviewer_receipt,
+                disposition="no_change",
+                consumed_at=202,
+            ),
             "resolved_at": 202,
         }
         second = self.autopilot.queue_automation_improvement(
@@ -5269,6 +7254,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "reviewer",
             203,
         )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            repair["id"],
+            review,
+            disposition="no_change",
+            now=204,
+        )
         self.autopilot.resolve_candidate(
             state,
             candidate_id=repair["id"],
@@ -5283,6 +7275,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "reviewer",
                 completed_at=204,
             ),
+            reviewer_handoff=reviewer_handoff,
             now=204,
         )
 
@@ -5312,6 +7305,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         blocked = self.autopilot.find_candidate(state, blocked_id)
         pull_request = blocked["pull_request"]
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            blocked_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
         identity = {
             "version": "decodex 0.2.0-test",
             "executable_sha256": "9" * 64,
@@ -5334,6 +7334,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 base=pull_request["validation_receipt"]["base_head"],
                 completed_at=111,
             ),
+            handoff_receipt=reviewer_handoff,
             decodex_identity=identity,
             now=111,
         )

@@ -25,8 +25,7 @@ use std::{
 
 use deadpool_postgres::Connect;
 use libc::{
-	AT_FDCWD, AT_SYMLINK_NOFOLLOW, O_CLOEXEC, O_DIRECTORY, O_NOFOLLOW, O_RDONLY, S_IFMT, S_IFSOCK,
-	stat,
+	AT_FDCWD, AT_SYMLINK_NOFOLLOW, O_CLOEXEC, O_DIRECTORY, O_NOFOLLOW, S_IFMT, S_IFSOCK, stat,
 };
 #[cfg(test)] use tokio::sync::Barrier;
 use tokio::{
@@ -45,6 +44,11 @@ type ConnectFuture<'a> = Pin<
 			+ 'a,
 	>,
 >;
+
+#[cfg(target_vendor = "apple")]
+const DIRECTORY_ACCESS: libc::c_int = libc::O_SEARCH;
+#[cfg(not(target_vendor = "apple"))]
+const DIRECTORY_ACCESS: libc::c_int = libc::O_RDONLY;
 
 #[derive(Clone)]
 pub(crate) struct VerifiedSocketConnect {
@@ -381,7 +385,7 @@ fn open_directory(parent: RawFd, name: &CStr) -> std::io::Result<File> {
 	// SAFETY: `parent` is AT_FDCWD or an open directory, `name` is NUL-terminated,
 	// and a successful `openat` returns a new descriptor owned by this function.
 	let descriptor = unsafe {
-		libc::openat(parent, name.as_ptr(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+		libc::openat(parent, name.as_ptr(), DIRECTORY_ACCESS | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
 	};
 
 	if descriptor == -1 {
@@ -421,7 +425,7 @@ mod tests {
 	impl TempDir {
 		fn new() -> io::Result<Self> {
 			let sequence = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
-			let path = Path::new("/tmp").join(format!("dxs-{}-{sequence}", process::id()));
+			let path = std::env::temp_dir().join(format!("dxs-{}-{sequence}", process::id()));
 
 			fs::create_dir(&path)?;
 			fs::set_permissions(&path, Permissions::from_mode(0o700))?;
