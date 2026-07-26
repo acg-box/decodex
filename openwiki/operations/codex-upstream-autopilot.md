@@ -27,10 +27,14 @@ upstream binaries and scripts are not downloaded or executed.
 
 ```mermaid
 flowchart LR
-    U["Official Codex main and tags"] --> M["Upstream Maintainer"]
+    U["Official Codex main and tags"] --> M["Maintainer parent"]
     L["Installed Codex schemas"] --> M
+    M --> W["Worker subagent"]
+    W -->|"Staged candidate"| M
     M -->|"No change"| C["Terminal cursor outcome"]
-    M -->|"Signed commit and PR"| R["Independent Reviewer"]
+    M -->|"Signed commit and PR"| R["Reviewer parent"]
+    R --> V["Read-only review subagent"]
+    V -->|"Accept or repair codes"| R
     R -->|"Repair codes"| M
     R -->|"decodex land"| C
     H["Health Supervisor"] --> M
@@ -38,11 +42,18 @@ flowchart LR
     C --> H
 ```
 
-The Maintainer and Reviewer are separate Codex App tasks and contexts. A Maintainer
-cannot merge its own change or make a terminal no-change/rejected decision. A Reviewer
-reproduces a proposed decision or reviews the exact pull-request head. It does not
-repair the reviewed work. It returns bounded finding codes so the next Maintainer run
-produces new evidence or a new head.
+The Maintainer and Reviewer are separate Codex App tasks and contexts. The Maintainer
+parent owns discovery, claims, worktree lifecycle, and state transitions. It cannot
+edit or stage candidate files. It delegates those writes to exactly one worker
+subagent and verifies the staged diff. The Reviewer parent delegates the exact diff
+review to one read-only review subagent. It does not repair reviewed work. The
+Reviewer returns bounded finding codes so a later worker produces new evidence or a
+new head. A Maintainer cannot merge its own change or make a terminal
+no-change/rejected decision.
+
+The scheduled tasks do not use Decodex server, runtime, MCP, planning, or queue
+surfaces. Only the state wrapper can invoke `decodex commit` or `decodex land` after
+the required evidence is present.
 
 After a pull request is accepted into state, Maintainer removes its clean temporary
 worktree and preserves the branch. Reviewer checks out that exact PR branch and head
@@ -56,9 +67,11 @@ exact local branch, and then uses Decodex's primary-main recovery path. The
 wrapper records state only after it
 verifies the exact merge and synchronized local `main`.
 
-Health observes the loop but does not implement or land a candidate. It recovers
-expired leases and deterministically turns each exhausted item into one deduplicated
-critical `automation_repair` candidate. Maintainer implements that repair and Reviewer
+Health observes the loop but does not implement or land a candidate. The state
+transaction deterministically turns each exhausted item into one deduplicated
+critical `automation_repair` candidate before it persists the result. Health is a
+backstop that recovers expired leases and any unowned repair. Maintainer delegates
+that repair to a worker subagent, and Reviewer
 must independently approve it. A landed repair, or an independently reproduced
 no-change result after a transient condition clears, resets and requeues the original
 item.
@@ -128,6 +141,9 @@ head. No unrelated branch can be rewritten.
 All scheduled tasks use local execution from the primary clean `main` checkout. The
 automation configuration cannot use a worktree cwd. Maintainer and Reviewer can create
 temporary isolated worktrees for one implementation or review.
+Each scheduled upstream task uses the checked-in `run_upstream_autopilot` launcher.
+The launcher accepts only a root-owned, read-only Python 3.11 or later executable with
+`tomllib`. It does not rely on the macOS system or a user-writable bundled Python.
 
 ## State And Privacy
 
@@ -283,6 +299,9 @@ commit.
 
 ## Outcomes
 
+The fresh runtime state uses `decodex/codex-upstream-state/3`. It does not migrate
+or accept an earlier state contract.
+
 Every candidate reaches one of these states:
 
 - `landed`: independent review and landing readback passed.
@@ -290,14 +309,20 @@ Every candidate reaches one of these states:
 - `rejected`: evidence proves that the change does not apply to Decodex.
 - `repair_requested`: Reviewer returned bounded finding codes.
 - `retry_wait`: a bounded transient failure will retry automatically.
-- `needs_attention`: three attempts failed and the health task must report the exact
-  blocker. This is not success.
+- `repair_pending`: the attempt budget ended and a deduplicated automatic repair owns
+  the blocker. This is not success, but it does not require operator follow-up.
 
 Only `landed`, `no_change`, and `rejected` advance a contiguous upstream cursor.
 The independent Reviewer owns all three outcomes. Missing required methods or a
 repository schema-digest mismatch cannot close as `no_change` or `rejected`.
 An `automation_repair` candidate cannot close as `rejected`: it must land a repair or
 independently reproduce that the transient failure cleared and close as `no_change`.
+
+Each scheduled run archives its own Codex thread after it persists and reads back its
+terminal ownership result. This includes a retry or automatically owned repair.
+Archiving only cleans the Codex task list; it does not disable the recurring
+automation or delete state evidence. A run stays visible only when an external effect
+is ambiguous or automation cannot contain a required human authority decision.
 
 ## Cost
 

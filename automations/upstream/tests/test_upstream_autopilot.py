@@ -32,6 +32,20 @@ class UpstreamAutopilotTests(unittest.TestCase):
             ROOT / "automations/upstream/policy.json"
         )
 
+    def test_fresh_state_uses_the_nonlegacy_v3_contract(self):
+        state = self.autopilot.new_state(100)
+
+        self.assertEqual(state["schema"], "decodex/codex-upstream-state/3")
+        self.autopilot.validate_state(state)
+
+        legacy = deepcopy(state)
+        legacy["schema"] = "decodex/codex-upstream-state/2"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "state_schema_invalid",
+        ):
+            self.autopilot.validate_state(legacy)
+
     def observation(
         self,
         head,
@@ -5114,6 +5128,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
         blocked = self.autopilot.find_candidate(state, blocked_id)
         blocked["status"] = "needs_attention"
         blocked["attempts"] = {"maintainer": 3, "reviewer": 0}
+        blocked["retry_role"] = "maintainer"
         blocked["result"] = {
             "outcome": "blocked",
             "reason_code": "validation_failed",
@@ -5139,6 +5154,43 @@ class UpstreamAutopilotTests(unittest.TestCase):
         repair = self.autopilot.find_candidate(state, first[0])
         self.assertEqual(repair["kind"], "automation_repair")
         self.assertEqual(repair["repair_of"], blocked_id)
+        self.assertEqual(blocked["status"], "repair_pending")
+        self.autopilot.validate_state(state)
+
+    def test_exhausted_candidate_becomes_automatic_repair_pending(self):
+        state, candidate_id = self.bootstrap()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["maintainer"] = self.policy["max_attempts"] - 1
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            100,
+        )
+
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            reason_code="validation_failed",
+            error_digest="a" * 64,
+            now=101,
+        )
+        repairs = self.autopilot.queue_needed_repairs(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=101,
+        )
+
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual(candidate["status"], "repair_pending")
+        self.assertEqual(candidate["retry_role"], "maintainer")
+        repair = self.autopilot.find_candidate(state, repairs[0])
+        self.assertEqual(repair["repair_of"], candidate_id)
+        self.autopilot.validate_state(state)
 
     def test_automation_repair_preempts_other_critical_work(self):
         state, blocked_id = self.bootstrap()

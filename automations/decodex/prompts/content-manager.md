@@ -19,6 +19,11 @@ Run `pwd`, `git status --short --branch`, and `git rev-parse HEAD` before readin
 writing generated state. Require the primary clean `main` checkout, no `.worktrees`
 component in cwd, and all required tools and files. On any mismatch, fail closed before
 changing generated state.
+Set `CARGO_TARGET_DIR="$PWD/target"`, run
+`cargo build --locked -p decodex-publisher`, and require the resulting executable at
+`$PWD/target/debug/decodex-publisher`. Keep that exact absolute path in this run as
+`<publisher>` and use it for every Publisher command. Never rely on a bare
+`decodex-publisher` command from `PATH`.
 
 Required reads:
 - `openwiki/quickstart.md`
@@ -71,9 +76,9 @@ Workflow:
    Require at least three published posts with valid 24-hour outcomes before changing
    a numerical topic weight or format preference. Otherwise record `no_change`. Do not
    optimize from views alone or lower the evidence threshold to improve engagement.
-9. Run `decodex-publisher validate-social` with no path arguments after any candidate
+9. Run `<publisher> validate-social` with no path arguments after any candidate
    or strategy write. This validates all five default contract directories. If the
-   command is not installed, use the workspace binary with the same arguments.
+   build or executable readback fails, stop without writing another artifact.
 
 Success conditions:
 - Every run produces one publishable candidate, one schema-valid quality skip, one due
@@ -86,5 +91,6 @@ Report the selected action, evidence and Radar artifacts used, candidate or skip
 daily or weekly learning performed, validation result, exact blockers, and the next
 mandatory check.
 Apply `scheduled-run-thread-retention.md` after validation. A validated candidate,
-quality skip, strategy cycle, or proven no-op can use native `set_thread_archived`.
-Keep fail-closed, unpersisted, and human-decision results visible.
+quality skip, strategy cycle, proven no-op, or persisted fail-closed result with an
+automatic Manager-owned next action must use native `set_thread_archived`. Keep only
+unpersisted or human-decision results visible.

@@ -6,19 +6,22 @@ local evidence.
 
 Before the final report, classify the current run:
 
-- `auto_archive`: The run reached a terminal outcome. Every intended write and
-  external effect has a durable receipt and readback. No lease, browser handoff,
+- `auto_archive`: The run reached a terminal outcome for its ownership scope. Every
+  intended write and external effect has a durable receipt and readback. A retry,
+  blocked result, or failed validation is terminal for the run when a durable
+  automatic repair owner or successor record exists. No lease, browser handoff,
   ambiguous side effect, active tool call, or human decision remains.
-- `keep_visible`: The run needs human attention or has uncertain state. This includes
-  `needs_attention`, dirty or wrong checkout, missing authority, invalid or
-  unpersisted state, unknown push/merge/publication result, login or CAPTCHA,
-  permission failure, lost browser ownership, account restoration failure, an
-  intentionally retained handoff tab, or failed terminal validation/readback.
+- `keep_visible`: The run has uncertain or uncontained state that automation cannot
+  own. Examples include invalid or unpersisted state; an
+  unknown push/merge/publication result; login or CAPTCHA; missing human-only
+  authority; lost browser ownership; account restoration failure; an intentionally
+  retained handoff tab; or failed terminal readback without a durable automatic
+  repair owner.
 
 Normal successful work, a proven no-op, `no_candidate`, `role_busy`, a quality skip,
-a duplicate or daily-cap block, a validated retry or repair handoff, a submitted pull
-request with durable ownership, a landed result, and a confirmed publication with
-account restoration can use `auto_archive`.
+a duplicate or daily-cap block, a persisted retry, an automatically owned repair, a
+submitted pull request with durable ownership, a landed result, and a confirmed
+publication with account restoration must use `auto_archive`.
 
 For `auto_archive`, call the native Codex app `set_thread_archived` tool with
 `archived = true` and omit `threadId`, so the tool can target only the current run
@@ -29,5 +32,5 @@ For `keep_visible`, do not call `set_thread_archived`. Lead the final report wit
 reason that human attention is required. If the archive tool is unavailable or its
 readback fails, keep the thread visible and report `run_thread_archive_failed`.
 
-Never archive another thread. Never use run-thread archiving to hide a failed,
-ambiguous, or incomplete operation.
+Never archive another thread. Archiving is UI retention, not evidence deletion. Never
+archive an ambiguous or incomplete operation without a durable automatic owner.
