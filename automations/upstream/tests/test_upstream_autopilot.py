@@ -2110,6 +2110,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
         sys.platform == "darwin",
         "requires the macOS Unix socket path limit",
     )
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "the outer validation process owns this probe",
+    )
     def test_validation_temporary_home_preserves_unix_socket_path_budget(self):
         with self.autopilot.validation_temporary_directory() as directory:
             temporary_home = Path(directory).resolve()
