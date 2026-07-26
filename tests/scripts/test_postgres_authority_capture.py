@@ -74,6 +74,8 @@ def envelope(schema, authority=None, binding=None):
 
 
 def semantic_authority_evidence(predicates, passed):
+    if len(predicates) != len(passed):
+        raise ValueError("semantic authority fixture cardinality differs")
     definition = {
         "predicates": json.loads(json.dumps(predicates)),
         "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DEFINITION_SCHEMA,
@@ -85,7 +87,7 @@ def semantic_authority_evidence(predicates, passed):
         ),
         "observations": [
             {"name": predicate["name"], "passed": observation}
-            for predicate, observation in zip(predicates, passed, strict=True)
+            for predicate, observation in zip(predicates, passed)
         ],
         "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_SCHEMA,
     }
@@ -1601,6 +1603,63 @@ class RestorePrerequisiteGateStateTests(unittest.TestCase):
             "source_binding": SOURCE_BINDING,
         }, sort_keys=True, separators=(",", ":")))
 
+    def test_postgres_toolchain_fingerprint_uses_fixed_order_and_binds_state(self):
+        expected_order = ("initdb", "pg_ctl", "psql", "pg_dump", "pg_restore")
+        self.assertEqual(POSTGRES_STORE_TEST.POSTGRES_TOOL_NAMES, expected_order)
+        payloads = {
+            name: b"inert PostgreSQL fixture\0" + name.encode("ascii")
+            for name in expected_order
+        }
+        versions = {
+            name: f"{name} (PostgreSQL) 18.0 fixture\n".encode("ascii")
+            for name in expected_order
+        }
+        environment = {"LC_ALL": "C"}
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture_directory = Path(directory)
+            fixture_directory.chmod(0o700)
+            tools = {}
+            for name in expected_order:
+                path = fixture_directory / name
+                path.write_bytes(payloads[name])
+                path.chmod(0o700)
+                tools[name] = path.resolve(strict=True)
+
+            with mock.patch.object(
+                POSTGRES_STORE_TEST,
+                "postgres_tool_version",
+                side_effect=[versions[name] for name in expected_order],
+            ) as version_reader:
+                fingerprint = POSTGRES_STORE_TEST.postgres_toolchain_fingerprint(
+                    tools, environment
+                )
+
+        self.assertEqual(
+            version_reader.call_args_list,
+            [mock.call(tools[name], name, environment) for name in expected_order],
+        )
+        expected = hashlib.sha256(b"decodex/postgres-toolchain-authority/1\0")
+        for name in expected_order:
+            for value in (
+                name.encode("ascii"),
+                hashlib.sha256(payloads[name]).digest(),
+                hashlib.sha256(versions[name]).digest(),
+            ):
+                expected.update(len(value).to_bytes(4, "big"))
+                expected.update(value)
+        self.assertEqual(fingerprint, expected.hexdigest())
+        self.assertRegex(fingerprint, r"\A[0-9a-f]{64}\Z")
+
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state, "toolchain_preflight")
+        bound = state.run(
+            "toolchain_preflight", lambda: state.bind_toolchain(fingerprint)
+        )
+        self.assertEqual(bound, fingerprint)
+        self.assertEqual(state.toolchain_fingerprint, fingerprint)
+        self.assertEqual(state.completed_checkpoints[-1], "toolchain_preflight")
+
     def test_representative_execution_failures_have_distinct_fixed_owners(self):
         cases = (
             (
@@ -2026,6 +2085,10 @@ class RestorePrerequisiteGateStateTests(unittest.TestCase):
         self.assertEqual(
             fingerprint,
             POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
+        )
+        self.assertEqual(
+            fingerprint,
+            "53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a",
         )
         self.assertEqual(
             fingerprint,

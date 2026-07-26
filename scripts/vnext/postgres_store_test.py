@@ -2354,14 +2354,15 @@ def postgres_toolchain_fingerprint(
 			raise TestFailure(failure_message)
 		paths = [tools[name] for name in POSTGRES_TOOL_NAMES]
 		if (
-			any(not path.is_absolute() or path.resolve(strict=True) != path for path in paths)
+			len(paths) != len(POSTGRES_TOOL_NAMES)
+			or any(not path.is_absolute() or path.resolve(strict=True) != path for path in paths)
 			or len({path.parent for path in paths}) != 1
 		):
 			raise TestFailure(failure_message)
 		fingerprint = hashlib.sha256(
 			b"decodex/postgres-toolchain-authority/1\0"
 		)
-		for name, path in zip(POSTGRES_TOOL_NAMES, paths, strict=True):
+		for name, path in zip(POSTGRES_TOOL_NAMES, paths):
 			before = path.stat()
 			if not stat.S_ISREG(before.st_mode) or before.st_mode & 0o111 == 0:
 				raise TestFailure(failure_message)
@@ -4576,7 +4577,7 @@ def parse_candidate_capture_manifest(
 				"failure_policy": predicate["classification"],
 				"predicate": predicate["name"],
 			}
-			for predicate, observation in zip(predicates, observations, strict=True)
+			for predicate, observation in zip(predicates, observations)
 			if observation["passed"] is False
 		]
 		if failures:
@@ -4761,7 +4762,7 @@ def constraint_contract_changes(
 	changes = [
 		(field, before_value, after_value)
 		for field, before_value, after_value in zip(
-			CONSTRAINT_CONTRACT_FIELDS, before, after, strict=True
+			CONSTRAINT_CONTRACT_FIELDS, before, after
 		)
 		if before_value != after_value
 	]
