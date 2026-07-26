@@ -2106,6 +2106,28 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 self.assertEqual(path.read_text(encoding="utf-8"), "")
                 self.assertEqual(path.stat().st_mode & 0o777, 0o400)
 
+    @unittest.skipUnless(
+        sys.platform == "darwin",
+        "requires the macOS Unix socket path limit",
+    )
+    def test_validation_temporary_home_preserves_unix_socket_path_budget(self):
+        with self.autopilot.validation_temporary_directory() as directory:
+            temporary_home = Path(directory).resolve()
+            nested = temporary_home / ".tmp12345678"
+            nested.mkdir()
+            socket_path = nested / "schema.sock"
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+            try:
+                listener.bind(str(socket_path))
+            finally:
+                listener.close()
+
+            self.assertEqual(
+                temporary_home.parent,
+                self.autopilot.DARWIN_VALIDATION_TEMP_PARENT,
+            )
+
     @unittest.skipIf(
         os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
         "the outer validation process owns tool discovery",

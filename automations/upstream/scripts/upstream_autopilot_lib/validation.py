@@ -101,6 +101,8 @@ SANDBOX_EVIDENCE_KEYS = {
     "stable_cargo_sha256",
 }
 FORMATTER_TOOLCHAIN = "nightly-2026-07-16"
+VALIDATION_TEMP_PREFIX = "dxv-"
+DARWIN_VALIDATION_TEMP_PARENT = Path("/private/tmp")
 TRUSTED_TOOLCHAIN_EXECUTABLES = {"cargo", "cargo-fmt", "rustfmt"}
 SANDBOX_PROFILE_TASKS = {
     "focused_tests": "test-automations",
@@ -679,6 +681,19 @@ def initialize_validation_home(temporary_home: Path) -> None:
             raise AutopilotError("validation_home_initialization_failed") from error
 
 
+def validation_temporary_directory():
+    parent = (
+        DARWIN_VALIDATION_TEMP_PARENT if sys.platform == "darwin" else None
+    )
+    try:
+        return tempfile.TemporaryDirectory(
+            prefix=VALIDATION_TEMP_PREFIX,
+            dir=parent,
+        )
+    except OSError as error:
+        raise AutopilotError("validation_sandbox_path_invalid") from error
+
+
 def validate_validation_receipt(
     receipt: Any,
     *,
@@ -1208,9 +1223,7 @@ def run_validation_profiles(
         ),
         "RUSTFMT": str(formatter_tools["rustfmt"]),
     }
-    with tempfile.TemporaryDirectory(
-        prefix="decodex-upstream-validation-"
-    ) as temporary:
+    with validation_temporary_directory() as temporary:
         temporary_home = Path(temporary).resolve()
         initialize_validation_home(temporary_home)
         acquisition_environment = sanitized_validation_environment(
