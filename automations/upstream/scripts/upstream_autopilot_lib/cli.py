@@ -59,6 +59,7 @@ from . import (
     record_land_command_execution,
     record_candidate_commit,
     read_handoff_receipt,
+    read_validation_failure_diagnostic,
     remove_handoff_receipt,
     referenced_schema_evidence,
     requeue_stale_decision,
@@ -84,6 +85,7 @@ from . import (
     state_health,
     submit_candidate,
     submit_decision,
+    trusted_validation_python,
     consume_handoff_receipt,
     utc_now,
     validation_authority_identity,
@@ -96,9 +98,67 @@ from . import (
     verify_remote_main_contains,
 )
 
+AUTOMATION_AUDIT_MANIFESTS = {
+    "upstream": (
+        "automations/upstream/automations.toml",
+        (
+            "codex-upstream-maintainer",
+            "codex-upstream-reviewer",
+            "codex-upstream-health",
+        ),
+    ),
+    "content": (
+        "automations/decodex/automations.toml",
+        (
+            "decodex-content-manager",
+            "decodex-x-browser-publisher",
+        ),
+    ),
+}
+
 
 def result_payload(status: str, **fields: Any) -> dict[str, Any]:
     return {"schema": RESULT_SCHEMA, "status": status, **fields}
+
+
+def validated_automation_audit(
+    output: str,
+    *,
+    repo_root: Path,
+    codex_home: Path,
+    expected_ids: tuple[str, ...],
+) -> list[str]:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise AutopilotError("automation_audit_output_invalid") from error
+    results = payload.get("results") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or set(payload)
+        != {"status", "repo_root", "codex_home", "results"}
+        or payload.get("status") != "pass"
+        or payload.get("repo_root") != str(repo_root)
+        or payload.get("codex_home") != str(codex_home)
+        or not isinstance(results, list)
+        or tuple(
+            result.get("automation_id")
+            for result in results
+            if isinstance(result, dict)
+        )
+        != expected_ids
+        or any(
+            not isinstance(result, dict)
+            or set(result)
+            != {"automation_id", "status", "errors", "warnings"}
+            or result.get("status") != "pass"
+            or result.get("errors") != []
+            or result.get("warnings") != []
+            for result in results
+        )
+    ):
+        raise AutopilotError("automation_audit_output_invalid")
+    return list(expected_ids)
 
 
 def save_state_guarded(
@@ -217,6 +277,23 @@ def parse_args() -> argparse.Namespace:
     health.add_argument("--repair-expired", action="store_true")
     health.add_argument("--queue-repairs", action="store_true")
     health.add_argument("--queue-improvements", action="store_true")
+
+    diagnostic = subparsers.add_parser("validation-diagnostic")
+    add_common_state_arguments(diagnostic)
+    diagnostic.add_argument("--error-digest", required=True)
+
+    automation_audit = subparsers.add_parser("audit-automations")
+    add_common_state_arguments(automation_audit)
+    automation_audit.add_argument(
+        "--manifest",
+        choices=tuple(AUTOMATION_AUDIT_MANIFESTS),
+        required=True,
+    )
+    automation_audit.add_argument(
+        "--scope",
+        choices=("repo", "live"),
+        required=True,
+    )
 
     snapshot = subparsers.add_parser("snapshot")
     add_common_state_arguments(snapshot)
@@ -1679,6 +1756,60 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         atomic_write_json(ensure_cache_root(cache_root) / "health/latest.json", health)
         return health
 
+    if args.command == "validation-diagnostic":
+        diagnostic = read_validation_failure_diagnostic(
+            repo_root,
+            cause_digest=args.error_digest,
+        )
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "validation_diagnostic",
+            diagnostic=diagnostic,
+        )
+
+    if args.command == "audit-automations":
+        manifest_path, expected_ids = AUTOMATION_AUDIT_MANIFESTS[args.manifest]
+        evaluator = (
+            repo_root
+            / "automations/decodex/scripts/config/evaluate_automations.py"
+        )
+        command = [
+            str(trusted_validation_python(repo_root)),
+            "-I",
+            "-S",
+            str(evaluator),
+            "--manifest",
+            str(repo_root / manifest_path),
+            "--json",
+        ]
+        if args.scope == "repo":
+            command.append("--repo-only")
+        output = run_command(
+            command,
+            cwd=repo_root,
+            environment={
+                "CODEX_HOME": str(Path.home() / ".codex"),
+                "HOME": str(Path.home()),
+            },
+            inherit_environment=False,
+            failure_code="automation_audit_failed",
+            timeout_seconds=30,
+            max_output_bytes=64 * 1024,
+        )
+        automation_ids = validated_automation_audit(
+            output,
+            repo_root=repo_root,
+            codex_home=Path.home() / ".codex",
+            expected_ids=expected_ids,
+        )
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "automation_audit_passed",
+            manifest=args.manifest,
+            scope=args.scope,
+            automation_ids=automation_ids,
+        )
+
     if args.command == "snapshot":
         with locked_state(cache_root) as (state, _state_path):
             assert_primary_snapshot(repo_root, policy, preflight["head"])
@@ -1692,7 +1823,10 @@ def main() -> int:
     try:
         payload = execute(args)
     except AutopilotError as error:
-        payload = result_payload("failed", error_code=error.code)
+        fields: dict[str, Any] = {"error_code": error.code}
+        if error.diagnostic_sha256 is not None:
+            fields["error_digest"] = error.diagnostic_sha256
+        payload = result_payload("failed", **fields)
         print(
             json.dumps(
                 payload,

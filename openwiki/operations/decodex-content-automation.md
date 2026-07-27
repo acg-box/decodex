@@ -3,6 +3,7 @@
 The content loop has two scheduled owners:
 
 - `decodex-content-manager` discovers source-backed opportunities, uses Radar evidence,
+  performs one bounded weekly read-only X editorial benchmark under the shared lease,
   produces one checked candidate or one quality skip, and writes bounded daily and
   weekly `social_strategy/v1` decisions from terminal evidence.
 - `decodex-x-browser-publisher` is the only X operator. It validates, reserves,
@@ -23,11 +24,27 @@ Use this order:
 4. External sites such as Codex Radar only as topic leads or editorial benchmarks.
 
 X posts and community measurements are not technical authority.
+Once per seven-day strategy period, Content Manager reads at most 12 public posts in
+total from `@CodexReleases`, `@Codex_Changelog`, and `@decodexspace` with browser
+control. It uses the shared browser lease, does not switch accounts for the benchmark,
+does not copy text, and stores only public URLs and bounded editorial observations in
+the weekly strategy record. Every weekly record contains exactly one
+`weekly_editorial_benchmark` decision and one schema-bound `editorial_benchmark`
+object. A completed object contains at most 12 supported public X status URLs and at
+most 12 short observations. A deferred object contains one bounded lowercase reason
+code and the matching `benchmark:deferred:<reason-code>` evidence reference. It
+verifies the initial account again before lease release. This benchmark can change
+editorial preferences only under the existing minimum outcome-sample gate. Health
+reports `weekly_benchmark_missing` when the current weekly record does not contain
+that bounded result.
 
 ## Publication Flow
 
-The manager writes `social_candidate/v1` for a publish, defer, or justified quality
-skip decision. The Publisher creates
+The manager writes `social_candidate/v1` for a publish or justified quality skip
+decision. Publisher runs `social terminalize-skip` to turn a quality skip into one
+deterministic, atomically created `social_post/v1` terminal record without opening X
+or acquiring a browser lease. Concurrent or resumed runs read back the same terminal
+record and cannot overwrite it. For publish decisions, Publisher creates
 `social_publish_reservation/v1`, publishes at most once, and writes `social_post/v1`.
 It writes `social_outcome/v1` for due 24-hour and seven-day browser readback.
 The 24-hour window is 23 to 48 hours after publication. The seven-day window is 167
@@ -60,22 +77,29 @@ browser lease only after restoration and terminal validation.
 
 ## Coordination
 
-The browser lease serializes all X account use. The candidate idempotency key is the
-publication identity. Its create-only reservation path prevents a second writer for
-the same identity. A terminal post consumes the claim only after confirmed publication
-or a consuming policy outcome.
+The browser lease serializes all X account use, including Content Manager's weekly
+read-only benchmark. Publisher remains the only X writer. The candidate idempotency
+key is the publication identity. Its create-only reservation path prevents a second
+writer for the same identity. A separate short-lived local state lock serializes
+quality-skip terminalization with publication reservation, so those two outcomes
+cannot both succeed for one identity. A terminal post consumes the claim only after
+confirmed publication or a consuming policy outcome.
 
 Scheduled tasks use the primary `main` checkout. They never use a worktree cwd.
 Development worktrees are not runtime bindings.
-Each content owner runs `cargo build --locked -p decodex-publisher` with the primary
-checkout's `target` directory. It then uses the exact
-`target/debug/decodex-publisher` path for the complete run. It does not depend on a
-global Publisher command in `PATH`.
+Content Manager runs `cargo build --locked -p radar -p decodex-publisher` with the
+primary checkout's `target` directory. It uses the exact `target/debug/radar` and
+`target/debug/decodex-publisher` paths, refreshes the official upstream queue and
+release delta, and validates the Radar cache before drafting. Publisher and Health
+build Publisher and use the exact `target/debug/decodex-publisher` path. No content
+owner depends on a global command in `PATH`.
 
 ## Cadence
 
 Content Manager runs every six hours. Browser Publisher runs every two hours. The
-Publisher handles at most one candidate or one due outcome per run. Daily and weekly
+Publisher handles at most one candidate, one due outcome, or one proven no-op per run.
+It terminalizes a quality skip through the atomic Publisher command without browser
+work. Daily and weekly
 learning uses unique strategy cycle keys and persisted timestamps, not separate
 scheduled tasks. Strategy decisions can change only bounded topic weights, format
 preferences, or quality thresholds. Evidence, privacy, idempotency, account, and
@@ -96,20 +120,22 @@ not.
 
 ## Run Thread Retention
 
-Each scheduled execution creates a separate Codex thread. The role classifies its
-current thread only after terminal validation and external-effect readback:
+Each scheduled execution creates a separate Codex task. The terminal role classifies
+its task only after terminal validation and external-effect readback:
 
-- Archive a successful terminal result, proven no-op, quality skip, duplicate block,
+- Mark a successful terminal result, proven no-op, quality skip, duplicate block,
   persisted retry, or failed result with a durable automatic repair owner. The result
   must have no remaining lease, handoff, or human decision.
-- Keep a run visible only for invalid or unpersisted state, login or CAPTCHA, missing
+- Escalate invalid or unpersisted state, login or CAPTCHA, missing
   human-only authority, unknown publication state, lost browser ownership after a
   public write, account restoration failure, a retained handoff tab, or failed final
   readback without automatic ownership.
 
-The role uses native `set_thread_archived` with no explicit thread ID. It cannot
-archive another run. This action affects the run thread only. It does not pause or
-delete the recurring task and does not delete local evidence.
+For a terminal result with durable automatic ownership, the role calls native
+`set_thread_archived` with `archived = true` and no `threadId`. This archives only the
+current scheduled task. An ambiguous, human-only, or unowned result stays visible.
+Archival affects only Codex task-list visibility. It does not pause or delete the
+recurring automation and does not delete local evidence.
 
 ## Validation
 

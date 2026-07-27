@@ -1,7 +1,7 @@
 //! Social publishing reservation generation and conflict checks.
 
 mod payload;
-mod scan;
+pub(crate) mod scan;
 
 use sha2::{Digest as _, Sha256};
 
@@ -33,6 +33,7 @@ pub(crate) fn reserve_social_publish(
 	let out_dir = crate::resolve_against(&root, &request.out_dir);
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	crate::verify_social_browser_lease(&request.locks_dir, &request.browser_lease_token)?;
+	let _state_lock = scan::acquire_social_state_lock(&request.locks_dir)?;
 	let reservation_path = out_dir
 		.join(&request.day)
 		.join(format!("{}.json", idempotency_digest(&request.idempotency_key)));

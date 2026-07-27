@@ -135,9 +135,8 @@ fn validate_social_candidate_decision(decision: Option<&Value>, errors: &mut Vec
 		errors,
 	);
 
-	if !social_validation::matches_one_of(decision.get("worthiness"), &["defer", "publish", "skip"])
-	{
-		errors.push("decision.worthiness must be one of ['defer', 'publish', 'skip']".into());
+	if !social_validation::matches_one_of(decision.get("worthiness"), &["publish", "skip"]) {
+		errors.push("decision.worthiness must be one of ['publish', 'skip']".into());
 	}
 
 	for field in ["reason", "idempotency_key"] {

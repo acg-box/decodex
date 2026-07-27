@@ -56,6 +56,7 @@ CONTENT_DEGRADATION_CODES = (
     "outcome_7d_overdue",
     "reservation_expired",
     "social_validation_failed",
+    "weekly_benchmark_missing",
     "weekly_strategy_overdue",
 )
 SHA_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
@@ -78,6 +79,7 @@ MAX_GIT_TEXT_BYTES = 8 * 1024 * 1024
 MAX_STATE_BYTES = 4 * 1024 * 1024
 MAX_UPSTREAM_COMMITS = 65_536
 MAX_COMMAND_OUTPUT_BYTES = 64 * 1024 * 1024
+MAX_FAILURE_DIAGNOSTIC_CAPTURE_BYTES = 256 * 1024
 MAX_EXECUTABLE_BYTES = 512 * 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 300
 VALIDATION_LEASE_BUDGET_SECONDS = 11_700
@@ -215,11 +217,42 @@ CANDIDATE_KEYS = {
 class AutopilotError(RuntimeError):
     """A bounded machine-readable automation failure."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        *,
+        diagnostic_sha256: str | None = None,
+    ) -> None:
         if not REASON_PATTERN.fullmatch(code):
             code = "unclassified_failure"
+        if diagnostic_sha256 is not None and not re.fullmatch(
+            r"[0-9a-f]{64}", diagnostic_sha256
+        ):
+            diagnostic_sha256 = None
         self.code = code
+        self.diagnostic_sha256 = diagnostic_sha256
         super().__init__(code)
+
+
+class CommandFailure(AutopilotError):
+    """A bounded command failure retained only for structured diagnostics."""
+
+    def __init__(
+        self,
+        code: str,
+        *,
+        failure_kind: str,
+        output_tail: bytes,
+        output_sha256: str,
+        return_code: int | None,
+    ) -> None:
+        super().__init__(code)
+        if REASON_PATTERN.fullmatch(failure_kind) is None:
+            failure_kind = "unclassified_command_failure"
+        self.failure_kind = failure_kind
+        self.output_tail = output_tail
+        self.output_sha256 = output_sha256
+        self.return_code = return_code
 
 
 @dataclass(frozen=True)
@@ -517,6 +550,7 @@ def run_command(
     allow_failure: bool = False,
     timeout_seconds: int = COMMAND_TIMEOUT_SECONDS,
     max_output_bytes: int = MAX_COMMAND_OUTPUT_BYTES,
+    capture_failure_diagnostic: bool = False,
 ) -> str:
     if max_output_bytes < 1 or max_output_bytes > MAX_COMMAND_OUTPUT_BYTES:
         raise AutopilotError("command_output_budget_invalid")
@@ -528,6 +562,30 @@ def run_command(
     process: subprocess.Popen[bytes] | None = None
     selector: selectors.BaseSelector | None = None
     output = bytearray()
+    failure_stdout_tail = bytearray()
+    failure_stderr_tail = bytearray()
+    stdout_digest = hashlib.sha256()
+    stderr_digest = hashlib.sha256()
+
+    def command_failure(
+        failure_kind: str,
+        *,
+        return_code: int | None = None,
+    ) -> CommandFailure:
+        return CommandFailure(
+            failure_code,
+            failure_kind=failure_kind,
+            output_tail=(
+                bytes(failure_stdout_tail)
+                + b"\n"
+                + bytes(failure_stderr_tail)
+            ),
+            output_sha256=hashlib.sha256(
+                stdout_digest.digest() + stderr_digest.digest()
+            ).hexdigest(),
+            return_code=return_code,
+        )
+
     try:
         process = subprocess.Popen(
             command,
@@ -538,6 +596,8 @@ def run_command(
             start_new_session=True,
         )
         if process.stdout is None or process.stderr is None:
+            if capture_failure_diagnostic:
+                raise command_failure("pipe_unavailable")
             raise AutopilotError(failure_code)
         selector = selectors.DefaultSelector()
         selector.register(process.stdout, selectors.EVENT_READ, "stdout")
@@ -560,16 +620,44 @@ def run_command(
                     selector.unregister(key.fileobj)
                     continue
                 total_bytes += len(chunk)
+                if key.data == "stdout":
+                    stdout_digest.update(chunk)
+                    failure_tail = failure_stdout_tail
+                else:
+                    stderr_digest.update(chunk)
+                    failure_tail = failure_stderr_tail
+                if capture_failure_diagnostic:
+                    failure_tail.extend(chunk)
+                    overflow = (
+                        len(failure_tail)
+                        - MAX_FAILURE_DIAGNOSTIC_CAPTURE_BYTES
+                    )
+                    if overflow > 0:
+                        del failure_tail[:overflow]
                 if total_bytes > max_output_bytes:
+                    if capture_failure_diagnostic:
+                        raise command_failure("output_budget_exceeded")
                     raise AutopilotError("command_output_budget_exceeded")
                 if key.data == "stdout":
                     output.extend(chunk)
         return_code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired as error:
         if process is not None and process.poll() is None:
             terminate_process_group(process)
         if allow_failure:
             return ""
+        if capture_failure_diagnostic:
+            raise command_failure("timeout") from error
+        raise AutopilotError(failure_code) from error
+    except OSError as error:
+        if process is not None and process.poll() is None:
+            terminate_process_group(process)
+        if allow_failure:
+            return ""
+        if capture_failure_diagnostic:
+            raise command_failure(
+                "spawn_error" if process is None else "io_error"
+            ) from error
         raise AutopilotError(failure_code) from error
     except AutopilotError:
         if process is not None and process.poll() is None:
@@ -586,10 +674,14 @@ def run_command(
     if return_code != 0:
         if allow_failure:
             return ""
+        if capture_failure_diagnostic:
+            raise command_failure("nonzero_exit", return_code=return_code)
         raise AutopilotError(failure_code)
     try:
         return output.decode("utf-8").strip()
     except UnicodeDecodeError as error:
+        if capture_failure_diagnostic:
+            raise command_failure("invalid_utf8", return_code=return_code) from error
         raise AutopilotError(failure_code) from error
 
 

@@ -90,6 +90,7 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 
 	def test_managed_automation_start_minutes_do_not_collide(self) -> None:
 		starts = {}
+		rules = {}
 		for manifest in (self.manifest, self.content_manifest):
 			for automation in manifest["automations"]:
 				parts = dict(
@@ -97,6 +98,7 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 					for part in automation["rrule"].split(";")
 				)
 				starts[automation["id"]] = int(parts["BYMINUTE"])
+				rules[automation["id"]] = parts
 
 		self.assertEqual(
 			starts,
@@ -109,6 +111,15 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			},
 		)
 		self.assertEqual(len(starts.values()), len(set(starts.values())))
+		self.assertEqual(
+			rules["codex-upstream-health"],
+			{
+				"FREQ": "HOURLY",
+				"INTERVAL": "2",
+				"BYMINUTE": "0",
+				"BYSECOND": "0",
+			},
+		)
 
 	def test_radar_has_no_scheduled_manifest(self) -> None:
 		self.assertFalse((REPO_ROOT / "automations/radar/automations.toml").exists())
@@ -239,8 +250,11 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			REPO_ROOT / "automations/upstream/prompts/health.md"
 		).read_text(encoding="utf-8")
 
-		self.assertIn("Publisher is the only X operator", manager)
-		self.assertIn("Do not open X, use X MCP or X API", manager)
+		self.assertIn("Publisher is the only X writer", manager)
+		self.assertIn("exact bounded weekly", manager)
+		self.assertIn("read-only benchmark", manager)
+		self.assertIn("Never use X MCP or X API", manager)
+		self.assertIn("make a public write", manager)
 		self.assertIn("use `https://codexradar.com/` only for secondary", manager)
 		self.assertIn("social_strategy/v1", manager)
 		self.assertIn("most 16 decisions", manager)
@@ -256,6 +270,8 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("browser_touched", publisher)
 		self.assertIn("publication.publisher = \"chrome\"", publisher)
 		self.assertIn("social_outcome/v1", publisher)
+		self.assertIn("social terminalize-skip", publisher)
+		self.assertIn("Never write or overwrite a skipped post directly", publisher)
 		self.assertIn("23 to 48 hours", publisher)
 		self.assertIn("167 to 192 hours", publisher)
 		self.assertIn("with no path arguments", publisher)
@@ -267,10 +283,46 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		):
 			with self.subTest(publisher_bootstrap=name):
 				normalized = " ".join(prompt.split())
-				self.assertIn("cargo build --locked -p decodex-publisher", normalized)
+				if name == "manager":
+					self.assertIn(
+						"cargo build --locked -p radar -p decodex-publisher",
+						normalized,
+					)
+				else:
+					self.assertIn(
+						"cargo build --locked -p decodex-publisher",
+						normalized,
+					)
 				self.assertIn("$PWD/target/debug/decodex-publisher", normalized)
-				self.assertIn("as `<publisher>`", normalized)
+				if name == "manager":
+					self.assertIn("as `<radar>` and `<publisher>`", normalized)
+				else:
+					self.assertIn("as `<publisher>`", normalized)
 				self.assertNotIn("`decodex-publisher validate-social", prompt)
+		manager_normalized = " ".join(manager.split())
+		self.assertIn("$PWD/target/debug/radar", manager_normalized)
+		self.assertIn("as `<radar>` and `<publisher>`", manager_normalized)
+		self.assertIn("<radar> refresh-upstream-queue", manager)
+		self.assertIn("<radar> refresh-release-delta", manager)
+		self.assertIn("<radar> validate", manager)
+		self.assertIn("Once per seven-day strategy period", manager)
+		self.assertIn("@CodexReleases", manager)
+		self.assertIn("@Codex_Changelog", manager)
+		self.assertIn("at most 12 recent public posts", manager)
+		self.assertIn("shared browser lease", manager)
+		self.assertIn("Do not switch accounts", manager)
+		self.assertIn("restore the initial account", manager)
+		self.assertIn("Never persist or report the token", manager)
+		self.assertIn('key = "weekly_editorial_benchmark"', manager)
+		self.assertIn("`editorial_benchmark` object", manager)
+		self.assertIn("one to 12 supported public X status URLs", manager)
+		self.assertIn("at most 280 characters", manager)
+		self.assertIn("benchmark:deferred:<reason-code>", manager)
+		self.assertIn('decision.worthiness = "skip"', publisher)
+		self.assertIn("values are `publish` and `skip`", publisher)
+		self.assertIn("browser_touched = false", publisher)
+		self.assertIn("without acquiring a browser lease", publisher)
+		self.assertIn("neither exists", publisher)
 
 	def test_content_manifest_tracks_all_social_contracts(self) -> None:
 		required = {
@@ -286,6 +338,17 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		}
 		self.assertIn(
 			"automations/decodex/scripts/social/social_strategy.schema.json",
+			by_id["decodex-content-manager"],
+		)
+		for radar_path in (
+			"apps/radar/Cargo.toml",
+			"apps/radar/README.md",
+			"apps/radar/src/lib.rs",
+			"apps/radar/src/main.rs",
+		):
+			self.assertIn(radar_path, by_id["decodex-content-manager"])
+		self.assertIn(
+			"automations/decodex/skills/x-post-publisher/SKILL.md",
 			by_id["decodex-content-manager"],
 		)
 		self.assertTrue(
@@ -311,13 +374,16 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			"scheduled-run-thread-retention.md"
 		)
 		retention = retention_path.read_text(encoding="utf-8")
+		normalized = " ".join(retention.split())
 
 		self.assertIn("set_thread_archived", retention)
 		self.assertIn("omit `threadId`", retention)
+		self.assertIn("only the current task", normalized)
 		self.assertIn("auto_archive", retention)
 		self.assertIn("keep_visible", retention)
 		self.assertIn("account restoration failure", retention)
-		self.assertIn("unknown push/merge/publication result", retention)
+		self.assertIn("unknown push, merge, or publication result", normalized)
+		self.assertIn("Live scheduled readback is the acceptance evidence", normalized)
 
 		for manifest in (self.manifest, self.content_manifest):
 			for automation in manifest["automations"]:
@@ -326,10 +392,38 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 					prompt = (
 						REPO_ROOT / automation["prompt_file"]
 					).read_text(encoding="utf-8")
+					normalized_prompt = " ".join(prompt.split())
 					self.assertIn("scheduled-run-thread-retention.md", prompt)
 					self.assertIn("set_thread_archived", prompt)
+					self.assertIn("archived = true", normalized_prompt)
+					self.assertIn("no `threadId`", normalized_prompt)
 					self.assertIn("visible", prompt)
 					self.assertNotIn("Archive the task.", prompt)
+					self.assertNotIn("THREAD_RETENTION", prompt)
+
+		health_prompt = (
+			REPO_ROOT / "automations/upstream/prompts/health.md"
+		).read_text(encoding="utf-8")
+		self.assertNotIn("list_threads", health_prompt)
+		self.assertNotIn("set_thread_archived` with the exact source", health_prompt)
+		self.assertLess(
+			health_prompt.index("Recover local state before new observation"),
+			health_prompt.index("Discover `automation_update`"),
+		)
+		self.assertLess(
+			health_prompt.index("Discover `automation_update`"),
+			health_prompt.index("After recovery and reconciliation"),
+		)
+
+		for readme_path in (
+			REPO_ROOT / "automations/upstream/README.md",
+			REPO_ROOT / "automations/decodex/README.md",
+		):
+			readme = readme_path.read_text(encoding="utf-8")
+			self.assertIn("set_thread_archived", readme)
+			self.assertIn("current", readme)
+			self.assertIn("task", readme)
+			self.assertNotIn("THREAD_RETENTION", readme)
 
 	def test_health_prompt_owns_bounded_native_reconciliation(self) -> None:
 		prompt = (
@@ -351,8 +445,16 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("unrelated scheduler definitions", prompt)
 		self.assertIn("all five managed", prompt)
 		self.assertIn("content_loop_degraded", prompt)
+		self.assertIn("weekly_benchmark_missing", prompt)
+		self.assertIn("audit-automations --manifest upstream --scope repo", prompt)
+		self.assertIn("--manifest content", prompt)
+		self.assertIn("--scope live", prompt)
 		self.assertLess(
-			prompt.index("Recover before new observation"),
+			prompt.index("Recover local state"),
+			prompt.index("Run the checked-in automation audit separately"),
+		)
+		self.assertLess(
+			prompt.index("Run the checked-in automation audit separately"),
 			prompt.index("Discover `automation_update`"),
 		)
 		self.assertLess(
@@ -419,10 +521,12 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		}
 		for name, prompt in prompts.items():
 			with self.subTest(prompt=name):
+				normalized = " ".join(prompt.split())
 				self.assertIn("`automations/upstream/scripts/run_upstream_autopilot`", prompt)
 				self.assertIn("root-owned, read-only", prompt)
 				self.assertIn("Python 3.11 or later", prompt)
-				self.assertIn("state tool with bare\n   `python3`", prompt)
+				self.assertIn("state tool", normalized)
+				self.assertIn("bare `python3`", normalized)
 				self.assertNotIn(
 					"`python3 automations/upstream/scripts/upstream_autopilot.py",
 					prompt,
@@ -444,8 +548,13 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("metadata[mode] & 8#022", content)
 		self.assertLess(
 			content.index("trusted_python \"${candidate}\""),
-			content.index("\"${candidate}\" - <<'PY'"),
+			content.index("\"${candidate}\" -I -S -c"),
 		)
+		self.assertIn(
+			'exec "${candidate}" -I -S "${autopilot}" "$@"',
+			content,
+		)
+		self.assertNotIn("<<'PY'", content)
 		self.assertNotIn("codex-primary-runtime", content)
 		result = subprocess.run(
 			[str(launcher), "--help"],
@@ -456,6 +565,41 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		)
 		self.assertEqual(result.returncode, 0, result.stderr)
 		self.assertIn("upstream_autopilot.py", result.stdout)
+
+	def test_upstream_launcher_ignores_python_startup_injection(self) -> None:
+		launcher = REPO_ROOT / "automations/upstream/scripts/run_upstream_autopilot"
+		with tempfile.TemporaryDirectory() as temporary_directory:
+			startup = Path(temporary_directory) / "startup"
+			startup.mkdir()
+			marker = Path(temporary_directory) / "sitecustomize-executed"
+			(startup / "sitecustomize.py").write_text(
+				"import os\n"
+				"from pathlib import Path\n"
+				"Path(os.environ['DECODEX_UPSTREAM_TEST_MARKER']).write_text("
+				"'executed', encoding='utf-8')\n",
+				encoding="utf-8",
+			)
+			environment = os.environ.copy()
+			environment.update(
+				{
+					"DECODEX_UPSTREAM_TEST_MARKER": str(marker),
+					"PYTHONHOME": str(startup),
+					"PYTHONPATH": str(startup),
+					"PYTHONUSERBASE": str(startup),
+				}
+			)
+			result = subprocess.run(
+				[str(launcher), "--help"],
+				cwd=REPO_ROOT,
+				check=False,
+				capture_output=True,
+				text=True,
+				env=environment,
+			)
+
+			self.assertEqual(result.returncode, 0, result.stderr)
+			self.assertIn("upstream_autopilot.py", result.stdout)
+			self.assertFalse(marker.exists())
 
 	def test_upstream_subagent_handoffs_are_state_bound(self) -> None:
 		maintainer = (
@@ -531,6 +675,31 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("do not prove that a live scheduled Codex task", normalized)
 		self.assertIn("Live scheduled readback is the acceptance evidence", normalized)
 		self.assertNotIn("`needs_attention`", retention)
+
+	def test_validation_diagnostics_remain_bounded_in_prompts(self) -> None:
+		maintainer = (
+			REPO_ROOT / "automations/upstream/prompts/maintainer.md"
+		).read_text(encoding="utf-8")
+		health = (
+			REPO_ROOT / "automations/upstream/prompts/health.md"
+		).read_text(encoding="utf-8")
+		normalized_maintainer = " ".join(maintainer.split())
+		normalized_health = " ".join(health.split())
+		self.assertIn(
+			"validation-diagnostic --error-digest <exact-digest> --json",
+			normalized_maintainer,
+		)
+		self.assertIn("exact `error_digest` returned by the wrapper", normalized_maintainer)
+		self.assertIn("Pass the worker only that returned bounded structure", normalized_maintainer)
+		self.assertIn("artifact digests", normalized_maintainer)
+		self.assertIn("Never pass raw output", normalized_maintainer)
+		self.assertIn(
+			"validation-diagnostic --error-digest <exact-digest> --json",
+			normalized_health,
+		)
+		self.assertIn("Report only the digest, failure code", normalized_health)
+		self.assertIn("Never read or report raw validation output", normalized_health)
+		self.assertNotIn("diagnostics/<digest>.json", maintainer)
 
 	def test_state_wrapper_has_no_landing_write_implementation(self) -> None:
 		effects = (
