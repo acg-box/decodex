@@ -445,7 +445,6 @@ dependencies = [
 	"test-automations",
 	"test-gate-contract",
 	"test-rust",
-	"test-vnext-account-migration-transition",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
 	"test-vnext-postgres-store",

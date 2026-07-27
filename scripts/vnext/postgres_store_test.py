@@ -438,7 +438,9 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
 	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
-	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
+	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
 	"decodex.read_account_routing_control_exact()",
 	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
@@ -619,7 +621,9 @@ UPGRADE_RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
 	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
-	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
+	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
 	"decodex.read_account_routing_control_exact()",
 	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
@@ -3742,6 +3746,7 @@ def run_postgres_store_contracts(
 			"valid runtime role is not a non-vacuous least-privilege fixture"
 		)
 	primary_output = run_postgres_store_test("postgres_store_contract", env)
+	routing_output = run_postgres_store_test("postgres_account_routing_contract", env)
 	isolated_env = env.copy()
 	create_database(DIRECT_MISSING_EXTENSION_DATABASE, isolated_env)
 	set_contract_urls(
@@ -3756,7 +3761,12 @@ def run_postgres_store_contracts(
 	missing_extension_output = run_postgres_store_test(
 		"postgres_store_missing_pgcrypto_is_incompatible", isolated_env
 	)
-	return "\n".join((primary_output, migration_output, missing_extension_output))
+	return "\n".join((
+		primary_output,
+		routing_output,
+		migration_output,
+		missing_extension_output,
+	))
 
 
 def run_continuation_focused_contracts(
@@ -3783,11 +3793,20 @@ def run_reset_card_focused_contracts(
 		"reset_cards::account_terminal_mutation_and_receipt_are_atomic_and_replay_exactly",
 		env,
 	)
+	duplicate_provider_output = run_postgres_store_test(
+		"reset_cards::duplicate_provider_enrollment_rejects_without_effects_and_replays_exactly",
+		env,
+	)
 	reset_card_output = run_postgres_store_test(
 		"reset_cards::reset_card_private_claim_and_reclaim_contract",
 		env,
 	)
-	return "\n".join((migration_output, atomic_account_output, reset_card_output))
+	return "\n".join((
+		migration_output,
+		atomic_account_output,
+		duplicate_provider_output,
+		reset_card_output,
+	))
 
 
 def retained_title_authority_inventory(
@@ -6076,7 +6095,7 @@ def prepare_changed_embedded_sql(env: dict[str, str]) -> str:
 		"postgres_changed_sql_preparation_contract", "--exact", "--nocapture",
 	], env)
 	match = re.search(r"decodex_changed_sql_prepared=([1-9][0-9]*)", output)
-	if match is None or int(match.group(1)) != 27:
+	if match is None or int(match.group(1)) != 29:
 		raise TestFailure("changed embedded SQL preparation source count is not exact")
 	return json.dumps({
 		"schema": "decodex/postgres-preparation-stage/1",

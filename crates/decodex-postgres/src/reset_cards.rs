@@ -296,6 +296,7 @@ impl PostgresStore {
 		account_id: &AccountId,
 		expected_revision: i64,
 		descriptor: ResetCardDescriptor,
+		callback_profile_sha256: Option<&str>,
 	) -> Result<Option<ResetCardPreparation>, StoreError> {
 		if expected_revision < 1 {
 			return Err(StoreError::InvalidInput("expected revision must be positive"));
@@ -303,53 +304,140 @@ impl PostgresStore {
 		let command_descriptor =
 			reset_card_command_descriptor(account_id, expected_revision, descriptor);
 
-		match self.inspect_reset_card_preparation(command, &command_descriptor).await? {
+		match self
+			.inspect_reset_card_preparation(command, &command_descriptor)
+			.await
+			.map_err(pending_replay_receipt_error)?
+		{
 			ResetCardPreparationReplay::Absent => Ok(None),
 			ResetCardPreparationReplay::Pending { claim_expired: false } =>
 				Err(StoreError::ResetCardCommitOutcomeUnknown),
 			ResetCardPreparationReplay::Pending { claim_expired: true } => {
-				let actual_revision = self
-					.read_account_registry(Some(account_id), 1)
-					.await?
-					.into_iter()
-					.next()
-					.map(|account| account.revision);
-				let Some(actual_revision) =
-					actual_revision.filter(|actual| *actual > expected_revision)
-				else {
-					return Ok(None);
-				};
-				let rejection = ResetCardPreparationRejection::RevisionChanged {
-					expected: expected_revision,
-					actual: actual_revision,
-				};
-				let mut client = self.pool().get().await?;
-
-				match reserve_command(&mut client, command, &command_descriptor).await? {
-					CommandClaim::Owned(reservation) => {
-						let response = rejection_response(account_id, rejection);
-						drop(client);
-
-						if self.complete_reset_card_rejection(&reservation, &response).await.is_ok()
-						{
-							Err(rejection.store_error(account_id))
-						} else {
-							Err(StoreError::ResetCardCommitOutcomeUnknown)
-						}
+				let callback_profile_sha256 = callback_profile_sha256
+					.filter(|value| valid_sha256(value))
+					.ok_or(StoreError::ResetCardCommitOutcomeUnknown)?;
+				// This first account observation never overlaps a receipt reservation. It lets
+				// clear continuation cases obtain their real host-store binding without renewing
+				// the expired command claim.
+				match self
+					.observe_pending_reset_card_recovery(
+						account_id,
+						expected_revision,
+						callback_profile_sha256,
+					)
+					.await
+					.map_err(|_| StoreError::ResetCardCommitOutcomeUnknown)?
+				{
+					PendingResetCardRecovery::Continue => {
+						return Ok(None);
 					},
-					CommandClaim::Completed(response) =>
-						match preparation_from_response(response) {
-							Ok(prepared) => {
-								ensure_operation_exists(&client, &command.key).await?;
+					PendingResetCardRecovery::StoreUnavailable => {
+						return Err(StoreError::ResetCardCommitOutcomeUnknown);
+					},
+					PendingResetCardRecovery::Reject(_) => {},
+				}
+				let mut client = self
+					.pool()
+					.get()
+					.await
+					.map_err(|_| StoreError::ResetCardCommitOutcomeUnknown)?;
 
-								Ok(Some(prepared))
+				match reserve_command(&mut client, command, &command_descriptor)
+					.await
+					.map_err(pending_replay_receipt_error)?
+				{
+					CommandClaim::Owned(reservation) => {
+						// Receipt ownership is established before the account lifecycle lock. The
+						// same transaction revalidates account admission and completes only a
+						// rejection that remains deterministic under that canonical lock order.
+						let transaction = client
+							.transaction()
+							.await
+							.map_err(|_| StoreError::ResetCardCommitOutcomeUnknown)?;
+						if transaction
+							.query_one(ACCOUNT_LIFECYCLE_LOCK_SQL, &[&account_id.as_str()])
+							.await
+							.is_err()
+						{
+							let _ = transaction.rollback().await;
+
+							return Err(StoreError::ResetCardCommitOutcomeUnknown);
+						}
+						let account = match transaction
+							.query_opt(
+								RESET_CARD_ACCOUNT_ADMISSION_SQL,
+								&[&account_id.as_str(), &callback_profile_sha256],
+							)
+							.await
+						{
+							Ok(account) => account,
+							Err(_) => {
+								let _ = transaction.rollback().await;
+
+								return Err(StoreError::ResetCardCommitOutcomeUnknown);
 							},
-							Err(error) => Err(error),
-						},
+						};
+						let rejection = match classify_pending_reset_card_recovery(
+							account.as_ref(),
+							expected_revision,
+						) {
+							Ok(PendingResetCardRecovery::Reject(rejection)) => rejection,
+							Ok(
+								PendingResetCardRecovery::Continue
+								| PendingResetCardRecovery::StoreUnavailable,
+							)
+							| Err(_) => {
+								let _ = transaction.rollback().await;
+
+								return Err(StoreError::ResetCardCommitOutcomeUnknown);
+							},
+						};
+						let response = rejection_response(account_id, rejection);
+						if finish_command(&transaction, &reservation, &response).await.is_err() {
+							let _ = transaction.rollback().await;
+
+							return Err(StoreError::ResetCardCommitOutcomeUnknown);
+						}
+						if transaction.commit().await.is_err() {
+							return Err(StoreError::ResetCardCommitOutcomeUnknown);
+						}
+
+						Err(rejection.store_error(account_id))
+					},
+					CommandClaim::Completed(response) => {
+						let prepared = preparation_from_response(response)?;
+
+						ensure_operation_exists(&client, &command.key).await?;
+
+						Ok(Some(prepared))
+					},
 				}
 			},
 			ResetCardPreparationReplay::Completed(prepared) => Ok(Some(prepared)),
 		}
+	}
+
+	async fn observe_pending_reset_card_recovery(
+		&self,
+		account_id: &AccountId,
+		expected_revision: i64,
+		callback_profile_sha256: &str,
+	) -> Result<PendingResetCardRecovery, StoreError> {
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+
+		transaction.query_one(ACCOUNT_LIFECYCLE_LOCK_SQL, &[&account_id.as_str()]).await?;
+		let account = transaction
+			.query_opt(
+				RESET_CARD_ACCOUNT_ADMISSION_SQL,
+				&[&account_id.as_str(), &callback_profile_sha256],
+			)
+			.await?;
+		let recovery = classify_pending_reset_card_recovery(account.as_ref(), expected_revision)?;
+
+		transaction.rollback().await?;
+
+		Ok(recovery)
 	}
 
 	async fn inspect_reset_card_preparation(
@@ -572,18 +660,19 @@ impl PostgresStore {
 			)
 			.await?
 			.ok_or(StoreError::InvalidInput("reset-card account is not enrolled"))?;
-		let state = account_state(account.get(0))?;
-		admit_manual_reset_card_use(state)
-			.map_err(|_| StoreError::InvalidInput("account state rejects manual reset-card use"))?;
-		if account.get::<_, bool>(3)
-			|| account.get::<_, &str>(10) != "exact"
-			|| account.get::<_, bool>(11)
-			|| !account.get::<_, bool>(12)
-			|| !row_matches_process_binding(&account, &claim.process_binding)
+		let state =
+			account_state(account.get(0)).map_err(|_| StoreError::ResetCardCommitOutcomeUnknown)?;
+		match reset_card_account_admission(&account, state)
+			.map_err(|_| StoreError::ResetCardCommitOutcomeUnknown)?
 		{
-			return Err(StoreError::InvalidInput(
-				"account lifecycle rejects manual reset-card use",
-			));
+			ResetCardAccountAdmission::Admitted
+				if row_matches_process_binding(&account, &claim.process_binding) => {},
+			ResetCardAccountAdmission::StoreUnavailable =>
+				return Err(StoreError::ResetCardCommitOutcomeUnknown),
+			ResetCardAccountAdmission::Admitted | ResetCardAccountAdmission::Rejected =>
+				return Err(StoreError::InvalidInput(
+					"account lifecycle rejects manual reset-card use",
+				)),
 		}
 
 		let updated = transaction
@@ -731,6 +820,19 @@ enum ResetCardPreparationRejection {
 	RevisionChanged { expected: i64, actual: i64 },
 	StateRejected,
 }
+
+enum PendingResetCardRecovery {
+	Continue,
+	StoreUnavailable,
+	Reject(ResetCardPreparationRejection),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ResetCardAccountAdmission {
+	Admitted,
+	StoreUnavailable,
+	Rejected,
+}
 impl ResetCardPreparationRejection {
 	fn store_error(self, account_id: &AccountId) -> StoreError {
 		match self {
@@ -765,7 +867,9 @@ async fn persist_reset_card_preparation(
 		.ok_or(ResetCardPreparationPersistenceError::Rejected(
 			ResetCardPreparationRejection::NotEnrolled,
 		))?;
-	let state = account_state(account.get(0))?;
+	let state = account_state(account.get(0)).map_err(|_| {
+		ResetCardPreparationPersistenceError::Store(StoreError::ResetCardCommitOutcomeUnknown)
+	})?;
 	let actual_revision: i64 = account.get(1);
 
 	if actual_revision != expected_revision {
@@ -776,20 +880,21 @@ async fn persist_reset_card_preparation(
 			},
 		));
 	}
-	admit_manual_reset_card_use(state).map_err(|_| {
-		ResetCardPreparationPersistenceError::Rejected(ResetCardPreparationRejection::StateRejected)
+	let admission = reset_card_account_admission(&account, state).map_err(|_| {
+		ResetCardPreparationPersistenceError::Store(StoreError::ResetCardCommitOutcomeUnknown)
 	})?;
-	if process_binding.account_revision != expected_revision
-		|| !account.get::<_, bool>(2)
-		|| account.get::<_, bool>(3)
-		|| account.get::<_, &str>(10) != "exact"
-		|| account.get::<_, bool>(11)
-		|| !account.get::<_, bool>(12)
-		|| !row_matches_process_binding(&account, process_binding)
-	{
-		return Err(ResetCardPreparationPersistenceError::Rejected(
-			ResetCardPreparationRejection::StateRejected,
-		));
+	match admission {
+		ResetCardAccountAdmission::Admitted
+			if process_binding.account_revision == expected_revision
+				&& row_matches_process_binding(&account, process_binding) => {},
+		ResetCardAccountAdmission::StoreUnavailable =>
+			return Err(ResetCardPreparationPersistenceError::Store(
+				StoreError::ResetCardCommitOutcomeUnknown,
+			)),
+		ResetCardAccountAdmission::Admitted | ResetCardAccountAdmission::Rejected =>
+			return Err(ResetCardPreparationPersistenceError::Rejected(
+				ResetCardPreparationRejection::StateRejected,
+			)),
 	}
 
 	let public_payload =
@@ -825,6 +930,133 @@ async fn persist_reset_card_preparation(
 	finish_command(transaction, reservation, &response).await?;
 
 	Ok(())
+}
+
+fn classify_pending_reset_card_recovery(
+	account: Option<&Row>,
+	expected_revision: i64,
+) -> Result<PendingResetCardRecovery, StoreError> {
+	let Some(account) = account else {
+		return Ok(PendingResetCardRecovery::Continue);
+	};
+	let actual_revision: i64 = account.get(1);
+	if actual_revision < 1 {
+		return incompatible("stored reset-card account revision is invalid");
+	}
+	if actual_revision > expected_revision {
+		return Ok(PendingResetCardRecovery::Reject(
+			ResetCardPreparationRejection::RevisionChanged {
+				expected: expected_revision,
+				actual: actual_revision,
+			},
+		));
+	}
+	if actual_revision < expected_revision {
+		return Ok(PendingResetCardRecovery::Continue);
+	}
+
+	match reset_card_account_admission(account, account_state(account.get(0))?)? {
+		ResetCardAccountAdmission::Admitted => Ok(PendingResetCardRecovery::Continue),
+		ResetCardAccountAdmission::StoreUnavailable =>
+			Ok(PendingResetCardRecovery::StoreUnavailable),
+		ResetCardAccountAdmission::Rejected =>
+			Ok(PendingResetCardRecovery::Reject(ResetCardPreparationRejection::StateRejected)),
+	}
+}
+
+fn pending_replay_receipt_error(error: StoreError) -> StoreError {
+	match error {
+		StoreError::IdempotencyConflict | StoreError::Incompatible(_) => error,
+		_ => StoreError::ResetCardCommitOutcomeUnknown,
+	}
+}
+
+fn reset_card_account_admission(
+	account: &Row,
+	state: AccountState,
+) -> Result<ResetCardAccountAdmission, StoreError> {
+	let store_observation = account.get::<_, &str>(10);
+	if !matches!(
+		store_observation,
+		"unknown" | "exact" | "missing" | "mismatch" | "provider_mismatch" | "unavailable"
+	) {
+		return incompatible("stored reset-card account observation is invalid");
+	}
+	let credential_complete = stored_reset_card_credential_is_complete(account)?;
+	if store_observation == "unavailable" {
+		return Ok(ResetCardAccountAdmission::StoreUnavailable);
+	}
+	if admit_manual_reset_card_use(state).is_err()
+		|| !account.get::<_, bool>(2)
+		|| account.get::<_, bool>(3)
+		|| !credential_complete
+		|| account.get::<_, bool>(11)
+		|| !account.get::<_, bool>(12)
+	{
+		return Ok(ResetCardAccountAdmission::Rejected);
+	}
+
+	Ok(match store_observation {
+		"exact" => ResetCardAccountAdmission::Admitted,
+		_ => ResetCardAccountAdmission::Rejected,
+	})
+}
+
+fn stored_reset_card_credential_is_complete(account: &Row) -> Result<bool, StoreError> {
+	let schema_version = account.get::<_, Option<i32>>(4);
+	let credential_version = account.get::<_, Option<i64>>(5);
+	let fingerprint = account.get::<_, Option<&str>>(6);
+	let writer_operation_id = account.get::<_, Option<&str>>(7);
+	let provider_kind = account.get::<_, Option<&str>>(8);
+	let provider_account_id = account.get::<_, Option<&str>>(9);
+	let fields_present = [
+		schema_version.is_some(),
+		credential_version.is_some(),
+		fingerprint.is_some(),
+		writer_operation_id.is_some(),
+		provider_kind.is_some(),
+		provider_account_id.is_some(),
+	];
+
+	if fields_present.iter().all(|present| !present) {
+		return Ok(false);
+	}
+	if !fields_present.iter().all(|present| *present) {
+		return incompatible("stored reset-card credential binding is incomplete");
+	}
+	let schema_version = u16::try_from(schema_version.expect("presence checked"))
+		.ok()
+		.and_then(|value| CredentialStoreSchemaVersion::new(value).ok());
+	let credential_version = u64::try_from(credential_version.expect("presence checked"))
+		.ok()
+		.and_then(|value| CredentialVersion::new(value).ok());
+	let fingerprint = CredentialFingerprint::new(fingerprint.expect("presence checked"));
+	let writer_operation_id =
+		AccountOperationId::new(writer_operation_id.expect("presence checked"));
+	let provider = if provider_kind == Some(provider_text(AccountProvider::Chatgpt)) {
+		ProviderIdentity::new(
+			AccountProvider::Chatgpt,
+			provider_account_id.expect("presence checked"),
+		)
+		.ok()
+	} else {
+		None
+	};
+	if schema_version.is_none()
+		|| credential_version.is_none()
+		|| fingerprint.is_err()
+		|| writer_operation_id.is_err()
+		|| provider.is_none()
+	{
+		return incompatible("stored reset-card credential binding is invalid");
+	}
+
+	Ok(true)
+}
+
+fn valid_sha256(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn row_matches_process_binding(row: &Row, binding: &ProcessGenerationAccountBinding) -> bool {

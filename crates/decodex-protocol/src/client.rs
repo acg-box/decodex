@@ -17,11 +17,11 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	AccountInitialSelectionResult, AccountInspectResult, AccountsResult, CURRENT_VERSION,
-	ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome,
-	CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
-	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
-	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
+	AccountInitialSelectionResult, AccountInspectResult, AccountSelectionModeDto, AccountsResult,
+	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
+	CommandOutcome, CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision,
+	IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload,
+	ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
 	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
 	ServerId, ServerMessage, VersionRefusal,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
@@ -893,6 +893,51 @@ impl AccountClient {
 		}
 	}
 
+	/// Select one fixed account under routing-control and target-account revision guards.
+	pub async fn set_fixed_account_selection(
+		&self,
+		account_id: EntityId,
+		expected_account_revision: EntityRevision,
+		expected_routing_revision: EntityRevision,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision },
+			Some(expected_routing_revision),
+			idempotency_key,
+		)
+		.await
+	}
+
+	/// Select balanced initial routing under one routing-control revision.
+	pub async fn set_balanced_account_selection(
+		&self,
+		expected_routing_revision: EntityRevision,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::SetBalancedAccountSelection,
+			Some(expected_routing_revision),
+			idempotency_key,
+		)
+		.await
+	}
+
+	/// Replace the complete deterministic account order under one routing-control revision.
+	pub async fn set_account_order(
+		&self,
+		order: Vec<EntityId>,
+		expected_routing_revision: EntityRevision,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::SetAccountOrder { order },
+			Some(expected_routing_revision),
+			idempotency_key,
+		)
+		.await
+	}
+
 	/// Execute one V1.4 lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
@@ -908,7 +953,9 @@ impl AccountClient {
 				| CommandPayload::RenameAccount { .. }
 				| CommandPayload::SetAccountEnabled { .. }
 				| CommandPayload::LogoutAccount { .. }
-				| CommandPayload::ConfigureAccountRouting { .. }
+				| CommandPayload::SetFixedAccountSelection { .. }
+				| CommandPayload::SetBalancedAccountSelection
+				| CommandPayload::SetAccountOrder { .. }
 				| CommandPayload::RefreshAccount { .. }
 				| CommandPayload::RecoverAccountOperation { .. }
 		) {
@@ -1054,12 +1101,20 @@ fn account_result_matches(
 			ResultPayload::AccountLoggedOut { account_id: result_id, tombstone_revision },
 		) => account_id == result_id && *tombstone_revision == entity_revision,
 		(
-			CommandPayload::ConfigureAccountRouting { mode, order, .. },
+			CommandPayload::SetFixedAccountSelection { account_id, .. },
 			ResultPayload::AccountRoutingChanged { routing },
 		) =>
 			routing.revision == entity_revision
-				&& &routing.mode == mode
-				&& routing.order.as_slice() == order.as_slice(),
+				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone()),
+		(
+			CommandPayload::SetBalancedAccountSelection,
+			ResultPayload::AccountRoutingChanged { routing },
+		) =>
+			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced,
+		(
+			CommandPayload::SetAccountOrder { order },
+			ResultPayload::AccountRoutingChanged { routing },
+		) => routing.revision == entity_revision && routing.order.as_slice() == order.as_slice(),
 		(
 			CommandPayload::RecoverAccountOperation { operation_id, .. },
 			ResultPayload::AccountOperationRecovered { operation_id: result_id, .. },

@@ -450,9 +450,12 @@ class LocalServiceInstallerTests(unittest.TestCase):
             paths.credential_directory.mkdir(parents=True)
             expected = paths.credential_directory / f"{account_id}.json"
             unexpected = paths.credential_directory / "unexpected.json"
+            metadata = paths.root / "other-staging-metadata.json"
             expected.write_text("secret", encoding="ascii")
             unexpected.write_text("leave", encoding="ascii")
             paths.staging_config.write_text("staging", encoding="ascii")
+            paths.migration_manifest.write_text("manifest", encoding="ascii")
+            metadata.write_text("metadata", encoding="ascii")
             owner = self.module.MigrationStagingOwner.for_accounts(paths, [account_id])
 
             with self.assertRaisesRegex(
@@ -464,6 +467,201 @@ class LocalServiceInstallerTests(unittest.TestCase):
             self.assertFalse(expected.exists())
             self.assertFalse(paths.staging_config.exists())
             self.assertEqual("leave", unexpected.read_text(encoding="ascii"))
+            self.assertEqual(
+                "manifest",
+                paths.migration_manifest.read_text(encoding="ascii"),
+            )
+            self.assertEqual("metadata", metadata.read_text(encoding="ascii"))
+
+    def test_prepared_resume_verifier_failure_cleans_exact_staging_before_release(self):
+        account_id = "10000000-0000-4000-8000-000000000001"
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            paths.credential_directory.mkdir(parents=True)
+            credential = paths.credential_directory / f"{account_id}.json"
+            credential.write_text("secret", encoding="ascii")
+            paths.staging_config.write_text("staging", encoding="ascii")
+            namespace_lock = mock.Mock()
+            with (
+                mock.patch.object(
+                    self.module,
+                    "managed_path_exists",
+                    return_value=True,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "load_existing_manifest_accounts",
+                    return_value={1: {"account_id": account_id}},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_prepared_account_migration_verifier",
+                    side_effect=self.module.InstallError("verifier failed"),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "retire_active_migration_sources",
+                ) as retire,
+                mock.patch.object(
+                    self.module,
+                    "run_account_migration_finalizer",
+                ) as finalize,
+                self.assertRaisesRegex(self.module.InstallError, "verifier failed"),
+            ):
+                self.module.resume_prepared_account_migration(
+                    paths,
+                    os.geteuid(),
+                    namespace_lock,
+                    checkpoint=lambda _name: None,
+                    transition_gate_fd=None,
+                )
+
+            self.assertFalse(credential.exists())
+            self.assertFalse(paths.credential_directory.exists())
+            self.assertFalse(paths.staging_config.exists())
+            retire.assert_not_called()
+            finalize.assert_not_called()
+
+    def test_prepared_resume_preserves_unknown_staging_file_and_primary_failure(self):
+        account_id = "10000000-0000-4000-8000-000000000001"
+        verifier_failure = self.module.InstallError("destination mismatch")
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            paths.credential_directory.mkdir(parents=True)
+            credential = paths.credential_directory / f"{account_id}.json"
+            unknown = paths.credential_directory / "unknown.json"
+            credential.write_text("secret", encoding="ascii")
+            unknown.write_text("preserve", encoding="ascii")
+            paths.staging_config.write_text("staging", encoding="ascii")
+            with (
+                mock.patch.object(self.module, "managed_path_exists", return_value=True),
+                mock.patch.object(
+                    self.module,
+                    "load_existing_manifest_accounts",
+                    return_value={1: {"account_id": account_id}},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_prepared_account_migration_verifier",
+                    side_effect=verifier_failure,
+                ),
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "destination mismatch",
+                ) as raised,
+            ):
+                self.module.resume_prepared_account_migration(
+                    paths,
+                    os.geteuid(),
+                    mock.Mock(),
+                    checkpoint=lambda _name: None,
+                    transition_gate_fd=None,
+                )
+
+            self.assertIs(raised.exception, verifier_failure)
+            self.assertIsInstance(raised.exception.__cause__, self.module.InstallError)
+            self.assertIn("staging could not be retired", str(raised.exception.__cause__))
+            self.assertFalse(credential.exists())
+            self.assertFalse(paths.staging_config.exists())
+            self.assertEqual("preserve", unknown.read_text(encoding="ascii"))
+
+    def test_prepared_resume_cleanup_only_failure_blocks_retirement_and_finalization(self):
+        account_id = "10000000-0000-4000-8000-000000000001"
+        cleanup_failure = self.module.InstallError("cleanup failed")
+        cleanup_retry_failure = self.module.InstallError("cleanup retry failed")
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            with (
+                mock.patch.object(self.module, "managed_path_exists", return_value=True),
+                mock.patch.object(
+                    self.module,
+                    "load_existing_manifest_accounts",
+                    return_value={1: {"account_id": account_id}},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_prepared_account_migration_verifier",
+                ),
+                mock.patch.object(
+                    self.module.MigrationStagingOwner,
+                    "cleanup",
+                    autospec=True,
+                    side_effect=[cleanup_failure, cleanup_retry_failure],
+                ) as cleanup,
+                mock.patch.object(
+                    self.module,
+                    "retire_active_migration_sources",
+                ) as retire,
+                mock.patch.object(
+                    self.module,
+                    "run_account_migration_finalizer",
+                ) as finalize,
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "cleanup failed",
+                ) as raised,
+            ):
+                self.module.resume_prepared_account_migration(
+                    paths,
+                    os.geteuid(),
+                    mock.Mock(),
+                    checkpoint=lambda _name: None,
+                    transition_gate_fd=None,
+                )
+
+        self.assertIs(raised.exception, cleanup_failure)
+        self.assertIs(raised.exception.__cause__, cleanup_retry_failure)
+        self.assertEqual(2, cleanup.call_count)
+        retire.assert_not_called()
+        finalize.assert_not_called()
+
+    def test_prepared_resume_destination_mismatch_never_retires_or_finalizes(self):
+        account_id = "10000000-0000-4000-8000-000000000001"
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            paths.credential_directory.mkdir(parents=True)
+            credential = paths.credential_directory / f"{account_id}.json"
+            credential.write_text("secret", encoding="ascii")
+            paths.staging_config.write_text("staging", encoding="ascii")
+            with (
+                mock.patch.object(self.module, "managed_path_exists", return_value=True),
+                mock.patch.object(
+                    self.module,
+                    "load_existing_manifest_accounts",
+                    return_value={1: {"account_id": account_id}},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_prepared_account_migration_verifier",
+                    side_effect=self.module.InstallError(
+                        "prepared account migration destination did not verify"
+                    ),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "retire_active_migration_sources",
+                ) as retire,
+                mock.patch.object(
+                    self.module,
+                    "run_account_migration_finalizer",
+                ) as finalize,
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "destination did not verify",
+                ),
+            ):
+                self.module.resume_prepared_account_migration(
+                    paths,
+                    os.geteuid(),
+                    mock.Mock(),
+                    checkpoint=lambda _name: None,
+                    transition_gate_fd=None,
+                )
+
+            self.assertFalse(credential.exists())
+            self.assertFalse(paths.staging_config.exists())
+            retire.assert_not_called()
+            finalize.assert_not_called()
 
     def test_managed_mapping_symlink_is_rejected_without_following_it(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -683,6 +881,242 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertNotIn(str(paths.legacy_accounts), "".join(statements))
         self.assertNotIn(str(paths.mapping), "".join(statements))
         self.assertNotIn(str(paths.legacy_config), "".join(statements))
+
+    def test_prepared_verifier_failure_cleans_before_postgres_stop_and_lock_release(self):
+        events: list[str] = []
+        verifier_failure = self.module.InstallError("prepared verifier failed")
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            process = mock.Mock()
+            namespace_lock = mock.Mock()
+            namespace_lock.close.side_effect = lambda: events.append("lock_release")
+
+            def fail_verifier(*_args, **_kwargs):
+                events.append("verify")
+                raise verifier_failure
+
+            with (
+                mock.patch.object(self.module, "install_paths", return_value=paths),
+                mock.patch.object(
+                    self.module,
+                    "validate_host",
+                    return_value=os.geteuid(),
+                ),
+                mock.patch.object(self.module, "ensure_installer_namespace_layout"),
+                mock.patch.object(
+                    self.module.InstallerNamespaceLock,
+                    "acquire",
+                    return_value=namespace_lock,
+                ),
+                mock.patch.object(self.module, "ensure_directories"),
+                mock.patch.object(self.module, "postgres_major", return_value=18),
+                mock.patch.object(self.module, "bootout_service"),
+                mock.patch.object(
+                    self.module,
+                    "read_optional_owned_source",
+                    return_value=b"version = 1\n",
+                ),
+                mock.patch.object(self.module, "initialize_cluster"),
+                mock.patch.object(
+                    self.module,
+                    "start_temporary_postgres",
+                    return_value=process,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "psql_environment",
+                    return_value={"PGUSER": "owner"},
+                ),
+                mock.patch.object(self.module, "ensure_roles_and_database"),
+                mock.patch.object(
+                    self.module,
+                    "migration_receipt_phase",
+                    return_value="prepared",
+                ),
+                mock.patch.object(self.module, "managed_path_exists", return_value=True),
+                mock.patch.object(
+                    self.module,
+                    "load_existing_manifest_accounts",
+                    return_value={},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_prepared_account_migration_verifier",
+                    side_effect=fail_verifier,
+                ),
+                mock.patch.object(
+                    self.module.MigrationStagingOwner,
+                    "cleanup",
+                    autospec=True,
+                    side_effect=lambda _owner: events.append("cleanup"),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "stop_temporary_postgres",
+                    side_effect=lambda _process: events.append("stop_pg"),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "retire_active_migration_sources",
+                ) as retire,
+                mock.patch.object(
+                    self.module,
+                    "run_account_migration_finalizer",
+                ) as finalize,
+                mock.patch.object(self.module, "atomic_write") as config_write,
+                mock.patch.object(self.module, "bootstrap_service") as bootstrap,
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "prepared verifier failed",
+                ) as raised,
+            ):
+                self.module.main([])
+
+        self.assertIs(raised.exception, verifier_failure)
+        self.assertEqual(["verify", "cleanup", "stop_pg", "lock_release"], events)
+        retire.assert_not_called()
+        finalize.assert_not_called()
+        config_write.assert_not_called()
+        bootstrap.assert_not_called()
+
+    def test_fresh_verifier_failure_cleans_before_postgres_stop_and_lock_release(self):
+        events: list[str] = []
+        verifier_failure = self.module.InstallError("fresh verifier failed")
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            process = mock.Mock()
+            namespace_lock = mock.Mock()
+            namespace_lock.close.side_effect = lambda: events.append("lock_release")
+
+            def fail_verifier(*_args, **_kwargs):
+                events.append("verify")
+                raise verifier_failure
+
+            with (
+                mock.patch.object(self.module, "install_paths", return_value=paths),
+                mock.patch.object(
+                    self.module,
+                    "validate_host",
+                    return_value=os.geteuid(),
+                ),
+                mock.patch.object(self.module, "ensure_installer_namespace_layout"),
+                mock.patch.object(
+                    self.module.InstallerNamespaceLock,
+                    "acquire",
+                    return_value=namespace_lock,
+                ),
+                mock.patch.object(self.module, "ensure_directories"),
+                mock.patch.object(self.module, "postgres_major", return_value=18),
+                mock.patch.object(self.module, "bootout_service"),
+                mock.patch.object(
+                    self.module,
+                    "read_optional_owned_source",
+                    return_value=None,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "lock_and_read_legacy_accounts",
+                    return_value=([], None, None),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "prepare_vnext_config_source",
+                    return_value=None,
+                ),
+                mock.patch.object(self.module, "managed_path_exists", return_value=False),
+                mock.patch.object(
+                    self.module,
+                    "load_existing_mapping",
+                    return_value={},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "parse_legacy_account_config",
+                    return_value=(None, {}),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "load_existing_manifest_accounts",
+                    return_value={},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "build_enrollments",
+                    return_value=([], None, []),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "render_config",
+                    return_value="version = 1\n",
+                ),
+                mock.patch.object(
+                    self.module,
+                    "render_launch_agent",
+                    return_value=b"launch-agent",
+                ),
+                mock.patch.object(
+                    self.module,
+                    "credential_sources",
+                    return_value={},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "render_migration_manifest",
+                    return_value=b"manifest",
+                ),
+                mock.patch.object(self.module, "atomic_write") as writes,
+                mock.patch.object(self.module, "initialize_cluster"),
+                mock.patch.object(
+                    self.module,
+                    "start_temporary_postgres",
+                    return_value=process,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "psql_environment",
+                    return_value={"PGUSER": "owner"},
+                ),
+                mock.patch.object(self.module, "ensure_roles_and_database"),
+                mock.patch.object(
+                    self.module,
+                    "run_offline_account_migration",
+                    side_effect=fail_verifier,
+                ),
+                mock.patch.object(
+                    self.module.MigrationStagingOwner,
+                    "cleanup",
+                    autospec=True,
+                    side_effect=lambda _owner: events.append("cleanup"),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "stop_temporary_postgres",
+                    side_effect=lambda _process: events.append("stop_pg"),
+                ),
+                mock.patch.object(
+                    self.module,
+                    "retire_active_migration_sources",
+                ) as retire,
+                mock.patch.object(
+                    self.module,
+                    "run_account_migration_finalizer",
+                ) as finalize,
+                mock.patch.object(self.module, "bootstrap_service") as bootstrap,
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "fresh verifier failed",
+                ) as raised,
+            ):
+                self.module.main([])
+
+        self.assertIs(raised.exception, verifier_failure)
+        self.assertEqual(["verify", "cleanup", "stop_pg", "lock_release"], events)
+        self.assertFalse(
+            any(call.args[0] == paths.config for call in writes.call_args_list)
+        )
+        retire.assert_not_called()
+        finalize.assert_not_called()
+        bootstrap.assert_not_called()
 
     def test_prepared_cutover_resumes_finalization_without_legacy_reads(self):
         result = {

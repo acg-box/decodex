@@ -568,7 +568,12 @@ BEGIN
 		),
 		EXISTS (
 			SELECT 1 FROM decodex.codex_account_capability AS capability
-			WHERE capability.singleton AND capability.login_chatgpt_auth_tokens
+			WHERE capability.singleton
+				AND capability.build_identity='codex-cli 0.145.0-alpha.18'
+				AND capability.executable_sha256='f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9'
+				AND capability.schema_sha256 ~ '^[0-9a-f]{64}$'
+				AND capability.callback_profile_sha256 ~ '^[0-9a-f]{64}$'
+				AND capability.login_chatgpt_auth_tokens
 				AND capability.refresh_callback
 				AND capability.callback_profile_sha256=p_callback_profile_sha256
 		)
@@ -590,6 +595,7 @@ CREATE FUNCTION decodex.prepare_account_operation_exact(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
 DECLARE existing decodex.account_operations%ROWTYPE;
 DECLARE account decodex.accounts%ROWTYPE;
+DECLARE conflicting_constraint text;
 BEGIN
 	IF p_kind='logout' THEN
 		PERFORM pg_catalog.pg_advisory_xact_lock_shared(1400);
@@ -654,11 +660,23 @@ BEGIN
 			RETURN QUERY SELECT 'invalid_request',0::bigint,'prepared'::decodex.account_operation_phase;
 			RETURN;
 		END IF;
-		INSERT INTO decodex.accounts(
-			account_id,display_label,state,enabled,provider_kind,provider_account_id
-		) VALUES (
-			p_account_id,p_display_label,'unknown',p_enabled,p_provider_kind,p_provider_account_id
-		) RETURNING * INTO account;
+		BEGIN
+			INSERT INTO decodex.accounts(
+				account_id,display_label,state,enabled,provider_kind,provider_account_id
+			) VALUES (
+				p_account_id,p_display_label,'unknown',p_enabled,
+				p_provider_kind,p_provider_account_id
+			) RETURNING * INTO account;
+		EXCEPTION
+			WHEN unique_violation THEN
+				GET STACKED DIAGNOSTICS conflicting_constraint = CONSTRAINT_NAME;
+				IF conflicting_constraint='accounts_provider_identity_unique' THEN
+					RETURN QUERY SELECT 'identity_conflict',0::bigint,
+						'prepared'::decodex.account_operation_phase;
+					RETURN;
+				END IF;
+				RAISE;
+		END;
 		IF NOT (
 			p_kind='import'
 			AND EXISTS (
@@ -842,6 +860,7 @@ BEGIN
 	END IF;
 	IF p_target_phase='committed' THEN
 		IF operation.kind='logout' THEN
+			PERFORM decodex.lock_account_routing_universe_exact(true);
 			UPDATE decodex.accounts SET enabled=false,
 				credential_store_schema_version=NULL,credential_version=NULL,
 				credential_fingerprint=NULL,credential_writer_operation_id=NULL,
@@ -851,11 +870,24 @@ BEGIN
 				updated_at=pg_catalog.clock_timestamp()
 			WHERE account_id=operation.account_id RETURNING revision INTO next_revision;
 			DELETE FROM decodex.account_routing_order WHERE account_id=operation.account_id;
+			UPDATE decodex.account_routing_order SET position=position+512,
+				updated_at=pg_catalog.clock_timestamp();
+			WITH compact AS (
+				SELECT ordering.account_id,
+					pg_catalog.row_number() OVER (
+						ORDER BY ordering.position,ordering.account_id
+					)-1 AS position
+				FROM decodex.account_routing_order AS ordering
+			)
+			UPDATE decodex.account_routing_order AS ordering
+			SET position=compact.position,updated_at=pg_catalog.clock_timestamp()
+			FROM compact WHERE compact.account_id=ordering.account_id;
 			UPDATE decodex.account_routing_control SET
 				mode=CASE WHEN fixed_account_id=operation.account_id THEN 'balanced' ELSE mode END,
 				fixed_account_id=CASE WHEN fixed_account_id=operation.account_id THEN NULL ELSE fixed_account_id END,
 				revision=revision+1,updated_at=pg_catalog.clock_timestamp()
 			WHERE singleton;
+			PERFORM decodex.lock_account_routing_universe_exact(true);
 		ELSE
 			UPDATE decodex.accounts SET
 				credential_store_schema_version=operation.target_store_schema_version,
@@ -970,24 +1002,218 @@ BEGIN
 END
 $$;
 
-CREATE FUNCTION decodex.replace_account_routing_control_exact(
+-- Every multi-owner routing operation takes the same bounded row-lock order:
+-- visible Accounts by UUID, routing rows by account/position, then the control singleton.
+-- Offline migration may temporarily omit newly imported Accounts, but it may not retain a
+-- surplus/tombstoned member or any malformed subset and must prove the exact universe after write.
+CREATE FUNCTION decodex.lock_account_routing_universe_exact(p_require_complete boolean)
+RETURNS boolean LANGUAGE plpgsql SET search_path=pg_catalog,decodex AS $$
+DECLARE visible_count bigint;
+DECLARE routing_count bigint;
+DECLARE current_mode decodex.account_selection_mode;
+DECLARE current_fixed_account_id uuid;
+BEGIN
+	IF p_require_complete IS NULL THEN
+		RAISE EXCEPTION 'account routing invariant mode is invalid'
+			USING ERRCODE='22023';
+	END IF;
+	PERFORM account.account_id FROM decodex.accounts AS account
+	WHERE account.tombstoned_at IS NULL
+	ORDER BY account.account_id FOR UPDATE OF account;
+	PERFORM ordering.account_id FROM decodex.account_routing_order AS ordering
+	ORDER BY ordering.account_id,ordering.position FOR UPDATE OF ordering;
+	SELECT control.mode,control.fixed_account_id
+	INTO current_mode,current_fixed_account_id
+	FROM decodex.account_routing_control AS control
+	WHERE control.singleton FOR UPDATE;
+	IF NOT FOUND THEN
+		RAISE EXCEPTION 'account routing universe is incompatible'
+			USING ERRCODE='55000',CONSTRAINT='account_routing_universe_complete';
+	END IF;
+	SELECT pg_catalog.count(*) INTO visible_count
+	FROM decodex.accounts AS account WHERE account.tombstoned_at IS NULL;
+	SELECT pg_catalog.count(*) INTO routing_count FROM decodex.account_routing_order;
+	IF visible_count>512 OR routing_count>512
+		OR routing_count<>(SELECT pg_catalog.count(DISTINCT ordering.position)
+			FROM decodex.account_routing_order AS ordering)
+		OR EXISTS (
+			SELECT 1 FROM decodex.account_routing_order AS ordering
+			LEFT JOIN decodex.accounts AS account ON account.account_id=ordering.account_id
+			WHERE account.account_id IS NULL OR account.tombstoned_at IS NOT NULL
+				OR ordering.position<0 OR ordering.position>=routing_count
+		)
+		OR (current_mode='fixed') IS DISTINCT FROM
+			(current_fixed_account_id IS NOT NULL)
+		OR (current_fixed_account_id IS NOT NULL AND NOT EXISTS (
+			SELECT 1 FROM decodex.account_routing_order AS ordering
+			WHERE ordering.account_id=current_fixed_account_id
+		))
+		OR (p_require_complete AND (
+			visible_count<>routing_count
+			OR EXISTS (
+				SELECT 1 FROM decodex.accounts AS account
+				LEFT JOIN decodex.account_routing_order AS ordering
+					ON ordering.account_id=account.account_id
+				WHERE account.tombstoned_at IS NULL AND ordering.account_id IS NULL
+			)
+		))
+	THEN
+		RAISE EXCEPTION 'account routing universe is incompatible'
+			USING ERRCODE='55000',CONSTRAINT='account_routing_universe_complete';
+	END IF;
+	RETURN true;
+END
+$$;
+
+CREATE FUNCTION decodex.set_fixed_account_selection_exact(
+	p_expected_routing_revision bigint,p_account_id uuid,p_expected_account_revision bigint
+) RETURNS TABLE(result_code text,routing_revision bigint,account_revision bigint)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
+DECLARE current_routing_revision bigint;
+DECLARE current_account_revision bigint;
+DECLARE account_tombstoned_at timestamptz;
+BEGIN
+	PERFORM decodex.lock_account_routing_universe_exact(true);
+	SELECT control.revision INTO current_routing_revision
+	FROM decodex.account_routing_control AS control
+	WHERE control.singleton;
+	IF p_expected_routing_revision IS NULL OR p_expected_routing_revision < 1
+		OR p_account_id IS NULL OR p_expected_account_revision IS NULL
+		OR p_expected_account_revision < 1
+	THEN
+		RETURN QUERY SELECT 'invalid_request',current_routing_revision,0::bigint; RETURN;
+	END IF;
+	IF current_routing_revision<>p_expected_routing_revision THEN
+		RETURN QUERY SELECT 'stale_routing_control',current_routing_revision,0::bigint; RETURN;
+	END IF;
+	SELECT account.revision,account.tombstoned_at
+	INTO current_account_revision,account_tombstoned_at
+	FROM decodex.accounts AS account
+	WHERE account.account_id=p_account_id;
+	IF NOT FOUND OR account_tombstoned_at IS NOT NULL OR NOT EXISTS (
+		SELECT 1 FROM decodex.account_routing_order AS ordering
+		WHERE ordering.account_id=p_account_id
+	) THEN
+		RETURN QUERY SELECT 'account_missing',current_routing_revision,0::bigint; RETURN;
+	END IF;
+	IF current_account_revision<>p_expected_account_revision THEN
+		RETURN QUERY SELECT
+			'stale_account',current_routing_revision,current_account_revision; RETURN;
+	END IF;
+	IF EXISTS (
+		SELECT 1 FROM decodex.account_routing_control AS control
+		WHERE control.singleton AND control.mode='fixed'
+			AND control.fixed_account_id=p_account_id
+	) THEN
+		RETURN QUERY SELECT 'updated',current_routing_revision,current_account_revision; RETURN;
+	END IF;
+	UPDATE decodex.account_routing_control AS control
+	SET mode='fixed',fixed_account_id=p_account_id,revision=control.revision+1,
+		updated_at=pg_catalog.clock_timestamp()
+	WHERE control.singleton RETURNING control.revision INTO current_routing_revision;
+	PERFORM decodex.lock_account_routing_universe_exact(true);
+	RETURN QUERY SELECT 'updated',current_routing_revision,current_account_revision;
+END
+$$;
+
+CREATE FUNCTION decodex.set_balanced_account_selection_exact(
+	p_expected_routing_revision bigint
+) RETURNS TABLE(result_code text,routing_revision bigint)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
+DECLARE current_routing_revision bigint;
+BEGIN
+	PERFORM decodex.lock_account_routing_universe_exact(true);
+	SELECT control.revision INTO current_routing_revision
+	FROM decodex.account_routing_control AS control
+	WHERE control.singleton;
+	IF p_expected_routing_revision IS NULL OR p_expected_routing_revision < 1 THEN
+		RETURN QUERY SELECT 'invalid_request',current_routing_revision; RETURN;
+	END IF;
+	IF current_routing_revision<>p_expected_routing_revision THEN
+		RETURN QUERY SELECT 'stale_routing_control',current_routing_revision; RETURN;
+	END IF;
+	IF EXISTS (
+		SELECT 1 FROM decodex.account_routing_control AS control
+		WHERE control.singleton AND control.mode='balanced'
+			AND control.fixed_account_id IS NULL
+	) THEN
+		RETURN QUERY SELECT 'updated',current_routing_revision; RETURN;
+	END IF;
+	UPDATE decodex.account_routing_control AS control
+	SET mode='balanced',fixed_account_id=NULL,revision=control.revision+1,
+		updated_at=pg_catalog.clock_timestamp()
+	WHERE control.singleton RETURNING control.revision INTO current_routing_revision;
+	PERFORM decodex.lock_account_routing_universe_exact(true);
+	RETURN QUERY SELECT 'updated',current_routing_revision;
+END
+$$;
+
+CREATE FUNCTION decodex.set_account_order_exact(
+	p_expected_routing_revision bigint,p_order uuid[]
+) RETURNS TABLE(result_code text,routing_revision bigint)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
+DECLARE current_routing_revision bigint;
+DECLARE current_order uuid[];
+BEGIN
+	PERFORM decodex.lock_account_routing_universe_exact(true);
+	SELECT control.revision INTO current_routing_revision
+	FROM decodex.account_routing_control AS control
+	WHERE control.singleton;
+	IF p_expected_routing_revision IS NULL OR p_expected_routing_revision < 1 THEN
+		RETURN QUERY SELECT 'invalid_request',current_routing_revision; RETURN;
+	END IF;
+	IF current_routing_revision<>p_expected_routing_revision THEN
+		RETURN QUERY SELECT 'stale_routing_control',current_routing_revision; RETURN;
+	END IF;
+	IF p_order IS NULL OR pg_catalog.cardinality(p_order)>512
+		OR pg_catalog.cardinality(p_order)<>(SELECT pg_catalog.count(*)
+			FROM decodex.accounts WHERE tombstoned_at IS NULL)
+		OR pg_catalog.cardinality(p_order)<>(SELECT pg_catalog.count(DISTINCT value)
+			FROM pg_catalog.unnest(p_order) AS value)
+		OR EXISTS (SELECT 1 FROM pg_catalog.unnest(p_order) AS value
+			LEFT JOIN decodex.accounts AS account ON account.account_id=value
+			WHERE account.account_id IS NULL OR account.tombstoned_at IS NOT NULL)
+	THEN
+		RETURN QUERY SELECT 'invalid_order',current_routing_revision; RETURN;
+	END IF;
+	SELECT COALESCE(
+		pg_catalog.array_agg(ordering.account_id ORDER BY ordering.position),
+		'{}'::uuid[]
+	) INTO current_order FROM decodex.account_routing_order AS ordering;
+	IF current_order IS NOT DISTINCT FROM p_order THEN
+		RETURN QUERY SELECT 'updated',current_routing_revision; RETURN;
+	END IF;
+	DELETE FROM decodex.account_routing_order;
+	INSERT INTO decodex.account_routing_order(account_id,position)
+	SELECT value,ordinality-1
+	FROM pg_catalog.unnest(p_order) WITH ORDINALITY AS entry(value,ordinality);
+	UPDATE decodex.account_routing_control AS control
+	SET revision=control.revision+1,updated_at=pg_catalog.clock_timestamp()
+	WHERE control.singleton RETURNING control.revision INTO current_routing_revision;
+	PERFORM decodex.lock_account_routing_universe_exact(true);
+	RETURN QUERY SELECT 'updated',current_routing_revision;
+END
+$$;
+
+CREATE FUNCTION decodex.replace_account_routing_control_for_migration_exact(
 	p_expected_revision bigint,p_mode decodex.account_selection_mode,
 	p_fixed_account_id uuid,p_order uuid[]
 ) RETURNS TABLE(result_code text,revision bigint)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
+LANGUAGE plpgsql SET search_path=pg_catalog,decodex AS $$
 DECLARE current_revision bigint;
 DECLARE current_mode decodex.account_selection_mode;
 DECLARE current_fixed uuid;
 DECLARE current_order uuid[];
 BEGIN
+	PERFORM decodex.lock_account_routing_universe_exact(false);
 	SELECT control.revision,control.mode,control.fixed_account_id
 	INTO current_revision,current_mode,current_fixed
 	FROM decodex.account_routing_control AS control
-	WHERE singleton FOR UPDATE;
+	WHERE singleton;
 	SELECT COALESCE(pg_catalog.array_agg(ordering.account_id ORDER BY ordering.position),'{}'::uuid[])
 	INTO current_order FROM decodex.account_routing_order AS ordering;
 	IF current_revision<>p_expected_revision THEN
-		RETURN QUERY SELECT 'stale_control',current_revision; RETURN;
+		RETURN QUERY SELECT 'stale_routing_control',current_revision; RETURN;
 	END IF;
 	IF (p_mode='fixed')<>(p_fixed_account_id IS NOT NULL)
 		OR p_order IS NULL OR pg_catalog.cardinality(p_order)<>(SELECT pg_catalog.count(*)
@@ -1003,6 +1229,7 @@ BEGIN
 	END IF;
 	IF (current_mode,current_fixed,current_order) IS NOT DISTINCT FROM
 		(p_mode,p_fixed_account_id,p_order) THEN
+		PERFORM decodex.lock_account_routing_universe_exact(true);
 		RETURN QUERY SELECT 'updated',current_revision; RETURN;
 	END IF;
 	DELETE FROM decodex.account_routing_order;
@@ -1012,19 +1239,23 @@ BEGIN
 	SET mode=p_mode,fixed_account_id=p_fixed_account_id,
 		revision=control.revision+1,updated_at=pg_catalog.clock_timestamp()
 	WHERE control.singleton RETURNING control.revision INTO current_revision;
+	PERFORM decodex.lock_account_routing_universe_exact(true);
 	RETURN QUERY SELECT 'updated',current_revision;
 END
 $$;
 
 CREATE FUNCTION decodex.read_account_routing_control_exact()
 RETURNS TABLE(mode decodex.account_selection_mode,fixed_account_id uuid,revision bigint,account_order uuid[])
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
-	SELECT control.mode,control.fixed_account_id,control.revision,
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
+BEGIN
+	PERFORM decodex.lock_account_routing_universe_exact(true);
+	RETURN QUERY SELECT control.mode,control.fixed_account_id,control.revision,
 		COALESCE(pg_catalog.array_agg(ordering.account_id ORDER BY ordering.position)
 			FILTER (WHERE ordering.account_id IS NOT NULL),'{}'::uuid[])
 	FROM decodex.account_routing_control AS control
 	LEFT JOIN decodex.account_routing_order AS ordering ON true
-	WHERE control.singleton GROUP BY control.mode,control.fixed_account_id,control.revision
+	WHERE control.singleton GROUP BY control.mode,control.fixed_account_id,control.revision;
+END
 $$;
 
 CREATE FUNCTION decodex.observe_account_quota_exact(
@@ -1309,7 +1540,11 @@ REVOKE ALL ON FUNCTION
 	decodex.read_unsettled_account_operations_exact(bigint),
 	decodex.read_account_operation_exact(uuid),
 	decodex.update_account_administration_exact(uuid,bigint,text,boolean),
-	decodex.replace_account_routing_control_exact(bigint,decodex.account_selection_mode,uuid,uuid[]),
+	decodex.lock_account_routing_universe_exact(boolean),
+	decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),
+	decodex.set_balanced_account_selection_exact(bigint),
+	decodex.set_account_order_exact(bigint,uuid[]),
+	decodex.replace_account_routing_control_for_migration_exact(bigint,decodex.account_selection_mode,uuid,uuid[]),
 	decodex.read_account_routing_control_exact(),
 	decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),
 	decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),
@@ -1343,7 +1578,7 @@ BEGIN
 			'REVOKE INSERT,UPDATE,DELETE ON TABLE decodex.accounts FROM %I',runtime_role
 		);
 		EXECUTE pg_catalog.format('GRANT USAGE ON TYPE decodex.account_provider_kind,decodex.account_operation_kind,decodex.account_operation_phase,decodex.account_selection_mode,decodex.account_store_observation,decodex.account_quota_observation_error TO %I',runtime_role);
-		EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_account_registry_exact(uuid,bigint),decodex.read_reset_card_account_admission_exact(uuid,text),decodex.prepare_account_operation_exact(uuid,uuid,decodex.account_operation_kind,text,boolean,bigint,integer,bigint,text,uuid,integer,bigint,text,uuid,decodex.account_provider_kind,text),decodex.set_account_operation_target_exact(uuid,integer,bigint,text,uuid),decodex.advance_account_operation_exact(uuid,decodex.account_operation_phase,decodex.account_operation_phase,text),decodex.read_unsettled_account_operations_exact(bigint),decodex.read_account_operation_exact(uuid),decodex.update_account_administration_exact(uuid,bigint,text,boolean),decodex.replace_account_routing_control_exact(bigint,decodex.account_selection_mode,uuid,uuid[]),decodex.read_account_routing_control_exact(),decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),decodex.observe_account_store_exact(uuid,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,decodex.account_store_observation),decodex.attest_codex_account_capability_exact(text,text,text,text,boolean,boolean),decodex.record_account_migration_receipt_exact(text,jsonb,jsonb,jsonb,integer),decodex.prepare_process_generation_exact(uuid,uuid,uuid,text,text,text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,text,bigint,uuid,uuid),decodex.read_process_generations_exact(uuid,boolean,uuid,bigint) TO %I',runtime_role);
+		EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_account_registry_exact(uuid,bigint),decodex.read_reset_card_account_admission_exact(uuid,text),decodex.prepare_account_operation_exact(uuid,uuid,decodex.account_operation_kind,text,boolean,bigint,integer,bigint,text,uuid,integer,bigint,text,uuid,decodex.account_provider_kind,text),decodex.set_account_operation_target_exact(uuid,integer,bigint,text,uuid),decodex.advance_account_operation_exact(uuid,decodex.account_operation_phase,decodex.account_operation_phase,text),decodex.read_unsettled_account_operations_exact(bigint),decodex.read_account_operation_exact(uuid),decodex.update_account_administration_exact(uuid,bigint,text,boolean),decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),decodex.set_balanced_account_selection_exact(bigint),decodex.set_account_order_exact(bigint,uuid[]),decodex.read_account_routing_control_exact(),decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),decodex.observe_account_store_exact(uuid,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,decodex.account_store_observation),decodex.attest_codex_account_capability_exact(text,text,text,text,boolean,boolean),decodex.record_account_migration_receipt_exact(text,jsonb,jsonb,jsonb,integer),decodex.prepare_process_generation_exact(uuid,uuid,uuid,text,text,text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,text,bigint,uuid,uuid),decodex.read_process_generations_exact(uuid,boolean,uuid,bigint) TO %I',runtime_role);
 	END IF;
 END
 $$;
