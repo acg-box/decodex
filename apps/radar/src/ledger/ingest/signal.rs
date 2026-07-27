@@ -1,15 +1,17 @@
 use crate::{
 	ledger::{
-		self, ArtifactLinkInput, Connection, Path, RadarSubject, ReviewInput, eyre, ingest::bundle,
+		self, ArtifactLinkInput, Connection, LedgerArtifactReader, Path, RadarSubject, ReviewInput,
+		eyre, ingest::bundle,
 	},
 	prelude::Result,
 };
 
 pub(crate) fn record_signal_artifact(
 	connection: &Connection,
+	reader: &LedgerArtifactReader<'_>,
 	signal_path: &Path,
 ) -> Result<Vec<RadarSubject>> {
-	let signal = ledger::load_json(signal_path)?;
+	let signal = reader.load_json(signal_path)?;
 	let validation = ledger::validate_artifact(&signal);
 
 	if validation.schema.as_deref() != Some(bundle::signal_schema())
@@ -47,6 +49,7 @@ pub(crate) fn record_signal_artifact(
 		)?;
 		ledger::record_artifact(
 			connection,
+			reader,
 			ArtifactLinkInput {
 				repo: &subject.repo,
 				subject_kind: &subject.subject_kind,

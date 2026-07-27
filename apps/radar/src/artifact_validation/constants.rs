@@ -1,6 +1,5 @@
 //! Constants for Radar artifact validation.
 
-pub(super) const RADAR_ARCHIVE_MANIFEST_SCHEMA: &str = "radar_archive_manifest/v1";
 pub(super) const ANALYSIS_MODES: &[&str] = &["commit_only", "pr_first"];
 pub(super) const SIGNAL_IMPACT: &[&str] = &["high", "low", "medium"];
 pub(super) const SIGNAL_KINDS: &[&str] = &["behavior_change", "capability", "try_now"];

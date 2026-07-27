@@ -9,6 +9,7 @@ pub(crate) fn valid_review_queue() -> Value {
 		"generated_at": "2026-06-01T00:00:00Z",
 		"source": {
 			"default_branch": "main",
+			"upstream_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			"search_limit": 40
 		},
 		"subjects": [fixtures::valid_queue_subject()],
