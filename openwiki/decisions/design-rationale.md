@@ -27,7 +27,7 @@ that a private-artifact API, runtime path, command, or validation gate is implem
 - Radar and Publisher are auxiliary tooling, not runtime lifecycle authority. Radar validates upstream artifacts and handoffs (`apps/radar/src/lib.rs`, `apps/radar/src/artifact_validation/`); Publisher validates and reserves social artifacts (`apps/decodex-publisher/src/lib.rs`).
 - The public site is intentionally static and independent of daemon state (`site/README.md`, `site/package.json`).
 
-Historical basis: this page consolidates former `docs/decisions` records for the natural-language loop runtime, project autonomy control plane, MCP gateway and skill slimming, static public site, Codex upstream Radar redesign, Radar/Control Plane/Publisher split, and Radar artifact release archives.
+Historical basis: this page consolidates former `docs/decisions` records for the natural-language loop runtime, project autonomy control plane, MCP gateway and skill slimming, static public site, Codex upstream Radar redesign, Radar/Control Plane/Publisher split, and bounded Radar local retention.
 
 ## Natural-language loop runtime
 
@@ -117,7 +117,7 @@ Why:
 Current shape:
 
 - Radar builds `upstream_review_queue/v1` artifacts from recent upstream commits and PRs, records ledger state, and skips subjects already represented by published signals (`apps/radar/src/review_queue.rs`).
-- Artifact validation recognizes bundles, upstream reviews, upstream impacts, release deltas, signal entries, control-plane upgrade candidates, and archive manifests (`apps/radar/src/lib.rs`, `apps/radar/src/artifact_validation/`).
+- Artifact validation recognizes bundles, upstream reviews, upstream impacts, release deltas, signal entries, and control-plane upgrade candidates (`apps/radar/src/lib.rs`, `apps/radar/src/artifact_validation/`).
 - Control-plane upgrade candidates must reference the shared `upstream_impact/v1` handoff and include affected surfaces, validation gates, authority, and stop conditions (`apps/radar/src/artifact_validation/upstream/control_plane_upgrade.rs`).
 
 Do not let Radar review output directly mutate Decodex runtime state, create Linear issues, publish social content, or claim shipped behavior. It produces evidence and candidates that downstream authority surfaces must accept.
@@ -146,29 +146,39 @@ Current shape:
 
 Do not describe Radar artifacts as execution authority, Publisher content as shipped runtime proof, or the static site as a live control-plane surface.
 
-## Radar artifact release archives
+## Radar local cache retention
 
-Radar keeps raw upstream bundles and analysis drafts in Git only for a short hot window, then moves cold raw batches to dedicated GitHub Release assets while retaining checked-in manifests.
+Radar raw bundles, reviews, impacts, analysis drafts, and ledger records stay in
+owner-only bounded local cache. They are disposable working state, not source artifacts
+or remote recovery assets.
 
 Why:
 
-- Continuous Radar may inspect every upstream commit, but the repository should not become a permanent raw-data warehouse.
-- Curated public impacts, signal entries, and archive manifests are small enough to
-  remain in Git. Raw bundles and drafts are heavier recovery material. Social,
-  strategy, browser-session, browser-lease, and generated-media records are local-only
-  and are never part of a Radar archive.
-- GitHub Release assets preserve a durable download location without filling the Git tree with compressed archives.
+- Continuous Radar must not turn the repository or a remote release store into a
+  permanent raw-data warehouse.
+- High-frequency evidence has short operational value and can be rebuilt from upstream
+  public sources.
+- A deterministic local policy makes privacy and disk use observable without a
+  historical compatibility path.
 
 Current shape:
 
-- Archive manifests use `radar_archive_manifest/v1` and require archive identity, source commit, release tag/URL, external asset metadata, checksum information, and file entries (`apps/radar/src/artifact_validation/archive.rs`).
-- Radar validation treats `.agent/automations/radar/cache/archive/index/` as the checked-in manifest area and permits historical retention-policy exceptions only for recognized archive-manifest paths (`apps/radar/src/artifact_validation/core/paths.rs`).
-- Radar constants and ledger schemas include archive artifact kinds and archived statuses (`apps/radar/src/constants.rs`, `apps/radar/src/ledger/schema/`).
+- Collection retention is 30 days, 256 files, and 64 MiB per collection.
+- Ledger retention is 30 days, 10,000 rows per table, and 64 MiB total. The disposable
+  ledger prunes oldest-first. If it cannot meet the byte limit, Radar preserves it and
+  fails with `RADAR_LEDGER_OVERSIZE`. Radar reads the bounded SQLite image through the
+  fixed cache descriptor, operates on it in memory, and atomically replaces it through
+  that descriptor while the cache lock remains held.
+- Cache directories use mode `0700`; JSON and SQLite files use mode `0600`.
+  Descriptor-relative no-follow traversal rejects symbolic-link ancestors, `..`,
+  wrong owners or modes, unexpected hard links, and path replacement. One process
+  lock serializes every writer with retention.
+- Default daily validation runs retention before it requires current queue and release
+  snapshots and includes bounded retention counts. First-run empty-cache validation
+  requires explicit `--bootstrap`; any partial generated cache fails closed. Explicit
+  validation paths cannot be combined with bootstrap mode.
 
-Do not include social or account-session records in a Radar archive. Do not commit
-compressed raw archives to Git as normal source, prune raw artifacts without updating
-the archive manifest, or confuse `radar-archive-*` release tags with Decodex product
-releases.
+Do not commit or upload local Radar cache state to GitHub.
 
 ## Stop conditions for future changes
 
@@ -179,6 +189,7 @@ Stop and require a new accepted decision, architecture review, or explicit human
 - make MCP or skills bypass capability profiles, inspect-first lane-control preconditions, tracker boundaries, review policy, landing policy, project enablement, or private-evidence boundaries;
 - make `site/` depend on a live Decodex daemon or add dynamic public capabilities without a backend/security decision;
 - let Radar mutate runtime/tracker state directly or let Publisher publish from unaccepted upstream evidence;
-- keep large raw Radar artifacts in Git instead of manifests plus external release assets.
+- make unbounded Radar cache growth part of normal operation or upload local Radar
+  working state.
 
 Runtime stop evidence also exists in source: authority-boundary checks and architecture-recovery events preserve when an automated lane must change strategy, collect enhanced evidence, block landing, or require human decision before continuing (`apps/decodex/src/orchestrator/execution_architecture_recovery.rs`, `apps/decodex/src/orchestrator/types/authority/`, `apps/decodex/src/orchestrator/status/post_review/authority_boundary.rs`).

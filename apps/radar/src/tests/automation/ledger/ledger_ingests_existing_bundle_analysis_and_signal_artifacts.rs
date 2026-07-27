@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, os::unix::fs::PermissionsExt as _, sync::mpsc, thread, time::Duration};
 
 use rusqlite::Connection;
 
@@ -6,7 +6,9 @@ use crate::{RadarLedgerIngestExistingRequest, tests::fixtures};
 
 #[test]
 fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
-	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let temp_dir = crate::test_support::private_tempdir();
+	fs::set_permissions(temp_dir.path(), fs::Permissions::from_mode(0o700))
+		.expect("ledger directory should be private");
 	let bundles_dir = temp_dir.path().join("bundles");
 	let analysis_dir = temp_dir.path().join("analysis");
 	let signals_dir = temp_dir.path().join("signals");
@@ -45,4 +47,44 @@ fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
 		.expect("review row should be readable");
 
 	assert_eq!(review, ("signal".into(), "confirmed".into()));
+}
+
+#[test]
+fn ledger_ingest_existing_completes_with_the_canonical_cache_layout() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let cache = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let bundles_dir = cache.join("github/bundles");
+	let analysis_dir = cache.join("generated/analysis");
+	let signals_dir = cache.join("site-content/signals");
+	let db_path = cache.join("github/radar.sqlite3");
+
+	crate::write_json(&bundles_dir.join("openai-codex-pr-22414.json"), &fixtures::valid_bundle())
+		.expect("private bundle fixture should be written");
+	crate::write_json(
+		&analysis_dir.join("openai-codex-pr-22414.analysis.json"),
+		&serde_json::json!({"kind": "capability"}),
+	)
+	.expect("private analysis fixture should be written");
+	crate::write_json(&signals_dir.join("openai-codex-pr-22414.json"), &fixtures::valid_signal())
+		.expect("private signal fixture should be written");
+
+	let (sender, receiver) = mpsc::channel();
+	let handle = thread::spawn(move || {
+		let result = crate::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
+			db_path,
+			bundles_dir,
+			analysis_dir,
+			signals_dir,
+		})
+		.map(|summary| summary.get("artifact_links").copied());
+
+		sender.send(result).expect("ingest result should be delivered");
+	});
+	let result = receiver
+		.recv_timeout(Duration::from_secs(3))
+		.expect("canonical-cache ingest must not self-deadlock")
+		.expect("canonical-cache ingest should succeed");
+
+	assert_eq!(result, Some(3));
+	handle.join().expect("canonical-cache ingest thread should finish");
 }
