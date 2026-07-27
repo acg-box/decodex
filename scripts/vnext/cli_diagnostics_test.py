@@ -9,7 +9,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CLI = ROOT / "target" / "debug" / "decodex"
+
+
+def cli_binary() -> Path:
+    """Return the CLI built by Cargo for this validation process."""
+    target_directory = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target"))
+    if not target_directory.is_absolute():
+        target_directory = ROOT / target_directory
+    return target_directory.resolve() / "debug" / "decodex"
 
 
 def main() -> None:
@@ -26,7 +33,7 @@ def main() -> None:
         check=True,
     )
     environment = os.environ.copy()
-    environment["DECODEX_TEST_CLI_BINARY"] = str(CLI)
+    environment["DECODEX_TEST_CLI_BINARY"] = str(cli_binary())
     subprocess.run(
         [
             "cargo",

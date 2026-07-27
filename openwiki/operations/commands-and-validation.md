@@ -882,6 +882,25 @@ conflicts, scripted fake server, structural history/collaboration-schema rejecti
 production command construction, bounded executable/preflight/schema/frame/queue/result
 inputs, timeout and descendant/orphan cleanup, typed or hashed untrusted event strings,
 shared-home/account re-attestation, redacted debug surfaces, and default-disabled dispatch.
+The accepted marker now binds Codex CLI `0.146.0-alpha.3.1` to
+`ClientRequest.json` digest
+`ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735`,
+`ServerNotification.json` digest
+`189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166`, and
+aggregate v2 schema digest
+`2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d`.
+Codex CLI release `rust-v0.145.0` is rejected as an obsolete exact build. Its
+`ClientRequest.json`, `ServerNotification.json`, and aggregate v2 schema digests are
+`92085c18742dd355e5afa7d570170c74629635082e8e3341a952068735dc28b2`,
+`97c6bf194b9edfa1e2ffe62547e4497fa5ea8a1af5c94687956b69966ac6f9e2`, and
+`27f8d983f19d8e1a5548d52176de0a460fb05aaf2a72110f913c6f4af2bd4f27`.
+Codex CLI prerelease `rust-v0.146.0-alpha.11` is also rejected as an incompatible exact
+build. Its three digests are
+`6755a5eb5fcc0502a9d3b56c8ebd43a857f2c22820cf9cfa12e2dd0d5d48234c`,
+`28fd2f3e9020a1a26503facff7038f84137c2a0139df8443eab6d63a71deb240`, and
+`5ff4540622e002308ad5e6bac6df49b7ab5d52d79c8f71537b1098951b946b2d`.
+No compatibility shim for either release is retained. The previously accepted
+three-digest set is also rejected as an incompatible build.
 The ignored live test is strictly read-only: `initialize`, `initialized`, `account/read`,
 bounded `thread/list(useStateDbOnly=true)`, optional exact-ID
 `thread/read(includeTurns=false)`, and fixed-nonmatching-term bounded `thread/search`.

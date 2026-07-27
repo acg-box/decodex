@@ -33,6 +33,19 @@ pub(crate) struct SocialReservePublishRequest {
 	pub(crate) dry_run: bool,
 }
 
+#[derive(Debug)]
+pub(crate) struct SocialTerminalizeSkipRequest {
+	pub(crate) candidate_path: PathBuf,
+	pub(crate) candidates_dir: PathBuf,
+	pub(crate) reservations_dir: PathBuf,
+	pub(crate) posts_dir: PathBuf,
+	pub(crate) locks_dir: PathBuf,
+	pub(crate) day: String,
+	pub(crate) timezone: String,
+	pub(crate) daily_limit: usize,
+	pub(crate) dry_run: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct SocialReservePublishReport {
 	pub(crate) status: String,
@@ -41,6 +54,15 @@ pub(crate) struct SocialReservePublishReport {
 	pub(crate) daily_limit: usize,
 	pub(crate) published_count: usize,
 	pub(crate) active_reservation_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SocialTerminalizeSkipReport {
+	pub(crate) status: String,
+	pub(crate) path: String,
+	pub(crate) candidate: String,
+	pub(crate) idempotency_key: String,
+	pub(crate) published_count: usize,
 }
 
 #[derive(Debug, Eq, PartialEq)]

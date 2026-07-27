@@ -31,7 +31,6 @@ Read this only when a Codex release, prerelease, app/mobile changelog entry, or
 For every release or prerelease checkpoint, choose one explicit terminal outcome:
 
 - `publish`: source-backed reader value is clear.
-- `defer`: useful direction exists, but source analysis gaps remain.
 - `skip`: the only supported fact is a version tag or low-value internal churn.
 - `needs_upstream_analysis`: behavior claims require unreviewed PR/commit evidence.
 - `no_op`: no new checkpoint or no public value.

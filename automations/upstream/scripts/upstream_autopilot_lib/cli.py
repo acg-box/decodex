@@ -36,9 +36,11 @@ from . import (
     decodex_identity,
     ensure_lease_budget,
     ensure_cache_root,
+    ensure_handoff_receipt_path,
     ensure_remote_branch,
     find_candidate,
     find_or_create_pull_request,
+    handoff_receipt_path,
     load_policy,
     land_execution_receipt,
     land_command_receipt,
@@ -56,6 +58,9 @@ from . import (
     record_land_execution,
     record_land_command_execution,
     record_candidate_commit,
+    read_handoff_receipt,
+    read_validation_failure_diagnostic,
+    remove_handoff_receipt,
     referenced_schema_evidence,
     requeue_stale_decision,
     repository_identity,
@@ -76,9 +81,12 @@ from . import (
     run_validation_profiles,
     save_state,
     sha256_value,
+    staged_handoff_identity,
     state_health,
     submit_candidate,
     submit_decision,
+    trusted_validation_python,
+    consume_handoff_receipt,
     utc_now,
     validation_authority_identity,
     validation_receipt_is_current,
@@ -90,9 +98,67 @@ from . import (
     verify_remote_main_contains,
 )
 
+AUTOMATION_AUDIT_MANIFESTS = {
+    "upstream": (
+        "automations/upstream/automations.toml",
+        (
+            "codex-upstream-maintainer",
+            "codex-upstream-reviewer",
+            "codex-upstream-health",
+        ),
+    ),
+    "content": (
+        "automations/decodex/automations.toml",
+        (
+            "decodex-content-manager",
+            "decodex-x-browser-publisher",
+        ),
+    ),
+}
+
 
 def result_payload(status: str, **fields: Any) -> dict[str, Any]:
     return {"schema": RESULT_SCHEMA, "status": status, **fields}
+
+
+def validated_automation_audit(
+    output: str,
+    *,
+    repo_root: Path,
+    codex_home: Path,
+    expected_ids: tuple[str, ...],
+) -> list[str]:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise AutopilotError("automation_audit_output_invalid") from error
+    results = payload.get("results") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or set(payload)
+        != {"status", "repo_root", "codex_home", "results"}
+        or payload.get("status") != "pass"
+        or payload.get("repo_root") != str(repo_root)
+        or payload.get("codex_home") != str(codex_home)
+        or not isinstance(results, list)
+        or tuple(
+            result.get("automation_id")
+            for result in results
+            if isinstance(result, dict)
+        )
+        != expected_ids
+        or any(
+            not isinstance(result, dict)
+            or set(result)
+            != {"automation_id", "status", "errors", "warnings"}
+            or result.get("status") != "pass"
+            or result.get("errors") != []
+            or result.get("warnings") != []
+            for result in results
+        )
+    ):
+        raise AutopilotError("automation_audit_output_invalid")
+    return list(expected_ids)
 
 
 def save_state_guarded(
@@ -143,6 +209,7 @@ def parse_args() -> argparse.Namespace:
 
     commit = subparsers.add_parser("commit-candidate")
     add_leased_candidate_arguments(commit, worktree=True)
+    commit.add_argument("--worker-receipt", type=Path)
 
     publish = subparsers.add_parser("publish")
     add_leased_candidate_arguments(publish, worktree=True)
@@ -159,14 +226,17 @@ def parse_args() -> argparse.Namespace:
     repair = subparsers.add_parser("request-repair")
     add_leased_candidate_arguments(repair)
     repair.add_argument("--finding-code", action="append", required=True)
+    repair.add_argument("--reviewer-receipt", type=Path, required=True)
 
     resolve = subparsers.add_parser("resolve-decision")
     add_leased_candidate_arguments(resolve, worktree=True)
     resolve.add_argument("--outcome", choices=("no_change", "rejected"), required=True)
     resolve.add_argument("--reason-code", required=True)
+    resolve.add_argument("--reviewer-receipt", type=Path, required=True)
 
     land = subparsers.add_parser("land")
     add_leased_candidate_arguments(land, worktree=True)
+    land.add_argument("--reviewer-receipt", type=Path)
 
     blocked = subparsers.add_parser("block")
     add_leased_candidate_arguments(blocked, role=True)
@@ -207,6 +277,23 @@ def parse_args() -> argparse.Namespace:
     health.add_argument("--repair-expired", action="store_true")
     health.add_argument("--queue-repairs", action="store_true")
     health.add_argument("--queue-improvements", action="store_true")
+
+    diagnostic = subparsers.add_parser("validation-diagnostic")
+    add_common_state_arguments(diagnostic)
+    diagnostic.add_argument("--error-digest", required=True)
+
+    automation_audit = subparsers.add_parser("audit-automations")
+    add_common_state_arguments(automation_audit)
+    automation_audit.add_argument(
+        "--manifest",
+        choices=tuple(AUTOMATION_AUDIT_MANIFESTS),
+        required=True,
+    )
+    automation_audit.add_argument(
+        "--scope",
+        choices=("repo", "live"),
+        required=True,
+    )
 
     snapshot = subparsers.add_parser("snapshot")
     add_common_state_arguments(snapshot)
@@ -270,6 +357,25 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             persist(state, state_path, at=now)
         return expires_at
 
+    def load_current_handoff_receipt(
+        state: dict[str, Any],
+        *,
+        candidate_id: str,
+        role: str,
+        path: Path,
+    ) -> dict[str, Any]:
+        candidate = find_candidate(state, candidate_id)
+        lease = candidate.get("lease")
+        if not isinstance(lease, dict) or lease.get("role") != role:
+            raise AutopilotError("handoff_challenge_missing")
+        expected = handoff_receipt_path(
+            cache_root,
+            candidate_id=candidate_id,
+            role=role,
+            generation=lease["generation"],
+        )
+        return read_handoff_receipt(path, expected_path=expected)
+
     if args.command == "observe":
         with observation_session_lock(cache_root):
             started_at = utc_now()
@@ -330,12 +436,35 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         now = utc_now()
         with locked_state(cache_root) as (state, state_path):
             claimed = claim_candidate(state, policy, args.role, now)
+            queued_repairs = queue_needed_repairs(
+                state,
+                policy,
+                repository_head=preflight["head"],
+                now=now,
+            )
             persist(state, state_path, at=now)
         if claimed is None:
-            return result_payload("no_candidate", role=args.role)
+            return result_payload(
+                "repair_queued" if queued_repairs else "no_candidate",
+                role=args.role,
+                repair_candidate_ids=queued_repairs,
+            )
         if "busy" in claimed:
             return result_payload("role_busy", role=args.role, **claimed)
-        return result_payload("claimed", role=args.role, **claimed)
+        handoff = claimed["candidate"]["handoff"]
+        receipt_path = ensure_handoff_receipt_path(
+            cache_root,
+            candidate_id=claimed["candidate"]["id"],
+            role=args.role,
+            generation=handoff["generation"],
+        )
+        return result_payload(
+            "claimed",
+            role=args.role,
+            repair_candidate_ids=queued_repairs,
+            handoff_receipt_path=str(receipt_path),
+            **claimed,
+        )
 
     if args.command == "renew":
         now = utc_now()
@@ -447,6 +576,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                     branch=candidate["branch_name"],
                 )
             classify_commit_entry(current_head, base_head)
+            staged_identity = staged_handoff_identity(args.worktree)
+            if staged_identity["repository_head"] != base_head:
+                raise AutopilotError("handoff_worktree_identity_invalid")
             now = utc_now()
             ensure_lease_budget(
                 state,
@@ -457,6 +589,47 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 minimum_seconds=SIDE_EFFECT_LEASE_BUDGET_SECONDS,
                 now=now,
             )
+            current_effect = candidate.get("effect")
+            if (
+                isinstance(current_effect, dict)
+                and current_effect.get("kind") == "commit"
+            ):
+                worker_handoff = current_effect["handoff_receipt"]
+                if (
+                    worker_handoff["base_head"] != base_head
+                    or worker_handoff["repository_head"] != base_head
+                    or worker_handoff["repository_tree"]
+                    != staged_identity["repository_tree"]
+                    or worker_handoff["staged_paths_sha256"]
+                    != staged_identity["staged_paths_sha256"]
+                ):
+                    raise AutopilotError("effect_recovery_staged_identity_mismatch")
+            else:
+                if args.worker_receipt is None:
+                    raise AutopilotError("handoff_receipt_unavailable")
+                worker_receipt = load_current_handoff_receipt(
+                    state,
+                    candidate_id=args.candidate_id,
+                    role="maintainer",
+                    path=args.worker_receipt,
+                )
+                worker_handoff = consume_handoff_receipt(
+                    state,
+                    candidate_id=args.candidate_id,
+                    role="maintainer",
+                    token=args.lease_token,
+                    receipt=worker_receipt,
+                    action="worker_staged",
+                    base_head=base_head,
+                    repository_head=staged_identity["repository_head"],
+                    repository_tree=staged_identity["repository_tree"],
+                    staged_paths_sha256=staged_identity[
+                        "staged_paths_sha256"
+                    ],
+                    disposition="staged",
+                    finding_codes=[],
+                    now=now,
+                )
             effect = prepare_effect(
                 state,
                 policy,
@@ -467,6 +640,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 branch=candidate["branch_name"],
                 head_sha=base_head,
                 pr_url=None,
+                handoff_receipt=worker_handoff,
                 decodex_identity=commit_decodex_identity,
                 now=now,
             )
@@ -498,6 +672,23 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 now=completed_at,
             )
             persist(state, state_path, at=completed_at)
+            cleanup_receipt = args.worker_receipt or handoff_receipt_path(
+                cache_root,
+                candidate_id=args.candidate_id,
+                role="maintainer",
+                generation=worker_handoff["claim_generation"],
+            )
+            expected_receipt = handoff_receipt_path(
+                cache_root,
+                candidate_id=args.candidate_id,
+                role="maintainer",
+                generation=worker_handoff["claim_generation"],
+            )
+            remove_handoff_receipt(
+                cleanup_receipt,
+                expected_path=expected_receipt,
+                missing_ok=True,
+            )
         return result_payload(
             "committed",
             candidate_id=args.candidate_id,
@@ -760,6 +951,25 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "request-repair":
         now = utc_now()
         with locked_state(cache_root) as (state, state_path):
+            candidate = find_candidate(state, args.candidate_id)
+            pull_request = candidate.get("pull_request")
+            decision = candidate.get("decision")
+            if isinstance(pull_request, dict):
+                base_head = pull_request["validation_receipt"]["base_head"]
+                review_head = pull_request["head_sha"]
+                review_tree = pull_request["validation_receipt"]["repository_tree"]
+            elif isinstance(decision, dict):
+                base_head = decision["maintainer_receipt"]["base_head"]
+                review_head = decision["maintainer_receipt"]["repository_head"]
+                review_tree = decision["maintainer_receipt"]["repository_tree"]
+            else:
+                raise AutopilotError("review_evidence_missing")
+            receipt = load_current_handoff_receipt(
+                state,
+                candidate_id=args.candidate_id,
+                role="reviewer",
+                path=args.reviewer_receipt,
+            )
             ensure_lease_budget(
                 state,
                 policy,
@@ -769,19 +979,50 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 minimum_seconds=SIDE_EFFECT_LEASE_BUDGET_SECONDS,
                 now=now,
             )
+            reviewer_handoff = consume_handoff_receipt(
+                state,
+                candidate_id=args.candidate_id,
+                role="reviewer",
+                token=args.lease_token,
+                receipt=receipt,
+                action="independent_review",
+                base_head=base_head,
+                repository_head=review_head,
+                repository_tree=review_tree,
+                staged_paths_sha256=None,
+                disposition="request_repair",
+                finding_codes=args.finding_code,
+                now=now,
+            )
             request_repair(
                 state,
                 candidate_id=args.candidate_id,
                 token=args.lease_token,
                 finding_codes=args.finding_code,
+                reviewer_handoff=reviewer_handoff,
                 now=now,
             )
             persist(state, state_path, at=now)
+            remove_handoff_receipt(
+                args.reviewer_receipt,
+                expected_path=handoff_receipt_path(
+                    cache_root,
+                    candidate_id=args.candidate_id,
+                    role="reviewer",
+                    generation=reviewer_handoff["claim_generation"],
+                ),
+            )
         return result_payload("repair_requested", candidate_id=args.candidate_id)
 
     if args.command == "resolve-decision":
         with locked_state(cache_root) as (state, _state_path):
             candidate = deepcopy(find_candidate(state, args.candidate_id))
+            independent_receipt = load_current_handoff_receipt(
+                state,
+                candidate_id=args.candidate_id,
+                role="reviewer",
+                path=args.reviewer_receipt,
+            )
         decision = candidate.get("decision")
         if not isinstance(decision, dict) or decision.get("outcome") != args.outcome:
             raise AutopilotError("decision_evidence_missing")
@@ -814,6 +1055,15 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                     now=now,
                 )
                 persist(state, state_path, at=now)
+                remove_handoff_receipt(
+                    args.reviewer_receipt,
+                    expected_path=handoff_receipt_path(
+                        cache_root,
+                        candidate_id=args.candidate_id,
+                        role="reviewer",
+                        generation=candidate["handoff"]["generation"],
+                    ),
+                )
             return result_payload(
                 "stale_decision_requeued",
                 candidate_id=args.candidate_id,
@@ -870,6 +1120,15 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                     now=now,
                 )
                 persist(state, state_path, at=now)
+                remove_handoff_receipt(
+                    args.reviewer_receipt,
+                    expected_path=handoff_receipt_path(
+                        cache_root,
+                        candidate_id=args.candidate_id,
+                        role="reviewer",
+                        generation=candidate["handoff"]["generation"],
+                    ),
+                )
                 return result_payload(
                     "stale_decision_requeued",
                     candidate_id=args.candidate_id,
@@ -890,6 +1149,21 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 minimum_seconds=SIDE_EFFECT_LEASE_BUDGET_SECONDS,
                 now=now,
             )
+            reviewer_handoff = consume_handoff_receipt(
+                state,
+                candidate_id=args.candidate_id,
+                role="reviewer",
+                token=args.lease_token,
+                receipt=independent_receipt,
+                action="independent_review",
+                base_head=reviewer_receipt["base_head"],
+                repository_head=reviewer_receipt["repository_head"],
+                repository_tree=reviewer_receipt["repository_tree"],
+                staged_paths_sha256=None,
+                disposition=args.outcome,
+                finding_codes=[],
+                now=now,
+            )
             resolve_candidate(
                 state,
                 candidate_id=args.candidate_id,
@@ -901,9 +1175,19 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 land_intent_sha256=None,
                 land_execution_receipt_sha256=None,
                 reviewer_receipt=reviewer_receipt,
+                reviewer_handoff=reviewer_handoff,
                 now=now,
             )
             persist(state, state_path, at=now)
+            remove_handoff_receipt(
+                args.reviewer_receipt,
+                expected_path=handoff_receipt_path(
+                    cache_root,
+                    candidate_id=args.candidate_id,
+                    role="reviewer",
+                    generation=reviewer_handoff["claim_generation"],
+                ),
+            )
         return result_payload(
             args.outcome,
             candidate_id=args.candidate_id,
@@ -919,6 +1203,21 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         )
         with locked_state(cache_root) as (state, _state_path):
             candidate = deepcopy(find_candidate(state, args.candidate_id))
+            candidate_effect = candidate.get("effect")
+            if (
+                isinstance(candidate_effect, dict)
+                and candidate_effect.get("kind") == "land"
+            ):
+                independent_receipt = None
+            else:
+                if args.reviewer_receipt is None:
+                    raise AutopilotError("handoff_receipt_unavailable")
+                independent_receipt = load_current_handoff_receipt(
+                    state,
+                    candidate_id=args.candidate_id,
+                    role="reviewer",
+                    path=args.reviewer_receipt,
+                )
         pull_request = candidate.get("pull_request")
         if not isinstance(pull_request, dict):
             raise AutopilotError("landing_evidence_missing")
@@ -982,6 +1281,28 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         merge_visibility_api_calls = 0
         with locked_state(cache_root) as (state, state_path):
             before = pull_request_readback(pull_request["url"])
+            if isinstance(existing_effect, dict) and existing_effect.get(
+                "kind"
+            ) == "land":
+                reviewer_handoff = existing_effect["handoff_receipt"]
+            else:
+                reviewer_handoff = consume_handoff_receipt(
+                    state,
+                    candidate_id=args.candidate_id,
+                    role="reviewer",
+                    token=args.lease_token,
+                    receipt=independent_receipt,
+                    action="independent_review",
+                    base_head=pull_request["validation_receipt"]["base_head"],
+                    repository_head=pull_request["head_sha"],
+                    repository_tree=pull_request["validation_receipt"][
+                        "repository_tree"
+                    ],
+                    staged_paths_sha256=None,
+                    disposition="accept",
+                    finding_codes=[],
+                    now=utc_now(),
+                )
             if (
                 before.get("state") == "OPEN"
                 and recovering_land
@@ -1027,6 +1348,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                         candidate_id=args.candidate_id,
                         token=args.lease_token,
                         finding_codes=["base_stale"],
+                        reviewer_handoff=reviewer_handoff,
                         now=stale_at,
                     )
                     persist(state, state_path, at=stale_at)
@@ -1065,6 +1387,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 pr_url=pull_request["url"],
                 owned_worktrees=owned_worktrees,
                 validation_receipt=reviewer_receipt,
+                handoff_receipt=reviewer_handoff,
                 decodex_identity=land_decodex_identity,
                 now=intent_at,
             )
@@ -1274,6 +1597,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 land_intent_sha256=effect["intent_sha256"],
                 land_execution_receipt_sha256=execution_receipt_sha256,
                 reviewer_receipt=reviewer_receipt,
+                reviewer_handoff=reviewer_handoff,
                 now=resolved_at,
             )
             persist(
@@ -1281,6 +1605,23 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 state_path,
                 expected_head=post_land["head"],
                 at=resolved_at,
+            )
+            cleanup_receipt = args.reviewer_receipt or handoff_receipt_path(
+                cache_root,
+                candidate_id=args.candidate_id,
+                role="reviewer",
+                generation=reviewer_handoff["claim_generation"],
+            )
+            expected_receipt = handoff_receipt_path(
+                cache_root,
+                candidate_id=args.candidate_id,
+                role="reviewer",
+                generation=reviewer_handoff["claim_generation"],
+            )
+            remove_handoff_receipt(
+                cleanup_receipt,
+                expected_path=expected_receipt,
+                missing_ok=True,
             )
         return result_payload(
             "landed",
@@ -1315,9 +1656,19 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 error_digest=args.error_digest,
                 now=now,
             )
+            queued_repairs = queue_needed_repairs(
+                state,
+                policy,
+                repository_head=preflight["head"],
+                now=now,
+            )
             status = find_candidate(state, args.candidate_id)["status"]
             persist(state, state_path, at=now)
-        return result_payload(status, candidate_id=args.candidate_id)
+        return result_payload(
+            "auto_repair_pending" if status == "repair_pending" else status,
+            candidate_id=args.candidate_id,
+            repair_candidate_ids=queued_repairs,
+        )
 
     if args.command == "escalate-repair":
         now = utc_now()
@@ -1405,6 +1756,60 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         atomic_write_json(ensure_cache_root(cache_root) / "health/latest.json", health)
         return health
 
+    if args.command == "validation-diagnostic":
+        diagnostic = read_validation_failure_diagnostic(
+            repo_root,
+            cause_digest=args.error_digest,
+        )
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "validation_diagnostic",
+            diagnostic=diagnostic,
+        )
+
+    if args.command == "audit-automations":
+        manifest_path, expected_ids = AUTOMATION_AUDIT_MANIFESTS[args.manifest]
+        evaluator = (
+            repo_root
+            / "automations/decodex/scripts/config/evaluate_automations.py"
+        )
+        command = [
+            str(trusted_validation_python(repo_root)),
+            "-I",
+            "-S",
+            str(evaluator),
+            "--manifest",
+            str(repo_root / manifest_path),
+            "--json",
+        ]
+        if args.scope == "repo":
+            command.append("--repo-only")
+        output = run_command(
+            command,
+            cwd=repo_root,
+            environment={
+                "CODEX_HOME": str(Path.home() / ".codex"),
+                "HOME": str(Path.home()),
+            },
+            inherit_environment=False,
+            failure_code="automation_audit_failed",
+            timeout_seconds=30,
+            max_output_bytes=64 * 1024,
+        )
+        automation_ids = validated_automation_audit(
+            output,
+            repo_root=repo_root,
+            codex_home=Path.home() / ".codex",
+            expected_ids=expected_ids,
+        )
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "automation_audit_passed",
+            manifest=args.manifest,
+            scope=args.scope,
+            automation_ids=automation_ids,
+        )
+
     if args.command == "snapshot":
         with locked_state(cache_root) as (state, _state_path):
             assert_primary_snapshot(repo_root, policy, preflight["head"])
@@ -1418,7 +1823,10 @@ def main() -> int:
     try:
         payload = execute(args)
     except AutopilotError as error:
-        payload = result_payload("failed", error_code=error.code)
+        fields: dict[str, Any] = {"error_code": error.code}
+        if error.diagnostic_sha256 is not None:
+            fields["error_digest"] = error.diagnostic_sha256
+        payload = result_payload("failed", **fields)
         print(
             json.dumps(
                 payload,
