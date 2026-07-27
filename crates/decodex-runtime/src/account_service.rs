@@ -14,9 +14,8 @@ use std::{
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
 	AccountOperationKind, AccountOperationPhase, AccountRecord, AccountSelectionMode,
-	AccountSelectionRecovery, CredentialBinding, CredentialVersion,
-	PostgresConnectionConfig, ProcessGenerationAccountBinding, ProcessGenerationId,
-	ProcessGenerationState, ProviderIdentity,
+	AccountSelectionRecovery, CredentialBinding, CredentialVersion, PostgresConnectionConfig,
+	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
 };
 use decodex_postgres::{
 	AccountAdministrationOutcome, AccountCommandReceiptLease, AccountLifecycleMutationOutcome,

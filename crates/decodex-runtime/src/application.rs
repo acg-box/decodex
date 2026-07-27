@@ -1501,17 +1501,13 @@ pub(crate) fn encode_account_migration_recovery_for_gate(
 	operation_id: AccountOperationId,
 	result: Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
 ) -> Result<serde_json::Value, StoreError> {
-	encode_account_command_receipt(
-		&result.map_err(account_lifecycle_command_error).and_then(|(outcome, account)| {
-			account_recovery_publication(operation_id, outcome, account.clone())
-		}),
-	)
+	encode_account_command_receipt(&result.map_err(account_lifecycle_command_error).and_then(
+		|(outcome, account)| account_recovery_publication(operation_id, outcome, account.clone()),
+	))
 }
 
 #[cfg(feature = "account-migration-transition-gate")]
-pub(crate) fn is_account_migration_cancel_refusal_for_gate(
-	value: &serde_json::Value,
-) -> bool {
+pub(crate) fn is_account_migration_cancel_refusal_for_gate(value: &serde_json::Value) -> bool {
 	matches!(
 		decode_account_command_receipt(value.clone()),
 		Ok(Err(CommandError::AccountCommandRejected {

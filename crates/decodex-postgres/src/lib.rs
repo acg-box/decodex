@@ -314,7 +314,8 @@ impl PostgresStore {
 	}
 
 	/// Apply the account-cutover migration with one session-local manifest handoff. If V27 already
-	/// committed, this entrypoint performs exact receipt readback and does not write a second intent.
+	/// committed, this entrypoint performs exact receipt readback and does not write a second
+	/// intent.
 	#[cfg(unix)]
 	pub async fn migrate_account_cutover_explicit(
 		config: &PostgresConnectionConfig,
@@ -355,10 +356,7 @@ impl PostgresStore {
 				.get(0);
 			let v27_applied = history_exists
 				&& client
-					.query_opt(
-						"SELECT 1 FROM public.refinery_schema_history WHERE version=27",
-						&[],
-					)
+					.query_opt("SELECT 1 FROM public.refinery_schema_history WHERE version=27", &[])
 					.await?
 					.is_some();
 			if !v27_applied {
@@ -414,7 +412,8 @@ impl PostgresStore {
 			{
 				return Err(StoreError::IdempotencyConflict);
 			}
-			authority::provision_runtime(&client, config.database(), config.runtime().user()).await?;
+			authority::provision_runtime(&client, config.database(), config.runtime().user())
+				.await?;
 			migrations::verify(&client).await?;
 			Ok(!v27_applied)
 		}

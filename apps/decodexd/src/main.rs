@@ -4,9 +4,9 @@ mod service_supervisor;
 
 use std::{error::Error, path::PathBuf};
 
-use clap::{Parser, Subcommand};
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
 use clap::ValueEnum;
+use clap::{Parser, Subcommand};
 use decodex_runtime::{ServerConfig, ServiceComposition};
 #[cfg(test)] use {libc as _, tempfile as _};
 
@@ -326,11 +326,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			Ok(())
 		},
 		#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-		Some(Command::AccountMigrationCredentialGate {
-			action,
-			run_descriptor,
-			slot,
-		}) => {
+		Some(Command::AccountMigrationCredentialGate { action, run_descriptor, slot }) => {
 			let action = match action {
 				AccountMigrationCredentialGateAction::Readback => "readback",
 				AccountMigrationCredentialGateAction::ProveCreateConflict =>
@@ -374,10 +370,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			Ok(())
 		},
 		#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-		Some(Command::AccountMigrationRecoveryGate {
-			phase,
-			run_descriptor,
-		}) => {
+		Some(Command::AccountMigrationRecoveryGate { phase, run_descriptor }) => {
 			let phase = match phase {
 				AccountMigrationRecoveryGatePhase::Prepared => "prepared",
 				AccountMigrationRecoveryGatePhase::RecoveryRequired => "recovery_required",
@@ -392,11 +385,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		},
 		#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
 		Some(Command::AccountMigrationLiveDaemonGate { root, barrier_fd }) => {
-			let report = decodex_runtime::hold_account_migration_live_daemon_for_gate(
-				&root,
-				barrier_fd,
-			)
-			.await?;
+			let report =
+				decodex_runtime::hold_account_migration_live_daemon_for_gate(&root, barrier_fd)
+					.await?;
 			println!("{}", serde_json::to_string(&report)?);
 			Ok(())
 		},

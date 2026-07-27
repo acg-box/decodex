@@ -37,6 +37,12 @@ pub use account_launch::retained_title_experiment::{
 	ManualRetainedTitleExperimentError, ManualRetainedTitleExperimentReport,
 	run_manual_retained_title_experiment,
 };
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+pub use account_migration::{
+	AccountMigrationAdmissionGateReport, AccountMigrationLiveDaemonGateReport,
+	AccountMigrationRecoveryGateReport, exercise_account_migration_admission_for_gate,
+	exercise_account_migration_recovery_for_gate, hold_account_migration_live_daemon_for_gate,
+};
 #[cfg(target_os = "macos")]
 pub use account_migration::{
 	OfflineAccountMigrationDestinationVerifyOptions, OfflineAccountMigrationError,
@@ -45,12 +51,6 @@ pub use account_migration::{
 	finalize_offline_account_migration, run_offline_account_migration,
 	verify_completed_offline_account_migration,
 	verify_prepared_offline_account_migration_destination,
-};
-#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-pub use account_migration::{
-	AccountMigrationAdmissionGateReport, AccountMigrationLiveDaemonGateReport,
-	AccountMigrationRecoveryGateReport, exercise_account_migration_admission_for_gate,
-	exercise_account_migration_recovery_for_gate, hold_account_migration_live_daemon_for_gate,
 };
 pub use account_service::{
 	AccountInspection, AccountLifecycleError, AccountSelectionFailure, AccountSelectionResult,
