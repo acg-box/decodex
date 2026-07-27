@@ -248,7 +248,7 @@ impl ProviderAttemptControl {
 				let Some(inner) = weak.upgrade() else {
 					break;
 				};
-				let control = ProviderAttemptControl { inner };
+				let control = Self { inner };
 				let _ = control.reconcile_all().await;
 			}
 		}
@@ -309,6 +309,7 @@ impl ProviderAttemptControl {
 	///
 	/// Only the stateless coordinator can call this crate-private seam. The result carries no
 	/// dispatch authorization.
+	#[expect(dead_code, reason = "sealed until live-routing authority enables the coordinator")]
 	pub(crate) async fn prepare(
 		&self,
 		plan: &ContinuationPlanEffect,
@@ -425,6 +426,7 @@ impl ProviderAttemptReconciliationCursor {
 
 impl ProviderAttemptService {
 	/// Prepare one attempt from an accepted V17 effect and exact live process fence.
+	#[expect(dead_code, reason = "sealed behind ProviderAttemptControl::prepare")]
 	async fn prepare(
 		&self,
 		plan: &ContinuationPlanEffect,

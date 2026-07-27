@@ -4,13 +4,34 @@
 //! relations. A replayed pre-spawn fence never returns launch permission.
 
 use decodex_core::{
-	AccountId, ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind,
-	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessExecutionEpochId, ProcessGeneration,
-	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
-	ProcessIsolationKind, ProcessRunnerIdentity, ProcessStartIdentity,
+	AccountId, AccountOperationId, AccountProvider, BoundProcessGeneration, CredentialBinding,
+	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
+	ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind, ProcessDeathEvidence,
+	ProcessDeathEvidenceId, ProcessExecutionEpochId, ProcessGeneration,
+	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
+	ProcessGenerationState, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
+	ProcessStartIdentity, ProviderIdentity,
 };
 
 use crate::{PostgresStore, StoreError};
+
+const PREPARE_BOUND_PROCESS_GENERATION_SQL: &str = "SELECT result_code,revision,state::text,created_at_micros,updated_at_micros \
+	 FROM decodex.prepare_process_generation_exact(\
+	 $1::text::uuid,$2::text::uuid,$3::text::uuid,$4,$5,$6,\
+	 $7::text::decodex.process_generation_control_kind,\
+	 $8::text::decodex.process_generation_isolation_kind,$9,$10,$11,$12,\
+	 $13::text::uuid,$14::text::decodex.account_provider_kind,$15,$16,\
+	 $17,$18::text::uuid,$19::text::uuid)";
+const READ_BOUND_PROCESS_GENERATIONS_SQL: &str = "SELECT generation_id::text,account_id::text,execution_epoch_id::text,\
+	 runner_identity,intended_boot_id,control_kind::text,isolation_kind::text,\
+	 bound_boot_id,process_id,process_start_id,process_group_id,session_id,\
+	 state::text,revision,authority_loss_reason::text,death_evidence_id::text,\
+	 created_at_micros,updated_at_micros,initial_account_revision,\
+	 credential_store_schema_version,credential_version,credential_fingerprint,\
+	 credential_writer_operation_id::text,provider_kind::text,provider_account_id,\
+	 refresh_callback_profile_sha256 \
+	 FROM decodex.read_process_generations_exact(\
+	 $1::text::uuid,$2,$3::text::uuid,$4)";
 
 /// Newly committed pre-spawn authority. Durable replay cannot construct this value.
 #[derive(Debug, Eq, PartialEq)]
@@ -58,6 +79,10 @@ pub enum ProcessGenerationRejection {
 	AccountMissing,
 	/// One unresolved generation already quarantines this account.
 	AccountQuarantined,
+	/// Account lifecycle/store facts were absent, stale, disabled, or unsettled.
+	AccountLifecycleUnready,
+	/// Exact generated/live refresh callback capability was not attested.
+	CallbackCapabilityUnready,
 	/// The exact generation does not exist.
 	GenerationMissing,
 	/// The supplied revision or required durable state is stale.
@@ -110,16 +135,60 @@ impl PostgresStore {
 	/// Persist generation intent before process creation can become externally effective.
 	pub async fn prepare_process_generation(
 		&self,
+		_intent: &ProcessGenerationIntent,
+	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
+		Err(StoreError::Incompatible(
+			"V27 ProcessGeneration preparation requires an exact account binding".into(),
+		))
+	}
+
+	/// Persist generation intent and immutable account/store/provider/callback facts before spawn.
+	pub async fn prepare_bound_process_generation(
+		&self,
 		intent: &ProcessGenerationIntent,
+		binding: &ProcessGenerationAccountBinding,
+	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
+		self.prepare_bound_process_generation_inner(intent, binding, None).await
+	}
+
+	/// Persist one generation authorized only by an already-started Reset Card claim.
+	pub async fn prepare_reset_reconciliation_process_generation(
+		&self,
+		intent: &ProcessGenerationIntent,
+		binding: &ProcessGenerationAccountBinding,
+		outbox_id: i64,
+		worker_id: &str,
+		claim_token: &str,
+	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
+		if outbox_id < 1 {
+			return Err(StoreError::InvalidInput("reset-card outbox identity must be positive"));
+		}
+		self.prepare_bound_process_generation_inner(
+			intent,
+			binding,
+			Some((outbox_id, worker_id, claim_token)),
+		)
+		.await
+	}
+
+	async fn prepare_bound_process_generation_inner(
+		&self,
+		intent: &ProcessGenerationIntent,
+		binding: &ProcessGenerationAccountBinding,
+		reconciliation: Option<(i64, &str, &str)>,
 	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
 		let client = self.pool().get().await?;
+		let credential_version = i64::try_from(binding.credential.version.get()).map_err(|_| {
+			StoreError::InvalidInput("credential version overflows PostgreSQL bigint")
+		})?;
+		let store_schema = i32::from(binding.credential.schema_version.get());
+		let (outbox_id, worker_id, claim_token) =
+			reconciliation.map_or((None, None, None), |(outbox_id, worker_id, claim_token)| {
+				(Some(outbox_id), Some(worker_id), Some(claim_token))
+			});
 		let row = client
 			.query_one(
-				"SELECT result_code,revision,state::text,created_at_micros,updated_at_micros \
-				 FROM decodex.prepare_process_generation_exact(\
-				 $1::text::uuid,$2::text::uuid,$3::text::uuid,$4,$5,$6,\
-				 $7::text::decodex.process_generation_control_kind,\
-				 $8::text::decodex.process_generation_isolation_kind)",
+				PREPARE_BOUND_PROCESS_GENERATION_SQL,
 				&[
 					&intent.generation_id.as_str(),
 					&intent.account_id.as_str(),
@@ -129,6 +198,17 @@ impl PostgresStore {
 					&intent.intended_boot_id.as_str(),
 					&intent.control_kind.as_sql(),
 					&intent.isolation_kind.as_sql(),
+					&binding.account_revision,
+					&store_schema,
+					&credential_version,
+					&binding.credential.fingerprint.as_str(),
+					&binding.credential.writer_operation_id.as_str(),
+					&provider_text(binding.credential.provider.provider()),
+					&binding.credential.provider.account_id(),
+					&binding.refresh_callback_profile_sha256,
+					&outbox_id,
+					&worker_id,
+					&claim_token,
 				],
 			)
 			.await?;
@@ -146,6 +226,44 @@ impl PostgresStore {
 				actual: mutation,
 			}),
 		}
+	}
+
+	/// Read exact diagnostics with the immutable V27 account binding when present.
+	pub async fn read_bound_process_generations(
+		&self,
+		account_id: Option<&AccountId>,
+		include_dead: bool,
+		limit: u16,
+	) -> Result<Vec<BoundProcessGeneration>, StoreError> {
+		self.read_bound_process_generation_page(account_id, include_dead, None, limit).await
+	}
+
+	/// Read one bounded page with complete immutable V27 account bindings.
+	pub async fn read_bound_process_generation_page(
+		&self,
+		account_id: Option<&AccountId>,
+		include_dead: bool,
+		after_generation_id: Option<&ProcessGenerationId>,
+		limit: u16,
+	) -> Result<Vec<BoundProcessGeneration>, StoreError> {
+		if !(1..=256).contains(&limit) {
+			return Err(StoreError::InvalidInput(
+				"ProcessGeneration diagnostic limit must be between 1 and 256",
+			));
+		}
+		let account_id = account_id.map(AccountId::as_str);
+		let after_generation_id = after_generation_id.map(ProcessGenerationId::as_str);
+		let limit = i64::from(limit);
+		let rows = self
+			.pool()
+			.get()
+			.await?
+			.query(
+				READ_BOUND_PROCESS_GENERATIONS_SQL,
+				&[&account_id, &include_dead, &after_generation_id, &limit],
+			)
+			.await?;
+		rows.into_iter().map(parse_bound_generation).collect()
 	}
 
 	/// Bind the exact process, group, session, boot, and start identity immediately after spawn.
@@ -367,6 +485,18 @@ impl PostgresStore {
 	}
 }
 
+#[cfg(feature = "test-support")]
+pub(crate) async fn prepare_account_bound_process_generation_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	const SOURCES: [&str; 2] =
+		[PREPARE_BOUND_PROCESS_GENERATION_SQL, READ_BOUND_PROCESS_GENERATIONS_SQL];
+	for source in SOURCES {
+		client.prepare(source).await?;
+	}
+	Ok(SOURCES.len())
+}
+
 type OptionalIdentityParameters<'a> = (Option<i64>, Option<&'a str>, Option<i64>, Option<i64>);
 
 fn optional_identity_parameters(
@@ -489,6 +619,58 @@ fn parse_generation(row: tokio_postgres::Row) -> Result<ProcessGeneration, Store
 	})
 }
 
+fn parse_bound_generation(row: tokio_postgres::Row) -> Result<BoundProcessGeneration, StoreError> {
+	let account_binding = match (
+		row.get::<_, Option<i64>>(18),
+		row.get::<_, Option<i32>>(19),
+		row.get::<_, Option<i64>>(20),
+		row.get::<_, Option<String>>(21),
+		row.get::<_, Option<String>>(22),
+		row.get::<_, Option<&str>>(23),
+		row.get::<_, Option<String>>(24),
+		row.get::<_, Option<String>>(25),
+	) {
+		(None, None, None, None, None, None, None, None) => None,
+		(
+			Some(account_revision),
+			Some(schema),
+			Some(version),
+			Some(fingerprint),
+			Some(writer_operation_id),
+			Some("chatgpt"),
+			Some(provider_account_id),
+			Some(callback),
+		) => {
+			let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
+				.map_err(|_| incompatible_value("generation provider identity"))?;
+			let credential = CredentialBinding {
+				schema_version: CredentialStoreSchemaVersion::new(
+					u16::try_from(schema)
+						.map_err(|_| incompatible_value("generation credential schema"))?,
+				)
+				.map_err(|_| incompatible_value("generation credential schema"))?,
+				version: CredentialVersion::new(
+					u64::try_from(version)
+						.map_err(|_| incompatible_value("generation credential version"))?,
+				)
+				.map_err(|_| incompatible_value("generation credential version"))?,
+				fingerprint: CredentialFingerprint::new(fingerprint)
+					.map_err(|_| incompatible_value("generation credential fingerprint"))?,
+				provider,
+				writer_operation_id: AccountOperationId::new(writer_operation_id)
+					.map_err(|_| incompatible_value("generation credential writer"))?,
+			};
+			Some(
+				ProcessGenerationAccountBinding::new(account_revision, credential, callback)
+					.map_err(|_| incompatible_value("generation account binding"))?,
+			)
+		},
+		_ => return Err(incompatible_value("partial generation account binding")),
+	};
+	let generation = parse_generation(row)?;
+	Ok(BoundProcessGeneration { generation, account_binding })
+}
+
 fn parse_state(value: &str) -> Result<ProcessGenerationState, StoreError> {
 	match value {
 		"starting" => Ok(ProcessGenerationState::Starting),
@@ -534,6 +716,8 @@ fn parse_rejection(value: &str) -> Result<ProcessGenerationRejection, StoreError
 			Ok(ProcessGenerationRejection::RestoreAuthorityUnavailable),
 		"account_missing" => Ok(ProcessGenerationRejection::AccountMissing),
 		"account_quarantined" => Ok(ProcessGenerationRejection::AccountQuarantined),
+		"account_lifecycle_unready" => Ok(ProcessGenerationRejection::AccountLifecycleUnready),
+		"callback_capability_unready" => Ok(ProcessGenerationRejection::CallbackCapabilityUnready),
 		"generation_missing" => Ok(ProcessGenerationRejection::GenerationMissing),
 		"stale_generation" => Ok(ProcessGenerationRejection::StaleGeneration),
 		"process_identity_conflict" => Ok(ProcessGenerationRejection::ProcessIdentityConflict),
@@ -542,6 +726,12 @@ fn parse_rejection(value: &str) -> Result<ProcessGenerationRejection, StoreError
 		"invalid_evidence" => Ok(ProcessGenerationRejection::InvalidEvidence),
 		"evidence_mismatch" => Ok(ProcessGenerationRejection::EvidenceMismatch),
 		_ => Err(incompatible_value("ProcessGeneration result code")),
+	}
+}
+
+const fn provider_text(provider: AccountProvider) -> &'static str {
+	match provider {
+		AccountProvider::Chatgpt => "chatgpt",
 	}
 }
 

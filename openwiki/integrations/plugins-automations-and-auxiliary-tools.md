@@ -218,11 +218,11 @@ The reset-card path is not the scheduler, project registry owner, credential own
 app-server process owner, or runtime authority. Its bounded private journal retains at
 most 64 credential-negative attempts and fails closed on malformed or unsafe storage:
 recoverable entries remain available for status-only inspection, while new use is blocked.
-Before clean cutover, the separate legacy account path can still manage its existing
-local `decodex serve` lifecycle. Slice-1 normal startup and Slice-3 packaged startup
-remove this authority, its watcher, credential environment projection, helper, mapping,
-and `:8192` service under
-[Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
+The separate Swift legacy account path and bundled helper remain package/app residues
+without backend authority. XY-1427 and the package work remove that UI and bundle
+surface. Slice-1 backend startup already uses the clean
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md) with no watcher,
+credential environment projection, helper, mapping, or `:8192` service.
 See [Runtime architecture](../architecture/runtime-architecture.md) for the shared
 service flow and [Commands and validation](../operations/commands-and-validation.md)
 for the pre-cutover Swift and staging checks.

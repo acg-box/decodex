@@ -742,7 +742,7 @@ The active vNext CLI starts in `apps/decodex-cli/src/lib.rs`. Use these commands
 the shared reset-card service:
 
 ```sh
-decodex reset-card accounts
+decodex account list
 decodex reset-card list --account UUID
 decodex reset-card use \
   --account UUID \
@@ -754,8 +754,8 @@ decodex reset-card use \
 decodex reset-card status --idempotency-key KEY
 ```
 
-Create and persist the key before `use`; the CLI does not generate it. `accounts` and
-`list` JSON include an `authority` object with `profile_name` and `server_id`. Retain
+Create and persist the key before `use`; the CLI does not generate it. The account registry and
+reset-card inventory responses retain the selected profile and stable server authority. Retain
 that authority when a selection or pending operation crosses commands:
 
 ```sh
@@ -958,12 +958,18 @@ unrelated existing account UI, plus active `decodexd` and `decodex-cli` for vNex
 It verifies all four. This describes current scaffolding only. It is not final account
 lifecycle or clean-cutover acceptance.
 
-The local-service installer test verifies credential-negative config, bridge mapping,
-and LaunchAgent output. The installed `decodexd supervise-local` process owns one
-foreground PostgreSQL generation and one daemon generation. PostgreSQL exit or
-endpoint replacement stops the old daemon before the supervisor exits. After an
-atomic legacy account-file replacement, only a changed credential projection stops
-and restarts the daemon so its process-scoped environment receives current values.
+The local-service installer test verifies credential-negative config, canonical
+one-shot migration input, exact staging cleanup, completed destination/retirement
+receipt verification, and LaunchAgent output. The installer stops the service before
+it reads an optional legacy pool, records one normalized manifest digest intent before
+account destination effects, verifies HostCredentialStore and PostgreSQL destinations,
+swaps the final config, retires only exact staging and legacy inputs, and then completes
+the receipt. Completed reinstall reads no legacy source and verifies the
+credential-negative receipt, config, LaunchAgent, PostgreSQL, and account authority.
+The installed `decodexd supervise-local` process owns one foreground PostgreSQL
+generation and one daemon generation. PostgreSQL exit or endpoint replacement stops
+the old daemon before the supervisor exits. Normal startup has no account watcher,
+mapping bridge, account-credential environment projection, helper, or `:8192` service.
 The LaunchAgent uses `KeepAlive = { SuccessfulExit = false }` and `ExitTimeOut=60`.
 For an installed job with that exact contract, the installer sends SIGTERM while the
 job remains loaded, lets the supervisor use its 240-second daemon and 30-second
@@ -973,16 +979,11 @@ job receives one direct removal fallback, and that removal can use the remaining
 PID and full start time and wait at most 300 seconds before replacement; a concurrent
 removal cannot bypass that wait. PostgreSQL readiness probes name the existing
 `postgres` database so they do not emit missing-default-database warnings.
-The bridge requires the
-same UID, a private parent directory, private regular account and lock files, one
-link per file, bounded input, unique provider identities and email identities, and
-an exact slot-to-digest mapping.
-
-These checks prove only the bounded behavior of the current bridge. They do not prove a
-persistent credential store, token refresh/rotation, enrollment, logout, account-service
-recovery, exact-build refresh callback, or readiness. The bridge must be absent for
-MacDogfoodReady normal startup and the Slice-3 packaged flow. Broader fault evidence is a
-later final-readiness obligation in
+The one-shot parser requires the same UID, private source ancestry, private regular
+account and lock files, one link per file, bounded input, unique provider identities
+and email identities, and an exact source-to-manifest mapping. These checks do not
+expand the bounded source gate into a general path framework. Broader fault evidence
+and the packaged proof remain later final-readiness obligations in
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md#readiness-levels).
 
 ## Radar and Publisher checks

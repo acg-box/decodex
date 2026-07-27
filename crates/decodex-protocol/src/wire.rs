@@ -398,6 +398,7 @@ pub struct ResumeCursor {
 
 /// A typed command envelope.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommandEnvelope {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
@@ -417,6 +418,7 @@ pub struct CommandEnvelope {
 
 /// A live read envelope. Queries are observations, not idempotent mutations.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct QueryEnvelope {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
@@ -858,124 +860,6 @@ pub struct ResetCardObservationDto {
 	pub descriptor: ResetCardDescriptorDto,
 }
 
-/// Manual reset-card account admission state.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResetCardAdmissionState {
-	/// The account can be observed and can consume a reset card.
-	Available,
-	/// The account has exhausted a quota but remains eligible for manual reset.
-	Depleted,
-}
-
-/// One bounded account projection available to reset-card clients.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ResetCardAccountDto {
-	/// Canonical vNext account UUID.
-	pub account_id: EntityId,
-	/// Non-secret operator label.
-	pub display_label: WireText,
-	/// Current optimistic account revision.
-	pub account_revision: EntityRevision,
-	/// Closed manual reset-card admission state.
-	pub admission_state: ResetCardAdmissionState,
-}
-impl<'de> Deserialize<'de> for ResetCardAccountDto {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(deny_unknown_fields)]
-		struct RawAccount {
-			account_id: EntityId,
-			display_label: WireText,
-			account_revision: EntityRevision,
-			admission_state: ResetCardAdmissionState,
-		}
-
-		let raw = RawAccount::deserialize(deserializer)?;
-
-		require_canonical_account_id::<D::Error>(&raw.account_id)?;
-
-		Ok(Self {
-			account_id: raw.account_id,
-			display_label: raw.display_label,
-			account_revision: raw.account_revision,
-			admission_state: raw.admission_state,
-		})
-	}
-}
-
-/// Bounded reset-card account discovery result.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ResetCardAccountsResult {
-	/// Current manually admitted account projections.
-	Available {
-		/// At most [`MAX_RESET_CARD_ITEMS`] unique accounts.
-		accounts: Vec<ResetCardAccountDto>,
-	},
-	/// Account discovery was unavailable without exposing infrastructure detail.
-	Unavailable {
-		/// Stable reason class.
-		error: ResetCardError,
-	},
-}
-impl ResetCardAccountsResult {
-	/// Borrow account records when discovery succeeded.
-	pub fn accounts(&self) -> Option<&[ResetCardAccountDto]> {
-		match self {
-			Self::Available { accounts } => Some(accounts),
-			Self::Unavailable { .. } => None,
-		}
-	}
-}
-impl Serialize for ResetCardAccountsResult {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		#[derive(Serialize)]
-		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
-		enum RawResult<'a> {
-			Available { accounts: &'a [ResetCardAccountDto] },
-			Unavailable { error: ResetCardError },
-		}
-
-		let raw = match self {
-			Self::Available { accounts } => {
-				validate_reset_card_accounts(accounts).map_err(S::Error::custom)?;
-				RawResult::Available { accounts }
-			},
-			Self::Unavailable { error } => RawResult::Unavailable { error: *error },
-		};
-
-		raw.serialize(serializer)
-	}
-}
-impl<'de> Deserialize<'de> for ResetCardAccountsResult {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
-		enum RawResult {
-			Available { accounts: Vec<ResetCardAccountDto> },
-			Unavailable { error: ResetCardError },
-		}
-
-		match RawResult::deserialize(deserializer)? {
-			RawResult::Available { accounts } => {
-				validate_reset_card_accounts(&accounts).map_err(D::Error::custom)?;
-
-				Ok(Self::Available { accounts })
-			},
-			RawResult::Unavailable { error } => Ok(Self::Unavailable { error }),
-		}
-	}
-}
-
 /// Bounded current reset-card inventory for one account.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResetCardInventoryResult {
@@ -989,6 +873,23 @@ pub enum ResetCardInventoryResult {
 		available_count: u16,
 		/// Complete unique public card observations.
 		cards: Vec<ResetCardObservationDto>,
+		/// Freshness and value of the exact 300-minute window from this same provider call.
+		five_hour_quota: AccountQuotaWindowDto,
+		/// Freshness and value of the exact 10,080-minute window from this same provider call.
+		seven_day_quota: AccountQuotaWindowDto,
+	},
+	/// The account row was established, but its bounded provider observation failed.
+	ObservationFailed {
+		/// Canonical vNext account UUID established before the provider call.
+		account_id: EntityId,
+		/// Account revision established before the provider call.
+		account_revision: EntityRevision,
+		/// Persisted 300-minute evidence from this observation attempt.
+		five_hour_quota: AccountQuotaWindowDto,
+		/// Persisted 10,080-minute evidence from this observation attempt.
+		seven_day_quota: AccountQuotaWindowDto,
+		/// Stable row-scoped failure class.
+		error: ResetCardError,
 	},
 	/// Inventory could not be established safely.
 	Unavailable {
@@ -1009,6 +910,15 @@ impl Serialize for ResetCardInventoryResult {
 				account_revision: EntityRevision,
 				available_count: u16,
 				cards: &'a [ResetCardObservationDto],
+				five_hour_quota: AccountQuotaWindowDto,
+				seven_day_quota: AccountQuotaWindowDto,
+			},
+			ObservationFailed {
+				account_id: &'a EntityId,
+				account_revision: EntityRevision,
+				five_hour_quota: AccountQuotaWindowDto,
+				seven_day_quota: AccountQuotaWindowDto,
+				error: ResetCardError,
 			},
 			Unavailable {
 				error: ResetCardError,
@@ -1016,12 +926,21 @@ impl Serialize for ResetCardInventoryResult {
 		}
 
 		let raw = match self {
-			Self::Available { account_id, account_revision, available_count, cards } => {
+			Self::Available {
+				account_id,
+				account_revision,
+				available_count,
+				cards,
+				five_hour_quota,
+				seven_day_quota,
+			} => {
 				validate_reset_card_inventory(
 					account_id,
 					*account_revision,
 					*available_count,
 					cards,
+					*five_hour_quota,
+					*seven_day_quota,
 				)
 				.map_err(S::Error::custom)?;
 				RawResult::Available {
@@ -1029,6 +948,30 @@ impl Serialize for ResetCardInventoryResult {
 					account_revision: *account_revision,
 					available_count: *available_count,
 					cards,
+					five_hour_quota: *five_hour_quota,
+					seven_day_quota: *seven_day_quota,
+				}
+			},
+			Self::ObservationFailed {
+				account_id,
+				account_revision,
+				five_hour_quota,
+				seven_day_quota,
+				error,
+			} => {
+				validate_reset_card_observation_failure(
+					account_id,
+					*account_revision,
+					*five_hour_quota,
+					*seven_day_quota,
+				)
+				.map_err(S::Error::custom)?;
+				RawResult::ObservationFailed {
+					account_id,
+					account_revision: *account_revision,
+					five_hour_quota: *five_hour_quota,
+					seven_day_quota: *seven_day_quota,
+					error: *error,
 				}
 			},
 			Self::Unavailable { error } => RawResult::Unavailable { error: *error },
@@ -1043,13 +986,22 @@ impl<'de> Deserialize<'de> for ResetCardInventoryResult {
 		D: Deserializer<'de>,
 	{
 		#[derive(Deserialize)]
-		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 		enum RawResult {
 			Available {
 				account_id: EntityId,
 				account_revision: EntityRevision,
 				available_count: u16,
 				cards: Vec<ResetCardObservationDto>,
+				five_hour_quota: AccountQuotaWindowDto,
+				seven_day_quota: AccountQuotaWindowDto,
+			},
+			ObservationFailed {
+				account_id: EntityId,
+				account_revision: EntityRevision,
+				five_hour_quota: AccountQuotaWindowDto,
+				seven_day_quota: AccountQuotaWindowDto,
+				error: ResetCardError,
 			},
 			Unavailable {
 				error: ResetCardError,
@@ -1057,16 +1009,54 @@ impl<'de> Deserialize<'de> for ResetCardInventoryResult {
 		}
 
 		match RawResult::deserialize(deserializer)? {
-			RawResult::Available { account_id, account_revision, available_count, cards } => {
+			RawResult::Available {
+				account_id,
+				account_revision,
+				available_count,
+				cards,
+				five_hour_quota,
+				seven_day_quota,
+			} => {
 				validate_reset_card_inventory(
 					&account_id,
 					account_revision,
 					available_count,
 					&cards,
+					five_hour_quota,
+					seven_day_quota,
 				)
 				.map_err(D::Error::custom)?;
 
-				Ok(Self::Available { account_id, account_revision, available_count, cards })
+				Ok(Self::Available {
+					account_id,
+					account_revision,
+					available_count,
+					cards,
+					five_hour_quota,
+					seven_day_quota,
+				})
+			},
+			RawResult::ObservationFailed {
+				account_id,
+				account_revision,
+				five_hour_quota,
+				seven_day_quota,
+				error,
+			} => {
+				validate_reset_card_observation_failure(
+					&account_id,
+					account_revision,
+					five_hour_quota,
+					seven_day_quota,
+				)
+				.map_err(D::Error::custom)?;
+				Ok(Self::ObservationFailed {
+					account_id,
+					account_revision,
+					five_hour_quota,
+					seven_day_quota,
+					error,
+				})
 			},
 			RawResult::Unavailable { error } => Ok(Self::Unavailable { error }),
 		}
@@ -1117,7 +1107,7 @@ pub enum ResetCardOutcome {
 
 /// Observation of one reset-card operation or typed authoritative-state unavailability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "state", content = "data", rename_all = "snake_case")]
+#[serde(tag = "state", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResetCardOperationResult {
 	/// No durable operation exists for the supplied logical-command key.
 	NotFound,
@@ -1153,7 +1143,7 @@ pub struct RefusalEnvelope {
 
 /// A client-to-server WebSocket message.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "type", content = "body", rename_all = "snake_case")]
+#[serde(tag = "type", content = "body", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClientMessage {
 	/// Must be the first message on a connection.
 	Hello(ClientHello),
@@ -1167,9 +1157,599 @@ const fn version_supports(version: ProtocolVersion, minimum: ProtocolVersion) ->
 	version.major == minimum.major && version.minor >= minimum.minor
 }
 
+/// Supported credential-negative account provider projection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountProviderDto {
+	/// ChatGPT OAuth credentials consumed by Codex.
+	Chatgpt,
+}
+
+/// Persisted observed account health, independent of administrative enablement.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountObservedStateDto {
+	/// The account or a required host boundary is unavailable.
+	Unavailable,
+	/// No current evidence establishes provider health.
+	Unknown,
+	/// Fresh provider evidence reports availability.
+	Available,
+	/// A required quota window is depleted.
+	Depleted,
+	/// The provider rejected authentication.
+	AuthFailed,
+	/// A required provider plugin is not ready.
+	PluginUnready,
+}
+
+/// Exact Account Lifecycle admission state derived by the daemon.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountLifecycleReadinessDto {
+	/// All admission boundaries agree.
+	Ready,
+	/// No current credential binding exists.
+	CredentialAbsent,
+	/// The host credential store is unavailable.
+	StoreUnavailable,
+	/// Registry and host-store metadata differ.
+	StoreMismatch,
+	/// Registry and host-store provider identities differ.
+	ProviderMismatch,
+	/// A finite credential operation is unsettled.
+	OperationUnsettled,
+	/// The exact Codex refresh callback is not ready.
+	CallbackCapabilityUnready,
+	/// The account was logged out.
+	Tombstoned,
+}
+
+/// Finite credential operation kind shown with an unsettled account row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountOperationKindDto {
+	/// Enroll from shared Codex credentials.
+	Enroll,
+	/// Import from an explicit credential file.
+	Import,
+	/// Rotate to the next credential version.
+	Refresh,
+	/// Delete credentials and tombstone the account.
+	Logout,
+}
+
+/// Finite nonterminal credential operation phase shown with an account row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountOperationPhaseDto {
+	/// PostgreSQL accepted the operation before an external effect.
+	Prepared,
+	/// A provider effect can no longer be proved absent.
+	ProviderEffectPending,
+	/// The host-store effect is proved and the registry commit is pending.
+	StoreApplied,
+	/// Explicit reconciliation is required.
+	RecoveryRequired,
+}
+
+/// Credential-negative operation state sufficient for independent row rendering.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountUnsettledOperationDto {
+	/// Stable operation UUID.
+	pub operation_id: EntityId,
+	/// Finite lifecycle operation kind.
+	pub kind: AccountOperationKindDto,
+	/// Current nonterminal phase.
+	pub phase: AccountOperationPhaseDto,
+	/// Stable recovery reason code, only for manual recovery.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub recovery_code: Option<WireText>,
+}
+
+/// Credential-negative canonical host-store binding.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountCredentialBindingDto {
+	/// HostCredentialStore schema version.
+	pub schema_version: u16,
+	/// Monotonic per-account credential version.
+	pub version: u64,
+	/// Canonical fingerprint of the complete secret bundle.
+	pub fingerprint_sha256: Sha256Digest,
+	/// Provider kind bound to the secret bundle.
+	pub provider: AccountProviderDto,
+	/// Non-secret provider account identity.
+	pub provider_account_id: WireText,
+}
+
+/// Closed bounded provider-observation error for one account row and quota duration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountQuotaErrorDto {
+	/// The provider request could not complete.
+	ProviderUnavailable,
+	/// The provider response did not satisfy the protocol contract.
+	ProtocolUnavailable,
+	/// The provider response identified another account.
+	AccountMismatch,
+	/// One required quota duration was absent.
+	UnsupportedWindow,
+}
+
+/// Server-owned quota freshness and value classification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "state", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AccountQuotaStateDto {
+	/// No observation exists.
+	Unknown,
+	/// The retained quota fact is current.
+	Current {
+		/// Provider-reported percentage used.
+		used_percent: u8,
+		/// Provider-reported reset time in Unix microseconds.
+		resets_at_unix_micros: i64,
+	},
+	/// The retained quota fact is no longer current.
+	Stale {
+		/// Provider-reported percentage used.
+		used_percent: u8,
+		/// Provider-reported reset time in Unix microseconds.
+		resets_at_unix_micros: i64,
+	},
+	/// The latest observation produced a bounded error.
+	Error {
+		/// Stable observation failure.
+		error: AccountQuotaErrorDto,
+	},
+}
+
+/// One required independently observed quota duration.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AccountQuotaWindowDto {
+	/// Exact window duration. V1.4 accepts 300 and 10080 minutes only.
+	pub duration_minutes: u32,
+	/// Exact observation time, absent only when state is unknown.
+	pub observed_at_unix_micros: Option<i64>,
+	/// Closed current, unknown, stale, or error result.
+	pub result: AccountQuotaStateDto,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawAccountQuotaWindowDto {
+	duration_minutes: u32,
+	observed_at_unix_micros: RequiredQuotaObservationTime,
+	result: AccountQuotaStateDto,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(transparent)]
+struct RequiredQuotaObservationTime(Option<i64>);
+impl From<AccountQuotaWindowDto> for RawAccountQuotaWindowDto {
+	fn from(quota: AccountQuotaWindowDto) -> Self {
+		Self {
+			duration_minutes: quota.duration_minutes,
+			observed_at_unix_micros: RequiredQuotaObservationTime(quota.observed_at_unix_micros),
+			result: quota.result,
+		}
+	}
+}
+impl From<RawAccountQuotaWindowDto> for AccountQuotaWindowDto {
+	fn from(quota: RawAccountQuotaWindowDto) -> Self {
+		Self {
+			duration_minutes: quota.duration_minutes,
+			observed_at_unix_micros: quota.observed_at_unix_micros.0,
+			result: quota.result,
+		}
+	}
+}
+impl Serialize for AccountQuotaWindowDto {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		validate_public_quota_window(*self).map_err(S::Error::custom)?;
+		RawAccountQuotaWindowDto::from(*self).serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountQuotaWindowDto {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let quota = Self::from(RawAccountQuotaWindowDto::deserialize(deserializer)?);
+		validate_public_quota_window(quota).map_err(D::Error::custom)?;
+		Ok(quota)
+	}
+}
+
+/// Credential-negative daemon-owned account projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountDto {
+	/// Canonical Decodex account identity.
+	pub account_id: EntityId,
+	/// Non-secret operator label.
+	pub display_label: WireText,
+	/// Independent administrative admission switch.
+	pub enabled: bool,
+	/// Optimistic account revision.
+	pub account_revision: EntityRevision,
+	/// Persisted provider-observed health.
+	pub observed_state: AccountObservedStateDto,
+	/// Derived lifecycle admission gate.
+	pub lifecycle_readiness: AccountLifecycleReadinessDto,
+	/// Current credential-negative host-store binding.
+	pub credential_binding: Option<AccountCredentialBindingDto>,
+	/// Current unsettled credential operation.
+	pub unsettled_operation: Option<AccountUnsettledOperationDto>,
+	/// Required 300-minute quota observation.
+	pub five_hour_quota: AccountQuotaWindowDto,
+	/// Required 10,080-minute quota observation.
+	pub seven_day_quota: AccountQuotaWindowDto,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawAccountDto {
+	account_id: EntityId,
+	display_label: WireText,
+	enabled: bool,
+	account_revision: EntityRevision,
+	observed_state: AccountObservedStateDto,
+	lifecycle_readiness: AccountLifecycleReadinessDto,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	credential_binding: Option<AccountCredentialBindingDto>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	unsettled_operation: Option<AccountUnsettledOperationDto>,
+	five_hour_quota: AccountQuotaWindowDto,
+	seven_day_quota: AccountQuotaWindowDto,
+}
+impl From<&AccountDto> for RawAccountDto {
+	fn from(account: &AccountDto) -> Self {
+		Self {
+			account_id: account.account_id.clone(),
+			display_label: account.display_label.clone(),
+			enabled: account.enabled,
+			account_revision: account.account_revision,
+			observed_state: account.observed_state,
+			lifecycle_readiness: account.lifecycle_readiness,
+			credential_binding: account.credential_binding.clone(),
+			unsettled_operation: account.unsettled_operation.clone(),
+			five_hour_quota: account.five_hour_quota,
+			seven_day_quota: account.seven_day_quota,
+		}
+	}
+}
+impl From<RawAccountDto> for AccountDto {
+	fn from(account: RawAccountDto) -> Self {
+		Self {
+			account_id: account.account_id,
+			display_label: account.display_label,
+			enabled: account.enabled,
+			account_revision: account.account_revision,
+			observed_state: account.observed_state,
+			lifecycle_readiness: account.lifecycle_readiness,
+			credential_binding: account.credential_binding,
+			unsettled_operation: account.unsettled_operation,
+			five_hour_quota: account.five_hour_quota,
+			seven_day_quota: account.seven_day_quota,
+		}
+	}
+}
+impl Serialize for AccountDto {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		validate_account_dto(self).map_err(S::Error::custom)?;
+		RawAccountDto::from(self).serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountDto {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let account = Self::from(RawAccountDto::deserialize(deserializer)?);
+		validate_account_dto(&account).map_err(D::Error::custom)?;
+		Ok(account)
+	}
+}
+
+/// User-owned initial account selection mode.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "mode", content = "account_id", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AccountSelectionModeDto {
+	/// Select only one configured account.
+	Fixed(EntityId),
+	/// Select the first eligible account in the complete order.
+	Balanced,
+}
+
+/// Versioned deterministic account routing controls.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountRoutingControlDto {
+	/// Optimistic routing-control revision.
+	pub revision: EntityRevision,
+	/// Current initial-selection mode.
+	pub mode: AccountSelectionModeDto,
+	/// Complete deterministic order of visible accounts.
+	pub order: Vec<EntityId>,
+}
+impl Serialize for AccountRoutingControlDto {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		struct RawRoutingControl<'a> {
+			revision: EntityRevision,
+			mode: &'a AccountSelectionModeDto,
+			order: &'a [EntityId],
+		}
+
+		validate_routing_control(self).map_err(S::Error::custom)?;
+		RawRoutingControl { revision: self.revision, mode: &self.mode, order: &self.order }
+			.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountRoutingControlDto {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(deny_unknown_fields)]
+		struct RawRoutingControl {
+			revision: EntityRevision,
+			mode: AccountSelectionModeDto,
+			order: Vec<EntityId>,
+		}
+
+		let raw = RawRoutingControl::deserialize(deserializer)?;
+		let routing = Self { revision: raw.revision, mode: raw.mode, order: raw.order };
+		validate_routing_control(&routing).map_err(D::Error::custom)?;
+		Ok(routing)
+	}
+}
+
+/// Closed recovery action returned when initial selection cannot proceed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountSelectionRecoveryDto {
+	/// Select an existing account in fixed mode.
+	ConfigureFixedAccount,
+	/// Enable the selected account.
+	EnableAccount,
+	/// Install credentials for an account.
+	EnrollCredentials,
+	/// Reconcile or cancel an unsettled credential operation.
+	ResolveCredentialOperation,
+	/// Restore registry and host-store agreement.
+	RepairCredentialStore,
+	/// Restore exact provider identity agreement.
+	RestoreProviderAgreement,
+	/// Refresh both required quota observations.
+	RefreshQuota,
+	/// Install a Codex build with the required callback capability.
+	UpgradeCodex,
+}
+
+/// Deterministic initial-selection result. No fallback or wake is implied.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountInitialSelectionResult {
+	/// One account is ready for initial work admission.
+	Selected {
+		/// Canonical selected account identity.
+		account_id: EntityId,
+		/// Exact selected account revision.
+		account_revision: EntityRevision,
+	},
+	/// No account is ready and one explicit action is required.
+	RecoveryRequired {
+		/// Account that requires the action, when one can be selected.
+		account_id: Option<EntityId>,
+		/// Stable operator recovery action.
+		action: AccountSelectionRecoveryDto,
+	},
+	/// Initial selection could not be evaluated safely.
+	Unavailable,
+}
+impl Serialize for AccountInitialSelectionResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum RawResult<'a> {
+			Selected {
+				account_id: &'a EntityId,
+				account_revision: EntityRevision,
+			},
+			RecoveryRequired {
+				#[serde(skip_serializing_if = "Option::is_none")]
+				account_id: &'a Option<EntityId>,
+				action: AccountSelectionRecoveryDto,
+			},
+			Unavailable,
+		}
+
+		validate_initial_selection_result(self).map_err(S::Error::custom)?;
+		let raw = match self {
+			Self::Selected { account_id, account_revision } =>
+				RawResult::Selected { account_id, account_revision: *account_revision },
+			Self::RecoveryRequired { account_id, action } =>
+				RawResult::RecoveryRequired { account_id, action: *action },
+			Self::Unavailable => RawResult::Unavailable,
+		};
+		raw.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountInitialSelectionResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+		enum RawResult {
+			Selected { account_id: EntityId, account_revision: EntityRevision },
+			RecoveryRequired { account_id: Option<EntityId>, action: AccountSelectionRecoveryDto },
+			Unavailable,
+		}
+
+		let result = match RawResult::deserialize(deserializer)? {
+			RawResult::Selected { account_id, account_revision } =>
+				Self::Selected { account_id, account_revision },
+			RawResult::RecoveryRequired { account_id, action } =>
+				Self::RecoveryRequired { account_id, action },
+			RawResult::Unavailable => Self::Unavailable,
+		};
+		validate_initial_selection_result(&result).map_err(D::Error::custom)?;
+		Ok(result)
+	}
+}
+
+/// Narrow, typed manual recovery actions for one unsettled credential operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountManualRecoveryActionDto {
+	/// Re-read PostgreSQL and the exact host-store version and settle only a proven state.
+	ReconcileExactStoreState,
+	/// Cancel an operation only when the daemon proves that no external effect began.
+	CancelBeforeEffect,
+}
+
+/// Closed account read result without credential material.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountsResult {
+	/// Complete visible account rows and matching routing controls.
+	Available {
+		/// Bounded visible account projections.
+		accounts: Vec<AccountDto>,
+		/// Routing controls with an exact account permutation.
+		routing: AccountRoutingControlDto,
+	},
+	/// The account authority could not return a safe snapshot.
+	Unavailable,
+}
+
+/// Closed account inspection result.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountInspectResult {
+	/// The requested account exists.
+	Available(Box<AccountDto>),
+	/// No visible account has the requested identity.
+	NotFound,
+	/// The account authority could not return a safe result.
+	Unavailable,
+}
+
+impl Serialize for AccountsResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum Raw<'a> {
+			Available { accounts: &'a [AccountDto], routing: &'a AccountRoutingControlDto },
+			Unavailable,
+		}
+		let raw = match self {
+			Self::Available { accounts, routing } => {
+				validate_accounts_result(accounts, routing).map_err(S::Error::custom)?;
+				Raw::Available { accounts, routing }
+			},
+			Self::Unavailable => Raw::Unavailable,
+		};
+		raw.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountsResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+		enum Raw {
+			Available { accounts: Vec<AccountDto>, routing: AccountRoutingControlDto },
+			Unavailable,
+		}
+		match Raw::deserialize(deserializer)? {
+			Raw::Available { accounts, routing } => {
+				validate_accounts_result(&accounts, &routing).map_err(D::Error::custom)?;
+				Ok(Self::Available { accounts, routing })
+			},
+			Raw::Unavailable => Ok(Self::Unavailable),
+		}
+	}
+}
+
+impl Serialize for AccountInspectResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum Raw<'a> {
+			Available(&'a AccountDto),
+			NotFound,
+			Unavailable,
+		}
+		let raw = match self {
+			Self::Available(account) => {
+				validate_account_dto(account).map_err(S::Error::custom)?;
+				Raw::Available(account)
+			},
+			Self::NotFound => Raw::NotFound,
+			Self::Unavailable => Raw::Unavailable,
+		};
+		raw.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountInspectResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+		enum Raw {
+			Available(Box<AccountDto>),
+			NotFound,
+			Unavailable,
+		}
+		match Raw::deserialize(deserializer)? {
+			Raw::Available(account) => {
+				validate_account_dto(&account).map_err(D::Error::custom)?;
+				Ok(Self::Available(account))
+			},
+			Raw::NotFound => Ok(Self::NotFound),
+			Raw::Unavailable => Ok(Self::Unavailable),
+		}
+	}
+}
+
+/// Successful typed manual recovery disposition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountManualRecoveryOutcomeDto {
+	/// The exact host-store effect was proved and committed.
+	Committed,
+	/// The operation was proved effect-free and cancelled.
+	Cancelled,
+	/// Exact state could not be reconciled automatically.
+	StillRequiresRecovery,
+}
+
 /// Live queries available through the current V1 compatibility window.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "name", content = "arguments", rename_all = "snake_case")]
+#[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
 	/// Revalidate and return the bounded authoritative doctor/status report.
 	GetDoctorStatus,
@@ -1188,8 +1768,6 @@ pub enum QueryPayload {
 		/// Requested item count, bounded again by the daemon.
 		page_size: u16,
 	},
-	/// Discover vNext accounts admitted for manual reset-card use.
-	ListResetCardAccounts,
 	/// Read one complete reset-card inventory.
 	GetResetCards {
 		/// Canonical vNext account UUID.
@@ -1200,6 +1778,15 @@ pub enum QueryPayload {
 		/// Stable key supplied to the original consume command.
 		idempotency_key: IdempotencyKey,
 	},
+	/// List daemon-owned accounts and deterministic routing controls.
+	ListAccounts,
+	/// Inspect one daemon-owned account and exact lifecycle readiness.
+	InspectAccount {
+		/// Canonical account identity to inspect.
+		account_id: EntityId,
+	},
+	/// Evaluate initial account selection without creating fallback or wake work.
+	GetInitialAccountSelection,
 }
 impl QueryPayload {
 	/// Whether this query existed in the negotiated minor protocol revision.
@@ -1209,17 +1796,17 @@ impl QueryPayload {
 			| Self::GetExecutionDecision { .. }
 			| Self::GetConversationHistory { .. } =>
 				version_supports(version, ProtocolVersion { major: 1, minor: 2 }),
-			Self::ListResetCardAccounts
-			| Self::GetResetCards { .. }
-			| Self::GetResetCardOperation { .. } =>
+			Self::GetResetCards { .. } | Self::GetResetCardOperation { .. } =>
 				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
+			Self::ListAccounts | Self::InspectAccount { .. } | Self::GetInitialAccountSelection =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
 		}
 	}
 }
 
 /// Commands available through the current V1 compatibility window.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "name", content = "arguments", rename_all = "snake_case")]
+#[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
 	/// Refresh a bounded system-health observation through the common application boundary.
 	RefreshSystemObservation {
@@ -1233,6 +1820,74 @@ pub enum CommandPayload {
 		/// Exact public descriptor selected from a fresh complete inventory.
 		descriptor: ResetCardDescriptorDto,
 	},
+	/// Enroll the explicit account from the normal Codex-owned shared auth file.
+	EnrollAccountFromSharedCodex {
+		/// Stable finite lifecycle operation identity.
+		operation_id: EntityId,
+		/// Canonical new account identity.
+		account_id: EntityId,
+		/// Non-secret operator label.
+		display_label: WireText,
+		/// Initial administrative admission switch.
+		enabled: bool,
+	},
+	/// Import one owner-private daemon-opened credential file without carrying secret bytes.
+	ImportAccountCredentialFile {
+		/// Stable finite lifecycle operation identity.
+		operation_id: EntityId,
+		/// Canonical account identity.
+		account_id: EntityId,
+		/// Non-secret operator label.
+		display_label: WireText,
+		/// Initial administrative admission switch.
+		enabled: bool,
+		/// Owner-private path descriptor opened by the daemon.
+		source_descriptor: WireText,
+	},
+	/// Rename one account under optimistic account revision.
+	RenameAccount {
+		/// Canonical account identity.
+		account_id: EntityId,
+		/// Replacement non-secret operator label.
+		display_label: WireText,
+	},
+	/// Change administrative enablement under optimistic account revision.
+	SetAccountEnabled {
+		/// Canonical account identity.
+		account_id: EntityId,
+		/// Replacement admission switch.
+		enabled: bool,
+	},
+	/// Delete one exact host bundle and tombstone its registry projection.
+	LogoutAccount {
+		/// Stable finite lifecycle operation identity.
+		operation_id: EntityId,
+		/// Canonical account identity.
+		account_id: EntityId,
+	},
+	/// Atomically replace selection mode and complete deterministic user-owned order.
+	ConfigureAccountRouting {
+		/// Exact optimistic routing-control revision.
+		expected_routing_revision: EntityRevision,
+		/// Replacement initial-selection mode.
+		mode: AccountSelectionModeDto,
+		/// Complete replacement visible-account order.
+		order: Vec<EntityId>,
+	},
+	/// Proactively refresh one exact account through the serialized Account Service path.
+	RefreshAccount {
+		/// Stable finite lifecycle operation identity.
+		operation_id: EntityId,
+		/// Canonical account identity.
+		account_id: EntityId,
+	},
+	/// Apply one narrow explicit recovery action to a nonterminal credential operation.
+	RecoverAccountOperation {
+		/// Stable lifecycle operation identity.
+		operation_id: EntityId,
+		/// Explicit bounded reconciliation action.
+		action: AccountManualRecoveryActionDto,
+	},
 }
 impl CommandPayload {
 	/// Whether this command existed in the negotiated minor protocol revision.
@@ -1242,6 +1897,15 @@ impl CommandPayload {
 				version_supports(version, ProtocolVersion { major: 1, minor: 1 }),
 			Self::ConsumeResetCard { .. } =>
 				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
+			Self::EnrollAccountFromSharedCodex { .. }
+			| Self::ImportAccountCredentialFile { .. }
+			| Self::RenameAccount { .. }
+			| Self::SetAccountEnabled { .. }
+			| Self::LogoutAccount { .. }
+			| Self::ConfigureAccountRouting { .. }
+			| Self::RefreshAccount { .. }
+			| Self::RecoverAccountOperation { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
 		}
 	}
 }
@@ -1317,7 +1981,7 @@ pub enum Channel {
 
 /// Event payloads available in this foundation slice.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "name", content = "data", rename_all = "snake_case")]
+#[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventPayload {
 	/// A foundation system observation was refreshed.
 	SystemObservationRefreshed {
@@ -1342,6 +2006,30 @@ pub enum EventPayload {
 		/// Closed terminal provider outcome.
 		outcome: ResetCardOutcome,
 	},
+	/// One account registry projection changed.
+	AccountChanged {
+		/// Complete credential-negative account projection.
+		account: Box<AccountDto>,
+	},
+	/// One account was logged out and removed from the non-tombstoned account universe.
+	AccountLoggedOut {
+		/// Canonical logged-out account identity.
+		account_id: EntityId,
+		/// Exact committed tombstone revision.
+		tombstone_revision: EntityRevision,
+	},
+	/// User-owned account routing controls changed.
+	AccountRoutingChanged {
+		/// Complete updated routing controls.
+		routing: AccountRoutingControlDto,
+	},
+	/// One explicit account-operation recovery action completed.
+	AccountOperationRecovered {
+		/// Stable recovered operation identity.
+		operation_id: EntityId,
+		/// Finite recovery disposition.
+		outcome: AccountManualRecoveryOutcomeDto,
+	},
 }
 impl EventPayload {
 	/// Whether this event can be decoded by the negotiated minor protocol revision.
@@ -1351,6 +2039,11 @@ impl EventPayload {
 				version_supports(version, ProtocolVersion { major: 1, minor: 1 }),
 			Self::ResetCardOperationAccepted { .. } | Self::ResetCardConsumed { .. } =>
 				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
+			Self::AccountChanged { .. }
+			| Self::AccountLoggedOut { .. }
+			| Self::AccountRoutingChanged { .. }
+			| Self::AccountOperationRecovered { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
 		}
 	}
 }
@@ -1381,7 +2074,7 @@ pub enum CommandOutcome {
 
 /// Typed successful command results.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "name", content = "data", rename_all = "snake_case")]
+#[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResultPayload {
 	/// A foundation system observation was refreshed.
 	SystemObservationRefreshed {
@@ -1406,11 +2099,35 @@ pub enum ResultPayload {
 		/// Closed terminal provider outcome.
 		outcome: ResetCardOutcome,
 	},
+	/// One account lifecycle or administration mutation completed.
+	AccountChanged {
+		/// Complete credential-negative account projection.
+		account: Box<AccountDto>,
+	},
+	/// One account logout completed with an exact tombstone revision.
+	AccountLoggedOut {
+		/// Canonical logged-out account identity.
+		account_id: EntityId,
+		/// Exact committed tombstone revision.
+		tombstone_revision: EntityRevision,
+	},
+	/// User-owned initial-selection controls were replaced atomically.
+	AccountRoutingChanged {
+		/// Complete updated routing controls.
+		routing: AccountRoutingControlDto,
+	},
+	/// One explicit credential-operation recovery action completed.
+	AccountOperationRecovered {
+		/// Stable recovered operation identity.
+		operation_id: EntityId,
+		/// Finite recovery disposition.
+		outcome: AccountManualRecoveryOutcomeDto,
+	},
 }
 
 /// Typed live-query results available through the current V1 compatibility window.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "name", content = "data", rename_all = "snake_case")]
+#[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
@@ -1418,12 +2135,16 @@ pub enum QueryResultPayload {
 	ExecutionDecision(ExecutionDecisionResult),
 	/// Bounded daemon-owned logical-conversation history result.
 	ConversationHistory(ConversationHistoryResult),
-	/// Bounded vNext accounts admitted for manual reset-card use.
-	ResetCardAccounts(ResetCardAccountsResult),
 	/// Complete reset-card inventory or a closed unavailable reason.
 	ResetCards(ResetCardInventoryResult),
 	/// Durable reset-card operation state.
 	ResetCardOperation(ResetCardOperationResult),
+	/// Daemon-owned accounts and user-owned routing controls.
+	Accounts(AccountsResult),
+	/// One account and exact lifecycle readiness.
+	Account(AccountInspectResult),
+	/// Deterministic initial account choice or typed recovery.
+	InitialAccountSelection(AccountInitialSelectionResult),
 }
 
 /// Result of an immutable V16 route-decision observation.
@@ -1784,6 +2505,44 @@ pub enum CommandError {
 	},
 	/// The application could not establish whether durable acceptance committed.
 	AcceptanceUnknown,
+	/// A stable account-domain guard rejected the logical command before a new effect.
+	AccountCommandRejected {
+		/// Stable account-domain rejection.
+		rejection: AccountCommandRejectionDto,
+		/// Current entity revision, when the guard established one.
+		#[serde(skip_serializing_if = "Option::is_none")]
+		actual_revision: Option<EntityRevision>,
+	},
+}
+
+/// Closed account command rejection classification. Clients do not infer lifecycle state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountCommandRejectionDto {
+	/// The command shape or bounded input is invalid.
+	InvalidRequest,
+	/// The requested account does not exist.
+	AccountNotFound,
+	/// The expected revision does not match current state.
+	StaleAccount,
+	/// Existing work prevents logout.
+	AccountInUse,
+	/// Another lifecycle operation is unsettled.
+	OperationUnsettled,
+	/// The requested lifecycle operation does not exist.
+	OperationNotFound,
+	/// The account has no current credential binding.
+	CredentialAbsent,
+	/// The host credential store could not complete the request.
+	CredentialStoreUnavailable,
+	/// Provider identities do not agree.
+	ProviderMismatch,
+	/// Another lifecycle gate prevents the request.
+	LifecycleUnready,
+	/// Routing order is not an exact visible-account permutation.
+	RoutingOrderInvalid,
+	/// An explicit reconciliation command is required.
+	ManualRecoveryRequired,
 }
 
 /// Protocol-level refusal that guarantees no application mutation.
@@ -1818,7 +2577,139 @@ pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 
 /// Parse a client message using the only V1 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
-	serde_json::from_str(message)
+	let decoded = serde_json::from_str(message)?;
+	validate_client_message(&decoded).map_err(|reason| {
+		serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
+	})?;
+	Ok(decoded)
+}
+
+fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> {
+	match message {
+		ClientMessage::Hello(_) => Ok(()),
+		ClientMessage::Query(query) => match &query.payload {
+			QueryPayload::GetResetCards { account_id }
+			| QueryPayload::InspectAccount { account_id }
+				if !is_canonical_uuid(account_id.as_str()) =>
+				Err("account query identity is not canonical"),
+			_ => Ok(()),
+		},
+		ClientMessage::Command(command) => validate_account_command(command),
+	}
+}
+
+fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
+	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
+	match &command.payload {
+		CommandPayload::RefreshSystemObservation { .. } => Ok(()),
+		CommandPayload::ConsumeResetCard { account_id, .. } => {
+			if is_canonical_uuid(account_id.as_str()) && positive_expected {
+				Ok(())
+			} else {
+				Err("reset-card account identity or revision is invalid")
+			}
+		},
+		CommandPayload::EnrollAccountFromSharedCodex {
+			operation_id,
+			account_id,
+			display_label,
+			..
+		} => validate_account_install_command(
+			operation_id,
+			account_id,
+			display_label,
+			command.expected_revision.is_none(),
+		),
+		CommandPayload::ImportAccountCredentialFile {
+			operation_id,
+			account_id,
+			display_label,
+			source_descriptor,
+			..
+		} => {
+			validate_account_install_command(
+				operation_id,
+				account_id,
+				display_label,
+				command.expected_revision.is_none(),
+			)?;
+			let source = source_descriptor.as_str();
+			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
+				Err("account credential source descriptor is invalid")
+			} else {
+				Ok(())
+			}
+		},
+		CommandPayload::RenameAccount { account_id, display_label } => {
+			validate_canonical_account(account_id)?;
+			validate_account_label(display_label)?;
+			positive_expected.then_some(()).ok_or("account revision is required")
+		},
+		CommandPayload::SetAccountEnabled { account_id, .. } => {
+			validate_canonical_account(account_id)?;
+			positive_expected.then_some(()).ok_or("account revision is required")
+		},
+		CommandPayload::LogoutAccount { operation_id, account_id }
+		| CommandPayload::RefreshAccount { operation_id, account_id } => {
+			validate_canonical_operation(operation_id)?;
+			validate_canonical_account(account_id)?;
+			positive_expected.then_some(()).ok_or("account revision is required")
+		},
+		CommandPayload::ConfigureAccountRouting { expected_routing_revision, mode, order } => {
+			if expected_routing_revision.0 == 0
+				|| command.expected_revision != Some(*expected_routing_revision)
+				|| order.len() > 512
+				|| order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str()))
+			{
+				return Err("account routing revision or order is invalid");
+			}
+			let unique = order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
+			if unique.len() != order.len() {
+				return Err("account routing order contains duplicates");
+			}
+			if let AccountSelectionModeDto::Fixed(account_id) = mode
+				&& !unique.contains(account_id.as_str())
+			{
+				return Err("fixed account target is outside routing order");
+			}
+			Ok(())
+		},
+		CommandPayload::RecoverAccountOperation { operation_id, .. } => {
+			validate_canonical_operation(operation_id)?;
+			positive_expected.then_some(()).ok_or("account revision is required")
+		},
+	}
+}
+
+fn validate_account_install_command(
+	operation_id: &EntityId,
+	account_id: &EntityId,
+	display_label: &WireText,
+	expected_revision_absent: bool,
+) -> Result<(), &'static str> {
+	validate_canonical_operation(operation_id)?;
+	validate_canonical_account(account_id)?;
+	validate_account_label(display_label)?;
+	expected_revision_absent.then_some(()).ok_or("new account command cannot carry a revision")
+}
+
+fn validate_canonical_account(account_id: &EntityId) -> Result<(), &'static str> {
+	is_canonical_uuid(account_id.as_str()).then_some(()).ok_or("account identity is not canonical")
+}
+
+fn validate_canonical_operation(operation_id: &EntityId) -> Result<(), &'static str> {
+	is_canonical_uuid(operation_id.as_str())
+		.then_some(())
+		.ok_or("account operation identity is not canonical")
+}
+
+fn validate_account_label(label: &WireText) -> Result<(), &'static str> {
+	let label = label.as_str();
+	if label.is_empty() || label.len() > 128 || label.chars().any(char::is_control) {
+		Err("account display label is invalid")
+	} else {
+		Ok(())
+	}
 }
 
 fn is_canonical_uuid(value: &str) -> bool {
@@ -1829,34 +2720,130 @@ fn is_canonical_uuid(value: &str) -> bool {
 		})
 }
 
-fn require_canonical_account_id<E>(account_id: &EntityId) -> Result<(), E>
-where
-	E: serde::de::Error,
-{
-	if is_canonical_uuid(account_id.as_str()) {
-		Ok(())
-	} else {
-		Err(E::custom("reset-card account identity is not canonical"))
+fn validate_routing_control(routing: &AccountRoutingControlDto) -> Result<(), &'static str> {
+	if routing.revision.0 == 0 {
+		return Err("account routing revision is not positive");
+	}
+	if routing.order.len() > 512 {
+		return Err("account routing order exceeds cardinality bound");
+	}
+	if routing.order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str())) {
+		return Err("account routing identity is not canonical");
+	}
+	let order = routing.order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
+	if order.len() != routing.order.len() {
+		return Err("account routing order contains duplicates");
+	}
+	if let AccountSelectionModeDto::Fixed(account_id) = &routing.mode
+		&& (!is_canonical_uuid(account_id.as_str()) || !order.contains(account_id.as_str()))
+	{
+		return Err("fixed account target is outside the routing universe");
+	}
+	Ok(())
+}
+
+fn validate_initial_selection_result(
+	result: &AccountInitialSelectionResult,
+) -> Result<(), &'static str> {
+	match result {
+		AccountInitialSelectionResult::Selected { account_id, account_revision } => {
+			validate_canonical_account(account_id)?;
+			(account_revision.0 > 0)
+				.then_some(())
+				.ok_or("selected account revision is not positive")
+		},
+		AccountInitialSelectionResult::RecoveryRequired { account_id, .. } =>
+			account_id.as_ref().map_or(Ok(()), validate_canonical_account),
+		AccountInitialSelectionResult::Unavailable => Ok(()),
 	}
 }
 
-fn validate_reset_card_accounts(accounts: &[ResetCardAccountDto]) -> Result<(), &'static str> {
-	if accounts.len() > MAX_RESET_CARD_ITEMS {
-		return Err("reset-card account result exceeds item bound");
+fn validate_accounts_result(
+	accounts: &[AccountDto],
+	routing: &AccountRoutingControlDto,
+) -> Result<(), &'static str> {
+	if accounts.len() > 512 {
+		return Err("account result exceeds cardinality bound");
 	}
-	if accounts.iter().any(|account| !is_canonical_uuid(account.account_id.as_str())) {
-		return Err("reset-card account identity is not canonical");
+	for account in accounts {
+		validate_account_dto(account)?;
 	}
-	if accounts.iter().any(|account| account.account_revision.0 == 0) {
-		return Err("reset-card account revision is not positive");
+	let universe =
+		accounts.iter().map(|account| account.account_id.as_str()).collect::<HashSet<_>>();
+	if universe.len() != accounts.len() {
+		return Err("account result contains duplicate identities");
 	}
+	validate_routing_control(routing)?;
+	if routing.order.len() != accounts.len() {
+		return Err("account routing control is incomplete");
+	}
+	let order = routing.order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
+	if order.len() != routing.order.len()
+		|| order != universe
+		|| routing.order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str()))
+	{
+		return Err("account routing order is not an exact permutation");
+	}
+	if let AccountSelectionModeDto::Fixed(account_id) = &routing.mode
+		&& !universe.contains(account_id.as_str())
+	{
+		return Err("fixed account target is outside the account universe");
+	}
+	Ok(())
+}
 
-	let unique = accounts.iter().map(|account| account.account_id.as_str()).collect::<HashSet<_>>();
-
-	if unique.len() != accounts.len() {
-		return Err("reset-card account result contains duplicates");
+fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
+	if !is_canonical_uuid(account.account_id.as_str()) || account.account_revision.0 == 0 {
+		return Err("account identity or revision is invalid");
 	}
-
+	let label = account.display_label.as_str();
+	if label.is_empty() || label.len() > 128 || label.chars().any(char::is_control) {
+		return Err("account display label is invalid");
+	}
+	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::Tombstoned) {
+		return Err("tombstoned account is not public");
+	}
+	if let Some(binding) = &account.credential_binding
+		&& (binding.schema_version != 1
+			|| binding.version == 0
+			|| binding.provider_account_id.as_str().is_empty()
+			|| binding.provider_account_id.as_str().len() > 512
+			|| binding.provider_account_id.as_str().chars().any(char::is_control))
+	{
+		return Err("account credential binding is invalid");
+	}
+	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::Ready)
+		&& (account.credential_binding.is_none() || account.unsettled_operation.is_some())
+	{
+		return Err("ready account has incomplete lifecycle state");
+	}
+	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::CredentialAbsent)
+		&& account.credential_binding.is_some()
+	{
+		return Err("credential-absent account carries a binding");
+	}
+	if let Some(operation) = &account.unsettled_operation {
+		if !is_canonical_uuid(operation.operation_id.as_str())
+			|| operation.recovery_code.as_ref().is_some_and(|code| {
+				code.as_str().is_empty()
+					|| code.as_str().len() > 128
+					|| code.as_str().chars().any(char::is_control)
+			}) {
+			return Err("account unsettled operation is invalid");
+		}
+		if (operation.phase == AccountOperationPhaseDto::RecoveryRequired)
+			!= operation.recovery_code.is_some()
+		{
+			return Err("account recovery code does not match operation phase");
+		}
+	}
+	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::OperationUnsettled)
+		!= account.unsettled_operation.is_some()
+	{
+		return Err("account unsettled operation does not match lifecycle readiness");
+	}
+	validate_quota_window(account.five_hour_quota, 300)?;
+	validate_quota_window(account.seven_day_quota, 10_080)?;
 	Ok(())
 }
 
@@ -1865,6 +2852,8 @@ fn validate_reset_card_inventory(
 	account_revision: EntityRevision,
 	available_count: u16,
 	cards: &[ResetCardObservationDto],
+	five_hour_quota: AccountQuotaWindowDto,
+	seven_day_quota: AccountQuotaWindowDto,
 ) -> Result<(), &'static str> {
 	if !is_canonical_uuid(account_id.as_str()) {
 		return Err("reset-card account identity is not canonical");
@@ -1884,22 +2873,71 @@ fn validate_reset_card_inventory(
 	if unique.len() != cards.len() {
 		return Err("reset-card inventory contains duplicates");
 	}
+	validate_quota_window(five_hour_quota, 300)?;
+	validate_quota_window(seven_day_quota, 10_080)?;
 
 	Ok(())
+}
+
+fn validate_reset_card_observation_failure(
+	account_id: &EntityId,
+	account_revision: EntityRevision,
+	five_hour_quota: AccountQuotaWindowDto,
+	seven_day_quota: AccountQuotaWindowDto,
+) -> Result<(), &'static str> {
+	if !is_canonical_uuid(account_id.as_str()) {
+		return Err("reset-card account identity is not canonical");
+	}
+	if account_revision.0 == 0 {
+		return Err("reset-card account revision is not positive");
+	}
+	validate_quota_window(five_hour_quota, 300)?;
+	validate_quota_window(seven_day_quota, 10_080)?;
+
+	Ok(())
+}
+
+fn validate_quota_window(
+	quota: AccountQuotaWindowDto,
+	expected_duration: u32,
+) -> Result<(), &'static str> {
+	if quota.duration_minutes != expected_duration {
+		return Err("account quota duration is invalid");
+	}
+	match (quota.observed_at_unix_micros, quota.result) {
+		(None, AccountQuotaStateDto::Unknown) => Ok(()),
+		(Some(observed), AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros })
+			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
+			Ok(()),
+		(Some(observed), AccountQuotaStateDto::Stale { used_percent, resets_at_unix_micros })
+			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
+			Ok(()),
+		(Some(observed), AccountQuotaStateDto::Error { .. }) if observed > 0 => Ok(()),
+		_ => Err("account quota observation shape is invalid"),
+	}
+}
+
+fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'static str> {
+	if !matches!(quota.duration_minutes, 300 | 10_080) {
+		return Err("account quota duration is invalid");
+	}
+	validate_quota_window(quota, quota.duration_minutes)
 }
 
 #[cfg(test)]
 mod tests {
 	use crate::{
-		CURRENT_VERSION, CausationId, ClientCommandId, CorrelationId, EntityId, EventPayload,
-		HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
-		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		AccountInitialSelectionResult, CURRENT_VERSION, CausationId, ClientCommandId,
+		CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
+		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
 		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, PREVIOUS_MINOR_VERSION, QueryId,
-		ResetCardDescriptorDto, ResetCardOutcome, ServerId, ServerInstanceId, WireText,
+		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
+		WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
-			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResumeCursor,
+			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
+			ResumeCursor,
 		},
 	};
 
@@ -1935,6 +2973,40 @@ mod tests {
 		assert!(encoded.contains("\"type\":\"query\""));
 		assert!(encoded.contains("\"name\":\"get_doctor_status\""));
 		assert_eq!(serde_json::from_str::<ClientMessage>(&encoded).unwrap(), message);
+	}
+
+	#[test]
+	fn public_wire_boundaries_reject_unknown_fields() {
+		let command = serde_json::json!({
+			"version": CURRENT_VERSION,
+			"client_command_id": "command-1",
+			"idempotency_key": "dedupe-1",
+			"expected_revision": null,
+			"correlation_id": "correlation-1",
+			"causation_id": null,
+			"payload": {"name": "refresh_system_observation", "arguments": {"entity_id": "system"}},
+			"unknown": true,
+		});
+		let query = serde_json::json!({
+			"version": CURRENT_VERSION,
+			"query_id": "query-1",
+			"payload": {"name": "get_doctor_status"},
+			"unknown": true,
+		});
+		let message = serde_json::json!({
+			"type": "hello",
+			"body": {"version": CURRENT_VERSION, "resume": null},
+			"unknown": true,
+		});
+		let operation = serde_json::json!({
+			"state": "completed",
+			"data": {"outcome": "reset", "unknown": true},
+		});
+
+		assert!(serde_json::from_value::<CommandEnvelope>(command).is_err());
+		assert!(serde_json::from_value::<QueryEnvelope>(query).is_err());
+		assert!(serde_json::from_value::<ClientMessage>(message).is_err());
+		assert!(serde_json::from_value::<ResetCardOperationResult>(operation).is_err());
 	}
 
 	#[test]
@@ -2091,7 +3163,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":1,"minor":3},"#,
+				r#"{"type":"hello","body":{"version":{"major":1,"minor":4},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -2100,7 +3172,7 @@ mod tests {
 	#[test]
 	fn previous_minor_hello_without_publication_epoch_decodes_compatibly() {
 		let encoded = concat!(
-			r#"{"type":"hello","body":{"version":{"major":1,"minor":2},"#,
+			r#"{"type":"hello","body":{"version":{"major":1,"minor":3},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let ClientMessage::Hello(hello) = serde_json::from_str(encoded).unwrap() else {
@@ -2136,7 +3208,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":1,"minor":3},"#,
+				r#"{"type":"command","body":{"version":{"major":1,"minor":4},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -2192,7 +3264,9 @@ mod tests {
 				"account_id":account_id,
 				"account_revision":1,
 				"available_count":2,
-				"cards":[card.clone(),card.clone()]
+				"cards":[card.clone(),card.clone()],
+				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let incomplete = serde_json::json!({
@@ -2201,7 +3275,9 @@ mod tests {
 				"account_id":account_id,
 				"account_revision":1,
 				"available_count":2,
-				"cards":[card.clone()]
+				"cards":[card.clone()],
+				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let zero_revision = serde_json::json!({
@@ -2210,7 +3286,9 @@ mod tests {
 				"account_id":account_id,
 				"account_revision":0,
 				"available_count":1,
-				"cards":[card.clone()]
+				"cards":[card.clone()],
+				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let oversized = serde_json::json!({
@@ -2219,7 +3297,9 @@ mod tests {
 				"account_id":account_id,
 				"account_revision":1,
 				"available_count":u16::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
-				"cards":vec![card; MAX_RESET_CARD_ITEMS + 1]
+				"cards":vec![card; MAX_RESET_CARD_ITEMS + 1],
+				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 		let bounded_cards = (0..MAX_RESET_CARD_ITEMS)
@@ -2238,7 +3318,9 @@ mod tests {
 				"account_id":account_id,
 				"account_revision":1,
 				"available_count":u16::try_from(MAX_RESET_CARD_ITEMS).unwrap(),
-				"cards":bounded_cards
+				"cards":bounded_cards,
+				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
 			}
 		});
 
@@ -2248,7 +3330,10 @@ mod tests {
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(incomplete).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(zero_revision).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(oversized).is_err());
+		assert_reset_card_outbound_bounds(account_id);
+	}
 
+	fn assert_reset_card_outbound_bounds(account_id: &str) {
 		let outbound_cards = (0..MAX_RESET_CARD_ITEMS)
 			.map(|index| super::ResetCardObservationDto {
 				descriptor: ResetCardDescriptorDto::new(
@@ -2263,6 +3348,16 @@ mod tests {
 			account_revision: EntityRevision(1),
 			available_count: u16::try_from(MAX_RESET_CARD_ITEMS).unwrap(),
 			cards: outbound_cards.clone(),
+			five_hour_quota: super::AccountQuotaWindowDto {
+				duration_minutes: 300,
+				observed_at_unix_micros: None,
+				result: super::AccountQuotaStateDto::Unknown,
+			},
+			seven_day_quota: super::AccountQuotaWindowDto {
+				duration_minutes: 10_080,
+				observed_at_unix_micros: None,
+				result: super::AccountQuotaStateDto::Unknown,
+			},
 		};
 		let oversized_outbound = ResetCardInventoryResult::Available {
 			account_id: EntityId::new(account_id).unwrap(),
@@ -2274,12 +3369,32 @@ mod tests {
 					descriptor: ResetCardDescriptorDto::new(1_000, 1_001).unwrap(),
 				}])
 				.collect(),
+			five_hour_quota: super::AccountQuotaWindowDto {
+				duration_minutes: 300,
+				observed_at_unix_micros: None,
+				result: super::AccountQuotaStateDto::Unknown,
+			},
+			seven_day_quota: super::AccountQuotaWindowDto {
+				duration_minutes: 10_080,
+				observed_at_unix_micros: None,
+				result: super::AccountQuotaStateDto::Unknown,
+			},
 		};
 		let zero_revision_outbound = ResetCardInventoryResult::Available {
 			account_id: EntityId::new(account_id).unwrap(),
 			account_revision: EntityRevision(0),
 			available_count: 0,
 			cards: Vec::new(),
+			five_hour_quota: super::AccountQuotaWindowDto {
+				duration_minutes: 300,
+				observed_at_unix_micros: None,
+				result: super::AccountQuotaStateDto::Unknown,
+			},
+			seven_day_quota: super::AccountQuotaWindowDto {
+				duration_minutes: 10_080,
+				observed_at_unix_micros: None,
+				result: super::AccountQuotaStateDto::Unknown,
+			},
 		};
 
 		assert!(serde_json::to_value(bounded_outbound).is_ok());
@@ -2288,97 +3403,9 @@ mod tests {
 	}
 
 	#[test]
-	fn reset_card_account_inventories_are_strictly_bounded() {
-		let account_id = "40000000-0000-4000-8000-000000000001";
-		let account = serde_json::json!({
-			"account_id":account_id,
-			"display_label":"Primary",
-			"account_revision":1,
-			"admission_state":"depleted"
-		});
-		let duplicate_accounts = serde_json::json!({
-			"outcome":"available",
-			"data":{"accounts":[account.clone(),account.clone()]}
-		});
-		let oversized_accounts = serde_json::json!({
-			"outcome":"available",
-			"data":{"accounts":vec![account; MAX_RESET_CARD_ITEMS + 1]}
-		});
-		let zero_revision_accounts = serde_json::json!({
-			"outcome":"available",
-			"data":{"accounts":[{
-				"account_id":account_id,
-				"display_label":"Primary",
-				"account_revision":0,
-				"admission_state":"depleted"
-			}]}
-		});
-		let bounded_accounts = (0..MAX_RESET_CARD_ITEMS)
-			.map(|index| {
-				serde_json::json!({
-					"account_id":format!("40000000-0000-4000-8000-{index:012x}"),
-					"display_label":format!("Account {index}"),
-					"account_revision":1,
-					"admission_state":"available"
-				})
-			})
-			.collect::<Vec<_>>();
-		let bounded_accounts = serde_json::json!({
-			"outcome":"available",
-			"data":{"accounts":bounded_accounts}
-		});
-
-		assert!(serde_json::from_value::<super::ResetCardAccountsResult>(bounded_accounts).is_ok());
-		assert!(
-			serde_json::from_value::<super::ResetCardAccountsResult>(duplicate_accounts).is_err()
-		);
-		assert!(
-			serde_json::from_value::<super::ResetCardAccountsResult>(oversized_accounts).is_err()
-		);
-		assert!(
-			serde_json::from_value::<super::ResetCardAccountsResult>(zero_revision_accounts)
-				.is_err()
-		);
-
-		let outbound_accounts = (0..MAX_RESET_CARD_ITEMS)
-			.map(|index| super::ResetCardAccountDto {
-				account_id: EntityId::new(format!("40000000-0000-4000-8000-{index:012x}")).unwrap(),
-				display_label: WireText::new(format!("Account {index}")).unwrap(),
-				account_revision: EntityRevision(1),
-				admission_state: super::ResetCardAdmissionState::Available,
-			})
-			.collect::<Vec<_>>();
-		let bounded_outbound =
-			super::ResetCardAccountsResult::Available { accounts: outbound_accounts.clone() };
-		let oversized_outbound = super::ResetCardAccountsResult::Available {
-			accounts: outbound_accounts
-				.into_iter()
-				.chain([super::ResetCardAccountDto {
-					account_id: EntityId::new("40000000-0000-4000-8000-000000000100").unwrap(),
-					display_label: WireText::new("Account 64").unwrap(),
-					account_revision: EntityRevision(1),
-					admission_state: super::ResetCardAdmissionState::Available,
-				}])
-				.collect(),
-		};
-		let zero_revision_outbound = super::ResetCardAccountsResult::Available {
-			accounts: vec![super::ResetCardAccountDto {
-				account_id: EntityId::new(account_id).unwrap(),
-				display_label: WireText::new("Primary").unwrap(),
-				account_revision: EntityRevision(0),
-				admission_state: super::ResetCardAdmissionState::Depleted,
-			}],
-		};
-
-		assert!(serde_json::to_value(bounded_outbound).is_ok());
-		assert!(serde_json::to_value(oversized_outbound).is_err());
-		assert!(serde_json::to_value(zero_revision_outbound).is_err());
-	}
-
-	#[test]
-	fn v1_2_messages_keep_decoding_during_the_rolling_window() {
+	fn v1_3_messages_keep_decoding_during_the_rolling_window() {
 		let encoded = concat!(
-			r#"{"type":"query","body":{"version":{"major":1,"minor":2},"query_id":"legacy","#,
+			r#"{"type":"query","body":{"version":{"major":1,"minor":3},"query_id":"legacy","#,
 			r#""payload":{"name":"get_doctor_status"}}}"#,
 		);
 
@@ -2393,7 +3420,7 @@ mod tests {
 	}
 
 	#[test]
-	fn minor_feature_gates_keep_v1_2_free_of_reset_card_shapes() {
+	fn minor_feature_gates_keep_v1_3_free_of_account_lifecycle_shapes() {
 		let account_id =
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
@@ -2413,9 +3440,8 @@ mod tests {
 			}
 			.is_supported_in(PREVIOUS_MINOR_VERSION)
 		);
-		assert!(!QueryPayload::ListResetCardAccounts.is_supported_in(PREVIOUS_MINOR_VERSION));
 		assert!(
-			!CommandPayload::ConsumeResetCard { account_id: account_id.clone(), descriptor }
+			CommandPayload::ConsumeResetCard { account_id: account_id.clone(), descriptor }
 				.is_supported_in(PREVIOUS_MINOR_VERSION)
 		);
 		assert!(
@@ -2423,16 +3449,72 @@ mod tests {
 				.is_supported_in(PREVIOUS_MINOR_VERSION)
 		);
 		assert!(
-			!EventPayload::ResetCardConsumed {
+			EventPayload::ResetCardConsumed {
 				account_id,
 				descriptor,
 				outcome: ResetCardOutcome::Reset,
 			}
 			.is_supported_in(PREVIOUS_MINOR_VERSION)
 		);
+		assert!(!QueryPayload::ListAccounts.is_supported_in(PREVIOUS_MINOR_VERSION));
+		assert!(
+			!CommandPayload::SetAccountEnabled {
+				account_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
+				enabled: false,
+			}
+			.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
 		assert!(
 			EventPayload::SystemObservationRefreshed { status: WireText::new("ready").unwrap() }
 				.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
+	}
+
+	#[test]
+	fn account_selection_and_routing_results_reject_noncanonical_shapes() {
+		let account_id = "01234567-89ab-4def-8123-456789abcdef";
+		let other_id = "11234567-89ab-4def-8123-456789abcdef";
+		let invalid_routing = serde_json::json!({
+			"name": "account_routing_changed",
+			"data": {
+				"routing": {
+					"revision": 1,
+					"mode": {"mode": "fixed", "account_id": other_id},
+					"order": [account_id]
+				}
+			}
+		});
+		let unknown_routing_field = serde_json::json!({
+			"name": "account_routing_changed",
+			"data": {
+				"routing": {
+					"revision": 1,
+					"mode": {"mode": "balanced"},
+					"order": [account_id]
+				},
+				"extra": true
+			}
+		});
+		let zero_revision_selection = serde_json::json!({
+			"outcome": "selected",
+			"data": {"account_id": account_id, "account_revision": 0}
+		});
+		let unknown_selection_field = serde_json::json!({
+			"outcome": "selected",
+			"data": {"account_id": account_id, "account_revision": 1, "extra": true}
+		});
+
+		assert!(serde_json::from_value::<ResultPayload>(invalid_routing.clone()).is_err());
+		assert!(serde_json::from_value::<EventPayload>(invalid_routing).is_err());
+		assert!(serde_json::from_value::<ResultPayload>(unknown_routing_field.clone()).is_err());
+		assert!(serde_json::from_value::<EventPayload>(unknown_routing_field).is_err());
+		assert!(
+			serde_json::from_value::<AccountInitialSelectionResult>(zero_revision_selection)
+				.is_err()
+		);
+		assert!(
+			serde_json::from_value::<AccountInitialSelectionResult>(unknown_selection_field)
+				.is_err()
 		);
 	}
 }

@@ -101,8 +101,6 @@ pub enum ManualResetCardAdmissionError {
 	AuthenticationFailed,
 	/// Required plugin readiness was not established.
 	PluginUnready,
-	/// The account was administratively disabled.
-	AccountDisabled,
 }
 impl Error for ManualResetCardAdmissionError {}
 
@@ -113,7 +111,6 @@ impl Display for ManualResetCardAdmissionError {
 			Self::AccountStateUnknown => "account readiness is unknown for manual reset-card use",
 			Self::AuthenticationFailed => "account authentication failed for manual reset-card use",
 			Self::PluginUnready => "account plugin is not ready for manual reset-card use",
-			Self::AccountDisabled => "account is disabled for manual reset-card use",
 		})
 	}
 }
@@ -131,7 +128,6 @@ pub const fn admit_manual_reset_card_use(
 		AccountState::Unknown => Err(ManualResetCardAdmissionError::AccountStateUnknown),
 		AccountState::AuthFailed => Err(ManualResetCardAdmissionError::AuthenticationFailed),
 		AccountState::PluginUnready => Err(ManualResetCardAdmissionError::PluginUnready),
-		AccountState::Disabled => Err(ManualResetCardAdmissionError::AccountDisabled),
 	}
 }
 
@@ -191,10 +187,6 @@ mod tests {
 		assert_eq!(
 			admit_manual_reset_card_use(AccountState::PluginUnready),
 			Err(ManualResetCardAdmissionError::PluginUnready)
-		);
-		assert_eq!(
-			admit_manual_reset_card_use(AccountState::Disabled),
-			Err(ManualResetCardAdmissionError::AccountDisabled)
 		);
 	}
 

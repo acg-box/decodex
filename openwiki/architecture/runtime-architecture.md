@@ -191,15 +191,16 @@ PostgreSQL is ready. PostgreSQL exit or any pinned process, directory, or socket
 change stops the service child before the supervisor exits. Launchd then starts one new
 coherent generation. Swift does not participate in this lifecycle.
 
-The current source installer contains a pre-cutover legacy account bridge. It maps an
-exact set of legacy provider identities to vNext UUID slots, reads `accounts.jsonl`,
-injects access tokens through the service-child environment, and restarts the daemon
-when that projection changes. This is incomplete implementation scaffolding, not final
-vNext runtime authority. It contradicts final clean-cutover readiness while it remains
-active. Slice 1 cannot pass until XY-1422 replaces it with the
-[account lifecycle authority](../specs/account-lifecycle-authority.md) and normal startup
-removes the watcher, mapping input, helper/`:8192` dependency, and credential environment
-projection. Slice 3 repeats that proof for the packaged two-account flow.
+The source installer stops the service before an explicit offline migration. It
+normalizes the bounded legacy inputs into one canonical digest intent, writes account
+credentials to the protected HostCredentialStore, commits credential-negative account
+and routing authority in PostgreSQL, verifies both destinations, swaps the final
+configuration, retires exact staging and legacy inputs, and records the completed
+destination/retirement receipt. Completed reinstall verifies that receipt and the
+credential-negative config, LaunchAgent, PostgreSQL, and account authority without
+reading legacy sources. Normal startup has only the PostgreSQL-and-daemon supervisor; it
+has no watcher, mapping input, helper/`:8192` dependency, or account-credential
+environment projection. Slice 3 repeats the packaged proof.
 The adapter opens each directory component relative to a retained descriptor, pins the directory
 and socket device/inode identities, requires the final directory and socket to be owned by the
 configured UID with no group/other directory write access, and verifies the connected kernel peer
@@ -1182,14 +1183,13 @@ HostCredentialStore owns secret bundles. The `decodexd` Account Service owns enr
 import, list, rename, enable/disable, logout, refresh/rotation, app-server refresh
 callbacks, runner projection, account observations, offline migration, and recovery.
 
-The current `EnvironmentCredentialVault` loads startup access tokens only. It has no
-durable refresh token, compare-and-swap rotation, enrollment, or deletion operation.
-Its state is `projection_only`; it cannot make `CredentialVault` or `AccountLifecycle`
-Ready. MacDogfoodReady requires the Keychain store, complete Account Service, exact-build
-refresh callback, provider adapter, PostgreSQL lifecycle state, startup reconciliation,
-and normalized one-shot migration. Final AccountLifecycleReady additionally requires the
-Linux store, ambient Codex auth, full bounded account presentation, and later automatic
-fallback/wake acceptance.
+The macOS HostCredentialStore uses non-synchronizing Keychain generic-password items. The
+Account Service is its only reader and writer. Exact create, read, compare-and-swap rotate,
+and delete operations remain inside that single-write boundary. MacDogfoodReady also
+requires the complete Account Service, exact-build refresh callback, provider adapter,
+PostgreSQL lifecycle state, startup reconciliation, and normalized one-shot migration.
+Final AccountLifecycleReady additionally requires the Linux store, ambient Codex auth,
+full bounded account presentation, and later automatic fallback/wake acceptance.
 
 Runner processes use the shared normal `~/.codex`. Initial credentials enter only the
 private app-server process protocol, not process arguments or a long-lived environment.

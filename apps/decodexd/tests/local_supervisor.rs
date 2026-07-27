@@ -4,14 +4,11 @@
 #![allow(unused_crate_dependencies)]
 
 use std::{
-	fs::{self, File, OpenOptions},
+	fs::{self, File},
 	io::{Read as _, Write as _},
-	os::{
-		fd::AsRawFd as _,
-		unix::{
-			fs::{MetadataExt as _, PermissionsExt as _},
-			net::UnixStream,
-		},
+	os::unix::{
+		fs::{MetadataExt as _, PermissionsExt as _},
+		net::UnixStream,
 	},
 	path::{Path, PathBuf},
 	process::{Child, Command, ExitStatus, Stdio},
@@ -19,26 +16,20 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use sha2::{Digest as _, Sha256};
 use tempfile::TempDir;
 
 const PORT: u16 = 55_431;
-const ACCOUNT_ID: &str = "provider-account-one";
-const EMAIL: &str = "first@example.test";
 const POSTGRES_READINESS_BLOCK: &str = ".fixture-postgres-unready";
+const RETIRED_SECRET_MARKER: &str = "retired-credential-must-not-be-projected";
 
 #[test]
-fn account_pool_replacement_restarts_the_daemon_only_for_changed_credentials() {
+fn retired_account_pool_changes_do_not_restart_or_project_into_the_daemon() {
 	let fixture = SupervisorFixture::new();
-	fixture.write_accounts("access-one");
 	let mut supervisor = fixture.start();
 
 	let first_generation = fixture.wait_for_daemon_generation(None, &mut supervisor);
-	fixture.replace_accounts("access-one", 2);
+	secure_write(&fixture.retired_accounts, RETIRED_SECRET_MARKER);
 	fixture.assert_daemon_generation_stable(first_generation, &mut supervisor);
-	fixture.replace_accounts("access-two", 3);
-	fixture.wait_for_daemon_generation(Some(first_generation), &mut supervisor);
 
 	let status = signal_and_wait(&mut supervisor, libc::SIGTERM);
 	let output = supervisor.wait_with_output().expect("collect supervisor output");
@@ -46,16 +37,23 @@ fn account_pool_replacement_restarts_the_daemon_only_for_changed_credentials() {
 	assert!(status.success(), "supervisor must stop cleanly: {status}");
 	assert!(!fixture.postgres_socket().exists());
 	assert!(UnixStream::connect(fixture.daemon_socket()).is_err());
-	for secret in ["access-one", "access-two", ACCOUNT_ID, EMAIL] {
-		assert!(!output.stdout.windows(secret.len()).any(|window| window == secret.as_bytes()));
-		assert!(!output.stderr.windows(secret.len()).any(|window| window == secret.as_bytes()));
-	}
+	assert!(
+		!output
+			.stdout
+			.windows(RETIRED_SECRET_MARKER.len())
+			.any(|window| { window == RETIRED_SECRET_MARKER.as_bytes() })
+	);
+	assert!(
+		!output
+			.stderr
+			.windows(RETIRED_SECRET_MARKER.len())
+			.any(|window| { window == RETIRED_SECRET_MARKER.as_bytes() })
+	);
 }
 
 #[test]
 fn signal_during_postgres_startup_stops_the_generation_and_exits_successfully() {
 	let fixture = SupervisorFixture::new();
-	fixture.write_accounts("access-one");
 	fixture.block_postgres_readiness();
 	let mut supervisor = fixture.start();
 	let postgres_process_id = fixture.wait_for_postgres_start(&mut supervisor);
@@ -68,16 +66,13 @@ fn signal_during_postgres_startup_stops_the_generation_and_exits_successfully() 
 	assert!(!fixture.postgres_socket().exists());
 	assert!(!fixture.data_directory.join("postmaster.pid").exists());
 	assert!(UnixStream::connect(fixture.daemon_socket()).is_err());
-	for secret in ["access-one", ACCOUNT_ID, EMAIL] {
-		assert!(!output.stdout.windows(secret.len()).any(|window| window == secret.as_bytes()));
-		assert!(!output.stderr.windows(secret.len()).any(|window| window == secret.as_bytes()));
-	}
+	assert!(output.stdout.len() < 64 * 1024);
+	assert!(output.stderr.len() < 64 * 1024);
 }
 
 #[test]
 fn postgres_exit_stops_the_daemon_and_fails_the_supervisor_generation() {
 	let fixture = SupervisorFixture::new();
-	fixture.write_accounts("access-one");
 	let mut supervisor = fixture.start();
 
 	fixture.wait_for_daemon_generation(None, &mut supervisor);
@@ -88,18 +83,14 @@ fn postgres_exit_stops_the_daemon_and_fails_the_supervisor_generation() {
 	assert!(!status.success(), "a lost PostgreSQL generation must fail the supervisor");
 	assert!(!fixture.postgres_socket().exists());
 	assert!(UnixStream::connect(fixture.daemon_socket()).is_err());
-	for secret in ["access-one", ACCOUNT_ID, EMAIL] {
-		assert!(!output.stdout.windows(secret.len()).any(|window| window == secret.as_bytes()));
-		assert!(!output.stderr.windows(secret.len()).any(|window| window == secret.as_bytes()));
-	}
+	assert!(output.stdout.len() < 64 * 1024);
+	assert!(output.stderr.len() < 64 * 1024);
 }
 
 struct SupervisorFixture {
 	_home: TempDir,
 	canonical_home: PathBuf,
-	accounts: PathBuf,
-	lock: PathBuf,
-	mapping: PathBuf,
+	retired_accounts: PathBuf,
 	postgres: PathBuf,
 	pg_isready: PathBuf,
 	data_directory: PathBuf,
@@ -118,7 +109,6 @@ impl SupervisorFixture {
 		let legacy_parent = canonical_home.join(".codex/decodex");
 		let data_directory = canonical_home.join("data");
 		let socket_directory = canonical_home.join("pg");
-		let database_socket = canonical_home.join("db");
 		let working_directory = canonical_home.join("repository");
 
 		for directory in [
@@ -127,26 +117,15 @@ impl SupervisorFixture {
 			&legacy_parent,
 			&data_directory,
 			&socket_directory,
-			&database_socket,
 			&working_directory,
 		] {
 			fs::create_dir_all(directory).expect("create fixture directory");
 			secure_directory(directory);
 		}
-		let accounts = legacy_parent.join("accounts.jsonl");
-		let lock = legacy_parent.join(".accounts.jsonl.lock");
-		let mapping = decodex_root.join("reset-card-legacy-bridge.json");
+		let retired_accounts = legacy_parent.join("accounts.jsonl");
 		let postgres = canonical_home.join("fake-postgres.py");
 		let pg_isready = canonical_home.join("fake-pg-isready.sh");
 
-		secure_write(&lock, "");
-		secure_write(
-			&mapping,
-			&format!(
-				r#"{{"schema":"decodex/reset-card-legacy-bridge/1","accounts":[{{"slot":1,"provider_account_id_sha256":"{}"}}]}}"#,
-				hex_sha256(ACCOUNT_ID.as_bytes())
-			),
-		);
 		secure_write(
 			&decodex_root.join("config.toml"),
 			&format!(
@@ -161,18 +140,10 @@ service_owner_uid = {}
 [server_host.repositories.fixture]
 host_path = "{}"
 
-[server_host.reset_card_accounts."10000000-0000-4000-8000-000000000001"]
-display_label = "Fixture"
-initial_state = "available"
-access_token_env_var = "DECODEX_RESET_CARD_SLOT_01_ACCESS_TOKEN"
-provider_account_id_env_var = "DECODEX_RESET_CARD_SLOT_01_ACCOUNT_ID"
-expected_email_env_var = "DECODEX_RESET_CARD_SLOT_01_EMAIL"
-plan_type = "pro"
-
 [postgres]
 socket_directory = "{}"
 expected_peer_uid = {}
-port = 5432
+port = {}
 database = "decodex"
 
 [postgres.migration]
@@ -188,8 +159,9 @@ max_entry_bytes = 65536
 "#,
 				fs::metadata(&decodex_root).expect("inspect root").uid(),
 				working_directory.display(),
-				database_socket.display(),
+				socket_directory.display(),
 				fs::metadata(&decodex_root).expect("inspect root").uid(),
+				PORT,
 			),
 		);
 		write_executable(
@@ -251,9 +223,7 @@ done
 		Self {
 			_home: home,
 			canonical_home,
-			accounts,
-			lock,
-			mapping,
+			retired_accounts,
 			postgres,
 			pg_isready,
 			data_directory,
@@ -262,24 +232,8 @@ done
 		}
 	}
 
-	fn write_accounts(&self, access_token: &str) {
-		secure_write(&self.accounts, &account_record(access_token, 1));
-	}
-
 	fn block_postgres_readiness(&self) {
 		secure_write(&self.socket_directory.join(POSTGRES_READINESS_BLOCK), "");
-	}
-
-	fn replace_accounts(&self, access_token: &str, generation: u64) {
-		let lock = OpenOptions::new().read(true).write(true).open(&self.lock).expect("open lock");
-		// SAFETY: the descriptor remains valid until after the matching unlock.
-		assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
-		let temporary = self.accounts.with_file_name(".accounts.jsonl.integration.tmp");
-
-		secure_write(&temporary, &account_record(access_token, generation));
-		fs::rename(&temporary, &self.accounts).expect("atomically replace accounts");
-		// SAFETY: the descriptor still owns the acquired lock.
-		assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_UN) }, 0);
 	}
 
 	fn start(&self) -> Child {
@@ -295,10 +249,6 @@ done
 			.arg(&self.socket_directory)
 			.arg("--port")
 			.arg(PORT.to_string())
-			.arg("--legacy-accounts")
-			.arg(&self.accounts)
-			.arg("--legacy-mapping")
-			.arg(&self.mapping)
 			.arg("--working-directory")
 			.arg(&self.working_directory)
 			.env("HOME", &self.canonical_home)
@@ -412,15 +362,6 @@ done
 	}
 }
 
-fn account_record(access_token: &str, generation: u64) -> String {
-	let identity_token = identity_token(ACCOUNT_ID, EMAIL, "pro");
-
-	format!(
-		r#"{{"email":"{EMAIL}","last_selected_at_unix_epoch":{generation},"tokens":{{"id_token":"{identity_token}","access_token":"{access_token}","refresh_token":"not-read","account_id":"{ACCOUNT_ID}"}}}}
-"#
-	)
-}
-
 fn signal_and_wait(child: &mut Child, signal: libc::c_int) -> ExitStatus {
 	// SAFETY: the PID came from `Child`; the test passes a defined Unix signal.
 	assert_eq!(unsafe { libc::kill(child.id() as libc::pid_t, signal) }, 0);
@@ -445,18 +386,6 @@ fn assert_process_absent(process_id: libc::pid_t) {
 	// SAFETY: signal zero only checks whether the captured child PID still exists.
 	assert_eq!(unsafe { libc::kill(process_id, 0) }, -1);
 	assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(libc::ESRCH));
-}
-
-fn hex_sha256(bytes: &[u8]) -> String {
-	Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn identity_token(account_id: &str, email: &str, plan_type: &str) -> String {
-	let payload = format!(
-		r#"{{"email":"{email}","https://api.openai.com/auth":{{"chatgpt_account_id":"{account_id}","chatgpt_plan_type":"{plan_type}"}}}}"#
-	);
-
-	format!("header.{}.signature", URL_SAFE_NO_PAD.encode(payload))
 }
 
 fn secure_directory(path: &Path) {

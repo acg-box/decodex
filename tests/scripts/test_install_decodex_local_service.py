@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest import mock
 
@@ -45,7 +46,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         account_id: str = "provider-account-1",
         email: str = "one@example.test",
         plan_type: str = "pro",
-        access_token: str = "private-access-token",
+        access_token: str | None = None,
     ) -> dict[str, object]:
         id_token = jwt(
             {
@@ -56,6 +57,8 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 },
             }
         )
+        if access_token is None:
+            access_token = jwt({"exp": 4102444800})
         return {
             "email": email,
             "tokens": {
@@ -71,13 +74,18 @@ class LocalServiceInstallerTests(unittest.TestCase):
             repository=REPO_ROOT,
             root=root,
             config=root / "config.toml",
+            vnext_config_source=root / "account-migration-vnext-source.toml",
+            staging_config=root / ".account-migration-runtime.toml",
             mapping=root / "reset-card-legacy-map.json",
+            migration_manifest=root / "account-migration-manifest.json",
+            credential_directory=root / ".account-migration-credentials",
             data_directory=root / "postgres/data",
             socket_directory=root / "postgres/socket",
             log_directory=root / "logs",
             postgres_log=root / "logs/postgres.log",
             service_log=root / "logs/local-service.log",
             legacy_accounts=root / "legacy/accounts.jsonl",
+            legacy_config=root / "legacy/config.toml",
             launch_agent=root / "space.decodex.local-service.plist",
             decodexd=root / "bin/decodexd",
             decodex_cli=root / "bin/decodex",
@@ -125,38 +133,53 @@ class LocalServiceInstallerTests(unittest.TestCase):
         with self.assertRaisesRegex(self.module.InstallError, "credentials are unavailable"):
             self.module.account_from_record(nested)
 
-    def test_config_mapping_and_plist_are_credential_negative(self):
+    def test_config_manifest_and_plist_are_credential_negative(self):
         account = self.module.account_from_record(self.account_record())
-        enrollment = self.module.build_enrollments(
+        enrollments, fixed_account_id, order = self.module.build_enrollments(
             [account],
             {},
             {},
-            {
-                account.email: {
-                    "email": account.email,
-                    "plan_type": "pro",
-                    "random_name": "Amber Otter",
-                    "reset_credits_available_count": 2,
-                }
-            },
+            {},
+            None,
+            {},
         )
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
-            config = self.module.render_config(paths, 501, enrollment)
-            mapping = self.module.render_mapping(enrollment).decode()
+            config = self.module.render_config(paths, 501)
+            sources = [
+                self.module.source_record(role, paths.root / f"absent-{index}", None)
+                for index, role in enumerate(
+                    [
+                        "legacy_account_pool",
+                        "legacy_account_config",
+                        "vnext_uuid_bridge",
+                        "vnext_account_config",
+                    ]
+                )
+            ]
+            manifest = self.module.render_migration_manifest(
+                paths,
+                501,
+                sources,
+                enrollments,
+                {enrollments[0].account_id: "a" * 64},
+                fixed_account_id,
+                order,
+            ).decode()
             plist_bytes = self.module.render_launch_agent(paths)
             plist = plist_bytes.decode()
             plist_document = plistlib.loads(plist_bytes)
 
-        combined = config + mapping + plist
+        combined = config + manifest + plist
         self.assertNotIn(account.provider_account_id, combined)
         self.assertNotIn(account.email, combined)
-        self.assertNotIn("private-access-token", combined)
+        self.assertNotIn(account.access_token, combined)
         self.assertNotIn("secret-run", combined)
-        self.assertIn("DECODEX_RESET_CARD_SLOT_01_ACCESS_TOKEN", config)
-        self.assertIn('"schema":"decodex/reset-card-legacy-bridge/1"', mapping)
+        self.assertNotIn("DECODEX_RESET_CARD_SLOT_", combined)
+        self.assertIn('"schema":"decodex/account-migration-manifest/1"', manifest)
+        self.assertIn('"quota_policy":"reset_to_unknown"', manifest)
+        self.assertIn('"history_policy":"do_not_import"', manifest)
         self.assertIn("supervise-local", plist)
-        self.assertIn("Amber Otter", config)
         self.assertEqual(
             {"HOME", "PATH"},
             set(plist_document["EnvironmentVariables"]),
@@ -185,19 +208,25 @@ class LocalServiceInstallerTests(unittest.TestCase):
         digest = account.provider_account_id_sha256
         account_id = "10000000-0000-4000-8000-000000000001"
         existing = self.module.ExistingEnrollment(account_id, "Pinned Label")
-        enrollment = self.module.build_enrollments(
+        enrollments, fixed_account_id, order = self.module.build_enrollments(
             [account],
             {digest: 1},
             {1: existing},
-            {account.email: {"random_name": "Changed Label"}},
+            {},
+            None,
+            {},
         )
 
-        self.assertEqual(account_id, enrollment[0].account_id)
-        self.assertEqual("Pinned Label", enrollment[0].display_label)
-        recovered = self.module.build_enrollments(
+        self.assertEqual(account_id, enrollments[0].account_id)
+        self.assertEqual("Pinned Label", enrollments[0].display_label)
+        self.assertIsNone(fixed_account_id)
+        self.assertEqual([account_id], order)
+        recovered, _, _ = self.module.build_enrollments(
             [account],
             {digest: 1},
             {},
+            {},
+            None,
             {},
         )
         self.assertEqual(1, recovered[0].slot)
@@ -210,6 +239,8 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 [account],
                 {},
                 {1: existing},
+                {},
+                None,
                 {},
             )
         second = self.module.account_from_record(
@@ -226,60 +257,9 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 {digest: 1},
                 {1: existing},
                 {},
+                None,
+                {},
             )
-
-    def test_rerun_pins_display_label_across_presentation_changes(self):
-        account = self.module.account_from_record(self.account_record())
-        mapping = {account.provider_account_id_sha256: 1}
-        presentation = {
-            account.email: {
-                "plan_type": account.plan_type,
-                "random_name": "Amber Otter",
-            }
-        }
-        cases = [
-            (presentation, {}, "Amber Otter"),
-            ({}, presentation, "Account 01"),
-        ]
-
-        for initial_presentation, rerun_presentation, expected_label in cases:
-            with self.subTest(expected_label=expected_label):
-                initial = self.module.build_enrollments(
-                    [account],
-                    {},
-                    {},
-                    initial_presentation,
-                )
-                with tempfile.TemporaryDirectory() as temp:
-                    paths = self.paths(Path(temp))
-                    paths.config.write_text(
-                        self.module.render_config(paths, os.geteuid(), initial),
-                        encoding="utf-8",
-                    )
-                    paths.config.chmod(0o600)
-                    existing = self.module.existing_enrollments(
-                        paths.config,
-                        os.geteuid(),
-                    )
-
-                rerun = self.module.build_enrollments(
-                    [account],
-                    mapping,
-                    existing,
-                    rerun_presentation,
-                )
-
-                self.assertEqual(initial[0].account_id, rerun[0].account_id)
-                self.assertEqual(expected_label, rerun[0].display_label)
-
-        recovered = self.module.build_enrollments(
-            [account],
-            mapping,
-            {},
-            presentation,
-        )
-        self.assertEqual("Amber Otter", recovered[0].display_label)
-        self.assertRegex(recovered[0].account_id, self.module.UUID_PATTERN)
 
     def test_mapping_parser_rejects_unknown_fields_and_noncontiguous_slots(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -325,7 +305,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 len(self.module.read_bounded_descriptor(19, 4)),
             )
 
-    def test_legacy_read_repairs_exact_file_and_lock_permissions(self):
+    def test_legacy_read_rejects_non_private_file_without_repair(self):
         with tempfile.TemporaryDirectory() as temp:
             parent = Path(temp) / "legacy"
             parent.mkdir(mode=0o700)
@@ -336,14 +316,154 @@ class LocalServiceInstallerTests(unittest.TestCase):
             )
             account_path.chmod(0o644)
 
-            accounts = self.module.read_legacy_accounts(account_path, os.geteuid())
+            with (
+                mock.patch.object(
+                    self.module,
+                    "require_private_legacy_source_chain",
+                ),
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "legacy account file authority is unsafe",
+                ),
+            ):
+                self.module.lock_and_read_legacy_accounts(
+                        account_path,
+                        os.geteuid(),
+                    )
 
-            self.assertEqual(1, len(accounts))
-            self.assertEqual(0o600, stat.S_IMODE(account_path.stat().st_mode))
+            self.assertEqual(0o644, stat.S_IMODE(account_path.stat().st_mode))
             self.assertEqual(
                 0o600,
                 stat.S_IMODE((parent / ".accounts.jsonl.lock").stat().st_mode),
             )
+
+    def test_legacy_source_chain_uses_login_home_and_allows_read_execute_bits(self):
+        login_home = Path(pwd.getpwuid(os.geteuid()).pw_dir)
+        with tempfile.TemporaryDirectory(dir=login_home) as temp:
+            private_home = Path(temp) / "login-home"
+            private_home.mkdir(mode=0o750)
+            shared_parent = private_home / ".codex"
+            shared_parent.mkdir(mode=0o755)
+            direct_parent = shared_parent / "gate-run"
+            direct_parent.mkdir(mode=0o700)
+            source = direct_parent / "accounts.jsonl"
+
+            passwd_record = mock.Mock(pw_dir=str(private_home))
+            with (
+                mock.patch.object(
+                    self.module.pwd,
+                    "getpwuid",
+                    return_value=passwd_record,
+                ) as getpwuid,
+                mock.patch.dict(
+                    self.module.os.environ,
+                    {"HOME": str(login_home / "ambient-home-is-not-authority")},
+                ),
+            ):
+                self.module.require_private_legacy_source_chain(
+                    source,
+                    os.geteuid(),
+                )
+
+            getpwuid.assert_called_once_with(os.geteuid())
+
+    def test_legacy_source_chain_rejects_writable_or_foreign_ancestor(self):
+        login_home = Path(pwd.getpwuid(os.geteuid()).pw_dir)
+        with tempfile.TemporaryDirectory(dir=login_home) as temp:
+            private_home = Path(temp) / "login-home"
+            private_home.mkdir(mode=0o700)
+            ancestor = private_home / ".codex"
+            ancestor.mkdir(mode=0o755)
+            direct_parent = ancestor / "gate-run"
+            direct_parent.mkdir(mode=0o700)
+            source = direct_parent / "accounts.jsonl"
+            passwd_record = mock.Mock(pw_dir=str(private_home))
+
+            ancestor.chmod(0o720)
+            with (
+                mock.patch.object(
+                    self.module.pwd,
+                    "getpwuid",
+                    return_value=passwd_record,
+                ),
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "legacy account source parent is unsafe",
+                ),
+            ):
+                self.module.require_private_legacy_source_chain(
+                    source,
+                    os.geteuid(),
+                )
+            ancestor.chmod(0o755)
+
+            original_lstat = Path.lstat
+
+            def lstat_with_foreign_owner(path):
+                metadata = original_lstat(path)
+                if path != ancestor:
+                    return metadata
+                foreign = mock.Mock()
+                foreign.st_mode = metadata.st_mode
+                foreign.st_uid = os.geteuid() + 100_000
+                return foreign
+
+            with (
+                mock.patch.object(
+                    self.module.pwd,
+                    "getpwuid",
+                    return_value=passwd_record,
+                ),
+                mock.patch.object(
+                    Path,
+                    "lstat",
+                    autospec=True,
+                    side_effect=lstat_with_foreign_owner,
+                ),
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "legacy account source parent is unsafe",
+                ),
+            ):
+                self.module.require_private_legacy_source_chain(
+                    source,
+                    os.geteuid(),
+                )
+
+    def test_absent_legacy_pool_is_a_valid_fresh_install_source(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "missing" / "accounts.jsonl"
+
+            accounts, body, lock_descriptor = self.module.lock_and_read_legacy_accounts(
+                path,
+                os.geteuid(),
+            )
+
+        self.assertEqual([], accounts)
+        self.assertIsNone(body)
+        self.assertIsNone(lock_descriptor)
+
+    def test_staging_owner_removes_only_exact_account_files(self):
+        account_id = "10000000-0000-4000-8000-000000000001"
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            paths.credential_directory.mkdir(parents=True)
+            expected = paths.credential_directory / f"{account_id}.json"
+            unexpected = paths.credential_directory / "unexpected.json"
+            expected.write_text("secret", encoding="ascii")
+            unexpected.write_text("leave", encoding="ascii")
+            paths.staging_config.write_text("staging", encoding="ascii")
+            owner = self.module.MigrationStagingOwner.for_accounts(paths, [account_id])
+
+            with self.assertRaisesRegex(
+                self.module.InstallError,
+                "staging could not be retired",
+            ):
+                owner.cleanup()
+
+            self.assertFalse(expected.exists())
+            self.assertFalse(paths.staging_config.exists())
+            self.assertEqual("leave", unexpected.read_text(encoding="ascii"))
 
     def test_managed_mapping_symlink_is_rejected_without_following_it(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -437,30 +557,16 @@ class LocalServiceInstallerTests(unittest.TestCase):
         first_account = "10000000-0000-4000-8000-000000000001"
         second_account = "10000000-0000-4000-8000-000000000002"
         accounts = {
-            "schema": "decodex/reset-card-cli/1",
-            "command": "accounts",
-            "outcome": "available",
+            "schema": "decodex/cli-account/1",
+            "command": "list",
+            "outcome": "success",
             "result": {
-                "outcome": "available",
-                "data": {
-                    "accounts": [
-                        {"account_id": first_account},
-                        {"account_id": second_account},
-                    ]
-                },
+                "accounts": [
+                    {"account_id": first_account},
+                    {"account_id": second_account},
+                ],
             },
         }
-
-        def inventory(account_id):
-            return {
-                "schema": "decodex/reset-card-cli/1",
-                "command": "list",
-                "outcome": "available",
-                "result": {
-                    "outcome": "available",
-                    "data": {"account_id": account_id},
-                },
-            }
 
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
@@ -469,26 +575,15 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "query_doctor",
                 return_value=True,
             )
-            reset_card = mock.patch.object(
+            accounts_query = mock.patch.object(
                 self.module,
-                "query_reset_card",
-                side_effect=[
-                    accounts,
-                    inventory(first_account),
-                    inventory(second_account),
-                ],
+                "query_accounts",
+                return_value=accounts,
             )
-            with doctor, reset_card as query:
+            with doctor, accounts_query as query:
                 self.module.wait_for_service(paths, {first_account, second_account})
 
-        self.assertEqual(
-            [
-                mock.call(paths, ["accounts"]),
-                mock.call(paths, ["list", "--account", first_account]),
-                mock.call(paths, ["list", "--account", second_account]),
-            ],
-            query.call_args_list,
-        )
+        query.assert_called_once_with(paths)
 
     def test_doctor_accepts_report_shape_with_only_designed_unknown_checks(self):
         required = [
@@ -553,11 +648,268 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "private-marker",
             )
             with mock.patch.object(self.module, "run", return_value=completed) as run:
-                self.assertIsNone(self.module.query_reset_card(paths, ["accounts"]))
+                self.assertIsNone(self.module.query_accounts(paths))
 
         command = run.call_args.args[0]
         self.assertEqual(str(paths.root), command[command.index("--root") + 1])
+        self.assertEqual(["account", "list"], command[-2:])
         self.assertNotIn("private-marker", str(run.call_args))
+
+    def test_cutover_probe_classifies_only_postgres_receipt_phase(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            with mock.patch.object(
+                self.module,
+                "psql_scalar",
+                side_effect=[
+                    "decodex.account_migration_receipts",
+                    "prepared",
+                    "decodex.account_migration_receipts",
+                    "completed",
+                ],
+            ) as query:
+                self.assertEqual(
+                    "prepared",
+                    self.module.migration_receipt_phase(paths, {"PGUSER": "owner"}),
+                )
+                self.assertEqual(
+                    "completed",
+                    self.module.migration_receipt_phase(paths, {"PGUSER": "owner"}),
+                )
+
+        statements = [call.args[2] for call in query.call_args_list]
+        self.assertIn("to_regclass", statements[0])
+        self.assertIn("WHERE singleton", statements[1])
+        self.assertNotIn(str(paths.legacy_accounts), "".join(statements))
+        self.assertNotIn(str(paths.mapping), "".join(statements))
+        self.assertNotIn(str(paths.legacy_config), "".join(statements))
+
+    def test_prepared_cutover_resumes_finalization_without_legacy_reads(self):
+        result = {
+            "schema": "decodex/account-migration-result/1",
+            "outcome": "verified",
+            "manifest_sha256": "a" * 64,
+            "account_count": 0,
+            "account_ids": [],
+            "intent_recorded": False,
+            "receipt_completed": True,
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            paths.migration_manifest.write_text(
+                json.dumps(
+                    {
+                        "schema": self.module.MIGRATION_MANIFEST_SCHEMA,
+                        "accounts": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            paths.migration_manifest.chmod(0o600)
+            process = mock.Mock()
+            namespace_lock = mock.Mock()
+            patches = [
+                mock.patch.object(self.module, "install_paths", return_value=paths),
+                mock.patch.object(self.module, "validate_host", return_value=os.geteuid()),
+                mock.patch.object(self.module, "ensure_installer_namespace_layout"),
+                mock.patch.object(
+                    self.module.InstallerNamespaceLock,
+                    "acquire",
+                    return_value=namespace_lock,
+                ),
+                mock.patch.object(self.module, "ensure_directories"),
+                mock.patch.object(self.module, "postgres_major", return_value=18),
+                mock.patch.object(self.module, "bootout_service"),
+                mock.patch.object(
+                    self.module,
+                    "read_optional_owned_source",
+                    return_value=b"version = 1\n",
+                ),
+                mock.patch.object(self.module, "initialize_cluster"),
+                mock.patch.object(
+                    self.module,
+                    "start_temporary_postgres",
+                    return_value=process,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "psql_environment",
+                    return_value={"PGUSER": "owner"},
+                ),
+                mock.patch.object(self.module, "ensure_roles_and_database"),
+                mock.patch.object(
+                    self.module,
+                    "migration_receipt_phase",
+                    return_value="prepared",
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_prepared_account_migration_verifier",
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_account_migration_finalizer",
+                    return_value=result,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_completed_account_migration_verifier",
+                ),
+                mock.patch.object(self.module, "stop_temporary_postgres"),
+                mock.patch.object(
+                    self.module,
+                    "lock_and_read_legacy_accounts",
+                    side_effect=AssertionError("legacy account pool was reopened"),
+                ),
+                mock.patch("builtins.print"),
+            ]
+            with ExitStack() as stack:
+                entered = [stack.enter_context(patch) for patch in patches]
+                self.assertEqual(0, self.module.main(["--no-launch"]))
+
+        entered[13].assert_called_once_with(
+            paths,
+            namespace_lock,
+            transition_gate_fd=None,
+        )
+        entered[14].assert_called_once_with(
+            paths,
+            namespace_lock,
+            transition_gate_fd=None,
+        )
+        entered[15].assert_not_called()
+        entered[17].assert_not_called()
+        namespace_lock.close.assert_called_once_with()
+        output = json.loads(entered[18].call_args.args[0])
+        self.assertEqual(0, output["account_count"])
+        self.assertEqual("a" * 64, output["migration_manifest_sha256"])
+
+    def test_fresh_install_without_legacy_pool_completes_empty(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            process = mock.Mock()
+            namespace_lock = mock.Mock()
+
+            def migration_result(_paths, _namespace_lock, **_kwargs):
+                manifest = json.loads(paths.migration_manifest.read_text(encoding="utf-8"))
+                return {
+                    "schema": "decodex/account-migration-result/1",
+                    "outcome": "destinations_verified",
+                    "manifest_sha256": self.module.decision_digest(manifest),
+                    "account_count": 0,
+                    "account_ids": [],
+                    "intent_recorded": True,
+                    "receipt_completed": False,
+                }
+
+            def final_result(_paths, _namespace_lock, **_kwargs):
+                result = migration_result(_paths, _namespace_lock)
+                result.update(
+                    {
+                        "outcome": "verified",
+                        "intent_recorded": False,
+                        "receipt_completed": True,
+                    }
+                )
+                return result
+
+            patches = [
+                mock.patch.object(self.module, "install_paths", return_value=paths),
+                mock.patch.object(self.module, "validate_host", return_value=os.geteuid()),
+                mock.patch.object(self.module, "ensure_installer_namespace_layout"),
+                mock.patch.object(
+                    self.module.InstallerNamespaceLock,
+                    "acquire",
+                    return_value=namespace_lock,
+                ),
+                mock.patch.object(self.module, "ensure_directories"),
+                mock.patch.object(self.module, "postgres_major", return_value=18),
+                mock.patch.object(self.module, "bootout_service"),
+                mock.patch.object(self.module, "initialize_cluster"),
+                mock.patch.object(
+                    self.module,
+                    "start_temporary_postgres",
+                    return_value=process,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "psql_environment",
+                    return_value={"PGUSER": "owner"},
+                ),
+                mock.patch.object(self.module, "ensure_roles_and_database"),
+                mock.patch.object(
+                    self.module,
+                    "run_offline_account_migration",
+                    side_effect=migration_result,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_account_migration_finalizer",
+                    side_effect=final_result,
+                ),
+                mock.patch.object(self.module, "stop_temporary_postgres"),
+                mock.patch("builtins.print"),
+            ]
+            with ExitStack() as stack:
+                entered = [stack.enter_context(patch) for patch in patches]
+                self.assertEqual(0, self.module.main(["--no-launch"]))
+
+        entered[11].assert_called_once_with(
+            paths,
+            namespace_lock,
+            transition_gate_fd=None,
+        )
+        entered[12].assert_called_once_with(
+            paths,
+            namespace_lock,
+            transition_gate_fd=None,
+        )
+        namespace_lock.close.assert_called_once_with()
+        output = json.loads(entered[14].call_args.args[0])
+        self.assertEqual("success", output["outcome"])
+        self.assertEqual(0, output["account_count"])
+
+    def test_completed_cutover_verifier_does_not_reopen_legacy_sources(self):
+        account_id = "10000000-0000-4000-8000-000000000001"
+        result = {
+            "schema": "decodex/account-migration-result/1",
+            "outcome": "verified",
+            "manifest_sha256": "a" * 64,
+            "account_count": 1,
+            "account_ids": [account_id],
+            "intent_recorded": False,
+            "receipt_completed": True,
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            completed = subprocess.CompletedProcess(
+                [str(paths.decodexd)],
+                0,
+                json.dumps(result),
+                "",
+            )
+            namespace_lock = mock.Mock()
+            with mock.patch.object(
+                self.module,
+                "run_installer_child",
+                return_value=completed,
+            ) as run:
+                self.assertEqual(
+                    result,
+                    self.module.run_completed_account_migration_verifier(
+                        paths,
+                        namespace_lock,
+                    ),
+                )
+
+        command = run.call_args.args[0]
+        self.assertIs(namespace_lock, run.call_args.args[1])
+        self.assertIn("verify-account-migration", command)
+        self.assertNotIn(str(paths.migration_manifest), command)
+        self.assertNotIn(str(paths.legacy_accounts), command)
+        self.assertIn(str(paths.mapping), command)
+        self.assertIn(str(paths.vnext_config_source), command)
+        self.assertNotIn(str(paths.legacy_config), command)
 
     def test_installed_launch_agent_contract_requires_exact_drain_settings(self):
         with tempfile.TemporaryDirectory() as temp:

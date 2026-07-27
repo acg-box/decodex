@@ -993,7 +993,6 @@ fn validate_member_facts(
 			AccountState::Depleted => Some(RoutingBlocker::AccountDepleted),
 			AccountState::AuthFailed => Some(RoutingBlocker::AccountAuthFailed),
 			AccountState::PluginUnready => Some(RoutingBlocker::AccountPluginUnready),
-			AccountState::Disabled => Some(RoutingBlocker::AccountDisabled),
 			AccountState::Available => None,
 		};
 		for blocker in [
@@ -1002,7 +1001,6 @@ fn validate_member_facts(
 			RoutingBlocker::AccountDepleted,
 			RoutingBlocker::AccountAuthFailed,
 			RoutingBlocker::AccountPluginUnready,
-			RoutingBlocker::AccountDisabled,
 		] {
 			if member.blockers.contains(&blocker) != (state_blocker == Some(blocker)) {
 				return incompatible("routing account-state blocker is inconsistent with its fact");
@@ -1393,7 +1391,9 @@ fn parse_account_state(value: &str) -> Result<AccountState, StoreError> {
 		"depleted" => Ok(AccountState::Depleted),
 		"auth_failed" => Ok(AccountState::AuthFailed),
 		"plugin_unready" => Ok(AccountState::PluginUnready),
-		"disabled" => Ok(AccountState::Disabled),
+		"disabled" => Err(StoreError::Incompatible(
+			"stored account state encodes administrative enablement".into(),
+		)),
 		_ => incompatible("stored account state is unknown"),
 	}
 }

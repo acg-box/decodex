@@ -8,7 +8,7 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 26;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 27;
 #[cfg(test)]
 const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
 	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
@@ -50,6 +50,13 @@ pub(crate) async fn run_through_v10(client: &mut Client) -> Result<(), StoreErro
 #[cfg(feature = "test-support")]
 pub(crate) async fn run_through_v13(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().set_target(Target::Version(13)).run_async(&mut ***client).await?;
+
+	Ok(())
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn run_through_v26(client: &mut Client) -> Result<(), StoreError> {
+	migrations::runner().set_target(Target::Version(26)).run_async(&mut ***client).await?;
 
 	Ok(())
 }
@@ -105,7 +112,7 @@ async fn verify_exact_ledger(
 		&& expected.last().map(|migration| migration.version()) != Some(terminal_version)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V26 ledger".into(),
+			"embedded migration inventory does not end at the canonical V27 ledger".into(),
 		));
 	}
 	expected.retain(|migration| migration.version() <= terminal_version);

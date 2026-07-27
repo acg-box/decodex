@@ -330,9 +330,9 @@ writer lock and sealed by the immutable parent with an exact contiguous source c
 cannot append, alter, delete, or commit an incomplete source manifest after persistence.
 
 The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
-The `decodex reset-card accounts`, `list`, `use`, and `status` operations are active
-clients of the common daemon service. Other unsupported or mutating product CLI operations
-remain unavailable in current source. Delivery proceeds through exactly three slices:
+The `decodex account` lifecycle operations and the `decodex reset-card list`, `use`, and `status`
+operations are active clients of the common daemon service. Other unsupported product CLI
+operations remain unavailable in current source. Delivery proceeds through exactly three slices:
 Accounts/Quick Task/minimal Accounts-Conversation-Health GPUI; then the bounded managed-work
 flow and Project-Work-Run GPUI; then the two-account restart E2E and Mac package. A general
 PostgreSQL administration plane, authenticated HTTP artifact path, and remote or cross-UID
@@ -367,7 +367,7 @@ cargo run -p decodexd
 cargo run -p decodexd -- --version
 cargo run -p decodex-cli -- status
 cargo run -p decodex-cli -- doctor --output json
-cargo run -p decodex-cli -- reset-card accounts
+cargo run -p decodex-cli -- account list
 cargo run -p decodex-gpui
 cargo test -p decodex-core --all-targets --all-features
 cargo make test-vnext-architecture
@@ -401,9 +401,9 @@ PostgreSQL, Swift, and signed app-staging checks described in
   bounded vNext setup model and stores only a PostgreSQL credential environment-variable
   name, never its value.
 - Do not route vNext product state through `apps/decodex`, legacy SQLite, Linear
-  lanes, or the legacy operator transport. The current macOS account watcher and
-  daemon-environment projection are pre-cutover scaffolding, not Mac dogfood authority.
-  The new system can consume legacy account state only in the explicit offline
+  lanes, or the legacy operator transport. A legacy macOS account watcher or
+  daemon-environment projection is not Mac dogfood authority. The new system can
+  consume legacy account state only in the explicit offline
   one-shot migration in [Account Lifecycle Authority](specs/account-lifecycle-authority.md).
   Normal Slice-1 and Slice-3 startup must not use the watcher, environment bridge,
   helper/`:8192` service, mapping, or fallback.

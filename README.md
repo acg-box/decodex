@@ -44,8 +44,9 @@ name, pin the stable server identity before accepting a snapshot or report, and 
 `--output json` under `decodex/cli-diagnostics/1`. Exit status is 0 only when all checks
 are ready, 1 for a complete report containing unavailable or unknown checks, and 2 for a
 closed client/configuration/protocol failure, including an incomplete current component set.
-`decodex reset-card accounts`, `list`, `use`, and `status` are thin clients of the
-common daemon service. The public contract uses a vNext account UUID, exact revision,
+`decodex account list` reads the canonical account registry. The `decodex reset-card list`,
+`use`, and `status` commands are thin clients of the common daemon service. The public contract
+uses a vNext account UUID, exact revision,
 and grant/expiry descriptor. Accounts in `available` or `depleted` state are admitted.
 The Rust service and CLI support the repository's macOS and Linux runtime hosts. Only
 the native SwiftUI client is macOS-specific.

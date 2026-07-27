@@ -179,7 +179,21 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind)",
+	"decodex.read_account_registry_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_account_operation_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.account_operation_kind,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text)",
+	"decodex.set_account_operation_target_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
+	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
+	"decodex.read_account_operation_exact(pg_catalog.uuid)",
+	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.read_account_routing_control_exact()",
+	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
+	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
+	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
+	"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -458,16 +472,17 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 V22 preparation harness"]
+#[ignore = "requires the isolated PostgreSQL 18 V27 preparation harness"]
 #[cfg(feature = "test-support")]
-async fn postgres_retained_title_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
 	PostgresStore::pin_session_search_path_fixture(&mut runtime);
 
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	PostgresStore::prepare_retained_title_sql_fixture(&client).await?;
+	let source_count = PostgresStore::prepare_changed_sql_fixture(&client).await?;
+	assert_eq!(source_count, 27);
+	println!("decodex_changed_sql_prepared={source_count}");
 
 	drop(client);
 	connection_task.await??;
@@ -1254,6 +1269,7 @@ fn focused_semantic_authority_state(artifact: &Value) -> Option<bool> {
 }
 
 #[cfg(feature = "test-support")]
+#[allow(clippy::too_many_lines)] // One complete focused authority-checkpoint matrix.
 async fn focused_authority_checkpoint_gate(scenario: &AuthorityScenario) -> bool {
 	let runtime_checkpoint = FocusedAuthorityCheckpoint::RuntimeRoutineAuthority;
 	let migration = match Config::from_str(&scenario.baseline_migration_url) {
@@ -6185,33 +6201,34 @@ async fn assert_account_launch_authority(
 
 	assert!(store.account_is_ready_at_revision(account_id, available.revision).await?);
 
-	let disabled_mutation = AccountMutation {
+	let unavailable_mutation = AccountMutation {
 		account_id: account_id.clone(),
 		display_label: "Primary metadata".into(),
-		state: AccountState::Disabled,
-		metadata: serde_json::json!({"observation": "manual_fixture_disabled"}),
+		state: AccountState::Unavailable,
+		metadata: serde_json::json!({"observation": "manual_fixture_unavailable"}),
 		expected_revision: Some(available.revision),
 	};
 	let command = CommandIdentity::new(
-		"account-disabled-after-readiness-observation",
-		b"account-disabled-after-readiness-observation-v1",
+		"account-unavailable-after-readiness-observation",
+		b"account-unavailable-after-readiness-observation-v1",
 	)?;
-	let disabled =
-		time::timeout(Duration::from_secs(1), store.mutate_account(&command, &disabled_mutation))
-			.await
-			.expect("a completed readiness observation retains no row lock")?;
+	let unavailable = time::timeout(
+		Duration::from_secs(1),
+		store.mutate_account(&command, &unavailable_mutation),
+	)
+	.await
+	.expect("a completed readiness observation retains no row lock")?;
 
-	assert_eq!(disabled.state, AccountState::Disabled);
+	assert_eq!(unavailable.state, AccountState::Unavailable);
 	assert!(!store.account_is_ready_at_revision(account_id, available.revision).await?);
 
-	let mut revision = disabled.revision;
+	let mut revision = unavailable.revision;
 
 	for (index, state) in [
 		AccountState::Unknown,
 		AccountState::Depleted,
 		AccountState::AuthFailed,
 		AccountState::PluginUnready,
-		AccountState::Disabled,
 		AccountState::Unavailable,
 	]
 	.into_iter()
