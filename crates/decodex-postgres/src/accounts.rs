@@ -9,7 +9,6 @@ use crate::{
 	AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
 	PostgresStore, StoreError,
 };
-use decodex_core::RESET_CARD_PROVIDER_BINDING_METADATA_FIELD;
 
 /// Immutable identity bound to one durable command receipt before side effects begin.
 pub(crate) struct CommandDescriptor {
@@ -113,63 +112,12 @@ impl PostgresStore {
 	/// outbox event, and command response commit in one PostgreSQL transaction.
 	pub async fn mutate_account(
 		&self,
-		command: &CommandIdentity,
-		mutation: &AccountMutation,
+		_command: &CommandIdentity,
+		_mutation: &AccountMutation,
 	) -> Result<AccountMetadata, StoreError> {
-		validate_account(mutation)?;
-
-		let mut client = self.pool().get().await?;
-		let descriptor = CommandDescriptor {
-			protocol_version: "decodex/store-command/1",
-			operation: "mutate_account",
-			project_scope: "global",
-			scope_id: "accounts".into(),
-			entity_id: mutation.account_id.as_str().into(),
-			expected_revision: mutation.expected_revision,
-			payload_hash: None,
-			payload_length: None,
-		};
-		let reservation = match reserve_command(&mut client, command, &descriptor).await? {
-			CommandClaim::Completed(response) => return account_from_response(response),
-			CommandClaim::Owned(reservation) => reservation,
-		};
-		let transaction = client.transaction().await?;
-		let revision = match mutation.expected_revision {
-			None => create_account(&transaction, mutation).await?,
-			Some(expected) => update_account(&transaction, mutation, expected).await?,
-		};
-		let event_kind = if revision == 1 { "account_created" } else { "account_updated" };
-		let payload = serde_json::json!({
-			"account_id": mutation.account_id.as_str(),
-			"state": account_state_sql(mutation.state),
-			"revision": revision,
-		});
-
-		append_activity_and_outbox(
-			&transaction,
-			"account",
-			mutation.account_id.as_str(),
-			revision,
-			event_kind,
-			&command.key,
-			&payload,
-		)
-		.await?;
-
-		let response = serde_json::json!({
-			"kind": "account",
-			"account_id": mutation.account_id.as_str(),
-			"display_label": mutation.display_label,
-			"state": account_state_sql(mutation.state),
-			"metadata": mutation.metadata,
-			"revision": revision,
-		});
-
-		finish_command(&transaction, &reservation, &response).await?;
-
-		transaction.commit().await?;
-
-		account_from_response(response)
+		Err(StoreError::Incompatible(
+			"account mutations require the daemon-owned Account Service".into(),
+		))
 	}
 
 	/// Read account metadata without providing an eligibility or selection query.
@@ -477,6 +425,7 @@ fn receipt_descriptor_matches(
 		&& row.get::<_, Option<i64>>(8) == descriptor.payload_length
 }
 
+#[cfg(test)]
 const fn account_state_sql(state: AccountState) -> &'static str {
 	match state {
 		AccountState::Unavailable => "unavailable",
@@ -485,7 +434,6 @@ const fn account_state_sql(state: AccountState) -> &'static str {
 		AccountState::Depleted => "depleted",
 		AccountState::AuthFailed => "auth_failed",
 		AccountState::PluginUnready => "plugin_unready",
-		AccountState::Disabled => "disabled",
 	}
 }
 
@@ -497,23 +445,11 @@ fn account_state_from_sql(value: &str) -> Result<AccountState, StoreError> {
 		"depleted" => Ok(AccountState::Depleted),
 		"auth_failed" => Ok(AccountState::AuthFailed),
 		"plugin_unready" => Ok(AccountState::PluginUnready),
-		"disabled" => Ok(AccountState::Disabled),
+		"disabled" => Err(StoreError::Incompatible(
+			"administrative disabled state was not normalized by V27".into(),
+		)),
 		_ => Err(StoreError::Incompatible(format!("unknown account state {value}"))),
 	}
-}
-
-fn validate_account(mutation: &AccountMutation) -> Result<(), StoreError> {
-	if mutation.display_label.is_empty() || mutation.display_label.len() > 128 {
-		return Err(StoreError::InvalidInput("account display label must contain 1..=128 bytes"));
-	}
-	if mutation.expected_revision.is_some_and(|revision| revision < 1) {
-		return Err(StoreError::InvalidInput("expected revision must be positive"));
-	}
-
-	crate::ensure_credential_negative_text(&mutation.display_label)?;
-	crate::ensure_credential_negative_json(&mutation.metadata)?;
-
-	Ok(())
 }
 
 fn account_from_row(row: Row) -> Result<AccountMetadata, StoreError> {
@@ -526,121 +462,9 @@ fn account_from_row(row: Row) -> Result<AccountMetadata, StoreError> {
 	})
 }
 
-fn account_from_response(response: Value) -> Result<AccountMetadata, StoreError> {
-	if response.get("kind").and_then(Value::as_str) != Some("account") {
-		return Err(StoreError::IdempotencyConflict);
-	}
-
-	Ok(AccountMetadata {
-		account_id: stored_account_id(required_str(&response, "account_id")?)?,
-		display_label: required_str(&response, "display_label")?.to_owned(),
-		state: account_state_from_sql(required_str(&response, "state")?)?,
-		metadata: response
-			.get("metadata")
-			.cloned()
-			.ok_or(StoreError::Incompatible("account response missing metadata".into()))?,
-		revision: required_i64(&response, "revision")?,
-	})
-}
-
-fn required_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_str)
-		.ok_or_else(|| StoreError::Incompatible(format!("command response missing {key}")))
-}
-
-fn required_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_i64)
-		.ok_or_else(|| StoreError::Incompatible(format!("command response missing {key}")))
-}
-
 fn stored_account_id(value: impl Into<String>) -> Result<AccountId, StoreError> {
 	AccountId::new(value)
 		.map_err(|_| StoreError::Incompatible("stored account identity is invalid".into()))
-}
-
-async fn create_account(
-	transaction: &Transaction<'_>,
-	mutation: &AccountMutation,
-) -> Result<i64, StoreError> {
-	let result = transaction
-		.query_opt(
-			"INSERT INTO decodex.accounts (account_id, display_label, state, metadata) \
-			 VALUES ($1::text::uuid, $2, $3::text::decodex.account_state, $4) \
-			 ON CONFLICT DO NOTHING RETURNING revision",
-			&[
-				&mutation.account_id.as_str(),
-				&mutation.display_label,
-				&account_state_sql(mutation.state),
-				&mutation.metadata,
-			],
-		)
-		.await?;
-
-	if let Some(row) = result {
-		return Ok(row.get(0));
-	}
-
-	let actual = account_revision(transaction, &mutation.account_id).await?;
-
-	Err(StoreError::RevisionConflict {
-		entity: format!("account/{}", mutation.account_id),
-		expected: None,
-		actual,
-	})
-}
-
-async fn update_account(
-	transaction: &Transaction<'_>,
-	mutation: &AccountMutation,
-	expected: i64,
-) -> Result<i64, StoreError> {
-	let row = transaction
-		.query_opt(
-			"UPDATE decodex.accounts SET display_label = $2, state = $3::text::decodex.account_state, \
-			 metadata = $4, revision = revision + 1, observed_at = clock_timestamp(), \
-			 updated_at = clock_timestamp() WHERE account_id = $1::text::uuid AND revision = $5 \
-			 AND (NOT metadata ? ($6::text) \
-			   OR (metadata -> ($6::text)) = ($4::jsonb -> ($6::text))) \
-			 RETURNING revision",
-			&[
-				&mutation.account_id.as_str(),
-				&mutation.display_label,
-				&account_state_sql(mutation.state),
-				&mutation.metadata,
-				&expected,
-				&RESET_CARD_PROVIDER_BINDING_METADATA_FIELD,
-			],
-		)
-		.await?;
-
-	if let Some(row) = row {
-		return Ok(row.get(0));
-	}
-
-	let actual = account_revision(transaction, &mutation.account_id).await?;
-
-	Err(StoreError::RevisionConflict {
-		entity: format!("account/{}", mutation.account_id),
-		expected: Some(expected),
-		actual,
-	})
-}
-
-async fn account_revision(
-	transaction: &Transaction<'_>,
-	account_id: &AccountId,
-) -> Result<Option<i64>, StoreError> {
-	Ok(transaction
-		.query_opt(
-			"SELECT revision FROM decodex.accounts WHERE account_id = $1::text::uuid",
-			&[&account_id.as_str()],
-		)
-		.await?
-		.map(|row| row.get(0)))
 }
 
 #[cfg(test)]
@@ -657,7 +481,6 @@ mod tests {
 			(AccountState::Depleted, "depleted"),
 			(AccountState::AuthFailed, "auth_failed"),
 			(AccountState::PluginUnready, "plugin_unready"),
-			(AccountState::Disabled, "disabled"),
 		] {
 			assert_eq!(accounts::account_state_sql(state), stored);
 			assert_eq!(accounts::account_state_from_sql(stored).unwrap(), state);

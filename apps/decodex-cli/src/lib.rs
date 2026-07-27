@@ -14,6 +14,7 @@ use decodex_protocol::{
 	DoctorReport, DoctorStatus, ProfileKind, ServerId,
 };
 
+mod account;
 mod git_hook;
 mod local_git;
 mod reset_card;
@@ -113,6 +114,9 @@ pub enum Command {
 	/// Observe and consume reset cards through the common daemon authority.
 	#[command(subcommand)]
 	ResetCard(reset_card::ResetCardCommand),
+	/// Manage daemon-owned accounts through the same-UID V1.4 protocol.
+	#[command(subcommand)]
+	Account(account::AccountCommand),
 	/// Enforce the local Git commit and push policy without contacting the Decodex server.
 	GitHook(git_hook::GitHookCommand),
 	/// Create one signed local commit without contacting the Decodex server.
@@ -150,6 +154,16 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 	let Cli { profile, root, expected_server_id, output, command } = cli;
 
 	let command = match command {
+		Command::Account(command) => {
+			return account::execute(
+				command,
+				output,
+				root.as_deref(),
+				profile.as_deref(),
+				expected_server_id.as_deref(),
+			)
+			.await;
+		},
 		Command::ResetCard(command) => {
 			return reset_card::execute(
 				command,

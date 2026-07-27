@@ -339,7 +339,7 @@ WORK_ITEM_RESTORE_DATABASE = "decodex_xy1343_work_items_restore"
 MANAGED_RUN_DATABASE = "decodex_xy1417_managed_run_v26"
 MANAGED_RUN_RESTORE_DATABASE = "decodex_xy1417_managed_run_v26_restore"
 MANAGED_REPOSITORY_DATABASE = "decodex_xy1364_managed_repositories"
-RETAINED_TITLE_PREPARATION_DATABASE = "decodex_xy1368_preparation"
+POSTGRES_PREPARATION_DATABASE = "decodex_xy1422_preparation"
 MIGRATION_ROLE = "decodex_migration"
 RUNTIME_ROLE = "decodex_runtime_xy1300"
 FUNCTION_OWNER_ROLE = "decodex_function_owner"
@@ -430,7 +430,22 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind)",
+	"decodex.read_account_registry_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_reset_card_account_admission_exact(pg_catalog.uuid,pg_catalog.text)",
+	"decodex.prepare_account_operation_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.account_operation_kind,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text)",
+	"decodex.set_account_operation_target_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
+	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
+	"decodex.read_account_operation_exact(pg_catalog.uuid)",
+	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.read_account_routing_control_exact()",
+	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
+	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
+	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
+	"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -445,13 +460,6 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.record_provider_attempt_positive_evidence_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_evidence_source,decodex.provider_attempt_terminal_outcome,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.project_provider_attempts_after_supervisor_loss_exact()",
 	"decodex.read_provider_attempts_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_state,pg_catalog.uuid,pg_catalog.int8)",
-)
-RETAINED_TITLE_SQL_SOURCES = (
-	"BIND_CODEX_EXPERIMENT_START_SQL",
-	"READ_CODEX_EXPERIMENT_START_SQL",
-	"MARK_CODEX_EXPERIMENT_TITLE_SET_POSSIBLE_SQL",
-	"ATTEST_CODEX_EXPERIMENT_RETAINED_TITLE_SQL",
-	"RECORD_ATTESTED_CODEX_EXPERIMENT_OBSERVATION_SQL",
 )
 TRIGGER_ONLY_SIGNATURES = (
 	"decodex.enforce_lease_operation_time()",
@@ -583,6 +591,12 @@ RUNTIME_TYPE_NAMES = (
 	"decodex.provider_attempt_unknown_reason",
 	"decodex.provider_attempt_evidence_source",
 	"decodex.provider_attempt_terminal_outcome",
+	"decodex.account_provider_kind",
+	"decodex.account_operation_kind",
+	"decodex.account_operation_phase",
+	"decodex.account_selection_mode",
+	"decodex.account_store_observation",
+	"decodex.account_quota_observation_error",
 )
 AUTHORITY_ANCHOR_SIGNATURE = (
 	"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,"
@@ -597,15 +611,39 @@ UPGRADE_RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_execution_decision_exact(pg_catalog.uuid)",
 	"decodex.read_managed_run_execution_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_account_registry_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_reset_card_account_admission_exact(pg_catalog.uuid,pg_catalog.text)",
+	"decodex.prepare_account_operation_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.account_operation_kind,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text)",
+	"decodex.set_account_operation_target_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
+	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
+	"decodex.read_account_operation_exact(pg_catalog.uuid)",
+	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.read_account_routing_control_exact()",
+	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
+	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
+	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
+	"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
 )
-PRE_V26_RUNTIME_TYPE_NAMES = (
+PRE_V27_RUNTIME_TYPE_NAMES = (
 	"decodex.provider_attempt_state",
 	"decodex.provider_attempt_consumer_kind",
 	"decodex.provider_attempt_unknown_reason",
 	"decodex.provider_attempt_evidence_source",
 	"decodex.provider_attempt_terminal_outcome",
 )
-UPGRADE_RUNTIME_TYPE_NAMES: tuple[str, ...] = ()
+UPGRADE_RUNTIME_TYPE_NAMES = (
+	"decodex.account_provider_kind",
+	"decodex.account_operation_kind",
+	"decodex.account_operation_phase",
+	"decodex.account_selection_mode",
+	"decodex.account_store_observation",
+	"decodex.account_quota_observation_error",
+)
 V19_INTERNAL_SIGNATURES = (
 	"decodex.register_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.timestamptz)",
 	"decodex.claim_due_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.timestamptz)",
@@ -3741,11 +3779,15 @@ def run_reset_card_focused_contracts(
 	set_contract_urls(env, socket_dir, port, DATABASE, RUNTIME_ROLE)
 	migration_output = run_migration(env)
 	provision_runtime(DATABASE, RUNTIME_ROLE, env)
-	contract_output = run_postgres_store_test(
+	atomic_account_output = run_postgres_store_test(
+		"reset_cards::account_terminal_mutation_and_receipt_are_atomic_and_replay_exactly",
+		env,
+	)
+	reset_card_output = run_postgres_store_test(
 		"reset_cards::reset_card_private_claim_and_reclaim_contract",
 		env,
 	)
-	return "\n".join((migration_output, contract_output))
+	return "\n".join((migration_output, atomic_account_output, reset_card_output))
 
 
 def retained_title_authority_inventory(
@@ -3788,8 +3830,8 @@ def retained_title_authority_inventory(
 	}
 
 
-def prepare_retained_title_authority_inventory(
-	work: Path, env: dict[str, str]
+def prepare_postgres_authority_inventory(
+	socket_dir: Path, port: int, work: Path, env: dict[str, str]
 ) -> str:
 	working_binding = {
 		"head": git_read_text(
@@ -3799,12 +3841,73 @@ def prepare_retained_title_authority_inventory(
 			"rev-parse", "--verify", "HEAD^{tree}", byte_limit=GIT_METADATA_MAX_BYTES
 		).strip(),
 	}
-	return json.dumps(
-		retained_title_authority_inventory(
-			work, RETAINED_TITLE_PREPARATION_DATABASE, env, working_binding
-		),
-		sort_keys=True,
+	fresh_inventory = retained_title_authority_inventory(
+		work, POSTGRES_PREPARATION_DATABASE, env, working_binding
 	)
+	if fresh_inventory["actual_digests"] != fresh_inventory["expected_digests"]:
+		raise TestFailure("V27 fresh closed-authority digests do not match authority.rs")
+	fresh_runtime_authority = capture_runtime_authority(
+		POSTGRES_PREPARATION_DATABASE, env
+	)
+	if (
+		fresh_runtime_authority["direct_non_grantable_execute_count"]
+		!= len(RUNTIME_EXECUTE_SIGNATURES)
+		or fresh_runtime_authority["direct_non_grantable_type_usage_count"]
+		!= len(RUNTIME_TYPE_NAMES)
+	):
+		raise TestFailure("V27 fresh runtime authority counts are not exact")
+
+	create_database(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	set_contract_urls(
+		env, socket_dir, port, AUTHORITY_CAPTURE_UPGRADE_DATABASE, RUNTIME_ROLE
+	)
+	run_migration_through_v24(env)
+	upgrade_v24_ledger = capture_migration_ledger(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env, through_version=24
+	)
+	psql_as(
+		MIGRATION_ROLE,
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE,
+		f"GRANT USAGE ON TYPE {', '.join(PRE_V27_RUNTIME_TYPE_NAMES)} "
+		f"TO {RUNTIME_ROLE}; "
+		f"GRANT EXECUTE ON FUNCTION {AUTHORITY_ANCHOR_SIGNATURE} TO {RUNTIME_ROLE}",
+		env,
+	)
+	upgrade_anchor_binding = capture_upgrade_anchor_binding(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
+	)
+	upgrade_type_bindings = capture_upgrade_type_bindings(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
+	)
+	run_migration(env)
+	upgrade_v27_ledger = capture_migration_ledger(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
+	)
+	if (
+		len(upgrade_v24_ledger) != 24
+		or upgrade_v24_ledger[-1].get("version") != 24
+		or len(upgrade_v27_ledger) != 27
+		or upgrade_v27_ledger[-1].get("version") != 27
+		or upgrade_v27_ledger[-1].get("name") != "mac_account_lifecycle"
+	):
+		raise TestFailure("V27 upgrade migration ledger is not exact")
+	upgrade_runtime_authority = capture_upgrade_runtime_authority(
+		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
+	)
+
+	return json.dumps({
+		"schema": "decodex/postgres-preparation-stage/1",
+		"stage": "v27_closed_authority",
+		"fresh_inventory": fresh_inventory,
+		"fresh_runtime_authority": fresh_runtime_authority,
+		"upgrade": {
+			"v24_ledger": upgrade_v24_ledger,
+			"pre_v27_anchor_binding": upgrade_anchor_binding,
+			"pre_v27_type_bindings": upgrade_type_bindings,
+			"v27_ledger": upgrade_v27_ledger,
+			"runtime_authority": upgrade_runtime_authority,
+		},
+	}, sort_keys=True)
 
 
 def run_retained_title_core_boundary(
@@ -5818,8 +5921,9 @@ def provision_runtime(database: str, role: str, env: dict[str, str]) -> None:
 		f"GRANT CONNECT ON DATABASE {database} TO {role}; "
 		f"GRANT USAGE ON SCHEMA public, decodex TO {role}; "
 		f"GRANT SELECT ON TABLE public.refinery_schema_history TO {role}; "
+		f"GRANT SELECT ON TABLE decodex.accounts TO {role}; "
 		f"GRANT SELECT, INSERT, UPDATE ON TABLE "
-		f"decodex.accounts, decodex.quota_windows, decodex.command_receipts, "
+		f"decodex.quota_windows, decodex.command_receipts, "
 		f"decodex.leases, decodex.conversations, "
 		f"decodex.artifacts, decodex.turns, decodex.history_items TO {role}; "
 		f"GRANT SELECT, INSERT ON TABLE decodex.quota_exclusions TO {role}; "
@@ -5930,47 +6034,54 @@ def capture_migration_ledger(
 	return ledger
 
 
-def prepare_retained_title_migrations(
+def prepare_changed_postgres_migrations(
 	socket_dir: Path, port: int, env: dict[str, str]
 ) -> str:
-	create_database(RETAINED_TITLE_PREPARATION_DATABASE, env)
+	create_database(POSTGRES_PREPARATION_DATABASE, env)
 	set_contract_urls(
-		env, socket_dir, port, RETAINED_TITLE_PREPARATION_DATABASE, RUNTIME_ROLE
+		env, socket_dir, port, POSTGRES_PREPARATION_DATABASE, RUNTIME_ROLE
 	)
 	run([
 		"cargo", "nextest", "run", "-p", "decodex-postgres", "--lib", "--",
 		"migrations::tests::embedded_migrations_do_not_schema_qualify_postgresql_syntax_constructs",
 		"--exact",
 	], env)
+	run([
+		"cargo", "nextest", "run", "-p", "decodex-postgres", "--lib", "--",
+		"authority::tests::canonical_inventory_covers_every_shipped_decodex_function_once",
+		"--exact",
+	], env)
 	run_migration(env)
-	ledger = capture_migration_ledger(RETAINED_TITLE_PREPARATION_DATABASE, env)
+	ledger = capture_migration_ledger(POSTGRES_PREPARATION_DATABASE, env)
 	if (
-		len(ledger) != 22
-		or ledger[-1].get("version") != 22
-		or ledger[-1].get("name") != "retained_title_experiment_bridge"
+		len(ledger) != 27
+		or ledger[-1].get("version") != 27
+		or ledger[-1].get("name") != "mac_account_lifecycle"
 		or not isinstance(ledger[-1].get("checksum"), str)
 	):
-		raise TestFailure("retained-title preparation did not reach the exact V1-V22 ledger")
+		raise TestFailure("PostgreSQL preparation did not reach the exact V1-V27 ledger")
 	return json.dumps({
-		"schema": "decodex/retained-title-preparation-stage/1",
+		"schema": "decodex/postgres-preparation-stage/1",
 		"stage": "migration_syntax",
 		"migration_count": len(ledger),
 		"terminal_migration": ledger[-1],
 	}, sort_keys=True)
 
 
-def prepare_retained_title_embedded_sql(env: dict[str, str]) -> str:
-	provision_runtime(RETAINED_TITLE_PREPARATION_DATABASE, RUNTIME_ROLE, env)
-	run([
+def prepare_changed_embedded_sql(env: dict[str, str]) -> str:
+	provision_runtime(POSTGRES_PREPARATION_DATABASE, RUNTIME_ROLE, env)
+	output = run([
 		"cargo", "nextest", "run", "-p", "decodex-postgres", "--features",
 		"test-support", "--test", "postgres_store", "--run-ignored", "all", "--",
-		"postgres_retained_title_sql_preparation_contract", "--exact",
+		"postgres_changed_sql_preparation_contract", "--exact", "--nocapture",
 	], env)
+	match = re.search(r"decodex_changed_sql_prepared=([1-9][0-9]*)", output)
+	if match is None or int(match.group(1)) != 27:
+		raise TestFailure("changed embedded SQL preparation source count is not exact")
 	return json.dumps({
-		"schema": "decodex/retained-title-preparation-stage/1",
+		"schema": "decodex/postgres-preparation-stage/1",
 		"stage": "changed_embedded_sql_prepare",
-		"source_count": len(RETAINED_TITLE_SQL_SOURCES),
-		"sources": RETAINED_TITLE_SQL_SOURCES,
+		"source_count": int(match.group(1)),
 	}, sort_keys=True)
 
 
@@ -6134,7 +6245,7 @@ def capture_upgrade_anchor_binding(database: str, env: dict[str, str]) -> dict[s
 def capture_upgrade_type_bindings(database: str, env: dict[str, str]) -> list[object]:
 	type_values = ",".join(
 		f"('{identity}',pg_catalog.to_regtype('{identity}'))"
-		for identity in sorted(PRE_V26_RUNTIME_TYPE_NAMES)
+		for identity in sorted(PRE_V27_RUNTIME_TYPE_NAMES)
 	)
 	rows = json.loads(psql(
 		database,
@@ -6155,7 +6266,7 @@ def capture_upgrade_type_bindings(database: str, env: dict[str, str]) -> list[ob
 	if (
 		not isinstance(rows, list)
 		or [row.get("identity") for row in rows if isinstance(row, dict)]
-		!= list(sorted(PRE_V26_RUNTIME_TYPE_NAMES))
+		!= list(sorted(PRE_V27_RUNTIME_TYPE_NAMES))
 		or any(
 			not isinstance(row, dict)
 			or row.get("grantor") != MIGRATION_ROLE
@@ -6173,13 +6284,17 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 		AUTHORITY_ANCHOR_SIGNATURE,
 		*UPGRADE_RUNTIME_EXECUTE_SIGNATURES,
 	)))
+	allowed_type_identities = tuple(sorted((
+		*PRE_V27_RUNTIME_TYPE_NAMES,
+		*UPGRADE_RUNTIME_TYPE_NAMES,
+	)))
 	function_values = ",".join(
 		f"('{identity}',pg_catalog.to_regprocedure('{identity}'))"
 		for identity in allowed_function_identities
 	)
 	type_values = ",".join(
 		f"('{identity}',pg_catalog.to_regtype('{identity}'))"
-		for identity in sorted(PRE_V26_RUNTIME_TYPE_NAMES)
+		for identity in allowed_type_identities
 	)
 	internal_values = ",".join(
 		f"('{identity}',pg_catalog.to_regprocedure('{identity}'))"
@@ -6291,11 +6406,11 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 			for row in function_grants
 		)
 	):
-		raise TestFailure("V26 upgrade runtime function authority is not exact")
+		raise TestFailure("V27 upgrade runtime function authority is not exact")
 	if (
 		not isinstance(type_grants, list)
 		or [row.get("identity") for row in type_grants if isinstance(row, dict)]
-		!= list(sorted(PRE_V26_RUNTIME_TYPE_NAMES))
+		!= list(allowed_type_identities)
 		or any(
 			not isinstance(row, dict)
 			or row.get("grantor") != MIGRATION_ROLE
@@ -6304,7 +6419,7 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 			for row in type_grants
 		)
 	):
-		raise TestFailure("V26 upgrade retained V24 type authority is not exact")
+		raise TestFailure("V27 upgrade runtime type authority is not exact")
 	if (
 		not isinstance(internal_sealing, list)
 		or [row.get("identity") for row in internal_sealing if isinstance(row, dict)]
@@ -6321,7 +6436,7 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 	if not isinstance(unrelated_authority, dict) or any(
 		value != 0 for value in unrelated_authority.values()
 	):
-		raise TestFailure("V26 upgrade added unrelated runtime authority")
+		raise TestFailure("V27 upgrade added unrelated runtime authority")
 
 	return {
 		"database": database,
@@ -6337,7 +6452,10 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 				if row["identity"] != AUTHORITY_ANCHOR_SIGNATURE
 			],
 			"type_usage_count": len(UPGRADE_RUNTIME_TYPE_NAMES),
-			"type_usage_grants": [],
+			"type_usage_grants": [
+				row for row in type_grants
+				if row["identity"] in UPGRADE_RUNTIME_TYPE_NAMES
+			],
 		},
 		"all_direct_runtime_function_grants": function_grants,
 		"all_direct_runtime_type_grants": type_grants,
@@ -6636,26 +6754,26 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		receipt["migration_ledger"], checkpoints, "Phase A ledger checkpoints are malformed"
 	)
 	for ledger in ledgers.values():
-		require_receipt_ledger(ledger, through_version=26)
+		require_receipt_ledger(ledger, through_version=27)
 	if ledgers["source"] != ledgers["restored_once"] or ledgers["source"] != ledgers["restored_twice"]:
-		raise TestFailure("Phase A V26 ledgers differ across restore checkpoints")
-	if ledgers["source"][-1]["name"] != "execution_coordinator_cutover":
-		raise TestFailure("Phase A ledger does not end at V26")
+		raise TestFailure("Phase A V27 ledgers differ across restore checkpoints")
+	if ledgers["source"][-1]["name"] != "mac_account_lifecycle":
+		raise TestFailure("Phase A ledger does not end at V27")
 	upgrade = require_exact_keys(
 		receipt["one_grantee_upgrade"],
 		{
-			"database", "pre_v26_anchor_binding", "pre_v26_type_bindings",
-			"runtime_authority", "v24_ledger", "v26_ledger",
+			"database", "pre_v27_anchor_binding", "pre_v27_type_bindings",
+			"runtime_authority", "v24_ledger", "v27_ledger",
 		},
 		"Phase A one-grantee upgrade evidence is malformed",
 	)
 	require_receipt_ledger(upgrade["v24_ledger"], through_version=24)
-	upgrade_v26 = require_receipt_ledger(upgrade["v26_ledger"], through_version=26)
+	upgrade_v27 = require_receipt_ledger(upgrade["v27_ledger"], through_version=27)
 	if (
 		upgrade["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
-		or upgrade_v26 != ledgers["source"]
+		or upgrade_v27 != ledgers["source"]
 	):
-		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V26 ledger")
+		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V27 ledger")
 	upgrade_authority = require_exact_keys(
 		upgrade["runtime_authority"],
 		{
@@ -6670,7 +6788,7 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		{"execute_count", "execute_grants", "type_usage_count", "type_usage_grants"},
 		"Phase A one-grantee authority delta is malformed",
 	)
-	pre_v26_type_bindings = upgrade["pre_v26_type_bindings"]
+	pre_v27_type_bindings = upgrade["pre_v27_type_bindings"]
 	if (
 		upgrade_authority["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
 		or upgrade_authority["migration_role"] != MIGRATION_ROLE
@@ -6686,9 +6804,9 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		!= 1 + len(UPGRADE_RUNTIME_EXECUTE_SIGNATURES)
 		or not isinstance(upgrade_authority["all_direct_runtime_type_grants"], list)
 		or len(upgrade_authority["all_direct_runtime_type_grants"])
-		!= len(PRE_V26_RUNTIME_TYPE_NAMES)
-		or not isinstance(pre_v26_type_bindings, list)
-		or len(pre_v26_type_bindings) != len(PRE_V26_RUNTIME_TYPE_NAMES)
+		!= len(PRE_V27_RUNTIME_TYPE_NAMES) + len(UPGRADE_RUNTIME_TYPE_NAMES)
+		or not isinstance(pre_v27_type_bindings, list)
+		or len(pre_v27_type_bindings) != len(PRE_V27_RUNTIME_TYPE_NAMES)
 		or not isinstance(upgrade_authority["v19_internal_sealing"], list)
 		or len(upgrade_authority["v19_internal_sealing"]) != len(V19_INTERNAL_SIGNATURES)
 		or upgrade_authority["unrelated_authority"] != {
@@ -6718,7 +6836,7 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 			row.get("identity")
 			for row in upgrade_authority["all_direct_runtime_type_grants"]
 		]
-		!= list(sorted(PRE_V26_RUNTIME_TYPE_NAMES))
+		!= list(sorted((*PRE_V27_RUNTIME_TYPE_NAMES, *UPGRADE_RUNTIME_TYPE_NAMES)))
 		or [row.get("identity") for row in upgrade_authority["v19_internal_sealing"]]
 		!= list(sorted(V19_INTERNAL_SIGNATURES))
 	):
@@ -6727,8 +6845,8 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		*delta["execute_grants"], *delta["type_usage_grants"],
 		*upgrade_authority["all_direct_runtime_function_grants"],
 		*upgrade_authority["all_direct_runtime_type_grants"],
-		*pre_v26_type_bindings,
-		upgrade["pre_v26_anchor_binding"], upgrade_authority["anchor_binding"],
+		*pre_v27_type_bindings,
+		upgrade["pre_v27_anchor_binding"], upgrade_authority["anchor_binding"],
 	):
 		if (
 			not isinstance(grant, dict)
@@ -6743,9 +6861,12 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		):
 			raise TestFailure("Phase A one-grantee authority grant is not exact")
 	if (
-		upgrade["pre_v26_anchor_binding"] != upgrade_authority["anchor_binding"]
+		upgrade["pre_v27_anchor_binding"] != upgrade_authority["anchor_binding"]
 		or upgrade_authority["anchor_binding"]["identity"] != AUTHORITY_ANCHOR_SIGNATURE
-		or pre_v26_type_bindings != upgrade_authority["all_direct_runtime_type_grants"]
+		or pre_v27_type_bindings != [
+			grant for grant in upgrade_authority["all_direct_runtime_type_grants"]
+			if grant["identity"] in PRE_V27_RUNTIME_TYPE_NAMES
+		]
 	):
 		raise TestFailure("Phase A one-grantee V24 authority lineage differs")
 	for sealing in upgrade_authority["v19_internal_sealing"]:
@@ -8044,7 +8165,7 @@ def run_authority_candidate_capture(
 	psql_as(
 		MIGRATION_ROLE,
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE,
-		f"GRANT USAGE ON TYPE {', '.join(PRE_V26_RUNTIME_TYPE_NAMES)} "
+		f"GRANT USAGE ON TYPE {', '.join(PRE_V27_RUNTIME_TYPE_NAMES)} "
 		f"TO {RUNTIME_ROLE}; "
 		f"GRANT EXECUTE ON FUNCTION {AUTHORITY_ANCHOR_SIGNATURE} TO {RUNTIME_ROLE}",
 		env,
@@ -8056,7 +8177,7 @@ def run_authority_candidate_capture(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 	run_migration(env)
-	upgrade_v26_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	upgrade_v27_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
 	upgrade_runtime_authority = capture_upgrade_runtime_authority(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
@@ -8361,9 +8482,9 @@ def run_authority_candidate_capture(
 		phase_b_upgrade = {
 			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
 			"v24_ledger": upgrade_v24_ledger,
-			"pre_v26_anchor_binding": upgrade_anchor_binding,
-			"pre_v26_type_bindings": upgrade_type_bindings,
-			"v26_ledger": upgrade_v26_ledger,
+			"pre_v27_anchor_binding": upgrade_anchor_binding,
+			"pre_v27_type_bindings": upgrade_type_bindings,
+			"v27_ledger": upgrade_v27_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		}
 		if phase_b_upgrade != phase_a.document["one_grantee_upgrade"]:
@@ -8401,9 +8522,9 @@ def run_authority_candidate_capture(
 		"one_grantee_upgrade": {
 			"database": AUTHORITY_CAPTURE_UPGRADE_DATABASE,
 			"v24_ledger": upgrade_v24_ledger,
-			"pre_v26_anchor_binding": upgrade_anchor_binding,
-			"pre_v26_type_bindings": upgrade_type_bindings,
-			"v26_ledger": upgrade_v26_ledger,
+			"pre_v27_anchor_binding": upgrade_anchor_binding,
+			"pre_v27_type_bindings": upgrade_type_bindings,
+			"v27_ledger": upgrade_v27_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		},
 		"runtime_authority": {
@@ -8739,7 +8860,7 @@ def main(
 					"decodex-reset-card-" if focused_reset_cards else
 					"decodex-xy1364-authority-" if focused_authority else
 					"decodex-xy1368-boundary-" if focused_retained_title else
-					"decodex-xy1368-preparation-" if preparation_mode else
+					"decodex-xy1422-preparation-" if preparation_mode else
 					"decodex-xy1421-restore-prerequisite-"
 					if restore_prerequisite_mode else
 					"decodex-xy1300-capture-" if authority_mode else "decodex-xy1267-"),
@@ -8934,19 +9055,21 @@ def main(
 			run_stage(
 				orchestrator,
 				"migration_syntax",
-				lambda: prepare_retained_title_migrations(socket_dir, port, env),
+				lambda: prepare_changed_postgres_migrations(socket_dir, port, env),
 				depends_on=("cluster_preflight",),
 			)
 			run_stage(
 				orchestrator,
 				"changed_embedded_sql_prepare",
-				lambda: prepare_retained_title_embedded_sql(env),
+				lambda: prepare_changed_embedded_sql(env),
 				depends_on=("migration_syntax",),
 			)
 			run_stage(
 				orchestrator,
 				"generated_authority_inventory",
-				lambda: prepare_retained_title_authority_inventory(work, env),
+				lambda: prepare_postgres_authority_inventory(
+					socket_dir, port, work, env
+				),
 				depends_on=("changed_embedded_sql_prepare",),
 			)
 			if orchestrator.primary_failure is not None:
@@ -10232,7 +10355,7 @@ def main(
 					"checkpoint_state": restore_report,
 				}
 				raise TestFailure(
-					"aggregate V14-V26 PostgreSQL acceptance failure:\n"
+					"aggregate V14-V27 PostgreSQL acceptance failure:\n"
 					+ json.dumps(diagnostics, sort_keys=True)
 				)
 			return json.dumps(artifact_evidence, sort_keys=True)
@@ -10466,7 +10589,7 @@ def main(
 					else "decodex/postgres-aggregate-stage-report/1"
 				),
 				"mode": (
-					"retained_title_preparation"
+					"vnext_postgres_preparation"
 					if preparation_mode
 					else "retained_title_boundary"
 					if focused_retained_title

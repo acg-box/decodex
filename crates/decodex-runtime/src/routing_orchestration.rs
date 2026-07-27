@@ -6,7 +6,7 @@
 //! or provider gateway is reachable from it.
 
 use decodex_core::{
-	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlanKind,
+	BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlanKind,
 	ContinuationRejection, ExecutionConsumer, ProviderAttemptConsumer, ProviderAttemptId,
 	ProviderAttemptPreparation, ProviderAttemptState, RoutingBlocker, RoutingCommandOutcome,
 	RoutingDecisionCause, RoutingDecisionExclusion, RoutingDecisionKind, RoutingNoRouteReason,
@@ -154,6 +154,7 @@ pub struct ExecutionFailure {
 }
 
 /// One dispatch-disabled result from the stateless coordinator.
+#[allow(clippy::large_enum_variant)] // The closed handoff remains one typed by-value authority result.
 pub enum ExecutionOutcome {
 	/// ProviderAttempt binding is durable. No variant grants dispatch authority.
 	Prepared {
@@ -189,6 +190,7 @@ impl ExecutionCoordinator {
 	/// Sequence accepted owners without retaining state or authorizing provider dispatch.
 	///
 	/// This method is crate-private until the aggregate gate and a separate enablement amendment.
+	#[allow(clippy::too_many_lines)] // Keep the closed routing and continuation authority sequence together.
 	pub(crate) async fn coordinate(
 		&self,
 		store: &PostgresStore,

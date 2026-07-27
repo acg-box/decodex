@@ -772,13 +772,6 @@ fn optional_positive_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreE
 		None => incompatible("stored continuation optional revision is missing"),
 	}
 }
-fn nonnegative_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_i64)
-		.filter(|number| *number >= 0)
-		.ok_or_else(|| StoreError::Incompatible(format!("stored continuation {key} is malformed")))
-}
 fn boolean(value: &Value, key: &str) -> Result<bool, StoreError> {
 	value
 		.get(key)

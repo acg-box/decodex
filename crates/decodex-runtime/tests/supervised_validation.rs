@@ -1,5 +1,8 @@
 //! Architecture-level validation-supervision acceptance coverage.
 
+use base64 as _;
+use reqwest as _;
+
 use std::{
 	ffi::OsString,
 	fs,

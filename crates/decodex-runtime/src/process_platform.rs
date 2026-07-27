@@ -104,8 +104,7 @@ impl KernelExitWitness {
 				// SAFETY: `kevent` initialized one output event.
 				let event = unsafe { event.assume_init() };
 				if event.flags & libc::EV_ERROR != 0 {
-					return Err(ProcessPlatformError::Observation(io::Error::new(
-						io::ErrorKind::Other,
+					return Err(ProcessPlatformError::Observation(io::Error::other(
 						"macOS process witness returned an error event",
 					)));
 				}
@@ -117,7 +116,7 @@ impl KernelExitWitness {
 					return Ok(Some(self.kind));
 				}
 			}
-			return Ok(None);
+			Ok(None)
 		}
 
 		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -129,6 +128,7 @@ impl KernelExitWitness {
 #[derive(Debug)]
 pub(crate) enum ProcessPlatformError {
 	/// This build target has no accepted ProcessGeneration adapter.
+	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	Unsupported,
 	/// Boot identity could not be read.
 	BootIdentity(io::Error),
@@ -143,8 +143,8 @@ impl std::error::Error for ProcessPlatformError {}
 impl Display for ProcessPlatformError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Unsupported =>
-				formatter.write_str("the host has no accepted ProcessGeneration adapter"),
+			#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+			Self::Unsupported => formatter.write_str("the host has no accepted ProcessGeneration adapter"),
 			Self::BootIdentity(error) => write!(formatter, "boot identity failed: {error}"),
 			Self::ProcessIdentity(error) => write!(formatter, "process identity failed: {error}"),
 			Self::Observation(error) =>
@@ -185,8 +185,8 @@ pub(crate) fn current_boot_identity() -> Result<ProcessBootIdentity, ProcessPlat
 		}
 		// SAFETY: successful fixed-size `sysctl` initialized the value.
 		let boot = unsafe { boot.assume_init() };
-		return ProcessBootIdentity::new(format!("macos:{}:{}", boot.tv_sec, boot.tv_usec))
-			.map_err(|_| ProcessPlatformError::BootIdentity(invalid_identity()));
+		ProcessBootIdentity::new(format!("macos:{}:{}", boot.tv_sec, boot.tv_usec))
+			.map_err(|_| ProcessPlatformError::BootIdentity(invalid_identity()))
 	}
 
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -235,7 +235,7 @@ pub(crate) fn inspect_process_identity(
 				"Linux process start identity is invalid",
 			))
 		})?;
-		return ProcessIdentity::new(
+		ProcessIdentity::new(
 			boot_id.clone(),
 			process_id,
 			ProcessStartIdentity::new(format!("linux-ticks:{start_ticks}"))
@@ -244,7 +244,7 @@ pub(crate) fn inspect_process_identity(
 			session_id,
 		)
 		.map(Some)
-		.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()));
+		.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))
 	}
 
 	#[cfg(target_os = "macos")]
@@ -275,7 +275,7 @@ pub(crate) fn inspect_process_identity(
 			}
 			return Err(ProcessPlatformError::ProcessIdentity(error));
 		}
-		return ProcessIdentity::new(
+		ProcessIdentity::new(
 			boot_id.clone(),
 			process_id,
 			ProcessStartIdentity::new(format!(
@@ -288,7 +288,7 @@ pub(crate) fn inspect_process_identity(
 				.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))?,
 		)
 		.map(Some)
-		.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()));
+		.map_err(|_| ProcessPlatformError::ProcessIdentity(invalid_identity()))
 	}
 
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]

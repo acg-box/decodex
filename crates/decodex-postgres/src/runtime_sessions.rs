@@ -651,7 +651,6 @@ const fn account_state_sql(value: AccountState) -> &'static str {
 		AccountState::Depleted => "depleted",
 		AccountState::AuthFailed => "auth_failed",
 		AccountState::PluginUnready => "plugin_unready",
-		AccountState::Disabled => "disabled",
 	}
 }
 
@@ -663,7 +662,9 @@ fn account_state_from_sql(value: &str) -> Result<AccountState, StoreError> {
 		"depleted" => Ok(AccountState::Depleted),
 		"auth_failed" => Ok(AccountState::AuthFailed),
 		"plugin_unready" => Ok(AccountState::PluginUnready),
-		"disabled" => Ok(AccountState::Disabled),
+		"disabled" => Err(StoreError::Incompatible(
+			"administrative disabled state was not normalized by V27".into(),
+		)),
 		_ => Err(StoreError::Incompatible("stored account state is invalid".into())),
 	}
 }

@@ -6,14 +6,22 @@
 use std::{
 	error::Error,
 	fmt::{Display, Formatter},
+	io::ErrorKind,
+	str,
 };
 
-use crate::AccountId;
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+	AccountId, ConfigError, CredentialBinding, DecodexPaths, PathError, ServerIdentity, paths,
+};
 
 /// Maximum bytes in one exact operating-system boot or process-start identity.
 pub const MAX_PROCESS_IDENTITY_BYTES: usize = 128;
 /// Maximum bytes in one immutable attested launch-manifest identity.
 pub const MAX_PROCESS_RUNNER_IDENTITY_BYTES: usize = 128;
+const EXECUTION_AUTHORIZATION_SCHEMA: &str = "decodex/process-execution-authorization/1";
+const MAX_EXECUTION_AUTHORIZATION_BYTES: usize = 192;
 
 /// Canonical identity of one durable process generation.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -117,6 +125,72 @@ impl ProcessExecutionAuthorization {
 		}
 
 		Ok(Self { epoch_id, authorization_digest })
+	}
+
+	/// Load the fixed owner-only external launch capability.
+	pub fn load(paths: &DecodexPaths) -> Result<Self, ConfigError> {
+		let bytes = paths::read_private_file(
+			paths,
+			&paths.process_execution_authorization_file(),
+			MAX_EXECUTION_AUTHORIZATION_BYTES,
+		)?;
+		let text = str::from_utf8(&bytes).map_err(|_| ConfigError::Malformed)?;
+		let mut lines = text.lines();
+		if lines.next() != Some(EXECUTION_AUTHORIZATION_SCHEMA) {
+			return Err(ConfigError::Malformed);
+		}
+		let epoch_id = lines.next().ok_or(ConfigError::Malformed)?;
+		let digest = lines.next().ok_or(ConfigError::Malformed)?;
+		if lines.next().is_some() {
+			return Err(ConfigError::Malformed);
+		}
+		Self::new(
+			ProcessExecutionEpochId::new(epoch_id.to_owned())
+				.map_err(|_| ConfigError::Malformed)?,
+			digest.to_owned(),
+		)
+		.map_err(|_| ConfigError::Malformed)
+	}
+
+	/// Load an existing capability or atomically create one for an offline installer cutover.
+	pub fn load_or_create(paths: &DecodexPaths) -> Result<Self, ConfigError> {
+		paths.ensure_layout()?;
+		match Self::load(paths) {
+			Ok(value) => return Ok(value),
+			Err(ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. })) => {},
+			Err(error) => return Err(error),
+		}
+		let epoch = ServerIdentity::generate()?;
+		let nonce = ServerIdentity::generate()?;
+		let mut hasher = Sha256::new();
+		hasher.update(EXECUTION_AUTHORIZATION_SCHEMA.as_bytes());
+		hasher.update([0]);
+		hasher.update(epoch.as_str().as_bytes());
+		hasher.update([0]);
+		hasher.update(nonce.as_str().as_bytes());
+		let authorization_digest =
+			hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+		let authorization = Self::new(
+			ProcessExecutionEpochId::new(epoch.as_str().to_owned())
+				.map_err(|_| ConfigError::Malformed)?,
+			authorization_digest,
+		)
+		.map_err(|_| ConfigError::Malformed)?;
+		let body = format!(
+			"{EXECUTION_AUTHORIZATION_SCHEMA}\n{}\n{}\n",
+			authorization.epoch_id.as_str(),
+			authorization.authorization_digest,
+		);
+		match paths::atomic_write_new(
+			paths,
+			&paths.process_execution_authorization_file(),
+			body.as_bytes(),
+			MAX_EXECUTION_AUTHORIZATION_BYTES,
+		) {
+			Ok(()) => Ok(authorization),
+			Err(PathError::AlreadyExists) => Self::load(paths),
+			Err(error) => Err(error.into()),
+		}
 	}
 }
 
@@ -359,6 +433,43 @@ pub struct ProcessGenerationIntent {
 	pub execution_authorization: ProcessExecutionAuthorization,
 }
 
+/// Immutable account/store/provider/callback facts bound to one process generation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessGenerationAccountBinding {
+	/// Exact account registry revision observed before the durable spawn fence.
+	pub account_revision: i64,
+	/// Exact canonical store version, fingerprint, and provider identity.
+	pub credential: CredentialBinding,
+	/// Exact generated/live refresh callback capability profile.
+	pub refresh_callback_profile_sha256: String,
+}
+impl ProcessGenerationAccountBinding {
+	/// Construct a complete non-secret binding. Partial or unhashed capability facts are rejected.
+	pub fn new(
+		account_revision: i64,
+		credential: CredentialBinding,
+		refresh_callback_profile_sha256: impl Into<String>,
+	) -> Result<Self, ProcessGenerationError> {
+		let refresh_callback_profile_sha256 = refresh_callback_profile_sha256.into();
+		if account_revision < 1 {
+			return Err(ProcessGenerationError::InvalidAccountRevision);
+		}
+		if !is_sha256(&refresh_callback_profile_sha256) {
+			return Err(ProcessGenerationError::InvalidCallbackProfile);
+		}
+		Ok(Self { account_revision, credential, refresh_callback_profile_sha256 })
+	}
+}
+
+/// Existing generation projection paired with its immutable V27 account binding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BoundProcessGeneration {
+	/// Persisted process-generation projection.
+	pub generation: ProcessGeneration,
+	/// Immutable account binding, when the generation uses account authority.
+	pub account_binding: Option<ProcessGenerationAccountBinding>,
+}
+
 /// One exact persisted generation projection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessGeneration {
@@ -475,6 +586,10 @@ pub enum ProcessGenerationError {
 	InvalidProcessStartIdentity,
 	/// PID, process group, or session identity was invalid.
 	InvalidProcessIdentity,
+	/// Account registry revisions start at one.
+	InvalidAccountRevision,
+	/// The callback profile was not a canonical SHA-256 digest.
+	InvalidCallbackProfile,
 	/// Death evidence did not match its closed positive shape.
 	InvalidDeathEvidence,
 }
@@ -485,17 +600,17 @@ impl Display for ProcessGenerationError {
 	}
 }
 
+fn is_sha256(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 fn is_canonical_uuid(value: &str) -> bool {
 	value.len() == 36
 		&& value.bytes().enumerate().all(|(index, byte)| match index {
 			8 | 13 | 18 | 23 => byte == b'-',
 			_ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
 		})
-}
-
-fn is_sha256(value: &str) -> bool {
-	value.len() == 64
-		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn is_bounded_identity(value: &str) -> bool {

@@ -15,8 +15,8 @@ use std::{
 use decodex_core::{
 	AccountId, ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
 	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
-	ProcessExecutionAuthorization, ProcessGeneration, ProcessGenerationId, ProcessGenerationIntent,
-	ProcessGenerationState, ProcessIdentity,
+	ProcessExecutionAuthorization, ProcessGeneration, ProcessGenerationAccountBinding,
+	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
 };
 use decodex_postgres::{
 	PostgresStore, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
@@ -35,6 +35,7 @@ const FAILED_SPAWN_CLEANUP: Duration = Duration::from_secs(1);
 const MAX_TERMINATION_WAIT: Duration = Duration::from_secs(30);
 
 /// Authority-bound operator/runtime port for diagnostics, reconciliation, and termination.
+#[derive(Clone)]
 pub struct ProcessGenerationControl {
 	inner: Arc<ProcessSupervisor>,
 }
@@ -69,10 +70,10 @@ impl SupervisionReservation {
 }
 impl Drop for SupervisionReservation {
 	fn drop(&mut self) {
-		if !self.retained {
-			if let Ok(mut supervised) = self.inner.supervised.lock() {
-				supervised.remove(&self.key);
-			}
+		if !self.retained
+			&& let Ok(mut supervised) = self.inner.supervised.lock()
+		{
+			supervised.remove(&self.key);
 		}
 	}
 }
@@ -82,6 +83,8 @@ impl Drop for SupervisionReservation {
 pub struct ProcessGenerationDiagnostic {
 	/// Complete durable projection. It never contains the external epoch authorization digest.
 	pub generation: ProcessGeneration,
+	/// Immutable account/store/provider/callback launch binding persisted with V27 generations.
+	pub account_binding: Option<ProcessGenerationAccountBinding>,
 	/// Current positive or explicitly inconclusive host observation.
 	pub observation: ProcessGenerationObservation,
 }
@@ -217,8 +220,8 @@ impl Display for ProcessSupervisorError {
 /// Fenced launch receipt for a newly spawned child.
 ///
 /// This receipt grants no process I/O or protocol authority. `ProcessSupervisor` privately
-/// retains the child's channels only for lifetime ownership. A future live-dispatch protocol
-/// gateway must be a separate typed authority that source-rejects alternate-control RPCs.
+/// retains the child's channels and exposes only its closed typed operation gateway.
+#[derive(Clone)]
 pub(crate) struct FencedProcess {
 	generation_id: ProcessGenerationId,
 	identity: ProcessIdentity,
@@ -294,7 +297,7 @@ impl ProcessGenerationControl {
 				let Some(inner) = weak.upgrade() else {
 					break;
 				};
-				let control = ProcessGenerationControl { inner };
+				let control = Self { inner };
 				let _ = control.reconcile_all().await;
 			}
 		}
@@ -310,14 +313,19 @@ impl ProcessGenerationControl {
 		let generations = self
 			.inner
 			.store
-			.read_process_generations(account_id, include_dead, limit)
+			.read_bound_process_generations(account_id, include_dead, limit)
 			.await
 			.map_err(|_| ProcessSupervisorError::ProductState)?;
 		Ok(generations
 			.into_iter()
-			.map(|generation| {
+			.map(|bound| {
+				let generation = bound.generation;
 				let observation = self.observe_for_diagnostic(&generation);
-				ProcessGenerationDiagnostic { generation, observation }
+				ProcessGenerationDiagnostic {
+					generation,
+					account_binding: bound.account_binding,
+					observation,
+				}
 			})
 			.collect())
 	}
@@ -327,9 +335,14 @@ impl ProcessGenerationControl {
 		&self,
 		generation_id: &ProcessGenerationId,
 	) -> Result<Option<ProcessGenerationDiagnostic>, ProcessSupervisorError> {
-		Ok(self.find_generation(generation_id).await?.map(|generation| {
+		Ok(self.find_bound_generation(generation_id).await?.map(|bound| {
+			let generation = bound.generation;
 			let observation = self.observe_for_diagnostic(&generation);
-			ProcessGenerationDiagnostic { generation, observation }
+			ProcessGenerationDiagnostic {
+				generation,
+				account_binding: bound.account_binding,
+				observation,
+			}
 		}))
 	}
 
@@ -350,6 +363,7 @@ impl ProcessGenerationControl {
 	/// Terminate only a process whose original unreaped `Child` remains owned by this supervisor.
 	///
 	/// Restored same-boot processes return `NotOwned`; this method never adopts or signals them.
+	#[allow(clippy::too_many_lines)] // Keep one exact fenced termination sequence together.
 	pub async fn terminate_exact(
 		&self,
 		generation_id: &ProcessGenerationId,
@@ -521,36 +535,72 @@ impl ProcessGenerationControl {
 	/// arguments and environment, and the exact-build private-stdio startup capability. Replay and
 	/// restored database state cannot enter this path. The returned receipt contains no protocol
 	/// writer.
-	#[expect(
-		dead_code,
-		reason = "sealed until an accepted product composition supplies launch input"
-	)]
 	pub(crate) async fn spawn_fenced(
 		&self,
 		generation_id: ProcessGenerationId,
 		execution_authorization: ProcessExecutionAuthorization,
 		launch: AttestedAppServerLaunch,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
+		self.spawn_fenced_inner(generation_id, execution_authorization, launch, None).await
+	}
+
+	/// Spawn only under one live, already-effectful Reset Card reconciliation claim.
+	pub(crate) async fn spawn_fenced_reset_reconciliation(
+		&self,
+		generation_id: ProcessGenerationId,
+		execution_authorization: ProcessExecutionAuthorization,
+		launch: AttestedAppServerLaunch,
+		outbox_id: i64,
+		worker_id: &str,
+		claim_token: &str,
+	) -> Result<FencedProcess, ProcessSupervisorError> {
+		self.spawn_fenced_inner(
+			generation_id,
+			execution_authorization,
+			launch,
+			Some((outbox_id, worker_id, claim_token)),
+		)
+		.await
+	}
+
+	async fn spawn_fenced_inner(
+		&self,
+		generation_id: ProcessGenerationId,
+		execution_authorization: ProcessExecutionAuthorization,
+		launch: AttestedAppServerLaunch,
+		reconciliation: Option<(i64, &str, &str)>,
+	) -> Result<FencedProcess, ProcessSupervisorError> {
 		let intent = launch.derive_intent(
 			generation_id,
 			self.inner.boot_id.clone(),
 			execution_authorization,
 		);
+		let account_binding = launch.account_binding().clone();
 		let mut supervision = self.reserve_supervision(&intent.generation_id)?;
-		let fence = match self
-			.inner
-			.store
-			.prepare_process_generation(&intent)
-			.await
-			.map_err(|_| ProcessSupervisorError::ProductState)?
-		{
+		let preparation = match reconciliation {
+			Some((outbox_id, worker_id, claim_token)) =>
+				self.inner
+					.store
+					.prepare_reset_reconciliation_process_generation(
+						&intent,
+						&account_binding,
+						outbox_id,
+						worker_id,
+						claim_token,
+					)
+					.await,
+			None =>
+				self.inner.store.prepare_bound_process_generation(&intent, &account_binding).await,
+		}
+		.map_err(|_| ProcessSupervisorError::ProductState)?;
+		let fence = match preparation {
 			PrepareProcessGenerationOutcome::Fresh(fence) => fence,
 			PrepareProcessGenerationOutcome::Replayed(_)
 			| PrepareProcessGenerationOutcome::Rejected { .. } =>
 				return Err(ProcessSupervisorError::AuthorityConflict),
 		};
 
-		let mut child = match launch.spawn() {
+		let child = match launch.spawn() {
 			Ok(child) => child,
 			Err(_) => {
 				let generation =
@@ -624,10 +674,6 @@ impl ProcessGenerationControl {
 	}
 
 	/// Persist application readiness for one still-owned fenced child.
-	#[expect(
-		dead_code,
-		reason = "sealed until an accepted product composition supplies launch input"
-	)]
 	pub(crate) async fn mark_spawned_ready(
 		&self,
 		process: &mut FencedProcess,
@@ -650,6 +696,29 @@ impl ProcessGenerationControl {
 		}
 		current.revision = mutation.revision;
 		Ok(())
+	}
+
+	/// Execute one typed adapter operation against the exact still-owned child.
+	///
+	/// The closure receives no process handles and runs while generation ownership is locked. The
+	/// caller must use the adapter's closed account or Reset Card methods only.
+	pub(crate) fn with_fenced_child<T, E>(
+		&self,
+		process: &FencedProcess,
+		operation: impl FnOnce(&mut AttestedProcessChild) -> Result<T, E>,
+	) -> Result<Result<T, E>, ProcessSupervisorError> {
+		let mut owned =
+			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+		let current = owned
+			.get_mut(process.generation_id.as_str())
+			.ok_or(ProcessSupervisorError::AuthorityConflict)?;
+		if current.revision != process.revision
+			|| current.identity.as_ref() != Some(&process.identity)
+			|| current.leader_exited
+		{
+			return Err(ProcessSupervisorError::AuthorityConflict);
+		}
+		Ok(operation(&mut current.child))
 	}
 
 	async fn reconcile_all(&self) -> Result<(), ProcessSupervisorError> {
@@ -696,6 +765,7 @@ impl ProcessGenerationControl {
 		Ok(())
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one exact projection reconciliation sequence together.
 	async fn reconcile_projection(
 		&self,
 		mut generation: ProcessGeneration,
@@ -836,10 +906,10 @@ impl ProcessGenerationControl {
 		let Some(process) = owned.get_mut(key) else {
 			return Ok(None);
 		};
-		if let Some(durable_identity) = generation.process_identity.as_ref() {
-			if process.identity.as_ref() != Some(durable_identity) {
-				return Err(ProcessSupervisorError::AuthorityConflict);
-			}
+		if let Some(durable_identity) = generation.process_identity.as_ref()
+			&& process.identity.as_ref() != Some(durable_identity)
+		{
+			return Err(ProcessSupervisorError::AuthorityConflict);
 		}
 		process.revision = generation.revision;
 		refresh_owned_exit(process)?;
@@ -902,6 +972,38 @@ impl ProcessGenerationControl {
 					return Ok(None);
 				}
 				after = Some(generation.generation_id);
+			}
+		}
+	}
+
+	async fn find_bound_generation(
+		&self,
+		generation_id: &ProcessGenerationId,
+	) -> Result<Option<decodex_core::BoundProcessGeneration>, ProcessSupervisorError> {
+		let mut after = None;
+		loop {
+			let page = self
+				.inner
+				.store
+				.read_bound_process_generation_page(
+					None,
+					true,
+					after.as_ref(),
+					RECONCILIATION_PAGE_SIZE,
+				)
+				.await
+				.map_err(|_| ProcessSupervisorError::ProductState)?;
+			if page.is_empty() {
+				return Ok(None);
+			}
+			for bound in page {
+				if bound.generation.generation_id == *generation_id {
+					return Ok(Some(bound));
+				}
+				if bound.generation.generation_id > *generation_id {
+					return Ok(None);
+				}
+				after = Some(bound.generation.generation_id);
 			}
 		}
 	}

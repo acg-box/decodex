@@ -8,10 +8,7 @@ use std::{
 
 use serde::{Deserialize, Deserializer, de::IgnoredAny};
 
-use crate::{
-	AccountId, AccountState, CacheLimits, DecodexPaths, MAX_RESET_CARD_ITEMS, PathError,
-	ServerIdentity, paths,
-};
+use crate::{CacheLimits, DecodexPaths, PathError, ServerIdentity, paths};
 
 /// Maximum accepted UTF-8 configuration input.
 pub const MAX_CONFIG_BYTES: usize = 64 * 1_024;
@@ -21,7 +18,6 @@ const MAX_NAME_BYTES: usize = 64;
 const MAX_HOST_BYTES: usize = 253;
 const MAX_DATABASE_FIELD_BYTES: usize = 128;
 const MAX_SERVER_HOST_PATH_BYTES: usize = 4 * 1_024;
-const MAX_ACCOUNT_LABEL_BYTES: usize = 128;
 
 /// Fully validated Decodex vNext configuration.
 #[derive(Clone)]
@@ -377,20 +373,11 @@ impl Debug for ServerRepositoryPath {
 #[derive(Clone, Eq, PartialEq)]
 pub struct ServerHostConfig {
 	repositories: BTreeMap<RepositoryName, ServerRepositoryPath>,
-	reset_card_accounts: BTreeMap<AccountId, ResetCardAccountConfig>,
 }
 impl ServerHostConfig {
 	/// Server-host repository roots.
 	pub fn repositories(&self) -> &BTreeMap<RepositoryName, ServerRepositoryPath> {
 		&self.repositories
-	}
-
-	/// Explicit vNext accounts that the daemon may use for the manual reset-card service.
-	///
-	/// Values contain only non-secret metadata and environment-variable references. The
-	/// corresponding environment values remain a daemon-host concern.
-	pub fn reset_card_accounts(&self) -> &BTreeMap<AccountId, ResetCardAccountConfig> {
-		&self.reset_card_accounts
 	}
 }
 
@@ -399,59 +386,7 @@ impl Debug for ServerHostConfig {
 		formatter
 			.debug_struct("ServerHostConfig")
 			.field("repository_count", &self.repositories.len())
-			.field("reset_card_account_count", &self.reset_card_accounts.len())
 			.finish()
-	}
-}
-
-/// Non-secret enrollment and host-vault references for one manual reset-card account.
-#[derive(Clone, Eq, PartialEq)]
-pub struct ResetCardAccountConfig {
-	display_label: String,
-	initial_state: AccountState,
-	access_token_env_var: String,
-	provider_account_id_env_var: String,
-	expected_email_env_var: String,
-	plan_type: String,
-}
-impl ResetCardAccountConfig {
-	/// Non-secret operator label persisted with the vNext account.
-	pub fn display_label(&self) -> &str {
-		&self.display_label
-	}
-
-	/// Explicit initial manual-operation state used only when the UUID is first enrolled.
-	pub const fn initial_state(&self) -> AccountState {
-		self.initial_state
-	}
-
-	/// Environment-variable reference for the ChatGPT access token.
-	pub fn access_token_env_var(&self) -> &str {
-		&self.access_token_env_var
-	}
-
-	/// Environment-variable reference for the exact provider account identity.
-	pub fn provider_account_id_env_var(&self) -> &str {
-		&self.provider_account_id_env_var
-	}
-
-	/// Environment-variable reference for the expected account email readback.
-	pub fn expected_email_env_var(&self) -> &str {
-		&self.expected_email_env_var
-	}
-
-	/// Expected closed ChatGPT plan-type text used during account readback.
-	pub fn plan_type(&self) -> &str {
-		&self.plan_type
-	}
-}
-impl Debug for ResetCardAccountConfig {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("ResetCardAccountConfig")
-			.field("initial_state", &self.initial_state)
-			.field("credential_references", &true)
-			.finish_non_exhaustive()
 	}
 }
 
@@ -580,8 +515,6 @@ struct RawClientConfig {
 #[serde(deny_unknown_fields)]
 struct RawServerHostConfig {
 	repositories: BTreeMap<RepositoryName, RawServerRepository>,
-	#[serde(default)]
-	reset_card_accounts: BTreeMap<String, RawResetCardAccount>,
 }
 impl RawServerHostConfig {
 	fn validate(self) -> Result<ServerHostConfig, ConfigError> {
@@ -599,21 +532,7 @@ impl RawServerHostConfig {
 			return Err(ConfigError::InvalidServerHostPath);
 		}
 
-		if self.reset_card_accounts.len() > MAX_RESET_CARD_ITEMS {
-			return Err(ConfigError::InvalidResetCardAccount);
-		}
-		let reset_card_accounts = self
-			.reset_card_accounts
-			.into_iter()
-			.map(|(account_id, account)| {
-				let account_id =
-					AccountId::new(account_id).map_err(|_| ConfigError::InvalidResetCardAccount)?;
-
-				account.validate().map(|account| (account_id, account))
-			})
-			.collect::<Result<BTreeMap<_, _>, _>>()?;
-
-		Ok(ServerHostConfig { repositories, reset_card_accounts })
+		Ok(ServerHostConfig { repositories })
 	}
 }
 
@@ -621,56 +540,6 @@ impl RawServerHostConfig {
 #[serde(deny_unknown_fields)]
 struct RawServerRepository {
 	host_path: PathBuf,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawResetCardAccount {
-	display_label: String,
-	initial_state: String,
-	access_token_env_var: String,
-	provider_account_id_env_var: String,
-	expected_email_env_var: String,
-	plan_type: String,
-}
-impl RawResetCardAccount {
-	fn validate(self) -> Result<ResetCardAccountConfig, ConfigError> {
-		let initial_state = match self.initial_state.as_str() {
-			"available" => AccountState::Available,
-			"depleted" => AccountState::Depleted,
-			_ => return Err(ConfigError::InvalidResetCardAccount),
-		};
-		if self.display_label.is_empty()
-			|| self.display_label.len() > MAX_ACCOUNT_LABEL_BYTES
-			|| self.display_label.chars().any(char::is_control)
-			|| !valid_environment_name(&self.access_token_env_var)
-			|| !valid_environment_name(&self.provider_account_id_env_var)
-			|| !valid_environment_name(&self.expected_email_env_var)
-			|| !valid_plan_type(&self.plan_type)
-		{
-			return Err(ConfigError::InvalidResetCardAccount);
-		}
-		let references = [
-			self.access_token_env_var.as_str(),
-			self.provider_account_id_env_var.as_str(),
-			self.expected_email_env_var.as_str(),
-		];
-		if references[0] == references[1]
-			|| references[0] == references[2]
-			|| references[1] == references[2]
-		{
-			return Err(ConfigError::InvalidResetCardAccount);
-		}
-
-		Ok(ResetCardAccountConfig {
-			display_label: self.display_label,
-			initial_state,
-			access_token_env_var: self.access_token_env_var,
-			provider_account_id_env_var: self.provider_account_id_env_var,
-			expected_email_env_var: self.expected_email_env_var,
-			plan_type: self.plan_type,
-		})
-	}
 }
 
 #[derive(Deserialize)]
@@ -799,8 +668,6 @@ pub enum ConfigError {
 	InvalidPostgresHostPath,
 	/// PostgreSQL connection data was missing, malformed, or unbounded.
 	InvalidPostgres,
-	/// A manual reset-card account enrollment or vault reference was invalid.
-	InvalidResetCardAccount,
 	/// Cache bounds were invalid or exceeded hard limits.
 	InvalidCache,
 	/// The operating-system random source failed.
@@ -821,8 +688,6 @@ impl Display for ConfigError {
 			Self::InvalidServerHostPath => formatter.write_str("server-host path is invalid"),
 			Self::InvalidPostgresHostPath => formatter.write_str("PostgreSQL host path is invalid"),
 			Self::InvalidPostgres => formatter.write_str("PostgreSQL configuration is invalid"),
-			Self::InvalidResetCardAccount =>
-				formatter.write_str("reset-card account configuration is invalid"),
 			Self::InvalidCache => formatter.write_str("cache configuration is invalid"),
 			Self::RandomnessUnavailable =>
 				formatter.write_str("operating-system randomness is unavailable"),
@@ -971,18 +836,4 @@ fn valid_environment_name(value: &str) -> bool {
 	(first.is_ascii_alphabetic() || first == b'_')
 		&& value.len() <= MAX_DATABASE_FIELD_BYTES
 		&& bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-}
-
-fn valid_plan_type(value: &str) -> bool {
-	matches!(
-		value,
-		"free"
-			| "go" | "plus"
-			| "pro" | "prolite"
-			| "team" | "self_serve_business_usage_based"
-			| "business"
-			| "enterprise_cbp_usage_based"
-			| "enterprise"
-			| "edu" | "unknown"
-	)
 }

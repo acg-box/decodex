@@ -6,8 +6,12 @@ mod protocol;
 mod reset_card;
 #[cfg(feature = "retained-title-experiment")] pub mod retained_title_experiment;
 
-pub(crate) use process::{AttestedAppServerLaunch, AttestedProcessChild};
-pub(crate) use reset_card::{ResetCardRuntime, ResetCardServiceError, ResetCardVaultStatus};
+pub(crate) use process::{
+	AttestedAppServerLaunch, AttestedProcessChild, attest_account_callback_capability,
+};
+pub(crate) use reset_card::{
+	ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError, ResetCardVaultStatus,
+};
 
 use std::{
 	error::Error,
@@ -691,14 +695,14 @@ mod postgres_composition_tests {
 
 		assert_eq!(launcher.active_capacity(), 1);
 
-		let disabled = time::timeout(
+		let depleted = time::timeout(
 			Duration::from_secs(1),
 			mutate(
 				store,
 				account_id,
 				Some(available.revision),
-				AccountState::Disabled,
-				"xy1273-runtime-account-disabled-during-vault",
+				AccountState::Depleted,
+				"xy1273-runtime-account-depleted-during-vault",
 			),
 		)
 		.await
@@ -718,7 +722,7 @@ mod postgres_composition_tests {
 		mutate(
 			store,
 			account_id,
-			Some(disabled.revision),
+			Some(depleted.revision),
 			AccountState::Available,
 			"xy1273-runtime-account-available-again",
 		)
