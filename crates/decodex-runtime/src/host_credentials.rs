@@ -9,12 +9,12 @@ use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
 };
-#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-use std::path::Path;
 use serde::{Deserialize, Serialize};
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+use std::path::Path;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const FINGERPRINT_DOMAIN: &[u8] = b"decodex-host-credential-store-v1\0";
@@ -450,6 +450,8 @@ mod macos {
 		string::CFString,
 	};
 	use decodex_core::DecodexPaths;
+	#[cfg(feature = "account-migration-transition-gate")]
+	use security_framework::item::{ItemClass, ItemSearchOptions, Limit, SearchResult};
 	use security_framework::{
 		access_control::{ProtectionMode, SecAccessControl},
 		passwords::{
@@ -457,8 +459,6 @@ mod macos {
 			set_generic_password_options,
 		},
 	};
-	#[cfg(feature = "account-migration-transition-gate")]
-	use security_framework::item::{ItemClass, ItemSearchOptions, Limit, SearchResult};
 
 	use super::{
 		AccountId, CredentialBinding, CredentialSecretBundle, CredentialStoreError,
@@ -553,7 +553,7 @@ mod macos {
 		) -> Result<AccountMigrationCredentialReadback, CredentialStoreError> {
 			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
 			let _process_guard = self.lock_process()?;
-			let (persisted, binding) = match Self::read_unlocked(account_id) {
+			let (_persisted, binding) = match Self::read_unlocked(account_id) {
 				Ok(value) => value,
 				Err(CredentialStoreError::NotFound) =>
 					return Ok(AccountMigrationCredentialReadback {
@@ -669,9 +669,7 @@ mod macos {
 
 	#[cfg(feature = "account-migration-transition-gate")]
 	fn attribute_string(attributes: &CFDictionary, name: &str) -> Option<String> {
-		attribute(attributes, name)?
-			.downcast::<CFString>()
-			.map(|value| value.to_string())
+		attribute(attributes, name)?.downcast::<CFString>().map(|value| value.to_string())
 	}
 
 	#[cfg(feature = "account-migration-transition-gate")]
@@ -880,8 +878,8 @@ pub fn run_account_migration_credential_gate(
 	match (action, slot) {
 		("readback", Some(slot)) => {
 			let account_id = gate_slot_account_id(&run.run_id, slot)?;
-			let metadata = MacosKeychainCredentialStore::new(&run.paths)
-				.gate_metadata(&account_id)?;
+			let metadata =
+				MacosKeychainCredentialStore::new(&run.paths).gate_metadata(&account_id)?;
 			serde_json::to_value(metadata).map_err(|_| CredentialStoreError::Unavailable)
 		},
 		("prove_create_conflict", None) => prove_gate_create_conflict(&run),
@@ -895,17 +893,12 @@ fn gate_slot_account_id(run_id: &str, slot: &str) -> Result<AccountId, Credentia
 	if !matches!(slot, "account_1" | "account_2" | "account_3" | "account_4" | "conflict") {
 		return Err(CredentialStoreError::InvalidBundle);
 	}
-	AccountId::new(crate::account_migration::account_migration_gate_uuid(
-		run_id, slot, "account",
-	))
-	.map_err(|_| CredentialStoreError::InvalidBundle)
+	AccountId::new(crate::account_migration::account_migration_gate_uuid(run_id, slot, "account"))
+		.map_err(|_| CredentialStoreError::InvalidBundle)
 }
 
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-fn gate_operation_id(
-	run_id: &str,
-	slot: &str,
-) -> Result<AccountOperationId, CredentialStoreError> {
+fn gate_operation_id(run_id: &str, slot: &str) -> Result<AccountOperationId, CredentialStoreError> {
 	AccountOperationId::new(crate::account_migration::account_migration_gate_uuid(
 		run_id,
 		slot,
@@ -924,8 +917,10 @@ fn gate_conflict_credential(
 	}
 	let account_id = gate_slot_account_id(&run.run_id, "conflict")?;
 	let operation_id = gate_operation_id(&run.run_id, "conflict")?;
-	let source =
-		run.fixture_root.join("protected-store-conflict").join(format!("credential-{variant}.json"));
+	let source = run
+		.fixture_root
+		.join("protected-store-conflict")
+		.join(format!("credential-{variant}.json"));
 	crate::account_migration::verify_gate_credential_source(&source)
 		.map_err(|_| CredentialStoreError::InvalidBundle)?;
 	let imported = crate::account_import::read_explicit_credential_file(
@@ -997,8 +992,7 @@ fn cleanup_gate_run_credentials(
 		.into_iter()
 		.map(|slot| gate_slot_account_id(&run.run_id, slot))
 		.collect::<Result<Vec<_>, _>>()?;
-	let manifest_path =
-		run.paths.root().as_path().join("account-migration-manifest.json");
+	let manifest_path = run.paths.root().as_path().join("account-migration-manifest.json");
 	let store = MacosKeychainCredentialStore::new(&run.paths);
 	let mut deleted = 0_u32;
 	let conflict_account_id = gate_slot_account_id(&run.run_id, "conflict")?;
