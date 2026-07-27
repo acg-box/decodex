@@ -27,10 +27,14 @@ upstream binaries and scripts are not downloaded or executed.
 
 ```mermaid
 flowchart LR
-    U["Official Codex main and tags"] --> M["Upstream Maintainer"]
+    U["Official Codex main and tags"] --> M["Maintainer parent"]
     L["Installed Codex schemas"] --> M
+    M --> W["Worker subagent"]
+    W -->|"Staged candidate"| M
     M -->|"No change"| C["Terminal cursor outcome"]
-    M -->|"Signed commit and PR"| R["Independent Reviewer"]
+    M -->|"Signed commit and PR"| R["Reviewer parent"]
+    R --> V["Read-only review subagent"]
+    V -->|"Accept or repair codes"| R
     R -->|"Repair codes"| M
     R -->|"decodex land"| C
     H["Health Supervisor"] --> M
@@ -38,11 +42,18 @@ flowchart LR
     C --> H
 ```
 
-The Maintainer and Reviewer are separate Codex App tasks and contexts. A Maintainer
-cannot merge its own change or make a terminal no-change/rejected decision. A Reviewer
-reproduces a proposed decision or reviews the exact pull-request head. It does not
-repair the reviewed work. It returns bounded finding codes so the next Maintainer run
-produces new evidence or a new head.
+The Maintainer and Reviewer are separate Codex App tasks and contexts. The Maintainer
+parent owns discovery, claims, worktree lifecycle, and state transitions. It cannot
+edit or stage candidate files. It delegates those writes to exactly one worker
+subagent and verifies the staged diff. The Reviewer parent delegates the exact diff
+review to one read-only review subagent. It does not repair reviewed work. The
+Reviewer returns bounded finding codes so a later worker produces new evidence or a
+new head. A Maintainer cannot merge its own change or make a terminal
+no-change/rejected decision.
+
+The scheduled tasks do not use Decodex server, runtime, MCP, planning, or queue
+surfaces. Only the state wrapper can invoke `decodex commit` or `decodex land` after
+the required evidence is present.
 
 After a pull request is accepted into state, Maintainer removes its clean temporary
 worktree and preserves the branch. Reviewer checks out that exact PR branch and head
@@ -56,9 +67,11 @@ exact local branch, and then uses Decodex's primary-main recovery path. The
 wrapper records state only after it
 verifies the exact merge and synchronized local `main`.
 
-Health observes the loop but does not implement or land a candidate. It recovers
-expired leases and deterministically turns each exhausted item into one deduplicated
-critical `automation_repair` candidate. Maintainer implements that repair and Reviewer
+Health observes the loop but does not implement or land a candidate. The state
+transaction deterministically turns each exhausted item into one deduplicated
+critical `automation_repair` candidate before it persists the result. Health is a
+backstop that recovers expired leases and any unowned repair. Maintainer delegates
+that repair to a worker subagent, and Reviewer
 must independently approve it. A landed repair, or an independently reproduced
 no-change result after a transient condition clears, resets and requeues the original
 item.
@@ -88,11 +101,17 @@ another automation run or an operator must restore that scheduler activation.
 
 - Maintainer: hourly.
 - Reviewer: hourly, 30 minutes after Maintainer.
-- Health and self-repair escalation: every six hours.
+- Health and self-repair escalation: every two hours.
 
 The first observation queues independent main/bootstrap, current stable-release, and
 current prerelease-release candidates. A new installation therefore evaluates all
 three upstream lanes without waiting for a later tag change.
+The three records remain distinct. Maintainer can claim only the earliest unresolved
+non-repair source record. A retry, implementation, review, or owned repair on that
+record defers later source records. An `automation_repair` can bypass the source gate
+so the control plane can repair itself. After the predecessor becomes terminal, the
+next source lane can proceed. This preserves complete lane evidence without creating
+parallel duplicate work for one unresolved compatibility gap.
 
 The state contract requires an observation no older than two hours and flags a
 nonterminal candidate older than six hours. A complete first-parent cursor divides a
@@ -128,6 +147,9 @@ head. No unrelated branch can be rewritten.
 All scheduled tasks use local execution from the primary clean `main` checkout. The
 automation configuration cannot use a worktree cwd. Maintainer and Reviewer can create
 temporary isolated worktrees for one implementation or review.
+Each scheduled upstream task uses the checked-in `run_upstream_autopilot` launcher.
+The launcher accepts only a root-owned, read-only Python 3.11 or later executable with
+`tomllib`. It does not rely on the macOS system or a user-writable bundled Python.
 
 ## State And Privacy
 
@@ -160,6 +182,31 @@ the next observation.
 Each state save writes and fsyncs a recovery slot before it writes and fsyncs the
 primary slot. A monotonic persistence generation selects the newest valid slot after
 a process or power failure. Equal-generation conflicts fail closed.
+
+The trusted launcher uses Python isolated mode and disables `site` initialization for
+its version probe and its final process. Caller Python path, home, user-site, and
+`sitecustomize` configuration cannot affect the launcher.
+
+A failed validation profile writes one local cause-addressed mode-`0600`
+diagnostic. Its stable cause digest excludes output variations. The artifact contains
+a separate exact artifact digest and one SHA-256 derived from the separate stdout and
+stderr stream digests. It also
+contains only its schema, profile, failure code and class, repository HEAD/tree,
+return code, bounded test IDs, exception classes, reason codes, and counts. It does
+not contain raw output, commands, absolute paths, credentials, email addresses, or
+private prose. The command returns the stable cause digest as `error_digest`. The
+file named by that digest is the unambiguous local artifact for the cause.
+Maintainer and Health use the trusted `validation-diagnostic` state-tool command to
+read that artifact. The command revalidates the cause identity and the separate
+artifact digest. Maintainer passes only the bounded returned structure to the worker;
+it does not pass a primary-checkout cache path into a candidate worktree.
+
+A process lock serializes diagnostic writes and pruning. Descriptor-relative,
+no-follow operations require a current-UID mode-`0700` directory and current-UID,
+one-link, exact mode-`0600` files. The store keeps at most 512 artifacts and 8 MiB.
+Pruning preserves every digest referenced by a nonterminal candidate. An unreadable
+state protects all existing artifacts. The operation fails closed if protected
+artifacts consume the capacity.
 
 ## Trust Boundary
 
@@ -214,6 +261,10 @@ Maintainer and Reviewer validation receipts include the base HEAD, changed-path
 classification, current primary validation-authority digest, fixed command digest,
 explicit zero exit code, output digest, credential-scrubbed environment digest,
 hashed exact validation tools, repository HEAD, tree, role, and completion time.
+They also include the protected-path policy digest, the effective primary-owned
+task-graph digest, each effective sandbox task, and
+`live_postgres_gate = omitted_sandbox_incompatible`. A receipt does not represent
+the sandbox aggregate as ordinary `cargo make check`.
 Tool discovery ignores the caller's `PATH`, prefers fixed system locations, preserves
 named rustup proxy semantics, verifies the installed Codex application signature,
 requires the policy-approved Decodex executable digest, and rechecks each binary
@@ -246,7 +297,7 @@ and complete lock graph. Install scripts remain disabled. After installation, th
 audit checks each installed package path, name, version, OS, CPU, and install-script metadata against
 the lock and rejects package-path symlinks. The native and platform package name,
 registry URL, integrity, OS, and CPU set is pinned by digest. A change on an excluded
-surface automatically adds the full `cargo make check` gate on a host with full
+surface automatically adds the full sandboxed source gate on a host with full
 Xcode and Metal tools. The validator checks configured, selected, and bounded
 `Xcode*.app` locations, injects `DEVELOPER_DIR` only into the full-gate subprocess,
 uses absolute system Xcode tools, and binds `xcode-select`, `xcrun`, `xcodebuild`,
@@ -254,13 +305,45 @@ Xcode version, and Metal binary evidence to the receipt. A validation-authority 
 can change only in an
 `automation_repair`, and its candidate version cannot evaluate itself. The
 Maintainer creates the authorized commit without executing candidate code. The
-wrapper then runs focused and aggregate profiles on the clean exact commit because
-PostgreSQL authority tests bind their evidence to that commit and tree. A failed
-aggregate cannot produce or update a pull request. A later repair safely rewinds an
-exact recorded candidate commit to its original base before it creates one
-replacement commit.
+wrapper then runs focused and aggregate profiles on the clean exact commit.
+
+The sandbox-specific test aggregates equal `test` and `test-headless` minus exactly
+`test-vnext-postgres-store`. The ordinary `test`, `test-headless`, and
+`cargo make check` tasks still include that live PostgreSQL 18 gate. macOS Seatbelt
+cannot run PostgreSQL initialization without SysV shared memory. Granting that IPC
+permission to a PostgreSQL process is not safe because candidate-controlled loaded
+code would inherit the permission. The autonomous validator therefore does not
+grant SysV IPC.
+
+Before dependency preparation or candidate execution, the trusted primary wrapper
+parses NUL-delimited Git name-status and raw diffs. It checks both sides of renames
+and copies, rejects malformed paths and gitlinks, and rejects symlinks on protected
+paths. It fails closed for the policy-owned PostgreSQL impact envelope for every
+candidate kind, including `automation_repair`. That envelope covers the PostgreSQL
+crate, live harness, database authority tests, storage proof, affected runtime
+bootstrap and account-launch files, and GitHub workflows. Such a candidate requires
+a separate disposable isolation boundary with the complete live PostgreSQL gate; the
+current automation does not land it. A failed aggregate or protected-path decision
+cannot produce or update a pull request. A later repair safely rewinds an exact
+recorded candidate commit to its original base before it creates one replacement
+commit.
+
+Every Maintainer and Reviewer claim returns a lease token and a separate one-time
+handoff challenge. The parent keeps the lease token and gives only the challenge to
+one subagent. The state tool requires a bounded mode `0600` receipt before the first
+commit, repair request, decision resolution, or land intent. Worker receipts bind the
+exact staged tree and staged-path digest. Reviewer receipts bind the exact reviewed
+base, head, tree, disposition, and finding codes. State stores no raw challenge. It
+stores only the challenge digest and sanitized provenance. This protocol prevents a
+receipt from another candidate or claim from being replayed. It is not a
+cryptographic identity signature. Exact commit and land crash recovery preserves the
+original receipt and side-effect intent while a new lease generation becomes the
+active recovery owner.
 
 ## Outcomes
+
+The fresh runtime state uses `decodex/codex-upstream-state/3`. It does not migrate
+or accept an earlier state contract.
 
 Every candidate reaches one of these states:
 
@@ -269,14 +352,20 @@ Every candidate reaches one of these states:
 - `rejected`: evidence proves that the change does not apply to Decodex.
 - `repair_requested`: Reviewer returned bounded finding codes.
 - `retry_wait`: a bounded transient failure will retry automatically.
-- `needs_attention`: three attempts failed and the health task must report the exact
-  blocker. This is not success.
+- `repair_pending`: the attempt budget ended and a deduplicated automatic repair owns
+  the blocker. This is not success, but it does not require operator follow-up.
 
 Only `landed`, `no_change`, and `rejected` advance a contiguous upstream cursor.
 The independent Reviewer owns all three outcomes. Missing required methods or a
 repository schema-digest mismatch cannot close as `no_change` or `rejected`.
 An `automation_repair` candidate cannot close as `rejected`: it must land a repair or
 independently reproduce that the transient failure cleared and close as `no_change`.
+
+After a terminal role persists and reads back its ownership result, it calls native
+`set_thread_archived` with `archived = true` and no `threadId`. The native tool can
+then archive only the current scheduled task. An ambiguous, human-only, or unowned
+result stays visible. Archival only cleans the Codex task list. It does not disable
+the recurring automation or delete state evidence.
 
 ## Cost
 

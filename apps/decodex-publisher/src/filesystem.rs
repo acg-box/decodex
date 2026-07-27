@@ -52,14 +52,38 @@ pub(crate) fn write_new_json(path: &Path, payload: &Value) -> Result<()> {
 		return Err(eyre::eyre!("refusing to overwrite existing file: {}", path.display()));
 	}
 
-	if let Some(parent) = path.parent() {
-		fs::create_dir_all(parent)?;
-	}
-
-	let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-
+	let parent = path.parent().ok_or_else(|| eyre::eyre!("output path must have a parent"))?;
+	fs::create_dir_all(parent)?;
+	let mut random = [0_u8; 16];
+	getrandom::fill(&mut random).map_err(|_| eyre::eyre!("secure randomness is unavailable"))?;
+	let suffix = random.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+	let file_name = path
+		.file_name()
+		.and_then(|value| value.to_str())
+		.ok_or_else(|| eyre::eyre!("output filename must be UTF-8"))?;
+	let temporary_path = parent.join(format!(".{file_name}.{suffix}.tmp"));
+	let mut file = OpenOptions::new().write(true).create_new(true).open(&temporary_path)?;
 	file.write_all(serde_json::to_string_pretty(payload)?.as_bytes())?;
 	file.write_all(b"\n")?;
+	file.sync_all()?;
+	drop(file);
+
+	let linked = fs::hard_link(&temporary_path, path);
+	let cleanup = fs::remove_file(&temporary_path);
+	if let Err(error) = linked {
+		if cleanup.is_err() {
+			return Err(eyre::eyre!(
+				"failed to publish and clean temporary JSON file {}: {error}",
+				path.display()
+			));
+		}
+		if error.kind() == std::io::ErrorKind::AlreadyExists {
+			return Err(eyre::eyre!("refusing to overwrite existing file: {}", path.display()));
+		}
+
+		return Err(eyre::eyre!("failed to publish {}: {error}", path.display()));
+	}
+	cleanup?;
 
 	Ok(())
 }

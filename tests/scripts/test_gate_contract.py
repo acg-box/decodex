@@ -71,6 +71,53 @@ class GateContractTests(unittest.TestCase):
                 "test-vnext-postgres-store",
             ],
         )
+        self.assertEqual(
+            self.tasks["test-headless"]["dependencies"],
+            [
+                "test-automations",
+                "test-gate-contract",
+                "test-rust-headless",
+                "test-vnext-architecture",
+                "test-vnext-cli-diagnostics",
+                "test-vnext-postgres-store",
+            ],
+        )
+
+    def test_sandbox_test_aggregates_omit_only_the_live_postgres_gate(self) -> None:
+        omitted = {"test-vnext-postgres-store"}
+        pairs = (
+            ("test", "test-sandboxed"),
+            ("test-headless", "test-headless-sandboxed"),
+        )
+        for ordinary, sandboxed in pairs:
+            with self.subTest(ordinary=ordinary, sandboxed=sandboxed):
+                ordinary_dependencies = self.tasks[ordinary]["dependencies"]
+                sandboxed_dependencies = self.tasks[sandboxed]["dependencies"]
+                self.assertEqual(
+                    set(ordinary_dependencies) - set(sandboxed_dependencies),
+                    omitted,
+                )
+                self.assertEqual(
+                    set(sandboxed_dependencies) - set(ordinary_dependencies),
+                    set(),
+                )
+                self.assertEqual(
+                    sandboxed_dependencies,
+                    [
+                        dependency
+                        for dependency in ordinary_dependencies
+                        if dependency not in omitted
+                    ],
+                )
+
+        self.assertEqual(
+            self.tasks["check-upstream-automation-sandboxed"]["dependencies"][-1],
+            "test-headless-sandboxed",
+        )
+        self.assertEqual(
+            self.tasks["check-sandboxed"]["dependencies"][-1],
+            "test-sandboxed",
+        )
 
     def test_vstyle_is_a_read_only_explicit_audit(self) -> None:
         self.assertEqual(

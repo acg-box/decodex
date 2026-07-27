@@ -8,6 +8,9 @@ import json
 import sys
 from pathlib import Path
 
+CONFIG_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(CONFIG_ROOT))
+
 from automation_eval.constants import MANIFEST_PATH, REPO_ROOT
 from automation_eval.evaluation import evaluate_automation
 from automation_eval.io import default_codex_home, load_toml
