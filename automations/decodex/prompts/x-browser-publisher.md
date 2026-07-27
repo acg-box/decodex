@@ -45,11 +45,19 @@ Workflow:
 1. Run `<publisher> validate-social` with no path arguments to validate all five
    default contract directories. Expire only an exact stale reservation whose expiry
    and owner evidence are clear. Never infer publication success from a reservation.
-2. Select the highest-priority oldest unconsumed candidate with
-   `decision.worthiness = "publish"`. Recheck source evidence, text quality, durable
-   duplicate keys, daily cap, and prior terminal records. Process at most one candidate
-   per run.
-3. Before opening X, acquire the single browser lease with
+2. Select the highest-priority oldest unconsumed candidate. The only valid
+   `decision.worthiness` values are `publish` and `skip`. Recheck source evidence,
+   text quality, durable duplicate keys, daily cap, and prior terminal records.
+   Process at most one candidate per run. For `decision.worthiness = "skip"`, run
+   `<publisher> social terminalize-skip --candidate <exact-candidate-path> --day <YYYY-MM-DD>`.
+   Require `skipped` or the exact idempotent `already_skipped` readback. This atomic
+   command writes the `social_post/v1` skipped terminal record with
+   `browser_touched = false`, the exact candidate decision and rejection reason, and
+   no browser session. Never write or overwrite a skipped post directly. Validate it
+   and stop without acquiring a browser lease. For a publish candidate, continue.
+   When no candidate is ready, select at most one due outcome from local post records.
+   When neither exists, validate and stop as a proven no-op without opening X.
+3. Only for a publish candidate or due outcome, acquire the single browser lease with
    `<publisher> social acquire-browser-lease`. Keep its returned token only in
    this run context. If another unexpired lease exists, stop without opening X or
    writing a terminal post. Run
@@ -93,16 +101,16 @@ Workflow:
     `publication.publisher = "chrome"`. Consume the reservation only after confirmed
     publication or a consuming policy decision. Cancel or expire it for retryable
     browser-environment failures.
-12. When no candidate is ready, use the lease from step 3 to collect at most one due
-    outcome. A `24h` readback must occur 23 to 48 hours after publication; a `7d`
+12. For the due outcome selected in step 2, use the lease from step 3 to collect it. A
+    `24h` readback must occur 23 to 48 hours after publication; a `7d`
     readback must occur 167 to 192 hours after publication. Use the same account switch
     and restoration protocol, including renewal before readback and restoration. Write
     `social_outcome/v1`; do not use X API.
-13. Run `<publisher> validate-social` with no path arguments. Release only the
-    exact browser lease with `<publisher> social release-browser-lease` after
-    account restoration and terminal validation. Close or release scoped X tabs unless
-    an unresolved login, CAPTCHA, account approval, or account-restoration handoff
-    requires one visible tab.
+13. Run `<publisher> validate-social` with no path arguments. If this run acquired a
+    browser lease, release only that exact lease with
+    `<publisher> social release-browser-lease` after account restoration and terminal
+    validation. Close or release scoped X tabs unless an unresolved login, CAPTCHA,
+    account approval, or account-restoration handoff requires one visible tab.
 
 Success conditions:
 - A public write has a confirmed `https://x.com/decodexspace/status/...` URL.
@@ -114,9 +122,10 @@ Report candidate, quality decision, initial account, switch result, target verif
 publication URL, restore result, reservation and terminal paths, outcome readback when
 performed, validation evidence, browser tab cleanup, and exact blockers.
 Apply `scheduled-run-thread-retention.md` only after terminal validation and browser
-lease release. Confirmed publication or outcome readback with account restoration,
-validated duplicate or quality skip, proven no-op, and a terminal failure before any
-public write with a durable automatic retry owner must use native
-`set_thread_archived`. Keep login, CAPTCHA, unknown public-write result, lease loss
-after a public write, account-restoration failure, retained handoff tab, and invalid
-terminal state visible.
+lease release. Confirmed publication or outcome readback with account restoration, a
+validated duplicate or quality skip, a proven no-op, or a terminal failure before any
+public write with a durable automatic retry owner must call native
+`set_thread_archived` with `archived = true` and no `threadId` as the final tool
+action. Keep this task visible for login, CAPTCHA, an unknown public-write result,
+lease loss after a public write, account-restoration failure, a retained handoff tab,
+invalid terminal state, or a failed archive action.

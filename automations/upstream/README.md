@@ -46,6 +46,11 @@ the tag name and resolved tag commit. A monotonic discovery sequence prevents a
 schema A-to-B-to-A transition or a tag retarget from reusing an old terminal result.
 The first observation queues independent main/bootstrap, stable-release, and
 prerelease-release candidates, so a new installation does not wait for the next tag.
+The records remain independent, but Maintainer can work only on the earliest
+unresolved source candidate. A retry, review, or owned repair on that candidate
+defers later source lanes. An `automation_repair` can bypass this gate so the control
+plane can repair itself. This prevents duplicate workers and commits for the same
+unresolved compatibility gap without discarding lane evidence.
 
 Health does not stop at reporting. Deterministic seven-day thresholds can queue one
 deduplicated improvement candidate for repeated blocked attempts, repeated Reviewer
@@ -113,6 +118,32 @@ records and
 rechecks the exact tool binaries, environment digest, fixed command digest, explicit
 zero exit code, and bounded output digest. A terminal landed result retains the complete
 bounded execution receipt and its digest.
+The trusted launcher uses Python isolated mode and disables `site` initialization for
+both the version probe and the final process. Caller `PYTHONHOME`, `PYTHONPATH`,
+`PYTHONUSERBASE`, user-site packages, and `sitecustomize` cannot affect either step.
+
+On a failed validation profile, the wrapper writes one cause-addressed mode-`0600`
+diagnostic under the local cache. The stable cause digest excludes output details such
+as durations and temporary paths. The artifact has a separate exact digest and keeps
+one SHA-256 derived from the separate stdout and stderr stream digests as local
+evidence. It stores only the schema,
+profile, failure code and class, repository HEAD/tree, return code, output digest,
+bounded test IDs, exception classes, reason codes, and counts. It never stores raw
+command output, absolute paths, credentials, email addresses, or private prose. The
+failed command returns the stable cause digest as its `error_digest`. The named
+artifact is the unambiguous local lookup for that cause.
+Maintainer and Health read it only through
+`run_upstream_autopilot validation-diagnostic --error-digest <digest> --json`, which
+revalidates the cause identity and the separate artifact digest. Maintainer passes
+the returned bounded structure to its worker. It does not pass a primary-checkout
+cache path into the candidate worktree.
+
+The diagnostics directory is mode `0700`. It uses descriptor-relative, no-follow
+file operations and a process lock. Diagnostic files must be owned by the current
+UID, have one link, and have exact mode `0600`. The store keeps at most 512 files and
+8 MiB. Pruning does not remove a digest that a nonterminal candidate references. If
+state cannot be read or active references consume the capacity, the write fails
+closed.
 
 ## Validation
 
@@ -161,15 +192,14 @@ evidence misses its freshness, publication, outcome, or account-restoration serv
 level. The candidate stores only bounded degradation codes, so Maintainer can
 reproduce and repair the fault without reading social content.
 
-## Scheduled Run Threads
+## Scheduled Run Tasks
 
 Maintainer, Reviewer, Health, Content Manager, and Publisher apply the shared
-`scheduled-run-thread-retention.md` policy. A complete terminal run calls native
-`set_thread_archived` for its current thread after all durable and external-effect
-readbacks. A run stays visible when it needs human attention or has an uncertain
-write, failed validation, lost browser ownership, or failed account restoration.
+`scheduled-run-thread-retention.md` policy. After all durable and external-effect
+readbacks, a terminal role calls native `set_thread_archived` with
+`archived = true` and omits `threadId`. This can archive only the current scheduled
+task. A task stays visible only when an operation is ambiguous, no durable automatic
+owner exists, a human-only action is required, or the native archive action fails.
 
-Run-thread archiving does not pause or delete the recurring automation and does not
+Task archiving does not pause or delete the recurring automation and does not
 delete local evidence.
-reproduce the failed condition without persisting post text, metrics, account
-identifiers, or local paths.

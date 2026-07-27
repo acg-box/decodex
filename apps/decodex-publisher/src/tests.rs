@@ -2,7 +2,7 @@ use std::{fs, path::Path, thread};
 
 use serde_json::Value;
 
-use crate::{SocialReservePublishRequest, social_validation};
+use crate::{SocialReservePublishRequest, SocialTerminalizeSkipRequest, social_validation};
 
 #[test]
 fn validates_social_reservation_and_rejects_bad_timestamp() {
@@ -113,14 +113,25 @@ fn numerical_strategy_change_requires_three_distinct_valid_24h_outcomes() {
 	fs::create_dir_all(strategy_path.parent().expect("fixture should have parent"))
 		.expect("fixture directory should be created");
 	let mut strategy = valid_social_strategy();
-	strategy["decisions"] = serde_json::json!([{
-		"dimension": "topic_weight",
-		"key": "operator_impact",
-		"previous_value": 1.0,
-		"next_value": 1.1,
-		"reason": "Three source-backed posts produced qualified replies."
-	}]);
-	strategy["evidence_refs"] = serde_json::json!(&outcome_paths[..2]);
+	strategy["decisions"] = serde_json::json!([
+		{
+			"dimension": "topic_weight",
+			"key": "operator_impact",
+			"previous_value": 1.0,
+			"next_value": 1.1,
+			"reason": "Three source-backed posts produced qualified replies."
+		},
+		{
+			"dimension": "no_change",
+			"key": "weekly_editorial_benchmark",
+			"previous_value": "completed",
+			"next_value": "completed",
+			"reason": "The bounded browser benchmark completed."
+		}
+	]);
+	let benchmark_url = "https://x.com/CodexReleases/status/100";
+	strategy["evidence_refs"] =
+		serde_json::json!([outcome_paths[0].clone(), outcome_paths[1].clone(), benchmark_url]);
 	fs::write(&strategy_path, strategy.to_string()).expect("fixture should be written");
 
 	let error = crate::validate_social(&[temp_dir.path().to_path_buf()])
@@ -128,10 +139,67 @@ fn numerical_strategy_change_requires_three_distinct_valid_24h_outcomes() {
 		.to_string();
 	assert!(error.contains("at least three"));
 
-	strategy["evidence_refs"] = serde_json::json!(outcome_paths);
+	strategy["evidence_refs"] = serde_json::json!([
+		outcome_paths[0].clone(),
+		outcome_paths[1].clone(),
+		outcome_paths[2].clone(),
+		benchmark_url
+	]);
 	fs::write(&strategy_path, strategy.to_string()).expect("fixture should be written");
 	crate::validate_social(&[temp_dir.path().to_path_buf()])
 		.expect("three distinct valid 24h outcomes should authorize the change");
+}
+
+#[test]
+fn weekly_strategy_requires_a_bounded_editorial_benchmark() {
+	let mut missing = valid_social_strategy();
+	missing.as_object_mut().expect("strategy should be an object").remove("editorial_benchmark");
+	assert_social_errors(&missing, ["editorial_benchmark is required for weekly strategies"]);
+
+	let mut too_many = valid_social_strategy();
+	let urls = (1..=13)
+		.map(|index| format!("https://x.com/CodexReleases/status/{index}"))
+		.collect::<Vec<_>>();
+	too_many["editorial_benchmark"]["public_post_urls"] = serde_json::json!(urls);
+	too_many["evidence_refs"] = too_many["editorial_benchmark"]["public_post_urls"].clone();
+	assert_social_errors(
+		&too_many,
+		["editorial_benchmark.public_post_urls must contain at most 12 entries"],
+	);
+
+	let mut deferred = valid_social_strategy();
+	deferred["editorial_benchmark"] = serde_json::json!({
+		"status": "deferred",
+		"reason_code": "lease_busy",
+		"observations": ["The shared browser lease was already owned."]
+	});
+	deferred["evidence_refs"] = serde_json::json!(["benchmark:deferred:lease_busy"]);
+	assert_social_errors(&deferred, []);
+
+	deferred["editorial_benchmark"]["reason_code"] = serde_json::json!("Lease Busy");
+	assert_social_errors(
+		&deferred,
+		["editorial_benchmark.reason_code must be a bounded reason code"],
+	);
+}
+
+#[test]
+fn daily_strategy_must_not_include_editorial_benchmark() {
+	let mut daily = valid_social_strategy();
+	daily["cadence"] = serde_json::json!("daily");
+	daily["cycle_key"] = serde_json::json!("daily:2026-06-08");
+	daily["next_review_at"] = serde_json::json!("2026-06-09T03:00:00Z");
+
+	assert_social_errors(&daily, ["editorial_benchmark must be absent for daily strategies"]);
+	daily.as_object_mut().expect("strategy should be an object").remove("editorial_benchmark");
+	daily["decisions"] = serde_json::json!([{
+		"dimension": "no_change",
+		"key": "daily_action_review",
+		"previous_value": "unchanged",
+		"next_value": "unchanged",
+		"reason": "No bounded strategy change is justified today."
+	}]);
+	assert_social_errors(&daily, []);
 }
 
 #[test]
@@ -252,6 +320,106 @@ fn concurrent_reservations_share_one_atomic_idempotency_path() {
 }
 
 #[test]
+fn quality_skip_terminalization_is_atomic_and_idempotent() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let candidates = temp_dir.path().join("candidates");
+	let candidate_path = candidates.join("candidate.json");
+	fs::create_dir_all(&candidates).expect("candidate directory should be created");
+	let mut candidate = valid_social_candidate();
+	candidate["decision"]["worthiness"] = serde_json::json!("skip");
+	candidate["decision"]["reason"] =
+		serde_json::json!("The source does not provide a concrete user action.");
+	fs::write(&candidate_path, candidate.to_string()).expect("candidate should be written");
+	let request = social_skip_request(temp_dir.path(), &candidate_path);
+
+	let outcomes = thread::scope(|scope| {
+		let first = scope.spawn(|| crate::terminalize_social_skip(&request));
+		let second = scope.spawn(|| crate::terminalize_social_skip(&request));
+
+		[
+			first.join().expect("first skip thread should finish"),
+			second.join().expect("second skip thread should finish"),
+		]
+	});
+	let reports = outcomes
+		.into_iter()
+		.map(|outcome| outcome.expect("both idempotent calls should succeed"))
+		.collect::<Vec<_>>();
+
+	assert!(reports.iter().any(|report| report.status == "skipped"));
+	assert!(reports.iter().any(|report| report.status == "already_skipped"));
+	let posts = crate::collect_json_files(&[temp_dir.path().join("posts")])
+		.expect("post files should be readable");
+	assert_eq!(posts.len(), 1);
+	let post = crate::load_json(&posts[0]).expect("skipped post should be readable");
+	assert_eq!(post["status"], "skipped");
+	assert_eq!(post["browser_touched"], false);
+	assert!(post.get("browser_session").is_none());
+	assert_social_errors(&post, []);
+
+	let replay =
+		crate::terminalize_social_skip(&request).expect("an exact replay should remain idempotent");
+	assert_eq!(replay.status, "already_skipped");
+}
+
+#[test]
+fn quality_skip_and_publish_reservation_share_one_atomic_state_lock() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let candidates = temp_dir.path().join("candidates");
+	let candidate_path = candidates.join("candidate.json");
+	fs::create_dir_all(&candidates).expect("candidate directory should be created");
+	let mut candidate = valid_social_candidate();
+	candidate["decision"]["worthiness"] = serde_json::json!("skip");
+	candidate["decision"]["reason"] =
+		serde_json::json!("The source does not provide a concrete user action.");
+	fs::write(&candidate_path, candidate.to_string()).expect("candidate should be written");
+	let skip = social_skip_request(temp_dir.path(), &candidate_path);
+	let lease = crate::acquire_social_browser_lease(&temp_dir.path().join("locks"), 3_600)
+		.expect("browser lease should be acquired");
+	let lease_token = lease.lease_token.expect("acquired lease should return token");
+	let reserve = social_reserve_request(temp_dir.path(), false, &lease_token);
+
+	let outcomes = thread::scope(|scope| {
+		let skip = scope.spawn(|| crate::terminalize_social_skip(&skip).map(|_| "skip"));
+		let reserve = scope.spawn(|| crate::reserve_social_publish(&reserve).map(|_| "reserve"));
+
+		[
+			skip.join().expect("skip thread should finish"),
+			reserve.join().expect("reservation thread should finish"),
+		]
+	});
+	let success_count = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+
+	assert_eq!(success_count, 1, "skip and reservation must not both succeed");
+}
+
+#[test]
+fn quality_skip_terminalization_rejects_publish_candidates_and_external_paths() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let candidates = temp_dir.path().join("candidates");
+	let candidate_path = candidates.join("candidate.json");
+	fs::create_dir_all(&candidates).expect("candidate directory should be created");
+	fs::write(&candidate_path, valid_social_candidate().to_string())
+		.expect("candidate should be written");
+	let request = social_skip_request(temp_dir.path(), &candidate_path);
+
+	let error = crate::terminalize_social_skip(&request)
+		.expect_err("publish candidate must not be terminalized as a skip")
+		.to_string();
+	assert!(error.contains("decision.worthiness must be skip"));
+
+	let external_path = temp_dir.path().join("outside.json");
+	let mut skipped = valid_social_candidate();
+	skipped["decision"]["worthiness"] = serde_json::json!("skip");
+	fs::write(&external_path, skipped.to_string()).expect("external candidate should be written");
+	let external = social_skip_request(temp_dir.path(), &external_path);
+	let error = crate::terminalize_social_skip(&external)
+		.expect_err("candidate outside the configured directory must fail")
+		.to_string();
+	assert!(error.contains("configured candidates directory"));
+}
+
+#[test]
 fn social_post_rejects_low_quality_public_text() {
 	let mut attribution = valid_social_post();
 
@@ -271,6 +439,10 @@ fn accepts_valid_social_candidate_and_requires_shared_handoff_for_radar_inputs()
 	let mut candidate = valid_social_candidate();
 
 	assert_social_errors(&candidate, []);
+
+	let mut deferred = candidate.clone();
+	deferred["decision"]["worthiness"] = serde_json::json!("defer");
+	assert_social_errors(&deferred, ["decision.worthiness must be one of ['publish', 'skip']"]);
 
 	candidate["source_refs"]
 		.as_object_mut()
@@ -450,6 +622,20 @@ fn social_reserve_request(
 	}
 }
 
+fn social_skip_request(root: &Path, candidate_path: &Path) -> SocialTerminalizeSkipRequest {
+	SocialTerminalizeSkipRequest {
+		candidate_path: candidate_path.to_path_buf(),
+		candidates_dir: root.join("candidates"),
+		reservations_dir: root.join("reservations"),
+		posts_dir: root.join("posts"),
+		locks_dir: root.join("locks"),
+		day: "2026-06-02".into(),
+		timezone: "Asia/Shanghai".into(),
+		daily_limit: 8,
+		dry_run: false,
+	}
+}
+
 fn valid_social_candidate() -> Value {
 	serde_json::json!({
 		"schema": "social_candidate/v1",
@@ -594,7 +780,8 @@ fn valid_social_strategy() -> Value {
 		"cadence": "weekly",
 		"reviewed_at": "2026-06-08T03:00:00Z",
 		"evidence_refs": [
-			".agent/automations/decodex/cache/social/x/outcomes/openai-codex-pr-22414-7d.json"
+			".agent/automations/decodex/cache/social/x/outcomes/openai-codex-pr-22414-7d.json",
+			"https://x.com/CodexReleases/status/100"
 		],
 		"decisions": [
 			{
@@ -603,8 +790,24 @@ fn valid_social_strategy() -> Value {
 				"previous_value": "unchanged",
 				"next_value": "unchanged",
 				"reason": "Fewer than three valid 24-hour outcomes are available."
+			},
+			{
+				"dimension": "no_change",
+				"key": "weekly_editorial_benchmark",
+				"previous_value": "completed",
+				"next_value": "completed",
+				"reason": "The bounded browser benchmark completed."
 			}
 		],
+		"editorial_benchmark": {
+			"status": "completed",
+			"public_post_urls": [
+				"https://x.com/CodexReleases/status/100"
+			],
+			"observations": [
+				"Direct source links and concrete operator actions are easiest to scan."
+			]
+		},
 		"guardrails": {
 			"evidence_gate": "unchanged",
 			"privacy_gate": "unchanged",

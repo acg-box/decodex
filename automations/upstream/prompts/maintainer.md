@@ -91,6 +91,14 @@ Workflow:
    `git diff --cached --find-renames --find-copies --name-status -z` as
    `staged_paths_sha256`. This is a non-replayable state-bound handoff receipt,
    not a cryptographic identity signature.
+   When the claim includes an `error_digest` for a bounded validation diagnostic,
+   run
+   `automations/upstream/scripts/run_upstream_autopilot validation-diagnostic --error-digest <exact-digest> --json`.
+   Require the returned cause digest to match the claim and its artifact digest to
+   validate. Pass the worker only that returned bounded structure: schema, cause and
+   artifact digests, profile, failure code and kind, return code, repository HEAD and
+   tree, output digest, test IDs, exception classes, reason codes, and counts. Never
+   pass raw output, another diagnostic, or a local diagnostic path.
 8. Require the worker to remove obsolete support without compatibility shims for
    old Codex builds and to add a regression test for every automation repair. The
    parent may inspect the staged diff and bounded source evidence but must not
@@ -134,7 +142,9 @@ Workflow:
     PR, and reads back its exact head. Do not perform any part manually.
 13. Remove only the temporary clean worktree created by this run after `publish`
     succeeds. Preserve the branch for Reviewer. On failure, use `block` with a
-    bounded reason code and SHA-256 error digest. Accept `auto_repair_pending` only
+    bounded reason code and the exact `error_digest` returned by the wrapper when a
+    bounded validation diagnostic exists. Do not replace, recompute, or omit that
+    digest. Accept `auto_repair_pending` only
     when its repair candidate IDs are present in the persisted readback. Do not
     store raw logs, prompts, paths, credentials, identities, or upstream prose.
 
@@ -144,7 +154,8 @@ state-tool call must run
 from freshly synchronized primary `main`. Report the candidate, source identity,
 decision or changed files, exact commit and PR, validation receipt digests, or the
 bounded failure state. Report X API calls and X spend as zero.
-Apply `scheduled-run-thread-retention.md` after all state and effect readbacks. Use
-native `set_thread_archived` only for an `auto_archive` current run. A persisted
-retry or automatically owned repair is terminal for this run and must be archived.
-Keep only an uncontained human decision or ambiguous external effect visible.
+Apply `scheduled-run-thread-retention.md` after all state and effect readbacks. A
+terminal result with confirmed or durable automatic ownership must call native
+`set_thread_archived` with `archived = true` and no `threadId` as the final tool
+action. Keep this task visible only for an uncontained human decision, ambiguous
+external effect, or failed archive action.

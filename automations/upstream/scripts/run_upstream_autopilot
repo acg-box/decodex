@@ -99,16 +99,11 @@ else
 fi
 
 for candidate in "${candidates[@]}"; do
-	if trusted_python "${candidate}" && "${candidate}" - <<'PY'
-import sys
-
-if not (3, 11) <= sys.version_info[:2] < (4, 0):
-    raise SystemExit(1)
-
-import tomllib  # noqa: F401, E402
-PY
+	if trusted_python "${candidate}" \
+		&& "${candidate}" -I -S -c \
+		'import sys, tomllib; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (4, 0) else 1)'
 	then
-		exec "${candidate}" "${autopilot}" "$@"
+		exec "${candidate}" -I -S "${autopilot}" "$@"
 	fi
 done
 
