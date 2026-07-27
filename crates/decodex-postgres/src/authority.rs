@@ -370,7 +370,7 @@ const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
 		SemanticAuthorityFailurePolicy::Unsafe,
 	),
 ];
-static FUNCTION_CONTRACTS: [FunctionContract; 197] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1704,9 +1704,42 @@ static FUNCTION_CONTRACTS: [FunctionContract; 197] = [
 		"v",
 	),
 	table_function_contract(
-		"replace_account_routing_control_exact",
-		"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
-		"replace_account_routing_control_exact(\n\tp_expected_revision bigint,p_mode decodex.account_selection_mode,\n\tp_fixed_account_id uuid,p_order uuid[]\n)",
+		"set_fixed_account_selection_exact",
+		"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+		"set_fixed_account_selection_exact(\n\tp_expected_routing_revision bigint,p_account_id uuid,p_expected_account_revision bigint\n)",
+		"p_expected_routing_revision bigint, p_account_id uuid, p_expected_account_revision bigint",
+		"TABLE(result_code text, routing_revision bigint, account_revision bigint)",
+		"v",
+	),
+	table_function_contract(
+		"set_balanced_account_selection_exact",
+		"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
+		"set_balanced_account_selection_exact(\n\tp_expected_routing_revision bigint\n)",
+		"p_expected_routing_revision bigint",
+		"TABLE(result_code text, routing_revision bigint)",
+		"v",
+	),
+	table_function_contract(
+		"set_account_order_exact",
+		"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
+		"set_account_order_exact(\n\tp_expected_routing_revision bigint,p_order uuid[]\n)",
+		"p_expected_routing_revision bigint, p_order uuid[]",
+		"TABLE(result_code text, routing_revision bigint)",
+		"v",
+	),
+	exact_function_contract(
+		"lock_account_routing_universe_exact",
+		"decodex.lock_account_routing_universe_exact(pg_catalog.bool)",
+		"lock_account_routing_universe_exact(p_require_complete boolean)",
+		"p_require_complete boolean",
+		"boolean",
+		"plpgsql",
+		"v",
+	),
+	table_function_contract(
+		"replace_account_routing_control_for_migration_exact",
+		"decodex.replace_account_routing_control_for_migration_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+		"replace_account_routing_control_for_migration_exact(\n\tp_expected_revision bigint,p_mode decodex.account_selection_mode,\n\tp_fixed_account_id uuid,p_order uuid[]\n)",
 		"p_expected_revision bigint, p_mode decodex.account_selection_mode, p_fixed_account_id uuid, p_order uuid[]",
 		"TABLE(result_code text, revision bigint)",
 		"v",
@@ -1717,8 +1750,8 @@ static FUNCTION_CONTRACTS: [FunctionContract; 197] = [
 		migration_signature: "read_account_routing_control_exact()",
 		arguments: "",
 		result: "TABLE(mode decodex.account_selection_mode, fixed_account_id uuid, revision bigint, account_order uuid[])",
-		language: "sql",
-		volatility: "s",
+		language: "plpgsql",
+		volatility: "v",
 		strict: false,
 		returns_set: true,
 		rows: 1_000.0,
@@ -1931,7 +1964,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 197] = [
 		"s",
 	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 85] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 87] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -1995,7 +2028,9 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 85] = [
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
 	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
-	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
+	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
 	"decodex.read_account_routing_control_exact()",
 	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
@@ -5513,7 +5548,9 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "read_unsettled_account_operations_exact"
 			| "read_account_operation_exact"
 			| "update_account_administration_exact"
-			| "replace_account_routing_control_exact"
+			| "set_fixed_account_selection_exact"
+			| "set_balanced_account_selection_exact"
+			| "set_account_order_exact"
 			| "read_account_routing_control_exact"
 			| "observe_account_quota_exact"
 			| "observe_account_quota_error_exact"
@@ -6224,7 +6261,7 @@ mod tests {
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
 		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 23);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 197);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 201);
 		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())

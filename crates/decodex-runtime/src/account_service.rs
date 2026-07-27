@@ -29,7 +29,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
 	account_import::{
-		CredentialImportError, read_explicit_credential_file, read_shared_codex_credential,
+		CredentialImportError, decode_chatgpt_identity, read_explicit_credential_file,
+		read_shared_codex_credential,
 	},
 	host_credentials::{
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
@@ -39,6 +40,7 @@ use crate::{
 const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
+const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
 
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
 fn migration_transition_checkpoint(
@@ -57,22 +59,27 @@ fn migration_transition_checkpoint(
 	Ok(())
 }
 
+pub(crate) struct CredentialRefreshResult {
+	returned_provider: ProviderIdentity,
+	bundle: CredentialSecretBundle,
+}
+
 /// Provider refresh boundary. Implementations receive secrets only in short-lived memory.
-pub trait CredentialRefreshPort: Send + Sync {
-	/// Exchange one exact refresh token for a replacement complete bundle.
+pub(crate) trait CredentialRefreshPort: Send + Sync {
+	/// Exchange one exact refresh token for a replacement identity and complete bundle.
 	fn refresh(
 		&self,
 		current: &CredentialSecretBundle,
-	) -> Result<CredentialSecretBundle, CredentialRefreshError>;
+	) -> Result<CredentialRefreshResult, CredentialRefreshError>;
 }
 
 /// Exact OpenAI OAuth refresh adapter used by the Mac daemon.
-pub struct OpenAiCredentialRefresher {
+pub(crate) struct OpenAiCredentialRefresher {
 	client: reqwest::blocking::Client,
 }
 impl OpenAiCredentialRefresher {
 	/// Construct a bounded client without ambient credential configuration.
-	pub fn new() -> Result<Self, CredentialRefreshError> {
+	pub(crate) fn new() -> Result<Self, CredentialRefreshError> {
 		let client = reqwest::blocking::Client::builder()
 			.timeout(Duration::from_secs(10))
 			.user_agent("decodexd")
@@ -85,7 +92,7 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 	fn refresh(
 		&self,
 		current: &CredentialSecretBundle,
-	) -> Result<CredentialSecretBundle, CredentialRefreshError> {
+	) -> Result<CredentialRefreshResult, CredentialRefreshError> {
 		let request = RefreshRequest {
 			client_id: CHATGPT_OAUTH_CLIENT_ID,
 			grant_type: "refresh_token",
@@ -105,41 +112,15 @@ impl CredentialRefreshPort for OpenAiCredentialRefresher {
 				Err(CredentialRefreshError::Ambiguous)
 			};
 		}
-		let mut refreshed: RefreshResponse =
+		let refreshed: RefreshResponse =
 			response.json().map_err(|_| CredentialRefreshError::Ambiguous)?;
-		let access_token = refreshed
-			.access_token
-			.take()
-			.filter(|value| !value.is_empty())
-			.ok_or(CredentialRefreshError::Ambiguous)?;
-		let refresh_token =
-			refreshed.refresh_token.take().unwrap_or_else(|| current.refresh_token().to_owned());
-		let id_token = refreshed.id_token.take().or_else(|| current.id_token().map(str::to_owned));
-		let token_type = refreshed.token_type.take().ok_or(CredentialRefreshError::Ambiguous)?;
-		let expires_in = refreshed.expires_in.ok_or(CredentialRefreshError::Ambiguous)?;
 		let observed_at = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.map_err(|_| CredentialRefreshError::Ambiguous)?;
 		let observed_at_micros = i64::try_from(observed_at.as_micros())
 			.map_err(|_| CredentialRefreshError::Ambiguous)?;
-		let lifetime_micros = i64::try_from(expires_in)
-			.ok()
-			.and_then(|seconds| seconds.checked_mul(1_000_000))
-			.ok_or(CredentialRefreshError::Ambiguous)?;
-		let expires_at_micros = observed_at_micros
-			.checked_add(lifetime_micros)
-			.ok_or(CredentialRefreshError::Ambiguous)?;
 
-		CredentialSecretBundle::chatgpt(
-			access_token,
-			refresh_token,
-			id_token,
-			current.plan_type().map(str::to_owned),
-			current.provider_email().to_owned(),
-			token_type,
-			expires_at_micros,
-		)
-		.map_err(|_| CredentialRefreshError::Ambiguous)
+		credential_refresh_result(current, refreshed, observed_at_micros)
 	}
 }
 
@@ -158,6 +139,47 @@ struct RefreshResponse {
 	refresh_token: Option<String>,
 	token_type: Option<String>,
 	expires_in: Option<u64>,
+}
+
+fn credential_refresh_result(
+	current: &CredentialSecretBundle,
+	mut refreshed: RefreshResponse,
+	observed_at_micros: i64,
+) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+	let access_token = refreshed
+		.access_token
+		.take()
+		.filter(|value| !value.is_empty())
+		.ok_or(CredentialRefreshError::Ambiguous)?;
+	let refresh_token =
+		refreshed.refresh_token.take().unwrap_or_else(|| current.refresh_token().to_owned());
+	let id_token = refreshed
+		.id_token
+		.take()
+		.filter(|value| !value.is_empty())
+		.ok_or(CredentialRefreshError::Ambiguous)?;
+	let identity =
+		decode_chatgpt_identity(&id_token).map_err(|_| CredentialRefreshError::Ambiguous)?;
+	let token_type = refreshed.token_type.take().ok_or(CredentialRefreshError::Ambiguous)?;
+	let expires_in = refreshed.expires_in.ok_or(CredentialRefreshError::Ambiguous)?;
+	let lifetime_micros = i64::try_from(expires_in)
+		.ok()
+		.and_then(|seconds| seconds.checked_mul(1_000_000))
+		.ok_or(CredentialRefreshError::Ambiguous)?;
+	let expires_at_micros =
+		observed_at_micros.checked_add(lifetime_micros).ok_or(CredentialRefreshError::Ambiguous)?;
+	let bundle = CredentialSecretBundle::chatgpt(
+		access_token,
+		refresh_token,
+		Some(id_token),
+		identity.plan_type,
+		identity.provider_email,
+		token_type,
+		expires_at_micros,
+	)
+	.map_err(|_| CredentialRefreshError::Ambiguous)?;
+
+	Ok(CredentialRefreshResult { returned_provider: identity.provider, bundle })
 }
 
 /// Provider refresh result classification without response bodies or tokens.
@@ -350,7 +372,7 @@ impl AccountService {
 	}
 
 	/// Assemble one coordinator from its three narrow infrastructure ports.
-	pub fn new(
+	pub(crate) fn new(
 		store: PostgresStore,
 		credentials: Arc<dyn HostCredentialStore>,
 		refresher: Arc<dyn CredentialRefreshPort>,
@@ -961,7 +983,7 @@ impl AccountService {
 			.await
 			.map_err(|_| AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous))?;
 		let refreshed = match refreshed {
-			Ok(bundle) => bundle,
+			Ok(refreshed) => refreshed,
 			Err(CredentialRefreshError::Rejected) => {
 				self.recover_or_cancel(
 					&operation_id,
@@ -983,16 +1005,25 @@ impl AccountService {
 				return Err(AccountLifecycleError::Refresh(error));
 			},
 		};
-		let target = refreshed.binding_for(
-			account_id,
-			&operation_id,
-			current.version.successor().map_err(|_| AccountLifecycleError::InvalidOperation)?,
-			&current.provider,
-		)?;
+		let target =
+			match refreshed_credential_target(current, account_id, &operation_id, &refreshed) {
+				Ok(target) => target,
+				Err(AccountLifecycleError::ProviderMismatch) => {
+					self.recover_or_cancel(
+						&operation_id,
+						AccountOperationPhase::ProviderEffectPending,
+						PROVIDER_REFRESH_OUTCOME_UNKNOWN,
+						true,
+					)
+					.await?;
+					return Err(AccountLifecycleError::ProviderMismatch);
+				},
+				Err(error) => return Err(error),
+			};
 		accepted_phase(self.store.set_account_operation_target(&operation_id, &target).await?)?;
-		let projection_bundle = refreshed.clone();
+		let projection_bundle = refreshed.bundle.clone();
 		if let Err(error) =
-			self.credentials.compare_and_swap_rotate(account_id, current, &target, refreshed)
+			self.credentials.compare_and_swap_rotate(account_id, current, &target, refreshed.bundle)
 		{
 			self.recover_or_cancel(
 				&operation_id,
@@ -1132,7 +1163,7 @@ impl AccountService {
 								&operation_id,
 								operation.phase,
 								AccountOperationPhase::RecoveryRequired,
-								Some("provider_refresh_outcome_unknown"),
+								Some(PROVIDER_REFRESH_OUTCOME_UNKNOWN),
 								AccountLifecycleError::NotReady(
 									AccountLifecycleReadiness::OperationUnsettled,
 								),
@@ -1257,7 +1288,7 @@ impl AccountService {
 						.await,
 			};
 		let refreshed = match refreshed {
-			Ok(bundle) => bundle,
+			Ok(refreshed) => refreshed,
 			Err(error @ CredentialRefreshError::Rejected) =>
 				return self
 					.complete_account_operation_error(
@@ -1283,16 +1314,30 @@ impl AccountService {
 					)
 					.await,
 		};
-		let target = refreshed.binding_for(
-			account_id,
-			&operation_id,
-			current.version.successor().map_err(|_| AccountLifecycleError::InvalidOperation)?,
-			&current.provider,
-		)?;
+		let target =
+			match refreshed_credential_target(&current, account_id, &operation_id, &refreshed) {
+				Ok(target) => target,
+				Err(AccountLifecycleError::ProviderMismatch) =>
+					return self
+						.complete_account_operation_error(
+							lease,
+							&operation_id,
+							AccountOperationPhase::ProviderEffectPending,
+							AccountOperationPhase::RecoveryRequired,
+							Some(PROVIDER_REFRESH_OUTCOME_UNKNOWN),
+							AccountLifecycleError::ProviderMismatch,
+							build_response.take().expect("builder is retained"),
+						)
+						.await,
+				Err(error) => return Err(error),
+			};
 		accepted_phase(self.store.set_account_operation_target(&operation_id, &target).await?)?;
-		if let Err(error) =
-			self.credentials.compare_and_swap_rotate(account_id, &current, &target, refreshed)
-		{
+		if let Err(error) = self.credentials.compare_and_swap_rotate(
+			account_id,
+			&current,
+			&target,
+			refreshed.bundle,
+		) {
 			return self
 				.complete_account_operation_error(
 					lease,
@@ -1680,41 +1725,98 @@ impl AccountService {
 			.await?)
 	}
 
-	/// Atomically replace fixed/balanced mode and complete deterministic order.
-	pub async fn replace_selection(
+	/// Select one fixed account under independent routing and account revision guards.
+	pub async fn set_fixed_selection(
 		&self,
-		expected_revision: i64,
-		mode: &AccountSelectionMode,
-		order: &[AccountId],
+		expected_routing_revision: i64,
+		account_id: &AccountId,
+		expected_account_revision: i64,
 	) -> Result<RoutingControlOutcome, AccountLifecycleError> {
-		Ok(self.store.replace_account_routing_control(expected_revision, mode, order).await?)
+		Ok(self
+			.store
+			.set_fixed_account_selection(
+				expected_routing_revision,
+				account_id,
+				expected_account_revision,
+			)
+			.await?)
 	}
 
-	/// Apply one routing command and its durable public result in one PG transaction.
-	pub async fn replace_selection_command<F>(
+	/// Apply one fixed-selection command and its durable public result in one PG transaction.
+	pub async fn set_fixed_selection_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
-		expected_revision: i64,
-		mode: &AccountSelectionMode,
+		expected_routing_revision: i64,
+		account_id: &AccountId,
+		expected_account_revision: i64,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+	{
+		Ok(self
+			.store
+			.set_fixed_account_selection_command(
+				lease,
+				expected_routing_revision,
+				account_id,
+				expected_account_revision,
+				build_response,
+			)
+			.await?)
+	}
+
+	/// Select balanced routing while preserving the complete account order.
+	pub async fn set_balanced_selection(
+		&self,
+		expected_routing_revision: i64,
+	) -> Result<RoutingControlOutcome, AccountLifecycleError> {
+		Ok(self.store.set_balanced_account_selection(expected_routing_revision).await?)
+	}
+
+	/// Apply one balanced-selection command and its durable result in one PG transaction.
+	pub async fn set_balanced_selection_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		expected_routing_revision: i64,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+	{
+		Ok(self
+			.store
+			.set_balanced_account_selection_command(
+				lease,
+				expected_routing_revision,
+				build_response,
+			)
+			.await?)
+	}
+
+	/// Replace the complete order while preserving selection mode and fixed target.
+	pub async fn set_account_order(
+		&self,
+		expected_routing_revision: i64,
+		order: &[AccountId],
+	) -> Result<RoutingControlOutcome, AccountLifecycleError> {
+		Ok(self.store.set_account_order(expected_routing_revision, order).await?)
+	}
+
+	/// Apply one account-order command and its durable result in one PG transaction.
+	pub async fn set_account_order_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		expected_routing_revision: i64,
 		order: &[AccountId],
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
-		F: FnOnce(
-				&RoutingControlOutcome,
-				&decodex_core::AccountRoutingControl,
-			) -> Result<Value, StoreError>
-			+ Send,
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
 	{
 		Ok(self
 			.store
-			.replace_account_routing_control_command(
-				lease,
-				expected_revision,
-				mode,
-				order,
-				build_response,
-			)
+			.set_account_order_command(lease, expected_routing_revision, order, build_response)
 			.await?)
 	}
 
@@ -2278,7 +2380,7 @@ impl AccountService {
 			AccountOperationKind::Enroll | AccountOperationKind::Import =>
 				"credential_import_reconciliation",
 			AccountOperationKind::Refresh if operation.target.is_none() =>
-				"provider_refresh_outcome_unknown",
+				PROVIDER_REFRESH_OUTCOME_UNKNOWN,
 			AccountOperationKind::Refresh => "credential_refresh_reconciliation",
 			AccountOperationKind::Logout => "credential_logout_reconciliation",
 		};
@@ -2749,7 +2851,7 @@ impl AccountService {
 					return Ok(ReconciliationDisposition::Cancelled);
 				}
 				let Some(target) = operation.target.as_ref() else {
-					return self.mark_manual(operation, "provider_refresh_outcome_unknown").await;
+					return self.mark_manual(operation, PROVIDER_REFRESH_OUTCOME_UNKNOWN).await;
 				};
 				match self.credentials.read_exact(&operation.account_id, target) {
 					Ok(_) => {
@@ -2896,6 +2998,10 @@ impl AccountService {
 			.and_then(|profile| profile.clone())
 			.ok_or(AccountSelectionRecovery::UpgradeCodex)
 	}
+
+	pub(crate) fn reset_card_callback_profile(&self) -> Option<String> {
+		self.callback_profile().ok()
+	}
 }
 
 fn projection(
@@ -2908,6 +3014,23 @@ fn projection(
 		plan_type: bundle.plan_type().map(str::to_owned),
 		binding: binding.clone(),
 	}
+}
+
+fn refreshed_credential_target(
+	current: &CredentialBinding,
+	account_id: &AccountId,
+	operation_id: &AccountOperationId,
+	refreshed: &CredentialRefreshResult,
+) -> Result<CredentialBinding, AccountLifecycleError> {
+	if refreshed.returned_provider != current.provider {
+		return Err(AccountLifecycleError::ProviderMismatch);
+	}
+	let version =
+		current.version.successor().map_err(|_| AccountLifecycleError::InvalidOperation)?;
+	refreshed
+		.bundle
+		.binding_for(account_id, operation_id, version, &refreshed.returned_provider)
+		.map_err(Into::into)
 }
 
 fn accepted_phase(
@@ -3008,5 +3131,149 @@ impl From<CredentialStoreError> for AccountLifecycleError {
 impl From<CredentialImportError> for AccountLifecycleError {
 	fn from(_value: CredentialImportError) -> Self {
 		Self::CredentialImport
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+	use decodex_core::{
+		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
+	};
+	use serde_json::json;
+
+	use super::{
+		AccountLifecycleError, CredentialRefreshError, CredentialSecretBundle,
+		PROVIDER_REFRESH_OUTCOME_UNKNOWN, RefreshResponse, credential_refresh_result,
+		refreshed_credential_target,
+	};
+
+	const OBSERVED_AT_MICROS: i64 = 1_000_000;
+
+	fn identity_token(account_id: &str, email: &str, plan_type: &str) -> String {
+		let claims = json!({
+			"email": email,
+			"https://api.openai.com/auth": {
+				"chatgpt_account_id": account_id,
+				"chatgpt_plan_type": plan_type,
+			},
+		});
+		let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+		format!("header.{payload}.signature")
+	}
+
+	fn current_bundle() -> CredentialSecretBundle {
+		CredentialSecretBundle::chatgpt(
+			"old-access".to_owned(),
+			"old-refresh".to_owned(),
+			Some(identity_token("old-provider-account", "old@example.test", "free")),
+			Some("free".to_owned()),
+			"old@example.test".to_owned(),
+			"bearer".to_owned(),
+			2_000_000,
+		)
+		.unwrap()
+	}
+
+	fn response(id_token: Option<String>) -> RefreshResponse {
+		RefreshResponse {
+			id_token,
+			access_token: Some("fresh-access".to_owned()),
+			refresh_token: None,
+			token_type: Some("bearer".to_owned()),
+			expires_in: Some(60),
+		}
+	}
+
+	fn binding(provider_account_id: &str, version: u64) -> CredentialBinding {
+		CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::V1,
+			version: CredentialVersion::new(version).unwrap(),
+			fingerprint: CredentialFingerprint::new("0".repeat(64)).unwrap(),
+			provider: ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id).unwrap(),
+			writer_operation_id: AccountOperationId::new("10000000-0000-4000-8000-000000000001")
+				.unwrap(),
+		}
+	}
+
+	#[test]
+	fn fresh_refresh_identity_and_target_come_only_from_returned_id_token() {
+		let current = current_bundle();
+		let fresh_id_token = identity_token("fresh-provider-account", "fresh@example.test", "pro");
+		let refreshed = credential_refresh_result(
+			&current,
+			response(Some(fresh_id_token.clone())),
+			OBSERVED_AT_MICROS,
+		)
+		.unwrap();
+
+		assert_eq!(refreshed.returned_provider.account_id(), "fresh-provider-account");
+		assert_eq!(refreshed.bundle.id_token(), Some(fresh_id_token.as_str()));
+		assert_eq!(refreshed.bundle.provider_email(), "fresh@example.test");
+		assert_eq!(refreshed.bundle.plan_type(), Some("pro"));
+		assert_eq!(refreshed.bundle.refresh_token(), "old-refresh");
+
+		let account_id = AccountId::new("20000000-0000-4000-8000-000000000001").unwrap();
+		let operation_id = AccountOperationId::new("30000000-0000-4000-8000-000000000001").unwrap();
+		let target = refreshed_credential_target(
+			&binding("fresh-provider-account", 7),
+			&account_id,
+			&operation_id,
+			&refreshed,
+		)
+		.unwrap();
+		assert_eq!(target.version.get(), 8);
+		assert_eq!(target.provider, refreshed.returned_provider);
+		assert_eq!(target.writer_operation_id, operation_id);
+	}
+
+	#[test]
+	fn missing_empty_or_malformed_fresh_id_token_is_ambiguous_without_fallback() {
+		let malformed_claims = {
+			let payload = URL_SAFE_NO_PAD.encode(
+				serde_json::to_vec(&json!({
+					"email": "fresh@example.test",
+					"https://api.openai.com/auth": {},
+				}))
+				.unwrap(),
+			);
+			format!("header.{payload}.signature")
+		};
+		for id_token in
+			[None, Some(String::new()), Some("not-a-jwt".to_owned()), Some(malformed_claims)]
+		{
+			assert!(matches!(
+				credential_refresh_result(
+					&current_bundle(),
+					response(id_token),
+					OBSERVED_AT_MICROS,
+				),
+				Err(CredentialRefreshError::Ambiguous)
+			));
+		}
+	}
+
+	#[test]
+	fn returned_provider_mismatch_precedes_target_construction_and_uses_fixed_recovery_code() {
+		let refreshed = credential_refresh_result(
+			&current_bundle(),
+			response(Some(identity_token("fresh-provider-account", "fresh@example.test", "pro"))),
+			OBSERVED_AT_MICROS,
+		)
+		.unwrap();
+		let account_id = AccountId::new("20000000-0000-4000-8000-000000000002").unwrap();
+		let operation_id = AccountOperationId::new("30000000-0000-4000-8000-000000000002").unwrap();
+
+		assert!(matches!(
+			refreshed_credential_target(
+				&binding("old-provider-account", u64::MAX),
+				&account_id,
+				&operation_id,
+				&refreshed,
+			),
+			Err(AccountLifecycleError::ProviderMismatch)
+		));
+		assert_eq!(PROVIDER_REFRESH_OUTCOME_UNKNOWN, "provider_refresh_outcome_unknown");
 	}
 }

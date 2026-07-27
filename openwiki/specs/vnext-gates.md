@@ -931,13 +931,13 @@ The canonical boundary command is:
 cargo make test-vnext-account-migration-transition
 ```
 
-The task is a required XY-1422 account-lifecycle stage. Its implementation must be a
-direct member of the repository `test` aggregate and therefore of `cargo make check`.
-It follows the canonical Rust and V27 PostgreSQL mechanical preparation and precedes
-the fresh exact-tree XY-1422 review. It is not hidden inside
-`test-vnext-postgres-store`, because that PostgreSQL aggregate cannot by itself prove
-the cross-store migration entrypoint and host credential binding. Do not run a
-separate focused copy immediately before the same `cargo make check` invocation.
+This single-use XY-1422 account-lifecycle transition gate is standalone. It is not a
+member of `test`, `test-headless`, either sandboxed test aggregate, `check`, or another
+ordinary aggregate. Invocation is prohibited until a fresh review of the exact tree
+authorizes exactly one run. The gate follows the canonical Rust and V27 PostgreSQL
+mechanical preparation. It remains separate from `test-vnext-postgres-store`, because
+that PostgreSQL aggregate cannot by itself prove the cross-store migration entrypoint
+and host credential binding. A focused copy and an automatic retry are prohibited.
 
 One invocation must exercise the real V26-to-V27 migration and the real
 `decodexd` migration, finalization, and completed-verification entrypoints. It must not

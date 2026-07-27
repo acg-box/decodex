@@ -1,4 +1,4 @@
-use std::{error::Error, time::Duration};
+use std::{error::Error, sync::Arc, time::Duration};
 
 use decodex_core::{
 	AccountOperationId, AccountOperationKind, AccountOperationPhase, AccountProvider,
@@ -23,6 +23,16 @@ const ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000001";
 const DISABLE_ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000002";
 const ROTATION_ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000003";
 const ATOMIC_ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000004";
+const DUPLICATE_WINNER_ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000005";
+const DUPLICATE_LOSER_ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000006";
+const DUPLICATE_WINNER_OPERATION_ID: &str = "71000000-0000-4000-8000-000000000021";
+const DUPLICATE_LOSER_OPERATION_ID: &str = "71000000-0000-4000-8000-000000000022";
+const CONCURRENT_ACCOUNT_A_ID: &str = "71000000-0000-4000-8000-000000000007";
+const CONCURRENT_ACCOUNT_B_ID: &str = "71000000-0000-4000-8000-000000000008";
+const CONCURRENT_OPERATION_A_ID: &str = "71000000-0000-4000-8000-000000000023";
+const CONCURRENT_OPERATION_B_ID: &str = "71000000-0000-4000-8000-000000000024";
+const DUPLICATE_PROVIDER_ACCOUNT_ID: &str = "duplicate-provider-account";
+const CONCURRENT_PROVIDER_ACCOUNT_ID: &str = "concurrent-duplicate-provider-account";
 const GENERIC_WORKER: &str = "72000000-0000-4000-8000-000000000001";
 const RESET_WORKER_A: &str = "73000000-0000-4000-8000-000000000001";
 const RESET_WORKER_B: &str = "73000000-0000-4000-8000-000000000002";
@@ -194,6 +204,270 @@ async fn account_terminal_mutation_and_receipt_are_atomic_and_replay_exactly()
 	Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires a fresh isolated PostgreSQL 18 V27 database"]
+async fn duplicate_provider_enrollment_rejects_without_effects_and_replays_exactly()
+-> Result<(), Box<dyn Error>> {
+	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (owner, owner_connection) = migration.connect(NoTls).await?;
+	let owner_connection_task = tokio::spawn(owner_connection);
+
+	assert_sequential_duplicate_provider_rejection(&store, &owner).await?;
+	assert_concurrent_duplicate_provider_rejection(&store, &owner).await?;
+
+	store.close();
+	drop(owner);
+	owner_connection_task.await??;
+	Ok(())
+}
+
+async fn assert_sequential_duplicate_provider_rejection(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+) -> Result<(), Box<dyn Error>> {
+	let winner = duplicate_enrollment_preparation(
+		DUPLICATE_WINNER_ACCOUNT_ID,
+		DUPLICATE_WINNER_OPERATION_ID,
+		DUPLICATE_PROVIDER_ACCOUNT_ID,
+		"Duplicate provider winner",
+	)?;
+	assert!(matches!(
+		store.prepare_account_operation(&winner).await?,
+		AccountLifecycleMutationOutcome::Applied(ref mutation)
+			if mutation.phase == AccountOperationPhase::Prepared
+	));
+	let counts_before = account_lifecycle_side_effect_counts(owner).await?;
+	let loser = duplicate_enrollment_preparation(
+		DUPLICATE_LOSER_ACCOUNT_ID,
+		DUPLICATE_LOSER_OPERATION_ID,
+		DUPLICATE_PROVIDER_ACCOUNT_ID,
+		"Duplicate provider loser",
+	)?;
+	let command = CommandIdentity::new(
+		"duplicate-provider-enrollment-loser",
+		b"duplicate-provider-enrollment-loser-v1",
+	)?;
+	let lease = match store
+		.reserve_account_command(
+			&command,
+			AccountCommandKind::Enroll,
+			loser.account_id.as_str(),
+			None,
+		)
+		.await?
+	{
+		AccountCommandReceiptClaim::Owned(lease) => lease,
+		AccountCommandReceiptClaim::Replayed(_) => panic!("fresh duplicate command replayed"),
+	};
+	let rejected = store.prepare_account_operation(&loser).await?;
+	assert!(matches!(
+		rejected,
+		AccountLifecycleMutationOutcome::Rejected {
+			rejection: AccountLifecycleRejection::IdentityConflict,
+			ref actual,
+		} if actual.account_revision == 0 && actual.phase == AccountOperationPhase::Prepared
+	));
+	let response = provider_mismatch_receipt();
+	store.complete_account_command(lease, &response).await?;
+
+	assert_eq!(account_lifecycle_side_effect_counts(owner).await?, counts_before);
+	let loser_projection = owner
+		.query_one(
+			"SELECT \
+			 EXISTS(SELECT 1 FROM decodex.accounts WHERE account_id=$1::text::uuid),\
+			 EXISTS(SELECT 1 FROM decodex.account_operations \
+			  WHERE operation_id=$2::text::uuid OR account_id=$1::text::uuid),\
+			 EXISTS(SELECT 1 FROM decodex.account_routing_order \
+			  WHERE account_id=$1::text::uuid),\
+			 EXISTS(SELECT 1 FROM decodex.accounts \
+			  WHERE credential_writer_operation_id=$2::text::uuid)",
+			&[&DUPLICATE_LOSER_ACCOUNT_ID, &DUPLICATE_LOSER_OPERATION_ID],
+		)
+		.await?;
+	assert!(!(0..4).any(|index| loser_projection.get::<_, bool>(index)));
+
+	let receipt = owner
+		.query_one(
+			"SELECT operation,entity_id,receipt_state::text,response,response_bytes,\
+			 completed_at IS NOT NULL FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[&"duplicate-provider-enrollment-loser"],
+		)
+		.await?;
+	assert_eq!(receipt.get::<_, &str>(0), "enroll_account");
+	assert_eq!(receipt.get::<_, &str>(1), DUPLICATE_LOSER_ACCOUNT_ID);
+	assert_eq!(receipt.get::<_, &str>(2), "completed");
+	assert_eq!(receipt.get::<_, Value>(3), response);
+	assert_eq!(receipt.get::<_, Vec<u8>>(4), serde_json::to_vec(&response)?);
+	assert!(receipt.get::<_, bool>(5));
+	let replay = match store
+		.reserve_account_command(
+			&command,
+			AccountCommandKind::Enroll,
+			loser.account_id.as_str(),
+			None,
+		)
+		.await?
+	{
+		AccountCommandReceiptClaim::Replayed(value) => value,
+		AccountCommandReceiptClaim::Owned(_) => panic!("completed duplicate command was reclaimed"),
+	};
+	assert_eq!(replay, response);
+	Ok(())
+}
+
+async fn assert_concurrent_duplicate_provider_rejection(
+	store: &PostgresStore,
+	owner: &tokio_postgres::Client,
+) -> Result<(), Box<dyn Error>> {
+	let account_a = AccountId::new(CONCURRENT_ACCOUNT_A_ID)?;
+	let account_b = AccountId::new(CONCURRENT_ACCOUNT_B_ID)?;
+	let operation_a = AccountOperationId::new(CONCURRENT_OPERATION_A_ID)?;
+	let operation_b = AccountOperationId::new(CONCURRENT_OPERATION_B_ID)?;
+	let preparation_a = duplicate_enrollment_preparation(
+		CONCURRENT_ACCOUNT_A_ID,
+		CONCURRENT_OPERATION_A_ID,
+		CONCURRENT_PROVIDER_ACCOUNT_ID,
+		"Concurrent provider A",
+	)?;
+	let preparation_b = duplicate_enrollment_preparation(
+		CONCURRENT_ACCOUNT_B_ID,
+		CONCURRENT_OPERATION_B_ID,
+		CONCURRENT_PROVIDER_ACCOUNT_ID,
+		"Concurrent provider B",
+	)?;
+	let counts_before = account_lifecycle_side_effect_counts(owner).await?;
+	let barrier = Arc::new(tokio::sync::Barrier::new(3));
+	let first_store = store.clone();
+	let first_barrier = barrier.clone();
+	let first_task = tokio::spawn(async move {
+		first_barrier.wait().await;
+		first_store.prepare_account_operation(&preparation_a).await
+	});
+	let second_store = store.clone();
+	let second_barrier = barrier.clone();
+	let second_task = tokio::spawn(async move {
+		second_barrier.wait().await;
+		second_store.prepare_account_operation(&preparation_b).await
+	});
+	barrier.wait().await;
+	let first = first_task.await??;
+	let second = second_task.await??;
+	let (winner_account, loser_account, loser_operation) = match (&first, &second) {
+		(
+			AccountLifecycleMutationOutcome::Applied(first_mutation),
+			AccountLifecycleMutationOutcome::Rejected {
+				rejection: AccountLifecycleRejection::IdentityConflict,
+				..
+			},
+		) if first_mutation.phase == AccountOperationPhase::Prepared =>
+			(&account_a, &account_b, &operation_b),
+		(
+			AccountLifecycleMutationOutcome::Rejected {
+				rejection: AccountLifecycleRejection::IdentityConflict,
+				..
+			},
+			AccountLifecycleMutationOutcome::Applied(second_mutation),
+		) if second_mutation.phase == AccountOperationPhase::Prepared =>
+			(&account_b, &account_a, &operation_a),
+		_ => panic!("concurrent duplicate enrollment did not produce one typed loser"),
+	};
+	let counts_after = account_lifecycle_side_effect_counts(owner).await?;
+	assert_eq!(counts_after[0], counts_before[0] + 1);
+	assert_eq!(counts_after[1], counts_before[1] + 1);
+	assert_eq!(counts_after[2], counts_before[2] + 1);
+	assert_eq!(counts_after[3], counts_before[3]);
+	assert_eq!(counts_after[4], counts_before[4]);
+	assert_eq!(counts_after[5], counts_before[5]);
+	assert_eq!(counts_after[6], counts_before[6]);
+	assert_eq!(counts_after[7], counts_before[7] + 1);
+	let provider_rows = owner
+		.query(
+			"SELECT account_id::text FROM decodex.accounts \
+			 WHERE provider_kind='chatgpt' AND provider_account_id=$1 \
+			 AND tombstoned_at IS NULL",
+			&[&CONCURRENT_PROVIDER_ACCOUNT_ID],
+		)
+		.await?;
+	assert_eq!(provider_rows.len(), 1);
+	assert_eq!(provider_rows[0].get::<_, &str>(0), winner_account.as_str());
+	let loser_projection = owner
+		.query_one(
+			"SELECT \
+			 EXISTS(SELECT 1 FROM decodex.accounts WHERE account_id=$1::text::uuid),\
+			 EXISTS(SELECT 1 FROM decodex.account_operations \
+			  WHERE operation_id=$2::text::uuid OR account_id=$1::text::uuid),\
+			 EXISTS(SELECT 1 FROM decodex.account_routing_order \
+			  WHERE account_id=$1::text::uuid)",
+			&[&loser_account.as_str(), &loser_operation.as_str()],
+		)
+		.await?;
+	assert!(!(0..3).any(|index| loser_projection.get::<_, bool>(index)));
+	Ok(())
+}
+
+fn duplicate_enrollment_preparation(
+	account_id: &str,
+	operation_id: &str,
+	provider_account_id: &str,
+	label: &str,
+) -> Result<AccountOperationPreparation, Box<dyn Error>> {
+	let account_id = AccountId::new(account_id)?;
+	let operation_id = AccountOperationId::new(operation_id)?;
+	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)?;
+	Ok(AccountOperationPreparation {
+		operation_id: operation_id.clone(),
+		account_id,
+		kind: AccountOperationKind::Enroll,
+		display_label: Some(label.to_owned()),
+		enabled: Some(true),
+		expected_account_revision: None,
+		expected: None,
+		target: Some(CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::V1,
+			version: CredentialVersion::new(1)?,
+			fingerprint: CredentialFingerprint::new(CREDENTIAL_FINGERPRINT)?,
+			provider: provider.clone(),
+			writer_operation_id: operation_id,
+		}),
+		provider,
+	})
+}
+
+async fn account_lifecycle_side_effect_counts(
+	owner: &tokio_postgres::Client,
+) -> Result<[i64; 8], tokio_postgres::Error> {
+	let row = owner
+		.query_one(
+			"SELECT \
+			 (SELECT count(*) FROM decodex.accounts),\
+			 (SELECT count(*) FROM decodex.account_operations),\
+			 (SELECT count(*) FROM decodex.account_routing_order),\
+			 (SELECT count(*) FROM decodex.accounts \
+			  WHERE credential_store_schema_version IS NOT NULL),\
+			 (SELECT count(*) FROM decodex.account_quota_facts),\
+			 (SELECT count(*) FROM decodex.activity),\
+			 (SELECT count(*) FROM decodex.outbox),\
+			 (SELECT revision FROM decodex.account_routing_control WHERE singleton)",
+			&[],
+		)
+		.await?;
+	Ok(std::array::from_fn(|index| row.get(index)))
+}
+
+fn provider_mismatch_receipt() -> Value {
+	json!({
+		"outcome": "rejected",
+		"data": {
+			"schema": "decodex/account-command-result/1",
+			"error": {
+				"reason": "account_command_rejected",
+				"rejection": "provider_mismatch",
+			},
+		},
+	})
+}
+
 struct InitialResetCardOperation {
 	command: CommandIdentity,
 	descriptor: ResetCardDescriptor,
@@ -245,8 +519,14 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 		&nothing_preparation,
 	)
 	.await?;
-	reject_pending_replay_after_account_change(&store, &owner, &account_id, reusable_descriptor)
-		.await?;
+	reject_pending_replay_after_account_change(
+		&store,
+		&owner,
+		&migration,
+		&account_id,
+		reusable_descriptor,
+	)
+	.await?;
 
 	store.close();
 	drop(owner);
@@ -1002,6 +1282,7 @@ async fn start_reusable_operation_and_assert_replays(
 async fn reject_pending_replay_after_account_change(
 	store: &PostgresStore,
 	owner: &tokio_postgres::Client,
+	migration: &tokio_postgres::Config,
 	account_id: &AccountId,
 	reusable_descriptor: ResetCardDescriptor,
 ) -> Result<(), Box<dyn Error>> {
@@ -1017,11 +1298,415 @@ async fn reject_pending_replay_after_account_change(
 		AccountAdministrationOutcome::Updated { revision: FINAL_ACCOUNT_REVISION },
 	);
 
-	let pending_request = b"reset-card-pending-operation-v1".to_vec();
+	let effects_before = reset_card_effect_counts(owner).await?;
+	let pending_command = insert_pending_reset_card_receipt(
+		owner,
+		PENDING_OPERATION_KEY,
+		b"reset-card-pending-operation-v1",
+		account_id,
+		REENABLED_ACCOUNT_REVISION,
+		reusable_descriptor,
+	)
+	.await?;
+	assert!(matches!(
+		store
+			.replay_reset_card_preparation(
+				&pending_command,
+				account_id,
+				REENABLED_ACCOUNT_REVISION,
+				reusable_descriptor,
+				Some(CALLBACK_PROFILE),
+			)
+			.await,
+		Err(StoreError::ResetCardCommitOutcomeUnknown)
+	));
+	let state_rejected_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-state-rejected",
+		b"reset-card-expired-state-rejected-v1",
+		account_id,
+		FINAL_ACCOUNT_REVISION,
+		reusable_descriptor,
+	)
+	.await?;
+	let admitted_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-admitted",
+		b"reset-card-expired-admitted-v1",
+		account_id,
+		FINAL_ACCOUNT_REVISION,
+		reusable_descriptor,
+	)
+	.await?;
+	let absent_account_id = AccountId::new("71000000-0000-4000-8000-000000000009")?;
+	let absent_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-absent",
+		b"reset-card-expired-absent-v1",
+		&absent_account_id,
+		1,
+		reusable_descriptor,
+	)
+	.await?;
+	let lower_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-lower",
+		b"reset-card-expired-lower-v1",
+		account_id,
+		FINAL_ACCOUNT_REVISION + 1,
+		reusable_descriptor,
+	)
+	.await?;
+	let missing_callback_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-missing-callback",
+		b"reset-card-expired-missing-callback-v1",
+		account_id,
+		FINAL_ACCOUNT_REVISION,
+		reusable_descriptor,
+	)
+	.await?;
+	let store_unavailable_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-store-unavailable",
+		b"reset-card-expired-store-unavailable-v1",
+		account_id,
+		FINAL_ACCOUNT_REVISION,
+		reusable_descriptor,
+	)
+	.await?;
+	let completed_race_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-completed-race",
+		b"reset-card-expired-completed-race-v1",
+		account_id,
+		FINAL_ACCOUNT_REVISION,
+		reusable_descriptor,
+	)
+	.await?;
+	let drift_after_reclaim_command = insert_pending_reset_card_receipt(
+		owner,
+		"reset-card-expired-drift-after-reclaim",
+		b"reset-card-expired-drift-after-reclaim-v1",
+		account_id,
+		FINAL_ACCOUNT_REVISION,
+		reusable_descriptor,
+	)
+	.await?;
+	time::sleep(Duration::from_millis(550)).await;
+
+	assert!(matches!(
+		store
+			.replay_reset_card_preparation(
+				&pending_command,
+				account_id,
+				REENABLED_ACCOUNT_REVISION,
+				reusable_descriptor,
+				Some(CALLBACK_PROFILE),
+			)
+			.await,
+		Err(StoreError::RevisionConflict {
+			expected: Some(REENABLED_ACCOUNT_REVISION),
+			actual: Some(FINAL_ACCOUNT_REVISION),
+			..
+		})
+	));
+	let higher_revision_receipt =
+		completed_reset_card_receipt(owner, PENDING_OPERATION_KEY).await?;
+	assert!(matches!(
+		store
+			.replay_reset_card_preparation(
+				&pending_command,
+				account_id,
+				REENABLED_ACCOUNT_REVISION,
+				reusable_descriptor,
+				Some(CALLBACK_PROFILE),
+			)
+			.await,
+		Err(StoreError::RevisionConflict {
+			expected: Some(REENABLED_ACCOUNT_REVISION),
+			actual: Some(FINAL_ACCOUNT_REVISION),
+			..
+		})
+	));
+	assert_eq!(
+		completed_reset_card_receipt(owner, PENDING_OPERATION_KEY).await?,
+		higher_revision_receipt,
+		"completed revision rejection bytes must replay unchanged",
+	);
+
+	owner
+		.execute(
+			"UPDATE decodex.accounts SET state='unknown' \
+			 WHERE account_id=$1::uuid AND revision=$2",
+			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
+		)
+		.await?;
+	assert!(matches!(
+		store
+			.replay_reset_card_preparation(
+				&state_rejected_command,
+				account_id,
+				FINAL_ACCOUNT_REVISION,
+				reusable_descriptor,
+				Some(CALLBACK_PROFILE),
+			)
+			.await,
+		Err(StoreError::InvalidInput("account state rejects manual reset-card use"))
+	));
+	let state_rejected_receipt =
+		completed_reset_card_receipt(owner, "reset-card-expired-state-rejected").await?;
+	owner
+		.execute(
+			"UPDATE decodex.accounts SET state='available' \
+			 WHERE account_id=$1::uuid AND revision=$2",
+			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
+		)
+		.await?;
+	assert!(matches!(
+		store
+			.replay_reset_card_preparation(
+				&state_rejected_command,
+				account_id,
+				FINAL_ACCOUNT_REVISION,
+				reusable_descriptor,
+				Some(CALLBACK_PROFILE),
+			)
+			.await,
+		Err(StoreError::InvalidInput("account state rejects manual reset-card use"))
+	));
+	assert_eq!(
+		completed_reset_card_receipt(owner, "reset-card-expired-state-rejected").await?,
+		state_rejected_receipt,
+		"lifecycle recovery must not replace completed rejection bytes",
+	);
+
+	for (key, command, candidate_account, expected_revision) in [
+		("reset-card-expired-admitted", &admitted_command, account_id, FINAL_ACCOUNT_REVISION),
+		("reset-card-expired-absent", &absent_command, &absent_account_id, 1),
+		("reset-card-expired-lower", &lower_command, account_id, FINAL_ACCOUNT_REVISION + 1),
+	] {
+		let receipt_before = pending_reset_card_receipt_fence(owner, key).await?;
+		assert_eq!(
+			store
+				.replay_reset_card_preparation(
+					command,
+					candidate_account,
+					expected_revision,
+					reusable_descriptor,
+					Some(CALLBACK_PROFILE),
+				)
+				.await?,
+			None,
+		);
+		assert_eq!(
+			pending_reset_card_receipt_fence(owner, key).await?,
+			receipt_before,
+			"a clear live-continuation observation must not rotate the pending receipt",
+		);
+	}
+
+	let missing_callback_before =
+		pending_reset_card_receipt_fence(owner, "reset-card-expired-missing-callback").await?;
+	assert!(matches!(
+		store
+			.replay_reset_card_preparation(
+				&missing_callback_command,
+				account_id,
+				FINAL_ACCOUNT_REVISION,
+				reusable_descriptor,
+				None,
+			)
+			.await,
+		Err(StoreError::ResetCardCommitOutcomeUnknown)
+	));
+	assert_eq!(
+		pending_reset_card_receipt_fence(owner, "reset-card-expired-missing-callback").await?,
+		missing_callback_before,
+	);
+
+	owner
+		.execute(
+			"UPDATE decodex.accounts SET credential_store_observation='unavailable' \
+			 WHERE account_id=$1::uuid AND revision=$2",
+			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
+		)
+		.await?;
+	let store_unavailable_before =
+		pending_reset_card_receipt_fence(owner, "reset-card-expired-store-unavailable").await?;
+	assert!(matches!(
+		store
+			.replay_reset_card_preparation(
+				&store_unavailable_command,
+				account_id,
+				FINAL_ACCOUNT_REVISION,
+				reusable_descriptor,
+				Some(CALLBACK_PROFILE),
+			)
+			.await,
+		Err(StoreError::ResetCardCommitOutcomeUnknown)
+	));
+	assert_eq!(
+		pending_reset_card_receipt_fence(owner, "reset-card-expired-store-unavailable").await?,
+		store_unavailable_before,
+	);
+	owner
+		.execute(
+			"UPDATE decodex.accounts SET credential_store_observation='exact' \
+			 WHERE account_id=$1::uuid AND revision=$2",
+			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
+		)
+		.await?;
+
+	owner
+		.execute(
+			"UPDATE decodex.accounts SET state='unknown' \
+			 WHERE account_id=$1::uuid AND revision=$2",
+			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
+		)
+		.await?;
+	let (completed_race_left, completed_race_right) = tokio::join!(
+		store.replay_reset_card_preparation(
+			&completed_race_command,
+			account_id,
+			FINAL_ACCOUNT_REVISION,
+			reusable_descriptor,
+			Some(CALLBACK_PROFILE),
+		),
+		store.replay_reset_card_preparation(
+			&completed_race_command,
+			account_id,
+			FINAL_ACCOUNT_REVISION,
+			reusable_descriptor,
+			Some(CALLBACK_PROFILE),
+		),
+	);
+	assert!(matches!(
+		completed_race_left,
+		Err(StoreError::InvalidInput("account state rejects manual reset-card use"))
+	));
+	assert!(matches!(
+		completed_race_right,
+		Err(StoreError::InvalidInput("account state rejects manual reset-card use"))
+	));
+	assert_eq!(
+		pending_reset_card_receipt_fence(owner, "reset-card-expired-completed-race")
+			.await?
+			.receipt_state,
+		"completed",
+	);
+
+	let drift_before =
+		pending_reset_card_receipt_fence(owner, "reset-card-expired-drift-after-reclaim").await?;
+	let (mut receipt_blocker, receipt_blocker_connection) = migration.connect(NoTls).await?;
+	let receipt_blocker_connection_task = tokio::spawn(receipt_blocker_connection);
+	let receipt_blocker_transaction = receipt_blocker.transaction().await?;
+	receipt_blocker_transaction
+		.query_one(
+			"SELECT idempotency_key FROM decodex.command_receipts \
+			 WHERE idempotency_key=$1 FOR UPDATE",
+			&[&"reset-card-expired-drift-after-reclaim"],
+		)
+		.await?;
+	let replay_store = store.clone();
+	let replay_account_id = account_id.clone();
+	let replay_task = tokio::spawn(async move {
+		replay_store
+			.replay_reset_card_preparation(
+				&drift_after_reclaim_command,
+				&replay_account_id,
+				FINAL_ACCOUNT_REVISION,
+				reusable_descriptor,
+				Some(CALLBACK_PROFILE),
+			)
+			.await
+	});
+	time::sleep(Duration::from_millis(50)).await;
+
+	let (mut lifecycle_owner, lifecycle_owner_connection) = migration.connect(NoTls).await?;
+	let lifecycle_owner_connection_task = tokio::spawn(lifecycle_owner_connection);
+	let lifecycle_transaction = lifecycle_owner.transaction().await?;
+	let lifecycle_lock = time::timeout(
+		Duration::from_millis(250),
+		lifecycle_transaction.query_one(
+			"SELECT pg_catalog.pg_advisory_xact_lock(1422,pg_catalog.hashtext($1))",
+			&[&account_id.as_str()],
+		),
+	)
+	.await;
+	assert!(
+		matches!(lifecycle_lock, Ok(Ok(_))),
+		"receipt reservation must not wait while holding the account lifecycle lock",
+	);
+	receipt_blocker_transaction.commit().await?;
+
+	let mut reclaimed_fence = None;
+	for _ in 0..50 {
+		let observed =
+			pending_reset_card_receipt_fence(owner, "reset-card-expired-drift-after-reclaim")
+				.await?;
+		if observed.claim_token != drift_before.claim_token {
+			reclaimed_fence = Some(observed);
+			break;
+		}
+		time::sleep(Duration::from_millis(10)).await;
+	}
+	let reclaimed_fence =
+		reclaimed_fence.expect("the expired receipt must be reclaimed before account revalidation");
+	assert_eq!(reclaimed_fence.receipt_state, "pending");
+	lifecycle_transaction
+		.execute(
+			"UPDATE decodex.accounts SET state='available' \
+			 WHERE account_id=$1::uuid AND revision=$2",
+			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
+		)
+		.await?;
+	lifecycle_transaction.commit().await?;
+	assert!(matches!(replay_task.await?, Err(StoreError::ResetCardCommitOutcomeUnknown)));
+	let drift_after =
+		pending_reset_card_receipt_fence(owner, "reset-card-expired-drift-after-reclaim").await?;
+	assert_eq!(drift_after.receipt_state, "pending");
+	assert_eq!(drift_after.claim_token, reclaimed_fence.claim_token);
+
+	drop(receipt_blocker);
+	drop(lifecycle_owner);
+	receipt_blocker_connection_task.await??;
+	lifecycle_owner_connection_task.await??;
+	assert_eq!(
+		reset_card_effect_counts(owner).await?,
+		effects_before,
+		"rejected and unknown replay recovery must not append activity or outbox effects",
+	);
+
+	Ok(())
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct PendingResetCardReceiptFence {
+	receipt_state: String,
+	claim_token: Option<String>,
+	claim_expires_at: Option<String>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct CompletedResetCardReceipt {
+	response: Value,
+	response_bytes: Vec<u8>,
+}
+
+async fn insert_pending_reset_card_receipt(
+	owner: &tokio_postgres::Client,
+	key: &str,
+	request: &[u8],
+	account_id: &AccountId,
+	expected_revision: i64,
+	descriptor: ResetCardDescriptor,
+) -> Result<CommandIdentity, Box<dyn Error>> {
+	let request = request.to_vec();
 	let descriptor_source = format!(
 		"{}:{}",
-		reusable_descriptor.granted_at().unix_seconds(),
-		reusable_descriptor.expires_at().unix_seconds(),
+		descriptor.granted_at().unix_seconds(),
+		descriptor.expires_at().unix_seconds(),
 	);
 	owner
 		.execute(
@@ -1033,57 +1718,59 @@ async fn reject_pending_replay_after_account_change(
 			  'decodex/store-command/1','consume_reset_card','global','reset_cards',$3,$4, \
 			  encode(digest($5::text,'sha256'),'hex'),NULL,'pending',gen_random_uuid(), \
 			  clock_timestamp()+interval '500 milliseconds')",
-			&[
-				&PENDING_OPERATION_KEY,
-				&pending_request,
-				&account_id.as_str(),
-				&REENABLED_ACCOUNT_REVISION,
-				&descriptor_source,
-			],
+			&[&key, &request, &account_id.as_str(), &expected_revision, &descriptor_source],
 		)
 		.await?;
-	let pending_command = CommandIdentity::new(PENDING_OPERATION_KEY, &pending_request)?;
-	assert!(matches!(
-		store
-			.replay_reset_card_preparation(
-				&pending_command,
-				account_id,
-				REENABLED_ACCOUNT_REVISION,
-				reusable_descriptor,
-			)
-			.await,
-		Err(StoreError::ResetCardCommitOutcomeUnknown)
-	));
-	time::sleep(Duration::from_millis(550)).await;
-	assert!(matches!(
-		store
-			.replay_reset_card_preparation(
-				&pending_command,
-				account_id,
-				REENABLED_ACCOUNT_REVISION,
-				reusable_descriptor,
-			)
-			.await,
-		Err(StoreError::RevisionConflict {
-			expected: Some(REENABLED_ACCOUNT_REVISION),
-			actual: Some(FINAL_ACCOUNT_REVISION),
-			..
-		})
-	));
-	let recovered_pending_state: String = owner
-		.query_one(
-			"SELECT receipt_state::text FROM decodex.command_receipts \
-			 WHERE idempotency_key=$1",
-			&[&PENDING_OPERATION_KEY],
-		)
-		.await?
-		.get(0);
-	assert_eq!(
-		recovered_pending_state, "completed",
-		"an expired pending receipt must enter fenced recovery and close after proved rejection"
-	);
 
-	Ok(())
+	Ok(CommandIdentity::new(key, &request)?)
+}
+
+async fn pending_reset_card_receipt_fence(
+	owner: &tokio_postgres::Client,
+	key: &str,
+) -> Result<PendingResetCardReceiptFence, tokio_postgres::Error> {
+	let row = owner
+		.query_one(
+			"SELECT receipt_state::text,claim_token::text,claim_expires_at::text \
+			 FROM decodex.command_receipts WHERE idempotency_key=$1",
+			&[&key],
+		)
+		.await?;
+
+	Ok(PendingResetCardReceiptFence {
+		receipt_state: row.get(0),
+		claim_token: row.get(1),
+		claim_expires_at: row.get(2),
+	})
+}
+
+async fn completed_reset_card_receipt(
+	owner: &tokio_postgres::Client,
+	key: &str,
+) -> Result<CompletedResetCardReceipt, tokio_postgres::Error> {
+	let row = owner
+		.query_one(
+			"SELECT response,response_bytes FROM decodex.command_receipts \
+			 WHERE idempotency_key=$1 AND receipt_state='completed'",
+			&[&key],
+		)
+		.await?;
+
+	Ok(CompletedResetCardReceipt { response: row.get(0), response_bytes: row.get(1) })
+}
+
+async fn reset_card_effect_counts(
+	owner: &tokio_postgres::Client,
+) -> Result<[i64; 2], tokio_postgres::Error> {
+	let row = owner
+		.query_one(
+			"SELECT (SELECT count(*) FROM decodex.activity), \
+			 (SELECT count(*) FROM decodex.outbox)",
+			&[],
+		)
+		.await?;
+
+	Ok([row.get(0), row.get(1)])
 }
 
 fn process_binding(revision: i64) -> Result<ProcessGenerationAccountBinding, Box<dyn Error>> {

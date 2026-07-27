@@ -964,6 +964,17 @@ scripts/macos/test_decodex_app_stage.sh
 python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
+The XY-1422 account migration transition gate is not native-app or ordinary aggregate
+coverage. Its single canonical command is:
+
+```sh
+cargo make test-vnext-account-migration-transition
+```
+
+This single-use task is standalone and absent from `test`, `test-headless`, both
+sandboxed test aggregates, `check`, and other ordinary aggregates. Invocation is
+prohibited until a fresh review of the exact tree authorizes exactly one run.
+
 The Swift suite covers reset-card architecture boundaries, stable CLI decoding,
 second-click confirmation, bounded startup read recovery, bounded pending-journal
 safety, and same-key restart recovery.

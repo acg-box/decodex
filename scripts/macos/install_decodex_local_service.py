@@ -416,6 +416,20 @@ class MigrationStagingOwner:
             ) from failures[0]
 
 
+def finish_account_migration_staging(
+    staging_owner: MigrationStagingOwner,
+    primary_error: BaseException | None,
+) -> None:
+    try:
+        staging_owner.cleanup()
+    except BaseException as cleanup_error:
+        if primary_error is not None:
+            raise primary_error from cleanup_error
+        raise
+    if primary_error is not None:
+        raise primary_error
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     home = Path.home()
     discovered_codex = shutil.which("codex")
@@ -2908,6 +2922,62 @@ def validate_host(paths: InstallPaths) -> int:
     return uid
 
 
+def resume_prepared_account_migration(
+    paths: InstallPaths,
+    uid: int,
+    namespace_lock: InstallerNamespaceLock,
+    *,
+    checkpoint: Callable[[str], None],
+    transition_gate_fd: int | None,
+) -> dict[str, Any]:
+    if not managed_path_exists(
+        paths.migration_manifest,
+        "prepared account migration manifest is unavailable",
+    ):
+        raise InstallError("prepared account migration manifest is unavailable")
+    manifest_accounts = load_existing_manifest_accounts(
+        paths.migration_manifest,
+        uid,
+    )
+    staging_owner = MigrationStagingOwner.for_accounts(
+        paths,
+        [str(account["account_id"]) for account in manifest_accounts.values()],
+    )
+    primary_error: BaseException | None = None
+    completed_result: dict[str, Any] | None = None
+    staging_retired = False
+    try:
+        run_prepared_account_migration_verifier(
+            paths,
+            namespace_lock,
+            transition_gate_fd=transition_gate_fd,
+        )
+        checkpoint("destination_reverified")
+        staging_owner.cleanup()
+        staging_retired = True
+        checkpoint("staging_retired")
+        retire_active_migration_sources(paths)
+        checkpoint("active_legacy_retired")
+        checkpoint("before_finalizer")
+        completed_result = run_account_migration_finalizer(
+            paths,
+            namespace_lock,
+            transition_gate_fd=transition_gate_fd,
+        )
+        checkpoint("final_receipt_recorded")
+    except BaseException as error:
+        primary_error = error
+
+    if staging_retired:
+        if primary_error is not None:
+            raise primary_error
+    else:
+        finish_account_migration_staging(staging_owner, primary_error)
+    if completed_result is None:
+        raise InstallError("prepared account migration finalization is unavailable")
+    return completed_result
+
+
 def install_under_namespace_lock(
     paths: InstallPaths,
     uid: int,
@@ -2946,40 +3016,13 @@ def install_under_namespace_lock(
                 )
                 checkpoint("completed_receipt_verified")
             elif receipt_phase == "prepared":
-                if not managed_path_exists(
-                    paths.migration_manifest,
-                    "prepared account migration manifest is unavailable",
-                ):
-                    raise InstallError(
-                        "prepared account migration manifest is unavailable"
-                    )
-                manifest_accounts = load_existing_manifest_accounts(
-                    paths.migration_manifest,
+                completed_result = resume_prepared_account_migration(
+                    paths,
                     uid,
-                )
-                run_prepared_account_migration_verifier(
-                    paths,
                     namespace_lock,
+                    checkpoint=checkpoint,
                     transition_gate_fd=transition_gate_fd,
                 )
-                checkpoint("destination_reverified")
-                MigrationStagingOwner.for_accounts(
-                    paths,
-                    [
-                        str(account["account_id"])
-                        for account in manifest_accounts.values()
-                    ],
-                ).cleanup()
-                checkpoint("staging_retired")
-                retire_active_migration_sources(paths)
-                checkpoint("active_legacy_retired")
-                checkpoint("before_finalizer")
-                completed_result = run_account_migration_finalizer(
-                    paths,
-                    namespace_lock,
-                    transition_gate_fd=transition_gate_fd,
-                )
-                checkpoint("final_receipt_recorded")
             else:
                 raise InstallError(
                     "active vNext config has no account migration receipt"
@@ -2996,6 +3039,9 @@ def install_under_namespace_lock(
             uid,
         )
         staging_owner: MigrationStagingOwner | None = None
+        staging_cleanup_attempted = False
+        staging_retired = False
+        primary_error: BaseException | None = None
         try:
             vnext_config_body = prepare_vnext_config_source(paths, uid)
             if managed_path_exists(paths.legacy_config, "legacy account config is malformed"):
@@ -3063,56 +3109,78 @@ def install_under_namespace_lock(
             initialize_cluster(paths, uid)
             postgres = start_temporary_postgres(paths)
             try:
-                environment = psql_environment(paths)
-                ensure_roles_and_database(paths, environment)
-                prepared = run_offline_account_migration(
-                    paths,
-                    namespace_lock,
-                    transition_gate_fd=transition_gate_fd,
-                )
-                checkpoint("destination_verified")
-                canonical_manifest = read_owned_file(
-                    paths.migration_manifest,
-                    uid,
-                    MAX_MIGRATION_MANIFEST_BYTES,
-                    "account migration manifest is malformed",
-                )
-                expected_digest = decision_digest(json.loads(canonical_manifest))
-                if prepared["manifest_sha256"] != expected_digest:
-                    raise InstallError("offline account migration intent identity differs")
-                checkpoint("before_config_swap")
-                atomic_write(paths.config, config, 0o600)
-                checkpoint("config_swapped")
-                staging_owner.cleanup()
-                checkpoint("staging_retired")
-                retire_active_migration_sources(paths)
-                checkpoint("active_legacy_retired")
-                checkpoint("before_finalizer")
-                migration_result = run_account_migration_finalizer(
-                    paths,
-                    namespace_lock,
-                    transition_gate_fd=transition_gate_fd,
-                )
-                checkpoint("final_receipt_recorded")
+                postgres_scope_error: BaseException | None = None
+                try:
+                    environment = psql_environment(paths)
+                    ensure_roles_and_database(paths, environment)
+                    prepared = run_offline_account_migration(
+                        paths,
+                        namespace_lock,
+                        transition_gate_fd=transition_gate_fd,
+                    )
+                    checkpoint("destination_verified")
+                    canonical_manifest = read_owned_file(
+                        paths.migration_manifest,
+                        uid,
+                        MAX_MIGRATION_MANIFEST_BYTES,
+                        "account migration manifest is malformed",
+                    )
+                    expected_digest = decision_digest(json.loads(canonical_manifest))
+                    if prepared["manifest_sha256"] != expected_digest:
+                        raise InstallError(
+                            "offline account migration intent identity differs"
+                        )
+                    checkpoint("before_config_swap")
+                    atomic_write(paths.config, config, 0o600)
+                    checkpoint("config_swapped")
+                    staging_owner.cleanup()
+                    staging_retired = True
+                    checkpoint("staging_retired")
+                    retire_active_migration_sources(paths)
+                    checkpoint("active_legacy_retired")
+                    checkpoint("before_finalizer")
+                    migration_result = run_account_migration_finalizer(
+                        paths,
+                        namespace_lock,
+                        transition_gate_fd=transition_gate_fd,
+                    )
+                    checkpoint("final_receipt_recorded")
+                except BaseException as error:
+                    postgres_scope_error = error
+                staging_cleanup_attempted = True
+                if staging_retired:
+                    if postgres_scope_error is not None:
+                        raise postgres_scope_error
+                else:
+                    finish_account_migration_staging(
+                        staging_owner,
+                        postgres_scope_error,
+                    )
             finally:
                 stop_temporary_postgres(postgres)
             if migration_result["manifest_sha256"] != expected_digest:
                 raise InstallError("account migration receipt identity differs")
             enrollments = [enrollment.account_id for enrollment in planned]
-        finally:
-            cleanup_error: BaseException | None = None
-            if staging_owner is not None:
-                try:
-                    staging_owner.cleanup()
-                except BaseException as error:
-                    cleanup_error = error
-            if legacy_lock is not None:
-                try:
-                    fcntl.flock(legacy_lock, fcntl.LOCK_UN)
-                finally:
-                    os.close(legacy_lock)
+        except BaseException as error:
+            primary_error = error
+
+        cleanup_error: BaseException | None = None
+        if staging_owner is not None and not staging_cleanup_attempted:
+            try:
+                staging_owner.cleanup()
+            except BaseException as error:
+                cleanup_error = error
+        if legacy_lock is not None:
+            try:
+                fcntl.flock(legacy_lock, fcntl.LOCK_UN)
+            finally:
+                os.close(legacy_lock)
+        if primary_error is not None:
             if cleanup_error is not None:
-                raise cleanup_error
+                raise primary_error from cleanup_error
+            raise primary_error
+        if cleanup_error is not None:
+            raise cleanup_error
 
     launch = launch_requested
     checkpoint("launch_decided")

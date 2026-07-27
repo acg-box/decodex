@@ -54,8 +54,7 @@ pub use account_migration::{
 };
 pub use account_service::{
 	AccountInspection, AccountLifecycleError, AccountSelectionFailure, AccountSelectionResult,
-	AccountService, ChatgptTokenProjection, CredentialRefreshError, CredentialRefreshPort,
-	OpenAiCredentialRefresher, StartupAccountReconciliation,
+	AccountService, ChatgptTokenProjection, CredentialRefreshError, StartupAccountReconciliation,
 };
 pub use application::{Application, ApplicationPublication};
 pub use bootstrap::ServiceBootstrap;

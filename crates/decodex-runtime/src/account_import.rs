@@ -29,6 +29,12 @@ pub(crate) struct ImportedCredential {
 	pub bundle: CredentialSecretBundle,
 }
 
+pub(crate) struct DecodedChatgptIdentity {
+	pub provider: ProviderIdentity,
+	pub provider_email: String,
+	pub plan_type: Option<String>,
+}
+
 /// Read the normal Codex-owned shared auth file without modifying it.
 pub(crate) fn read_shared_codex_credential() -> Result<ImportedCredential, CredentialImportError> {
 	let home = std::env::var_os("HOME")
@@ -178,40 +184,25 @@ fn parse_shared_codex(bytes: &[u8]) -> Result<ImportedCredential, CredentialImpo
 	{
 		return Err(CredentialImportError::InvalidCredential);
 	}
-	let mut claims: IdentityClaims = decode_claims(&auth.tokens.id_token)?;
-	let mut authority = claims.authority.take().ok_or(CredentialImportError::InvalidCredential)?;
-	let claimed_account_id =
-		authority.chatgpt_account_id.take().ok_or(CredentialImportError::InvalidCredential)?;
-	if claimed_account_id != auth.tokens.account_id {
+	let identity = decode_chatgpt_identity(&auth.tokens.id_token)?;
+	if identity.provider.account_id() != auth.tokens.account_id {
 		return Err(CredentialImportError::ProviderMismatch);
 	}
-	let email = claims.email.take().ok_or(CredentialImportError::InvalidCredential)?;
-	let plan_type = authority.chatgpt_plan_type.take();
 	validate_scalar(&auth.tokens.account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
-	validate_scalar(&email, MAX_EMAIL_BYTES)?;
-	if !email.contains('@') {
-		return Err(CredentialImportError::InvalidCredential);
-	}
-	if let Some(plan_type) = plan_type.as_ref() {
-		validate_scalar(plan_type, MAX_PLAN_TYPE_BYTES)?;
-	}
 	validate_token(&auth.tokens.access_token)?;
 	validate_token(&auth.tokens.refresh_token)?;
-	validate_token(&auth.tokens.id_token)?;
 	let expiry = decode_expiry_micros(&auth.tokens.access_token)?;
-	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, auth.tokens.account_id.clone())
-		.map_err(|_| CredentialImportError::InvalidCredential)?;
 	let bundle = CredentialSecretBundle::chatgpt(
 		std::mem::take(&mut auth.tokens.access_token),
 		std::mem::take(&mut auth.tokens.refresh_token),
 		Some(std::mem::take(&mut auth.tokens.id_token)),
-		plan_type,
-		email,
+		identity.plan_type,
+		identity.provider_email,
 		"bearer".to_owned(),
 		expiry,
 	)
 	.map_err(|_| CredentialImportError::Store)?;
-	Ok(ImportedCredential { provider, bundle })
+	Ok(ImportedCredential { provider: identity.provider, bundle })
 }
 
 fn parse_versioned_import(bytes: &[u8]) -> Result<ImportedCredential, CredentialImportError> {
@@ -272,6 +263,29 @@ fn decode_claims<T: for<'de> Deserialize<'de>>(token: &str) -> Result<T, Credent
 	serde_json::from_slice(&decoded).map_err(|_| CredentialImportError::InvalidCredential)
 }
 
+pub(crate) fn decode_chatgpt_identity(
+	id_token: &str,
+) -> Result<DecodedChatgptIdentity, CredentialImportError> {
+	validate_token(id_token)?;
+	let mut claims: IdentityClaims = decode_claims(id_token)?;
+	let mut authority = claims.authority.take().ok_or(CredentialImportError::InvalidCredential)?;
+	let provider_account_id =
+		authority.chatgpt_account_id.take().ok_or(CredentialImportError::InvalidCredential)?;
+	let provider_email = claims.email.take().ok_or(CredentialImportError::InvalidCredential)?;
+	let plan_type = authority.chatgpt_plan_type.take();
+	validate_scalar(&provider_account_id, MAX_PROVIDER_ACCOUNT_ID_BYTES)?;
+	validate_scalar(&provider_email, MAX_EMAIL_BYTES)?;
+	if !provider_email.contains('@') {
+		return Err(CredentialImportError::InvalidCredential);
+	}
+	if let Some(plan_type) = plan_type.as_ref() {
+		validate_scalar(plan_type, MAX_PLAN_TYPE_BYTES)?;
+	}
+	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
+		.map_err(|_| CredentialImportError::InvalidCredential)?;
+	Ok(DecodedChatgptIdentity { provider, provider_email, plan_type })
+}
+
 fn decode_expiry_micros(token: &str) -> Result<i64, CredentialImportError> {
 	let claims: ExpiryClaims = decode_claims(token)?;
 	claims
@@ -306,4 +320,55 @@ pub(crate) enum CredentialImportError {
 	InvalidCredential,
 	ProviderMismatch,
 	Store,
+}
+
+#[cfg(test)]
+mod tests {
+	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+	use serde_json::json;
+
+	use super::{CredentialImportError, decode_chatgpt_identity};
+
+	fn token(claims: serde_json::Value) -> String {
+		let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+		format!("header.{payload}.signature")
+	}
+
+	#[test]
+	fn fresh_chatgpt_identity_is_derived_only_from_bounded_id_token_claims() {
+		let identity = decode_chatgpt_identity(&token(json!({
+			"email": "fresh@example.test",
+			"https://api.openai.com/auth": {
+				"chatgpt_account_id": "fresh-provider-account",
+				"chatgpt_plan_type": "pro"
+			}
+		})))
+		.unwrap();
+
+		assert_eq!(identity.provider.account_id(), "fresh-provider-account");
+		assert_eq!(identity.provider_email, "fresh@example.test");
+		assert_eq!(identity.plan_type.as_deref(), Some("pro"));
+	}
+
+	#[test]
+	fn missing_or_malformed_fresh_identity_is_ambiguous_input_to_refresh() {
+		for token in [
+			"not-a-jwt".to_owned(),
+			token(json!({
+				"email": "fresh@example.test",
+				"https://api.openai.com/auth": {}
+			})),
+			token(json!({
+				"email": "not-an-email",
+				"https://api.openai.com/auth": {
+					"chatgpt_account_id": "fresh-provider-account"
+				}
+			})),
+		] {
+			assert!(matches!(
+				decode_chatgpt_identity(&token),
+				Err(CredentialImportError::InvalidCredential)
+			));
+		}
+	}
 }

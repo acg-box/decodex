@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand, ValueEnum};
 use decodex_protocol::{
-	AccountClient, AccountCommandResponse, AccountManualRecoveryActionDto, AccountSelectionModeDto,
-	CommandPayload, EntityId, EntityRevision, IdempotencyKey, WireText,
+	AccountClient, AccountCommandResponse, AccountManualRecoveryActionDto, CommandPayload,
+	EntityId, EntityRevision, IdempotencyKey, WireText,
 };
 use serde::Serialize;
 
@@ -31,8 +31,12 @@ pub enum AccountCommand {
 	Disable(AdministrationArgs),
 	/// Log out and tombstone one account.
 	Logout(OperationAccountArgs),
-	/// Replace fixed/balanced selection and complete user order.
-	Route(RouteArgs),
+	/// Select one fixed account.
+	SetFixedSelection(FixedSelectionArgs),
+	/// Select balanced initial account routing.
+	SetBalancedSelection(RoutingRevisionArgs),
+	/// Replace the complete deterministic account order.
+	SetAccountOrder(AccountOrderArgs),
 	/// Refresh one account through the serialized daemon path.
 	Refresh(OperationAccountArgs),
 	/// Apply one typed manual credential-operation recovery action.
@@ -109,18 +113,28 @@ pub struct OperationAccountArgs {
 	idempotency_key: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub enum RouteMode {
-	Fixed,
-	Balanced,
+#[derive(Clone, Debug, Eq, PartialEq, Args)]
+pub struct FixedSelectionArgs {
+	#[arg(long)]
+	account_id: String,
+	#[arg(long)]
+	expected_account_revision: u64,
+	#[arg(long)]
+	expected_revision: u64,
+	#[arg(long)]
+	idempotency_key: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Args)]
-pub struct RouteArgs {
-	#[arg(long, value_enum)]
-	mode: RouteMode,
+pub struct RoutingRevisionArgs {
 	#[arg(long)]
-	fixed_account_id: Option<String>,
+	expected_revision: u64,
+	#[arg(long)]
+	idempotency_key: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Args)]
+pub struct AccountOrderArgs {
 	#[arg(long, value_delimiter = ',')]
 	order: Vec<String>,
 	#[arg(long)]
@@ -175,6 +189,53 @@ pub async fn execute(
 				Err(output) => return output,
 			};
 			return render("inspect", format, client.inspect(account_id).await);
+		},
+		AccountCommand::SetFixedSelection(args) => {
+			let input = (
+				entity(&args.account_id),
+				revision(args.expected_account_revision),
+				revision(args.expected_revision),
+				idempotency_key(args.idempotency_key),
+			);
+			let (Ok(account_id), Ok(account_revision), Ok(routing_revision), Ok(key)) = input
+			else {
+				return invalid_input();
+			};
+			return render_command(
+				format,
+				client
+					.set_fixed_account_selection(
+						account_id,
+						account_revision,
+						routing_revision,
+						key,
+					)
+					.await,
+			);
+		},
+		AccountCommand::SetBalancedSelection(args) => {
+			let input = (revision(args.expected_revision), idempotency_key(args.idempotency_key));
+			let (Ok(routing_revision), Ok(key)) = input else {
+				return invalid_input();
+			};
+			return render_command(
+				format,
+				client.set_balanced_account_selection(routing_revision, key).await,
+			);
+		},
+		AccountCommand::SetAccountOrder(args) => {
+			let input = (
+				account_order(&args.order),
+				revision(args.expected_revision),
+				idempotency_key(args.idempotency_key),
+			);
+			let (Ok(order), Ok(routing_revision), Ok(key)) = input else {
+				return invalid_input();
+			};
+			return render_command(
+				format,
+				client.set_account_order(order, routing_revision, key).await,
+			);
 		},
 		command => {
 			let (payload, expected_revision, key) = match prepare_command(command) {
@@ -243,25 +304,6 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 			Some(EntityRevision(args.expected_revision)),
 			args.idempotency_key,
 		),
-		AccountCommand::Route(args) => {
-			let mode = match (args.mode, args.fixed_account_id) {
-				(RouteMode::Fixed, Some(account_id)) =>
-					AccountSelectionModeDto::Fixed(entity(&account_id)?),
-				(RouteMode::Balanced, None) => AccountSelectionModeDto::Balanced,
-				_ => return Err(invalid_input()),
-			};
-			let order =
-				args.order.iter().map(|value| entity(value)).collect::<Result<Vec<_>, _>>()?;
-			command_input(
-				CommandPayload::ConfigureAccountRouting {
-					expected_routing_revision: EntityRevision(args.expected_revision),
-					mode,
-					order,
-				},
-				Some(EntityRevision(args.expected_revision)),
-				args.idempotency_key,
-			)
-		},
 		AccountCommand::Refresh(args) => command_input(
 			CommandPayload::RefreshAccount {
 				operation_id: entity(&args.operation_id)?,
@@ -283,7 +325,11 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 			Some(EntityRevision(args.expected_revision)),
 			args.idempotency_key,
 		),
-		AccountCommand::List | AccountCommand::Inspect(_) => Err(invalid_input()),
+		AccountCommand::List
+		| AccountCommand::Inspect(_)
+		| AccountCommand::SetFixedSelection(_)
+		| AccountCommand::SetBalancedSelection(_)
+		| AccountCommand::SetAccountOrder(_) => Err(invalid_input()),
 	}
 }
 
@@ -301,6 +347,26 @@ fn entity(value: &str) -> Result<EntityId, CommandOutput> {
 		return Err(invalid_input());
 	}
 	EntityId::new(value.to_owned()).map_err(|_| invalid_input())
+}
+
+fn revision(value: u64) -> Result<EntityRevision, CommandOutput> {
+	if value == 0 { Err(invalid_input()) } else { Ok(EntityRevision(value)) }
+}
+
+fn idempotency_key(value: String) -> Result<IdempotencyKey, CommandOutput> {
+	IdempotencyKey::new(value).map_err(|_| invalid_input())
+}
+
+fn account_order(values: &[String]) -> Result<Vec<EntityId>, CommandOutput> {
+	if values.len() > 512 {
+		return Err(invalid_input());
+	}
+	let order = values.iter().map(|value| entity(value)).collect::<Result<Vec<_>, _>>()?;
+	let unique = order.iter().map(EntityId::as_str).collect::<std::collections::HashSet<_>>();
+	if unique.len() != order.len() {
+		return Err(invalid_input());
+	}
+	Ok(order)
 }
 
 fn text(value: String) -> Result<WireText, CommandOutput> {
@@ -426,5 +492,62 @@ mod tests {
 			import.command,
 			Command::Account(AccountCommand::Import(args)) if args.enabled
 		));
+	}
+
+	#[test]
+	fn routing_uses_three_explicit_subcommands_without_the_combined_alias() {
+		let fixed = Cli::try_parse_from([
+			"decodex",
+			"account",
+			"set-fixed-selection",
+			"--account-id",
+			ACCOUNT_ID,
+			"--expected-account-revision",
+			"4",
+			"--expected-revision",
+			"2",
+			"--idempotency-key",
+			"fixed-selection",
+		])
+		.expect("fixed selection must parse");
+		let balanced = Cli::try_parse_from([
+			"decodex",
+			"account",
+			"set-balanced-selection",
+			"--expected-revision",
+			"2",
+			"--idempotency-key",
+			"balanced-selection",
+		])
+		.expect("balanced selection must parse");
+		let order = Cli::try_parse_from([
+			"decodex",
+			"account",
+			"set-account-order",
+			"--order",
+			ACCOUNT_ID,
+			"--expected-revision",
+			"2",
+			"--idempotency-key",
+			"account-order",
+		])
+		.expect("account order must parse");
+
+		assert!(matches!(
+			fixed.command,
+			Command::Account(AccountCommand::SetFixedSelection(args))
+				if args.expected_account_revision == 4 && args.expected_revision == 2
+		));
+		assert!(matches!(
+			balanced.command,
+			Command::Account(AccountCommand::SetBalancedSelection(args))
+				if args.expected_revision == 2
+		));
+		assert!(matches!(
+			order.command,
+			Command::Account(AccountCommand::SetAccountOrder(args))
+				if args.order == vec![ACCOUNT_ID.to_owned()]
+		));
+		assert!(Cli::try_parse_from(["decodex", "account", "route"]).is_err());
 	}
 }

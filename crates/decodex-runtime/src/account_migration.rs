@@ -37,8 +37,7 @@ use decodex_core::{
 	ResetCardTimestamp,
 };
 use decodex_postgres::{
-	AccountAdministrationOutcome, AccountMigrationReceipt, PostgresStore, RoutingControlOutcome,
-	StoreError,
+	AccountAdministrationOutcome, AccountMigrationReceipt, PostgresStore, StoreError,
 };
 #[cfg(feature = "account-migration-transition-gate")]
 use decodex_postgres::{
@@ -54,11 +53,13 @@ use sha2::{Digest as _, Sha256};
 use zeroize::Zeroizing;
 
 use crate::{
-	AccountService, CredentialRefreshError, CredentialRefreshPort, CredentialSecretBundle,
-	HostCredentialStore, MacosKeychainCredentialStore,
+	AccountService, CredentialRefreshError, HostCredentialStore, MacosKeychainCredentialStore,
 	account_import::read_explicit_credential_file,
-	account_service::{AccountLifecycleError, AccountMigrationTransition},
-	host_credentials::CredentialStoreError,
+	account_service::{
+		AccountLifecycleError, AccountMigrationTransition, CredentialRefreshPort,
+		CredentialRefreshResult,
+	},
+	host_credentials::{CredentialSecretBundle, CredentialStoreError},
 };
 #[cfg(feature = "account-migration-transition-gate")]
 use crate::{
@@ -495,7 +496,7 @@ impl CredentialRefreshPort for OfflineRefresher {
 	fn refresh(
 		&self,
 		_current: &CredentialSecretBundle,
-	) -> Result<CredentialSecretBundle, CredentialRefreshError> {
+	) -> Result<CredentialRefreshResult, CredentialRefreshError> {
 		Err(CredentialRefreshError::Unavailable)
 	}
 }
@@ -1062,19 +1063,14 @@ pub async fn run_offline_account_migration(
 		)?;
 	}
 
-	let current_routing = service
-		.routing_control()
-		.await
-		.map_err(|_| OfflineAccountMigrationError::PostgresUnavailable)?;
-	match service
-		.replace_selection(current_routing.revision, &manifest.routing, &manifest.order)
-		.await
-		.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?
-	{
-		RoutingControlOutcome::Updated { .. } => {},
-		RoutingControlOutcome::Stale { .. } | RoutingControlOutcome::InvalidOrder { .. } =>
-			return Err(OfflineAccountMigrationError::DestinationMismatch),
-	}
+	PostgresStore::replace_account_routing_for_migration_explicit(
+		config.postgres(),
+		migration_password.as_deref().map(String::as_str),
+		&manifest.routing,
+		&manifest.order,
+	)
+	.await
+	.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?;
 	#[cfg(feature = "account-migration-transition-gate")]
 	account_migration_transition_checkpoint("routing_applied", None)?;
 
