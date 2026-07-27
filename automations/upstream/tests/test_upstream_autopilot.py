@@ -1,10 +1,12 @@
 import importlib.util
 import hashlib
+import io
 import json
 import os
 from copy import deepcopy
 from pathlib import Path
 import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -939,6 +941,39 @@ class UpstreamAutopilotTests(unittest.TestCase):
             },
         )
 
+    def test_cli_failure_returns_the_exact_validation_diagnostic_digest(self):
+        digest = "a" * 64
+        output = io.StringIO()
+        arguments = mock.Mock(json=True)
+        with (
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "parse_args",
+                return_value=arguments,
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "execute",
+                side_effect=self.autopilot.AutopilotError(
+                    "validation_profile_focused_tests_failed",
+                    diagnostic_sha256=digest,
+                ),
+            ),
+            mock.patch.object(sys, "stdout", output),
+        ):
+            return_code = self.autopilot.cli_module.main()
+
+        self.assertEqual(return_code, 1)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "schema": "decodex/codex-upstream-command-result/1",
+                "status": "failed",
+                "error_code": "validation_profile_focused_tests_failed",
+                "error_digest": digest,
+            },
+        )
+
     @unittest.skipIf(
         os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
         "the outer validation process owns signal enforcement",
@@ -972,6 +1007,541 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         self.assertEqual(output, "bound")
         self.assertNotIn(variable, os.environ)
+
+    def test_command_failure_captures_stderr_without_printing_it(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(sys, "stdout", stdout),
+            mock.patch.object(sys, "stderr", stderr),
+            self.assertRaises(self.autopilot.CommandFailure) as raised,
+        ):
+            self.autopilot.run_command(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; print('diagnostic-only', file=sys.stderr); "
+                    "raise SystemExit(7)",
+                ],
+                failure_code="child_failed",
+                capture_failure_diagnostic=True,
+            )
+
+        self.assertEqual(raised.exception.return_code, 7)
+        self.assertEqual(raised.exception.failure_kind, "nonzero_exit")
+        self.assertIn(b"diagnostic-only", raised.exception.output_tail)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_command_diagnostic_covers_timeout_spawn_and_output_budget(self):
+        with self.assertRaises(self.autopilot.CommandFailure) as timed_out:
+            self.autopilot.run_command(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                failure_code="child_failed",
+                timeout_seconds=0.01,
+                capture_failure_diagnostic=True,
+            )
+        self.assertEqual(timed_out.exception.failure_kind, "timeout")
+        self.assertIsNone(timed_out.exception.return_code)
+
+        with (
+            mock.patch.object(
+                self.autopilot.core_module.subprocess,
+                "Popen",
+                side_effect=OSError("private spawn detail"),
+            ),
+            self.assertRaises(self.autopilot.CommandFailure) as spawn_failed,
+        ):
+            self.autopilot.run_command(
+                [sys.executable, "-c", "raise SystemExit(0)"],
+                failure_code="child_failed",
+                capture_failure_diagnostic=True,
+            )
+        self.assertEqual(spawn_failed.exception.failure_kind, "spawn_error")
+        self.assertIsNone(spawn_failed.exception.return_code)
+        self.assertNotIn(
+            b"private spawn detail",
+            spawn_failed.exception.output_tail,
+        )
+
+        with self.assertRaises(self.autopilot.CommandFailure) as exhausted:
+            self.autopilot.run_command(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.stderr.write('x' * 4096); "
+                    "sys.stderr.flush()",
+                ],
+                failure_code="child_failed",
+                max_output_bytes=64,
+                capture_failure_diagnostic=True,
+            )
+        self.assertEqual(
+            exhausted.exception.failure_kind,
+            "output_budget_exceeded",
+        )
+        self.assertIsNone(exhausted.exception.return_code)
+        self.assertLessEqual(
+            len(exhausted.exception.output_tail),
+            2 * self.autopilot.MAX_FAILURE_DIAGNOSTIC_CAPTURE_BYTES + 1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index, failure in enumerate(
+                (
+                    timed_out.exception,
+                    spawn_failed.exception,
+                    exhausted.exception,
+                ),
+                start=1,
+            ):
+                digest = (
+                    self.autopilot.write_validation_failure_diagnostic(
+                        root,
+                        profile="focused_tests",
+                        repository_head=f"{index:x}" * 40,
+                        repository_tree="f" * 40,
+                        failure=failure,
+                    )
+                )
+                self.assertRegex(digest, r"^[0-9a-f]{64}$")
+                self.assertTrue(
+                    (
+                        root
+                        / ".agent/automations/upstream/cache/diagnostics"
+                        / f"{digest}.json"
+                    ).is_file()
+                )
+
+    def test_validation_failure_facts_are_bounded_and_redacted(self):
+        raw = (
+            b"FAIL: test_private (pkg.module.Case.test_private)\n"
+            b"PermissionError: permission denied for /Users/alice/private.txt "
+            b"token=ghp_abcdefghijklmnopqrstuvwxyz "
+            b"alice@example.com verbose private prose\n"
+            b"Ran 123 tests in 1.25s\n"
+            b"FAILED (failures=2, errors=1, skipped=4)\n"
+        )
+
+        facts = self.autopilot.validation_failure_facts(raw)
+
+        self.assertEqual(
+            set(facts),
+            {"test_ids", "failure_classes", "reason_codes", "counts"},
+        )
+        self.assertEqual(facts["test_ids"], ["pkg.module.Case.test_private"])
+        self.assertEqual(facts["failure_classes"], ["PermissionError"])
+        self.assertEqual(facts["reason_codes"], ["permission_denied"])
+        self.assertEqual(
+            facts["counts"],
+            {"tests": 123, "failures": 2, "errors": 1, "skipped": 4},
+        )
+        self.assertLessEqual(len(facts["test_ids"]), 32)
+        self.assertLessEqual(len(facts["failure_classes"]), 16)
+        self.assertLessEqual(len(facts["reason_codes"]), 16)
+        retained = json.dumps(facts, sort_keys=True)
+        for private_value in (
+            "/Users/alice/private.txt",
+            "ghp_abcdefghijklmnopqrstuvwxyz",
+            "alice@example.com",
+            "verbose private prose",
+        ):
+            self.assertNotIn(private_value, retained)
+
+    def test_validation_failure_diagnostic_is_stable_and_private(self):
+        output = (
+            b"ERROR: test_gate (pkg.module.Case.test_gate)\n"
+            b"PermissionError: permission denied\n"
+            b"Ran 1 test in 0.01s\n"
+            b"FAILED (errors=1)\n"
+        )
+        failure = self.autopilot.CommandFailure(
+            "validation_profile_focused_tests_failed",
+            failure_kind="nonzero_exit",
+            output_tail=output,
+            output_sha256=hashlib.sha256(output).hexdigest(),
+            return_code=1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            arguments = {
+                "profile": "focused_tests",
+                "repository_head": "1" * 40,
+                "repository_tree": "2" * 40,
+                "failure": failure,
+            }
+
+            first = self.autopilot.write_validation_failure_diagnostic(
+                root,
+                **arguments,
+            )
+            second = self.autopilot.write_validation_failure_diagnostic(
+                root,
+                **arguments,
+            )
+
+            self.assertEqual(first, second)
+            path = (
+                root
+                / ".agent/automations/upstream/cache/diagnostics"
+                / f"{first}.json"
+            )
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                self.autopilot.read_validation_failure_diagnostic(
+                    root,
+                    cause_digest=first,
+                ),
+                payload,
+            )
+            self.assertEqual(payload["cause_digest"], first)
+            record = {
+                key: value
+                for key, value in payload.items()
+                if key
+                not in {"schema", "cause_digest", "artifact_sha256"}
+            }
+            self.assertEqual(
+                self.autopilot.sha256_value(record),
+                payload["artifact_sha256"],
+            )
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn("PermissionError: permission denied", str(payload))
+
+    def test_validation_diagnostic_cli_requires_an_exact_digest(self):
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                str(SCRIPT),
+                "validation-diagnostic",
+                "--error-digest",
+                "a" * 64,
+                "--json",
+            ],
+        ):
+            arguments = self.autopilot.parse_args()
+
+        self.assertEqual(arguments.command, "validation-diagnostic")
+        self.assertEqual(arguments.error_digest, "a" * 64)
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "validation_diagnostic_digest_invalid",
+        ):
+            self.autopilot.read_validation_failure_diagnostic(
+                ROOT,
+                cause_digest="not-a-digest",
+            )
+
+    def test_automation_audit_cli_and_payload_are_strict(self):
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                str(SCRIPT),
+                "audit-automations",
+                "--manifest",
+                "upstream",
+                "--scope",
+                "repo",
+                "--json",
+            ],
+        ):
+            arguments = self.autopilot.parse_args()
+
+        self.assertEqual(arguments.command, "audit-automations")
+        self.assertEqual(arguments.manifest, "upstream")
+        self.assertEqual(arguments.scope, "repo")
+        expected_ids = (
+            "codex-upstream-maintainer",
+            "codex-upstream-reviewer",
+            "codex-upstream-health",
+        )
+        payload = {
+            "status": "pass",
+            "repo_root": str(ROOT),
+            "codex_home": "/tmp/codex-home",
+            "results": [
+                {
+                    "automation_id": automation_id,
+                    "status": "pass",
+                    "errors": [],
+                    "warnings": [],
+                }
+                for automation_id in expected_ids
+            ],
+        }
+        self.assertEqual(
+            self.autopilot.validated_automation_audit(
+                json.dumps(payload),
+                repo_root=ROOT,
+                codex_home=Path("/tmp/codex-home"),
+                expected_ids=expected_ids,
+            ),
+            list(expected_ids),
+        )
+
+        invalid = deepcopy(payload)
+        invalid["results"][0]["prompt"] = "must not pass through"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "automation_audit_output_invalid",
+        ):
+            self.autopilot.validated_automation_audit(
+                json.dumps(invalid),
+                repo_root=ROOT,
+                codex_home=Path("/tmp/codex-home"),
+                expected_ids=expected_ids,
+            )
+
+    def test_validation_cause_digest_ignores_raw_output_variation(self):
+        first_output = (
+            b"ERROR: test_gate (pkg.module.Case.test_gate)\n"
+            b"PermissionError: permission denied for /private/tmp/a\n"
+            b"Ran 1 test in 0.01s\nFAILED (errors=1)\n"
+        )
+        second_output = (
+            b"ERROR: test_gate (pkg.module.Case.test_gate)\n"
+            b"PermissionError: permission denied for /private/tmp/b\n"
+            b"Ran 1 test in 9.99s\nFAILED (errors=1)\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            digests = []
+            for head, output in (
+                ("1" * 40, first_output),
+                ("3" * 40, second_output),
+            ):
+                digests.append(
+                    self.autopilot.write_validation_failure_diagnostic(
+                        root,
+                        profile="focused_tests",
+                        repository_head=head,
+                        repository_tree="2" * 40,
+                        failure=self.autopilot.CommandFailure(
+                            "validation_profile_focused_tests_failed",
+                            failure_kind="nonzero_exit",
+                            output_tail=output,
+                            output_sha256=hashlib.sha256(output).hexdigest(),
+                            return_code=1,
+                        ),
+                    )
+                )
+
+            self.assertEqual(digests[0], digests[1])
+            path = (
+                root
+                / ".agent/automations/upstream/cache/diagnostics"
+                / f"{digests[0]}.json"
+            )
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                payload["output_sha256"],
+                hashlib.sha256(first_output).hexdigest(),
+            )
+            self.assertNotIn("/private/tmp/a", str(payload))
+            self.assertNotIn("/private/tmp/b", str(payload))
+
+    def test_validation_diagnostic_write_is_serialized(self):
+        output = b"ERROR: test_gate (pkg.module.Case.test_gate)\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = self.autopilot.ensure_cache_root(
+                root / ".agent/automations/upstream/cache"
+            )
+            (cache / "diagnostics").mkdir(mode=0o700)
+            lock_descriptor = os.open(
+                cache / "diagnostics.lock",
+                os.O_RDWR | os.O_CREAT,
+                0o600,
+            )
+            os.close(lock_descriptor)
+
+            script = (
+                "import hashlib,sys;"
+                f"sys.path.insert(0,{str(SCRIPT.parent)!r});"
+                "from upstream_autopilot_lib import "
+                "CommandFailure,write_validation_failure_diagnostic;"
+                f"output={output!r};"
+                "failure=CommandFailure("
+                "'validation_profile_focused_tests_failed',"
+                "failure_kind='nonzero_exit',output_tail=output,"
+                "output_sha256=hashlib.sha256(output).hexdigest(),"
+                "return_code=1);"
+                "print(write_validation_failure_diagnostic("
+                f"__import__('pathlib').Path({str(root)!r}),"
+                "profile='focused_tests',repository_head='1'*40,"
+                "repository_tree='2'*40,failure=failure))"
+            )
+            processes = [
+                subprocess.Popen(
+                    [sys.executable, "-c", script],
+                    cwd=ROOT,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                for _index in range(2)
+            ]
+            completed = [
+                process.communicate(timeout=30) for process in processes
+            ]
+            for process, (_stdout, stderr) in zip(processes, completed):
+                self.assertEqual(process.returncode, 0, stderr)
+            digests = [stdout.strip() for stdout, _stderr in completed]
+
+            self.assertEqual(digests[0], digests[1])
+            diagnostics = (
+                root / ".agent/automations/upstream/cache/diagnostics"
+            )
+            self.assertEqual(
+                [path.name for path in diagnostics.iterdir()],
+                [f"{digests[0]}.json"],
+            )
+
+    def test_validation_diagnostic_rejects_symlink_and_inexact_mode(self):
+        output = b"ERROR: test_gate (pkg.module.Case.test_gate)\n"
+        failure = self.autopilot.CommandFailure(
+            "validation_profile_focused_tests_failed",
+            failure_kind="nonzero_exit",
+            output_tail=output,
+            output_sha256=hashlib.sha256(output).hexdigest(),
+            return_code=1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            digest = self.autopilot.write_validation_failure_diagnostic(
+                root,
+                profile="focused_tests",
+                repository_head="1" * 40,
+                repository_tree="2" * 40,
+                failure=failure,
+            )
+            path = (
+                root
+                / ".agent/automations/upstream/cache/diagnostics"
+                / f"{digest}.json"
+            )
+            external = root / "external.json"
+            external.write_text('{"external":true}', encoding="utf-8")
+            original = external.read_bytes()
+            path.unlink()
+            path.symlink_to(external)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "validation_diagnostic",
+            ):
+                self.autopilot.write_validation_failure_diagnostic(
+                    root,
+                    profile="focused_tests",
+                    repository_head="1" * 40,
+                    repository_tree="2" * 40,
+                    failure=failure,
+                )
+            self.assertEqual(external.read_bytes(), original)
+            path.unlink()
+            path.write_text("{}", encoding="utf-8")
+            path.chmod(0o400)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "validation_diagnostic",
+            ):
+                self.autopilot.write_validation_failure_diagnostic(
+                    root,
+                    profile="focused_tests",
+                    repository_head="1" * 40,
+                    repository_tree="2" * 40,
+                    failure=failure,
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = self.autopilot.ensure_cache_root(
+                root / ".agent/automations/upstream/cache"
+            )
+            external = root / "external"
+            external.mkdir(mode=0o700)
+            (cache / "diagnostics").symlink_to(
+                external,
+                target_is_directory=True,
+            )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "validation_diagnostic_root_unavailable",
+            ):
+                self.autopilot.write_validation_failure_diagnostic(
+                    root,
+                    profile="focused_tests",
+                    repository_head="1" * 40,
+                    repository_tree="2" * 40,
+                    failure=failure,
+                )
+            self.assertEqual(list(external.iterdir()), [])
+
+    def test_validation_pruning_preserves_active_error_digest(self):
+        outputs = (
+            b"ERROR: test_one (pkg.module.Case.test_one)\n",
+            b"ERROR: test_two (pkg.module.Case.test_two)\n",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = self.autopilot.write_validation_failure_diagnostic(
+                root,
+                profile="focused_tests",
+                repository_head="1" * 40,
+                repository_tree="2" * 40,
+                failure=self.autopilot.CommandFailure(
+                    "validation_profile_focused_tests_failed",
+                    failure_kind="nonzero_exit",
+                    output_tail=outputs[0],
+                    output_sha256=hashlib.sha256(outputs[0]).hexdigest(),
+                    return_code=1,
+                ),
+            )
+            cache = root / ".agent/automations/upstream/cache"
+            state = {
+                "schema": self.autopilot.STATE_SCHEMA,
+                "persistence_generation": 1,
+                "candidates": [
+                    {
+                        "status": "retry_wait",
+                        "result": {"error_digest": first},
+                    }
+                ],
+            }
+            state_path = cache / "state.json"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            state_path.chmod(0o600)
+            state_lock = cache / "state.lock"
+            state_lock.touch(mode=0o600)
+            state_lock.chmod(0o600)
+            with (
+                mock.patch.object(
+                    self.autopilot.validation_module,
+                    "MAX_VALIDATION_DIAGNOSTICS",
+                    1,
+                ),
+                self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "validation_diagnostic_capacity_exhausted",
+                ),
+            ):
+                self.autopilot.write_validation_failure_diagnostic(
+                    root,
+                    profile="focused_tests",
+                    repository_head="1" * 40,
+                    repository_tree="2" * 40,
+                    failure=self.autopilot.CommandFailure(
+                        "validation_profile_focused_tests_failed",
+                        failure_kind="nonzero_exit",
+                        output_tail=outputs[1],
+                        output_sha256=hashlib.sha256(outputs[1]).hexdigest(),
+                        return_code=1,
+                    ),
+                )
+
+            protected = cache / "diagnostics" / f"{first}.json"
+            self.assertTrue(protected.is_file())
 
     def test_operational_commands_ignore_a_hostile_process_path(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1943,6 +2513,207 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(candidates[1]["to_sha"], "6" * 40)
         self.assertEqual(candidates[2]["release_tag"], "rust-v1.1.0-alpha.1")
         self.assertEqual(candidates[2]["to_sha"], "7" * 40)
+
+    def test_source_retry_wait_defers_later_release_lanes(self):
+        state = self.autopilot.new_state(100)
+        bootstrap_id, stable_id, prerelease_id = self.apply(
+            state,
+            self.observation("1" * 40),
+            now=100,
+        )
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.assertEqual(claim["candidate"]["id"], bootstrap_id)
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=bootstrap_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            reason_code="validation_failed",
+            error_digest="a" * 64,
+            now=102,
+        )
+
+        deferred = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            103,
+        )
+
+        self.assertIsNone(deferred)
+        self.assertEqual(
+            self.autopilot.find_candidate(state, stable_id)["status"],
+            "queued",
+        )
+        self.assertEqual(
+            self.autopilot.find_candidate(state, prerelease_id)["status"],
+            "queued",
+        )
+        self.autopilot.validate_state(state)
+
+    def test_automation_repair_bypasses_retrying_source_predecessor(self):
+        state = self.autopilot.new_state(100)
+        bootstrap_id, stable_id, _prerelease_id = self.apply(
+            state,
+            self.observation("1" * 40),
+            now=100,
+        )
+        source_claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=bootstrap_id,
+            role="maintainer",
+            token=source_claim["lease_token"],
+            reason_code="validation_failed",
+            error_digest="a" * 64,
+            now=102,
+        )
+        source = self.autopilot.find_candidate(state, bootstrap_id)
+        repair = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="live_configuration_drift",
+            repository_head="9" * 40,
+            now=103,
+        )
+
+        repair_claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            source["next_retry_at"],
+        )
+
+        self.assertEqual(repair_claim["candidate"]["id"], repair["id"])
+        self.assertEqual(source["status"], "retry_wait")
+        self.assertEqual(
+            self.autopilot.find_candidate(state, stable_id)["status"],
+            "queued",
+        )
+        self.autopilot.validate_state(state)
+
+    def test_later_release_lane_proceeds_after_source_predecessor_is_terminal(self):
+        state = self.autopilot.new_state(100)
+        bootstrap_id, stable_id, _prerelease_id = self.apply(
+            state,
+            self.observation("1" * 40),
+            now=100,
+        )
+        first = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=bootstrap_id,
+            role="maintainer",
+            token=first["lease_token"],
+            reason_code="validation_failed",
+            error_digest="a" * 64,
+            now=102,
+        )
+        retry_at = self.autopilot.find_candidate(
+            state,
+            bootstrap_id,
+        )["next_retry_at"]
+        self.resolve_bootstrap(state, bootstrap_id, now=retry_at)
+
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            retry_at + 10,
+        )
+
+        self.assertEqual(claim["candidate"]["id"], stable_id)
+        self.autopilot.validate_state(state)
+
+    def test_source_lane_gate_preserves_role_lease_busy_result(self):
+        state = self.autopilot.new_state(100)
+        bootstrap_id, _stable_id, _prerelease_id = self.apply(
+            state,
+            self.observation("1" * 40),
+            now=100,
+        )
+        first = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+
+        second = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            102,
+        )
+
+        self.assertEqual(first["candidate"]["id"], bootstrap_id)
+        self.assertEqual(
+            second,
+            {
+                "busy": {
+                    "candidate_id": bootstrap_id,
+                    "lease_expires_at": first["candidate"]["lease"][
+                        "expires_at"
+                    ],
+                }
+            },
+        )
+        self.autopilot.validate_state(state)
+
+    def test_reviewer_can_claim_submitted_source_predecessor(self):
+        state = self.autopilot.new_state(100)
+        bootstrap_id, stable_id, _prerelease_id = self.apply(
+            state,
+            self.observation("1" * 40),
+            now=100,
+        )
+        maintainer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.submit_pull_request(state, bootstrap_id, maintainer, now=102)
+
+        self.assertIsNone(
+            self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "maintainer",
+                103,
+            )
+        )
+        review = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            103,
+        )
+
+        self.assertEqual(review["candidate"]["id"], bootstrap_id)
+        self.assertEqual(
+            self.autopilot.find_candidate(state, stable_id)["status"],
+            "queued",
+        )
+        self.autopilot.validate_state(state)
 
     def test_upstream_ranges_are_complete_and_bounded(self):
         old_head = "1" * 40
@@ -6994,6 +7765,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             degradation_codes=(
                 "account_restore_failed",
                 "social_validation_failed",
+                "weekly_benchmark_missing",
             ),
         )
         second = self.autopilot.queue_automation_improvement(
@@ -7013,7 +7785,11 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         self.assertEqual(
             first["path_summary"]["degradation_codes"],
-            ["account_restore_failed", "social_validation_failed"],
+            [
+                "account_restore_failed",
+                "social_validation_failed",
+                "weekly_benchmark_missing",
+            ],
         )
         self.autopilot.validate_state(state)
 

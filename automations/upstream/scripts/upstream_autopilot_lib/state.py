@@ -2147,6 +2147,21 @@ def candidate_is_claimable(candidate: dict[str, Any], role: str, now: int) -> bo
     )
 
 
+def earliest_unresolved_source_candidate(
+    state: dict[str, Any],
+) -> dict[str, Any] | None:
+    return min(
+        (
+            candidate
+            for candidate in state["candidates"]
+            if candidate["kind"] != "automation_repair"
+            and candidate["status"] not in TERMINAL_STATUSES
+        ),
+        key=lambda candidate: candidate["discovery_sequence"],
+        default=None,
+    )
+
+
 def claim_candidate(
     state: dict[str, Any],
     policy: dict[str, Any],
@@ -2175,6 +2190,26 @@ def claim_candidate(
         for candidate in state["candidates"]
         if candidate_is_claimable(candidate, role, now)
     ]
+    if role == "maintainer":
+        source_predecessor = earliest_unresolved_source_candidate(state)
+        if source_predecessor is not None:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate["kind"] == "automation_repair"
+                or candidate["id"] == source_predecessor["id"]
+            ]
+            repairs = [
+                candidate
+                for candidate in candidates
+                if candidate["kind"] == "automation_repair"
+            ]
+            if source_predecessor["status"] in {
+                "retry_wait",
+                "repair_pending",
+                "needs_attention",
+            } and repairs:
+                candidates = repairs
     if not candidates:
         return None
     candidates.sort(
