@@ -39,11 +39,11 @@ const COLLABORATION_MARKERS: &[&str] =
 	&["collabAgentToolCall", "parentThreadId", "agentNickname", "agentRole", "subAgentActivity"];
 const MAX_SCHEMA_DIRECTORY_DEPTH: usize = 8;
 const ACCEPTED_DIGESTS: &[(&str, &str)] = &[
-	("ClientRequest.json", "3f82e5aec5be786c40d21440dfb6d0667d194d872bfa7041bd81c39b4ba56dc3"),
-	("ServerNotification.json", "16ce6adadf33aa182f98840c5d33f6294c3c37b2866bb05545c24e0dbf2cc2d2"),
+	("ClientRequest.json", "ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735"),
+	("ServerNotification.json", "189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166"),
 	(
 		"codex_app_server_protocol.v2.schemas.json",
-		"f5e8d20f3a8f9bb5e5b23ab0c5aa6bde7b12e7e0713606c5d0132651a4959d37",
+		"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
 	),
 ];
 
@@ -675,6 +675,36 @@ mod tests {
 		marker.canonical_sha256.insert("ClientRequest.json".into(), "wrong".into());
 
 		assert_eq!(SchemaContract::validate(marker).unwrap_err(), ["digest:ClientRequest.json"]);
+	}
+
+	#[test]
+	fn marker_validation_rejects_the_prior_schema_digest_set() {
+		let mut marker = SchemaMarker::accepted();
+		for (file, digest) in [
+			(
+				"ClientRequest.json",
+				"3f82e5aec5be786c40d21440dfb6d0667d194d872bfa7041bd81c39b4ba56dc3",
+			),
+			(
+				"ServerNotification.json",
+				"16ce6adadf33aa182f98840c5d33f6294c3c37b2866bb05545c24e0dbf2cc2d2",
+			),
+			(
+				"codex_app_server_protocol.v2.schemas.json",
+				"f5e8d20f3a8f9bb5e5b23ab0c5aa6bde7b12e7e0713606c5d0132651a4959d37",
+			),
+		] {
+			marker.canonical_sha256.insert(file.into(), digest.into());
+		}
+
+		assert_eq!(
+			SchemaContract::validate(marker).unwrap_err(),
+			[
+				"digest:ClientRequest.json",
+				"digest:ServerNotification.json",
+				"digest:codex_app_server_protocol.v2.schemas.json",
+			]
+		);
 	}
 
 	#[test]
