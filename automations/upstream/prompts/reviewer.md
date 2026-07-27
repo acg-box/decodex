@@ -133,7 +133,8 @@ time-budget fencing. Do not renew mechanically before a wrapper command. Lead th
 report with findings. Then report the
 candidate, exact reviewed HEAD/tree, validation receipt digest, merge SHA and
 containment, or bounded repair/failure state. Report X API calls and X spend as zero.
-Apply `scheduled-run-thread-retention.md` after all state and effect readbacks. Use
-native `set_thread_archived` only for an `auto_archive` current run. A persisted
-retry or automatically owned repair is terminal for this run and must be archived.
-Keep only an uncontained human decision or ambiguous external effect visible.
+Apply `scheduled-run-thread-retention.md` after all state and effect readbacks. A
+terminal result with confirmed or durable automatic ownership must call native
+`set_thread_archived` with `archived = true` and no `threadId` as the final tool
+action. Keep this task visible only for an uncontained human decision, ambiguous
+external effect, or failed archive action.

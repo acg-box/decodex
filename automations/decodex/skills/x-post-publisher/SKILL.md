@@ -23,8 +23,9 @@ the terminal `social_post/v1` record.
   upstream-impact, release-delta, or candidate evidence.
 - Historical X style observations are format input only. Never infer claims, urgency, or
   publish/skip state from other accounts.
-- Do not publish candidates with `decision.worthiness = "defer"` or `"skip"` unless the
-  operator gives a fresh explicit handoff.
+- Do not publish candidates with `decision.worthiness = "skip"`. Terminalize the
+  quality decision only with `decodex-publisher social terminalize-skip`. This command
+  uses one deterministic create-only path and requires no browser lease.
 - Do not use X MCP, X API, direct HTTP requests, browser cookie inspection, local
   storage inspection, or private browser profile files.
 - Keep every generated social artifact, browser lease, and account-session record

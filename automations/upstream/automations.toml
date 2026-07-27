@@ -114,4 +114,4 @@ required_paths = [
 	"openwiki/quickstart.md",
 	"scripts/audit_node_lock.py",
 ]
-rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=0;BYSECOND=0"
+rrule = "FREQ=HOURLY;INTERVAL=2;BYMINUTE=0;BYSECOND=0"
