@@ -18,15 +18,21 @@ Generated content state belongs under `.agent/automations/decodex/cache`. Social
 strategy, browser-session, and browser-lease records are local-only. Never commit,
 upload, or archive them to Git.
 
-Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`,
-`social_post/v1`, `social_outcome/v1`, browser lease serialization, and publication
-validation. Content Manager owns `social_strategy/v1`. Publisher consumes Radar
-handoff evidence from `.agent/automations/radar/cache`, but it must not refresh
-upstream state or perform fresh upstream source analysis.
+Content Manager owns `social_candidate/v1` and `social_strategy/v1`. It builds the
+checked-in Radar binary, refreshes official upstream queue and release-delta evidence,
+validates the local Radar cache, and performs one bounded weekly read-only X editorial
+benchmark under the shared browser lease. The weekly strategy stores public URL
+evidence or one bounded deferred reason. Publisher owns
+`social_publish_reservation/v1`, `social_post/v1`, `social_outcome/v1`, browser lease
+serialization, and publication validation. It terminalizes a quality skip without
+opening X through the atomic, idempotency-derived `social terminalize-skip` command.
+Publisher consumes Radar handoff evidence from
+`.agent/automations/radar/cache`, but it must not refresh upstream state or perform
+fresh upstream source analysis.
 
 The standalone upstream adaptation loop lives under `automations/upstream/`. Radar
 remains an auxiliary evidence tool and is not a separate scheduled task. Content
-Manager invokes Radar when it needs source-backed evidence.
+Manager invokes the exact repository-built Radar binary on every run.
 
 ## Portable Codex App Install
 
@@ -73,13 +79,14 @@ python3 automations/upstream/scripts/upstream_autopilot.py health --json
 The native Codex Desktop automation lifecycle tool is the normal live mutation path.
 The renderer remains a portable recovery path and preserves Codex App timestamps.
 
-## Scheduled Run Threads
+## Scheduled Run Tasks
 
-Each scheduled execution creates a Codex thread. All five managed tasks apply
+Each scheduled execution creates a Codex task. All five managed tasks apply
 `skills/references/scheduled-run-thread-retention.md` after their final durable
-readback. A terminal run with no remaining lease, handoff, ambiguous external effect,
-or human decision calls native `set_thread_archived` for its current thread. A run
-that needs attention stays visible.
+readback. A terminal role calls native `set_thread_archived` with
+`archived = true` and omits `threadId`, so it can archive only its current task. A
+task stays visible only for an uncontained or ambiguous operation, a human-only
+action, or a failed native archive action.
 
-This action does not pause or delete the recurring task, and it does not remove local
-evidence. Never use run-thread archiving to hide a failed or incomplete operation.
+This action does not pause or delete the recurring automation, and it does not remove
+local evidence. Never use task archival to hide an unowned operation.

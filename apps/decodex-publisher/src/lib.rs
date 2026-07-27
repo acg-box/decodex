@@ -5,6 +5,7 @@ mod filesystem;
 mod social_browser_lease;
 mod social_contracts;
 mod social_publish;
+mod social_skip;
 mod social_validation;
 mod prelude {
 	pub use color_eyre::{Result, eyre};
@@ -16,7 +17,7 @@ pub(crate) use self::{
 	},
 	social_contracts::{
 		SocialBrowserLeaseReport, SocialReservePublishReport, SocialReservePublishRequest,
-		SocialValidationReport,
+		SocialTerminalizeSkipReport, SocialTerminalizeSkipRequest, SocialValidationReport,
 	},
 };
 
@@ -56,6 +57,12 @@ pub(crate) fn reserve_social_publish(
 	request: &SocialReservePublishRequest,
 ) -> Result<SocialReservePublishReport> {
 	social_publish::reserve_social_publish(request)
+}
+
+pub(crate) fn terminalize_social_skip(
+	request: &SocialTerminalizeSkipRequest,
+) -> Result<SocialTerminalizeSkipReport> {
+	social_skip::terminalize_social_skip(request)
 }
 
 pub(crate) fn acquire_social_browser_lease(
