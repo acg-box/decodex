@@ -257,7 +257,8 @@ ALTER TABLE decodex.accounts
 	ADD COLUMN credential_store_observed_at timestamptz,
 	ADD COLUMN tombstoned_at timestamptz,
 	ADD CONSTRAINT accounts_v27_display_label_shape CHECK (
-		pg_catalog.octet_length(display_label) BETWEEN 1 AND 128
+		pg_catalog.octet_length(display_label) >= 1
+		AND pg_catalog.octet_length(display_label) <= 128
 		AND display_label !~ '[[:cntrl:]]'
 	),
 	ADD CONSTRAINT accounts_observed_state_not_administrative CHECK (state<>'disabled'),
@@ -354,7 +355,8 @@ CREATE TABLE decodex.account_operations (
 		OR (kind NOT IN ('enroll','import')
 			AND requested_display_label IS NULL AND requested_enabled IS NULL))
 		AND (requested_display_label IS NULL OR (
-			pg_catalog.octet_length(requested_display_label) BETWEEN 1 AND 128
+			pg_catalog.octet_length(requested_display_label) >= 1
+			AND pg_catalog.octet_length(requested_display_label) <= 128
 			AND requested_display_label !~ '[[:cntrl:]]'
 			AND NOT decodex.has_credential_material(requested_display_label)
 		))
