@@ -4,7 +4,7 @@ This page is the compact contract guide for Radar-generated upstream evidence, D
 
 ## Contract owners
 
-- Radar owns upstream evidence and validation for `github_change_bundle/v1`, `upstream_review_queue/v1`, `upstream_review/v1`, `upstream_impact/v1`, `analysis_draft`, `signal_entry/v1`, `release_delta/v1`, `control_plane_upgrade_candidate/v1`, archive manifests, the local Radar ledger, and bundle/signal/release operations (`apps/radar/src/constants.rs`, `apps/radar/src/cli/commands.rs`, `apps/radar/src/artifact_validation/core/dispatch.rs`).
+- Radar owns upstream evidence and validation for `github_change_bundle/v1`, `upstream_review_queue/v1`, `upstream_review/v1`, `upstream_impact/v1`, `analysis_draft`, `signal_entry/v1`, `release_delta/v1`, `control_plane_upgrade_candidate/v1`, the local Radar ledger, and bundle/signal/release operations (`apps/radar/src/constants.rs`, `apps/radar/src/cli/commands.rs`, `apps/radar/src/artifact_validation/core/dispatch.rs`).
 - Decodex Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`,
   `social_post/v1`, `social_outcome/v1`, `social_strategy/v1`, social validation,
   browser lease serialization, and publication reservation workflows
@@ -20,9 +20,25 @@ Radar starts from deterministic GitHub evidence. `radar bundle build` writes `gi
 
 `radar refresh-upstream-queue` writes `upstream_review_queue/v1` and records inspected commits in the local Radar ledger unless `--no-ledger` is used. The queue is routing evidence only: it may carry surface hints, attention flags, review priority, and `next_step = ai_review_required`, but it must not make final public-value or compatibility claims (`apps/radar/src/operations.rs`, `apps/radar/src/artifact_validation/upstream/queue.rs`, `apps/radar/src/ledger.rs`).
 
-`upstream_review/v1` is the source-backed AI review boundary. It records the subject, source refs, observed change, changed surfaces, confidence, evidence, and next actions. Current validation accepts actions such as promotion to upstream impact, signal entry, or control-plane upgrade candidate; historical `linear_followup` is allowed only for old review paths before the configured cutoff (`apps/radar/src/artifact_validation/upstream/review.rs`, `apps/radar/src/constants.rs`). AI review output is evidence, not mutation authority.
+`upstream_review/v1` is the source-backed AI review boundary. It records the subject, source refs, observed change, changed surfaces, confidence, evidence, and next actions. Current validation accepts only current actions such as promotion to upstream impact, signal entry, or control-plane upgrade candidate (`apps/radar/src/artifact_validation/upstream/review.rs`, `apps/radar/src/constants.rs`). AI review output is evidence, not mutation authority.
 
-`upstream_impact/v1` is the shared handoff from Radar Review into both Publisher and Control Plane reasoning. It carries `public_signal_decision`, `control_plane_impact`, `publisher_angle`, confidence, and evidence. New Radar-derived Publisher candidates and Control Plane upgrade candidates should cite the matching upstream impact instead of independently reinterpreting release notes or raw reviews (`apps/radar/src/artifact_validation/upstream/impact.rs`).
+`upstream_review/v1` must bind its subject to the queue's exact normalized
+`commit_shas` and `upstream_head`. `upstream_impact/v1` is the shared handoff from
+Radar Review into both Publisher and Control Plane reasoning. Its `review_lineage`
+binds the exact review artifact SHA-256, review identity, upstream head, and commit set.
+Matching URLs or slugs are insufficient. It also carries `public_signal_decision`,
+`control_plane_impact`, `publisher_angle`, confidence, and evidence. New Radar-derived
+Publisher candidates and Control Plane upgrade candidates should cite the matching
+upstream impact instead of independently reinterpreting release notes or raw reviews
+(`apps/radar/src/artifact_validation/upstream/impact.rs`,
+`apps/radar/src/content_eligibility.rs`).
+
+`radar content-eligibility` emits the machine-verifiable
+`radar_content_eligibility/v1` receipt only after the three artifacts pass one locked
+snapshot check. The receipt binds the queue, review, and impact SHA-256 values, the
+exact normalized commit set, review identity, upstream head, and a canonical lineage
+SHA-256. A downstream producer can bind that receipt without repeating Radar's
+lineage reasoning.
 
 ## Release deltas and signals
 
@@ -86,17 +102,19 @@ Radar and Publisher artifacts can inform static content only after accepted hand
 ## Retention and evidence boundaries
 
 Use the local Radar ledger for high-frequency trace, skipped or low-value subjects,
-commit-to-PR mappings, and artifact links. Git may retain curated public Radar
-artifacts such as public signals, current release deltas, upstream impacts,
-control-plane candidates, and archive manifests. Social candidates, reservations,
-posts, outcomes, strategy records, browser-session evidence, browser leases, and
-generated social media are local-only under `.agent/`. Never commit, upload, or archive
-them to GitHub (`apps/radar/src/ledger.rs`, `apps/radar/src/paths.rs`).
-
-Raw bundles and analysis drafts are hot working artifacts. Archive manifests preserve
-cold release-asset pointers, checksums, source commit, release URL, and file metadata;
-compressed archives themselves are not committed
-(`apps/radar/src/artifact_validation/archive.rs`).
+commit-to-PR mappings, and artifact links. Curated public Radar artifacts may enter Git
+only through a separate reviewed source change. Raw bundles, reviews, impacts, analysis
+drafts, and the ledger are owner-only disposable cache state. `radar cache-gc` and
+default daily validation enforce 30-day age, 256-file, 64 MiB collection limits plus
+10,000-row and 64 MiB ledger limits. One process lock serializes every Radar writer
+with GC. Descriptor-relative no-follow traversal rejects symbolic-link ancestors,
+`..`, ownership or mode mismatch, unexpected hard links, and path replacement. Ledger
+writes enforce bounded fields and rows, prune oldest-first, and preserve the ledger
+when `RADAR_LEDGER_OVERSIZE` fails closed. Radar loads the bounded SQLite image
+through the fixed cache descriptor, operates on it in memory, and atomically replaces
+it through that descriptor while the cache lock remains held. Default validation
+includes bounded GC counts. Never commit or upload local Radar cache state
+(`apps/radar/src/cache.rs`, `apps/radar/src/private_fs.rs`).
 
 Do not read or document secret values. Configuration may reference token environment variable names, but OpenWiki and public artifacts must not include credentials, private issue details, hidden reasoning, local runtime paths, or account material.
 

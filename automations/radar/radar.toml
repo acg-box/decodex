@@ -1,7 +1,6 @@
 version = 1
 
 [paths]
-archive_root      = ".agent/automations/radar/cache/archive"
 cache_root        = ".agent/automations/radar/cache"
 generated_root    = ".agent/automations/radar/cache/generated"
 github_root       = ".agent/automations/radar/cache/github"

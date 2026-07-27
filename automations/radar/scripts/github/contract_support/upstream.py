@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from contract_support.constants import (
@@ -13,6 +14,8 @@ from contract_support.constants import (
     UPSTREAM_SUBJECT_KINDS,
 )
 from contract_support.core import ValidationResult
+
+GIT_OBJECT_ID_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
 
 def validate_upstream_review_queue(entry: dict[str, Any]) -> ValidationResult:
@@ -34,6 +37,10 @@ def validate_upstream_review_queue(entry: dict[str, Any]) -> ValidationResult:
     else:
         if not isinstance(source.get("default_branch"), str) or not source["default_branch"]:
             errors.append("source.default_branch must be a non-empty string")
+        if not isinstance(source.get("upstream_head"), str) or not GIT_OBJECT_ID_RE.fullmatch(
+            source["upstream_head"]
+        ):
+            errors.append("source.upstream_head must be a lowercase 40- or 64-character Git object id")
         if not isinstance(source.get("search_limit"), int) or source["search_limit"] < 1:
             errors.append("source.search_limit must be a positive integer")
 
@@ -75,9 +82,10 @@ def validate_upstream_review_queue(entry: dict[str, Any]) -> ValidationResult:
         if (
             not isinstance(commit_shas, list)
             or not commit_shas
-            or not all(isinstance(item, str) and item for item in commit_shas)
+            or not all(isinstance(item, str) and GIT_OBJECT_ID_RE.fullmatch(item) for item in commit_shas)
+            or len(commit_shas) != len(set(commit_shas))
         ):
-            errors.append(f"subjects[{index}].commit_shas must be a non-empty list of strings")
+            errors.append(f"subjects[{index}].commit_shas must be unique Git object ids")
 
         for list_field in ("surface_hints", "attention_flags", "sample_paths"):
             values = subject.get(list_field)
@@ -118,6 +126,10 @@ def validate_upstream_review(entry: dict[str, Any]) -> ValidationResult:
     repo = entry.get("repo")
     if isinstance(repo, str) and "/" not in repo:
         errors.append("repo must be owner/name")
+    if not isinstance(entry.get("upstream_head"), str) or not GIT_OBJECT_ID_RE.fullmatch(
+        entry["upstream_head"]
+    ):
+        errors.append("upstream_head must be a lowercase 40- or 64-character Git object id")
 
     subject = entry.get("subject")
     if not isinstance(subject, dict):
@@ -128,11 +140,13 @@ def validate_upstream_review(entry: dict[str, Any]) -> ValidationResult:
         if not isinstance(subject.get("subject_id"), str) or not subject["subject_id"]:
             errors.append("subject.subject_id must be a non-empty string")
         commit_shas = subject.get("commit_shas")
-        if commit_shas is not None and (
+        if (
             not isinstance(commit_shas, list)
-            or not all(isinstance(item, str) and item for item in commit_shas)
+            or not commit_shas
+            or not all(isinstance(item, str) and GIT_OBJECT_ID_RE.fullmatch(item) for item in commit_shas)
+            or len(commit_shas) != len(set(commit_shas))
         ):
-            errors.append("subject.commit_shas must be a list of non-empty strings when present")
+            errors.append("subject.commit_shas must be a non-empty list of unique Git object ids")
 
     refs = entry.get("source_refs")
     if not isinstance(refs, dict):

@@ -22,6 +22,7 @@ pub(in crate::artifact_validation) fn validate_upstream_review_queue(
 	if !support::is_non_empty_string(entry.get("generated_at")) {
 		errors.push("generated_at must be a non-empty string".into());
 	}
+	support::validate_rfc3339_field(entry, "generated_at", errors);
 
 	validate_upstream_review_queue_source(entry.get("source"), errors);
 
@@ -40,6 +41,7 @@ fn validate_upstream_review_queue_source(source: Option<&Value>, errors: &mut Ve
 	if !support::is_non_empty_string(source.get("default_branch")) {
 		errors.push("source.default_branch must be a non-empty string".into());
 	}
+	support::validate_git_object_id(source.get("upstream_head"), "source.upstream_head", errors);
 	if source.get("search_limit").and_then(Value::as_i64).is_none_or(|value| value < 1) {
 		errors.push("source.search_limit must be a positive integer".into());
 	}
@@ -129,7 +131,7 @@ fn validate_upstream_review_subject_fields(
 		));
 	}
 
-	support::validate_non_empty_string_list(
+	support::validate_git_object_id_list(
 		subject.get("commit_shas"),
 		&format!("subjects[{index}].commit_shas"),
 		errors,

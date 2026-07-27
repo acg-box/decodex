@@ -5,8 +5,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::artifact_validation::{
 	BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA, CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA,
-	RADAR_ARCHIVE_MANIFEST_SCHEMA, RELEASE_DELTA_SCHEMA, SIGNAL_SCHEMA, UPSTREAM_IMPACT_SCHEMA,
-	UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA,
+	RELEASE_DELTA_SCHEMA, SIGNAL_SCHEMA, UPSTREAM_IMPACT_SCHEMA, UPSTREAM_REVIEW_QUEUE_SCHEMA,
+	UPSTREAM_REVIEW_SCHEMA,
 };
 
 pub(super) fn validate_non_empty_string_list(
@@ -21,6 +21,58 @@ pub(super) fn validate_non_empty_string_list(
 	if !valid {
 		errors.push(format!("{label} must be a non-empty list of strings"));
 	}
+}
+
+pub(super) fn validate_git_object_id(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
+	let valid = value.and_then(Value::as_str).is_some_and(is_git_object_id);
+
+	if !valid {
+		errors.push(format!("{label} must be a lowercase 40- or 64-character Git object id"));
+	}
+}
+
+pub(super) fn validate_git_object_id_list(
+	value: Option<&Value>,
+	label: &str,
+	errors: &mut Vec<String>,
+) {
+	let Some(values) = non_empty_array(value) else {
+		errors.push(format!("{label} must be a non-empty list of Git object ids"));
+
+		return;
+	};
+	let mut seen = std::collections::BTreeSet::new();
+
+	for item in values {
+		let Some(item) = item.as_str().filter(|item| is_git_object_id(item)) else {
+			errors.push(format!(
+				"{label} must contain only lowercase 40- or 64-character Git object ids"
+			));
+
+			return;
+		};
+		if !seen.insert(item) {
+			errors.push(format!("{label} must not contain duplicate Git object ids"));
+
+			return;
+		}
+	}
+}
+
+pub(super) fn validate_sha256(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
+	let valid = value.and_then(Value::as_str).is_some_and(|value| {
+		value.len() == 64
+			&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+	});
+
+	if !valid {
+		errors.push(format!("{label} must be a lowercase SHA-256 digest"));
+	}
+}
+
+fn is_git_object_id(value: &str) -> bool {
+	matches!(value.len(), 40 | 64)
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub(super) fn validate_string_list(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
@@ -135,10 +187,6 @@ pub(super) fn is_https_string(value: Option<&Value>) -> bool {
 	value.and_then(Value::as_str).is_some_and(|value| value.starts_with("https://"))
 }
 
-pub(super) fn is_sha256_hex(value: &str) -> bool {
-	value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-}
-
 pub(super) fn is_https_string_array(value: &Value) -> bool {
 	value.as_array().is_some_and(|values| values.iter().all(|url| is_https_string(Some(url))))
 }
@@ -154,7 +202,6 @@ pub(super) fn known_schemas() -> String {
 		BUNDLE_SCHEMA,
 		CONFIG_FEATURE_CATALOG_SCHEMA,
 		CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA,
-		RADAR_ARCHIVE_MANIFEST_SCHEMA,
 		RELEASE_DELTA_SCHEMA,
 		SIGNAL_SCHEMA,
 		UPSTREAM_IMPACT_SCHEMA,

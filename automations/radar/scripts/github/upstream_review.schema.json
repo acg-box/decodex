@@ -7,6 +7,7 @@
     "schema",
     "slug",
     "repo",
+    "upstream_head",
     "subject",
     "source_refs",
     "reviewed_at",
@@ -28,10 +29,14 @@
       "type": "string",
       "minLength": 1
     },
+    "upstream_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+    },
     "subject": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["subject_kind", "subject_id"],
+      "required": ["subject_kind", "subject_id", "commit_shas"],
       "properties": {
         "subject_kind": {
           "type": "string",
@@ -43,9 +48,11 @@
         },
         "commit_shas": {
           "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
           "items": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
           }
         }
       }
@@ -86,7 +93,8 @@
     },
     "reviewed_at": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "format": "date-time"
     },
     "observed_change": {
       "type": "string",
