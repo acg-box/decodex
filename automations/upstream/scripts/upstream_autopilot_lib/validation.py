@@ -2,30 +2,40 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
+import stat
 import sys
 import tempfile
 import tomllib
-from typing import Any
+from typing import Any, Iterator
 
 from .core import (
     FULL_GATE_EXACT_PATHS,
     FULL_GATE_PREFIXES,
     FULL_VALIDATION_PROFILE,
+    MAX_STATE_BYTES,
     REQUIRED_VALIDATION_PROFILES,
     REASON_PATTERN,
     SHA_PATTERN,
+    STATE_SCHEMA,
+    TERMINAL_STATUSES,
     TRUSTED_SYSTEM_EXECUTABLE_ROOTS,
     TRUSTED_SYSTEM_TOOL_DIRECTORIES,
     VALIDATION_AUTHORITY_PATHS,
     VALIDATION_AUTHORITY_PREFIXES,
     VALIDATION_PROFILE_COMMANDS,
     AutopilotError,
+    CommandFailure,
+    canonical_json,
     command_succeeds,
+    ensure_cache_root,
     hash_file_bounded,
     has_exact_keys,
     is_sha256,
@@ -108,6 +118,674 @@ SANDBOX_EVIDENCE_KEYS = {
 FORMATTER_TOOLCHAIN = "nightly-2026-07-16"
 VALIDATION_TEMP_PREFIX = "dxv-"
 DARWIN_VALIDATION_TEMP_PARENT = Path("/private/tmp")
+VALIDATION_DIAGNOSTIC_SCHEMA = (
+    "decodex/codex-upstream-validation-diagnostic/2"
+)
+MAX_VALIDATION_DIAGNOSTICS = 512
+MAX_VALIDATION_DIAGNOSTIC_BYTES = 64 * 1024
+MAX_VALIDATION_DIAGNOSTIC_TOTAL_BYTES = 8 * 1024 * 1024
+MAX_DIAGNOSTIC_TEST_IDS = 32
+MAX_DIAGNOSTIC_FAILURE_CLASSES = 16
+MAX_DIAGNOSTIC_REASON_CODES = 16
+_UNITTEST_FAILURE_PATTERN = re.compile(
+    r"^(?:FAIL|ERROR):\s+[A-Za-z0-9_]{1,128}\s+"
+    r"\(([A-Za-z0-9_.]{1,512})\)$",
+    re.MULTILINE,
+)
+_FAILURE_CLASS_PATTERN = re.compile(
+    r"^([A-Za-z][A-Za-z0-9_.]{0,127}(?:Error|Exception))(?::|$)",
+    re.MULTILINE,
+)
+_TEST_COUNT_PATTERN = re.compile(r"^Ran ([0-9]{1,9}) tests?\b", re.MULTILINE)
+_FAILURE_COUNT_PATTERNS = {
+    "errors": re.compile(r"\berrors=([0-9]{1,9})\b"),
+    "failures": re.compile(r"\bfailures=([0-9]{1,9})\b"),
+    "skipped": re.compile(r"\bskipped=([0-9]{1,9})\b"),
+}
+_DIAGNOSTIC_REASON_MARKERS = {
+    "command_not_found": ("command not found",),
+    "module_not_found": ("modulenotfounderror", "no module named"),
+    "no_such_file": ("no such file or directory",),
+    "operation_not_permitted": ("operation not permitted",),
+    "permission_denied": ("permission denied",),
+    "process_killed": ("killed",),
+    "timed_out": ("timed out", "timeout expired"),
+}
+
+
+def validation_failure_facts(output_tail: bytes) -> dict[str, Any]:
+    """Extract bounded diagnostic facts without retaining command output."""
+
+    text = output_tail.decode("utf-8", errors="replace")
+    lowered = text.lower()
+    test_ids = sorted(set(_UNITTEST_FAILURE_PATTERN.findall(text)))[
+        :MAX_DIAGNOSTIC_TEST_IDS
+    ]
+    failure_classes = sorted(set(_FAILURE_CLASS_PATTERN.findall(text)))[
+        :MAX_DIAGNOSTIC_FAILURE_CLASSES
+    ]
+    reason_codes = sorted(
+        reason
+        for reason, markers in _DIAGNOSTIC_REASON_MARKERS.items()
+        if any(marker in lowered for marker in markers)
+    )[:MAX_DIAGNOSTIC_REASON_CODES]
+    counts: dict[str, int] = {}
+    test_count = _TEST_COUNT_PATTERN.search(text)
+    if test_count is not None:
+        counts["tests"] = int(test_count.group(1))
+    for name, pattern in _FAILURE_COUNT_PATTERNS.items():
+        matches = pattern.findall(text)
+        if matches:
+            counts[name] = int(matches[-1])
+    return {
+        "test_ids": test_ids,
+        "failure_classes": failure_classes,
+        "reason_codes": reason_codes,
+        "counts": counts,
+    }
+
+
+def _validate_private_descriptor(
+    descriptor: int,
+    *,
+    directory: bool,
+    exact_mode: int,
+    maximum_size: int | None = None,
+) -> os.stat_result:
+    metadata = os.fstat(descriptor)
+    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    if (
+        not expected_type(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) != exact_mode
+        or (not directory and metadata.st_nlink != 1)
+        or (
+            maximum_size is not None
+            and not 1 <= metadata.st_size <= maximum_size
+        )
+    ):
+        raise AutopilotError("validation_diagnostic_path_invalid")
+    return metadata
+
+
+@contextmanager
+def _locked_validation_diagnostic_directory(
+    repo_root: Path,
+) -> Iterator[tuple[int, int]]:
+    cache_root = ensure_cache_root(
+        repo_root / ".agent/automations/upstream/cache"
+    )
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    cache_descriptor: int | None = None
+    diagnostic_descriptor: int | None = None
+    lock_descriptor: int | None = None
+    try:
+        cache_descriptor = os.open(cache_root, directory_flags)
+        _validate_private_descriptor(
+            cache_descriptor,
+            directory=True,
+            exact_mode=0o700,
+        )
+        try:
+            os.mkdir("diagnostics", mode=0o700, dir_fd=cache_descriptor)
+        except FileExistsError:
+            pass
+        diagnostic_descriptor = os.open(
+            "diagnostics",
+            directory_flags,
+            dir_fd=cache_descriptor,
+        )
+        _validate_private_descriptor(
+            diagnostic_descriptor,
+            directory=True,
+            exact_mode=0o700,
+        )
+        lock_descriptor = os.open(
+            "diagnostics.lock",
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=cache_descriptor,
+        )
+        _validate_private_descriptor(
+            lock_descriptor,
+            directory=False,
+            exact_mode=0o600,
+        )
+        fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+        yield cache_descriptor, diagnostic_descriptor
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError("validation_diagnostic_root_unavailable") from error
+    finally:
+        if lock_descriptor is not None:
+            try:
+                fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_descriptor)
+        if diagnostic_descriptor is not None:
+            os.close(diagnostic_descriptor)
+        if cache_descriptor is not None:
+            os.close(cache_descriptor)
+
+
+def _read_bounded_json_at(
+    directory_descriptor: int,
+    name: str,
+    *,
+    maximum_size: int,
+) -> tuple[dict[str, Any], os.stat_result]:
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NOFOLLOW,
+            dir_fd=directory_descriptor,
+        )
+        metadata = _validate_private_descriptor(
+            descriptor,
+            directory=False,
+            exact_mode=0o600,
+            maximum_size=maximum_size,
+        )
+        payload = bytearray()
+        while len(payload) <= maximum_size:
+            chunk = os.read(
+                descriptor,
+                min(4096, maximum_size + 1 - len(payload)),
+            )
+            if not chunk:
+                break
+            payload.extend(chunk)
+        if len(payload) != metadata.st_size:
+            raise AutopilotError("validation_diagnostic_path_invalid")
+        value = json.loads(bytes(payload).decode("utf-8"))
+        if not isinstance(value, dict):
+            raise AutopilotError("validation_diagnostic_content_invalid")
+        return value, metadata
+    except AutopilotError:
+        raise
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise AutopilotError("validation_diagnostic_read_failed") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _nonterminal_error_digest_references(
+    cache_descriptor: int,
+) -> set[str] | None:
+    state_names = ("state.json", "state.recovery.json")
+    present: list[str] = []
+    for name in state_names:
+        try:
+            os.stat(name, dir_fd=cache_descriptor, follow_symlinks=False)
+            present.append(name)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+    if not present:
+        return set()
+    lock_descriptor: int | None = None
+    try:
+        lock_descriptor = os.open(
+            "state.lock",
+            os.O_RDONLY | os.O_NOFOLLOW,
+            dir_fd=cache_descriptor,
+        )
+        _validate_private_descriptor(
+            lock_descriptor,
+            directory=False,
+            exact_mode=0o600,
+        )
+        fcntl.flock(lock_descriptor, fcntl.LOCK_SH)
+        valid: list[dict[str, Any]] = []
+        for name in present:
+            try:
+                state, _metadata = _read_bounded_json_at(
+                    cache_descriptor,
+                    name,
+                    maximum_size=MAX_STATE_BYTES,
+                )
+            except AutopilotError:
+                continue
+            if (
+                state.get("schema") != STATE_SCHEMA
+                or not isinstance(state.get("persistence_generation"), int)
+                or state["persistence_generation"] < 0
+                or not isinstance(state.get("candidates"), list)
+                or len(state["candidates"]) > 512
+            ):
+                continue
+            valid.append(state)
+        if not valid:
+            return None
+        valid.sort(
+            key=lambda value: value["persistence_generation"],
+            reverse=True,
+        )
+        if (
+            len(valid) > 1
+            and valid[0]["persistence_generation"]
+            == valid[1]["persistence_generation"]
+            and canonical_json(valid[0]) != canonical_json(valid[1])
+        ):
+            return None
+        references: set[str] = set()
+        for candidate in valid[0]["candidates"]:
+            if not isinstance(candidate, dict):
+                return None
+            if candidate.get("status") in TERMINAL_STATUSES:
+                continue
+            result = candidate.get("result")
+            if not isinstance(result, dict):
+                continue
+            digest = result.get("error_digest")
+            if isinstance(digest, str) and is_sha256(digest):
+                references.add(digest)
+        return references
+    except (AutopilotError, OSError):
+        return None
+    finally:
+        if lock_descriptor is not None:
+            try:
+                fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_descriptor)
+
+
+def _diagnostic_cause_payload(
+    *,
+    profile: str,
+    repository_tree: str,
+    failure: CommandFailure,
+    facts: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "profile": profile,
+        "failure_code": failure.code,
+        "failure_kind": failure.failure_kind,
+        "return_code": failure.return_code,
+        "repository_tree": repository_tree,
+        "facts": facts,
+    }
+
+
+def _diagnostic_artifact_payload(
+    *,
+    cause_digest: str,
+    cause_payload: dict[str, Any],
+    repository_head: str,
+    output_sha256: str,
+) -> dict[str, Any]:
+    record = {
+        **cause_payload,
+        "repository_head": repository_head,
+        "output_sha256": output_sha256,
+    }
+    return {
+        "schema": VALIDATION_DIAGNOSTIC_SCHEMA,
+        "cause_digest": cause_digest,
+        "artifact_sha256": sha256_value(record),
+        **record,
+    }
+
+
+def _validate_diagnostic_payload(
+    payload: dict[str, Any],
+    *,
+    expected_cause_digest: str,
+) -> None:
+    expected_keys = {
+        "schema",
+        "cause_digest",
+        "artifact_sha256",
+        "profile",
+        "failure_code",
+        "failure_kind",
+        "return_code",
+        "repository_head",
+        "repository_tree",
+        "output_sha256",
+        "facts",
+    }
+    record = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"schema", "cause_digest", "artifact_sha256"}
+    }
+    cause_payload = {
+        key: record[key]
+        for key in (
+            "profile",
+            "failure_code",
+            "failure_kind",
+            "return_code",
+            "repository_tree",
+            "facts",
+        )
+        if key in record
+    }
+    facts = payload.get("facts")
+    return_code = payload.get("return_code")
+    valid_facts = (
+        isinstance(facts, dict)
+        and set(facts)
+        == {"test_ids", "failure_classes", "reason_codes", "counts"}
+        and isinstance(facts["test_ids"], list)
+        and len(facts["test_ids"]) <= MAX_DIAGNOSTIC_TEST_IDS
+        and all(
+            isinstance(value, str)
+            and re.fullmatch(r"[A-Za-z0-9_.]{1,512}", value)
+            for value in facts["test_ids"]
+        )
+        and isinstance(facts["failure_classes"], list)
+        and len(facts["failure_classes"])
+        <= MAX_DIAGNOSTIC_FAILURE_CLASSES
+        and all(
+            isinstance(value, str)
+            and re.fullmatch(
+                r"[A-Za-z][A-Za-z0-9_.]{0,127}(?:Error|Exception)",
+                value,
+            )
+            for value in facts["failure_classes"]
+        )
+        and isinstance(facts["reason_codes"], list)
+        and len(facts["reason_codes"]) <= MAX_DIAGNOSTIC_REASON_CODES
+        and all(
+            isinstance(value, str)
+            and REASON_PATTERN.fullmatch(value) is not None
+            for value in facts["reason_codes"]
+        )
+        and isinstance(facts["counts"], dict)
+        and set(facts["counts"])
+        <= {"tests", "errors", "failures", "skipped"}
+        and all(
+            isinstance(value, int) and 0 <= value <= 999_999_999
+            for value in facts["counts"].values()
+        )
+    )
+    if (
+        set(payload) != expected_keys
+        or payload.get("schema") != VALIDATION_DIAGNOSTIC_SCHEMA
+        or payload.get("cause_digest") != expected_cause_digest
+        or payload.get("profile") not in VALIDATION_PROFILE_COMMANDS
+        or REASON_PATTERN.fullmatch(str(payload.get("failure_code"))) is None
+        or REASON_PATTERN.fullmatch(str(payload.get("failure_kind"))) is None
+        or (
+            return_code is not None
+            and (
+                not isinstance(return_code, int)
+                or not -255 <= return_code <= 255
+            )
+        )
+        or SHA_PATTERN.fullmatch(str(payload.get("repository_head"))) is None
+        or SHA_PATTERN.fullmatch(str(payload.get("repository_tree"))) is None
+        or not valid_facts
+        or sha256_value(cause_payload) != expected_cause_digest
+        or sha256_value(record) != payload.get("artifact_sha256")
+        or not is_sha256(payload.get("output_sha256"))
+    ):
+        raise AutopilotError("validation_diagnostic_content_invalid")
+
+
+def _diagnostic_entries(
+    diagnostic_descriptor: int,
+) -> list[tuple[int, str, int]]:
+    entries: list[tuple[int, str, int]] = []
+    try:
+        names = os.listdir(diagnostic_descriptor)
+    except OSError as error:
+        raise AutopilotError("validation_diagnostic_read_failed") from error
+    for name in names:
+        match = re.fullmatch(r"([0-9a-f]{64})\.json", name)
+        if match is None:
+            if re.fullmatch(
+                r"\.diagnostic-[1-9][0-9]*-[0-9a-f]{16}\.tmp",
+                name,
+            ):
+                _unlink_diagnostic_at(
+                    diagnostic_descriptor,
+                    name,
+                    allow_empty=True,
+                )
+                continue
+            raise AutopilotError("validation_diagnostic_path_invalid")
+        payload, metadata = _read_bounded_json_at(
+            diagnostic_descriptor,
+            name,
+            maximum_size=MAX_VALIDATION_DIAGNOSTIC_BYTES,
+        )
+        _validate_diagnostic_payload(
+            payload,
+            expected_cause_digest=match.group(1),
+        )
+        entries.append((metadata.st_mtime_ns, name, metadata.st_size))
+    return entries
+
+
+def _unlink_diagnostic_at(
+    diagnostic_descriptor: int,
+    name: str,
+    *,
+    allow_empty: bool = False,
+) -> None:
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NOFOLLOW,
+            dir_fd=diagnostic_descriptor,
+        )
+        metadata = _validate_private_descriptor(
+            descriptor,
+            directory=False,
+            exact_mode=0o600,
+            maximum_size=None if allow_empty else MAX_VALIDATION_DIAGNOSTIC_BYTES,
+        )
+        if allow_empty and metadata.st_size > MAX_VALIDATION_DIAGNOSTIC_BYTES:
+            raise AutopilotError("validation_diagnostic_prune_failed")
+        current = os.stat(
+            name,
+            dir_fd=diagnostic_descriptor,
+            follow_symlinks=False,
+        )
+        if (metadata.st_dev, metadata.st_ino) != (
+            current.st_dev,
+            current.st_ino,
+        ):
+            raise AutopilotError("validation_diagnostic_prune_failed")
+        os.unlink(name, dir_fd=diagnostic_descriptor)
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError("validation_diagnostic_prune_failed") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _write_diagnostic_at(
+    diagnostic_descriptor: int,
+    name: str,
+    payload: bytes,
+) -> None:
+    temporary_name = f".diagnostic-{os.getpid()}-{secrets.token_hex(8)}.tmp"
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=diagnostic_descriptor,
+        )
+        offset = 0
+        while offset < len(payload):
+            offset += os.write(descriptor, payload[offset:])
+        os.fsync(descriptor)
+        _validate_private_descriptor(
+            descriptor,
+            directory=False,
+            exact_mode=0o600,
+            maximum_size=MAX_VALIDATION_DIAGNOSTIC_BYTES,
+        )
+        os.close(descriptor)
+        descriptor = None
+        os.link(
+            temporary_name,
+            name,
+            src_dir_fd=diagnostic_descriptor,
+            dst_dir_fd=diagnostic_descriptor,
+            follow_symlinks=False,
+        )
+        os.unlink(temporary_name, dir_fd=diagnostic_descriptor)
+        os.fsync(diagnostic_descriptor)
+    except FileExistsError:
+        raise AutopilotError("validation_diagnostic_path_conflict")
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError("validation_diagnostic_write_failed") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            os.unlink(
+                temporary_name,
+                dir_fd=diagnostic_descriptor,
+            )
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
+
+def write_validation_failure_diagnostic(
+    repo_root: Path,
+    *,
+    profile: str,
+    repository_head: str,
+    repository_tree: str,
+    failure: CommandFailure,
+) -> str:
+    """Persist one bounded local artifact keyed by a stable cause digest."""
+
+    if (
+        profile not in VALIDATION_PROFILE_COMMANDS
+        or SHA_PATTERN.fullmatch(repository_head) is None
+        or SHA_PATTERN.fullmatch(repository_tree) is None
+        or (
+            failure.return_code is not None
+            and (
+                not isinstance(failure.return_code, int)
+                or not -255 <= failure.return_code <= 255
+            )
+        )
+        or REASON_PATTERN.fullmatch(failure.failure_kind) is None
+        or not is_sha256(failure.output_sha256)
+    ):
+        raise AutopilotError("validation_diagnostic_input_invalid")
+    facts = validation_failure_facts(failure.output_tail)
+    cause_payload = _diagnostic_cause_payload(
+        profile=profile,
+        repository_tree=repository_tree,
+        failure=failure,
+        facts=facts,
+    )
+    cause_digest = sha256_value(cause_payload)
+    artifact = _diagnostic_artifact_payload(
+        cause_digest=cause_digest,
+        cause_payload=cause_payload,
+        repository_head=repository_head,
+        output_sha256=failure.output_sha256,
+    )
+    encoded = (
+        json.dumps(artifact, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+    )
+    if len(encoded) > MAX_VALIDATION_DIAGNOSTIC_BYTES:
+        raise AutopilotError("validation_diagnostic_budget_exceeded")
+    name = f"{cause_digest}.json"
+    with _locked_validation_diagnostic_directory(repo_root) as (
+        cache_descriptor,
+        diagnostic_descriptor,
+    ):
+        entries = _diagnostic_entries(diagnostic_descriptor)
+        existing_names = {entry_name for _mtime, entry_name, _size in entries}
+        if name in existing_names:
+            existing, _metadata = _read_bounded_json_at(
+                diagnostic_descriptor,
+                name,
+                maximum_size=MAX_VALIDATION_DIAGNOSTIC_BYTES,
+            )
+            _validate_diagnostic_payload(
+                existing,
+                expected_cause_digest=cause_digest,
+            )
+            return cause_digest
+        references = _nonterminal_error_digest_references(cache_descriptor)
+        total_bytes = sum(size for _mtime, _name, size in entries)
+        required_count = len(entries) + 1
+        required_bytes = total_bytes + len(encoded)
+        protected = references if references is not None else {
+            entry_name.removesuffix(".json")
+            for _mtime, entry_name, _size in entries
+        }
+        for _mtime, entry_name, size in sorted(entries):
+            if (
+                required_count <= MAX_VALIDATION_DIAGNOSTICS
+                and required_bytes
+                <= MAX_VALIDATION_DIAGNOSTIC_TOTAL_BYTES
+            ):
+                break
+            if entry_name.removesuffix(".json") in protected:
+                continue
+            _unlink_diagnostic_at(diagnostic_descriptor, entry_name)
+            required_count -= 1
+            required_bytes -= size
+        if (
+            required_count > MAX_VALIDATION_DIAGNOSTICS
+            or required_bytes > MAX_VALIDATION_DIAGNOSTIC_TOTAL_BYTES
+        ):
+            raise AutopilotError("validation_diagnostic_capacity_exhausted")
+        _write_diagnostic_at(diagnostic_descriptor, name, encoded)
+        stored, _metadata = _read_bounded_json_at(
+            diagnostic_descriptor,
+            name,
+            maximum_size=MAX_VALIDATION_DIAGNOSTIC_BYTES,
+        )
+        _validate_diagnostic_payload(
+            stored,
+            expected_cause_digest=cause_digest,
+        )
+    return cause_digest
+
+
+def read_validation_failure_diagnostic(
+    repo_root: Path,
+    *,
+    cause_digest: str,
+) -> dict[str, Any]:
+    """Read and validate one cause-addressed diagnostic artifact."""
+
+    if not is_sha256(cause_digest):
+        raise AutopilotError("validation_diagnostic_digest_invalid")
+    with _locked_validation_diagnostic_directory(repo_root) as (
+        _cache_descriptor,
+        diagnostic_descriptor,
+    ):
+        payload, _metadata = _read_bounded_json_at(
+            diagnostic_descriptor,
+            f"{cause_digest}.json",
+            maximum_size=MAX_VALIDATION_DIAGNOSTIC_BYTES,
+        )
+        _validate_diagnostic_payload(
+            payload,
+            expected_cause_digest=cause_digest,
+        )
+        return payload
+
+
 TRUSTED_TOOLCHAIN_EXECUTABLES = {"cargo", "cargo-fmt", "rustfmt"}
 SANDBOX_PROFILE_TASKS = {
     "focused_tests": "test-automations",
@@ -683,13 +1361,20 @@ def trusted_validation_python(repo_root: Path) -> Path:
     if not MINIMUM_VALIDATION_PYTHON <= sys.version_info[:2] < (4, 0):
         raise AutopilotError("validation_python_runtime_unsupported")
     runtime = Path(sys.executable).absolute()
-    candidate = runtime.parent / "python3"
     try:
+        runtime_resolved = runtime.resolve(strict=True)
+        canonical_candidate = runtime_resolved.parent / "python3"
+        try:
+            canonical_resolved = canonical_candidate.resolve(strict=True)
+        except OSError:
+            canonical_resolved = None
+        candidate = canonical_candidate if (
+            canonical_resolved == runtime_resolved
+        ) else runtime.parent / "python3"
         candidate_metadata = candidate.lstat()
         parent_metadata = candidate.parent.stat()
         resolved = candidate.resolve(strict=True)
         resolved_metadata = resolved.stat()
-        runtime_resolved = runtime.resolve(strict=True)
     except OSError as error:
         raise AutopilotError("validation_python_runtime_unavailable") from error
     if (
@@ -1605,19 +2290,33 @@ def run_validation_profiles(
                 name,
                 cargo_executable=tool_paths["cargo"],
             )
-            output = run_command(
-                [
-                    str(tool_paths["sandbox-exec"]),
-                    "-f",
-                    str(profile_path),
-                    *profile_command,
-                ],
-                cwd=worktree,
-                environment=current_environment,
-                inherit_environment=False,
-                failure_code=f"validation_profile_{name}_failed",
-                timeout_seconds=3600,
-            )
+            try:
+                output = run_command(
+                    [
+                        str(tool_paths["sandbox-exec"]),
+                        "-f",
+                        str(profile_path),
+                        *profile_command,
+                    ],
+                    cwd=worktree,
+                    environment=current_environment,
+                    inherit_environment=False,
+                    failure_code=f"validation_profile_{name}_failed",
+                    timeout_seconds=3600,
+                    capture_failure_diagnostic=True,
+                )
+            except CommandFailure as error:
+                diagnostic_sha256 = write_validation_failure_diagnostic(
+                    repo_root,
+                    profile=name,
+                    repository_head=head,
+                    repository_tree=tree,
+                    failure=error,
+                )
+                raise AutopilotError(
+                    error.code,
+                    diagnostic_sha256=diagnostic_sha256,
+                ) from error
             current_head, current_tree = repository_identity(worktree)
             if current_head != head or current_tree != tree:
                 raise AutopilotError("validation_repository_changed")

@@ -16,10 +16,12 @@ correctness to public-reader value and media quality.
 ## Hard Boundaries
 
 - Do not read upstream Codex source or invent missing technical evidence.
-- Keep weak candidates as `decision.worthiness = "defer"` or `"skip"`, or write a
-  terminal `skipped`/`blocked` `social_post/v1` when Publisher has already started.
-- Historical `@CodexReleases` and `@Codex_Changelog` observations are style references
-  only. Recurring automation must not browse them or use their coverage as evidence.
+- Keep weak candidates as `decision.worthiness = "skip"`, or write a terminal
+  `skipped`/`blocked` `social_post/v1` when Publisher has already started.
+- `@CodexReleases` and `@Codex_Changelog` are editorial benchmarks only. Content
+  Manager may inspect their public posts once per seven-day strategy period under the
+  shared browser lease. It must not copy text or use their coverage as technical
+  evidence. Publisher does not perform this benchmark.
 
 ## Editorial Gate
 
@@ -54,8 +56,8 @@ platform limit.
 Prefer concrete evidence over generic release prose. A publishable post should name
 the release, PR, commit cluster, protocol surface, workflow, or operator action that
 matters. If the best available text is only "tracking", "watching", or "new release
-available" without a reader action or source-backed implication, keep the candidate as
-`defer` or `skip`.
+available" without a reader action or source-backed implication, mark the candidate as
+`skip`.
 
 ## Media Gate
 

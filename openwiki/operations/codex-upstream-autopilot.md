@@ -101,11 +101,17 @@ another automation run or an operator must restore that scheduler activation.
 
 - Maintainer: hourly.
 - Reviewer: hourly, 30 minutes after Maintainer.
-- Health and self-repair escalation: every six hours.
+- Health and self-repair escalation: every two hours.
 
 The first observation queues independent main/bootstrap, current stable-release, and
 current prerelease-release candidates. A new installation therefore evaluates all
 three upstream lanes without waiting for a later tag change.
+The three records remain distinct. Maintainer can claim only the earliest unresolved
+non-repair source record. A retry, implementation, review, or owned repair on that
+record defers later source records. An `automation_repair` can bypass the source gate
+so the control plane can repair itself. After the predecessor becomes terminal, the
+next source lane can proceed. This preserves complete lane evidence without creating
+parallel duplicate work for one unresolved compatibility gap.
 
 The state contract requires an observation no older than two hours and flags a
 nonterminal candidate older than six hours. A complete first-parent cursor divides a
@@ -176,6 +182,31 @@ the next observation.
 Each state save writes and fsyncs a recovery slot before it writes and fsyncs the
 primary slot. A monotonic persistence generation selects the newest valid slot after
 a process or power failure. Equal-generation conflicts fail closed.
+
+The trusted launcher uses Python isolated mode and disables `site` initialization for
+its version probe and its final process. Caller Python path, home, user-site, and
+`sitecustomize` configuration cannot affect the launcher.
+
+A failed validation profile writes one local cause-addressed mode-`0600`
+diagnostic. Its stable cause digest excludes output variations. The artifact contains
+a separate exact artifact digest and one SHA-256 derived from the separate stdout and
+stderr stream digests. It also
+contains only its schema, profile, failure code and class, repository HEAD/tree,
+return code, bounded test IDs, exception classes, reason codes, and counts. It does
+not contain raw output, commands, absolute paths, credentials, email addresses, or
+private prose. The command returns the stable cause digest as `error_digest`. The
+file named by that digest is the unambiguous local artifact for the cause.
+Maintainer and Health use the trusted `validation-diagnostic` state-tool command to
+read that artifact. The command revalidates the cause identity and the separate
+artifact digest. Maintainer passes only the bounded returned structure to the worker;
+it does not pass a primary-checkout cache path into a candidate worktree.
+
+A process lock serializes diagnostic writes and pruning. Descriptor-relative,
+no-follow operations require a current-UID mode-`0700` directory and current-UID,
+one-link, exact mode-`0600` files. The store keeps at most 512 artifacts and 8 MiB.
+Pruning preserves every digest referenced by a nonterminal candidate. An unreadable
+state protects all existing artifacts. The operation fails closed if protected
+artifacts consume the capacity.
 
 ## Trust Boundary
 
@@ -330,11 +361,11 @@ repository schema-digest mismatch cannot close as `no_change` or `rejected`.
 An `automation_repair` candidate cannot close as `rejected`: it must land a repair or
 independently reproduce that the transient failure cleared and close as `no_change`.
 
-Each scheduled run archives its own Codex thread after it persists and reads back its
-terminal ownership result. This includes a retry or automatically owned repair.
-Archiving only cleans the Codex task list; it does not disable the recurring
-automation or delete state evidence. A run stays visible only when an external effect
-is ambiguous or automation cannot contain a required human authority decision.
+After a terminal role persists and reads back its ownership result, it calls native
+`set_thread_archived` with `archived = true` and no `threadId`. The native tool can
+then archive only the current scheduled task. An ambiguous, human-only, or unowned
+result stays visible. Archival only cleans the Codex task list. It does not disable
+the recurring automation or delete state evidence.
 
 ## Cost
 
